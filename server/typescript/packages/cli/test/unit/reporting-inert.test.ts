@@ -2,7 +2,7 @@
 //
 // Plan 1 registered `dimension.*`, `measure.*`, `segment.*` and `object.report` and gave
 // them no output. Plan 2 lowers a report that declares a read-only `source.rdb @kind: view`
-// to that view in TypeScript migrate (and so on the `meta docs` agent schema page, which
+// to that view in TypeScript migrate (and so on the agent schema page, `agent/schema.md`, which
 // lists the views migrate would create). Plan 3 serves that same report: the TypeScript
 // generators emit its keyless read-only surface, and nothing else.
 //
@@ -29,14 +29,14 @@
 // `source.rdb @kind: view` (R5 allows one): that is the case that once leaked in C#, where
 // it emitted a keyless DbSet, a GET route and a filter allowlist for an object with no fields.
 //
-// `meta docs` documents reports since Plan 3 (Table G), and the last describe states the
+// The documentation generators document reports since Plan 3 (Table G), and the last describe states the
 // difference exactly: a model page and a site page for every report, served or not; a
 // "Reporting" section on each entity that declares reporting nodes; one api unit, for the
 // served report alone; the schema page's one view entry; one section in `agent/ui.md` for
 // the served report's list hook. Everything else is byte-identical.
 
 import { describe, test, expect, beforeAll } from "bun:test";
-import { mkdtempSync, mkdirSync, copyFileSync, rmSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { mkdtempSync, mkdirSync, copyFileSync, rmSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -52,7 +52,7 @@ import {
   type SchemaSnapshot,
 } from "@metaobjectsdev/migrate-ts";
 import { composeCatalog } from "../../src/lib/catalog.js";
-import { docsCommand } from "../../src/commands/docs.js";
+import { run as runCli } from "../../src/index.js";
 
 // test/unit → cli → packages → typescript → server → repo root
 const REPO_ROOT = resolve(import.meta.dir, "..", "..", "..", "..", "..", "..");
@@ -87,6 +87,9 @@ async function emit(metadata: MetaRoot, generators: Generator[]): Promise<Record
     extStyle: "js",
     dialect: "postgres",
     dbImport: "../db",
+    // The documentation generators write to the `docs` target (ADR-0034 Amendment 9); it is
+    // the code's directory here, so every generator's output is read back from one tree.
+    targets: { docs: { outDir: "src/generated" } },
     generators,
   };
   try {
@@ -197,7 +200,12 @@ describe("FR-044 a sourceless report is inert; a served report emits exactly its
     }
   });
 
-  for (const [name, entry] of Object.entries(catalog)) {
+  // The documentation generators document every report, served or not, so they do not add
+  // "exactly the served report's files": what they add is stated page by page by the last
+  // describe in this file, which drives them as `meta gen` does.
+  const codeCatalog = Object.entries(catalog).filter(([, entry]) => entry.layer !== "docs");
+
+  for (const [name, entry] of codeCatalog) {
     test(`generator "${name}" adds exactly the served report's files and changes nothing else`, async () => {
       const expected = await emit(withoutReporting, [entry.factory()]);
       const actual = await emit(withReporting, [entry.factory()]);
@@ -289,7 +297,7 @@ describe("FR-044 a sourceless report is inert; a served report emits exactly its
     // output. Pinned by name so a generator that starts throwing cannot drop out silently.
     //   shared-model  needs a `files` selection `meta gen` supplies at run time
     const threw: string[] = [];
-    for (const [name, entry] of Object.entries(catalog)) {
+    for (const [name, entry] of codeCatalog) {
       if ("<threw>" in (await emit(withoutReporting, [entry.factory()]))) threw.push(name);
     }
     expect(threw.sort()).toEqual(["shared-model"]);
@@ -299,8 +307,13 @@ describe("FR-044 a sourceless report is inert; a served report emits exactly its
     // A generator that cannot run from a bare model (shared-model needs a `files`
     // selection) throws in both variants above, which is equal and so passes; it would
     // sink the whole combined run, so it sits this one out.
+    //
+    // The documentation generators sit it out too, all but `agent-docs`, whose UI page this
+    // test reads: what reports change in the model pages, the api reference and the site is
+    // stated exactly, page by page, by the last describe in this file.
     const runnable: string[] = [];
     for (const [name, entry] of Object.entries(catalog)) {
+      if (entry.layer === "docs" && name !== "agent-docs") continue;
       const alone = await emit(withoutReporting, [entry.factory()]);
       if (!("<threw>" in alone)) runnable.push(name);
     }
@@ -327,8 +340,12 @@ describe("FR-044 a sourceless report is inert; a served report emits exactly its
 });
 
 describe("FR-044 a selection of only reports", () => {
+  // Documentation is left out: what a report changes in the pages is stated by the last
+  // describe in this file, and the pages describe the whole model whatever the selection.
   const allGenerators = (): Generator[] =>
-    Object.values(composeCatalog()).filter((e) => e.name !== "shared-model").map((e) => e.factory());
+    Object.values(composeCatalog())
+      .filter((e) => e.name !== "shared-model" && e.layer !== "docs")
+      .map((e) => e.factory());
   const run = async (entityFilter: string[]) => {
     const root = mkdtempSync(join(tmpdir(), "reporting-inert-only-"));
     try {
@@ -401,25 +418,48 @@ describe("FR-044 a sourceless report is inert in migrate; a view-backed report p
   });
 });
 
-describe("FR-044 meta docs differs by exactly the report pages, the Reporting sections and one api unit", () => {
-  /** Run `meta docs` over a project holding one variant, once per surface flag set, and
-   *  read back everything written. The project directory has the SAME basename for both
-   *  variants: the site stamps it into every page title. */
+describe("FR-044 the documentation generators differ by exactly the report pages, the Reporting sections and one api unit", () => {
+  /** Run the model, requirements and site generators over a project holding one variant,
+   *  each into a target of its own, and read back everything written. The project directory
+   *  has the SAME basename for both variants: the site stamps it into every page title. */
   async function docsOutput(variant: "with" | "without"): Promise<Record<string, string>> {
     const parent = mkdtempSync(join(tmpdir(), "reporting-inert-docs-"));
     const root = join(parent, "shop");
     try {
       mkdirSync(join(root, "metaobjects"), { recursive: true });
       copyFileSync(join(MODELS, variant, "meta.shop.json"), join(root, "metaobjects", "meta.shop.json"));
-      // `--agent` is listed for completeness but emits nothing without a gen config; the
-      // agent surface is driven directly below, with the UI tier wired.
-      for (const flags of [[], ["--agent"], ["--requirements"], ["--site"]]) {
-        const out = join(root, "out" + flags.join(""));
-        expect(await docsCommand([root, "--out", out, ...flags], root, { silent: true })).toBe(0);
-      }
+      // The agent pages are driven directly below, with the UI tier wired. Run through
+      // `meta gen` itself, so the metadata loads as a project's does (a page's **Source:** line
+      // names the file relative to its source root, the same in both variants).
+      writeFileSync(
+        join(root, "metaobjects.config.ts"),
+        `import { defineConfig } from "@metaobjectsdev/codegen-ts";
+import { docsFile, docsSiteFile, requirementsFile } from "@metaobjectsdev/codegen-ts/generators";
+export default defineConfig({
+  outDir: "src/generated",
+  extStyle: "js",
+  dialect: "postgres",
+  dbImport: "../db",
+  targets: {
+    out: { outDir: "out" },
+    "out--requirements": { outDir: "out--requirements" },
+    "out--site": { outDir: "out--site" },
+  },
+  generators: [
+    docsFile({ target: "out" }),
+    requirementsFile({ target: "out" }),
+    requirementsFile({ target: "out--requirements" }),
+    docsSiteFile({ target: "out--site" }),
+  ],
+});
+`,
+        "utf8",
+      );
+      expect(await runCli(["gen", "--format", "json", "--cwd", root])).toBe(0);
       const files: Record<string, string> = {};
       for (const rel of walkFiles(root)) {
-        if (rel.split(sep)[0] === "metaobjects") continue;
+        const top = rel.split(sep)[0];
+        if (top === "metaobjects" || top === ".metaobjects" || top === "metaobjects.config.ts") continue;
         files[rel.split(sep).join("/")] = readFileSync(join(root, rel), "utf8");
       }
       return files;
@@ -480,7 +520,7 @@ describe("FR-044 meta docs differs by exactly the report pages, the Reporting se
     }
   });
 
-  test("agent and requirements output (no gen config) is identical", async () => {
+  test("requirements output is identical", async () => {
     const expected = await docsOutput("without");
     const actual = await docsOutput("with");
     const other = (files: Record<string, string>): Record<string, string> =>
@@ -517,7 +557,7 @@ describe("FR-044 meta docs differs by exactly the report pages, the Reporting se
     }
   });
 
-  /** The GenContext `meta docs` builds, with a full generator suite wired: the Hono
+  /** The GenContext `meta gen` builds, with a full generator suite wired: the Hono
    *  routes and the UI tier both on, so every page that keys off them is rendered. */
   const docsCtx = (metadata: MetaRoot): GenContext => ({
     entities: metadata.objects(),
@@ -541,8 +581,7 @@ describe("FR-044 meta docs differs by exactly the report pages, the Reporting se
   };
 
   test("the api surface gains one unit, for the served report: its row model, list query and GET", async () => {
-    // `meta docs --api` materializes only with a loadable gen config, which a temp project
-    // cannot import; so drive the generator with the GenContext `meta docs` builds.
+    // Driven with the GenContext `meta gen` builds, Hono routes and the UI tier wired.
     const api = async (metadata: MetaRoot): Promise<Record<string, string>> => {
       const out: Record<string, string> = {};
       for (const f of await apiDocsFile({ subDir: "api" }).generate(docsCtx(metadata))) out[f.path] = f.content;
@@ -583,8 +622,7 @@ describe("FR-044 meta docs differs by exactly the report pages, the Reporting se
   });
 
   test("the agent surface differs only by the schema page's v_store_totals view, with the UI tier wired", async () => {
-    // Same reason as above: `meta docs --agent` needs a loadable gen config. The schema
-    // input is built exactly as docs.ts's buildAgentSchemaInput builds it for postgres.
+    // The schema input is built exactly as lib/agent-schema.ts builds it for postgres.
     const agent = async (metadata: MetaRoot): Promise<Record<string, string>> => {
       const dialect = "postgres" as const;
       const strategy = DEFAULT_COLUMN_NAMING_STRATEGY;
@@ -612,7 +650,7 @@ describe("FR-044 meta docs differs by exactly the report pages, the Reporting se
     expect(Object.keys(expected).some((p) => p.endsWith("schema.md"))).toBe(true);
     const actual = await agent(withReporting);
 
-    // The schema page lists the views migrate would create (docs.ts feeds it
+    // The schema page lists the views migrate would create (agent-schema.ts feeds it
     // buildProjectionViews), so the one view-backed report appears there and nowhere else.
     const schemaPage = Object.keys(expected).find((p) => p.endsWith("schema.md"))!;
     const entry = "## Views\n\n" +

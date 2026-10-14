@@ -1,12 +1,12 @@
-// Mermaid diagrams for `meta docs`:
+// Mermaid diagrams for the model pages (`docsFile()`):
 //   1. `renderMermaidErBlock` — the whole-model ```mermaid erDiagram block (entities +
 //      identity.reference relationships), on the overview page (README.md).
 //   2. `renderEntityNeighborhoodErBlock` — one entity and its direct neighbours, on that
 //      entity's page.
 //
 // These used to back a standalone `mermaid-er` generator as well, which wrote the first
-// diagram plus per-entity prose to a file of its own under `meta gen`. 1.1 removed it:
-// the diagrams are documentation, and `meta docs` is the one command that writes them.
+// diagram plus per-entity prose to a file of its own. 1.1 removed it: the diagrams are on
+// the model pages, which the `docs` generator writes.
 //
 // D5: the notes attr is NEVER emitted. Per the Documentation Provider design.
 
@@ -20,8 +20,8 @@ import {
 
 /** Render the fenced ```mermaid erDiagram``` block for the whole model (entities +
  *  identity.reference relationships). This is the single neutral ER-diagram
- *  builder: the docs OVERVIEW page (`README.md`, emitted by the Tier-2 `meta docs`
- *  engine) consumes it, so there is exactly ONE place ER topology is computed
+ *  builder: the docs OVERVIEW page (`README.md`, emitted by the neutral `docs`
+ *  generator) consumes it, so there is exactly ONE place ER topology is computed
  *  (ADR-0020).
  *
  *  Abstract entities are excluded — they have no physical table to put in a

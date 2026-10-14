@@ -22,10 +22,11 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { join, relative, resolve } from "node:path";
 import ts from "typescript";
 import {
-  buildPkMap, buildRelationMap, buildProjectionViews, defineConfig, ENGINE_MODULES, HTTP_RUNTIME_PACKAGE,
+  buildPkMap, buildRelationMap, buildProjectionViews, defineConfig, HTTP_RUNTIME_PACKAGE,
   makeRenderContext, runGen,
 } from "@metaobjectsdev/codegen-ts";
-import type { AgentSchemaInput, GenContext, Generator, SchemaColumnLike } from "@metaobjectsdev/codegen-ts";
+import { ENGINE_MODULES } from "@metaobjectsdev/codegen-ts/engine";
+import type { AgentSchemaInput, DocsRunFacts, GenContext, Generator, SchemaColumnLike } from "@metaobjectsdev/codegen-ts";
 import { MetaDataLoader } from "@metaobjectsdev/metadata";
 import { FileSource } from "@metaobjectsdev/metadata/core";
 import { buildExpectedSchemaWithProvenance, columnTypeSql, qualifiedDbName } from "@metaobjectsdev/migrate-ts";
@@ -72,11 +73,13 @@ interface Owned {
 }
 
 describe("eject contract (typescript) — completeness", () => {
-  test("every catalog entry is ejectable except the one the maintainer exempted", () => {
+  test("every catalog entry is ejectable except the two the maintainer exempted", () => {
     // Derived, so a generator added to any registry is ejectable or the test names it. The
     // exemption is `template`: the Mustache primitive, whose emit logic is the template and
     // the walk the adopter supplies (ADR-0034 Amendment 8, ruling 5).
-    expect(catalog.filter((e) => !e.ejectable).map((e) => e.name)).toEqual(["template"]);
+    // `docs-site` too (ADR-0034 Amendment 9): its builder is engine, and `meta eject docs-site`
+    // copies the site's templates and assets, which is what an adopter changes.
+    expect(catalog.filter((e) => !e.ejectable).map((e) => e.name)).toEqual(["docs-site", "template"]);
     expect(ejectable.length).toBeGreaterThanOrEqual(24);
   });
 });
@@ -242,8 +245,9 @@ describe("eject contract (typescript) — an owned generator owns what writes it
 
   test("each generator's copy count is stable: the closure is what the registry says it is", () => {
     // `barrel` and `requirement-tests` call no template module (the latter renders its own
-    // stub and takes only types from the engine); every other generator calls at least one.
-    const callsNone = new Set(["barrel", "requirement-tests"]);
+    // stub and takes only types from the engine), nor does `metamodel-docs` (its pages are
+    // rendered by the metamodel package, which is core); every other generator calls one.
+    const callsNone = new Set(["barrel", "requirement-tests", "metamodel-docs"]);
     for (const [name, copy] of owned) {
       const templates = copy.files.filter((f) => f.includes(`${join("codegen", "templates")}`));
       expect(templates.length > 0, name).toBe(!callsNone.has(name));
@@ -307,7 +311,7 @@ function build(factory: Factory, name: string, owned: boolean): Generator {
 /** The key a refusal is recorded under, in place of the files a run would have written. */
 const REFUSED = "<refused>";
 
-/** What `meta docs` computes for the agent surface and codegen-ts owns none of (cli/src/commands/docs.ts). */
+/** What `meta gen` computes for the agent pages and codegen-ts owns none of (cli/src/lib/agent-schema.ts). */
 function agentSchema(root: Awaited<ReturnType<MetaDataLoader["load"]>>["root"]): AgentSchemaInput | undefined {
   const dialect = "postgres" as const;
   try {
@@ -329,10 +333,10 @@ function agentSchema(root: Awaited<ReturnType<MetaDataLoader["load"]>>["root"]):
   }
 }
 
-/** Run one generator over one corpus the way its door runs it; the files it wrote. */
+/** Run one generator over one corpus; the files it wrote. */
 async function emit(
   generator: Generator,
-  surface: string | undefined,
+  docs: boolean,
   corpus: Corpus,
   projectRoot: string,
   outDir: string,
@@ -340,20 +344,22 @@ async function emit(
   const loaded = await new MetaDataLoader().load(corpus.files.map((f) => new FileSource(f)));
   expect(loaded.errors, corpus.label).toEqual([]);
   const settings = { outDir, extStyle: "none", dbImport: "../db", dialect: "postgres" } as const;
-  if (surface !== undefined) {
-    // `meta docs` runs a docs generator, never `runGen`, which skips one: `.generate(ctx)`
-    // with the door's facts on `ctx.docsDoor` and the generator's own `filter` as `ctx.matches`.
-    const docsDoor =
-      surface === "model" ? { apiSurfaces: [{ label: "TypeScript", subDir: "api" }] }
-      : surface === "api" ? { apiSubDir: "api", modelSurface: true }
-      : surface === "agent" ? { agent: { ...(agentSchema(loaded.root) !== undefined && { schema: agentSchema(loaded.root)! }), columnNamingStrategy: "snake_case" as const } }
-      : {};
+  if (docs) {
+    // A documentation generator, run with `.generate(ctx)` and every fact the runner can hand
+    // it on (`ctx.docs`): model and api pages beside each other, the agent schema, the UI
+    // tier on. That reaches each branch the cross-links and the schema page take, which a
+    // run of the generator alone would not.
+    const facts: DocsRunFacts = {
+      apiSurfaces: [{ label: "TypeScript", subDir: "api" }],
+      modelPages: true,
+      agentSchema: () => agentSchema(loaded.root),
+    };
     const ctx: GenContext = {
       entities: loaded.root.objects(),
       loadedRoot: loaded.root,
       matches: generator.filter ?? (() => true),
       config: { ...settings, includeUiTier: true } as never,
-      docsDoor,
+      docs: facts,
       renderContext: makeRenderContext({
         dialect: "postgres",
         loadedRoot: loaded.root,
@@ -413,15 +419,15 @@ describe("eject contract (typescript) — an owned copy emits what the packaged 
       expect(typeof factory, `${copy.generatorPath} exports ${entry.factoryExport}`).toBe("function");
       // The packaged side is the factory an adopter imports, by the name the catalog prints.
       const shipped = ((await import(factoryModuleOf(entry.name)!)) as Record<string, unknown>)[entry.factoryExport];
-      const surface = entry.docsSurface;
+      const docs = entry.layer === "docs";
 
       let emitted = 0;
       for (const corpus of CORPORA) {
         if (corpus.templates !== undefined) cpSync(corpus.templates, join(copy.root, "templates"), { recursive: true });
         const packaged = await emit(
-          build(shipped as Factory, entry.name, false), surface, corpus, copy.root, join(copy.root, "out", corpus.label, "packaged"));
+          build(shipped as Factory, entry.name, false), docs, corpus, copy.root, join(copy.root, "out", corpus.label, "packaged"));
         const mine = await emit(
-          build(factory as Factory, entry.name, true), surface, corpus, copy.root, join(copy.root, "out", corpus.label, "owned"));
+          build(factory as Factory, entry.name, true), docs, corpus, copy.root, join(copy.root, "out", corpus.label, "owned"));
         rmSync(join(copy.root, "templates"), { recursive: true, force: true });
         emitted += Object.keys(packaged).filter((path) => path !== REFUSED).length;
         expect(Object.keys(mine).sort(), `${entry.name} over ${corpus.label}`).toEqual(Object.keys(packaged).sort());

@@ -8,7 +8,7 @@
 // later deferral.
 //
 // These docs describe the METAMODEL ITSELF (the type/subtype/attr vocabulary of
-// the strict registry) — distinct from `meta docs --model` (a user's entities).
+// the strict registry) — distinct from the `docs` generator (a user's entities).
 // Committing the expected output makes a vocabulary/description change drift-
 // gated: it must regenerate the docs to stay green.
 //

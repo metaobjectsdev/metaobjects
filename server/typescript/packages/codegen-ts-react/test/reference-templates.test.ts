@@ -17,12 +17,12 @@ describe("codegen-ts-react reference templates", () => {
   // reference reaches the renderer by a path `meta eject` copies beside it (`../templates/`),
   // and the engine by the package entry — never the renderer through the package entry, which
   // would leave it packaged.
-  test("imports its renderer by path and the engine by package, declares its target", () => {
+  test("imports its renderer by path and the engine by the engine entry, declares its target", () => {
     const src = readReferenceTemplate("form");
     expect(src).toContain("REFERENCE TEMPLATE");
     expect(src).toContain("// targets:");
     expect(src).toContain('from "../templates/form-file.js"');
-    expect(src).toContain('from "@metaobjectsdev/codegen-ts"');
+    expect(src).toContain('from "@metaobjectsdev/codegen-ts/engine"');
     expect(src).not.toContain('from "@metaobjectsdev/codegen-ts-react"');
     expect(src).not.toContain("src/templates");
   });

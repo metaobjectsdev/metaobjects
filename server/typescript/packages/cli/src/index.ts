@@ -42,8 +42,7 @@ COMMANDS:
   types [query]         Search the metadata vocabulary (types, subtypes, @attrs) by name or description
   export                Flatten loaded metadata to one canonical JSON artifact
   fmt [<file>...]       Rewrite metadata files into canonical form; --check lists drift, exits non-zero
-  docs [<project-root>] --out <dir>  Generate neutral metadata documentation (entity + template pages; --site for HTML site)
-  verify                Drift gate — subverbs: --templates / --db / --codegen / --docs / --deps (bare = --templates)
+  verify                Drift gate — subverbs: --templates / --db / --codegen / --deps (bare = --templates)
   upgrade               Rewrite retired metadata vocabulary (previews; --apply writes)
   prompt-snapshot       Snapshot rendered template.* output; --check gates drift
   migrate               Diff metadata vs live DB; emit migration SQL files
@@ -81,8 +80,12 @@ GEN FLAGS:
   --limit <n|all>       How many advisory lines TEXT output prints before it truncates
                         (default 20). Never applies to --format toon/json, which
                         carry every finding.
+  --generators <names>  Narrow the run to these DECLARED generators, by stable name, comma-
+                        separated (e.g. docs,api-docs to write only the documentation). A
+                        name metaobjects.config.ts does not declare is refused: it never adds one.
   <entity> [<entity>]   Positional filter on entity names
-  (outDir, dialect, dbImport, extStyle are read from metaobjects.config.ts)
+  (outDir, dialect, dbImport, extStyle are read from metaobjects.config.ts. Every generator,
+  documentation included, is an entry in its \`generators\`; nothing else is generated.)
 
 EXPORT FLAGS:
   --out <file>          Write output to a file (default: stdout)
@@ -102,26 +105,10 @@ FMT FLAGS:
                         find-or-reuse behavior would otherwise silently fold a same-file
                         base + overlay into one node, dropping the overlay marker.
 
-DOCS FLAGS:
-  [<project-root>]      PROJECT ROOT to resolve metadata from — the directory that CONTAINS
-                        your metadata, NOT the metadata directory. Passing it SCOPES the run
-                        (default: cwd)
-  --out <dir>, -o       Output directory for THIS run (default: ./docs/generated). It does
-                        NOT survive the run — set 'docs: { outDir }' in metaobjects.config.ts
-                        for a directory that persists, which is what 'meta verify --docs'
-                        measures. The default is a sub-directory on purpose: these pages are
-                        regenerated and overwritten, and 'docs/' itself is usually yours.
-  --templates <dir>     Project root to resolve adopter templates/ overrides (default: <project-root>)
-  --prompts <dir>       Extra dir holding prompt .mustache sources for --site (e.g. data/templates/)
-
 VERIFY FLAGS (ADR-0021 D2 — explicit subverbs; combine any; exit 1 on ANY drift):
   --templates           Template/prompt {{field}}↔payload drift (the bare-verify default)
   --codegen             Codegen drift — regenerate to a temp dir and diff the committed
-                        output (config outDir/targets). Needs metaobjects.config.ts; exit 2 if absent.
-  --docs                Docs drift — run 'meta docs' into a temp dir and diff the committed
-                        docs tree (docs.outDir). Reports a page that changed or that a fresh
-                        run would emit; never reports an extra file, because docs.outDir
-                        holds hand-written documentation MetaObjects did not write.
+                        output (config outDir/targets), documentation included.
                         Needs metaobjects.config.ts; exit 2 if absent.
   --deps                Dependency drift — re-resolve each declared dependency and compare
                         its installed artifact's hash against .metaobjects/deps.lock.json
@@ -219,6 +206,9 @@ FLAGS:
                         overwrites them with fresh output and re-baselines (discards edits).
   --no-antipatterns     Suppress the advisory "hand-rolled what MetaObjects can model" pass
   --limit <n|all>       Advisory lines TEXT output prints before truncating (default 20)
+  --generators <names>  Narrow the run to these DECLARED generators, by stable name, comma-
+                        separated (e.g. docs,api-docs to write only the documentation). A
+                        name metaobjects.config.ts does not declare is refused: it never adds one.
   --format <toon|json|text>   Output format (global flag; default toon off-TTY)
   <entity> [<entity>]   Positional filter on entity names
   --help, -h            Print this help
@@ -313,12 +303,8 @@ FLAGS:
                         (a notice, exit code unchanged), so an edit is never invisible.
   --forbid-hand-edits   With --codegen: fail (exit 1) on ANY hand edit inside generated
                         code, for teams that want generated files untouchable.
-  --docs                Docs drift — run 'meta docs' to a temp dir and diff docs.outDir
-                        Needs metaobjects.config.ts; exit 2 if absent. A page the
-                        project GIT-IGNORES is exempt (docs.outDir is a directory, not
-                        a namespace MetaObjects owns); the count of exempt pages is
-                        reported either way, and a run where every page is ignored is
-                        refused rather than reported clean.
+  --docs                Removed in 1.1.0: says so and exits 2. --codegen checks documentation
+                        with everything else \`generators\` declares.
   --deps                Dependency drift — re-resolve each declared dependency exactly as
                         'meta deps check' does and compare its installed artifact's hash
                         against .metaobjects/deps.lock.json. Exits 1 if any dependency has
@@ -467,42 +453,6 @@ skipped — not only when no base exists in the same file. A formatter never
 changes structure: even when a same-file base IS present, merging it with
 the overlay (what the ordinary loader would do) would drop the overlay
 marker from the output, so fmt refuses that too and leaves the file as-is.
-`,
-  docs: `meta docs — generate neutral metadata documentation (entity + template pages)
-
-USAGE:
-  meta docs [<project-root>] [flags]
-
-FLAGS:
-  [<project-root>]      PROJECT ROOT to resolve metadata from — the directory that CONTAINS
-                        your metadata, NOT the metadata directory itself. (The Python and C#
-                        'docs' positionals mean the metadata dir; this one does not.) Passing
-                        it SCOPES the run to that directory's own sources; no ancestor
-                        .metaobjects/config.json is consulted. Omitted (default), the project
-                        is discovered by walking up.
-  --out <dir>, -o       Output directory for THIS run (default: ./docs/generated). It does
-                        NOT survive the run — set 'docs: { outDir }' in metaobjects.config.ts
-                        for a directory that persists, which is what 'meta verify --docs'
-                        measures. The default is a sub-directory on purpose: these pages are
-                        regenerated and overwritten, and 'docs/' itself is usually yours.
-  --model               Emit the markdown model surface (entity + template pages)
-  --api                 Emit the markdown api surface (generated SDK reference)
-  --requirements        Emit the declared requirement ledger (requirements.md + .toon).
-                        Emits nothing when the project declares no requirement.* node.
-  --agent               Emit the agent surface — agent/schema.md (the physical schema),
-                        agent/ui.md (the generated forms and grids) and
-                        agent/requirements.md (the ledger plus a claimed-node index).
-                        Needs metaobjects.config.ts (the dialect and physical names come
-                        from it); each page is skipped when its tier has nothing to describe
-                        — agent/ui.md needs a UI generator (a form, hook or grid) in the
-                        suite, not merely objects that could have one.
-  --metamodel           Document the built-in metamodel vocabulary (no metadata needed)
-  --site                Generate the browsable HTML documentation site (<out>/site/)
-  --scaffold-site       Copy the site's templates + assets into codegen/docs-site/ to own (theme) them
-  --templates <dir>     Project root to resolve adopter templates/ overrides (default: <project-root>)
-  --prompts <dir>       Extra dir holding prompt .mustache sources (for --site) when they
-                        live outside the metadata sources or templates/ (e.g. data/templates/)
-  --help, -h            Print this help
 `,
   init: `meta init — scaffold a MetaObjects project in the current repo
 

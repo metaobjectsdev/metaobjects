@@ -88,9 +88,11 @@ classify it (using the classification scheme in `SKILL.md`) and route the cutove
   names artifact from the declaration, so a literal is a second source of truth even when it
   agrees with the naming strategy today. A typed ORM handle in its place is correct. **Check
   the artifact is emitted at all before scoring the literals: on every port the selection IS
-  the complete list — the config's on TypeScript and the JVM, `--generators` on C# and Python —
+  the complete list, documentation included — `generators: [...]` in `metaobjects.config.ts`
+  (TypeScript), `codegen/Generators.cs` (C#), a target's `generators` in
+  `metaobjects.config.yaml` (Python), `<generators>` in the pom (Java, Kotlin) —
   so an existing project emits none and the un-wired generator is the finding FIRST** (no port
-  ships a default suite; ADR-0034 Amendment 2). **This entry is the physical-name INSTANCE of signature 11.** The rule that
+  ships a default suite; ADR-0034 Amendments 2 and 9). **This entry is the physical-name INSTANCE of signature 11.** The rule that
   generates the rest — and the reason an enum member compared as a bare string is NOT one — is
   the Cross-cutting entry below.
 - **`@kind` = `view` / `materializedView`** — hunt hand-written SQL views where an authored
@@ -272,8 +274,8 @@ to nothing, and does not check that each claimed node complies).
   accepted.
 - **The doc slots behave differently on this node type** — do not audit them by the generic
   rule below. `title` is CHARTERED here (a requirement's `name` is an identifier, so the label
-  lives in `title`) and is **rendered** by `meta docs`, heading each entry after its dotted
-  path; `summary` is INERT (nothing reads it, and `@statement` is already the required
+  lives in `title`) and is **rendered** by `meta gen`'s `requirementsFile()`, heading each
+  entry after its dotted path; `summary` is INERT (nothing reads it, and `@statement` is already the required
   one-liner) and `meta verify` warns on one. So an absent `summary` is correct, a populated
   one is the finding, and a populated `title` is correct.
 - **CALIBRATION — entirely opt-in and warning-only where it counts.** A project declaring no

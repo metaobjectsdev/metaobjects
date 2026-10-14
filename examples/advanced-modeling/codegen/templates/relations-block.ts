@@ -1,14 +1,14 @@
 // Relations block template — emits the Drizzle relations() block for one entity.
 // Derived from the RelationMap pre-pass (relation-resolver.ts).
 
-import { code, imp, joinCode, type Code } from "@metaobjectsdev/codegen-ts";
+import { code, imp, joinCode, type Code } from "@metaobjectsdev/codegen-ts/engine";
 import type { MetaObject } from "@metaobjectsdev/metadata";
 import { CARDINALITY_ONE, CARDINALITY_MANY } from "@metaobjectsdev/metadata";
-import { type RenderContext } from "@metaobjectsdev/codegen-ts";
-import { crossEntitySpecifier } from "@metaobjectsdev/codegen-ts";
-import type { RelationEntry } from "@metaobjectsdev/codegen-ts";
-import { effectivePackage } from "@metaobjectsdev/codegen-ts";
-import { tphStorageName } from "./zod-validators.js";
+import { type RenderContext } from "@metaobjectsdev/codegen-ts/engine";
+import { crossEntitySpecifier } from "@metaobjectsdev/codegen-ts/engine";
+import type { RelationEntry } from "@metaobjectsdev/codegen-ts/engine";
+import { effectivePackage } from "@metaobjectsdev/codegen-ts/engine";
+import { tphStorageName } from "@metaobjectsdev/codegen-ts/engine";
 
 /**
  * Render the relations() block for one entity.

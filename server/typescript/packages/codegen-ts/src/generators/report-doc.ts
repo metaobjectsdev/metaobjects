@@ -1,4 +1,4 @@
-// What `meta docs` says about the FR-044 reporting vocabulary on the neutral model
+// What the model pages (`docsFile()`) say about the FR-044 reporting vocabulary on the neutral model
 // surface (Table G of the Plan 3 spec):
 //
 //   • a REPORT's page: its `@from`, the view it is read from (or why it is not served),

@@ -382,41 +382,35 @@ describe("Fix 2: api-docs documents Hono routes when the Hono generator is in th
     expect((fastify as Generator & { emitsHonoRoutes?: boolean }).emitsHonoRoutes).not.toBe(true);
   });
 
-  // ADR-0025: `meta docs` is the single docs door. apiDocsFile() left in a `meta gen`
-  // config is WARNED + SKIPPED by the runner — it no longer emits docs/api/ here. The
-  // Hono auto-documentation behavior (ctx.config.includeHonoRoutes driving the api model)
-  // is still gated by the three sibling tests above, which invoke apiDocsFile() directly.
-  // (Previously this test ran apiDocsFile() through runGen and asserted docs/api/AGENT-API.md
-  // contents — that exercised the now-deprecated generator-in-config door.)
-  test("runGen: api-docs in a meta gen config is warned + skipped (no docs/api output) — ADR-0025", async () => {
+  // ADR-0034 Amendment 9: apiDocsFile() listed in `generators` is run by `meta gen`, into the
+  // `docs` target, and it documents the Hono routes the same run mounts: the runner aggregates
+  // the Hono marker off the declared suite, as for every generator.
+  test("runGen: api-docs in the generator list writes into the docs target and documents the Hono routes", async () => {
     const root = await loadRoot();
     const projectRoot = mkdtempSync(join(tmpdir(), "api-docs-rungen-"));
     TEMP_DIRS.push(projectRoot);
 
-    const outDir = mkdtempSync(join(tmpdir(), "api-docs-rungen-skip-"));
-    TEMP_DIRS.push(outDir);
+    const outDir = mkdtempSync(join(tmpdir(), "api-docs-rungen-code-"));
+    const docsDir = mkdtempSync(join(tmpdir(), "api-docs-rungen-docs-"));
+    TEMP_DIRS.push(outDir, docsDir);
     const result = await runGen({
       config: defineConfig({
         outDir,
         extStyle: "none",
         dbImport: "~/db",
         dialect: "sqlite",
+        targets: { docs: { outDir: docsDir } },
         generators: [entityFile(), queriesFile(), routesFile(), routesFileHono(), apiDocsFile()],
       }),
       metadata: root,
       projectRoot,
     });
 
-    // (a) the deprecated generator was warned + pointed at `meta docs`.
-    const warn = result.warnings.find((w) => /api-docs/.test(w) && /meta docs/.test(w));
-    expect(warn).toBeDefined();
-
-    // (b) it was SKIPPED — no docs/api/ output exists.
     const fs = require("node:fs");
-    expect(fs.existsSync(join(outDir, "docs/api/AGENT-API.md"))).toBe(false);
-    expect(result.files.some((f) => f.path.includes(`docs${require("node:path").sep}api`))).toBe(false);
-
-    // (c) the normal generators still ran.
+    const agent = fs.readFileSync(join(docsDir, "api/AGENT-API.md"), "utf8");
+    expect(agent).toContain(`./Product.routes.hono`);
+    // Nothing of the documentation lands in the code's directory.
+    expect(fs.existsSync(join(outDir, "api"))).toBe(false);
     expect(result.files.some((f) => f.path.endsWith("Product.ts"))).toBe(true);
   });
 });

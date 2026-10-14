@@ -103,16 +103,18 @@ What stays in the package is the **engine**, which decides what there is to emit
 writing it: the generator base and contexts, the model walks (which objects are projections,
 which fields are sortable, which route an entity is served on, which requirements a model
 holds), the naming tables and the type-mapping tables (`names.ts`, `naming.ts`,
-`column-mapper.ts`), and the projection and report lowering that `meta migrate` and
-`meta verify` run. An owned file imports the engine from the package's public entry,
-`@metaobjectsdev/codegen-ts`. The list is `ENGINE_MODULES`, exported from that entry; a module
+`column-mapper.ts`), the primary-key and TPH walks (`pk-resolver.ts`, `tph.ts`), and the
+projection and report lowering that `meta migrate` and `meta verify` run. An owned file
+imports the engine from the package's engine entry, `@metaobjectsdev/codegen-ts/engine`,
+which also re-exports `ts-poet`'s `code`, `imp` and `joinCode`. The list is
+`ENGINE_MODULES`, exported from that entry; a module
 that is not on it and that a generator reaches is copied. An owned generator therefore
 imports no packaged module that returns emitted text, and a test ejects each generator alone
 into an empty project to prove it: it compiles as your `tsconfig.codegen.json` checks it and
 writes what the packaged generator writes, byte for byte.
 
 A copy differs from the packaged module in its **import lines only**. A relative import of
-an engine module becomes an import of `@metaobjectsdev/codegen-ts`, a relative import of
+an engine module becomes an import of `@metaobjectsdev/codegen-ts/engine`, a relative import of
 another template module becomes the path to your copy of it, and `ts-poet` becomes the
 engine's own (a copy must build `Code` with the same `ts-poet` the engine uses). Nothing else
 is touched, so "what did upstream change?" is a diff of two files whose body is the same.
@@ -129,7 +131,8 @@ is touched, so "what did upstream change?" is a diff of two files whose body is 
 - **A copy from before 1.1 gets no template modules it would never call.** It imports the
   renderers from the package, so copying them beside it would be dead code. `meta eject
   <name> --force` takes the new shape; to keep your changes, merge them into the new file.
-- **The install line follows.** The copies import `@metaobjectsdev/codegen-ts`,
+- **The install line follows.** The copies import `@metaobjectsdev/codegen-ts` (its root and
+  its `/engine` entry),
   `@metaobjectsdev/metadata` and, for the prompt and docs tiers, `@metaobjectsdev/render`;
   `requirements` also imports `@toon-format/toon`. `meta eject` prints the line, with the
   range the package declares.
@@ -220,24 +223,30 @@ you how far it is from the reference.
 
 ## The docs generators and `shared-model` (TypeScript)
 
-Every stock TypeScript generator can be ejected except three. `template` is the Mustache
+Every stock TypeScript generator can be ejected except two. `template` is the Mustache
 primitive: you already supply its template, its walk and its name, and it has no emit
 logic of its own, so a copy would own nothing. That exemption is permanent, and the C#,
-Java and Python ports rule the same way for theirs (ADR-0034 Amendment 7). `requirements`
-and `agent-docs`, the pages `meta docs` and `meta docs --agent` write, were registered by
-the eject census and do not ship a reference template yet (ADR-0034 Amendment 8).
-`meta gen --list` marks all three `package-only`.
+Java and Python ports rule the same way for theirs (ADR-0034 Amendment 7). `docs-site`
+builds the HTML site with the packaged `@metaobjectsdev/docs-site` engine; what you change
+is the site's templates and assets, and `meta eject docs-site` copies those (below).
+`meta gen --list` marks both `package-only`.
 
-Five of the ejectable ones differ from the rest in what runs them or in what the copy may
+Six of the ejectable ones differ from the rest in what they read or in what the copy may
 change.
 
-### `docs`, `api-docs`, `requirements` and `agent-docs` are run by `meta docs`
+### The docs generators are generators like the rest
 
-`meta docs` writes the model pages, the API reference, the requirement ledger and the pages
-an agent reads, with nothing wired. Eject one of the four generators behind it when you want
-to change which nodes get a page, where a page lands, how the overview page is laid out,
-which forms of the API reference are written, which files the ledger becomes, or which pages
-an agent is given:
+Documentation is written by entries in `generators`, like code (ADR-0034 Amendment 9):
+`docsFile()` (the model pages), `apiDocsFile()` (the API reference), `requirementsFile()`
+(the requirement ledger), `agentDocsFile()` (the pages an agent reads) and
+`metamodelDocsFile()` (the reference of the built-in vocabulary). `meta gen` runs the ones
+you list and `meta verify --codegen` checks them; nothing is written that the list does not
+declare. Each writes to the target named `docs` unless you give it `target`, and a run that
+lists one while `targets` has no `docs` entry is refused by name.
+
+Eject one when you want to change which nodes get a page, where a page lands, how the
+overview page is laid out, which forms of the API reference are written, which files the
+ledger becomes, or which pages an agent is given:
 
 ```bash
 meta eject docs api-docs requirements agent-docs
@@ -251,38 +260,24 @@ import { agentDocsFile } from "./codegen/generators/agent-docs.js";
 
 export default defineConfig({
   // …
-  docs: { generators: [docsFile(), apiDocsFile(), requirementsFile(), agentDocsFile()] },
+  targets: { docs: { outDir: "./docs/generated" } },
+  generators: [/* … */ docsFile(), apiDocsFile(), requirementsFile(), agentDocsFile()],
 });
 ```
 
-The copies are listed in the `docs` block, which is `meta docs`'s own config, and not in
-the top-level `generators`, which is what `meta gen` runs:
+The copy replaces the packaged factory in `generators`, as any owned copy does. You can
+eject any of them and not the others.
 
-- **`meta docs` runs a listed copy in place of the packaged generator.** Each copy carries
-  a `docsSurface` marker (`"model"` for `docs`, `"api"` for `api-docs`, `"requirements"` for
-  `requirements`, `"agent"` for `agent-docs`) saying which surface it takes over. The summary line of `meta docs` names the generator, so you can see that
-  your copy ran.
-- **`meta verify --docs` checks against it.** That gate calls `meta docs`, so an edit to
-  the copy shows up as drift in the committed pages until you run `meta docs` again.
-- **One generator per surface, and each must say which.** Two entries for one surface, or
-  an entry with no `docsSurface`, are refused by name.
-- **A config that fails to load stops `meta docs`.** It prints the load error, exits 2 and
-  writes nothing, so an error in your copy never ends with the packaged generator's pages
-  written over yours.
-- **`meta gen` never runs one.** If a copy ends up in `generators`, `meta gen` skips it
-  with a warning that names `docs.generators`, and `meta docs` keeps running the packaged
-  generator until you move it. The run's `help[]` next step and the `meta verify` advisory
-  (rule `doc-generator-in-gen`) say the same: move it, do not remove it.
-- **`meta gen --list` shows it.** A copy listed in the docs block marks its row
-  ``WIRED in `docs.generators` `` (`project.wiredInDocsDoor` in `--format json`).
-
-You can eject any of them and not the others. The model and api page sets link to each
-other, so `meta docs` tells both generators the same facts on `ctx.docsDoor`: the api
-surfaces from your `docs:` config, the directory of the api surface being written, and
-whether the model pages are written. The agent surface needs the physical schema, which
-`meta docs` computes from your dialect and column naming strategy (the generator package owns
-none of it) and hands over on `ctx.docsDoor.agent`; pass `schema` and `columnNamingStrategy`
-as options to state them yourself. A copy reads these and takes no options for them.
+The model and api page sets link to each other, so the runner tells every generator the
+same facts on `ctx.docs`, read from the list: the api surfaces in each target (the
+directory each `apiDocsFile()` writes to, from its `emitsApiDocs` marker) and whether the
+model pages are written (`docsFile()`'s `emitsModelDocs` marker). An owned copy keeps the
+marker, so it is read the same way. `docsFile({ apiSurfaces })` names api pages that live
+somewhere else (another port's, with a `baseUrl` each) and wins over the fact. The agent
+pages need the physical schema, which `meta gen` computes from your dialect and column
+naming strategy when the list includes `agentDocsFile()` (the generator package owns none of
+it) and hands over on `ctx.docs.agentSchema`; pass `schema` and `columnNamingStrategy` as
+options to state them yourself.
 
 | | The generator file decides | Copied beside it, so yours too |
 |---|---|---|
@@ -290,32 +285,43 @@ as options to state them yourself. A copy reads these and takes no options for t
 | `api-docs` | which units get a page, where a page lands, whether the index and the agent form (`AGENT-API.md`) are written | the model of the generated API (`buildApiModelForRun`, which also reads the run: layout, `apiPrefix`, whether Hono routes are wired) and its renderers (`renderEntityApiPage`, `renderApiIndex`, `renderAgentApi`) |
 | `requirements` | which files the ledger becomes and where they land (`requirements.md`, `requirements.toon`); a project with no `requirement.*` node gets none | the two writers (`requirements-markdown`, `requirements-toon`) and the projection they read (`requirements-view`) |
 | `agent-docs` | which of the three pages are written and where; the schema page's inputs (lineage, cardinality, enums) | the three page renderers (`agent-schema-page`, `agent-ui-page`, `agent-requirements-page`) |
+| `metamodel-docs` | where the pages land | nothing: the pages are rendered by `@metaobjectsdev/metadata`, which is core |
 
-The page templates themselves (the Mustache files `meta docs` renders) stay in the package.
-
-Two things need no eject. To change the wording of a model page, put a file of the same
+The page templates themselves (the Mustache files the docs generators render) stay in the
+package. To change the wording of a model page you need no eject: put a file of the same
 name in your project (`templates/docs/entity-page.md.mustache` or
-`template-page.md.mustache`); it wins over the packaged one. And the packaged `docsFile()`
-and `apiDocsFile()` are never listed anywhere: `meta docs` runs them when the `docs` block
-names no generator for their surface.
+`template-page.md.mustache`), or point `docsFile({ templates })` at another directory; it
+wins over the packaged one.
 
-`meta gen` skips a copy of any of the four with a warning that names `docs.generators`, and
-`meta docs` keeps running the packaged generator until you move it. The packaged
-`requirementsFile()` and `agentDocsFile()` are `meta docs` surfaces too, so they are listed in
-`meta gen --list` as run by `meta docs`; they carry the same `docsSurface` as an owned copy.
+### The docs site: `meta eject docs-site` copies the theme
 
-### The ER diagram comes from `meta docs`
+`docsSiteFile()` writes the HTML site (package navigation, search, a page per object and
+package, the ER diagrams) under `site/` in the `docs` target. It loads the model from your
+declared source directories, with your config's providers. To change how it looks, copy the
+templates and assets into your repo:
 
-`meta docs` draws the Mermaid diagrams: the whole model on its overview page (`README.md`)
-and each entity's neighbourhood on that entity's page. An owned `docs` copy decides where
-the whole-model diagram goes, by where it calls `renderMermaidErBlock`.
+```bash
+meta eject docs-site
+```
+
+That writes the Mustache templates to `codegen/docs-site/templates/` and the CSS and JS to
+`codegen/docs-site/assets/`, only files that are not there yet (`--force` overwrites).
+`docsSiteFile()` renders with your copies; a file you did not copy falls back to the
+packaged one. The site prints no date, so its pages depend on the model alone and
+`meta verify --codegen` can check them; `docsSiteFile({ stamp })` adds footer text.
+
+### The ER diagram comes from `docsFile()`
+
+The model pages carry the Mermaid diagrams: the whole model on the overview page
+(`README.md`) and each entity's neighbourhood on that entity's page. An owned `docs` copy
+decides where the whole-model diagram goes, by where it calls `renderMermaidErBlock`.
 
 Before 1.1 a standalone generator, `mermaidErDiagram()` (stable name `mermaid-er`), also
-wrote the whole-model diagram to `docs/model.md` under `meta gen`. It was the older home of
-the same diagram and has been removed. A config that still wires it fails with a message
-saying so. To upgrade, delete the import and the `mermaidErDiagram()` entry (or the
-`"mermaid-er"` name) from `generators`, delete the `docs/model.md` it wrote, and run
-`meta docs`.
+wrote the whole-model diagram to `docs/model.md`. It was the older home of the same diagram
+and has been removed. A config that still wires it fails with a message saying so. To
+upgrade, delete the import and the `mermaidErDiagram()` entry (or the `"mermaid-er"` name)
+from `generators`, delete the `docs/model.md` it wrote, and list `docsFile()` with a `docs`
+target.
 
 ### `shared-model`: you own the inputs and the artifact builder
 
@@ -346,8 +352,7 @@ the manifest. Change what they do and you have stopped agreeing with every consu
 artifact. Read the project's
 own files through `ctx.inputRoot`, as the copy does for the version: under
 `meta verify --codegen` the run writes into a temporary tree and `ctx.projectRoot` is that
-tree. An owned `docs` or `api-docs` copy reads through it too: under `meta docs` it is the
-directory that holds `metaobjects.config.ts`.
+tree. The docs generators read your template overrides and site theme through it too.
 
 ## What `meta eject` hands over, and what stays core (TypeScript)
 
@@ -611,7 +616,7 @@ rather than off this page; its own JSDoc carries the recipe with the right one.)
 
 Both are executed as tests (`runtime-ts/test/route-auth-seam.test.ts`) rather than
 asserted in prose. For mounting *fewer* endpoints, narrow the generator:
-`routesFile({ expose: ["list", "get"] })` (`meta docs` reads the option per routes surface, Fastify
+`routesFile({ expose: ["list", "get"] })` (`apiDocsFile()` reads the option per routes surface, Fastify
 and Hono apart, and documents only the verbs that surface mounts; a copy ejected before 1.1.0
 needs `meta eject routes --force` to be honoured). To register every entity's routes in one call,
 pass `registerAll: true`: the generator also emits `routes.index.ts` (or
@@ -745,7 +750,7 @@ provider class** in each language: a JSON file could express the declarative sur
 
 | Port | How the CLI / build tool loads your provider |
 |---|---|
-| **TypeScript** | `metaobjects.config.ts` → `providers: [myProvider]`. Threaded into `meta gen`, `meta verify`, `meta docs`, **and** the offline `meta migrate` paths (baseline + generate). |
+| **TypeScript** | `metaobjects.config.ts` → `providers: [myProvider]`. Threaded into `meta gen` (the docs site included), `meta verify`, **and** the offline `meta migrate` paths (baseline + generate). |
 | **Python** | `metaobjects gen \| verify \| docs --provider module:symbol` (repeatable). The symbol resolves to a `Provider` (or a list, or a zero-arg factory returning one) and is composed **on top of** the core providers — parity with TS `config.providers`. E.g. `metaobjects gen ./metaobjects --out ./gen --provider myapp.providers:view_provider`. A declarative `metaobjects.config.yaml` `providers:` list is also supported (resolved config-relative, no `PYTHONPATH=` — mirroring TS's config-file providers); see [`cli.md`](cli.md). |
 | **Java / Kotlin** | Put your compiled `MetaDataTypeProvider` on the **project classpath** with a `META-INF/services/com.metaobjects.registry.MetaDataTypeProvider` entry. `metaobjects-maven-plugin` builds the loader with the project classloader, so **Java ServiceLoader auto-discovers it** — no plugin config needed. |
 | **C#** | The loader accepts providers like every port; a first-class `dotnet meta` consumer-provider hook is tracked for a future release ([#158](https://github.com/metaobjectsdev/metaobjects/issues/158)). Today, extend the metamodel from an app that constructs the loader directly. |
@@ -1082,7 +1087,7 @@ the copies:
 | Java | `dto`, `value-object` | `Fr019SharedEnum` (the shared and provided enum files and their type references), `SpringRecordBuilder` (the `builder()` a record carries) |
 | Java | `output-parser` | `Fr019SharedEnum` |
 | Java | `output-prompt` | `OutputFormatSpecEmitter` (the `OutputFormatSpec` literal) |
-| Java | `entity` | the eight files above, `ExtractorCodeGenerator` among them |
+| Java | `entity` | the seven files above (no extractor: that is the `extractor` generator's) |
 | Kotlin | `entity` | `KotlinEnumEmitter` (the enum class file) |
 | Kotlin | `output-parser` | `KotlinExtractSchemaEmitter` (the extraction mirror and the literal helpers) |
 | Kotlin | `output-prompt` | `KotlinOutputFormatSpecEmitter`, `KotlinExtractSchemaEmitter` |

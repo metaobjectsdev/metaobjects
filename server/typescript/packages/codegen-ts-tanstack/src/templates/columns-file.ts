@@ -9,7 +9,7 @@ import {
   OBJECT_ATTR_DISCRIMINATOR,
   VIEW_SUBTYPE_HIDDEN,
 } from "@metaobjectsdev/metadata";
-import type { RenderContext } from "@metaobjectsdev/codegen-ts";
+import type { RenderContext } from "@metaobjectsdev/codegen-ts/engine";
 import {
   GENERATED_HEADER,
   GENERATED_EDIT_NOTE,
@@ -17,7 +17,7 @@ import {
   viewForContext,
   VIEW_CONTEXT_GRID,
   effectivePackage,
-} from "@metaobjectsdev/codegen-ts";
+} from "@metaobjectsdev/codegen-ts/engine";
 import {
   isSortableField,
   resolveGridDefaultSort,

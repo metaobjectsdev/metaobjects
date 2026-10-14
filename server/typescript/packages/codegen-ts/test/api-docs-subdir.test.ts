@@ -1,10 +1,8 @@
 // Gate for apiDocsFile()'s `subDir` option (the api-docs output prefix).
 //
-// The DEFAULT prefix is `docs/api` (byte-identical to the historical `meta gen`
-// behaviour + goldens). The upcoming unified `meta docs` command writes under a
-// single docs root (`./docs`), so the api surface must be able to emit under a
-// bare `api/` prefix instead (avoiding `./docs/docs/api`). This test pins both:
-// the default stays `docs/api/`, and `subDir:'api'` moves EVERYTHING under `api/`.
+// The generator writes into the `docs` target (ADR-0034 Amendment 9), so its DEFAULT prefix
+// is a bare `api/` under that target's directory. This test pins the default and that a
+// `subDir` moves EVERYTHING under it.
 //
 // The GenContext is built with the SAME loader pattern as
 // test/golden/template-source-conformance.test.ts (load the
@@ -74,17 +72,17 @@ async function loadCtx(): Promise<GenContext> {
 
 const ctx = await loadCtx();
 
-test("default subDir keeps docs/api (byte-identical)", async () => {
+test("the default subDir is api/ under the docs target", async () => {
 	const files = await apiDocsFile().generate(ctx);
-	expect(files.length).toBeGreaterThan(0);
-	expect(files.some((f) => f.path.startsWith("docs/api/"))).toBe(true);
-	expect(files.some((f) => f.path === "docs/api/README.md")).toBe(true);
-});
-
-test("subDir:'api' emits under api/ only", async () => {
-	const files = await apiDocsFile({ subDir: "api" }).generate(ctx);
 	expect(files.length).toBeGreaterThan(0);
 	expect(files.every((f) => f.path.startsWith("api/"))).toBe(true);
 	expect(files.some((f) => f.path === "api/README.md")).toBe(true);
-	expect(files.some((f) => f.path.startsWith("docs/api/"))).toBe(false);
+	expect(apiDocsFile().target).toBe("docs");
+});
+
+test("subDir:'reference/ts' emits under reference/ts/ only", async () => {
+	const files = await apiDocsFile({ subDir: "reference/ts/" }).generate(ctx);
+	expect(files.length).toBeGreaterThan(0);
+	expect(files.every((f) => f.path.startsWith("reference/ts/"))).toBe(true);
+	expect(files.some((f) => f.path === "reference/ts/README.md")).toBe(true);
 });

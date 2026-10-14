@@ -2,16 +2,16 @@
 // Then import it LOCALLY in metaobjects.config.ts:
 //   import { agentDocsFile } from "./codegen/generators/agent-docs.js";
 //
-// RUNTIME: this file executes under whatever runs `meta docs`, and the published CLI's
+// RUNTIME: this file executes under whatever runs `meta gen`, and the published CLI's
 // shebang is `#!/usr/bin/env node` — so it runs under NODE even in a Bun project. Do not
 // reach for `Bun.*` globals here; they are undefined and take the whole run down with
 // `Bun is not defined`. Use `node:` builtins instead.
 // targets:       Markdown. The pages are read by a coding agent, never imported.
-// use-when:      you want to change the pages `meta docs` writes for a coding agent: which
-//                of the three are written, where they land, or what the schema page says
-//                about your tables. `meta docs` writes them without this file; eject it
-//                only to change them.
-// emits:         under `docs.outDir`, in `agent/` (or `subDir`): schema.md, read before
+// use-when:      you want to change the pages written for a coding agent: which of the three
+//                are written, where they land, or what the schema page says about your
+//                tables. The packaged `agentDocsFile()` writes them without this file; eject
+//                it only to change them.
+// emits:         into the `docs` target, in `agent/` (or `subDir`): schema.md, read before
 //                touching persistence; ui.md, read before touching a form or a grid;
 //                requirements.md, read before adding a capability. A tier with nothing to
 //                describe emits no file.
@@ -21,15 +21,12 @@
 //                (`agent-schema-page`, `agent-ui-page`, `agent-requirements-page`) are
 //                copied beside it into codegen/templates/.
 // composes-with: api-docs (the fourth file the always-on pointer names, `api/AGENT-API.md`,
-//                is the api surface's, not this one's).
+//                is the api reference's, not this one's).
 //
-// HOW IT RUNS. `meta docs` runs it, so it is listed in the docs block of
-// metaobjects.config.ts, not among the generators `meta gen` runs:
-//   docs: { generators: [agentDocsFile()] }
-// The `docsSurface` marker below says which surface it takes over: with it listed,
-// `meta docs` and `meta verify --docs` run THIS generator for the agent surface in place of
-// the packaged one. `meta docs` computes the physical schema (it needs the project's dialect
-// and column naming strategy) and hands it over on `ctx.docsDoor.agent`; pass `schema` and
+// HOW IT RUNS. Like every generator: list it in `generators` in metaobjects.config.ts, with
+// a `docs` target declared, and `meta gen` writes the pages (`meta verify --codegen` checks
+// them). `meta gen` builds the physical schema (it needs the project's dialect and column
+// naming strategy) and hands it over on `ctx.docs.agentSchema`; pass `schema` and
 // `columnNamingStrategy` as options to state them yourself instead.
 //
 // Everything below imports the engine from `@metaobjectsdev/codegen-ts`, the node types from
@@ -80,7 +77,8 @@ import {
   type EmittedFile,
   type Generator,
   type GeneratorFactory,
-} from "@metaobjectsdev/codegen-ts";
+  DOCS_TARGET_NAME,
+} from "@metaobjectsdev/codegen-ts/engine";
 import { renderAgentSchemaPage } from "../generators/agent-schema-page.js";
 import { renderAgentUiPage } from "../generators/agent-ui-page.js";
 import { renderAgentRequirementsPage } from "../generators/agent-requirements-page.js";
@@ -91,12 +89,12 @@ const DEFAULT_AGENT_DIR = "agent";
 export interface AgentDocsFileOpts {
   /** Output prefix for the agent pages. Default `agent`. */
   subDir?: string;
-  /** Optional named output target (registry key). */
+  /** Named output target. Default `"docs"`, which `targets` must declare. */
   target?: string;
   /**
-   * The physical schema, with its resolvers injected by whoever owns them. ABSENT is a
-   * supported state — `meta docs` runs without a dialect, and a project with no physical
-   * schema gets no schema page rather than a page of unknowns.
+   * The physical schema, with its resolvers injected by whoever owns them. Default: the one
+   * `meta gen` builds (`ctx.docs.agentSchema`). ABSENT both ways is a supported state: a
+   * project with no physical schema gets no schema page rather than a page of unknowns.
    */
   schema?: AgentSchemaInput;
   /** The project's column naming strategy, for the field→column mapping. */
@@ -225,16 +223,15 @@ export const agentDocsFile = function agentDocsFile(opts?: AgentDocsFileOpts): G
 
   const generator: Generator = {
     name: "agent-docs",
-    // The surface this generator takes over when it is listed in `docs.generators`.
-    docsSurface: "agent",
+    target: opts?.target ?? DOCS_TARGET_NAME,
     generate(ctx) {
       const objects = ctx.loadedRoot.objects();
       const files: EmittedFile[] = [];
-      // What the docs door computes for this surface and hands over on the context, for a
-      // generator `meta docs` runs as listed (an owned copy is already constructed by then).
-      // Options win: they are what a direct caller of the factory states.
-      const schemaInput = opts?.schema ?? ctx.docsDoor?.agent?.schema;
-      const columnNamingStrategy = opts?.columnNamingStrategy ?? ctx.docsDoor?.agent?.columnNamingStrategy;
+      // What the run computes for this generator: the schema, built on first ask by the
+      // caller that owns the schema builder, and the project's column naming. Options win:
+      // they are what a direct caller of the factory states.
+      const schemaInput = opts?.schema ?? ctx.docs?.agentSchema?.();
+      const columnNamingStrategy = opts?.columnNamingStrategy ?? ctx.renderContext?.columnNamingStrategy;
 
       // ---- schema.md
       if (schemaInput !== undefined) {
@@ -329,6 +326,5 @@ export const agentDocsFile = function agentDocsFile(opts?: AgentDocsFileOpts): G
       return files;
     },
   };
-  if (opts?.target) generator.target = opts.target;
   return generator;
 } as GeneratorFactory<AgentDocsFileOpts>;

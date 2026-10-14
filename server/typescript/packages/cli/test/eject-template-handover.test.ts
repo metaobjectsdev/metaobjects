@@ -36,9 +36,9 @@ describe("the hand-over", () => {
     expect(r.templates?.files.every((f) => f.status === "created")).toBe(true);
 
     const generator = read("codegen/generators/entity.ts");
-    // The renderers come from the project; the engine from the package.
+    // The renderers come from the project; the engine from the package's engine entry.
     expect(generator).toContain('from "../templates/entity-file.js"');
-    expect(generator).toContain('from "@metaobjectsdev/codegen-ts"');
+    expect(generator).toContain('from "@metaobjectsdev/codegen-ts/engine"');
     expect(generator).not.toMatch(/renderEntityFile[^;]*from "@metaobjectsdev\/codegen-ts"/);
     // A copy imports the engine through the package entry, never a path into the package.
     expect(read("codegen/templates/entity-file.ts")).not.toContain('from "../');
@@ -58,7 +58,11 @@ describe("the hand-over", () => {
     // core one are copied beside it, and the tanstack copy reaches them by path.
     expect(paths).toContain("codegen/templates/entity-meta-file.ts");
     expect(read("codegen/generators/hooks.ts")).toContain('from "../templates/entity-meta-file.js"');
-    expect(read("codegen/templates/hooks-file.ts")).toContain('from "./queries.js"');
+    // The model questions it asks (the primary key, the TPH walk) are engine, so the query and
+    // Zod emitters are not copied for one lookup each.
+    expect(read("codegen/templates/hooks-file.ts")).not.toContain('from "./queries.js"');
+    expect(paths).not.toContain("codegen/templates/queries.ts");
+    expect(paths).not.toContain("codegen/templates/zod-validators.ts");
     // Which names the project must be able to resolve: the packages, not a codegen package it no longer calls into.
     expect(r.templatePackages).toEqual(["@metaobjectsdev/codegen-ts", "@metaobjectsdev/metadata"]);
   });

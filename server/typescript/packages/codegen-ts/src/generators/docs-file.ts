@@ -1,4 +1,6 @@
-// docsFile() — emits `<Entity>.md` next to each generated entity module.
+// docsFile() — the `docs` generator: one neutral Markdown page per object and per template,
+// and an overview (README.md) with the whole-model ER diagram. It writes to the `docs` target
+// unless told otherwise (ADR-0034 Amendment 9).
 //
 // rc.12+: structured around a shared Mustache template at
 // `templates/docs/entity-page.md.mustache` + a data builder at
@@ -30,13 +32,16 @@ import {
   type DocPageNode,
   type DocPagePlacement,
 } from "../docs-paths.js";
-import { projectProvider } from "../render-engine/framework-provider.js";
+import { docsTemplateRoot, projectProvider } from "../render-engine/framework-provider.js";
 import { renderDocPage } from "../render-engine/doc-page.js";
 import { renderMermaidErBlock } from "../templates/mermaid-er.js";
 import { buildEntityDocData } from "./docs-data-builder.js";
 import { isReport, servedReport } from "../source-detect.js";
 import { buildTemplateDocData } from "./template-doc-builder.js";
 import type { OutputLayout } from "../import-path.js";
+import type { ApiSurface } from "../metaobjects-config.js";
+import { DOCS_TARGET_NAME, type DocsApiSurface } from "../docs-run.js";
+import { apiLabel } from "./api-label.js";
 
 // The neutral OVERVIEW/index page. GitHub (and most doc-site renderers) treat a
 // folder's README.md as its landing page, so the model overview lands here.
@@ -47,15 +52,29 @@ const INDEX_NODE: DocPageNode = { name: "README" };
 
 export interface DocsFileOpts {
   filter?: (entity: MetaObject) => boolean;
+  /** Named output target. Default `"docs"`, which `targets` must declare. */
   target?: string;
-  /** When set, one or more api surfaces are emitted alongside the model surface,
-   *  each under its own sub-directory (e.g. `"api/ts"`) with a per-language label.
-   *  docsFile then cross-links each model entity page to ALL its api pages and
-   *  adds an "API reference" section to the index, every href computed via the
-   *  shared `apiSurfaceHref` so it resolves relative in BOTH layouts (or absolute
-   *  when a `baseUrl` is given). ABSENT/empty ⇒ model-only output (byte-identical
-   *  to historical behaviour). */
-  apiSurfaces?: Array<{ label: string; subDir: string; baseUrl?: string }>;
+  /** The api reference pages each model page and the index link to, each under its own
+   *  sub-directory of the docs root, with a label (or a language key, `{ lang: "java" }`,
+   *  labelled for you). Every href is computed via the shared `apiSurfaceHref`, so it
+   *  resolves relative in BOTH layouts, or absolute when a surface gives a `baseUrl`.
+   *
+   *  ABSENT: the api pages this run writes to the same target (`apiDocsFile()`), which is
+   *  the whole list in a TypeScript-only project. Give it to link another port's pages too,
+   *  and then list every surface, this port's included. Empty: no links. */
+  apiSurfaces?: Array<ApiSurface | { label: string; subDir: string; baseUrl?: string }>;
+  /** A directory holding `docs/entity-page.md.mustache` / `docs/template-page.md.mustache`
+   *  overrides, relative to the project. Default: the project's own `templates/`. */
+  templates?: string;
+}
+
+/** The option's surfaces with their labels: `{ lang }` is labelled by `apiLabel`. */
+function labelled(surfaces: NonNullable<DocsFileOpts["apiSurfaces"]>): DocsApiSurface[] {
+  return surfaces.map((s) => ({
+    label: "label" in s ? s.label : apiLabel(s.lang),
+    subDir: s.subDir,
+    ...(s.baseUrl !== undefined && { baseUrl: s.baseUrl }),
+  }));
 }
 
 const TEMPLATE_REF = "docs/entity-page.md";
@@ -63,22 +82,17 @@ const TEMPLATE_REF = "docs/entity-page.md";
 // sibling artifact, distinct from the entity page (Task 3).
 const TEMPLATE_PAGE_REF = "docs/template-page.md";
 
-/**
- * @deprecated ADR-0021 D1: `meta docs` is the single door for documentation.
- * `docsFile()` stays as the INTERNAL engine that `meta docs` calls — do NOT add
- * it to a `meta gen` config / the public generator surface. It is flagged
- * neutral in the generator registry (`--list`) and is not part of the
- * recommended native `meta gen` suite. Use `meta docs` instead.
- */
 export const docsFile = function docsFile(opts?: DocsFileOpts): Generator {
   const generator: Generator = {
     name: "docs-file",
+    target: opts?.target ?? DOCS_TARGET_NAME,
+    emitsModelDocs: true,
     async generate(ctx) {
       if (!ctx.renderContext) {
         throw new Error("docs-file: renderContext is required (provided by runGen)");
       }
       const rc = ctx.renderContext;
-      const provider = projectProvider(ctx.projectRoot ?? process.cwd());
+      const provider = projectProvider(docsTemplateRoot(ctx, opts?.templates));
       const layout = ctx.config.outputLayout ?? "flat";
       // One {label, href} per api surface, every href computed via the shared
       // `apiSurfaceHref` from the FROM page's own output path (so it resolves
@@ -87,11 +101,9 @@ export const docsFile = function docsFile(opts?: DocsFileOpts): Generator {
       // so the from-path doubles as the page placement. ABSENT/empty surfaces ⇒
       // undefined → output byte-identical to historical model-only runs.
       //
-      // Under the docs door the door's facts decide which surfaces those are, not this
-      // factory's options: the api generator is told the same thing, and the two must agree
-      // (docs-door.ts). The options decide on a direct call, which has no door.
-      const door = ctx.docsDoor;
-      const apiSurfaces = door !== undefined ? door.apiSurfaces : opts?.apiSurfaces;
+      // Which surfaces those are: the option when given, else the api pages the run writes
+      // to this target, which the runner reads off the declared generators (docs-run.ts).
+      const apiSurfaces = opts?.apiSurfaces !== undefined ? labelled(opts.apiSurfaces) : ctx.docs?.apiSurfaces;
       const apiRefsFor = (fromPath: string): Array<{ label: string; href: string }> | undefined =>
         apiSurfaces?.map((s) => ({ label: s.label, href: apiSurfaceHref(fromPath, s, fromPath) }));
       // Track every (path, fqn) so we can hard-error on a collision (defense
@@ -188,7 +200,6 @@ export const docsFile = function docsFile(opts?: DocsFileOpts): Generator {
     },
   };
   if (opts?.filter) generator.filter = opts.filter;
-  if (opts?.target) generator.target = opts.target;
   return generator;
 } as GeneratorFactory<DocsFileOpts>;
 

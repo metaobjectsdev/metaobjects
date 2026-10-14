@@ -61,7 +61,7 @@
 // `../cube/`. `meta eject` copies those modules into your project, under `codegen/templates/`,
 // and your copy of this file imports them from there: they are yours too.
 
-import type { EmittedFile, GenContext, Generator } from "@metaobjectsdev/codegen-ts";
+import type { EmittedFile, GenContext, Generator } from "@metaobjectsdev/codegen-ts/engine";
 import { buildCubeModel, hasReportingVocabulary } from "../cube/build-cube-model.js";
 import { ERR_CUBE_UNSUPPORTED_DIALECT, CubeModelError } from "../cube/cube-errors.js";
 import {

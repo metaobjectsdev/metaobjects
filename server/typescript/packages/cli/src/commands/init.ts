@@ -123,24 +123,20 @@ export default defineConfig({
   // copies that generator into ./codegen/generators/ — YOURS to edit — and prints the
   // local import to swap in for the package one. \`meta gen\` then runs your copy.
   //
+  // Documentation is chosen the same way: the \`docs\` layer of the catalog (docsFile(),
+  // apiDocsFile(), …) writes to a \`docs\` target you declare beside \`generators\`:
+  //
+  //   targets: { docs: { outDir: "${DEFAULT_DOCS_DIR}" } },
+  //
+  // Nothing is generated that this file does not declare, documentation included.
+  //
   // Need an output nothing in that catalog emits — OpenAPI, JSON Schema, a client, a
-  // service layer, docs? Write your own generator; that is the normal path:
+  // service layer? Write your own generator; that is the normal path:
   //
   //   meta generator new openapi --scope model
   //
   // writes a working, commented generator into ./codegen/generators/ and adds it here.
   generators: [],
-
-  docs: {
-    outDir: "${DEFAULT_DOCS_DIR}",  // every surface lands here (run: meta docs).
-                               // A SUB-directory on purpose: these pages are regenerated
-                               // and overwritten, and docs/ itself is usually yours.
-    layout: "flat",            // or "package" for multi-package models
-    // surfaces defaults to ["model", "api", "requirements", "agent"] — all four.
-    // Documentation is the one thing that IS on by default, because the requirements
-    // and agent surfaces emit ZERO files for a project with nothing to describe, and
-    // the always-on agent context points at the agent/ pages by name.
-  },
 });
 `;
 }
@@ -164,9 +160,9 @@ Next steps:
                                 #   import to swap in and what to install
      meta generator new <name>  # an output no reference emits? write your own — this
                                 #   scaffolds a working one and wires it
-  4. meta gen                  # generate from exactly what you wired
-  5. meta docs                  # neutral model + API docs (on by default)
-  6. Create your tables: meta migrate --from-db --db file:dev.sqlite --dialect sqlite --slug init --apply
+  4. meta gen                  # generate from exactly what you wired, documentation
+                                #   included (the docs layer of the catalog)
+  5. Create your tables: meta migrate --from-db --db file:dev.sqlite --dialect sqlite --slug init --apply
      A new database later (a fresh clone, CI, tests) replays the committed migrations:
        meta migrate apply-pending --db file:other.sqlite
 `;

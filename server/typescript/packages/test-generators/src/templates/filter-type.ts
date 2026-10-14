@@ -2,7 +2,7 @@
 // String fields get eq/ne/in/like; numbers get eq/ne/gt/gte/lt/lte/in; booleans get eq/isNull only;
 // datetimes get eq/ne/gt/gte/lt/lte/in. An enum's operand type is its member union.
 
-import { code, type Code } from "@metaobjectsdev/codegen-ts";
+import { code, type Code } from "@metaobjectsdev/codegen-ts/engine";
 import { MetaField, MetaObject } from "@metaobjectsdev/metadata";
 import {
   FIELD_ATTR_FILTERABLE,
@@ -16,7 +16,7 @@ import {
   opsForField,
 } from "@metaobjectsdev/metadata";
 import { isSortableField } from "./filter-shared.js";
-import { enumValues } from "@metaobjectsdev/codegen-ts";
+import { enumValues } from "@metaobjectsdev/codegen-ts/engine";
 
 // currency is integer minor units (allowlist `integer: true`, row schema `z.number().int()`).
 // VALUE-type classification only (distinct from the OPERATOR band, which comes from

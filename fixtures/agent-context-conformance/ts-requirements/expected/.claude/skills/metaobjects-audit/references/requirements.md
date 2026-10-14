@@ -82,8 +82,9 @@ functional one.
 model. If the tree is flat, or every entry is L3, the levels are carrying no information and
 should be simplified rather than defended.
 
-**6. Titles that are not labels.** `title` is now **rendered** — `meta docs` heads each entry
-`## checkout.payment — Payment capture`, the path first and the label after it — so a slot
+**6. Titles that are not labels.** `title` is now **rendered** — `meta gen`'s
+`requirementsFile()` heads each entry `## checkout.payment — Payment capture`, the path
+first and the label after it — so a slot
 that used to be inert is read by every reader of the generated page. The lint catches only
 the id-shaped case (`FR-448 …`); it cannot tell a *useless* label from a good one. Read the
 titles: one that restates `@statement`, or repeats the path in prose, is now visible noise in

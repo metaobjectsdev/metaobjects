@@ -124,5 +124,5 @@ rule file, no always-loaded doc, no generated context cited it as a source. That
 with the number rather than surprising.
 
 So restoring the status is necessary and **not sufficient**. If you want it to fire, something
-has to point at it — `meta docs` emits retired entries into the requirements surface, and your
+has to point at it — the requirement ledger (`requirementsFile()`) carries retired entries, and your
 agent context should route to the ledger before proposing new capability work.

@@ -9,11 +9,11 @@
 // (`routesHandlerName` for Fastify, `register<Entity>Routes` for Hono), so a rename there
 // breaks this file's imports at compile time instead of drifting silently.
 import type { MetaObject } from "@metaobjectsdev/metadata";
-import { GENERATED_HEADER, GENERATED_EDIT_NOTE } from "@metaobjectsdev/codegen-ts";
-import { effectivePackage } from "@metaobjectsdev/codegen-ts";
-import { barrelEntrySpecifier } from "@metaobjectsdev/codegen-ts";
-import { routesHandlerName } from "@metaobjectsdev/codegen-ts";
-import type { RenderContext } from "@metaobjectsdev/codegen-ts";
+import { GENERATED_HEADER, GENERATED_EDIT_NOTE } from "@metaobjectsdev/codegen-ts/engine";
+import { effectivePackage } from "@metaobjectsdev/codegen-ts/engine";
+import { barrelEntrySpecifier } from "@metaobjectsdev/codegen-ts/engine";
+import { routesHandlerName } from "@metaobjectsdev/codegen-ts/engine";
+import type { RenderContext } from "@metaobjectsdev/codegen-ts/engine";
 
 /** Which route flavor the index registers. */
 export type RoutesIndexFlavor = "fastify" | "hono";

@@ -6,31 +6,32 @@
 //   !hasWritableRdbSource(entity)      → renderValueObjectFile (in-memory / transit shape: interface + Zod schema)
 //   vanilla / write-through entity     → Drizzle table path
 
-import { code, imp, joinCode, type Code } from "@metaobjectsdev/codegen-ts";
+import { code, imp, joinCode, type Code } from "@metaobjectsdev/codegen-ts/engine";
 import type { MetaObject, MetaField } from "@metaobjectsdev/metadata";
 import { FIELD_ATTR_OBJECT_REF, SOURCE_ROLE_REPLICA } from "@metaobjectsdev/metadata";
-import { fieldDeclaringPackage, type RenderContext } from "@metaobjectsdev/codegen-ts";
+import { fieldDeclaringPackage, type RenderContext } from "@metaobjectsdev/codegen-ts/engine";
 import { renderDrizzleSchema } from "./drizzle-schema.js";
 import { renderInferredTypes, renderEnumTypeAliases } from "./inferred-types.js";
-import { renderZodValidators, isTphSubtype, primaryIdentityFieldNames } from "./zod-validators.js";
+import { renderZodValidators, primaryIdentityFieldNames } from "./zod-validators.js";
+import { isTphSubtype } from "@metaobjectsdev/codegen-ts/engine";
 import { renderEntityConstants } from "./entity-constants.js";
 import { renderFilterAllowlist, renderSortAllowlist } from "./filter-allowlist.js";
 import { renderFilterType } from "./filter-type.js";
 import { renderTphDiscriminatorUnion, isTphDiscriminatorBase } from "./tph-discriminator.js";
-import { GENERATED_HEADER, GENERATED_EDIT_NOTE, sidecarLine } from "@metaobjectsdev/codegen-ts";
-import { isProjection, isWriteThrough } from "@metaobjectsdev/codegen-ts";
+import { GENERATED_HEADER, GENERATED_EDIT_NOTE, sidecarLine } from "@metaobjectsdev/codegen-ts/engine";
+import { isProjection, isWriteThrough } from "@metaobjectsdev/codegen-ts/engine";
 import { renderProjectionDecl } from "./projection-decl.js";
 import {
   projectionViewName, projectionViewSchema, projectionViewRole,
-} from "@metaobjectsdev/codegen-ts";
+} from "@metaobjectsdev/codegen-ts/engine";
 import { renderExistingViewDecl, renderViewReadZodObject } from "./view-decl.js";
 import { renderDocsFor } from "./jsdoc.js";
-import { valueObjectModuleSpecifier } from "@metaobjectsdev/codegen-ts";
-import { namesRef, namesConstArg, physicalNameExpr, sourceSchemaExpr } from "@metaobjectsdev/codegen-ts";
-import { hasWritableRdbSource } from "@metaobjectsdev/codegen-ts";
+import { valueObjectModuleSpecifier } from "@metaobjectsdev/codegen-ts/engine";
+import { namesRef, namesConstArg, physicalNameExpr, sourceSchemaExpr } from "@metaobjectsdev/codegen-ts/engine";
+import { hasWritableRdbSource } from "@metaobjectsdev/codegen-ts/engine";
 import { renderValueObjectFile } from "./value-object-file.js";
-import { isAbstract } from "@metaobjectsdev/codegen-ts";
-import { effectivePackage } from "@metaobjectsdev/codegen-ts";
+import { isAbstract } from "@metaobjectsdev/codegen-ts/engine";
+import { effectivePackage } from "@metaobjectsdev/codegen-ts/engine";
 
 /**
  * Render-time options for the entity-file composer.

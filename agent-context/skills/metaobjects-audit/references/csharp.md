@@ -26,8 +26,9 @@ Generated files are named `<Entity>.g.cs` and carry an `@generated` guard commen
 The metadata source directory is the first positional arg (`<metadataDir>`); `--out`
 is required (errors if absent, no default). The runner overwrites only files bearing
 this header; it refuses to touch files without it. Locate the output directory from
-how the team invokes `dotnet meta gen` (or a CI script) — the arg is explicit, there
-is no config file equivalent on the C# side.
+`codegen/Generators.cs` (the project's generator list, each entry's `OutDir` init
+property — scaffolded by `dotnet meta init`, new in 1.1.0) or, for a project that predates
+it, from how the team invokes `dotnet meta gen` (or a CI script).
 
 ---
 
@@ -73,7 +74,7 @@ copies the helper runtime the generated routes call (`FilterParser`, `EfCoreFilt
 `codegen/runtime/` under the namespace `Codegen.Runtime`. That folder is owned code, not a
 hand-rolled filter parser: do not flag it. `dotnet meta gen --list` marks each owned copy
 `identical` or `DIFFERS`. A generator the project WRITES is an `IGenerator` listed in
-`codegen/Program.cs` the same way.
+`codegen/Generators.cs` the same way.
 
 **A finding of the form "the built-ins do not emit the shape this project needs", or a
 hand-written layer the model fully describes, resolves to a generator the project writes**

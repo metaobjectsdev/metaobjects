@@ -48,7 +48,7 @@ export type ExposeOption =
   | ((entity: MetaObject) => readonly CrudVerb[] | undefined);
 
 /**
- * The `expose` option of each routes SURFACE, as `meta docs` documents them: the Fastify
+ * The `expose` option of each routes SURFACE, as the api reference documents them: the Fastify
  * routes file and the opt-in Hono one are separate generators and each mounts its own verbs.
  * A surface left out mounts every verb.
  */

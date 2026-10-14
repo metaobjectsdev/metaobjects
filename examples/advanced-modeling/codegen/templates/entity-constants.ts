@@ -26,16 +26,16 @@
 // per-attribute access (placeholder, rules, etc.) by hand — the helper
 // picks them up from this object automatically.
 
-import { code, joinCode, type Code } from "@metaobjectsdev/codegen-ts";
+import { code, joinCode, type Code } from "@metaobjectsdev/codegen-ts/engine";
 import { MetaObject } from "@metaobjectsdev/metadata";
 import { resolveTableName } from "@metaobjectsdev/metadata";
-import { physicalNameExpr } from "@metaobjectsdev/codegen-ts";
+import { physicalNameExpr } from "@metaobjectsdev/codegen-ts/engine";
 import {
   buildEntityUiDescriptor,
   resourcePath,
   type UiFieldDescriptor,
   type UiRule,
-} from "@metaobjectsdev/codegen-ts";
+} from "@metaobjectsdev/codegen-ts/engine";
 
 // `resourcePath` moved to entity-ui-descriptor.ts with the rest of the form derivation.
 // Re-exported here because it is part of this module's published surface (the package

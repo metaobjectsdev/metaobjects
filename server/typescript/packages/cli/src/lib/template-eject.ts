@@ -10,15 +10,16 @@
 // (runtime-eject.ts), and the owned generator imports them from there.
 //
 // What stays packaged is the ENGINE (`ENGINE_MODULES`): the generator base, the model walks,
-// and the naming and type-mapping tables. A copied module reaches those through its package's
-// public entry. That is the one edit a copy makes: every module specifier is rewritten, and
+// and the naming and type-mapping tables. A copied module reaches those through the engine
+// entry, `@metaobjectsdev/codegen-ts/engine` (a framework package's own engine module through
+// that package's root). That is the one edit a copy makes: every module specifier is rewritten, and
 // nothing else in the file is touched, so "what did upstream change?" is a diff of two files
 // that differ in their import lines only.
 //
-//   ./names.js, ../column-mapper.js        an ENGINE module        -> "@metaobjectsdev/codegen-ts"
+//   ./names.js, ../column-mapper.js        an ENGINE module        -> "@metaobjectsdev/codegen-ts/engine"
 //   ./zod-validators.js, ../cube/x.js      an EMIT module          -> the copy beside it
 //   @metaobjectsdev/codegen-ts/templates/x another package's emit  -> the copy beside it
-//   ts-poet                                the package's own Code  -> "@metaobjectsdev/codegen-ts"
+//   ts-poet                                the package's own Code  -> "@metaobjectsdev/codegen-ts/engine"
 //
 // The last row is the 0.21.6 split-tree defect: `Code` objects are recognised by `instanceof`,
 // so a copy must build them with the same ts-poet the engine uses.
@@ -33,11 +34,10 @@ import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, posix, relative, sep } from "node:path";
 import * as coreTpl from "@metaobjectsdev/codegen-ts";
+import { ENGINE_MODULES } from "@metaobjectsdev/codegen-ts/engine";
 import * as reactTpl from "@metaobjectsdev/codegen-ts-react";
 import * as tanstackTpl from "@metaobjectsdev/codegen-ts-tanstack";
 import { compareOwnedCopy, type OwnedComparison } from "./owned-copy.js";
-
-const { ENGINE_MODULES } = coreTpl;
 
 /** A codegen package's shipped source: `<root>/src`, with its `reference/` directory inside. */
 export interface PackageSource {
@@ -51,8 +51,10 @@ const SCOPE = "@metaobjectsdev/";
 /** Where the copied template modules land, relative to the project root. */
 export const OWNED_TEMPLATES_DIR = "codegen/templates";
 const OWNED_GENERATORS_DIR = "codegen/generators";
-/** The package whose public entry an owned copy imports the engine from, and the ts-poet it shares. */
+/** The package that holds the engine. */
 const CORE_PACKAGE = `${SCOPE}codegen-ts`;
+/** The entry an owned copy imports the core engine from, and the ts-poet it shares. */
+const ENGINE_ENTRY = `${CORE_PACKAGE}/engine`;
 
 /** `@metaobjectsdev/codegen-ts-react` → `codegen-ts-react`, the directory spelling `ENGINE_MODULES` uses. */
 function shortName(pkg: string): string {
@@ -307,10 +309,10 @@ export function templateClosure(
       let next = spec;
       if (target !== undefined) {
         next = engine.has(keyOf(target))
-          ? target.pkg.name
+          ? engineEntryOf(target.pkg.name)
           : relativeSpecifier(here, destination(target));
       } else if (spec === "ts-poet") {
-        next = CORE_PACKAGE;
+        next = ENGINE_ENTRY;
       }
       if (!next.startsWith(".") && !next.startsWith("node:")) imported.add(packageOfSpecifier(next));
       return next;
@@ -322,6 +324,11 @@ export function templateClosure(
   const generator = rendered.find((f) => f.path === `${OWNED_GENERATORS_DIR}/${name}.ts`)!;
   const templates = rendered.filter((f) => f !== generator).sort((a, b) => a.path.localeCompare(b.path));
   return { generator, templates, packages: [...imported].sort() };
+}
+
+/** Where a copy imports an engine module of `pkg` from: the core engine entry, or a framework package's root. */
+function engineEntryOf(pkg: string): string {
+  return pkg === CORE_PACKAGE ? ENGINE_ENTRY : pkg;
 }
 
 /** `./x.js` / `../y/z.js` from the file at `from` to the one at `to`, both project-relative. */

@@ -600,7 +600,10 @@ a project that owns no docs generator: a gate holds the packaged generators to t
 bytes under the door as they wrote from the same facts as options.
 
 The `requirements` and `agent` surfaces of `meta docs` are not generators in the catalog
-and stay packaged.
+and stay packaged. *(Superseded. Amendment 8's eject census registered both, as
+`requirements` and `agent-docs`, and made them ejectable; Amendment 9 removes the docs door
+this amendment describes, so every docs generator, these two included, is an ordinary entry
+in `generators`.)*
 
 **`mermaid-er` is removed, not ejected.** It was the older home of the ER diagram: a
 generator `meta gen` ran, writing the whole-model diagram and a section per entity to a file
@@ -1014,8 +1017,8 @@ more entry in that list, and one command runs the list. None has a separate docs
 | Output directory (`--out`, `docs.outDir`, `<outputDirectory>`) | `targets.docs.outDir` | `OutDir` | `targets.<name>.outDir` of the target that lists `api-docs` | `outputDir` |
 | Page layout (`--layout`, `docs.layout`, `<layout>`) | `targets.docs.outputLayout` | none: C# writes `package` | none: Python writes `package` | `layout` (`flat` or `package`, default `flat`) |
 | API sub-directory (`--api-subdir`, `<apiSubDir>`) | `apiDocsFile({ subDir })` | `ApiSubDir` | `apiDocs.apiSubDir` | `apiSubDir` (default `api/java`, Kotlin `api/kotlin`) |
-| Project label (`--project`, `<projectName>`) | `apiDocsFile({ projectName })` | `ProjectName` | `apiDocs.projectName` | `projectName` |
-| Model back-link base (`--model-base-url`, `--base-url`, `docs.baseUrl`, `<modelBaseUrl>`) | `modelBaseUrl` on `docsFile()` and `apiDocsFile()` | `ModelBaseUrl` | `apiDocs.modelBaseUrl` | `modelBaseUrl` |
+| Project label (`--project`, `<projectName>`) | none: TypeScript had no such flag and its pages carry no project label | `ProjectName` | `apiDocs.projectName` | `projectName` |
+| Model back-link base (`--model-base-url`, `--base-url`, `docs.baseUrl`, `<modelBaseUrl>`) | `apiDocsFile({ modelBaseUrl })` (1.0's `docs.baseUrl` and `--base-url` were read by no generator) | `ModelBaseUrl` | `apiDocs.modelBaseUrl` | `modelBaseUrl` |
 | Which surfaces (`--model`, `--api`, `--requirements`, `--agent`, `docs.surfaces`, `<language>`) | which factories are listed: `docsFile()`, `apiDocsFile()`, `requirementsFile()`, `agentDocsFile()` | whether `ApiDocsGenerator` is listed | whether `api-docs` is listed | which class is listed: `JavaApiDocsGenerator`, `KotlinApiDocsGenerator`, or both |
 | Other ports' api pages to link (`docs.apiSurfaces`) | `docsFile({ apiSurfaces })` | n/a | n/a | n/a |
 | Template overrides (`--templates`) | `docsFile({ templates })` | n/a | n/a | n/a |
@@ -1040,6 +1043,26 @@ Docs factories default to `target: "docs"`. A run that lists one while `targets`
 never written into the code's output directory by default. The cross-link facts the docs
 door used to build (`ctx.docsDoor`) are built by the runner from the declared entries,
 so the model and api pages still agree on where each other is.
+
+*How the runner reads them (TypeScript, as built).* Per target: the api reference pages
+are the entries carrying `emitsApiDocs: { subDir }` (`apiDocsFile()`), and the model pages
+exist when an entry carries `emitsModelDocs` (`docsFile()`). Both reach a generator as
+`ctx.docs`, beside the agent schema, which `meta gen` builds only when `agentDocsFile()`
+asks. These two markers are cross-link facts in the family of `emitsHonoRoutes` and
+`mountsRoutes`; they are not the docs marker this amendment removes, and nothing reads them
+to decide whether or where a generator runs. A factory option given explicitly wins over
+the fact (`docsFile({ apiSurfaces })`, `apiDocsFile({ modelSurface })`). A run narrowed by
+`--generators` still reads every run-level fact, markers included, from the whole declared
+list, so a narrowed run writes what a full run writes for those entries.
+
+*The two TypeScript cells corrected from the first draft of this amendment.* The draft
+mapped a project label to `apiDocsFile({ projectName })` and the model back-link base to
+`modelBaseUrl` on both `docsFile()` and `apiDocsFile()`. TypeScript's `meta docs` had no
+`--project` flag and its api pages carry no project label, so there is nothing to map; and
+its `docs.baseUrl` / `--base-url` were parsed and read by no generator. The back-link is an
+api page's link to its model page, so the option lives on `apiDocsFile()` only; the model
+pages' links to api pages hosted elsewhere were already `docsFile({ apiSurfaces })` with a
+`baseUrl` per surface.
 
 `meta agent-docs`, `meta init --refresh-docs` and their C# and Python counterparts are not
 documentation of the model. They install the agent-context files and are unchanged.
@@ -1079,8 +1102,8 @@ writes nothing silently. It prints:
 <gen>: found 1.0 docs configuration (<what>). Nothing reads it any more, so this run would write no documentation. Declare each docs generator <where>. See docs/features/migrations/docs-are-generators.md, section "<section>".
 ```
 
-`<gen>` here is the command's own name (`meta gen`, `dotnet meta gen`, `metaobjects gen`,
-`metaobjects:generate` or `metaobjects:verify`). What counts as 1.0 shape, and `<what>`:
+`<gen>` here is the command's own name (`meta gen`, `meta verify` for its `--codegen` gate,
+`dotnet meta gen`, `metaobjects gen`, `metaobjects:generate` or `metaobjects:verify`). What counts as 1.0 shape, and `<what>`:
 
 | Port | 1.0 shape | `<what>` |
 |---|---|---|
@@ -1147,8 +1170,10 @@ neither was something a pom could name.
 
 **A config that declares nothing writes nothing**, and each port has a test that says so:
 an empty list, run through the port's gen command or goal, writes zero files. Java and
-Kotlin have it in this change (`DeclaresNothingWritesNothingTest`); the other ports add it
-with their change.
+Kotlin have it in this change (`DeclaresNothingWritesNothingTest`); TypeScript in its change
+(`runner-docs-generators.test.ts` for `runGen`, and the CLI's `gen-docs-generators.test.ts`
+for `meta gen`: no output file and no `.metaobjects/.gen-state/` write); C# and Python add it
+with theirs.
 
 **Supersedes.**
 

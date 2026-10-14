@@ -2,8 +2,8 @@
   "displayName": "C#",
   "install": "install the MetaObjects .NET tool (dotnet tool install) + add the MetaObjects.Codegen package",
   "codegenCommand": "dotnet meta gen",
-  "docsCommand": "dotnet meta docs",
-  "docsCondition": "",
-  "docsMissing": "",
+  "docsCommand": "dotnet meta gen",
+  "docsCondition": " (when the project's generator list declares the ApiDocsGenerator)",
+  "docsMissing": "Declare `ApiDocsGenerator` in the generator list in codegen/Generators.cs if it is missing",
   "apiSubDir": "api/csharp"
 }

@@ -129,10 +129,12 @@ describe("catalog declarations are resolved against what the generators emit", (
     //   render-helper   needs an on-disk template root for its build-time drift gate
     //   shared-model    needs a `files` selection `meta gen` supplies at run time
     //   trace-helper    needs an entity extending metaobjects::ai::LlmCallBase
-    //   docs, api-docs  emit under a docs config this bare fixture does not carry
-    //   requirements, agent-docs   the other two `meta docs` surfaces: neither writes a file
-    //                   for a model with no `requirement.*` node, no UI tier and no physical
-    //                   schema handed over by `meta docs`, which is this fixture
+    //   docs, api-docs, metamodel-docs, docs-site   documentation: Markdown and HTML pages
+    //                   that import nothing, so there is no import evidence to read, and
+    //                   their entries declare no `requires` or runtime packages
+    //   requirements, agent-docs   documentation too, and neither writes a file for a model
+    //                   with no `requirement.*` node, no UI tier and no physical schema,
+    //                   which is this fixture
     //   template        a PRIMITIVE — registered with a no-op walk, by construction
     //   requirement-tests  emits stubs, which this harness writes but reads no imports
     //                      from beyond `bun:test` (a builtin, deliberately skipped)
@@ -150,6 +152,8 @@ describe("catalog declarations are resolved against what the generators emit", (
       "api-docs",
       "cube-model",
       "docs",
+      "docs-site",
+      "metamodel-docs",
       "render-helper",
       "requirements",
       "shared-model",

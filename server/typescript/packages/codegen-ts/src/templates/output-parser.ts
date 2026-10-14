@@ -24,7 +24,8 @@ import {
   resolveObjectRef,
 } from "@metaobjectsdev/metadata";
 import type { MetaField } from "@metaobjectsdev/metadata";
-import { enumValues, zodEnumExpr } from "../enum-meta.js";
+import { enumValues } from "../enum-meta.js";
+import { zodEnumExpr } from "./zod-enum.js";
 import { templateSymbolBase } from "../naming.js";
 import { responseShape } from "./find-inbound.js";
 import { isRequired } from "./fr010-field-mapping.js";

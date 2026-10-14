@@ -8,9 +8,9 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import {
   runGen, defineConfig, REFERENCE_GENERATOR_NAMES, HTTP_RUNTIME_PACKAGE, OWNED_RUNTIME_DIR,
-  buildPkMap, buildRelationMap, docsDoorGenerators, generatorRegistry, makeRenderContext,
+  buildPkMap, buildRelationMap, makeRenderContext,
 } from "../src/index.js";
-import type { ReferenceGeneratorName, Generator, GenContext, DocsDoorFacts, OutputLayout } from "../src/index.js";
+import type { ReferenceGeneratorName, Generator, GenContext, DocsRunFacts, OutputLayout } from "../src/index.js";
 import { routesFileHono as builtinRoutesHono, namesFile as builtinNames } from "../src/generators/index.js";
 import { barrel as builtinBarrel } from "../src/generators/barrel.js";
 import { entityFile as builtinEntity } from "../src/generators/entity-file.js";
@@ -54,6 +54,8 @@ import { requirementsFile as builtinRequirements } from "../src/generators/requi
 import { agentDocsFile as builtinAgentDocs } from "../src/generators/agent-docs-file.js";
 import { requirementsFile as refRequirements } from "../src/reference/requirements.js";
 import { agentDocsFile as refAgentDocs } from "../src/reference/agent-docs.js";
+import { metamodelDocsFile as builtinMetamodelDocs } from "../src/generators/metamodel-docs-file.js";
+import { metamodelDocsFile as refMetamodelDocs } from "../src/reference/metamodel-docs.js";
 import { buildExpectedSchemaWithProvenance, columnTypeSql, qualifiedDbName } from "@metaobjectsdev/migrate-ts";
 import { buildProjectionViews } from "../src/index.js";
 import type { AgentSchemaInput, SchemaColumnLike } from "../src/index.js";
@@ -114,7 +116,11 @@ async function gen(
   projectRoot?: string,
 ) {
   await runGen({
-    config: defineConfig({ outDir: dir, extStyle: "none", dbImport: "~/server/db", dialect: "sqlite", generators }),
+    // The documentation generators write to the `docs` target, which a run must declare.
+    config: defineConfig({
+      outDir: dir, extStyle: "none", dbImport: "~/server/db", dialect: "sqlite", generators,
+      targets: { docs: { outDir: join(dir, "_docs") } },
+    }),
     metadata: root,
     ...(projectRoot !== undefined ? { projectRoot } : {}),
   });
@@ -178,18 +184,14 @@ const PAIRS: Record<ReferenceGeneratorName, { builtin: () => Generator; ref: () 
     builtin: () => builtinSharedModel(SHARED_MODEL_OPTS),
     ref: () => refSharedModel(SHARED_MODEL_OPTS),
   },
-  // `runGen` runs neither side of these two: the built-in is skipped by name, with a
-  // warning (ADR-0025), and the reference by its `docsSurface` marker. So over the fixtures
-  // above both emit nothing. They are `meta docs`'s generators, and the describe at the end
-  // of this file runs each pair the way that door does.
+  // The documentation generators (ADR-0034 Amendment 9), run like the rest into the `docs`
+  // target. The describes at the end of this file run each pair over corpora with reports,
+  // templates, a ledger and a physical schema, and with the cross-link facts varied.
   docs: { builtin: builtinDocs, ref: refDocs },
   "api-docs": { builtin: builtinApiDocs, ref: refApiDocs },
-  // The other two `meta docs` surfaces (ADR-0034 Amendment 8). Over the fixtures above both
-  // emit nothing — none declares a requirement, and an agent page needs a ledger, a UI tier
-  // or a physical schema the run does not give it; the describe at the end of this file
-  // runs each pair the way the docs door does, over models that carry them.
   requirements: { builtin: builtinRequirements, ref: refRequirements },
   "agent-docs": { builtin: builtinAgentDocs, ref: refAgentDocs },
+  "metamodel-docs": { builtin: builtinMetamodelDocs, ref: refMetamodelDocs },
 };
 
 // The prompt tier emits nothing for the entity-shaped fixtures above — none declares a
@@ -1172,15 +1174,12 @@ describe("ADR-0034 Amendment 7 — the shared-model reference publishes the same
   });
 });
 
-// `docs` and `api-docs` are run by `meta docs`, never by `runGen`, so the pair is compared
-// the way that door runs a generator: `.generate(ctx)` with the door's facts on
-// `ctx.docsDoor` and the generator's own `filter` as `ctx.matches`. Three things are
-// gated. The reference writes what the built-in writes. The built-in writes under the door
-// what it wrote when `meta docs` passed the same facts as factory options, which is what
-// keeps `meta docs` output unchanged by the seam. And the marker `meta docs` reads off a
-// generator listed in `docs.generators` is on the reference, is what the registry declares,
-// and is not on the built-in.
-describe("ADR-0034 Amendment 7 — the docs and api-docs references write the same pages under the docs door", () => {
+// `docs` and `api-docs` link to each other, from facts the runner reads off the generators a
+// target declares (`ctx.docs`, docs-run.ts). The pair is compared with `.generate(ctx)` and
+// those facts varied directly, so every combination is reached without a run per case: the
+// reference writes what the built-in writes, the facts and the factory options agree, and the
+// markers the runner reads are the same on both.
+describe("ADR-0034 Amendments 7 and 9 — the docs and api-docs references write the same pages from the same facts", () => {
   interface Corpus { label: string; files: string[]; projectRoot?: string }
   const CORPORA: Corpus[] = [
     ...FIXTURES.map((f) => ({ label: f, files: [join(FIXTURE_DIR, f)] })),
@@ -1200,13 +1199,17 @@ describe("ADR-0034 Amendment 7 — the docs and api-docs references write the sa
     { label: "TypeScript", subDir: "api" },
     { label: "Java", subDir: "api/java", baseUrl: "https://docs.example.test/java/" },
   ];
+  /** The facts of a target holding the model pages and no api pages. */
+  const NO_API: DocsRunFacts = { apiSurfaces: [], modelPages: true };
+  /** The facts of a target holding both. */
+  const BOTH: DocsRunFacts = { apiSurfaces: [{ label: "TypeScript", subDir: "api" }], modelPages: true };
 
-  /** The context `meta docs` builds for a surface's generator (cli/src/commands/docs.ts). */
+  /** The context the runner builds for a docs generator, with the facts given directly. */
   function doorCtx(
     root: Awaited<ReturnType<typeof loadFiles>>,
     generator: Generator,
     layout: OutputLayout,
-    door: DocsDoorFacts | undefined,
+    door: DocsRunFacts | undefined,
     run: { projectRoot?: string; includeHonoRoutes?: boolean; apiPrefix?: string } = {},
   ): GenContext {
     return {
@@ -1221,7 +1224,7 @@ describe("ADR-0034 Amendment 7 — the docs and api-docs references write the sa
         outputLayout: layout,
         ...(run.includeHonoRoutes !== undefined ? { includeHonoRoutes: run.includeHonoRoutes } : {}),
       },
-      ...(door !== undefined ? { docsDoor: door } : {}),
+      ...(door !== undefined ? { docs: door } : {}),
       renderContext: makeRenderContext({
         dialect: "sqlite",
         loadedRoot: root,
@@ -1241,7 +1244,7 @@ describe("ADR-0034 Amendment 7 — the docs and api-docs references write the sa
     root: Awaited<ReturnType<typeof loadFiles>>,
     generator: Generator,
     layout: OutputLayout,
-    door: DocsDoorFacts | undefined,
+    door: DocsRunFacts | undefined,
     run?: Parameters<typeof doorCtx>[4],
   ): Promise<Outcome> {
     return outcomeOf(async () =>
@@ -1255,7 +1258,7 @@ describe("ADR-0034 Amendment 7 — the docs and api-docs references write the sa
         const root = await loadFiles(corpus.files);
         const run = corpus.projectRoot !== undefined ? { projectRoot: corpus.projectRoot } : {};
         // With no api surface beside it, and with two (one in the tree, one federated).
-        for (const door of [{}, { apiSurfaces: API_SURFACES }] satisfies DocsDoorFacts[]) {
+        for (const door of [NO_API, { ...NO_API, apiSurfaces: API_SURFACES }] satisfies DocsRunFacts[]) {
           const a = await emit(root, builtinDocs(), layout, door, run);
           const b = await emit(root, refDocs(), layout, door, run);
           expect(b).toEqual(a);
@@ -1273,19 +1276,20 @@ describe("ADR-0034 Amendment 7 — the docs and api-docs references write the sa
       test(`api pages — ${corpus.label}, ${layout} layout`, async () => {
         const root = await loadFiles(corpus.files);
         const run = corpus.projectRoot !== undefined ? { projectRoot: corpus.projectRoot } : {};
-        const doors: Array<{ door: DocsDoorFacts | undefined; run: Parameters<typeof doorCtx>[4] }> = [
-          { door: { apiSubDir: "api", modelSurface: true }, run },
-          { door: { apiSubDir: "reference/ts", modelSurface: false }, run },
-          { door: { apiSubDir: "api", modelSurface: true }, run: { ...run, includeHonoRoutes: true, apiPrefix: "/api" } },
-          // No door at all: a direct call lands in the default directory, in both.
+        const cases: Array<{ opts?: { subDir?: string; modelBaseUrl?: string }; door: DocsRunFacts | undefined; run: Parameters<typeof doorCtx>[4] }> = [
+          { door: BOTH, run },
+          { opts: { subDir: "reference/ts" }, door: { apiSurfaces: [], modelPages: false }, run },
+          { opts: { modelBaseUrl: "https://docs.example.test/model/" }, door: { apiSurfaces: [], modelPages: false }, run },
+          { door: BOTH, run: { ...run, includeHonoRoutes: true, apiPrefix: "/api" } },
+          // No facts at all: a direct call, in the default directory, in both.
           { door: undefined, run },
         ];
-        for (const { door, run: doorRun } of doors) {
-          const a = await emit(root, builtinApiDocs(), layout, door, doorRun);
-          const b = await emit(root, refApiDocs(), layout, door, doorRun);
+        for (const { opts, door, run: doorRun } of cases) {
+          const a = await emit(root, builtinApiDocs(opts), layout, door, doorRun);
+          const b = await emit(root, refApiDocs(opts), layout, door, doorRun);
           expect(b).toEqual(a);
           if ("files" in a) {
-            const dir = door?.apiSubDir ?? "docs/api";
+            const dir = opts?.subDir ?? "api";
             expect(a.files.slice(0, 2).map(([p]) => p)).toEqual([`${dir}/README.md`, `${dir}/AGENT-API.md`]);
             expect(a.files.length).toBeGreaterThan(2);
           } else {
@@ -1298,9 +1302,9 @@ describe("ADR-0034 Amendment 7 — the docs and api-docs references write the sa
 
   test("the corpora reach the branches: a report page, a template page, a served report's api page, a Hono route", async () => {
     const fitness = await loadFiles(CORPORA.find((c) => c.label.startsWith("persistence"))!.files);
-    const model = await emit(fitness, refDocs(), "flat", { apiSurfaces: API_SURFACES });
+    const model = await emit(fitness, refDocs(), "flat", { ...NO_API, apiSurfaces: API_SURFACES });
     const readme = "files" in model ? model.files[0]![1] : "";
-    // The diagrams are `meta docs`'s: the whole model on the overview page, and one
+    // The diagrams are the model pages': the whole model on the overview page, and one
     // entity's neighbourhood on its own page. (The standalone `mermaid-er` generator that
     // also drew the first one was removed in 1.1.)
     expect(readme).toContain("## Diagram\n\n```mermaid\nerDiagram\n");
@@ -1310,7 +1314,7 @@ describe("ADR-0034 Amendment 7 — the docs and api-docs references write the sa
     expect(readme).toContain("## Templates");
     expect(readme).toContain("## API reference");
     expect(readme).toContain("https://docs.example.test/java/README.md");
-    const api = await emit(fitness, refApiDocs(), "flat", { apiSubDir: "api", modelSurface: true }, { includeHonoRoutes: true, apiPrefix: "/api" });
+    const api = await emit(fitness, refApiDocs(), "flat", BOTH, { includeHonoRoutes: true, apiPrefix: "/api" });
     const pages = "files" in api ? new Map(api.files) : new Map<string, string>();
     expect(pages.has("api/ProgramRoster.md")).toBe(true);
     expect([...pages.values()].some((c) => c.includes("hono"))).toBe(true);
@@ -1320,87 +1324,60 @@ describe("ADR-0034 Amendment 7 — the docs and api-docs references write the sa
   test("the `filter` option narrows the object pages, in both", async () => {
     const root = await loadFiles([join(FIXTURE_DIR, "two-entities-fk.json")]);
     const only = (e: { name: string }) => e.name === "User";
-    const a = await emit(root, builtinDocs({ filter: only }), "flat", {});
-    const b = await emit(root, refDocs({ filter: only }), "flat", {});
+    const a = await emit(root, builtinDocs({ filter: only }), "flat", NO_API);
+    const b = await emit(root, refDocs({ filter: only }), "flat", NO_API);
     expect(paths(a)).toEqual(["README.md", "User.md"]);
     expect(b).toEqual(a);
   });
 
-  // What keeps `meta docs` unchanged by the seam. It used to construct the built-in with
-  // these facts as factory OPTIONS; it now runs a bare built-in with the facts on the
-  // context. Same bytes, over the corpus with the most branches, in both layouts.
-  test("the built-in writes under the door what it wrote from the same facts as options", async () => {
+  // The facts and the factory options say the same thing: a page set linked by the runner is
+  // the page set the options would have written, so a project can state either.
+  test("the facts and the options agree, and the options win when both are given", async () => {
     const corpus = CORPORA.find((c) => c.label.startsWith("persistence"))!;
     const root = await loadFiles(corpus.files);
     for (const layout of LAYOUTS) {
-      const viaOptions = await emit(root, builtinDocs({ apiSurfaces: API_SURFACES }), layout, undefined);
-      const viaDoor = await emit(root, builtinDocs(), layout, { apiSurfaces: API_SURFACES });
-      expect(paths(viaDoor).length).toBeGreaterThan(1);
-      expect(viaDoor).toEqual(viaOptions);
-      expect(await emit(root, builtinDocs(), layout, {})).toEqual(await emit(root, builtinDocs(), layout, undefined));
-
-      for (const modelSurface of [true, false]) {
-        const apiViaOptions = await emit(root, builtinApiDocs({ subDir: "api", modelSurface }), layout, undefined);
-        const apiViaDoor = await emit(root, builtinApiDocs(), layout, { apiSubDir: "api", modelSurface });
-        expect(paths(apiViaDoor).length).toBeGreaterThan(2);
-        expect(apiViaDoor).toEqual(apiViaOptions);
+      for (const make of [builtinDocs, refDocs]) {
+        const viaOptions = await emit(root, make({ apiSurfaces: API_SURFACES }), layout, undefined);
+        const viaFacts = await emit(root, make(), layout, { ...NO_API, apiSurfaces: API_SURFACES });
+        expect(paths(viaFacts).length).toBeGreaterThan(1);
+        expect(viaFacts).toEqual(viaOptions);
+        expect(await emit(root, make({ apiSurfaces: API_SURFACES }), layout, NO_API)).toEqual(viaOptions);
+        expect(await emit(root, make(), layout, NO_API)).toEqual(await emit(root, make(), layout, undefined));
+      }
+      for (const make of [builtinApiDocs, refApiDocs]) {
+        for (const modelPages of [true, false]) {
+          const viaOptions = await emit(root, make({ modelSurface: modelPages }), layout, undefined);
+          const viaFacts = await emit(root, make(), layout, { apiSurfaces: [], modelPages });
+          expect(paths(viaFacts).length).toBeGreaterThan(2);
+          expect(viaFacts).toEqual(viaOptions);
+        }
       }
     }
   });
 
-  test("under the door, the door's facts decide, not the built-in's own options", async () => {
-    // The two page sets link to each other, so they have to be told the same thing. A
-    // built-in constructed with options of its own and then run by the door follows the door.
-    const root = await loadFiles([join(FIXTURE_DIR, "two-entities-fk.json")]);
-    const stale = await emit(root, builtinApiDocs({ subDir: "elsewhere", modelSurface: false }), "flat", { apiSubDir: "api", modelSurface: true });
-    expect(stale).toEqual(await emit(root, builtinApiDocs(), "flat", { apiSubDir: "api", modelSurface: true }));
-    const none = await emit(root, builtinDocs({ apiSurfaces: API_SURFACES }), "flat", {});
-    expect(none).toEqual(await emit(root, builtinDocs(), "flat", {}));
-  });
-
-  test("the marker `meta docs` reads: on the references, declared by the registry, absent from the built-ins", () => {
-    expect(refDocs().docsSurface).toBe("model");
-    expect(refApiDocs().docsSurface).toBe("api");
-    expect(builtinDocs().docsSurface).toBeUndefined();
-    expect(builtinApiDocs().docsSurface).toBeUndefined();
-    // Resolved, not trusted: every reference in this package carries exactly the marker
-    // its registry entry declares, which for all but those two is none. `meta eject` reads
-    // the registry to print where the copy is listed; `meta docs` reads the generator.
+  test("the markers the runner reads, and the target, are the same on the references and the built-ins", () => {
     for (const name of REFERENCE_GENERATOR_NAMES) {
-      expect(`${name}: ${String(PAIRS[name].ref().docsSurface)}`)
-        .toBe(`${name}: ${String(generatorRegistry[name]?.docsSurface)}`);
+      const ref = PAIRS[name].ref();
+      const builtin = PAIRS[name].builtin();
+      const facts = (g: Generator) => JSON.stringify({
+        name: g.name, target: g.target, emitsModelDocs: g.emitsModelDocs, emitsApiDocs: g.emitsApiDocs,
+      });
+      expect(facts(ref), name).toBe(facts(builtin));
     }
-    // And the names are the built-ins', so a diagnostic names the same generator either way.
-    expect(refDocs().name).toBe(builtinDocs().name);
-    expect(refApiDocs().name).toBe(builtinApiDocs().name);
-  });
-
-  test("docsDoorGenerators: the listed copy per surface, nothing when none is listed, a refusal by name otherwise", () => {
-    const model = refDocs();
-    const api = refApiDocs();
-    expect(docsDoorGenerators([model, api])).toEqual({ model, api });
-    expect(docsDoorGenerators([api])).toEqual({ api });
-    // Nothing listed: the door runs the packaged generator for both surfaces.
-    expect(docsDoorGenerators([])).toEqual({});
-    // Two for one surface: each would write the same pages.
-    expect(() => docsDoorGenerators([model, refDocs()])).toThrow(
-      /lists two generators for the model surface \("docs-file" and "docs-file"\)/,
-    );
-    // No marker: the door has no surface to give it. That is the packaged docs generator
-    // (which needs no listing) and any generator `meta gen` runs (which goes elsewhere).
-    expect(() => docsDoorGenerators([builtinDocs()])).toThrow(/lists "docs-file", which carries no `docsSurface`/);
-    expect(() => docsDoorGenerators([model, builtinEntity()])).toThrow(
-      /lists "entity-file", which carries no `docsSurface`/,
-    );
+    expect(refDocs().emitsModelDocs).toBe(true);
+    expect(refApiDocs({ subDir: "reference/ts/" }).emitsApiDocs).toEqual({ subDir: "reference/ts" });
+    for (const make of [refDocs, refApiDocs, refRequirements, refAgentDocs, refMetamodelDocs]) {
+      expect(make().target).toBe("docs");
+      expect(make({ target: "site" }).target).toBe("site");
+    }
   });
 });
 
-// `requirements` and `agent-docs` are the other two generators `meta docs` runs. Like `docs`
-// and `api-docs` they are compared the way that door runs one: `.generate(ctx)` with the
-// door's facts on `ctx.docsDoor`. For `agent-docs` those facts carry the physical schema,
-// which `meta docs` computes (codegen-ts owns none of it), so the corpus is also run with a
-// real one built by the same migrate-ts calls the command makes.
-describe("ADR-0034 Amendment 8 — the requirements and agent-docs references write the same pages under the docs door", () => {
+// `requirements` and `agent-docs`, compared with `.generate(ctx)` and the run's facts given
+// directly. For `agent-docs` those facts carry the physical schema, which `meta gen` computes
+// (codegen-ts owns none of it), so the corpus is also run with a real one built by the same
+// migrate-ts calls the command makes.
+describe("ADR-0034 Amendments 8 and 9 — the requirements and agent-docs references write the same pages", () => {
   const REQUIREMENT_CORPORA: Array<{ label: string; files: string[]; ledger: boolean }> = [
     {
       label: "requirement-test-identity worked example (a ledger)",
@@ -1417,7 +1394,7 @@ describe("ADR-0034 Amendment 8 — the requirements and agent-docs references wr
     { label: "trainer-website-shape (no ledger)", ledger: false, files: [join(FIXTURE_DIR, "trainer-website-shape.json")] },
   ];
 
-  /** The agent surface's input, built as `meta docs` builds it (cli/src/commands/docs.ts). */
+  /** The agent pages' schema, built as `meta gen` builds it (cli/src/lib/agent-schema.ts). */
   function schemaFor(root: Awaited<ReturnType<typeof loadFiles>>): AgentSchemaInput {
     const dialect = "postgres" as const;
     const built = buildExpectedSchemaWithProvenance(root, {
@@ -1438,7 +1415,7 @@ describe("ADR-0034 Amendment 8 — the requirements and agent-docs references wr
   function ctxFor(
     root: Awaited<ReturnType<typeof loadFiles>>,
     generator: Generator,
-    door: DocsDoorFacts | undefined,
+    door: DocsRunFacts | undefined,
     includeUiTier: boolean,
   ): GenContext {
     return {
@@ -1446,7 +1423,7 @@ describe("ADR-0034 Amendment 8 — the requirements and agent-docs references wr
       loadedRoot: root,
       matches: generator.filter ?? (() => true),
       config: { outDir: "/docs-out", extStyle: "none", dbImport: "", dialect: "postgres", includeUiTier } as never,
-      ...(door !== undefined ? { docsDoor: door } : {}),
+      ...(door !== undefined ? { docs: door } : {}),
       renderContext: makeRenderContext({
         dialect: "postgres",
         loadedRoot: root,
@@ -1460,7 +1437,7 @@ describe("ADR-0034 Amendment 8 — the requirements and agent-docs references wr
     };
   }
 
-  const run = (root: Awaited<ReturnType<typeof loadFiles>>, g: Generator, door?: DocsDoorFacts, ui = true) =>
+  const run = (root: Awaited<ReturnType<typeof loadFiles>>, g: Generator, door?: DocsRunFacts, ui = true) =>
     outcomeOf(async () =>
       (await g.generate(ctxFor(root, g, door, ui))).map((f): [string, string] => [f.path, f.content]));
 
@@ -1483,50 +1460,34 @@ describe("ADR-0034 Amendment 8 — the requirements and agent-docs references wr
       const schema = schemaFor(root);
       const strategy = "snake_case" as const;
       for (const ui of [true, false]) {
-        // Through the door's facts, through the factory's options, and with no schema at all.
-        const door: DocsDoorFacts = { agent: { schema, columnNamingStrategy: strategy } };
+        // Through the run's facts, through the factory's options, and with no schema at all.
+        const door: DocsRunFacts = { apiSurfaces: [], modelPages: false, agentSchema: () => schema };
         const viaDoor = await run(root, builtinAgentDocs(), door, ui);
         expect(await run(root, refAgentDocs(), door, ui)).toEqual(viaDoor);
         const viaOptions = await run(root, builtinAgentDocs({ schema, columnNamingStrategy: strategy }), undefined, ui);
         expect(viaDoor).toEqual(viaOptions);
         expect(await run(root, refAgentDocs({ schema, columnNamingStrategy: strategy }), undefined, ui)).toEqual(viaOptions);
         expect(await run(root, refAgentDocs(), undefined, ui)).toEqual(await run(root, builtinAgentDocs(), undefined, ui));
-        // The options win over the door's facts in both: a direct caller states what it means.
+        // The options win over the run's facts in both: a direct caller states what it means.
         expect(await run(root, refAgentDocs({ subDir: "for-agents" }), door, ui)).toEqual(
           await run(root, builtinAgentDocs({ subDir: "for-agents" }), door, ui),
         );
       }
       // Vacuity: the schema page is written when a schema is given, the requirements page
       // when there is a ledger, the UI page when the run emits a UI tier.
-      const full = await run(root, refAgentDocs(), { agent: { schema, columnNamingStrategy: strategy } }, true);
+      const full = await run(root, refAgentDocs(), { apiSurfaces: [], modelPages: false, agentSchema: () => schema }, true);
       const written = paths(full);
       if (corpus.label.includes("fitness")) expect(written).toContain("agent/schema.md");
       expect(written.includes("agent/requirements.md")).toBe(corpus.ledger);
     });
   }
 
-  test("the marker `meta docs` reads: on the references, declared by the registry, absent from the built-ins", () => {
-    expect(refRequirements().docsSurface).toBe("requirements");
-    expect(refAgentDocs().docsSurface).toBe("agent");
-    expect(builtinRequirements().docsSurface).toBeUndefined();
-    expect(builtinAgentDocs().docsSurface).toBeUndefined();
-    expect(generatorRegistry.requirements?.docsSurface).toBe("requirements");
-    expect(generatorRegistry["agent-docs"]?.docsSurface).toBe("agent");
-    // The names are the built-ins', so a diagnostic names the same generator either way.
-    expect(refRequirements().name).toBe(builtinRequirements().name);
-    expect(refAgentDocs().name).toBe(builtinAgentDocs().name);
-  });
-
-  test("docsDoorGenerators: all four surfaces, one generator each", () => {
-    const model = refDocs();
-    const api = refApiDocs();
-    const requirements = refRequirements();
-    const agent = refAgentDocs();
-    expect(docsDoorGenerators([model, api, requirements, agent])).toEqual({ model, api, requirements, agent });
-    expect(docsDoorGenerators([agent])).toEqual({ agent });
-    expect(() => docsDoorGenerators([requirements, refRequirements()])).toThrow(
-      /lists two generators for the requirements surface \("requirements-file" and "requirements-file"\)/,
-    );
-    expect(() => docsDoorGenerators([builtinAgentDocs()])).toThrow(/lists "agent-docs", which carries no `docsSurface`/);
+  test("metamodel-docs — the same pages, under the directory asked for", async () => {
+    const root = await loadFiles([join(FIXTURE_DIR, "single-entity.json")]);
+    for (const opts of [undefined, { subDir: "" }, { subDir: "reference/metamodel/" }]) {
+      const a = await run(root, builtinMetamodelDocs(opts));
+      expect(await run(root, refMetamodelDocs(opts))).toEqual(a);
+      expect(paths(a)).toContain(`${opts?.subDir === "" ? "" : `${(opts?.subDir ?? "metamodel").replace(/\/$/, "")}/`}INDEX.md`);
+    }
   });
 });

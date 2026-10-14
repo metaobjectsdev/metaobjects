@@ -22,28 +22,16 @@ describe("meta init scaffolds metaobjects.config.ts", () => {
     expect(result.created).toContain("metaobjects.config.ts");
   });
 
-  test("does NOT route neutral docs through meta gen (ADR-0021 D1: meta docs is the single door)", async () => {
-    // docsFile() is the INTERNAL engine of the `meta docs` command, not a `meta gen`
-    // config generator. Scaffolding it into metaobjects.config.ts would resurrect the
-    // exact second-door the @deprecated note on docsFile() forbids. Discoverability of
-    // neutral docs is via the `meta docs` command (surfaced in the next-steps block),
-    // not the generators array.
+  // ADR-0034 Amendment 9: nothing is generated that the config does not declare, and
+  // `meta init` declares nothing, documentation included. It writes no `docs` block (the 1.0
+  // shape `meta gen` now refuses) and wires no docs generator; it says how to add one.
+  test("writes no docs block and wires no docs generator, and says how to add one", async () => {
     await init({ cwd: tmp, quiet: true });
     const body = readFileSync(join(tmp, "metaobjects.config.ts"), "utf-8");
-    expect(body).not.toContain("docsFile");
-    // ADR-0025: apiDocsFile() likewise is the INTERNAL engine of `meta docs`'s api
-    // surface, not a generators-array entry. The scaffold expresses docs intent via a
-    // `docs:` config block consumed by `meta docs`, not via a deprecated generator.
-    expect(body).not.toContain("apiDocsFile");
-    expect(body).toContain("docs:");
-    // ...and does NOT narrow `surfaces`. The resolver defaults to all four, and its
-    // own rationale is that `agent` must default ON "so the always-on agent-context
-    // pointer can name the files: a pointer to a page an adopter has to opt into is a
-    // pointer at nothing." The scaffold used to write ["model", "api"], switching off
-    // `requirements` and `agent` for every scaffolded project and defeating exactly
-    // that. Asserted as an ABSENCE because the correct scaffold says nothing here.
-    expect(body).not.toMatch(/^\s*surfaces:\s*\[/m);
-    expect(nextStepsBlock()).toContain("meta docs");
+    expect(body).not.toMatch(/^\s*docs:\s*\{/m);
+    expect(body).toMatch(/^\s*generators:\s*\[\],/m);
+    expect(body).toContain("targets: { docs: { outDir:");
+    expect(nextStepsBlock()).not.toContain("meta docs");
   });
 
   test("does not overwrite an existing metaobjects.config.ts on subsequent runs", async () => {
@@ -108,7 +96,7 @@ describe("meta init scaffolds the owned-codegen tier, empty (ADR-0034 Amendment 
     expect(entity).toContain("REFERENCE TEMPLATE");
     // It imports the stable engine, never the packaged factory it is a copy of: an owned
     // generator that called the package's would not own what it emits.
-    expect(entity).toContain('from "@metaobjectsdev/codegen-ts"');
+    expect(entity).toContain('from "@metaobjectsdev/codegen-ts/engine"');
     expect(entity).not.toContain("@metaobjectsdev/codegen-ts/generators");
 
     // A hand edit survives `meta init --force` — init has no business in this

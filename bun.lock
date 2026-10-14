@@ -182,6 +182,7 @@
       "dependencies": {
         "@biomejs/js-api": "^0.7.0",
         "@biomejs/wasm-nodejs": "^1.9.4",
+        "@metaobjectsdev/docs-site": "workspace:*",
         "@metaobjectsdev/metadata": "workspace:*",
         "@metaobjectsdev/render": "workspace:*",
         "@toon-format/toon": "^2.3.0",

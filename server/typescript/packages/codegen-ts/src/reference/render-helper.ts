@@ -38,7 +38,7 @@ import {
   type Generator,
   type GeneratorFactory,
   projectProvider,
-} from "@metaobjectsdev/codegen-ts";
+} from "@metaobjectsdev/codegen-ts/engine";
 import { renderRenderHelper } from "../templates/render-helper.js";
 
 export interface RenderHelperOpts {

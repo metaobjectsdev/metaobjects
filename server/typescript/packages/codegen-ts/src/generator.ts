@@ -1,8 +1,8 @@
 import type { ExposeOption } from "./routes-expose.js";
-import type { MetaObject, MetaRoot, TypeRegistry } from "@metaobjectsdev/metadata";
+import type { MetaDataTypeProvider, MetaObject, MetaRoot, TypeRegistry } from "@metaobjectsdev/metadata";
 import type { LibraryManifest } from "@metaobjectsdev/metadata/library";
 import type { RenderContext } from "./render-context.js";
-import type { DocsDoorFacts } from "./docs-door.js";
+import type { DocsRunFacts } from "./docs-run.js";
 import type { ResolvedGenConfig } from "./metaobjects-config.js";
 import type { OrphanPolicy } from "./reconcile-orphans.js";
 import { effectivePackage } from "./docs-paths.js";
@@ -73,6 +73,19 @@ export interface GenContext {
    */
   sourceFiles?: readonly string[];
   /**
+   * The collection's metadata source DIRECTORIES, with the directory of each dependency's
+   * artifact, filled by the runner from `RunGenOpts.sourceRoots`. For a generator that loads
+   * the model with a loader of its own, one page group per directory (`docsSiteFile()`).
+   * Undefined when the caller never supplied them.
+   */
+  sourceRoots?: readonly string[];
+  /**
+   * The project's own metamodel providers (`providers` in metaobjects.config.ts), for a
+   * generator that loads the model with a loader of its own, so it resolves the same
+   * vocabulary the run's model was loaded with. Undefined when the project declares none.
+   */
+  providers?: readonly MetaDataTypeProvider[];
+  /**
    * FR-043 §6 — the manifests of the libraries this project opted into, filled by the
    * runner from `RunGenOpts.libraries`.
    *
@@ -94,27 +107,21 @@ export interface GenContext {
    * `meta gen` it is `projectRoot`. Under `meta verify --codegen` the run writes into a
    * throwaway tree, `projectRoot` is that tree (import paths between an output directory
    * and the project are computed against it, so it has to mirror the layout), and this is
-   * the project the tree mirrors. Under `meta docs` and `meta verify --docs` it is the
-   * directory holding `metaobjects.config.ts`, which `--templates` does not move. Read files
-   * through this; compute output-relative paths against `projectRoot`. Undefined when the
-   * caller supplied neither root.
+   * the project the tree mirrors. Read files through this (a docs generator's template
+   * overrides included); compute output-relative paths against `projectRoot`. Undefined when
+   * the caller supplied neither root.
    */
   inputRoot?: string;
   /**
-   * What the docs door (`meta docs`, `meta verify --docs`) tells the generator it runs for a
-   * surface: where the api pages are, whether the model pages are emitted. Absent on a
-   * `meta gen` run and on a direct `.generate(ctx)` call, where a docs generator's own
-   * options decide instead. On the context rather than on `config` because it is a fact
-   * about the run's door, not something a project sets. See docs-door.ts.
+   * What the documentation pages in this generator's target must agree on, built by the
+   * runner from the generators the run declares (ADR-0034 Amendment 9): which api reference
+   * pages sit beside the model pages, whether the model pages are there to link back to, and
+   * the physical schema `agent/schema.md` describes. Absent on a direct `.generate(ctx)`
+   * call, where a docs generator's own options decide. See docs-run.ts.
    */
-  docsDoor?: DocsDoorFacts;
+  docs?: DocsRunFacts;
   warn: (msg: string) => void;
 }
-
-/** The `meta docs` surfaces an owned generator can take over (`Generator.docsSurface`): the
- *  per-object pages (`model`), the reference of the generated API (`api`), the requirement
- *  ledger (`requirements`) and the pages written for a coding agent (`agent`). */
-export type OwnedDocsSurface = "model" | "api" | "requirements" | "agent";
 
 export interface Generator {
   /** kebab-case identifier; surfaces in diagnostics + drift logs. */
@@ -142,24 +149,22 @@ export interface Generator {
    *  silently omitting the Hono CRUD registrars whenever the variant is wired. */
   emitsHonoRoutes?: boolean;
   /** Marks a generator that mounts the CRUD routes (`routesFile`, `routesFileHono`) and carries
-   *  the `expose` option it was built with. `meta docs` aggregates it across the suite
+   *  the `expose` option it was built with. The runner aggregates it across the suite
    *  (`runRoutesExpose`), per surface (a `emitsHonoRoutes` generator is the Hono one), so the API docs list the verbs each routes file actually mounts, not all five.
    *  Absent `expose` means every verb. A copy ejected before this marker existed needs
    *  `meta eject routes --force` (or the same one-line addition) to be honoured. */
   mountsRoutes?: { readonly expose?: ExposeOption };
-  /** Marks a generator that `meta docs` runs for one of its surfaces IN PLACE OF the
-   *  packaged one: `"model"` for the per-object pages and their index, `"api"` for the
-   *  reference of the generated API, `"requirements"` for the ledger and `"agent"` for the
-   *  pages an agent reads before it touches a tier. It is how an owned (ejected) docs
-   *  generator is reached:
-   *  list it in `docs: { generators: [...] }` in metaobjects.config.ts, and `meta docs` and
-   *  `meta verify --docs` read it there by this marker (`docsDoorGenerators`). It does not
-   *  go in the top-level `generators`: `meta gen` does not run documentation (ADR-0021 D1,
-   *  ADR-0025), and skips a generator carrying this marker with a warning that says where
-   *  it belongs. The packaged `docsFile()` / `apiDocsFile()` / `requirementsFile()` /
-   *  `agentDocsFile()` do not carry it: they are what `meta docs` runs when nothing is
-   *  listed, and need no listing. */
-  docsSurface?: OwnedDocsSurface;
+  /** Marks a generator that writes the per-object model pages and their index (`docsFile()`).
+   *  The runner reads it, per target, to tell an api reference generator in the same target
+   *  that there are model pages to link back to (`ctx.docs.modelPages`). It changes nothing
+   *  about whether or where this generator runs: the list decides that, as for every
+   *  generator (ADR-0034 Amendment 9). An owned copy keeps it. */
+  emitsModelDocs?: boolean;
+  /** Marks a generator that writes the api reference pages (`apiDocsFile()`), with the
+   *  directory under its target they go in. The runner reads it, per target, so the model
+   *  pages in the same target link to them (`ctx.docs.apiSurfaces`). Like `emitsModelDocs`,
+   *  a cross-link fact only. */
+  emitsApiDocs?: { readonly subDir: string };
   /** §A6 — marks the generator that emits the <Entity>Names artifact. The runner
    *  aggregates this across the suite into ResolvedGenConfig.includeNames, which the
    *  entity generator reads to decide whether it may reference those constants.

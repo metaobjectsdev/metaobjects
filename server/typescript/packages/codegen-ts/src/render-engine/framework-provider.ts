@@ -144,6 +144,19 @@ export function projectProvider(projectRoot?: string): Provider {
   ]);
 }
 
+/**
+ * The directory whose `templates/` a documentation generator reads page overrides from: the
+ * project (`ctx.inputRoot`, which is the real project under `meta verify --codegen` too), or
+ * `templates` resolved against it when the generator was given one.
+ */
+export function docsTemplateRoot(
+  ctx: { readonly inputRoot?: string; readonly projectRoot?: string },
+  templates?: string,
+): string {
+  const project = ctx.inputRoot ?? ctx.projectRoot ?? process.cwd();
+  return templates === undefined ? project : resolve(project, templates);
+}
+
 /** Exposed for tests that want to inspect the resolved framework templates
  *  directory (don't use outside tests). Resolved lazily so that merely
  *  importing this module never walks the filesystem or throws — tests always

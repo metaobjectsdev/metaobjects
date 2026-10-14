@@ -30,7 +30,7 @@ import {
   type GeneratorFactory,
   inboundTemplates,
   responseShape,
-} from "@metaobjectsdev/codegen-ts";
+} from "@metaobjectsdev/codegen-ts/engine";
 import { renderOutputPrompt } from "../templates/output-prompt.js";
 
 export interface OutputPromptOpts {

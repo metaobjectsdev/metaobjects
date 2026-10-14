@@ -8,7 +8,7 @@ import { type RenderContext } from "../render-context.js";
 import { crossEntitySpecifier } from "../import-path.js";
 import type { RelationEntry } from "../relation-resolver.js";
 import { effectivePackage } from "../docs-paths.js";
-import { tphStorageName } from "./zod-validators.js";
+import { tphStorageName } from "../tph.js";
 
 /**
  * Render the relations() block for one entity.

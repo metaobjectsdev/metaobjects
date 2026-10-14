@@ -43,7 +43,7 @@ import {
   templateSymbolBase,
   GENERATED_HEADER,
   GENERATED_EDIT_NOTE,
-} from "@metaobjectsdev/codegen-ts";
+} from "@metaobjectsdev/codegen-ts/engine";
 import {
   valueObjectImport,
   valueObjectImportLines,

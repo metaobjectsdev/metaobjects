@@ -32,13 +32,13 @@ import {
   namesRef,
   namesConstArg,
   effectivePackage,
-} from "@metaobjectsdev/codegen-ts";
+} from "@metaobjectsdev/codegen-ts/engine";
 import { renderHooksFile } from "../templates/hooks-file.js";
 import {
   entityMetaFileName,
   renderEntityMetaFile,
 } from "@metaobjectsdev/codegen-ts/templates/entity-meta-file";
-import { isTphSubtype } from "@metaobjectsdev/codegen-ts/templates/zod-validators";
+import { isTphSubtype } from "@metaobjectsdev/codegen-ts/engine";
 
 export interface TanstackQueryOpts {
   filter?: (entity: MetaObject) => boolean;

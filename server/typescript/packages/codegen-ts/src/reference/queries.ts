@@ -31,7 +31,7 @@
 // primitives below, or (with a globally-installed / linked CLI, where the project and
 // the CLI resolve ts-poet to different physical copies) every section renders
 // standalone with its own duplicate import header.
-import { code, joinCode, type Code, effectivePackage } from "@metaobjectsdev/codegen-ts";
+import { code, joinCode, type Code, effectivePackage } from "@metaobjectsdev/codegen-ts/engine";
 import type { MetaObject } from "@metaobjectsdev/metadata";
 import {
   perEntity,
@@ -48,7 +48,8 @@ import {
   GENERATED_HEADER,
   GENERATED_EDIT_NOTE,
   sidecarLine,
-} from "@metaobjectsdev/codegen-ts";
+  isTphSubtype,
+} from "@metaobjectsdev/codegen-ts/engine";
 import { renderQueriesFile } from "../templates/queries-file.js";
 import {
   renderFindByIdFn,
@@ -61,7 +62,7 @@ import {
   reverseFksFor,
 } from "../templates/queries.js";
 import { isTphDiscriminatorBase } from "../templates/tph-discriminator.js";
-import { isTphSubtype, hasAutoSetFields } from "../templates/zod-validators.js";
+import { hasAutoSetFields } from "../templates/zod-validators.js";
 
 // --- composition (OWNED for the common case) ---
 function renderQueries(obj: MetaObject, ctx: RenderContext): string {

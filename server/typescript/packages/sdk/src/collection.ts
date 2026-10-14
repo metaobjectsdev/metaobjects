@@ -62,7 +62,7 @@ export interface Collection {
    *  same canonical (content) order `files` uses. Derived from the DECLARED
    *  specs, not from the resolved files, so a source directory that legitimately
    *  holds no metadata still appears — a consumer listing "where this model
-   *  comes from" (`meta docs --site` groups its pages by source root) must not
+   *  comes from" (the docs site, `docsSiteFile()`, groups its pages by source root) must not
    *  silently lose a declared source because it happens to be empty today. */
   readonly sourceRoots: readonly string[];
   /** FR-023 — the project's OWN metadata files: `files` without the dependency
@@ -384,7 +384,7 @@ export async function resolveCollection(
     // list is a pure function of the source SET, exactly like `files`.
     // DECLARED sources only: a dependency's artifact is not a source root, and
     // listing one would put another project's tree in "where this model comes
-    // from" (`meta docs --site` groups its pages by these).
+    // from" (the docs site, `docsSiteFile()`, groups its pages by these).
     sourceRoots: [
       ...new Set(orderedPathSpecs(specs).map((spec) => resolveSpecPath(configDir, spec))),
     ],

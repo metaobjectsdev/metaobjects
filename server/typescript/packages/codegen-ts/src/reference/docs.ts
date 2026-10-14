@@ -2,22 +2,22 @@
 // Then import it LOCALLY in metaobjects.config.ts:
 //   import { docsFile } from "./codegen/generators/docs.js";
 //
-// RUNTIME: this file executes under whatever runs `meta docs`, and the published CLI's
+// RUNTIME: this file executes under whatever runs `meta gen`, and the published CLI's
 // shebang is `#!/usr/bin/env node` — so it runs under NODE even in a Bun project. Do not
 // reach for `Bun.*` globals here; they are undefined and take the whole run down with
 // `Bun is not defined`. Use `node:` builtins instead.
 // targets:       Markdown, with Mermaid for the diagrams. The pages import nothing.
-// use-when:      you want to change the model documentation `meta docs` writes: which
-//                objects and templates get a page, where the pages land, or how the
-//                overview page is laid out. `meta docs` writes these pages without this
-//                file; eject it only to change them. To change the WORDING of a page you
-//                need no generator at all: drop your own
-//                `templates/docs/entity-page.md.mustache` or
+// use-when:      you want to change the model documentation: which objects and templates
+//                get a page, where the pages land, or how the overview page is laid out.
+//                The packaged `docsFile()` writes these pages without this file; eject it
+//                only to change them. To change the WORDING of a page you need no generator
+//                at all: drop your own `templates/docs/entity-page.md.mustache` or
 //                `templates/docs/template-page.md.mustache` in the project root.
-// emits:         under `docs.outDir` (default ./docs/generated): README.md, the overview
-//                with the whole-model ER diagram and an index; <Object>.md per object,
-//                reports included; <Template>.md per top-level `template.*` node. Under
-//                `outputLayout: "package"` the pages fold under their package path.
+// emits:         into the `docs` target (`targets.docs.outDir`, e.g. ./docs/generated):
+//                README.md, the overview with the whole-model ER diagram and an index;
+//                <Object>.md per object, reports included; <Template>.md per top-level
+//                `template.*` node. Under `outputLayout: "package"` the pages fold under
+//                their package path.
 // customize:     which objects get a page (the `filter` option, and the two walks in
 //                `generate`), where a page lands (`docPageOutputPath`), which template a
 //                page renders (`ENTITY_PAGE_REF`, `TEMPLATE_PAGE_REF`) and the overview
@@ -26,15 +26,15 @@
 //                the page payloads, and `renderMermaidErBlock`, the ER diagram. The page
 //                templates (Mustache files) stay in the package; you override them by file
 //                as above.
-// composes-with: api-docs (each model page links to its api page, and back). `meta docs`
-//                tells both generators where the other's pages are, so the links agree.
+// composes-with: api-docs (each model page links to its api page, and back). The runner tells
+//                both generators where the other's pages are, from the generators the
+//                project lists in the same target (`ctx.docs`), so the links agree.
 //
-// HOW IT RUNS. `meta docs` runs it, so it is listed in the docs block of
-// metaobjects.config.ts, not among the generators `meta gen` runs:
-//   docs: { generators: [docsFile()] }
-// The `docsSurface` marker below says which surface it takes over: with it listed,
-// `meta docs` and `meta verify --docs` run THIS generator for the model surface in place of
-// the packaged one. Documentation has one door, so `meta gen` never runs it.
+// HOW IT RUNS. Like every generator: list it in `generators` in metaobjects.config.ts, with
+// a `docs` target declared, and `meta gen` writes the pages (`meta verify --codegen` checks
+// them). Nothing writes documentation that the list does not declare.
+//   targets: { docs: { outDir: "./docs/generated" } },
+//   generators: [docsFile(), ...]
 //
 // Everything below imports the engine from `@metaobjectsdev/codegen-ts` (the generator base, the
 // model walks, the naming tables), the node types and the template type name from
@@ -58,7 +58,11 @@ import {
   type Generator,
   type GeneratorFactory,
   type OutputLayout,
-} from "@metaobjectsdev/codegen-ts";
+  type ApiSurface,
+  apiLabel,
+  docsTemplateRoot,
+  DOCS_TARGET_NAME,
+} from "@metaobjectsdev/codegen-ts/engine";
 import { buildEntityDocData } from "../generators/docs-data-builder.js";
 import { buildTemplateDocData } from "../generators/template-doc-builder.js";
 import { renderDocPage } from "../render-engine/doc-page.js";
@@ -67,6 +71,14 @@ import { renderMermaidErBlock } from "../templates/mermaid-er.js";
 export interface DocsFileOpts {
   /** Which objects get a page. Templates are not objects and always get theirs. */
   filter?: (entity: MetaObject) => boolean;
+  /** Named output target. Default `"docs"`, which `targets` must declare. */
+  target?: string;
+  /** The api reference pages to link, `{ label | lang, subDir, baseUrl? }` each. Default: the
+   *  api pages the run writes to the same target. */
+  apiSurfaces?: Array<ApiSurface | { label: string; subDir: string; baseUrl?: string }>;
+  /** A directory whose `templates/` holds page overrides, relative to the project. Default:
+   *  the project itself. */
+  templates?: string;
 }
 
 // The overview page. GitHub (and most doc-site renderers) treat a folder's README.md as its
@@ -82,20 +94,29 @@ const TEMPLATE_PAGE_REF = "docs/template-page.md";
 export const docsFile = function docsFile(opts?: DocsFileOpts): Generator {
   const generator: Generator = {
     name: "docs-file",
-    // The surface this generator takes over when it is listed in `docs.generators`.
-    docsSurface: "model",
+    target: opts?.target ?? DOCS_TARGET_NAME,
+    // Tells an api reference generator in the same target that there are model pages to
+    // link back to.
+    emitsModelDocs: true,
     async generate(ctx) {
       if (!ctx.renderContext) {
-        throw new Error("docs-file: renderContext is required (provided by `meta docs`)");
+        throw new Error("docs-file: renderContext is required (provided by `meta gen`)");
       }
       const rc = ctx.renderContext;
-      const provider = projectProvider(ctx.projectRoot ?? process.cwd());
+      const provider = projectProvider(docsTemplateRoot(ctx, opts?.templates));
       const layout = ctx.config.outputLayout ?? "flat";
 
-      // The api surfaces emitted alongside, as `meta docs` reports them. One link per
-      // surface, computed from the FROM page's own path so it resolves in both layouts (or
-      // is absolute when the surface declares a `baseUrl`). None: the pages link to none.
-      const apiSurfaces = ctx.docsDoor?.apiSurfaces;
+      // The api surfaces to link: the option, or the api pages the run writes to this
+      // target. One link per surface, computed from the FROM page's own path so it resolves
+      // in both layouts (or is absolute when the surface declares a `baseUrl`). None: the
+      // pages link to none.
+      const apiSurfaces = opts?.apiSurfaces !== undefined
+        ? opts.apiSurfaces.map((s) => ({
+            label: "label" in s ? s.label : apiLabel(s.lang),
+            subDir: s.subDir,
+            ...(s.baseUrl !== undefined && { baseUrl: s.baseUrl }),
+          }))
+        : ctx.docs?.apiSurfaces;
       const apiRefsFor = (fromPath: string): Array<{ label: string; href: string }> | undefined =>
         apiSurfaces?.map((s) => ({ label: s.label, href: apiSurfaceHref(fromPath, s, fromPath) }));
 

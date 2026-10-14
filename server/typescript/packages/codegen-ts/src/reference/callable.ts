@@ -34,7 +34,7 @@ import {
   formatTs,
   entityOutputPath,
   effectivePackage,
-} from "@metaobjectsdev/codegen-ts";
+} from "@metaobjectsdev/codegen-ts/engine";
 import { isCallableEntity, renderCallableFile } from "../templates/callable-file.js";
 
 export interface CallableFileOpts {

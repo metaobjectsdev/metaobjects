@@ -52,7 +52,7 @@ import {
   type RequirementTestRenderer,
   type RequirementView,
   type ResolvedClaim,
-} from "@metaobjectsdev/codegen-ts";
+} from "@metaobjectsdev/codegen-ts/engine";
 import {
   REQUIREMENT_ATTR_COUNTEREXAMPLE,
   REQUIREMENT_ATTR_STATEMENT,

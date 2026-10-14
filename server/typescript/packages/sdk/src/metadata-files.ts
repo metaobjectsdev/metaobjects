@@ -70,7 +70,7 @@ const PENDING_DIR = "_pending";
  * That per-level rule is a contract, not an implementation detail. This is the
  * order production has always handed the loader, and declaration order survives
  * into generated output: `codegen-ts`'s barrel emits from `root.objects()`
- * order, and so do the shared `enums.ts`, `meta docs` page ordering and `meta
+ * order, and so do the shared `enums.ts`, the docs generators' page ordering and `meta
  * export`'s `canonicalSerialize` sibling order. A flat lexicographic sort of
  * absolute paths is NOT the same list — it disagrees whenever a subdirectory
  * name sorts before a sibling file (`common/` before `meta.users.json`) — so

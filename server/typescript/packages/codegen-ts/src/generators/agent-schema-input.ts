@@ -14,11 +14,12 @@
 // types below are structural on purpose: `migrate-ts`'s own `SchemaSnapshot`,
 // `TableDescriptor` and `ColumnDescriptor` satisfy them without codegen-ts taking a
 // dependency on that package (it has none today, and the docs surface is not a reason
-// to add one — `meta docs` in the CLI depends on both and is where they meet).
+// to add one — `meta gen` in the CLI depends on both and is where they meet, handing the
+// schema over on `ctx.docs.agentSchema`).
 //
-// ABSENT INPUT IS A SUPPORTED STATE, not a failure. `meta docs` runs without a gen
-// config, and a project with no dialect has no physical schema to describe; the surface
-// then emits nothing rather than a page full of unknowns.
+// ABSENT INPUT IS A SUPPORTED STATE, not a failure. A project with no dialect has no
+// physical schema to describe; the surface then emits nothing rather than a page full of
+// unknowns.
 
 /** A canonical SQL type as `migrate-ts` models it. Opaque here — only `columnType` reads it. */
 export interface SchemaColumnLike {

@@ -23,8 +23,8 @@
 //   requirements  ← `walkRequirements` + `requirementRows`, the same walk the ledger
 //                   surface and the generated test stubs are built on
 //
-// CONFIG-GATED, like the api surface. Physical names, the dialect and view dispatch all
-// depend on the gen config, so `meta docs` only selects this surface when it has one.
+// RUN-DEPENDENT, like the api reference. Physical names, the dialect and view dispatch all
+// depend on the gen config, which `meta gen` reads before it builds the schema.
 // The NEUTRAL model surface stays neutral (ADR-0020); this is a different surface with a
 // different contract, not a relaxation of that one.
 //
@@ -69,6 +69,7 @@ import { renderAgentSchemaPage } from "./agent-schema-page.js";
 import { renderAgentUiPage } from "./agent-ui-page.js";
 import { renderAgentRequirementsPage } from "./agent-requirements-page.js";
 import type { AgentSchemaInput } from "./agent-schema-input.js";
+import { DOCS_TARGET_NAME } from "../docs-run.js";
 
 /** All three pages live here, under the docs root. */
 const DEFAULT_AGENT_DIR = "agent";
@@ -76,15 +77,17 @@ const DEFAULT_AGENT_DIR = "agent";
 export interface AgentDocsFileOpts {
   /** Output prefix for the agent pages. Default `agent`. */
   subDir?: string;
-  /** Optional named output target (registry key). */
+  /** Named output target. Default `"docs"`, which `targets` must declare. */
   target?: string;
   /**
-   * The physical schema, with its resolvers injected by whoever owns them. ABSENT is a
-   * supported state — `meta docs` runs without a dialect, and a project with no physical
-   * schema gets no schema page rather than a page of unknowns.
+   * The physical schema, with its resolvers injected by whoever owns them. Default: the one
+   * `meta gen` builds with the project's dialect and column naming (`ctx.docs.agentSchema`).
+   * ABSENT both ways is a supported state: a project with no physical schema gets no schema
+   * page rather than a page of unknowns.
    */
   schema?: AgentSchemaInput;
-  /** The project's column naming strategy, for the field→column mapping. */
+  /** The project's column naming strategy, for the field→column mapping. Default: the
+   *  project's (`columnNamingStrategy` in metaobjects.config.ts). */
   columnNamingStrategy?: ColumnNamingStrategy;
 }
 
@@ -210,14 +213,15 @@ export const agentDocsFile = function agentDocsFile(opts?: AgentDocsFileOpts): G
 
   const generator: Generator = {
     name: "agent-docs",
+    target: opts?.target ?? DOCS_TARGET_NAME,
     generate(ctx) {
       const objects = ctx.loadedRoot.objects();
       const files: EmittedFile[] = [];
-      // What the docs door computes for this surface and hands over on the context, for a
-      // generator `meta docs` runs as listed (an owned copy is already constructed by then).
-      // Options win: they are what a direct caller of the factory states.
-      const schemaInput = opts?.schema ?? ctx.docsDoor?.agent?.schema;
-      const columnNamingStrategy = opts?.columnNamingStrategy ?? ctx.docsDoor?.agent?.columnNamingStrategy;
+      // What the run computes for this generator (docs-run.ts): the schema is built by the
+      // caller that owns the schema builder, on first ask. Options win: they are what a
+      // direct caller of the factory states.
+      const schemaInput = opts?.schema ?? ctx.docs?.agentSchema?.();
+      const columnNamingStrategy = opts?.columnNamingStrategy ?? ctx.renderContext?.columnNamingStrategy;
 
       // ---- schema.md
       if (schemaInput !== undefined) {
@@ -312,6 +316,5 @@ export const agentDocsFile = function agentDocsFile(opts?: AgentDocsFileOpts): G
       return files;
     },
   };
-  if (opts?.target) generator.target = opts.target;
   return generator;
 } as GeneratorFactory<AgentDocsFileOpts>;

@@ -39,7 +39,8 @@ import {
   VIEW_CURRENCY_ATTR_LOCALE,
   VIEW_CURRENCY_ATTR_LOCALE_DEFAULT,
 } from "@metaobjectsdev/metadata";
-import { enumValues, zodEnumExpr } from "../enum-meta.js";
+import { enumValues } from "../enum-meta.js";
+import { zodEnumExpr } from "./zod-enum.js";
 import { viewForContext } from "../view-context.js";
 import { ZOD_INET_EXPR } from "./net-regex.js";
 

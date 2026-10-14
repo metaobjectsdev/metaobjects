@@ -1,7 +1,7 @@
 /**
  * The metamodel reference, rendered into the site's own shell.
  *
- * `meta docs --metamodel` emits markdown — sixteen pages generated from the strict
+ * The `metamodel-docs` generator (`metamodelDocsFile()`) emits markdown — sixteen pages generated from the strict
  * registry, one per type family plus an index and the provider list. That markdown is the
  * canonical form and stays so; this turns it into pages that look like the rest of
  * metaobjects.dev.
@@ -10,12 +10,13 @@
  * same way it gets the snippet payload: built in this repo, carried by the release tag,
  * copied at deploy. That keeps the metaobjects clone in the deploy dependency-free, and it
  * means the rendering is previewable and testable locally rather than only observable
- * after a publish. It is also why `meta docs --metamodel --site` refuses instead of
- * growing an HTML renderer: putting a markdown dependency into a published package for one
+ * after a publish. It is also why the metamodel reference has no HTML generator of its
+ * own: putting a markdown dependency into a published package for one
  * surface is the cost this avoids, and `marked` stays a repo devDependency.
  */
 import { spawnSync } from "node:child_process";
-import { mkdirSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join, relative, dirname, resolve } from "node:path";
 import { marked } from "marked";
 
@@ -30,18 +31,42 @@ const REPO = resolve(import.meta.dirname, "../..");
  * must not have side effects; a shared function belongs in a module.
  *
  * Shelled out to the CLI's real entry point rather than importing the doc renderer,
- * because `--metamodel` is the surface an adopter runs and this must break when THAT
- * breaks. `bin/meta.ts` is the executable — `src/index.ts` is a module that exits 0
- * having done nothing, which is indistinguishable from success.
+ * because `meta gen` with `metamodelDocsFile()` is the surface an adopter runs and this
+ * must break when THAT breaks. `bin/meta.ts` is the executable — `src/index.ts` is a
+ * module that exits 0 having done nothing, which is indistinguishable from success.
+ *
+ * The run needs a project: a config listing the one generator, writing to `dir`, and one
+ * object, because a run whose model holds no object generates nothing.
  */
 export function generateMarkdown(dir: string): void {
   mkdirSync(dir, { recursive: true });
-  const r = spawnSync("bun", [
-    join(REPO, "server/typescript/packages/cli/bin/meta.ts"),
-    "docs", "--metamodel", "--out", dir,
-  ], { cwd: REPO, encoding: "utf8" });
-  if (r.status !== 0) {
-    throw new Error(`meta docs --metamodel failed (exit ${r.status}):\n${r.stderr || r.stdout}`);
+  const project = mkdtempSync(join(tmpdir(), "site-reference-"));
+  try {
+    mkdirSync(join(project, "metaobjects"), { recursive: true });
+    writeFileSync(
+      join(project, "metaobjects", "meta.json"),
+      JSON.stringify({ "metadata.root": { package: "reference", children: [{ "object.value": { name: "Placeholder" } }] } }),
+    );
+    writeFileSync(
+      join(project, "metaobjects.config.ts"),
+      `import { defineConfig } from "@metaobjectsdev/codegen-ts";
+import { metamodelDocsFile } from "@metaobjectsdev/codegen-ts/generators";
+export default defineConfig({
+  outDir: "generated",
+  targets: { docs: { outDir: ${JSON.stringify(resolve(dir))} } },
+  generators: [metamodelDocsFile({ subDir: "" })],
+});
+`,
+    );
+    const r = spawnSync("bun", [
+      join(REPO, "server/typescript/packages/cli/bin/meta.ts"),
+      "gen", "--cwd", project,
+    ], { cwd: REPO, encoding: "utf8" });
+    if (r.status !== 0) {
+      throw new Error(`meta gen (metamodelDocsFile) failed (exit ${r.status}):\n${r.stderr || r.stdout}`);
+    }
+  } finally {
+    rmSync(project, { recursive: true, force: true });
   }
 }
 
@@ -150,11 +175,11 @@ function shell(title: string, body: string, isIndex: boolean): string {
   <main class="reference">
     <p class="reference-breadcrumb">${isIndex
       // On the index only. `/reference/` is the METAMODEL — the vocabulary the loader
-      // accepts. `/reference/example/` is a real project documented by `meta docs`, which
+      // accepts. `/reference/example/` is a real project documented by `meta gen`, which
       // is the thing a self-referential metamodel page cannot demonstrate. Linked from
       // here because the example used to own the word "Reference" and someone following
       // an old link needs to land somewhere that explains the split.
-      ? `Metamodel reference · <a href="/reference/example/">see a real project documented by <code>meta docs</code></a>`
+      ? `Metamodel reference · <a href="/reference/example/">see a real project documented by <code>meta gen</code></a>`
       : `<a href="/reference/">Metamodel reference</a>`}</p>
 ${body}
   </main>
@@ -164,7 +189,7 @@ ${body}
         <strong>MetaObjects</strong> · <a href="https://github.com/metaobjectsdev/metaobjects">GitHub</a> · <a href="https://github.com/metaobjectsdev/metaobjects/blob/main/LICENSE">Apache 2.0</a> · <a href="https://github.com/metaobjectsdev/metaobjects/blob/main/spec/roadmap.md">Roadmap</a> · <a href="/llms.txt">llms.txt</a>
       </p>
       <p class="site-footer-meta">
-        Generated from the strict registry by <code>meta docs --metamodel</code>. Do not edit by hand.
+        Generated from the strict registry by <code>meta gen</code> (<code>metamodelDocsFile()</code>). Do not edit by hand.
       </p>
     </div>
   </footer>
@@ -174,7 +199,7 @@ ${body}
 }
 
 /**
- * Render a directory of `meta docs --metamodel` markdown into site pages.
+ * Render a directory of `metamodel-docs` markdown into site pages.
  *
  * @param mdDir directory holding `INDEX.md`, `providers.md` and `types/*.md`
  * @returns output-relative HTML path -> full page HTML
@@ -182,7 +207,7 @@ ${body}
 export function renderReference(mdDir: string): Record<string, string> {
   const files = markdownFiles(mdDir);
   if (files.length === 0) {
-    throw new Error(`site reference: no markdown under ${mdDir} — run \`meta docs --metamodel\` first`);
+    throw new Error(`site reference: no markdown under ${mdDir} — run \`meta gen\` with metamodelDocsFile() first`);
   }
   if (!files.includes(INDEX_SOURCE)) {
     throw new Error(`site reference: ${mdDir} has no ${INDEX_SOURCE}, so /reference/ would 404`);

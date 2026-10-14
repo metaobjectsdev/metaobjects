@@ -30,7 +30,7 @@ import {
   type GeneratorFactory,
   inboundTemplates,
   responseShape,
-} from "@metaobjectsdev/codegen-ts";
+} from "@metaobjectsdev/codegen-ts/engine";
 import { renderExtractor } from "../templates/extractor.js";
 
 export interface ExtractorOpts {

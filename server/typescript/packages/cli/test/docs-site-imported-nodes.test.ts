@@ -1,4 +1,4 @@
-// FR-023 — `meta docs --site` must resolve against the SAME loaded tree a
+// FR-023 — the docs site (`docsSiteFile()`, `meta docs --site` until 1.1.0) must resolve against the SAME loaded tree a
 // consumer's own metadata resolves against, including a dependency's
 // snapshot. `generateSite` (docs-site) runs an INDEPENDENT `loadModel` over
 // `sourceDirs` — it does not reuse the already-loaded `collection` root — and
@@ -8,7 +8,8 @@
 // `extends` an imported abstract (entities.md § extends) or `overlay: true`s
 // an imported node (abstracts-and-inheritance.md § the same rule across a
 // repository boundary) — the two constructs those very docs recommend — hits
-// `ERR_UNRESOLVED_SUPER` / `ERR_OVERLAY_NO_TARGET` and `--site` exits 1.
+// `ERR_UNRESOLVED_SUPER` / `ERR_OVERLAY_NO_TARGET` and the run fails. `meta gen` hands the
+// generator the dependency artifact's directory beside the source roots (`sourceRootsOf`).
 //
 // The scaffold mirrors gen-imported-nodes.test.ts: a consumer package `app`
 // depends on `acme-common`, a synced snapshot exporting an abstract
@@ -19,7 +20,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { METAMODEL_VERSION } from "@metaobjectsdev/metadata";
 import { sha256Integrity } from "@metaobjectsdev/sdk";
-import { docsCommand } from "../src/commands/docs.js";
+import { run } from "../src/index.js";
 
 const WORKSPACE_TMP = resolve(import.meta.dirname, "fixtures", "__tmp__");
 
@@ -138,6 +139,23 @@ function setupRepo(appFile: string): string {
   return root;
 }
 
+/** A config that lists only the docs site, into ./out-site. */
+function writeSiteConfig(root: string): void {
+  writeFileSync(
+    join(root, "metaobjects.config.ts"),
+    `import { defineConfig } from "@metaobjectsdev/codegen-ts";
+import { docsSiteFile } from "@metaobjectsdev/codegen-ts/generators";
+export default defineConfig({
+  outDir: "generated",
+  dialect: "sqlite",
+  targets: { docs: { outDir: "out-site" } },
+  generators: [docsSiteFile()],
+});
+`,
+    "utf8",
+  );
+}
+
 function writeAppFile(root: string, contents: string): void {
   writeFileSync(join(root, "metaobjects", "meta.app.json"), contents, "utf8");
 }
@@ -147,13 +165,14 @@ afterEach(() => {
   for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
 });
 
-describe("meta docs --site — resolves against a dependency's snapshot (FR-023)", () => {
+describe("meta gen with docsSiteFile() — resolves against a dependency's snapshot (FR-023)", () => {
   test("a consumer entity that `extends` an imported abstract renders instead of failing", async () => {
     const root = setupRepo(APP_EXTENDS);
     dirs.push(root);
     const out = join(root, "out-site");
+    writeSiteConfig(root);
 
-    const code = await docsCommand([root, "--site", "--out", out], root);
+    const code = await run(["gen", "--cwd", root]);
     expect(code).toBe(0);
     expect(existsSync(join(out, "site", "index.html"))).toBe(true);
   });
@@ -161,9 +180,13 @@ describe("meta docs --site — resolves against a dependency's snapshot (FR-023)
   test("a consumer file that `overlay: true`s an imported node renders instead of failing", async () => {
     const root = setupRepo(APP_OVERLAY);
     dirs.push(root);
+    // One object of the project's own as well: a run whose scope holds no object of its own
+    // generates nothing ("No entities to generate"), documentation included.
+    writeFileSync(join(root, "metaobjects", "meta.own.json"), APP_EXTENDS, "utf8");
     const out = join(root, "out-site");
+    writeSiteConfig(root);
 
-    const code = await docsCommand([root, "--site", "--out", out], root);
+    const code = await run(["gen", "--cwd", root]);
     expect(code).toBe(0);
     expect(existsSync(join(out, "site", "index.html"))).toBe(true);
   });

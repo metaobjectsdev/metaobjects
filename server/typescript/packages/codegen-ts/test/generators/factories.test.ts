@@ -165,8 +165,9 @@ describe("docsFile()", () => {
     expect(docsFile({ target: "docs" }).target).toBe("docs");
   });
 
-  test("target is undefined when unset", () => {
-    expect(docsFile().target).toBeUndefined();
+  // ADR-0034 Amendment 9: documentation goes to the `docs` target unless told otherwise.
+  test("target is the docs target when unset", () => {
+    expect(docsFile().target).toBe("docs");
   });
 });
 

@@ -26,7 +26,7 @@ import {
   hasGeneratedForm,
   withClientDirective,
   effectivePackage,
-} from "@metaobjectsdev/codegen-ts";
+} from "@metaobjectsdev/codegen-ts/engine";
 import { renderFormFile } from "../templates/form-file.js";
 
 export interface FormFileOpts {

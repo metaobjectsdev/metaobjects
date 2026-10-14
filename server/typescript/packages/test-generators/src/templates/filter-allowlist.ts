@@ -1,4 +1,4 @@
-import { code, type Code } from "@metaobjectsdev/codegen-ts";
+import { code, type Code } from "@metaobjectsdev/codegen-ts/engine";
 import { MetaField, MetaObject } from "@metaobjectsdev/metadata";
 import {
   FIELD_ATTR_FILTERABLE,
@@ -17,11 +17,11 @@ import {
   FIELD_ATTR_LOCAL_TIME,
   opsForField,
 } from "@metaobjectsdev/metadata";
-import { enumValues } from "@metaobjectsdev/codegen-ts";
+import { enumValues } from "@metaobjectsdev/codegen-ts/engine";
 import { sortableFields, declaredSortDefaultOrder } from "./filter-shared.js";
-import type { RenderContext } from "@metaobjectsdev/codegen-ts";
-import { httpRuntimeSpecifier } from "@metaobjectsdev/codegen-ts";
-import { effectivePackage } from "@metaobjectsdev/codegen-ts";
+import type { RenderContext } from "@metaobjectsdev/codegen-ts/engine";
+import { httpRuntimeSpecifier } from "@metaobjectsdev/codegen-ts/engine";
+import { effectivePackage } from "@metaobjectsdev/codegen-ts/engine";
 
 /**
  * Where the allowlist TYPES are imported from — the package, unless an owned generator

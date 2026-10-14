@@ -1,7 +1,7 @@
 import type { MetaObject } from "@metaobjectsdev/metadata";
 import { perEntity, type Generator, type GeneratorFactory } from "../generator.js";
 import { renderQueriesFile } from "../templates/queries-file.js";
-import { isTphSubtype } from "../templates/zod-validators.js";
+import { isTphSubtype } from "../tph.js";
 import { servesReadApi } from "../api-surface.js";
 import { formatTs } from "../format.js";
 import { entityOutputPath } from "../import-path.js";

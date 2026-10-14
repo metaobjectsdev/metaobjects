@@ -41,7 +41,7 @@
 // primitives below, or (with a globally-installed / linked CLI, where the project and
 // the CLI resolve ts-poet to different physical copies) every section renders
 // standalone with its own duplicate import header.
-import { joinCode, type Code, effectivePackage } from "@metaobjectsdev/codegen-ts";
+import { joinCode, type Code, effectivePackage } from "@metaobjectsdev/codegen-ts/engine";
 import type { MetaObject } from "@metaobjectsdev/metadata";
 import {
   perEntity,
@@ -62,7 +62,8 @@ import {
   GENERATED_HEADER,
   GENERATED_EDIT_NOTE,
   sidecarLine,
-} from "@metaobjectsdev/codegen-ts";
+  isTphSubtype,
+} from "@metaobjectsdev/codegen-ts/engine";
 import { renderDrizzleSchema } from "../templates/drizzle-schema.js";
 import { renderEntityConstants } from "../templates/entity-constants.js";
 import { renderEntityFile } from "../templates/entity-file.js";
@@ -76,7 +77,7 @@ import {
   isTphDiscriminatorBase,
 } from "../templates/tph-discriminator.js";
 import { renderValueObjectFile } from "../templates/value-object-file.js";
-import { renderZodValidators, isTphSubtype } from "../templates/zod-validators.js";
+import { renderZodValidators } from "../templates/zod-validators.js";
 
 export interface RenderEntityOpts {
   readonly allowlists?: boolean;

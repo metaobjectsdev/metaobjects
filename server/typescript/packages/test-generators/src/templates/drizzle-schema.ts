@@ -2,7 +2,7 @@
 // with FK .references() on FK columns derived from relationship children,
 // plus the relations() block auto-emitted at the end.
 
-import { code, imp, joinCode, type Code } from "@metaobjectsdev/codegen-ts";
+import { code, imp, joinCode, type Code } from "@metaobjectsdev/codegen-ts/engine";
 import { MetaObject, MetaField, MetaIndex, isMetaObject, stripPackage } from "@metaobjectsdev/metadata";
 import {
   IDENTITY_ATTR_FIELDS, IDENTITY_ATTR_GENERATION,
@@ -13,24 +13,24 @@ import {
   FIELD_SUBTYPE_TIMESTAMP,
   FIELD_SUBTYPE_DATE,
 } from "@metaobjectsdev/metadata";
-import { fieldDeclaringPackage, type RenderContext } from "@metaobjectsdev/codegen-ts";
-import { crossEntitySpecifier, valueObjectModuleSpecifier } from "@metaobjectsdev/codegen-ts";
+import { fieldDeclaringPackage, type RenderContext } from "@metaobjectsdev/codegen-ts/engine";
+import { crossEntitySpecifier, valueObjectModuleSpecifier } from "@metaobjectsdev/codegen-ts/engine";
 import {
   mapColumnType, PG_IDENTITY_CAPABLE_FNS,
   type ColumnSpec, type EnumIntCustomType,
-} from "@metaobjectsdev/codegen-ts";
-import { tableNameFromEntity } from "@metaobjectsdev/codegen-ts";
-import { dialectModule } from "@metaobjectsdev/codegen-ts";
+} from "@metaobjectsdev/codegen-ts/engine";
+import { tableNameFromEntity } from "@metaobjectsdev/codegen-ts/engine";
+import { dialectModule } from "@metaobjectsdev/codegen-ts/engine";
 import {
   namesRef, physicalNameExpr, sourceSchemaExpr, indexNameExpr, columnExpr,
-} from "@metaobjectsdev/codegen-ts";
+} from "@metaobjectsdev/codegen-ts/engine";
 import { resolveTableSchema } from "@metaobjectsdev/metadata";
 import { renderEnumIntCustomType } from "./enum-int-codec.js";
 import { renderRelationsBlock } from "./relations-block.js";
 import { renderDocsFor } from "./jsdoc.js";
 import { collectTphSubtypeFields, tphConcreteSubtypes } from "./tph-discriminator.js";
-import { tphStorageObject } from "./zod-validators.js";
-import { effectivePackage } from "@metaobjectsdev/codegen-ts";
+import { tphStorageObject } from "@metaobjectsdev/codegen-ts/engine";
+import { effectivePackage } from "@metaobjectsdev/codegen-ts/engine";
 
 /**
  * Render the Drizzle table definition for one entity, including:

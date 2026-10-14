@@ -32,15 +32,12 @@ export const REFERENCE_GENERATOR_NAMES = [
   // is published, with the artifact builder (`buildSharedModel`, `renderSharedModelFiles`)
   // handed over beside it. A consumer's `meta deps sync` verifies what it publishes.
   "shared-model",
-  // The docs tier (ADR-0034 Amendment 7). `docs` and `api-docs` are run by `meta docs`, which
-  // reads an owned copy out of `docs: { generators: [...] }` by its `docsSurface` marker. The
-  // generator decides which nodes get a page, where it lands and how the index is laid out;
-  // the page payloads and renderers are handed over beside it.
-  "docs", "api-docs",
-  // The other two surfaces `meta docs` runs (ADR-0034 Amendment 8): the requirement ledger
-  // and the pages written for a coding agent. Listed in `docs: { generators: [...] }` the
-  // same way, and read by their `docsSurface` marker.
-  "requirements", "agent-docs",
+  // The documentation generators (ADR-0034 Amendments 7 to 9). Each decides which nodes get a
+  // page, where it lands and how the index is laid out; the page payloads and renderers are
+  // handed over beside it. They run like every other generator: listed in `generators`,
+  // written by `meta gen` into the `docs` target. (`docs-site` has no reference: its builder
+  // stays packaged, and `meta eject docs-site` copies the site's templates and assets.)
+  "docs", "api-docs", "requirements", "agent-docs", "metamodel-docs",
 ] as const;
 export type ReferenceGeneratorName = (typeof REFERENCE_GENERATOR_NAMES)[number];
 

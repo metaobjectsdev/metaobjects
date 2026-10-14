@@ -10,7 +10,7 @@ import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, wr
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import ts from "typescript";
-import { ENGINE_MODULES } from "@metaobjectsdev/codegen-ts";
+import { ENGINE_MODULES } from "@metaobjectsdev/codegen-ts/engine";
 import {
   ejectTemplates,
   importRefs,
@@ -214,12 +214,12 @@ describe("templateClosure — what is copied, where, and what each copy imports"
     expect(files["codegen/generators/gen.ts"]).toBe(
       readFileSync(join(root, "core/src/reference/gen.ts"), "utf8").replace("../cube/c.js", "../templates/cube/c.js"),
     );
-    // An engine module → the package entry; ts-poet → the package's own, never a second copy;
+    // An engine module → the engine entry; ts-poet → the package's own, never a second copy;
     // a sibling stays a sibling.
     expect(files["codegen/templates/a.ts"]).toBe(
       [
-        'import { code } from "@metaobjectsdev/codegen-ts";',
-        'import { n } from "@metaobjectsdev/codegen-ts";',
+        'import { code } from "@metaobjectsdev/codegen-ts/engine";',
+        'import { n } from "@metaobjectsdev/codegen-ts/engine";',
         'import { b } from "./b.js";',
         "export const renderA = [code, n, b];",
         "",

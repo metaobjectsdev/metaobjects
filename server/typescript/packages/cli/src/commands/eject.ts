@@ -37,13 +37,13 @@ import {
   templateCopyStatus, templateDiffCommand, type TemplateEjectResult, type TemplateFileResult,
 } from "../lib/template-eject.js";
 import { HTTP_RUNTIME_PACKAGE, OWNED_RUNTIME_DIR } from "@metaobjectsdev/codegen-ts";
-import type { GeneratorRegistryEntry } from "@metaobjectsdev/codegen-ts";
 import { emitStructured, type OutputFormat } from "../lib/format.js";
 import {
   ejectLibrary, ejectableLibraryNames, isLibraryName, libraryStaleness,
   type LibraryEjectResult,
 } from "../lib/library-eject.js";
 import { describeError } from "../lib/error-text.js";
+import { DOCS_SITE_NAME, ejectDocsSite, type DocsSiteFileResult } from "../lib/docs-site-eject.js";
 
 // Mirrors `OWNED_GENERATORS_DIR` in init.ts's `writeOwnedGenerators` — same directory,
 // same never-clobber-without-consent contract. Kept as its own local constant rather
@@ -120,11 +120,10 @@ function extractExportName(importLine: string, name: string): string {
 
 // The CALL a template's header documents, when it is not the bare `<export>()`. A factory
 // that cannot be called without options says so where it says how to import it
-// (`//   generators: [sharedModelFile({ name, include })]`), and a docs generator shows the
-// docs block it is listed in (`//   docs: { generators: [docsFile()] }`). Read from the
-// header for the reason the import line is: the template is the one thing that knows, and
-// the catalog deliberately does not derive a call from an options summary.
-const HEADER_ENTRY_RE = /^\/\/\s+(?:docs: \{ )?generators: \[(\w+\(.*\))\](?: \})?,?\s*$/m;
+// (`//   generators: [sharedModelFile({ name, include })]`). Read from the header for the
+// reason the import line is: the template is the one thing that knows, and the catalog
+// deliberately does not derive a call from an options summary.
+const HEADER_ENTRY_RE = /^\/\/\s+generators: \[(\w+\(.*\))\],?\s*$/m;
 
 /** The call to wire: the header's, when it documents one for this template's own export. */
 function extractEntry(templateSource: string, exportName: string): string {
@@ -511,6 +510,11 @@ async function listOutput(cwd: string): Promise<string> {
   }
   lines.push(...(await runtimeCopyLines(cwd)));
   lines.push(...(await templateCopyLines(cwd)));
+  // The docs site's theme: not a generator copy (its builder stays packaged), but a name
+  // `meta eject` takes all the same.
+  lines.push("The docs site's theme (its templates and assets, into codegen/docs-site/):");
+  lines.push(`  ${DOCS_SITE_NAME}`);
+  lines.push("");
   // FR-043 — the shipped libraries, and how far this project's copies have drifted.
   lines.push("Shipped libraries (copy one into your own sources and own it):");
   for (const name of ejectableLibraryNames()) lines.push(`  ${name}`);
@@ -558,19 +562,12 @@ async function listOutput(cwd: string): Promise<string> {
 // ---------------------------------------------------------------------------
 
 /**
- * Where an ejected generator's entry goes, and which command then runs it.
- *
- *   gen        the top-level `generators`, run by `meta gen` — every generator but two.
- *   docs-door  `docs: { generators: [...] }`, run by `meta docs` (`docs`, `api-docs`).
+ * The entry an ejected generator is wired by. Every generator, documentation included, goes
+ * in the top-level `generators` and is run by `meta gen` (ADR-0034 Amendment 9).
  */
 interface EjectWiring {
-  kind: "gen" | "docs-door";
   /** The call, with the options the factory cannot be called without. */
   entry: string;
-}
-
-function wiringFor(entry: GeneratorRegistryEntry | undefined, call: string): EjectWiring {
-  return { kind: entry?.docsSurface !== undefined ? "docs-door" : "gen", entry: call };
 }
 
 /** One row of the `--format json` payload. */
@@ -578,11 +575,9 @@ interface EjectedRow {
   name: string;
   path: string;
   status: EjectResult["status"];
-  /** The two edits an adopter makes in `metaobjects.config.ts`. `into` is present when the
-   *  entry does NOT go in the top-level `generators`: an owned docs generator (`docs`,
-   *  `api-docs`) is listed in the docs door's own block, and `into` names that key. Such a
-   *  copy is run by `meta docs` and checked by `meta verify --docs`, not by `meta gen`. */
-  wire: { import: string; entry: string; into?: "docs.generators" };
+  /** The two edits an adopter makes in `metaobjects.config.ts`: the import, and the entry in
+   *  `generators`. */
+  wire: { import: string; entry: string };
   requires: readonly string[];
   /** The adapter source copied beside it (ADR-0034 Amendment 3). Absent when none. */
   runtime?: RuntimeFileResult[];
@@ -597,6 +592,22 @@ interface EjectPayload {
   config: { keys: string[] };
   /** FR-043 — libraries ejected in this call. Absent when none were. */
   libraries?: LibraryEjectResult[];
+  /** `meta eject docs-site`: the site's templates and assets. Absent when not asked for. */
+  docsSite?: DocsSiteFileResult[];
+}
+
+/** The text report for `meta eject docs-site`. */
+function reportDocsSite(files: readonly DocsSiteFileResult[]): void {
+  const written = files.filter((f) => f.status !== "preserved").length;
+  log.info(
+    `Ejected the docs-site theme -> codegen/docs-site/: ${written} file(s) written, ` +
+      `${files.length - written} already there and kept (--force replaces them).`,
+  );
+  log.info(
+    "  docsSiteFile() reads these in place of the bundled templates and assets; edit them to own " +
+      "the site's look. The site builder stays in the package. Wire the generator, if you have " +
+      "not: `docsSiteFile()` in `generators`, with a `docs` target.",
+  );
 }
 
 /** The text report for one ejected library. */
@@ -644,7 +655,7 @@ function reportLibrary(result: LibraryEjectResult): void {
  */
 
 function unknownNames(names: readonly string[]): string[] {
-  return names.filter((n) => resolveSource(n) === undefined && !isLibraryName(n));
+  return names.filter((n) => resolveSource(n) === undefined && !isLibraryName(n) && n !== DOCS_SITE_NAME);
 }
 
 /** Print the per-name text report — every branch below predates this command taking
@@ -707,20 +718,7 @@ function reportOne(result: EjectResult, name: string, wiring: EjectWiring): void
     log.info(`Ejected "${name}" -> ${result.path}. You own it now (ADR-0034 scaffold-and-own).`);
   }
 
-  if (wiring.kind === "docs-door") {
-    // A docs generator is the docs door's, so its wiring is stated in that door's terms
-    // and nowhere else: the `docs` block of the config, and the command that reads it.
-    // Sending its owner to the array `meta gen` runs would end in a skipped generator and
-    // a `meta docs` that still runs the packaged one.
-    log.info("`meta docs` runs this generator, in place of the packaged one. In metaobjects.config.ts:");
-    log.info(`  ${result.importLine}`);
-    log.info(`  docs: { generators: [${wiring.entry}] }`);
-    log.info(
-      "  If the `docs` block already lists docs generators, add this entry to that list. " +
-      "`meta verify --docs` then checks the committed pages against your copy. " +
-      "Run `meta docs` to write them.",
-    );
-  } else {
+  {
     // REPLACE, never "paste". A generator reaches `generators: [...]` under ONE binding,
     // so a reader told to "paste" gets a duplicate identifier at best — and at worst
     // deletes nothing, keeps `formFile()` in the array bound to the PACKAGE import, and
@@ -865,8 +863,14 @@ export async function ejectCommand(
   // ADR-0034 Amendment 3: the generators whose adapter source was copied, and what it imports.
   const runtimeGenerators = new Set<string>();
   const runtimePackages = new Set<string>();
+  let docsSite: DocsSiteFileResult[] | undefined;
   try {
     for (const name of flags.names) {
+      if (name === DOCS_SITE_NAME) {
+        docsSite = await ejectDocsSite(cwd, flags.force);
+        if (fmt === "text") reportDocsSite(docsSite);
+        continue;
+      }
       if (isLibraryName(name)) {
         const lib = await ejectLibrary({ cwd, name, force: flags.force });
         libraries.push(lib);
@@ -883,17 +887,12 @@ export async function ejectCommand(
         for (const p of result.runtime.packages) runtimePackages.add(p);
       }
       const catalogEntry = catalog[name];
-      const wiring = wiringFor(catalogEntry, result.entry);
-      const docsDoor = wiring.kind === "docs-door";
+      const wiring: EjectWiring = { entry: result.entry };
       rows.push({
         name,
         path: result.path,
         status: result.status,
-        wire: {
-          import: result.importLine,
-          entry: wiring.entry,
-          ...(docsDoor ? { into: "docs.generators" as const } : {}),
-        },
+        wire: { import: result.importLine, entry: wiring.entry },
         requires: catalogEntry?.requires ?? [],
         ...(result.runtime !== undefined ? { runtime: result.runtime.files } : {}),
         ...(result.templates !== undefined ? { templates: result.templates.files } : {}),
@@ -913,7 +912,7 @@ export async function ejectCommand(
   // names, so a summary built from the catalog alone printed a line that omitted a
   // package each per-file note had just asked for.
   const entries = flags.names
-    .filter((n) => !isLibraryName(n))
+    .filter((n) => !isLibraryName(n) && n !== DOCS_SITE_NAME)
     .map((n) => catalog[n])
     .filter((e) => e !== undefined);
   // The copied adapter source imports its own dependencies (qs, the framework, the core
@@ -957,6 +956,7 @@ export async function ejectCommand(
       install,
       config: { keys: configKeys },
       ...(libraries.length > 0 ? { libraries } : {}),
+      ...(docsSite !== undefined ? { docsSite } : {}),
     };
     emitStructured(payload, fmt);
   }

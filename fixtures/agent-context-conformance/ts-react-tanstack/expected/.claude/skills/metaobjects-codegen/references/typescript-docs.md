@@ -1,72 +1,69 @@
-# TypeScript docs — `meta docs`
+# TypeScript docs — generator entries, not a separate command
 
 > Part of the `metaobjects-codegen` skill's TypeScript reference. Read it when generating or wiring documentation.
 
 ## Contents
-- Never wire `docsFile()` or `apiDocsFile()` into `generators`
-- An owned docs generator goes in `docs: { generators: [...] }`, never in `generators`
+- Six docs factories, each one more entry in `generators`
+- Give them a `docs` target
+- An owned docs generator goes in `generators`, like any other owned copy
 - There is no `mermaidErDiagram()` generator
 - Before calling any generated code, read `./docs/api/AGENT-API.md`
 - Ejecting routes hands over the adapter too
 - Wire a generator only for output you consume, and narrow it with its `filter`
 
-Documentation is NOT a `meta gen` generator. The single door is the `meta docs`
-command, which emits three cross-linked **surfaces** under one output dir (default
-`./docs`):
+**Documentation is `meta gen` generators — there is no separate `meta docs` command and
+no `docs` config block** (both removed in 1.1.0, ADR-0034 Amendment 9: one way to
+generate, docs included). Each factory is an ordinary entry in `generators`, from
+`@metaobjectsdev/codegen-ts/generators`:
 
-- **model surface** (`./docs/<Entity>.md`, `./docs/<Template>.md`) — the neutral
-  metadata reference: one page per entity and per template, including the linked
-  template-source section.
-- **api surface** (`./docs/api/<Entity>.md`, `./docs/api/README.md`,
-  `./docs/api/AGENT-API.md`) — the SDK/API reference: the concrete imports,
-  function signatures, payload field shapes, and runnable examples for *this*
-  project's generated code.
-- **requirements surface** (`./docs/requirements.md`, `./docs/requirements.toon`) —
-  the declared `requirement.*` ledger as documentation, with each entry headed by its
-  dotted path and its `title` where it has one, and each entity page naming the
-  requirements that claim it. Metadata-alone like the model surface, so it needs no
-  gen config. **On by default since 0.24.0** — a project declaring no `requirement.*`
-  nodes writes no requirements file and the run says nothing about the surface at all,
-  deliberately: reporting "0 requirement pages" would advertise a surface that never ran.
+| Factory | Registry name | Writes |
+|---|---|---|
+| `docsFile()` | `docs` | the neutral model surface — one page per entity and per template (`<Entity>.md`, `<Template>.md`), plus an overview with the whole-model ER diagram. Options: `apiSurfaces`, `templates`. |
+| `apiDocsFile()` | `api-docs` | the api reference — `api/<Entity>.md`, `api/README.md`, `api/AGENT-API.md`: the concrete imports, signatures, payload field shapes and runnable examples for THIS project's generated code. Options: `subDir` (default `api`), `modelBaseUrl`. |
+| `requirementsFile()` | `requirements` | the declared `requirement.*` ledger, each entry headed by its dotted path and `title`. Writes nothing for a model with no `requirement.*` node. |
+| `agentDocsFile()` | `agent-docs` | `agent/schema.md`, `agent/ui.md` (only when the run also lists a client-tier generator) and `agent/requirements.md` — the three `agent/` pages the always-on pointer reads before touching a tier. |
+| `metamodelDocsFile()` | `metamodel-docs` | the built-in vocabulary reference, under `metamodel/` (was `meta docs --metamodel`). |
+| `docsSiteFile()` | `docs-site` | an HTML site under `site/` (was `meta docs --site`). Option: `prompts`. `meta eject docs-site` copies its templates and assets to `codegen/docs-site/` (was `meta docs --scaffold-site`). |
 
-```bash
-npx meta docs                     # all three → ./docs (model) + ./docs/api + ./docs/requirements.*
-npx meta docs --model             # model surface only
-npx meta docs --api               # api surface only
-npx meta docs --requirements      # requirement ledger only
-npx meta docs --out ./site-docs   # write under a different root
+```ts
+import { defineConfig } from "@metaobjectsdev/cli";
+import {
+  agentDocsFile, apiDocsFile, docsFile, entityFile, requirementsFile, routesFile,
+} from "@metaobjectsdev/codegen-ts/generators";
+
+export default defineConfig({
+  outDir: "src/generated",
+  targets: { docs: { outDir: "./docs/generated" } },
+  generators: [entityFile(), routesFile(), docsFile(), apiDocsFile(), requirementsFile(), agentDocsFile()],
+});
 ```
 
-Other flags: `--layout flat|package`, `--base-url <url>`. Configure defaults in a
-`docs:` block in `metaobjects.config.ts` (`outDir`, `layout`, `baseUrl`,
-`surfaces`); CLI flags override it. The api surface needs the gen config
-(it documents what the codegen produced); with no config it is skipped with a note,
-and the model surface still emits from metadata alone. A config that exists but fails to
-load stops `meta docs` (the load error, exit 2, nothing written), as it stops `meta gen`.
+```bash
+npx meta gen                                                     # runs every listed generator, docs included
+npx meta gen --generators docs,api-docs,requirements,agent-docs  # documentation only
+```
 
-**Never wire `docsFile()` or `apiDocsFile()` into `generators`.** They are the engines
-behind `meta docs`, so `meta gen` warns about each one it finds in the suite and skips it:
-no docs are written by that run. The warning is on stderr, and in a structured run
-(`--format json|toon`, the default on a pipe) it is in the result's `warnings[]` with a
-`meta docs` next step in `help[]`. `meta gen --list` marks both rows ``run by `meta docs` ``
-(`door: "meta docs"` in `--format json`) and `--probe` gives them no file count.
-`meta verify` reports the wiring as an advisory row, rule `doc-generator-in-gen`. Remove
-the entry and run `meta docs`.
+**Give docs factories a `docs` target.** Each defaults to the target named `docs`
+(`targets.docs.outDir`) unless you pass `target`; a run that lists one while `targets` has
+no `docs` entry is refused, naming the generator — documentation is never written into the
+code's output directory by default.
 
-**An owned docs generator goes in `docs: { generators: [...] }`, never in `generators`.**
-`meta eject docs` (or `api-docs`) copies the generator and prints that wiring; `meta docs`
-and `meta verify --docs` then run the copy in place of the packaged one. Under
-`generators` it is skipped like the packaged one, and the warning, the `help[]` next step
-and the `doc-generator-in-gen` advisory all say to move it, not to remove it. Listed in
-the docs block, its `meta gen --list` row reads ``WIRED in `docs.generators` ``
-(`project.wiredInDocsDoor` in `--format json`).
+`--generators <names>` narrows a run to entries `generators` already declares, by registry
+name (`meta gen --list` prints them); it never adds one, and naming an entry the config
+does not declare is refused. A config still carrying a 1.0 `docs: { ... }` block fails
+`meta gen` and `meta verify --codegen` before writing anything, naming the block. Full
+before/after and the flag-to-option table: `docs/features/migrations/docs-are-generators.md`,
+section "TypeScript".
 
-**There is no `mermaidErDiagram()` generator.** 1.1 removed it: `meta docs` draws the ER
-diagram on its overview page and on each entity's page with nothing wired. A config that
-still imports it, or names `"mermaid-er"`, fails with a message that says so; delete the
-entry and run `meta docs`. The stable name `"docs"` written as a string in `generators`
-is refused as well, so `meta gen` fails on it. `meta verify` reports both names as rule
-`doc-generator-refused-by-gen`.
+**An owned docs generator goes in `generators`, like any other owned copy.** `meta eject
+docs` (or `api-docs`, `requirements`, `agent-docs`, `metamodel-docs`) copies the generator
+and prints the import and the entry to add to `generators` — there is no separate
+`docs: { generators: [...] }` block to put it in any more.
+
+**There is no `mermaidErDiagram()` generator.** `docsFile()` draws the ER diagram on its
+overview page and on each entity's page with nothing else wired. A config that still
+imports it, or names `"mermaid-er"`, fails with a message that says so; delete the entry
+and run `meta gen`.
 
 **Before calling any generated code, read `./docs/api/AGENT-API.md`** — it has the
 exact imports, signatures, payload field shapes, and runnable examples for this

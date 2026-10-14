@@ -49,7 +49,7 @@ describe("resolveGenerators (registry string resolution)", () => {
     expect(gens[1]).toBe(factory);
   });
 
-  test("unknown name → error listing available native names", () => {
+  test("unknown name → error listing the available names", () => {
     expect(() => resolveGenerators(["not-a-generator"]))
       .toThrow(/unknown generator "not-a-generator"/);
     // Lists native names so the user can correct it.
@@ -59,22 +59,26 @@ describe("resolveGenerators (registry string resolution)", () => {
       const msg = (err as Error).message;
       expect(msg).toContain("entity");
       expect(msg).toContain("routes");
+      // every registered name is selectable, the documentation generators included
+      expect(msg).toContain("api-docs");
+      expect(msg).toContain("metamodel-docs");
       // a removed name is NOT advertised as selectable
       expect(msg).not.toContain("mermaid-er");
-      // ...and neither is the native generator `meta gen` skips.
-      expect(msg).not.toContain("api-docs");
     }
   });
 
-  test('neutral name "docs" → "owned by meta docs" error', () => {
-    expect(() => resolveGenerators(["docs"]))
-      .toThrow(/generator "docs" is neutral \(owned by 'meta docs'\); not selectable in the gen suite/);
+  // ADR-0034 Amendment 9: documentation is a generator like any other, so a neutral name
+  // resolves, and writes to the `docs` target.
+  test('neutral name "docs" resolves to the docs generator, writing to the docs target', () => {
+    const [docs] = resolveGenerators(["docs"]);
+    expect(docs?.name).toBe("docs-file");
+    expect(docs?.target).toBe("docs");
   });
 
-  // 1.1 removed the standalone `mermaid-er` generator: `meta docs` draws the diagram. A
+  // 1.1 removed the standalone `mermaid-er` generator: the `docs` generator draws the diagram. A
   // config that still names it worked yesterday, so it is told what happened and what to
   // do, not "unknown generator", which sends its reader looking for a typo.
-  test('removed name "mermaid-er" → says it was removed and that `meta docs` draws the diagram', () => {
+  test('removed name "mermaid-er" → says it was removed and that the docs generator draws the diagram', () => {
     let message = "";
     try {
       resolveGenerators(["entity", "mermaid-er"]);
@@ -82,7 +86,7 @@ describe("resolveGenerators (registry string resolution)", () => {
       message = (err as Error).message;
     }
     expect(message).toContain('generator "mermaid-er" was removed in 1.1');
-    expect(message).toContain("`meta docs` draws the ER diagram");
+    expect(message).toContain("the `docs` generator (docsFile()) draws the ER diagram");
     expect(message).toContain('Remove "mermaid-er" from `generators`');
     expect(message).not.toContain("unknown generator");
     // And it is gone from the registry, not merely refused.
@@ -100,15 +104,12 @@ describe("resolveGenerators (registry string resolution)", () => {
     expect(removedGeneratorMessage("constructor")).toBeUndefined();
   });
 
-  // `meta verify` reports a removed name as a doc generator `meta gen` refuses, with
-  // `meta docs` as what to run instead. That is true only while every removed generator
-  // is one `meta docs` replaced. A removed generator of another kind fails here, so the
-  // advisory is given a rule of its own before the entry is added.
-  test("every removed name is one `meta docs` replaced, and its message says so", () => {
+  // Every removed name says that it was removed and what to list instead.
+  test("every removed name says it was removed, and is not a registered name", () => {
     expect(Object.keys(REMOVED_GENERATOR_NAMES)).toEqual(["mermaid-er"]);
     for (const [name, message] of Object.entries(REMOVED_GENERATOR_NAMES)) {
       expect(message, name).toContain(`generator "${name}" was removed`);
-      expect(message, name).toContain("run `meta docs`");
+      expect(message, name).toContain("Remove");
       // A removed name must not also be a registered one: the registry would never be reached.
       expect(generatorRegistry[name], name).toBeUndefined();
     }
@@ -174,7 +175,7 @@ describe('runGen — string selection produces identical output to the factory',
     })).rejects.toThrow(/unknown generator "bogus"/);
   });
 
-  test('neutral string name "docs" in config → runGen throws the neutral error', async () => {
+  test('neutral string name "docs" with no docs target → runGen refuses it by name', async () => {
     const root = await loadRoot();
     await expect(runGen({
       config: defineConfig({
@@ -182,6 +183,6 @@ describe('runGen — string selection produces identical output to the factory',
         generators: ["docs"],
       }),
       metadata: root,
-    })).rejects.toThrow(/is neutral \(owned by 'meta docs'\)/);
+    })).rejects.toThrow(/"docs-file" writes documentation to the "docs" target/);
   });
 });

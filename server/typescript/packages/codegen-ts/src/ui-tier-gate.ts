@@ -69,18 +69,17 @@ export function warnUnmarkedUiGenerators(
  * Does this run emit the OPT-IN Hono routes surface?
  *
  * Lives beside `runEmitsUiTier` for one reason: both are "aggregate a marker across the
- * suite", and both were being re-derived at the `meta docs` door — which read the RAW
- * config, where a generator wired by stable name (`generators: ["routes-hono"]`, legal
- * under ADR-0021 #1) is a string carrying no marker at all. So `api-docs` omitted the
- * Hono surface for a project that had wired it. One helper, called after the strings are
- * resolved, is what stops the two doors disagreeing again.
+ * suite", and both were once re-derived from the RAW config, where a generator wired by
+ * stable name (`generators: ["routes-hono"]`, legal under ADR-0021 #1) is a string carrying
+ * no marker at all. So `api-docs` omitted the Hono surface for a project that had wired it.
+ * One helper, called after the strings are resolved, is what keeps the answer single.
  */
 export function runEmitsHonoRoutes(generators: readonly Generator[]): boolean {
   return generators.some((g) => g.emitsHonoRoutes === true);
 }
 
 /**
- * The `expose` option of each routes surface the run mounts, for `meta docs` to apply (a docs
+ * The `expose` option of each routes surface the run mounts, for the api reference to apply (a docs
  * page that lists DELETE for a route the adopter does not mount is a lie).
  *
  * Per surface, because the Fastify and Hono routes files are separate generators with their

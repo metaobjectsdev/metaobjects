@@ -1,7 +1,7 @@
 // The reporting vocabulary in words (FR-044): what a dimension groups by, what a measure
 // computes, which rows a segment or report is scoped to, and why a report is not served.
 //
-// One home for the wording. `meta docs` prints these sentences on the markdown model pages
+// One home for the wording. The docs generators print these sentences on the markdown model pages
 // (codegen-ts) and on the HTML site (docs-site); both read them from here, so the two
 // surfaces cannot say different things about the same node.
 //

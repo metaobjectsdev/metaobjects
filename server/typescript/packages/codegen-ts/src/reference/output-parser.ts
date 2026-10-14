@@ -31,7 +31,7 @@ import {
   type Generator,
   type GeneratorFactory,
   inboundTemplates,
-} from "@metaobjectsdev/codegen-ts";
+} from "@metaobjectsdev/codegen-ts/engine";
 import { renderOutputParser } from "../templates/output-parser.js";
 
 export interface OutputParserOpts {

@@ -16,6 +16,11 @@
       "types": "./dist/generators/index.d.ts",
       "default": "./dist/generators/index.js"
     },
+    "./engine": {
+      "bun": "./src/engine.ts",
+      "types": "./dist/engine.d.ts",
+      "default": "./dist/engine.js"
+    },
     "./templates/zod-validators": {
       "bun": "./src/templates/zod-validators.ts",
       "types": "./dist/templates/zod-validators.d.ts",
@@ -91,11 +96,6 @@
       "types": "./dist/templates/filter-shared.d.ts",
       "default": "./dist/templates/filter-shared.js"
     },
-    "./templates/queries": {
-      "bun": "./src/templates/queries.ts",
-      "types": "./dist/templates/queries.d.ts",
-      "default": "./dist/templates/queries.js"
-    },
     "./templates/tph-discriminator": {
       "bun": "./src/templates/tph-discriminator.ts",
       "types": "./dist/templates/tph-discriminator.d.ts",
@@ -138,6 +138,7 @@
   },
   "dependencies": {
     "@metaobjectsdev/metadata": "workspace:*",
+    "@metaobjectsdev/docs-site": "workspace:*",
     "@metaobjectsdev/render": "workspace:*",
     "@biomejs/js-api": "^0.7.0",
     "@biomejs/wasm-nodejs": "^1.9.4",

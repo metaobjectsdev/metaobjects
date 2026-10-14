@@ -30,7 +30,7 @@
 // `codegen/templates/`, and your copy of this file imports them from there: they are yours too.
 
 import type { MetaData } from "@metaobjectsdev/metadata";
-import { perEntity, type Generator, type GeneratorFactory } from "@metaobjectsdev/codegen-ts";
+import { perEntity, type Generator, type GeneratorFactory } from "@metaobjectsdev/codegen-ts/engine";
 import {
   extendsTraceAnchor,
   renderTraceHelper,

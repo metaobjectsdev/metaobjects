@@ -40,7 +40,7 @@ import {
   type GenContext,
   type Generator,
   effectivePackage,
-} from "@metaobjectsdev/codegen-ts";
+} from "@metaobjectsdev/codegen-ts/engine";
 import { renderNamesDecl } from "../templates/names-decl.js";
 import type { MetaObject } from "@metaobjectsdev/metadata";
 

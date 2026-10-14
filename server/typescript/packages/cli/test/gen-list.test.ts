@@ -62,18 +62,20 @@ describe("meta gen --list (ADR-0021 D3)", () => {
     }
   });
 
-  test("flags docs neutral (not part of the recommended native suite)", async () => {
+  test("lists docs, marked neutral, with the import that wires it like any generator", async () => {
     const tmp = mkdtempSync(join(tmpdir(), "meta-gen-list-"));
     try {
       await genCommand(["--list"], tmp);
       const text = out();
       // It appears (identity/discoverability) ...
       expect(text).toContain("docs");
-      // ... but is clearly marked neutral and points at `meta docs`. The standalone
-      // `mermaid-er` generator that sat beside it was removed in 1.1.
+      // ... marked neutral, and wired like the rest (ADR-0034 Amendment 9): its import is on
+      // the row, and nothing points at a docs command. The standalone `mermaid-er`
+      // generator that sat beside it was removed in 1.1.
       expect(text).not.toContain("mermaid-er");
       expect(text.toLowerCase()).toContain("neutral");
-      expect(text).toContain("meta docs");
+      expect(text).toContain('import { docsFile } from "@metaobjectsdev/codegen-ts/generators";');
+      expect(text).not.toContain("meta docs");
     } finally {
       rmSync(tmp, { recursive: true, force: true });
     }

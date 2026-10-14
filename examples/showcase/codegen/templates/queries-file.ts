@@ -1,15 +1,15 @@
 // Queries file composer — composes all CRUD function renderers (from queries.ts) into
 // a complete <Entity>.queries.ts file with @generated header and correct imports.
 
-import { code, joinCode, imp, type Code } from "@metaobjectsdev/codegen-ts";
+import { code, joinCode, imp, type Code } from "@metaobjectsdev/codegen-ts/engine";
 import {
   MetaObject,
   OBJECT_ATTR_DISCRIMINATOR,
   OBJECT_ATTR_DISCRIMINATOR_VALUE,
 } from "@metaobjectsdev/metadata";
-import { type RenderContext } from "@metaobjectsdev/codegen-ts";
-import { dbTypeBlock, supportsReturning } from "@metaobjectsdev/codegen-ts";
-import { entityModuleSpecifier } from "@metaobjectsdev/codegen-ts";
+import { type RenderContext } from "@metaobjectsdev/codegen-ts/engine";
+import { dbTypeBlock, supportsReturning } from "@metaobjectsdev/codegen-ts/engine";
+import { entityModuleSpecifier } from "@metaobjectsdev/codegen-ts/engine";
 import {
   renderFindByIdFn,
   renderListFn,
@@ -19,18 +19,17 @@ import {
   renderDeleteByIdFn,
   renderReverseFinderFns,
   reverseFksFor,
-  getPkInfo,
-  getPkFields,
   schemaInputType,
 } from "./queries.js";
-import { pluralize, findByIdFnName, listFnName, createFnName, insertPreservingFnName, updateFnName, singleRowVarName } from "@metaobjectsdev/codegen-ts";
-import { GENERATED_HEADER, GENERATED_EDIT_NOTE, sidecarLine } from "@metaobjectsdev/codegen-ts";
+import { getPkInfo, getPkFields } from "@metaobjectsdev/codegen-ts/engine";
+import { pluralize, findByIdFnName, listFnName, createFnName, insertPreservingFnName, updateFnName, singleRowVarName } from "@metaobjectsdev/codegen-ts/engine";
+import { GENERATED_HEADER, GENERATED_EDIT_NOTE, sidecarLine } from "@metaobjectsdev/codegen-ts/engine";
 import { isTphDiscriminatorBase, tphConcreteSubtypes } from "./tph-discriminator.js";
-import { isProjection, isWriteThrough } from "@metaobjectsdev/codegen-ts";
-import { isReport } from "@metaobjectsdev/codegen-ts";
-import { hasItemRoute } from "@metaobjectsdev/codegen-ts";
+import { isProjection, isWriteThrough } from "@metaobjectsdev/codegen-ts/engine";
+import { isReport } from "@metaobjectsdev/codegen-ts/engine";
+import { hasItemRoute } from "@metaobjectsdev/codegen-ts/engine";
 import { hasAutoSetFields } from "./zod-validators.js";
-import { effectivePackage } from "@metaobjectsdev/codegen-ts";
+import { effectivePackage } from "@metaobjectsdev/codegen-ts/engine";
 
 /**
  * The dialect-correct Drizzle `Db` type alias + its import — parameter-passed into every

@@ -7,14 +7,12 @@ import {
   type GeneratorRegistryEntry,
 } from "../src/generator-registry.js";
 import { REFERENCE_GENERATOR_NAMES } from "../src/reference-templates.js";
-import { isPackagedDocsGenerator } from "../src/packaged-docs-generators.js";
 
 // ADR-0021 D3 — stable-name generator registry. The stable names are the
 // cross-port contract; this test pins them + asserts each entry carries a
 // non-empty description and a working factory (constructing it must not throw).
 
-// The recommended NATIVE gen suite (Tier-1). `docs` is deliberately NOT in this
-// list (D1: it is owned by `meta docs`).
+// NATIVE: idiomatic per-port output.
 const EXPECTED_NATIVE = [
   "entity",
   "queries",
@@ -36,10 +34,9 @@ const EXPECTED_NATIVE = [
   "shared-model",
 ] as const;
 
-// Neutral / `meta docs`-owned (Tier-2). Present in the registry for identity +
-// discoverability, but flagged so they are NOT part of the recommended native
-// `meta gen` surface.
-const EXPECTED_NEUTRAL = ["docs", "requirements", "agent-docs"] as const;
+// NEUTRAL: language-neutral pages about the model. A description of the output only: every
+// entry, either tier, runs when the project lists it (ADR-0034 Amendment 9).
+const EXPECTED_NEUTRAL = ["docs", "requirements", "agent-docs", "metamodel-docs", "docs-site"] as const;
 
 describe("generator-registry (ADR-0021 D3)", () => {
   test("contains every expected stable name", () => {
@@ -71,39 +68,20 @@ describe("generator-registry (ADR-0021 D3)", () => {
     }
   });
 
-  test("neutral entries carry a note pointing at the canonical door", () => {
-    expect(generatorRegistry["docs"]?.note ?? "").toContain("meta docs");
+  // ADR-0034 Amendment 9: documentation is written into the `docs` target unless a factory is
+  // told otherwise, and never into the code's output directory by default.
+  test("every docs-layer entry writes to the docs target by default", () => {
+    const docsLayer = Object.values(generatorRegistry).filter((e) => e.layer === "docs");
+    expect(docsLayer.map((e) => e.name).sort()).toEqual(
+      ["agent-docs", "api-docs", "docs", "docs-site", "metamodel-docs", "requirements"],
+    );
+    for (const entry of docsLayer) expect(entry.factory().target, entry.name).toBe("docs");
   });
 
-  // Resolved, not listed: the set is whatever the RUNNER skips. `api-docs` is native,
-  // so the neutral check above never reached it, and its row presented a generator
-  // `meta gen` refuses to run as something to wire.
-  test("every entry `meta gen` skips says on its row that the door is `meta docs`", () => {
-    const skipped = Object.values(generatorRegistry).filter((e) => isPackagedDocsGenerator(e.factory().name));
-    expect(skipped.map((e) => e.name).sort()).toEqual(["agent-docs", "api-docs", "docs", "requirements"]);
-    for (const entry of skipped) {
-      expect(entry.note ?? "", `${entry.name}.note`).toContain("meta docs");
-      expect(entry.layer, `${entry.name}.layer`).toBe("docs");
-    }
-  });
-
-  // The other direction. The standalone `mermaid-er` generator was the one docs-layer
-  // entry `meta gen` still ran; 1.1 removed it, so every docs-layer entry is one
-  // `meta docs` runs.
-  test("no docs-layer entry is left that `meta gen` runs", () => {
-    const run = Object.values(generatorRegistry)
-      .filter((e) => e.layer === "docs" && !isPackagedDocsGenerator(e.factory().name));
-    expect(run.map((e) => e.name)).toEqual([]);
-  });
-
-  // Two definitions have to agree: the runner skips by implementation name
-  // (packaged-docs-generators.ts) and the catalog reads `docsSurface` off the row (it
-  // decides the eject wiring and whether a row prints a `generators` import). A row
-  // carrying one and not the other would be skipped by `meta gen` yet offered an import
-  // for `generators`, or the reverse.
-  test("an entry carries `docsSurface` exactly when `meta gen` skips its generator", () => {
+  // No row names a door: there is one way to generate, so no row may point anywhere else.
+  test("no entry's note or description points at a docs command", () => {
     for (const entry of Object.values(generatorRegistry)) {
-      expect(entry.docsSurface !== undefined, entry.name).toBe(isPackagedDocsGenerator(entry.factory().name));
+      expect(`${entry.description} ${entry.note ?? ""}`, entry.name).not.toContain("meta docs");
     }
   });
 

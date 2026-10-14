@@ -10,10 +10,10 @@
 // @provided enums are NEVER materialized here (they live in hand-written code,
 // imported from the configured providedEnumModule).
 
-import { code, imp, joinCode, type Code } from "@metaobjectsdev/codegen-ts";
+import { code, imp, joinCode, type Code } from "@metaobjectsdev/codegen-ts/engine";
 import type { MetaRoot } from "@metaobjectsdev/metadata";
-import { GENERATED_HEADER, GENERATED_EDIT_NOTE } from "@metaobjectsdev/codegen-ts";
-import { materializedSharedEnums, type SharedEnum } from "@metaobjectsdev/codegen-ts";
+import { GENERATED_HEADER, GENERATED_EDIT_NOTE } from "@metaobjectsdev/codegen-ts/engine";
+import { materializedSharedEnums, type SharedEnum } from "@metaobjectsdev/codegen-ts/engine";
 import { enumUnionString } from "./inferred-types.js";
 
 /** Basename (no extension) of the shared-enums module emitted at the entity-module target root. */

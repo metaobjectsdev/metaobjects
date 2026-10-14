@@ -53,7 +53,7 @@ import {
 import { intValueMapOf } from "../enum-meta.js";
 import type { ColumnNamingStrategy } from "../metaobjects-config.js";
 import { hasWritableRdbSource, servedReport } from "../source-detect.js";
-import { isTphSubtype, tphDiscriminatorBase, tphDiscriminatorPin } from "../templates/zod-validators.js";
+import { isTphSubtype, tphDiscriminatorBase, tphDiscriminatorPin } from "../tph.js";
 import {
   encodeIntEnumFilterValue,
   hopReferenceIdentity,

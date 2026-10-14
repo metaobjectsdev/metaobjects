@@ -48,7 +48,7 @@
 // ts-poet combinators come from the engine package, NOT a bare "ts-poet" import: the Code
 // fragments composed here must share ONE ts-poet instance with the engine's, or (with a
 // globally-installed / linked CLI) imports split into duplicate headers.
-import { code, imp, joinCode, type Code } from "@metaobjectsdev/codegen-ts";
+import { code, imp, joinCode, type Code } from "@metaobjectsdev/codegen-ts/engine";
 import type { MetaObject } from "@metaobjectsdev/metadata";
 import { TYPE_FIELD, resolveColumnName } from "@metaobjectsdev/metadata";
 import {
@@ -84,15 +84,13 @@ import {
   GENERATED_HEADER,
   GENERATED_EDIT_NOTE,
   sidecarLine,
-} from "@metaobjectsdev/codegen-ts";
-import { DEFAULT_ID_FIELD } from "../templates/queries.js";
-import { renderRoutesIndex, routesIndexFileName } from "../templates/routes-index.js";
-import { isTphDiscriminatorBase, tphPlan } from "../templates/tph-discriminator.js";
-import {
+  DEFAULT_ID_FIELD,
   isTphSubtype,
   tphDiscriminatorPin,
   tphStorageObject,
-} from "../templates/zod-validators.js";
+} from "@metaobjectsdev/codegen-ts/engine";
+import { renderRoutesIndex, routesIndexFileName } from "../templates/routes-index.js";
+import { isTphDiscriminatorBase, tphPlan } from "../templates/tph-discriminator.js";
 
 // --- composition (OWNED) — assembles one <Entity>.routes.ts. Change this to change the output. ---
 // Dispatch: a TPH discriminator base → polymorphic list/get + a per-subtype CRUD set; a
@@ -742,8 +740,8 @@ export const routesFile = function routesFile(opts?: RoutesFileOpts): Generator 
   });
   const generator: Generator = {
     name: "routes-file",
-    // Read by `meta docs`: the API docs list the verbs this file mounts, so an `expose` you
-    // pass here is honoured there. Keep this line if you change what the file mounts.
+    // Read by the api reference (`apiDocsFile()`): it lists the verbs this file mounts, so an
+    // `expose` you pass here is honoured there. Keep this line if you change what the file mounts.
     mountsRoutes: opts?.expose !== undefined ? { expose: opts.expose } : {},
     // TPH subtypes get no standalone routes file (their routes live in the discriminator
     // base's); AND-composed with your filter.

@@ -1,6 +1,6 @@
 import { join, relative, resolve, isAbsolute, dirname } from "node:path";
 import { warnMissingPromptGenerators } from "./prompt-generator-gate.js";
-import { runEmitsHonoRoutes, runEmitsUiTier, warnUnmarkedUiGenerators } from "./ui-tier-gate.js";
+import { runEmitsHonoRoutes, runEmitsUiTier, runRoutesExpose, warnUnmarkedUiGenerators } from "./ui-tier-gate.js";
 import { warnRetiredCodegenAttrs } from "./retired-codegen-attrs.js";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
@@ -43,7 +43,8 @@ import {
 } from "./catalog-gates.js";
 import { libraryManifests, splitLayerToken } from "@metaobjectsdev/metadata/library";
 import { generatorRegistry, type GeneratorRegistryEntry } from "./generator-registry.js";
-import { packagedDocsSkipWarning, isPackagedDocsGenerator } from "./packaged-docs-generators.js";
+import { DOCS_TARGET_NAME, docsRunFacts, onceAgentSchema, type DocsRunFacts } from "./docs-run.js";
+import type { AgentSchemaInput } from "./generators/agent-schema-input.js";
 
 /** JS-identifier-shape only. Prevents filesystem traversal when metadata comes
  *  from untrusted sources (e.g. MCP). Mirrors the guard in legacy generate.ts. */
@@ -132,6 +133,28 @@ export interface RunGenOpts {
    */
   sourceFiles?: readonly string[];
   /**
+   * The collection's metadata source directories, with each dependency artifact's directory,
+   * threaded onto `GenContext.sourceRoots` for a generator that runs a loader of its own over
+   * whole directories (`docsSiteFile()`). The CLI's `gen` command always passes them.
+   */
+  sourceRoots?: readonly string[];
+  /**
+   * Builds the physical schema `agent/schema.md` describes, with the project's dialect and
+   * column naming. codegen-ts cannot build it (the schema builder is `migrate-ts`'s), so the
+   * caller that can supplies it; the runner calls it at most once, and only when a generator
+   * asks (`ctx.docs.agentSchema`). Absent: `agentDocsFile()` writes no schema page.
+   */
+  agentSchema?: () => AgentSchemaInput | undefined;
+  /**
+   * Narrow this run to the declared generators with these stable names (`meta gen
+   * --generators docs,api-docs`). Only the generators named run; every run-level fact (the
+   * markers aggregated across the suite, the docs cross-links, the selection audits) is still
+   * read from the WHOLE declared list, so a narrowed run writes what a full run writes for
+   * those generators. A name no declared generator carries is refused: a narrowing never adds
+   * a generator (ADR-0034 Amendment 9). See {@link declaredGeneratorNames}.
+   */
+  generatorNames?: readonly string[];
+  /**
    * The real project directory, threaded onto `GenContext.inputRoot` for a generator that
    * READS the project's own files (the nearest `package.json`, a version file, anything an
    * owned generator resolves against the project). Defaults to `projectRoot`, and for
@@ -163,21 +186,6 @@ export interface RunGenResult {
   /** Subset of `files` with status "conflict" — surfaced separately so the
    *  CLI can print the end-of-run summary. */
   conflicts: WriteResult[];
-  /**
-   * Implementation names of the doc generators this run did NOT execute, in config
-   * order (ADR-0025 — see packaged-docs-generators.ts). Each also has a line in `warnings`; this is
-   * the same fact for a caller that must decide something from it, so that nobody
-   * has to pattern-match a sentence to learn that a wired generator produced nothing.
-   */
-  skippedDocGenerators: string[];
-  /**
-   * The subset of `skippedDocGenerators` that are OWNED copies: each carries a
-   * `docsSurface` marker (docs-door.ts), so `meta docs` runs it from
-   * `docs: { generators: [...] }`. Reported apart because the fix differs. A packaged
-   * doc generator is removed from `generators`; an owned copy is moved, and telling its
-   * owner to remove it would be telling them to stop using it.
-   */
-  skippedOwnedDocGenerators: string[];
 }
 
 /**
@@ -434,7 +442,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
       reason = "no object children match the configured scope";
     }
     warnings.push(`No entities to generate — ${reason}.`);
-    return { files: [], warnings, conflicts: [], skippedDocGenerators: [], skippedOwnedDocGenerators: [] };
+    return { files: [], warnings, conflicts: [] };
   }
 
   // FR-044: a served report (Table A) is generated from its read model, which the
@@ -448,7 +456,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
         "served (it is abstract, or its read source is not a `source.rdb @kind: view`), " +
         "which generates nothing.",
     );
-    return { files: [], warnings, conflicts: [], skippedDocGenerators: [], skippedOwnedDocGenerators: [] };
+    return { files: [], warnings, conflicts: [] };
   }
 
   const safeEntities: MetaObject[] = [];
@@ -462,7 +470,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
     safeEntities.push(entity);
   }
   if (safeEntities.length === 0) {
-    return { files: [], warnings, conflicts: [], skippedDocGenerators: [], skippedOwnedDocGenerators: [] };
+    return { files: [], warnings, conflicts: [] };
   }
 
   // Refuse before any generator runs — the one choke point that sees the WHOLE
@@ -542,6 +550,17 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   const targetOf = (g: Generator): ResolvedTarget => {
     const name = g.target ?? DEFAULT_TARGET_NAME;
     const t = targets[name];
+    if (!t && name === DOCS_TARGET_NAME) {
+      // ADR-0034 Amendment 9: documentation is never written into the code's output
+      // directory by default, so a docs generator with no `docs` target is refused by name.
+      throw new Error(
+        `Generator "${g.name}" writes documentation to the "${DOCS_TARGET_NAME}" target, and ` +
+        `metaobjects.config.ts declares no targets.${DOCS_TARGET_NAME}. Documentation is never ` +
+        `written into the code's output directory by default: add ` +
+        `\`targets: { ${DOCS_TARGET_NAME}: { outDir: "./docs/generated" } }\`, or give the ` +
+        `generator a \`target\` that is declared.`,
+      );
+    }
     if (!t) {
       throw new Error(
         `Generator "${g.name}" references unknown target "${name}". ` +
@@ -615,12 +634,9 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   // Auto-detect: is the OPT-IN Hono routes generator in the active suite? If so,
   // surface it on every generator's ctx.config so api-docs documents the Hono
   // CRUD surface it actually emits (rather than silently omitting it).
-  // The explicit config key WINS over the marker aggregation, at both doors. `meta docs`
-  // already read `loadedConfig?.includeHonoRoutes ?? …`, and the runner did not — so an
-  // adopter who set the key got the surface documented and not emitted, or the reverse.
-  // The key is settable because `MetaobjectsGenConfig extends Omit<ResolvedGenConfig,…>`,
-  // and it is the escape hatch for an owned generator whose name was changed; an escape
-  // hatch honoured by one of two doors is the defect these flags exist to close.
+  // The explicit config key WINS over the marker aggregation. The key is settable because
+  // `MetaobjectsGenConfig extends Omit<ResolvedGenConfig,…>`, and it is the escape hatch for
+  // an owned generator whose marker was dropped.
   const includeHonoRoutes = config.includeHonoRoutes ?? runEmitsHonoRoutes(config.generators);
 
   // Same auto-detection for the CLIENT UI tier. `agent/ui.md` describes forms, grids
@@ -629,6 +645,10 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   // includeHonoRoutes — the page asks "is this surface in the run?", never "does it
   // land in my target?".
   const includeUiTier = config.includeUiTier ?? runEmitsUiTier(config.generators);
+
+  // The `expose` option each routes surface was built with, so the api reference lists only
+  // the verbs the routes files mount. Run-scoped, read off the whole declared list.
+  const routesExpose = runRoutesExpose(config.generators);
 
   // §A6 — same auto-detection for the OPT-IN names generator. The entity tier may only
   // REFERENCE `<Entity>Names` when something in this run actually emits it; the names
@@ -698,6 +718,31 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   // See retired-codegen-attrs.ts. Self-extinguishing; warning only.
   warnRetiredCodegenAttrs(safeEntities, (m) => warnings.push(m));
 
+  // What the documentation generators in one target must agree on (docs-run.ts), built from
+  // the generators the run declares for that target. The schema builder is shared by all
+  // targets and runs at most once.
+  const agentSchema = opts.agentSchema !== undefined ? onceAgentSchema(opts.agentSchema) : undefined;
+  const docsFactsByTarget = new Map<string, DocsRunFacts>();
+  const docsFactsFor = (targetName: string): DocsRunFacts => {
+    let facts = docsFactsByTarget.get(targetName);
+    if (facts === undefined) {
+      facts = docsRunFacts(config.generators.filter((g) => targetOf(g).name === targetName), agentSchema);
+      docsFactsByTarget.set(targetName, facts);
+    }
+    return facts;
+  };
+
+  // `--generators`: the declared generators this run executes.
+  const catalogForNames = opts.catalog ?? generatorRegistry;
+  let selected: readonly Generator[] = config.generators;
+  if (opts.generatorNames !== undefined) {
+    const wanted = new Set(opts.generatorNames);
+    const declared = config.generators.map((g) => stableGeneratorName(g, catalogForNames));
+    const unknown = [...wanted].filter((n) => !declared.includes(n));
+    if (unknown.length > 0) throw new Error(undeclaredGeneratorsMessage(unknown, declared));
+    selected = config.generators.filter((_, i) => wanted.has(declared[i]!));
+  }
+
   // 4. Run each generator with a per-target render context; collect with full path.
   const emitted: { fullPath: string; content: string; generatedBy: string }[] = [];
   // FR-038 §8 — generators that opted into orphan reconciliation, paired with the
@@ -707,34 +752,8 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   // Generators that ran and produced no file. See the note at the `files.length === 0`
   // check below. A Set because a generator may run once per target.
   const emptyGenerators = new Set<string>();
-  const skippedDocGenerators: string[] = [];
-  const skippedOwnedDocGenerators: string[] = [];
 
-  for (const generator of config.generators) {
-    // An owned docs generator belongs to the docs door (docs-door.ts): `meta docs` runs it
-    // from `docs: { generators: [...] }`. In THIS array it is in the wrong place, and
-    // skipping it silently would leave its owner wondering why `meta docs` still runs the
-    // packaged one. So it is skipped with a warning that names the place, and reported as
-    // skipped like a packaged one: a run that wired nothing else must not read as "no
-    // entities to generate".
-    if (generator.docsSurface !== undefined) {
-      warnings.push(
-        `[${generator.name}] is a docs generator: 'meta docs' runs it, from ` +
-        "`docs: { generators: [...] }` in metaobjects.config.ts, and 'meta gen' does not. " +
-        "Move it there. Skipped.",
-      );
-      skippedDocGenerators.push(generator.name);
-      skippedOwnedDocGenerators.push(generator.name);
-      continue;
-    }
-    // ADR-0025: `meta docs` is the single docs door. A `meta gen` config that
-    // still lists a deprecated doc generator is warned + skipped, not run — the
-    // generator stays as `meta docs`'s internal engine.
-    if (isPackagedDocsGenerator(generator.name)) {
-      warnings.push(packagedDocsSkipWarning(generator.name));
-      skippedDocGenerators.push(generator.name);
-      continue;
-    }
+  for (const generator of selected) {
     const selfTarget = targetOf(generator);
     // Resolve the WRITE-time location against projectRoot when outDir is
     // relative and projectRoot is known — otherwise a relative outDir (the
@@ -795,12 +814,16 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
         includeHonoRoutes,
         includeNames: namesTargets.has(selfTarget.name),
         includeUiTier,
+        ...(routesExpose !== undefined && { routesExpose }),
       },
       renderContext,
       ...(projectRoot !== undefined && { projectRoot }),
       ...(inputRoot !== undefined && { inputRoot }),
       registry,
       ...(opts.sourceFiles !== undefined && { sourceFiles: opts.sourceFiles }),
+      ...(opts.sourceRoots !== undefined && { sourceRoots: opts.sourceRoots }),
+      ...(config.providers !== undefined && { providers: config.providers }),
+      docs: docsFactsFor(selfTarget.name),
       ...(selectedManifests !== undefined && { libraries: selectedManifests }),
       warn: (msg) => warnings.push(`[${generator.name}] ${msg}`),
     };
@@ -1091,7 +1114,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
     // A preview that hides a pending deletion is worse than no preview at all, so
     // the sweep still runs — in decide-and-report mode, touching nothing.
     sweep(true);
-    return { files: writes, warnings, conflicts, skippedDocGenerators, skippedOwnedDocGenerators };
+    return { files: writes, warnings, conflicts };
   }
 
   for (const file of emitted) {
@@ -1122,8 +1145,45 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   sweep(false);
 
   // #232 — stamp the engine version that produced this snapshot, so the NEXT gen can
-  // detect an engine change. Written after a successful run only.
-  if (installedEngine !== undefined) saveEngineVersion(genStateDir, installedEngine);
+  // detect an engine change. Written after a successful run only, and only by a run that
+  // declared a generator: a config that declares nothing writes nothing (ADR-0034
+  // Amendment 9), tool state included.
+  if (installedEngine !== undefined && config.generators.length > 0) saveEngineVersion(genStateDir, installedEngine);
 
-  return { files: writes, warnings, conflicts, skippedDocGenerators, skippedOwnedDocGenerators };
+  return { files: writes, warnings, conflicts };
+}
+
+/**
+ * The stable (registry) name of a generator: the catalog entry whose factory builds a
+ * generator of the same implementation name, or the implementation name itself when no entry
+ * does (a generator of the project's own). An owned copy keeps its packaged implementation
+ * name, so it answers to the same stable name.
+ */
+export function stableGeneratorName(
+  generator: Generator,
+  catalog: Record<string, GeneratorRegistryEntry>,
+): string {
+  for (const entry of Object.values(catalog)) {
+    if (entry.factory().name === generator.name) return entry.name;
+  }
+  return generator.name;
+}
+
+/** The stable names of the generators a config declares, in order. */
+export function declaredGeneratorNames(
+  config: MetaobjectsGenConfig,
+  catalog: Record<string, GeneratorRegistryEntry> = generatorRegistry,
+): string[] {
+  return normalizeConfig(config).generators.map((g) => stableGeneratorName(g, catalog));
+}
+
+/** The refusal for `--generators` naming a generator the config does not declare. */
+export function undeclaredGeneratorsMessage(unknown: readonly string[], declared: readonly string[]): string {
+  return (
+    `--generators names ${unknown.map((n) => `"${n}"`).join(", ")}, which metaobjects.config.ts does ` +
+    "not declare. --generators narrows a run to declared entries and never adds one: declare it " +
+    "in `generators` first. Declared: " +
+    (declared.length > 0 ? declared.join(", ") : "none") +
+    "."
+  );
 }

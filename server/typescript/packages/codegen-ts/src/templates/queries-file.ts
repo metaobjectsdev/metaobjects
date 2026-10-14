@@ -19,10 +19,9 @@ import {
   renderDeleteByIdFn,
   renderReverseFinderFns,
   reverseFksFor,
-  getPkInfo,
-  getPkFields,
   schemaInputType,
 } from "./queries.js";
+import { getPkInfo, getPkFields } from "../pk-resolver.js";
 import { pluralize, findByIdFnName, listFnName, createFnName, insertPreservingFnName, updateFnName, singleRowVarName } from "../naming.js";
 import { GENERATED_HEADER, GENERATED_EDIT_NOTE, sidecarLine } from "../constants.js";
 import { isTphDiscriminatorBase, tphConcreteSubtypes } from "./tph-discriminator.js";

@@ -13,25 +13,24 @@
 // false. The entity may still have read-only source.* children (those are
 // handled by the projection path before this one is reached).
 
-import { joinCode, type Code } from "@metaobjectsdev/codegen-ts";
+import { joinCode, type Code } from "@metaobjectsdev/codegen-ts/engine";
 import type { MetaObject } from "@metaobjectsdev/metadata";
 import { OBJECT_SUBTYPE_VALUE } from "@metaobjectsdev/metadata";
-import type { RenderContext } from "@metaobjectsdev/codegen-ts";
+import type { RenderContext } from "@metaobjectsdev/codegen-ts/engine";
 import { renderValueObjectInterface, renderEnumTypeAliases } from "./inferred-types.js";
 import {
   renderInsertSchemaOnly,
   renderZodValidators,
-  isTphSubtype,
   renderTphSubtypeReadSchema,
-  tphDiscriminatorPin,
 } from "./zod-validators.js";
+import { isTphSubtype, tphDiscriminatorPin } from "@metaobjectsdev/codegen-ts/engine";
 import { renderEntityConstants, renderValueObjectConstants } from "./entity-constants.js";
 import { renderFilterAllowlist, renderSortAllowlist } from "./filter-allowlist.js";
 import { renderFilterType } from "./filter-type.js";
-import { GENERATED_HEADER, GENERATED_EDIT_NOTE, sidecarLine } from "@metaobjectsdev/codegen-ts";
-import { namesRef, namesConstArg } from "@metaobjectsdev/codegen-ts";
-import { isSourcelessEntity } from "@metaobjectsdev/codegen-ts";
-import { isAbstract } from "@metaobjectsdev/codegen-ts";
+import { GENERATED_HEADER, GENERATED_EDIT_NOTE, sidecarLine } from "@metaobjectsdev/codegen-ts/engine";
+import { namesRef, namesConstArg } from "@metaobjectsdev/codegen-ts/engine";
+import { isSourcelessEntity } from "@metaobjectsdev/codegen-ts/engine";
+import { isAbstract } from "@metaobjectsdev/codegen-ts/engine";
 
 export function renderValueObjectFile(obj: MetaObject, apiPrefix = "", ctx?: RenderContext): string {
   const enumAliases = renderEnumTypeAliases(obj, ctx);

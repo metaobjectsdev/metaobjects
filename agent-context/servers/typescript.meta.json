@@ -2,7 +2,7 @@
   "displayName": "TypeScript",
   "install": "npm install -D @metaobjectsdev/cli @metaobjectsdev/codegen-ts",
   "codegenCommand": "npx meta gen",
-  "docsCommand": "npx meta docs",
+  "docsCommand": "npx meta gen",
   "docsCondition": "",
   "docsMissing": "",
   "apiSubDir": "api"

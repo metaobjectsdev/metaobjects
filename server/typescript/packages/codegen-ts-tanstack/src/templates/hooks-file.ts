@@ -1,6 +1,6 @@
 import { code, imp, joinCode, Import, type Code } from "ts-poet";
 import type { MetaObject } from "@metaobjectsdev/metadata";
-import type { RenderContext, RelationEntry } from "@metaobjectsdev/codegen-ts";
+import type { RenderContext, RelationEntry } from "@metaobjectsdev/codegen-ts/engine";
 
 import {
   GENERATED_HEADER,
@@ -11,8 +11,8 @@ import {
   entityModuleSpecifier,
   effectivePackage,
   siblingSpecifier,
-} from "@metaobjectsdev/codegen-ts";
-import { getPkInfo } from "@metaobjectsdev/codegen-ts/templates/queries";
+} from "@metaobjectsdev/codegen-ts/engine";
+import { getPkInfo } from "@metaobjectsdev/codegen-ts/engine";
 import {
   isTphDiscriminatorBase,
   tphPlan,

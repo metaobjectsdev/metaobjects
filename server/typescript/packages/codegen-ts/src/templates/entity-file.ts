@@ -12,7 +12,8 @@ import { FIELD_ATTR_OBJECT_REF, SOURCE_ROLE_REPLICA } from "@metaobjectsdev/meta
 import { fieldDeclaringPackage, type RenderContext } from "../render-context.js";
 import { renderDrizzleSchema } from "./drizzle-schema.js";
 import { renderInferredTypes, renderEnumTypeAliases } from "./inferred-types.js";
-import { renderZodValidators, isTphSubtype, primaryIdentityFieldNames } from "./zod-validators.js";
+import { renderZodValidators, primaryIdentityFieldNames } from "./zod-validators.js";
+import { isTphSubtype } from "../tph.js";
 import { renderEntityConstants } from "./entity-constants.js";
 import { renderFilterAllowlist, renderSortAllowlist } from "./filter-allowlist.js";
 import { renderFilterType } from "./filter-type.js";

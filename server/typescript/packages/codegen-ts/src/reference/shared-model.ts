@@ -42,7 +42,7 @@ import {
   type EmittedFile,
   type GenContext,
   type Generator,
-} from "@metaobjectsdev/codegen-ts";
+} from "@metaobjectsdev/codegen-ts/engine";
 import { buildSharedModel, renderSharedModelFiles } from "../shared-model/build-shared-model.js";
 
 export interface SharedModelFileOpts {

@@ -7,7 +7,7 @@
 // optional fields (matching Zod's `.optional()` inference — `T | undefined` —
 // without the superfluous `| null` that Drizzle nullable columns introduce).
 
-import { code, imp, joinCode, type Code } from "@metaobjectsdev/codegen-ts";
+import { code, imp, joinCode, type Code } from "@metaobjectsdev/codegen-ts/engine";
 import type { MetaObject, MetaField } from "@metaobjectsdev/metadata";
 import {
   FIELD_SUBTYPE_ENUM,
@@ -33,17 +33,17 @@ import {
   FIELD_ATTR_DB_COLUMN_TYPE,
   DB_COLUMN_TYPE_JSONB,
 } from "@metaobjectsdev/metadata";
-import { variableNameFromEntity, toPascalCase } from "@metaobjectsdev/codegen-ts";
-import { valueObjectModuleSpecifier } from "@metaobjectsdev/codegen-ts";
+import { variableNameFromEntity, toPascalCase } from "@metaobjectsdev/codegen-ts/engine";
+import { valueObjectModuleSpecifier } from "@metaobjectsdev/codegen-ts/engine";
 import { stripPackage } from "@metaobjectsdev/metadata";
-import { enumValues } from "@metaobjectsdev/codegen-ts";
+import { enumValues } from "@metaobjectsdev/codegen-ts/engine";
 import { sharedEnumZodConstName } from "./enums-file.js";
 import { renderDocsFor } from "./jsdoc.js";
 import { isTphReadNullTolerant } from "./zod-validators.js";
-import { sharedEnumForField } from "@metaobjectsdev/codegen-ts";
-import { sharedEnumImportSpecifier, providedEnumImportSpecifier } from "@metaobjectsdev/codegen-ts";
-import { fieldDeclaringPackage, type RenderContext } from "@metaobjectsdev/codegen-ts";
-import { effectivePackage } from "@metaobjectsdev/codegen-ts";
+import { sharedEnumForField } from "@metaobjectsdev/codegen-ts/engine";
+import { sharedEnumImportSpecifier, providedEnumImportSpecifier } from "@metaobjectsdev/codegen-ts/engine";
+import { fieldDeclaringPackage, type RenderContext } from "@metaobjectsdev/codegen-ts/engine";
+import { effectivePackage } from "@metaobjectsdev/codegen-ts/engine";
 
 /**
  * Emit Drizzle's InferSelectModel / InferInsertModel aliases for an entity.
@@ -254,7 +254,7 @@ export function fieldTsTypeString(ownerName: string, field: MetaField): string {
   if (field.subType === FIELD_SUBTYPE_OBJECT) {
     const ref = field.attr(FIELD_ATTR_OBJECT_REF);
     if (typeof ref === "string" && ref.length > 0) {
-      // #228: docs-tier bare name under collision — this is the deprecated `meta docs`
+      // #228: docs-tier bare name under collision — this is the docs-tier
       // TEXT-shape helper (no ctx/root in scope; callers api-field-shape run under
       // api-model's `{ pkMap } as RenderContext` shim), so it can't resolve the ADR-0044
       // emitted name. Byte-identical to codegen in every non-colliding model; on a

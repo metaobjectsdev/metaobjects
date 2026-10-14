@@ -14,7 +14,7 @@
 // shape — covered by FR-014 fixture `tph-discriminator-string-no-subtypes`),
 // returns null too: there are no subtype names to union.
 
-import { code, joinCode, imp, type Code } from "@metaobjectsdev/codegen-ts";
+import { code, joinCode, imp, type Code } from "@metaobjectsdev/codegen-ts/engine";
 import {
   type MetaObject,
   type MetaField,

@@ -32,10 +32,10 @@ import {
   servesClientTier,
   withClientDirective,
   effectivePackage,
-} from "@metaobjectsdev/codegen-ts";
+} from "@metaobjectsdev/codegen-ts/engine";
 import { hasDataGridLayout, warnMissingDataGridLayout } from "@metaobjectsdev/codegen-ts-tanstack";
 import { renderColumnsFile } from "../templates/columns-file.js";
-import { isTphSubtype } from "@metaobjectsdev/codegen-ts/templates/zod-validators";
+import { isTphSubtype } from "@metaobjectsdev/codegen-ts/engine";
 
 export interface TanstackGridOpts {
   filter?: (entity: MetaObject) => boolean;

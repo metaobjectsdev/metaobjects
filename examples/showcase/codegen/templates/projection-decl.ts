@@ -10,24 +10,24 @@
 //   - Zod Insert/Update schemas
 //   - Insert/Update types
 
-import { code, imp, joinCode, type Code } from "@metaobjectsdev/codegen-ts";
+import { code, imp, joinCode, type Code } from "@metaobjectsdev/codegen-ts/engine";
 import {
   MetaField, MetaObject, type MetaRoot, isMetaObject,
   FIELD_ATTR_OBJECT_REF, stripPackage, resolveColumnName, resolveTableSchema,
 } from "@metaobjectsdev/metadata";
-import { projectionViewName } from "@metaobjectsdev/codegen-ts";
-import { GENERATED_HEADER, GENERATED_EDIT_NOTE } from "@metaobjectsdev/codegen-ts";
-import type { ColumnNamingStrategy } from "@metaobjectsdev/codegen-ts";
-import { fieldDeclaringPackage, type RenderContext } from "@metaobjectsdev/codegen-ts";
-import { valueObjectModuleSpecifier } from "@metaobjectsdev/codegen-ts";
-import type { Dialect } from "@metaobjectsdev/codegen-ts";
-import { physicalNameExpr, sourceSchemaExpr, type ObjectNames } from "@metaobjectsdev/codegen-ts";
+import { projectionViewName } from "@metaobjectsdev/codegen-ts/engine";
+import { GENERATED_HEADER, GENERATED_EDIT_NOTE } from "@metaobjectsdev/codegen-ts/engine";
+import type { ColumnNamingStrategy } from "@metaobjectsdev/codegen-ts/engine";
+import { fieldDeclaringPackage, type RenderContext } from "@metaobjectsdev/codegen-ts/engine";
+import { valueObjectModuleSpecifier } from "@metaobjectsdev/codegen-ts/engine";
+import type { Dialect } from "@metaobjectsdev/codegen-ts/engine";
+import { physicalNameExpr, sourceSchemaExpr, type ObjectNames } from "@metaobjectsdev/codegen-ts/engine";
 import { renderFilterAllowlist, renderSortAllowlist } from "./filter-allowlist.js";
 import { renderFilterType } from "./filter-type.js";
-import { buildUiFieldDescriptor, resourcePath } from "@metaobjectsdev/codegen-ts";
+import { buildUiFieldDescriptor, resourcePath } from "@metaobjectsdev/codegen-ts/engine";
 import { renderExistingViewDecl, renderViewReadZodObject } from "./view-decl.js";
 import { primaryIdentityFieldNames } from "./zod-validators.js";
-import { effectivePackage } from "@metaobjectsdev/codegen-ts";
+import { effectivePackage } from "@metaobjectsdev/codegen-ts/engine";
 
 // ---------------------------------------------------------------------------
 // Public interface

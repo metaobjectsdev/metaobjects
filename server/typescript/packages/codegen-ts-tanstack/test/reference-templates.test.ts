@@ -18,12 +18,12 @@ describe("codegen-ts-tanstack reference templates", () => {
 
   // ADR-0034 Amendment 8: the renderer is reached by a path `meta eject` copies beside the
   // generator (`../templates/`), not through the package entry, which would leave it packaged.
-  test("imports its renderer by path and the engine by package, declares its target", () => {
+  test("imports its renderer by path and the engine by the engine entry, declares its target", () => {
     for (const name of REFERENCE_GENERATOR_NAMES) {
       const src = readReferenceTemplate(name);
       expect(src).toContain("REFERENCE TEMPLATE");
       expect(src).toContain("// targets:");
-      expect(src).toContain('from "@metaobjectsdev/codegen-ts"');
+      expect(src).toContain('from "@metaobjectsdev/codegen-ts/engine"');
       expect(src).toMatch(/from "\.\.\/templates\/[\w-]+\.js"/);
       expect(src).not.toContain("src/templates");
     }

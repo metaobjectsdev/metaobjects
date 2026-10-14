@@ -49,10 +49,10 @@ describe("meta verify — a partial run names the gates that did not run", () =>
       { gate: "templates", ran: false, ok: true },
       { gate: "schema", ran: true, ok: true },
       { gate: "codegen", ran: true, ok: true },
-      { gate: "docs", ran: false, ok: true },
+      { gate: "deps", ran: false, ok: true },
       { gate: "requirements", ran: true, ok: true },
     ]);
-    expect(note).toBe("meta verify — not run: templates (--templates), docs (--docs)");
+    expect(note).toBe("meta verify — not run: templates (--templates), deps (--deps)");
   });
 
   test("notRunNote is silent when every gate ran", () => {
@@ -66,7 +66,8 @@ describe("meta verify — a partial run names the gates that did not run", () =>
     const line = out.split("\n").find((l) => l.includes("not run:"));
     expect(line).toBeDefined();
     expect(line).toContain("codegen (--codegen)");
-    expect(line).toContain("docs (--docs)");
+    // Documentation is checked by --codegen now; there is no docs gate to report.
+    expect(line).not.toContain("--docs");
     expect(line).toContain("schema (--db <url>)");
     expect(line).not.toContain("templates");
   });
@@ -80,7 +81,7 @@ describe("meta verify — a partial run names the gates that did not run", () =>
     expect(out).toContain("the template gate had nothing to check");
     const line = out.split("\n").find((l) => l.includes("not run:"));
     expect(line).toBeDefined();
-    for (const gate of ["codegen (--codegen)", "docs (--docs)", "schema (--db <url>)", "deps (--deps)", "replay (--replay)"]) {
+    for (const gate of ["codegen (--codegen)", "schema (--db <url>)", "deps (--deps)", "replay (--replay)"]) {
       expect(line).toContain(gate);
     }
     expect(line).toContain("a bare 'meta verify' runs only the template gate");

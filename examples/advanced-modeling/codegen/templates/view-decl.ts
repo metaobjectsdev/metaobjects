@@ -7,17 +7,17 @@
 // attempt DDL (the SQL view is created/owned by migrate-ts). Both hosts emit the
 // SAME declaration shape, so it lives here once (extracted from projection-decl).
 
-import { code, imp, joinCode, type Code } from "@metaobjectsdev/codegen-ts";
-import { dialectModule } from "@metaobjectsdev/codegen-ts";
-import type { Dialect } from "@metaobjectsdev/codegen-ts";
+import { code, imp, joinCode, type Code } from "@metaobjectsdev/codegen-ts/engine";
+import { dialectModule } from "@metaobjectsdev/codegen-ts/engine";
+import type { Dialect } from "@metaobjectsdev/codegen-ts/engine";
 import {
   type MetaField, FIELD_SUBTYPE_OBJECT, FIELD_ATTR_OBJECT_REF,
 } from "@metaobjectsdev/metadata";
-import type { ColumnNamingStrategy } from "@metaobjectsdev/codegen-ts";
-import { mapColumnType, type EnumIntCustomType } from "@metaobjectsdev/codegen-ts";
+import type { ColumnNamingStrategy } from "@metaobjectsdev/codegen-ts/engine";
+import { mapColumnType, type EnumIntCustomType } from "@metaobjectsdev/codegen-ts/engine";
 import { renderEnumIntCustomType } from "./enum-int-codec.js";
 import { zodTypeFor } from "./field-meta.js";
-import { columnExpr, type ObjectNames } from "@metaobjectsdev/codegen-ts";
+import { columnExpr, type ObjectNames } from "@metaobjectsdev/codegen-ts/engine";
 
 export interface ViewDeclOpts {
   readonly dialect: Dialect;

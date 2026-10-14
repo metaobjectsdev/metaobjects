@@ -18,8 +18,8 @@
  * declaration emitted after its use is a TDZ ReferenceError at import: both are worse than
  * the missing-codec bug, because neither lets the module load at all.
  */
-import { code, imp, type Code } from "@metaobjectsdev/codegen-ts";
-import type { EnumIntCustomType } from "@metaobjectsdev/codegen-ts";
+import { code, imp, type Code } from "@metaobjectsdev/codegen-ts/engine";
+import type { EnumIntCustomType } from "@metaobjectsdev/codegen-ts/engine";
 
 /**
  * Render an int-backed `field.enum`'s Drizzle `customType` helper plus its two

@@ -34,14 +34,14 @@ import {
   namesRef,
   namesConstArg,
   effectivePackage,
-} from "@metaobjectsdev/codegen-ts";
+} from "@metaobjectsdev/codegen-ts/engine";
 import { hasDataGridLayout, warnMissingDataGridLayout } from "@metaobjectsdev/codegen-ts-tanstack";
 import { renderGridHookFile } from "../templates/grid-hook-file.js";
 import {
   entityMetaFileName,
   renderEntityMetaFile,
 } from "@metaobjectsdev/codegen-ts/templates/entity-meta-file";
-import { isTphSubtype } from "@metaobjectsdev/codegen-ts/templates/zod-validators";
+import { isTphSubtype } from "@metaobjectsdev/codegen-ts/engine";
 
 export interface TanstackGridHookOpts {
   filter?: (entity: MetaObject) => boolean;

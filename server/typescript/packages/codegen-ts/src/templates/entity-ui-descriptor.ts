@@ -60,7 +60,7 @@ import { enumValues } from "../enum-meta.js";
 // be reachable from this module; importing it back from `api-surface.js` would be a cycle,
 // since that module imports `resourcePath` from this one. Neither of these two imports
 // reaches back here, so moving the function down is the acyclic direction.
-import { tphDiscriminatorBase, tphDiscriminatorPin } from "./zod-validators.js";
+import { tphDiscriminatorBase, tphDiscriminatorPin } from "../tph.js";
 import { tphRouteSegment } from "./tph-discriminator.js";
 
 /** One validation rule, in the order its source was declared. */

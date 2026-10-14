@@ -32,7 +32,7 @@ import { GENERATED_HEADER, GENERATED_EDIT_NOTE, sidecarLine } from "../constants
 import { isProjection, isWriteThrough } from "../projection/projection-detector.js";
 import { isReport } from "../source-detect.js";
 import { itemRouteField, reportDecimalColumns } from "../api-surface.js";
-import { DEFAULT_ID_FIELD } from "./queries.js";
+import { DEFAULT_ID_FIELD } from "../pk-resolver.js";
 import { authSeamJsDoc, type CrudVerb, exposeLine } from "../routes-expose.js";
 import { effectivePackage } from "../docs-paths.js";
 import { httpRuntimeSpecifier } from "../owned-runtime.js";

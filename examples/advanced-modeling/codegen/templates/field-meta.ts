@@ -39,8 +39,9 @@ import {
   VIEW_CURRENCY_ATTR_LOCALE,
   VIEW_CURRENCY_ATTR_LOCALE_DEFAULT,
 } from "@metaobjectsdev/metadata";
-import { enumValues, zodEnumExpr } from "@metaobjectsdev/codegen-ts";
-import { viewForContext } from "@metaobjectsdev/codegen-ts";
+import { enumValues } from "@metaobjectsdev/codegen-ts/engine";
+import { zodEnumExpr } from "./zod-enum.js";
+import { viewForContext } from "@metaobjectsdev/codegen-ts/engine";
 import { ZOD_INET_EXPR } from "./net-regex.js";
 
 // ---------------------------------------------------------------------------

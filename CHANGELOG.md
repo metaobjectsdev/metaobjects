@@ -12,19 +12,19 @@ here.**
 
 ### Fixed
 
-- `meta verify --docs` now reports a generated page in the docs root that no current object
-  produces (for example the `<Object>.md` page of an object that was removed) as drift. It was
-  silent about every such page outside `agent/`, so an adopter kept ten orphan pages with the
-  gate green. Ownership rests on the `@generated` marker, so hand-written files in the docs root
-  and the `api/` subtree are still left alone. No other port ships a docs-verify surface, so
-  none shares the gap.
+- A generated documentation page that no current object produces (for example the
+  `<Object>.md` page of an object that was removed) is reported as drift. 1.0's
+  `meta verify --docs` was silent about every such page outside `agent/`, so an adopter kept
+  ten orphan pages with the gate green. `meta verify --codegen`, which checks documentation in
+  1.1.0 (see **Removed** under 1.1.0), reports each as a file a fresh run would not write.
+  Hand-written files in the docs directory are left alone.
 - The `hand-rolled-aggregate` advisory now names `object.report` for grouped, served or reported
   figures, and says an `object.projection` with `origin.aggregate` still fits a per-row figure.
-- **`meta docs` honours `routesFile({ expose })` and `routesFileHono({ expose })`.** The API
-  pages listed all five verbs for an entity whose routes file mounts fewer (`DELETE` for an entity
+- **The api reference (`apiDocsFile()`) honours `routesFile({ expose })` and
+  `routesFileHono({ expose })`.** The API pages listed all five verbs for an entity whose routes file mounts fewer (`DELETE` for an entity
   exposed as `["list", "get"]`), so the adopter overrode the pages by hand. The generators now
-  carry the option in a `mountsRoutes` marker, `meta docs` reads it off the resolved suite
-  (`runRoutesExpose`) per routes surface, so a narrowed Fastify routes file beside a default Hono
+  carry the option in a `mountsRoutes` marker, and `meta gen` reads it off the declared list
+  (`runRoutesExpose`) per routes surface, even in a run narrowed by `--generators`, so a narrowed Fastify routes file beside a default Hono
   one (or the reverse) narrows only its own section, and documents only the verbs mounted: `update` lists both `PATCH` and `PUT`,
   a read-only projection or report still lists `GET`, and a TPH base is narrowed from its
   read-only pair. Output without `expose` is byte-identical. **An owned (ejected) copy needs the
@@ -40,6 +40,19 @@ model that uses none of the new names generates byte-for-byte what it did under 
 changes only where the Java and Python parser fixes under **Fixed** bring those ports into line
 with TypeScript, and each entry says which models that affects. This is a MINOR because the
 metamodel moved and reporting is a new feature, not because the package surface broke._
+
+**Breaking, in every port: documentation is generated the way code is.** Every generator,
+documentation included, is an entry in the project's generator list; one command runs the
+list; nothing is generated that the list does not declare. The docs commands are removed:
+`meta docs` and `meta verify --docs` (TypeScript), `dotnet meta docs` (C#), `metaobjects docs`
+(Python) and the `metaobjects:docs` goal (Java and Kotlin, 8.1.0). Each prints where its work
+went and exits 2. A gen command given a 1.0 docs configuration fails before it writes anything
+rather than running and writing no documentation, and in TypeScript a project with no
+`metaobjects.config.ts` fails `meta gen` with a pointer instead of having its pages written
+from defaults. There is no upgrade script: [docs-are-generators.md](docs/features/migrations/docs-are-generators.md)
+has a section per port, written for a coding agent to apply to the config by hand. Ruling:
+ADR-0034 Amendment 9, which numbers the release 1.1.0 (Maven 8.1.0) by the maintainer's
+explicit decision. The entries are under **Removed** and **Changed**.
 
 **What 1.1.0 is.** The reporting release (FR-044): declare dimensions, measures, segments and an
 `object.report`, and get a SQL view, a served read-only list route in every port, a generated
@@ -75,7 +88,7 @@ Total hand-written lines did not fall, so do not read it as a total line reducti
   never ejected needs nothing.
 - **A keyless projection regenerates differently (G12).** `meta gen` rewrites the read-only
   surface of a keyless projection (no `/:id` route, no by-id function, and no write verbs in the
-  API docs), and `meta verify --docs` reports the affected pages as stale until they are
+  API docs), and `meta verify --codegen` reports the affected pages as stale until they are
   regenerated. Run `meta gen` and review the diff; three-way merge preserves hand edits.
 - **A multi-hop enum field references the shared enum.** A field that reaches a
   package-level abstract enum through another field, with no `@values` or `@intValueMap`
@@ -122,9 +135,8 @@ generator catalog and the Atlas evaluation are 1.2 work.
   release candidate is allowed. No generator emits different bytes because of this change.
 - **Seven generators that no registry listed are registered**, so `--list`, the eject
   commands and the registry-driven tests see them. TypeScript: `requirements` (the ledger
-  pages `meta docs` writes) and `agent-docs` (the pages `meta docs --agent` writes), both
-  neutral and both still run by `meta docs`; a `generators` entry naming either string is
-  refused the way `"docs"` is. Java: `plantuml`, `html-docs`, `ai-docs`, `json-schema` and the
+  pages) and `agent-docs` (the `agent/` pages), both neutral, listed in `generators` like
+  every other generator (`requirementsFile()`, `agentDocsFile()`). Java: `plantuml`, `html-docs`, `ai-docs`, `json-schema` and the
   deprecated `mustache`, each by the class name a pom already uses. `mustache` will not ship
   eject source. The two TypeScript generators are ejectable (see the TypeScript entry below),
   and the four Java generators that can ship it do: see **Java and Kotlin** below.
@@ -187,13 +199,15 @@ generator catalog and the Atlas evaluation are 1.2 work.
   port shares). Ruling and reasoning: ADR-0034 Amendment 8; how it works:
   [own-your-codegen](docs/features/own-your-codegen.md#what-the-copy-holds).
   - **What stays in the package is the engine.** The generator base, the model walks, the
-    naming and type-mapping tables (`names`, `naming`, `column-mapper`) and the projection and
-    report lowering `meta migrate` also runs. The list is `ENGINE_MODULES`, exported from
-    `@metaobjectsdev/codegen-ts`, and every name an owned file takes from the engine is
-    exported from that entry too (66 names were added to it; none was removed or
-    changed). A module a generator reaches that is not on the list is copied.
+    naming and type-mapping tables (`names`, `naming`, `column-mapper`), the primary-key and
+    TPH walks (`pk-resolver`, `tph`) and the projection and report lowering `meta migrate`
+    also runs. The list is `ENGINE_MODULES`, and every name an owned file takes from the
+    engine is exported from a new entry, `@metaobjectsdev/codegen-ts/engine`, with `ts-poet`'s
+    `code`, `imp` and `joinCode`. The package root is unchanged: nothing it exported in 1.0.13
+    was removed from it except the docs configuration types under **Removed**. A module a
+    generator reaches that is not on the list is copied.
   - **A copy differs from the package in its import lines only.** A relative import of an
-    engine module becomes an import of `@metaobjectsdev/codegen-ts`, a relative import of
+    engine module becomes an import of `@metaobjectsdev/codegen-ts/engine`, a relative import of
     another template module becomes the path to your copy, and `ts-poet` becomes the engine's
     own, so a copy cannot split the `Code` class identity. `meta eject --list` compares every
     file under `codegen/templates/` as it compares the generators, and prints the `diff`
@@ -205,27 +219,22 @@ generator catalog and the Atlas evaluation are 1.2 work.
     packaged module that writes output, that every file typechecks the way an adopter's
     `tsconfig.codegen.json` checks it, and that it writes what the packaged generator writes,
     byte for byte, over six models that make every generator emit.
-  - **`requirements` and `agent-docs` are in the catalog and ejectable.** They are the
-    generators behind `meta docs --requirements` and `meta docs --agent`. They had no registry
-    row, so no listing, no eject and no gate saw them; they are registered, and now they eject
-    with their template modules like the rest. List an owned copy in
-    `docs: { generators: [...] }` and `meta docs` runs it in place of the packaged one, as it
-    does for `docs` and `api-docs`; `docsSurface` now takes `"requirements"` and `"agent"`.
-    `meta gen` also skips a packaged `requirementsFile()` or `agentDocsFile()` wired in
-    `generators`, with the warning it gives for `docsFile()`: `meta docs` is their one door,
-    and a wired one wrote the same pages into the generated-code directory as well. Remove it
-    from `generators`.
-    `meta docs` hands the agent surface the physical schema it computes on
-    `ctx.docsDoor.agent`; the packaged `agentDocsFile()` reads it there when its options give
-    none, so its output is unchanged.
+  - **`requirements`, `agent-docs` and `metamodel-docs` are in the catalog and ejectable.**
+    The first two were the generators behind `meta docs --requirements` and
+    `meta docs --agent`, and had no registry row, so no listing, no eject and no gate saw
+    them; `metamodel-docs` is new (see **Changed**). An owned copy goes in `generators` in
+    place of the packaged factory, like every other owned copy. `meta gen` hands the agent
+    pages the physical schema it computes, on `ctx.docs`, when `generators` lists
+    `agentDocsFile()`; the packaged generator reads it there when its options give none.
   - **Copies made before 1.1.0 keep working and gain nothing.** They import their renderers
     from the package entry, which still exports them. `meta eject <name>` over one leaves it
     alone and copies no template module it would never call; `meta eject <name> --force`
     takes the new shape, so merge your own edits into the new file first.
   - **The reference templates changed their imports, not their output.** Each imports the
-    template modules it calls by path (`../templates/…`) and the engine from the package
-    entry. Five template modules gained a package subpath so another codegen package can reach
-    them by path: `@metaobjectsdev/codegen-ts/templates/{entity-meta-file,field-meta,filter-shared,queries,tph-discriminator}`.
+    template modules it calls by path (`../templates/…`) and the engine from
+    `@metaobjectsdev/codegen-ts/engine`. Four template modules gained a package subpath so
+    another codegen package can reach them by path:
+    `@metaobjectsdev/codegen-ts/templates/{entity-meta-file,field-meta,filter-shared,tph-discriminator}`.
     This repository's own owned copies (the `test-generators` package and the two examples)
     carry their template modules too; `scripts/sync-owned-template-copies.ts` writes them.
 - **The Java `entity` and `extractor` generators can be ejected.**
@@ -645,8 +654,8 @@ generator catalog and the Atlas evaluation are 1.2 work.
   zero are null, and a count is zero. The TypeScript `ObjectManager`, Java OMDB and the Python
   `ObjectManager` read a view-backed report (list and count, with filter, sort and limit on the
   derived fields; by-id and writes are refused); C# generates a keyless EF Core row type and
-  `DbContext` mapping for it and Kotlin an Exposed table object. `meta docs` lists the view on
-  the agent schema page. **Still absent:** no `measure.derived` and no query-time grouping (the
+  `DbContext` mapping for it and Kotlin an Exposed table object. `agentDocsFile()` lists the
+  view on the agent schema page. **Still absent:** no `measure.derived` and no query-time grouping (the
   next entry says how a report is served). Six shared
   persistence scenarios (`report-*.yaml`) and `report-shapes.json` hold the ports to the same
   columns; the `metaobjects-authoring` skill now teaches reports (`references/reporting.md`).
@@ -701,12 +710,12 @@ generator catalog and the Atlas evaluation are 1.2 work.
   `!isAbstract` as the `meta generator` scaffold does, now receives a served report's read
   model: gate grid or form output on `servesClientTier` (a hook is wanted for a report: see the
   list hook below).
-- **Reports have model and API pages in `meta docs` (FR-044).** Every report gets a model page
+- **Reports have model and API pages in the documentation generators (FR-044).** Every report gets a model page
   (its `@from`, its view or "Not served" with the reason, its row scope, and a column table
   with a definition per column) listed under `## Reports` on the model index, and a page on the
   site. An entity that declares dimensions, measures or segments, or that a report reads from,
   gains a "Reporting" section. A served report gets one API page (row model, `GET <path>`, the
-  list query) in `meta docs` and in every port's api-docs builder; a report that is not served
+  list query) in `apiDocsFile()` and in every port's api-docs builder; a report that is not served
   gets none. `EntityDocData` gains four optional keys for an owned `docs/entity-page.md`
   template: `hasReport`, `reportBlock`, `hasReporting`, `reportingBlock`. A model with no
   reporting nodes renders the same model pages as before.
@@ -764,7 +773,7 @@ generator catalog and the Atlas evaluation are 1.2 work.
   `decimal`, `double` or `float` measure and for a ratio, so the column keeps one storage class;
   MySQL reads a defaulted ratio of zero as `0.0000`). `meta migrate` refuses a derived `@spine`
   report, by name, when the spine entity or an entity on the way has no table, is a TPH subtype,
-  or a hop has no `identity.reference`. In `meta docs` a defaulted measure's definition ends
+  or a hop has no `identity.reference`. On the model pages a defaulted measure's definition ends
   "; `n` when there is nothing to aggregate" (a defaulted ratio no longer says "null when the
   denominator is 0"), and a `@spine` report's page gains a **Rows** line and a row scope that
   reads "aggregating only …". Gated by three new persistence scenarios (42 in all, nine for
@@ -788,17 +797,12 @@ generator catalog and the Atlas evaluation are 1.2 work.
     closure check, serialize, core-vocabulary re-load) and `renderSharedModelFiles` (the
     file names, the hash, the manifest). A test publishes with an ejected copy and has a
     consumer sync, lock and verify the result.
-  - **`meta eject docs` and `meta eject api-docs`** copy the generators behind
-    `meta docs`. List the copy in the docs block of `metaobjects.config.ts`, a new key:
-    `docs: { generators: [docsFile()] }`. It carries a `docsSurface` marker, and
-    `meta docs` and `meta verify --docs` run it in place of the packaged generator for that
-    surface. `meta eject` prints exactly that wiring, and its JSON row carries
-    `wire.into: "docs.generators"`. The copy owns which nodes get a page,
-    where a page lands, the overview page and which forms of the API reference are written.
-    A docs generator does not go in the top-level `generators`: `meta gen` skips one there
-    with a warning that names `docs.generators`. Two entries for one surface, or an entry
-    with no `docsSurface`, are refused by name. The `requirements` and `agent` pages stay
-    packaged.
+  - **`meta eject docs` and `meta eject api-docs`** copy the model-page and api-reference
+    generators. The copy goes in `generators` in place of the packaged factory, like every
+    other owned copy, and `meta eject` prints that wiring. The copy owns which nodes get a
+    page, where a page lands, the overview page and which forms of the API reference are
+    written. (`requirements`, `agent-docs` and `metamodel-docs` eject the same way; see the
+    TypeScript eject entry above.)
   - To change only the wording of a model page you still need no generator: a
     `templates/docs/entity-page.md.mustache` in your project wins over the packaged one.
   - Steps and what each copy owns:
@@ -807,15 +811,13 @@ generator catalog and the Atlas evaluation are 1.2 work.
   project directory. Under `meta gen` it equals `ctx.projectRoot`. Under
   `meta verify --codegen` the run writes into a temporary tree and `ctx.projectRoot` is
   that tree, as before, because owned `entity` and `routes` copies compute an import path
-  against it. Under `meta docs` and `meta verify --docs` it is the directory that holds
-  `metaobjects.config.ts`, and `--templates` does not move it. Read files through
-  `ctx.inputRoot`; `runGen` takes it as `inputRoot`.
+  against it. Read files through `ctx.inputRoot`; `runGen` takes it as `inputRoot`. The
+  docs generators read a project's template overrides and owned site theme through it.
 
 ### Changed
 
 Eight corrections that shipped with report serving and reach models that declare no report.
-Each one changes generated code on the next `gen`, or generated docs on the next `meta docs`
-or Python api-docs build, as its entry says. A drift gate that covers that output reports it
+Each one changes generated code or generated docs on the next gen run, as its entry says. A drift gate that covers that output reports it
 until you regenerate.
 
 - **TypeScript and Python: a read-only projection with no declared identity loses its item
@@ -859,11 +861,11 @@ until you regenerate.
   schema disagreed with the row it parsed. Code that treated the parsed field as a `number`
   stops typechecking.
 - **TypeScript API docs: a read-only object's page documents only what is generated.** In
-  `meta docs` API pages, a read-only projection's page no longer lists `create`, `update` or
+  the `apiDocsFile()` pages, a read-only projection's page no longer lists `create`, `update` or
   `delete` functions, write REST verbs or Insert/Update schemas, none of which were ever
   generated for it, and a keyless one (the shape above) no longer lists `/:id` or the by-id
-  function. Write-through projections and entities are unchanged. `meta verify --docs` reports
-  the affected pages as stale until regenerated.
+  function. Write-through projections and entities are unchanged. `meta verify --codegen`
+  reports the affected pages as stale until regenerated.
 - **Python API docs: a read-only projection's page gains the read surface it was missing.**
   The api-docs builder documented a view-backed projection by its model alone. Its page now
   also lists what the read-only router emits: the repository Protocol, `GET <path>`,
@@ -898,6 +900,39 @@ until you regenerate.
   (`sourceColumn`) and compiles; every other field name keeps its bytes.
 
 ### Changed
+
+- **TypeScript: every page of documentation is a generator in `generators` (ADR-0034
+  Amendment 9).** `meta gen` writes it and `meta verify --codegen` checks it, with the code.
+  - The factories, from `@metaobjectsdev/codegen-ts/generators`: `docsFile()` (model pages),
+    `apiDocsFile()` (api reference), `requirementsFile()` (requirement ledger),
+    `agentDocsFile()` (the `agent/` pages), and two new ones: `metamodelDocsFile()`
+    (`metamodel-docs`, the reference of the built-in vocabulary that `meta docs --metamodel`
+    wrote) and `docsSiteFile({ prompts })` (`docs-site`, the HTML site `meta docs --site`
+    wrote). Each writes to the target named `docs` unless given `target`; a run that lists one
+    while `targets` declares no `docs` is refused by name, so documentation is never written
+    into the code's output directory by default.
+  - The model pages and the api reference link to each other from what the list declares:
+    the runner reads `apiDocsFile()`'s directory and `docsFile()`'s presence per target and
+    hands both to every generator on `ctx.docs`, beside the agent schema `meta gen` builds when
+    `agentDocsFile()` is listed. An option given explicitly wins (`docsFile({ apiSurfaces })`).
+    A generator of your own declares the same facts with `emitsModelDocs` and `emitsApiDocs`.
+  - `apiDocsFile()` writes under `api/` by default, as `meta docs` did; it took `docs/api` when
+    called directly, so a direct call with no `subDir` moves its pages. It gains `modelBaseUrl`,
+    the base of its links back to model pages hosted elsewhere.
+  - `meta gen --generators <names>` narrows a run to entries the config declares, by registry
+    name (`meta gen --generators docs,api-docs` writes only the documentation). A name the
+    config does not declare is refused; the flag never adds a generator. A narrowed run reads
+    the run's facts (routes, markers, the UI tier) from the whole list, so it writes what a full
+    run writes for those entries.
+  - `meta eject docs-site` copies the site's templates and assets to `codegen/docs-site/`, as
+    `meta docs --scaffold-site` did, preserving files you edited unless `--force`.
+    `docsSiteFile()` renders with them.
+  - The site's footer no longer prints the date of the run, so its pages depend on the model
+    alone and `meta verify --codegen` can check them. `docsSiteFile({ stamp })` adds text.
+  - The model pages follow `meta gen`'s `scope` and entity selection, as every per-object
+    generator does (`meta docs` was never scoped); the api reference, the agent pages and the
+    site still document the whole loaded model.
+  - A config that declares no generator writes nothing, `.metaobjects/.gen-state/` included.
 
 - **A report's `count` and `sum` columns are `bigint` (`Long` on the JVM).** Replacing a
   hand-written view with a report can change its column types: a view that cast its counts to
@@ -940,13 +975,9 @@ until you regenerate.
 - **The config loader no longer rejects an import of the four generators.** 1.0.x answered
   `import { entityFile } from "@metaobjectsdev/codegen-ts/generators"` with a message naming
   `meta eject`. That import now loads.
-- **`meta docs` stops on a `metaobjects.config.ts` that fails to load.** It prints the load
-  error, exits 2 and writes nothing, as `meta gen` does. `meta verify --docs` calls
-  `meta docs`, so it fails on the same config. Before, `meta docs` warned, wrote the model
-  pages without the config and exited 0. With an owned docs generator listed in
-  `docs: { generators: [...] }` that would have overwritten your pages with the packaged
-  generator's output, so the fallback is removed. A project with no `metaobjects.config.ts`
-  is unaffected: `meta docs` still writes the model pages from metadata alone.
+- **Documentation stops on a `metaobjects.config.ts` that fails to load.** In 1.0 `meta docs`
+  warned, wrote the model pages without the config and exited 0. Documentation is written by
+  `meta gen` now (see **Removed**), which prints the load error, exits 2 and writes nothing.
   **To upgrade**, if a docs build has been passing with a config-load warning, fix the
   config. A config that still imports the removed `mermaidErDiagram` is one such case (see
   **Removed** below).
@@ -1066,6 +1097,29 @@ until you regenerate.
     naming args and `<filters>`
     ([migration](docs/features/migrations/docs-are-generators.md#java-and-kotlin)).
 
+- **TypeScript: `meta docs`, `meta verify --docs` and the config's `docs` block.** The
+  documentation `meta docs` wrote is written by `meta gen` from entries in `generators`, and
+  `meta verify --codegen` checks it with everything else the list declares (see **Changed**).
+  Nothing is generated that `generators` does not declare, documentation included. Ruling:
+  ADR-0034 Amendment 9.
+  - `meta docs` prints `` `meta docs` was removed in 1.1.0. `meta gen` writes documentation
+    now: declare each docs generator in `generators` in metaobjects.config.ts. See
+    docs/features/migrations/docs-are-generators.md, section "TypeScript". `` and exits 2.
+    `meta verify --docs` prints the same shape, naming `meta verify --codegen`, and exits 2.
+  - A config with a `docs` key fails `meta gen` and `meta verify --codegen` before anything
+    is written, naming the block and the migration section. A project with no
+    `metaobjects.config.ts` fails `meta gen` the same way: in 1.0 `meta docs` wrote its pages
+    with no config at all, and in 1.1.0 nothing is generated until a config declares it.
+  - `meta init` writes no `docs` block, and its next steps no longer name `meta docs`.
+  - Removed from `@metaobjectsdev/codegen-ts`: `DocsConfig`, `ResolvedDocsConfig`,
+    `DocsSurface` and `resolveDocsConfig`, which typed and resolved the `docs` block.
+    `ApiSurface` stays, as the type of `docsFile({ apiSurfaces })`, and so does
+    `DEFAULT_DOCS_DIR`.
+  - **To upgrade**, move each page set into `generators` and the block's settings into
+    `targets.docs` and the factories' options. Before and after configs, each flag's and
+    key's new home, the scripts and CI change and the no-config case are in
+    [docs-are-generators.md, "TypeScript"](docs/features/migrations/docs-are-generators.md#typescript).
+
 - **The standalone `mermaid-er` generator (TypeScript).** `mermaidErDiagram()`, its
   `MermaidErOptions` type and the stable name `"mermaid-er"` are gone from
   `@metaobjectsdev/codegen-ts/generators`, the generator catalog and the cross-port
@@ -1078,7 +1132,8 @@ until you regenerate.
   - **To upgrade**, if your `metaobjects.config.ts` wires it: delete the
     `mermaidErDiagram` import and its entry in `generators` (or the `"mermaid-er"` name),
     delete the file it wrote (`docs/model.md` under your output directory, unless you moved
-    it with `outFile`), and run `meta docs`. `meta verify --codegen` reports that file as
+    it with `outFile`), and list `docsFile()` with a `docs` target (see the entry above).
+    `meta verify --codegen` reports that file as
     no longer generated until it is deleted.
   - **A config that still wires it fails with a message that says this**, instead of the
     runtime's own words for a missing export. The import is diagnosed in the config and in
@@ -1094,56 +1149,17 @@ until you regenerate.
   suites and both failed. A package with no parent now draws no parent namespace. Output
   for a multi-segment package is unchanged.
 
-- **A doc generator skipped by `meta gen` is now reported in every output form.** `meta docs`
-  is the door for documentation (ADR-0025), so `meta gen` warns about and skips a `docsFile()`
-  or `apiDocsFile()` listed under `generators`. That has not changed. What changed is who hears
-  about it:
-  - **`meta gen --format json|toon`** (the default on a pipe) printed the runner's warnings to
-    stderr only, and the result's `warnings` carried unknown-attribute findings alone, so the
-    document described a clean run with no API docs and no reason. `warnings[]` now carries
-    every warning the run printed: all of the runner's (not only this one), a generator's own
-    `ctx.warn`, the runtime-boundary advisory, and the stale-agent-context and ignored-manifest
-    advisories. `help[]` gains a `meta docs` next step when a doc generator was skipped. Text
-    output is unchanged.
-  - **A config that wires only doc generators** was told `no entities to generate` and to
-    `author entities in this project's metadata sources`, for a project that has them. The
-    summary, the next step and the text line now name the real reason.
-  - **`meta gen --list`** presented `api-docs` as one more generator to wire, and printed no
-    note on any row: the registry's notes for `docs` and `mermaid-er` stopped being rendered
-    when the catalog was rewritten. The `api-docs` and `docs` rows now read ``run by `meta
-    docs` `` with the reason under the row, a wired one reads ``WIRED but skipped by `meta
-    gen` ``, and `--probe` no longer prints `would emit 0` for them. In `--format json` the row
-    carries `note` and `door: "meta docs"`, and `project.wouldEmit` is `null` instead of `0`.
-    There is no `mermaid-er` row any more: the generator is removed in this release (see
-    **Removed** above). The neutral name `"docs"` wired as a string, which `meta gen`
-    refuses, reads ``WIRED by name, which `meta gen` refuses`` (`project.refused` in
-    `--format json`).
-  - **`meta verify`** said nothing about a config wired this way. It now reports each one as an
-    advisory row (rule `doc-generator-in-gen`, in `antiPatterns.rows[]`) that names
-    `meta verify --docs` as the gate that checks documentation. A neutral name wired as a
-    string is reported under rule `doc-generator-refused-by-gen`, because `meta gen` fails on
-    it rather than skipping it. The removed name `"mermaid-er"` is reported under the same
-    rule, with the message `meta gen` fails with. Advisory: the exit code is unchanged.
-  - **An owned docs generator under `generators`** (a copy made with `meta eject docs` or
-    `meta eject api-docs`) is skipped by the same rule and reported in the same places. Its
-    fix is the opposite one, so each message says to move it to
-    `docs: { generators: [...] }`, where `meta docs` runs it, and not to remove it: the
-    runner's warning, the `help[]` next step and the `doc-generator-in-gen` advisory row. A
-    config that wires only such a copy is no longer told `no entities to generate`. Listed
-    in the docs block, its `meta gen --list` row reads ``WIRED in `docs.generators` ``
-    (`project.wiredInDocsDoor` in `--format json`).
-  - **The unknown-generator error** listed `api-docs` among the names `meta gen` accepts. It no
-    longer does, and it says documentation comes from `meta docs`.
-
-  `runGen()` returns a new `skippedDocGenerators: string[]` beside `warnings`, with
-  `skippedOwnedDocGenerators` naming the owned copies among them, and
-  `@metaobjectsdev/codegen-ts` exports `isPackagedDocsGenerator` (skipped),
-  `isNeutralGeneratorName` (refused) and `removedGeneratorMessage` (refused as removed), so
-  a caller embedding the runner can ask rather than match a sentence. TypeScript only: in
-  the C#, Java, Kotlin and Python
-  ports documentation is a separate command (`dotnet meta docs`, `mvn metaobjects:docs`,
-  `metaobjects docs`) and no doc generator is registered for code generation, so there is
-  nothing to wire and nothing to skip.
+- **`meta gen --format json|toon` carries every warning the run printed.** In the structured
+  form (the default on a pipe, so the form an agent reads) the runner's warnings went to stderr
+  only, and the result's `warnings` carried unknown-attribute findings alone, so a run that
+  skipped work could read as clean. `warnings[]` now carries every warning the run printed: all
+  of the runner's, a generator's own `ctx.warn`, the runtime-boundary advisory, and the
+  stale-agent-context and ignored-manifest advisories. Text output is unchanged. The unknown-
+  generator error names every registered generator `meta gen` accepts, the documentation
+  generators included, and `@metaobjectsdev/codegen-ts` exports `removedGeneratorMessage`, so a
+  caller embedding the runner can ask whether a name was removed rather than match a sentence.
+  (`meta gen --list` lost its notes on every row when the catalog was rewritten; each row prints
+  its registry note again.)
 - **One shared-enum rule in all five ports: a field keeps the shared type through any number
   of `extends` hops.** An enum field that extends another field which itself reaches a shared
   (package-level abstract) enum was resolved only when it extended the abstract directly, so a

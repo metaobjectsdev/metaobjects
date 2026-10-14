@@ -1,8 +1,8 @@
 // FR-033 S3 — the metamodel doc renderer (pure, deterministic, byte-stable).
 //
 // Documents the METAMODEL ITSELF — the type/subtype/attr vocabulary of the
-// strict registry — for an LLM (and humans). This is distinct from `meta docs
-// --model`, which documents a USER's entities. The output is a tiered markdown
+// strict registry — for an LLM (and humans). This is distinct from the `docs`
+// generator (`docsFile()`), which documents a USER's entities. The output is a tiered markdown
 // tree:
 //
 //   INDEX.md          every type.subType + one-liner + link  (always-on map)
@@ -24,7 +24,7 @@ import { CHILD_RULE_WILDCARD } from "../shared/structural.js";
 import { SUBTYPE_BASE } from "../shared/base-types.js";
 
 /** The regeneration command, named in every file's DO-NOT-EDIT header. */
-const REGEN_COMMAND = "meta docs --metamodel";
+const REGEN_COMMAND = "meta gen (the metamodel-docs generator, metamodelDocsFile())";
 
 /** ASCII codepoint compare — locale-independent, byte-stable. */
 function compare(a: string, b: string): number {
@@ -196,7 +196,7 @@ function renderIndex(defs: readonly TypeDefinition[]): string {
     "# MetaObjects Metamodel — Index\n",
     "This documents the **metamodel itself** — the type / subtype / attribute",
     "vocabulary the loader accepts — generated from the strict registry. It is",
-    "NOT documentation of a user's entities (that is `meta docs --model`).\n",
+    "NOT documentation of a user's entities (that is the `docs` generator, `docsFile()`).\n",
     "Follow a link into `types/<family>.md` for the full attribute table, allowed",
     "children, and cardinality of a subtype. Universal documentation attributes",
     "(`@description`/`@title`/…) apply to every node and are listed once in",

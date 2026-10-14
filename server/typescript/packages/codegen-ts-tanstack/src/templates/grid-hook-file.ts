@@ -11,7 +11,7 @@
 import { code, imp, joinCode, type Code } from "ts-poet";
 import type { MetaObject, MetaLayout } from "@metaobjectsdev/metadata";
 import { LAYOUT_SUBTYPE_DATA_GRID } from "@metaobjectsdev/metadata";
-import type { RenderContext } from "@metaobjectsdev/codegen-ts";
+import type { RenderContext } from "@metaobjectsdev/codegen-ts/engine";
 
 import {
   GENERATED_HEADER,
@@ -19,7 +19,7 @@ import {
   entityModuleSpecifier,
   siblingSpecifier,
   effectivePackage,
-} from "@metaobjectsdev/codegen-ts";
+} from "@metaobjectsdev/codegen-ts/engine";
 import {
   resolveGridDefaultSort,
   type GridDefaultSort,

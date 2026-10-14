@@ -1,7 +1,7 @@
 // Task 3 — the `api-docs` GENERATOR: it wires the Task-1 ApiModel builder +
 // Task-2 renderers into the codegen pipeline. This gate proves:
-//   • the emitted file set: one `docs/api/<Node>.md` per entity + template, plus
-//     `docs/api/README.md` (the human index) and `docs/api/AGENT-API.md`;
+//   • the emitted file set: one `api/<Node>.md` per entity + template, plus
+//     `api/README.md` (the human index) and `api/AGENT-API.md`;
 //   • per-unit page + index + agent content match the Task-2 renderers exactly
 //     (no re-derivation — the generator reuses them);
 //   • index links resolve to files actually emitted in the run, in BOTH flat and
@@ -27,7 +27,7 @@ import { buildRelationMap } from "../../src/relation-resolver.js";
 import type { GenContext } from "../../src/generator.js";
 import type { OutputLayout } from "../../src/import-path.js";
 
-const API_DIR = "docs/api";
+const API_DIR = "api";
 
 // A multi-entity model (CRUD entity + value object) plus a template unit, in a
 // single package — exercises the entity vs template grouping + every section.
@@ -132,7 +132,7 @@ function makeCtx(
 const provider = projectProvider(undefined);
 
 describe("apiDocsFile() — emitted file set + content reuses the Task-2 renderers", () => {
-  test("emits docs/api/<Node>.md per unit + README.md + AGENT-API.md (flat)", async () => {
+  test("emits api/<Node>.md per unit + README.md + AGENT-API.md (flat)", async () => {
     const root = await loadRoot([SHOP]);
     const out = await apiDocsFile().generate(makeCtx(root));
     const paths = out.map((f) => f.path).sort();

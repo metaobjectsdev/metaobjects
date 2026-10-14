@@ -125,7 +125,9 @@ describe("meta eject takes many names", () => {
     }
   });
 
-  test("docs and api-docs eject — and say that `meta docs` runs the copy, not `meta gen`", async () => {
+  // ADR-0034 Amendment 9: an owned docs generator is wired like every other owned copy, in
+  // `generators`, and `meta gen` runs it.
+  test("docs and api-docs eject, wired in `generators` like any other copy", async () => {
     const dir = tmp();
     try {
       expect(await ejectCommand(["docs", "api-docs"], dir, "json")).toBe(0);
@@ -137,29 +139,22 @@ describe("meta eject takes many names", () => {
         'import { docsFile } from "./codegen/generators/docs.js";',
         'import { apiDocsFile } from "./codegen/generators/api-docs.js";',
       ]);
-      // The row says which config key the entry goes in. It is the docs block's, never the
-      // array `meta gen` runs.
-      expect(rows.map((r) => r.wire.into)).toEqual(["docs.generators", "docs.generators"]);
+      expect(rows.map((r) => Object.keys(r.wire).sort())).toEqual([["entry", "import"], ["entry", "import"]]);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   });
 
-  test("the text report says which command runs an ejected docs generator", async () => {
+  test("the text report wires an ejected docs generator in `generators`, and names no docs command", async () => {
     const dir = tmp();
     try {
       expect(await ejectCommand(["docs"], dir, "text")).toBe(0);
       const text = logged.join("\n");
       expect(text).toContain('Ejected "docs" -> codegen/generators/docs.ts');
-      expect(text).toContain("`meta docs` runs this generator, in place of the packaged one.");
       expect(text).toContain('import { docsFile } from "./codegen/generators/docs.js";');
-      expect(text).toContain("docs: { generators: [docsFile()] }");
-      expect(text).toContain("`meta verify --docs`");
-      // The wiring is the docs door's, start to finish: nothing sends the reader to the
-      // top-level `generators`, where `meta gen` would skip the copy.
-      expect(text).not.toContain("in `generators` yet");
-      expect(text).not.toContain("leaves `generators` bound");
-      expect(text.replaceAll("docs: { generators:", "")).not.toContain("generators:");
+      expect(text).toContain("in `generators` yet");
+      expect(text).not.toContain("meta docs");
+      expect(text).not.toContain("docs: { generators");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

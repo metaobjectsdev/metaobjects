@@ -267,7 +267,7 @@ export function renderAgentSchemaPage(
     out.push("## Views");
     out.push("");
     // A model with no report view must render exactly what it rendered before FR-044
-    // (no-churn: `meta verify --docs` would flag drift after an upgrade otherwise).
+    // (no-churn: `meta verify --codegen` would flag drift after an upgrade otherwise).
     const hasReportView = input.views.some((v) => opts.reportViews?.has(input.qualify(v)) === true);
     out.push(
       (hasReportView

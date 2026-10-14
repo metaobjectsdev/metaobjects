@@ -66,9 +66,9 @@ import {
   viewForContext,
   VIEW_CONTEXT_FORM,
   effectivePackage,
-} from "@metaobjectsdev/codegen-ts";
+} from "@metaobjectsdev/codegen-ts/engine";
 import { humanize, valueObjectFor } from "@metaobjectsdev/codegen-ts/templates/field-meta";
-import { tphDiscriminatorPin } from "@metaobjectsdev/codegen-ts/templates/zod-validators";
+import { tphDiscriminatorPin } from "@metaobjectsdev/codegen-ts/engine";
 
 function primaryFieldNames(entity: MetaObject): Set<string> {
   const set = new Set<string>();

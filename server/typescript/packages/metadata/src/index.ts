@@ -237,7 +237,7 @@ export { ExclusionReason } from "./registry-manifest-exclusions.js";
 
 // FR-033 S3 — metamodel doc-gen: tiered, LLM-readable docs FOR THE METAMODEL
 // (the type/subtype/attr vocabulary), generated from the strict registry.
-// Distinct from `meta docs --model` (which documents a user's entities).
+// Distinct from the `docs` generator (which documents a user's entities).
 export {
   renderMetamodelDocs,
   buildMetamodelProvenance,
