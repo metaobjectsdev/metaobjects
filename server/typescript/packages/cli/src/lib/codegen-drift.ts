@@ -93,6 +93,13 @@ export interface CodegenDriftResult {
    * that checked them all.
    */
   docsIgnored: number;
+  /**
+   * Documentation directories, project-relative, whose every freshly generated page the
+   * repository git-ignores. Not compared at all: a project that generates its documentation
+   * without committing it passes, as it did when 1.0's `verify --codegen` never looked at
+   * documentation.
+   */
+  docsIgnoredDirs: string[];
   /** Why git could not be asked which pages are ignored (every page was then checked). */
   docsIgnoreUnavailable?: string;
   /** Set when the gate could not run (e.g. no outDir to compare against). */
@@ -191,6 +198,7 @@ export async function computeCodegenDrift(
       handEditedNames: [],
       handEdited: [],
       docsIgnored: 0,
+      docsIgnoredDirs: [],
       error:
         "verify --codegen: no outDir configured — cannot locate the committed " +
         "generated output to diff against. Set 'outDir' (and/or per-target " +
@@ -276,6 +284,7 @@ export async function computeCodegenDrift(
     const haveWriteRecords = listGeneratedPaths(projectGenStateDir).length > 0;
     const docsDirs = docsOutDirs(config, root);
     let docsIgnored = 0;
+    const docsIgnoredDirs: string[] = [];
     let docsIgnoreUnavailable: string | undefined;
     for (const committed of committedDirs) {
       const fresh = tempFor(committed);
@@ -296,19 +305,8 @@ export async function computeCodegenDrift(
         else docsIgnoreUnavailable = lookup.unavailable;
         const checked = [...freshFiles].filter((rel) => !ignored.has(toPosix(rel)));
         if (freshFiles.size > 0 && checked.length === 0) {
-          return {
-            clean: false,
-            driftedFiles: [],
-            lines: [],
-            handEditedNames: [],
-            handEdited: [],
-            docsIgnored: freshFiles.size,
-            error:
-              `verify --codegen: a fresh regen writes ${freshFiles.size} documentation page(s) to ` +
-              `${relative(root, committed) || "."} and the repository git-ignores every one of them, ` +
-              `so there is nothing to compare. Commit the pages you want checked, or list no ` +
-              `documentation generator for that directory.`,
-          };
+          docsIgnoredDirs.push(relative(root, committed) || ".");
+          continue;
         }
       }
       for (const rel of [...all].sort()) {
@@ -402,6 +400,7 @@ export async function computeCodegenDrift(
       handEditedNames: [...handEditedNames].sort(),
       handEdited: [...handEdited].sort(),
       docsIgnored,
+      docsIgnoredDirs,
       ...(docsIgnoreUnavailable !== undefined ? { docsIgnoreUnavailable } : {}),
     };
   } finally {

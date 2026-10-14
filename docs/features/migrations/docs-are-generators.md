@@ -181,6 +181,10 @@ meta gen --generators docs,api-docs,requirements,agent-docs
 --list` prints them). A name the config does not declare is refused; it never adds a
 generator.
 
+If your repository git-ignores the docs directory, `meta verify --codegen` does not compare
+its pages and names the directory on a line of its own, so a CI run that does not commit the
+documentation still passes.
+
 **A generator you own.** A copy from `meta eject docs` (or `api-docs`, `requirements`,
 `agent-docs`, `metamodel-docs`) goes in `generators`, in place of the packaged factory, like
 any other owned copy. 1.0 listed it in `docs.generators`; that key is gone with the block.

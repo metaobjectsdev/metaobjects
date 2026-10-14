@@ -1650,6 +1650,9 @@ export async function verifyCommand(
     if (result.docsIgnored > 0) {
       say(`meta verify — ${result.docsIgnored} generated documentation page(s) are git-ignored and were not checked.`);
     }
+    for (const dir of result.docsIgnoredDirs) {
+      say(`meta verify — ${dir}: the repository git-ignores every documentation page generated there, so they were not compared.`);
+    }
     if (result.docsIgnoreUnavailable !== undefined) {
       say(`meta verify — git could not say which documentation pages are ignored (${result.docsIgnoreUnavailable}), so every page was checked.`);
     }

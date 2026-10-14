@@ -303,12 +303,16 @@ describe("meta verify --codegen checks the documentation the list declares", () 
     );
   });
 
-  test("a docs directory the repository ignores whole is refused, not reported clean", async () => {
+  test("a docs directory the repository ignores whole is not compared, and the run names it", async () => {
     const root = project({ config: base(`["entity", docsFile()]`), ownRepo: true });
     writeFileSync(join(root, ".gitignore"), "docs/\n", "utf8");
     expect(await run(["gen", "--cwd", root])).toBe(0);
-    expect(await run(["verify", "--codegen", "--cwd", root])).toBe(2);
-    expect(stderr()).toContain("git-ignores every one of them");
+    // A stale page in the ignored directory is not drift: nothing there is compared.
+    writeFileSync(join(root, "docs", "generated", "Talk.md"), "stale\n", "utf8");
+    expect(await run(["verify", "--codegen", "--cwd", root])).toBe(0);
+    expect([...out, ...err].join("\n")).toContain(
+      "docs/generated: the repository git-ignores every documentation page generated there, so they were not compared.",
+    );
   });
 });
 

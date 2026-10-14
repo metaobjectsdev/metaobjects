@@ -78,9 +78,10 @@ Rules of the contract:
   fresh set by name, present on disk or not, so a CI runner that has only the committed
   pages answers as the machine that generated them all; a tracked page is never reported
   ignored by git, so a committed page is always compared; a per-user ignore file does not
-  count. The run says how many pages it did not check, on the pass and the fail line, and a
-  docs directory whose every page is ignored is REFUSED (exit 2) rather than reported
-  clean. When git cannot answer (not a repository, not on PATH) every page is checked, and
+  count. The run says how many pages it did not check, on the pass and the fail line. A
+  docs directory whose every page is ignored is not compared at all, and the run names it
+  on a line of its own: a project that generates its documentation without committing it
+  passes, as it did in 1.0, when `verify --codegen` never looked at documentation. When git cannot answer (not a repository, not on PATH) every page is checked, and
   the run says so.
 - **Unknown/invalid flag → exit 2**, refused by name with that command's valid flags listed
   — one wording in every port's CLI (`unknown flag --x for \`meta gen\`. Valid flags: …`).
