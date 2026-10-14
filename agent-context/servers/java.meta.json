@@ -4,5 +4,6 @@
   "codegenCommand": "mvn metaobjects:generate",
   "docsCommand": "mvn metaobjects:generate",
   "docsCondition": " (when the project's generator list declares the api-docs generator)",
+  "docsMissing": "Declare `com.metaobjects.generator.apidocs.JavaApiDocsGenerator` as a `<generator>` entry in the pom's `<generators>` if it is missing",
   "apiSubDir": "api/java"
 }

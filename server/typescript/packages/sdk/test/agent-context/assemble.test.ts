@@ -56,9 +56,19 @@ describe("assemble", () => {
       "`mvn metaobjects:generate` writes ONE reference file under this project's docs output " +
         "directory (when the project's generator list declares the api-docs generator).",
     );
+    // A missing api-docs entry is the usual reason the page is absent, so the Not-there line
+    // names the entry to declare before the command, rather than repeating the condition.
     expect(java).toContain(
-      "Not there? Run `mvn metaobjects:generate` (when the project's generator list declares " +
-        "the api-docs generator).",
+      "Not there? Declare `com.metaobjects.generator.apidocs.JavaApiDocsGenerator` as a " +
+        "`<generator>` entry in the pom's `<generators>` if it is missing, then run " +
+        "`mvn metaobjects:generate`.",
+    );
+    const kotlin = assemble({ contentRoot: CONTENT_ROOT, stack: makeStack(["kotlin"], []) })
+      .find((f) => f.path === ".metaobjects/AGENTS.md")!.contents;
+    expect(kotlin).toContain(
+      "Not there? Declare `com.metaobjects.generator.kotlin.apidocs.KotlinApiDocsGenerator` as a " +
+        "`<generator>` entry in the pom's `<generators>` if it is missing, then run " +
+        "`mvn metaobjects:generate`.",
     );
 
     // A Java backend serving React DOES run `meta gen`, so it gets the full pointer.
@@ -67,7 +77,7 @@ describe("assemble", () => {
     expect(javaReact).toContain("`meta docs` writes four reference files");
 
     // No section tag survives substitution on any of them.
-    for (const c of [node, python, java, javaReact]) {
+    for (const c of [node, python, java, kotlin, javaReact]) {
       expect(c).not.toContain("{{#");
       expect(c).not.toContain("{{^");
       expect(c).not.toContain("{{/");

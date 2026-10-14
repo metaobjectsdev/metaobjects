@@ -37,6 +37,12 @@ interface ServerMeta {
    *  goal writes them only when the pom's generator list declares the api-docs generator,
    *  and a pointer that omits that sends a reader to run a command that writes nothing. */
   docsCondition: string;
+  /** What to do before running `docsCommand` when the api pages are missing, with no
+   *  trailing punctuation, or `""` when running it is the whole remedy. A Maven pom writes
+   *  them only once it declares the api-docs generator, and a missing entry is the usual
+   *  reason the file is absent, so the Not-there line names that entry instead of only the
+   *  command. */
+  docsMissing: string;
   /** The docs-root-relative directory THIS port's docs command writes its api pages into.
    *  It is NOT `api` outside TypeScript — Python defaults to `api/python`, C# to
    *  `api/csharp`, the Maven plugin to `api/<lang>` — so a pointer naming `api/AGENT-API.md`
@@ -54,7 +60,14 @@ function readServerMeta(contentRoot: string, server: string): ServerMeta | undef
 function stackLine(
   contentRoot: string,
   stack: Stack,
-): { line: string; codegenCommand: string; docsCommand: string; docsCondition: string; apiSubDir: string } {
+): {
+  line: string;
+  codegenCommand: string;
+  docsCommand: string;
+  docsCondition: string;
+  docsMissing: string;
+  apiSubDir: string;
+} {
   const primary = stack.servers[0];
   const meta = primary ? readServerMeta(contentRoot, primary) : undefined;
   const serverPart = stack.servers.length ? stack.servers.join(", ") + " server" : "no server";
@@ -69,6 +82,7 @@ function stackLine(
     codegenCommand: meta ? meta.codegenCommand : "meta gen",
     docsCommand: meta ? meta.docsCommand : "meta docs",
     docsCondition: meta ? meta.docsCondition : "",
+    docsMissing: meta ? meta.docsMissing : "",
     apiSubDir: meta ? meta.apiSubDir : "api",
   };
 }
@@ -143,10 +157,14 @@ export function assemble(opts: { contentRoot: string; stack: Stack }): Assembled
 
   // 1. Always-on (AGENTS.md + CLAUDE.md, identical contents).
   const tpl = readFileSync(join(contentRoot, "templates", "always-on.md.mustache"), "utf8");
-  const { line, codegenCommand, docsCommand, docsCondition, apiSubDir } = stackLine(contentRoot, stack);
+  const { line, codegenCommand, docsCommand, docsCondition, docsMissing, apiSubDir } = stackLine(
+    contentRoot,
+    stack,
+  );
+  const docsMissingAction = docsMissing === "" ? "Run" : `${docsMissing}, then run`;
   const alwaysOn = applyTemplate(
     tpl,
-    { stackLine: line, codegenCommand, docsCommand, docsCondition, apiSubDir },
+    { stackLine: line, codegenCommand, docsCommand, docsCondition, docsMissingAction, apiSubDir },
     { nodeDocsSurface: hasNodeDocsSurface(stack) },
   );
   out.push({ path: ".metaobjects/AGENTS.md", contents: alwaysOn });

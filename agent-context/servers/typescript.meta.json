@@ -4,5 +4,6 @@
   "codegenCommand": "npx meta gen",
   "docsCommand": "npx meta docs",
   "docsCondition": "",
+  "docsMissing": "",
   "apiSubDir": "api"
 }

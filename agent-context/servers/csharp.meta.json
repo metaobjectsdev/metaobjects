@@ -4,5 +4,6 @@
   "codegenCommand": "dotnet meta gen",
   "docsCommand": "dotnet meta docs",
   "docsCondition": "",
+  "docsMissing": "",
   "apiSubDir": "api/csharp"
 }
