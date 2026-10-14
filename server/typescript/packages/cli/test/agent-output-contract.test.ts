@@ -177,7 +177,6 @@ describe("an unknown flag names the command and lists its valid flags (exit 2)",
     { argv: ["prompt-snapshot"], command: "prompt-snapshot", aValidFlag: "--check" },
     { argv: ["generator", "new", "x"], command: "generator", aValidFlag: "--scope" },
     { argv: ["types"], command: "types", aValidFlag: "--limit" },
-    { argv: ["docs"], command: "docs", aValidFlag: "--out, -o" },
     { argv: ["upgrade"], command: "upgrade", aValidFlag: "--apply" },
   ];
   for (const c of commands) {
@@ -214,11 +213,11 @@ describe("numeric flags refuse non-numbers (exit 2)", () => {
 });
 
 describe("metadata that does not load exits 1 in every command", () => {
-  test("gen, verify, docs, migrate and export agree", async () => {
+  test("gen, verify, migrate and export agree", async () => {
     const broken = join(dir, "metaobjects", "meta.broken.json");
     writeFileSync(broken, '{ "metadata.root": { "children": [ ');
     try {
-      for (const argv of [["gen"], ["verify"], ["docs"], ["migrate", "--dialect", "sqlite"], ["export"]]) {
+      for (const argv of [["gen"], ["verify"], ["migrate", "--dialect", "sqlite"], ["export"]]) {
         const r = await capture([...argv, "--cwd", dir]);
         expect({ argv, exit: r.exit }).toEqual({ argv, exit: 1 });
       }

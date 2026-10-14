@@ -11,13 +11,13 @@ import { run } from "../src/index.js";
 const HELP_TIMEOUT_MS = 30_000;
 
 test("each subcommand supports --help and exits 0", async () => {
-  for (const c of ["gen", "migrate", "verify", "export", "docs", "init"]) {
+  for (const c of ["gen", "migrate", "verify", "export", "init"]) {
     expect(await run([c, "--help"])).toBe(0);
   }
 }, HELP_TIMEOUT_MS);
 
 test("each subcommand supports -h and exits 0", async () => {
-  for (const c of ["gen", "verify", "export", "docs", "init"]) {
+  for (const c of ["gen", "verify", "export", "init"]) {
     expect(await run([c, "-h"])).toBe(0);
   }
 }, HELP_TIMEOUT_MS);

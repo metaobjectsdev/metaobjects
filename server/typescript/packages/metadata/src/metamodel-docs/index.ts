@@ -1,10 +1,10 @@
 // FR-033 S3 — metamodel doc-gen public surface.
 //
 // Documents the METAMODEL ITSELF (the type/subtype/attr vocabulary of the strict
-// registry) as tiered, LLM-readable markdown — distinct from `meta docs --model`
+// registry) as tiered, LLM-readable markdown — distinct from the `docs` generator
 // (which documents a user's entities). The renderer is a pure, deterministic
-// function over the composed registry + a provenance lens; file I/O lives in the
-// CLI.
+// function over the composed registry + a provenance lens; the `metamodel-docs`
+// generator in codegen-ts writes its pages.
 
 import type { TypeRegistry } from "../registry.js";
 import { coreProviders } from "../core-types.js";

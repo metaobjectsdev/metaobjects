@@ -119,7 +119,7 @@ export function assertNoDuplicateDocPaths(placements: DocPagePlacement[]): void 
     if (prior !== undefined) {
       throw new Error(
         `docs: duplicate output path "${path}" from nodes ${prior} and ${fqn} — ` +
-          `use package layout (outputLayout: "package" / meta docs --layout package) ` +
+          `use package layout (outputLayout: "package", on the docs target) ` +
           `to disambiguate.`,
       );
     }

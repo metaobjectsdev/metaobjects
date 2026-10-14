@@ -38,6 +38,19 @@ import type { PackageManifest } from "./package-manifest.js";
  * never gated — `.` is the one subpath every package exports.
  */
 export function peerRangesOf(packageName: string): Record<string, string> {
+  return manifestRangesOf(packageName, "peerDependencies");
+}
+
+/**
+ * The ranges a package declares for its own dependencies, or `{}` if they cannot be read.
+ * What a copied template module imports from outside the engine is read from the package it
+ * was copied from — never restated here, for the reason `peerRangesOf` gives.
+ */
+export function dependencyRangesOf(packageName: string): Record<string, string> {
+  return manifestRangesOf(packageName, "dependencies");
+}
+
+function manifestRangesOf(packageName: string, field: "peerDependencies" | "dependencies"): Record<string, string> {
   try {
     const req = createRequire(import.meta.url);
     let dir = dirname(req.resolve(packageName));
@@ -50,7 +63,7 @@ export function peerRangesOf(packageName: string): Record<string, string> {
         };
         // Guard against stopping at a nested manifest that is not the package itself.
         if (manifest.name === packageName) {
-          return (manifest.peerDependencies ?? {}) as Record<string, string>;
+          return (manifest[field] ?? {}) as Record<string, string>;
         }
       }
       const up = dirname(dir);
@@ -125,6 +138,9 @@ export function installSetFor(
    *  project, and what that copy imports. Their output no longer imports the runtime package,
    *  so it is not installed on their account; the copy's own imports are, instead. */
   ownedRuntime?: OwnedRuntimeInstall,
+  /** Third-party packages the copied template modules import, with the range the codegen
+   *  package that ships them declares. Build-time, so dev. */
+  templateThirdParty: ReadonlyMap<string, string | undefined> = new Map(),
 ): InstallSet {
   const version = cliVersion();
   const dev = new Map<string, string | undefined>();
@@ -156,6 +172,9 @@ export function installSetFor(
 
   for (const p of templatePackages) {
     if (!runtime.has(p)) addPackage(dev, p, `^${version}`);
+  }
+  for (const [name, range] of templateThirdParty) {
+    if (!runtime.has(name)) addPackage(dev, name, range);
   }
 
   const devList = specs(dev);

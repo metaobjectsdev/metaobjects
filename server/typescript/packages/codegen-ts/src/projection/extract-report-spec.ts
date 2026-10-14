@@ -24,7 +24,7 @@ import {
 } from "@metaobjectsdev/metadata";
 import { columnNameFromField } from "../naming.js";
 import { hasWritableRdbSource } from "../source-detect.js";
-import { isTphSubtype, tphDiscriminatorBase, tphDiscriminatorPin } from "../templates/zod-validators.js";
+import { isTphSubtype, tphDiscriminatorBase, tphDiscriminatorPin } from "../tph.js";
 import {
   packageOf,
   pathsToJoins,

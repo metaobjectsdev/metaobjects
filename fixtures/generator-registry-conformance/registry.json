@@ -1,5 +1,5 @@
 {
-  "$comment": "CANONICAL generator stable-name manifest (ADR-0021 D3). The single cross-port source of truth for generator stable names. Every port's generator registry is conformance-tested against this file: (1) every generator a port exposes MUST use a name listed here; (2) for each generator, the `ports` array lists exactly the ports expected to expose it (presence is checked both ways); (3) because all ports validate against this one file, a shared concept (e.g. `routes`) is spelled identically everywhere. Port ids: typescript, csharp, java, kotlin, python. `tier`: native (idiomatic per-port code) or neutral (Tier-2, owned by `meta docs`). `layer`: one of model, persistence, api, client, docs, capability — the grouping an adopter SELECTS BY, gated in every port exactly as `tier` is (see README.md). `eject`: \"full\" (the owned copy holds the generator's emit) or an exemption with a written reason and the ruling that grants it; the top-level `eject` block carries the engine surface, the exempt non-generator emitters and the pending list (ADR-0034 Amendment 8, see README.md). Adding/renaming a generator = edit THIS file + the port registry together; the conformance gate fails otherwise.",
+  "$comment": "CANONICAL generator stable-name manifest (ADR-0021 D3). The single cross-port source of truth for generator stable names. Every port's generator registry is conformance-tested against this file: (1) every generator a port exposes MUST use a name listed here; (2) for each generator, the `ports` array lists exactly the ports expected to expose it (presence is checked both ways); (3) because all ports validate against this one file, a shared concept (e.g. `routes`) is spelled identically everywhere. Port ids: typescript, csharp, java, kotlin, python. `tier`: native (idiomatic per-port code) or neutral (language-neutral pages that describe the model the same way in every port; a description of the output, not a door: every generator runs when the project's generator list declares it, ADR-0034 Amendment 9). `layer`: one of model, persistence, api, client, docs, capability — the grouping an adopter SELECTS BY, gated in every port exactly as `tier` is (see README.md). `eject`: \"full\" (the owned copy holds the generator's emit) or an exemption with a written reason and the ruling that grants it; the top-level `eject` block carries the engine surface, the exempt non-generator emitters and the pending list (ADR-0034 Amendment 8, see README.md). Adding/renaming a generator = edit THIS file + the port registry together; the conformance gate fails otherwise.",
   "ports": ["typescript", "csharp", "java", "kotlin", "python"],
   "generators": {
     "entity": {
@@ -107,7 +107,7 @@
       "concept": "Per-entity/template SDK API reference (generated-code API; human + agent forms).",
       "tier": "native",
       "layer": "docs",
-      "note": "An ordinary generator, listed in the project's generator list and run by the gen command (ADR-0034 Amendment 9). Java and Kotlin do this today: a `<generator>` entry that `mvn metaobjects:generate` runs. TypeScript, C# and Python still run it from the port's docs command (`meta docs`, `dotnet meta docs`, `metaobjects docs`), and their gen commands skip it, until each port's Amendment 9 change lands and removes that command.",
+      "note": "An ordinary generator, listed in the project's generator list and run by the gen command (ADR-0034 Amendment 9). Java, Kotlin and TypeScript do this today: a `<generator>` entry that `mvn metaobjects:generate` runs, or `apiDocsFile()` in `generators` that `meta gen` runs. C# and Python still run it from the port's docs command (`dotnet meta docs`, `metaobjects docs`), and their gen commands skip it, until each port's Amendment 9 change lands and removes that command.",
       "eject": "full",
       "ports": ["typescript", "csharp", "java", "kotlin", "python"]
     },
@@ -236,7 +236,7 @@
       "concept": "Neutral per-entity / per-template Markdown documentation pages.",
       "tier": "neutral",
       "layer": "docs",
-      "note": "Owned by `meta docs` (the single docs door, ADR-0021 D1); not part of the recommended native suite.",
+      "note": "Listed like any generator; writes to the `docs` target (ADR-0034 Amendment 9).",
       "eject": "full",
       "ports": ["typescript"]
     },
@@ -244,7 +244,7 @@
       "concept": "The requirement ledger as documentation: requirements.md for people and requirements.toon for tools.",
       "tier": "neutral",
       "layer": "docs",
-      "note": "Run by `meta docs` as its requirements surface, not by `meta gen`. A project that declares no requirement.* node gets no file.",
+      "note": "Listed like any generator; writes to the `docs` target (ADR-0034 Amendment 9). A project that declares no requirement.* node gets no file.",
       "eject": "full",
       "ports": ["typescript"]
     },
@@ -252,8 +252,27 @@
       "concept": "Pages written for a coding agent working in the project: the schema, the UI surface and the requirements.",
       "tier": "neutral",
       "layer": "docs",
-      "note": "Run by `meta docs --agent`, not by `meta gen`.",
+      "note": "Listed like any generator; writes to the `docs` target (ADR-0034 Amendment 9).",
       "eject": "full",
+      "ports": ["typescript"]
+    },
+    "metamodel-docs": {
+      "concept": "The reference of the built-in metamodel: every type, subtype and attribute the build registers, by provider.",
+      "tier": "neutral",
+      "layer": "docs",
+      "note": "TYPESCRIPT ONLY: it was `meta docs --metamodel` until 1.1.0 (ADR-0034 Amendment 9).",
+      "eject": "full",
+      "ports": ["typescript"]
+    },
+    "docs-site": {
+      "concept": "The browsable HTML site of the model: navigation, search, a page per package and per object, ER diagrams.",
+      "tier": "neutral",
+      "layer": "docs",
+      "note": "TYPESCRIPT ONLY: it was `meta docs --site` until 1.1.0 (ADR-0034 Amendment 9).",
+      "eject": {
+        "exempt": "The site builder is engine: it assembles the page data the site's templates read, and what an adopter changes is those templates and the assets beside them, which `meta eject docs-site` copies into codegen/docs-site/ and the generator reads from there.",
+        "ruling": "ADR-0034 Amendment 9 (restating Amendment 8, ruling 3)"
+      },
       "ports": ["typescript"]
     },
     "plantuml": {
@@ -305,25 +324,43 @@
           "codegen-ts-tanstack/src/data-grid-gate.ts",
           "codegen-ts/src/api-surface.ts",
           "codegen-ts/src/client-directive.ts",
+          "codegen-ts/src/column-mapper.ts",
           "codegen-ts/src/constants.ts",
           "codegen-ts/src/dialect-module.ts",
           "codegen-ts/src/docs-paths.ts",
+          "codegen-ts/src/docs-run.ts",
+          "codegen-ts/src/enum-import.ts",
+          "codegen-ts/src/enum-meta.ts",
+          "codegen-ts/src/enum-shared.ts",
           "codegen-ts/src/format.ts",
           "codegen-ts/src/generator.ts",
+          "codegen-ts/src/generators/agent-schema-input.ts",
+          "codegen-ts/src/generators/api-label.ts",
           "codegen-ts/src/import-path.ts",
           "codegen-ts/src/instance-artifacts.ts",
+          "codegen-ts/src/metaobjects-config.ts",
           "codegen-ts/src/names.ts",
           "codegen-ts/src/naming.ts",
           "codegen-ts/src/owned-runtime.ts",
+          "codegen-ts/src/pk-resolver.ts",
+          "codegen-ts/src/projection/extract-view-spec.ts",
           "codegen-ts/src/projection/projection-detector.ts",
+          "codegen-ts/src/projection/report-resolve.ts",
+          "codegen-ts/src/projection/report-spec.ts",
+          "codegen-ts/src/projection/report-sql.ts",
+          "codegen-ts/src/projection/time-sql.ts",
+          "codegen-ts/src/projection/view-spec.ts",
           "codegen-ts/src/relation-resolver.ts",
           "codegen-ts/src/render-context.ts",
           "codegen-ts/src/render-engine/framework-provider.ts",
           "codegen-ts/src/requirement-walk.ts",
           "codegen-ts/src/routes-expose.ts",
           "codegen-ts/src/source-detect.ts",
+          "codegen-ts/src/templates/entity-ui-descriptor.ts",
           "codegen-ts/src/templates/find-inbound.ts",
-          "codegen-ts/src/templates/find-templates.ts"
+          "codegen-ts/src/templates/find-templates.ts",
+          "codegen-ts/src/tph.ts",
+          "codegen-ts/src/view-context.ts"
         ]
       },
       "csharp": {
@@ -452,145 +489,10 @@
         "name": "docs-site builders",
         "port": "typescript",
         "path": "server/typescript/packages/docs-site/src",
-        "exempt": "`meta docs --scaffold-site` already copies the site's templates and assets into the project, and those are what an adopter changes. The builders assemble the page data the templates read.",
-        "ruling": "ADR-0034 Amendment 8, ruling 3"
+        "exempt": "The builder is engine: what an adopter changes is the site's templates and assets, which `meta eject docs-site` copies into the project (codegen/docs-site/). The builders assemble the page data the templates read.",
+        "ruling": "ADR-0034 Amendment 8, ruling 3, as Amendment 9 restates it"
       }
     ],
-    "pending": [
-      {
-        "generator": "entity",
-        "port": "typescript",
-        "assertion": "depth",
-        "gap": 3,
-        "outside": [
-          "codegen-ts/src/templates/drizzle-schema.ts",
-          "codegen-ts/src/templates/entity-constants.ts",
-          "codegen-ts/src/templates/entity-file.ts",
-          "codegen-ts/src/templates/enums-file.ts",
-          "codegen-ts/src/templates/filter-allowlist.ts",
-          "codegen-ts/src/templates/filter-type.ts",
-          "codegen-ts/src/templates/inferred-types.ts",
-          "codegen-ts/src/templates/projection-decl.ts",
-          "codegen-ts/src/templates/tph-discriminator.ts",
-          "codegen-ts/src/templates/value-object-file.ts",
-          "codegen-ts/src/templates/zod-validators.ts"
-        ]
-      },
-      {"generator": "names", "port": "typescript", "assertion": "depth", "gap": 3, "outside": ["codegen-ts/src/templates/names-decl.ts"]},
-      {
-        "generator": "queries",
-        "port": "typescript",
-        "assertion": "depth",
-        "gap": 3,
-        "outside": [
-          "codegen-ts/src/templates/queries-file.ts",
-          "codegen-ts/src/templates/queries.ts",
-          "codegen-ts/src/templates/tph-discriminator.ts",
-          "codegen-ts/src/templates/zod-validators.ts"
-        ]
-      },
-      {
-        "generator": "routes",
-        "port": "typescript",
-        "assertion": "depth",
-        "gap": 3,
-        "outside": [
-          "codegen-ts/src/templates/queries.ts",
-          "codegen-ts/src/templates/routes-index.ts",
-          "codegen-ts/src/templates/tph-discriminator.ts",
-          "codegen-ts/src/templates/zod-validators.ts"
-        ]
-      },
-      {
-        "generator": "routes-hono",
-        "port": "typescript",
-        "assertion": "depth",
-        "gap": 3,
-        "outside": ["codegen-ts/src/templates/queries.ts", "codegen-ts/src/templates/routes-index.ts", "codegen-ts/src/templates/zod-validators.ts"]
-      },
-      {"generator": "form", "port": "typescript", "assertion": "depth", "gap": 3, "outside": ["codegen-ts-react/src/templates/form-file.ts"]},
-      {
-        "generator": "grid",
-        "port": "typescript",
-        "assertion": "depth",
-        "gap": 3,
-        "outside": ["codegen-ts-tanstack/src/templates/columns-file.ts", "codegen-ts/src/templates/zod-validators.ts"]
-      },
-      {
-        "generator": "grid-hook",
-        "port": "typescript",
-        "assertion": "depth",
-        "gap": 3,
-        "outside": [
-          "codegen-ts-tanstack/src/templates/grid-hook-file.ts",
-          "codegen-ts/src/templates/entity-meta-file.ts",
-          "codegen-ts/src/templates/zod-validators.ts"
-        ]
-      },
-      {
-        "generator": "hooks",
-        "port": "typescript",
-        "assertion": "depth",
-        "gap": 3,
-        "outside": [
-          "codegen-ts-tanstack/src/templates/hooks-file.ts",
-          "codegen-ts/src/templates/entity-meta-file.ts",
-          "codegen-ts/src/templates/zod-validators.ts"
-        ]
-      },
-      {"generator": "callable", "port": "typescript", "assertion": "depth", "gap": 3, "outside": ["codegen-ts/src/templates/callable-file.ts"]},
-      {
-        "generator": "cube-model",
-        "port": "typescript",
-        "assertion": "depth",
-        "gap": 3,
-        "outside": [
-          "codegen-ts/src/cube/build-cube-model.ts",
-          "codegen-ts/src/cube/cube-errors.ts",
-          "codegen-ts/src/cube/cube-model-spec.ts",
-          "codegen-ts/src/cube/cube-yaml.ts"
-        ]
-      },
-      {"generator": "extractor", "port": "typescript", "assertion": "depth", "gap": 3, "outside": ["codegen-ts/src/templates/extractor.ts"]},
-      {"generator": "output-parser", "port": "typescript", "assertion": "depth", "gap": 3, "outside": ["codegen-ts/src/templates/output-parser.ts"]},
-      {"generator": "output-prompt", "port": "typescript", "assertion": "depth", "gap": 3, "outside": ["codegen-ts/src/templates/output-prompt.ts"]},
-      {
-        "generator": "prompt-render",
-        "port": "typescript",
-        "assertion": "depth",
-        "gap": 3,
-        "outside": ["codegen-ts/src/templates/value-object-import.ts"]
-      },
-      {"generator": "render-helper", "port": "typescript", "assertion": "depth", "gap": 3, "outside": ["codegen-ts/src/templates/render-helper.ts"]},
-      {"generator": "trace-helper", "port": "typescript", "assertion": "depth", "gap": 3, "outside": ["codegen-ts/src/templates/trace-helper.ts"]},
-      {
-        "generator": "api-docs",
-        "port": "typescript",
-        "assertion": "depth",
-        "gap": 3,
-        "outside": ["codegen-ts/src/generators/api-doc-render.ts", "codegen-ts/src/generators/api-model.ts"]
-      },
-      {
-        "generator": "docs",
-        "port": "typescript",
-        "assertion": "depth",
-        "gap": 3,
-        "outside": [
-          "codegen-ts/src/generators/docs-data-builder.ts",
-          "codegen-ts/src/generators/template-doc-builder.ts",
-          "codegen-ts/src/render-engine/doc-page.ts",
-          "codegen-ts/src/templates/mermaid-er.ts"
-        ]
-      },
-      {
-        "generator": "shared-model",
-        "port": "typescript",
-        "assertion": "depth",
-        "gap": 3,
-        "outside": ["codegen-ts/src/shared-model/build-shared-model.ts"]
-      },
-      {"generator": "agent-docs", "port": "typescript", "assertion": "completeness", "gap": 2},
-      {"generator": "requirements", "port": "typescript", "assertion": "completeness", "gap": 2}
-    ]
+    "pending": []
   }
 }

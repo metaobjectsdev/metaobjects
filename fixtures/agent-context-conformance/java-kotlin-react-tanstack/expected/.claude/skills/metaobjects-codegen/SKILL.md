@@ -45,7 +45,7 @@ exact config, generator names and commands for this project; read it. The other 
 | `references/typescript-mysql.md` | a TypeScript project on a MySQL database |
 | `references/typescript-retargeting.md` | a TypeScript project on a framework other than Fastify, Hono or React |
 | `references/typescript-templates.md` | declarative Mustache template-codegen in a TypeScript project |
-| `references/typescript-docs.md` | `meta docs` in a TypeScript project |
+| `references/typescript-docs.md` | the docs generators (`docsFile`, `apiDocsFile`, `agentDocsFile`, `requirementsFile`, `metamodelDocsFile`, `docsSiteFile`) in a TypeScript project |
 
 ## Need an output? Write the generator — this is the primary path
 
@@ -90,7 +90,7 @@ what it emits.
 |---|---|---|
 | TypeScript | import it in `metaobjects.config.ts`, add it to `generators: [...]` (the scaffold does both) | `@metaobjectsdev/codegen-ts`: `objectRefTarget`, `enumValues`, `effectivePackage`, `packageToPath`, `servedPath`, `toCamelCase`/`toPascalCase`/`toSnakeCase`/`pluralize`, `isAbstract`, `hasAnyRdbSource`, `servesReadApi`/`servesWriteApi` |
 | Python | a `module:symbol` entry in `--generators` or a target's `generators` in `metaobjects.config.yaml`; the symbol is an instance or a function returning one, never the class | `metaobjects.codegen.model_walk` |
-| C# | `new YourGenerator()` in the owned `codegen/Program.cs`; `dotnet meta gen` / `verify --codegen` hand off to `codegen/` whenever `codegen/Codegen.csproj` exists | node accessors, `ValueObjectNames.ResolveFieldRef`, `CSharpNaming.RoutePath` |
+| C# | `new YourGenerator()` in the owned `codegen/Generators.cs` list, which `codegen/Program.cs` passes to `CodegenCli.Run`; `dotnet meta gen` / `verify --codegen` hand off to `codegen/` whenever `codegen/Codegen.csproj` exists | node accessors, `ValueObjectNames.ResolveFieldRef`, `CSharpNaming.RoutePath` |
 | Java / Kotlin | `<generator><classname>` plus `<args><outputDir>`, from a module on the plugin's classpath; extend `FileEmittingGenerator` | `com.metaobjects.generator.ModelWalk` |
 
 **Verify it** — nothing to register. `verify --codegen` (`mvn metaobjects:verify` on the
@@ -243,11 +243,16 @@ reads as an invitation to adopt the surface you decided against.
 
 ## Selecting generators — NOTHING is generated until you choose it
 
-**`meta init` wires no generators, and no port ships a default suite.** A fresh
-scaffold has `generators: []` and an empty `codegen/generators/`; `--generators` is
-required on the C# and Python CLIs; Java has never had a default set. Choosing what an
-application needs is a judgment over its purpose and stack, and the tool's job is to
-make that choice cheap and truthful, not to make it for you.
+**`meta init` wires no generators, and no port ships a default suite.** A fresh TypeScript
+scaffold has `generators: []` and an empty `codegen/generators/`; a fresh C# scaffold
+(`dotnet meta init`) has an empty `codegen/Generators.cs`; Java and Python have never had a
+default set. In every port the project's own generator list — `generators` in
+`metaobjects.config.ts`, `codegen/Generators.cs`, a target's `generators` in
+`metaobjects.config.yaml`, or `<generators>` in the pom — is the COMPLETE list,
+documentation included (ADR-0034 Amendment 9); `--generators` (Maven: a second
+`<execution>`) only narrows a run to entries already in it. Choosing what an application
+needs is a judgment over its purpose and stack, and the tool's job is to make that choice
+cheap and truthful, not to make it for you.
 
 Each generator has a **stable name** (kebab-case) that is the same in every port and
 surfaces in diagnostics — reference generators by that name, never by inlining what
@@ -301,7 +306,7 @@ implies that you have not wired.
 | `persistence` | how rows are read and written | app shape |
 | `api` | the HTTP surface — pick one framework | app shape |
 | `client` | the browser tier | app shape |
-| `docs` | on by default; the canonical door is `meta docs` | — |
+| `docs` | model pages, api reference, agent pages, requirement ledger — each its own generator entry, like any other | app shape |
 | `capability` | prompts, parsers, payloads, traces, test stubs | **`--probe`** |
 
 At intent level: a **headless data service** is `model` + `persistence`; an **HTTP API**

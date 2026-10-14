@@ -4,10 +4,10 @@
  *
  * `shared-model` was the one generator ruled package-only for a reason of substance: its
  * output is not a helper, it is a contract. A consumer hashes the artifact, checks the hash
- * against the manifest, and loads the document with its own vocabulary. So it was made
- * ejectable the way `cube-model` is split: the copy an adopter owns decides which source
- * files may contribute and which version is published, and everything a consumer checks
- * stays in the package (`buildSharedModel`, `renderSharedModelFiles`).
+ * against the manifest, and loads the document with its own vocabulary. It was made
+ * ejectable with the artifact builder beside it (`buildSharedModel`, `renderSharedModelFiles`,
+ * handed over with the generator under Amendment 8): the adopter owns what a consumer checks,
+ * and an unchanged copy must publish what a consumer accepts.
  *
  * The byte-identity gate in codegen-ts proves the copy writes the same two files. This file
  * proves the claim that matters to the OTHER project: published by an ejected copy, the

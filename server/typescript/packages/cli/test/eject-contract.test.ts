@@ -25,9 +25,9 @@ import { join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import ts from "typescript";
 import {
-  buildPkMap, buildRelationMap, defineConfig, makeRenderContext, runGen, HTTP_RUNTIME_PACKAGE, OWNED_RUNTIME_DIR,
+  defineConfig, runGen, HTTP_RUNTIME_PACKAGE, OWNED_RUNTIME_DIR,
 } from "@metaobjectsdev/codegen-ts";
-import type { GenContext, Generator } from "@metaobjectsdev/codegen-ts";
+import type { Generator } from "@metaobjectsdev/codegen-ts";
 import { MetaDataLoader } from "@metaobjectsdev/metadata";
 import { FileSource } from "@metaobjectsdev/metadata/core";
 import { catalogPackages, factoryModuleOf, listCatalog, packageOf } from "../src/lib/catalog.js";
@@ -358,39 +358,20 @@ type Factory = (opts?: unknown) => Generator;
 const build = (factory: Factory, name: string): Generator =>
   name in FACTORY_OPTIONS ? factory(FACTORY_OPTIONS[name]) : factory();
 
-/** Run one generator over one corpus the way its door runs it; the files it wrote. */
+/** Run one generator over one corpus the way `meta gen` runs it; the files it wrote. */
 async function emit(
   generator: Generator,
   corpus: Corpus,
   projectRoot: string,
   outDir: string,
-  throughDocsDoor: boolean,
 ): Promise<Record<string, string>> {
   const loaded = await new MetaDataLoader().load(corpus.files.map((f) => new FileSource(f)));
   expect(loaded.errors, corpus.label).toEqual([]);
-  const settings = { outDir, extStyle: "none", dbImport: "../db", dialect: "postgres" } as const;
-  if (throughDocsDoor) {
-    // `meta docs` runs a docs generator, never `runGen`, which skips one: `.generate(ctx)`
-    // with the generator's own `filter` as `ctx.matches`.
-    const ctx: GenContext = {
-      entities: loaded.root.objects(),
-      loadedRoot: loaded.root,
-      matches: generator.filter ?? (() => true),
-      config: settings,
-      renderContext: makeRenderContext({
-        dialect: "postgres",
-        loadedRoot: loaded.root,
-        outDir,
-        dbImport: "../db",
-        apiPrefix: "",
-        pkMap: buildPkMap(loaded.root),
-        relationMap: buildRelationMap(loaded.root),
-      }),
-      projectRoot,
-      warn: () => {},
-    };
-    return Object.fromEntries((await generator.generate(ctx)).map((f) => [f.path, f.content]));
-  }
+  // A documentation generator writes to the `docs` target (ADR-0034 Amendment 9), declared
+  // here at the same directory, so every generator's output is read from one place.
+  const settings = {
+    outDir, extStyle: "none", dbImport: "../db", dialect: "postgres", targets: { docs: { outDir } },
+  } as const;
   try {
     await runGen({
       config: defineConfig({ ...settings, generators: [generator] }),
@@ -510,7 +491,6 @@ describe("eject contract — depth", () => {
       expect(typeof factory, `${copy.generatorPath} exports ${entry.factoryExport}`).toBe("function");
       // The packaged side is the factory an adopter imports, by the name the catalog prints.
       const shipped = ((await import(factoryModuleOf(entry.name)!)) as Record<string, unknown>)[entry.factoryExport];
-      const throughDocsDoor = entry.docsSurface !== undefined;
 
       let emitted = 0;
       for (const corpus of CORPORA) {
@@ -518,9 +498,9 @@ describe("eject contract — depth", () => {
         // Same depth under the project root on both sides, so a relative import of the
         // owned adapter is spelled the same way in each.
         const packaged = await emit(
-          build(shipped as Factory, entry.name), corpus, copy.root, join(copy.root, "out", corpus.label, "packaged"), throughDocsDoor);
+          build(shipped as Factory, entry.name), corpus, copy.root, join(copy.root, "out", corpus.label, "packaged"));
         const mine = await emit(
-          build(factory as Factory, entry.name), corpus, copy.root, join(copy.root, "out", corpus.label, "owned"), throughDocsDoor);
+          build(factory as Factory, entry.name), corpus, copy.root, join(copy.root, "out", corpus.label, "owned"));
         rmSync(join(copy.root, "templates"), { recursive: true, force: true });
         emitted += Object.keys(packaged).filter((path) => path !== REFUSED).length;
         expect(Object.keys(mine).sort(), `${entry.name} over ${corpus.label}`).toEqual(Object.keys(packaged).sort());

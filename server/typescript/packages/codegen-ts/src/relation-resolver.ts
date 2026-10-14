@@ -19,7 +19,7 @@ import {
 } from "@metaobjectsdev/metadata";
 import { variableNameFromEntity } from "./naming.js";
 import { hasWritableRdbSource } from "./source-detect.js";
-import { tphStorageObject } from "./templates/zod-validators.js";
+import { tphStorageObject } from "./tph.js";
 import { isProjection } from "./projection/projection-detector.js";
 
 export interface RelationEntry {
@@ -93,7 +93,7 @@ export function buildRelationMap(
   // non-abstractness and a writable source.rdb are required: the entity file
   // routes an object failing EITHER to renderValueObjectFile, which emits no
   // block. The oracle's tableBackedObjects walk makes the same exclusion. Filing
-  // an entry without it would only document, in `meta docs`/api-model, a
+  // an entry without it would only document, in the api reference (api-model), a
   // `<Entity>Relations` export that no module emits.
   const rendersRelationsBlock = (storing: MetaObject): boolean =>
     !storing.isAbstract && hasWritableRdbSource(storing);

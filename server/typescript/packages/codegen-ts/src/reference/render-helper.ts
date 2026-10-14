@@ -17,11 +17,14 @@
 // customize:     which templates get a helper, the output directory (`outDir`), where the
 //                gen-time Mustache files come from (the `provider`). The module BODY and the
 //                drift gate come from `renderRenderHelper`; to change the emitted code
-//                itself, copy its source out of the package and call your copy here instead.
+//                itself, change `renderRenderHelper`'s source, which `meta eject` copies beside this
+//                file (`codegen/templates/render-helper.ts`).
 // composes-with: entity.ts (the helper takes the payload value object's interface).
 //
-// Everything below imports ONLY from `@metaobjectsdev/codegen-ts` (the stable engine) and
-// `@metaobjectsdev/metadata`.
+// Everything below imports the engine from `@metaobjectsdev/codegen-ts` (the generator base, the
+// model walks, the naming tables), the node types from `@metaobjectsdev/metadata`, and the code
+// that writes the helper from `../templates/`. `meta eject` copies that module into your project,
+// under `codegen/templates/`, and your copy of this file imports it from there: it is yours too.
 
 import {
   TYPE_TEMPLATE,
@@ -35,8 +38,8 @@ import {
   type Generator,
   type GeneratorFactory,
   projectProvider,
-  renderRenderHelper,
-} from "@metaobjectsdev/codegen-ts";
+} from "@metaobjectsdev/codegen-ts/engine";
+import { renderRenderHelper } from "../templates/render-helper.js";
 
 export interface RenderHelperOpts {
   /** Output directory prefix relative to the target's outDir. Default: "" (root). */

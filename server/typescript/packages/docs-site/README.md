@@ -4,18 +4,29 @@ HTML documentation-site generator for metaobjects models — a browsable multi-p
 site (package nav, Cmd+K search, per-object / package / prompt / output pages, and
 kind-aware ER diagrams that encode object kind by shape and domain by color).
 
-It is the engine behind the `meta docs --site` CLI surface. Output is deterministic
-and link-checked.
+It is the engine behind the `docs-site` generator, `docsSiteFile()` from
+`@metaobjectsdev/codegen-ts/generators` (it was `meta docs --site` until 1.1.0). Output
+is deterministic and link-checked.
 
-## Usage (via the CLI)
+## Usage (via `meta gen`)
 
+List the generator in `metaobjects.config.ts`, with a `docs` target:
+
+```ts
+import { docsSiteFile } from "@metaobjectsdev/codegen-ts/generators";
+
+export default defineConfig({
+  // ...
+  targets: { docs: { outDir: "./docs/generated" } },
+  generators: [/* ... */ docsSiteFile()],
+});
 ```
-meta docs --site            # writes the site to ./docs/site/
-meta docs --site --out web  # writes to web/site/
-```
 
-`--site` is additive to the markdown doc surfaces: combined with `--model`/`--api` it
-emits both; alone, it emits only the site.
+`meta gen` writes the site to `site/` under the target (`./docs/generated/site/`), beside
+whatever other documentation the config lists. Options: `subDir` (default `site`),
+`prompts` (an extra directory of prompt `.mustache` sources), `title`, `stamp` (footer
+text; default none, so the pages depend on the model alone and `meta verify --codegen`
+can check them) and `target`.
 
 ## Usage (as a library)
 
@@ -35,22 +46,22 @@ await generateSite({
 
 ## Own your docs-site theme
 
-The site ships with bundled templates + assets. To customize them, scaffold owned
-copies into your repo:
+The site ships with bundled templates + assets. To customize them, copy them into your
+repo:
 
 ```
-meta docs --scaffold-site
+meta eject docs-site
 ```
 
 This writes the 9 mustache templates to `codegen/docs-site/templates/` and the CSS/JS
 to `codegen/docs-site/assets/` — only files that don't already exist, so your edits are
-never clobbered. Edit them, then regenerate:
+never clobbered (`--force` overwrites). Edit them, then regenerate:
 
 ```
-meta docs --site
+meta gen
 ```
 
-`meta docs --site` auto-detects `codegen/docs-site/` and uses your owned copies; any
+`docsSiteFile()` reads `codegen/docs-site/` and uses your owned copies; any
 file you didn't override falls back to the bundled default. The engine
 (`@metaobjectsdev/docs-site`) stays a versioned dependency — you own only the theme.
 

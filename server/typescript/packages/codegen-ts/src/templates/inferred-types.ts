@@ -254,7 +254,7 @@ export function fieldTsTypeString(ownerName: string, field: MetaField): string {
   if (field.subType === FIELD_SUBTYPE_OBJECT) {
     const ref = field.attr(FIELD_ATTR_OBJECT_REF);
     if (typeof ref === "string" && ref.length > 0) {
-      // #228: docs-tier bare name under collision — this is the deprecated `meta docs`
+      // #228: docs-tier bare name under collision — this is the docs-tier
       // TEXT-shape helper (no ctx/root in scope; callers api-field-shape run under
       // api-model's `{ pkMap } as RenderContext` shim), so it can't resolve the ADR-0044
       // emitted name. Byte-identical to codegen in every non-colliding model; on a

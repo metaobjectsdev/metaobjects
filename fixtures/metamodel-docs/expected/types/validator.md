@@ -1,6 +1,6 @@
 <!-- @generated — DO NOT EDIT.
      Metamodel reference for the `validator` type family — each subtype's composed attributes, allowed children, and cardinality.
-     Regenerate with: meta docs --metamodel -->
+     Regenerate with: meta gen (the metamodel-docs generator, metamodelDocsFile()) -->
 
 # Metamodel — `validator` types
 

@@ -1,0 +1,330 @@
+// REFERENCE TEMPLATE — copy this into your repo (e.g. codegen/generators/agent-docs.ts) and own it.
+// Then import it LOCALLY in metaobjects.config.ts:
+//   import { agentDocsFile } from "./codegen/generators/agent-docs.js";
+//
+// RUNTIME: this file executes under whatever runs `meta gen`, and the published CLI's
+// shebang is `#!/usr/bin/env node` — so it runs under NODE even in a Bun project. Do not
+// reach for `Bun.*` globals here; they are undefined and take the whole run down with
+// `Bun is not defined`. Use `node:` builtins instead.
+// targets:       Markdown. The pages are read by a coding agent, never imported.
+// use-when:      you want to change the pages written for a coding agent: which of the three
+//                are written, where they land, or what the schema page says about your
+//                tables. The packaged `agentDocsFile()` writes them without this file; eject
+//                it only to change them.
+// emits:         into the `docs` target, in `agent/` (or `subDir`): schema.md, read before
+//                touching persistence; ui.md, read before touching a form or a grid;
+//                requirements.md, read before adding a capability. A tier with nothing to
+//                describe emits no file.
+// customize:     which of the three pages are written and where (`generate`), the schema
+//                page's inputs (`lineageOf`, `cardinalityPhrase`, `relationshipLines`,
+//                `enumLines` and the loop that builds `declaredBy`). The page renderers
+//                (`agent-schema-page`, `agent-ui-page`, `agent-requirements-page`) are
+//                copied beside it into codegen/templates/.
+// composes-with: api-docs (the fourth file the always-on pointer names, `api/AGENT-API.md`,
+//                is the api reference's, not this one's).
+//
+// HOW IT RUNS. Like every generator: list it in `generators` in metaobjects.config.ts, with
+// a `docs` target declared, and `meta gen` writes the pages (`meta verify --codegen` checks
+// them). `meta gen` builds the physical schema (it needs the project's dialect and column
+// naming strategy) and hands it over on `ctx.docs.agentSchema`; pass `schema` and
+// `columnNamingStrategy` as options to state them yourself instead.
+//
+// Everything below imports the engine from `@metaobjectsdev/codegen-ts`, the node types from
+// `@metaobjectsdev/metadata`, and the page renderers from `../generators/` — which
+// `meta eject` copies into your project and points at your copy.
+//
+// Three pages under `agent/`, each one an agent reads BEFORE touching a tier:
+//
+//   • `agent/schema.md`       — before touching persistence
+//   • `agent/ui.md`           — before touching a form or a grid
+//   • `agent/requirements.md` — before adding a capability
+//
+// EVERY PAGE IS DERIVED FROM AN EXISTING BUILDER: an agent is told to TRUST these pages, so
+// each is built from what the toolchain itself reads rather than from a derivation of its
+// own. An empty page is no file.
+
+import {
+  CARDINALITY_MANY,
+  CARDINALITY_ONE,
+  FIELD_SUBTYPE_ENUM,
+  ORIGIN_AGGREGATE_ATTR_AGG,
+  ORIGIN_AGGREGATE_ATTR_OF,
+  ORIGIN_AGGREGATE_ATTR_VIA,
+  ORIGIN_ATTR_ORDER_BY,
+  ORIGIN_PASSTHROUGH_ATTR_FROM,
+  ORIGIN_PASSTHROUGH_ATTR_VIA,
+  ORIGIN_SUBTYPE_AGGREGATE,
+  ORIGIN_SUBTYPE_COMPUTED,
+  ORIGIN_SUBTYPE_FIRST,
+  ORIGIN_SUBTYPE_PASSTHROUGH,
+  RELATIONSHIP_ATTR_CARDINALITY,
+  RELATIONSHIP_ATTR_OBJECT_REF,
+  RELATIONSHIP_ATTR_ON_DELETE,
+  RELATIONSHIP_ATTR_THROUGH,
+  PHYSICAL_NAME_ATTR_BY_KIND,
+  SOURCE_ROLE_PRIMARY,
+  TYPE_ORIGIN,
+  resolveColumnName,
+} from "@metaobjectsdev/metadata";
+import type { ColumnNamingStrategy, MetaField, MetaObject } from "@metaobjectsdev/metadata";
+import {
+  enumValues,
+  intValueMapOf,
+  isAbstract,
+  isReport,
+  resolveObjectNames,
+  type AgentSchemaInput,
+  type EmittedFile,
+  type Generator,
+  type GeneratorFactory,
+  DOCS_TARGET_NAME,
+} from "@metaobjectsdev/codegen-ts/engine";
+import { renderAgentSchemaPage } from "../generators/agent-schema-page.js";
+import { renderAgentUiPage } from "../generators/agent-ui-page.js";
+import { renderAgentRequirementsPage } from "../generators/agent-requirements-page.js";
+
+/** All three pages live here, under the docs root. */
+const DEFAULT_AGENT_DIR = "agent";
+
+export interface AgentDocsFileOpts {
+  /** Output prefix for the agent pages. Default `agent`. */
+  subDir?: string;
+  /** Named output target. Default `"docs"`, which `targets` must declare. */
+  target?: string;
+  /**
+   * The physical schema, with its resolvers injected by whoever owns them. Default: the one
+   * `meta gen` builds (`ctx.docs.agentSchema`). ABSENT both ways is a supported state: a
+   * project with no physical schema gets no schema page rather than a page of unknowns.
+   */
+  schema?: AgentSchemaInput;
+  /** The project's column naming strategy, for the field→column mapping. */
+  columnNamingStrategy?: ColumnNamingStrategy;
+}
+
+/** One `origin.*` child rendered as a lineage phrase. `origin.*` NEVER inherits, so the
+ *  own-accessor read here is the correct one rather than an ADR-0039 slip. */
+function lineageOf(field: MetaField): string | undefined {
+  const origin = field.ownChildren().find((c) => c.type === TYPE_ORIGIN);
+  if (origin === undefined) return undefined;
+  const str = (name: string): string | undefined => {
+    const v = origin.attr(name);
+    return typeof v === "string" && v !== "" ? v : undefined;
+  };
+  switch (origin.subType) {
+    case ORIGIN_SUBTYPE_PASSTHROUGH: {
+      const from = str(ORIGIN_PASSTHROUGH_ATTR_FROM);
+      const via = str(ORIGIN_PASSTHROUGH_ATTR_VIA);
+      return `passthrough from \`${from ?? "?"}\`${via === undefined ? "" : ` via \`${via}\``}`;
+    }
+    case ORIGIN_SUBTYPE_AGGREGATE: {
+      const agg = str(ORIGIN_AGGREGATE_ATTR_AGG) ?? "?";
+      const of = str(ORIGIN_AGGREGATE_ATTR_OF);
+      const via = str(ORIGIN_AGGREGATE_ATTR_VIA);
+      return `\`${agg}\`${of === undefined ? "" : ` of \`${of}\``}${via === undefined ? "" : ` via \`${via}\``}`;
+    }
+    case ORIGIN_SUBTYPE_FIRST: {
+      const of = str(ORIGIN_AGGREGATE_ATTR_OF);
+      const via = str(ORIGIN_AGGREGATE_ATTR_VIA);
+      const order = str(ORIGIN_ATTR_ORDER_BY);
+      return `first${of === undefined ? "" : ` \`${of}\``}${via === undefined ? "" : ` via \`${via}\``}` +
+        `${order === undefined ? "" : ` ordered by \`${order}\``}`;
+    }
+    case ORIGIN_SUBTYPE_COMPUTED:
+      // The @expr tree is structured; naming it is enough to route a reader to the
+      // declaration, and rendering a tree into a cell would be a second SQL lowering.
+      return "computed from a declared `@expr`";
+    default:
+      return `\`origin.${origin.subType}\``;
+  }
+}
+
+/**
+ * The cardinality phrase, from the DECLARING object's side.
+ *
+ * `@cardinality: one` does NOT mean one-to-one. It means this object holds the foreign
+ * key — many rows of it point at one target row — which is what `relation-resolver.ts`
+ * builds a belongs-to `one()` relation from. Rendering it as "one-to-one" told a reader
+ * the target row is claimed by at most one row here, which is the direction that makes
+ * someone write a lookup expecting a single result.
+ *
+ * `@cardinality` is OPTIONAL vocabulary (min 0), and ABSENT is its own answer: no
+ * navigation is generated at all. Folding that into "one-to-one" invented a shape the
+ * model never declared.
+ */
+function cardinalityPhrase(cardinality: unknown, through: unknown): string {
+  if (cardinality === CARDINALITY_MANY) {
+    return typeof through === "string" && through !== "" ? "many-to-many" : "one-to-many";
+  }
+  if (cardinality === CARDINALITY_ONE) return "many-to-one";
+  return "cardinality not declared";
+}
+
+/** `- \`Order.lines\` — one-to-many → \`OrderLine\`` */
+function relationshipLines(objects: readonly MetaObject[]): string[] {
+  const out: string[] = [];
+  for (const obj of objects) {
+    for (const rel of obj.relationships()) {
+      const cardinality = rel.attr(RELATIONSHIP_ATTR_CARDINALITY);
+      const target = rel.attr(RELATIONSHIP_ATTR_OBJECT_REF);
+      const through = rel.attr(RELATIONSHIP_ATTR_THROUGH);
+      const onDelete = rel.attr(RELATIONSHIP_ATTR_ON_DELETE);
+      // The FQN, not the short name: this line is an ADDRESS a reader searches for.
+      const parts = [`\`${obj.resolutionKey()}.${rel.name}\``, `\`${rel.subType}\``];
+      parts.push(
+        `${cardinalityPhrase(cardinality, through)} → \`${String(target ?? "?")}\``,
+      );
+      if (typeof through === "string" && through !== "") parts.push(`through \`${through}\``);
+      if (typeof onDelete === "string" && onDelete !== "") parts.push(`on delete \`${onDelete}\``);
+      out.push(`- ${parts.join(" · ")}`);
+    }
+  }
+  return out;
+}
+
+/**
+ * `| \`Order.status\` | OPEN, CLOSED | string-backed |`
+ *
+ * `objects` IS ONLY THE TABLE-BACKED SUBSET OF THE MODEL — the caller scopes it to the
+ * objects the snapshot actually holds as tables. This section sits on the SCHEMA page, so
+ * every row it prints is read as a statement about a column. Walking every loaded object
+ * printed rows for abstract bases, for `object.value`s that have no column anywhere, and
+ * for projections whose "column" is a view expression — three kinds of thing the physical
+ * schema does not contain.
+ *
+ * It also says nothing about a `CHECK`. Whether the database constrains the members is
+ * `table.checks`, which is already on this page from the snapshot, and an `@isArray`
+ * enum deliberately gets none (`migrate-ts` skips it) — so asserting one here was a
+ * SECOND derivation of a fact the page already carries correctly, in the direction that
+ * promises the database will refuse a value it will accept.
+ */
+function enumLines(objects: readonly MetaObject[]): string[] {
+  const rows: string[] = [];
+  for (const obj of objects) {
+    for (const field of obj.fields()) {
+      if (field.subType !== FIELD_SUBTYPE_ENUM) continue;
+      const members = enumValues(field);
+      if (members === undefined || members.length === 0) continue;
+      const intMap = intValueMapOf(field);
+      const backing =
+        intMap === undefined
+          ? "string-backed"
+          : `int-backed (${members.map((m) => `${m}=${intMap[m]}`).join(", ")})`;
+      rows.push(
+        `| \`${obj.resolutionKey()}.${field.name}\` | ${members.map((m) => `\`${m}\``).join(", ")} | ${backing} |`,
+      );
+    }
+  }
+  if (rows.length === 0) return [];
+  return ["| Field | Members | Storage |", "|---|---|---|", ...rows];
+}
+
+export const agentDocsFile = function agentDocsFile(opts?: AgentDocsFileOpts): Generator {
+  const dir = (opts?.subDir ?? DEFAULT_AGENT_DIR).replace(/\/$/, "");
+
+  const generator: Generator = {
+    name: "agent-docs",
+    target: opts?.target ?? DOCS_TARGET_NAME,
+    generate(ctx) {
+      const objects = ctx.loadedRoot.objects();
+      const files: EmittedFile[] = [];
+      // What the run computes for this generator: the schema, built on first ask by the
+      // caller that owns the schema builder, and the project's column naming. Options win:
+      // they are what a direct caller of the factory states.
+      const schemaInput = opts?.schema ?? ctx.docs?.agentSchema?.();
+      const columnNamingStrategy = opts?.columnNamingStrategy ?? ctx.renderContext?.columnNamingStrategy;
+
+      // ---- schema.md
+      if (schemaInput !== undefined) {
+        const schema = schemaInput;
+        // The qualified names the snapshot actually holds. An object whose physical name
+        // is not one of these contributes nothing to the physical schema (an abstract
+        // base, a sourceless value, an `@unmanaged` object) and must not appear on a page
+        // describing it — `buildExpectedSchema`'s Pass 1 owns those skip rules and this
+        // reads its answer rather than re-deriving them.
+        const tableNames = new Set(schema.tables.map((t) => schema.qualify(t)));
+        const viewNames = new Set(schema.views.map((v) => schema.qualify(v)));
+        // The objects backed by a TABLE in the snapshot — the enum section's scope, since
+        // a row there is read as a statement about a column.
+        const tableBacked: MetaObject[] = [];
+        // column → declaring field, per qualified table name. `resolveObjectNames` is the
+        // ONE field→column resolver — the same one the names artifact and the DDL use —
+        // so this mapping cannot disagree with the column it labels.
+        const declaredBy = new Map<string, Map<string, { field: string; type: string }>>();
+        const viewLineage = new Map<string, string[]>();
+        // Qualified names of the views a view-backed object.report owns (FR-044). Empty for a
+        // model with no report, so the page is byte-identical to what it was before reports.
+        const reportViews = new Set<string>();
+        for (const obj of objects) {
+          const names = resolveObjectNames(obj, columnNamingStrategy);
+          // The PRIMARY source's physical name and schema — `names.name` is the object's
+          // metamodel name since 0.25.0, which would match nothing in the snapshot.
+          const primary = names?.sources[SOURCE_ROLE_PRIMARY];
+          const physical = primary === undefined
+            ? undefined
+            : primary[(PHYSICAL_NAME_ATTR_BY_KIND.get(primary.kind) ?? "") as keyof typeof primary];
+          if (typeof physical !== "string") continue;
+          const key = schema.qualify({ name: physical, schema: primary?.schema });
+          const isTable = tableNames.has(key);
+          if (!isTable && !viewNames.has(key)) continue;
+          // ABSTRACT BASES ARE EXCLUDED, and being in the snapshot does not exempt them:
+          // an abstract base that declares the `source.rdb` its concrete child inherits
+          // resolves to that child's table, so the qualified-name test admits it and the
+          // page printed the base's enum a second time under a different owner.
+          // `buildExpectedSchema`'s Pass 1 skips abstracts; this reads the same rule.
+          if (isTable && !isAbstract(obj)) tableBacked.push(obj);
+          if (!isTable && isReport(obj)) reportViews.add(key);
+          let map = declaredBy.get(key);
+          if (map === undefined) {
+            map = new Map();
+            declaredBy.set(key, map);
+          }
+          const lineage: string[] = [];
+          for (const field of obj.fields()) {
+            const column = resolveColumnName(field, columnNamingStrategy);
+            // A TPH base and its subtypes share one table: first writer wins, so the
+            // base's own column keeps its label rather than being relabelled by whichever
+            // subtype was walked last.
+            if (!map.has(column)) {
+              map.set(column, { field: field.name, type: `${field.type}.${field.subType}` });
+            }
+            const line = lineageOf(field);
+            if (line !== undefined) lineage.push(`| \`${column}\` | ${line} |`);
+          }
+          if (lineage.length > 0) viewLineage.set(key, lineage);
+        }
+        const content = renderAgentSchemaPage(schema, {
+          declaredBy,
+          viewLineage,
+          reportViews,
+          relationships: relationshipLines(objects),
+          enums: enumLines(tableBacked),
+        });
+        if (content !== "") files.push({ path: `${dir}/schema.md`, content });
+      }
+
+      // ---- ui.md
+      // Gated on the RUN, not on the metadata. `hasUiSurface` answers "could a UI be
+      // generated for this object?"; whether one IS generated is a generator fact that
+      // no metadata predicate can reach. A project with `generators: []` was handed a
+      // page asserting endpoints nothing serves and a control table for forms that do
+      // not exist — to an audience the agent surface explicitly tells to read it BEFORE
+      // touching a tier, which is the audience least able to check.
+      //
+      // The apiPrefix is the project's, from the render context the runner built — the
+      // same value `routes-file.ts` emits as the SERVER mount prefix. Without it the page
+      // names an address nothing serves. (The client descriptor no longer carries it: a
+      // browser's base URL is supplied at runtime by the provider's `baseUrl`.)
+      if (ctx.config.includeUiTier === true) {
+        const ui = renderAgentUiPage(ctx.loadedRoot, ctx.renderContext?.apiPrefix ?? "");
+        if (ui !== "") files.push({ path: `${dir}/ui.md`, content: ui });
+      }
+
+      // ---- requirements.md
+      const requirements = renderAgentRequirementsPage(ctx.loadedRoot);
+      if (requirements !== "") files.push({ path: `${dir}/requirements.md`, content: requirements });
+
+      return files;
+    },
+  };
+  return generator;
+} as GeneratorFactory<AgentDocsFileOpts>;

@@ -25,6 +25,7 @@ import {
   type GeneratorRegistryEntry,
   type Layer,
   type MetaobjectsGenConfig,
+  type RunGenOpts,
 } from "@metaobjectsdev/codegen-ts";
 import * as coreTpl from "@metaobjectsdev/codegen-ts";
 import * as reactTpl from "@metaobjectsdev/codegen-ts-react";
@@ -39,7 +40,8 @@ import {
   RUNTIME_ENTRIES, resolveRuntimePackage, runtimeClosure, runtimeCopyStatus, runtimeInstall,
   type RuntimeCopyRow,
 } from "./runtime-eject.js";
-import { DOCS_DOOR_COMMAND, isNeutralGeneratorName, isPackagedDocsGenerator, OWNED_RUNTIME_DIR } from "@metaobjectsdev/codegen-ts";
+import { closureOf, packagedTemplates, templateCopyStatus, type TemplateCopyRow } from "./template-eject.js";
+import { DEFAULT_DOCS_DIR, DOCS_TARGET_NAME, OWNED_RUNTIME_DIR } from "@metaobjectsdev/codegen-ts";
 import { readPackageManifest, declaredDependencyNames } from "./package-manifest.js";
 import { describeError } from "./error-text.js";
 
@@ -64,12 +66,6 @@ export interface GeneratorCatalogRow {
   description: string;
   /** The registry's one line a reader needs before wiring this entry. Printed under the row. */
   note?: string;
-  /**
-   * Present iff `meta gen` does NOT run this generator: the command that produces its
-   * output instead (ADR-0025). A config that lists it under `generators` is warned about
-   * and skipped, so it is never counted by `--probe`.
-   */
-  door?: string;
   /** From the reference template's `use-when:` header. Absent for a non-ejectable entry. */
   useWhen?: string;
   /** From the reference template's `emits:` header. Absent for a non-ejectable entry. */
@@ -79,8 +75,7 @@ export interface GeneratorCatalogRow {
   install: { dev: string[]; runtime: string[] };
   /**
    * How to run this generator AS SHIPPED: the import line for its package factory. No
-   * copy involved; `meta eject` prints the local import for an owned one. Absent on a row
-   * with a `door`: `meta docs` runs that generator, and `meta gen` skips it.
+   * copy involved; `meta eject` prints the local import for an owned one.
    */
   wire?: GeneratorWiring;
   source: {
@@ -95,21 +90,19 @@ export interface GeneratorCatalogRow {
      * imports no adapter, or the project owns none of it.
      */
     runtimeCopy?: RuntimeCopyRow[];
+    /**
+     * ADR-0034 Amendment 8: the template modules this generator calls, as far as the project
+     * owns a copy of them under `codegen/templates/` — each file compared to what the
+     * installed packages would write there. Absent when the project owns none of them.
+     */
+    templateCopy?: TemplateCopyRow[];
   };
   project?: {
     /** Wired in this project's `generators: [...]`. */
     wired: boolean;
-    /** Present iff it is wired as a stable-name STRING that `meta gen` refuses (a neutral
-     *  name): the run fails on it, rather than running or skipping the generator. */
-    refused?: true;
-    /** Present iff this project lists an owned generator for this row's docs surface in
-     *  `docs: { generators: [...] }`: `meta docs` runs that copy in place of the packaged
-     *  generator. The right place for it, where `wired` (under `generators`) is not. */
-    wiredInDocsDoor?: true;
     /** This generator's framework is a declared dependency. `null` when neutral or unknown. */
     frameworkDetected: boolean | null;
-    /** Files this generator WOULD emit for this model. `null` unless --probe, and
-     *  `null` for a row with a `door`: `meta gen` does not run it, so there is no count. */
+    /** Files this generator WOULD emit for this model. `null` unless --probe. */
     wouldEmit: number | null;
     /** Why `wouldEmit` is null despite --probe. Absent when it is a number. */
     probeError?: string;
@@ -213,6 +206,10 @@ export interface CatalogListingOpts {
      * "probe failed" on every fresh project, for a generator that would in fact run.
      */
     sourceFiles?: readonly string[];
+    /** The metadata source directories, as `meta gen` supplies them: the docs site loads them. */
+    sourceRoots?: readonly string[];
+    /** The physical schema `agent/schema.md` describes, as `meta gen` supplies it. */
+    agentSchema?: RunGenOpts["agentSchema"];
   };
 }
 
@@ -227,10 +224,9 @@ export interface CatalogListingOpts {
 async function probeOne(
   entry: GeneratorRegistryEntry,
   project: CatalogProject,
-  metadata: MetaData,
-  scope: ((fqn: string) => boolean) | undefined,
-  sourceFiles: readonly string[] | undefined,
+  probe: NonNullable<CatalogListingOpts["probe"]>,
 ): Promise<{ count: number; needsConfig?: string[] } | { error: string }> {
+  const { metadata, scope, sourceFiles, sourceRoots, agentSchema } = probe;
   const count = async (config: MetaobjectsGenConfig): Promise<number> => {
     const result = await runGen({
       config: { ...config, generators: [entry.factory()] },
@@ -239,6 +235,8 @@ async function probeOne(
       dryRun: true,
       ...(scope !== undefined ? { scope } : {}),
       ...(sourceFiles !== undefined ? { sourceFiles } : {}),
+      ...(sourceRoots !== undefined ? { sourceRoots } : {}),
+      ...(agentSchema !== undefined ? { agentSchema } : {}),
     });
     return result.files.length;
   };
@@ -252,12 +250,23 @@ async function probeOne(
     // report the key as needed rather than dropping the count: the listing used to show
     // `routes … [fastify]` beside `routes-hono … [hono, would emit 3]` with no reason.
     // Only a retry that SUCCEEDS with the key supplied attributes the failure to it.
+    //
+    // A documentation generator refuses to run while `targets.docs` is unset (ADR-0034
+    // Amendment 9) — again exactly the fresh project `--probe` is asked about — and the
+    // directory changes no file count either, so it is supplied the same way.
+    const needsConfig: string[] = [];
+    let retry: MetaobjectsGenConfig = project.config;
     if (project.config.dbImport === undefined) {
+      retry = { ...retry, dbImport: PROBE_DB_IMPORT_PLACEHOLDER };
+      needsConfig.push("dbImport");
+    }
+    if (entry.factory().target === DOCS_TARGET_NAME && project.config.targets?.[DOCS_TARGET_NAME] === undefined) {
+      retry = { ...retry, targets: { ...retry.targets, [DOCS_TARGET_NAME]: { outDir: DEFAULT_DOCS_DIR } } };
+      needsConfig.push(`targets.${DOCS_TARGET_NAME}`);
+    }
+    if (needsConfig.length > 0) {
       try {
-        return {
-          count: await count({ ...project.config, dbImport: PROBE_DB_IMPORT_PLACEHOLDER }),
-          needsConfig: ["dbImport"],
-        };
+        return { count: await count(retry), needsConfig };
       } catch {
         // Fall through: the original error is the one worth reporting.
       }
@@ -297,27 +306,41 @@ async function ownedRuntimeByGenerator(
   return out;
 }
 
+/**
+ * Per OWNED generator, the project's copies of the template modules it calls. Attributed by
+ * what each generator reaches and only for generators the project owns, as the adapter copy
+ * is: `queries` and `entity` share modules, and a project that ejected only one of them
+ * must not be told it owns the other's.
+ */
+async function ownedTemplatesByGenerator(
+  projectRoot: string,
+  ownedNames: ReadonlySet<string>,
+): Promise<Map<string, TemplateCopyRow[]>> {
+  const out = new Map<string, TemplateCopyRow[]>();
+  const status = await templateCopyStatus(projectRoot, packagedTemplates());
+  if (status.length === 0) return out;
+  for (const name of ownedNames) {
+    let reached: Set<string>;
+    try {
+      reached = new Set(closureOf(name).templates.map((f) => f.path));
+    } catch {
+      continue; // not a reference generator
+    }
+    const files = status.filter((r) => reached.has(r.path));
+    if (files.length > 0) out.set(name, files);
+  }
+  return out;
+}
+
 export async function buildCatalogListing(opts: CatalogListingOpts = {}): Promise<CatalogRow[]> {
   const rows: CatalogRow[] = [];
   const runtimeCopies = opts.project === undefined
     ? new Map<string, { files: RuntimeCopyRow[]; packages: string[] }>()
     : await ownedRuntimeByGenerator(opts.project.projectRoot, opts.project.ownedNames);
-  const refusedNames = new Set(
-    (opts.project?.config.generators ?? [])
-      .filter((spec): spec is string => typeof spec === "string" && isNeutralGeneratorName(spec)),
-  );
-
-  // The docs surfaces this project took over with an owned generator. Keyed by surface,
-  // as the docs door itself is: an owner may rename the copy.
-  const ownedDocsSurfaces = new Set(
-    (opts.project?.config.docs?.generators ?? []).map((g) => g?.docsSurface).filter((x) => x !== undefined),
-  );
-
+  const templateCopies = opts.project === undefined
+    ? new Map<string, TemplateCopyRow[]>()
+    : await ownedTemplatesByGenerator(opts.project.projectRoot, opts.project.ownedNames);
   for (const entry of listCatalog()) {
-    // Asked of the runner's own definition, never restated: which generators `meta gen`
-    // skips is a fact about the runner, and a row that disagreed with it is the defect
-    // this field closes (`api-docs` was listed as one more generator to wire).
-    const door = isPackagedDocsGenerator(entry.factory().name) ? DOCS_DOOR_COMMAND : undefined;
     const template = entry.ejectable ? readTemplate(entry.name) : undefined;
     // A project that owns this generator's adapter copy installs what the COPY imports,
     // not the runtime package — the same trade `meta eject` prints.
@@ -341,7 +364,6 @@ export async function buildCatalogListing(opts: CatalogListingOpts = {}): Promis
       package: pkg,
       description: entry.description,
       ...(entry.note !== undefined ? { note: entry.note } : {}),
-      ...(door !== undefined ? { door } : {}),
       ...(template !== undefined && headerFacet(template, "use-when") !== undefined
         ? { useWhen: headerFacet(template, "use-when")! }
         : {}),
@@ -357,6 +379,7 @@ export async function buildCatalogListing(opts: CatalogListingOpts = {}): Promis
         ejectable: entry.ejectable,
         owned: opts.project === undefined ? null : opts.project.ownedNames.has(entry.name),
         ...(owned !== undefined ? { runtimeCopy: owned.files } : {}),
+        ...(templateCopies.has(entry.name) ? { templateCopy: templateCopies.get(entry.name)! } : {}),
       },
     };
 
@@ -371,17 +394,8 @@ export async function buildCatalogListing(opts: CatalogListingOpts = {}): Promis
       let wouldEmit: number | null = null;
       let probeError: string | undefined;
       let needsConfig: string[] | undefined;
-      // A generator `meta gen` skips is not probed: the run would report 0 files, and
-      // `would emit 0` reads as "nothing in your model needs this" for pages `meta docs`
-      // writes for every entity. The row's `door` is the answer instead.
-      if (opts.probe !== undefined && door === undefined) {
-        const outcome = await probeOne(
-          entry,
-          project,
-          opts.probe.metadata,
-          opts.probe.scope,
-          opts.probe.sourceFiles,
-        );
+      if (opts.probe !== undefined) {
+        const outcome = await probeOne(entry, project, opts.probe);
         if ("count" in outcome) {
           wouldEmit = outcome.count;
           needsConfig = outcome.needsConfig;
@@ -390,10 +404,6 @@ export async function buildCatalogListing(opts: CatalogListingOpts = {}): Promis
 
       row.project = {
         wired: project.wiredNames.has(entry.name),
-        ...(refusedNames.has(entry.name) ? { refused: true as const } : {}),
-        ...(entry.docsSurface !== undefined && ownedDocsSurfaces.has(entry.docsSurface)
-          ? { wiredInDocsDoor: true as const }
-          : {}),
         frameworkDetected,
         wouldEmit,
         ...(probeError !== undefined ? { probeError } : {}),
@@ -472,7 +482,7 @@ const LAYER_BLURB: Record<Layer, string> = {
   persistence: "how rows are read and written",
   api: "the HTTP surface — pick ONE framework",
   client: "the browser tier — form + hooks + grid compose, they do not conflict",
-  docs: "on by default; the canonical door is `meta docs`",
+  docs: "pages about the model and the code — listed like the rest, written to the `docs` target",
   capability: "chosen by your MODEL, not by browsing — run --probe",
 };
 
@@ -496,23 +506,6 @@ export const PACKAGE_ONLY_NOTE =
   "package-only = no reference template ships for it, so `meta eject` cannot copy it. " +
   "Run one as shipped by importing its factory — the import sits under its row.";
 
-/**
- * Printed under every row `meta gen` does not run (a row with a `door`). One sentence,
- * here: the registry's note says what an entry IS, and this says what happens to one
- * wired into `generators` anyway — the same for every such row, so it is not restated
- * per entry.
- */
-export const SKIPPED_BY_GEN_NOTE =
-  "not run by `meta gen`: listed under `generators`, it is warned about and skipped.";
-
-/**
- * Printed under every neutral row. The other outcome for a `generators` entry: the
- * resolver refuses a neutral stable name, so the string fails the run where a
- * constructed generator is skipped.
- */
-export const NAME_REFUSED_BY_GEN_NOTE =
-  "its name as a string under `generators` is refused instead: `meta gen` fails on it.";
-
 /** The human rendering: grouped by layer, because layer is the axis you select by. */
 export function renderCatalogText(rows: CatalogRow[], probed: boolean): string {
   const lines: string[] = [];
@@ -532,16 +525,7 @@ export function renderCatalogText(rows: CatalogRow[], probed: boolean): string {
     if (r.framework !== undefined) marks.push(r.framework);
     if (r.tier === "neutral") marks.push("neutral");
     if (!r.source.ejectable) marks.push("package-only");
-    if (r.door !== undefined) marks.push(`run by \`${r.door}\``);
-    if (r.project?.wired) {
-      marks.push(
-        r.project.refused
-          ? "WIRED by name, which `meta gen` refuses"
-          : r.door !== undefined ? "WIRED but skipped by `meta gen`" : "WIRED",
-      );
-    }
-    // An owned docs generator in the docs block: the place `meta docs` runs it from.
-    if (r.project?.wiredInDocsDoor) marks.push("WIRED in `docs.generators`");
+    if (r.project?.wired) marks.push("WIRED");
     if (r.source.owned) marks.push("owned");
     if (r.source.runtimeCopy !== undefined) {
       // The adapter source this generator's output imports, compared to the package.
@@ -550,6 +534,15 @@ export function renderCatalogText(rows: CatalogRow[], probed: boolean): string {
         differing === 0
           ? "owned runtime: identical to the package"
           : `owned runtime: ${differing} file(s) DIFFER from the package — meta eject --list`,
+      );
+    }
+    if (r.source.templateCopy !== undefined) {
+      // The template modules this generator calls, compared to the packages.
+      const differing = r.source.templateCopy.filter((c) => c.verdict === "differs").length;
+      marks.push(
+        differing === 0
+          ? "owned templates: identical to the package"
+          : `owned templates: ${differing} file(s) DIFFER from the package — meta eject --list`,
       );
     }
     if (probed && r.project?.wouldEmit !== null && r.project?.wouldEmit !== undefined) {
@@ -567,8 +560,6 @@ export function renderCatalogText(rows: CatalogRow[], probed: boolean): string {
     const suffix = marks.length > 0 ? `  [${marks.join(", ")}]` : "";
     lines.push(`  ${r.name.padEnd(width)}  —  ${r.description}${suffix}`);
     if (r.note !== undefined) lines.push(`  ${" ".repeat(width)}     ${r.note}`);
-    if (r.door !== undefined) lines.push(`  ${" ".repeat(width)}     ${SKIPPED_BY_GEN_NOTE}`);
-    if (isNeutralGeneratorName(r.name)) lines.push(`  ${" ".repeat(width)}     ${NAME_REFUSED_BY_GEN_NOTE}`);
     if (r.requires !== undefined && r.requires.length > 0) {
       lines.push(`  ${" ".repeat(width)}     requires: ${r.requires.join(", ")}`);
     }

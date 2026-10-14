@@ -122,6 +122,12 @@ export interface GenFlags {
    * a structured payload, which carries every finding.
    */
   limit: number;
+  /**
+   * `--generators <names>`: narrow the run to these declared generators, by stable name
+   * (ADR-0034 Amendment 9). Undefined runs everything the config declares. A name the
+   * config does not declare is refused; a narrowing never adds a generator.
+   */
+  generators?: string[];
 }
 
 /** The flag table `parseGenArgs` parses. Exported so the help text can be gated against it. */
@@ -132,6 +138,7 @@ export const GEN_OPTIONS = {
   "probe": { type: "boolean", default: false },
   "no-antipatterns": { type: "boolean", default: false },
   "limit": { type: "string" },
+  "generators": { type: "string" },
 } as const;
 
 export function parseGenArgs(argv: string[]): GenFlags {
@@ -162,7 +169,17 @@ export function parseGenArgs(argv: string[]): GenFlags {
     // Throws on a bad value; the command layer reports it and exits 2, exactly as
     // it does for --baseline above.
     limit: parseAdvisoryLimit(values.limit as string | undefined),
+    ...(values.generators !== undefined && { generators: parseGeneratorNames(values.generators as string) }),
   };
+}
+
+/** `docs,api-docs` → `["docs", "api-docs"]`; an empty list is refused, since it would run nothing. */
+function parseGeneratorNames(raw: string): string[] {
+  const names = raw.split(",").map((n) => n.trim()).filter((n) => n !== "");
+  if (names.length === 0) {
+    throw new Error("--generators needs at least one generator name, e.g. --generators docs,api-docs");
+  }
+  return names;
 }
 
 // ---------------------------------------------------------------------------
@@ -354,16 +371,9 @@ export interface VerifyFlags {
    */
   forbidHandEdits: boolean;
   /**
-   * Run the docs-drift gate: regenerate the `meta docs` surfaces into a temp dir and diff
-   * them against the committed docs tree.
-   *
-   * A SEPARATE subverb rather than part of `--codegen`, because they check different
-   * trees under different ownership rules: `--codegen` regenerates `outDir`/`targets` and
-   * must respect the hand edits `meta gen` preserves, while the docs tree has no merge,
-   * no manifest, and lives in a directory the adopter chose (`./docs/generated` by
-   * default) that may hold hand-written files it does not own. Folding them together
-   * would have to pick one of those rules
-   * for both.
+   * `--docs`, removed in 1.1.0 (ADR-0034 Amendment 9): `--codegen` checks documentation with
+   * everything else the generator list declares. Still parsed, so the command can say where
+   * it went (exit 2) rather than "unknown flag".
    */
   docs: boolean;
   /**
@@ -482,6 +492,8 @@ export const VERIFY_OPTIONS = {
   templates: { type: "boolean", default: false },
   codegen: { type: "boolean", default: false },
   "forbid-hand-edits": { type: "boolean", default: false },
+  // Removed in 1.1.0 (ADR-0034 Amendment 9). Still parsed, so `meta verify --docs` prints
+  // where the check went instead of an unknown-flag error.
   docs: { type: "boolean", default: false },
   deps: { type: "boolean", default: false },
   replay: { type: "boolean", default: false },

@@ -5,7 +5,7 @@ import { servesReadApi } from "../api-surface.js";
 import { renderRoutesIndex, routesIndexFileName } from "../templates/routes-index.js";
 import { formatTs } from "../format.js";
 import { entityOutputPath } from "../import-path.js";
-import { isTphSubtype } from "../templates/zod-validators.js";
+import { isTphSubtype } from "../tph.js";
 import { resolveExpose, type ExposeOption } from "../routes-expose.js";
 import { effectivePackage } from "../docs-paths.js";
 
@@ -62,7 +62,7 @@ export const routesFileHono = function routesFileHono(opts?: RoutesFileHonoOpts)
     servesReadApi(e) && userFilter(e);
   const generator: Generator = {
     name: "routes-file-hono",
-    // Read by `meta docs`: the API docs list the verbs this file mounts.
+    // Read by the api reference (`apiDocsFile()`): it lists the verbs this file mounts.
     mountsRoutes: opts?.expose !== undefined ? { expose: opts.expose } : {},
     // Marks this as the Hono routes generator so the runner can aggregate
     // `ctx.config.includeHonoRoutes` and api-docs auto-documents the Hono surface.

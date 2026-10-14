@@ -54,8 +54,8 @@ emitting this artifact. "Wired" is the only fact there is.
 
 | Port | Where the selection is declared | An existing project upgrading gets it? |
 |---|---|---|
-| C# | `--generators <names>` on `dotnet meta gen` — required, no default | **No** — name `names` |
-| Python | `--generators <names>` on `metaobjects gen` — required, no default | **No** — name `names` |
+| C# | `codegen/Generators.cs` — the complete list, documentation included | **No** — add the `names` entry |
+| Python | a target's `generators` in `metaobjects.config.yaml` — the complete list | **No** — add `names` |
 | TypeScript | `metaobjects.config.ts` `generators: [...]` — the complete list | **No** — add `namesFile()` |
 | Java / Kotlin | the pom's `<generators>` — the complete list | **No** — add `SpringNamesGenerator` / `KotlinNamesGenerator` |
 

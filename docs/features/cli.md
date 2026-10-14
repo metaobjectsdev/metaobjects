@@ -54,7 +54,7 @@ vocabulary everywhere, each port implementing the modes it supports.
 | `verify --db` | **Schema drift** — does the live database (or snapshot) match the metadata? (migrate engine, ADR-0015) | yes |
 | `verify --codegen` | **Codegen drift** — regenerate from metadata into a temp dir and fail if it differs from the committed generated output. Catches "metadata changed but `meta gen` wasn't re-run". A hand-edited generated file is NOT drift — `meta gen` three-way-merges hand edits by design, so the gate compares the *generated contribution* against the committed `.gen-state/.hashes.json` rather than the file byte-for-byte. It still LISTS every generated file carrying a hand edit (count + paths, and how to see the edit) as a notice that does not change the exit code; `--forbid-hand-edits` makes any hand edit fail the build, for teams that want generated code untouchable (Node `meta` only). | no |
 | `verify --templates` | **Template/prompt drift** — `Renderer.verify` checks each `template.*` node's `{{field}}` references against its payload VO (FR-004). | no |
-| `verify --docs` | **Docs drift** — run `meta docs` into a temp dir and fail if a committed page differs, if a page a fresh run emits was never committed AND is not git-ignored, or if a generated page (marked with `@generated`) in the docs root or under `agent/` is committed that a fresh run no longer emits. Catches "the model moved and nobody re-ran `meta docs`". It CALLS the docs command rather than reimplementing it, so the gate and the door cannot become two answers to what the docs are. **Node `meta` only** (`meta docs` is the TS door). | no |
+| `verify --docs` | **Removed in 1.1.0** (ADR-0034 Amendment 9). It prints where the check went and exits 2: documentation is written by entries in `generators`, so `verify --codegen` checks it with the rest of the declared output. | — |
 | `verify --deps` | **Dependency drift** (FR-023) — re-resolves each declared dependency's `path` and compares its installed artifact's hash against `.metaobjects/deps.lock.json`, same comparison as `meta deps check`. Needs the publisher's `path` reachable, so it is never part of the bare-`verify` default. A `drifted` or `unresolved` dependency fails with `ERR_DEPENDENCY_UPSTREAM_DRIFT`. **Node `meta` only.** See [`metadata-dependencies.md`](metadata-dependencies.md). | no |
 
 Rules of the contract:
@@ -69,36 +69,20 @@ Rules of the contract:
   against the configured `outDir` (and any per-target `outDir`) from
   `metaobjects.config.ts`. With no config it errors clearly (exit 2) rather than
   silently passing — there is nothing to diff against.
-- **`--docs` needs the same, and diffs `docs.outDir`.** Three things it does
-  DIFFERENTLY from `--codegen`, all deliberate.
-
-  A byte difference IS drift: a docs page is read, never imported, so there is no
-  three-way merge to honour.
-
-  It reports a committed file as EXTRA when the file opens with the `@generated`
-  marker. Ownership is proved by marker in two locations: the per-object model pages
-  in the docs root (e.g. `<Object>.md`), and everything under `agent/`. Hand-written
-  files in the root carry no marker and are left alone. `api/` stays out of
-  jurisdiction, since it is written by the adopter on a multi-port project.
-  `docs.outDir` defaults to `./docs`, which in a real repository is full of
-  hand-written documentation MetaObjects did not write, and with no marker those are
-  not checked.
-
-  **A page the project GIT-IGNORES is exempt.** `docs.outDir` is a directory, not a
-  namespace MetaObjects owns — the jurisdiction rule `--codegen` got in 0.24.3 — but
-  `meta docs` keeps no manifest of what it wrote, so the gate asks the project
-  instead. A project that commits its whole docs tree ignores nothing and so is
-  checked in full; a project that generates 589 pages and commits 2 on purpose is
-  checked on the 2 it chose. Both counts appear on the pass AND the fail line, so a
-  gate that checked two of 589 cannot be mistaken for one that checked everything,
-  and a run where every page is ignored is REFUSED (exit 2) rather than reported
-  clean. When git cannot answer — not a repository, not on PATH — the gate checks
-  every page a fresh run emits, exactly as it did before, and says that it did.
-
-  Note the division of labour: **`docs.surfaces` says what this project's docs ARE;
-  `.gitignore` says which of them it COMMITS.** Narrowing `surfaces` to silence the
-  gate also stops `meta docs` producing those pages, which is usually not what you
-  want.
+- **Documentation is checked as generated output, with one carve-out.** A page that a
+  documentation generator (`docsFile()`, `apiDocsFile()`, `requirementsFile()`,
+  `agentDocsFile()`, `metamodelDocsFile()`, `docsSiteFile()`, or an owned copy of one)
+  writes is compared like any other generated file. **A page the project GIT-IGNORES is
+  not checked** (carried from 1.0's `verify --docs`): a project that generates 589 pages
+  and commits 2 on purpose is checked on the 2 it chose. The question is asked of the
+  fresh set by name, present on disk or not, so a CI runner that has only the committed
+  pages answers as the machine that generated them all; a tracked page is never reported
+  ignored by git, so a committed page is always compared; a per-user ignore file does not
+  count. The run says how many pages it did not check, on the pass and the fail line. A
+  docs directory whose every page is ignored is not compared at all, and the run names it
+  on a line of its own: a project that generates its documentation without committing it
+  passes, as it did in 1.0, when `verify --codegen` never looked at documentation. When git cannot answer (not a repository, not on PATH) every page is checked, and
+  the run says so.
 - **Unknown/invalid flag → exit 2**, refused by name with that command's valid flags listed
   — one wording in every port's CLI (`unknown flag --x for \`meta gen\`. Valid flags: …`).
   A numeric flag given a non-number (`--limit abc`) is the same usage error.
@@ -267,42 +251,39 @@ and it needs `--baseline=fresh` (TypeScript). Python and C# implement `default` 
 `adopt` only; there, discard a refused file by deleting it and re-running, which writes it
 as new.
 
-## `meta docs` surfaces — and the `agent/` one
+## The documentation generators — and the `agent/` pages
 
-`meta docs` writes MARKDOWN, from metadata, into `docs.outDir` (default `./docs`). It
-emits four surfaces of THIS PROJECT'S model, each selectable with its own flag; passing
-none emits every surface the project has something to say with.
+Documentation is written by `meta gen`, from entries in `generators`, like code
+(ADR-0034 Amendment 9; `meta docs` was removed in 1.1.0 and prints where its work went).
+Nothing is written that the list does not declare. Each factory below comes from
+`@metaobjectsdev/codegen-ts/generators` and writes to the target named `docs` unless given
+`target`; a run that lists one while `targets` declares no `docs` is refused by name, so
+documentation never lands in the code's output directory by default.
 
-| Surface | Flag | What it is | Needs a gen config? |
-|---|---|---|---|
-| model | `--model` | The NEUTRAL per-entity + per-template pages plus a README index. Makes no language assumption at all (ADR-0020). | no |
-| api | `--api` | The generated SDK reference — types, endpoints, filter operators — plus `AGENT-API.md`, its condensed agent form. | yes |
-| requirements | `--requirements` | The declared ledger, as `requirements.md` + `requirements.toon`. | no |
-| agent | `--agent` | Three pages an agent reads BEFORE touching a tier (below). | yes |
+| Generator | Factory | What it writes |
+|---|---|---|
+| `docs` | `docsFile()` | The NEUTRAL per-entity + per-template pages plus a README index, with the ER diagrams. Makes no language assumption at all (ADR-0020). |
+| `api-docs` | `apiDocsFile()` | The generated SDK reference under `api/` — types, endpoints, filter operators — plus `AGENT-API.md`, its condensed agent form. |
+| `requirements` | `requirementsFile()` | The declared ledger, as `requirements.md` + `requirements.toon`; nothing for a model with no `requirement.*` node. |
+| `agent-docs` | `agentDocsFile()` | Three pages an agent reads BEFORE touching a tier (below), under `agent/`. |
+| `metamodel-docs` | `metamodelDocsFile()` | The reference of the BUILT-IN metamodel (every registered type, subtype and attribute), not your model, under `metamodel/`. Its rendered form is published at <https://metaobjects.dev/reference>. |
+| `docs-site` | `docsSiteFile()` | The HTML site under `site/`; `meta eject docs-site` copies its templates and assets to `codegen/docs-site/` for you to change. |
 
-The model and api surfaces each run one generator, and either can be replaced by a copy you
-own: `meta eject docs` or `meta eject api-docs`, then list the copy in the `docs` block of
-`metaobjects.config.ts`, `docs: { generators: [docsFile()] }`. `meta docs` runs it in place
-of the packaged generator for the surface its `docsSurface` marker names, and
-`verify --docs` checks the committed pages against it. The requirements and agent surfaces
-are not generators and cannot be replaced. See
-[own-your-codegen](own-your-codegen.md#docs-and-api-docs-are-run-by-meta-docs).
+```ts
+targets: { docs: { outDir: "./docs/generated" } },
+generators: [entityFile(), routesFile(), docsFile(), apiDocsFile(), agentDocsFile()],
+```
 
-"Needs a gen config? no" means the surface is written when the project has no
-`metaobjects.config.ts`. A config that exists but fails to load stops `meta docs`, as it
-stops `meta gen`: the load error, exit 2, nothing written. Carrying on without it would run
-the packaged generator over the pages an owned copy writes.
+`meta gen --generators docs,api-docs,agent-docs` writes only those entries; a name the config
+does not declare is refused. Every one but `docs-site` can be replaced by a copy you own
+(`meta eject <name>`), listed in `generators` in place of the factory. See
+[own-your-codegen](own-your-codegen.md#the-docs-generators-are-generators-like-the-rest). A
+config that fails to load stops `meta gen`: the load error, exit 2, nothing written.
 
-Two flags are NOT members of that set and do not compose with it:
-
-- **`--metamodel`** is a different MODE over a different subject: it documents the BUILT-IN
-  metamodel (every registered type, subtype and attribute), not your model, through its own
-  renderer, into `<out>/metamodel/` (default `./docs/metamodel`). It takes over the run —
-  the four surfaces above are not emitted alongside it.
-- **`--site`** is additive rather than a surface: it renders the HTML site beside the
-  markdown. It and its pair `--scaffold-site` are both REFUSED with `--metamodel` rather
-  than ignored — the metamodel reference is markdown, there is no renderer to bridge them,
-  and its rendered form is published at <https://metaobjects.dev/reference>.
+The model pages and the api reference link to each other from what the list declares: the
+runner reads the directory each `apiDocsFile()` writes to and whether `docsFile()` is listed,
+per target, and hands both to every generator (`ctx.docs`). `docsFile({ apiSurfaces })` names
+api pages that live somewhere else, another port's for instance, each with its `baseUrl`.
 
 ### The `agent/` surface
 
@@ -335,22 +316,18 @@ be true, and this is the only way to keep three more of them true.
 no physical schema, no generated UI, no ledger — so a project sees only the pages it has
 content for, and one with none sees no `agent/` directory at all.
 
-It is **config-gated like the api surface**: physical names, the dialect and view dispatch
-all come from `metaobjects.config.ts`, so without one there is nothing true to say. The
-neutral model surface is unaffected and stays neutral. `agent/schema.md` asks the same
+Physical names, the dialect and view dispatch all come from `metaobjects.config.ts`, which
+`meta gen` always has. The neutral model pages make no use of them and stay neutral. `agent/schema.md` asks the same
 guard `meta gen` does — a model that emits database code must declare a `dialect`, and
 `DEFAULT_DIALECT` is inert — so the page is skipped, with the runner's own message, exactly
 when `meta gen` would refuse the model, and also when the expected schema cannot be built at
 all (a primary-key move, a duplicate physical name: conditions `meta migrate` reports
 properly, and docs must not be the command that fails on them).
 
-`meta verify --docs` (above) is what keeps the committed pages honest — including the
-skips. `agent/` is the one directory that command owns outright, so a generated page
-committed there that a fresh run no longer emits is reported as drift, which is what stops
-a skipped `agent/schema.md` from leaving the previous schema's page in place, green. A
-hand-written file in `agent/` carries no `@generated` marker and is left alone, as is
-everything outside `agent/` — including `api/`, which on a multi-port project is written
-by the other port's docs command.
+`meta verify --codegen` (above) is what keeps the committed pages honest, including the
+skips: a generated page committed in `agent/` that a fresh run no longer writes (the
+previous schema's `agent/schema.md`, say) is reported as drift, so a skip cannot leave a
+stale page in place, green. A hand-written file in the docs directory is left alone.
 
 ## Declarative config (`metaobjects.config.yaml`) — Python codegen
 
@@ -588,22 +565,9 @@ names the views in a note (`notes[]` in its structured output).
 printed them: the runner's own (a generator that emitted nothing, an unsatisfied
 `requires`, a hand-edited file it refused), a generator's `ctx.warn`, an unknown
 attribute, and the CLI's advisories about a stale agent context or an ignored hash
-manifest. The key is absent on a run that printed none. One of them is worth knowing by
-name: a doc generator (`docsFile()`, `apiDocsFile()`) listed under `generators` is
-**warned about and skipped**, because `meta docs` is the door for documentation
-(ADR-0025). The result then says so in `warnings[]` and adds a `meta docs` next step to
-`help[]`; `meta gen --list` marks those rows ``run by `meta docs` `` (`door` in
-`--format json`), and `meta verify` reports the same wiring as an advisory row with rule
-`doc-generator-in-gen`. An owned (ejected) docs generator listed there is skipped the
-same way, and every one of those messages tells you to move it to
-`docs: { generators: [...] }`, where `meta docs` runs it, instead of removing it; once it
-is there, its `meta gen --list` row reads ``WIRED in `docs.generators` ``
-(`project.wiredInDocsDoor` in `--format json`). The neutral stable name `"docs"` written
-as a string is refused rather than skipped, so `meta gen` fails on it: `meta gen --list`
-marks that row ``WIRED by name, which `meta gen` refuses`` (`project.refused` in
-`--format json`), and the advisory row's rule is `doc-generator-refused-by-gen`. The
-name `"mermaid-er"` is refused too, as removed: `meta docs` draws the ER diagram, and
-the message and the same advisory rule say so.
+manifest. The key is absent on a run that printed none. A generator named in
+`generators` by a stable name that was removed (`"mermaid-er"`) is refused with a message
+saying what replaced it (`docsFile()` draws the ER diagram).
 
 In a structured run every narration line moves to **stderr**, so stdout is one
 parseable document. `--format` is honored by `gen`, `verify` and `migrate`; any

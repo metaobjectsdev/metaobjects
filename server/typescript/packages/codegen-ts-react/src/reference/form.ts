@@ -12,8 +12,8 @@
 //                one-line change in THIS file and is the intended way to do it.
 // use-when:      you want a generated form per writable entity.
 // emits:         <target>/<Entity>.form.tsx
-// customize:     this generator is YOURS. `renderFormFile` (exported from
-//                @metaobjectsdev/codegen-ts-react) produces the component body — wrap it,
+// customize:     this generator is YOURS. `renderFormFile` (copied beside this
+//                file, `templates/form-file.ts`) produces the component body — wrap it,
 //                prepend to it, or replace the call entirely with your own renderer.
 // composes-with: entity.ts (imports the schemas the form validates against).
 
@@ -26,8 +26,8 @@ import {
   hasGeneratedForm,
   withClientDirective,
   effectivePackage,
-} from "@metaobjectsdev/codegen-ts";
-import { renderFormFile } from "@metaobjectsdev/codegen-ts-react";
+} from "@metaobjectsdev/codegen-ts/engine";
+import { renderFormFile } from "../templates/form-file.js";
 
 export interface FormFileOpts {
   filter?: (entity: MetaObject) => boolean;

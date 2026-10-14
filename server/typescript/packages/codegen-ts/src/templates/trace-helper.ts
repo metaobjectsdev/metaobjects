@@ -36,7 +36,7 @@ import { responseFormatOf } from "./find-inbound.js";
 import { valueObjectImport, valueObjectImportLines } from "./value-object-import.js";
 import { GENERATED_HEADER, GENERATED_EDIT_NOTE } from "../constants.js";
 import { toPascalCase } from "../naming.js";
-import { tphDiscriminatorPin } from "./zod-validators.js";
+import { tphDiscriminatorPin } from "../tph.js";
 
 /** The generator's stable name — the key a library manifest declares its anchor under. */
 export const TRACE_HELPER_STABLE_NAME = "trace-helper";

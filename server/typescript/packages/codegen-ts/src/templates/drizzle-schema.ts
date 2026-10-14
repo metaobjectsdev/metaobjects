@@ -29,7 +29,7 @@ import { renderEnumIntCustomType } from "./enum-int-codec.js";
 import { renderRelationsBlock } from "./relations-block.js";
 import { renderDocsFor } from "./jsdoc.js";
 import { collectTphSubtypeFields, tphConcreteSubtypes } from "./tph-discriminator.js";
-import { tphStorageObject } from "./zod-validators.js";
+import { tphStorageObject } from "../tph.js";
 import { effectivePackage } from "../docs-paths.js";
 
 /**

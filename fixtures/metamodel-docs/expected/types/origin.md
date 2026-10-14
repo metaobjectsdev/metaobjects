@@ -1,6 +1,6 @@
 <!-- @generated — DO NOT EDIT.
      Metamodel reference for the `origin` type family — each subtype's composed attributes, allowed children, and cardinality.
-     Regenerate with: meta docs --metamodel -->
+     Regenerate with: meta gen (the metamodel-docs generator, metamodelDocsFile()) -->
 
 # Metamodel — `origin` types
 

@@ -2,8 +2,8 @@
   "displayName": "Python",
   "install": "pip install metaobjects",
   "codegenCommand": "metaobjects gen",
-  "docsCommand": "metaobjects docs",
-  "docsCondition": "",
-  "docsMissing": "",
+  "docsCommand": "metaobjects gen",
+  "docsCondition": " (when a target's generator list declares `api-docs`)",
+  "docsMissing": "Declare `api-docs` in that target's `generators` in metaobjects.config.yaml if it is missing",
   "apiSubDir": "api/python"
 }

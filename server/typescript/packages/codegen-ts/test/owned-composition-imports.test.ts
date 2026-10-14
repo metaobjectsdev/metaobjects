@@ -1,14 +1,15 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import ts from "typescript";
 
 /**
  * A composition an adopter OWNS may only call what the package exports.
  *
  * ADR-0034 gives an adopter an ownable copy of each generator, and the reference templates
  * carry their composer's body verbatim — so every engine primitive the body calls must be
- * reachable from `@metaobjectsdev/codegen-ts`, or the file an adopter was handed does not
- * compile.
+ * reachable from the engine entry, `@metaobjectsdev/codegen-ts/engine` (ADR-0034 Amendment 8),
+ * or the file an adopter was handed does not compile.
  *
  * History, because it is why this gate exists. The routes tier used to keep its composition
  * (M:N junction traversal, TPH per-subtype route sets) in the engine as `renderRoutesFile`,
@@ -34,10 +35,10 @@ const OWNED_COMPOSITIONS = [
   "src/reference/queries.ts",
 ] as const;
 
-/** Named imports a module takes from `@metaobjectsdev/codegen-ts` — multi-line bodies included. */
+/** Named imports a module takes from the engine entry — multi-line bodies included. */
 function engineNamedImports(source: string): string[] {
   const names = new Set<string>();
-  const re = /import\s*(?:type\s+)?\{([^}]*)\}\s*from\s*"@metaobjectsdev\/codegen-ts"/g;
+  const re = /import\s*(?:type\s+)?\{([^}]*)\}\s*from\s*"@metaobjectsdev\/codegen-ts\/engine"/g;
   for (const m of source.matchAll(re)) {
     for (const raw of m[1]!.replace(/\/\/[^\n]*/g, "").split(",")) {
       const name = raw
@@ -51,27 +52,16 @@ function engineNamedImports(source: string): string[] {
   return [...names].sort();
 }
 
-/** Everything the package's public entry re-exports, by name. */
+/** Everything the engine entry exports, by name, as the TypeScript checker resolves it. */
 function publicSurface(): Set<string> {
-  const index = readFileSync(join(PKG, "src/index.ts"), "utf8");
-  const names = new Set<string>();
-  for (const m of index.matchAll(
-    /export\s*(?:type\s+)?\{([^}]*)\}\s*from\s*"[^"]*"/g,
-  )) {
-    for (const raw of m[1]!.replace(/\/\/[^\n]*/g, "").split(",")) {
-      // Line comments inside an export list are prose, not names.
-      const part = raw.replace(/\/\/[^\n]*/g, "").replace(/^\s*type\s+/, "").trim();
-      // `a as b` re-exports under b — the name an adopter can import.
-      const name = (part.includes(" as ") ? part.split(/\s+as\s+/)[1] : part)?.trim();
-      if (name) names.add(name);
-    }
-  }
-  for (const m of index.matchAll(
-    /export\s+(?:declare\s+)?(?:const|function|class|type|interface)\s+([A-Za-z_$][\w$]*)/g,
-  )) {
-    names.add(m[1]!);
-  }
-  return names;
+  const entry = join(PKG, "src/engine.ts");
+  const program = ts.createProgram({
+    rootNames: [entry],
+    options: { module: ts.ModuleKind.ESNext, moduleResolution: ts.ModuleResolutionKind.Bundler, noEmit: true, skipLibCheck: true },
+  });
+  const checker = program.getTypeChecker();
+  const module = checker.getSymbolAtLocation(program.getSourceFile(entry)!)!;
+  return new Set(checker.getExportsOfModule(module).map((s) => s.name));
 }
 
 describe("a composition an adopter owns imports only public API", () => {
@@ -85,7 +75,7 @@ describe("a composition an adopter owns imports only public API", () => {
   });
 
   for (const template of OWNED_COMPOSITIONS) {
-    test(`${template} — every engine import is reachable from the package entry`, () => {
+    test(`${template} — every engine import is reachable from the engine entry`, () => {
       const required = engineNamedImports(readFileSync(join(PKG, template), "utf8"));
       expect(required.length).toBeGreaterThan(0);
       const missing = required.filter((n) => !surface.has(n));

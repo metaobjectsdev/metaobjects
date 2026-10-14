@@ -15,8 +15,8 @@
 // emits:         <target>/<Entity>.grid.ts, plus the DB-free <Entity>.meta.ts descriptor
 //                the hook module imports from. Emissions byte-identical to another UI
 //                generator's copy of the same descriptor collapse to one file (#266).
-// customize:     this generator is YOURS. `renderGridHookFile` (exported from
-//                @metaobjectsdev/codegen-ts-tanstack) produces the hook body — wrap it,
+// customize:     this generator is YOURS. `renderGridHookFile` (copied beside this
+//                file, `templates/grid-hook-file.ts`) produces the hook body — wrap it,
 //                prepend to it, or replace the call entirely with your own renderer.
 // composes-with: grid.ts (the column definitions this hook's grid state pairs with) —
 //                pass the SAME `tphSubtypeGrids` predicate to both, or a TPH subtype gets
@@ -29,20 +29,19 @@ import {
   type GeneratorFactory,
   formatTs,
   entityOutputPath,
-  entityMetaFileName,
-  renderEntityMetaFile,
   servesClientTier,
-  isTphSubtype,
   withClientDirective,
   namesRef,
   namesConstArg,
   effectivePackage,
-} from "@metaobjectsdev/codegen-ts";
+} from "@metaobjectsdev/codegen-ts/engine";
+import { hasDataGridLayout, warnMissingDataGridLayout } from "@metaobjectsdev/codegen-ts-tanstack";
+import { renderGridHookFile } from "../templates/grid-hook-file.js";
 import {
-  renderGridHookFile,
-  hasDataGridLayout,
-  warnMissingDataGridLayout,
-} from "@metaobjectsdev/codegen-ts-tanstack";
+  entityMetaFileName,
+  renderEntityMetaFile,
+} from "@metaobjectsdev/codegen-ts/templates/entity-meta-file";
+import { isTphSubtype } from "@metaobjectsdev/codegen-ts/engine";
 
 export interface TanstackGridHookOpts {
   filter?: (entity: MetaObject) => boolean;

@@ -2,10 +2,11 @@
 // Re-sync this repo's OWNED copies of the reference generator templates.
 //
 // `owned-copies-current.test.ts` requires every owned copy in this repo — the
-// `test-generators` package's `src/`, and one set per `examples/*/codegen/generators/`
-// — to be byte-identical to the shipped `codegen-ts/src/reference/<name>.ts`. That
-// gate exists because a drifted copy lets the suites and examples keep passing while
-// proving nothing about what an adopter actually runs.
+// `test-generators` package, and one set per `examples/*/codegen/` — to be exactly what
+// `meta eject` writes today: the generator, and the template modules it calls
+// (ADR-0034 Amendment 8), which sit in a `templates/` directory beside the generators'. That
+// gate exists because a drifted copy lets the suites and examples keep passing while proving
+// nothing about what an adopter actually runs.
 //
 // The gate had no counterpart: changing a reference template turned 12 tests red with
 // no command to make them green, so the only path was 12 hand copies — exactly the
@@ -16,53 +17,44 @@
 //
 // It copies ONLY names that already exist as an owned copy in a directory. It never
 // introduces a new owned generator into an example — which copies an example owns is
-// that example's decision, and adding one silently would change what it demonstrates.
+// that example's decision, and adding one silently would change what it demonstrates. The
+// template modules are different: they are not a decision, they are what the generators
+// that ARE owned call, so the directory is made to hold exactly those.
 
-import { readFileSync, writeFileSync, readdirSync, existsSync } from "node:fs";
-import { join, resolve, relative } from "node:path";
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { dirname, join, resolve, relative } from "node:path";
 
-import {
-  readReferenceTemplate,
-  REFERENCE_GENERATOR_NAMES,
-  type ReferenceGeneratorName,
-} from "../server/typescript/packages/codegen-ts/src/index.js";
+import { expectedFor, ownedTiers, tsFilesUnder } from "../server/typescript/packages/cli/test/support/owned-tiers.js";
 
 const REPO_ROOT = resolve(import.meta.dir, "..");
 const CHECK = process.argv.includes("--check");
 
-/** Same discovery the gate uses — a new owned copy is covered the moment it lands. */
-function ownedCopyDirs(): string[] {
-  const dirs = [join(REPO_ROOT, "server/typescript/packages/test-generators/src")];
-  const examples = join(REPO_ROOT, "examples");
-  if (existsSync(examples)) {
-    for (const e of readdirSync(examples, { withFileTypes: true })) {
-      if (!e.isDirectory()) continue;
-      const d = join(examples, e.name, "codegen", "generators");
-      if (existsSync(d)) dirs.push(d);
-    }
-  }
-  return dirs;
-}
-
-const names = new Set<string>(REFERENCE_GENERATOR_NAMES);
 const stale: string[] = [];
 let written = 0;
 let checked = 0;
 
-for (const dir of ownedCopyDirs()) {
-  for (const file of readdirSync(dir)) {
-    if (!file.endsWith(".ts")) continue;
-    const name = file.slice(0, -3);
-    if (!names.has(name)) continue;
+function sync(path: string, content: string): void {
+  checked++;
+  if (existsSync(path) && readFileSync(path, "utf8") === content) return;
+  stale.push(relative(REPO_ROOT, path));
+  if (CHECK) return;
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, content);
+  written++;
+}
 
-    const shipped = readReferenceTemplate(name as ReferenceGeneratorName);
-    const path = join(dir, file);
+for (const tier of ownedTiers()) {
+  const { generators, templates } = expectedFor(tier);
+  for (const [path, content] of generators) sync(path, content);
+  for (const [path, content] of templates) sync(path, content);
+  // A template module this tier no longer calls is stale too, and left in place it would be
+  // dead code the gate cannot see.
+  for (const path of tsFilesUnder(tier.templates)) {
+    if (templates.has(path)) continue;
     checked++;
-    if (readFileSync(path, "utf8") === shipped) continue;
-
-    stale.push(relative(REPO_ROOT, path));
+    stale.push(`${relative(REPO_ROOT, path)} (no owned generator calls it)`);
     if (!CHECK) {
-      writeFileSync(path, shipped);
+      rmSync(path);
       written++;
     }
   }
@@ -82,14 +74,7 @@ if (existsSync(examplesDir)) {
       const path = join(f.parentPath, f.name);
       const upstream = join(RUNTIME_SRC, relative(root, path));
       if (!existsSync(upstream)) continue;
-      const shipped = readFileSync(upstream, "utf8");
-      checked++;
-      if (readFileSync(path, "utf8") === shipped) continue;
-      stale.push(relative(REPO_ROOT, path));
-      if (!CHECK) {
-        writeFileSync(path, shipped);
-        written++;
-      }
+      sync(path, readFileSync(upstream, "utf8"));
     }
   }
 }

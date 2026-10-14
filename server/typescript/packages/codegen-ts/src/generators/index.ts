@@ -14,12 +14,11 @@
 //
 // Which entries have a reference copy is declared once, in `REFERENCE_GENERATOR_NAMES`
 // (reference-templates.ts); `meta gen --list` marks every other entry `package-only` —
-// today that is `template`, the Mustache primitive, which has no emit logic of its own,
-// and `requirements` and `agent-docs`, which do not ship a reference template yet.
-//
-// `docsFile` and `apiDocsFile` are exported here as the generators `meta docs` runs; they
-// need no wiring. An ejected copy of either is listed in `docs: { generators: [...] }`, and
-// `meta docs` then runs the copy (Amendment 7).
+// today `template`, the Mustache primitive, which has no emit logic of its own, and
+// `docs-site`, whose builder stays packaged while `meta eject docs-site` copies the site's
+// templates and assets. The documentation generators are exported here like the rest and
+// listed like the rest: `meta gen` writes the pages the project's `generators` declare, into
+// the `docs` target unless a factory says otherwise, and nothing else (Amendment 9).
 // See spec/decisions/ADR-0034-codegen-scaffold-and-own.md.
 
 export { entityFile, type EntityFileOpts } from "./entity-file.js";
@@ -35,10 +34,10 @@ export { outputParser, type OutputParserOpts } from "./output-parser-file.js";
 export { extractor, type ExtractorOpts } from "./extractor-file.js";
 export { outputPrompt, type OutputPromptOpts } from "./output-prompt-file.js";
 export { renderHelper, type RenderHelperOpts } from "./render-helper-file.js";
-/** @deprecated ADR-0025 — `meta docs` is the single docs door; `apiDocsFile` stays as the internal engine of its api surface, not a `meta gen` config generator. */
 export { apiDocsFile, type ApiDocsFileOpts } from "./api-docs-file.js";
-/** @deprecated ADR-0021 D1 — `meta docs` is the single docs door; `docsFile` stays as its internal engine, not a `meta gen` config generator. */
 export { docsFile, type DocsFileOpts } from "./docs-file.js";
+export { metamodelDocsFile, type MetamodelDocsFileOpts } from "./metamodel-docs-file.js";
+export { docsSiteFile, type DocsSiteFileOpts } from "./docs-site-file.js";
 export {
   templateGenerator,
   type TemplateGeneratorOpts,
@@ -74,8 +73,8 @@ export { buildTemplateDocData } from "./template-doc-builder.js";
 // behaviour composes its own generator instead of filing an issue here.
 export { requirementTests } from "./requirement-tests.js";
 export { requirementsFile } from "./requirements-file.js";
-// The `agent` docs surface — internal engine of `meta docs --agent`, like docsFile()
-// and apiDocsFile(). Not a `meta gen` config generator.
+// The pages written for a coding agent working in the project: the schema, the UI surface and
+// the requirements.
 export { agentDocsFile, type AgentDocsFileOpts } from "./agent-docs-file.js";
 export type {
   AgentSchemaInput,

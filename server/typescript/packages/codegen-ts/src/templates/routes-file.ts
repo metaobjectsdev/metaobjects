@@ -30,12 +30,12 @@ import { routesHandlerName } from "../naming.js";
 import { isProjection, isWriteThrough } from "../projection/projection-detector.js";
 import { isReport } from "../source-detect.js";
 import { itemRouteField, reportDecimalColumns } from "../api-surface.js";
-import { DEFAULT_ID_FIELD } from "./queries.js";
+import { DEFAULT_ID_FIELD } from "../pk-resolver.js";
 import type { RelationEntry } from "../relation-resolver.js";
 import { isTphDiscriminatorBase, tphPlan } from "./tph-discriminator.js";
 import { authSeamJsDoc, type CrudVerb, exposeLine, intersectExpose, TPH_POLYMORPHIC_VERBS } from "../routes-expose.js";
 import { effectivePackage } from "../docs-paths.js";
-import { tphDiscriminatorPin, tphStorageObject } from "./zod-validators.js";
+import { tphDiscriminatorPin, tphStorageObject } from "../tph.js";
 import { httpRuntimeSpecifier } from "../owned-runtime.js";
 
 export function renderRoutesFile(

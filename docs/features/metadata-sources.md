@@ -27,7 +27,7 @@ which is documentation content, not a resolution path.
 }
 ```
 
-`meta gen`, `meta migrate`, `meta verify`, `meta docs` and `meta export` all read
+`meta gen` (documentation included), `meta migrate`, `meta verify` and `meta export` all read
 exactly that set. A `path` is read **in place and never installed** or copied.
 
 **Nothing breaks if you do nothing.** `meta init` has always scaffolded
@@ -205,21 +205,14 @@ exists either.
 
 ### Every directory argument is the PROJECT ROOT
 
-`--cwd`, and the `meta docs` positional, name the project root — the directory that
-**contains** your metadata. They are never the metadata directory itself; where the
-metadata lives is `sources`' answer, and pointing a command at `metaobjects/` asks it
-to find a `metaobjects/metaobjects/`.
-
-That is worth stating because the mistake is predictable rather than careless: the
-**Python and C# `docs` positionals ARE the metadata directory** (`metaobjects docs
-./metadata`, `dotnet meta docs metaobjects`), and each port spells its own the same
-way in help text. The Node CLI is the one every stack uses for `migrate`,
-`verify --db` and the neutral model docs, so the two conventions meet on one machine.
+`--cwd` names the project root — the directory that **contains** your metadata. It is
+never the metadata directory itself; where the metadata lives is `sources`' answer, and
+pointing a command at `metaobjects/` asks it to find a `metaobjects/metaobjects/`.
 
 ```bash
-meta docs --out ./docs            # ✅ from the project root — the normal form
-meta docs ./apps/api --out ./docs # ✅ a project root elsewhere (SCOPES the run to it)
-meta docs metaobjects --out ./docs # ❌ that is the metadata directory
+meta gen                         # ✅ from the project root — the normal form
+meta gen --cwd ./apps/api        # ✅ a project root elsewhere
+meta gen --cwd metaobjects       # ❌ that is the metadata directory
 ```
 
 Pointed at a metadata directory, `ERR_COLLECTION_NOT_FOUND` now says so and names the
@@ -274,12 +267,12 @@ For a package tree, you want `acme::**`.
 |---|---|
 | `meta gen` | **Yes** — an object is generated only when its FQN is in scope |
 | `meta verify --codegen` | **Yes** — it regenerates under the same scope, so a scoped `gen` cannot be reported as drift |
-| `meta docs` | No |
+| The documentation generators, under `meta gen` | No — the model pages, the api reference, the agent pages and the site document the whole loaded model |
 | `meta export` | No |
 | `meta migrate`, `meta verify --db` | No — those take [`migrate.scope`](#migratescope--who-owns-which-tables) instead |
 
-`docs` and `export` are **inspection surfaces over the loaded collection**, not code
-emitters. Scoping them would make the tools you reach for to answer "what is
+The documentation generators and `export` are **inspection surfaces over the loaded
+collection**, not code emitters. Scoping them would make the tools you reach for to answer "what is
 actually in this model?" answer a narrower question than the one you asked.
 
 `meta gen <Entity>` arguments **intersect** with scope: both must pass. If a scope
@@ -500,7 +493,7 @@ redundant.
    the same as "sorted": within one directory entry the files keep the walk order the
    toolchain has always used — the files at a level, then that level's
    subdirectories, depth-first — because declaration order survives into generated
-   output (a barrel's export list, the shared `enums.ts`, `meta docs` page order,
+   output (a barrel's export list, the shared `enums.ts`, the docs generators' page order,
    `meta export`'s sibling order). Flat-sorting the paths would silently reorder any
    project holding a subdirectory whose name sorts before a sibling file.
 2. **The loader resolves content order-independently.** Overlay-only sources are

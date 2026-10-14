@@ -355,8 +355,10 @@ means everything; `exclude` applies after `include`; matching is case-sensitive.
 
 **The collection always loads in full — `scope` filters output, never input.** It
 applies to `meta gen` and to `meta verify --codegen` (which regenerates under the
-same scope, so a scoped `gen` is not reported as drift). `meta docs` and `meta export`
-are deliberately **not** scoped — they inspect the loaded collection. `meta gen
+same scope, so a scoped `gen` is not reported as drift). The documentation generators are
+not scoped: the model pages, the api reference, the agent pages and the site document the
+whole loaded collection, as `meta docs` did. `meta export` is deliberately **not** scoped — it
+inspects the loaded collection. `meta gen
 <Entity>` arguments intersect with `scope`; both must pass.
 
 The TypeScript-only per-generator `filter` function is unchanged and remains the

@@ -1,12 +1,12 @@
 <!-- @generated — DO NOT EDIT.
      Metamodel vocabulary index — every type.subType, its one-line description, and a link to its type page.
-     Regenerate with: meta docs --metamodel -->
+     Regenerate with: meta gen (the metamodel-docs generator, metamodelDocsFile()) -->
 
 # MetaObjects Metamodel — Index
 
 This documents the **metamodel itself** — the type / subtype / attribute
 vocabulary the loader accepts — generated from the strict registry. It is
-NOT documentation of a user's entities (that is `meta docs --model`).
+NOT documentation of a user's entities (that is the `docs` generator, `docsFile()`).
 
 Follow a link into `types/<family>.md` for the full attribute table, allowed
 children, and cardinality of a subtype. Universal documentation attributes

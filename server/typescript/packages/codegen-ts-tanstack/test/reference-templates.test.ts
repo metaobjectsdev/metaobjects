@@ -16,15 +16,16 @@ describe("codegen-ts-tanstack reference templates", () => {
     }
   });
 
-  test("imports only this package's public engine, declares its target", () => {
+  // ADR-0034 Amendment 8: the renderer is reached by a path `meta eject` copies beside the
+  // generator (`../templates/`), not through the package entry, which would leave it packaged.
+  test("imports its renderer by path and the engine by the engine entry, declares its target", () => {
     for (const name of REFERENCE_GENERATOR_NAMES) {
       const src = readReferenceTemplate(name);
       expect(src).toContain("REFERENCE TEMPLATE");
       expect(src).toContain("// targets:");
-      expect(src).toContain('from "@metaobjectsdev/codegen-ts-tanstack"');
-      // Never a deep path into package internals — that is the fork this FR removes.
+      expect(src).toContain('from "@metaobjectsdev/codegen-ts/engine"');
+      expect(src).toMatch(/from "\.\.\/templates\/[\w-]+\.js"/);
       expect(src).not.toContain("src/templates");
-      expect(src).not.toContain("./templates/");
     }
   });
 
@@ -47,8 +48,8 @@ describe("codegen-ts-tanstack reference templates", () => {
       expect(src).not.toContain("data-grid-gate");
       expect(src).toContain("hasDataGridLayout");
       expect(src).toContain("warnMissingDataGridLayout");
-      // Both must come from the SAME import statement pulling from the package's
-      // public entry point as the renderer — never a second, deeper specifier.
+      // The gate is ENGINE: it stays in the package and is imported from its public entry —
+      // never a deeper specifier, and never copied (it is not in the template closure).
       expect(src).toContain('from "@metaobjectsdev/codegen-ts-tanstack";');
     }
   });

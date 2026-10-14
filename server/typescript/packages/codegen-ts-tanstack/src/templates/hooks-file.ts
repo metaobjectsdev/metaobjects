@@ -1,6 +1,22 @@
 import { code, imp, joinCode, Import, type Code } from "ts-poet";
 import type { MetaObject } from "@metaobjectsdev/metadata";
-import type { RenderContext, RelationEntry } from "@metaobjectsdev/codegen-ts";
+import type { RenderContext, RelationEntry } from "@metaobjectsdev/codegen-ts/engine";
+
+import {
+  GENERATED_HEADER,
+  GENERATED_EDIT_NOTE,
+  isProjection,
+  hasItemRoute,
+  hookListNameSegment,
+  entityModuleSpecifier,
+  effectivePackage,
+  siblingSpecifier,
+} from "@metaobjectsdev/codegen-ts/engine";
+import { getPkInfo } from "@metaobjectsdev/codegen-ts/engine";
+import {
+  isTphDiscriminatorBase,
+  tphPlan,
+} from "@metaobjectsdev/codegen-ts/templates/tph-discriminator";
 
 /** The DB-free `<Entity>.meta` descriptor. The UI generator writes it into ITS OWN target,
  *  beside this file, so it is always a sibling import — never the entity module's path,
@@ -10,20 +26,6 @@ import type { RenderContext, RelationEntry } from "@metaobjectsdev/codegen-ts";
 function metaModuleOf(entity: MetaObject, ctx: RenderContext): string {
   return siblingSpecifier(ctx.selfTarget, effectivePackage(entity), `${entity.name}.meta`, ctx.extStyle);
 }
-
-import {
-  GENERATED_HEADER,
-  GENERATED_EDIT_NOTE,
-  isProjection,
-  hasItemRoute,
-  hookListNameSegment,
-  entityModuleSpecifier,
-  isTphDiscriminatorBase,
-  tphPlan,
-  getPkInfo,
-  effectivePackage,
-  siblingSpecifier,
-} from "@metaobjectsdev/codegen-ts";
 
 /**
  * Render <Entity>.hooks.ts — query-key factory + 2 query hooks + (for non-projections) 3 mutation hooks.

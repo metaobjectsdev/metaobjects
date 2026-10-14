@@ -23,12 +23,11 @@
 // customize:     which entities get a cube file (`selected` in `generateCubeFiles`, narrowed
 //                further by the `filter` option), where the files land (`cubeFilePath`,
 //                `viewFilePath`) and the YAML text (the `renderCubeYaml` and `renderCubeViewYaml`
-//                calls; swap them for your own writer to change the file format). Stays in the
-//                package: `buildCubeModel`, which maps the vocabulary to cube and view specs and
-//                raises every refusal (`CubeModelError`), and `renderCubeYaml` /
-//                `renderCubeViewYaml`, the deterministic YAML writers, all exported from the
-//                package root. Replace them only if you mean to stop agreeing with every other
-//                consumer of the same model.
+//                calls; swap them for your own writer to change the file format). Copied
+//                beside it, so yours too: `buildCubeModel`, which maps the vocabulary to cube and
+//                view specs and raises every refusal (`CubeModelError`), and `renderCubeYaml` /
+//                `renderCubeViewYaml`, the deterministic YAML writers. Change them only if you
+//                mean to stop agreeing with every other consumer of the same model.
 // composes-with: nothing. It reads the reporting vocabulary, not another generator's output.
 //
 // What a cube holds never depends on the run. The build's universe is the whole loaded model
@@ -56,24 +55,22 @@
 // `cubeFilePath` and `viewFilePath` write), or delete the `orphanPolicy` line to turn the cleanup
 // off.
 //
-// Everything below imports ONLY from `@metaobjectsdev/codegen-ts` (the stable engine) and
-// `@metaobjectsdev/metadata` (the entity type and the default column naming strategy).
+// Everything below imports the engine from `@metaobjectsdev/codegen-ts` (the generator base, the
+// model walks and the report lowering `meta migrate` also runs), the entity type and the
+// default column naming strategy from `@metaobjectsdev/metadata`, and the Cube exporter from
+// `../cube/`. `meta eject` copies those modules into your project, under `codegen/templates/`,
+// and your copy of this file imports them from there: they are yours too.
 
+import type { EmittedFile, GenContext, Generator } from "@metaobjectsdev/codegen-ts/engine";
+import { buildCubeModel, hasReportingVocabulary } from "../cube/build-cube-model.js";
+import { ERR_CUBE_UNSUPPORTED_DIALECT, CubeModelError } from "../cube/cube-errors.js";
 import {
-  ERR_CUBE_UNSUPPORTED_DIALECT,
-  CubeModelError,
   JOIN_PATH_SEPARATOR,
-  buildCubeModel,
-  hasReportingVocabulary,
-  renderCubeViewYaml,
-  renderCubeYaml,
   type CubeDialect,
   type CubeModel,
   type CubeSpec,
-  type EmittedFile,
-  type GenContext,
-  type Generator,
-} from "@metaobjectsdev/codegen-ts";
+} from "../cube/cube-model-spec.js";
+import { renderCubeViewYaml, renderCubeYaml } from "../cube/cube-yaml.js";
 import { DEFAULT_COLUMN_NAMING_STRATEGY, type MetaObject } from "@metaobjectsdev/metadata";
 
 export interface CubeModelGeneratorOptions {

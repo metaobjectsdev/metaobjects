@@ -21,10 +21,9 @@ import { renderValueObjectInterface, renderEnumTypeAliases } from "./inferred-ty
 import {
   renderInsertSchemaOnly,
   renderZodValidators,
-  isTphSubtype,
   renderTphSubtypeReadSchema,
-  tphDiscriminatorPin,
 } from "./zod-validators.js";
+import { isTphSubtype, tphDiscriminatorPin } from "../tph.js";
 import { renderEntityConstants, renderValueObjectConstants } from "./entity-constants.js";
 import { renderFilterAllowlist, renderSortAllowlist } from "./filter-allowlist.js";
 import { renderFilterType } from "./filter-type.js";

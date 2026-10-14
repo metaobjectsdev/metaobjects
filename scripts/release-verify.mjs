@@ -199,7 +199,7 @@ function smoke() {
         : `pnpm add @metaobjectsdev/cli@${VERSION}`, { cwd: dir, stdio: "pipe" });
       const v = execSync("./node_modules/.bin/meta --version", { cwd: dir, encoding: "utf8" }).trim();
       v.includes(VERSION) ? g(`${mgr}: meta --version = ${v}`) : r(`${mgr}: reports ${v}`);
-      for (const c of ["init", "gen", "docs", "upgrade", "verify"]) {
+      for (const c of ["init", "gen", "upgrade", "verify"]) {
         try { execSync(`./node_modules/.bin/meta ${c}`, { cwd: dir, stdio: "pipe" }); g(`${mgr}: meta ${c}`); }
         catch { r(`${mgr}: meta ${c} failed`); }
       }

@@ -8,18 +8,14 @@
 //   • the shared docs-paths placement (collision-safe, layout-aware) that
 //     docsFile() uses — so multi-package models never silently overwrite a page.
 //
-// Output (all under `docs/api/`):
+// Output (all under `api/` in the `docs` target, unless `subDir` / `target` say otherwise):
 //   • one `<Node>.md` per entity + template.output unit (the human page),
 //   • `README.md` — the consolidated human index (GitHub treats it as landing),
 //   • `AGENT-API.md` — the token-frugal agent form.
 //
-// Unlike `docs` (Tier-2 neutral, owned by `meta docs`), `api-docs`
-// is a NATIVE generator: it is REGISTERED in the generator registry (ADR-0022
-// Part 3) — so it appears in `gen --list` and is selectable by its stable name
-// `api-docs`. It is NOT a `meta docs` mode.
-//
-// It is NOT part of the default `meta gen` scaffold suite: it is registry-listed but not
-// auto-run. `meta docs` is the door that emits it.
+// Unlike `docs` (the language-neutral model pages), `api-docs` is NATIVE: it documents what
+// this port's generators emit. Like every generator it runs when the project lists it, and
+// only then (ADR-0034 Amendment 9).
 //
 // THE POINTER IS NO LONGER DEFERRED. This header used to record "surfacing the agent form
 // (AGENT-API.md) to a coding agent via a pointer from the installed `.metaobjects/`
@@ -45,49 +41,44 @@ import {
   renderApiIndex,
   renderAgentApi,
 } from "./api-doc-render.js";
+import { DOCS_TARGET_NAME } from "../docs-run.js";
+import { docsTemplateRoot } from "../render-engine/framework-provider.js";
 
-// All api-docs artifacts live under this sub-directory of the codegen out dir.
+// All api-docs artifacts live under this sub-directory of the target's out dir.
 // Per-unit pages fold further under their package path (package layout); the
 // index + agent form stay at the api root (their links are computed relative to
 // it via the same docPageHref the renderers use).
-//
-// The DEFAULT prefix is `docs/api` — byte-identical to the historical `meta gen`
-// behaviour + goldens. The unified `meta docs` command (which writes everything
-// under one docs root, `./docs`) overrides it via `subDir:'api'` so the api
-// surface emits `api/<Node>.md` rather than doubling to `./docs/docs/api`.
-const DEFAULT_API_DIR = "docs/api";
+const DEFAULT_API_DIR = "api";
 
 export interface ApiDocsFileOpts {
   filter?: (entity: MetaObject) => boolean;
+  /** Named output target. Default `"docs"`, which `targets` must declare. */
   target?: string;
-  /** Output prefix for all api-docs artifacts. Default `docs/api`. */
+  /** Output prefix for all api-docs artifacts, under the target. Default `api`. */
   subDir?: string;
-  /** When true, the model surface is emitted alongside the api surface (at the
-   *  docs root), so each api entity page cross-links back to its model page. The
-   *  href is computed via the shared `surfaceCrossHref` so it resolves in BOTH
-   *  layouts. ABSENT/false ⇒ default api output byte-identical. */
+  /** Where the model pages are hosted when they are not written beside these, so each api
+   *  page links back to `<modelBaseUrl>/<its model page>`. ABSENT: an api page links to its
+   *  model page when `docsFile()` writes to the same target, and to none otherwise. */
+  modelBaseUrl?: string;
+  /** Whether each api page links back to its model page beside it. Default: whether
+   *  `docsFile()` writes to the same target in this run (`ctx.docs.modelPages`). */
   modelSurface?: boolean;
 }
 
-/**
- * @deprecated ADR-0025: `meta docs` is the single door for ALL docs. `apiDocsFile()`
- * stays as the INTERNAL engine of the docs door's api surface — do NOT add it to a
- * `meta gen` config / the generators array. Use `meta docs` (it emits the api surface
- * alongside the model surface). A `meta gen` config that lists it is warned + skipped.
- */
 export const apiDocsFile = function apiDocsFile(opts?: ApiDocsFileOpts): Generator {
+  const apiDir = (opts?.subDir ?? DEFAULT_API_DIR).replace(/\/$/, "");
   const generator: Generator = {
     name: "api-docs",
+    target: opts?.target ?? DOCS_TARGET_NAME,
+    emitsApiDocs: { subDir: apiDir },
     generate(ctx) {
-      const provider = projectProvider(ctx.projectRoot ?? process.cwd());
+      const provider = projectProvider(docsTemplateRoot(ctx));
       const layout = ctx.config.outputLayout ?? "flat";
 
-      // Per-call output prefix. Default `docs/api`; `meta docs` passes `api`. Under the docs
-      // door the door's facts decide it and the model cross-link, not this factory's options:
-      // the model generator is told the same thing, and the two must agree (docs-door.ts).
-      const door = ctx.docsDoor;
-      const apiDir = (door !== undefined ? door.apiSubDir : opts?.subDir) ?? DEFAULT_API_DIR;
-      const modelSurface = door !== undefined ? door.modelSurface : opts?.modelSurface;
+      // Whether each page links back to its model page: the model pages are hosted
+      // elsewhere (`modelBaseUrl`), or `docsFile()` writes them to this same target.
+      const modelBaseUrl = opts?.modelBaseUrl?.replace(/\/$/, "");
+      const modelSurface = opts?.modelSurface ?? ctx.docs?.modelPages ?? false;
       const indexFilename = `${apiDir}/README.md`;
       const agentFilename = `${apiDir}/AGENT-API.md`;
 
@@ -116,9 +107,11 @@ export const apiDocsFile = function apiDocsFile(opts?: ApiDocsFileOpts): Generat
         // `<apiDir>/<placement>`. The href is derived from the SAME
         // docPageOutputPath placement via surfaceCrossHref so it resolves in both
         // layouts. ABSENT otherwise.
-        const modelPageHref = modelSurface
-          ? surfaceCrossHref(path, docPageOutputPath(layout, node))
-          : undefined;
+        const modelPageHref = modelBaseUrl !== undefined && modelBaseUrl !== ""
+          ? `${modelBaseUrl}/${docPageOutputPath(layout, node)}`
+          : modelSurface
+            ? surfaceCrossHref(path, docPageOutputPath(layout, node))
+            : undefined;
         return { path, content: renderEntityApiPage(unit, provider, modelPageHref) };
       });
 
@@ -141,6 +134,5 @@ export const apiDocsFile = function apiDocsFile(opts?: ApiDocsFileOpts): Generat
     },
   };
   if (opts?.filter) generator.filter = opts.filter;
-  if (opts?.target) generator.target = opts.target;
   return generator;
 } as GeneratorFactory<ApiDocsFileOpts>;

@@ -17,16 +17,15 @@
 // property of the COMPOSED catalog and is asserted there; this package's own
 // conformance test can only check one direction — no rogue names.
 //
-// Tiering (ADR-0020 / ADR-0021 D1):
-//   - "native"  — the recommended Tier-1 `meta gen` suite (idiomatic emission).
-//   - "neutral" — Tier-2 artifacts owned by the neutral docs engine. `docs` is present
-//                 here for identity/discoverability but is NOT part of the native
-//                 surface — the door for documentation is `meta docs` (D1). (The
-//                 standalone `mermaid-er` generator was a second neutral entry until
-//                 1.1 removed it: `meta docs` draws the diagram. See
-//                 metaobjects-config.ts, `removedGeneratorMessage`.)
+// Tiering (ADR-0020):
+//   - "native"  — idiomatic per-port emission: what this port's generated code is.
+//   - "neutral" — language-neutral pages that describe the MODEL the same way in every
+//                 port (`docs`, `requirements`, `agent-docs`, `metamodel-docs`,
+//                 `docs-site`). A description of the output, not a door: every entry,
+//                 either tier, runs when the project's `generators` list declares it, and
+//                 only then (ADR-0034 Amendment 9).
 
-import type { Generator, OwnedDocsSurface } from "./generator.js";
+import type { Generator } from "./generator.js";
 import type { MetaobjectsGenConfig } from "./metaobjects-config.js";
 import { REFERENCE_GENERATOR_NAMES } from "./reference-templates.js";
 import {
@@ -50,6 +49,8 @@ import {
   requirementTests,
   requirementsFile,
   agentDocsFile,
+  metamodelDocsFile,
+  docsSiteFile,
   cubeModel,
 } from "./generators/index.js";
 
@@ -62,8 +63,8 @@ export type GeneratorTier = "native" | "neutral";
  * `fixtures/generator-registry-conformance/registry.json`, exactly as `tier` is, so a
  * polyglot agent groups the catalog by the same words everywhere.
  *
- * Six, not ten. The first four are app-shape decisions a builder makes; `docs` is on by
- * default (`meta docs`); `capability` holds the ones the MODEL has already made — nobody
+ * Six, not ten. The first four are app-shape decisions a builder makes; `docs` holds the
+ * pages written about the model and the code; `capability` holds the ones the MODEL has already made — nobody
  * picks `prompt-render` by browsing a taxonomy, they pick it because they declared a
  * `template.prompt`, which `meta gen --list --probe` reports with a real file count. A
  * layer with one member does no grouping work, so do not split `capability` to tidy it.
@@ -101,7 +102,7 @@ export interface GeneratorRegistryEntry {
   layer: Layer;
   /** One-line (no newline) human description for `--list`. */
   description: string;
-  /** "native" = recommended `meta gen` suite; "neutral" = `meta docs`-owned. */
+  /** "native" = idiomatic per-port output; "neutral" = language-neutral model pages. */
   tier: GeneratorTier;
   /** Constructs the generator with sensible defaults. Calling it must not throw. */
   factory: () => Generator;
@@ -157,17 +158,7 @@ export interface GeneratorRegistryEntry {
   configKeys?: readonly (keyof MetaobjectsGenConfig)[];
   /** True iff this package ships a `src/reference/<name>.ts` for `meta eject`. */
   ejectable: boolean;
-  /**
-   * The `meta docs` surface an OWNED copy of this generator takes over. Set for the two
-   * generators `meta docs` runs (`docs`, `api-docs`): their owned copy is listed in
-   * `docs: { generators: [...] }`, the docs door's own block, and `meta eject` prints that
-   * wiring for them. Absent for every generator `meta gen` runs.
-   *
-   * Resolved, not trusted: a gate requires the reference template's generator to carry
-   * this same value as its `docsSurface` marker, which is what `meta docs` reads.
-   */
-  docsSurface?: OwnedDocsSurface;
-  /** Optional note — used to point neutral entries at their canonical door. */
+  /** Optional one-line note shown under the entry in `--list`. */
   note?: string;
 }
 
@@ -285,33 +276,31 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
   },
 
   // ----- docs -------------------------------------------------------------
+  // Each writes to the `docs` target unless its `target` option names another, and is refused
+  // when `targets` declares none (ADR-0034 Amendment 9).
   "api-docs": {
     name: "api-docs",
     kind: "generator",
     layer: "docs",
     description:
       "Per-entity/template SDK API reference (the generated code's API, human + agent forms).",
-    note: "the api surface of `meta docs` (the single docs door, ADR-0025), which runs it with nothing wired.",
     tier: "native",
     factory: () => apiDocsFile(),
     factoryExport: "apiDocsFile",
-    options: "filter?, target?",
+    options: "subDir?, modelBaseUrl?, modelSurface?, filter?, target?",
     ejectable: ejectable("api-docs"),
-    docsSurface: "api",
   },
   docs: {
     name: "docs",
     kind: "generator",
     layer: "docs",
-    description: "Neutral per-entity / per-template Markdown documentation pages.",
+    description: "Neutral per-entity / per-template Markdown documentation pages, with an overview and the ER diagram.",
     tier: "neutral",
     factory: () => docsFile(),
     factoryExport: "docsFile",
+    options: "apiSurfaces?, templates?, filter?, target?",
     ejectable: ejectable("docs"),
-    docsSurface: "model",
-    note: "neutral artifact — use `meta docs` (the single docs door, ADR-0021 D1); not part of the recommended `meta gen` native suite.",
   },
-
   requirements: {
     name: "requirements",
     kind: "generator",
@@ -322,7 +311,7 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
     factoryExport: "requirementsFile",
     options: "outDir?, target?",
     ejectable: ejectable("requirements"),
-    note: "neutral artifact — `meta docs` writes it as its requirements surface; a project that declares no requirement.* node gets no file.",
+    note: "a project that declares no requirement.* node gets no file.",
   },
   "agent-docs": {
     name: "agent-docs",
@@ -334,7 +323,29 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
     factoryExport: "agentDocsFile",
     options: "subDir?, schema?, columnNamingStrategy?, target?",
     ejectable: ejectable("agent-docs"),
-    note: "neutral artifact — `meta docs --agent` writes it; not part of the recommended `meta gen` native suite.",
+  },
+  "metamodel-docs": {
+    name: "metamodel-docs",
+    kind: "generator",
+    layer: "docs",
+    description: "The reference of the built-in metamodel: every type, subtype and attribute this build registers, by provider.",
+    tier: "neutral",
+    factory: () => metamodelDocsFile(),
+    factoryExport: "metamodelDocsFile",
+    options: "subDir?, target?",
+    ejectable: ejectable("metamodel-docs"),
+  },
+  "docs-site": {
+    name: "docs-site",
+    kind: "generator",
+    layer: "docs",
+    description: "The browsable HTML site of the model: navigation, search, a page per package and per object, ER diagrams.",
+    tier: "neutral",
+    factory: () => docsSiteFile(),
+    factoryExport: "docsSiteFile",
+    options: "prompts?, subDir?, title?, stamp?, target?",
+    ejectable: ejectable("docs-site"),
+    note: "its builder stays packaged; `meta eject docs-site` copies the site's templates and assets into codegen/docs-site/.",
   },
 
   // ----- capability -------------------------------------------------------

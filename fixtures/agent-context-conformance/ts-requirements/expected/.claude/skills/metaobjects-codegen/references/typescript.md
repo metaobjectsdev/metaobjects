@@ -18,7 +18,7 @@ Topic files beside this one, to open when they come up:
 store MetaObjects does not manage, with a tested repository generator),
 `typescript-retargeting.md` (a framework other than Fastify, Hono or React),
 `typescript-templates.md` (declarative Mustache template-codegen) and `typescript-docs.md`
-(`meta docs`). The procedure for any unsupported stack is `any-stack.md`.
+(the docs generators). The procedure for any unsupported stack is `any-stack.md`.
 
 ## Write your own generator
 
@@ -112,7 +112,7 @@ a bare string**, and it names a DIRECTORY or a file:
 { "schema_version": 1, "sources": [{ "path": "model" }, { "path": "../shared/metadata" }] }
 ```
 
-Every command's directory argument (`meta docs <project-root>`, `--cwd`) is the
+Every command's directory argument (`meta gen <project-root>`, `--cwd`) is the
 PROJECT ROOT that CONTAINS the metadata — never the metadata directory itself.
 
 ## The generators
@@ -125,32 +125,38 @@ repo, imported from `./codegen/generators/*` instead (ADR-0034); the factory kee
 name. Import by default and eject to customize: an owned copy you never change only falls
 behind the reference. (`entityFile` / `queriesFile` / `routesFile` / `barrel` were removed
 from that subpath at 1.0 and restored in 1.1, so on a 1.0.x install an owned copy is the
-only path for those four.) The engine primitives come from the package main entry,
-`@metaobjectsdev/codegen-ts`. Three entries cannot be ejected and are `package-only` in
+only path for those four.) Two entries cannot be ejected and are `package-only` in
 `meta gen --list`: the `template` primitive, which has no emit logic of its own, and
-`requirements` and `agent-docs`, the pages `meta docs` writes, which do not ship a
-reference template yet.
+`docs-site`, whose builder stays in the package (`meta eject docs-site` copies the site's
+templates and assets into `codegen/docs-site/`). An ejected generator comes with the
+template modules that write its output (`codegen/templates/`); the engine stays in the
+package, and an owned copy imports it from `@metaobjectsdev/codegen-ts/engine`.
 
-Three ejectable entries behave differently from the rest:
+Some ejectable entries behave differently from the rest:
 
-- **`docs` and `api-docs` are run by `meta docs`, not `meta gen`.** `meta docs` writes
-  both with nothing wired; never put a docs generator, packaged or owned, in `generators`.
-  To change the pages, `meta eject docs` (or `api-docs`) and list the copy in the docs
-  block, `docs: { generators: [docsFile()] }`: it carries a `docsSurface` marker, and
-  `meta docs` and `meta verify --docs` run it in place of the packaged one. To change only
-  a page's wording, put your own `templates/docs/entity-page.md.mustache` in the project
-  instead.
-- **The ER diagram comes from `meta docs`** (overview page, and each entity's page). The
+- **`docs`, `api-docs`, `requirements` and `agent-docs` are run by `meta gen`, like any
+  other entry.** There is no separate docs command (removed in 1.1.0, ADR-0034 Amendment
+  9): list `docsFile()`, `apiDocsFile()`, `requirementsFile()` and `agentDocsFile()` in
+  `generators` the same way you list `entityFile()`. Each defaults to a target named
+  `docs` (`targets.docs.outDir`) unless given its own `target`, and a run that lists one
+  while `targets` has no `docs` entry is refused, naming the generator. To change the
+  pages, `meta eject docs` (or `api-docs`, `requirements`, `agent-docs`) and list the copy
+  in `generators` in place of the packaged factory — there is no separate `docs` block to
+  put it in. To change only a page's wording, put your own
+  `templates/docs/entity-page.md.mustache` in the project instead. Full reference:
+  `typescript-docs.md`.
+- **The ER diagram comes from `docsFile()`** (overview page, and each entity's page). The
   standalone `mermaidErDiagram()` / `"mermaid-er"` generator was removed in 1.1; a config
-  that still wires it fails with a message saying so. Remove it and run `meta docs`.
-- **`shared-model` ejects as a thin generator.** The copy owns which source files may
-  contribute and where the published version comes from. The artifact, its hash and the
-  manifest a consumer's `meta deps sync` verifies stay in the package
-  (`buildSharedModel`, `renderSharedModelFiles`); keep calling both.
+  that still wires it fails with a message saying so. Remove it and run `meta gen`.
+- **`shared-model` ejects with its artifact builder.** The copy decides which source files
+  may contribute and where the published version comes from. The artifact, its hash and the
+  manifest a consumer's `meta deps sync` verifies are written by `buildSharedModel` and
+  `renderSharedModelFiles`, copied beside it: change what they do and you stop agreeing with
+  every consumer.
 
 In an owned generator, read the project's own files through `ctx.inputRoot`. Under
 `meta verify --codegen` the run writes into a temporary tree and `ctx.projectRoot` is that
-tree. Under `meta docs` it is the directory that holds `metaobjects.config.ts`.
+tree; under a plain `meta gen` it is the directory that holds `metaobjects.config.ts`.
 
 **`requirementTests()` — one test stub per requirement the model claims.** A recommended
 approach, not a contract: a `live` or `partial` requirement gets a stub that fails until
@@ -160,7 +166,7 @@ skipped stub. Options: `filter` (a predicate over `subType`, `level`, `status`, 
 (`"concern"`, the default, or `"member"`; anything else is refused), `warnUncovered`,
 `renderers` / `resolveRenderer`. `meta eject requirement-tests` copies the generator and
 its default stub renderer into `codegen/generators/requirement-tests.ts`; the requirement
-walk, each test's identity and the claim digest stay in the package. The requirement
+walk, each test's identity and the claim digest are engine and stay in the package. The requirement
 checks in `meta verify` are core and are not ejectable.
 
 The table below is a per-emission reference, NOT the selection surface. Select with

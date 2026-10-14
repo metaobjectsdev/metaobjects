@@ -9,7 +9,7 @@ is **schema-migrations only** on the C# side (ADR-0015): `meta migrate` /
 - Install
 - Run
 - `MetaObjects.Codegen` generators
-- Docs — `dotnet meta docs`
+- Docs — one more entry in `codegen/Generators.cs`
 - Persistence + routes are the deployed artifact
 - Write your own generator
 - Extending the generators (open-for-extension, ADR-0002)
@@ -49,10 +49,17 @@ Node `meta` tool (see the migration reference).
 
 ## `MetaObjects.Codegen` generators
 
-Wire generators by their stable name — **`--generators <names>` is REQUIRED**. There is
-no default set: a run that names none is a usage error and writes nothing (ADR-0034
-Amendment 2). `dotnet meta gen --list` is the catalog. Output lands under `--namespace`
-in `--output-dir`.
+Wire generators as a list in **`codegen/Generators.cs`** — a static list of constructed
+generators, with their options as init properties (ADR-0034 Amendment 9); `codegen/Program.cs`
+is a two-line entry point that passes the list to `CodegenCli.Run`. `dotnet meta init`
+(new in 1.1.0) scaffolds both files; `dotnet meta eject` writes them when either is missing.
+`dotnet meta gen` runs the declared list, documentation included — there is no default
+set and no separate docs command. `--generators <names>` narrows a run to entries the
+list already declares, by stable name; it never adds one, and naming an entry the list
+does not declare is refused. `dotnet meta gen --list` is the catalog of what the port
+registers, not what this project runs. Output lands under `--namespace` in
+`--output-dir` unless a generator's own init properties say otherwise — documentation
+does (below).
 
 | Stable name | Output |
 |---|---|
@@ -118,31 +125,29 @@ implicit `public void req_…()` goes stale silently. Give the generator its own
 `dotnet meta gen … --out <test project dir> --generators requirement-tests` run (a run has
 one `--out`, and the test project needs xunit), and pass `--namespace` to
 `verify --codegen` for that directory. Options (`TestNamespace`, `WitnessClass`, `Grain`,
-`Filter`, `Renderer`, `WarnUncovered`) are public properties set in an owned
-`codegen/Program.cs`; `Grain` needs `using MetaObjects.Core.Requirement;`. A filter
+`Filter`, `Renderer`, `WarnUncovered`) are init properties set on the entry in an owned
+`codegen/Generators.cs`; `Grain` needs `using MetaObjects.Core.Requirement;`. A filter
 REPLACES the default of functional L4/L5. `dotnet meta eject requirement-tests` copies the
 generator with its default rendering. The requirement checks in `dotnet meta verify` are
 core and are not ejectable.
 
-## Docs — `dotnet meta docs`
+## Docs — one more entry in `codegen/Generators.cs`
 
-```bash
-dotnet meta docs metaobjects --out Docs   # → Docs/api/csharp (AGENT-API.md + per-entity pages)
+There is no `dotnet meta docs` command (removed in 1.1.0, ADR-0034 Amendment 9): the api
+reference is `ApiDocsGenerator`, an ordinary entry in the same list as every other
+generator:
+
+```csharp
+new ApiDocsGenerator { OutDir = "Docs" }   // → Docs/api/csharp (AGENT-API.md + per-entity pages)
 ```
 
-`dotnet meta docs` emits this project's C# SDK api surface (`api/csharp`), including
-`AGENT-API.md` — the exact imports, signatures, and payload field shapes for the
+`dotnet meta gen` writes it, alongside everything else `codegen/Generators.cs` declares.
+`AGENT-API.md` has the exact imports, signatures, and payload field shapes for the
 generated code. **Before calling any generated code, read `api/csharp/AGENT-API.md`.**
-
-**The two `docs` positionals are NOT the same argument.** This one is the METADATA
-directory. The Node `meta docs` positional — used by every stack, since `migrate`,
-`verify --db` and the neutral model docs are Node-only — is the PROJECT ROOT that
-CONTAINS the metadata. Run `meta docs` with no positional, from the project root:
-
-```bash
-dotnet meta docs metaobjects --out Docs   # C#: the METADATA dir
-meta docs --out Docs                      # Node: run from the PROJECT ROOT (no positional)
-```
+Options (init properties): `OutDir` (required), `ApiSubDir` (default `api/csharp`),
+`ProjectName`, `ModelBaseUrl`. To write only the documentation,
+`dotnet meta gen --generators api-docs`. Migrating a project that ran `dotnet meta docs`:
+`docs/features/migrations/docs-are-generators.md`, section "C#".
 
 ## Persistence + routes are the deployed artifact
 
@@ -177,9 +182,10 @@ public sealed class FieldListGenerator : IGenerator
 }
 ```
 
-List it in `codegen/Program.cs` — `IReadOnlyList<IGenerator> generators = [new
-FieldListGenerator()]; return CodegenCli.Run(args, generators);`. An owned generator the
-`--generators` selection does not name still runs. Model reads: `Fields()`, `Attr(n)`,
+List it in `codegen/Generators.cs` — `IReadOnlyList<IGenerator> Generators = [new
+FieldListGenerator()];` — which `codegen/Program.cs` passes to `CodegenCli.Run`. An owned
+generator a `--generators` selection does not name still exists in the list but does not
+run that invocation. Model reads: `Fields()`, `Attr(n)`,
 `ResolvedIsArray()`, `EffectiveEnumValues`, `MaxLength` resolve; `IsArray`, `OwnAttr`,
 `EnumValues` do not. `ValueObjectNames.ResolveFieldRef(field, ctx.Root)` resolves an
 `@objectRef`; `CSharpNaming.RoutePath(obj)` is the REST segment; constants come from

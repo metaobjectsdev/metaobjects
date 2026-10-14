@@ -1,7 +1,7 @@
 import type { MetaObject } from "@metaobjectsdev/metadata";
 import { perEntity, type Generator, type GeneratorFactory } from "../generator.js";
 import { renderRoutesFile } from "../templates/routes-file.js";
-import { isTphSubtype } from "../templates/zod-validators.js";
+import { isTphSubtype } from "../tph.js";
 import { servesReadApi } from "../api-surface.js";
 import { renderRoutesIndex, routesIndexFileName } from "../templates/routes-index.js";
 import { formatTs } from "../format.js";
@@ -59,7 +59,7 @@ export const routesFile = function routesFile(opts?: RoutesFileOpts): Generator 
   });
   const generator: Generator = {
     name: "routes-file",
-    // Read by `meta docs`: the API docs list the verbs this file mounts.
+    // Read by the api reference (`apiDocsFile()`): it lists the verbs this file mounts.
     mountsRoutes: opts?.expose !== undefined ? { expose: opts.expose } : {},
     // Always set: AND-composes the built-in gates with the optional user filter.
     filter: (e: MetaObject) =>

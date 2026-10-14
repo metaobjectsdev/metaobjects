@@ -28,14 +28,9 @@ import { FIELD_SUBTYPE_DECIMAL, type MetaObject } from "@metaobjectsdev/metadata
 import { isAbstract } from "./instance-artifacts.js";
 import { isProjection } from "./projection/projection-detector.js";
 import { hasAnyRdbSource, hasWritableRdbSource, isReport, servedReport } from "./source-detect.js";
-import { getPkFields } from "./templates/queries.js";
+import { getPkFields } from "./pk-resolver.js";
 import { resourcePath, restPath } from "./templates/entity-ui-descriptor.js";
-import {
-  declaresTphDiscriminator,
-  isTphSubtype,
-  tphDiscriminatorBase,
-  tphDiscriminatorPin,
-} from "./templates/zod-validators.js";
+import { declaresTphDiscriminator, isTphSubtype, tphDiscriminatorBase, tphDiscriminatorPin } from "./tph.js";
 import { tphRouteSegment } from "./templates/tph-discriminator.js";
 
 /**

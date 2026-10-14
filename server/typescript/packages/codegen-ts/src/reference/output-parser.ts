@@ -14,13 +14,16 @@
 // emits:         <target>/<Prompt>.response.ts per responding template.prompt (one carrying
 //                @responseRef). A `template.output` is outbound only and gets nothing (ADR-0052).
 // customize:     which prompts get a parser, the output directory (`outDir`), the file name.
-//                The module BODY comes from `renderOutputParser` — the parser the reply
-//                contract is conformance-gated against — so to change the emitted code
-//                itself, copy `renderOutputParser`'s source out of the package and call
-//                your copy here instead.
+//                The module BODY comes from `renderOutputParser`, which `meta eject`
+//                copies beside this file (`codegen/templates/output-parser.ts`): change the
+//                emitted code there. It is the parser the reply contract is conformance-gated
+//                against, so change it only if you mean to stop agreeing with every port.
 // composes-with: entity.ts (the strict parse returns the response value object's interface).
 //
-// Everything below imports ONLY from `@metaobjectsdev/codegen-ts` (the stable engine).
+// Everything below imports the engine from `@metaobjectsdev/codegen-ts` (the generator base, the
+// model walks, the naming and type-mapping tables) and the code that writes the output from
+// `../templates/`. `meta eject` copies those template modules into your project, under
+// `codegen/templates/`, and your copy of this file imports them from there: they are yours too.
 
 import {
   oncePerRun,
@@ -28,8 +31,8 @@ import {
   type Generator,
   type GeneratorFactory,
   inboundTemplates,
-  renderOutputParser,
-} from "@metaobjectsdev/codegen-ts";
+} from "@metaobjectsdev/codegen-ts/engine";
+import { renderOutputParser } from "../templates/output-parser.js";
 
 export interface OutputParserOpts {
   /** Output directory prefix relative to the target's outDir. Default: "" (root). */

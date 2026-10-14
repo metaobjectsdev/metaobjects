@@ -88,7 +88,12 @@ describe("meta eject", () => {
     await writeFile(join(cwd, "package.json"), JSON.stringify({ name: "p", private: true }), "utf8");
     const r = await ejectGenerator({ cwd, name: "form" });
     const notes = r.dependencyNotes.join("\n");
-    expect(notes).toContain("@metaobjectsdev/codegen-ts-react");
+    // The form renderer is copied beside the generator (ADR-0034 Amendment 8), so what the
+    // project must resolve is the engine and the metamodel — not the React codegen package,
+    // which the owned form no longer imports.
+    expect(notes).toContain("@metaobjectsdev/codegen-ts");
+    expect(notes).toContain("@metaobjectsdev/metadata");
+    expect(notes).not.toContain("@metaobjectsdev/codegen-ts-react");
     expect(notes).toContain("npm i -D");
   });
 

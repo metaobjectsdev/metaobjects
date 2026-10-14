@@ -8,7 +8,7 @@
 // a named error rather than silently-defaulted output — "a Postgres project quietly
 // emitting sqlite", as the runner's own comment puts it.
 //
-// `meta docs` needs the same answer for `agent/schema.md`. Reading `?? DEFAULT_DIALECT`
+// `agent/schema.md` needs the same answer (the CLI asks before it builds the schema). Reading `?? DEFAULT_DIALECT`
 // there instead would document a sqlite schema for a project `meta gen` refuses to build
 // — asserting an answer the toolchain never gave.
 

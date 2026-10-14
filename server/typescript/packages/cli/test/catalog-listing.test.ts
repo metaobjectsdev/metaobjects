@@ -229,13 +229,8 @@ describe("--probe — what would this emit for MY model", () => {
     const rows = await probeRows();
     for (const r of rows) {
       const p = r.project!;
-      // A row with a `door` is the third answer, not a silent skip: `meta gen` does not
-      // run that generator at all, so the row names the command that does instead of a
-      // count that would read as "nothing in your model needs this".
-      const answered =
-        typeof p.wouldEmit === "number" || typeof p.probeError === "string" || r.door !== undefined;
+      const answered = typeof p.wouldEmit === "number" || typeof p.probeError === "string";
       expect(answered, `${r.name} reported neither a count nor a reason`).toBe(true);
-      if (r.door !== undefined) expect(p.wouldEmit, `${r.name} has a door and a count`).toBeNull();
     }
   });
 
@@ -252,9 +247,8 @@ describe("--probe — what would this emit for MY model", () => {
       expect(p.wouldEmit, `${name} should not report a count`).toBeNull();
       expect(String(p.probeError), `${name} should say why`).toContain(name);
     }
-    // ...and everything else still answered: with a count, or with the door `meta gen`
-    // leaves that generator to (those two are not probed at all).
-    expect(rows.filter((r) => typeof r.project!.wouldEmit === "number" || r.door !== undefined).length)
+    // ...and everything else still answered with a count.
+    expect(rows.filter((r) => typeof r.project!.wouldEmit === "number").length)
       .toBeGreaterThan(rows.length - 4);
   });
 
@@ -372,6 +366,48 @@ describe("--list marks wired and owned correctly for owned copies", () => {
       expect(honoLine).not.toContain("owned");
       const routesLine = text.split("\n").find((l) => l.trimStart().startsWith("routes "))!;
       expect(routesLine).toContain("WIRED");
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("meta gen --list — the template modules an owned generator calls", () => {
+  // ADR-0034 Amendment 8: an owned generator comes with the template modules it calls, so the
+  // row says whether those still match the package — attributed by what each generator calls,
+  // and only to a generator the project owns.
+  test("an owned generator's row carries its template copies, compared to the packages", async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "catalog-owned-templates-"));
+    try {
+      writeFileSync(join(tmp, "package.json"), PROJECT_PACKAGE_JSON);
+      await ejectGenerator({ cwd: tmp, name: "names" });
+      const config: MetaobjectsGenConfig = { ...baseConfig, generators: [composeCatalog()["names"]!.factory()] };
+      const list = async (): Promise<GeneratorCatalogRow[]> =>
+        (await buildCatalogListing({
+          project: {
+            projectRoot: tmp,
+            config,
+            wiredNames: wiredGeneratorNames(config),
+            ownedNames: ownedGeneratorNames(tmp),
+            declaredDeps: undefined,
+          },
+        })).filter((r): r is GeneratorCatalogRow => r.kind === "generator");
+
+      let rows = await list();
+      const names = rows.find((r) => r.name === "names")!;
+      expect(names.source.templateCopy?.map((c) => [c.path, c.verdict])).toEqual([
+        ["codegen/templates/names-decl.ts", "identical"],
+      ]);
+      expect(renderCatalogText(rows, false).split("\n").find((l) => l.trimStart().startsWith("names "))!)
+        .toContain("owned templates: identical to the package");
+      // Not owned, so not attributed: `entity` shares no module with the one ejected.
+      expect(rows.find((r) => r.name === "entity")!.source.templateCopy).toBeUndefined();
+
+      writeFileSync(join(tmp, "codegen/templates/names-decl.ts"), "// MINE\nexport const x = 1;\n");
+      rows = await list();
+      expect(rows.find((r) => r.name === "names")!.source.templateCopy?.[0]?.verdict).toBe("differs");
+      expect(renderCatalogText(rows, false).split("\n").find((l) => l.trimStart().startsWith("names "))!)
+        .toContain("owned templates: 1 file(s) DIFFER from the package");
     } finally {
       rmSync(tmp, { recursive: true, force: true });
     }

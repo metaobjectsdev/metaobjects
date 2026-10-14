@@ -258,7 +258,8 @@ describes **the revival**, which is the thing a future reader is about to propos
    governs nothing.
 
 **One honest limit.** 19 of 40 is under half, and the guardrail only fires if something routes
-an agent to the ledger. `meta docs` emits retired entries into the requirements surface; if
+an agent to the ledger. The requirement ledger (`requirementsFile()`) and the agent pages
+(`agentDocsFile()`) carry retired entries; if
 your agents never read it, restoring the entry buys you a coin flip. Point at it.
 
 > **`@verifiedBy` was retired in `0.24.0`, and `verify` no longer looks at your tests.** It asked

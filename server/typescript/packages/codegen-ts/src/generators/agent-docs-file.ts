@@ -23,8 +23,8 @@
 //   requirements  ← `walkRequirements` + `requirementRows`, the same walk the ledger
 //                   surface and the generated test stubs are built on
 //
-// CONFIG-GATED, like the api surface. Physical names, the dialect and view dispatch all
-// depend on the gen config, so `meta docs` only selects this surface when it has one.
+// RUN-DEPENDENT, like the api reference. Physical names, the dialect and view dispatch all
+// depend on the gen config, which `meta gen` reads before it builds the schema.
 // The NEUTRAL model surface stays neutral (ADR-0020); this is a different surface with a
 // different contract, not a relaxation of that one.
 //
@@ -69,6 +69,7 @@ import { renderAgentSchemaPage } from "./agent-schema-page.js";
 import { renderAgentUiPage } from "./agent-ui-page.js";
 import { renderAgentRequirementsPage } from "./agent-requirements-page.js";
 import type { AgentSchemaInput } from "./agent-schema-input.js";
+import { DOCS_TARGET_NAME } from "../docs-run.js";
 
 /** All three pages live here, under the docs root. */
 const DEFAULT_AGENT_DIR = "agent";
@@ -76,15 +77,17 @@ const DEFAULT_AGENT_DIR = "agent";
 export interface AgentDocsFileOpts {
   /** Output prefix for the agent pages. Default `agent`. */
   subDir?: string;
-  /** Optional named output target (registry key). */
+  /** Named output target. Default `"docs"`, which `targets` must declare. */
   target?: string;
   /**
-   * The physical schema, with its resolvers injected by whoever owns them. ABSENT is a
-   * supported state — `meta docs` runs without a dialect, and a project with no physical
-   * schema gets no schema page rather than a page of unknowns.
+   * The physical schema, with its resolvers injected by whoever owns them. Default: the one
+   * `meta gen` builds with the project's dialect and column naming (`ctx.docs.agentSchema`).
+   * ABSENT both ways is a supported state: a project with no physical schema gets no schema
+   * page rather than a page of unknowns.
    */
   schema?: AgentSchemaInput;
-  /** The project's column naming strategy, for the field→column mapping. */
+  /** The project's column naming strategy, for the field→column mapping. Default: the
+   *  project's (`columnNamingStrategy` in metaobjects.config.ts). */
   columnNamingStrategy?: ColumnNamingStrategy;
 }
 
@@ -210,13 +213,19 @@ export const agentDocsFile = function agentDocsFile(opts?: AgentDocsFileOpts): G
 
   const generator: Generator = {
     name: "agent-docs",
+    target: opts?.target ?? DOCS_TARGET_NAME,
     generate(ctx) {
       const objects = ctx.loadedRoot.objects();
       const files: EmittedFile[] = [];
+      // What the run computes for this generator (docs-run.ts): the schema is built by the
+      // caller that owns the schema builder, on first ask. Options win: they are what a
+      // direct caller of the factory states.
+      const schemaInput = opts?.schema ?? ctx.docs?.agentSchema?.();
+      const columnNamingStrategy = opts?.columnNamingStrategy ?? ctx.renderContext?.columnNamingStrategy;
 
       // ---- schema.md
-      if (opts?.schema !== undefined) {
-        const schema = opts.schema;
+      if (schemaInput !== undefined) {
+        const schema = schemaInput;
         // The qualified names the snapshot actually holds. An object whose physical name
         // is not one of these contributes nothing to the physical schema (an abstract
         // base, a sourceless value, an `@unmanaged` object) and must not appear on a page
@@ -236,7 +245,7 @@ export const agentDocsFile = function agentDocsFile(opts?: AgentDocsFileOpts): G
         // model with no report, so the page is byte-identical to what it was before reports.
         const reportViews = new Set<string>();
         for (const obj of objects) {
-          const names = resolveObjectNames(obj, opts.columnNamingStrategy);
+          const names = resolveObjectNames(obj, columnNamingStrategy);
           // The PRIMARY source's physical name and schema — `names.name` is the object's
           // metamodel name since 0.25.0, which would match nothing in the snapshot.
           const primary = names?.sources[SOURCE_ROLE_PRIMARY];
@@ -261,7 +270,7 @@ export const agentDocsFile = function agentDocsFile(opts?: AgentDocsFileOpts): G
           }
           const lineage: string[] = [];
           for (const field of obj.fields()) {
-            const column = resolveColumnName(field, opts.columnNamingStrategy);
+            const column = resolveColumnName(field, columnNamingStrategy);
             // A TPH base and its subtypes share one table: first writer wins, so the
             // base's own column keeps its label rather than being relabelled by whichever
             // subtype was walked last.
@@ -307,6 +316,5 @@ export const agentDocsFile = function agentDocsFile(opts?: AgentDocsFileOpts): G
       return files;
     },
   };
-  if (opts?.target) generator.target = opts.target;
   return generator;
 } as GeneratorFactory<AgentDocsFileOpts>;

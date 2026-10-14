@@ -13,12 +13,15 @@
 // emits:         <target>/<Prompt>.extractor.ts per responding template.prompt whose
 //                @responseRef resolves to a value object.
 // customize:     which prompts get an extractor, the output directory (`outDir`), the file
-//                name. The module BODY comes from `renderExtractor`; to change the emitted
-//                code itself, copy `renderExtractor`'s source out of the package and call
-//                your copy here instead.
+//                name. The module BODY comes from `renderExtractor`, which `meta eject`
+//                copies beside this file (`codegen/templates/extractor.ts`): change the
+//                emitted code there.
 // composes-with: output-parser.ts (the extractor imports the parser module's lenient entry).
 //
-// Everything below imports ONLY from `@metaobjectsdev/codegen-ts` (the stable engine).
+// Everything below imports the engine from `@metaobjectsdev/codegen-ts` (the generator base, the
+// model walks, the naming and type-mapping tables) and the code that writes the output from
+// `../templates/`. `meta eject` copies those template modules into your project, under
+// `codegen/templates/`, and your copy of this file imports them from there: they are yours too.
 
 import {
   oncePerRun,
@@ -27,8 +30,8 @@ import {
   type GeneratorFactory,
   inboundTemplates,
   responseShape,
-  renderExtractor,
-} from "@metaobjectsdev/codegen-ts";
+} from "@metaobjectsdev/codegen-ts/engine";
+import { renderExtractor } from "../templates/extractor.js";
 
 export interface ExtractorOpts {
   /** Output directory prefix relative to the target's outDir. Default: "" (root). */

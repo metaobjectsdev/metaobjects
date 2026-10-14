@@ -60,13 +60,28 @@ and `configKeys` on each row, and the text listing prints neither. Import the on
 want from their package: nothing is copied, and an upgrade is how their fixes arrive. To change
 what one emits, `meta eject <name>` copies its reference template into
 `codegen/generators/` (ADR-0034 scaffold-and-own — yours to edit) and prints the local
-import to swap in; `meta gen` then runs that copy, not the package's.
+import to swap in; `meta gen` then runs that copy, not the package's. The copy comes with
+the code that writes the output: the template modules the generator calls land in
+`codegen/templates/`, and what stays in the package is the engine (the generator base, the
+model walks, the naming and type-mapping tables), which the copies import from
+`@metaobjectsdev/codegen-ts/engine`. Every stock generator ejects this way except the
+`template` primitive, which has no emit logic of its own, and `docs-site`, whose theme
+`meta eject docs-site` copies instead
+([what the copy holds](../features/own-your-codegen.md#what-the-copy-holds)).
+
+Documentation is generated the same way, from the same list: there is no docs command
+(ADR-0034 Amendment 9). `docsFile()`, `apiDocsFile()`, `requirementsFile()`,
+`agentDocsFile()`, `metamodelDocsFile()` and `docsSiteFile()` write to the target named
+`docs`, which the config must declare
+([the documentation generators](../features/cli.md#the-documentation-generators--and-the-agent-pages)).
+A 1.0 project that ran `meta docs` follows
+[docs-are-generators.md, "TypeScript"](../features/migrations/docs-are-generators.md#typescript).
 
 ```ts
 // metaobjects.config.ts
 import { defineConfig } from "@metaobjectsdev/cli";
 // Run as shipped. Eject one (`meta eject routes`) only to change what it emits.
-import { entityFile, queriesFile, routesFile, barrel } from "@metaobjectsdev/codegen-ts/generators";
+import { entityFile, queriesFile, routesFile, barrel, docsFile, apiDocsFile } from "@metaobjectsdev/codegen-ts/generators";
 
 export default defineConfig({
   outDir: "src/generated",
@@ -75,7 +90,8 @@ export default defineConfig({
   apiPrefix: "/api",
   dbImport: "../db",                   // the module routesFile() imports `db` from — yours to write
   columnNamingStrategy: "snake_case",  // "snake_case" | "literal" | "kebab-case"
-  generators: [entityFile(), queriesFile(), routesFile(), barrel()],
+  targets: { docs: { outDir: "./docs/generated" } },  // where the docs generators write
+  generators: [entityFile(), queriesFile(), routesFile(), barrel(), docsFile(), apiDocsFile()],
   // providers: [yourProvider],        // optional — add custom metamodel subtypes/attrs
 });
 ```
@@ -221,6 +237,9 @@ Drop your metadata under `metaobjects/`:
 meta gen                  # codegen → format → 3-way merge → write
 meta gen --dry-run        # preview without writing
 meta gen Author Post      # scope to named entities
+meta gen --generators docs,api-docs   # only these declared entries (here: the docs)
+
+meta verify --codegen     # committed output, docs included, vs a fresh regen
 
 meta verify --db <url>    # live DB schema vs metadata
 ```
@@ -335,9 +354,9 @@ source, or an abstract one, generates nothing. The contract is in
 `model/cubes/<Cube>.yml` for each concrete, table-backed entity that declares dimensions,
 measures or segments (plus the join-target and alias cubes its `@via` dimensions need), with a
 rollup for each served report. It is a reference helper and opt-in: `meta eject cube-model`
-copies it into `codegen/generators/cube-model.ts`, and `meta verify --codegen` drift-checks the
-files. The mapping (`buildCubeModel`) and the YAML writer (`renderCubeYaml`) stay in the
-package. Only TypeScript has an exporter; the files are language-neutral YAML. Point the
+copies it into `codegen/generators/cube-model.ts`, with the mapping (`buildCubeModel`) and the
+YAML writer (`renderCubeYaml`) beside it in `codegen/templates/cube/`, and `meta verify --codegen`
+drift-checks the files. Only TypeScript has an exporter; the files are language-neutral YAML. Point the
 generator at the Cube project with a target, and pass `dialect` when the config's is not
 `postgres` or `mysql`:
 
@@ -734,7 +753,8 @@ if not, `npm i zod`.
 `retired` one a skipped stub. It is a reference helper and a recommended approach, not a
 contract. Run it from the package, or own it: `meta eject requirement-tests` copies the
 generator and its default stub renderer into `codegen/generators/requirement-tests.ts`. The
-requirement checks in `meta verify` are core and are not ejectable.
+requirement walk, each test's identity and the claim digest are engine, shared with the
+requirement checks in `meta verify`, which are core and are not ejectable.
 
 ```ts
 // metaobjects.config.ts
@@ -784,7 +804,8 @@ See [Generated requirement tests and witnesses](../features/requirements.md#gene
 | Cube export (FR-044) | Yes (`cubeModel()`, ejectable; TypeScript only) |
 | Payload-VO codegen | Yes (via projection codegen) |
 | Migrations | `meta migrate` (Postgres / SQLite / D1) |
-| Drift verify | `meta verify` (DB drift) |
+| Drift verify | `meta verify` (`--codegen` generated code and docs, `--db` schema, `--templates` prompts) |
+| Documentation | Yes (`docsFile()`, `apiDocsFile()`, `requirementsFile()`, `agentDocsFile()`, `metamodelDocsFile()`, `docsSiteFile()`; generators like the rest) |
 | Prompt-drift verify | Yes (`@metaobjectsdev/render`) |
 | Web client packages | Yes (`@metaobjectsdev/react`, `@metaobjectsdev/tanstack`) |
 

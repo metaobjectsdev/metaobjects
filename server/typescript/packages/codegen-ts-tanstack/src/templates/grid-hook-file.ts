@@ -11,7 +11,19 @@
 import { code, imp, joinCode, type Code } from "ts-poet";
 import type { MetaObject, MetaLayout } from "@metaobjectsdev/metadata";
 import { LAYOUT_SUBTYPE_DATA_GRID } from "@metaobjectsdev/metadata";
-import type { RenderContext } from "@metaobjectsdev/codegen-ts";
+import type { RenderContext } from "@metaobjectsdev/codegen-ts/engine";
+
+import {
+  GENERATED_HEADER,
+  GENERATED_EDIT_NOTE,
+  entityModuleSpecifier,
+  siblingSpecifier,
+  effectivePackage,
+} from "@metaobjectsdev/codegen-ts/engine";
+import {
+  resolveGridDefaultSort,
+  type GridDefaultSort,
+} from "@metaobjectsdev/codegen-ts/templates/filter-shared";
 
 /** The DB-free `<Entity>.meta` descriptor. The UI generator writes it into ITS OWN target,
  *  beside this file, so it is always a sibling import — never the entity module's path,
@@ -21,10 +33,6 @@ import type { RenderContext } from "@metaobjectsdev/codegen-ts";
 function metaModuleOf(entity: MetaObject, ctx: RenderContext): string {
   return siblingSpecifier(ctx.selfTarget, effectivePackage(entity), `${entity.name}.meta`, ctx.extStyle);
 }
-
-import { GENERATED_HEADER, GENERATED_EDIT_NOTE, entityModuleSpecifier, siblingSpecifier,
-  effectivePackage, resolveGridDefaultSort, type GridDefaultSort,
-} from "@metaobjectsdev/codegen-ts";
 
 interface GridSpec {
   name: string;           // e.g. "default", "activeOnly"

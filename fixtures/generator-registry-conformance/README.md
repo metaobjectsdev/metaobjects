@@ -15,7 +15,8 @@ conformance test asserts:
    this port, the port's registry exposes that name; and the port does **not**
    expose a name whose `ports` array omits it.
 3. **Tier agreement** — a name marked `tier: "neutral"` is flagged neutral in the
-   port (owned by `meta docs`, not the recommended native suite).
+   port (language-neutral pages about the model; it runs when the project's generator
+   list declares it, like every generator — ADR-0034 Amendment 9).
 4. **Layer agreement** — a name's `layer` matches the port's registry entry.
 
 Because all five ports validate against this one file, a **shared concept is
@@ -35,7 +36,7 @@ to make the choice cheap, and `layer` is the axis it is cheap along.
 | `persistence` | queries, db-context, repository, exposed-table, relations, stored-proc | app shape |
 | `api` | routes, routes-hono, filter-allowlist, validator, spring-config | app shape |
 | `client` | form, hooks, grid, grid-hook | app shape |
-| `docs` | docs, api-docs, requirements, agent-docs, plantuml, html-docs, ai-docs | on by default (`meta docs`); the Java `plantuml`, `html-docs` and `ai-docs` are wired in the pom |
+| `docs` | docs, api-docs, requirements, agent-docs, metamodel-docs, docs-site, plantuml, html-docs, ai-docs | declared in the project's generator list like any other; nothing is generated that the list does not declare (ADR-0034 Amendment 9) |
 | `capability` | prompt-render, output-parser, output-prompt, extractor, render-helper, trace-helper, requirement-tests, cube-model, shared-model, template, callable, json-schema, mustache | `meta gen --list --probe` |
 
 Six, not ten. An earlier draft split `capability` into `trace` / `requirements` /

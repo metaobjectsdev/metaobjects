@@ -40,8 +40,8 @@ const WORKSPACE_ROOTS = ["server/typescript/packages", "client/web/packages"];
 // the two packages it depends on. Adding a package to the lockstep set is therefore
 // one explicit decision here, not an omission that still "works".
 export const TIER_ORDER = [
-  "metadata", "render",
-  "codegen-ts", "runtime-ts", "migrate-ts", "sdk", "docs-site",
+  "metadata", "render", "docs-site",
+  "codegen-ts", "runtime-ts", "migrate-ts", "sdk",
   "runtime-web",
   "codegen-ts-react", "codegen-ts-tanstack", "react",
   "tanstack",

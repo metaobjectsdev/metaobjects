@@ -42,11 +42,18 @@ import { join, relative, resolve, isAbsolute } from "node:path";
 import {
   runGen,
   contentHash,
+  DOCS_TARGET_NAME,
   readGeneratedHash,
   listGeneratedPaths,
   NAMES_FILE_SUFFIX,
+  generatorRegistry,
+  normalizeConfig,
+  stableGeneratorName,
 } from "@metaobjectsdev/codegen-ts";
-import type { MetaobjectsGenConfig } from "@metaobjectsdev/codegen-ts";
+import type { MetaobjectsGenConfig, RunGenOpts } from "@metaobjectsdev/codegen-ts";
+import { DEFAULT_TARGET_NAME } from "@metaobjectsdev/codegen-ts/engine";
+import { gitIgnored } from "./git-ignore.js";
+import { toPosix } from "./rel-posix.js";
 import type { MetaData } from "@metaobjectsdev/metadata";
 
 /** Per-target config as carried on MetaobjectsGenConfig (TargetConfig isn't
@@ -78,8 +85,41 @@ export interface CodegenDriftResult {
    * Never overlaps `driftedFiles`.
    */
   handEdited: string[];
+  /**
+   * Generated documentation pages the repository git-ignores, and so did not check. Only
+   * the directories documentation generators write to are asked: a project that generates
+   * many pages and commits a few on purpose is checked on the few it chose. Reported on
+   * the pass and the fail line so a gate that checked two of 589 pages cannot read as one
+   * that checked them all.
+   */
+  docsIgnored: number;
+  /**
+   * Documentation directories, project-relative, whose every freshly generated page the
+   * repository git-ignores. Not compared at all: a project that generates its documentation
+   * without committing it passes, as it did when 1.0's `verify --codegen` never looked at
+   * documentation.
+   */
+  docsIgnoredDirs: string[];
+  /** Why git could not be asked which pages are ignored (every page was then checked). */
+  docsIgnoreUnavailable?: string;
   /** Set when the gate could not run (e.g. no outDir to compare against). */
   error?: string;
+}
+
+/**
+ * The output directories a documentation generator writes to, absolute. A generator is
+ * documentation when its registry row's layer is `docs`; an owned copy keeps its packaged
+ * name, so it is recognised too.
+ */
+function docsOutDirs(config: MetaobjectsGenConfig, projectRoot: string): Set<string> {
+  const dirs = new Set<string>();
+  for (const g of normalizeConfig(config).generators) {
+    if (generatorRegistry[stableGeneratorName(g, generatorRegistry)]?.layer !== "docs") continue;
+    const target = g.target ?? DOCS_TARGET_NAME;
+    const outDir = target === DEFAULT_TARGET_NAME ? config.outDir : config.targets?.[target]?.outDir;
+    if (outDir !== undefined && outDir.length > 0) dirs.add(resolve(projectRoot, outDir));
+  }
+  return dirs;
 }
 
 /** Collect the committed outDirs declared by the config (default + per-target),
@@ -131,6 +171,8 @@ function listFiles(dir: string): string[] {
  *   threads onto `ctx.sourceFiles`. `shared-model` loads them standalone to build its
  *   artifact, so without them the regen asked it to publish nothing and this gate
  *   failed with "no source files to load" on every project that wires it.
+ * @param run what `meta gen` also hands the run and this regen must hand it the same way:
+ *   the source directories (the docs site loads them) and the agent pages' schema builder.
  */
 export async function computeCodegenDrift(
   config: MetaobjectsGenConfig,
@@ -138,6 +180,7 @@ export async function computeCodegenDrift(
   projectRoot: string,
   scope?: (fqn: string) => boolean,
   sourceFiles?: readonly string[],
+  run?: Pick<RunGenOpts, "sourceRoots" | "agentSchema">,
 ): Promise<CodegenDriftResult> {
   const root = isAbsolute(projectRoot) ? projectRoot : resolve(projectRoot);
 
@@ -154,6 +197,8 @@ export async function computeCodegenDrift(
       lines: [],
       handEditedNames: [],
       handEdited: [],
+      docsIgnored: 0,
+      docsIgnoredDirs: [],
       error:
         "verify --codegen: no outDir configured — cannot locate the committed " +
         "generated output to diff against. Set 'outDir' (and/or per-target " +
@@ -223,6 +268,8 @@ export async function computeCodegenDrift(
       inputRoot: root,
       ...(scope !== undefined ? { scope } : {}),
       ...(sourceFiles !== undefined ? { sourceFiles } : {}),
+      ...(run?.sourceRoots !== undefined ? { sourceRoots: run.sourceRoots } : {}),
+      ...(run?.agentSchema !== undefined ? { agentSchema: run.agentSchema } : {}),
     });
 
     // Diff each committed outDir against its temp mirror.
@@ -235,15 +282,43 @@ export async function computeCodegenDrift(
     // branch below can scope itself to our own output; with none, it cannot tell
     // our stale output from a stranger's file, so the old verdict stands.
     const haveWriteRecords = listGeneratedPaths(projectGenStateDir).length > 0;
+    const docsDirs = docsOutDirs(config, root);
+    let docsIgnored = 0;
+    const docsIgnoredDirs: string[] = [];
+    let docsIgnoreUnavailable: string | undefined;
     for (const committed of committedDirs) {
       const fresh = tempFor(committed);
       const committedFiles = new Set(listFiles(committed));
       const freshFiles = new Set(listFiles(fresh));
       const all = new Set([...committedFiles, ...freshFiles]);
+
+      // Documentation the project git-ignores is not checked (carried from 1.0's
+      // `verify --docs`). Asked of the FRESH set by name, present on disk or not, so the
+      // verdict is a property of the repository and not of the machine: a box that ran
+      // `meta gen` has every page on disk and a CI runner has the committed few. A TRACKED
+      // page is never reported ignored by git, so a committed page is always compared.
+      // honourGlobalExcludes: false — a personal ignore file must not change a gate.
+      let ignored: ReadonlySet<string> = new Set<string>();
+      if (docsDirs.has(committed) && all.size > 0) {
+        const prefix = toPosix(relative(root, committed));
+        const fromRoot = (rel: string): string => (prefix === "" ? toPosix(rel) : `${prefix}/${toPosix(rel)}`);
+        const lookup = gitIgnored(root, [...all].map(fromRoot), { honourGlobalExcludes: false });
+        if ("ignored" in lookup) ignored = new Set([...all].map(toPosix).filter((rel) => lookup.ignored.has(fromRoot(rel))));
+        else docsIgnoreUnavailable = lookup.unavailable;
+        const checked = [...freshFiles].filter((rel) => !ignored.has(toPosix(rel)));
+        if (freshFiles.size > 0 && checked.length === 0) {
+          docsIgnoredDirs.push(relative(root, committed) || ".");
+          continue;
+        }
+      }
       for (const rel of [...all].sort()) {
         const relKey = relative(root, join(committed, rel));
         const inCommitted = committedFiles.has(rel);
         const inFresh = freshFiles.has(rel);
+        if (ignored.has(toPosix(rel))) {
+          docsIgnored++;
+          continue;
+        }
         if (inCommitted && !inFresh) {
           // JURISDICTION, not staleness. A regen not emitting a path means
           // "stale generated output" only for a path we have ever WRITTEN; for
@@ -326,6 +401,9 @@ export async function computeCodegenDrift(
       lines,
       handEditedNames: [...handEditedNames].sort(),
       handEdited: [...handEdited].sort(),
+      docsIgnored,
+      docsIgnoredDirs,
+      ...(docsIgnoreUnavailable !== undefined ? { docsIgnoreUnavailable } : {}),
     };
   } finally {
     rmSync(tempRoot, { recursive: true, force: true });

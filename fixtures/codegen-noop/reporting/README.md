@@ -21,7 +21,7 @@ REST surface. `StoreTotals` is that report, so `with/` differs from `without/` i
 these places and no others:
 
 - TypeScript `meta migrate` proposes one extra statement, `CREATE VIEW v_store_totals`, and the
-  `meta docs` agent schema page lists that view (the `## Views` section).
+  agent schema page (`agentDocsFile()`) lists that view (the `## Views` section).
 - TypeScript codegen (`meta gen`) writes the report's read-only files and one barrel export:
   `StoreTotals.ts` (Drizzle view binding, Zod read schema, row type, descriptor, filter and sort
   allowlists), `StoreTotals.queries.ts` (the list query only), `StoreTotals.routes.ts` and
@@ -49,7 +49,7 @@ these places and no others:
 - Python codegen (`metaobjects gen`) writes four extra files, one per generator:
   `StoreTotals.py` (the Pydantic row model), `store_totals_filter_allowlist.py`,
   `store_totals_router.py` and `store_totals_names.py`.
-- Documentation: `meta docs` writes a model page per report (all four, the three sourceless
+- Documentation: the docs generators write a model page per report (all four, the three sourceless
   ones marked "Not served"), lists them under `## Reports` on the model index, adds a
   "Reporting" section to the pages of `Purchase` and `WorkoutEvent`, and writes one API page,
   for `StoreTotals`. Every other port's api-docs builder gains exactly the `StoreTotals` page.

@@ -167,7 +167,7 @@ A concrete report whose read source is `@kind: view` is served by every port's g
 - **Every derived field with filter operators is filterable and sortable**, dimension and measure alike, with its type's own operators. You cannot narrow that set: a report has no field to put `@filterable` on. A field of the `@from` entity that the report does not expose is refused with a `400`.
 - A time dimension at `day` or coarser is `YYYY-MM-DD`; a null measure is `null` with the key present (a measure with `@default` is never null); `currency` is integer minor units.
 - **A decimal (`avg`, a ratio, a `sum` of a decimal) has no agreed JSON spelling**: each port sends its own (TypeScript a string). Do not compare one across backends as text.
-- `meta docs` writes a model page for every report (a sourceless one is marked "Not served") and an API page for a served one.
+- `meta gen` writes a model page for every report (`docsFile()`; a sourceless one is marked "Not served") and an API page for a served one (`apiDocsFile()`) — each an ordinary entry in `generators`.
 
 The files each port generates are in the `metaobjects-codegen` skill's reference for that language ("Reports").
 

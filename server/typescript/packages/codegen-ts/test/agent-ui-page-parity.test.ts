@@ -82,7 +82,7 @@ import { routesFile } from "../src/generators/routes-file.js";
 // Both derivations, read through the package barrel so this test exercises the surface a
 // consumer has. The de-blinding check below needs BOTH: agreement is only a measurement
 // while the two still spell different addresses for the fixture's TPH subtype.
-import { resourcePath, restPath } from "../src/index.js";
+import { buildPkMap, buildRelationMap, makeRenderContext, resourcePath, restPath, runEmitsUiTier } from "../src/index.js";
 import { defineConfig, type Dialect } from "../src/metaobjects-config.js";
 
 // The dialect decides column builders, never an address or a form, so one arm suffices.
@@ -340,6 +340,7 @@ async function generate(apiPrefix: string): Promise<Emitted> {
     // formatted, merged, and under the same `RenderContext` the page's `apiPrefix` comes
     // from. `formFile()` is the React form generator itself, not a stand-in.
     const outDir = join(repo, "out");
+    const suite = [entityFile(), routesFile(), formFile()];
     const result = await runGen({
       config: defineConfig({
         outDir,
@@ -347,12 +348,40 @@ async function generate(apiPrefix: string): Promise<Emitted> {
         extStyle: "js",
         dbImport: "@/db",
         apiPrefix,
-        generators: [entityFile(), routesFile(), formFile(), agentDocsFile()],
+        generators: suite,
       }),
       metadata: root,
       projectRoot: repo,
     });
     expect(result.conflicts).toEqual([]);
+
+    // The page is `meta docs`'s: the runner skips a docs generator, so it is generated the
+    // way that door does — the same suite decides whether there is a UI tier, and the same
+    // `RenderContext` carries the prefix. (`meta docs` aggregates `runEmitsUiTier` and builds
+    // this context the same way; cli/src/commands/docs.ts.)
+    const agentPages = await agentDocsFile().generate({
+      entities: root.objects(),
+      loadedRoot: root,
+      matches: () => true,
+      config: {
+        outDir,
+        extStyle: "js",
+        dbImport: "@/db",
+        dialect: DIALECT,
+        includeUiTier: runEmitsUiTier(suite),
+      } as never,
+      renderContext: makeRenderContext({
+        dialect: DIALECT,
+        loadedRoot: root,
+        outDir,
+        dbImport: "@/db",
+        apiPrefix,
+        pkMap: buildPkMap(root),
+        relationMap: buildRelationMap(root),
+        extStyle: "js",
+      }),
+      warn: () => {},
+    });
 
     const files = readdirSync(outDir, { recursive: true, encoding: "utf8" })
       .filter((f): f is string => typeof f === "string" && statSync(join(outDir, f)).isFile());
@@ -368,9 +397,9 @@ async function generate(apiPrefix: string): Promise<Emitted> {
     }
     const routes = files.filter((f) => f.endsWith(ROUTES_SUFFIX)).map((f) => parseRoutesFile(read(f), ownPaths));
     const forms = new Set(files.filter((f) => f.endsWith(FORM_SUFFIX)).map((f) => basename(f, FORM_SUFFIX)));
-    const pageFile = files.find((f) => f === UI_PAGE);
-    if (pageFile === undefined) throw new Error(`no ${UI_PAGE} emitted; files: ${files.join(", ")}`);
-    return { root, ownPaths, routes, forms, page: parsePage(read(pageFile)) };
+    const page = agentPages.find((f) => f.path === UI_PAGE);
+    if (page === undefined) throw new Error(`no ${UI_PAGE} emitted; pages: ${agentPages.map((f) => f.path).join(", ")}`);
+    return { root, ownPaths, routes, forms, page: parsePage(page.content) };
   } finally {
     rmSync(repo, { recursive: true, force: true });
   }

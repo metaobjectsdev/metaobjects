@@ -131,9 +131,9 @@ import {
   templateSymbolBase,
   variableNameFromEntity,
 } from "../naming.js";
-import { getPkInfo } from "../templates/queries.js";
+import { getPkInfo } from "../pk-resolver.js";
 import { responseShape } from "../templates/find-inbound.js";
-import { isTphSubtype } from "../templates/zod-validators.js";
+import { isTphSubtype } from "../tph.js";
 import { isTphDiscriminatorBase } from "../templates/tph-discriminator.js";
 import { isCallableEntity } from "../templates/callable-file.js";
 import { hasItemRoute, servedPath, servesReadApi } from "../api-surface.js";
@@ -728,7 +728,7 @@ function restSymbols(
  * A read-only surface (a projection or a report) mounts `list` and `get` and `expose` cannot
  * narrow it. A TPH discriminator base is read-only by construction and an author's `expose`
  * INTERSECTS with that set. Any other entity mounts all five, narrowed by `expose`: the
- * option a `meta docs` run reads off the configured routes generator, so a page never lists a
+ * option the run reads off the configured routes generator, so a page never lists a
  * verb the adopter did not mount (and overrides by hand).
  */
 function mountedVerbs(

@@ -3,14 +3,13 @@
 // Architecture: Vite-style plugin model.
 // See docs/superpowers/specs/2026-05-12-pluggable-generators-design.md.
 
-export { runGen } from "./runner.js";
+export { runGen, declaredGeneratorNames, stableGeneratorName, undeclaredGeneratorsMessage } from "./runner.js";
 export type { RunGenOpts, RunGenResult } from "./runner.js";
 
-export type { Generator, GenContext, EmittedFile, GeneratorFactory, OwnedDocsSurface } from "./generator.js";
+export type { Generator, GenContext, EmittedFile, GeneratorFactory } from "./generator.js";
 export { perEntity, perPackage, perModel, oncePerRun } from "./generator.js";
-// The one aggregation of the UI-tier markers. Exported because `meta docs` is the
-// SECOND door onto `agent/ui.md` and must answer "does this run emit a UI tier?"
-// with the same function the gen runner uses, not a second derivation of it.
+// The one aggregation of the UI-tier markers, Hono routes and the routes' `expose` option:
+// the run's own answers to "does this run emit a UI tier?" and "which verbs are mounted?".
 export { runEmitsUiTier, runEmitsHonoRoutes, runRoutesExpose, UI_TIER_GENERATOR_NAMES } from "./ui-tier-gate.js";
 
 // SP-1 declarative Mustache template-codegen — scope walks, neutral data dict,
@@ -55,19 +54,17 @@ export {
   stableNameIndex,
 } from "./catalog-gates.js";
 
-// ADR-0025 — which generators `meta gen` skips because their door is `meta docs`.
-// Public so the CLI catalog says so on the row from the runner's own definition.
-export { isPackagedDocsGenerator, packagedDocsFactoryCall, DOCS_DOOR_COMMAND } from "./packaged-docs-generators.js";
-
-export type { MetaobjectsGenConfig, NormalizedMetaobjectsGenConfig, ResolvedGenConfig, Dialect, ExtStyle, ColumnNamingStrategy, MetaDataTypeProvider, GeneratorSpec, DocsConfig, ResolvedDocsConfig, DocsSurface, ApiSurface, VerifyConfig } from "./metaobjects-config.js";
-export { defineConfig, normalizeConfig, resolveGenerators, isNeutralGeneratorName, removedGeneratorMessage, resolveDocsConfig } from "./metaobjects-config.js";
-// The dialect every generator falls back to when a config declares none. Exported because
-// `meta docs` must apply the SAME default `normalizeConfig` does — a command that resolved
-// the dialect differently would document a schema the toolchain does not produce.
+export type { MetaobjectsGenConfig, NormalizedMetaobjectsGenConfig, ResolvedGenConfig, Dialect, ExtStyle, ColumnNamingStrategy, MetaDataTypeProvider, GeneratorSpec, ApiSurface, VerifyConfig } from "./metaobjects-config.js";
+export { defineConfig, normalizeConfig, resolveGenerators, removedGeneratorMessage } from "./metaobjects-config.js";
+// The dialect every generator falls back to when a config declares none, and where a
+// project's documentation goes when it has not chosen (`targets.docs`).
 export { DEFAULT_DIALECT, DEFAULT_DOCS_DIR } from "./metaobjects-config.js";
-// The runner's own "does this model need a dialect?" guard. `meta docs` must ask it rather
-// than defaulting, because DEFAULT_DIALECT is inert and a DB project with no dialect is one
-// `meta gen` REFUSES — documenting it as sqlite states an answer the toolchain never gave.
+// The facts the documentation generators of one target agree on (ADR-0034 Amendment 9).
+export { DOCS_TARGET_NAME } from "./docs-run.js";
+export type { DocsRunFacts, DocsApiSurface } from "./docs-run.js";
+// The runner's own "does this model need a dialect?" guard. The agent schema page asks it
+// rather than defaulting, because DEFAULT_DIALECT is inert and a DB project with no dialect is
+// one `meta gen` REFUSES — documenting it as sqlite states an answer the toolchain never gave.
 export { dbEmittingObjects, missingDialectMessage } from "./db-emitting.js";
 export { apiLabel } from "./generators/api-label.js";
 
@@ -132,16 +129,9 @@ export {
 } from "./docs-paths.js";
 export type { DocPageNode, DocPagePlacement } from "./docs-paths.js";
 
-// The docs tier (ADR-0034 Amendment 7). `docsFile()` and `apiDocsFile()` are served from
-// `/generators`; what they compose is public here so an owned (ejected) copy imports only
-// this package. The owned part is which nodes get a page,
-// where it lands and how the index is laid out; the page payloads (`buildEntityDocData`,
-// `buildTemplateDocData`, `buildApiModelForRun`), the renderers and the ER diagram stay in
-// the package. `docsDoorGenerators` is how `meta docs` reads the owned copies out of
-// `docs: { generators: [...] }`.
+// The documentation generators' shared path math. `docsFile()` and `apiDocsFile()` are served
+// from `/generators`; an owned (ejected) copy holds their page builders and renderers too.
 export { apiSurfaceHref, surfaceCrossHref } from "./docs-paths.js";
-export { docsDoorGenerators } from "./docs-door.js";
-export type { DocsDoorFacts } from "./docs-door.js";
 export { renderDocPage } from "./render-engine/doc-page.js";
 export { renderMermaidErBlock } from "./templates/mermaid-er.js";
 export { buildApiModel, buildApiModelForRun } from "./generators/api-model.js";
@@ -167,7 +157,7 @@ export { renderEntityMetaFile, entityMetaFileName, entityMetaSpecifier } from ".
 // react) to dispatch polymorphic/per-subtype emission and skip subtype files.
 export { isTphDiscriminatorBase, tphConcreteSubtypes, collectTphSubtypeFields, tphPlan, tphRouteSegment } from "./templates/tph-discriminator.js";
 export type { TphPlan, TphSubtypePlan } from "./templates/tph-discriminator.js";
-export { isTphSubtype, tphDiscriminatorBase, tphDiscriminatorPin, tphStorageName, tphStorageObject } from "./templates/zod-validators.js";
+export { isTphSubtype, tphDiscriminatorBase, tphDiscriminatorPin, tphStorageName, tphStorageObject } from "./tph.js";
 
 // The ONE sortability rule. It builds the server-side `<Entity>SortAllowlist` and the
 // client-side sort union, and it is public so a UI-tier generator (a data-grid column
@@ -226,12 +216,14 @@ export {
   renderDeleteByIdFn,
   renderReverseFinderFns,
   reverseFksFor,
+} from "./templates/queries.js";
+export {
   getPkInfo,
   // The by-id field of an object that declares no primary identity. Public because an
   // owned routes generator compares `itemRouteField` against it to decide whether the
   // read-only mount needs an `idColumn`.
   DEFAULT_ID_FIELD,
-} from "./templates/queries.js";
+} from "./pk-resolver.js";
 export { hasAutoSetFields } from "./templates/zod-validators.js";
 
 // Built-in template render functions — the composition seam for adopters who
@@ -356,10 +348,12 @@ export { buildTemplateDocData } from "./generators/template-doc-builder.js";
 // worse than the bug report this is meant to avoid.
 export { requirementTests } from "./generators/requirement-tests.js";
 export { requirementsFile } from "./generators/requirements-file.js";
-// The `agent` docs surface. `AgentSchemaInput` is exported because the CLI SUPPLIES it —
+// The pages written for a coding agent. `AgentSchemaInput` is exported because the CLI SUPPLIES it —
 // codegen-ts deliberately does not compute the physical schema (see agent-schema-input.ts).
 export { agentDocsFile } from "./generators/agent-docs-file.js";
 export type { AgentDocsFileOpts } from "./generators/agent-docs-file.js";
+export { metamodelDocsFile, type MetamodelDocsFileOpts } from "./generators/metamodel-docs-file.js";
+export { docsSiteFile, OWNED_DOCS_SITE_DIR, type DocsSiteFileOpts } from "./generators/docs-site-file.js";
 export type {
   AgentSchemaInput,
   SchemaColumnLike,

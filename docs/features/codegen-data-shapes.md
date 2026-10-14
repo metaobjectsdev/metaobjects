@@ -197,7 +197,7 @@ import {
 } from "@metaobjectsdev/codegen-ts";
 ```
 
-The Markdown-flavored docs shapes, for a template replacing a `meta docs` page:
+The Markdown-flavored docs shapes, for a template replacing a `docsFile()` page:
 
 ```ts
 import type {

@@ -37,11 +37,12 @@
 //
 // The composition (`renderRoutesHono`) is the relocated body of the engine's
 // `renderRoutesFileHono` — byte-identical output to start, now YOURS to change. It imports
-// only public engine primitives.
+// the engine from the package and the renderers from `../templates/`, which `meta eject`
+// copies beside it.
 
 // ts-poet combinators come from the engine package, NOT a bare "ts-poet" import: the Code
 // fragments composed here must share ONE ts-poet instance with the engine's.
-import { code, imp } from "@metaobjectsdev/codegen-ts";
+import { code, imp } from "@metaobjectsdev/codegen-ts/engine";
 import type { MetaObject } from "@metaobjectsdev/metadata";
 import {
   perEntity,
@@ -53,17 +54,13 @@ import {
   type CrudVerb,
   authSeamJsDoc,
   exposeLine,
-  isTphSubtype,
   isProjection,
   isWriteThrough,
   isReport,
   itemRouteField,
   reportDecimalColumns,
-  DEFAULT_ID_FIELD,
   servesReadApi,
   formatTs,
-  renderRoutesIndex,
-  routesIndexFileName,
   entityOutputPath,
   effectivePackage,
   entityModuleSpecifier,
@@ -72,7 +69,10 @@ import {
   GENERATED_HEADER,
   GENERATED_EDIT_NOTE,
   sidecarLine,
-} from "@metaobjectsdev/codegen-ts";
+  DEFAULT_ID_FIELD,
+  isTphSubtype,
+} from "@metaobjectsdev/codegen-ts/engine";
+import { renderRoutesIndex, routesIndexFileName } from "../templates/routes-index.js";
 
 // --- composition (OWNED) — assembles one <Entity>.routes.hono.ts. Change this to change the output. ---
 // Dispatch: a projection or served report → mountReadOnlyCrudRoutes (GET list, + GET :id
@@ -282,7 +282,7 @@ export const routesFileHono = function routesFileHono(opts?: RoutesFileHonoOpts)
     // Marks this as the Hono routes generator so the runner can aggregate
     // `ctx.config.includeHonoRoutes` and api-docs auto-documents the Hono surface.
     emitsHonoRoutes: true,
-    // Read by `meta docs`: the API docs list the verbs this file mounts (see routes-file).
+    // Read by the api reference (`apiDocsFile()`): it lists the verbs this file mounts.
     mountsRoutes: opts?.expose !== undefined ? { expose: opts.expose } : {},
     // TPH subtypes are EXCLUDED, matching the Fastify generator. A TPH subtype shares
     // its base's table, so mounting vanilla CRUD for it produced routes with no

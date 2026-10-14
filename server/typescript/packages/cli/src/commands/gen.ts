@@ -1,4 +1,4 @@
-import { relative } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { parseGenArgs } from "../lib/args.js";
 import { resolveGenConfig, resolveMigrateDefaults } from "../lib/config.js";
 import { genMigrateAdvice } from "../lib/gen-migrate-advice.js";
@@ -16,7 +16,7 @@ import {
   type AdvisoryFindingRow, type AdvisorySection,
 } from "../lib/advisory.js";
 import { loadMemory, resolveCollection } from "@metaobjectsdev/sdk";
-import { runGen } from "@metaobjectsdev/codegen-ts";
+import { declaredGeneratorNames, runGen, undeclaredGeneratorsMessage } from "@metaobjectsdev/codegen-ts";
 import type { WriteStatus } from "@metaobjectsdev/codegen-ts";
 import { packageOfResolutionKey } from "@metaobjectsdev/metadata";
 import type { MetaRoot } from "@metaobjectsdev/metadata";
@@ -31,6 +31,10 @@ import { emitStructured, narrate } from "../lib/format.js";
 import { composeCatalog } from "../lib/catalog.js";
 import { describeError } from "../lib/error-text.js";
 import { findRuntimeBoundaryCrossings, runtimeBoundaryWarnings } from "../lib/runtime-boundary-advisory.js";
+import { hasLegacyDocsBlock, legacyDocsConfigMessage, NO_CONFIG_MESSAGE } from "../lib/docs-removed.js";
+import { buildAgentSchemaInput } from "../lib/agent-schema.js";
+import { existsSync } from "node:fs";
+import { DEFAULT_COLUMN_NAMING_STRATEGY } from "@metaobjectsdev/metadata";
 
 /**
  * Print a load failure with everything the loader's ADR-0009 envelope carried — the stable
@@ -130,9 +134,8 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
   //
   // EVERY warning this run prints is also collected here, in the order printed, because
   // the structured result carries them. They used to reach stderr only — and on a pipe,
-  // where the default format is the document, a reader of that document saw a clean run:
-  // a wired `apiDocsFile()` produced no API docs and the result gave no reason (ADR-0025
-  // has `meta gen` warn about and skip it). A new warning site adds to this list.
+  // where the default format is the document, a reader of that document saw a clean run
+  // with every caveat missing. A new warning site adds to this list.
   const warnings: string[] = [];
   const advise = (line: string | undefined): void => { if (line !== undefined) warnings.push(line); };
   advise(warnIfAgentContextStale(projectRoot));
@@ -142,12 +145,40 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
   // whichever directory `resolveCollection` decided the metadata lives in.
   advise(warnIfManifestIgnored(projectRoot));
 
+  // ADR-0034 Amendment 9: the config IS the list. With none there is nothing to generate,
+  // documentation included, and a run that wrote nothing silently would read as a pass.
+  if (!existsSync(join(projectRoot, "metaobjects.config.ts"))) {
+    log.error(NO_CONFIG_MESSAGE);
+    return 2;
+  }
   let forgeConfig;
   try {
     forgeConfig = await loadMetaobjectsConfig(projectRoot);
   } catch (err) {
     log.error(describeError(err));
     return 2;
+  }
+  // A 1.0 `docs` block configured a command that no longer exists. Nothing reads it, so the
+  // run would write no documentation; it fails before writing anything instead.
+  if (hasLegacyDocsBlock(forgeConfig)) {
+    log.error(legacyDocsConfigMessage("meta gen"));
+    return 2;
+  }
+  // `--generators` narrows to DECLARED entries, by stable name; it never adds one.
+  const catalog = composeCatalog();
+  if (flags.generators !== undefined) {
+    let declared: string[];
+    try {
+      declared = declaredGeneratorNames(forgeConfig, catalog);
+    } catch (err) {
+      log.error(describeError(err));
+      return 2;
+    }
+    const unknown = flags.generators.filter((n) => !declared.includes(n));
+    if (unknown.length > 0) {
+      log.error(`meta gen: ${undeclaredGeneratorsMessage(unknown, declared)}`);
+      return 2;
+    }
   }
 
   let metadata;
@@ -193,7 +224,8 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
       projectRoot,
       // The COMPOSED catalog, so the requires / api-framework gates can see the react
       // and tanstack entries too. codegen-ts only knows its own slice.
-      catalog: composeCatalog(),
+      catalog,
+      ...(flags.generators !== undefined && { generatorNames: flags.generators }),
       baseline: flags.baseline,
       // --dry-run must actually preview. This was previously passed only to the
       // display object below, so a "preview" run wrote every file.
@@ -207,6 +239,16 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
       // snapshot artifact), so sharedModelFile() defaults its `files` selection
       // to exactly what this project itself declares.
       sourceFiles: genCollection.ownFiles,
+      // The source DIRECTORIES, with each dependency artifact's, for a generator that loads
+      // the model with a loader of its own (the docs site).
+      sourceRoots: sourceRootsOf(genCollection),
+      // The physical schema `agent/schema.md` describes, built only if `agentDocsFile()` asks.
+      agentSchema: () => buildAgentSchemaInput(
+        metadata,
+        forgeConfig.dialect,
+        forgeConfig.columnNamingStrategy ?? DEFAULT_COLUMN_NAMING_STRATEGY,
+        (m) => { const w = `[agent-docs] ${m}`; log.warn(w); warnings.push(w); },
+      ),
       // FR-043 §6 — the shipped-library selection. Always passed, including as `[]`:
       // that is what tells the post-selection audit "this project opted into none",
       // which is a different statement from a programmatic caller that never said.
@@ -233,7 +275,8 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
         "shipped, and how many files it would emit for YOUR model\n" +
         "  meta eject <name>...       copy one into your repo to change what it emits; it " +
         "prints the import to swap in, the entry to wire, and what to install\n" +
-        "(`meta docs` needs none of this — documentation is on by default.)",
+        "Documentation is chosen the same way: docsFile(), apiDocsFile() and the rest, with a " +
+        "`docs` target.",
     );
   }
 
@@ -289,8 +332,6 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
     warnings: fmt === "text" ? [] : warnings,
     antiPatterns,
     generatorCount: forgeConfig.generators?.length ?? 0,
-    skippedDocGenerators: result.skippedDocGenerators,
-    skippedOwnedDocGenerators: result.skippedOwnedDocGenerators,
     ...(migrateAdvice !== undefined ? { migrateAdvice } : {}),
   };
   const output =
@@ -464,9 +505,22 @@ async function listCatalogCommand(
         // codegen config it was moved out of.
         libraries: genCollection.libraries,
       },
-      // The collection's own files, exactly as `meta gen` supplies them below —
-      // `shared-model` cannot be counted without them.
-      probe: { metadata, scope: genCollection.inScope, sourceFiles: genCollection.ownFiles },
+      // The run inputs `meta gen` supplies below: `shared-model` cannot be counted without the
+      // collection's own files, `docs-site` without its source directories, and `agent-docs`
+      // leaves out its schema page without the schema. The schema's skip reasons are not
+      // printed: a count is what the probe reports.
+      probe: {
+        metadata,
+        scope: genCollection.inScope,
+        sourceFiles: genCollection.ownFiles,
+        sourceRoots: sourceRootsOf(genCollection),
+        agentSchema: () => buildAgentSchemaInput(
+          metadata,
+          forgeConfig.dialect,
+          forgeConfig.columnNamingStrategy ?? DEFAULT_COLUMN_NAMING_STRATEGY,
+          () => {},
+        ),
+      },
     };
   } else {
     // No probe: still report `wired` / `owned` when a project happens to be here, since
@@ -495,4 +549,13 @@ async function listCatalogCommand(
   if (fmt === "text") log.info(renderCatalogText(rows, probe));
   else emitStructured(rows, fmt);
   return 0;
+}
+
+/**
+ * The collection's metadata source directories, followed by the directory of each dependency's
+ * artifact: a loader that reads whole directories (the docs site's) needs both, or an
+ * `extends` onto an imported abstract would not resolve in it.
+ */
+export function sourceRootsOf(collection: Collection): string[] {
+  return [...collection.sourceRoots, ...new Set(collection.dependencies.map((d) => dirname(d.artifactPath)))];
 }

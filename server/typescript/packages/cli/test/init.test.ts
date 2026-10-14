@@ -57,11 +57,11 @@ afterEach(() => {
 });
 
 describe("init() — next-steps message (S1)", () => {
-  test("presents `meta gen` and `meta docs` as working steps, not as unshipped 'later sub-projects'", () => {
+  test("presents `meta gen` as a working step, not as an unshipped 'later sub-project'", () => {
     const block = nextStepsBlock();
-    // gen + docs work TODAY — they must be shown as actionable next steps.
+    // gen works TODAY and writes documentation too — it must be shown as an actionable step.
     expect(block).toContain("meta gen");
-    expect(block).toContain("meta docs");
+    expect(block).not.toContain("meta docs");
     // ...and must NOT be lumped under the "ship in later sub-projects" framing
     // (only ingest/serve/install-hooks are actually unshipped — matches `meta --help`).
     expect(block).not.toMatch(/later sub-projects[\s\S]*meta gen\b/);

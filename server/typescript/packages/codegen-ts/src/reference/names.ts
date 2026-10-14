@@ -34,14 +34,14 @@ import {
   crossEntitySpecifier,
   entityOutputPath,
   namesArtifactSuperOf,
-  renderNamesDecl,
   resolveObjectNames,
   NAMES_FILE_SUFFIX,
   type EmittedFile,
   type GenContext,
   type Generator,
   effectivePackage,
-} from "@metaobjectsdev/codegen-ts";
+} from "@metaobjectsdev/codegen-ts/engine";
+import { renderNamesDecl } from "../templates/names-decl.js";
 import type { MetaObject } from "@metaobjectsdev/metadata";
 
 export interface NamesFileOpts {

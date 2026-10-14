@@ -4,7 +4,6 @@ import type { Generator } from "./generator.js";
 import type { ExtStyle } from "./render-context.js";
 import type { OutputLayout, ResolvedTarget } from "./import-path.js";
 import { generatorRegistry } from "./generator-registry.js";
-import { DOCS_DOOR_COMMAND, isPackagedDocsGenerator } from "./packaged-docs-generators.js";
 import { normalizeTimestampMode } from "./dialect-module.js";
 
 /**
@@ -63,7 +62,7 @@ export interface ResolvedGenConfig {
    *  (it otherwise mirrors the default Fastify-only suite). Undefined ⇒ false. */
   includeHonoRoutes?: boolean;
   /** The `expose` option the run's routes generators were built with (`runRoutesExpose`), per
-   *  routes surface, for `meta docs` to document only the verbs they mount. Absent documents all five. */
+   *  routes surface, for the api reference to document only the verbs they mount. Absent documents all five. */
   routesExpose?: RoutesExpose;
   /** §A6 — whether the OPT-IN names generator (namesFile) is active in the run,
    *  aggregated by the runner from the suite's `emitsNames` markers. A generator that
@@ -198,8 +197,6 @@ export interface MetaobjectsGenConfig extends Omit<ResolvedGenConfig, "dbImport"
    * governs the shape, mirroring the cross-port `emitAbstractShapes` option.
    */
   emitAbstractShapes?: boolean;
-  /** Docs-output config consumed by the `meta docs` door. See {@link DocsConfig}. */
-  docs?: DocsConfig;
   /** `meta verify` / `meta gen` advisory settings. Nothing here affects codegen.
    *  See {@link VerifyConfig}. */
   verify?: VerifyConfig;
@@ -239,17 +236,13 @@ export interface NormalizedMetaobjectsGenConfig
   targets: Record<string, ResolvedTarget>;
 }
 
-export type DocsSurface = "model" | "api" | "requirements" | "agent";
-
+/** A set of api reference pages, by language key, for `docsFile({ apiSurfaces })`. */
 export interface ApiSurface {
   lang: string;
   subDir: string;
   baseUrl?: string;
 }
 
-/** The single docs-output config: where ALL doc surfaces go, how pages are laid
- *  out, and which surfaces to emit. Read by the `meta docs` door (and, when the
- *  api surface fans out, by each port's docs command). */
 /**
  * `meta verify` settings. Nothing here changes what codegen emits.
  *
@@ -277,78 +270,12 @@ export interface VerifyConfig {
   antiPatternIgnore?: string[];
 }
 
-export interface DocsConfig {
-  outDir?: string;
-  layout?: OutputLayout;
-  baseUrl?: string;
-  surfaces?: DocsSurface[];
-  apiSurfaces?: ApiSurface[];
-  /**
-   * Docs generators you OWN (`meta eject docs`, `meta eject api-docs`), for `meta docs` to
-   * run in place of its packaged ones. Each carries a `docsSurface` marker saying which
-   * surface it takes over, and one per surface is allowed. Leave it out and `meta docs`
-   * runs the packaged generators, which need no wiring.
-   *
-   * It is here, in the docs door's own block, and not in the top-level `generators`,
-   * because that array is what `meta gen` runs and `meta gen` does not run documentation
-   * (ADR-0021 D1, ADR-0025; ADR-0034 Amendment 7).
-   *
-   *   import { docsFile } from "./codegen/generators/docs.js";
-   *   docs: { generators: [docsFile()] }
-   */
-  generators?: Generator[];
-}
-
-export interface ResolvedDocsConfig {
-  outDir: string;
-  layout: OutputLayout;
-  baseUrl: string;
-  surfaces: DocsSurface[];
-  apiSurfaces: ApiSurface[];
-}
-
-/** Merge the config `docs:` block with CLI overrides over documented defaults.
- *  `fallbackLayout` is the project's `outputLayout` so docs default to the same
- *  page placement as codegen when `docs.layout` is unset. */
 /**
- * Where `meta docs` writes when nothing says otherwise. A SUB-directory on purpose: the
+ * Where documentation goes in a project that has not chosen: the `outDir` `meta init`'s
+ * comment and the migration guide give `targets.docs`. A SUB-directory on purpose: the
  * generated pages are MetaObjects' to own and overwrite, and `docs/` as a whole is not.
  */
 export const DEFAULT_DOCS_DIR = "./docs/generated";
-
-export function resolveDocsConfig(
-  block: DocsConfig | undefined,
-  cli: Partial<ResolvedDocsConfig>,
-  fallbackLayout: OutputLayout,
-): ResolvedDocsConfig {
-  return {
-    // F57 — NOT "./docs". `docs/` is the human documentation folder in most repos: one
-    // estate's held a business-strategy .docx, product screenshots, email drafts and an
-    // analytics roadmap, and a bare `meta docs` scattered 29 generated pages through it
-    // and wanted to own `docs/README.md`. The gate's own design language is right —
-    // "docs.outDir is a directory, not a namespace MetaObjects owns" — and that is
-    // precisely the argument for not defaulting into the most-owned directory name in
-    // the ecosystem. `meta init` scaffolds this key explicitly so a new project's choice
-    // is visible rather than implied.
-    outDir: cli.outDir ?? block?.outDir ?? DEFAULT_DOCS_DIR,
-    layout: cli.layout ?? block?.layout ?? fallbackLayout,
-    baseUrl: cli.baseUrl ?? block?.baseUrl ?? "",
-    // `requirements` defaults ON. Safe ONLY because requirementsFile() emits ZERO
-    // files for a project declaring no `requirement.*` node — not an empty page. A
-    // project without a ledger sees byte-identical output to before the surface
-    // existed; see requirements-file.ts.
-    //
-    // `agent` defaults ON for the same reason and under the same discipline: each of
-    // its three pages renders "" when its tier has nothing to describe, and an empty
-    // render emits no file. It is additionally gated on a loadable gen config, exactly
-    // as `api` is — physical names, the dialect and view dispatch all come from there,
-    // so without one there is nothing true to say. Turning it on by default is what
-    // makes the always-on agent-context pointer able to name the files: a pointer to a
-    // page an adopter has to opt into is a pointer at nothing.
-    surfaces: cli.surfaces ?? block?.surfaces ?? ["model", "api", "requirements", "agent"],
-    apiSurfaces: cli.apiSurfaces ?? block?.apiSurfaces ?? [{ lang: "ts", subDir: "api" }],
-  };
-}
 
 /** Identity passthrough; exists for IDE type-inference + autocomplete. */
 export function defineConfig(config: MetaobjectsGenConfig): MetaobjectsGenConfig {
@@ -385,32 +312,20 @@ export function resolveTargets(config: MetaobjectsGenConfig): Record<string, Res
 }
 
 /**
- * True iff {@link resolveGenerators} refuses this stable name as neutral. A config that
- * lists the STRING makes `meta gen` fail; a constructed generator is never refused here.
- */
-export function isNeutralGeneratorName(name: string): boolean {
-  const entry = generatorRegistry[name];
-  return entry !== undefined && entry.tier !== "native";
-}
-
-/**
  * Stable generator names that used to resolve and no longer do, each with what replaced
  * it. A name that worked in a config yesterday deserves better than "unknown generator":
  * that answer sends its reader looking for a typo.
  *
- * `mermaid-er` (removed in 1.1) wrote the ER diagram to a file of its own under
- * `meta gen`. It was the older home of a diagram `meta docs` draws: the whole model on
- * the overview page, and each entity's neighbourhood on that entity's page.
- *
- * Every entry so far is a doc generator `meta docs` replaced, and each message says so.
- * `meta verify` relies on that to report a removed name under the docs door, so a test
- * holds it: a removed generator of another kind needs its own advisory first.
+ * `mermaid-er` (removed in 1.1) wrote the ER diagram to a file of its own. The `docs`
+ * generator (`docsFile()`) draws the same diagram: the whole model on its overview page, and
+ * each entity's neighbourhood on that entity's page.
  */
 export const REMOVED_GENERATOR_NAMES: Readonly<Record<string, string>> = {
   "mermaid-er":
-    'generator "mermaid-er" was removed in 1.1: `meta docs` draws the ER diagram, for the ' +
-    "whole model on its overview page (README.md) and around each entity on that entity's " +
-    'page. Remove "mermaid-er" from `generators` and run `meta docs`.',
+    'generator "mermaid-er" was removed in 1.1: the `docs` generator (docsFile()) draws the ER ' +
+    "diagram, for the whole model on its overview page (README.md) and around each entity on " +
+    'that entity\'s page. Remove "mermaid-er" from `generators` and list "docs" (or docsFile()) ' +
+    "with a `docs` target.",
 };
 
 /**
@@ -426,14 +341,12 @@ export function removedGeneratorMessage(name: string): string | undefined {
 /**
  * Materialize the config `generators` array: pass typed generators through
  * untouched and resolve each stable-name string via the {@link generatorRegistry}
- * to its factory result (default options). ADR-0021 #1.
+ * to its factory result (default options). ADR-0021 #1. Every registered name resolves,
+ * the documentation generators included (ADR-0034 Amendment 9).
  *
  * Errors:
  *  - a REMOVED name ({@link removedGeneratorMessage}) throws saying what replaced it.
- *  - a NEUTRAL name (`docs`) is owned by `meta docs` (ADR-0021 D1) and is not
- *    selectable in the gen suite.
- *  - an UNKNOWN name throws listing the available NATIVE names. `api-docs` is left out
- *    of that list: it resolves, and the runner warns about and skips it (ADR-0025).
+ *  - an UNKNOWN name throws listing the available names.
  */
 export function resolveGenerators(specs: readonly GeneratorSpec[]): Generator[] {
   return specs.map((spec) => {
@@ -442,22 +355,8 @@ export function resolveGenerators(specs: readonly GeneratorSpec[]): Generator[] 
     if (removed !== undefined) throw new Error(removed);
     const entry = generatorRegistry[spec];
     if (entry === undefined) {
-      // A native generator the runner skips is not offered: the list named `api-docs`,
-      // and the run it recommended then warned about and skipped it.
-      const native = Object.values(generatorRegistry)
-        .filter((e) => e.tier === "native" && !isPackagedDocsGenerator(e.factory().name))
-        .map((e) => e.name)
-        .sort();
-      throw new Error(
-        `unknown generator "${spec}". Available native generators: ${native.join(", ")}. ` +
-        `Documentation is not a 'meta gen' generator: run '${DOCS_DOOR_COMMAND}'.`,
-      );
-    }
-    if (isNeutralGeneratorName(spec)) {
-      throw new Error(
-        `generator "${spec}" is neutral (owned by 'meta docs'); ` +
-        `not selectable in the gen suite.`,
-      );
+      const names = Object.values(generatorRegistry).map((e) => e.name).sort();
+      throw new Error(`unknown generator "${spec}". Available generators: ${names.join(", ")}.`);
     }
     return entry.factory();
   });

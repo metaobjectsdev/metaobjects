@@ -15,30 +15,29 @@ import { fileURLToPath } from "node:url";
 /** Basenames (no extension) of the copyable reference generators shipped in `src/reference/`. */
 export const REFERENCE_GENERATOR_NAMES = [
   "entity", "queries", "routes", "routes-hono", "barrel", "names",
-  // The prompt tier (ADR-0034 Amendment 3): each is a thin generator over a public
-  // `render*` composer, so an adopter owns WHICH prompts get a module and where it lands.
+  // The prompt tier (ADR-0034 Amendment 3): an adopter owns WHICH prompts get a module and
+  // where it lands, and (Amendment 8) the `render*` composer that writes the module.
   "prompt-render", "output-parser", "extractor", "output-prompt", "render-helper",
   // The requirement-test stubs: ONE file holding the generator and the default stub
-  // renderer, because an eject copies one file and the stub text is what an application
-  // is most likely to change.
+  // renderer, because the stub text is what an application is most likely to change. The
+  // requirement walk, each test's identity and the claim digest are engine, shared with
+  // `meta verify`.
   "requirement-tests",
-  // The Cube exporter (FR-044 Plan 4): the owned part is which entities get a cube, the
-  // file layout and the YAML call; `buildCubeModel` and `renderCubeYaml` stay in the package.
+  // The Cube exporter (FR-044 Plan 4): which entities get a cube, the file layout and the YAML,
+  // with `buildCubeModel` and `renderCubeYaml` handed over beside it.
   "cube-model",
-  // The stored-procedure / table-function wrapper and the LLM-call trace helper: thin
-  // generators over `renderCallableFile` / `renderTraceHelper`, so the owned part is which
-  // objects get a module and where it lands.
+  // The stored-procedure / table-function wrapper and the LLM-call trace helper.
   "callable", "trace-helper",
-  // The publisher's shared-model artifact: a thin generator over `buildSharedModel` and
-  // `renderSharedModelFiles`. The owned part is which source files may contribute and
-  // which version is published; the artifact, its hash and the manifest that a
-  // consumer's `meta deps sync` verifies stay in the package.
+  // The publisher's shared-model artifact: which source files may contribute and which version
+  // is published, with the artifact builder (`buildSharedModel`, `renderSharedModelFiles`)
+  // handed over beside it. A consumer's `meta deps sync` verifies what it publishes.
   "shared-model",
-  // The docs tier (ADR-0034 Amendment 7). `docs` and `api-docs` are run by `meta docs`, which
-  // reads an owned copy out of `docs: { generators: [...] }` by its `docsSurface` marker.
-  // The owned part is which nodes get a page, where it lands and how the index is laid out;
-  // the page payloads and renderers stay in the package.
-  "docs", "api-docs",
+  // The documentation generators (ADR-0034 Amendments 7 to 9). Each decides which nodes get a
+  // page, where it lands and how the index is laid out; the page payloads and renderers are
+  // handed over beside it. They run like every other generator: listed in `generators`,
+  // written by `meta gen` into the `docs` target. (`docs-site` has no reference: its builder
+  // stays packaged, and `meta eject docs-site` copies the site's templates and assets.)
+  "docs", "api-docs", "requirements", "agent-docs", "metamodel-docs",
 ] as const;
 export type ReferenceGeneratorName = (typeof REFERENCE_GENERATOR_NAMES)[number];
 

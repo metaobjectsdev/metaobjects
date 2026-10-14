@@ -20,13 +20,13 @@
 import type { ColumnNamingStrategy, MetaObject } from "@metaobjectsdev/metadata";
 import { GENERATED_HEADER, GENERATED_EDIT_NOTE } from "../constants.js";
 import { PHYSICAL_NAME_ATTR_BY_KIND, primaryRdbSource } from "@metaobjectsdev/metadata";
-
-/** The physical-name alias keys, in the metamodel's own order. */
-const PHYSICAL_NAME_ALIASES = [...PHYSICAL_NAME_ATTR_BY_KIND.values()] as const;
 import {
   resolveObjectNames, resolveSuperFragmentNames,
   type FieldNames, type KeyNames, type ObjectNames, type SourceNames,
 } from "../names.js";
+
+/** The physical-name alias keys, in the metamodel's own order. */
+const PHYSICAL_NAME_ALIASES = [...PHYSICAL_NAME_ATTR_BY_KIND.values()] as const;
 
 export interface NamesDeclOpts {
   readonly strategy?: ColumnNamingStrategy | undefined;

@@ -17,10 +17,8 @@ import {
   libraryPrefixRows,
   unindexedFkRows,
   referentialActionConflictRows,
-  docGeneratorRows,
   advisoryHelpLines,
 } from "../lib/advisory.js";
-import { scanForDocGeneratorsInGen, type DocGeneratorFinding } from "../lib/doc-generator-advisory.js";
 import { scanForUnprovenancedLibraryPrefix } from "../lib/library-prefix-advisory.js";
 import { scanForUnindexedForeignKeys, type UnindexedFkFinding } from "../lib/fk-index-advisory.js";
 import { scanForReferentialActionConflicts, type ReferentialActionConflictFinding } from "../lib/referential-action-advisory.js";
@@ -35,7 +33,9 @@ import { derivePayloadFieldTree } from "../lib/payload-field-tree.js";
 import { loadMemoryOptionsFrom, loadMetaobjectsConfig, resolveGenCollection, resolveGenConfigDir } from "../lib/load-metaobjects-config.js";
 import { collectionLoadOptions } from "../lib/collection-load-options.js";
 import { computeCodegenDrift } from "../lib/codegen-drift.js";
-import { computeDocsDrift } from "../lib/docs-drift.js";
+import { hasLegacyDocsBlock, legacyDocsConfigMessage, REMOVED_VERIFY_DOCS } from "../lib/docs-removed.js";
+import { buildAgentSchemaInput } from "../lib/agent-schema.js";
+import { sourceRootsOf } from "./gen.js";
 import {
   checkRequirements, summariseRequirements, scanRequirements, type Diagnostic,
 } from "../lib/requirement-check.js";
@@ -53,7 +53,7 @@ import {
   type WranglerRunner,
 } from "../lib/wrangler.js";
 import type { MetaobjectsGenConfig } from "@metaobjectsdev/codegen-ts";
-import { buildProjectionViews, resolveDocsConfig } from "@metaobjectsdev/codegen-ts";
+import { buildProjectionViews } from "@metaobjectsdev/codegen-ts";
 import { buildKyselyFromUrl, inferDialect, type Dialect } from "../lib/kysely.js";
 import { tokensToAllowOptions, describeChange } from "../lib/allow.js";
 import {
@@ -111,6 +111,7 @@ import {
   TEMPLATE_ATTR_HTML_BODY_REF,
   TEMPLATE_ATTR_TEXT_BODY_REF,
   REQUIREMENT_STATUSES,
+  DEFAULT_COLUMN_NAMING_STRATEGY,
 } from "@metaobjectsdev/metadata";
 import { verify, ERR_REQUIRED_SLOT_UNUSED, ERR_PARTIAL_UNRESOLVED } from "@metaobjectsdev/render";
 import { describeLoadError, reportLoadError } from "../lib/load-error.js";
@@ -180,6 +181,13 @@ export async function verifyCommand(
     emitStructured({ error: msg, hint: "run `meta verify --help` for the accepted flags" }, fmt);
     return 2;
   }
+  // ADR-0034 Amendment 9: documentation is checked by `--codegen` with everything else the
+  // generator list declares. The old flag still parses, so it can say where it went.
+  if (flags.docs) {
+    log.error(REMOVED_VERIFY_DOCS);
+    emitStructured({ error: REMOVED_VERIFY_DOCS }, fmt);
+    return 2;
+  }
   const migrateFlags: MigrateFlags = { ...EMPTY_MIGRATE_FLAGS, format: flags.migrationFormat };
 
   // ADR-0021 D2 — explicit verify subverbs. Each flag selects one drift mode;
@@ -191,16 +199,15 @@ export async function verifyCommand(
   // The schema gate is selected by the presence of --db, or --dialect d1 (#225 —
   // D1 has no URL connection); that check lives inside runSchemaVerify.
   const runCodegen = flags.codegen;
-  const runDocs = flags.docs;
-  // Task 15 — same shape as --codegen/--docs: selected ONLY by its own flag,
+  // Task 15 — same shape as --codegen: selected ONLY by its own flag,
   // never folded into the bare-verify default (it needs the publisher
   // reachable, which CI may not have — see the VerifyFlags doc on `deps`).
   const runDeps = flags.deps;
   if (!flags.anyExplicit) {
     say(
       "meta verify — running --templates (default). Explicit subverbs: " +
-        "--templates (prompt drift), --db/--dialect d1 (schema drift), --codegen (codegen drift), " +
-        "--docs (docs drift), --deps (dependency drift), " +
+        "--templates (prompt drift), --db/--dialect d1 (schema drift), " +
+        "--codegen (drift of everything `generators` declares, documentation included), --deps (dependency drift), " +
         "--replay/--replay-snapshot (the committed migration chain replays from empty).",
     );
   }
@@ -395,7 +402,6 @@ export async function verifyCommand(
   let schemaDrift: SchemaDriftSection | undefined;
   const schemaExit = await runSchemaVerify();
   const codegenExit = runCodegen ? await runCodegenVerify() : 0;
-  const docsExit = runDocs ? await runDocsVerify() : 0;
   const depsExit = runDeps ? await runDepsVerify() : 0;
   // Requirements have no subverb: `requirement.*` nodes are metadata, so they
   // are checked on every `meta verify`. Opt-in by DECLARATION — a model with no
@@ -437,7 +443,6 @@ export async function verifyCommand(
     templateExit,
     schemaExit,
     codegenExit,
-    docsExit,
     depsExit,
     requirementExit,
     replayExit,
@@ -451,7 +456,6 @@ export async function verifyCommand(
     // failure mode this whole change exists to remove.
     { gate: "schema", ran: ranSchemaGate, ok: schemaExit === 0 },
     { gate: "codegen", ran: runCodegen, ok: codegenExit === 0 },
-    { gate: "docs", ran: runDocs, ok: docsExit === 0 },
     { gate: "deps", ran: runDeps, ok: depsExit === 0 },
     { gate: "requirements", ran: true, ok: requirementExit === 0 },
     { gate: "replay", ran: flags.replay || flags.replaySnapshot, ok: replayExit === 0 },
@@ -1028,17 +1032,6 @@ export async function verifyCommand(
       // advisory only — a model the schema builder refuses is migrate's to report.
     }
 
-    // A doc generator wired under `generators`: `meta gen` skips it (or refuses its
-    // neutral name), and `--codegen` regenerates through the same runner without relaying
-    // its warnings — so this is the only place `verify` can say that the listed generator
-    // produces nothing here.
-    let docGenerators: DocGeneratorFinding[] = [];
-    try {
-      docGenerators = scanForDocGeneratorsInGen(forgeConfig);
-    } catch {
-      // advisory only — a config whose factory throws is `meta gen`'s to report.
-    }
-
     antiPatternSection = ranSection([
       ...antiPatternRows(findings),
       ...missingBaseUrlRows(baseUrl),
@@ -1046,7 +1039,6 @@ export async function verifyCommand(
       ...libraryPrefixRows(libraryPrefix),
       ...unindexedFkRows(unindexedFks),
       ...referentialActionConflictRows(actionConflicts),
-      ...docGeneratorRows(docGenerators),
     ]);
     if (findings.length > 0) {
       log.warn(
@@ -1089,13 +1081,6 @@ export async function verifyCommand(
           `no ejection provenance (advisory — does not fail the build):`,
       );
       warnCapped(libraryPrefix.map((f) => `  ${f.message}`), flags.limit, { structured });
-    }
-    if (docGenerators.length > 0) {
-      log.warn(
-        `meta verify — ${docGenerators.length} doc generator(s) listed under \`generators\`, ` +
-          `which \`meta gen\` does not run (advisory — does not fail the build):`,
-      );
-      warnCapped(docGenerators.map((f) => `  ${f.message}`), flags.limit, { structured });
     }
   }
 
@@ -1626,9 +1611,25 @@ export async function verifyCommand(
       }
     }
 
+    // A 1.0 `docs` block configured a command that no longer exists; regenerating without it
+    // would check no documentation and pass. Refused before anything is written, as `meta gen`
+    // refuses it.
+    if (hasLegacyDocsBlock(forgeConfig)) {
+      log.error(legacyDocsConfigMessage("meta verify"));
+      return 2;
+    }
+    const config = forgeConfig;
     let result;
     try {
-      result = await computeCodegenDrift(forgeConfig, codegenRoot, genConfigDir, genCollection.inScope, genCollection.ownFiles);
+      result = await computeCodegenDrift(config, codegenRoot, genConfigDir, genCollection.inScope, genCollection.ownFiles, {
+        sourceRoots: sourceRootsOf(genCollection),
+        agentSchema: () => buildAgentSchemaInput(
+          codegenRoot,
+          config.dialect,
+          config.columnNamingStrategy ?? DEFAULT_COLUMN_NAMING_STRATEGY,
+          (m) => log.warn(`verify --codegen: [agent-docs] ${m}`),
+        ),
+      });
     } catch (err) {
       log.error(`verify --codegen: regeneration failed: ${describeError(err)}`);
       return 1;
@@ -1644,6 +1645,17 @@ export async function verifyCommand(
     // contribution is current" and nothing else. Reported on every run; fails the build
     // only under --forbid-hand-edits.
     const handEditExit = reportHandEdits(result.handEdited);
+    // Say how much documentation was NOT checked, on the pass and the fail line alike, so a
+    // gate that compared two pages of 589 cannot read as one that compared all of them.
+    if (result.docsIgnored > 0) {
+      say(`meta verify — ${result.docsIgnored} generated documentation page(s) are git-ignored and were not checked.`);
+    }
+    for (const dir of result.docsIgnoredDirs) {
+      say(`meta verify — ${dir}: the repository git-ignores every documentation page generated there, so they were not compared.`);
+    }
+    if (result.docsIgnoreUnavailable !== undefined) {
+      say(`meta verify — git could not say which documentation pages are ignored (${result.docsIgnoreUnavailable}), so every page was checked.`);
+    }
 
     if (result.clean) {
       // Says what it CHECKED, not more. Since 0.24.3 this gate asks whether each file's
@@ -1691,90 +1703,6 @@ export async function verifyCommand(
     warnCapped(paths, flags.limit, { structured });
     for (const line of footer) log.warn(line);
     return 0;
-  }
-
-  // -- docs drift -------------------------------------------------------------
-  // Gated on --docs. Runs `meta docs` into a temp dir and diffs the committed docs
-  // tree. See lib/docs-drift.ts for the deliberate differences from --codegen: a byte
-  // difference IS drift here; a committed file a regen would not emit is reported ONLY
-  // under `agent/` and only when it opens with the @generated marker (`docs.outDir` is
-  // otherwise full of files MetaObjects did not write); and a page the project
-  // GIT-IGNORES is exempt, because `docs.outDir` is a directory rather than a namespace
-  // MetaObjects owns.
-  //
-  // It needs a config for the same reason `--codegen` does: `docs.outDir` says which
-  // tree to compare against, and the `agent` surface will not even materialise
-  // without one.
-  async function runDocsVerify(): Promise<number> {
-    if (forgeConfig === undefined) {
-      log.error(
-        "verify --docs: no metaobjects.config.ts found (or it is invalid) — " +
-          "cannot locate the committed docs tree to diff against. " +
-          "Run 'meta init' to scaffold one, or run without --docs.",
-      );
-      return 2;
-    }
-
-    // Resolved through the SAME resolver `meta docs` uses, so a project that moved its
-    // docs elsewhere is checked where its docs actually are. `outputLayout` is the
-    // documented fallback for `docs.layout`.
-    const docsCfg = resolveDocsConfig(forgeConfig.docs, {}, forgeConfig.outputLayout ?? "flat");
-    let result;
-    try {
-      result = await computeDocsDrift({
-        projectRoot: genConfigDir,
-        docsDir: resolvePath(genConfigDir, docsCfg.outDir),
-        cwd: genConfigDir,
-      });
-    } catch (err) {
-      log.error(`verify --docs: regeneration failed: ${describeError(err)}`);
-      return 1;
-    }
-
-    if (result.error !== undefined) {
-      log.error(result.error);
-      return 2;
-    }
-
-    // What the gate did NOT check, on BOTH the passing and the failing line. A gate
-    // that quietly compared two of 589 pages and reported "no drift" would be
-    // indistinguishable from one that compared everything.
-    const notChecked =
-      result.ignoreReason !== undefined
-        ? `; .gitignore not consulted — ${result.ignoreReason} — so every page a fresh run emits was expected to be committed`
-        : result.ignored > 0
-          ? `; ${result.ignored} git-ignored page(s) not checked`
-          : "";
-
-    if (result.clean) {
-      // The denominator is what was actually COMPARED, so the passing line and the
-      // failing line below count the same set. A gate whose two halves divide by
-      // different numbers is how `verify --templates` came to report seven templates
-      // vanishing between a red run and a green one.
-      say(
-        `meta verify — ${result.checked} docs page(s) match a fresh 'meta docs' ` +
-          `(no docs drift${notChecked}).`,
-      );
-      return 0;
-    }
-
-    log.error(
-      `meta verify — docs drift (${result.driftedFiles.length} of ${result.checked} page(s) ` +
-        `differ from a fresh 'meta docs'${notChecked}):`,
-    );
-    for (const line of result.lines) log.error(`  ${line}`);
-    log.error("Run 'meta docs' to regenerate, then commit the result.");
-    // The one-command path to green, named at the point of conviction — a page reported
-    // as uncommitted is the one case where regenerating is NOT the answer.
-    if (result.lines.some((l) => l.startsWith("+ "))) {
-      log.error(
-        result.ignoreReason === undefined
-          ? "A page you deliberately do not commit is exempt once it is git-ignored."
-          : `.gitignore was not consulted (${result.ignoreReason}), so a page you ` +
-            `deliberately do not commit is reported above.`,
-      );
-    }
-    return 1;
   }
 
   // -- dependency drift (Task 15, FR-023) --------------------------------------
@@ -1946,7 +1874,6 @@ const GATE_SELECTOR: Record<string, string> = {
   templates: "--templates",
   schema: "--db <url>",
   codegen: "--codegen",
-  docs: "--docs",
   deps: "--deps",
   replay: "--replay",
 };

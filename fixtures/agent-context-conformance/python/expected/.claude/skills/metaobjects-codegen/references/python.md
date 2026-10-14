@@ -9,7 +9,7 @@ through the Node `meta` tool — the Python CLI has **no `migrate` subcommand** 
 ## Contents
 - Install
 - Run
-- Docs — `metaobjects docs`
+- Docs — one more entry in a target's `generators`
 - Write your own generator
 - Generators
 - Discriminator inheritance (TPH)
@@ -42,25 +42,35 @@ the exact `gen` code path so the two can't diverge). `--templates` is the prompt
 drift gate (see the prompts reference). Schema migration + live-DB drift are **not**
 `metaobjects` — they run through the Node `meta` tool (see the migration reference).
 
-## Docs — `metaobjects docs`
+## Docs — one more entry in a target's `generators`
 
-```bash
-metaobjects docs ./metadata --out ./docs   # → ./docs/api/python (AGENT-API.md + per-entity pages)
+There is no `metaobjects docs` command (removed in 1.1.0, ADR-0034 Amendment 9): the api
+reference is the `api-docs` generator, named in a target's `generators` in
+`metaobjects.config.yaml` like any other:
+
+```yaml
+targets:
+  docs:
+    outDir: ./docs
+    generators: [api-docs]
+apiDocs:
+  apiSubDir: api/python       # default
 ```
 
-`metaobjects docs` emits this project's Python SDK api surface (`api/python`), including
-`AGENT-API.md` — the exact imports, signatures, and payload field shapes for the
-generated code. **Before calling any generated code, read `api/python/AGENT-API.md`.**
+`metaobjects gen` writes it (→ `./docs/api/python`: `AGENT-API.md` + per-entity pages),
+alongside everything else that target's `generators` declares. `AGENT-API.md` has the
+exact imports, signatures, and payload field shapes for the generated code. **Before
+calling any generated code, read `api/python/AGENT-API.md`.** Options live in the
+top-level `apiDocs` block: `apiSubDir` (default `api/python`), `projectName`,
+`modelBaseUrl`. To write only the documentation, `metaobjects gen --generators api-docs`.
+Migrating a project that ran `metaobjects docs`:
+`docs/features/migrations/docs-are-generators.md`, section "Python".
 
-**The two `docs` positionals are NOT the same argument.** This one is the METADATA
-directory. The Node `meta docs` positional — used by every stack, since `migrate`,
-`verify --db` and the neutral model docs are Node-only — is the PROJECT ROOT that
-CONTAINS the metadata. Run `meta docs` with no positional, from the project root:
-
-```bash
-metaobjects docs ./metadata --out ./docs   # Python: the METADATA dir
-meta docs --out ./docs                     # Node: run from the PROJECT ROOT (no positional)
-```
+**The neutral model pages are a Node `meta gen` generator, not something this port emits.**
+`meta docs`'s language-neutral model surface was retired along with the rest of
+`meta docs` in 1.1.0 (ADR-0034 Amendment 9); a TypeScript project in the same repo lists
+`docsFile()` in its own `generators` for that surface. This port's `api-docs` writes only
+its own api reference.
 
 ## Write your own generator
 

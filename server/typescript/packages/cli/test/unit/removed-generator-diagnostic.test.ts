@@ -19,7 +19,7 @@ describe("removedGeneratorRuntimeError", () => {
       new TypeError("(0 , _generators.mermaidErDiagram) is not a function"),
     );
     expect(msg).toContain('mermaidErDiagram is no longer exported from "@metaobjectsdev/codegen-ts/generators"');
-    expect(msg).toContain("`meta docs` draws the ER diagram");
+    expect(msg).toContain("The `docs` generator (`docsFile()`) draws the ER diagram");
   });
 
   test("recognises native ESM's two spellings of a missing export", () => {
@@ -39,7 +39,7 @@ describe("removedGeneratorRuntimeError", () => {
     expect(msg).toContain("in your metaobjects.config.ts or in a module the config imports");
     expect(msg).toContain("codegen/generators/");
     expect(msg).toContain("delete the import and the `mermaidErDiagram()` entry");
-    expect(msg).toContain("run `meta docs`");
+    expect(msg).toContain("list `docsFile()` instead, with a `docs` target, and run `meta gen`");
     // The file it used to write is the other thing an upgrade leaves behind.
     expect(msg).toContain("docs/model.md");
   });
@@ -51,6 +51,6 @@ describe("removedGeneratorRuntimeError", () => {
   });
 
   test("a non-Error throw does not crash the diagnostic", () => {
-    expect(removedGeneratorRuntimeError("mermaidErDiagram is not a function")).toContain("`meta docs`");
+    expect(removedGeneratorRuntimeError("mermaidErDiagram is not a function")).toContain("`docsFile()`");
   });
 });

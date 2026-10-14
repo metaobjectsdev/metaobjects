@@ -50,7 +50,7 @@ import {
 } from "../templates/entity-ui-descriptor.js";
 import { isSortableField, resolveGridDefaultSort } from "../templates/filter-shared.js";
 import { isTphDiscriminatorBase } from "../templates/tph-discriminator.js";
-import { declaresTphDiscriminator } from "../templates/zod-validators.js";
+import { declaresTphDiscriminator } from "../tph.js";
 
 const GENERATED_MARKER = `<!-- ${GENERATED_HEADER} — DO NOT EDIT. -->`;
 

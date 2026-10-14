@@ -42,13 +42,13 @@
 // composes-with: entity.ts (imports the table/schemas/allowlists), queries.ts.
 //
 // The composition (`renderRoutes`) is the relocated body of the engine's `renderRoutesFile`
-// — byte-identical output to start, now YOURS to change. It imports only public engine
-// primitives.
+// — byte-identical output to start, now YOURS to change. It imports the engine from the
+// package and the renderers from `../templates/`, which `meta eject` copies beside it.
 
 // ts-poet combinators come from the engine package, NOT a bare "ts-poet" import: the Code
 // fragments composed here must share ONE ts-poet instance with the engine's, or (with a
 // globally-installed / linked CLI) imports split into duplicate headers.
-import { code, imp, joinCode, type Code } from "@metaobjectsdev/codegen-ts";
+import { code, imp, joinCode, type Code } from "@metaobjectsdev/codegen-ts/engine";
 import type { MetaObject } from "@metaobjectsdev/metadata";
 import { TYPE_FIELD, resolveColumnName } from "@metaobjectsdev/metadata";
 import {
@@ -64,21 +64,13 @@ import {
   exposeLine,
   intersectExpose,
   TPH_POLYMORPHIC_VERBS,
-  isTphSubtype,
-  isTphDiscriminatorBase,
-  tphPlan,
-  tphDiscriminatorPin,
-  tphStorageObject,
   isProjection,
   isWriteThrough,
   isReport,
   itemRouteField,
   reportDecimalColumns,
-  DEFAULT_ID_FIELD,
   servesReadApi,
   formatTs,
-  renderRoutesIndex,
-  routesIndexFileName,
   entityOutputPath,
   effectivePackage,
   crossEntitySpecifier,
@@ -92,7 +84,13 @@ import {
   GENERATED_HEADER,
   GENERATED_EDIT_NOTE,
   sidecarLine,
-} from "@metaobjectsdev/codegen-ts";
+  DEFAULT_ID_FIELD,
+  isTphSubtype,
+  tphDiscriminatorPin,
+  tphStorageObject,
+} from "@metaobjectsdev/codegen-ts/engine";
+import { renderRoutesIndex, routesIndexFileName } from "../templates/routes-index.js";
+import { isTphDiscriminatorBase, tphPlan } from "../templates/tph-discriminator.js";
 
 // --- composition (OWNED) — assembles one <Entity>.routes.ts. Change this to change the output. ---
 // Dispatch: a TPH discriminator base → polymorphic list/get + a per-subtype CRUD set; a
@@ -742,8 +740,8 @@ export const routesFile = function routesFile(opts?: RoutesFileOpts): Generator 
   });
   const generator: Generator = {
     name: "routes-file",
-    // Read by `meta docs`: the API docs list the verbs this file mounts, so an `expose` you
-    // pass here is honoured there. Keep this line if you change what the file mounts.
+    // Read by the api reference (`apiDocsFile()`): it lists the verbs this file mounts, so an
+    // `expose` you pass here is honoured there. Keep this line if you change what the file mounts.
     mountsRoutes: opts?.expose !== undefined ? { expose: opts.expose } : {},
     // TPH subtypes get no standalone routes file (their routes live in the discriminator
     // base's); AND-composed with your filter.

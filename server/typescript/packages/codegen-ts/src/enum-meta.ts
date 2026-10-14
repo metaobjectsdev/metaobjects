@@ -55,8 +55,3 @@ export function intValueForMember(
   }
   return n;
 }
-
-/** Build the Zod expression for a set of enum members, e.g. `z.enum(["A", "B"])`. */
-export function zodEnumExpr(values: string[]): string {
-  return `z.enum([${values.map((v) => JSON.stringify(v)).join(", ")}])`;
-}

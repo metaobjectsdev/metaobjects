@@ -146,14 +146,15 @@ function resolveCliPkg(specifier: string): string {
  * answers for a live import only, wherever that import is: the config itself or a module
  * the config imports (an owned generator under `codegen/generators/`, typically).
  *
- * `mermaidErDiagram` (removed in 1.1) wrote the ER diagram to a file of its own under
- * `meta gen`. It was the older home of a diagram `meta docs` draws.
+ * `mermaidErDiagram` (removed in 1.1) wrote the ER diagram to a file of its own. It was the
+ * older home of a diagram the `docs` generator (`docsFile()`) draws.
  */
 const REMOVED_GENERATOR_EXPORTS: Readonly<Record<string, string>> = {
   mermaidErDiagram:
-    "`meta docs` draws the ER diagram, for the whole model on its overview page (README.md) " +
-    "and around each entity on that entity's page.\n" +
-    "  Fix: delete the import and the `mermaidErDiagram()` entry, then run `meta docs`. " +
+    "The `docs` generator (`docsFile()`) draws the ER diagram, for the whole model on its " +
+    "overview page (README.md) and around each entity on that entity's page.\n" +
+    "  Fix: delete the import and the `mermaidErDiagram()` entry; list `docsFile()` instead, " +
+    "with a `docs` target, and run `meta gen`. " +
     "The file it wrote (`docs/model.md` under your output directory, unless you moved it " +
     "with `outFile`) is no longer generated; delete that too.",
 };

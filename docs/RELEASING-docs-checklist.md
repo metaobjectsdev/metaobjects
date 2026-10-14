@@ -81,7 +81,8 @@ not an edit. Confirm rather than change:
         if node scripts/build-assess-prompt.mjs --out /tmp/assess.md && [ -s /tmp/assess.md ]; then
           cp /tmp/assess.md "$GITHUB_WORKSPACE/www/assess.md"
         else
-          echo "::warning::metaobjects $TAG could not build assess.md — /assess.md will 404."
+          echo "::error::metaobjects $TAG could not build assess.md" >&2
+          exit 1
         fi
       else
         # older tags: the skill is one file, so the old copy is complete
@@ -95,7 +96,9 @@ not an edit. Confirm rather than change:
       ```
 
       A script that exists but fails must NOT fall back to the `sed` copy: on these tags that
-      copy is missing the capability sheet and the JSON contract.
+      copy is missing the capability sheet and the JSON contract. It fails the deploy
+      instead (`exit 1`), so a release never publishes a site whose `/assess.md` is missing
+      or incomplete; only the older-tag branch, which has no script to fail, still warns.
 - [ ] `www/index.html` and every other page — the four registry coordinates plus
       `metamodel` are injected into any element carrying `data-registry="…"`, and the
       derived counts (`fixtures`, `corpora`, `baseTypes`) into any element carrying

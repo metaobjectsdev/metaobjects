@@ -14,7 +14,7 @@ the standard filter, sort and paging on the derived fields.
 [What a report lowers to](#what-a-report-lowers-to) is the column contract and
 [How a report is served](#how-a-report-is-served) is the REST one. A report with no `source.*`
 stays inert: it is a checked statement of intent. No generator, migration or runtime acts on
-it, and the one thing written about it is a `meta docs` model page marked "not served".
+it, and the one thing written about it is a model page (`docsFile()`) marked "not served".
 
 **Exporting to Cube.** A TypeScript reference generator, `cube-model`, writes the same
 vocabulary as Cube data-model files: a cube for each concrete, table-backed entity that declares
@@ -583,7 +583,7 @@ Kotlin's is opt-in like every `<Entity>Names`, and its Exposed table still binds
 its columns by literal, as C# and Java do, which write no names artifact for a report. These
 are reference helpers, not core: copy and own them with your port's `eject`.
 
-**`meta docs`.** Every report gets a model page (kind `report`, its `@from`, its view or
+**The documentation generators.** Every report gets a model page (kind `report`, its `@from`, its view or
 "Not served" with the reason, its row scope, and a column table with a definition per
 column), listed under `## Reports` on the model index. A measure with `@default` ends its
 definition with "; `0` when there is nothing to aggregate", and a defaulted ratio's
@@ -897,7 +897,7 @@ ships, `main` carries `metamodelVersion` 1.1, so no 1.0.x PATCH is cut from it.
 
 `@spine` and a measure's `@default` joined the same 1.1 change before it shipped, so
 `metamodelVersion` stays 1.1. A model that uses neither generates exactly as before. No
-generator you can own changed for them (the view SQL and the `meta docs` wording come from the
+generator you can own changed for them (the view SQL and the model pages' wording come from the
 packages), so an owned generator needs no resync. A report that declares
 `@spine`, or lists a measure with `@default`, lowers to different SQL and a tighter row type
 than the same report without it.
@@ -917,7 +917,7 @@ generated output for models that declare no report. Each is in the
 - **TypeScript API docs: a read-only object's page documents only what is generated.** A
   read-only projection's page no longer lists create, update or delete
   functions, write verbs or Insert/Update schemas, and a keyless one no longer lists `/:id` or
-  the by-id function. `meta verify --docs` reports the page as stale until you regenerate.
+  the by-id function. `meta verify --codegen` reports the page as stale until you regenerate.
 - **Java and Kotlin API docs: a read-only projection's page lists the reads only.** It also
   listed `POST`, `PATCH`, `PUT` and `DELETE`, each described as a `405` refusal. Those are
   refusals, not operations, and no other port documented them, so the page now lists `GET <path>`
