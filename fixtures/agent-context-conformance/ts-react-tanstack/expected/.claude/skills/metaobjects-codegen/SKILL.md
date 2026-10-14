@@ -1,6 +1,6 @@
 ---
 name: metaobjects-codegen
-description: Use when you need ANY output derived from the MetaObjects model — write your own generator (OpenAPI, JSON Schema, Zod, DTOs, a client, docs, anything) or eject a reference one — and when configuring or running code generation, generators/targets/dialect config, the gen command, and hand-edit-preserving regeneration.
+description: Use when you need ANY output derived from the MetaObjects model — write your own generator (OpenAPI, JSON Schema, Zod, DTOs, a client, docs, anything) or eject a reference one — and when configuring or running code generation: editing the gen config (metaobjects.config.ts) to choose generators, targets or the SQL dialect (e.g. postgres to sqlite), the gen command, and hand-edit-preserving regeneration.
 ---
 
 # MetaObjects code generation
