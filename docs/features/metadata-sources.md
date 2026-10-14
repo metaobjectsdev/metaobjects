@@ -267,12 +267,12 @@ For a package tree, you want `acme::**`.
 |---|---|
 | `meta gen` | **Yes** — an object is generated only when its FQN is in scope |
 | `meta verify --codegen` | **Yes** — it regenerates under the same scope, so a scoped `gen` cannot be reported as drift |
-| The documentation generators, under `meta gen` | The model pages (`docsFile()`) **yes**; the api reference, the agent pages and the site document the whole loaded model |
+| The documentation generators, under `meta gen` | No — the model pages, the api reference, the agent pages and the site document the whole loaded model |
 | `meta export` | No |
 | `meta migrate`, `meta verify --db` | No — those take [`migrate.scope`](#migratescope--who-owns-which-tables) instead |
 
-`docs` and `export` are **inspection surfaces over the loaded collection**, not code
-emitters. Scoping them would make the tools you reach for to answer "what is
+The documentation generators and `export` are **inspection surfaces over the loaded
+collection**, not code emitters. Scoping them would make the tools you reach for to answer "what is
 actually in this model?" answer a narrower question than the one you asked.
 
 `meta gen <Entity>` arguments **intersect** with scope: both must pass. If a scope

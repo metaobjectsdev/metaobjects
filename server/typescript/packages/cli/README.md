@@ -355,9 +355,9 @@ means everything; `exclude` applies after `include`; matching is case-sensitive.
 
 **The collection always loads in full — `scope` filters output, never input.** It
 applies to `meta gen` and to `meta verify --codegen` (which regenerates under the
-same scope, so a scoped `gen` is not reported as drift). Of the documentation generators,
-the model pages (`docsFile()`) follow the scope; the api reference, the agent pages and the
-site document the whole loaded collection. `meta export` is deliberately **not** scoped — it
+same scope, so a scoped `gen` is not reported as drift). The documentation generators are
+not scoped: the model pages, the api reference, the agent pages and the site document the
+whole loaded collection, as `meta docs` did. `meta export` is deliberately **not** scoped — it
 inspects the loaded collection. `meta gen
 <Entity>` arguments intersect with `scope`; both must pass.
 

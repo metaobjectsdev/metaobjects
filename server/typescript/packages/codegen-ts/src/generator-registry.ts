@@ -287,7 +287,7 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
     tier: "native",
     factory: () => apiDocsFile(),
     factoryExport: "apiDocsFile",
-    options: "subDir?, modelBaseUrl?, filter?, target?",
+    options: "subDir?, modelBaseUrl?, modelSurface?, filter?, target?",
     ejectable: ejectable("api-docs"),
   },
   docs: {

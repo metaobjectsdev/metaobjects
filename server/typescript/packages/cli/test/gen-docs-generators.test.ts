@@ -289,6 +289,22 @@ describe("meta verify --codegen checks the documentation the list declares", () 
     expect(stderr()).toContain("Speaker.md");
   });
 
+  test("a column renamed in the metadata and not regenerated is drift in agent/schema.md", async () => {
+    const root = project({ config: base(`["entity", agentDocsFile()]`), ownRepo: true });
+    expect(await run(["gen", "--cwd", root])).toBe(0);
+    const schemaPage = join(root, "docs", "generated", "agent", "schema.md");
+    expect(readFileSync(schemaPage, "utf8")).toContain("title");
+    expect(await run(["verify", "--codegen", "--cwd", root])).toBe(0);
+
+    const model = JSON.parse(MODEL) as { "metadata.root": { children: Array<Record<string, { children: Array<Record<string, Record<string, unknown>>> }>> } };
+    const title = model["metadata.root"].children[0]!["object.entity"]!.children.find((c) => c["field.string"]?.name === "title")!;
+    title["field.string"]!["@column"] = "headline";
+    writeFileSync(join(root, "metaobjects", "meta.app.json"), JSON.stringify(model), "utf8");
+    err = [];
+    expect(await run(["verify", "--codegen", "--cwd", root])).toBe(1);
+    expect(stderr()).toContain("docs/generated/agent/schema.md");
+  });
+
   // Carried from 1.0's `meta verify --docs`: a project may generate many pages and commit a
   // few on purpose, git-ignoring the rest. The check is asked of the repository, so a CI
   // runner without the ignored pages answers as the machine that generated them does.

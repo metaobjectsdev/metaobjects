@@ -933,9 +933,10 @@ until you regenerate.
     `docsSiteFile()` renders with them.
   - The site's footer no longer prints the date of the run, so its pages depend on the model
     alone and `meta verify --codegen` can check them. `docsSiteFile({ stamp })` adds text.
-  - The model pages follow `meta gen`'s `scope` and entity selection, as every per-object
-    generator does (`meta docs` was never scoped); the api reference, the agent pages and the
-    site still document the whole loaded model.
+  - The documentation generators document the whole loaded model, as `meta docs` did: `scope`
+    and the `meta gen <Entity>` selection do not narrow the model pages, the api reference,
+    the agent pages or the site, so a scoped project sees the same pages and no cross-link
+    points at a page that was not written.
   - A config that declares no generator writes nothing, `.metaobjects/.gen-state/` included.
 
 - **A report's `count` and `sum` columns are `bigint` (`Long` on the JVM).** Replacing a
