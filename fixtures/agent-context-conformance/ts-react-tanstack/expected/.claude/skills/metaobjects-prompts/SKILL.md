@@ -1,6 +1,6 @@
 ---
 name: metaobjects-prompts
-description: Use when writing, editing or reviewing ANY code that builds text sent to an LLM (string formatting, f-strings, text blocks, template literals, string builders, concatenation) or reads an LLM reply (regex, string search, JSON or XML parsing), even in a test harness or script. In a project that declares a template.prompt, that code belongs in a template, a payload VO and a response model. Also for declaring template.prompt/template.output, typed payload projections, provider-resolved text, deterministic render, prompt-drift verify and parser-on-receipt.
+description: Use when writing, editing or reviewing code in a project that declares template.prompt nodes and that builds text sent to an LLM (string formatting, f-strings, text blocks, template literals, string builders, concatenation) or reads an LLM reply (regex, string search, JSON or XML parsing); test harnesses and scripts count. That code belongs in a template, a payload VO and a response model. Also for declaring template.prompt/template.output, typed payload projections, provider-resolved text, deterministic render, prompt-drift verify and parser-on-receipt. Do not use for LLM code in a project that declares no template.prompt.
 ---
 
 # MetaObjects prompt construction
