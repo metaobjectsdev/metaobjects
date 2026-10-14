@@ -123,6 +123,23 @@ public sealed class OneGeneratorListTests : IDisposable
     }
 
     [Fact]
+    public void A_selection_writes_its_entries_as_the_whole_list_does()
+    {
+        IReadOnlyList<IGenerator> declared = OwnedRunner.Declared(_tmp, "entity", "names");
+        Assert.Equal(0, OwnedRunner.Run(_tmp, declared, "gen", MetaDir, "--out", OutDir).ExitCode);
+        var entity = Path.Combine(OutDir, "Subscriber.g.cs");
+        var whole = File.ReadAllText(entity);
+        Assert.Contains("SubscriberNames.", whole);
+
+        var narrowed = OwnedRunner.Run(_tmp, declared, "gen", MetaDir, "--out", OutDir, "--generators", "entity");
+
+        Assert.True(narrowed.ExitCode == 0, $"exit={narrowed.ExitCode}\nstdout={narrowed.Stdout}\nstderr={narrowed.Stderr}");
+        Assert.Equal(whole, File.ReadAllText(entity));
+        var verify = OwnedRunner.Run(_tmp, declared, "verify", MetaDir, "--codegen", "--out", OutDir, "--generators", "entity");
+        Assert.True(verify.ExitCode == 0, $"exit={verify.ExitCode}\nstdout={verify.Stdout}\nstderr={verify.Stderr}");
+    }
+
+    [Fact]
     public void A_selection_matches_an_entry_by_its_registry_name()
     {
         // `entity` builds a generator named `entity-generator`; an owned copy keeps that name.

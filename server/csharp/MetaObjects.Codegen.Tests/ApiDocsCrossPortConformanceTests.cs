@@ -13,7 +13,7 @@ namespace MetaObjects.Codegen.Tests;
 /// surfaces against this manifest; this is the analogous C# assertion.
 ///
 /// It runs the <c>api-docs</c> entry the way <c>dotnet meta gen</c> runs a project's list
-/// (ADR-0034 Amendment 9): through <see cref="CodegenCli.RunGen(MetaObjects.Loader.LoadResult, string, string, bool, IReadOnlyList{IGenerator}, string?, ColumnNamingStrategy, string)"/>,
+/// (ADR-0034 Amendment 9): through <see cref="CodegenCli.RunGen(MetaObjects.Loader.LoadResult, string, string, bool, IReadOnlyList{IGenerator}, string?, ColumnNamingStrategy, string, bool?)"/>,
 /// with the entry's <c>OutDir</c> as the docs root. For every manifest unit it then asserts that
 /// <c>&lt;OutDir&gt;/&lt;apiCsharpPath&gt;</c> exists and carries the contract model back-link
 /// <c>**Model / metadata:** [&lt;node&gt;](&lt;apiCsharpToModel&gt;)</c>. The manifest is the single

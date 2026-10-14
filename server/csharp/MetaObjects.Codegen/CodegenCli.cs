@@ -78,7 +78,7 @@ public static class CodegenCli
             : LegacyTemplatesDir;
 
     /// <summary>The outcome of a gen run: pure data, no console I/O.</summary>
-    /// <summary>The prefixes <see cref="RunGen(LoadResult, string, string, bool, IReadOnlyList{IGenerator}, string?, ColumnNamingStrategy, string)"/>
+    /// <summary>The prefixes <see cref="RunGen(LoadResult, string, string, bool, IReadOnlyList{IGenerator}, string?, ColumnNamingStrategy, string, bool?)"/>
     /// puts on a GENERATOR's failure, as opposed to a metadata load error.</summary>
     public const string GeneratorFailedPrefix = "codegen failed: ";
     public const string RenderFailedPrefix = "template render failed: ";
@@ -194,6 +194,12 @@ public static class CodegenCli
     /// name-resolved list (<c>MetaObjects.Cli.GenCommand</c>, via <see cref="GeneratorRegistry"/>).
     /// This overload resolves no names.
     /// </param>
+    /// <param name="includeNames">
+    /// Whether the run's list includes the <c>names</c> generator, which decides how every other
+    /// generator spells a physical name. A <c>--generators</c> narrowing passes its declared list's
+    /// answer, so the entries it runs write what the whole list writes. <c>null</c> asks
+    /// <paramref name="generators"/>.
+    /// </param>
     /// <param name="projectRoot">
     /// Anchors <c>.metaobjects/.gen-state/</c> and the manifest's relative keys. Defaults
     /// to the current directory for a caller that names no project (mirrors
@@ -202,7 +208,8 @@ public static class CodegenCli
     public static GenOutcome RunGen(
         LoadResult load, string outDir, string ns, bool emitAbstractShapes,
         IReadOnlyList<IGenerator> generators, string? projectRoot = null,
-        ColumnNamingStrategy columnNaming = ColumnNamingStrategy.Literal, string baseline = "default")
+        ColumnNamingStrategy columnNaming = ColumnNamingStrategy.Literal, string baseline = "default",
+        bool? includeNames = null)
     {
         var loadErrors = load.Errors.Select(e => e.Code.ToString()).ToList();
         if (loadErrors.Count > 0) return new GenOutcome(loadErrors, null);
@@ -224,7 +231,7 @@ public static class CodegenCli
             // "names") actually part of THIS resolved list? Checked by NAME, not by
             // `is NamesGenerator`, so an OWNED copy of NamesGenerator — a different CLR
             // type, in a different assembly, once ejected — still satisfies the gate.
-            IncludeNames = generators.Any(g => g.Name == "names"),
+            IncludeNames = includeNames ?? generators.Any(g => g.Name == "names"),
         };
 
         CodegenRunner.RunResult result;
@@ -640,20 +647,19 @@ public static class CodegenCli
         // A list that is present and empty is not an error: it writes nothing and says so.
         if (suite.Count == 0)
         {
-            Console.WriteLine(a.Selection is { Count: > 0 }
-                ? $"{GenCommandName}: the --generators selection matched no declared entry; nothing written"
-                : $"{GenCommandName}: {GeneratorListPath} declares no generators; nothing written");
+            Console.WriteLine($"{GenCommandName}: {GeneratorListPath} declares no generators; nothing written");
             return 0;
         }
 
         // Advisory, before the run: a generator declared without the ones its output
         // references still generates, but the result will not compile.
-        foreach (var w in GeneratorRegistry.UnsatisfiedRequires(RegistryNames(suite, templateRoot)))
+        foreach (var w in GeneratorRegistry.UnsatisfiedRequires(RegistryNames(declared, templateRoot)))
             Console.Error.WriteLine($"warning: {w}");
 
         // ADR-0023: gen loads leniently; name what `verify` would reject instead of staying silent.
         WarnUnknownAttrs(meta);
-        var outcome = RunGen(meta.Load(), a.OutDir, a.Namespace, a.EmitAbstractShapes, suite, projectRoot, columnNaming, a.Baseline);
+        var outcome = RunGen(meta.Load(), a.OutDir, a.Namespace, a.EmitAbstractShapes, suite, projectRoot, columnNaming, a.Baseline,
+            includeNames: declared.Any(g => g.Name == "names"));
         if (!outcome.Ok)
         {
             ReportFailure(outcome, GenCommandName);
@@ -752,7 +758,7 @@ public static class CodegenCli
             OutDir = a.OutDir,
             Namespace = effectiveNs,
             ColumnNamingStrategy = columnNaming,
-            IncludeNames = suite.Any(g => g.Name == "names"),
+            IncludeNames = declared.Any(g => g.Name == "names"),
         };
         var result = CodegenDrift.Compute(config, load.Root, suite, narrowed: a.Selection is { Count: > 0 });
         if (result.Error is not null)
