@@ -25,7 +25,7 @@ from dataclasses import dataclass
 from typing import Callable
 
 from metaobjects.codegen.generator import Generator
-from metaobjects.codegen.project_config import DEFAULT_REQUIREMENT_WITNESS_MODULE
+from metaobjects.codegen.project_config import DEFAULT_REQUIREMENT_WITNESS_MODULE, ApiDocsConfig
 from metaobjects.codegen.generators.api_docs_generator import api_docs_generator
 from metaobjects.codegen.generators.entity_model import entity_model
 from metaobjects.codegen.generators.extractor_generator import extractor_generator
@@ -108,8 +108,11 @@ class GeneratorBuildContext:
     #: (``--list``, registry identity), which every factory must tolerate.
     template_root: str | None = None
     #: The ``requirementTests`` block of ``metaobjects.config.yaml``, resolved. ``None`` =
-    #: no block (flag mode, ``--list``): the ``requirement-tests`` generator uses its defaults.
+    #: no block (or ``--list``): the ``requirement-tests`` generator uses its defaults.
     requirement_tests: RequirementTestsOptions | None = None
+    #: The ``apiDocs`` block of ``metaobjects.config.yaml``. ``None`` = no block (or
+    #: ``--list``): the ``api-docs`` generator uses its defaults.
+    api_docs: ApiDocsConfig | None = None
 
 
 @dataclass(frozen=True)
@@ -157,12 +160,6 @@ class GeneratorEntry:
     def symbol(self) -> str | None:
         """The factory name an owned copy exports, or ``None``."""
         return self.source.__name__ if self.source is not None else None
-
-    @property
-    def docs_surface(self) -> str | None:
-        """The docs surface this generator takes over (``metaobjects docs`` runs it, ``gen``
-        skips it), or ``None`` for a generator ``gen`` runs."""
-        return getattr(self.factory(GeneratorBuildContext()), "docs_surface", None)
 
 
 def _template_primitive(_ctx: GeneratorBuildContext) -> Generator:
@@ -335,11 +332,11 @@ GENERATOR_REGISTRY: dict[str, GeneratorEntry] = {
         name="api-docs",
         description=(
             "Per-entity/template SDK API reference (generated-code API; human + agent forms). "
-            "Run by `metaobjects docs`, not `gen`."
+            "Writes under its target's outDir; options in the top-level `apiDocs` block."
         ),
         tier="native",
         layer="docs",
-        factory=lambda _ctx: api_docs_generator(),
+        factory=api_docs_generator,
         source=api_docs_generator,
         runtime=_API_DOCS_RUNTIME + _SHARED_PREDICATES + (_M2M_CODEGEN,),
     ),

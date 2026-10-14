@@ -14,6 +14,7 @@ import pytest
 
 from metaobjects.cli import main
 from tests.codegen.gen_suite import GEN_SUITE
+from tests.codegen.config_helpers import as_config
 
 
 def _meta_dir(tmp_path: Path, reference_field: str, duplicate_label: bool) -> str:
@@ -54,8 +55,8 @@ def _meta_dir(tmp_path: Path, reference_field: str, duplicate_label: bool) -> st
 
 def _verify(tmp_path: Path, meta_dir: str, *extra: str) -> int:
     out = tmp_path / "out"
-    assert main(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)]) == 0
-    return main(["verify", "--codegen", "--generators", GEN_SUITE, meta_dir, "--out", str(out), *extra])
+    assert main(as_config(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)])) == 0
+    return main(as_config(["verify", "--codegen", "--generators", GEN_SUITE, meta_dir, "--out", str(out), *extra]))
 
 
 def test_findings_are_advisory_and_do_not_change_the_exit_code(

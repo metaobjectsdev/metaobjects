@@ -24,6 +24,7 @@ import pytest
 
 from metaobjects.cli import main
 from tests.codegen.gen_suite import GEN_SUITE
+from tests.codegen.config_helpers import as_config
 
 FITNESS = (
     Path(__file__).parents[4]
@@ -136,17 +137,17 @@ def _meta_dir_with(tmp_path: Path, meta_json: str) -> str:
 def test_codegen_in_sync_returns_zero(tmp_path: Path) -> None:
     meta_dir = _meta_dir(tmp_path)
     out = tmp_path / "out"
-    assert main(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)]) == 0
-    assert main(["verify", "--codegen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)]) == 0
+    assert main(as_config(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)])) == 0
+    assert main(as_config(["verify", "--codegen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)])) == 0
 
 
 def test_codegen_detects_drift(tmp_path: Path) -> None:
     meta_dir = _meta_dir(tmp_path)
     out = tmp_path / "out"
-    assert main(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)]) == 0
+    assert main(as_config(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)])) == 0
     target = out / "Program.py"
     target.write_text(target.read_text() + "\n# hand-edited drift\n")
-    assert main(["verify", "--codegen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)]) != 0
+    assert main(as_config(["verify", "--codegen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)])) != 0
 
 
 # --- 2. --templates = render-verify drift -----------------------------------
@@ -255,8 +256,8 @@ def test_templates_prompt_required_tag_present_passes(tmp_path: Path) -> None:
 def test_bare_verify_is_codegen_backcompat(tmp_path: Path, capsys) -> None:
     meta_dir = _meta_dir(tmp_path)
     out = tmp_path / "out"
-    assert main(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)]) == 0
-    rc = main(["verify", "--generators", GEN_SUITE, meta_dir, "--out", str(out)])
+    assert main(as_config(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)])) == 0
+    rc = main(as_config(["verify", "--generators", GEN_SUITE, meta_dir, "--out", str(out)]))
     assert rc == 0
     note = capsys.readouterr().err + capsys.readouterr().out
     # A one-line note advertising the explicit subverbs is printed.
@@ -266,9 +267,9 @@ def test_bare_verify_is_codegen_backcompat(tmp_path: Path, capsys) -> None:
 def test_bare_verify_detects_codegen_drift(tmp_path: Path) -> None:
     meta_dir = _meta_dir(tmp_path)
     out = tmp_path / "out"
-    assert main(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)]) == 0
+    assert main(as_config(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)])) == 0
     (out / "Program.py").unlink()
-    assert main(["verify", "--generators", GEN_SUITE, meta_dir, "--out", str(out)]) != 0
+    assert main(as_config(["verify", "--generators", GEN_SUITE, meta_dir, "--out", str(out)])) != 0
 
 
 # --- 4. --db is rejected in the Python port (exit 2) ------------------------
@@ -298,11 +299,11 @@ def test_invalid_flag_exit_2() -> None:
 def test_combined_codegen_and_templates_aggregates_exit(tmp_path: Path) -> None:
     meta_dir = _meta_dir_with(tmp_path, _META_CLEAN)
     out = tmp_path / "out"
-    assert main(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)]) == 0
+    assert main(as_config(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)])) == 0
     troot = _templates_dir(tmp_path, "Hello {{missing}}")
     # codegen clean, templates drift → aggregate non-zero.
     rc = main(
-        [
+        as_config([
             "verify",
             "--codegen", "--generators", GEN_SUITE,
             "--templates",
@@ -311,7 +312,7 @@ def test_combined_codegen_and_templates_aggregates_exit(tmp_path: Path) -> None:
             str(out),
             "--templates-root",
             troot,
-        ]
+        ])
     )
     assert rc != 0
 

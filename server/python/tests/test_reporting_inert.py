@@ -55,6 +55,15 @@ SERVED_REPORT_FILES: dict[str, list[str]] = {
 }
 
 
+def _code_generators() -> list[GeneratorEntry]:
+    """Every registered generator but ``api-docs``. Since 1.1.0 ``gen`` runs ``api-docs`` like
+    any other entry; its pages document the model, so a served report changes the index and
+    the agent page as well as adding its own. That is held to its own test,
+    :func:`test_api_docs_gain_only_the_served_report`, which compares those two pages modulo
+    the report; the tests here pin what the vocabulary does to generated code."""
+    return [e for e in list_generators() if e.name != "api-docs"]
+
+
 def _load(variant: str):
     result = load_uris([(MODELS / variant / "meta.shop.json").as_uri()])
     assert not result.errors, "\n".join(e.message for e in result.errors)
@@ -111,7 +120,7 @@ def test_the_with_model_really_carries_the_vocabulary() -> None:
     assert not any(o.sub_type == OBJECT_SUBTYPE_REPORT for o in _objects("without"))
 
 
-@pytest.mark.parametrize("entry", list_generators(), ids=lambda e: e.name)
+@pytest.mark.parametrize("entry", _code_generators(), ids=lambda e: e.name)
 def test_generator_emits_the_same_files_with_and_without_reporting_nodes(
     entry: GeneratorEntry, tmp_path: Path
 ) -> None:
@@ -126,7 +135,7 @@ def test_generator_emits_the_same_files_with_and_without_reporting_nodes(
 
 def test_every_runnable_generator_in_one_run_emits_the_same_files(tmp_path: Path) -> None:
     runnable = [
-        e for i, e in enumerate(list_generators())
+        e for i, e in enumerate(_code_generators())
         if THREW not in _emit("without", [e], tmp_path / f"probe-{i}")
     ]
     expected = _emit("without", runnable, tmp_path / "a")
@@ -141,7 +150,7 @@ def test_every_runnable_generator_in_one_run_emits_the_same_files(tmp_path: Path
 
 
 def _api_docs(variant: str) -> dict[str, str]:
-    """The api docs surface (``metaobjects docs``): every unit page, the index and the
+    """The api docs surface (the ``api-docs`` generator): every unit page, the index and the
     agent page. A served report is documented; every other report has no generated API."""
     model = PythonApiModelBuilder().build(_load(variant), "shop")
     pages = {
@@ -210,7 +219,7 @@ def test_a_selection_of_only_reports_generates_only_the_served_one(tmp_path: Pat
     result = run_gen(
         GenConfig(out_dir=str(tmp_path / "out")),
         _load("with"),
-        generators=[_build(e, tmp_path) for e in list_generators()],
+        generators=[_build(e, tmp_path) for e in _code_generators()],
         entity_filter=["DailyRevenue", "ProgramEngagement", "ProgramCatalogue", "StoreTotals"],
     )
     names = sorted(Path(path).name for path, _ in result.files)

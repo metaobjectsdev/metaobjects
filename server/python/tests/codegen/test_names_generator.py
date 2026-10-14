@@ -398,7 +398,8 @@ _FITNESS_FIXTURE = (
     / "canonical"
     / "meta.fitness.json"
 )
-from tests.codegen.gen_suite import GEN_SUITE
+from tests.codegen.gen_suite import GEN_SUITE  # noqa: E402 — grouped with the CLI-driven tests below
+from tests.codegen.config_helpers import as_config  # noqa: E402 — likewise
 
 
 def _meta_dir(tmp_path: Path) -> str:
@@ -411,7 +412,7 @@ def _meta_dir(tmp_path: Path) -> str:
 def test_cli_column_naming_flag_reaches_the_generator(tmp_path: Path) -> None:
     meta_dir = _meta_dir(tmp_path)
     out = tmp_path / "out"
-    rc = main(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out), "--column-naming", "snake_case"])
+    rc = main(as_config(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out), "--column-naming", "snake_case"]))
     assert rc == 0
     content = (out / "program_names.py").read_text()
     # priceCents has no explicit @column -> strategy-derived.
@@ -423,7 +424,7 @@ def test_cli_column_naming_flag_reaches_the_generator(tmp_path: Path) -> None:
 def test_cli_column_naming_defaults_to_literal(tmp_path: Path) -> None:
     meta_dir = _meta_dir(tmp_path)
     out = tmp_path / "out"
-    rc = main(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)])
+    rc = main(as_config(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)]))
     assert rc == 0
     content = (out / "program_names.py").read_text()
     assert 'PROGRAM_PRICE_CENTS_COLUMN: Final[str] = "priceCents"' in content
@@ -440,11 +441,11 @@ def test_verify_codegen_with_matching_column_naming_is_clean(tmp_path: Path, cap
     """
     meta_dir = _meta_dir(tmp_path)
     out = tmp_path / "out"
-    assert main(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out), "--column-naming", "snake_case"]) == 0
+    assert main(as_config(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out), "--column-naming", "snake_case"])) == 0
 
     capsys.readouterr()  # discard `gen`'s own stdout
     rc = main(
-        ["verify", meta_dir, "--codegen", "--generators", GEN_SUITE, "--out", str(out), "--column-naming", "snake_case"]
+        as_config(["verify", meta_dir, "--codegen", "--generators", GEN_SUITE, "--out", str(out), "--column-naming", "snake_case"])
     )
     captured = capsys.readouterr()
     assert rc == 0, captured.err
@@ -459,11 +460,11 @@ def test_verify_codegen_with_mismatched_column_naming_reports_drift(tmp_path: Pa
     """
     meta_dir = _meta_dir(tmp_path)
     out = tmp_path / "out"
-    assert main(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out), "--column-naming", "snake_case"]) == 0
+    assert main(as_config(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out), "--column-naming", "snake_case"])) == 0
 
     capsys.readouterr()
     rc = main(
-        ["verify", meta_dir, "--codegen", "--generators", GEN_SUITE, "--out", str(out), "--column-naming", "literal"]
+        as_config(["verify", meta_dir, "--codegen", "--generators", GEN_SUITE, "--out", str(out), "--column-naming", "literal"])
     )
     captured = capsys.readouterr()
     assert rc == 1

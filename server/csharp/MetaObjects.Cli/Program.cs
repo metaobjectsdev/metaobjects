@@ -27,9 +27,12 @@ if (args.Length == 0 || helpRequested)
     (helpRequested ? Console.Out : Console.Error).WriteLine(
         "usage: dotnet meta <command> [options]\n" +
         "  commands:\n" +
-        "    gen <metadataDir> --out <dir> [--namespace <ns>] [--emit-abstract-shapes]\n" +
+        "    init [--root <dir>]                              write codegen/Generators.cs (the generator list),\n" +
+        "                                                     codegen/Program.cs and codegen/Codegen.csproj\n" +
+        "    gen [<metadataDir>] --out <dir> [--namespace <ns>] [--emit-abstract-shapes]\n" +
         "        [--generators <a,b,c>] [--template-root <dir>]\n" +
-        "                                                     generate EF Core code from metadata\n" +
+        "                                                     run the generator list in codegen/Generators.cs;\n" +
+        "                                                     --generators narrows it to the entries named\n" +
         "    gen --list                                       list available generators (stable names) and exit\n" +
         "    verify <metadataDir> [--templates [--prompts <dir>]] [--codegen --out <dir> [--namespace <ns>]] [--db] [--lax]\n" +
         "                                                     drift gates (ADR-0021 D2 subverbs):\n" +
@@ -45,10 +48,6 @@ if (args.Length == 0 || helpRequested)
         "                                                                    this raises a functional requirement nothing\n" +
         "                                                                    implements to an error (or\n" +
         "                                                                    META_REQUIRE_IMPLEMENTERS=1)\n" +
-        "    docs <metadataDir> --out <dir> [--namespace <ns>] [--project <name>] [--model-base-url <url>]\n" +
-        "                                                     emit the generated C# SDK api reference\n" +
-        "                                                     (the api/csharp surface: one page per\n" +
-        "                                                     entity + template, README, AGENT-API)\n" +
         "    eject <name>... [--force] [--root <dir>]        copy a reference generator into\n" +
         "                                                     codegen/generators/ to own (ADR-0034);\n" +
         "                                                     see `dotnet meta gen --list`\n" +
@@ -72,7 +71,8 @@ return args[0] switch
 {
     "gen" => RunGen(args[1..]),
     "verify" => RunVerify(args[1..]),
-    "docs" => RunDocs(args[1..]),
+    "docs" => RemovedDocs(),
+    "init" => RunInit(args[1..]),
     "fmt" => RunFmt(args[1..]),
     "eject" => RunEject(args[1..]),
     "agent-docs" => AgentDocsRedirect(),
@@ -82,230 +82,105 @@ return args[0] switch
 static int RunGen(string[] rest)
 {
     string? metadataDir = null;
-    string? outDir = null;
-    string ns = GenCommand.DefaultNamespace;
-    bool emitAbstractShapes = false;
-    string? columnNamingRaw = null;
-    string baseline = "default";
-    bool list = false;
-    string? generatorsCsv = null;
-    string? templateRoot = null;
-    string? templateSpecPath = null;
+    var legacyDocs = new List<string>();
     for (int i = 0; i < rest.Length; i++)
     {
-        if (rest[i] == "--list") list = true;
-        else if (rest[i] == "--out" && i + 1 < rest.Length) outDir = rest[++i];
-        else if (rest[i] == "--namespace" && i + 1 < rest.Length) ns = rest[++i];
-        else if (rest[i] == "--generators" && i + 1 < rest.Length) generatorsCsv = rest[++i];
-        else if (rest[i] == "--template-root" && i + 1 < rest.Length) templateRoot = rest[++i];
-        else if (rest[i] == "--template-spec" && i + 1 < rest.Length) templateSpecPath = rest[++i];
-        else if (rest[i] == "--emit-abstract-shapes") emitAbstractShapes = true;
-        else if (rest[i] == "--column-naming" && i + 1 < rest.Length) columnNamingRaw = rest[++i];
-        else if (rest[i] == "--baseline" && i + 1 < rest.Length) baseline = rest[++i];
-        else if (rest[i].StartsWith("--baseline=", StringComparison.Ordinal)) baseline = rest[i]["--baseline=".Length..];
+        // `--list` is the catalog: it needs no list and generates nothing.
+        if (rest[i] == "--list")
+        {
+            Console.WriteLine(GenCommand.ListHeader);
+            foreach (var line in GenCommand.ListLines(Directory.GetCurrentDirectory())) Console.WriteLine(line);
+            return 0;
+        }
+        // A 1.0 docs flag is configuration that moved into codegen/Generators.cs (ADR-0034
+        // Amendment 9), not an unknown flag: it is refused below with the line that says where.
+        if (CodegenCli.LegacyDocsFlags.Contains(rest[i]))
+        {
+            if (!legacyDocs.Contains(rest[i])) legacyDocs.Add(rest[i]);
+            if (i + 1 < rest.Length && !rest[i + 1].StartsWith('-')) i++;
+        }
+        else if (GenValueFlags.Contains(rest[i]))
+        {
+            if (i + 1 >= rest.Length) return RefuseFlag("gen", rest[i], GenValueFlags, GenBoolFlags);
+            i++;
+        }
+        else if (rest[i].StartsWith("--baseline=", StringComparison.Ordinal) || GenBoolFlags.Contains(rest[i])) { }
         else if (!rest[i].StartsWith('-')) metadataDir ??= rest[i];
         // An unrecognised flag used to be dropped here: `gen ... --bogus` generated and
         // exited 0, as if the flag had been honoured.
         else return RefuseFlag("gen", rest[i], GenValueFlags, GenBoolFlags);
     }
 
-    // How a field with NO explicit `@column` becomes a physical column name. The
-    // strategy has always existed on GenConfig and every generator honours it; the CLI
-    // simply never set it, so a `dotnet meta gen` adopter was pinned to Literal with no
-    // way out. That is a break rather than a preference: schema is Node-owned
-    // (ADR-0015) and `meta migrate` defaults to snake_case, so a multi-word field
-    // produced `[Column("createdAt")]` against a database column `created_at`.
-    //
-    // An unknown value is a usage error, never a silent fallback to the default — a
-    // typo'd strategy would otherwise generate a whole entity tree bound to the wrong
-    // columns and report success.
-    var columnNaming = ColumnNamingStrategy.Literal;
-    if (columnNamingRaw is not null && !TryParseColumnNaming(columnNamingRaw, out columnNaming))
+    // Before anything else: a run that still carries 1.0 docs flags would pass while writing
+    // no documentation.
+    if (legacyDocs.Count > 0)
     {
-        Console.Error.WriteLine(
-            $"error: unknown --column-naming \"{columnNamingRaw}\"; expected one of: " +
-            "literal, snake_case, kebab-case");
+        Console.Error.WriteLine(CodegenCli.LegacyDocsConfiguration("dotnet meta gen", legacyDocs));
         return 2;
     }
 
-    // Same rule as --column-naming above: an unknown value is a usage error, never a
-    // silent fallback. `fresh` is deliberately NOT accepted here — TypeScript implements
-    // it and this port does not, and taking the value while refusing files anyway would be
-    // a cross-port lie. The error says so rather than leaving the reader to infer it.
-    if (baseline is not ("default" or "adopt"))
-    {
-        Console.Error.WriteLine(
-            $"error: unknown --baseline \"{baseline}\"; this port implements 'default' and 'adopt'. " +
-            "To discard a refused file's content here, delete the file and re-run — it is then " +
-            "written as new. (TypeScript's '--baseline=fresh' does that in one step; it is not " +
-            "implemented in this port.)");
-        return 2;
-    }
-
-    // `--list` — discoverability surface (ADR-0021 D3). Print and exit 0, no codegen.
-    if (list)
-    {
-        Console.WriteLine(GenCommand.ListHeader);
-        foreach (var line in GenCommand.ListLines(Directory.GetCurrentDirectory())) Console.WriteLine(line);
-        return 0;
-    }
-
-    // Usage-first: a missing --out is a plain CLI-usage error, unconditional on
-    // whether metadata can be found — it must win over ResolveMetadataDirOrExit
-    // below, which can itself terminate the process with an unrelated
-    // ERR_COLLECTION_NOT_FOUND. Checking outDir after resolution would show that
-    // confusing error instead of this actionable usage line on the (common)
-    // first-run case where BOTH are missing.
-    if (outDir is null)
-    {
-        Console.Error.WriteLine("usage: dotnet meta gen <metadataDir> --out <dir> [--namespace <ns>] [--generators <a,b,c>] [--template-root <dir>] [--template-spec <json>] [--emit-abstract-shapes] [--column-naming literal|snake_case|kebab-case] [--baseline default|adopt]");
-        Console.Error.WriteLine("       dotnet meta gen --list");
-        return 2;
-    }
-
-    // Rung 1 (explicit positional) is honored as-is; an omitted metadataDir
-    // falls back to the port-neutral .metaobjects/config.json ladder.
-    var resolvedMeta = ResolveMetadataDirOrExit(metadataDir);
+    // An explicit <metadataDir> anchors the project on its parent — the directory holding
+    // `metaobjects/`. With it omitted, the project is the directory gen runs in.
+    var projectRoot = metadataDir is not null
+        ? GenCommand.ProjectRootFor(metadataDir)
+        : Directory.GetCurrentDirectory();
+    if (RequireGeneratorList(projectRoot, "dotnet meta gen") is { } refused) return refused;
 
     // Advisory: nudge a re-scaffold if the copied-in agent context predates this build.
     // Never throws, never changes the exit code (a missing/corrupt manifest is ignored).
     AgentContextStalenessCheck.WarnIfStale(Directory.GetCurrentDirectory());
 
-    var generatorNames = generatorsCsv
-        ?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-
-    // A ladder-resolved (non-null Files) source loads via the already-resolved,
-    // `_pending`-excluded file list (MetaDataLoader.FromUris) — never a second
-    // FromDirectory walk of resolvedMeta.Directory, which would both duplicate
-    // the walk ResolveMetadataDirOrExit already did AND silently include `_pending`.
-    // Where the `.gen-state/.hashes.json` manifest goes. An explicit <metadataDir>
-    // anchors on its parent — the directory holding `metaobjects/`. With it omitted,
-    // the `.metaobjects/config.json` ladder above resolved everything relative to cwd,
-    // so cwd IS the project. Never cwd unconditionally: that scattered a stray
-    // `.metaobjects/` into any directory this ran from.
-    var projectRoot = metadataDir is not null
-        ? GenCommand.ProjectRootFor(metadataDir)
-        : Directory.GetCurrentDirectory();
-
-    // ADR-0034 Amendment 3 hand-off: once `dotnet meta eject` has scaffolded
-    // codegen/Codegen.csproj, THAT project's generator list — not the packaged
-    // registry — is authoritative. Forward the exact args this command received.
-    if (CodegenHandoff.TryRun(projectRoot, ["gen", .. rest], out var handoffExit))
-        return handoffExit;
-
-    // FR-043 — `resolvedMeta.Libraries` is threaded into whichever load path ran
-    // (ladder or explicit <metadataDir>; see ResolveMetadataDirOrExit), so both
-    // branches now build a LoadResult up front and share the single
-    // GenCommand.Run(LoadResult, ...) overload, exactly as VerifyCommand.LoadMetadata
-    // already does.
-    // Advisory, before the run: a generator selected without the ones its output
-    // references still generates, but the result will not compile.
-    if (generatorNames is { Length: > 0 } selectedNames)
-        foreach (var w in GeneratorRegistry.UnsatisfiedRequires(selectedNames))
-            Console.Error.WriteLine($"warning: {w}");
-
-    // ADR-0023: gen loads leniently; name what `verify` would reject instead of staying silent.
-    CodegenCli.WarnUnknownAttrs(resolvedMeta);
-    var load = resolvedMeta.Load();
-    var outcome = GenCommand.Run(
-        load, outDir, ns, emitAbstractShapes, generatorNames, templateRoot, templateSpecPath, projectRoot,
-        columnNaming, baseline);
-    if (outcome.LoadErrors is [GenCommand.NoGeneratorsSelected])
-    {
-        // A usage error, not a load failure: say so, and exit 2 as Python does.
-        Console.Error.WriteLine($"error: {GenCommand.NoGeneratorsSelected}");
-        return 2;
-    }
-    if (!outcome.Ok)
-    {
-        CodegenCli.ReportFailure(new CodegenCli.GenOutcome(outcome.LoadErrors, null), "dotnet meta gen");
-        return 1;
-    }
-    foreach (var f in outcome.Result!.Files) Console.WriteLine($"  {f.Status}: {f.Path}");
-    foreach (var w in outcome.Result!.Warnings) Console.Error.WriteLine($"  warning: {w}");
-    Console.WriteLine($"dotnet meta gen: {outcome.Result!.Files.Count(f => f.Status == "written")} file(s) written");
-
-    // A refusal is a FAILED gate, matching TypeScript's `meta gen` (exit 1). This port and
-    // Python used to warn and exit 0, so an adopter wiring `dotnet meta gen` into CI as a
-    // drift gate was green while codegen refused to write — a gate that did not gate. The
-    // warnings above carry the detail; this line carries the verdict.
-    var refusedCount = outcome.Result!.Files.Count(f => f.Status == "refused");
-    if (refusedCount > 0)
-    {
-        Console.Error.WriteLine(
-            $"dotnet meta gen: FAILED — {refusedCount} file(s) refused (see the warnings above; " +
-            "`--baseline=adopt` records what you have and writes nothing)");
-        return 1;
-    }
-    return 0;
+    // ADR-0034 Amendment 9: the list in codegen/Generators.cs is the run. The codegen project
+    // validates every flag, resolves the metadata and writes; its exit code is this command's.
+    CodegenHandoff.TryRun(projectRoot, ["gen", .. rest], out var handoffExit);
+    return handoffExit;
 }
 
-// `dotnet meta docs` — emit the generated C# SDK api reference (the `api/csharp`
-// surface). Parses <metadataDir> --out <dir> [--project <name>] [--model-base-url <url>],
-// builds + renders the api-docs IR via DocsCommand (pure logic), and writes the pages.
-static int RunDocs(string[] rest)
+// The one refusal for a gen or `verify --codegen` run in a project with no generator list.
+// Null when the project has its list, the codegen project that compiles it, and a Program.cs
+// that runs it.
+static int? RequireGeneratorList(string projectRoot, string command)
 {
-    string? metadataDir = null;
-    string? outDir = null;
-    string? project = null;
-    string? modelBaseUrl = null;
-    // Default the documented namespace to the SAME default `dotnet meta gen` uses, so the
-    // rendered `using <ns>;` import lines match what an adopter writes against generated code.
-    string ns = GenCommand.DefaultNamespace;
-    for (int i = 0; i < rest.Length; i++)
+    if (!CodegenHandoff.HasGeneratorList(projectRoot))
     {
-        if (rest[i] == "--out" && i + 1 < rest.Length) outDir = rest[++i];
-        else if (rest[i] == "--namespace" && i + 1 < rest.Length) ns = rest[++i];
-        else if (rest[i] == "--project" && i + 1 < rest.Length) project = rest[++i];
-        else if (rest[i] == "--model-base-url" && i + 1 < rest.Length) modelBaseUrl = rest[++i];
-        else if (!rest[i].StartsWith('-')) metadataDir ??= rest[i];
-        else return RefuseFlag("docs", rest[i], DocsValueFlags, []);
-    }
-
-    // Usage-first — see the identical comment in RunGen above; a missing --out
-    // must win over ResolveMetadataDirOrExit's own possible ERR_COLLECTION_NOT_FOUND.
-    if (outDir is null)
-    {
-        Console.Error.WriteLine("usage: dotnet meta docs <metadataDir> --out <dir> [--namespace <ns>] [--project <name>] [--model-base-url <url>]");
+        Console.Error.WriteLine(CodegenCli.NoGeneratorList(command));
         return 2;
     }
-
-    // Rung 1 (explicit positional) is honored as-is; an omitted metadataDir
-    // falls back to the port-neutral .metaobjects/config.json ladder.
-    var resolvedMeta = ResolveMetadataDirOrExit(metadataDir);
-
-    // ADR-0034 Amendment 3 hand-off, for a project that owns the api-docs generator: ITS copy
-    // writes the reference, from the generator list in its own codegen/Program.cs.
-    var docsProjectRoot = metadataDir is not null
-        ? GenCommand.ProjectRootFor(metadataDir)
-        : Directory.GetCurrentDirectory();
-    if (CodegenHandoff.TryRun(docsProjectRoot, ["docs", .. rest], out var docsHandoffExit))
-        return docsHandoffExit;
-
-    // Default the project label to the input directory's leaf name (cosmetic — surfaces
-    // in the AGENT-API header). Trailing-separator-safe.
-    project ??= new DirectoryInfo(Path.TrimEndingDirectorySeparator(Path.GetFullPath(resolvedMeta.Directory))).Name;
-
-    // See the identical comment in RunGen above: a ladder-resolved source loads
-    // via its already-resolved, `_pending`-excluded file list, never a second
-    // (unfiltered) directory walk. FR-043 — `resolvedMeta.Libraries` is threaded
-    // in the same way RunGen does.
-    var load = resolvedMeta.Load();
-    var outcome = DocsCommand.Run(load, outDir, project, ns, modelBaseUrl: modelBaseUrl);
-    if (!outcome.Ok)
+    if (!CodegenHandoff.HasOwnedCodegen(projectRoot))
     {
-        foreach (var e in outcome.LoadErrors) Console.Error.WriteLine($"  load error: {e}");
-        if (outcome.CollisionError is not null)
-        {
-            Console.Error.WriteLine($"  {outcome.CollisionError}");
-            Console.Error.WriteLine("dotnet meta docs: FAILED (duplicate api page output path)");
-            return 1;
-        }
-        Console.Error.WriteLine("dotnet meta docs: FAILED (metadata did not load cleanly)");
-        return 1;
+        Console.Error.WriteLine(
+            $"{command}: codegen/Generators.cs has no codegen/Codegen.csproj to compile it. " +
+            "`dotnet meta init` writes the missing files and keeps the ones you have.");
+        return 2;
     }
-    foreach (var p in outcome.WrittenPaths) Console.WriteLine($"  written: {p}");
-    Console.WriteLine($"dotnet meta docs: {outcome.WrittenPaths.Count} api page(s) written");
+    if (CodegenHandoff.ProgramIgnoresList(projectRoot))
+    {
+        Console.Error.WriteLine(CodegenCli.LegacyProgram(command));
+        return 2;
+    }
+    return null;
+}
+
+// `dotnet meta docs` was removed in 1.1.0 (ADR-0034 Amendment 9). It prints the line that names
+// the gen command and the migration section, and exits 2.
+static int RemovedDocs()
+{
+    Console.Error.WriteLine(CodegenCli.DocsCommandRemoved);
+    return 2;
+}
+
+// `dotnet meta init [--root <dir>]` — writes the codegen project that holds the generator list:
+// codegen/Generators.cs, codegen/Program.cs and codegen/Codegen.csproj, each only when missing.
+static int RunInit(string[] rest)
+{
+    string? root = null;
+    for (int i = 0; i < rest.Length; i++)
+    {
+        if (rest[i] == "--root" && i + 1 < rest.Length) root = rest[++i];
+        else return RefuseFlag("init", rest[i], ["--root"], []);
+    }
+    var result = InitCommand.Run(root ?? Directory.GetCurrentDirectory());
+    foreach (var line in result) Console.WriteLine(line);
     return 0;
 }
 
@@ -588,12 +463,11 @@ static int RunVerify(string[] rest)
     var generators = generatorsCsv
         ?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
-    // ADR-0034 Amendment 3 hand-off, scoped to JUST the --codegen gate: once
-    // codegen/Codegen.csproj exists, THAT project's generator list is authoritative for
-    // codegen drift. --templates / --db are unaffected — an ejected project has no
-    // template-drift machinery of its own — so they still run in-process below
-    // (opts.Codegen is cleared only when the hand-off actually ran; a missing --out
-    // falls through to VerifyCommand's own "no --out" usage message unchanged).
+    // ADR-0034 Amendment 9 hand-off, scoped to JUST the --codegen gate: the list in
+    // codegen/Generators.cs is what codegen drift regenerates. --templates / --db do not
+    // depend on the list, so they still run in-process below (opts.Codegen is cleared only
+    // when the hand-off actually ran; a missing --out falls through to VerifyCommand's own
+    // "no --out" usage message unchanged).
     var codegenHandedOff = false;
     var codegenHandoffExit = 0;
     if (codegen && outDir is not null)
@@ -601,18 +475,28 @@ static int RunVerify(string[] rest)
         var projectRoot = metadataDir is not null
             ? GenCommand.ProjectRootFor(metadataDir)
             : Directory.GetCurrentDirectory();
-        // Forward everything the owned runner's regen depends on. It resolves an omitted
-        // <metadataDir> through the same ladder, so only an explicit one is passed on.
-        // --generators matters because the owned runner fills the names it does not own
-        // from the packaged registry; dropping it regenerated only the owned copies.
-        List<string> codegenArgs = ["verify", "--codegen", "--out", outDir];
-        if (metadataDir is not null) codegenArgs.Insert(2, metadataDir);
-        if (nsExplicit) codegenArgs.AddRange(["--namespace", ns]);
-        if (columnNamingRaw is not null) codegenArgs.AddRange(["--column-naming", columnNamingRaw]);
-        if (generatorsCsv is not null) codegenArgs.AddRange(["--generators", generatorsCsv]);
-        if (templateRoot is not null) codegenArgs.AddRange(["--template-root", templateRoot]);
-        if (lax) codegenArgs.Add("--lax");
-        codegenHandedOff = CodegenHandoff.TryRun(projectRoot, codegenArgs.ToArray(), out codegenHandoffExit);
+        // ADR-0034 Amendment 9: --codegen regenerates the list gen runs, so it needs that list.
+        // A project without one fails this gate (exit 2) and only this gate: the requirement
+        // gate below still runs, as it does on every verify.
+        if (RequireGeneratorList(projectRoot, "dotnet meta verify --codegen") is { } refused)
+        {
+            codegenHandedOff = true;
+            codegenHandoffExit = refused;
+        }
+        else
+        {
+            // Forward everything the owned runner's regen depends on. It resolves an omitted
+            // <metadataDir> through the same ladder, so only an explicit one is passed on.
+            // --generators narrows the declared list there exactly as it narrows gen's.
+            List<string> codegenArgs = ["verify", "--codegen", "--out", outDir];
+            if (metadataDir is not null) codegenArgs.Insert(2, metadataDir);
+            if (nsExplicit) codegenArgs.AddRange(["--namespace", ns]);
+            if (columnNamingRaw is not null) codegenArgs.AddRange(["--column-naming", columnNamingRaw]);
+            if (generatorsCsv is not null) codegenArgs.AddRange(["--generators", generatorsCsv]);
+            if (templateRoot is not null) codegenArgs.AddRange(["--template-root", templateRoot]);
+            if (lax) codegenArgs.Add("--lax");
+            codegenHandedOff = CodegenHandoff.TryRun(projectRoot, codegenArgs.ToArray(), out codegenHandoffExit);
+        }
     }
 
     var opts = new VerifyCommand.Options
@@ -718,7 +602,6 @@ partial class Program
     static readonly string[] GenValueFlags =
         ["--out", "--namespace", "--generators", "--template-root", "--template-spec", "--column-naming", "--baseline"];
     static readonly string[] GenBoolFlags = ["--list", "--emit-abstract-shapes"];
-    static readonly string[] DocsValueFlags = ["--out", "--namespace", "--project", "--model-base-url"];
     static readonly string[] VerifyValueFlags =
         ["--prompts", "--out", "--namespace", "--generators", "--template-root", "--column-naming"];
     static readonly string[] VerifyBoolFlags = ["--templates", "--codegen", "--db", "--lax", "--no-field-lint", "--require-implementers"];
@@ -726,10 +609,12 @@ partial class Program
     /// <summary>Each command's usage, printed by <c>dotnet meta &lt;command&gt; --help</c>.</summary>
     static readonly Dictionary<string, string> CommandUsage = new()
     {
-        ["gen"] = "usage: dotnet meta gen <metadataDir> --out <dir> [--namespace <ns>] [--generators <a,b,c>] [--template-root <dir>] [--template-spec <json>] [--emit-abstract-shapes] [--column-naming literal|snake_case|kebab-case] [--baseline default|adopt]\n" +
-                  "       dotnet meta gen --list",
+        ["gen"] = "usage: dotnet meta gen [<metadataDir>] --out <dir> [--namespace <ns>] [--generators <a,b,c>] [--template-root <dir>] [--emit-abstract-shapes] [--column-naming literal|snake_case|kebab-case] [--baseline default|adopt]\n" +
+                  "       dotnet meta gen --list\n" +
+                  "  runs the generator list in codegen/Generators.cs (`dotnet meta init` writes it);\n" +
+                  "  --generators narrows that list to the entries named, and never adds one",
+        ["init"] = "usage: dotnet meta init [--root <dir>]",
         ["verify"] = "usage: dotnet meta verify <metadataDir> [--templates [--prompts <dir>]] [--codegen --out <dir> [--namespace <ns>] [--generators <a,b,c>] [--template-root <dir>] [--column-naming literal|snake_case|kebab-case]] [--db] [--lax] [--no-field-lint] [--require-implementers]",
-        ["docs"] = "usage: dotnet meta docs <metadataDir> --out <dir> [--namespace <ns>] [--project <name>] [--model-base-url <url>]",
         ["fmt"] = "usage: dotnet meta fmt [<metadataDir>] [--check]",
         ["eject"] = "usage: dotnet meta eject <name>... [--force] [--root <dir>]",
     };

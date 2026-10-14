@@ -282,18 +282,17 @@ generator catalog and the Atlas evaluation are 1.2 work.
   the model (`FindInbound`, `TphPlan`, `InstanceArtifacts`, `ReportRows`). `template` is not
   ejectable: it has no emit logic of its own. Packaged output is unchanged and gated to be.
   - **`api-docs` is a generator you can own.** `dotnet meta eject api-docs` copies the page
-    generator with its page model, builder, renderer and path math. `dotnet meta docs` hands
-    off to `dotnet run --project codegen -- docs` once `codegen/generators/ApiDocsGenerator.cs`
-    exists, so your copy writes the reference. What the reference documents is still what the
-    packaged generators emit for (`GeneratorApplicability.Packaged`): an owned `routes` whose
+    generator with its page model, builder, renderer and path math. The api reference is an
+    entry in `codegen/Generators.cs` like any other (see **Removed**: `dotnet meta docs` is
+    gone), with `OutDir`, `ApiSubDir`, `ProjectName` and `ModelBaseUrl` as init properties;
+    `dotnet meta gen` writes the pages and `verify --codegen` checks them. List your copy in
+    place of the packaged entry. What the reference documents is still what the packaged
+    generators emit for (`GeneratorApplicability.Packaged`): an owned `routes` whose
     `AppliesTo` you changed is documented as the packaged one behaves, unless you edit the
     owned builder.
-    `dotnet meta gen` and `verify --codegen` leave a docs generator out. `gen` says so only
-    when a `--generators` selection names `api-docs`; an owned `Program.cs` that lists it runs
-    without a warning.
-    New public API in `MetaObjects.Codegen`: `IDocsGenerator`, `DocsRunFacts`,
-    `GeneratorApplicability`, `GenContext.Applicability` and `GenContext.Docs`,
-    `CodegenCli.RunDocs`, and `ValueObjectNames.ResolveValueObject` (moved from
+    New public API in `MetaObjects.Codegen`: `GeneratorApplicability`,
+    `GenContext.Applicability`, the `ApiDocsGenerator` init properties and
+    `ApiDocsGenerator.DefaultApiSubDir`, and `ValueObjectNames.ResolveValueObject` (moved from
     `RenderHelperGenerator`, where it was `internal`). `CSharpStringLiteral` moved from
     `Fr010FieldMapping` to `CSharpNaming`, so `names` needs no emitter; the old member stays as an
     `[Obsolete]` forwarder (see **Deprecated**).
@@ -340,13 +339,14 @@ generator catalog and the Atlas evaluation are 1.2 work.
   `instance_artifacts`). `template` is not ejectable: it has no emit logic of its own. Packaged
   output is unchanged and gated to be.
   - **`api-docs` is a generator you can own.** `metaobjects eject api-docs` copies the page
-    generator with its page model, builder, renderer and path math. The api reference is now a
-    generator (`docs_surface = "api"`) that `metaobjects docs` runs: an owned copy is listed
-    under the new `docs.generators` block of `metaobjects.config.yaml` and runs in place of the
-    packaged one. `gen` and `verify --codegen` skip a docs generator they find under a target
-    and say so: the packaged `api-docs` name is to be removed (`metaobjects docs` already runs
-    it), an owned copy is to be listed under `docs.generators`. The reference asks `shared_predicates` which objects get a router (the new
-    `emits_writable_router` and the moved `is_read_only_routed`, beside `emits_router`), the
+    generator with its page model, builder, renderer and path math. The api reference is an
+    ordinary generator listed in a target's `generators` (see **Removed**: `metaobjects docs`
+    is gone), with its options in the new top-level `apiDocs` block of
+    `metaobjects.config.yaml` (`apiSubDir`, `projectName`, `modelBaseUrl`); `metaobjects gen`
+    writes the pages into that target's `outDir` and `verify --codegen` checks them. An owned
+    copy is listed in place of `api-docs`. The reference reads `shared_predicates` to decide
+    which objects get a router (the new `emits_writable_router` and the moved
+    `is_read_only_routed`, beside `emits_router`), the
     module your owned `routes` and `filter-allowlist` read, so one edit to the owned predicate
     moves the router, the allowlist and the pages together. The cross-port manifest lists
     `api-docs` for `python`.
@@ -356,9 +356,10 @@ generator catalog and the Atlas evaluation are 1.2 work.
     `fr019_shared_enum`, `m2m_codegen`, and the api reference as `api_docs_model`,
     `api_docs_builder`, `api_docs_renderer` and `api_docs_paths`. `metaobjects.apidocs` keeps
     `naming` and exports `PythonApiModelBuilder`, `PythonApiDocsRenderer` and the path
-    functions as before. New public API: `DocsRunFacts`, `GenContext.docs`, `DEFAULT_API_SUBDIR`
-    and `DOCS_SURFACE_API` in `metaobjects.codegen.generator`, `ProjectConfig.docs_generators`,
-    `GeneratorEntry.docs_surface`, and `metaobjects.codegen.docs_run`.
+    functions as before. New public API: `DEFAULT_API_SUBDIR` in
+    `metaobjects.codegen.generator`, `ApiDocsGenerator(api_subdir, project_name, model_base_url)`,
+    `GeneratorBuildContext.api_docs`, and `ApiDocsConfig`, `ProjectConfig.api_docs` and
+    `TargetConfig.template_spec` in `metaobjects.codegen.project_config`.
   - **A copy you ejected before this release** keeps running: it imports the emitters from
     their old paths, which are deprecated aliases (see **Deprecated**), so it calls the
     packaged emitters as it always did. `metaobjects gen --list` marks it `DIFFERS: N behind`.
@@ -383,7 +384,7 @@ generator catalog and the Atlas evaluation are 1.2 work.
     one documented difference). Another fails on a helper module no registry entry hands over,
     or a generator module no registry entry names.
     The nine Python entries of the shared eject contract's `eject.pending` list are closed, and the
-    contract test runs `api-docs` through `metaobjects docs`, the way it is run.
+    contract test runs `api-docs` through `metaobjects gen`, the way it is run.
 
 - **The stock `entity`, `queries`, `routes` and `barrel` generators are importable again
   (TypeScript).** `entityFile`, `queriesFile`, `routesFile` and `barrel` are exported from
@@ -1070,15 +1071,92 @@ until you regenerate.
   `metaobjects.codegen.extract_delegate_emitter`, `.fr010_field_mapping`,
   `.output_format_spec_emitter`, `.extract_schema_emitter`, `metaobjects.codegen.generators.fr019_shared_enum`,
   `.m2m_codegen`, and `metaobjects.apidocs.api_model`, `.builder`, `.renderer`, `.paths` are
-  each one-line modules that become the new module and warn (`DeprecationWarning`) on import.
+  each one-line modules that become the new module and warn (`FutureWarning`, which Python
+  shows by default, unlike a `DeprecationWarning` raised inside an imported module) on import.
   Same objects, so nothing else changes; import from `metaobjects.codegen.runtime` (the api
   reference modules are `api_docs_model`, `api_docs_builder`, `api_docs_renderer` and
-  `api_docs_paths` there). The old paths will be removed in a later release.
+  `api_docs_paths` there). The old paths will be removed in 2.0.
   `metaobjects.codegen.generators.router_generator.is_read_only_routed` moved to
   `metaobjects.codegen.runtime.shared_predicates`; the router module still re-exports it.
 
+- **C#: `CodegenCli.ComposeGenerators` is `[Obsolete]`.** It composed an owned list with a
+  `--generators` selection by ADDING packaged generators the list did not name. Since 1.1.0 a
+  selection only narrows the declared list (`CodegenCli.SelectDeclared`, ADR-0034 Amendment 9),
+  and `CodegenCli.Run` no longer calls it. It still behaves as in 1.0 for a caller of its own.
+
 ### Removed
 
+- **C#: `dotnet meta docs`, and `dotnet meta gen` without a generator list.** Every generator,
+  the api reference included, is an entry in `codegen/Generators.cs`, and `dotnet meta gen`
+  runs that list and nothing else (ADR-0034 Amendment 9). `dotnet meta docs` prints a line
+  naming `dotnet meta gen` and the migration section, and exits 2. `dotnet meta gen` and
+  `dotnet meta verify --codegen` in a project with no `codegen/Generators.cs` exit 2 with
+  `no codegen/Generators.cs` and write nothing: the in-process `gen <dir> --out <dir>
+  --generators <names>` form, which chose the generators on the command line, is gone. `gen`
+  given `--project` or `--model-base-url` (1.0 docs flags) fails with `found 1.0 docs
+  configuration` before writing anything.
+  - **New:** `dotnet meta init` writes `codegen/Generators.cs` (the list, a static `All`),
+    `codegen/Program.cs` (two lines: `using MetaObjects.Codegen;` and
+    `return CodegenCli.Run(args, Generators.All);`) and `codegen/Codegen.csproj`, each only
+    when missing; `dotnet meta eject` writes the same three files when they are missing, with
+    the copies it ejected already listed. `--generators` now narrows a run to declared entries
+    and refuses a name the list does not declare. Each entry may name its own output directory
+    (`IGenerator.OutDir`, a default interface member returning `null`, which writes under
+    `--out`), and `verify --codegen` compares each entry's directory; `RequirementTestsGenerator`
+    takes one (`OutDir`), so the xUnit tests go to the test project in the same run. A
+    `verify --codegen --generators` narrowing compares only what the named entries write. A
+    blank `--generators` exits 2 rather than running the whole list. The
+    owned runner now also refuses an unknown flag and an unknown `--baseline` value, as
+    `dotnet meta gen` did.
+  - **A 1.0 `codegen/Program.cs` is refused.** One that does not run `Generators.All` would
+    ignore the list, so `dotnet meta gen` and `verify --codegen` exit 2 with
+    `codegen/Program.cs does not run Generators.All` and write nothing; `init` and `eject` say
+    to replace it, and warn when `codegen/Codegen.csproj` pins an older `MetaObjects.Codegen`.
+  - **A template spec is an entry too.** `MetaObjects.Codegen.TemplateCodegen.TemplateSpecGenerator`
+    (`Spec`, `TemplateRoot`, `OutDir`) declares one in `codegen/Generators.cs`. `gen` and
+    `verify --codegen` no longer read `--template-spec` or discover a project-root
+    `template-spec.json`; a run that finds either with no such entry fails with
+    `found 1.0 template-spec configuration` before writing anything.
+  - Removed public API, all added after 1.0.13 and never released: `IDocsGenerator`,
+    `DocsRunFacts`, `GenContext.Docs`, `CodegenCli.RunDocs`, `CodegenCli.DocsOutcome`,
+    `CodegenCli.DocsGeneratorSkipped`, `CodegenHandoff.HasOwnedDocs`. `MetaObjects.Cli.DocsCommand`
+    (the removed command's logic) is gone with the command.
+  - **To upgrade**, run `dotnet meta init`, move each generator you ran into
+    `codegen/Generators.cs` with the api reference's flags as `ApiDocsGenerator` init
+    properties, and replace `dotnet meta docs` with `dotnet meta gen` in scripts: before and
+    after, and each flag's new home, are in
+    [docs-are-generators.md, "C#"](docs/features/migrations/docs-are-generators.md#c).
+- **Python: `metaobjects docs`, and `metaobjects gen` without a config.** Every generator, the
+  api reference included, is an entry in a target's `generators` in `metaobjects.config.yaml`,
+  and `metaobjects gen` runs that list and nothing else (ADR-0034 Amendment 9). `metaobjects
+  docs` prints a line naming `metaobjects gen` and the migration section, and exits 2.
+  `metaobjects gen` and `metaobjects verify --codegen` with no `metaobjects.config.yaml` exit 2
+  with `no metaobjects.config.yaml` and write nothing: the positional
+  `gen <metadata_dir> --out <dir> --generators <names>` form and the no-config fallback are gone,
+  and with a config the positional `<metadata_dir>` and `--out` are refused with a line naming
+  `metadata` and the targets' `outDir`. A config with a top-level `docs` block fails `gen` and
+  `verify --codegen` with `found 1.0 docs configuration` before anything is written.
+  - **New:** the top-level `apiDocs` block (`apiSubDir`, `projectName`, `modelBaseUrl`) carries
+    the api reference's options, and a target's `templateSpec: <path>` declares a template-spec
+    whose generators write into that target, replacing the `--template-spec` flag, which is now
+    refused. A project-root `template-spec.json` that no target declares, which the 1.0 flag form
+    found on its own, fails `gen` and `verify --codegen` with
+    `found 1.0 template-spec configuration`. `--generators` narrows a run to declared entries and refuses a name no target
+    declares; `--column-naming`, `--entities`, `--provider`, `--templates` and `--baseline` now
+    apply to the config's list.
+  - **New refusals.** A target with no `generators` key exits 2 with the migration line
+    (`generators: []` still writes nothing and says so). An `--entities` name that matches no
+    object exits 2, where it used to warn and exit 0. A blank `--generators` (an unset shell
+    variable) exits 2 rather than running the whole list. A `generators` entry holding a comma
+    (`"entity, routes"`) is refused: list each generator as its own entry.
+  - Removed public API, all added after 1.0.13 and never released: `DocsRunFacts`,
+    `GenContext.docs`, `DOCS_SURFACE_API`, `ProjectConfig.docs_generators`,
+    `GeneratorEntry.docs_surface` and the `metaobjects.codegen.docs_run` module.
+  - **To upgrade**, list each generator in a target of `metaobjects.config.yaml`, `api-docs` in a
+    target whose `outDir` is the docs directory, move the docs flags into `apiDocs`, and replace
+    `metaobjects docs` with `metaobjects gen` in scripts: before and after, and each flag's new
+    home, are in
+    [docs-are-generators.md, "Python"](docs/features/migrations/docs-are-generators.md#python).
 - **Java and Kotlin: the `metaobjects:docs` goal.** Documentation is generated the way code
   is: the api reference is a `JavaApiDocsGenerator` or `KotlinApiDocsGenerator` `<generator>`
   entry in the list `metaobjects:generate` runs, with its options in `<args>` (see

@@ -1,15 +1,14 @@
 // The "one implementation, not two" pipeline ADR-0034 Amendment 3 / the eject design
 // doc's C# section asks for: `dotnet meta gen`'s run logic (build GenConfig, call
-// CodegenRunner.Run, translate its exceptions into a clean Outcome) lifted out of
-// MetaObjects.Cli.GenCommand into a public API here, so an ejected `codegen/Program.cs`
-// — which references ONLY this package, never MetaObjects.Cli — can call the exact same
-// pipeline the built-in CLI runs, with its own compile-time-bound IGenerator list in
-// place of a name-resolved one.
+// CodegenRunner.Run, translate its exceptions into a clean Outcome) as a public API here,
+// so the project's `codegen/Program.cs` — which references ONLY this package, never
+// MetaObjects.Cli — runs the generator list it declares in `codegen/Generators.cs`.
 //
-// MetaObjects.Cli.GenCommand.Run CALLS RunGen below rather than reimplementing it: it
-// resolves stable NAMES to generator instances and hands the resolved list here. An
-// ejected Program.cs binds its owned generators with `new`; ComposeGenerators fills the
-// rest of its `--generators` selection from the registry.
+// Since ADR-0034 Amendment 9 that is the ONLY way `dotnet meta gen` generates: the CLI
+// hands every gen and `verify --codegen` to `dotnet run --project codegen`, which calls
+// Run(args, Generators.All) below. `--generators` narrows that declared list and never adds
+// to it. MetaObjects.Cli.GenCommand.Run, which resolves registry names, stays as a
+// programmatic API.
 
 using System.Text.Json;
 using MetaObjects.Codegen.TemplateCodegen;
@@ -23,11 +22,11 @@ namespace MetaObjects.Codegen;
 public static class CodegenCli
 {
     // ------------------------------------------------------------------------
-    // SP-1 declarative template-spec resolution — moved here from
-    // MetaObjects.Cli.GenCommand (which now forwards to these) for the same "one
-    // implementation" reason as RunGen: an ejected codegen/Program.cs needs to discover
-    // a project's template-spec.json exactly as `dotnet meta gen` does, and
-    // MetaObjects.Codegen cannot depend on MetaObjects.Cli.
+    // SP-1 declarative template-spec resolution for the programmatic, name-resolved path
+    // (MetaObjects.Cli.GenCommand forwards to these). The gen command no longer uses it:
+    // since ADR-0034 Amendment 9 a spec runs only as a TemplateSpecGenerator entry in
+    // codegen/Generators.cs, and a conventional template-spec.json nothing declares is refused
+    // (LegacyTemplateSpec).
     // ------------------------------------------------------------------------
 
     /// <summary>The conventional declarative-template-spec file name (SP-1 §4).</summary>
@@ -79,7 +78,7 @@ public static class CodegenCli
             : LegacyTemplatesDir;
 
     /// <summary>The outcome of a gen run: pure data, no console I/O.</summary>
-    /// <summary>The prefixes <see cref="RunGen(LoadResult, string, string, bool, IReadOnlyList{IGenerator}, string?, ColumnNamingStrategy, string)"/>
+    /// <summary>The prefixes <see cref="RunGen(LoadResult, string, string, bool, IReadOnlyList{IGenerator}, string?, ColumnNamingStrategy, string, bool?)"/>
     /// puts on a GENERATOR's failure, as opposed to a metadata load error.</summary>
     public const string GeneratorFailedPrefix = "codegen failed: ";
     public const string RenderFailedPrefix = "template render failed: ";
@@ -171,8 +170,8 @@ public static class CodegenCli
     /// <summary>
     /// Load metadata from <paramref name="metadataDir"/> and run <paramref
     /// name="generators"/> against it. See the <see cref="LoadResult"/> overload for the
-    /// full contract; this one is the convenience an ejected <c>codegen/Program.cs</c>
-    /// calls directly.
+    /// full contract; this one is the convenience a program of the project's own may call
+    /// directly.
     /// </summary>
     public static GenOutcome RunGen(
         string metadataDir, string outDir, string ns, bool emitAbstractShapes,
@@ -190,27 +189,27 @@ public static class CodegenCli
     /// than a throw.
     /// </summary>
     /// <param name="generators">
-    /// The resolved generator instances to run — an adopter's own <c>new</c>-built list
-    /// (an ejected <c>codegen/Program.cs</c>), or the CLI's name-resolved list
-    /// (<c>MetaObjects.Cli.GenCommand</c>, via <see cref="GeneratorRegistry"/>), or the two
-    /// composed by <see cref="ComposeGenerators"/>. This overload resolves no names.
+    /// The resolved generator instances to run — the project's own <c>new</c>-built list
+    /// (<c>codegen/Generators.cs</c>), narrowed by <see cref="SelectDeclared"/>, or a
+    /// name-resolved list (<c>MetaObjects.Cli.GenCommand</c>, via <see cref="GeneratorRegistry"/>).
+    /// This overload resolves no names.
+    /// </param>
+    /// <param name="includeNames">
+    /// Whether the run's list includes the <c>names</c> generator, which decides how every other
+    /// generator spells a physical name. A <c>--generators</c> narrowing passes its declared list's
+    /// answer, so the entries it runs write what the whole list writes. <c>null</c> asks
+    /// <paramref name="generators"/>.
     /// </param>
     /// <param name="projectRoot">
     /// Anchors <c>.metaobjects/.gen-state/</c> and the manifest's relative keys. Defaults
     /// to the current directory for a caller that names no project (mirrors
     /// <c>GenConfig.ProjectRoot</c>'s own default).
     /// </param>
-    /// <param name="selection">
-    /// The <c>--generators</c> names the run was asked for, when it was asked by name. A docs
-    /// generator is never run here; one this selection names is reported as skipped
-    /// (<see cref="DocsGeneratorSkipped"/>), and one that is only in <paramref name="generators"/>
-    /// — an owned list, where the docs run looks for it — is left out without a word.
-    /// </param>
     public static GenOutcome RunGen(
         LoadResult load, string outDir, string ns, bool emitAbstractShapes,
         IReadOnlyList<IGenerator> generators, string? projectRoot = null,
         ColumnNamingStrategy columnNaming = ColumnNamingStrategy.Literal, string baseline = "default",
-        IReadOnlyList<string>? selection = null)
+        bool? includeNames = null)
     {
         var loadErrors = load.Errors.Select(e => e.Code.ToString()).ToList();
         if (loadErrors.Count > 0) return new GenOutcome(loadErrors, null);
@@ -232,13 +231,8 @@ public static class CodegenCli
             // "names") actually part of THIS resolved list? Checked by NAME, not by
             // `is NamesGenerator`, so an OWNED copy of NamesGenerator — a different CLR
             // type, in a different assembly, once ejected — still satisfies the gate.
-            IncludeNames = generators.Any(g => g.Name == "names"),
+            IncludeNames = includeNames ?? generators.Any(g => g.Name == "names"),
         };
-
-        // A docs generator writes the api reference, not code: CodegenRunner leaves it out. A run
-        // asked for one by name says so; an owned list carries one for the docs run, not for this.
-        var docsSkipped = generators.OfType<IDocsGenerator>().Select(g => g.Name)
-            .Where(name => selection?.Contains(name) == true).ToList();
 
         CodegenRunner.RunResult result;
         try
@@ -256,91 +250,165 @@ public static class CodegenCli
             // during the walk — a clean error, not a stack trace.
             return new GenOutcome([$"{GeneratorFailedPrefix}{ex.Message}"], null);
         }
-        if (docsSkipped.Count > 0)
-            result = result with { Warnings = [.. result.Warnings, .. docsSkipped.Select(DocsGeneratorSkipped)] };
         return new GenOutcome(loadErrors, result);
     }
 
-    /// <summary>What a code run says about a docs generator its selection named and it did not run.</summary>
-    public static string DocsGeneratorSkipped(string name) =>
-        $"\"{name}\" writes the api reference, so `gen` skipped it. Run it with `dotnet meta docs`.";
-
     // ------------------------------------------------------------------------
-    // The docs run. `dotnet meta docs` and an owned `codegen/Program.cs`'s `docs` command
-    // are the same pipeline, as `gen` is: this one place builds the context, runs the docs
-    // generators and writes the pages.
+    // The fixed lines of ADR-0034 Amendment 9. MetaObjects.Cli prints them too, so they live
+    // here, in the one package both the CLI and a project's codegen/ reference.
     // ------------------------------------------------------------------------
 
-    /// <summary>The outcome of a docs run: pure data, no console I/O.</summary>
-    public sealed record DocsOutcome(
-        IReadOnlyList<string> LoadErrors, IReadOnlyList<string> WrittenPaths, string? CollisionError = null)
-    {
-        public bool Ok => LoadErrors.Count == 0 && CollisionError is null;
-    }
+    /// <summary>The project's generator list, relative to its root.</summary>
+    public const string GeneratorListPath = "codegen/Generators.cs";
+
+    /// <summary>What <c>dotnet meta docs</c> prints, exit 2: the command was removed.</summary>
+    public const string DocsCommandRemoved =
+        "dotnet meta docs was removed in 1.1.0. `dotnet meta gen` writes documentation now: declare each docs " +
+        "generator in codegen/Generators.cs. See docs/features/migrations/docs-are-generators.md, section \"C#\".";
+
+    /// <summary>The flags a 1.0 project passed to <c>gen</c> for documentation. Nothing reads them in 1.1.0;
+    /// they are <see cref="Generators.ApiDocsGenerator"/>'s init properties now.</summary>
+    public static readonly IReadOnlyList<string> LegacyDocsFlags = ["--project", "--model-base-url"];
+
+    /// <summary>What a gen run given 1.0 docs flags prints before writing anything, exit 2.</summary>
+    /// <param name="command">The command's own name: <c>dotnet meta gen</c>.</param>
+    /// <param name="flags">The 1.0 flags found, in the order given.</param>
+    public static string LegacyDocsConfiguration(string command, IEnumerable<string> flags) =>
+        $"{command}: found 1.0 docs configuration ({string.Join(", ", flags)}). Nothing reads it any more, so this " +
+        "run would write no documentation. Declare each docs generator in codegen/Generators.cs. See " +
+        "docs/features/migrations/docs-are-generators.md, section \"C#\".";
+
+    /// <summary>What a gen run in a project with no <c>codegen/Generators.cs</c> prints, exit 2.</summary>
+    /// <param name="command">The command's own name: <c>dotnet meta gen</c> or <c>dotnet meta verify --codegen</c>.</param>
+    public static string NoGeneratorList(string command) =>
+        $"{command}: no codegen/Generators.cs. The generator list lives there in 1.1.0, documentation included; " +
+        "`dotnet meta init` writes it. See docs/features/migrations/docs-are-generators.md, section \"C#\".";
+
+    /// <summary>What a gen or <c>verify --codegen</c> run prints, exit 2, when <c>codegen/Program.cs</c> does not
+    /// run <c>Generators.All</c>: a 1.0 entry point declares its generators inline and would ignore the list.</summary>
+    /// <param name="command">The command's own name: <c>dotnet meta gen</c> or <c>dotnet meta verify --codegen</c>.</param>
+    public static string LegacyProgram(string command) =>
+        $"{command}: codegen/Program.cs does not run Generators.All, so it would ignore the generator list in " +
+        "codegen/Generators.cs. Replace it with the two-line entry `using MetaObjects.Codegen;` and " +
+        "`return CodegenCli.Run(args, Generators.All);`. See docs/features/migrations/docs-are-generators.md, section \"C#\".";
+
+    /// <summary>What a gen run prints, exit 2, when it finds 1.0 template-spec configuration: a
+    /// project-root <c>template-spec.json</c> no entry declares, or <c>--template-spec</c>. Through
+    /// 1.0 the gen command read either; a spec now runs only as a <see cref="TemplateSpecGenerator"/>
+    /// entry in the list.</summary>
+    /// <param name="command">The command's own name.</param>
+    /// <param name="what">What was found: <c>template-spec.json</c> or <c>--template-spec</c>.</param>
+    public static string LegacyTemplateSpec(string command, string what) =>
+        $"{command}: found 1.0 template-spec configuration ({what}). Nothing reads it any more, so this run " +
+        "would not render its templates. Declare it in codegen/Generators.cs as " +
+        "`new MetaObjects.Codegen.TemplateCodegen.TemplateSpecGenerator { Spec = \"template-spec.json\" }`. " +
+        "See docs/features/migrations/docs-are-generators.md, section \"C#\".";
 
     /// <summary>
-    /// Write the api reference for <paramref name="load"/>'s model under <paramref name="outDir"/>.
-    /// The docs generator is the one in <paramref name="generators"/> that implements
-    /// <see cref="IDocsGenerator"/> — a project's own copy — else the packaged
-    /// <c>api-docs</c>. What it documents is what the packaged generators emit for
-    /// (<see cref="GeneratorApplicability.Packaged"/>). A page path two units resolve to fails the run
-    /// before anything is written.
+    /// The 1.0 template-spec configuration a run would have read and no longer does, or <c>null</c>:
+    /// <c>--template-spec</c> when given, else a <c>template-spec.json</c> at
+    /// <paramref name="projectRoot"/> when no entry of <paramref name="declared"/> declares a spec.
     /// </summary>
-    public static DocsOutcome RunDocs(
-        LoadResult load, string outDir, string ns, DocsRunFacts facts, IReadOnlyList<IGenerator> generators)
+    private static string? LegacyTemplateSpecFound(
+        IReadOnlyList<IGenerator> declared, string? templateSpecFlag, string projectRoot)
     {
-        var loadErrors = load.Errors.Select(e => e.Code.ToString()).ToList();
-        if (loadErrors.Count > 0) return new DocsOutcome(loadErrors, []);
+        if (templateSpecFlag is not null) return "--template-spec";
+        if (declared.Any(g => g is TemplateSpecGenerator)) return null;
+        return File.Exists(Path.Combine(projectRoot, TemplateSpecFileName)) ? TemplateSpecFileName : null;
+    }
 
-        var docs = generators.OfType<IDocsGenerator>().ToList();
-        if (docs.Count == 0) docs.Add(GeneratorRegistry.Get("api-docs")!.Factory(new GeneratorBuildContext()) as IDocsGenerator
-            ?? throw new InvalidOperationException("the packaged api-docs generator is not an IDocsGenerator"));
-
-        var ctx = new GenContext
+    /// <summary>Read every declared template spec once, so a missing or malformed file is a clean
+    /// error before anything is written. <c>null</c> when they all read.</summary>
+    private static string? CheckTemplateSpecs(IReadOnlyList<IGenerator> suite)
+    {
+        foreach (var spec in suite.OfType<TemplateSpecGenerator>())
         {
-            Entities = load.Root.Objects().Where(o => !o.IsReport()).ToList(),
-            Root = load.Root,
-            Config = new GenConfig { OutDir = outDir, Namespace = ns },
-            Applicability = GeneratorApplicability.Packaged,
-            Docs = facts,
-        };
-
-        // Collect path -> content first, so a duplicate page path fails BEFORE any write: a
-        // clean, reportable diagnostic, not an uncaught throw out of the CLI.
-        var emitted = new Dictionary<string, string>(StringComparer.Ordinal);
-        foreach (var generator in docs)
-            foreach (var file in generator.Generate(ctx))
-                if (!emitted.TryAdd(file.Path, file.Content))
-                    return new DocsOutcome(loadErrors, [], $"dotnet meta docs — duplicate api page output path: {file.Path}");
-
-        var written = new List<string>();
-        foreach (var (path, content) in emitted)
-        {
-            var dest = Path.Combine(outDir, path.Replace('/', Path.DirectorySeparatorChar));
-            Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
-            File.WriteAllText(dest, content);
-            written.Add(path);
+            try { _ = spec.Generators(); }
+            catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException or JsonException)
+            {
+                return $"template spec {spec.Spec}: {ex.Message}";
+            }
         }
-        return new DocsOutcome(loadErrors, written);
+        return null;
+    }
+
+    /// <summary>
+    /// The entries of <paramref name="declared"/> a <c>--generators</c> selection names, in their
+    /// declared order (ADR-0034 Amendment 9, rule 5). A selection never adds a generator the list
+    /// does not declare: a name with no declared entry is refused, and <paramref name="error"/> says
+    /// which. A name matches an entry whose <see cref="IGenerator.Name"/> it is, or whose name is the
+    /// packaged generator's that the registry name builds (<c>entity</c> builds
+    /// <c>entity-generator</c>), so an owned copy, which keeps the packaged name, answers to the
+    /// registry name too. No selection returns <paramref name="declared"/> unchanged.
+    /// </summary>
+    public static IReadOnlyList<IGenerator> SelectDeclared(
+        IReadOnlyList<IGenerator> declared, IReadOnlyList<string>? selection, string templateRoot, out string? error)
+    {
+        error = null;
+        if (selection is null) return declared;
+        if (selection.Count == 0)
+        {
+            error = "--generators names no generator.";
+            return [];
+        }
+        var ctx = new GeneratorBuildContext(templateRoot);
+        var picked = new HashSet<IGenerator>(ReferenceEqualityComparer.Instance);
+        var undeclared = new List<string>();
+        foreach (var name in selection)
+        {
+            var packagedName = GeneratorRegistry.Get(name)?.Factory(ctx).Name;
+            var matches = declared.Where(g => g.Name == name || (packagedName is not null && g.Name == packagedName)).ToList();
+            if (matches.Count == 0) undeclared.Add(name);
+            foreach (var g in matches) picked.Add(g);
+        }
+        if (undeclared.Count > 0)
+        {
+            error =
+                $"--generators names {string.Join(", ", undeclared.Select(n => $"\"{n}\""))}, which {GeneratorListPath} " +
+                "does not declare. --generators only narrows the declared list; add the entry to " +
+                $"{GeneratorListPath} to run it.";
+            return [];
+        }
+        return [.. declared.Where(picked.Contains)];
+    }
+
+    /// <summary><paramref name="selected"/>, with the run's <paramref name="templateRoot"/> given to each
+    /// template-spec entry that names none of its own.</summary>
+    private static List<IGenerator> WithTemplateRoot(IReadOnlyList<IGenerator> selected, string templateRoot) =>
+        [.. selected.Select(g => g is TemplateSpecGenerator { TemplateRoot: null } spec
+            ? new TemplateSpecGenerator { Spec = spec.Spec, TemplateRoot = templateRoot, OutDir = spec.OutDir }
+            : g)];
+
+    /// <summary>The registry names of the entries in <paramref name="generators"/> that a registry
+    /// generator builds, for the advisory requires check.</summary>
+    private static IReadOnlyList<string> RegistryNames(IReadOnlyList<IGenerator> generators, string templateRoot)
+    {
+        var ctx = new GeneratorBuildContext(templateRoot);
+        var names = new List<string>();
+        foreach (var entry in GeneratorRegistry.List())
+        {
+            string built;
+            try { built = entry.Factory(ctx).Name; }
+            catch (Exception ex) when (ex is ArgumentException or IOException or InvalidOperationException) { continue; }
+            if (generators.Any(g => g.Name == built || g.Name == entry.Name)) names.Add(entry.Name);
+        }
+        return names;
     }
 
     // ------------------------------------------------------------------------
-    // The ejected codegen/Program.cs entry point (ADR-0034 Amendment 3 / the eject
-    // design doc's C# section, "Hand-off"): `dotnet meta gen` and `dotnet meta verify
-    // --codegen` run `dotnet run --project codegen -- <forwarded args>` and return ITS
-    // exit code once codegen/Codegen.csproj exists (see MetaObjects.Cli.Program). This
-    // is the far end of that hand-off — it mirrors the CLI's own `gen <dir> --out
-    // <dir> ...` / `verify --codegen <dir> --out <dir> ...` argument surface exactly, so
-    // the forwarding is transparent, but is scoped to what an ejected project can do on
-    // its own: codegen (`gen`) and the codegen-drift gate ONLY. Template/db drift stay
-    // with `dotnet meta verify` — an ejected project has no template-spec/prompt-drift
-    // machinery of its own to run, and cross-referencing back into MetaObjects.Cli would
-    // invert the dependency direction (Cli depends on Codegen, never the reverse).
+    // The codegen/Program.cs entry point (ADR-0034 Amendment 9): `dotnet meta gen` and
+    // `dotnet meta verify --codegen` run `dotnet run --project codegen -- <forwarded args>`
+    // and return ITS exit code. This is the far end of that hand-off. It takes the CLI's
+    // `gen [<dir>] --out <dir> ...` / `verify --codegen [<dir>] --out <dir> ...` argument
+    // surface, so the forwarding is transparent, and it owns the checks the CLI used to make
+    // in process: flag refusal, the 1.0-shape refusal, --column-naming and --baseline values.
+    // Template/db drift stay with `dotnet meta verify`; they do not depend on the list, and
+    // cross-referencing back into MetaObjects.Cli would invert the dependency direction.
     // ------------------------------------------------------------------------
 
     /// <summary>
-    /// The forwarded-args entry point an ejected <c>codegen/Program.cs</c> calls:
-    /// <c>CodegenCli.Run(args, generators)</c>. Dispatches on <c>args[0]</c> (<c>"gen"</c>
+    /// The forwarded-args entry point <c>codegen/Program.cs</c> calls:
+    /// <c>CodegenCli.Run(args, Generators.All)</c>. Dispatches on <c>args[0]</c> (<c>"gen"</c>
     /// or <c>"verify"</c>), prints to the console, and returns the process exit code.
     /// </summary>
     public static int Run(string[] args, IReadOnlyList<IGenerator> generators)
@@ -350,24 +418,29 @@ public static class CodegenCli
             Console.Error.WriteLine(
                 "usage: gen [<metadataDir>] --out <dir> [--namespace <ns>] [--generators <a,b,c>]\n" +
                 "           [--emit-abstract-shapes] [--column-naming literal|snake_case|kebab-case]\n" +
-                "           [--baseline default|adopt] [--template-root <dir>] [--template-spec <json>]\n" +
+                "           [--baseline default|adopt] [--template-root <dir>]\n" +
                 "     | verify --codegen [<metadataDir>] --out <dir> [--namespace <ns>] [--generators <a,b,c>]\n" +
-                "           [--column-naming literal|snake_case|kebab-case] [--template-root <dir>] [--lax]\n" +
-                "     | docs [<metadataDir>] --out <dir> [--namespace <ns>] [--project <name>] [--model-base-url <url>]");
+                "           [--column-naming literal|snake_case|kebab-case] [--template-root <dir>] [--lax]");
             return 2;
         }
         return args[0] switch
         {
             "gen" => RunGenArgs(args[1..], generators),
             "verify" => RunVerifyArgs(args[1..], generators),
-            "docs" => RunDocsArgs(args[1..], generators),
+            "docs" => Removed(),
             _ => Unknown(args[0]),
         };
     }
 
+    private static int Removed()
+    {
+        Console.Error.WriteLine(DocsCommandRemoved);
+        return 2;
+    }
+
     private static int Unknown(string cmd)
     {
-        Console.Error.WriteLine($"codegen (owned): unknown command \"{cmd}\" — expected \"gen\", \"verify\" or \"docs\".");
+        Console.Error.WriteLine($"codegen: unknown command \"{cmd}\" — expected \"gen\" or \"verify\".");
         return 2;
     }
 
@@ -383,17 +456,11 @@ public static class CodegenCli
     }
 
     /// <summary>
-    /// The suite an owned project runs: the <c>--generators</c> selection, in its order,
-    /// with each generator the project owns taking the packaged one's place, then any owned
-    /// generator the selection did not name. With no selection, just <paramref name="owned"/>.
-    /// An owned copy is matched by its <c>IGenerator.Name</c>, which eject leaves unchanged;
-    /// that is not always the stable selection name (<c>entity</c> builds
-    /// <c>entity-generator</c>), so each selected name is resolved first and compared by
-    /// the packaged instance's <c>Name</c>.
-    /// Ejecting one generator must not drop the others a project selects: before this, an
-    /// owned runner ignored <c>--generators</c> and regenerated only its own copies.
-    /// Throws <see cref="ArgumentException"/> for an unknown name.
+    /// The 1.0 composition of an owned list with a <c>--generators</c> selection, which ADDED
+    /// packaged generators the list did not name.
     /// </summary>
+    [Obsolete("A --generators selection only narrows the declared list since 1.1.0 (ADR-0034 Amendment 9). " +
+              "Use SelectDeclared; this method is kept for 1.0 callers and is no longer used by Run.")]
     public static IReadOnlyList<IGenerator> ComposeGenerators(
         IReadOnlyList<IGenerator> owned, IReadOnlyList<string>? selection, string templateRoot)
     {
@@ -411,35 +478,76 @@ public static class CodegenCli
         return suite;
     }
 
-    /// <summary>The flags both owned commands share, parsed once.</summary>
+    private static readonly string[] GenValueFlags =
+        ["--out", "--namespace", "--generators", "--template-root", "--template-spec", "--column-naming", "--baseline"];
+    private static readonly string[] GenBoolFlags = ["--emit-abstract-shapes"];
+    private static readonly string[] VerifyValueFlags =
+        ["--out", "--namespace", "--generators", "--template-root", "--column-naming"];
+    private static readonly string[] VerifyBoolFlags = ["--codegen", "--lax"];
+
+    /// <summary>The flags both commands share, parsed once.</summary>
     private sealed class OwnedArgs
     {
-        public string? MetadataDir, OutDir, TemplateRoot, TemplateSpecPath, ColumnNamingRaw, GeneratorsCsv, Project, ModelBaseUrl;
+        public string? MetadataDir, OutDir, TemplateRoot, TemplateSpecPath, ColumnNamingRaw, GeneratorsCsv;
         public string Namespace = "Generated";
         public string Baseline = "default";
         public bool NamespaceExplicit, EmitAbstractShapes, Codegen, Lax;
+        /// <summary>1.0 docs flags given (<see cref="LegacyDocsFlags"/>), in order.</summary>
+        public List<string> LegacyDocs = [];
+        /// <summary>The usage error the arguments earn, or <c>null</c>.</summary>
+        public string? Refusal;
 
         public IReadOnlyList<string>? Selection => GeneratorsCsv
             ?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
-        public static OwnedArgs Parse(string[] rest)
+        public static OwnedArgs Parse(string[] rest, string command, string[] valueFlags, string[] boolFlags)
         {
             var a = new OwnedArgs();
             for (int i = 0; i < rest.Length; i++)
             {
-                if (rest[i] == "--out" && i + 1 < rest.Length) a.OutDir = rest[++i];
-                else if (rest[i] == "--namespace" && i + 1 < rest.Length) { a.Namespace = rest[++i]; a.NamespaceExplicit = true; }
-                else if (rest[i] == "--emit-abstract-shapes") a.EmitAbstractShapes = true;
-                else if (rest[i] == "--column-naming" && i + 1 < rest.Length) a.ColumnNamingRaw = rest[++i];
-                else if (rest[i] == "--baseline" && i + 1 < rest.Length) a.Baseline = rest[++i];
-                else if (rest[i] == "--template-root" && i + 1 < rest.Length) a.TemplateRoot = rest[++i];
-                else if (rest[i] == "--template-spec" && i + 1 < rest.Length) a.TemplateSpecPath = rest[++i];
-                else if (rest[i] == "--generators" && i + 1 < rest.Length) a.GeneratorsCsv = rest[++i];
-                else if (rest[i] == "--project" && i + 1 < rest.Length) a.Project = rest[++i];
-                else if (rest[i] == "--model-base-url" && i + 1 < rest.Length) a.ModelBaseUrl = rest[++i];
-                else if (rest[i] == "--codegen") a.Codegen = true;
-                else if (rest[i] == "--lax") a.Lax = true;
-                else if (!rest[i].StartsWith('-')) a.MetadataDir ??= rest[i];
+                var flag = rest[i];
+                // A 1.0 docs flag is recorded, with its value, and refused by the caller with the
+                // amendment's line: it is not an unknown flag, it is configuration that moved.
+                if (LegacyDocsFlags.Contains(flag))
+                {
+                    if (!a.LegacyDocs.Contains(flag)) a.LegacyDocs.Add(flag);
+                    if (i + 1 < rest.Length && !rest[i + 1].StartsWith('-')) i++;
+                    continue;
+                }
+                if (flag.StartsWith("--baseline=", StringComparison.Ordinal)) { a.Baseline = flag["--baseline=".Length..]; continue; }
+                if (!flag.StartsWith('-')) { a.MetadataDir ??= flag; continue; }
+                if (valueFlags.Contains(flag))
+                {
+                    if (i + 1 >= rest.Length)
+                    {
+                        a.Refusal ??= $"{command}: {flag} needs a value";
+                        continue;
+                    }
+                    var value = rest[++i];
+                    switch (flag)
+                    {
+                        case "--out": a.OutDir = value; break;
+                        case "--namespace": a.Namespace = value; a.NamespaceExplicit = true; break;
+                        case "--column-naming": a.ColumnNamingRaw = value; break;
+                        case "--baseline": a.Baseline = value; break;
+                        case "--template-root": a.TemplateRoot = value; break;
+                        case "--template-spec": a.TemplateSpecPath = value; break;
+                        case "--generators": a.GeneratorsCsv = value; break;
+                    }
+                }
+                else if (boolFlags.Contains(flag))
+                {
+                    if (flag == "--emit-abstract-shapes") a.EmitAbstractShapes = true;
+                    else if (flag == "--codegen") a.Codegen = true;
+                    else if (flag == "--lax") a.Lax = true;
+                }
+                else
+                {
+                    // An unrecognised flag used to be dropped: a run with a typo'd flag
+                    // generated and exited 0, as if the flag had been honoured.
+                    var valid = valueFlags.Concat(boolFlags).Order(StringComparer.Ordinal);
+                    a.Refusal ??= $"unknown flag {flag} for `{command}`. Valid flags: {string.Join(", ", valid)}";
+                }
             }
             return a;
         }
@@ -464,99 +572,130 @@ public static class CodegenCli
         return null;
     }
 
-    private static int RunGenArgs(string[] rest, IReadOnlyList<IGenerator> owned)
+    private const string GenCommandName = "dotnet meta gen";
+    private const string VerifyCommandName = "dotnet meta verify --codegen";
+
+    private static int RunGenArgs(string[] rest, IReadOnlyList<IGenerator> declared)
     {
-        var a = OwnedArgs.Parse(rest);
+        var a = OwnedArgs.Parse(rest, GenCommandName, GenValueFlags, GenBoolFlags);
+        if (a.Refusal is not null)
+        {
+            Console.Error.WriteLine(a.Refusal);
+            return 2;
+        }
+        // Before anything is resolved or written: a run that still carries 1.0 docs flags would
+        // otherwise pass while writing no documentation.
+        if (a.LegacyDocs.Count > 0)
+        {
+            Console.Error.WriteLine(LegacyDocsConfiguration(GenCommandName, a.LegacyDocs));
+            return 2;
+        }
+
+        // How a field with NO explicit `@column` becomes a physical column name. An unknown
+        // value is a usage error, never a silent fallback to the default — a typo'd strategy
+        // would otherwise generate a whole entity tree bound to the wrong columns.
         var columnNaming = ColumnNamingStrategy.Literal;
         if (a.ColumnNamingRaw is not null && !TryParseColumnNaming(a.ColumnNamingRaw, out columnNaming))
         {
-            Console.Error.WriteLine($"error: unknown --column-naming \"{a.ColumnNamingRaw}\"");
+            Console.Error.WriteLine(
+                $"error: unknown --column-naming \"{a.ColumnNamingRaw}\"; expected one of: " +
+                "literal, snake_case, kebab-case");
             return 2;
         }
+        // Same rule. `fresh` is deliberately NOT accepted — TypeScript implements it and this
+        // port does not, and taking the value while refusing files anyway would be a
+        // cross-port lie. The error says so rather than leaving the reader to infer it.
+        if (a.Baseline is not ("default" or "adopt"))
+        {
+            Console.Error.WriteLine(
+                $"error: unknown --baseline \"{a.Baseline}\"; this port implements 'default' and 'adopt'. " +
+                "To discard a refused file's content here, delete the file and re-run — it is then " +
+                "written as new. (TypeScript's '--baseline=fresh' does that in one step; it is not " +
+                "implemented in this port.)");
+            return 2;
+        }
+        // Usage-first: a missing --out is a plain usage error, and must win over the metadata
+        // ladder's own possible ERR_COLLECTION_NOT_FOUND below.
         if (a.OutDir is null)
         {
-            Console.Error.WriteLine("usage: gen [<metadataDir>] --out <dir> [--namespace <ns>] [--generators <a,b,c>] [...]");
+            Console.Error.WriteLine("usage: dotnet meta gen [<metadataDir>] --out <dir> [--namespace <ns>] [--generators <a,b,c>] [...]");
             return 2;
         }
         if (ResolveOrReport(a.MetadataDir) is not { } meta) return 2;
 
         var projectRoot = a.MetadataDir is not null ? ProjectRootFor(a.MetadataDir) : Directory.GetCurrentDirectory();
-        var templateRoot = a.TemplateRoot ?? DefaultTemplateRoot();
-        List<IGenerator> suite;
-        try
+        if (LegacyTemplateSpecFound(declared, a.TemplateSpecPath, projectRoot) is { } legacySpec)
         {
-            suite = [.. ComposeGenerators(owned, a.Selection, templateRoot)];
-            suite.AddRange(TemplateSpecGenerators(projectRoot, a.TemplateSpecPath, a.TemplateRoot));
+            Console.Error.WriteLine(LegacyTemplateSpec(GenCommandName, legacySpec));
+            return 2;
         }
-        catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException or JsonException)
+        var templateRoot = a.TemplateRoot ?? DefaultTemplateRoot();
+        var selected = SelectDeclared(declared, a.Selection, templateRoot, out var selectError);
+        if (selectError is not null)
         {
-            Console.Error.WriteLine($"  error: {ex.Message}");
-            Console.Error.WriteLine("codegen (owned) gen: FAILED");
+            Console.Error.WriteLine($"error: {selectError}");
+            return 2;
+        }
+        var suite = WithTemplateRoot(selected, templateRoot);
+        if (CheckTemplateSpecs(suite) is { } specError)
+        {
+            Console.Error.WriteLine($"  error: {specError}");
+            Console.Error.WriteLine($"{GenCommandName}: FAILED");
             return 1;
         }
 
+        // A list that is present and empty is not an error: it writes nothing and says so.
+        if (suite.Count == 0)
+        {
+            Console.WriteLine($"{GenCommandName}: {GeneratorListPath} declares no generators; nothing written");
+            return 0;
+        }
+
+        // Advisory, before the run: a generator declared without the ones its output
+        // references still generates, but the result will not compile.
+        foreach (var w in GeneratorRegistry.UnsatisfiedRequires(RegistryNames(declared, templateRoot)))
+            Console.Error.WriteLine($"warning: {w}");
+
+        // ADR-0023: gen loads leniently; name what `verify` would reject instead of staying silent.
         WarnUnknownAttrs(meta);
-        var outcome = RunGen(meta.Load(), a.OutDir, a.Namespace, a.EmitAbstractShapes, suite, projectRoot, columnNaming, a.Baseline, a.Selection);
+        var outcome = RunGen(meta.Load(), a.OutDir, a.Namespace, a.EmitAbstractShapes, suite, projectRoot, columnNaming, a.Baseline,
+            includeNames: declared.Any(g => g.Name == "names"));
         if (!outcome.Ok)
         {
-            ReportFailure(outcome, "codegen (owned) gen");
+            ReportFailure(outcome, GenCommandName);
             return 1;
         }
         foreach (var f in outcome.Result!.Files) Console.WriteLine($"  {f.Status}: {f.Path}");
         foreach (var w in outcome.Result!.Warnings) Console.Error.WriteLine($"  warning: {w}");
         var writtenCount = outcome.Result!.Files.Count(f => f.Status == "written");
-        Console.WriteLine($"codegen (owned) gen: {writtenCount} file(s) written");
+        Console.WriteLine($"{GenCommandName}: {writtenCount} file(s) written");
 
+        // A refusal is a FAILED gate, matching TypeScript's `meta gen` (exit 1): an adopter
+        // wiring gen into CI as a drift gate must not be green while codegen refused to write.
         var refusedCount = outcome.Result!.Files.Count(f => f.Status == "refused");
         if (refusedCount > 0)
         {
             Console.Error.WriteLine(
-                $"codegen (owned) gen: FAILED — {refusedCount} file(s) refused (see the warnings above)");
+                $"{GenCommandName}: FAILED — {refusedCount} file(s) refused (see the warnings above; " +
+                "`--baseline=adopt` records what you have and writes nothing)");
             return 1;
         }
         return 0;
     }
 
-    private static int RunDocsArgs(string[] rest, IReadOnlyList<IGenerator> owned)
+    private static int RunVerifyArgs(string[] rest, IReadOnlyList<IGenerator> declared)
     {
-        var a = OwnedArgs.Parse(rest);
-        if (a.OutDir is null)
+        var a = OwnedArgs.Parse(rest, VerifyCommandName, VerifyValueFlags, VerifyBoolFlags);
+        if (a.Refusal is not null)
         {
-            Console.Error.WriteLine("usage: docs [<metadataDir>] --out <dir> [--namespace <ns>] [--project <name>] [--model-base-url <url>]");
+            Console.Error.WriteLine(a.Refusal);
             return 2;
         }
-        if (ResolveOrReport(a.MetadataDir) is not { } meta) return 2;
-
-        // The label defaults to the metadata directory's leaf name, as `dotnet meta docs` does.
-        var project = a.Project
-            ?? new DirectoryInfo(Path.TrimEndingDirectorySeparator(Path.GetFullPath(meta.Directory))).Name;
-        var outcome = RunDocs(meta.Load(), a.OutDir, a.Namespace, new DocsRunFacts(project, a.ModelBaseUrl), owned);
-        if (!outcome.Ok)
-        {
-            foreach (var e in outcome.LoadErrors) Console.Error.WriteLine($"  load error: {e}");
-            if (outcome.CollisionError is not null)
-            {
-                Console.Error.WriteLine($"  {outcome.CollisionError}");
-                Console.Error.WriteLine("codegen (owned) docs: FAILED (duplicate api page output path)");
-                return 1;
-            }
-            Console.Error.WriteLine("codegen (owned) docs: FAILED (metadata did not load cleanly)");
-            return 1;
-        }
-        foreach (var p in outcome.WrittenPaths) Console.WriteLine($"  written: {p}");
-        Console.WriteLine($"codegen (owned) docs: {outcome.WrittenPaths.Count} api page(s) written");
-        return 0;
-    }
-
-    private static int RunVerifyArgs(string[] rest, IReadOnlyList<IGenerator> owned)
-    {
-        var a = OwnedArgs.Parse(rest);
         if (!a.Codegen)
         {
             Console.Error.WriteLine(
-                "codegen (owned) verify: this owned runner only handles `verify --codegen` — " +
-                "template/db drift stay with `dotnet meta verify` (they do not depend on which " +
-                "generators you ejected).");
+                "codegen verify: this runner only handles `verify --codegen` — template/db drift stay " +
+                "with `dotnet meta verify` (they do not depend on the generator list).");
             return 2;
         }
 
@@ -578,27 +717,39 @@ public static class CodegenCli
         if (load.Errors.Count > 0)
         {
             foreach (var e in load.Errors) Console.Error.WriteLine($"  load error: {e.Code}: {e.Message}");
-            Console.Error.WriteLine("codegen (owned) verify --codegen: FAILED (metadata did not load cleanly)");
+            Console.Error.WriteLine($"{VerifyCommandName}: FAILED (metadata did not load cleanly)");
             return 1;
         }
 
-        // The same suite `gen` builds, template-spec generators included: verify must
-        // regenerate what gen wrote, or it convicts gen's own output as drift.
+        // The same suite `gen` builds: verify must regenerate what gen wrote, or it convicts
+        // gen's own output as drift.
         var projectRoot = a.MetadataDir is not null ? ProjectRootFor(a.MetadataDir) : Directory.GetCurrentDirectory();
-        var templateRoot = a.TemplateRoot ?? DefaultTemplateRoot();
-        List<IGenerator> suite;
-        try
+        if (LegacyTemplateSpecFound(declared, null, projectRoot) is { } legacySpec)
         {
-            suite = [.. ComposeGenerators(owned, a.Selection, templateRoot)];
-            suite.AddRange(TemplateSpecGenerators(projectRoot, null, templateRoot));
-        }
-        catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException or JsonException)
-        {
-            Console.Error.WriteLine($"  error: {ex.Message}");
+            Console.Error.WriteLine(LegacyTemplateSpec(VerifyCommandName, legacySpec));
             return 2;
         }
+        var templateRoot = a.TemplateRoot ?? DefaultTemplateRoot();
+        var selected = SelectDeclared(declared, a.Selection, templateRoot, out var selectError);
+        if (selectError is not null)
+        {
+            Console.Error.WriteLine($"error: {selectError}");
+            return 2;
+        }
+        var suite = WithTemplateRoot(selected, templateRoot);
+        if (CheckTemplateSpecs(suite) is { } specError)
+        {
+            Console.Error.WriteLine($"  error: {specError}");
+            return 2;
+        }
+        // An empty list writes nothing, so there is nothing to compare: gen made no directory.
+        if (suite.Count == 0)
+        {
+            Console.WriteLine($"{VerifyCommandName}: {GeneratorListPath} declares no generators; nothing to check");
+            return 0;
+        }
 
-        // Same inference rule `dotnet meta verify --codegen` uses: an explicit
+        // Same inference rule `dotnet meta verify --codegen` has always used: an explicit
         // --namespace always wins; otherwise infer from the committed output so a regen
         // matches output produced with any namespace (avoids spurious drift).
         var effectiveNs = a.NamespaceExplicit ? a.Namespace : (CodegenDrift.InferNamespace(a.OutDir) ?? a.Namespace);
@@ -607,9 +758,9 @@ public static class CodegenCli
             OutDir = a.OutDir,
             Namespace = effectiveNs,
             ColumnNamingStrategy = columnNaming,
-            IncludeNames = suite.Any(g => g.Name == "names"),
+            IncludeNames = declared.Any(g => g.Name == "names"),
         };
-        var result = CodegenDrift.Compute(config, load.Root, suite);
+        var result = CodegenDrift.Compute(config, load.Root, suite, narrowed: a.Selection is { Count: > 0 });
         if (result.Error is not null)
         {
             Console.Error.WriteLine($"  {result.Error}");
@@ -617,11 +768,12 @@ public static class CodegenCli
         }
         if (result.Clean)
         {
-            Console.WriteLine("codegen (owned) verify --codegen: OK (generated output is in sync)");
+            Console.WriteLine($"{VerifyCommandName}: OK (generated output is in sync)");
             return 0;
         }
-        Console.Error.WriteLine($"codegen (owned) verify --codegen: drift ({result.DriftedFiles.Count} file(s) differ from a fresh regen):");
+        Console.Error.WriteLine($"{VerifyCommandName}: drift ({result.DriftedFiles.Count} file(s) differ from a fresh regen):");
         foreach (var line in result.Lines) Console.Error.WriteLine($"  {line}");
+        Console.Error.WriteLine("Run 'dotnet meta gen' to regenerate, then commit the result.");
         return 1;
     }
 }

@@ -39,7 +39,7 @@ public sealed class EjectCompanionsTests : IDisposable
         // runtime for a generator whose output imports it.
         var written = Directory.GetFiles(Owned("codegen"), "*", SearchOption.AllDirectories)
             .Select(f => Path.GetRelativePath(_root, f).Replace(Path.DirectorySeparatorChar, '/'))
-            .Where(f => f is not "codegen/Codegen.csproj" and not "codegen/Program.cs" && !f.StartsWith("codegen/runtime/", StringComparison.Ordinal))
+            .Where(f => !CodegenScaffold.Files.Contains(f) && !f.StartsWith("codegen/runtime/", StringComparison.Ordinal))
             .Order(StringComparer.Ordinal)
             .ToList();
         var expected = EjectableGenerators.SourcePaths(entry)
@@ -96,27 +96,29 @@ public sealed class EjectCompanionsTests : IDisposable
     }
 
     [Fact]
-    public void Ejecting_api_docs_wires_it_into_the_scaffolded_program()
+    public void Ejecting_api_docs_lists_it_in_the_scaffolded_generator_list()
     {
         Assert.Equal(0, EjectCommand.Run(["api-docs"], _root, force: false).ExitCode);
 
-        var program = File.ReadAllText(Owned("codegen/Program.cs"));
-        Assert.Contains("new ApiDocsGenerator(),", program);
+        var list = File.ReadAllText(Owned("codegen/Generators.cs"));
+        Assert.Contains("new Codegen.Generators.ApiDocsGenerator(),", list);
+        Assert.Equal(CodegenScaffold.ProgramCs, File.ReadAllText(Owned("codegen/Program.cs")));
         Assert.True(File.Exists(Owned("codegen/generators/CSharpApiModelBuilder.cs")));
     }
 
     [Fact]
-    public void Docs_hand_off_to_the_owned_project_only_when_the_project_owns_api_docs()
+    public void An_owned_api_docs_copy_runs_through_gen_like_any_other_entry()
     {
-        Assert.False(CodegenHandoff.HasOwnedDocs(_root));
-
-        // A project that ejected something else has an owned codegen project, and `gen` hands off to it; `docs`
-        // does not, because that project's package may predate the `docs` command.
+        // There is no docs hand-off any more: whatever the project ejected, `gen` runs its one list.
+        Assert.False(CodegenHandoff.HasGeneratorList(_root));
         Assert.Equal(0, EjectCommand.Run(["entity"], _root, force: false).ExitCode);
         Assert.True(CodegenHandoff.HasOwnedCodegen(_root));
-        Assert.False(CodegenHandoff.HasOwnedDocs(_root));
+        Assert.True(CodegenHandoff.HasGeneratorList(_root));
 
-        Assert.Equal(0, EjectCommand.Run(["api-docs"], _root, force: false).ExitCode);
-        Assert.True(CodegenHandoff.HasOwnedDocs(_root));
+        // A second eject into the existing list never edits it; it prints the entry to add.
+        var outcome = EjectCommand.Run(["api-docs"], _root, force: false);
+        Assert.Equal(0, outcome.ExitCode);
+        Assert.DoesNotContain("new Codegen.Generators.ApiDocsGenerator()", File.ReadAllText(Owned("codegen/Generators.cs")));
+        Assert.Contains("  new Codegen.Generators.ApiDocsGenerator(),", outcome.Out);
     }
 }

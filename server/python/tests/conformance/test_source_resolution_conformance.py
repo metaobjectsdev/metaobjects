@@ -119,43 +119,48 @@ def test_cli_falls_back_to_neutral_config(tmp_path: Path, monkeypatch) -> None:
     }
 
 
-def test_docs_with_no_positional_falls_back_to_neutral_config(
+def test_api_docs_with_no_metadata_key_falls_back_to_neutral_config(
     tmp_path: Path, monkeypatch
 ) -> None:
-    """`docs` used to declare `metadata_dir` as a REQUIRED positional, so the
-    neutral `.metaobjects/config.json` `sources` rung was unreachable from it
-    even though `gen` and `verify --codegen` could already reach it. A bare
-    `metaobjects docs --out <dir>` must resolve metadata via the same ladder
-    `gen` uses.
+    """The api reference is an entry in the config's generator list since 1.1.0 (ADR-0034
+    Amendment 9; it was ``metaobjects docs``). A config that names no ``metadata`` leaves the
+    location to the ladder's later rungs, so the neutral ``.metaobjects/config.json``
+    ``sources`` rung is reachable from ``gen`` — as it was from ``docs`` and from a ``gen``
+    with no config before 1.1.0 required one.
     """
     (tmp_path / "model").mkdir()
-    (tmp_path / "model" / "meta.a.json").write_text('{"metadata.root":{"children":[]}}')
+    # `gen` runs a generator over the model's objects, so the model declares one.
+    (tmp_path / "model" / "meta.a.json").write_text(
+        '{"metadata.root":{"package":"app","children":[{"object.value":{"name":"Point",'
+        '"children":[{"field.int":{"name":"x"}}]}}]}}'
+    )
     d = tmp_path / ".metaobjects"
     d.mkdir()
     (d / "config.json").write_text(
         json.dumps({"schema_version": 1, "sources": [{"path": "model"}]})
     )
 
+    (tmp_path / "metaobjects.config.yaml").write_text(
+        "targets:\n  docs:\n    outDir: out\n    generators: [api-docs]\n"
+    )
+
     from metaobjects.cli import main
 
     monkeypatch.chdir(tmp_path)
     out = tmp_path / "out"
-    rc = main(["docs", "--out", str(out)])
+    rc = main(["gen"])
     assert rc == 0
     assert (out / "api" / "python" / "README.md").exists()
 
 
-def test_docs_with_metaobjects_config_yaml_honors_declared_libraries(
+def test_api_docs_with_metaobjects_config_yaml_honors_declared_libraries(
     tmp_path: Path, monkeypatch
 ) -> None:
-    """`docs`'s no-positional branch loads `metaobjects.config.yaml` (rung 2 of
-    the ladder) purely to read its `metadata` key, then reloads via
-    `_load_root_from_collection` (formerly `_load_root_from_paths`) — which
-    used to drop both `config.providers` and `config.libraries`, even though
-    `config` was already sitting right there. A project declaring
-    `libraries: ["ai"]` and `extends:
-    metaobjects::ai::LlmCallBase` must resolve through `docs` exactly as it
-    already does through `gen` / `verify --codegen` (see
+    """The api reference used to be written by `docs`, whose no-positional branch loaded
+    `metaobjects.config.yaml` purely to read its `metadata` key and then dropped
+    `config.providers` and `config.libraries`. Since 1.1.0 it is an `api-docs` entry `gen`
+    runs, so a project declaring `libraries: ["ai"]` and `extends:
+    metaobjects::ai::LlmCallBase` must resolve for it exactly as for every other entry (see
     `test_shipped_library_ai.py::TestTheCliCanLoadTheLibrary`).
     """
     (tmp_path / "metadata").mkdir()
@@ -176,7 +181,8 @@ def test_docs_with_metaobjects_config_yaml_honors_declared_libraries(
         'libraries: ["ai"]\n'
         "targets:\n"
         "  main:\n"
-        "    outDir: out\n",
+        "    outDir: docs-out\n"
+        "    generators: [api-docs]\n",
         encoding="utf-8",
     )
 
@@ -184,6 +190,6 @@ def test_docs_with_metaobjects_config_yaml_honors_declared_libraries(
 
     monkeypatch.chdir(tmp_path)
     out = tmp_path / "docs-out"
-    rc = main(["docs", "--out", str(out)])
+    rc = main(["gen"])
     assert rc == 0
     assert (out / "api" / "python" / "README.md").exists()

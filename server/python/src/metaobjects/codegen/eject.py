@@ -32,8 +32,8 @@ manifest (``eject.engineSurface.python`` in ``fixtures/generator-registry-confor
 and ``tests/conformance/test_eject_contract.py`` ejects each generator alone and holds it to
 exactly that.
 
-A docs generator (``api-docs``) is not wired into ``generators``: ``metaobjects docs`` runs
-it from the config's ``docs.generators``, and ``gen`` skips one it finds under a target.
+An owned ``api-docs`` is wired like every other owned copy: its ``module:symbol`` replaces
+``api-docs`` in a target's ``generators`` (ADR-0034 Amendment 9).
 """
 from __future__ import annotations
 
@@ -150,13 +150,7 @@ def eject(names: list[str], root: Path, *, force: bool = False) -> EjectResult:
         target = owned_path(root, n)
         target.write_text(ejected_source(entry), encoding="utf-8")
         out.append(f"ejected {n} -> {target.relative_to(root)}")
-        if entry.docs_surface is not None:
-            out.append(
-                f"  wire it: list {owned_token(entry)} under `docs.generators` in "
-                "metaobjects.config.yaml — `metaobjects docs` runs it; `gen` never does"
-            )
-        else:
-            out.append(f"  wire it: replace \"{n}\" in `generators` with {owned_token(entry)}")
+        out.append(f"  wire it: replace \"{n}\" in `generators` with {owned_token(entry)}")
         for module in entry.runtime:
             rt = runtime_path(root, module)
             rel = rt.relative_to(root)
@@ -176,8 +170,7 @@ def eject(names: list[str], root: Path, *, force: bool = False) -> EjectResult:
     out.append("")
     out.append(
         "The copies are yours: edit them freely. Keep only one of the packaged name and your "
-        "copy in `generators` — wiring both runs both, and they write the same files. "
-        "A docs generator is the exception: `docs.generators` replaces the packaged one."
+        "copy in `generators` — wiring both runs both, and they write the same files."
     )
     return EjectResult(0, out, [])
 

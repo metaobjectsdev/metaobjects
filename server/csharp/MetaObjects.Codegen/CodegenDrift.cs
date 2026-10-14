@@ -63,7 +63,7 @@ public static class CodegenDrift
         public IReadOnlyList<string> DriftedFiles { get; init; } = [];
         /// <summary>Human-readable, one-line-per-file drift summary.</summary>
         public IReadOnlyList<string> Lines { get; init; } = [];
-        /// <summary>Set when the gate could not run (e.g. no committed output to diff against).</summary>
+        /// <summary>Set when the gate could not run (e.g. the regen failed).</summary>
         public string? Error { get; init; }
     }
 
@@ -74,63 +74,48 @@ public static class CodegenDrift
     /// <param name="root">the loaded model (same object `gen` would use).</param>
     /// <param name="generators">the generator suite — always a --generators selection;
     /// this port has no default set (see GenCommand.NoGeneratorsSelected).</param>
-    public static Result Compute(GenConfig config, MetaRoot root, IReadOnlyList<IGenerator> generators)
+    /// <param name="narrowed">the suite is a <c>--generators</c> narrowing of the declared list. Only
+    /// the directories a selected entry writes to are compared, and a committed file the regen does
+    /// not emit is not drift: it may belong to an entry the narrowing left out.</param>
+    public static Result Compute(GenConfig config, MetaRoot root, IReadOnlyList<IGenerator> generators, bool narrowed = false)
     {
-        var committed = Path.GetFullPath(config.OutDir);
-
-        // Nothing to diff against → a usage/configuration problem (exit 2 at the
-        // CLI), not a drift result. Mirrors the TS "no outDir configured" branch.
-        if (!Directory.Exists(committed))
+        // Every directory the list writes into: the run's --out, then each entry's own
+        // OutDir (ADR-0034 Amendment 9 — the api reference has one), each compared whole.
+        // `label` is how a drifted file is reported: --out-relative for the run's own
+        // directory, prefixed with the entry's OutDir as written for the others.
+        var realRootFor = CodegenRunner.OutRootFor(config);
+        var roots = new List<(string Committed, string Label)>();
+        if (!narrowed || generators.Any(g => g.OutDir is not { Length: > 0 }))
+            roots.Add((Path.GetFullPath(config.OutDir), ""));
+        foreach (var g in generators)
         {
-            return new Result
-            {
-                Clean = false,
-                Error =
-                    $"verify --codegen: no committed generated output at \"{config.OutDir}\" — " +
-                    "cannot locate the output to diff against. Run 'dotnet meta gen' first " +
-                    "(or run without --codegen).",
-            };
+            var dir = Path.GetFullPath(realRootFor(g));
+            if (roots.All(r => r.Committed != dir))
+                roots.Add((dir, g.OutDir!.TrimEnd('/', '\\') + "/"));
         }
 
+        // A directory is created only when gen writes a file into it, and git keeps no empty
+        // one, so a missing directory, --out included, is an empty committed tree.
         var tempRoot = Path.Combine(Path.GetTempPath(), "meta-verify-codegen-" + Guid.NewGuid().ToString("N"));
         try
         {
-            // Regenerate the SAME suite into the temp tree. A fresh temp dir means
-            // every file is written (no @generated-marker skip), so the temp tree is
-            // the canonical "what gen would produce right now".
-            var tempConfig = config with { OutDir = tempRoot };
-            CodegenRunner.Run(tempConfig, root, generators);
-
-            var committedFiles = ListFiles(committed);
-            var freshFiles = ListFiles(tempRoot);
+            // Regenerate the SAME suite into the temp tree, each directory into a temp
+            // directory of its own. A fresh temp dir means every file is written (no
+            // @generated-marker skip), so the temp tree is the canonical "what gen would
+            // produce right now".
+            var temps = roots.Select((_, i) => Path.Combine(tempRoot, i.ToString())).ToList();
+            var tempConfig = config with { OutDir = temps[0] };
+            CodegenRunner.Run(tempConfig, root, generators,
+                g => temps[roots.FindIndex(r => r.Committed == Path.GetFullPath(realRootFor(g)))]);
 
             var drifted = new SortedSet<string>(StringComparer.Ordinal);
             var lines = new List<string>();
-
-            foreach (var rel in committedFiles.Union(freshFiles).OrderBy(s => s, StringComparer.Ordinal))
+            for (var i = 0; i < roots.Count; i++)
             {
-                var inCommitted = committedFiles.Contains(rel);
-                var inFresh = freshFiles.Contains(rel);
-                if (inCommitted && !inFresh)
-                {
-                    drifted.Add(rel);
-                    lines.Add($"- {rel} (committed but a fresh regen would not emit it)");
-                }
-                else if (!inCommitted && inFresh)
-                {
-                    drifted.Add(rel);
-                    lines.Add($"+ {rel} (a fresh regen would emit it; not committed — run 'dotnet meta gen')");
-                }
-                else
-                {
-                    var a = File.ReadAllText(Path.Combine(committed, rel));
-                    var b = File.ReadAllText(Path.Combine(tempRoot, rel));
-                    if (!string.Equals(a, b, StringComparison.Ordinal))
-                    {
-                        drifted.Add(rel);
-                        lines.Add($"~ {rel} (committed content differs from a fresh regen)");
-                    }
-                }
+                // A directory nested in this one is another entry's, and is compared as its own.
+                var nested = roots.Where((r, j) => j != i && IsUnder(r.Committed, roots[i].Committed))
+                    .Select(r => r.Committed).ToList();
+                Diff(roots[i].Committed, nested, temps[i], roots[i].Label, !narrowed, drifted, lines);
             }
 
             return new Result
@@ -146,6 +131,51 @@ public static class CodegenDrift
             catch { /* best effort */ }
         }
     }
+
+    /// <summary>Compare one committed directory, less the <paramref name="nested"/> directories, with its
+    /// fresh regen, adding each difference. A committed file the regen does not emit is reported only when
+    /// <paramref name="reportExtra"/>.</summary>
+    private static void Diff(
+        string committed, IReadOnlyList<string> nested, string fresh, string label, bool reportExtra,
+        SortedSet<string> drifted, List<string> lines)
+    {
+        var committedFiles = ListFiles(committed);
+        committedFiles.RemoveWhere(rel => nested.Any(n => IsUnder(Path.Combine(committed, rel), n)));
+        var freshFiles = ListFiles(fresh);
+        foreach (var rel in committedFiles.Union(freshFiles).OrderBy(s => s, StringComparer.Ordinal))
+        {
+            var shown = label + rel;
+            var inCommitted = committedFiles.Contains(rel);
+            var inFresh = freshFiles.Contains(rel);
+            if (inCommitted && !inFresh)
+            {
+                if (!reportExtra) continue;
+                drifted.Add(shown);
+                lines.Add($"- {shown} (committed but a fresh regen would not emit it)");
+            }
+            else if (!inCommitted && inFresh)
+            {
+                drifted.Add(shown);
+                lines.Add($"+ {shown} (a fresh regen would emit it; not committed — run 'dotnet meta gen')");
+            }
+            else
+            {
+                var a = File.ReadAllText(Path.Combine(committed, rel));
+                var b = File.ReadAllText(Path.Combine(fresh, rel));
+                if (!string.Equals(a, b, StringComparison.Ordinal))
+                {
+                    drifted.Add(shown);
+                    lines.Add($"~ {shown} (committed content differs from a fresh regen)");
+                }
+            }
+        }
+    }
+
+    /// <summary>True when <paramref name="path"/> lies inside the directory <paramref name="dir"/>.</summary>
+    private static bool IsUnder(string path, string dir) =>
+        Path.GetFullPath(path).StartsWith(
+            Path.TrimEndingDirectorySeparator(Path.GetFullPath(dir)) + Path.DirectorySeparatorChar,
+            StringComparison.Ordinal);
 
     /// <summary>List files under <paramref name="dir"/> as dir-relative, forward-slash paths.</summary>
     private static HashSet<string> ListFiles(string dir)

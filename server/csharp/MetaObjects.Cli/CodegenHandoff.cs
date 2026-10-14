@@ -1,10 +1,10 @@
-// ADR-0034 Amendment 3 / the eject design doc's C# section, "Hand-off": once `dotnet
-// meta eject` has scaffolded codegen/Codegen.csproj, that project's `new`-built
-// generator list — not the packaged registry — is authoritative for codegen. `dotnet
-// meta gen` and `dotnet meta verify --codegen` detect it and run `dotnet run --project
-// codegen -- <forwarded args>` instead, returning its exit code. The subprocess inherits
-// this process's console, so its own output (MetaObjects.Codegen.CodegenCli.Run's) is
-// what the user sees — nothing here re-prints it.
+// ADR-0034 Amendment 9: the project's generator list is codegen/Generators.cs, compiled by
+// the codegen/ console project that `dotnet meta init` (or a first `dotnet meta eject`)
+// scaffolds. `dotnet meta gen` and `dotnet meta verify --codegen` always run that list:
+// they run `dotnet run --project codegen -- <forwarded args>` and return its exit code.
+// A project with no codegen/Generators.cs has no list, and the CLI refuses rather than
+// generating something it chose. The subprocess inherits this process's console, so its
+// own output (MetaObjects.Codegen.CodegenCli.Run's) is what the user sees.
 
 using System.Diagnostics;
 
@@ -12,24 +12,23 @@ namespace MetaObjects.Cli;
 
 public static class CodegenHandoff
 {
-    /// <summary>True iff <paramref name="projectRoot"/> has an ejected codegen project
-    /// to hand off to. Split out from <see cref="TryRun"/> so the DECISION is testable
-    /// without spawning a process.</summary>
+    /// <summary>True iff <paramref name="projectRoot"/> has a codegen project to hand off to.
+    /// Split out from <see cref="TryRun"/> so the DECISION is testable without spawning a process.</summary>
     public static bool HasOwnedCodegen(string projectRoot) =>
         File.Exists(Path.Combine(projectRoot, "codegen", "Codegen.csproj"));
 
-    /// <summary>True iff <paramref name="projectRoot"/> owns the api-docs generator: the ejected
-    /// codegen project exists AND carries <c>codegen/generators/ApiDocsGenerator.cs</c>. That file is
-    /// what `dotnet meta docs` hands off for — the project's own copy writes the reference. Its
-    /// presence says a tool that can eject api-docs wrote it, NOT that the package
-    /// <c>codegen/Codegen.csproj</c> pins knows the <c>docs</c> command: eject never edits that pin, so
-    /// a project scaffolded by an older tool keeps the older one until its owner raises it, and
-    /// <see cref="EjectCommand.Run"/> warns when it writes into such a project. A project with no such
-    /// file never ejected api-docs, and <c>docs</c> stays with the packaged generator whatever it pins.</summary>
-    public static bool HasOwnedDocs(string projectRoot) =>
-        HasOwnedCodegen(projectRoot) &&
-        MetaObjects.Codegen.GeneratorRegistry.Get("api-docs")?.SourceFileName is { } file &&
-        File.Exists(Path.Combine(projectRoot, "codegen", "generators", file));
+    /// <summary>True iff <paramref name="projectRoot"/> declares its generator list,
+    /// <c>codegen/Generators.cs</c>.</summary>
+    public static bool HasGeneratorList(string projectRoot) =>
+        File.Exists(Path.Combine(projectRoot, "codegen", "Generators.cs"));
+
+    /// <summary>True iff <paramref name="projectRoot"/> has a <c>codegen/Program.cs</c> that does not run
+    /// <c>Generators.All</c>: a 1.0 entry point, which declares its own list and ignores codegen/Generators.cs.</summary>
+    public static bool ProgramIgnoresList(string projectRoot)
+    {
+        var program = Path.Combine(projectRoot, "codegen", "Program.cs");
+        return File.Exists(program) && !File.ReadAllText(program).Contains("Generators.All", StringComparison.Ordinal);
+    }
 
     /// <summary>
     /// When <paramref name="projectRoot"/> has an ejected codegen project, run `dotnet
@@ -39,17 +38,15 @@ public static class CodegenHandoff
     /// </summary>
     public static bool TryRun(string projectRoot, string[] args, out int exitCode)
     {
-        // `docs` hands off only for a project that owns the api-docs generator.
-        var handsOff = args is ["docs", ..] ? HasOwnedDocs(projectRoot) : HasOwnedCodegen(projectRoot);
-        if (!handsOff)
+        if (!HasOwnedCodegen(projectRoot))
         {
             exitCode = 0;
             return false;
         }
 
         Console.WriteLine(
-            "dotnet meta: codegen/Codegen.csproj exists — handing off to " +
-            $"`dotnet run --project codegen -- {string.Join(' ', args)}` (ADR-0034 eject).");
+            "dotnet meta: running the generator list in codegen/Generators.cs — " +
+            $"`dotnet run --project codegen -- {string.Join(' ', args)}`.");
 
         var psi = new ProcessStartInfo("dotnet") { WorkingDirectory = Directory.GetCurrentDirectory() };
         psi.ArgumentList.Add("run");

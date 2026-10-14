@@ -7,6 +7,7 @@ from pathlib import Path
 
 from metaobjects.cli import main
 from tests.codegen.gen_suite import GEN_SUITE
+from tests.codegen.config_helpers import as_config
 
 FITNESS = (
     Path(__file__).parents[4]
@@ -42,7 +43,7 @@ targets:
 
 def test_gen_no_args_runs_all_targets_via_config_flag(tmp_path: Path) -> None:
     cfg = _project(tmp_path, TWO_TARGETS)
-    rc = main(["gen", "--generators", GEN_SUITE, "--config", str(cfg)])
+    rc = main(["gen", "--config", str(cfg)])
     assert rc == 0
     assert (tmp_path / "gen/models/Program.py").exists()
     assert (tmp_path / "gen/models/Week.py").exists()
@@ -63,7 +64,7 @@ def test_gen_no_args_discovers_config_in_cwd(tmp_path: Path, monkeypatch) -> Non
 
 def test_gen_target_scopes_to_one(tmp_path: Path) -> None:
     cfg = _project(tmp_path, TWO_TARGETS)
-    rc = main(["gen", "--generators", GEN_SUITE, "--config", str(cfg), "--target", "models"])
+    rc = main(["gen", "--config", str(cfg), "--target", "models"])
     assert rc == 0
     assert (tmp_path / "gen/models/Program.py").exists()
     assert not (tmp_path / "gen/other").exists()
@@ -71,7 +72,7 @@ def test_gen_target_scopes_to_one(tmp_path: Path) -> None:
 
 def test_gen_unknown_target_errors(tmp_path: Path, capsys) -> None:
     cfg = _project(tmp_path, TWO_TARGETS)
-    rc = main(["gen", "--generators", GEN_SUITE, "--config", str(cfg), "--target", "nope"])
+    rc = main(["gen", "--config", str(cfg), "--target", "nope"])
     assert rc == 1
     assert "unknown --target" in capsys.readouterr().err
 
@@ -98,7 +99,7 @@ targets:
 
 def test_gen_cross_target_duplicate_output_path_guard(tmp_path: Path, capsys) -> None:
     cfg = _project(tmp_path, DUP_TARGETS)
-    rc = main(["gen", "--generators", GEN_SUITE, "--config", str(cfg)])
+    rc = main(["gen", "--config", str(cfg)])
     assert rc == 1
     assert "duplicate output path across targets" in capsys.readouterr().err
 
@@ -108,7 +109,7 @@ def test_verify_dup_targets_config_rejected(tmp_path: Path, capsys) -> None:
     gen (verify is symmetric with gen): the DUP_TARGETS config — two targets emit
     the same Program.py into the same outDir — is rejected with exit 1."""
     cfg = _project(tmp_path, DUP_TARGETS)
-    rc = main(["verify", "--codegen", "--generators", GEN_SUITE, "--config", str(cfg)])
+    rc = main(["verify", "--codegen", "--config", str(cfg)])
     assert rc == 1
     assert "duplicate output path across targets" in capsys.readouterr().err
 
@@ -131,7 +132,7 @@ def test_gen_cross_target_shared_outdir_disjoint_entities_not_flagged(tmp_path: 
     auto-emitted package-marker __init__.py is byte-identical across both targets
     and must not trip the cross-target duplicate-output-path guard."""
     cfg = _project(tmp_path, SHARED_OUTDIR_DISJOINT_ENTITIES)
-    rc = main(["gen", "--generators", GEN_SUITE, "--config", str(cfg)])
+    rc = main(["gen", "--config", str(cfg)])
     assert rc == 0
     assert (tmp_path / "shared/Program.py").exists()
     assert (tmp_path / "shared/Week.py").exists()
@@ -204,7 +205,7 @@ def test_gen_resolves_provider_config_relative_without_pythonpath(tmp_path: Path
     )
     assert str(tmp_path) not in sys.path  # precondition: not already importable
     try:
-        rc = main(["gen", "--generators", GEN_SUITE, "--config", str(cfg)])
+        rc = main(["gen", "--config", str(cfg)])
     finally:
         if str(tmp_path) in sys.path:
             sys.path.remove(str(tmp_path))
@@ -220,7 +221,7 @@ def test_gen_flag_path_ignores_config_when_present(tmp_path: Path) -> None:
     out = tmp_path / "flagout"
     meta = tmp_path / "metaobjects"  # created by _project
     # Flag path: metadata_dir + --out present => config ignored, normal gen.
-    rc = main(["gen", "--generators", GEN_SUITE, str(meta), "--out", str(out)])
+    rc = main(as_config(["gen", "--generators", GEN_SUITE, str(meta), "--out", str(out)]))
     assert rc == 0
     assert (out / "Program.py").exists()
 
@@ -232,10 +233,13 @@ def test_gen_missing_metadata_dir_errors_cleanly(tmp_path: Path, capsys) -> None
     fix) — `iterdir()` raises OSError on a directory that never existed;
     nothing on the `_load_root` path caught it."""
     missing = tmp_path / "does" / "not" / "exist"
-    rc = main(["gen", "--generators", GEN_SUITE, str(missing), "--out", str(tmp_path / "out")])
+    rc = main(as_config(["gen", "--generators", GEN_SUITE, str(missing), "--out", str(tmp_path / "out")]))
     assert rc == 1
     err = capsys.readouterr().err
-    assert "error: failed to load metadata" in err
+    # 1.1.0: the directory is the config's `metadata`, resolved before the load, so the
+    # coded refusal comes from the location ladder.
+    assert "error: could not resolve metadata location" in err
+    assert str(missing) in err
 
 
 def test_gen_metadata_dir_is_a_file_errors_cleanly(tmp_path: Path, capsys) -> None:
@@ -243,7 +247,7 @@ def test_gen_metadata_dir_is_a_file_errors_cleanly(tmp_path: Path, capsys) -> No
     to a plain file rather than a directory."""
     not_a_dir = tmp_path / "somefile.txt"
     not_a_dir.write_text("not a directory")
-    rc = main(["gen", "--generators", GEN_SUITE, str(not_a_dir), "--out", str(tmp_path / "out")])
+    rc = main(as_config(["gen", "--generators", GEN_SUITE, str(not_a_dir), "--out", str(tmp_path / "out")]))
     assert rc == 1
     err = capsys.readouterr().err
     assert "error: failed to load metadata" in err
@@ -270,7 +274,7 @@ def test_gen_no_args_no_yaml_falls_back_to_neutral_config(
     )
 
     monkeypatch.chdir(tmp_path)
-    rc = main(["gen", "--out", "gen/models", "--generators", "entity"])
+    rc = main(as_config(["gen", "--out", "gen/models", "--generators", "entity"]))
     assert rc == 0
     assert (tmp_path / "gen/models/Program.py").exists()
 
@@ -286,6 +290,6 @@ def test_gen_no_args_no_config_at_all_falls_back_to_default_directory(
     (meta / "meta.fitness.json").write_text(FITNESS.read_text())
 
     monkeypatch.chdir(tmp_path)
-    rc = main(["gen", "--out", "gen/models", "--generators", "entity"])
+    rc = main(as_config(["gen", "--out", "gen/models", "--generators", "entity"]))
     assert rc == 0
     assert (tmp_path / "gen/models/Program.py").exists()

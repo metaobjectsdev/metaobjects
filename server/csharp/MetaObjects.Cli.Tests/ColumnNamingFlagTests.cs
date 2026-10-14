@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using Xunit;
 
 namespace MetaObjects.Cli.Tests;
@@ -14,11 +13,13 @@ namespace MetaObjects.Cli.Tests;
 /// defaults to <c>snake_case</c>, so any multi-word field produced an EF entity mapping
 /// <c>[Column("createdAt")]</c> against a database column <c>created_at</c>.</para>
 ///
-/// <para>Driven through the built CLI as a subprocess, not by calling
+/// <para>Driven through the entry point a project's codegen/Program.cs calls,
+/// <c>CodegenCli.Run(args, list)</c> (<see cref="OwnedRunner"/>), not by calling
 /// <c>GenCommand.Run</c>: the defect was precisely that the flag never reached the
-/// config, and only the real entry point can prove the wiring (same reason as
+/// config, and only the real argument parsing can prove the wiring (same reason as
 /// <see cref="MetadataDirFallbackTests"/>).</para>
 /// </summary>
+[Collection(OwnedRunnerCollection.Name)]
 public sealed class ColumnNamingFlagTests : IDisposable
 {
     private readonly string _tmp = Path.Combine(Path.GetTempPath(), "meta-cli-colnaming-" + Guid.NewGuid().ToString("N"));
@@ -56,15 +57,11 @@ public sealed class ColumnNamingFlagTests : IDisposable
     private (string Entity, string Names) GenerateWith(params string[] extraArgs)
     {
         var outDir = Path.Combine(_tmp, "generated-" + Guid.NewGuid().ToString("N"));
-        // --generators is REQUIRED now: there is no default suite. The two this test
-        // reads (entity + names) are exactly what its assertions inspect.
-        var args = new List<string>
-        {
-            "gen", MetaDir, "--out", outDir, "--namespace", "Acme.Generated",
-            "--generators", "entity,names",
-        };
+        // The list declares the two this test reads (entity + names): exactly what its
+        // assertions inspect.
+        var args = new List<string> { "gen", MetaDir, "--out", outDir, "--namespace", "Acme.Generated" };
         args.AddRange(extraArgs);
-        var (exit, stdout, stderr) = RunCli(_tmp, args.ToArray());
+        var (exit, stdout, stderr) = OwnedRunner.Run(_tmp, ["entity", "names"], args.ToArray());
         Assert.True(exit == 0, $"exit={exit}\n{stdout}{stderr}");
         var entity = File.ReadAllText(Path.Combine(outDir, "Subscriber.g.cs"));
         var names = File.ReadAllText(Path.Combine(outDir, "SubscriberNames.g.cs"));
@@ -107,45 +104,9 @@ public sealed class ColumnNamingFlagTests : IDisposable
     public void An_unknown_strategy_is_a_usage_error_naming_the_valid_values()
     {
         var outDir = Path.Combine(_tmp, "generated-bad");
-        var (exit, stdout, stderr) = RunCli(
-            _tmp, "gen", MetaDir, "--out", outDir, "--column-naming", "PascalCase");
+        var (exit, stdout, stderr) = OwnedRunner.Run(
+            _tmp, ["entity", "names"], "gen", MetaDir, "--out", outDir, "--column-naming", "PascalCase");
         Assert.Equal(2, exit);
         Assert.Contains("snake_case", stdout + stderr);
-    }
-
-    private static (int ExitCode, string Stdout, string Stderr) RunCli(string workingDir, params string[] args)
-    {
-        var psi = new ProcessStartInfo("dotnet")
-        {
-            WorkingDirectory = workingDir,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-        };
-        psi.ArgumentList.Add(ResolveCliDll());
-        foreach (var a in args) psi.ArgumentList.Add(a);
-
-        using var proc = Process.Start(psi) ?? throw new InvalidOperationException("failed to start dotnet");
-        var stdout = proc.StandardOutput.ReadToEnd();
-        var stderr = proc.StandardError.ReadToEnd();
-        proc.WaitForExit();
-        return (proc.ExitCode, stdout, stderr);
-    }
-
-    private static string ResolveCliDll()
-    {
-        var testsProjectDir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (testsProjectDir is not null &&
-               !File.Exists(Path.Combine(testsProjectDir.FullName, "MetaObjects.Cli.Tests.csproj")))
-            testsProjectDir = testsProjectDir.Parent;
-        if (testsProjectDir is null)
-            throw new InvalidOperationException(
-                "could not locate MetaObjects.Cli.Tests.csproj by walking up from " + AppContext.BaseDirectory);
-
-        var relSuffix = Path.GetRelativePath(testsProjectDir.FullName, AppContext.BaseDirectory);
-        var dll = Path.Combine(testsProjectDir.Parent!.FullName, "MetaObjects.Cli", relSuffix, "MetaObjects.Cli.dll");
-        if (!File.Exists(dll))
-            throw new FileNotFoundException($"expected the MetaObjects.Cli build output at {dll}", dll);
-        return dll;
     }
 }

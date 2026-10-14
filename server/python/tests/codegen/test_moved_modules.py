@@ -3,7 +3,8 @@
 ``metaobjects eject`` copies the emitters a generator writes through from
 ``metaobjects/codegen/runtime/``, so they moved there. A generator ejected before they moved
 imports them from the old paths; each old path is a deprecated alias that IS the new module
-(same object, so private names and monkeypatching behave as before) and warns once.
+(same object, so private names and monkeypatching behave as before) and warns once, with a
+``FutureWarning`` (shown by default) that names the release that removes it.
 """
 from __future__ import annotations
 
@@ -42,7 +43,7 @@ def test_an_old_path_is_the_new_module_and_warns(old: str, new: str, tmp_path: P
         f"    old = importlib.import_module({old!r})\n"
         f"new = importlib.import_module({new!r})\n"
         "print(json.dumps({'same': old is new, "
-        "'warned': [str(x.message) for x in w if issubclass(x.category, DeprecationWarning)]}))\n"
+        "'warned': [str(x.message) for x in w if issubclass(x.category, FutureWarning)]}))\n"
     )
     proc = subprocess.run(
         [sys.executable, "-c", code], cwd=tmp_path, capture_output=True, text=True,
@@ -53,3 +54,4 @@ def test_an_old_path_is_the_new_module_and_warns(old: str, new: str, tmp_path: P
     result = json.loads(proc.stdout)
     assert result["same"] is True
     assert len(result["warned"]) == 1 and old in result["warned"][0] and new in result["warned"][0]
+    assert "removed in 2.0" in result["warned"][0]

@@ -107,7 +107,7 @@
       "concept": "Per-entity/template SDK API reference (generated-code API; human + agent forms).",
       "tier": "native",
       "layer": "docs",
-      "note": "An ordinary generator, listed in the project's generator list and run by the gen command (ADR-0034 Amendment 9). Java, Kotlin and TypeScript do this today: a `<generator>` entry that `mvn metaobjects:generate` runs, or `apiDocsFile()` in `generators` that `meta gen` runs. C# and Python still run it from the port's docs command (`dotnet meta docs`, `metaobjects docs`), and their gen commands skip it, until each port's Amendment 9 change lands and removes that command.",
+      "note": "An ordinary generator, listed in the project's generator list and run by the gen command (ADR-0034 Amendment 9), in every port: `apiDocsFile()` in `generators` that `meta gen` runs (TypeScript), an `ApiDocsGenerator` entry in `codegen/Generators.cs` that `dotnet meta gen` runs (C#), `api-docs` in a target's `generators` that `metaobjects gen` runs (Python), or a `<generator>` entry that `mvn metaobjects:generate` runs (Java, Kotlin).",
       "eject": "full",
       "ports": ["typescript", "csharp", "java", "kotlin", "python"]
     },
@@ -368,7 +368,6 @@
         "engine": [
           "MetaObjects.Codegen.CSharpNaming",
           "MetaObjects.Codegen.ColumnNamingStrategy",
-          "MetaObjects.Codegen.DocsRunFacts",
           "MetaObjects.Codegen.EmittedFile",
           "MetaObjects.Codegen.FieldNames",
           "MetaObjects.Codegen.GenConfig",
@@ -379,7 +378,6 @@
           "MetaObjects.Codegen.Generators.TphPlan",
           "MetaObjects.Codegen.Generators.TphPlanBuilder",
           "MetaObjects.Codegen.Generators.TphSubtypePlan",
-          "MetaObjects.Codegen.IDocsGenerator",
           "MetaObjects.Codegen.IGenerator",
           "MetaObjects.Codegen.IRequirementTestRenderer",
           "MetaObjects.Codegen.InstanceArtifacts",

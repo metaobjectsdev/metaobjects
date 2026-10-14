@@ -23,6 +23,7 @@ Install the CLI as a .NET tool:
 ```bash
 dotnet tool install --global MetaObjects.Cli
 dotnet meta          # bare invocation prints the usage banner
+dotnet meta init     # writes codegen/Generators.cs (the generator list), Program.cs, Codegen.csproj
 ```
 
 The C# CLI is invoked as `dotnet meta` (command `dotnet-meta`), or run directly
@@ -81,28 +82,68 @@ for a worked example.
 
 ## Generate
 
-**Own a generator.** `dotnet meta eject <name>...` copies a reference generator into `codegen/generators/` and scaffolds an owned `codegen/` console project that `dotnet meta gen` then runs. Every generator `dotnet meta gen --list` shows is ejectable except `template`, the Mustache primitive, which has no emit logic of its own to own. An ejected generator comes with the emitters it writes its output through (the enum, navigation, doc-comment and prompt-tier writers), so the copy owns the code that writes the file and not a shell around the package's; the naming and type-mapping tables (`CSharpNaming`, `ValueObjectNames`) stay in the package as the engine. `dotnet meta eject api-docs` does the same for the api reference `dotnet meta docs` writes. Ejecting into a project whose `codegen/Codegen.csproj` pins an older `MetaObjects.Codegen` than the tool prints a warning naming the line to change. See [Own your codegen → C#](../features/own-your-codegen.md#c-dotnet-meta-eject).
+**The generator list.** Every generator a project runs is an entry in `codegen/Generators.cs`,
+with its options as init properties, the api reference included (ADR-0034 Amendment 9).
+`dotnet meta init` writes that file with an empty list, beside `codegen/Program.cs` (two
+lines that run it) and `codegen/Codegen.csproj`. `dotnet meta gen` runs the list through
+`dotnet run --project codegen`; nothing is generated that the list does not declare, and a
+project with no `codegen/Generators.cs` gets an error, not output.
+
+```csharp
+// codegen/Generators.cs
+using MetaObjects.Codegen;
+
+public static class Generators
+{
+    public static IReadOnlyList<IGenerator> All { get; } =
+    [
+        new MetaObjects.Codegen.Generators.EntityGenerator(),
+        new MetaObjects.Codegen.Generators.DbContextGenerator(),
+        new MetaObjects.Codegen.Generators.FilterAllowlistGenerator(),
+        new MetaObjects.Codegen.Generators.RoutesGenerator(),
+    ];
+}
+```
+
+```csharp
+// codegen/Program.cs
+using MetaObjects.Codegen;
+return CodegenCli.Run(args, Generators.All);
+```
 
 ```bash
-# Generate EF Core entities + AppDbContext + CRUD minimal-API routes
-dotnet meta gen ./metadata --out ./Generated --namespace Acme.Blog \
-  --generators entity,db-context,filter-allowlist,routes
+# Run the list: EF Core entities + AppDbContext + CRUD minimal-API routes
+dotnet meta gen ./metadata --out ./Generated --namespace Acme.Blog
 
 # Drift-check templates against payloads (FR-004)
 dotnet meta verify ./metadata --templates ./prompts
 ```
 
-Codegen is opt-in: with no `--generators`, `gen` writes nothing. `dotnet meta gen --list` is
-the catalog, and it shows what each generator requires. `routes` requires `entity`,
-`db-context` and `filter-allowlist`, because the handlers it emits reference their output;
-`gen` warns when one is missing, since the result would not compile.
+`dotnet meta gen --list` is the catalog, and it shows what each generator requires. `routes`
+requires `entity`, `db-context` and `filter-allowlist`, because the handlers it emits
+reference their output; `gen` warns when one is missing from the list, since the result
+would not compile. `--generators <names>` narrows a run to the declared entries named; it
+never adds one, and naming an entry the list does not declare is refused.
+
+**Own a generator.** `dotnet meta eject <name>...` copies a reference generator into
+`codegen/generators/`. Every generator `dotnet meta gen --list` shows is ejectable except
+`template`, the Mustache primitive, which has no emit logic of its own to own. An ejected
+generator comes with the emitters it writes its output through (the enum, navigation,
+doc-comment and prompt-tier writers), so the copy owns the code that writes the file and not
+a shell around the package's; the naming and type-mapping tables (`CSharpNaming`,
+`ValueObjectNames`) stay in the package as the engine. Eject writes the three `codegen/` files
+when they are missing, with the copy already listed as `new Codegen.Generators.<Name>()`;
+when `codegen/Generators.cs` exists it prints that entry for you to add in place of the
+packaged one. `dotnet meta eject api-docs` does the same for the api reference. Ejecting into
+a project whose `codegen/Codegen.csproj` pins an older `MetaObjects.Codegen` than the tool
+prints a warning naming the line to change. See
+[Own your codegen → C#](../features/own-your-codegen.md#c-dotnet-meta-eject).
 
 Schema migrations are owned by the Node `meta` CLI (ADR-0015) — the C# CLI is
 `gen` + `verify` only.
 
-`gen` also accepts `--template-spec <json>` (+ `--template-root <dir>`, default
-`templates`) — the declarative Mustache template-codegen surface; see
-[Declarative template-codegen](#declarative-template-codegen---template-spec) below.
+A declarative Mustache template-spec is one more entry in `codegen/Generators.cs`; see
+[Declarative template-codegen](#declarative-template-codegen-templatespecgenerator) below.
 
 The codegen emits:
 
@@ -128,10 +169,10 @@ The codegen emits:
 
 ### `<Entity>Names` — the physical names, as constants
 
-`names` is opt-in — select it with `--generators names` on `dotnet meta gen`
-(`dotnet meta gen --list` names the whole catalog). Selecting a generator is not
+`names` is opt-in — list `new MetaObjects.Codegen.Generators.NamesGenerator()` in
+`codegen/Generators.cs` (`dotnet meta gen --list` names the whole catalog). Listing a generator is not
 owning it: to change what `names` emits, `dotnet meta eject names` copies its source
-into `codegen/generators/` (see "Own a generator" above). When selected, a project gets
+into `codegen/generators/` (see "Own a generator" above). When listed, a project gets
 `<Entity>Names.g.cs`. It carries the physical
 database names for one object as `const string`s:
 
@@ -409,18 +450,17 @@ are core and are not ejectable.
 dotnet meta verify ./metadata --templates ./prompts
 dotnet meta verify ./metadata --templates ./prompts --require-implementers
 
-# The tests: their own run, into a test project that references xunit
-dotnet meta gen ./metadata --out ./tests/Acme.Shop.Tests/Generated \
-  --namespace Acme.Shop --generators requirement-tests
-dotnet meta verify ./metadata --codegen --out ./tests/Acme.Shop.Tests/Generated \
-  --namespace Acme.Shop --generators requirement-tests
+# The tests: the same run as everything else codegen/Generators.cs declares. The entry's
+# OutDir puts them in the test project, which references xunit; the app's --out does not.
+dotnet meta gen ./metadata --out ./Generated
+dotnet meta verify ./metadata --codegen --out ./Generated
 ```
 
-A `gen` run has one `--out`, so give this generator a run of its own rather than adding it
-to the run that writes your entities. Pass `--namespace` to `verify --codegen` as well:
-without it the namespace is inferred from the first generated file in `--out`, and in a
-directory that holds only these tests that is the tests' own namespace, which regenerates
-one level too deep and reports drift.
+Give the entry an `OutDir` in `codegen/Generators.cs` (below): the tests need xunit, which
+the project compiling `--out` does not reference, so they go into the test project. `gen`
+writes them there and `verify --codegen` compares them there, in the same run that writes
+and checks your entities. Point `OutDir` at a directory that holds generated files only:
+`verify --codegen` compares the whole tree.
 
 Per metamodel package the generator writes `Requirements_<pkgKey>_Witnesses.g.cs`, an
 interface with one default member per test that is not skipped, and
@@ -454,41 +494,38 @@ it goes stale silently. If a test reports `unimplemented requirement` for a witn
 believe you wrote, the method is not implementing the member: in the implicit form it must
 be `public`, non-static, parameterless and named exactly as the interface names it.
 
-The six options are public properties on the generator. This port has no per-generator
-option channel, so they are reachable only where the generator is constructed, in an owned
-`codegen/Program.cs`. That file exists once you have ejected something (or written it by
-hand); the packaged `dotnet meta gen --generators requirement-tests` runs with the defaults.
+The seven options are init properties on the generator, set on its entry in
+`codegen/Generators.cs`:
 
 ```csharp
-// codegen/Program.cs
-using Codegen.Generators;
+// codegen/Generators.cs
 using MetaObjects.Codegen;
 using MetaObjects.Core.Requirement;   // RequirementTestGrain, IRequirementTestFilter
 
-IReadOnlyList<IGenerator> generators =
-[
-    new RequirementTestsGenerator
-    {
-        WitnessClass = "Acme.Shop.Tests.Witnesses",
-        Grain = RequirementTestGrain.Member,
-        WarnUncovered = false,
-    },
-];
-
-return CodegenCli.Run(args, generators);
+public static class Generators
+{
+    public static IReadOnlyList<IGenerator> All { get; } =
+    [
+        new MetaObjects.Codegen.Generators.RequirementTestsGenerator
+        {
+            OutDir = "tests/Acme.Shop.Tests/Generated",
+            WitnessClass = "Acme.Shop.Tests.Witnesses",
+            Grain = RequirementTestGrain.Member,
+            WarnUncovered = false,
+        },
+    ];
+}
 ```
 
-The example is the file as it stands after `dotnet meta eject requirement-tests`: the class
-is your owned copy, in `Codegen.Generators`. If `Program.cs` exists because you ejected
-something else and you are constructing the packaged generator, the class is in
-`MetaObjects.Codegen.Generators`: write it fully qualified, as
-`new MetaObjects.Codegen.Generators.RequirementTestsGenerator { … }`. Do not add
-`using MetaObjects.Codegen.Generators;`, because every generator you ejected has a packaged
-class of the same simple name there, and the second `using` makes each `new <Name>Generator()`
-already in the file ambiguous (CS0104).
+After `dotnet meta eject requirement-tests` the entry names your owned copy instead,
+`new Codegen.Generators.RequirementTestsGenerator { … }`. Write each entry fully
+qualified, as above: an owned copy and the packaged class share a simple name, so adding
+`using MetaObjects.Codegen.Generators;` beside `using Codegen.Generators;` makes each
+`new <Name>Generator()` ambiguous (CS0104).
 
 | Property | Meaning |
 |---|---|
+| `OutDir` | Where the tests are written, relative to the directory the run starts in. Default: the run's `--out`. Set it to the test project's directory. |
 | `TestNamespace` | Namespace of the generated tests. Default `<namespace>.Requirements`. |
 | `WitnessClass` | Full name of your witness class. Default `<namespace>.RequirementWitnesses`. |
 | `Grain` | `RequirementTestGrain.Concern` (default): one test per distinct `<type>.<subType>` a requirement claims. `Member`: one per distinct `implementedBy` reference that resolves. |
@@ -503,18 +540,22 @@ two files behind: `gen` does not remove them, `dotnet meta verify --codegen` rep
 other ports' spelling are in
 [Generated requirement tests and witnesses](../features/requirements.md#generated-requirement-tests-and-witnesses).
 
-## Declarative template-codegen (`--template-spec`)
+## Declarative template-codegen (`TemplateSpecGenerator`)
 
 Beyond the built-in EF Core / routes suite, `dotnet meta gen` runs **declarative
 Mustache template generators** from a JSON template-spec — the cross-port contract
 shared with the Python port (see
 [`docs/features/codegen-concepts.md`](../features/codegen-concepts.md#declarative-template-scopes)
 and the neutral data dict in
-[`docs/features/codegen-data-shapes.md`](../features/codegen-data-shapes.md)):
+[`docs/features/codegen-data-shapes.md`](../features/codegen-data-shapes.md)). The spec is
+declared where every generator is, as an entry in `codegen/Generators.cs`:
 
-```bash
-dotnet meta gen ./metadata --out ./Generated \
-  --template-spec ./template-spec.json --template-root ./templates
+```csharp
+new MetaObjects.Codegen.TemplateCodegen.TemplateSpecGenerator
+{
+    Spec = "template-spec.json",   // from the directory gen runs in, as --out is
+    TemplateRoot = "templates",    // optional; default the run's --template-root, else prompts/ when it exists, else templates/
+},
 ```
 
 ```jsonc
@@ -523,36 +564,26 @@ dotnet meta gen ./metadata --out ./Generated \
     { "name": "entity-doc",
       "scope": "perEntity",            // perEntity | perPackage | perModel
       "outputPattern": "{package}/{Name}.md",
-      "template": "entity-doc",          // resolved under --template-root
+      "template": "entity-doc",          // resolved under TemplateRoot
       "format": "markdown" }            // optional; a registered escaper format
 ]}
 ```
 
-**The spec is auto-discovered.** Omit `--template-spec` and the CLI reads
-`<projectRoot>/template-spec.json`, where projectRoot is the metadata dir's **parent** —
-the same anchor `.metaobjects/` uses (`GenCommand.ProjectRootFor`). The flag overrides it.
-
-Prefer the conventional path over the flag, because **`dotnet meta verify --codegen`
-accepts no `--template-spec`**: discovery is how the drift gate learns your template
-generators exist. A spec reachable only by flag leaves `verify` regenerating a different
-generator list from `gen` and convicting your committed template output as
-"committed but a fresh regen would not emit it".
-
-```bash
-dotnet meta gen ./metadata --out ./Generated --template-root ./templates
-dotnet meta verify --codegen ./metadata --out ./Generated --template-root ./templates
-#   ^ both resolve <projectRoot>/template-spec.json — the gate agrees with the generator
-```
+`dotnet meta verify --codegen` regenerates the same entry, so the gate and the generator
+agree. Through 1.0 the CLI also read `--template-spec` or a project-root `template-spec.json`
+on its own; neither is read now, and a run that finds either with no `TemplateSpecGenerator`
+entry fails before writing anything, with a line that starts
+`dotnet meta gen: found 1.0 template-spec configuration (`. See
+[the migration section](../features/migrations/docs-are-generators.md#c).
 
 Each spec entry derives the neutral template data dict for its scope
 (`MetaObjects.Codegen.TemplateCodegen.TemplateData`) and names each file via the
-`outputPattern` placeholders (`{name}`, `{Name}`, `{package}`). The named generators
-are **appended** to the `--generators` selection (there is no default suite) and gated
-byte-identical against the shared
-`fixtures/template-codegen-conformance/` corpus. A `target` field is rejected (C# has
-no output-target concept); a bad template ref or wrong `--template-root` surfaces as a
-clean error, not a stack trace. For output to be regenerable, the **template** must emit
-the `@generated` header itself (the write path refuses to overwrite files lacking it).
+`outputPattern` placeholders (`{name}`, `{Name}`, `{package}`). The entry's files land under
+`--out`, or under its own `OutDir` when it sets one, and are gated byte-identical against the
+shared `fixtures/template-codegen-conformance/` corpus. A `target` field is rejected (C# has no
+output-target concept); a missing spec file, a bad template ref or a wrong `TemplateRoot`
+surfaces as a clean error, not a stack trace. For output to be regenerable, the **template**
+must emit the `@generated` header itself (the write path refuses to overwrite files lacking it).
 
 ## Angular 18 frontend
 
@@ -591,9 +622,10 @@ on their list route, against an allowlist of their own fields. Remaining gaps ar
 | Templates + render (FR-004) | Yes (`MetaObjects.Render`) |
 | Output parser codegen (FR-006) | Yes (`OutputParserGenerator` — `Parse`/`TryParse` BCL pattern) |
 | Payload-VO codegen | Yes — the payload IS the value object's own POCO from `EntityGenerator` (ADR-0056); no separate payload generator |
-| Declarative template-codegen | Yes — `dotnet meta gen --template-spec` (scope perEntity/perPackage/perModel + outputPattern; the cross-port JSON contract shared with Python) |
+| Declarative template-codegen | Yes — a `TemplateSpecGenerator` entry in `codegen/Generators.cs` (scope perEntity/perPackage/perModel + outputPattern; the cross-port JSON contract shared with Python) |
 | Migrations | Owned by the Node `meta` CLI (ADR-0015) — no C# migrate surface |
-| Drift verify | `dotnet meta verify` (template drift, FR-004) |
+| Drift verify | `dotnet meta verify` (template drift, FR-004; `--codegen` regenerates the list in `codegen/Generators.cs` and diffs it) |
+| API reference docs | Yes — the `ApiDocsGenerator` entry in `codegen/Generators.cs` (`OutDir`, `ApiSubDir`, `ProjectName`, `ModelBaseUrl`); `dotnet meta docs` was removed in 1.1.0 ([migration](../features/migrations/docs-are-generators.md#c)) |
 | Requirement gate + requirement tests | Yes (`dotnet meta verify`, on every run; `requirement-tests` emits xUnit and is ejectable) |
 | Runtime metadata | Loader API + render engine; ObjectManager-style runtime tier on the roadmap |
 

@@ -24,6 +24,7 @@
 
 using System.Diagnostics;
 using MetaObjects.Cli;
+using MetaObjects.Codegen;
 using Xunit;
 
 namespace MetaObjects.Cli.Tests;
@@ -131,11 +132,21 @@ public sealed class EjectEndToEndTests : IDisposable
         """);
 
         // 1. Eject — writes codegen/generators/EntityGenerator.cs, codegen/Codegen.csproj,
-        //    codegen/Program.cs (this is real `dotnet meta eject entity` behavior).
+        //    codegen/Program.cs and codegen/Generators.cs listing the copy (this is real
+        //    `dotnet meta eject entity` behavior).
         var eject = EjectCommand.Run(["entity"], _root, force: false);
         Assert.Equal(0, eject.ExitCode);
         Assert.True(File.Exists(CodegenCsproj));
         Assert.True(File.Exists(GeneratorCopy));
+
+        // The project's list declares the owned copy beside a packaged generator (ADR-0034
+        // Amendment 9): ejecting one generator must not drop the others the project runs.
+        var listPath = Path.Combine(_root, "codegen", "Generators.cs");
+        var list = File.ReadAllText(listPath);
+        const string ownedEntry = "        new Codegen.Generators.EntityGenerator(),\n";
+        Assert.Contains(ownedEntry, list);
+        File.WriteAllText(listPath, list.Replace(
+            ownedEntry, ownedEntry + "        new MetaObjects.Codegen.Generators.NamesGenerator(),\n"));
 
         // 2. Substitute PackageReference -> ProjectReference (see header comment).
         var codegenProjPath = Path.Combine(repoRoot, "server", "csharp", "MetaObjects.Codegen", "MetaObjects.Codegen.csproj");
@@ -161,8 +172,8 @@ public sealed class EjectEndToEndTests : IDisposable
         File.WriteAllText(GeneratorCopy, edited);
 
         // 4. `dotnet run --project codegen -- gen ...` — a REAL compile of the edited copy.
-        //    The selection names the owned `entity` AND the packaged `names`: ejecting one
-        //    generator must not drop the others a project selects.
+        //    The selection names the owned `entity` (by its registry name) AND the packaged
+        //    `names`, both declared in the list.
         var (genExit, genOutput) = RunCodegenProject(
             "gen", MetadataDir, "--out", OutDir, "--namespace", "Acme.Generated", "--generators", "entity,names");
         Assert.True(genExit == 0, $"gen failed (exit {genExit}):\n{genOutput}");
@@ -195,10 +206,10 @@ public sealed class EjectEndToEndTests : IDisposable
     }
 
     /// <summary>
-    /// An owned api-docs generator, run for real (ADR-0025 / ADR-0034 Amendment 3): eject `routes` and
-    /// `api-docs`, add a page to the owned api-docs copy, and run the owned project's `docs` command. The
-    /// reference is written by the OWNED api-docs copy, so the added page is on disk beside the model's;
-    /// and the same owned project's `gen` skips the docs generator, saying so only when asked for it by name.
+    /// An owned api-docs generator, run for real (ADR-0034 Amendment 9): eject `routes` and `api-docs`,
+    /// give the listed api-docs entry its own OutDir, add a page to the owned copy, and run the owned
+    /// project's `gen`. The reference is written by the OWNED api-docs copy into its own directory, beside
+    /// the code under --out; `--generators api-docs` writes the documentation alone; and `docs` is gone.
     /// </summary>
     [Fact]
     public void Owned_api_docs_writes_the_reference()
@@ -218,43 +229,52 @@ public sealed class EjectEndToEndTests : IDisposable
 
         var eject = EjectCommand.Run(["routes", "api-docs"], _root, force: false);
         Assert.Equal(0, eject.ExitCode);
-        Assert.True(CodegenHandoff.HasOwnedDocs(_root));
+        Assert.True(CodegenHandoff.HasGeneratorList(_root));
         PointScaffoldAtThisCheckout(repoRoot);
+
+        // The api-docs entry gets its own directory, as an adopter's list would give it.
+        var listPath = Path.Combine(_root, "codegen", "Generators.cs");
+        var list = File.ReadAllText(listPath);
+        Assert.Contains("new Codegen.Generators.ApiDocsGenerator(),", list);
+        File.WriteAllText(listPath, list.Replace(
+            "new Codegen.Generators.ApiDocsGenerator(),",
+            "new Codegen.Generators.ApiDocsGenerator { OutDir = \"docs\" },"));
 
         // The project's own edit: its reference carries a page the packaged generator does not write.
         var apiDocsPath = Path.Combine(_root, "codegen", "generators", "ApiDocsGenerator.cs");
         var apiDocs = File.ReadAllText(apiDocsPath);
-        const string lastPage = "yield return Page(facts, \"AGENT-API.md\", renderer.RenderAgentApi(model));";
+        const string lastPage = "yield return Page(\"AGENT-API.md\", renderer.RenderAgentApi(model));";
         Assert.Contains(lastPage, apiDocs);
         File.WriteAllText(apiDocsPath, apiDocs.Replace(
             lastPage,
-            lastPage + "\n        yield return Page(facts, \"OWNED.md\", \"written by the owned api-docs\");"));
+            lastPage + "\n        yield return Page(\"OWNED.md\", \"written by the owned api-docs\");"));
 
         var docsOut = Path.Combine(_root, "docs");
-        var (docsExit, docsOutput) = RunCodegenProject("docs", MetadataDir, "--out", docsOut, "--namespace", "Acme.Generated");
-        Assert.True(docsExit == 0, $"docs failed (exit {docsExit}):\n{docsOutput}");
-        Assert.Contains("api page(s) written", docsOutput);
+        var (genExit, genOutput) = RunCodegenProject("gen", MetadataDir, "--out", OutDir, "--namespace", "Acme.Generated");
+        Assert.True(genExit == 0, $"gen failed (exit {genExit}):\n{genOutput}");
 
         var widget = File.ReadAllText(Directory.GetFiles(docsOut, "Widget.md", SearchOption.AllDirectories).Single());
         Assert.Contains("DbSet<Widget>", widget);
         Assert.Equal(
             "written by the owned api-docs",
             File.ReadAllText(Directory.GetFiles(docsOut, "OWNED.md", SearchOption.AllDirectories).Single()));
-
-        // The same owned project's gen leaves the docs generator out. With the generator only in the
-        // owned list, that is the everyday run and it has nothing to say about it.
-        var (genExit, genOutput) = RunCodegenProject("gen", MetadataDir, "--out", OutDir, "--namespace", "Acme.Generated");
-        Assert.True(genExit == 0, $"gen failed (exit {genExit}):\n{genOutput}");
-        Assert.DoesNotContain("writes the api reference", genOutput);
         Assert.NotEmpty(Directory.GetFiles(OutDir, "*.cs", SearchOption.AllDirectories));
         Assert.Empty(Directory.GetFiles(OutDir, "*.md", SearchOption.AllDirectories));
 
-        // Asked for by name, it is still left out, and gen says why.
+        // Documentation alone: the selection narrows the list to the api-docs entry.
+        Directory.Delete(docsOut, recursive: true);
+        var codeBefore = Directory.GetFiles(OutDir, "*", SearchOption.AllDirectories).ToDictionary(f => f, File.ReadAllText);
         var (namedExit, namedOutput) = RunCodegenProject(
             "gen", MetadataDir, "--out", OutDir, "--namespace", "Acme.Generated", "--generators", "api-docs");
         Assert.True(namedExit == 0, $"gen failed (exit {namedExit}):\n{namedOutput}");
-        Assert.Contains("writes the api reference, so `gen` skipped it", namedOutput);
-        Assert.Empty(Directory.GetFiles(OutDir, "*.md", SearchOption.AllDirectories));
+        Assert.NotEmpty(Directory.GetFiles(docsOut, "*.md", SearchOption.AllDirectories));
+        Assert.DoesNotContain(namedOutput.Split('\n'), l => l.Contains(".cs", StringComparison.Ordinal) && l.TrimStart().StartsWith("written:", StringComparison.Ordinal));
+        Assert.Equal(codeBefore.Keys.Order(), Directory.GetFiles(OutDir, "*", SearchOption.AllDirectories).Order());
+
+        // The docs command is gone from the owned runner too.
+        var (docsExit, docsOutput) = RunCodegenProject("docs", MetadataDir, "--out", docsOut);
+        Assert.Equal(2, docsExit);
+        Assert.Contains(CodegenCli.DocsCommandRemoved, docsOutput);
     }
 
     /// <summary>

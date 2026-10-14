@@ -549,7 +549,7 @@ Restore the file to generated output and the collision is raised again on the ne
 Two write paths deliberately **bypass** the guard, and the reason is the same in both:
 the guard is sound only where our own emitter always writes the marker. `DocsMojo`'s API
 pages render from `templates/api/*.mustache`, and `TemplateScopeGenerator` emits whatever
-a user's `--template-spec` renders (SQL, markdown, CSV) — neither content is ours to
+a user's template-spec renders (SQL, markdown, CSV) — neither content is ours to
 require a marker of, and guarding them would make the first run write and every run after
 refuse, freezing the artifact while the build stayed green.
 
@@ -638,8 +638,8 @@ generator code. The 20-line programmatic shape for each port is in
 |---|---|---|---|
 | **TypeScript** | `meta init` → `meta gen --list --probe` → `meta eject <names...>` → `meta gen` (Bun/Node CLI) | **Yes.** `meta generator new <name>` writes a working generator of your own into `codegen/generators/` and wires it — the first move for an output nothing ships. To use a stock generator as shipped, import its factory from its package (`meta gen --list` prints the line) and wire it. To change one: `meta init` scaffolds the LAYOUT and an empty selection (ADR-0034 Amendment 2); `meta eject <name>...` copies each generator you choose into `codegen/generators/*.ts` and prints the import to put in `metaobjects.config.ts`. Edit them freely. Every stock generator can be ejected except two: the `template` primitive, which has no emit logic of its own to own (the same ruling in every port), and `docs-site`, whose builder stays in the package while `meta eject docs-site` copies the site's templates and assets into `codegen/docs-site/`. `meta gen --list` marks both **package-only** and `meta eject` names them as such. An ejected generator comes with the code that writes its output: the template modules it calls are copied into `codegen/templates/` ([what the copy holds](#what-the-copy-holds)), so the prompt tier, `callable`, `trace-helper`, `cube-model`, `shared-model`, the UI tier and the docs tier are as ownable as `entity` and `routes`. What stays in the package is the engine: the generator base, the model walks (including the requirement walk, each test's identity and the claim digest), the naming and type-mapping tables, and the render and extract engines of `@metaobjectsdev/render`. `requirement-tests` is one file holding the generator and its default stub renderer. The documentation generators (`docs`, `api-docs`, `requirements`, `agent-docs`, `metamodel-docs` and `docs-site`) are entries in `generators` that write to the `docs` target, and `meta gen` runs them ([details](#the-docs-generators-and-shared-model-typescript)). | **Yes** — `templateGenerator({ template, scope, outputPattern })` in the config's `generators: [...]`. No CLI flag: the config already takes generator values. |
 | **Java / Kotlin** | `mvn metaobjects:generate` / `mvn metaobjects:verify` (`metaobjects-maven-plugin`) | **Yes.** Extend `FileEmittingGenerator` and read the model through `ModelWalk` (both in `metaobjects-codegen-base`) for one of your own. Every generator — built-in or your own — is named in `<generator><classname>` and loaded from the project classpath: one seam, not two. There is no default suite, so `<generators>` is the complete list. Kotlin runs through the same goal. | **Yes** — `TemplateScopeGenerator` wired as an ordinary `<generator>`. No CLI flag: `<generator>` is already the seam. |
-| **C#** | `dotnet meta gen` / `dotnet meta verify` (.NET tool) | **Yes.** Implement `IGenerator` in the owned console project `codegen/` and list it in `codegen/Program.cs`; `dotnet meta gen` / `verify --codegen` hand off to that project whenever `codegen/Codegen.csproj` exists. `dotnet meta eject <name>` scaffolds the project, or write its two files by hand. An owned generator the `--generators` selection does not name still runs. | **Yes** — `dotnet meta gen --template-spec <json> --template-root <dir>`. |
-| **Python** | `metaobjects gen` / `metaobjects verify` (console-script) | **Yes.** Name your generator as `module:symbol` in `--generators` or a target's `generators` in `metaobjects.config.yaml`; the symbol is an instance or a function returning one. Read the model through `metaobjects.codegen.model_walk`. (`--provider module:symbol` registers **metamodel vocabulary**, not a generator.) | **Yes** — `metaobjects gen --template-spec <json> --templates <dir>`. |
+| **C#** | `dotnet meta init` → `dotnet meta gen` / `dotnet meta verify` (.NET tool) | **Yes.** Implement `IGenerator` in the console project `codegen/` and list it in `codegen/Generators.cs`, the generator list `dotnet meta gen` / `verify --codegen` run through `dotnet run --project codegen`. `dotnet meta init` (or a first `dotnet meta eject <name>`) writes the project. `--generators` only narrows the list. | **Yes** — a `TemplateSpecGenerator { Spec = "<json>", TemplateRoot = "<dir>" }` entry in `codegen/Generators.cs`. |
+| **Python** | `metaobjects gen` / `metaobjects verify` (console-script) | **Yes.** Name your generator as `module:symbol` in a target's `generators` in `metaobjects.config.yaml`, the generator list `gen` runs; the symbol is an instance or a function returning one. Read the model through `metaobjects.codegen.model_walk`. (`--provider module:symbol` registers **metamodel vocabulary**, not a generator.) | **Yes** — `templateSpec: <json>` on a target, with `metaobjects gen --templates <dir>`. |
 
 So "I need a shape the built-ins do not emit" has an answer on **every** port, in code or
 in a template. A template is a real path, not a consolation prize: it renders against the
@@ -680,19 +680,13 @@ output *shape* is what you are iterating on, or when you want the same output ac
 languages; reach for a generator when the logic is gnarly or the run is hot. Full
 tradeoff table: [`codegen-concepts.md` §3](codegen-concepts.md).
 
-**The spec file is discovered, not just flagged.** With no `--template-spec`, both ports
-look for **`<projectRoot>/template-spec.json`** — projectRoot being the metadata dir's
-parent, the same anchor `.metaobjects/` already uses. The flag overrides it.
-
-That matters for more than typing: `verify --codegen` takes **no** `--template-spec` flag,
-so discovery is how the drift gate learns about your template generators. Before it existed,
-`gen` honoured the flag and `verify` never looked — so verify regenerated without them and
-convicted their committed output, with a remedy that loops. Keep the spec at the
-conventional path and both verbs resolve the same one.
-
-Passing `--template-spec` explicitly still works and still wins; just make sure any CI that
-runs `verify --codegen` can find the spec, which the conventional path guarantees and a
-flag-only setup does not.
+**The spec is declared in the generator list.** In Python it is a target's `templateSpec`
+in `metaobjects.config.yaml`; in C# it is a `TemplateSpecGenerator { Spec = "...",
+TemplateRoot = "..." }` entry in `codegen/Generators.cs`. Because `verify --codegen`
+regenerates the same list, the drift gate always knows about your template generators.
+Through 1.0 both ports also discovered a project-root `template-spec.json` (and C# read a
+`--template-spec` flag); neither is read now, and a run that finds the conventional file with
+nothing declaring a spec fails and names the migration section.
 
 *(Full command/flag matrix and rationale: [`docs/features/cli.md`](cli.md), locked per
 ADR-0015. Schema migrations are TypeScript-owned across all ports.)*
@@ -751,7 +745,7 @@ provider class** in each language: a JSON file could express the declarative sur
 | Port | How the CLI / build tool loads your provider |
 |---|---|
 | **TypeScript** | `metaobjects.config.ts` → `providers: [myProvider]`. Threaded into `meta gen` (the docs site included), `meta verify`, **and** the offline `meta migrate` paths (baseline + generate). |
-| **Python** | `metaobjects gen \| verify \| docs --provider module:symbol` (repeatable). The symbol resolves to a `Provider` (or a list, or a zero-arg factory returning one) and is composed **on top of** the core providers — parity with TS `config.providers`. E.g. `metaobjects gen ./metaobjects --out ./gen --provider myapp.providers:view_provider`. A declarative `metaobjects.config.yaml` `providers:` list is also supported (resolved config-relative, no `PYTHONPATH=` — mirroring TS's config-file providers); see [`cli.md`](cli.md). |
+| **Python** | `metaobjects gen \| verify --provider module:symbol` (repeatable). The symbol resolves to a `Provider` (or a list, or a zero-arg factory returning one) and is composed **on top of** the core providers — parity with TS `config.providers`. E.g. `metaobjects gen --provider myapp.providers:view_provider`. A declarative `metaobjects.config.yaml` `providers:` list is also supported (resolved config-relative, no `PYTHONPATH=` — mirroring TS's config-file providers); see [`cli.md`](cli.md). |
 | **Java / Kotlin** | Put your compiled `MetaDataTypeProvider` on the **project classpath** with a `META-INF/services/com.metaobjects.registry.MetaDataTypeProvider` entry. `metaobjects-maven-plugin` builds the loader with the project classloader, so **Java ServiceLoader auto-discovers it** — no plugin config needed. |
 | **C#** | The loader accepts providers like every port; a first-class `dotnet meta` consumer-provider hook is tracked for a future release ([#158](https://github.com/metaobjectsdev/metaobjects/issues/158)). Today, extend the metamodel from an app that constructs the loader directly. |
 
@@ -775,9 +769,9 @@ between needs no change, and can drop the ones it never modified:
 metaobjects eject entity routes        # copies into codegen/generators/entity.py, routes.py
 ```
 
-Each copy is the packaged generator module, verbatim. Wire it in `metaobjects.config.yaml`
-(or `--generators`) as `module:symbol`, the same form `providers` accepts, in place of the
-packaged name:
+Each copy is the packaged generator module, verbatim. Wire it in a target's `generators` in
+`metaobjects.config.yaml`, the generator list `metaobjects gen` runs, as `module:symbol`, the
+same form `providers` accepts, in place of the packaged name:
 
 ```yaml
 targets:
@@ -949,27 +943,29 @@ yours, for a copy you have not changed. Eject does not decide which applies (the
 
 ### `api-docs`: the api reference as an owned generator
 
-`metaobjects docs` writes the Python api reference (`api/python`). `metaobjects eject
+`api-docs` writes the Python api reference (`api/python`) into the `outDir` of the target
+that lists it, with its options in the top-level `apiDocs` block. `metaobjects eject
 api-docs` copies the generator that writes it, with the page model (`api_docs_model.py`), the
 builder that decides what to document (`api_docs_builder.py`), the renderer
 (`api_docs_renderer.py`) and the page-path math (`api_docs_paths.py`). Change which nodes
 get a page, how a page reads, or where it lands, by editing them.
 
-A docs generator is not a code generator, so it is wired in its own block, never in a
-target's `generators`:
+The copy is wired like any other, in place of `api-docs` in the target that writes the
+docs; the `apiDocs` options reach it through the build context, as they reach the packaged
+one:
 
 ```yaml
-docs:
-  generators: [codegen.generators.api_docs:api_docs_generator]
+targets:
+  docs:
+    outDir: docs/generated
+    generators: [codegen.generators.api_docs:api_docs_generator]
+apiDocs:
+  projectName: shop
 ```
 
-`metaobjects docs` runs the copy in place of the packaged generator. Without the block it
-runs the packaged one, and the positional `metaobjects docs <metadata_dir>` form reads no
-config, so it always does. An entry that is not a docs generator, or a second one for the
-`api` surface, is refused by name. `gen` and `verify --codegen` skip a docs generator
-they find under a target and say so (`'api-docs' writes the api reference, so gen skipped
-it.`), with what to do about the entry: the packaged `api-docs` name is removed, because
-`metaobjects docs` already runs it, and an owned copy moves to `docs.generators`.
+`metaobjects gen` writes the pages and `metaobjects verify --codegen` checks them, like code
+(ADR-0034 Amendment 9). There is no `metaobjects docs`: see
+[the migration section](migrations/docs-are-generators.md#python).
 
 **It describes the code your generators emit.** The page builder asks `shared_predicates`
 which objects get a router, the same module your owned `routes` and `filter-allowlist`
@@ -1340,7 +1336,7 @@ port that ships it.
 ## C#: `dotnet meta eject`
 
 ```bash
-dotnet meta eject entity routes     # copies into codegen/generators/, scaffolds codegen/ once
+dotnet meta eject entity routes     # copies into codegen/generators/; writes codegen/ files that are missing
 dotnet meta gen --list              # the catalog, with owned copies marked
 ```
 
@@ -1353,23 +1349,25 @@ adding the `using` lines that rename needs; nothing else changes, except in `rou
 writes its output through come with it
 ([below](#ejecting-a-generator-hands-over-the-emitters-it-writes-through)).
 
-On first use eject also writes `codegen/Codegen.csproj`, a console project referencing
-`MetaObjects.Codegen` at the tool's version, and `codegen/Program.cs`, which lists your
-generators with `new` and calls the public runner. After that, both files are yours: eject
-never touches them again, even with `--force`, and prints what to add instead. That includes
-the package version: eject writes the sources of the tool you run, so when
-`codegen/Codegen.csproj` pins an older `MetaObjects.Codegen` than the tool, eject prints a
-warning with the pinned version, the tool's version and the line to change. The owned
-project does not compile until the pin is the tool's version or later. Once
-`codegen/Codegen.csproj` exists, `dotnet meta gen` and `dotnet meta verify --codegen` hand
-off to `dotnet run --project codegen` with the same arguments, so your owned generators
-run everywhere the tool did.
+The generator list is `codegen/Generators.cs` (ADR-0034 Amendment 9), compiled by the
+console project `codegen/Codegen.csproj` (referencing `MetaObjects.Codegen` at the tool's
+version) and run by `codegen/Program.cs`, two lines that pass `Generators.All` to the public
+runner. `dotnet meta init` writes the three files; eject writes each one that is missing,
+and when it writes `Generators.cs` the list holds the copies it just ejected, as
+`new Codegen.Generators.<Name>()`. After that all three are yours: eject never touches them
+again, even with `--force`, and prints the entry to add instead, in place of the packaged
+`new MetaObjects.Codegen.Generators.<Name>()` if the list has one. That includes the package
+version: eject writes the sources of the tool you run, so when `codegen/Codegen.csproj` pins
+an older `MetaObjects.Codegen` than the tool, eject prints a warning with the pinned
+version, the tool's version and the line to change. The owned project does not compile until
+the pin is the tool's version or later. `dotnet meta gen` and `dotnet meta verify --codegen`
+always run `dotnet run --project codegen` with the same arguments, so the list runs
+everywhere the tool does.
 
-`Program.cs` lists only what you own; keep naming the whole suite in `--generators`. Each
-owned copy replaces the packaged generator of the same name, every other selected name
-still runs from the package, and an owned generator the selection does not name runs after
-them. So ejecting `names` from a nine-generator selection changes one generator's output,
-not the other eight. The owned project finds metadata exactly as the tool does, including
+The list names every generator the project runs, owned or packaged, so ejecting `names` from
+a nine-entry list changes one entry, not the other eight. `--generators` narrows a run to the
+declared entries named, matching an owned copy by its registry name too, and never adds
+one. The owned project finds metadata exactly as the tool does, including
 `.metaobjects/config.json`'s `sources` and `libraries`. Eject never overwrites a copy without `--force`, and
 `dotnet meta gen --list` marks owned copies `identical` or `DIFFERS: N behind, M of your
 own`, and names an emitter that was edited or removed after eject
@@ -1377,8 +1375,8 @@ own`, and names an emitter that was edited or removed after eject
 ejectable; it has no emit logic of its own.
 
 `dotnet meta eject requirement-tests` copies `RequirementTestsGenerator.cs`, which holds the
-generator and its default rendering. Its options are public properties you set in
-`codegen/Program.cs` (`new RequirementTestsGenerator { WitnessClass = "…" }`); the hook
+generator and its default rendering. Its options are init properties you set on its entry in
+`codegen/Generators.cs` (`new Codegen.Generators.RequirementTestsGenerator { WitnessClass = "…" }`); the hook
 types (`IRequirementTestRenderer`, `IRequirementTestFilter`), the identity function and the
 digest stay in the package.
 
@@ -1432,19 +1430,18 @@ dotnet meta gen --list    # no longer reports an emitter missing
 
 ### `api-docs`: the api reference as an owned generator
 
-`dotnet meta docs` writes the C# api reference. `dotnet meta eject api-docs` copies the
-generator that writes it, with the page model (`CSharpApiModel.cs`), the builder that decides
-what to document (`CSharpApiModelBuilder.cs`), the renderer (`CSharpApiDocsRenderer.cs`) and
-the page-path math (`DocsPaths.cs`). Change which nodes get a page, how a page reads, or
-where it lands, by editing them.
+`api-docs` writes the C# api reference, as an entry in `codegen/Generators.cs` whose init
+properties are its options: `OutDir` (where the pages go, taken from the directory gen runs
+in; unset, they go under `--out`), `ApiSubDir` (default `api/csharp`), `ProjectName` and
+`ModelBaseUrl`. `dotnet meta eject api-docs` copies the generator that writes it, with the
+page model (`CSharpApiModel.cs`), the builder that decides what to document
+(`CSharpApiModelBuilder.cs`), the renderer (`CSharpApiDocsRenderer.cs`) and the page-path math
+(`DocsPaths.cs`). Change which nodes get a page, how a page reads, or where it lands, by
+editing them, and list the copy in place of the packaged entry:
 
-Once `codegen/generators/ApiDocsGenerator.cs` exists, `dotnet meta docs` hands off to
-`dotnet run --project codegen -- docs` with the same arguments, and the reference is written
-by your copy. A project that owns `codegen/` but not `api-docs` keeps the packaged reference:
-the hand-off for `docs` is keyed to the generator, not to the project, because an owned
-project pinned to an older `MetaObjects.Codegen` does not know the `docs` command. The owned
-copy needs `MetaObjects.Codegen` 1.1.0 or later for the same reason; eject warns when
-`codegen/Codegen.csproj` pins less.
+```csharp
+new Codegen.Generators.ApiDocsGenerator { OutDir = "docs/generated", ProjectName = "shop" },
+```
 
 **It describes what the packaged generators emit.** The reference documents a route, an
 allowlist, a render helper only if the packaged generator that emits it would, which each
@@ -1455,11 +1452,9 @@ packaged one behaves. To document your own surface, edit the owned builder
 `GenContext.Applicability` (`GeneratorApplicability.Packaged`), never through a generator
 class, which is why the copy depends on nothing but the engine.
 
-`Program.cs` lists `new ApiDocsGenerator()` beside the code generators. `dotnet meta gen` and
-`verify --codegen` skip it: it writes pages under the docs directory, not code under `--out`.
-The skip is silent while the generator is only in that list. When a `--generators` selection
-names `api-docs`, `gen` says so (`"api-docs" writes the api reference, so gen skipped it.
-Run it with dotnet meta docs.`), with or without an owned project.
+`dotnet meta gen` writes the pages and `dotnet meta verify --codegen` checks them, comparing
+the whole `OutDir` tree, so give the entry a directory that holds generated files only. There
+is no `dotnet meta docs`: see [the migration section](migrations/docs-are-generators.md#c).
 
 ### Ejecting routes hands over the helper runtime too
 

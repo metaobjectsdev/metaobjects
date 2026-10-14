@@ -6,6 +6,7 @@ from pathlib import Path
 
 from metaobjects.cli import main
 from tests.codegen.gen_suite import GEN_SUITE
+from tests.codegen.config_helpers import as_config
 
 FITNESS = (
     Path(__file__).parents[4]
@@ -51,9 +52,9 @@ def _project(tmp_path: Path, config_text: str = TWO_TARGETS) -> Path:
 
 def test_verify_codegen_no_args_in_sync(tmp_path: Path) -> None:
     cfg = _project(tmp_path)
-    assert main(["gen", "--generators", GEN_SUITE, "--config", str(cfg)]) == 0
+    assert main(["gen", "--config", str(cfg)]) == 0
     # Fresh gen → no drift across every target.
-    assert main(["verify", "--codegen", "--generators", GEN_SUITE, "--config", str(cfg)]) == 0
+    assert main(["verify", "--codegen", "--config", str(cfg)]) == 0
 
 
 def test_verify_codegen_bare_defaults_to_codegen(tmp_path: Path, monkeypatch) -> None:
@@ -65,10 +66,10 @@ def test_verify_codegen_bare_defaults_to_codegen(tmp_path: Path, monkeypatch) ->
 
 def test_verify_codegen_detects_drift_in_one_target(tmp_path: Path, capsys) -> None:
     cfg = _project(tmp_path)
-    assert main(["gen", "--generators", GEN_SUITE, "--config", str(cfg)]) == 0
+    assert main(["gen", "--config", str(cfg)]) == 0
     target = tmp_path / "gen/other/Node.py"
     target.write_text(target.read_text() + "\n# hand-edited drift\n")
-    rc = main(["verify", "--codegen", "--generators", GEN_SUITE, "--config", str(cfg)])
+    rc = main(["verify", "--codegen", "--config", str(cfg)])
     assert rc == 1
     err = capsys.readouterr().err
     assert "[other]" in err and "drifted" in err
@@ -76,12 +77,12 @@ def test_verify_codegen_detects_drift_in_one_target(tmp_path: Path, capsys) -> N
 
 def test_verify_codegen_target_scopes(tmp_path: Path) -> None:
     cfg = _project(tmp_path)
-    assert main(["gen", "--generators", GEN_SUITE, "--config", str(cfg)]) == 0
+    assert main(["gen", "--config", str(cfg)]) == 0
     # Drift in `other`, but scope verify to `models` → clean.
     target = tmp_path / "gen/other/Node.py"
     target.write_text(target.read_text() + "\n# drift\n")
-    assert main(["verify", "--codegen", "--generators", GEN_SUITE, "--config", str(cfg), "--target", "models"]) == 0
-    assert main(["verify", "--codegen", "--generators", GEN_SUITE, "--config", str(cfg), "--target", "other"]) == 1
+    assert main(["verify", "--codegen", "--config", str(cfg), "--target", "models"]) == 0
+    assert main(["verify", "--codegen", "--config", str(cfg), "--target", "other"]) == 1
 
 
 def test_verify_flag_path_still_works_with_config_present(tmp_path: Path) -> None:
@@ -89,8 +90,8 @@ def test_verify_flag_path_still_works_with_config_present(tmp_path: Path) -> Non
     _project(tmp_path)
     meta = tmp_path / "metaobjects"
     out = tmp_path / "flagout"
-    assert main(["gen", "--generators", GEN_SUITE, str(meta), "--out", str(out)]) == 0
-    assert main(["verify", "--generators", GEN_SUITE, str(meta), "--out", str(out)]) == 0
+    assert main(as_config(["gen", "--generators", GEN_SUITE, str(meta), "--out", str(out)])) == 0
+    assert main(as_config(["verify", "--generators", GEN_SUITE, str(meta), "--out", str(out)])) == 0
 
 
 def test_verify_templates_config_mode_requires_metadata_dir(tmp_path: Path) -> None:
@@ -105,21 +106,21 @@ def test_verify_codegen_shared_outdir_disjoint_entities_in_sync(tmp_path: Path) 
     verify --codegen must NOT report the co-resident target's files as false
     `extra` drift. The diff is union-of-co-resident-regen vs the shared dir."""
     cfg = _project(tmp_path, SHARED_OUTDIR)
-    assert main(["gen", "--generators", GEN_SUITE, "--config", str(cfg)]) == 0
+    assert main(["gen", "--config", str(cfg)]) == 0
     assert (tmp_path / "shared/Program.py").exists()
     assert (tmp_path / "shared/Week.py").exists()
     # Bug repro: this exits 1 today with a false `extra` on both targets.
-    assert main(["verify", "--codegen", "--generators", GEN_SUITE, "--config", str(cfg)]) == 0
+    assert main(["verify", "--codegen", "--config", str(cfg)]) == 0
 
 
 def test_verify_codegen_shared_outdir_detects_real_drift(tmp_path: Path, capsys) -> None:
     """Real drift is still detected under a shared outDir: hand-editing one
     co-resident target's file flags it as `drifted` (labeled for the shared unit)."""
     cfg = _project(tmp_path, SHARED_OUTDIR)
-    assert main(["gen", "--generators", GEN_SUITE, "--config", str(cfg)]) == 0
+    assert main(["gen", "--config", str(cfg)]) == 0
     target = tmp_path / "shared/Week.py"
     target.write_text(target.read_text() + "\n# hand-edited drift\n")
-    rc = main(["verify", "--codegen", "--generators", GEN_SUITE, "--config", str(cfg)])
+    rc = main(["verify", "--codegen", "--config", str(cfg)])
     assert rc == 1
     err = capsys.readouterr().err
     assert "drifted" in err and "Week.py" in err
@@ -147,10 +148,10 @@ def test_verify_codegen_shared_outdir_detects_stale_extra(tmp_path: Path, capsys
     been generated at all, so the test was pinning the pre-jurisdiction behaviour where
     the gate convicted every stranger in the directory."""
     cfg = _project(tmp_path, SHARED_OUTDIR)
-    assert main(["gen", "--generators", GEN_SUITE, "--config", str(cfg)]) == 0
+    assert main(["gen", "--config", str(cfg)]) == 0
     (tmp_path / "shared/Orphan.py").write_text("# we wrote this before; regen no longer emits it\n")
     _record_as_written(tmp_path, "Orphan.py")
-    rc = main(["verify", "--codegen", "--generators", GEN_SUITE, "--config", str(cfg)])
+    rc = main(["verify", "--codegen", "--config", str(cfg)])
     assert rc == 1
     err = capsys.readouterr().err
     assert "extra" in err and "Orphan.py" in err
@@ -161,9 +162,9 @@ def test_verify_codegen_shared_outdir_ignores_a_stranger(tmp_path: Path) -> None
     to convict. `outDir` is a directory, not a namespace this tool owns — convicting
     strangers is what failed projects with zero drift (the TS gate's 0.24.3 ruling)."""
     cfg = _project(tmp_path, SHARED_OUTDIR)
-    assert main(["gen", "--generators", GEN_SUITE, "--config", str(cfg)]) == 0
+    assert main(["gen", "--config", str(cfg)]) == 0
     (tmp_path / "shared/HAND_WRITTEN.md").write_text("mine, not yours\n")
-    assert main(["verify", "--codegen", "--generators", GEN_SUITE, "--config", str(cfg)]) == 0
+    assert main(["verify", "--codegen", "--config", str(cfg)]) == 0
 
 
 def test_verify_target_scoping_widens_to_shared_outdir(tmp_path: Path, capsys) -> None:
@@ -171,16 +172,16 @@ def test_verify_target_scoping_widens_to_shared_outdir(tmp_path: Path, capsys) -
     as a unit: no false positive on a clean tree (with a widening note), and a
     drift in target b's file IS caught because the shared dir is verified together."""
     cfg = _project(tmp_path, SHARED_OUTDIR)
-    assert main(["gen", "--generators", GEN_SUITE, "--config", str(cfg)]) == 0
+    assert main(["gen", "--config", str(cfg)]) == 0
     # Clean tree: --target a widens to cover the shared dir (b co-resident) → no false positive.
-    rc = main(["verify", "--codegen", "--generators", GEN_SUITE, "--config", str(cfg), "--target", "a"])
+    rc = main(["verify", "--codegen", "--config", str(cfg), "--target", "a"])
     assert rc == 0
     note = capsys.readouterr().err
     assert "note:" in note and "shares an outDir" in note and "b" in note
     # Drift target b's file; --target a still catches it (shared dir verified as a unit).
     week = tmp_path / "shared/Week.py"
     week.write_text(week.read_text() + "\n# drift\n")
-    rc = main(["verify", "--codegen", "--generators", GEN_SUITE, "--config", str(cfg), "--target", "a"])
+    rc = main(["verify", "--codegen", "--config", str(cfg), "--target", "a"])
     assert rc == 1
     assert "Week.py" in capsys.readouterr().err
 
@@ -211,13 +212,13 @@ def test_verify_codegen_no_args_no_yaml_falls_back_to_neutral_config(
     # regenerates the full default suite), so `gen` must run the full suite
     # too or the diff reports the un-emitted generators as spurious drift —
     # same constraint the flag-mode docstring notes for --entities.
-    assert main(["gen", "--generators", GEN_SUITE, "--out", "gen/models"]) == 0
+    assert main(as_config(["gen", "--generators", GEN_SUITE, "--out", "gen/models"])) == 0
     # Fresh gen -> no drift, via the same fallback rung.
-    assert main(["verify", "--codegen", "--generators", GEN_SUITE, "--out", "gen/models"]) == 0
+    assert main(as_config(["verify", "--codegen", "--generators", GEN_SUITE, "--out", "gen/models"])) == 0
     # Drift the committed output; the fallback rung must still catch it.
     program = tmp_path / "gen/models/Program.py"
     program.write_text(program.read_text() + "\n# drift\n")
-    assert main(["verify", "--codegen", "--generators", GEN_SUITE, "--out", "gen/models"]) == 1
+    assert main(as_config(["verify", "--codegen", "--generators", GEN_SUITE, "--out", "gen/models"])) == 1
 
 
 def test_verify_codegen_neutral_fallback_threads_column_naming(
@@ -240,19 +241,19 @@ def test_verify_codegen_neutral_fallback_threads_column_naming(
     )
 
     monkeypatch.chdir(tmp_path)
-    assert main(["gen", "--generators", GEN_SUITE, "--out", "gen/models", "--column-naming", "snake_case"]) == 0
+    assert main(as_config(["gen", "--generators", GEN_SUITE, "--out", "gen/models", "--column-naming", "snake_case"])) == 0
 
     capsys.readouterr()
     # Matching strategy -> clean.
     rc_clean = main(
-        ["verify", "--codegen", "--generators", GEN_SUITE, "--out", "gen/models", "--column-naming", "snake_case"]
+        as_config(["verify", "--codegen", "--generators", GEN_SUITE, "--out", "gen/models", "--column-naming", "snake_case"])
     )
     assert rc_clean == 0, capsys.readouterr().err
 
     # Mismatched strategy -> the discriminating half: proves the flag is actually
     # read at this rung, not merely accepted and dropped.
     rc_drift = main(
-        ["verify", "--codegen", "--generators", GEN_SUITE, "--out", "gen/models", "--column-naming", "literal"]
+        as_config(["verify", "--codegen", "--generators", GEN_SUITE, "--out", "gen/models", "--column-naming", "literal"])
     )
     err = capsys.readouterr().err
     assert rc_drift == 1
@@ -273,24 +274,29 @@ def test_config_mode_refuses_template_spec_instead_of_ignoring_it(
         '{"generators": [{"name": "s", "template": "entity", '
         '"scope": "perEntity", "outputPattern": "{name}.txt"}]}'
     )
-    rc = main(["gen", "--generators", GEN_SUITE, "--config", str(cfg), "--template-spec", str(spec)])
+    rc = main(["gen", "--config", str(cfg), "--template-spec", str(spec)])
     assert rc == 2
     err = capsys.readouterr().err
-    assert "--template-spec is not supported in declarative-config mode" in err
-    # and it names the working alternative rather than just refusing
-    assert "--out" in err
+    assert "--template-spec is not read" in err
+    # and it names the working alternative rather than just refusing: the target's key
+    assert "templateSpec: <path>" in err
 
 
-def test_config_mode_ignores_a_discovered_spec(tmp_path: Path) -> None:
-    """A DISCOVERED spec must not hard-fail config mode — discovery is a convention,
-    not a request. gen and verify both ignore it here, so they still agree."""
+def test_config_mode_refuses_a_spec_nothing_declares(tmp_path: Path, capsys) -> None:
+    """A project-root spec no target declares is 1.0 configuration that nothing reads any more:
+    gen and verify both refuse it, rather than both quietly skipping its templates (ADR-0034
+    Amendment 9). They still agree, now by failing the same way."""
+    from metaobjects.cli import legacy_template_spec_message
+
     cfg = _project(tmp_path)
     (tmp_path / "template-spec.json").write_text(
         '{"generators": [{"name": "s", "template": "entity", '
         '"scope": "perEntity", "outputPattern": "{name}.txt"}]}'
     )
-    assert main(["gen", "--generators", GEN_SUITE, "--config", str(cfg)]) == 0
-    assert main(["verify", "--codegen", "--generators", GEN_SUITE, "--config", str(cfg)]) == 0
+    assert main(["gen", "--config", str(cfg)]) == 2
+    assert legacy_template_spec_message("metaobjects gen") in capsys.readouterr().err
+    assert main(["verify", "--codegen", "--config", str(cfg)]) == 2
+    assert legacy_template_spec_message("metaobjects verify --codegen") in capsys.readouterr().err
 
 
 # --- the `extra` verdict at the two rungs the flag-mode test cannot reach ------------
@@ -320,7 +326,7 @@ def test_neutral_fallback_convicts_output_it_did_write(
         '{"schema_version": 1, "sources": [{"path": "model"}]}'
     )
     monkeypatch.chdir(tmp_path)
-    assert main(["gen", "--generators", GEN_SUITE, "--out", "gen/models"]) == 0
+    assert main(as_config(["gen", "--generators", GEN_SUITE, "--out", "gen/models"])) == 0
     assert (tmp_path / "gen/models/Program.py").exists()
 
     # A regen no longer emits Program.py, but it IS committed and IS in the manifest —
@@ -328,7 +334,7 @@ def test_neutral_fallback_convicts_output_it_did_write(
     (model / "meta.fitness.json").write_text(
         '{"metadata.root": {"package": "fitness", "children": []}}'
     )
-    assert main(["verify", "--codegen", "--generators", GEN_SUITE, "--out", "gen/models"]) == 1
+    assert main(as_config(["verify", "--codegen", "--generators", GEN_SUITE, "--out", "gen/models"])) == 1
 
 
 def test_config_mode_convicts_output_it_did_write(tmp_path: Path) -> None:
@@ -336,7 +342,7 @@ def test_config_mode_convicts_output_it_did_write(tmp_path: Path) -> None:
     prefix matters most, because every target has its own outDir and all of them share
     ONE manifest."""
     cfg = _project(tmp_path)
-    assert main(["gen", "--generators", GEN_SUITE, "--config", str(cfg)]) == 0
+    assert main(["gen", "--config", str(cfg)]) == 0
     assert (tmp_path / "gen/models/Program.py").exists()
 
     # Narrow `models` to one entity: Week.py stays committed and recorded while a fresh
@@ -344,4 +350,4 @@ def test_config_mode_convicts_output_it_did_write(tmp_path: Path) -> None:
     cfg.write_text(
         TWO_TARGETS.replace("entities: [Program, Week]", "entities: [Program]")
     )
-    assert main(["verify", "--codegen", "--generators", GEN_SUITE, "--config", str(cfg)]) == 1
+    assert main(["verify", "--codegen", "--config", str(cfg)]) == 1

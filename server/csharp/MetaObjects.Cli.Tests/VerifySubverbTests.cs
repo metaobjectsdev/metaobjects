@@ -192,13 +192,14 @@ public sealed class VerifySubverbTests : IDisposable
     }
 
     [Fact]
-    public void Codegen_without_committed_output_is_exit2()
+    public void Codegen_without_committed_output_reports_each_file_as_drift()
     {
         File.WriteAllText(Path.Combine(MetaDir, "meta.ai.json"), EntityMetadata);
-        // Never ran gen → OutDir absent → nothing to diff against → exit 2.
+        // Never ran gen → OutDir absent → an empty committed tree: every file is missing.
         var r = VerifyCommand.RunSubverbs(TemplatesOpts(templates: false, codegen: true));
-        Assert.Equal(2, r.ExitCode);
-        Assert.NotNull(r.Codegen!.Error);
+        Assert.Equal(1, r.ExitCode);
+        Assert.Null(r.Codegen!.Error);
+        Assert.All(r.Codegen.Lines, l => Assert.StartsWith("+ ", l));
     }
 
     [Fact]
@@ -286,12 +287,12 @@ public sealed class VerifySubverbTests : IDisposable
     [Fact]
     public void Combining_templates_and_codegen_aggregates_max_exit()
     {
-        // Templates clean (exit 0) but codegen has no committed output (exit 2).
+        // Templates clean (exit 0) but codegen has no committed output (drift, exit 1).
         WriteTemplate("Hi {{name}}.");
         var r = VerifyCommand.RunSubverbs(TemplatesOpts(templates: true, codegen: true));
         Assert.True(r.RanTemplates);
         Assert.True(r.RanCodegen);
-        Assert.Equal(2, r.ExitCode); // max(0, 2)
+        Assert.Equal(1, r.ExitCode); // max(0, 1)
     }
 
     // -------------------- --column-naming (the codegen regen must be told) ----

@@ -7,15 +7,10 @@ tree coheres: a ``model`` page links to ``api/ts`` AND ``api/java`` AND ``api/py
 and each api page links back to the same model page with hrefs that resolve identically
 on disk.
 
-Python has NO native SDK-docs (``api/python``) surface yet — the ``metaobjects`` CLI
-exposes ``gen`` / ``verify`` / ``agent-docs`` but no ``docs`` subcommand. This test
-drives that not-yet-existing entrypoint end-to-end and asserts the ``api/python`` pages
-are produced with the contract back-link. Because the feature does not exist, no files
-are written and the assertions FAIL.
-
-This RED is intentional (Phase 0 of the cross-port SDK-docs plan): it pins the contract
-the Python ``docs`` surface must satisfy BEFORE any implementation lands. Do NOT weaken
-or skip it to make CI green — make it pass by implementing the Python ``docs`` surface.
+Since 1.1.0 the Python api reference is the ``api-docs`` generator, declared in a target of
+``metaobjects.config.yaml`` and run by ``metaobjects gen`` (ADR-0034 Amendment 9; it was the
+``metaobjects docs`` command). This test declares it over the shared input and asserts the
+``api/python`` pages are produced with the contract back-link.
 """
 
 from __future__ import annotations
@@ -43,20 +38,15 @@ _CASE_DIR = _ROOT / "fixtures" / "conformance" / "api-docs-cross-port"
 
 
 def _drive_python_docs(input_dir: Path, out_dir: Path) -> None:
-    """Run the Python ``docs`` entrypoint end-to-end.
-
-    ``docs`` is not (yet) a registered ``metaobjects`` subcommand, so argparse rejects
-    it and ``cli.main`` raises ``SystemExit(2)`` writing nothing. We swallow that here so
-    the test proceeds to its file-existence assertions — which are the intended RED. Once
-    the Python ``docs`` surface exists this call writes the ``api/python`` tree and the
-    assertions pass.
-    """
-    try:
-        cli.main(["docs", str(input_dir), "--out", str(out_dir)])
-    except SystemExit:
-        # No "docs" subcommand yet → argparse exits 2 without producing output.
-        # The real assertion is on the (absent) api/python files below.
-        pass
+    """Run the Python api reference end-to-end: ``api-docs`` declared in a config target whose
+    ``outDir`` is *out_dir*, run by ``metaobjects gen``."""
+    config = out_dir.parent / "metaobjects.config.yaml"
+    config.write_text(
+        f"metadata: {json.dumps(str(input_dir))}\n"
+        f"targets:\n  docs:\n    outDir: {json.dumps(str(out_dir))}\n    generators: [api-docs]\n",
+        encoding="utf-8",
+    )
+    assert cli.main(["gen", "--config", str(config)]) == 0
 
 
 def test_python_api_docs_paths_and_back_links_match_shared_manifest(tmp_path: Path) -> None:
@@ -86,8 +76,7 @@ def test_python_api_docs_paths_and_back_links_match_shared_manifest(tmp_path: Pa
         page = out_dir / api_python_path
         assert page.is_file(), (
             f"Python api-docs surface did not produce '{api_python_path}' for unit "
-            f"'{node}'. The 'docs' subcommand / api/python surface does not exist yet "
-            f"(Phase 0 RED). Searched under: {out_dir}"
+            f"'{node}'. Searched under: {out_dir}"
         )
 
         contents = page.read_text(encoding="utf-8")

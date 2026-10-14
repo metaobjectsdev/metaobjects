@@ -10,7 +10,8 @@ from metaobjects.codegen.project_config import (
     CONFIG_FILENAME,
     DEFAULT_METADATA_DIR,
     DEFAULT_REQUIREMENT_WITNESS_MODULE,
-    DOCS_KEYS,
+    API_DOCS_KEYS,
+    LEGACY_DOCS_KEY,
     DOTTED_MODULE_PATTERN,
     MODULE_SYMBOL_PATTERN,
     REQUIREMENT_TESTS_KEYS,
@@ -142,7 +143,7 @@ def test_schema_file_is_valid_json_and_matches_shape(tmp_path: Path) -> None:
     props = schema["properties"]
     assert set(props) >= {"metadata", "providers", "targets"}
     target_props = schema["properties"]["targets"]["additionalProperties"]["properties"]
-    assert set(target_props) == {"outDir", "generators", "entities"}
+    assert set(target_props) == {"outDir", "generators", "entities", "templateSpec"}
 
 
 # A key you write into the config and the loader silently drops is the failure class the
@@ -216,10 +217,12 @@ def test_schema_and_loader_accept_EXACTLY_the_same_keys(tmp_path: Path) -> None:
     assert set(block["properties"]) == set(REQUIREMENT_TESTS_KEYS)
     assert block["additionalProperties"] is False
     assert block["properties"]["grain"]["enum"] == list(REQUIREMENT_TEST_GRAIN_VALUES)
-    # So is the `docs` block.
-    docs = schema["properties"]["docs"]
-    assert set(docs["properties"]) == set(DOCS_KEYS)
-    assert docs["additionalProperties"] is False
+    # So is the `apiDocs` block.
+    api_docs = schema["properties"]["apiDocs"]
+    assert set(api_docs["properties"]) == set(API_DOCS_KEYS)
+    assert api_docs["additionalProperties"] is False
+    # The 1.0 `docs` block is neither: the loader only records it, so gen can refuse it.
+    assert LEGACY_DOCS_KEY not in schema["properties"]
     # Both levels must keep saying unknown keys are invalid — that claim is what the
     # loader now enforces.
     assert schema["additionalProperties"] is False
@@ -313,3 +316,37 @@ def test_the_loaders_grain_values_are_the_walks_grains() -> None:
     from metaobjects.codegen.requirement_walk import REQUIREMENT_TEST_GRAINS
 
     assert tuple(REQUIREMENT_TEST_GRAIN_VALUES) == tuple(REQUIREMENT_TEST_GRAINS)
+
+
+def test_api_docs_block_is_parsed_with_its_three_keys(tmp_path: Path) -> None:
+    p = _write(
+        tmp_path,
+        "apiDocs:\n  apiSubDir: reference/py\n  projectName: shop\n"
+        "  modelBaseUrl: https://docs.example.com/model\n" + _TARGETS,
+    )
+    api_docs = load_project_config(p).api_docs
+    assert api_docs is not None
+    assert (api_docs.api_subdir, api_docs.project_name, api_docs.model_base_url) == (
+        "reference/py", "shop", "https://docs.example.com/model",
+    )
+
+
+def test_api_docs_block_refuses_an_unknown_key(tmp_path: Path) -> None:
+    p = _write(tmp_path, "apiDocs:\n  layout: flat\n" + _TARGETS)
+    with pytest.raises(ConfigError, match="unknown key"):
+        load_project_config(p)
+
+
+def test_the_1_0_docs_block_is_recorded_not_refused(tmp_path: Path) -> None:
+    """The loader records a 1.0 ``docs`` block rather than refusing it as an unknown key, so
+    ``gen`` can refuse it with the line that says where documentation went."""
+    p = _write(tmp_path, "docs:\n  generators: [codegen.x:y]\n" + _TARGETS)
+    assert load_project_config(p).legacy_docs is True
+    (tmp_path / "b").mkdir()
+    assert load_project_config(_write(tmp_path / "b", _TARGETS)).legacy_docs is False
+
+
+def test_template_spec_target_key_resolves_against_the_config_dir(tmp_path: Path) -> None:
+    p = _write(tmp_path, "targets:\n  m:\n    outDir: out\n    templateSpec: spec.json\n")
+    config = load_project_config(p)
+    assert config.template_spec_for(config.targets[0]) == str((tmp_path / "spec.json").resolve())

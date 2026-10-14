@@ -12,6 +12,7 @@ from pathlib import Path
 from metaobjects.cli import main
 from metaobjects.codegen.generator_registry import GENERATOR_REGISTRY, list_generators
 from tests.codegen.gen_suite import GEN_SUITE
+from tests.codegen.config_helpers import as_config
 
 FIXTURE = (
     Path(__file__).parents[4]
@@ -52,9 +53,10 @@ def test_gen_list_prints_all_and_exits_zero(capsys, tmp_path: Path) -> None:
     assert sorted(listed) == sorted(GENERATOR_REGISTRY.keys())
 
 
-def test_gen_list_does_not_run_codegen(capsys, tmp_path: Path) -> None:
+def test_gen_list_does_not_run_codegen(capsys, tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
     out = tmp_path / "out"
-    rc = main(["gen", "--generators", GEN_SUITE, "--list", "--out", str(out)])
+    rc = main(as_config(["gen", "--generators", GEN_SUITE, "--list", "--out", str(out)]))
     assert rc == 0
     # --list must NOT write any generated files even when --out is given.
     assert not out.exists() or not list(out.rglob("*.py"))
@@ -63,7 +65,7 @@ def test_gen_list_does_not_run_codegen(capsys, tmp_path: Path) -> None:
 def test_generators_selects_subset_by_stable_name(tmp_path: Path) -> None:
     meta_dir = _meta_dir(tmp_path)
     out = tmp_path / "out"
-    rc = main(["gen", meta_dir, "--out", str(out), "--generators", "entity"])
+    rc = main(as_config(["gen", meta_dir, "--out", str(out), "--generators", "entity"]))
     assert rc == 0
     files = {p.name for p in out.rglob("*.py")}
     # entity-only selection emits the Program entity model...
@@ -77,14 +79,14 @@ def test_template_generator_reachable_via_generators(tmp_path: Path) -> None:
     out = tmp_path / "out"
     # The registry's `template` primitive walks to zero outputs (no-op default),
     # so selecting it alone is a valid, non-throwing run that writes nothing.
-    rc = main(["gen", meta_dir, "--out", str(out), "--generators", "template"])
+    rc = main(as_config(["gen", meta_dir, "--out", str(out), "--generators", "template"]))
     assert rc == 0
 
 
 def test_unknown_generator_name_is_clear_error(capsys, tmp_path: Path) -> None:
     meta_dir = _meta_dir(tmp_path)
     out = tmp_path / "out"
-    rc = main(["gen", meta_dir, "--out", str(out), "--generators", "entity,bogus"])
+    rc = main(as_config(["gen", meta_dir, "--out", str(out), "--generators", "entity,bogus"]))
     assert rc != 0
     err = capsys.readouterr().err
     assert "bogus" in err
@@ -95,7 +97,7 @@ def test_template_tier_without_entity_warns(capsys, tmp_path: Path) -> None:
     entity generator's modules, so selecting it without ``entity`` warns (advisory: an
     adopter may keep hand-written models at those paths)."""
     meta_dir = _meta_dir(tmp_path)
-    rc = main(["gen", meta_dir, "--out", str(tmp_path / "out"), "--generators", "extractor"])
+    rc = main(as_config(["gen", meta_dir, "--out", str(tmp_path / "out"), "--generators", "extractor"]))
     assert rc == 0
     err = capsys.readouterr().err
     assert 'warning: "extractor" is selected but "entity" is not.' in err
@@ -106,7 +108,7 @@ def test_routes_without_filter_allowlist_warns(capsys, tmp_path: Path) -> None:
     generated a package that failed at import with ModuleNotFoundError and no warning."""
     meta_dir = _meta_dir(tmp_path)
     rc = main(
-        ["gen", meta_dir, "--out", str(tmp_path / "out"), "--generators", "entity,names,routes"]
+        as_config(["gen", meta_dir, "--out", str(tmp_path / "out"), "--generators", "entity,names,routes"])
     )
     assert rc == 0
     err = capsys.readouterr().err
@@ -116,8 +118,8 @@ def test_routes_without_filter_allowlist_warns(capsys, tmp_path: Path) -> None:
 def test_routes_with_its_requires_does_not_warn(capsys, tmp_path: Path) -> None:
     meta_dir = _meta_dir(tmp_path)
     rc = main(
-        ["gen", meta_dir, "--out", str(tmp_path / "out"),
-         "--generators", "entity,names,filter-allowlist,routes"]
+        as_config(["gen", meta_dir, "--out", str(tmp_path / "out"),
+         "--generators", "entity,names,filter-allowlist,routes"])
     )
     assert rc == 0
     assert "is selected but" not in capsys.readouterr().err
@@ -126,7 +128,7 @@ def test_routes_with_its_requires_does_not_warn(capsys, tmp_path: Path) -> None:
 def test_template_tier_with_entity_does_not_warn(capsys, tmp_path: Path) -> None:
     meta_dir = _meta_dir(tmp_path)
     rc = main(
-        ["gen", meta_dir, "--out", str(tmp_path / "out"), "--generators", "entity,extractor"]
+        as_config(["gen", meta_dir, "--out", str(tmp_path / "out"), "--generators", "entity,extractor"])
     )
     assert rc == 0
     assert "is selected but" not in capsys.readouterr().err

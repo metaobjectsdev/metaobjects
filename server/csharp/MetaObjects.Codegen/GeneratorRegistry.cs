@@ -253,8 +253,8 @@ public static class GeneratorRegistry
                 Factory = _ => new NamesGenerator(),
                 SourceFileName = "NamesGenerator.cs",
             },
-            // The api reference `dotnet meta docs` writes (ADR-0025), as a generator so a project can own
-            // it. It is not part of `gen`: it implements IDocsGenerator, which `gen` skips.
+            // The api reference (ADR-0025's api/csharp surface): an ordinary entry in codegen/Generators.cs,
+            // with its output directory and page options as init properties (ADR-0034 Amendment 9).
             ["api-docs"] = new()
             {
                 Name = "api-docs",
@@ -262,7 +262,7 @@ public static class GeneratorRegistry
                 Tier = GeneratorTier.Native,
                 Layer = GeneratorLayer.Docs,
                 Factory = _ => new ApiDocsGenerator(),
-                Note = "Run by `dotnet meta docs` as its api surface (ADR-0025), not by `dotnet meta gen`: `gen` skips it, and warns when `--generators` names it.",
+                Note = "Writes under its own OutDir when codegen/Generators.cs sets one (with ApiSubDir, ProjectName, ModelBaseUrl).",
                 SourceFileName = "ApiDocsGenerator.cs",
                 // The page IR, its builder, the renderer and the path math; and the field walk and the
                 // M:N navigation the builder documents with.
@@ -305,7 +305,7 @@ public static class GeneratorRegistry
                 Tier = GeneratorTier.Native,
                 Layer = GeneratorLayer.Capability,
                 Factory = _ => new RequirementTestsGenerator(),
-                Options = "TestNamespace, WitnessClass, Grain, Filter, Renderer, WarnUncovered (properties on the generator, set in an owned codegen/Program.cs; none needed)",
+                Options = "OutDir, TestNamespace, WitnessClass, Grain, Filter, Renderer, WarnUncovered (init properties on the entry in codegen/Generators.cs; OutDir points the tests at the test project)",
                 Note = "Writes nothing for a model with no requirement. The project class named by WitnessClass must exist for the tests to compile.",
                 SourceFileName = "RequirementTestsGenerator.cs",
             },
@@ -363,7 +363,7 @@ public static class GeneratorRegistry
             warnings.Add(
                 $"\"{name}\" is selected but {listed} {(missing.Count == 1 ? "is" : "are")} not. " +
                 $"The code \"{name}\" emits references what {listed} would have emitted, so it " +
-                $"will not compile. Add {listed} to --generators, or keep your own hand-written " +
+                $"will not compile. Add {listed} to codegen/Generators.cs, or keep your own hand-written " +
                 "files at those paths.");
         }
         return warnings;

@@ -5,8 +5,8 @@ namespace MetaObjects.Cli.Tests;
 /// <summary>
 /// The command-line surface every port's CLI shares with the Node <c>meta</c>: the three
 /// version spellings, <c>--help</c> as output rather than an error, and an unknown flag
-/// refused by name with the command's valid flags listed (exit 2). <c>gen</c> and
-/// <c>docs</c> used to drop an unknown flag and exit 0 as though it had been honoured.
+/// refused by name with the command's valid flags listed (exit 2). <c>gen</c> used to
+/// drop an unknown flag and exit 0 as though it had been honoured.
 /// Driven through the built assembly, because Program.cs's argument parsing is
 /// top-level statements no test can call directly.
 /// </summary>
@@ -42,7 +42,7 @@ public sealed class CliSurfaceTests : IDisposable
     [Theory]
     [InlineData("gen", "usage: dotnet meta gen")]
     [InlineData("verify", "usage: dotnet meta verify")]
-    [InlineData("docs", "usage: dotnet meta docs")]
+    [InlineData("init", "usage: dotnet meta init")]
     [InlineData("fmt", "usage: dotnet meta fmt")]
     [InlineData("eject", "usage: dotnet meta eject")]
     public void A_command_help_prints_that_commands_usage_and_exits_0(string command, string expected)
@@ -54,7 +54,7 @@ public sealed class CliSurfaceTests : IDisposable
 
     [Theory]
     [InlineData("gen", "--generators", "x", "--out", "o")]
-    [InlineData("docs", "--out", "o", "x")]
+    [InlineData("init")]
     [InlineData("verify", "x")]
     [InlineData("fmt")]
     [InlineData("eject", "entity")]

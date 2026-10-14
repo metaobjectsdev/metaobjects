@@ -21,6 +21,7 @@ import pytest
 from metaobjects import cli
 from metaobjects.cli import main
 from tests.codegen.gen_suite import GEN_SUITE
+from tests.codegen.config_helpers import as_config
 
 _PK = {"identity.primary": {"name": "pk", "@fields": ["id"]}}
 
@@ -56,8 +57,8 @@ def _meta_dir(tmp_path: Path, requirements: list[dict[str, Any]]) -> str:
 
 def _verify(tmp_path: Path, meta_dir: str, *extra: str) -> int:
     out = tmp_path / "out"
-    assert main(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)]) == 0
-    return main(["verify", "--codegen", "--generators", GEN_SUITE, meta_dir, "--out", str(out), *extra])
+    assert main(as_config(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)])) == 0
+    return main(as_config(["verify", "--codegen", "--generators", GEN_SUITE, meta_dir, "--out", str(out), *extra]))
 
 
 def test_a_model_with_no_requirements_prints_nothing_and_exits_as_before(
@@ -191,14 +192,14 @@ def test_an_unexpected_load_exception_does_not_turn_the_gate_off_with_exit_0(
     helper and at the command."""
     meta_dir = _meta_dir(tmp_path, [_requirement("Recorded", "live", implementedBy=["Ordr"])])
     out = tmp_path / "out"
-    assert main(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)]) == 0
+    assert main(as_config(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)])) == 0
     _raise_only_for_the_verify_model(monkeypatch)
     with pytest.raises(RuntimeError, match="loader bug"):
         cli._load_verify_model(argparse.Namespace(metadata_dir=meta_dir, provider=None))
 
     capsys.readouterr()
     with pytest.raises(RuntimeError, match="loader bug"):
-        main(["verify", "--codegen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)])
+        main(as_config(["verify", "--codegen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)]))
     # The gate did not report success on its behalf.
     assert "requirements:" not in capsys.readouterr().err
 
@@ -271,9 +272,9 @@ def test_config_mode_counts_only_in_scope_entities_and_says_how_many_files_came_
     cfg = tmp_path / "metaobjects.config.yaml"
     cfg.write_text("metadata: metaobjects\ntargets:\n  main:\n    outDir: gen\n    generators: [names]\n")
 
-    assert main(["gen", "--generators", GEN_SUITE, "--config", str(cfg)]) == 0
+    assert main(["gen", "--config", str(cfg)]) == 0
     capsys.readouterr()
-    code = main(["verify", "--codegen", "--generators", GEN_SUITE, "--config", str(cfg)])
+    code = main(["verify", "--codegen", "--config", str(cfg)])
     err = capsys.readouterr().err
 
     assert code == 0
@@ -310,7 +311,10 @@ metadata.root:
         implementedBy: [Ordr]
 """
 
-_NO_GENERATORS_LINE = "verify --codegen: no generators selected and no generated output to check."
+#: What ``verify --codegen`` prints for a config whose one target declares nothing (1.1.0: the
+#: list is the config, and an empty list is checked, not refused).
+_NO_GENERATORS_LINE = "target 'main' declares no generators; nothing written"
+_NOTHING_TO_CHECK_OUT = f"{_NO_GENERATORS_LINE}\nmetaobjects verify [main]: in sync (0 file(s)).\n"
 
 
 def _yaml_dir(tmp_path: Path, text: str) -> str:
@@ -321,11 +325,11 @@ def _yaml_dir(tmp_path: Path, text: str) -> str:
 
 
 def _verify_with_nothing_selected(tmp_path: Path, meta_dir: str, *extra: str) -> int:
-    """``metaobjects verify <dir> --out <empty dir>``: bare, so `--codegen` by default, with no
-    `--generators`, which is the invocation where no other gate loads the model."""
+    """``metaobjects verify <dir>`` over a config whose target declares no generators: bare, so
+    `--codegen` by default, which is the invocation where no other gate loads the model."""
     out = tmp_path / "empty-out"
     out.mkdir(exist_ok=True)
-    return main(["verify", meta_dir, "--out", str(out), *extra])
+    return main(as_config(["verify", meta_dir, "--out", str(out), *extra]))
 
 
 def test_with_no_generators_selected_the_gate_is_still_reached(
@@ -429,7 +433,7 @@ def test_a_model_with_no_requirement_and_no_generators_selected_still_exits_0_an
     capsys.readouterr()
     assert _verify_with_nothing_selected(tmp_path, meta_dir) == 0
     captured = capsys.readouterr()
-    assert captured.out.startswith(_NO_GENERATORS_LINE) and captured.out.count("\n") == 1
+    assert captured.out == _NOTHING_TO_CHECK_OUT
     # stderr holds the one line a bare `verify` has always printed, and nothing else.
     (note,) = captured.err.splitlines()
     assert note.startswith("metaobjects verify — running --codegen (default).")

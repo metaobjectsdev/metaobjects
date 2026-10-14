@@ -13,6 +13,7 @@ from pathlib import Path
 
 from metaobjects.cli import main
 from tests.codegen.gen_suite import GEN_SUITE
+from tests.codegen.config_helpers import as_config
 
 FIXTURE = (
     Path(__file__).parents[4]
@@ -34,7 +35,7 @@ def _meta_dir(tmp_path: Path) -> str:
 def test_gen_writes_files(tmp_path: Path) -> None:
     meta_dir = _meta_dir(tmp_path)
     out = tmp_path / "out"
-    rc = main(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)])
+    rc = main(as_config(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)]))
     assert rc == 0
     written = list(out.rglob("*.py"))
     assert written, "gen wrote no files"
@@ -47,7 +48,7 @@ def test_gen_entities_allowlist_emits_only_named(tmp_path: Path) -> None:
     loaded, so references resolve); the others are not written."""
     meta_dir = _meta_dir(tmp_path)
     out = tmp_path / "out"
-    rc = main(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out), "--entities", "Program,Week"])
+    rc = main(as_config(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out), "--entities", "Program,Week"]))
     assert rc == 0
     assert (out / "Program.py").exists()
     assert (out / "Week.py").exists()
@@ -62,34 +63,34 @@ def test_verify_entities_allowlist_in_sync(tmp_path: Path) -> None:
     (without the filter it would flag the un-emitted entities as missing)."""
     meta_dir = _meta_dir(tmp_path)
     out = tmp_path / "out"
-    assert main(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out), "--entities", "Program,Week"]) == 0
-    assert main(["verify", "--generators", GEN_SUITE, meta_dir, "--out", str(out), "--entities", "Program,Week"]) == 0
+    assert main(as_config(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out), "--entities", "Program,Week"])) == 0
+    assert main(as_config(["verify", "--generators", GEN_SUITE, meta_dir, "--out", str(out), "--entities", "Program,Week"])) == 0
 
 
 def test_verify_in_sync_returns_zero(tmp_path: Path) -> None:
     meta_dir = _meta_dir(tmp_path)
     out = tmp_path / "out"
-    assert main(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)]) == 0
+    assert main(as_config(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)])) == 0
     # Freshly generated → verify must report no drift.
-    assert main(["verify", "--generators", GEN_SUITE, meta_dir, "--out", str(out)]) == 0
+    assert main(as_config(["verify", "--generators", GEN_SUITE, meta_dir, "--out", str(out)])) == 0
 
 
 def test_verify_detects_drift(tmp_path: Path) -> None:
     meta_dir = _meta_dir(tmp_path)
     out = tmp_path / "out"
-    assert main(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)]) == 0
+    assert main(as_config(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)])) == 0
     # Mutate a generated file → verify must detect codegen drift.
     target = out / "Program.py"
     target.write_text(target.read_text() + "\n# hand-edited drift\n")
-    assert main(["verify", "--generators", GEN_SUITE, meta_dir, "--out", str(out)]) != 0
+    assert main(as_config(["verify", "--generators", GEN_SUITE, meta_dir, "--out", str(out)])) != 0
 
 
 def test_verify_detects_missing_file(tmp_path: Path) -> None:
     meta_dir = _meta_dir(tmp_path)
     out = tmp_path / "out"
-    assert main(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)]) == 0
+    assert main(as_config(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)])) == 0
     (out / "Program.py").unlink()
-    assert main(["verify", "--generators", GEN_SUITE, meta_dir, "--out", str(out)]) != 0
+    assert main(as_config(["verify", "--generators", GEN_SUITE, meta_dir, "--out", str(out)])) != 0
 
 
 def test_gen_load_error_returns_nonzero(tmp_path: Path) -> None:
@@ -97,7 +98,7 @@ def test_gen_load_error_returns_nonzero(tmp_path: Path) -> None:
     bad.mkdir()
     (bad / "broken.json").write_text("{ not valid json")
     out = tmp_path / "out"
-    assert main(["gen", "--generators", GEN_SUITE, str(bad), "--out", str(out)]) != 0
+    assert main(as_config(["gen", "--generators", GEN_SUITE, str(bad), "--out", str(out)])) != 0
 
 
 _TEMPLATE_CORPUS = Path(__file__).parents[4] / "fixtures" / "template-codegen-conformance"
@@ -110,7 +111,7 @@ def test_template_spec_output_gets_no_package_init(tmp_path: Path) -> None:
     # own __init__.py.
     out = tmp_path / "out"
     rc = main(
-        [
+        as_config([
             "gen", "--generators", GEN_SUITE,
             str(_TEMPLATE_CORPUS / "metadata"),
             "--out",
@@ -119,7 +120,7 @@ def test_template_spec_output_gets_no_package_init(tmp_path: Path) -> None:
             str(_TEMPLATE_CORPUS / "spec.json"),
             "--templates",
             str(_TEMPLATE_CORPUS / "templates"),
-        ]
+        ])
     )
     assert rc == 0
     # Template output landed (a .txt in a subdir of its own) ...
@@ -140,7 +141,7 @@ def test_template_spec_bad_ref_clean_error(tmp_path: Path, capsys) -> None:
     )
     out = tmp_path / "out"
     rc = main(
-        [
+        as_config([
             "gen", "--generators", GEN_SUITE,
             str(_TEMPLATE_CORPUS / "metadata"),
             "--out",
@@ -149,7 +150,7 @@ def test_template_spec_bad_ref_clean_error(tmp_path: Path, capsys) -> None:
             str(spec),
             "--templates",
             str(_TEMPLATE_CORPUS / "templates"),
-        ]
+        ])
     )
     assert rc == 1
     err = capsys.readouterr().err
@@ -192,7 +193,7 @@ def test_gen_auto_discovers_template_spec(tmp_path: Path) -> None:
     """`gen` with NO --template-spec picks up <projectRoot>/template-spec.json."""
     root = _spec_project(tmp_path)
     out = root / "out"
-    rc = main(["gen", "--generators", GEN_SUITE, str(root / "meta"), "--out", str(out), "--templates", str(root / "templates")])
+    rc = main(as_config(["gen", "--generators", GEN_SUITE, str(root / "meta"), "--out", str(out), "--templates", str(root / "templates")]))
     assert rc == 0
     assert (out / "Product.txt").exists(), "discovered spec's perEntity output missing"
     assert (out / "shop" / "_package.txt").exists()
@@ -204,24 +205,27 @@ def test_gen_with_only_a_template_spec_is_not_refused(tmp_path: Path) -> None:
     refused with "no generators selected", while verify already honoured it."""
     root = _spec_project(tmp_path)
     out = root / "out"
-    rc = main(["gen", str(root / "meta"), "--out", str(out), "--templates", str(root / "templates")])
+    rc = main(as_config(["gen", str(root / "meta"), "--out", str(out), "--templates", str(root / "templates")]))
     assert rc == 0
     assert (out / "Product.txt").exists()
     assert not (out / "__init__.py").exists(), "no Python suite ran, so no package init"
 
 
-def test_gen_with_neither_generators_nor_spec_is_refused(tmp_path: Path, capsys) -> None:
+def test_gen_with_neither_generators_nor_spec_writes_nothing_and_says_so(tmp_path: Path, capsys) -> None:
+    """1.1.0 (ADR-0034 Amendment 9): a list that is present and empty is not an error. It
+    writes nothing and says so. (Through 1.0 an empty --generators selection was refused.)"""
     root = _spec_project(tmp_path, spec_name=None)
-    rc = main(["gen", str(root / "meta"), "--out", str(root / "out")])
-    assert rc == 2
-    assert "no generators selected" in capsys.readouterr().err
+    rc = main(as_config(["gen", str(root / "meta"), "--out", str(root / "out")]))
+    assert rc == 0
+    assert "target 'main' declares no generators; nothing written" in capsys.readouterr().out
+    assert not (root / "out").exists() or not any((root / "out").rglob("*"))
 
 
 def test_gen_without_spec_file_emits_no_template_output(tmp_path: Path) -> None:
     """No spec file ⇒ today's behaviour exactly: the default suite only."""
     root = _spec_project(tmp_path, spec_name=None)
     out = root / "out"
-    rc = main(["gen", "--generators", GEN_SUITE, str(root / "meta"), "--out", str(out), "--templates", str(root / "templates")])
+    rc = main(as_config(["gen", "--generators", GEN_SUITE, str(root / "meta"), "--out", str(out), "--templates", str(root / "templates")]))
     assert rc == 0
     assert not (out / "Product.txt").exists()
     assert not (out / "_model.txt").exists()
@@ -233,14 +237,14 @@ def test_verify_codegen_sees_the_discovered_template_spec(tmp_path: Path) -> Non
     list, never saw the spec, and convicted every spec-emitted file as `extra:`."""
     root = _spec_project(tmp_path)
     out = root / "out"
-    assert main(["gen", "--generators", GEN_SUITE, str(root / "meta"), "--out", str(out),
-                 "--templates", str(root / "templates")]) == 0
+    assert main(as_config(["gen", "--generators", GEN_SUITE, str(root / "meta"), "--out", str(out),
+                 "--templates", str(root / "templates")])) == 0
     # Non-vacuous: without discovery `gen` emits none of these, so a verify that
     # "passes" would only be agreeing that nothing exists.
     assert (out / "Product.txt").exists()
     assert (out / "_model.txt").exists()
-    rc = main(["verify", "--codegen", "--generators", GEN_SUITE, str(root / "meta"), "--out", str(out),
-               "--templates-root", str(root / "templates")])
+    rc = main(as_config(["verify", "--codegen", "--generators", GEN_SUITE, str(root / "meta"), "--out", str(out),
+               "--templates-root", str(root / "templates")]))
     assert rc == 0, "verify --codegen convicted output that `gen` had just written"
 
 
@@ -250,11 +254,11 @@ def test_verify_codegen_still_catches_a_missing_template_file(tmp_path: Path) ->
     spec-generated file must still be reported as drift."""
     root = _spec_project(tmp_path)
     out = root / "out"
-    assert main(["gen", "--generators", GEN_SUITE, str(root / "meta"), "--out", str(out),
-                 "--templates", str(root / "templates")]) == 0
+    assert main(as_config(["gen", "--generators", GEN_SUITE, str(root / "meta"), "--out", str(out),
+                 "--templates", str(root / "templates")])) == 0
     (out / "Product.txt").unlink()
-    rc = main(["verify", "--codegen", "--generators", GEN_SUITE, str(root / "meta"), "--out", str(out),
-               "--templates-root", str(root / "templates")])
+    rc = main(as_config(["verify", "--codegen", "--generators", GEN_SUITE, str(root / "meta"), "--out", str(out),
+               "--templates-root", str(root / "templates")]))
     assert rc == 1, "verify went blind — a deleted template-spec file is still drift"
 
 
@@ -262,11 +266,11 @@ def test_verify_codegen_catches_a_stale_template_file(tmp_path: Path) -> None:
     """Same guard, the other direction: edited content is drift, not just absence."""
     root = _spec_project(tmp_path)
     out = root / "out"
-    assert main(["gen", "--generators", GEN_SUITE, str(root / "meta"), "--out", str(out),
-                 "--templates", str(root / "templates")]) == 0
+    assert main(as_config(["gen", "--generators", GEN_SUITE, str(root / "meta"), "--out", str(out),
+                 "--templates", str(root / "templates")])) == 0
     (out / "Product.txt").write_text("stale\n")
-    rc = main(["verify", "--codegen", "--generators", GEN_SUITE, str(root / "meta"), "--out", str(out),
-               "--templates-root", str(root / "templates")])
+    rc = main(as_config(["verify", "--codegen", "--generators", GEN_SUITE, str(root / "meta"), "--out", str(out),
+               "--templates-root", str(root / "templates")]))
     assert rc == 1
 
 
@@ -289,11 +293,11 @@ def test_verify_codegen_clean_for_a_py_emitting_spec(tmp_path: Path) -> None:
         '"scope": "perEntity", "outputPattern": "{name}Service.py"}]}'
     )
     out = root / "out"
-    assert main(["gen", "--generators", GEN_SUITE, str(root / "meta"), "--out", str(out),
-                 "--templates", str(root / "templates")]) == 0
+    assert main(as_config(["gen", "--generators", GEN_SUITE, str(root / "meta"), "--out", str(out),
+                 "--templates", str(root / "templates")])) == 0
     assert (out / "ProductService.py").exists()
-    rc = main(["verify", "--codegen", "--generators", GEN_SUITE, str(root / "meta"), "--out", str(out),
-               "--templates-root", str(root / "templates")])
+    rc = main(as_config(["verify", "--codegen", "--generators", GEN_SUITE, str(root / "meta"), "--out", str(out),
+               "--templates-root", str(root / "templates")]))
     assert rc == 0, "the reported `extra:` false-conviction is back"
 
 
@@ -304,13 +308,13 @@ def test_verify_codegen_ignores_a_file_it_never_wrote(tmp_path: Path) -> None:
     — otherwise the broadened glob turns a clean project red."""
     root = _spec_project(tmp_path)
     out = root / "out"
-    assert main(["gen", "--generators", GEN_SUITE, str(root / "meta"), "--out", str(out),
-                 "--templates", str(root / "templates")]) == 0
+    assert main(as_config(["gen", "--generators", GEN_SUITE, str(root / "meta"), "--out", str(out),
+                 "--templates", str(root / "templates")])) == 0
     (out / "NOTES.md").write_text("hand-written, not ours\n")
     (out / "sub").mkdir()
     (out / "sub" / "stray.txt").write_text("also not ours\n")
-    rc = main(["verify", "--codegen", "--generators", GEN_SUITE, str(root / "meta"), "--out", str(out),
-               "--templates-root", str(root / "templates")])
+    rc = main(as_config(["verify", "--codegen", "--generators", GEN_SUITE, str(root / "meta"), "--out", str(out),
+               "--templates-root", str(root / "templates")]))
     assert rc == 0, "the gate convicted a file it never wrote"
 
 
@@ -318,12 +322,12 @@ def test_verify_codegen_ignores_pycache(tmp_path: Path) -> None:
     """Interpreter droppings are never artifacts, manifest or not."""
     root = _spec_project(tmp_path)
     out = root / "out"
-    assert main(["gen", "--generators", GEN_SUITE, str(root / "meta"), "--out", str(out),
-                 "--templates", str(root / "templates")]) == 0
+    assert main(as_config(["gen", "--generators", GEN_SUITE, str(root / "meta"), "--out", str(out),
+                 "--templates", str(root / "templates")])) == 0
     (out / "__pycache__").mkdir()
     (out / "__pycache__" / "Product.cpython-312.pyc").write_bytes(b"\x00\x01binary")
-    rc = main(["verify", "--codegen", "--generators", GEN_SUITE, str(root / "meta"), "--out", str(out),
-               "--templates-root", str(root / "templates")])
+    rc = main(as_config(["verify", "--codegen", "--generators", GEN_SUITE, str(root / "meta"), "--out", str(out),
+               "--templates-root", str(root / "templates")]))
     assert rc == 0
 
 
@@ -336,8 +340,8 @@ def test_explicit_template_spec_flag_overrides_discovery(tmp_path: Path) -> None
         '"scope": "perEntity", "outputPattern": "{name}.flagged.txt"}]}'
     )
     out = root / "out"
-    rc = main(["gen", "--generators", GEN_SUITE, str(root / "meta"), "--out", str(out),
-               "--templates", str(root / "templates"), "--template-spec", str(other)])
+    rc = main(as_config(["gen", "--generators", GEN_SUITE, str(root / "meta"), "--out", str(out),
+               "--templates", str(root / "templates"), "--template-spec", str(other)]))
     assert rc == 0
     assert (out / "Product.flagged.txt").exists(), "the flag's spec did not run"
     # The discovered spec must NOT also have run — the flag replaces it.
@@ -350,7 +354,7 @@ def test_malformed_discovered_spec_is_a_clean_error(tmp_path: Path, capsys) -> N
     root = _spec_project(tmp_path)
     (root / "template-spec.json").write_text("{ not json")
     out = root / "out"
-    rc = main(["gen", "--generators", GEN_SUITE, str(root / "meta"), "--out", str(out), "--templates", str(root / "templates")])
+    rc = main(as_config(["gen", "--generators", GEN_SUITE, str(root / "meta"), "--out", str(out), "--templates", str(root / "templates")]))
     assert rc == 1
     err = capsys.readouterr().err
     assert "error:" in err
@@ -377,7 +381,7 @@ def test_gen_manifest_keys_are_project_relative(tmp_path: Path) -> None:
     back), and a unit test of any one of them passes while the other two disagree."""
     meta_dir = _meta_dir(tmp_path)
     out = tmp_path / "build" / "gen"
-    assert main(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)]) == 0
+    assert main(as_config(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)])) == 0
 
     manifest = json.loads(
         (tmp_path / ".metaobjects" / ".gen-state" / ".hashes.json").read_text()
@@ -394,8 +398,8 @@ def test_two_out_dirs_write_disjoint_manifest_entries(tmp_path: Path) -> None:
     re-key they were one entry, and whichever ran last decided whether the OTHER run's
     file still counted as ours."""
     meta_dir = _meta_dir(tmp_path)
-    assert main(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(tmp_path / "a")]) == 0
-    assert main(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(tmp_path / "b")]) == 0
+    assert main(as_config(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(tmp_path / "a")])) == 0
+    assert main(as_config(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(tmp_path / "b")])) == 0
 
     manifest = json.loads(
         (tmp_path / ".metaobjects" / ".gen-state" / ".hashes.json").read_text()
@@ -414,7 +418,7 @@ def test_verify_codegen_still_convicts_output_it_did_write(tmp_path: Path) -> No
     the gate kept printing a clean verdict. This is the assertion that can see it."""
     meta_dir = Path(_meta_dir(tmp_path))
     out = tmp_path / "build" / "gen"
-    assert main(["gen", "--generators", GEN_SUITE, str(meta_dir), "--out", str(out)]) == 0
+    assert main(as_config(["gen", "--generators", GEN_SUITE, str(meta_dir), "--out", str(out)])) == 0
     assert (out / "Program.py").exists()
 
     # Remove the metadata: a regen no longer emits Program.py, but it IS committed and it
@@ -422,7 +426,7 @@ def test_verify_codegen_still_convicts_output_it_did_write(tmp_path: Path) -> No
     (meta_dir / "meta.fitness.json").write_text(
         '{"metadata.root": {"package": "fitness", "children": []}}'
     )
-    assert main(["verify", "--codegen", "--generators", GEN_SUITE, str(meta_dir), "--out", str(out)]) == 1
+    assert main(as_config(["verify", "--codegen", "--generators", GEN_SUITE, str(meta_dir), "--out", str(out)])) == 1
 
 
 def test_gen_baseline_adopt_records_without_writing(tmp_path: Path, capsys) -> None:
@@ -436,12 +440,12 @@ def test_gen_baseline_adopt_records_without_writing(tmp_path: Path, capsys) -> N
     """
     meta_dir = _meta_dir(tmp_path)
     out = tmp_path / "out"
-    assert main(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)]) == 0
+    assert main(as_config(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)])) == 0
     stale = out / "Program.py"
     stale.write_text("# @generated by metaobjects\n# from an older engine\n")
     shutil.rmtree(tmp_path / ".metaobjects", ignore_errors=True)
 
-    assert main(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out), "--baseline=adopt"]) == 0
+    assert main(as_config(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out), "--baseline=adopt"])) == 0
 
     assert stale.read_text() == "# @generated by metaobjects\n# from an older engine\n"
     assert (tmp_path / ".metaobjects" / ".gen-state" / ".hashes.json").exists()
@@ -458,14 +462,14 @@ def test_gen_exits_non_zero_when_a_file_is_refused(tmp_path: Path) -> None:
     """
     meta_dir = _meta_dir(tmp_path)
     out = tmp_path / "out"
-    assert main(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)]) == 0
+    assert main(as_config(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)])) == 0
     (out / "Program.py").write_text("# @generated by metaobjects\n# from an older engine\n")
     shutil.rmtree(tmp_path / ".metaobjects", ignore_errors=True)
 
-    assert main(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)]) == 1
+    assert main(as_config(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)])) == 1
 
     # …and the remedy clears it, which is what makes the failure actionable rather than a wall.
-    assert main(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out), "--baseline=adopt"]) == 0
+    assert main(as_config(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out), "--baseline=adopt"])) == 0
 
 
 def test_prompts_and_templates_root_are_the_same_flag(tmp_path: Path) -> None:
@@ -479,12 +483,12 @@ def test_prompts_and_templates_root_are_the_same_flag(tmp_path: Path) -> None:
     vacuous success."""
     root = _spec_project(tmp_path)
     out = root / "out"
-    assert main(["gen", "--generators", GEN_SUITE, str(root / "meta"), "--out", str(out),
-                 "--templates", str(root / "templates")]) == 0
+    assert main(as_config(["gen", "--generators", GEN_SUITE, str(root / "meta"), "--out", str(out),
+                 "--templates", str(root / "templates")])) == 0
 
     for spelling in ("--prompts", "--templates-root"):
-        rc = main(["verify", "--codegen", "--generators", GEN_SUITE, str(root / "meta"), "--out", str(out),
-                   spelling, str(root / "templates")])
+        rc = main(as_config(["verify", "--codegen", "--generators", GEN_SUITE, str(root / "meta"), "--out", str(out),
+                   spelling, str(root / "templates")]))
         assert rc == 0, f"verify rejected output `gen` had just written, via {spelling}"
 
     # Non-vacuous: --codegen regenerates the template-spec outputs FROM that directory, so
@@ -492,8 +496,8 @@ def test_prompts_and_templates_root_are_the_same_flag(tmp_path: Path) -> None:
     # also hold for a parser that accepted the flag and ignored its value. (The --templates
     # gate is the wrong probe here: this fixture declares no template.* nodes, so that gate is
     # vacuously clean whatever the directory says.)
-    rc = main(["verify", "--codegen", "--generators", GEN_SUITE, str(root / "meta"), "--out", str(out),
-               "--prompts", str(root / "no-such-dir")])
+    rc = main(as_config(["verify", "--codegen", "--generators", GEN_SUITE, str(root / "meta"), "--out", str(out),
+               "--prompts", str(root / "no-such-dir")]))
     assert rc != 0, "--prompts value was ignored — a missing dir still regenerated the spec files"
 
 
@@ -505,12 +509,12 @@ def test_prompts_and_templates_root_are_the_same_flag(tmp_path: Path) -> None:
 def test_verify_without_generators_fails_when_committed_output_would_go_unchecked(tmp_path: Path) -> None:
     meta_dir = _meta_dir(tmp_path)
     out = tmp_path / "out"
-    assert main(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)]) == 0
-    assert main(["verify", meta_dir, "--out", str(out)]) != 0
+    assert main(as_config(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)])) == 0
+    assert main(as_config(["verify", meta_dir, "--out", str(out)])) != 0
 
 
 def test_verify_without_generators_still_passes_with_no_generated_output(tmp_path: Path) -> None:
     meta_dir = _meta_dir(tmp_path)
     out = tmp_path / "out"
     out.mkdir()
-    assert main(["verify", meta_dir, "--out", str(out)]) == 0
+    assert main(as_config(["verify", meta_dir, "--out", str(out)])) == 0

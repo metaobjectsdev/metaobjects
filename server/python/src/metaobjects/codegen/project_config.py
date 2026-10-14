@@ -16,13 +16,14 @@ SCHEMA does not (ADR-0021 D3 / FR-025). A JSON Schema ships beside this loader
 (``metaobjects-config.schema.json``) for editor autocomplete + non-Python
 validation.
 
-Python-only, additive: no metamodel/vocabulary change; the existing positional
-``metadata_dir`` + ``--out`` flag path is untouched and byte-identical.
+Since 1.1.0 this file IS the generator list (ADR-0034 Amendment 9): ``metaobjects gen``
+and ``verify --codegen`` run the entries its targets declare, documentation included, and
+nothing else. A project with no config generates nothing and is told so.
 """
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 import yaml  # type: ignore[import-untyped]  # PyYAML ships no type stubs
@@ -39,15 +40,20 @@ DEFAULT_METADATA_DIR = "metaobjects"
 #: lets the loader — the thing that actually runs — say the same. Kept in step with the
 #: schema by ``test_schema_and_loader_accept_EXACTLY_the_same_keys``.
 TOP_LEVEL_KEYS: tuple[str, ...] = (
-    "metadata", "providers", "libraries", "targets", "requirementTests", "docs",
+    "metadata", "providers", "libraries", "targets", "requirementTests", "apiDocs",
 )
 
+#: The 1.0 docs block. Not a key this loader reads: it is recorded (``legacy_docs``) so
+#: ``gen`` and ``verify --codegen`` can refuse it with the line that says where it went,
+#: rather than as an unknown key (ADR-0034 Amendment 9).
+LEGACY_DOCS_KEY = "docs"
+
 #: Every key a ``targets.<name>`` mapping may carry. Same contract as above.
-TARGET_KEYS: tuple[str, ...] = ("outDir", "generators", "entities")
+TARGET_KEYS: tuple[str, ...] = ("outDir", "generators", "entities", "templateSpec")
 
-
-#: Every key the ``docs`` block may carry. Same contract as above.
-DOCS_KEYS: tuple[str, ...] = ("generators",)
+#: Every key the ``apiDocs`` block may carry (the ``api-docs`` generator's options). Same
+#: contract as above.
+API_DOCS_KEYS: tuple[str, ...] = ("apiSubDir", "projectName", "modelBaseUrl")
 
 #: Every key the ``requirementTests`` block may carry (the ``requirement-tests`` generator's
 #: options). Same contract as above.
@@ -107,6 +113,9 @@ class TargetConfig:
     generators: list[str] | None
     #: Entity-name allowlist; ``None`` => every entity.
     entities: list[str] | None
+    #: A declarative template-spec (SP-1) whose generators also write into this target,
+    #: relative to the config file's directory (or absolute); ``None`` => none.
+    template_spec: str | None = None
 
 
 @dataclass(frozen=True)
@@ -122,6 +131,16 @@ class RequirementTestsConfig:
     renderer: str | None = None
     filter: str | None = None
     warn_uncovered: bool = True
+
+
+@dataclass(frozen=True)
+class ApiDocsConfig:
+    """The ``apiDocs`` block: options of the ``api-docs`` generator. Its output directory is
+    the ``outDir`` of the target that lists it."""
+
+    api_subdir: str = "api/python"
+    project_name: str = "project"
+    model_base_url: str | None = None
 
 
 @dataclass(frozen=True)
@@ -142,9 +161,14 @@ class ProjectConfig:
     targets: list[TargetConfig]
     #: Options of the ``requirement-tests`` generator; ``None`` => its defaults.
     requirement_tests: RequirementTestsConfig | None = None
-    #: The ``docs.generators`` block: owned docs generators (``module:symbol``) that
-    #: ``metaobjects docs`` runs in place of the packaged ones. ``[]`` => the packaged ones.
-    docs_generators: list[str] = field(default_factory=list)
+    #: True when the file names ``metadata``. When it does not, the location ladder's later
+    #: rungs decide (``sources`` in ``.metaobjects/config.json``, else the default directory),
+    #: exactly as they did for a run with no config before 1.1.0 required one.
+    metadata_declared: bool = True
+    #: Options of the ``api-docs`` generator; ``None`` => its defaults.
+    api_docs: ApiDocsConfig | None = None
+    #: True when the file still carries the 1.0 ``docs`` block, which nothing reads.
+    legacy_docs: bool = False
 
     def metadata_dir(self) -> str:
         """The metadata dir resolved against ``config_dir`` (absolute path string)."""
@@ -156,6 +180,12 @@ class ProjectConfig:
     def out_dir_for(self, target: TargetConfig) -> str:
         """``target.out_dir`` resolved against ``config_dir`` (absolute path string)."""
         return _resolve_under(self.config_dir, target.out_dir)
+
+    def template_spec_for(self, target: TargetConfig) -> str | None:
+        """``target.template_spec`` resolved against ``config_dir``, or ``None``."""
+        if target.template_spec is None:
+            return None
+        return _resolve_under(self.config_dir, target.template_spec)
 
 
 def _reject_unknown_keys(
@@ -235,18 +265,28 @@ def _parse_requirement_tests(raw: object, ctx: str) -> RequirementTestsConfig:
     )
 
 
-def _parse_docs(raw: object, ctx: str) -> list[str]:
+def _parse_api_docs(raw: object, ctx: str) -> ApiDocsConfig:
     if not isinstance(raw, dict):
         raise ConfigError(f"{ctx} must be a mapping.")
-    _reject_unknown_keys(raw, DOCS_KEYS, ctx)
-    generators = _require_str_list(raw.get("generators", []), f"{ctx} 'generators'")
-    bad = [g for g in generators if not re.fullmatch(MODULE_SYMBOL_PATTERN, g)]
-    if bad:
-        raise ConfigError(
-            f"{ctx}: 'generators' takes owned generators in 'module:symbol' form "
-            f"(`metaobjects eject api-docs` prints the entry), got {bad}."
-        )
-    return generators
+    _reject_unknown_keys(raw, API_DOCS_KEYS, ctx)
+    defaults = ApiDocsConfig()
+
+    def string(key: str, default: str | None) -> str | None:
+        if key not in raw:
+            return default
+        value = raw[key]
+        if not isinstance(value, str) or not value:
+            raise ConfigError(f"{ctx}: '{key}' must be a non-empty string.")
+        return value
+
+    api_subdir = string("apiSubDir", defaults.api_subdir)
+    project_name = string("projectName", defaults.project_name)
+    assert api_subdir is not None and project_name is not None  # the defaults are never None
+    return ApiDocsConfig(
+        api_subdir=api_subdir,
+        project_name=project_name,
+        model_base_url=string("modelBaseUrl", None),
+    )
 
 
 def load_project_config(path: Path) -> ProjectConfig:
@@ -272,7 +312,10 @@ def load_project_config(path: Path) -> ProjectConfig:
         raise ConfigError(f"{path}: config is empty.")
     if not isinstance(raw, dict):
         raise ConfigError(f"{path}: top level must be a mapping.")
-    _reject_unknown_keys(raw, TOP_LEVEL_KEYS, str(path))
+    legacy_docs = LEGACY_DOCS_KEY in raw
+    _reject_unknown_keys(
+        {k: v for k, v in raw.items() if k != LEGACY_DOCS_KEY}, TOP_LEVEL_KEYS, str(path)
+    )
 
     metadata = raw.get("metadata", DEFAULT_METADATA_DIR)
     if not isinstance(metadata, str):
@@ -318,8 +361,14 @@ def load_project_config(path: Path) -> ProjectConfig:
         entities = spec.get("entities")
         if entities is not None:
             entities = _require_str_list(entities, f"{ctx} 'entities'")
+        template_spec = spec.get("templateSpec")
+        if template_spec is not None and (not isinstance(template_spec, str) or not template_spec):
+            raise ConfigError(f"{ctx}: 'templateSpec' must be a non-empty string (a file path).")
         targets.append(
-            TargetConfig(name=str(name), out_dir=out_dir, generators=generators, entities=entities)
+            TargetConfig(
+                name=str(name), out_dir=out_dir, generators=generators, entities=entities,
+                template_spec=template_spec,
+            )
         )
 
     requirement_tests = (
@@ -328,7 +377,9 @@ def load_project_config(path: Path) -> ProjectConfig:
         else None
     )
 
-    docs_generators = _parse_docs(raw["docs"], f"{path}: 'docs'") if "docs" in raw else []
+    api_docs = (
+        _parse_api_docs(raw["apiDocs"], f"{path}: 'apiDocs'") if "apiDocs" in raw else None
+    )
 
     return ProjectConfig(
         config_dir=path.parent.resolve(),
@@ -337,5 +388,7 @@ def load_project_config(path: Path) -> ProjectConfig:
         libraries=libraries,
         targets=targets,
         requirement_tests=requirement_tests,
-        docs_generators=docs_generators,
+        metadata_declared="metadata" in raw,
+        api_docs=api_docs,
+        legacy_docs=legacy_docs,
     )

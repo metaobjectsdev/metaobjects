@@ -8,6 +8,7 @@ namespace MetaObjects.Cli.Tests;
 /// exit code. The codes, conditions and message text are gated cross-port by
 /// <c>RequirementCheckConformanceTests</c>, so these tests pin only the CLI's own surface.
 /// </summary>
+[Collection(OwnedRunnerCollection.Name)]
 public sealed class VerifyRequirementsTests : IDisposable
 {
     private readonly string _tmp = Directory.CreateTempSubdirectory("mo-verify-requirements-").FullName;
@@ -222,24 +223,35 @@ public sealed class VerifyRequirementsTests : IDisposable
     [Fact]
     public void The_gate_runs_under_codegen_alone_and_its_errors_reach_the_exit_code()
     {
-        // `--codegen` with no generators selected is clean on its own (exit 0), so the exit code here
-        // is the requirement gate's. The templates gate does not run at all.
+        // `--codegen` alone: the templates gate does not run at all. This project declares no
+        // generator list, so the codegen gate refuses (ADR-0034 Amendment 9, exit 2) — and the
+        // requirement gate still runs, as it does on every verify, and prints its findings.
         var args = Project(Requirement("Recorded", "live", "Refund"));
         var model = args[1];
         var codegenArgs = new[] { "verify", model, "--codegen", "--out", Path.Combine(_tmp, "out") };
 
         var (exitCode, stdout, stderr) = CliProcess.Run(_tmp, codegenArgs);
 
-        Assert.True(exitCode == 1, $"exit={exitCode}\nstdout={stdout}\nstderr={stderr}");
+        Assert.True(exitCode == 2, $"exit={exitCode}\nstdout={stdout}\nstderr={stderr}");
+        Assert.Contains(MetaObjects.Codegen.CodegenCli.NoGeneratorList("dotnet meta verify --codegen"), stderr);
         Assert.DoesNotContain("--templates", stdout);
         Assert.Contains("ERR_REQUIREMENT_DANGLING_REF [Recorded]", stderr);
         Assert.Contains("dotnet meta verify — requirements: 1 error(s).", stderr);
 
+        // Its errors reach the exit code: after a codegen gate that passed (handed off, exit 0),
+        // the gate alone decides it.
+        var opts = AfterCodegenHandOff(model);
+        var result = VerifyCommand.RunSubverbs(opts);
+        Assert.False(result.RanTemplates);
+        var output = new StringWriter();
+        Assert.Equal(1, VerifyCommand.RunRequirementGate(opts, requireImplementers: false, output, result.LoadFailureReported));
+        Assert.Contains("ERR_REQUIREMENT_DANGLING_REF [Recorded]", output.ToString());
+
         // The same selection over a model whose only findings are warnings stays at exit 0.
         File.WriteAllText(Path.Combine(model, "meta.shop.yaml"), Order + Requirement("Recorded", "live", implementedBy: null));
-        var (warnExit, _, warnErr) = CliProcess.Run(_tmp, codegenArgs);
-        Assert.Equal(0, warnExit);
-        Assert.Contains("  WARN_REQUIREMENT_NOTHING_IMPLEMENTS [Recorded]: ", warnErr);
+        var warnOutput = new StringWriter();
+        Assert.Equal(0, VerifyCommand.RunRequirementGate(opts, requireImplementers: false, warnOutput, false));
+        Assert.Contains("  WARN_REQUIREMENT_NOTHING_IMPLEMENTS [Recorded]: ", warnOutput.ToString());
     }
 
     [Fact]
@@ -361,10 +373,12 @@ public sealed class VerifyRequirementsTests : IDisposable
         Assert.Equal(1, templatesExit);
         Assert.Equal(1, CountOf(templatesErr, "ERR_BAD_ATTR_VALUE"));
 
-        // So did the in-process codegen gate, in its own form.
-        var (codegenExit, _, codegenErr) = CliProcess.Run(_tmp, "verify", model, "--codegen", "--out", Path.Combine(_tmp, "out"));
+        // So did the codegen gate, in its own form: since ADR-0034 Amendment 9 it runs in the
+        // project's codegen project (CodegenCli.Run, see OwnedRunner).
+        var (codegenExit, _, codegenErr) = OwnedRunner.Run(
+            _tmp, Array.Empty<string>(), "verify", "--codegen", model, "--out", Path.Combine(_tmp, "out"));
         Assert.NotEqual(0, codegenExit);
-        Assert.Contains("verify --codegen: metadata did not load cleanly", codegenErr);
+        Assert.Contains("verify --codegen: FAILED (metadata did not load cleanly)", codegenErr);
         Assert.Equal(1, CountOf(codegenErr, "ERR_BAD_ATTR_VALUE"));
     }
 

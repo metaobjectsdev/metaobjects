@@ -22,6 +22,7 @@ Per the always-on descriptor:
 ```bash
 dotnet tool install --global MetaObjects.Cli   # provides `dotnet meta`
 dotnet add package MetaObjects.Codegen          # the codegen generators
+dotnet meta init                                # writes codegen/: Generators.cs, Program.cs, Codegen.csproj
 ```
 
 `dotnet meta` is a .NET tool invoked as `dotnet meta <command>` (the underlying
@@ -29,18 +30,38 @@ command is `dotnet-meta`).
 
 ## Run
 
+The generator list is `codegen/Generators.cs` (ADR-0034 Amendment 9) — every generator the
+project runs, documentation included, each with its options as init properties.
+`codegen/Program.cs` is two lines that run it; `dotnet meta init` writes both and
+`codegen/Codegen.csproj`. Nothing is generated that the list does not declare.
+
+```csharp
+// codegen/Generators.cs
+using MetaObjects.Codegen;
+
+public static class Generators
+{
+    public static IReadOnlyList<IGenerator> All { get; } =
+    [
+        new MetaObjects.Codegen.Generators.EntityGenerator(),
+        new MetaObjects.Codegen.Generators.DbContextGenerator(),
+        new MetaObjects.Codegen.Generators.FilterAllowlistGenerator(),
+        new MetaObjects.Codegen.Generators.RoutesGenerator(),
+    ];
+}
+```
+
 ```bash
-dotnet meta gen metaobjects \
-  --out Generated \
-  --namespace Acme.Generated
+dotnet meta gen metaobjects --out Generated --namespace Acme.Generated   # runs the list
 dotnet meta gen --list                      # list registered generators
-dotnet meta gen metaobjects --out Generated --generators entity,db-context,routes   # select a subset
+dotnet meta gen metaobjects --out Generated --generators entity   # narrow to declared entries
 dotnet meta verify metaobjects --codegen --out Generated   # codegen-drift gate (regenerate + diff vs committed)
 ```
 
-`dotnet meta verify --codegen` re-runs the SELECTION and diffs, so it takes the same
-`--generators` the `gen` that produced the output used; with none named it reports that
-there is nothing to check.
+`gen` and `verify --codegen` always run the list through `dotnet run --project codegen`; with
+no `codegen/Generators.cs` they exit 2 and write nothing. `--generators` narrows a run to the
+declared entries named and never adds one: naming an entry the list does not declare is
+refused. `verify --codegen` regenerates the same list, so it never disagrees with `gen`.
 
 `dotnet meta verify` defaults to `--templates` (the FR-004 prompt/template drift
 gate, see the prompts reference); `--codegen` is the codegen-output drift gate.
@@ -58,7 +79,7 @@ set and no separate docs command. `--generators <names>` narrows a run to entrie
 list already declares, by stable name; it never adds one, and naming an entry the list
 does not declare is refused. `dotnet meta gen --list` is the catalog of what the port
 registers, not what this project runs. Output lands under `--namespace` in
-`--output-dir` unless a generator's own init properties say otherwise — documentation
+`--out` unless a generator's own init properties say otherwise — documentation
 does (below).
 
 | Stable name | Output |
@@ -69,7 +90,7 @@ does (below).
 | `filter-allowlist` | per-entity `<Entity>FilterAllowlist` (FR-009 — the server-side field+operator allowlist the routes validate against). |
 | `callable` | `<Entity>.callable.g.cs` — an FR-015 calling method for a `source.rdb @kind="storedProc"|"tableFunction"`, via EF `FromSqlInterpolated` (args from the `@parameterRef` value object in declaration order). |
 | `output-parser` / `extractor` / `output-prompt` / `render-helper` | the prompt-pillar artifacts for a **responding `template.prompt`** — one carrying `@responseRef` (ADR-0052: these tiers are INBOUND; `template.output` is outbound only and emits no parser). The strict parser, the tolerant `extract`, the **output-format prompt fragment** (`output-prompt`; presentation via `@promptStyle: guide`/`inline`/`exampleOnly`), and the typed render helper. They reference the value objects' POCOs from `entity` and declare no payload type — wire `entity` too (`--list` says so). See the **prompts** reference. |
-| `names` | `<Entity>Names.g.cs` — `public abstract class <Entity>Names` of `const` physical database names, MIRRORING THE METADATA TREE: the object's own `Type`/`SubType`/`Name` (`Name` is the OBJECT's name, never a physical one), then per `source.rdb` keyed by `@role` — `SourcePrimaryType`/`SubType`/`Kind`, `SourcePrimarySchema` when declared, and the physical name under the alias for its `@kind` (`SourcePrimaryTable` / `SourceReplicaView` / `SourcePrimaryProc` / `…Function` / `…MaterializedView`) — then a `<Field>Field`/`<Field>Column` pair per field, then each identity and index (`IdentityPkName`, and `IdentityUqCustEmailIndex` / `IndexIxCustStatusIndex` — the DATABASE name, carried for `identity.secondary` and `index.lookup` only), then a complete `ColumnsByField`. There is no `ReadOnly`: it is a derivation over `@kind`, so ask `SourcePrimaryKind`. Emitted for every object with a declared or inherited primary source, PLUS a fragment for any abstract base such an object extends (its own identity + columns, and NO source members — it has no table). A class whose object extends another one **inherits** it (`class CopayAuthNames : AuthNames`) rather than restating its constants — a C# `const` is inherited, so `CopayAuthNames.IdColumn` and `CopayAuthNames.SourcePrimaryTable` resolve through the base (`Type`/`SubType`/`Name` are redeclared with `new`, since every artifact carries its own). `abstract`, not `static`, precisely so it can be inherited; it still cannot be instantiated. In the run, `entity` and `db-context` reference the constants (`[Table(OrderNames.SourcePrimaryTable)]`, `[Column(OrderNames.StatusColumn)]`, `.ToView(OrderNames.SourceReplicaView)`); a `--generators` selection omitting `names` falls back to literals. |
+| `names` | `<Entity>Names.g.cs` — `public abstract class <Entity>Names` of `const` physical database names, MIRRORING THE METADATA TREE: the object's own `Type`/`SubType`/`Name` (`Name` is the OBJECT's name, never a physical one), then per `source.rdb` keyed by `@role` — `SourcePrimaryType`/`SubType`/`Kind`, `SourcePrimarySchema` when declared, and the physical name under the alias for its `@kind` (`SourcePrimaryTable` / `SourceReplicaView` / `SourcePrimaryProc` / `…Function` / `…MaterializedView`) — then a `<Field>Field`/`<Field>Column` pair per field, then each identity and index (`IdentityPkName`, and `IdentityUqCustEmailIndex` / `IndexIxCustStatusIndex` — the DATABASE name, carried for `identity.secondary` and `index.lookup` only), then a complete `ColumnsByField`. There is no `ReadOnly`: it is a derivation over `@kind`, so ask `SourcePrimaryKind`. Emitted for every object with a declared or inherited primary source, PLUS a fragment for any abstract base such an object extends (its own identity + columns, and NO source members — it has no table). A class whose object extends another one **inherits** it (`class CopayAuthNames : AuthNames`) rather than restating its constants — a C# `const` is inherited, so `CopayAuthNames.IdColumn` and `CopayAuthNames.SourcePrimaryTable` resolve through the base (`Type`/`SubType`/`Name` are redeclared with `new`, since every artifact carries its own). `abstract`, not `static`, precisely so it can be inherited; it still cannot be instantiated. In the run, `entity` and `db-context` reference the constants (`[Table(OrderNames.SourcePrimaryTable)]`, `[Column(OrderNames.StatusColumn)]`, `.ToView(OrderNames.SourceReplicaView)`); a run without `names` falls back to literals. |
 | `template` | the generic Mustache `templateGenerator()` primitive. |
 
 Metadata lives under `metaobjects/` (or wherever you point `--metadata-dir`) in the
@@ -121,11 +142,13 @@ on every run, so never edit them: the project's code goes in one witness class
 (`<namespace>.RequirementWitnesses` by default) that implements every generated interface.
 Implement each member EXPLICITLY (`void Requirements_<pkgKey>_Witnesses.req_…() { … }`): a
 witness whose requirement is retired or deleted then stops compiling (CS0539), where an
-implicit `public void req_…()` goes stale silently. Give the generator its own
-`dotnet meta gen … --out <test project dir> --generators requirement-tests` run (a run has
-one `--out`, and the test project needs xunit), and pass `--namespace` to
-`verify --codegen` for that directory. Options (`TestNamespace`, `WitnessClass`, `Grain`,
-`Filter`, `Renderer`, `WarnUncovered`) are init properties set on the entry in an owned
+implicit `public void req_…()` goes stale silently. List it in `codegen/Generators.cs` with
+its own `OutDir`, the test project's directory, since the tests need xunit:
+`new MetaObjects.Codegen.Generators.RequirementTestsGenerator { OutDir = "tests/Acme.Shop.Tests/Generated" }`.
+The plain `dotnet meta gen ./metadata --out ./Generated` then writes them there and
+`dotnet meta verify --codegen` checks them there, in the same run as everything else.
+Options (`OutDir`, `TestNamespace`, `WitnessClass`, `Grain`, `Filter`, `Renderer`,
+`WarnUncovered`) are init properties set on the entry in an owned
 `codegen/Generators.cs`; `Grain` needs `using MetaObjects.Core.Requirement;`. A filter
 REPLACES the default of functional L4/L5. `dotnet meta eject requirement-tests` copies the
 generator with its default rendering. The requirement checks in `dotnet meta verify` are
@@ -144,7 +167,7 @@ new ApiDocsGenerator { OutDir = "Docs" }   // → Docs/api/csharp (AGENT-API.md 
 `dotnet meta gen` writes it, alongside everything else `codegen/Generators.cs` declares.
 `AGENT-API.md` has the exact imports, signatures, and payload field shapes for the
 generated code. **Before calling any generated code, read `api/csharp/AGENT-API.md`.**
-Options (init properties): `OutDir` (required), `ApiSubDir` (default `api/csharp`),
+Options (init properties): `OutDir` (give it a directory of generated files only; unset, the pages land under `--out`), `ApiSubDir` (default `api/csharp`),
 `ProjectName`, `ModelBaseUrl`. To write only the documentation,
 `dotnet meta gen --generators api-docs`. Migrating a project that ran `dotnet meta docs`:
 `docs/features/migrations/docs-are-generators.md`, section "C#".
@@ -159,10 +182,8 @@ what runs. (The other ports leave a repository seam; C# does not.)
 ## Write your own generator
 
 For any output the model describes and no reference emits, write an `IGenerator` in the
-owned console project `codegen/`. `dotnet meta gen` and `dotnet meta verify --codegen`
-hand off to it whenever `codegen/Codegen.csproj` exists; `dotnet meta eject <name>`
-scaffolds that project (or write `Codegen.csproj` — an `Exe` referencing
-`MetaObjects.Codegen` at your tool's version — and `Program.cs` yourself).
+console project `codegen/` (`dotnet meta init` writes it) and list it in
+`codegen/Generators.cs`; `dotnet meta gen` and `dotnet meta verify --codegen` run that list.
 
 ```csharp
 // codegen/generators/FieldListGenerator.cs
@@ -182,10 +203,8 @@ public sealed class FieldListGenerator : IGenerator
 }
 ```
 
-List it in `codegen/Generators.cs` — `IReadOnlyList<IGenerator> Generators = [new
-FieldListGenerator()];` — which `codegen/Program.cs` passes to `CodegenCli.Run`. An owned
-generator a `--generators` selection does not name still exists in the list but does not
-run that invocation. Model reads: `Fields()`, `Attr(n)`,
+List it in `codegen/Generators.cs` as `new Codegen.Generators.FieldListGenerator()`; every
+entry runs, and `--generators` only narrows. Model reads: `Fields()`, `Attr(n)`,
 `ResolvedIsArray()`, `EffectiveEnumValues`, `MaxLength` resolve; `IsArray`, `OwnAttr`,
 `EnumValues` do not. `ValueObjectNames.ResolveFieldRef(field, ctx.Root)` resolves an
 `@objectRef`; `CSharpNaming.RoutePath(obj)` is the REST segment; constants come from

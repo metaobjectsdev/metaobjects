@@ -105,13 +105,24 @@ def field_list():  # the module:symbol target — a function returning the gener
     return FieldList()
 ```
 
-```bash
-metaobjects gen metaobjects --out gen --generators codegen.generators.field_list:field_list
-metaobjects verify --codegen metaobjects --out gen --generators codegen.generators.field_list:field_list
+List it under a target's `generators` in `metaobjects.config.yaml`, the generator list
+`metaobjects gen` runs:
+
+```yaml
+# metaobjects.config.yaml
+metadata: metaobjects
+targets:
+  main:
+    outDir: gen
+    generators: [codegen.generators.field_list:field_list]
 ```
 
-or list `codegen.generators.field_list:field_list` under a target's `generators` in
-`metaobjects.config.yaml`. The symbol must be the generator INSTANCE or a function
+```bash
+metaobjects gen
+metaobjects verify --codegen
+```
+
+The symbol must be the generator INSTANCE or a function
 returning one — not the class: a class has a `generate` attribute, so it would be taken as
 the generator itself. `metaobjects.codegen.model_walk` is the one import for model reads
 (`is_required`, `max_length`, `field_is_array`, `enum_values`, `object_ref_target`,
@@ -120,9 +131,10 @@ the generator itself. `metaobjects.codegen.model_walk` is the one import for mod
 
 ### C#
 
-C# generators run from an owned console project, `codegen/`. `dotnet meta gen` and
-`dotnet meta verify --codegen` hand off to it whenever `codegen/Codegen.csproj` exists.
-`dotnet meta eject <name>` scaffolds that project; to start from none, write the two files:
+C# generators run from a console project, `codegen/`, whose generator list is
+`codegen/Generators.cs`. `dotnet meta gen` and `dotnet meta verify --codegen` always run it
+(`dotnet run --project codegen`). `dotnet meta init` writes the project; by hand it is three
+files:
 
 `codegen/Codegen.csproj`
 
@@ -136,23 +148,30 @@ C# generators run from an owned console project, `codegen/`. `dotnet meta gen` a
   </PropertyGroup>
   <ItemGroup>
     <!-- the version of your `dotnet meta` tool -->
-    <PackageReference Include="MetaObjects.Codegen" Version="1.0.*" />
+    <PackageReference Include="MetaObjects.Codegen" Version="1.1.*" />
   </ItemGroup>
 </Project>
+```
+
+`codegen/Generators.cs`
+
+```csharp
+using MetaObjects.Codegen;
+
+public static class Generators
+{
+    public static IReadOnlyList<IGenerator> All { get; } =
+    [
+        new Codegen.Generators.FieldListGenerator(),
+    ];
+}
 ```
 
 `codegen/Program.cs`
 
 ```csharp
-using Codegen.Generators;
 using MetaObjects.Codegen;
-
-IReadOnlyList<IGenerator> generators =
-[
-    new FieldListGenerator(),
-];
-
-return CodegenCli.Run(args, generators);
+return CodegenCli.Run(args, Generators.All);
 ```
 
 `codegen/generators/FieldListGenerator.cs`
@@ -180,8 +199,8 @@ dotnet meta gen metaobjects --out gen
 dotnet meta verify --codegen metaobjects --out gen
 ```
 
-An owned generator the `--generators` selection does not name still runs, so a project
-with only generators of its own needs no `--generators` at all. Model reads:
+Every entry in `Generators.All` runs; `--generators <names>` narrows a run to the entries
+named and never adds one. Model reads:
 `field.Attr(name)` resolves; `IsArray` is the own flag, `ResolvedIsArray()` resolves;
 `field.EffectiveEnumValues`, `field.MaxLength`; `ValueObjectNames.ResolveFieldRef(field,
 ctx.Root)` resolves an `@objectRef` package-locally; `CSharpNaming.RoutePath(obj)` is the

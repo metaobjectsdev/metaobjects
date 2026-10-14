@@ -93,8 +93,7 @@ from metaobjects.codegen.project_config import (
     TargetConfig,
     load_project_config,
 )
-from metaobjects.codegen.docs_run import resolve_docs_generators, run_docs
-from metaobjects.codegen.generator import DEFAULT_API_SUBDIR, DocsRunFacts, Generator
+from metaobjects.codegen.generator import Generator
 from metaobjects.codegen.generators.entity_model import entity_model
 from metaobjects.codegen.generators.extractor_generator import extractor_generator
 from metaobjects.codegen.generators.filter_allowlist_generator import (
@@ -157,6 +156,56 @@ class NoGeneratorsSelectedError(ValueError):
 
     def __init__(self) -> None:
         super().__init__(NO_GENERATORS_SELECTED)
+
+
+#: The migration section every 1.1.0 refusal below points at (ADR-0034 Amendment 9).
+_MIGRATION_SECTION = 'See docs/features/migrations/docs-are-generators.md, section "Python".'
+
+#: What ``metaobjects docs`` prints, exit 2: the command was removed in 1.1.0.
+DOCS_COMMAND_REMOVED = (
+    "metaobjects docs was removed in 1.1.0. `metaobjects gen` writes documentation now: declare "
+    "each docs generator in a target's `generators` in metaobjects.config.yaml. "
+    + _MIGRATION_SECTION
+)
+
+
+def no_generator_list_message(command: str) -> str:
+    """What *command* prints, exit 2, when there is no ``metaobjects.config.yaml``."""
+    return (
+        f"{command}: no metaobjects.config.yaml. The generator list lives there in 1.1.0, "
+        f"documentation included. {_MIGRATION_SECTION}"
+    )
+
+
+def legacy_docs_message(command: str) -> str:
+    """What *command* prints, exit 2, for a config that still carries the 1.0 ``docs`` block."""
+    return (
+        f"{command}: found 1.0 docs configuration (the docs block in metaobjects.config.yaml). "
+        "Nothing reads it any more, so this run would write no documentation. Declare each docs "
+        "generator in a target's `generators` in metaobjects.config.yaml. " + _MIGRATION_SECTION
+    )
+
+
+def legacy_template_spec_message(command: str) -> str:
+    """What *command* prints, exit 2, when the project still has the conventional
+    ``template-spec.json`` and no target declares a ``templateSpec``: through 1.0 the flag form
+    discovered that file, and nothing reads it now."""
+    return (
+        f"{command}: found 1.0 template-spec configuration ({TEMPLATE_SPEC_FILENAME}). Nothing "
+        "reads it any more, so this run would not render its templates. Declare it on the target "
+        f"it writes into, as `templateSpec: {TEMPLATE_SPEC_FILENAME}` in metaobjects.config.yaml. "
+        + _MIGRATION_SECTION
+    )
+
+
+#: What a gen or ``verify --codegen`` run given the 1.0 ``<metadata_dir> --out`` form prints,
+#: exit 2, in a project that has its config: the config's ``metadata`` and each target's
+#: ``outDir`` say where, and a flag that disagreed with them would be a second list.
+FLAG_FORM_NOT_READ = (
+    "{command}: <metadata_dir> and --out are not read in 1.1.0. The metadata directory is "
+    "`metadata` and each output directory is a target's `outDir` in metaobjects.config.yaml. "
+    + _MIGRATION_SECTION
+)
 
 
 def _resolve_providers(specs: list[str] | None) -> tuple[list[object], list[str]]:
@@ -820,53 +869,6 @@ def _run_suite(
     return [path for path, status in result.files if status != "refused"]
 
 
-def _generate(
-    metadata_dir: str,
-    out_dir: str,
-    generators: list[Generator] | None = None,
-    entity_filter: list[str] | None = None,
-    emit_package_init: bool = True,
-    strict: bool = False,
-    providers: list[object] | None = None,
-    column_naming: str = DEFAULT_COLUMN_NAMING,
-) -> tuple[list[str], list[str]]:
-    """Run the generator suite into ``out_dir``.
-
-    ``generators`` defaults to the zero-config default suite; pass a registry-
-    resolved subset for ``--generators``. ``entity_filter`` (the ``--entities``
-    allowlist) restricts which entities are EMITTED while the WHOLE model is still
-    loaded, so cross-entity references (``extends`` bases, ``@objectRef`` VOs)
-    resolve — emit a subset without splitting the metadata. ``emit_package_init``
-    is ``False`` for the format-agnostic ``--template-spec`` generators (whose
-    output is text/markdown/csv/json/xml/html, never a Python package) so no
-    spurious ``__init__.py`` is scattered through their output tree. Returns
-    ``(written_paths, errors)``. On a load error, ``errors`` is non-empty and no
-    files are written. ``strict`` (ADR-0023, #96) is threaded to the load — the
-    ``verify --codegen`` caller passes True; ``gen`` keeps the default False.
-    ``column_naming`` (R31) must match the strategy the committed output was
-    produced with, or the ``names`` generator's constants regenerate under the
-    wrong strategy and every ``<ENTITY>_<FIELD>_COLUMN`` reports spurious drift —
-    the caller reads it from the SAME ``--column-naming`` flag `gen` accepts.
-    """
-    root, errors = _load_root(metadata_dir, strict=strict, providers=providers)
-    if root is None:
-        return [], errors
-    # The project root is the metadata dir's parent — the directory holding
-    # `metaobjects/`, which is where `.metaobjects/` belongs beside it.
-    # verify --codegen is the ONLY caller of _generate, and it regenerates into a
-    # throwaway temp dir purely to diff. It must NOT record a manifest: that would
-    # mutate the user's project from a read-only drift check, with keys relative to a
-    # directory deleted seconds later. The real gen paths anchor their own manifest via
-    # gen_state_dir_for().
-    return (
-        _run_suite(
-            root, out_dir, generators, entity_filter, emit_package_init, None,
-            column_naming=column_naming,
-        ),
-        [],
-    )
-
-
 def gen_state_dir_for(metadata_dir: str) -> str:
     """Where a project's codegen hash manifest lives.
 
@@ -951,7 +953,8 @@ def resolve_metadata_location(
     `scope`/`migrate.scope`) are read from `root`'s neutral `.metaobjects/config.json`
     regardless of which rung supplied the OWN files (DESIGN §2.3).
 
-    2. This port's native surface — ``metadata`` in ``metaobjects.config.yaml``.
+    2. This port's native surface — ``metadata`` in ``metaobjects.config.yaml``, when the
+       file names it (a config that does not falls through to rungs 3-4).
     3. ``sources`` in the port-neutral ``.metaobjects/config.json``.
     4. The built-in default directory.
 
@@ -980,7 +983,7 @@ def resolve_metadata_location(
         resolve_sources,
     )
 
-    if config is not None:
+    if config is not None and config.metadata_declared:
         # `config.metadata_dir()` is already resolved to an absolute path
         # (`ProjectConfig._resolve_under`), so the base passed here is
         # likewise irrelevant to resolving OWN files — but `root` is still
@@ -1006,103 +1009,6 @@ def _resolve_metadata_location_or_print_error(
     except ParseError as exc:
         print(f"error: could not resolve metadata location: {exc}", file=sys.stderr)
         return None
-
-
-def _cmd_docs(args: argparse.Namespace) -> int:
-    """``docs`` — emit the generated Python SDK api surface (the ``api/python``
-    surface of the cross-port SDK-docs contract) under ``--out``.
-
-    Wiring only: the pages come from the ``api-docs`` generator, which builds them from
-    the naming seam plus each generator's applies-predicate and writes them under the
-    cross-port contract's ``package`` layout. A project that owns that generator
-    (``metaobjects eject api-docs``) lists it in the config's ``docs.generators`` and
-    ``docs`` runs the copy in its place. Output paths are collision-checked (duplicate
-    page path → failure) BEFORE anything is written, mirroring the C# ``DocsCommand`` /
-    the Java Mojo. ``--model-base-url`` federates the model back-links when set. The
-    positional ``metadata_dir`` form reads no config, so it always runs the packaged
-    generator."""
-    providers, providers_ok = _providers_from_args(args)
-    if not providers_ok:
-        return 1
-
-    docs_generators: list[str] = []
-    owned_root = Path.cwd()
-    if args.metadata_dir is None:
-        # Mirrors `gen`'s no-positional routing (#267): rung 2 (`metadata` in
-        # `metaobjects.config.yaml`, if one is found), else rungs 3-4 via
-        # `resolve_metadata_location` (the neutral `.metaobjects/config.json`
-        # `sources` key this feature adds, else the built-in default
-        # directory). Before this, `metadata_dir` was a REQUIRED positional
-        # here, so this ladder was unreachable from `docs` even though `gen`
-        # and `verify --codegen` could both already reach it.
-        root_dir = Path.cwd()
-        config: ProjectConfig | None = None
-        config_path = _find_config(args)
-        if config_path is not None:
-            try:
-                config = load_project_config(config_path)
-            except ConfigError as exc:
-                print(f"error: {exc}", file=sys.stderr)
-                return 1
-        collection = _resolve_metadata_location_or_print_error(config, root_dir)
-        if collection is None:
-            return 1
-        docs_libraries: list[str] | None = None
-        if config is not None:
-            # `config` was already loaded above (to resolve rung 2's `metadata`
-            # key) — its OWN `providers`/`libraries` must reach this load too,
-            # exactly as `gen`'s config-mode load does (`_cmd_gen_config`), or a
-            # project relying on either (e.g. `libraries: ["ai"]` to resolve
-            # `extends: metaobjects::ai::LlmCallBase`) fails `docs` with
-            # `ERR_UNRESOLVED_SUPER` while `gen` on the same config succeeds.
-            config_providers, config_providers_ok = _config_providers(config)
-            if not config_providers_ok:
-                return 1
-            providers = [*providers, *config_providers]
-            docs_libraries = config.libraries
-            docs_generators = config.docs_generators
-            owned_root = config.config_dir
-        root, errors = _load_root_from_collection(
-            collection, providers=providers, libraries=docs_libraries
-        )
-        project_default = root_dir.name
-    else:
-        root, errors = _load_root(args.metadata_dir, providers=providers)
-        project_default = Path(args.metadata_dir).resolve().name
-
-    if root is None:
-        print("error: failed to load metadata:", file=sys.stderr)
-        for msg in errors:
-            print(f"  {msg}", file=sys.stderr)
-        return 1
-
-    api_subdir = args.api_subdir or DEFAULT_API_SUBDIR
-    project = args.project or project_default
-    model_base_url = getattr(args, "model_base_url", None)
-
-    facts = DocsRunFacts(project=project, api_subdir=api_subdir, model_base_url=model_base_url)
-    generators, gen_err = resolve_docs_generators(docs_generators, owned_root)
-    if gen_err is not None:
-        print(f"error: {gen_err}", file=sys.stderr)
-        return 1
-    outcome = run_docs(root, args.out, facts, generators)
-    if outcome.error is not None:
-        # A duplicate output path (e.g. two units that resolve to the same page) is a
-        # clean user-facing failure, not a stack trace.
-        print(f"error: {outcome.error}", file=sys.stderr)
-        return 1
-
-    written: list[str] = []
-    for rel, content in outcome.files:
-        dest = Path(args.out) / rel
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        dest.write_text(content, encoding="utf-8")
-        written.append(rel)
-
-    for path in sorted(written):
-        print(path)
-    print(f"metaobjects docs: wrote {len(written)} file(s) to {args.out}")
-    return 0
 
 
 #: ADR-0034 Amendment 3: generators are reference helpers you own with ``metaobjects
@@ -1297,129 +1203,110 @@ def _cmd_gen(args: argparse.Namespace) -> int:
         return _cmd_list(args)
 
     _warn_if_agent_context_stale()
+    return _cmd_gen_config(args)
 
-    # #267: config mode ⇔ no positional <metadata_dir>. The explicit
-    # <metadata_dir> + --out flag path below is untouched (byte-identical).
-    if args.metadata_dir is None:
-        return _cmd_gen_config(args)
-    if args.out is None:
-        print(
-            "error: gen requires <metadata_dir> and --out "
-            "(or a metaobjects.config.yaml / --list).",
-            file=sys.stderr,
-        )
-        return 2
 
-    generators: list[Generator] | None = None
-    if args.generators:
-        generators, gen_errors = _resolve_generators(
-            args.generators, GeneratorBuildContext(_template_root_for(args)))
-        if gen_errors:
-            print("error: invalid --generators selection:", file=sys.stderr)
-            for msg in gen_errors:
-                print(f"  {msg}", file=sys.stderr)
-            return 1
+def _load_generator_list(
+    args: argparse.Namespace, command: str
+) -> tuple[ProjectConfig | None, int]:
+    """The project's generator list — ``metaobjects.config.yaml`` — for ``gen`` and ``verify
+    --codegen``, or ``(None, exit_code)`` after printing why there is none.
 
-    # SP-1: declarative Mustache generators from a JSON template-spec. Their output
-    # is format-agnostic (text/markdown/csv/json/xml/html), so they run as a SECOND,
-    # SEPARATE pass with emit_package_init=False — no Python __init__.py is injected
-    # into their (possibly non-Python) output tree. Templates resolve under
-    # --templates via a FilesystemProvider.
-    spec_gens, spec_err = template_spec_generators(
-        args.metadata_dir, getattr(args, "template_spec", None),
-        _template_root_for(args),
-    )
-    if spec_err is not None:
-        print(spec_err, file=sys.stderr)
-        return 1
-
-    # Codegen is opt-in: refuse at the door when nothing is selected, rather than letting
-    # the run reach the generator loop and fail with an empty out dir half-created. A
-    # template spec IS a selection (flag or the conventional template-spec.json), so a
-    # project that generates only from one is not refused; verify already agreed.
-    if not generators and not spec_gens:
-        print(f"error: {NO_GENERATORS_SELECTED}", file=sys.stderr)
-        return 2
-
-    entities = _parse_entities(getattr(args, "entities", None))
-    providers, providers_ok = _providers_from_args(args)
-    if not providers_ok:
-        return 1
-    # Load the metadata ONCE; both the default suite and the (optional)
-    # --template-spec pass run against this single loaded root.
-    unknown_attrs: list[str] = []
-    root, load_errors = _load_root(
-        args.metadata_dir, providers=providers, unknown_attr_out=unknown_attrs
-    )
-    if root is None:
-        print("error: failed to load metadata:", file=sys.stderr)
-        for msg in load_errors:
-            print(f"  {msg}", file=sys.stderr)
-        return 1
-    _print_unknown_attr_warnings(unknown_attrs)
-    gen_state = gen_state_dir_for(args.metadata_dir)
-    # Same anchor the manifest itself uses. Both passes below key against it, so a
-    # `--template-spec` artifact and a default-suite artifact land in one key space.
-    gen_project_root = str(project_root_for(args.metadata_dir))
-    column_naming = getattr(args, "column_naming", None) or DEFAULT_COLUMN_NAMING
-    baseline = getattr(args, "baseline", None) or "default"
-    refused: list[str] = []
+    ADR-0034 Amendment 9: nothing is generated that the config does not declare, so a run
+    with no config fails rather than generating something this CLI chose, and a config that
+    still carries the 1.0 ``docs`` block fails before anything is written: nothing reads it,
+    and a passing run would write no documentation."""
+    config_path = _find_config(args)
+    if config_path is None:
+        print(no_generator_list_message(command), file=sys.stderr)
+        return None, 2
     try:
-        written = _run_suite(
-            root, args.out, generators, entities,
-            gen_state_dir=gen_state, column_naming=column_naming,
-            project_root=gen_project_root, baseline=baseline, refused_out=refused,
-        ) if generators else []
-    except ValueError as exc:
-        # A generator refused the model — a run_gen output collision, or
-        # `render-helper`'s build-time drift gate. The targets path below has caught
-        # this since #267; this path did not, and the gap only became reachable when
-        # `--templates` started reaching `render-helper` at all: before that the gate
-        # ran against a hardcoded "templates" and a CLI user could not aim it.
-        print(f"error: codegen failed: {exc}", file=sys.stderr)
-        if "render-helper drift" in str(exc):
-            root_shown = _template_root_for(args)
-            print(
-                f"  template refs resolved under {root_shown!r} — pass "
-                f"--templates <dir> to point at the directory holding them",
-                file=sys.stderr,
-            )
-        return 1
-    if spec_gens:
-        # The template-spec pass renders user-supplied templates: a bad ref or a
-        # wrong --templates dir raises RenderError (not OSError/ValueError, so it
-        # escapes the parse-time guard above). Report it as a clean error.
-        from metaobjects.render.renderer import RenderError
-
-        try:
-            spec_written = _run_suite(
-                root, args.out, spec_gens, entities, emit_package_init=False,
-                gen_state_dir=gen_state, column_naming=column_naming,
-                project_root=gen_project_root, baseline=baseline, refused_out=refused,
-            )
-        except RenderError as exc:
-            print(
-                f"error: --template-spec render failed (check the template refs and "
-                f"--templates dir {_template_root_for(args)!r}): {exc}",
-                file=sys.stderr,
-            )
-            return 1
-        written = list(written) + spec_written
-    for path in written:
-        print(path)
-    print(f"metaobjects gen: wrote {len(written)} file(s) to {args.out}")
-    if refused:
-        # A refusal is a failed gate, matching TypeScript's `meta gen` (exit 1). Python and
-        # C# used to warn and exit 0, so an adopter wiring this into CI as a drift gate was
-        # green while codegen refused to write — a gate that did not gate. The warnings
-        # above carry the detail; this line carries the verdict.
+        config = load_project_config(config_path)
+    except ConfigError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return None, 1
+    if config.legacy_docs:
+        print(legacy_docs_message(command), file=sys.stderr)
+        return None, 2
+    unlisted = [t.name for t in config.targets if t.generators is None]
+    if unlisted:
         print(
-            f"metaobjects gen: FAILED — {len(refused)} file(s) refused (see the warnings "
-            f"above; `--baseline=adopt` records what you have and writes nothing)",
+            f"{command}: target(s) {', '.join(repr(n) for n in unlisted)} declare no `generators` "
+            "key. In 1.1.0 a target runs only the generators it lists: list them, or write "
+            "`generators: []` for a target that writes nothing. " + _MIGRATION_SECTION,
             file=sys.stderr,
         )
-        return 1
-    return 0
+        return None, 2
+    conventional = project_root_for(config.metadata_dir()) / TEMPLATE_SPEC_FILENAME
+    if conventional.is_file() and not any(t.template_spec for t in config.targets):
+        print(legacy_template_spec_message(command), file=sys.stderr)
+        return None, 2
+    return config, 0
+
+
+def _selection_from_args(args: argparse.Namespace) -> list[str] | None:
+    """The ``--generators`` names, or ``None`` for the whole list. A blank ``--generators``
+    gives ``[]``, which :func:`_refuse_narrowing` refuses."""
+    raw = getattr(args, "generators", None)
+    if raw is None:
+        return None
+    return [n.strip() for n in raw.split(",") if n.strip()]
+
+
+def _refuse_narrowing(
+    args: argparse.Namespace, selection: list[str] | None, root: MetaData, command: str
+) -> bool:
+    """A narrowing that names nothing: a blank ``--generators`` (an unset shell variable)
+    would run the whole list, and an ``--entities`` name that matches no object would
+    generate, and so check, nothing. Refused, exit 2."""
+    if selection == []:
+        print(f"error: {command}: --generators names no generator.", file=sys.stderr)
+        return True
+    names = _parse_entities(getattr(args, "entities", None))
+    if names is None and getattr(args, "entities", None) is not None:
+        print(f"error: {command}: --entities names no object.", file=sys.stderr)
+        return True
+    # ADR-0039 sanctioned own: top-level object scan on the loader ROOT (metadata.root is
+    # never extended, so own == effective), as in `_refuse_imported_entities`.
+    known = {c.name for c in root.own_children() if c.type == TYPE_OBJECT}
+    unknown = [n for n in names or [] if n not in known]
+    if unknown:
+        print(
+            f"error: {command}: --entities names {', '.join(repr(n) for n in unknown)}, "
+            "which matches no object in the metadata.",
+            file=sys.stderr,
+        )
+        return True
+    return False
+
+
+def _narrow_entities(
+    targets: list[TargetConfig], args: argparse.Namespace
+) -> list[TargetConfig]:
+    """Apply ``--entities`` to each target: only the named entities are emitted, and a
+    target that already lists ``entities`` keeps only the names in both."""
+    names = _parse_entities(getattr(args, "entities", None))
+    if names is None:
+        return targets
+    return [
+        dataclasses.replace(
+            t, entities=names if t.entities is None else [n for n in t.entities if n in names]
+        )
+        for t in targets
+    ]
+
+
+def _refuse_template_spec_flag(args: argparse.Namespace, command: str) -> bool:
+    """``--template-spec`` names no target, and every output directory is a target's, so it
+    has nowhere to write. Refused with the key that replaces it."""
+    if not getattr(args, "template_spec", None):
+        return False
+    print(
+        f"error: {command}: --template-spec is not read; declare the spec on the target it "
+        "writes into, as `templateSpec: <path>` beside its `outDir` in metaobjects.config.yaml.",
+        file=sys.stderr,
+    )
+    return True
 
 
 def _run_gen_targets(
@@ -1433,8 +1320,18 @@ def _run_gen_targets(
     refused_out: list[str] | None = None,
     select: Callable[[str], bool] | None = None,
     build_ctx: GeneratorBuildContext | None = None,
+    column_naming: str = DEFAULT_COLUMN_NAMING,
+    selection: list[str] | None = None,
+    targeted_out: set[str] | None = None,
 ) -> tuple[list[str], list[str]]:
-    """Run each target's suite into its ``outDir``. Returns (all_written, errors).
+    """Run each target's declared generators into its ``outDir``. Returns (all_written, errors).
+
+    The list is the config (ADR-0034 Amendment 9): a target runs the ``generators`` it lists,
+    then the generators of its ``templateSpec`` (a second pass with no ``__init__.py``, since
+    their output need not be Python). ``selection`` — the ``--generators`` names — narrows
+    that to the declared entries named, across every target; a name no target declares is
+    an error, reported before anything is written. A target that declares nothing writes
+    nothing and says so.
 
     This is the path the manifest keying matters most on: every target writes into its
     OWN ``outDir`` while all of them share ONE ``gen_state_dir``, so out-dir-relative
@@ -1450,35 +1347,113 @@ def _run_gen_targets(
 
     ``select`` (FR-023 §11.1 item 2) — see :func:`_run_suite`; the SAME predicate
     applies to every target, since a `Collection`'s scope is project-wide.
+
+    ``targeted_out`` collects the ``outDir`` of every target with a declared entry left to
+    run after ``selection``: decided from the config, whatever the entries then emit.
     """
     all_written: list[str] = []
     seen: dict[str, str] = {}  # full path -> target name
     errors: list[str] = []
-    # The `requirementTests` block reaches a generator factory (packaged or owned) through
-    # the build context, so `gen` and `verify --codegen` build it identically.
+    # The `requirementTests` and `apiDocs` blocks reach a generator factory (packaged or
+    # owned) through the build context, so `gen` and `verify --codegen` build it identically.
     requirement_tests, hook_errors = _requirement_tests_options(config)
     if hook_errors:
         return [], hook_errors
     ctx = dataclasses.replace(
-        build_ctx or GeneratorBuildContext(), requirement_tests=requirement_tests
+        build_ctx or GeneratorBuildContext(),
+        requirement_tests=requirement_tests,
+        api_docs=config.api_docs,
     )
+    template_root = ctx.template_root or _default_template_root()
+    packaged_names = {
+        name: entry.factory(ctx).name
+        for name in selection or []
+        if (entry := get_generator(name)) is not None
+    }
+    matched: set[str] = set()
+
+    def selected(gen: Generator, token: str) -> bool:
+        if selection is None:
+            return True
+        hits = [
+            n for n in selection
+            if token == n or gen.name == n or packaged_names.get(n) == gen.name
+        ]
+        matched.update(hits)
+        return bool(hits)
+
+    # Resolve every target first, so a bad entry or an undeclared --generators name fails
+    # the run before any target writes.
+    plan: list[tuple[TargetConfig, list[Generator], list[Generator]]] = []
     for t in targets:
-        gens: list[Generator] | None = None
-        if t.generators is not None:
+        gens: list[Generator] = []
+        commas = [tok for tok in t.generators or [] if "," in tok]
+        if commas:
+            errors.extend(
+                f"target '{t.name}': generators entry {tok!r} holds a comma; list each "
+                "generator as an entry of its own." for tok in commas
+            )
+            continue
+        if t.generators:
             gens, gen_errors = _resolve_generators(
                 ",".join(t.generators), ctx, owned_root=config.config_dir)
             if gen_errors:
                 errors.extend(f"target '{t.name}': {m}" for m in gen_errors)
                 continue
-        out_dir = config.out_dir_for(t)
-        try:
-            written = _run_suite(
-                root, out_dir, gens, t.entities, gen_state_dir=gen_state_dir,
-                project_root=project_root, baseline=baseline, refused_out=refused_out,
-                select=select,
+            gens = [g for g, tok in zip(gens, t.generators) if selected(g, tok)]
+        spec_gens: list[Generator] = []
+        spec_path = config.template_spec_for(t)
+        if spec_path is not None:
+            spec_gens, spec_err = template_spec_generators(
+                config.metadata_dir(), spec_path, template_root)
+            if spec_err is not None:
+                errors.append(f"target '{t.name}': {spec_err}")
+                continue
+            spec_gens = [g for g in spec_gens if selected(g, g.name)]
+        plan.append((t, gens, spec_gens))
+    if selection is not None:
+        undeclared = [n for n in selection if n not in matched]
+        if undeclared:
+            errors.append(
+                f"--generators names {', '.join(repr(n) for n in undeclared)}, which no target "
+                "in metaobjects.config.yaml declares. --generators only narrows the declared "
+                "list; add the entry to a target's `generators` to run it."
             )
+    if errors:
+        return [], errors
+
+    from metaobjects.render.renderer import RenderError
+
+    for t, gens, spec_gens in plan:
+        if not gens and not spec_gens:
+            print(f"target '{t.name}' declares no generators; nothing written")
+            continue
+        out_dir = config.out_dir_for(t)
+        if targeted_out is not None:
+            targeted_out.add(out_dir)
+        written: list[str] = []
+        try:
+            if gens:
+                written = _run_suite(
+                    root, out_dir, gens, t.entities, gen_state_dir=gen_state_dir,
+                    column_naming=column_naming, project_root=project_root, baseline=baseline,
+                    refused_out=refused_out, select=select,
+                )
+            if spec_gens:
+                written = written + _run_suite(
+                    root, out_dir, spec_gens, t.entities, emit_package_init=False,
+                    gen_state_dir=gen_state_dir, column_naming=column_naming,
+                    project_root=project_root, baseline=baseline, refused_out=refused_out,
+                    select=select,
+                )
         except ValueError as exc:  # intra-target run_gen collision → clean error
             errors.append(f"target '{t.name}': {exc}")
+            continue
+        except RenderError as exc:
+            errors.append(
+                f"target '{t.name}': template-spec render failed (check the templateSpec's "
+                f"template refs and the --templates dir {template_root!r}): {exc}"
+            )
             continue
         for full in written:
             if Path(full).name == "__init__.py":
@@ -1495,128 +1470,36 @@ def _run_gen_targets(
     return all_written, errors
 
 
-def _cmd_gen_neutral_fallback(args: argparse.Namespace) -> int:
-    """``gen`` with no positional ``metadata_dir`` AND no ``metaobjects.config.yaml``.
-
-    Descends the source-resolution ladder's remaining rungs — ``sources`` in
-    ``.metaobjects/config.json``, else the built-in default directory — via
-    :func:`resolve_metadata_location`. There is no declarative target registry
-    at this rung (that is what a ``metaobjects.config.yaml`` provides), so
-    ``--out`` is required exactly as it is in explicit-``<metadata_dir>`` flag
-    mode; this function otherwise mirrors ``_cmd_gen``'s flag-mode body, minus
-    the ``--template-spec`` pass (out of scope for this rung).
-    """
-    if args.out is None:
-        print(
-            "error: gen requires <metadata_dir> and --out "
-            "(or a metaobjects.config.yaml / --list).",
-            file=sys.stderr,
-        )
-        return 2
-
-    root_dir = Path.cwd()
-    collection = _resolve_metadata_location_or_print_error(None, root_dir)
-    if collection is None:
-        return 1
-
-    generators: list[Generator] | None = None
-    if args.generators:
-        generators, gen_errors = _resolve_generators(
-            args.generators, GeneratorBuildContext(_template_root_for(args)))
-        if gen_errors:
-            print("error: invalid --generators selection:", file=sys.stderr)
-            for msg in gen_errors:
-                print(f"  {msg}", file=sys.stderr)
-            return 1
-
-    entities = _parse_entities(getattr(args, "entities", None))
-    providers, providers_ok = _providers_from_args(args)
-    if not providers_ok:
-        return 1
-
-    root, load_errors = _load_root_from_collection(collection, providers=providers)
-    if root is None:
-        print("error: failed to load metadata:", file=sys.stderr)
-        for msg in load_errors:
-            print(f"  {msg}", file=sys.stderr)
-        return 1
-
-    imported_refusal = _refuse_imported_entities(entities, root, collection)
-    if imported_refusal is not None:
-        print(imported_refusal, file=sys.stderr)
-        return 2
-
-    gen_state = str(root_dir.resolve() / ".metaobjects" / ".gen-state")
-    column_naming = getattr(args, "column_naming", None) or DEFAULT_COLUMN_NAMING
-    refused: list[str] = []
-    written = _run_suite(
-        root, args.out, generators, entities,
-        gen_state_dir=gen_state, column_naming=column_naming,
-        select=collection.in_scope,
-        project_root=str(root_dir.resolve()),
-        baseline=getattr(args, "baseline", None) or "default",
-        refused_out=refused,
-    )
-    for path in written:
-        print(path)
-    print(f"metaobjects gen: wrote {len(written)} file(s) to {args.out}")
-    if refused:
-        # A refusal is a failed gate, matching TypeScript's `meta gen` (exit 1). Python and
-        # C# used to warn and exit 0, so an adopter wiring this into CI as a drift gate was
-        # green while codegen refused to write — a gate that did not gate. The warnings
-        # above carry the detail; this line carries the verdict.
-        print(
-            f"metaobjects gen: FAILED — {len(refused)} file(s) refused (see the warnings "
-            f"above; `--baseline=adopt` records what you have and writes nothing)",
-            file=sys.stderr,
-        )
-        return 1
-    return 0
-
-
 def _cmd_gen_config(args: argparse.Namespace) -> int:
-    """``gen`` with no positional ``metadata_dir`` → declarative-config mode (#267).
+    """``gen`` — run the generator list in ``metaobjects.config.yaml`` (ADR-0034 Amendment 9).
 
-    Load ``metaobjects.config.yaml``, load metadata ONCE, and run every target
-    (or ``--target``) into its own ``outDir`` with a cross-target duplicate-path
-    guard. Providers resolve relative to the config file (no ``PYTHONPATH=``).
-    No ``metaobjects.config.yaml`` at all → :func:`_cmd_gen_neutral_fallback`
-    (the ladder's remaining rungs), not an error.
+    Load the config, load metadata ONCE, and run every target (or ``--target``) into its own
+    ``outDir`` with a cross-target duplicate-path guard. ``--generators`` narrows the run to
+    the declared entries named. Providers resolve relative to the config file (no
+    ``PYTHONPATH=``). No ``metaobjects.config.yaml`` is an error: the list lives there.
     """
-    config_path = _find_config(args)
-    if config_path is None:
-        return _cmd_gen_neutral_fallback(args)
-    # An EXPLICIT --template-spec here was silently ignored: config mode goes straight
-    # to _run_gen_targets, which has no spec pass. Refuse instead of accepting a flag
-    # that does nothing. It cannot simply be honoured, because a spec has no `target`
-    # (the CLI ports reject that field outright) while config mode is target-shaped, so
-    # there is no non-arbitrary outDir to write into. A DISCOVERED spec is ignored here
-    # rather than refused — discovery must not hard-fail a command that never asked for
-    # it, and gen/verify agree in config mode either way, so no drift can result.
-    if getattr(args, "template_spec", None):
-        print(
-            "error: --template-spec is not supported in declarative-config mode "
-            f"({config_path}): a template-spec entry names no target, and config mode "
-            "writes per target, so there is no outDir to render into. Run the explicit "
-            "form instead: metaobjects gen <metadata_dir> --out <dir> --template-spec "
-            "<json> --templates <dir>.",
-            file=sys.stderr,
-        )
+    config, code = _load_generator_list(args, "metaobjects gen")
+    if config is None:
+        return code
+    if args.metadata_dir is not None or args.out is not None:
+        print(FLAG_FORM_NOT_READ.format(command="metaobjects gen"), file=sys.stderr)
         return 2
-    try:
-        config = load_project_config(config_path)
-    except ConfigError as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return 1
+    if _refuse_template_spec_flag(args, "metaobjects gen"):
+        return 2
 
     targets, target_err = _select_targets(config, getattr(args, "target", None))
     if target_err:
         print(f"error: {target_err}", file=sys.stderr)
         return 1
+    targets = _narrow_entities(targets, args)
 
     providers, providers_ok = _config_providers(config)
     if not providers_ok:
         return 1
+    flag_providers, flag_providers_ok = _providers_from_args(args)
+    if not flag_providers_ok:
+        return 1
+    providers = [*providers, *flag_providers]
 
     # FR-023: rung 2 (this native `metaobjects.config.yaml` surface) still reads
     # `dependencies`/`scope`/`migrate.scope` from the project's neutral
@@ -1639,6 +1522,9 @@ def _cmd_gen_config(args: argparse.Namespace) -> int:
         return 1
     _print_unknown_attr_warnings(unknown_attrs)
 
+    selection = _selection_from_args(args)
+    if _refuse_narrowing(args, selection, root, "metaobjects gen"):
+        return 2
     for t in targets:
         imported_refusal = _refuse_imported_entities(t.entities, root, collection)
         if imported_refusal is not None:
@@ -1654,6 +1540,8 @@ def _cmd_gen_config(args: argparse.Namespace) -> int:
         refused_out=refused,
         select=collection.in_scope,
         build_ctx=GeneratorBuildContext(_template_root_for(args)),
+        column_naming=getattr(args, "column_naming", None) or DEFAULT_COLUMN_NAMING,
+        selection=selection,
     )
     if errors:
         for msg in errors:
@@ -1763,266 +1651,11 @@ def _is_ours_for(gen_state_dir: str | None, out_prefix: str = ""):
     return is_ours
 
 
-def _diff_report(
-    expected: dict[str, str],
-    committed: dict[str, str],
-    gen_state_dir: str | None = None,
-    out_prefix: str = "",
-) -> int:
-    """Compare a regenerated file map against the committed one; print the
-    standard ``verify --codegen`` drift report. Returns 0 (in sync) or 1.
-
-    Extracted so the explicit-``<metadata_dir>`` flag mode
-    (:func:`_verify_codegen`) and the ``.metaobjects/config.json`` fallback
-    rung (:func:`_verify_codegen_neutral_fallback`) report drift identically.
-
-    ``gen_state_dir`` scopes the ``extra`` verdict to files we have a record of
-    writing — see :func:`_is_ours_for`. Omit it to keep the unscoped verdict.
-    ``out_prefix`` is the committed out dir relative to the project, which is what
-    translates this diff's out-dir-relative keys into the manifest's project-relative
-    ones; omit it only when the two coincide.
-    """
-    is_ours = _is_ours_for(gen_state_dir, out_prefix)
-    changed = sorted(
-        k for k in expected if k in committed and expected[k] != committed[k]
-    )
-    missing = sorted(k for k in expected if k not in committed)  # not yet committed
-    # A committed file a fresh regen would not emit is STALE only if it is ours.
-    extra = sorted(k for k in committed if k not in expected and is_ours(k))
-
-    if not changed and not missing and not extra:
-        print(f"metaobjects verify: in sync ({len(expected)} file(s)).")
-        return 0
-
-    print("error: generated code is out of sync with metadata.", file=sys.stderr)
-    for k in changed:
-        print(f"  drifted: {k}", file=sys.stderr)
-    for k in missing:
-        print(f"  missing: {k}", file=sys.stderr)
-    for k in extra:
-        print(f"  extra:   {k}", file=sys.stderr)
-    print(
-        "regenerate (metaobjects gen) and commit the result.",
-        file=sys.stderr,
-    )
-    return 1
-
-
-
-def _no_generators_selected(out_dir: str) -> int:
-    """``verify --codegen`` with nothing selected: pass only if nothing would go unchecked.
-
-    There is no default suite (1.0.4), so with no ``--generators`` nothing is regenerated.
-    If ``out_dir`` already holds generated files, reporting success would be a false green
-    — a gate written before 1.0.4, relying on the default, silently stopped checking
-    anything. That is an error; an empty or absent ``out_dir`` is not.
-    """
-    committed = [p for p in Path(out_dir).rglob("*.py") if p.name != "__init__.py"] if Path(out_dir).is_dir() else []
-    if committed:
-        print(
-            f"error: verify --codegen: no generators selected, but {out_dir} holds "
-            f"{len(committed)} generated file(s) that would go unchecked. There is no "
-            "default suite: pass --generators <a,b,c> naming the same suite `gen` ran "
-            "(metaobjects gen --list is the catalog).",
-            file=sys.stderr,
-        )
-        return 1
-    print(
-        "verify --codegen: no generators selected and no generated output to check. "
-        "Pass --generators <a,b,c> naming the same suite `gen` ran "
-        "(metaobjects gen --list is the catalog).",
-    )
-    return 0
-
 def _verify_codegen(args: argparse.Namespace) -> int:
-    """``verify --codegen`` — regenerate to a temp dir + diff vs committed ``--out``.
-
-    Python's historical ``verify`` behavior, unchanged. Reuses the exact ``gen``
-    code path (gen-to-temp + diff), so drift can never be a generator-wiring
-    divergence between the two commands.
-    """
-    # #267: config mode ⇔ no positional <metadata_dir>. The legacy
-    # <metadata_dir> + --out diff below is untouched.
-    if args.metadata_dir is None:
-        return _verify_codegen_config(args)
-    if args.out is None:
-        print(
-            "error: verify --codegen requires --out (the committed output dir).",
-            file=sys.stderr,
-        )
-        return 2
-
-    # Reuse the exact gen code path — regenerate into a throwaway temp dir. The
-    # --entities filter must match the `gen` that produced --out, or the diff
-    # reports the un-emitted entities as spurious drift.
-    # ADR-0023 strict-by-default (#96): verify loads strict unless --lax is given,
-    # so an undeclared/typo'd own @attr fails verify (matching Java's Maven goal).
-    strict = not getattr(args, "lax", False)
-    # R31: the `names` generator's constants are strategy-dependent (#248-adjacent —
-    # the same generator Task 9 turned on). A regen that defaults to `literal` while
-    # the committed output was produced with `gen --column-naming snake_case` (or any
-    # other non-default strategy) convicts every <ENTITY>_<FIELD>_COLUMN constant as
-    # drift — a gate failing work the product itself sanctions. Must match the `gen`
-    # invocation that produced --out, exactly like --entities above.
-    column_naming = getattr(args, "column_naming", None) or DEFAULT_COLUMN_NAMING
-    providers, providers_ok = _providers_from_args(args)
-    if not providers_ok:
-        return 1
-    # The declarative template generators, resolved by the SAME rule `gen` uses —
-    # explicit flag, else the conventional <projectRoot>/template-spec.json. Without
-    # this, verify regenerated only the default suite and then reported every
-    # spec-emitted file as `extra:` ("stale committed file"), exiting 1 with a remedy
-    # that loops: `gen` reproduces those files but the next verify fails identically.
-    # `verify` spells the templates dir --templates-root (its --templates is the
-    # subverb selector), so the flag is read per-verb and threaded to one resolver.
-    spec_gens, spec_err = template_spec_generators(
-        args.metadata_dir,
-        getattr(args, "template_spec", None),
-        getattr(args, "templates_root", None) or "templates",
-    )
-    if spec_err is not None:
-        print(spec_err, file=sys.stderr)
-        return 1
-
-    # `verify --codegen` re-runs the SELECTION and compares. Codegen is opt-in, so the
-    # selection has to be named — with none, there is no generated output to check, and
-    # saying so beats silently regenerating a suite this project never asked for and
-    # convicting every file of being missing.
-    selection: list[Generator] | None = None
-    if getattr(args, "generators", None):
-        selection, gen_errors = _resolve_generators(
-            args.generators, GeneratorBuildContext(_template_root_for(args)))
-        if gen_errors:
-            print("error: invalid --generators selection:", file=sys.stderr)
-            for msg in gen_errors:
-                print(f"  {msg}", file=sys.stderr)
-            return 1
-    elif not spec_gens:
-        return _no_generators_selected(args.out)
-
-    with tempfile.TemporaryDirectory() as tmp:
-        entities = _parse_entities(getattr(args, "entities", None))
-        written: list[str] = []
-        errors: list[str] = []
-        if selection is not None:
-            written, errors = _generate(
-                args.metadata_dir, tmp, selection, entities, strict=strict,
-                providers=providers, column_naming=column_naming,
-            )
-        if errors:
-            print("error: failed to load metadata:", file=sys.stderr)
-            for msg in errors:
-                print(f"  {msg}", file=sys.stderr)
-            if strict and any("ERR_UNKNOWN_ATTR" in m for m in errors):
-                print(_strict_load_hint(), file=sys.stderr)
-            return 1
-
-        if spec_gens:
-            # Mirror `gen`'s SECOND pass exactly, emit_package_init=False included —
-            # a diff against output produced by a two-pass gen has to be produced the
-            # same way, or the __init__.py placement alone reads as drift.
-            from metaobjects.render.renderer import RenderError
-
-            try:
-                _generate(
-                    args.metadata_dir, tmp, spec_gens, entities,
-                    emit_package_init=False, strict=strict, providers=providers,
-                    column_naming=column_naming,
-                )
-            except RenderError as exc:
-                print(
-                    f"error: template-spec render failed (check the template refs and "
-                    f"the templates dir): {exc}",
-                    file=sys.stderr,
-                )
-                return 1
-
-        expected = _relative_set(Path(tmp))
-        committed = _relative_set(Path(args.out))
-
-    # The manifest is keyed relative to the project; this diff is keyed relative to
-    # `--out`. Hand over the prefix that translates one into the other, or the
-    # jurisdiction lookup finds nothing and the `extra` verdict silently empties.
-    project_root = project_root_for(args.metadata_dir)
-    return _diff_report(
-        expected, committed, gen_state_dir_for(args.metadata_dir),
-        _out_prefix(args.out, project_root),
-    )
-
-
-def _verify_codegen_neutral_fallback(args: argparse.Namespace) -> int:
-    """``verify --codegen`` with no positional ``metadata_dir`` AND no
-    ``metaobjects.config.yaml``.
-
-    Descends the source-resolution ladder's remaining rungs via
-    :func:`resolve_metadata_location`, exactly like
-    :func:`_cmd_gen_neutral_fallback`. There is no declarative target registry
-    at this rung, so ``--out`` (the committed dir to diff against) is required
-    exactly as it is in explicit-``<metadata_dir>`` flag mode.
-    """
-    if args.out is None:
-        print(
-            "error: verify --codegen requires --out (the committed output dir).",
-            file=sys.stderr,
-        )
-        return 2
-
-    root_dir = Path.cwd()
-    collection = _resolve_metadata_location_or_print_error(None, root_dir)
-    if collection is None:
-        return 1
-
-    strict = not getattr(args, "lax", False)
-    # R31 — see _verify_codegen: must match the strategy `gen` (this same rung)
-    # produced --out with, or the `names` generator's constants regenerate under
-    # the wrong strategy and report spurious drift.
-    column_naming = getattr(args, "column_naming", None) or DEFAULT_COLUMN_NAMING
-    providers, providers_ok = _providers_from_args(args)
-    if not providers_ok:
-        return 1
-
-    # Same rule as _verify_codegen: the selection must be named, because there is no
-    # default suite to regenerate and diff against.
-    if not getattr(args, "generators", None):
-        return _no_generators_selected(args.out)
-    selection, gen_errors = _resolve_generators(
-        args.generators, GeneratorBuildContext(_template_root_for(args)))
-    if gen_errors:
-        print("error: invalid --generators selection:", file=sys.stderr)
-        for msg in gen_errors:
-            print(f"  {msg}", file=sys.stderr)
-        return 1
-
-    with tempfile.TemporaryDirectory() as tmp:
-        entities = _parse_entities(getattr(args, "entities", None))
-        root, load_errors = _load_root_from_collection(collection, strict=strict, providers=providers)
-        if root is None:
-            print("error: failed to load metadata:", file=sys.stderr)
-            for msg in load_errors:
-                print(f"  {msg}", file=sys.stderr)
-            if strict and any("ERR_UNKNOWN_ATTR" in m for m in load_errors):
-                print(_strict_load_hint(), file=sys.stderr)
-            return 1
-
-        imported_refusal = _refuse_imported_entities(entities, root, collection)
-        if imported_refusal is not None:
-            print(imported_refusal, file=sys.stderr)
-            return 2
-
-        _run_suite(
-            root, tmp, selection, entities, gen_state_dir=None, column_naming=column_naming,
-            select=collection.in_scope,
-        )
-        expected = _relative_set(Path(tmp))
-        committed = _relative_set(Path(args.out))
-
-    # This rung has NO positional metadata dir — cwd is the project (same anchor
-    # `_cmd_gen_neutral_fallback` writes its manifest to), so the jurisdiction lookup
-    # must be built from that, not from args.metadata_dir (None here by definition).
-    return _diff_report(
-        expected, committed, str(root_dir.resolve() / ".metaobjects" / ".gen-state"),
-        _out_prefix(args.out, root_dir.resolve()),
-    )
+    """``verify --codegen`` — regenerate the config's generator list into a temp tree and diff
+    it against each target's committed ``outDir`` (ADR-0034 Amendment 9: the list ``gen``
+    runs is the list ``verify`` checks)."""
+    return _verify_codegen_config(args)
 
 
 def _temp_slot_for(temp_root: Path, real_outdir: str, config_dir: Path) -> str:
@@ -2057,27 +1690,34 @@ def _verify_codegen_config(args: argparse.Namespace) -> int:
     drift (mirrors the TS ``computeCodegenDrift`` unit = unique outDir).
     ``--target`` widens to the outDir-sharing closure (an outDir is verified as a
     unit). Strict-by-default (ADR-0023) unless ``--lax``.
-    No ``metaobjects.config.yaml`` at all → :func:`_verify_codegen_neutral_fallback`
-    (the ladder's remaining rungs), not an error.
+    No ``metaobjects.config.yaml`` is an error: the list lives there.
+    A ``--generators``/``--entities``-narrowed run checks only the paths the narrowed run
+    emits, each against the content the whole declared list gives it (an aggregate such as
+    ``enums.py`` is built from every entity), never reports ``extra`` (a committed file the
+    narrowed run does not emit is some other entry's), and skips an outDir no selected
+    entry writes into.
     """
-    config_path = _find_config(args)
-    if config_path is None:
-        return _verify_codegen_neutral_fallback(args)
-    try:
-        config = load_project_config(config_path)
-    except ConfigError as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return 1
+    config, code = _load_generator_list(args, "metaobjects verify --codegen")
+    if config is None:
+        return code
+    if args.out is not None:
+        print(FLAG_FORM_NOT_READ.format(command="metaobjects verify --codegen"), file=sys.stderr)
+        return 2
+    if _refuse_template_spec_flag(args, "metaobjects verify --codegen"):
+        return 2
 
     selected, target_err = _select_targets(config, getattr(args, "target", None))
     if target_err:
         print(f"error: {target_err}", file=sys.stderr)
         return 1
+    selected = _narrow_entities(selected, args)
 
     # Widen to the outDir-sharing closure: a shared outDir is verified as a unit,
     # so --target a (whose outDir b also writes) pulls b in.
     selected_outdirs = {config.out_dir_for(t) for t in selected}
-    closure = [t for t in config.targets if config.out_dir_for(t) in selected_outdirs]
+    closure = _narrow_entities(
+        [t for t in config.targets if config.out_dir_for(t) in selected_outdirs], args
+    )
     added = [t.name for t in closure if t not in selected]
     if added:
         target_arg = getattr(args, "target", None)
@@ -2091,6 +1731,10 @@ def _verify_codegen_config(args: argparse.Namespace) -> int:
     providers, providers_ok = _config_providers(config)
     if not providers_ok:
         return 1
+    flag_providers, flag_providers_ok = _providers_from_args(args)
+    if not flag_providers_ok:
+        return 1
+    providers = [*providers, *flag_providers]
 
     # FR-023: see the matching comment in `_cmd_gen_config` — dependencies apply
     # at this rung too.
@@ -2111,13 +1755,17 @@ def _verify_codegen_config(args: argparse.Namespace) -> int:
             print(_strict_load_hint(), file=sys.stderr)
         return 1
 
+    selection = _selection_from_args(args)
+    if _refuse_narrowing(args, selection, root, "metaobjects verify --codegen"):
+        return 2
     for t in closure:
         imported_refusal = _refuse_imported_entities(t.entities, root, collection)
         if imported_refusal is not None:
             print(imported_refusal, file=sys.stderr)
             return 2
+    narrowed = selection is not None or _parse_entities(getattr(args, "entities", None)) is not None
 
-    with tempfile.TemporaryDirectory() as temp_root:
+    with tempfile.TemporaryDirectory() as temp_root, tempfile.TemporaryDirectory() as declared_root:
         # Map each unique real outDir to ONE temp slot (shared real dir => shared slot).
         temp_for: dict[str, str] = {}
         for t in closure:
@@ -2136,9 +1784,28 @@ def _verify_codegen_config(args: argparse.Namespace) -> int:
         # build_ctx from the SAME resolver `gen` uses — a verify that resolved the
         # template root differently would regenerate render-helper against another
         # directory and convict the committed output of being stale.
+        targeted: set[str] = set()
+        regen = dict(
+            select=collection.in_scope,
+            build_ctx=GeneratorBuildContext(_template_root_for(args)),
+            # R31: the `names` generator's constants are strategy-dependent, so the regen
+            # must use the strategy `gen` wrote with, or every constant reads as drift.
+            column_naming=getattr(args, "column_naming", None) or DEFAULT_COLUMN_NAMING,
+        )
         _written, errors = _run_gen_targets(
-            config, remapped, root, select=collection.in_scope,
-            build_ctx=GeneratorBuildContext(_template_root_for(args)))
+            config, remapped, root, selection=selection, targeted_out=targeted, **regen)
+        # A narrowed run's paths get the content the whole declared list writes, which is
+        # what `gen` committed: a second regen of the un-narrowed closure supplies it.
+        declared_for: dict[str, str] = {}
+        if narrowed and not errors:
+            unnarrowed = [t for t in config.targets if config.out_dir_for(t) in temp_for]
+            for real in temp_for:
+                declared_for[real] = _temp_slot_for(Path(declared_root), real, config.config_dir)
+            _written, errors = _run_gen_targets(
+                config,
+                [dataclasses.replace(t, out_dir=declared_for[config.out_dir_for(t)])
+                 for t in unnarrowed],
+                root, **regen)
         if errors:
             for msg in errors:
                 print(f"error: {msg}", file=sys.stderr)
@@ -2147,25 +1814,33 @@ def _verify_codegen_config(args: argparse.Namespace) -> int:
         exit_code = 0
         for real_outdir in sorted(temp_for):
             tmp_slot = temp_for[real_outdir]
+            if narrowed and tmp_slot not in targeted:
+                continue
             expected = _relative_set(Path(tmp_slot))
             committed = _relative_set(Path(real_outdir))
+            if narrowed:
+                declared = _relative_set(Path(declared_for[real_outdir]))
+                expected = {k: declared[k] for k in expected if k in declared}
 
             changed = sorted(
                 k for k in expected if k in committed and expected[k] != committed[k]
             )
             missing = sorted(k for k in expected if k not in committed)
-            # Same jurisdiction rule as _diff_report — this rung inlines its diff to
-            # report per-target, so the guard has to be inlined with it. Without it,
-            # broadening the comparison past *.py convicts every stranger's file.
-            #
-            # PER-TARGET prefix, because that is the whole point on this rung: two
-            # targets with different outDirs share one manifest, and the key that tells
-            # their identically-named files apart is the one anchored on the project.
-            is_ours = _is_ours_for(
-                gen_state_dir_for(config.metadata_dir()),
-                _out_prefix(real_outdir, project_root_for(config.metadata_dir())),
-            )
-            extra = sorted(k for k in committed if k not in expected and is_ours(k))
+            if narrowed:
+                extra: list[str] = []
+            else:
+                # Same jurisdiction rule as _diff_report — this rung inlines its diff to
+                # report per-target, so the guard has to be inlined with it. Without it,
+                # broadening the comparison past *.py convicts every stranger's file.
+                #
+                # PER-TARGET prefix, because that is the whole point on this rung: two
+                # targets with different outDirs share one manifest, and the key that tells
+                # their identically-named files apart is the one anchored on the project.
+                is_ours = _is_ours_for(
+                    gen_state_dir_for(config.metadata_dir()),
+                    _out_prefix(real_outdir, project_root_for(config.metadata_dir())),
+                )
+                extra = sorted(k for k in committed if k not in expected and is_ours(k))
 
             names = "+".join(
                 t.name for t in closure if config.out_dir_for(t) == real_outdir
@@ -2660,15 +2335,26 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
-    gen = sub.add_parser("gen", help="run codegen, writing files under --out")
-    # metadata_dir / --out are optional so `gen --list` works without them.
+    gen = sub.add_parser(
+        "gen",
+        help=(
+            "run the generator list in metaobjects.config.yaml: each target's generators, "
+            "into its outDir"
+        ),
+    )
+    # metadata_dir / --out are the 1.0 form. They are accepted so a 1.0 invocation gets the
+    # line that says where they went (the config's `metadata` and each target's `outDir`)
+    # instead of argparse's "unrecognized arguments".
     gen.add_argument(
         "metadata_dir",
         nargs="?",
         default=None,
-        help="directory of metadata JSON/YAML files",
+        help="not read since 1.1.0: set `metadata` in metaobjects.config.yaml",
     )
-    gen.add_argument("--out", default=None, help="output directory for generated code")
+    gen.add_argument(
+        "--out", default=None,
+        help="not read since 1.1.0: each target's `outDir` in metaobjects.config.yaml",
+    )
     gen.add_argument(
         "--column-naming",
         dest="column_naming",
@@ -2686,9 +2372,9 @@ def _build_parser() -> argparse.ArgumentParser:
         "--generators",
         default=None,
         help=(
-            "REQUIRED — comma-separated STABLE generator names to run "
-            "(e.g. entity,routes). Codegen is opt-in: there is no default suite, so a "
-            "run that names none is a usage error. See `gen --list` for the catalog."
+            "narrow the run to these declared entries (comma-separated stable names, or an "
+            "owned entry as written in the config). Never adds a generator the config does "
+            "not declare; naming one is refused."
         ),
     )
     gen.add_argument(
@@ -2714,19 +2400,16 @@ def _build_parser() -> argparse.ArgumentParser:
         dest="template_spec",
         default=None,
         help=(
-            "path to a JSON template-spec ({\"generators\":[{name,template,scope,"
-            "outputPattern,format?}]}) — declarative Mustache generators appended "
-            "to the suite (SP-1). Templates resolve under --templates. For output "
-            "to be regenerable, the template must emit the @generated header itself "
-            "(the codegen write path refuses to overwrite files lacking it)."
+            "not read since 1.1.0: declare a template-spec on the target it writes into, "
+            "as `templateSpec: <path>` in metaobjects.config.yaml"
         ),
     )
     gen.add_argument(
         "--templates",
         default=None,
         help=(
-            "on-disk root that template refs resolve under — used by "
-            "--template-spec AND by the render-helper generator's drift gate "
+            "on-disk root that template refs resolve under — used by a target's "
+            "declared templateSpec AND by the render-helper generator's drift gate "
             "(default: prompts/ when it exists, else templates/)"
         ),
     )
@@ -2758,9 +2441,8 @@ def _build_parser() -> argparse.ArgumentParser:
         "--config",
         default=None,
         help=(
-            "path to a metaobjects.config.yaml (declarative targets registry). "
-            "Config mode runs when no <metadata_dir> is given; default lookup is "
-            "./metaobjects.config.yaml in cwd."
+            "path to the metaobjects.config.yaml that declares the generator list "
+            "(default: ./metaobjects.config.yaml in cwd)"
         ),
     )
     gen.add_argument(
@@ -2769,53 +2451,6 @@ def _build_parser() -> argparse.ArgumentParser:
         help="run only this named target from the config (default: every target)",
     )
     gen.set_defaults(func=_cmd_gen)
-
-    docs = sub.add_parser(
-        "docs",
-        help=(
-            "emit the native Python SDK api-reference docs (the api/python "
-            "surface of the cross-port SDK-docs contract) under --out"
-        ),
-    )
-    # Optional, like `gen`'s: an omitted positional falls through the same
-    # location ladder (`metaobjects.config.yaml`'s `metadata` key, else the
-    # neutral `.metaobjects/config.json` `sources`, else the default directory)
-    # instead of hard-requiring the caller to name a directory.
-    docs.add_argument(
-        "metadata_dir",
-        nargs="?",
-        default=None,
-        help="directory of metadata JSON/YAML files (omit to use the config ladder)",
-    )
-    docs.add_argument(
-        "--out",
-        required=True,
-        help="docs output root; pages land under <out>/api/python",
-    )
-    docs.add_argument(
-        "--api-subdir",
-        dest="api_subdir",
-        default=None,
-        help="api-surface subdir under --out (default: api/python)",
-    )
-    docs.add_argument(
-        "--project",
-        default=None,
-        help="project name shown in the docs (default: the metadata dir name)",
-    )
-    docs.add_argument(
-        "--model-base-url",
-        dest="model_base_url",
-        default=None,
-        help="federate the model back-links to an absolute base URL (default: relative)",
-    )
-    docs.add_argument(
-        "--provider",
-        action="append",
-        metavar="module:symbol",
-        help="load a consumer metadata Provider as 'module:symbol' (repeatable; #158)",
-    )
-    docs.set_defaults(func=_cmd_docs)
 
     verify = sub.add_parser(
         "verify",
@@ -2829,8 +2464,9 @@ def _build_parser() -> argparse.ArgumentParser:
         nargs="?",
         default=None,
         help=(
-            "directory of metadata JSON/YAML files. Omit to use a "
-            "metaobjects.config.yaml (--codegen config mode, #267)."
+            "directory of metadata JSON/YAML files, required by --templates. Not read "
+            "since 1.1.0 by --codegen, which always runs config mode: set `metadata` "
+            "in metaobjects.config.yaml instead."
         ),
     )
     verify.add_argument(
@@ -2868,7 +2504,7 @@ def _build_parser() -> argparse.ArgumentParser:
     verify.add_argument(
         "--out",
         default=None,
-        help="committed output directory to diff against (for --codegen)",
+        help="not read since 1.1.0: each target's `outDir` in metaobjects.config.yaml",
     )
     # F101 — the prompt directory is spelled three ways across the ports: `--prompts <dir>`
     # (Node `meta`, the reference), `--templates <root>` (dotnet meta, inline on the subverb)
@@ -2929,9 +2565,9 @@ def _build_parser() -> argparse.ArgumentParser:
         "--config",
         default=None,
         help=(
-            "path to a metaobjects.config.yaml. Config mode runs when no "
-            "<metadata_dir> is given; default ./metaobjects.config.yaml in cwd. "
-            "Drives --codegen per-target regen+diff."
+            "path to the metaobjects.config.yaml that declares the generator list "
+            "(default: ./metaobjects.config.yaml in cwd). Drives --codegen's "
+            "per-target regen+diff."
         ),
     )
     verify.add_argument(
@@ -2943,9 +2579,10 @@ def _build_parser() -> argparse.ArgumentParser:
         "--generators",
         default=None,
         help=(
-            "comma-separated STABLE generator names — must MATCH the `gen` that "
-            "produced --out. `verify --codegen` re-runs the selection and diffs; with "
-            "none named there is nothing to check and it says so."
+            "narrow --codegen to these declared entries (comma-separated stable names, "
+            "or an owned entry as written in the config), matching `gen --generators`. "
+            "Never adds a generator the config does not declare; naming one is refused. "
+            "With none named, the whole declared list is checked."
         ),
     )
     verify.set_defaults(func=_cmd_verify)
@@ -3059,6 +2696,11 @@ def main(argv: list[str] | None = None) -> int:
     if len(raw) == 1 and raw[0] in VERSION_FLAGS:
         print(installed_metaobjects_version())
         return 0
+    # `docs` was removed in 1.1.0 (ADR-0034 Amendment 9). Whatever follows it, the answer is
+    # the one line that names the gen command and the migration section.
+    if raw and raw[0] == "docs":
+        print(DOCS_COMMAND_REMOVED, file=sys.stderr)
+        return 2
     parser = _build_parser()
     args, extras = parser.parse_known_args(raw)
     if extras:

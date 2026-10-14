@@ -36,10 +36,10 @@ command surface splits in two:
 | **Dependency sync** (`deps`) | **Node `meta`** | `meta deps sync \| check \| list` | **any backend** — resolves a declared metadata dependency's `path` transport into a committed snapshot + lock (FR-023), so `sync`/`check`/`list` themselves stay Node-only regardless of your server language. TypeScript and Python then LOAD that snapshot at every rung of their own source ladder — the two ports that implement dependency resolution in Phase 1a; Java, Kotlin, and C# don't read `dependencies` yet (Phase 2). See [`metadata-dependencies.md`](metadata-dependencies.md) |
 | **Canonical format** (`fmt`) | every port | `meta fmt` / `dotnet meta fmt` / `mvn metaobjects:fmt` / `metaobjects fmt` | (#304) ships in **every** port — the canonical serializer already exists in all five, so formatting is local, not Node-only. `--check` lists non-canonical files and exits non-zero without changing anything. Formats each file STANDALONE — own-mode, declared-here layer only (ADR-0039); an `extends` onto another file's base is preserved as-is, never resolved or erred on; a file declaring `overlay: true` anywhere — whether or not a same-file base exists — is reported as skipped rather than merged (merging would drop the overlay marker, a structural change fmt never makes). A YAML file is always skipped — no canonical YAML emitter exists (ADR-0006). Before writing, every port reloads the whole project with the candidate swapped in and refuses the write unless the reloaded model's canonical form is byte-identical to the untouched baseline — fmt never changes meaning. See [Fixture corpus](#meta-fmt--canonical-formatting-304) below and `fixtures/fmt-conformance/README.md` |
 | TS codegen | Node `meta` | `meta gen` | TS projects. **No `--template-spec` flag, deliberately** — `metaobjects.config.ts` already takes generator VALUES, so a declarative template generator is declared there (`templateGenerator()`, or `templateSpecToGenerators(parseTemplateSpec(spec))` to reuse a C#/Python spec file). Keeping it in the config is what lets `meta verify --codegen` regenerate WITH it, since that gate re-runs the config's generator list; see [declarative template scopes](codegen-concepts.md#declarative-template-scopes) |
-| C# codegen | `dotnet meta` | `dotnet meta gen` / `verify --templates` / `verify --codegen` | a .NET tool (`ToolCommandName=dotnet-meta`); invoked `dotnet meta` so it never shadows the Node `meta`; ships the ADR-0021 D2 subverbs (`--db` rejected, exit 2; bare `verify` = `--templates`). `gen` also accepts `--template-spec <json>` (+ `--template-root <dir>`, default `prompts/` when it exists, else `templates/`) — the declarative Mustache template-codegen surface (the cross-port JSON contract shared with Python), **auto-discovered at `<projectRoot>/template-spec.json`** when the flag is absent. Prefer the conventional path: `verify --codegen` takes no `--template-spec`, so discovery is how the drift gate sees your template generators at all; see [declarative template scopes](codegen-concepts.md#declarative-template-scopes) |
+| C# codegen | `dotnet meta` | `dotnet meta init` / `gen` / `verify --templates` / `verify --codegen` | a .NET tool (`ToolCommandName=dotnet-meta`); invoked `dotnet meta` so it never shadows the Node `meta`; ships the ADR-0021 D2 subverbs (`--db` rejected, exit 2; bare `verify` = `--templates`). **The generator list is `codegen/Generators.cs`** (ADR-0034 Amendment 9): `dotnet meta init` writes it with `codegen/Program.cs` (two lines that run it) and `codegen/Codegen.csproj`, and `gen` / `verify --codegen` always run it through `dotnet run --project codegen`. With no `codegen/Generators.cs` they exit 2 and write nothing; `--generators` only narrows the list to declared entries. Every entry may set its own output directory (`ApiDocsGenerator { OutDir = ... }`), and `verify --codegen` compares each one. A declarative Mustache template-spec (the cross-port JSON contract shared with Python) is one more entry, `TemplateSpecGenerator { Spec = "<json>", TemplateRoot = "<dir>" }`; `gen` no longer reads `--template-spec` or a project-root `template-spec.json`, and a run that finds either with no such entry fails before writing anything; see [declarative template scopes](codegen-concepts.md#declarative-template-scopes). `dotnet meta docs` was removed in 1.1.0: it prints the line that points at [the migration section](migrations/docs-are-generators.md#c) and exits 2 |
 | Java/Kotlin codegen | Maven plugin | `mvn metaobjects:generate` (`metaobjects:generate`) | Kotlin generators run through the same goal — see below. **No `--template-spec` flag, deliberately** — `<generator>` already loads a consumer class from the project classpath, so the declarative surface is `com.metaobjects.generator.template.TemplateScopeGenerator` wired as an ordinary `<generator>` with `<template>` / `<scope>` / `<outputPattern>` / `<templatesDir>` / `<format>` args (covers BOTH Java and Kotlin); see [declarative template scopes](codegen-concepts.md#declarative-template-scopes). The `generate` and `verify` goals are declared `threadSafe` and support parallel multi-module reactor builds (`mvn -T`) (#233) |
 | Java/Kotlin verify | Maven plugin | `mvn metaobjects:verify -Dmeta.verify.mode=codegen\|templates` (`metaobjects:verify`) | parameter-driven ADR-0021 D2 modes (one goal covers BOTH Java + Kotlin): `codegen` (default, back-compat — regen + fail on drift vs committed output, generator-neutral) / `templates` (`{{field}}`↔payload drift via the render `Verify` engine). `db` rejected ("schema verify is the migrate engine, ADR-0015") |
-| Python codegen | console-script | `metaobjects gen` / `verify --codegen` / `verify --templates` | `[project.scripts] metaobjects` — **not** `meta` (that's the Node schema CLI); ships the ADR-0021 D2 subverbs (`--db` rejected, exit 2). `gen` also accepts `--template-spec <json>` (+ `--templates <dir>`, default `prompts/` when it exists, else `templates/`) — the declarative Mustache template-codegen surface (the cross-port JSON contract shared with C#), **auto-discovered at `<projectRoot>/template-spec.json`** when the flag is absent (and REFUSED in declarative-config mode, where a spec has no target to write into). Prefer the conventional path: `verify --codegen` takes no `--template-spec`, so discovery is how the drift gate sees your template generators at all; see [declarative template scopes](codegen-concepts.md#declarative-template-scopes) |
+| Python codegen | console-script | `metaobjects gen` / `verify --codegen` / `verify --templates` | `[project.scripts] metaobjects` — **not** `meta` (that's the Node schema CLI); ships the ADR-0021 D2 subverbs (`--db` rejected, exit 2). **The generator list is `metaobjects.config.yaml`** (ADR-0034 Amendment 9, [below](#declarative-config-metaobjectsconfigyaml--python-codegen)): `gen` and `verify --codegen` run each target's `generators` (and its `templateSpec`, the declarative Mustache template-codegen surface shared with C#) into its `outDir`, and with no config they exit 2 and write nothing. `--generators` only narrows the list to declared entries. `metaobjects docs` was removed in 1.1.0: it prints the line that points at [the migration section](migrations/docs-are-generators.md#python) and exits 2 |
 
 ## `verify` is one verb with explicit subverbs (ADR-0021 D2)
 
@@ -331,14 +331,13 @@ stale page in place, green. A hand-written file in the docs directory is left al
 
 ## Declarative config (`metaobjects.config.yaml`) — Python codegen
 
-Alongside its flag-only mode (`metaobjects gen <metadata_dir> --out <dir>`), the
-Python `metaobjects` CLI supports a declarative project config,
-`metaobjects.config.yaml` (#267). Its **`targets` registry uses the TS
-`metaobjects.config.ts` vocabulary** (named targets, each with its own `outDir`) — a
-polyglot adopter learns one targets-registry shape regardless of port. The keys are not
-identical beyond that: a Python target carries its own `generators` and `entities`, and
-`requirementTests` is a block that exists only here, where TypeScript passes that
-generator's options to `requirementTests({ … })` in code. A JSON Schema ships at
+The Python `metaobjects` CLI reads its generator list from a declarative project config,
+`metaobjects.config.yaml` (#267; since 1.1.0 the only list, ADR-0034 Amendment 9). Its
+**`targets` registry uses the TS `metaobjects.config.ts` vocabulary** (named targets, each
+with its own `outDir`) — a polyglot adopter learns one targets-registry shape regardless of
+port. The keys are not identical beyond that: a Python target carries its own `generators`,
+`entities` and `templateSpec`, and `requirementTests` and `apiDocs` are blocks that exist only
+here, where TypeScript passes those generators' options in code. A JSON Schema ships at
 [`server/python/src/metaobjects/codegen/metaobjects-config.schema.json`](../../server/python/src/metaobjects/codegen/metaobjects-config.schema.json)
 for editor autocomplete and non-Python validation.
 
@@ -353,46 +352,54 @@ requirementTests:                # optional; options of the `requirement-tests` 
   filter: codegen.requirement_hooks:include    # "module:symbol", resolved config-relative
   renderer: codegen.requirement_hooks:render   # "module:symbol", resolved config-relative
   warnUncovered: true            # the default
-docs:                            # optional; options of `metaobjects docs`
-  generators:                    # owned docs generators as "module:symbol", run in place of the packaged one
-    - codegen.generators.api_docs:api_docs_generator
+apiDocs:                         # optional; options of the `api-docs` generator, every key optional
+  apiSubDir: api/python          # the default
+  projectName: shop              # default "project"
+  modelBaseUrl: https://docs.example.com/model
 targets:
   api:
     outDir: src/generated/api
-    generators: [entity, routes] # REQUIRED; stable names from `metaobjects gen --list`.
-                                 # There is no default suite — see ADR-0034 Amendment 2.
+    generators: [entity, filter-allowlist, routes]   # stable names from `metaobjects gen --list`,
+                                 # or an owned copy as "module:symbol". Nothing runs that is not listed.
   admin:
     outDir: src/generated/admin
+    generators: [entity]
     entities: [Author, Book]     # optional allowlist; omit = every entity
+  docs:
+    outDir: docs/generated
+    generators: [api-docs]       # the api reference is an entry like any other
+    templateSpec: template-spec.json   # optional; a declarative template-spec, relative to this file
 ```
 
-- **`metaobjects gen`** with no positional `<metadata_dir>` runs config mode:
-  it loads the config and metadata once and runs every target into its own
-  `outDir`, with a cross-target guard against two targets writing the same
-  output path. `--target <name>` scopes the run to a single target.
-- **`metaobjects verify --codegen`** — including bare `verify`, since
-  `--codegen` is the Python default (see above) — runs the matching config
-  mode with no positional `<metadata_dir>`: it regenerates the whole selection
-  into a temp tree (the exact `gen` pipeline, including the cross-target
-  duplicate-output-path guard) and diffs each **unique `outDir`** against the
-  union of the co-resident targets' regen, aggregating the exit code (non-zero
-  if *any* outDir has drifted). Targets sharing an `outDir` are verified
-  together, so a shared `outDir` is never a false-positive `extra`. `--target`
-  widens to the `outDir`-sharing closure (an `outDir` is verified as a unit).
-  Strict-attr loading (ADR-0023) still applies unless `--lax` is passed.
-- **`--config <path>`** picks the config file explicitly on either command;
-  with no positional metadata dir and no `--config`, both commands default to
-  looking for `./metaobjects.config.yaml` in the current directory.
+- **`metaobjects gen`** loads the config and metadata once and runs every target into its
+  own `outDir`, with a cross-target guard against two targets writing the same output path.
+  `--target <name>` scopes the run to a single target; `--generators <names>` narrows it to
+  the declared entries named (an owned entry matches its registry name too) and refuses a
+  name no target declares. A target whose `generators` is empty writes nothing and says so.
+- **`metaobjects verify --codegen`** — including bare `verify`, since `--codegen` is the
+  Python default (see above) — regenerates the same list into a temp tree (the exact `gen`
+  pipeline, including the cross-target duplicate-output-path guard) and diffs each **unique
+  `outDir`** against the union of the co-resident targets' regen, aggregating the exit code
+  (non-zero if *any* outDir has drifted). Targets sharing an `outDir` are verified together,
+  so a shared `outDir` is never a false-positive `extra`. `--target` widens to the
+  `outDir`-sharing closure (an `outDir` is verified as a unit). Strict-attr loading
+  (ADR-0023) still applies unless `--lax` is passed.
+- **`--config <path>`** picks the config file explicitly on either command; without it both
+  look for `./metaobjects.config.yaml` in the current directory. **No config is an error**:
+  `gen` and `verify --codegen` print `no metaobjects.config.yaml`, exit 2 and write nothing.
+- **Run options still apply to the list:** `--column-naming`, `--entities` (narrows each
+  target's entities), `--provider` (added to `providers`), `--templates` (`--prompts` on
+  `verify`), `--baseline`.
 - **Providers resolve config-relative.** A `providers:` entry is imported
   with the config file's own directory prepended to `sys.path`, so a
   consumer provider module living beside the config resolves with no
-  `PYTHONPATH=` needed (unlike the flag-only `--provider module:symbol`
-  path, which relies on the ambient environment).
-- **Back-compat is load-bearing.** Passing an explicit positional
-  `<metadata_dir>` (with `--out` on `gen`, or `--out` on `verify --codegen`)
-  keeps the original flag-only path byte-identical — the config file is never
-  consulted. Config mode activates only when no positional `<metadata_dir>`
-  is given.
+  `PYTHONPATH=` needed (unlike `--provider module:symbol`, which relies on the ambient
+  environment).
+- **Not read since 1.1.0.** The positional `<metadata_dir>` and `--out` of `gen` (and `--out`
+  of `verify --codegen`) are refused with a line naming `metadata` and the targets' `outDir`;
+  `--template-spec` is refused in favour of a target's `templateSpec`; a top-level `docs`
+  block fails `gen` with `found 1.0 docs configuration`. See
+  [the migration section](migrations/docs-are-generators.md#python).
 
 ## `libraries` — opting into a MetaObjects-shipped library package
 

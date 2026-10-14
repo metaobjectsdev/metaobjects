@@ -45,11 +45,9 @@ public class EjectedGeneratorsAloneTests
     {
         // The generator model.
         ["MetaObjects.Codegen.IGenerator"] = "the generator contract",
-        ["MetaObjects.Codegen.IDocsGenerator"] = "the docs-surface marker the runner partitions on",
         ["MetaObjects.Codegen.EmittedFile"] = "the generator's output record",
         ["MetaObjects.Codegen.GenContext"] = "the per-run state handed to every generator",
         ["MetaObjects.Codegen.GenConfig"] = "the resolved generation config",
-        ["MetaObjects.Codegen.DocsRunFacts"] = "the facts of a docs run, carried on GenContext",
         ["MetaObjects.Codegen.GeneratorApplicability"] = "what the docs generator asks of the generators it documents, answered by the packaged ones",
         ["MetaObjects.Codegen.PerEntityGenerator"] = "the one-file-per-entity base class",
         ["MetaObjects.Codegen.ColumnNamingStrategy"] = "config enum read by naming",
@@ -279,7 +277,6 @@ public class EjectedGeneratorsAloneTests
             Entities = root.Objects(),
             Root = root,
             Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated", IncludeNames = true },
-            Docs = new DocsRunFacts("fitness"),
         };
         return generator.Generate(ctx).OrderBy(f => f.Path, StringComparer.Ordinal).ToList();
     }
@@ -407,6 +404,8 @@ public class EjectedGeneratorsAloneTests
         var registered = GeneratorRegistry.List()
             .Select(e => e.Factory(new GeneratorBuildContext()).GetType())
             .ToHashSet();
+        // The declaration form of a template spec: it runs the registry's `template` generators.
+        registered.Add(typeof(MetaObjects.Codegen.TemplateCodegen.TemplateSpecGenerator));
         var shipped = typeof(IGenerator).Assembly.GetExportedTypes()
             .Where(t => t is { IsClass: true, IsAbstract: false } && typeof(IGenerator).IsAssignableFrom(t))
             .Where(t => !registered.Contains(t))

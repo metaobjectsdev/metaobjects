@@ -271,13 +271,13 @@ The **CLI-port surface** (Python and C#) exposes the same declarative
 walk through a JSON **template-spec** instead of code/XML wiring — the cross-port
 contract shape (`{"generators": [{ name, template, scope, outputPattern, format? }]}`,
 JSON-schema'd beside the TS port at
-`codegen-ts/src/template-codegen/template-spec.schema.json`). Pass it on `gen`:
-`metaobjects gen <metadataDir> --out <dir> --template-spec spec.json --templates <dir>`
-(Python), or `dotnet meta gen <metadataDir> --out <dir> --template-spec spec.json --template-root <dir>` (C#).
-The named generators are appended to the SELECTION (there is no default suite —
-ADR-0034 Amendment 2), resolving template refs
-under the templates root (`--templates` in Python, `--template-root` in C#; default
-`templates`). `scope` must be one of
+`codegen-ts/src/template-codegen/template-spec.schema.json`). In Python it is declared on
+the target its output belongs in (`templateSpec: spec.json` in `metaobjects.config.yaml`,
+run with `metaobjects gen --templates <dir>`); in C# it is an entry in `codegen/Generators.cs`
+(`new MetaObjects.Codegen.TemplateCodegen.TemplateSpecGenerator { Spec = "spec.json",
+TemplateRoot = "templates" }`). Either way the spec is part of the declared generator list
+(ADR-0034 Amendment 9), resolving template refs under the templates root (`--templates` in
+Python, `TemplateRoot` in C#; default `prompts/` when it exists, else `templates`). `scope` must be one of
 `perEntity`/`perPackage`/`perModel` and `format` (when present) one of the
 registered escaper formats; a `target` field is **rejected** (the CLI ports have no
 output-target concept). The same neutral data dict, output-pattern grammar, and
@@ -287,11 +287,10 @@ overwrite a file lacking the `@generated` marker — a regenerable template must
 that header in its own body. The JVM's `TemplateScopeGenerator` writes directly and
 carries no such obligation.)
 
-**The spec is auto-discovered.** With no `--template-spec`, both CLI ports read
-`<projectRoot>/template-spec.json` (projectRoot = the metadata dir's parent, the anchor
-`.metaobjects/` already uses); the flag overrides it. This is what lets `verify --codegen`
-regenerate WITH your template generators — it accepts no `--template-spec` of its own, so a
-flag-only setup would leave the gate resolving a different generator list from `gen` and
-convicting gen's own output. The ports with a code seam (TypeScript, JVM) declare template
-generators in the build config the gate already re-runs, reaching the same guarantee a
-different way.
+**The spec is declared, never discovered.** Through 1.0 both CLI ports also read a
+`--template-spec` flag or a project-root `template-spec.json` on their own. Since 1.1.0 a spec
+runs only where the generator list declares it, so `verify --codegen` regenerates exactly what
+`gen` wrote. A run that still finds the conventional `template-spec.json` with nothing
+declaring a spec, or the C# `--template-spec` flag, fails before writing anything and names the
+migration section. The ports with a code seam (TypeScript, JVM) declare template generators in
+the build config the gate already re-runs, which is the same guarantee.
