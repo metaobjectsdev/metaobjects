@@ -3,5 +3,6 @@
   "install": "add com.metaobjects:metaobjects-codegen-kotlin + metaobjects-metadata-ktx + metaobjects-maven-plugin to your pom.xml",
   "codegenCommand": "mvn metaobjects:generate",
   "docsCommand": "mvn metaobjects:generate",
+  "docsCondition": " (when the project's generator list declares the api-docs generator)",
   "apiSubDir": "api/kotlin"
 }

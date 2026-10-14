@@ -27,11 +27,16 @@ interface ServerMeta {
   displayName: string;
   install: string;
   codegenCommand: string;
-  /** The command that writes THIS port's api docs — `mvn metaobjects:docs`, `metaobjects
+  /** The command that writes THIS port's api docs — `mvn metaobjects:generate`, `metaobjects
    *  docs`, `dotnet meta docs`, `meta docs`. Named per server because the always-on
    *  pointer tells a reader to run it, and a pointer naming a command the stack does not
    *  have is worse than no pointer. */
   docsCommand: string;
+  /** Appended after each mention of `docsCommand`: the condition under which it writes the
+   *  api pages, with its leading space, or `""` when it always does. The Maven `generate`
+   *  goal writes them only when the pom's generator list declares the api-docs generator,
+   *  and a pointer that omits that sends a reader to run a command that writes nothing. */
+  docsCondition: string;
   /** The docs-root-relative directory THIS port's docs command writes its api pages into.
    *  It is NOT `api` outside TypeScript — Python defaults to `api/python`, C# to
    *  `api/csharp`, the Maven plugin to `api/<lang>` — so a pointer naming `api/AGENT-API.md`
@@ -49,7 +54,7 @@ function readServerMeta(contentRoot: string, server: string): ServerMeta | undef
 function stackLine(
   contentRoot: string,
   stack: Stack,
-): { line: string; codegenCommand: string; docsCommand: string; apiSubDir: string } {
+): { line: string; codegenCommand: string; docsCommand: string; docsCondition: string; apiSubDir: string } {
   const primary = stack.servers[0];
   const meta = primary ? readServerMeta(contentRoot, primary) : undefined;
   const serverPart = stack.servers.length ? stack.servers.join(", ") + " server" : "no server";
@@ -63,6 +68,7 @@ function stackLine(
     line: `Stack: ${serverPart}, ${clientPart}.`,
     codegenCommand: meta ? meta.codegenCommand : "meta gen",
     docsCommand: meta ? meta.docsCommand : "meta docs",
+    docsCondition: meta ? meta.docsCondition : "",
     apiSubDir: meta ? meta.apiSubDir : "api",
   };
 }
@@ -137,10 +143,10 @@ export function assemble(opts: { contentRoot: string; stack: Stack }): Assembled
 
   // 1. Always-on (AGENTS.md + CLAUDE.md, identical contents).
   const tpl = readFileSync(join(contentRoot, "templates", "always-on.md.mustache"), "utf8");
-  const { line, codegenCommand, docsCommand, apiSubDir } = stackLine(contentRoot, stack);
+  const { line, codegenCommand, docsCommand, docsCondition, apiSubDir } = stackLine(contentRoot, stack);
   const alwaysOn = applyTemplate(
     tpl,
-    { stackLine: line, codegenCommand, docsCommand, apiSubDir },
+    { stackLine: line, codegenCommand, docsCommand, docsCondition, apiSubDir },
     { nodeDocsSurface: hasNodeDocsSurface(stack) },
   );
   out.push({ path: ".metaobjects/AGENTS.md", contents: alwaysOn });

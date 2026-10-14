@@ -6,12 +6,17 @@ import org.apache.maven.plugin.testing.MojoRule;
 import org.codehaus.plexus.PlexusTestCase;
 import org.junit.Rule;
 import org.junit.Test;
+import org.w3c.dom.Element;
+import org.w3c.dom.NodeList;
 
+import javax.xml.parsers.DocumentBuilderFactory;
 import java.io.File;
+import java.io.InputStream;
 import java.nio.file.Files;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.fail;
 
 /**
@@ -50,6 +55,41 @@ public class RemovedDocsGoalTest {
                 // Built directly: Maven hands a goal only the <configuration> elements it declares,
                 // and this one declares none. The test harness's configurator refuses the rest.
                 refusalOf(new DocsMojo()));
+    }
+
+    @Test
+    public void anExecutionThatBindsTheDocsGoalWithNoPhaseIsStillScheduled() throws Exception {
+        // The 8.0 pom binds <goal>docs</goal> with no <phase>. Maven schedules such an execution
+        // through the phase in the plugin descriptor, and skips it when there is none, so the
+        // refusal above would never run. The descriptor is what Maven reads; the 8.0 goal said
+        // generate-resources.
+        assertEquals("generate-resources", descriptorPhaseOf("docs"));
+    }
+
+    private static String descriptorPhaseOf(String goal) throws Exception {
+        try (InputStream in = RemovedDocsGoalTest.class.getClassLoader()
+                .getResourceAsStream("META-INF/maven/plugin.xml")) {
+            assertNotNull("plugin.xml descriptor must be generated before tests run", in);
+            NodeList mojos = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(in)
+                    .getDocumentElement().getElementsByTagName("mojo");
+            for (int i = 0; i < mojos.getLength(); i++) {
+                Element mojo = (Element) mojos.item(i);
+                if (goal.equals(childText(mojo, "goal"))) {
+                    return childText(mojo, "phase");
+                }
+            }
+            fail("no <mojo> for goal '" + goal + "' in the plugin descriptor");
+            return null;
+        }
+    }
+
+    private static String childText(Element parent, String name) {
+        for (org.w3c.dom.Node n = parent.getFirstChild(); n != null; n = n.getNextSibling()) {
+            if (n instanceof Element && name.equals(n.getNodeName())) {
+                return n.getTextContent().trim();
+            }
+        }
+        return null;
     }
 
     @Test

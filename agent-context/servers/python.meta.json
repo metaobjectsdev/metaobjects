@@ -3,5 +3,6 @@
   "install": "pip install metaobjects",
   "codegenCommand": "metaobjects gen",
   "docsCommand": "metaobjects docs",
+  "docsCondition": "",
   "apiSubDir": "api/python"
 }
