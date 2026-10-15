@@ -8,6 +8,7 @@
 // into a library could not regenerate at all once it ejected a generator.
 
 using MetaObjects.Loader;
+using MetaObjects.Meta;
 
 namespace MetaObjects.Config;
 
@@ -19,12 +20,25 @@ namespace MetaObjects.Config;
 /// list when present: <c>FromDirectory</c> would re-walk the tree AND include
 /// <c>_pending</c> drafts, since only <see cref="SourceResolver"/> turns that exclusion on.
 /// </summary>
-public sealed record ResolvedMetadata(string Directory, IReadOnlyList<string>? Files, IReadOnlyList<string> Libraries)
+/// <param name="Naming">
+/// ADR-0058 — the project's physical-naming rules, read from the SAME
+/// <c>.metaobjects/config.json</c> this location came from (or the default when there is
+/// none). <see cref="Load"/> sets it on the loaded root, so every resolver (codegen, the
+/// runtime, verify) agrees with the project's config without being passed a strategy value.
+/// </param>
+public sealed record ResolvedMetadata(
+    string Directory, IReadOnlyList<string>? Files, IReadOnlyList<string> Libraries, PhysicalNaming Naming)
 {
-    /// <summary>Load this metadata, with the project's <c>libraries</c>.</summary>
-    public LoadResult Load(bool strict = false) => Files is { } files
-        ? MetaDataLoader.FromUris(files.Select(f => new Uri(f)).ToList(), Libraries, strict)
-        : MetaDataLoader.FromDirectory(Directory, Libraries, strict: strict);
+    /// <summary>Load this metadata, with the project's <c>libraries</c>, and set the loaded
+    /// root's <see cref="MetaRoot.PhysicalNaming"/> from <see cref="Naming"/> (ADR-0058).</summary>
+    public LoadResult Load(bool strict = false)
+    {
+        var result = Files is { } files
+            ? MetaDataLoader.FromUris(files.Select(f => new Uri(f)).ToList(), Libraries, strict)
+            : MetaDataLoader.FromDirectory(Directory, Libraries, strict: strict);
+        result.Root.PhysicalNaming = Naming;
+        return result;
+    }
 }
 
 /// <summary>A metadata location this port cannot load, stated for the user.</summary>
@@ -52,20 +66,23 @@ public static class MetadataLocation
     {
         if (metadataDir is not null)
         {
-            var explicitLibs = NeutralConfig.Read(ProjectRootFor(metadataDir))?.Libraries ?? Array.Empty<string>();
-            return new ResolvedMetadata(metadataDir, null, explicitLibs);
+            var explicitCfg = NeutralConfig.Read(ProjectRootFor(metadataDir));
+            var explicitLibs = explicitCfg?.Libraries ?? Array.Empty<string>();
+            var explicitNaming = explicitCfg?.Naming ?? PhysicalNaming.Default;
+            return new ResolvedMetadata(metadataDir, null, explicitLibs, explicitNaming);
         }
 
         var cfg = NeutralConfig.Read(cwd);
         var specs = cfg?.Sources ?? Array.Empty<IReadOnlyDictionary<string, string>>();
         var libraries = cfg?.Libraries ?? Array.Empty<string>();
+        var naming = cfg?.Naming ?? PhysicalNaming.Default;
 
         if (specs.Count == 0)
         {
             // No declared sources: resolve the DEFAULT directory through the same ladder
             // the shared conformance corpus gates (ERR_COLLECTION_NOT_FOUND when absent).
             var defaultFiles = SourceResolver.ResolveCollection(cwd);
-            return new ResolvedMetadata(Path.Combine(cwd, NeutralConfig.DefaultMetadataDir), defaultFiles, libraries);
+            return new ResolvedMetadata(Path.Combine(cwd, NeutralConfig.DefaultMetadataDir), defaultFiles, libraries, naming);
         }
 
         if (specs.Count > 1)
@@ -95,6 +112,6 @@ public static class MetadataLocation
                 "\"sources\" at the file's containing directory.");
         }
 
-        return new ResolvedMetadata(resolved, files, libraries);
+        return new ResolvedMetadata(resolved, files, libraries, naming);
     }
 }

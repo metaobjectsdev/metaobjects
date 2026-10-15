@@ -6,6 +6,7 @@
 using System.IO;
 using System.Text.Json;
 using MetaObjects.Codegen;
+using MetaObjects.Config;
 using MetaObjects.Loader;
 
 namespace MetaObjects.Cli;
@@ -62,10 +63,9 @@ public static class GenCommand
     public static Outcome Run(
         string metadataDir, string outDir, string ns, bool emitAbstractShapes,
         IReadOnlyList<string>? generatorNames, string? templateRoot, string? templateSpecPath = null,
-        ColumnNamingStrategy columnNaming = ColumnNamingStrategy.Literal,
         string baseline = "default")
-        => Run(MetaDataLoader.FromDirectory(metadataDir), outDir, ns, emitAbstractShapes,
-            generatorNames, templateRoot, templateSpecPath, ProjectRootFor(metadataDir), columnNaming,
+        => Run(MetadataLocation.Resolve(metadataDir, Directory.GetCurrentDirectory()).Load(), outDir, ns,
+            emitAbstractShapes, generatorNames, templateRoot, templateSpecPath, ProjectRootFor(metadataDir),
             baseline);
 
     /// <summary>
@@ -126,7 +126,6 @@ public static class GenCommand
         LoadResult load, string outDir, string ns, bool emitAbstractShapes,
         IReadOnlyList<string>? generatorNames, string? templateRoot, string? templateSpecPath = null,
         string? projectRoot = null,
-        ColumnNamingStrategy columnNaming = ColumnNamingStrategy.Literal,
         string baseline = "default")
     {
         var loadErrors = load.Errors.Select(e => e.Code.ToString()).ToList();
@@ -168,7 +167,7 @@ public static class GenCommand
         // `codegen/Program.cs` calls too, with its owned generators composed into the same
         // selection (CodegenCli.ComposeGenerators) — one implementation, not two.
         var apiOutcome = MetaObjects.Codegen.CodegenCli.RunGen(
-            load, outDir, ns, emitAbstractShapes, generators, projectRoot, columnNaming, baseline);
+            load, outDir, ns, emitAbstractShapes, generators, projectRoot, baseline);
         return new Outcome(apiOutcome.LoadErrors, apiOutcome.Result);
     }
 

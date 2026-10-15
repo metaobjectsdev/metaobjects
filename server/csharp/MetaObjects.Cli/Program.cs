@@ -284,22 +284,6 @@ static int RunEject(string[] rest)
     return result.ExitCode;
 }
 
-/// <summary>
-/// Parse a <c>--column-naming</c> value into its <see cref="ColumnNamingStrategy"/>.
-/// The spellings are the cross-port ones (TS <c>metaobjects.config.ts</c>
-/// <c>columnNamingStrategy</c>, Kotlin's <c>columnNaming</c> generator arg), not
-/// .NET enum names, so one vocabulary reads the same in every port's config.
-/// </summary>
-static bool TryParseColumnNaming(string raw, out ColumnNamingStrategy strategy)
-{
-    switch (raw)
-    {
-        case "literal":     strategy = ColumnNamingStrategy.Literal;   return true;
-        case "snake_case":  strategy = ColumnNamingStrategy.SnakeCase; return true;
-        case "kebab-case":  strategy = ColumnNamingStrategy.KebabCase; return true;
-        default:            strategy = ColumnNamingStrategy.Literal;   return false;
-    }
-}
 
 // The metadata-location ladder's rungs 3-4 (source-resolution design doc §3):
 // rung 1 is the explicit positional argument the caller already tried; rung 2
@@ -416,11 +400,9 @@ static int RunVerify(string[] rest)
         else if (a == "--namespace" && i + 1 < rest.Length) { ns = rest[++i]; nsExplicit = true; }
         else if (a == "--generators" && i + 1 < rest.Length) generatorsCsv = rest[++i];
         else if (a == "--template-root" && i + 1 < rest.Length) templateRoot = rest[++i];
-        // The --codegen gate's own regen must match the strategy `gen` produced --out
-        // with (same choices/default as `gen`'s --column-naming — see RunGen above),
-        // or the `names` generator's physical-column constants regenerate under the
-        // wrong strategy and every one reports spurious drift on an otherwise-clean
-        // project.
+        // ADR-0058 — the flag is removed: column and table naming is one project setting
+        // now, "naming" in .metaobjects/config.json, read by every port. Captured here (not
+        // dropped as an unknown flag) so the refusal below can say exactly what the user gave.
         else if (a == "--column-naming" && i + 1 < rest.Length) columnNamingRaw = rest[++i];
         else if (a.StartsWith('-')) return RefuseFlag("verify", a, VerifyValueFlags, VerifyBoolFlags);
         else if (metadataDir is null) metadataDir = a;
@@ -430,14 +412,9 @@ static int RunVerify(string[] rest)
         else templatesRoot ??= a;
     }
 
-    // Same parsing + default + error handling as RunGen's --column-naming above — an
-    // unknown value is a usage error, never a silent fallback to the default.
-    var columnNaming = ColumnNamingStrategy.Literal;
-    if (columnNamingRaw is not null && !TryParseColumnNaming(columnNamingRaw, out columnNaming))
+    if (columnNamingRaw is not null)
     {
-        Console.Error.WriteLine(
-            $"error: unknown --column-naming \"{columnNamingRaw}\"; expected one of: " +
-            "literal, snake_case, kebab-case");
+        Console.Error.WriteLine(CodegenCli.ColumnNamingFlagRemoved(columnNamingRaw));
         return 2;
     }
 
@@ -491,7 +468,6 @@ static int RunVerify(string[] rest)
             List<string> codegenArgs = ["verify", "--codegen", "--out", outDir];
             if (metadataDir is not null) codegenArgs.Insert(2, metadataDir);
             if (nsExplicit) codegenArgs.AddRange(["--namespace", ns]);
-            if (columnNamingRaw is not null) codegenArgs.AddRange(["--column-naming", columnNamingRaw]);
             if (generatorsCsv is not null) codegenArgs.AddRange(["--generators", generatorsCsv]);
             if (templateRoot is not null) codegenArgs.AddRange(["--template-root", templateRoot]);
             if (lax) codegenArgs.Add("--lax");
@@ -509,6 +485,9 @@ static int RunVerify(string[] rest)
         // FR-043 — read regardless of ladder vs. explicit <metadataDir> (see
         // ResolveMetadataDirOrExit).
         Libraries = resolvedMeta.Libraries,
+        // ADR-0058 — same source as Libraries; the --codegen gate's regen reads it from
+        // the loaded root rather than a flag (see VerifyCommand.RunCodegenDrift).
+        Naming = resolvedMeta.Naming,
         TemplatesRoot = templatesRoot,
         OutDir = outDir,
         Namespace = ns,
@@ -521,7 +500,6 @@ static int RunVerify(string[] rest)
         Db = db,
         // #96 / ADR-0023: verify is strict-by-default; --lax restores the legacy load.
         Strict = !lax,
-        ColumnNaming = columnNaming,
     };
 
     var result = VerifyCommand.RunSubverbs(opts);
@@ -609,12 +587,13 @@ partial class Program
     /// <summary>Each command's usage, printed by <c>dotnet meta &lt;command&gt; --help</c>.</summary>
     static readonly Dictionary<string, string> CommandUsage = new()
     {
-        ["gen"] = "usage: dotnet meta gen [<metadataDir>] --out <dir> [--namespace <ns>] [--generators <a,b,c>] [--template-root <dir>] [--emit-abstract-shapes] [--column-naming literal|snake_case|kebab-case] [--baseline default|adopt]\n" +
+        ["gen"] = "usage: dotnet meta gen [<metadataDir>] --out <dir> [--namespace <ns>] [--generators <a,b,c>] [--template-root <dir>] [--emit-abstract-shapes] [--baseline default|adopt]\n" +
                   "       dotnet meta gen --list\n" +
                   "  runs the generator list in codegen/Generators.cs (`dotnet meta init` writes it);\n" +
-                  "  --generators narrows that list to the entries named, and never adds one",
+                  "  --generators narrows that list to the entries named, and never adds one.\n" +
+                  "  column/table naming: \"naming\" in .metaobjects/config.json (ADR-0058), not a flag here",
         ["init"] = "usage: dotnet meta init [--root <dir>]",
-        ["verify"] = "usage: dotnet meta verify <metadataDir> [--templates [--prompts <dir>]] [--codegen --out <dir> [--namespace <ns>] [--generators <a,b,c>] [--template-root <dir>] [--column-naming literal|snake_case|kebab-case]] [--db] [--lax] [--no-field-lint] [--require-implementers]",
+        ["verify"] = "usage: dotnet meta verify <metadataDir> [--templates [--prompts <dir>]] [--codegen --out <dir> [--namespace <ns>] [--generators <a,b,c>] [--template-root <dir>]] [--db] [--lax] [--no-field-lint] [--require-implementers]",
         ["fmt"] = "usage: dotnet meta fmt [<metadataDir>] [--check]",
         ["eject"] = "usage: dotnet meta eject <name>... [--force] [--root <dir>]",
     };

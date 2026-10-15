@@ -7,6 +7,9 @@
 // assembly boundaries — and likewise hardcodes no depth, so it survives a change to
 // the build output path.
 
+using MetaObjects.Config;
+using MetaObjects.Meta;
+
 namespace MetaObjects.Codegen.Tests;
 
 internal static class CorpusPaths
@@ -29,6 +32,24 @@ internal static class CorpusPaths
             "Could not locate the repo root (a parent dir containing fixtures/persistence-conformance + server/) " +
             $"starting from {AppContext.BaseDirectory}.");
     }
+
+    /// <summary>The persistence corpus root — where its <c>.metaobjects/config.json</c> lives, above
+    /// every metadata directory it holds so no directory load reads it as metadata.</summary>
+    internal static string CorpusDir =>
+        Path.Combine(RepoRoot(), "fixtures", "persistence-conformance");
+
+    /// <summary>The canonical model's directory.</summary>
+    internal static string CanonicalDir => Path.Combine(CorpusDir, "canonical");
+
+    /// <summary>
+    /// ADR-0058 — the corpus's committed physical-naming rules, read with the C# config
+    /// reader (not hardcoded): <c>fixtures/persistence-conformance/.metaobjects/config.json</c>
+    /// pins <c>{"naming":{"columns":"literal"}}</c>, matching the committed schema artifacts'
+    /// literal column names. Every codegen gate that generates from this corpus reads this
+    /// instead of passing a strategy value, so a future change to that file is honoured here too.
+    /// </summary>
+    internal static PhysicalNaming Naming =>
+        NeutralConfig.Read(CorpusDir)?.Naming ?? PhysicalNaming.Default;
 
     /// <summary>The shared fitness corpus every codegen gate generates from.</summary>
     internal static string FitnessMetadata =>

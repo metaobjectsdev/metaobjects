@@ -13,7 +13,13 @@
 // can opt into a shipped library at all. See docs/superpowers/specs/2026-09-13-fr-043-
 // feature-and-nfr-packages-design.md §12 Q4 ("should libraries move to
 // .metaobjects/config.json? yes, outright... the JVM/C# ports can follow").
+//
+// `naming` (ADR-0058) is read here too — the one project setting for how a metadata name
+// becomes a physical database name, read by every port. An unknown key, an unknown value,
+// or a non-object `naming` is refused (ERR_BAD_ATTR_VALUE), the same "present but
+// wrong-shaped raises" rule `sources`/`libraries` already follow.
 using System.Text.Json;
+using MetaObjects.Meta;
 
 namespace MetaObjects.Config;
 
@@ -42,11 +48,18 @@ public sealed class NeutralConfig
     /// `resolveCollection` (ERR_UNKNOWN_LIBRARY).
     public IReadOnlyList<string> Libraries { get; }
 
+    /// ADR-0058 — the project's physical-naming rules (`naming` in config.json), each
+    /// absent rule at its default. Never null: an absent `naming` key is the default,
+    /// same as an empty `naming: {}` block.
+    public PhysicalNaming Naming { get; }
+
     private NeutralConfig(
-        IReadOnlyList<IReadOnlyDictionary<string, string>> sources, IReadOnlyList<string> libraries)
+        IReadOnlyList<IReadOnlyDictionary<string, string>> sources, IReadOnlyList<string> libraries,
+        PhysicalNaming naming)
     {
         Sources = sources;
         Libraries = libraries;
+        Naming = naming;
     }
 
     /// Returns null when `<configDir>/.metaobjects/config.json` does not exist.
@@ -164,9 +177,65 @@ public sealed class NeutralConfig
                 }
             }
 
+            var columns = ColumnNamingStrategy.SnakeCase;
+            var tables = TableNamingRule.SnakeCase;
+            if (root.TryGetProperty("naming", out var naming))
+            {
+                // Present but not an object — the same "wrong-shaped raises" rule as
+                // `sources`/`libraries` above.
+                if (naming.ValueKind != JsonValueKind.Object)
+                    throw new MetaModelException($"{path}: \"naming\" must be an object", ErrorCode.ERR_BAD_ATTR_VALUE);
+
+                foreach (var p in naming.EnumerateObject())
+                {
+                    switch (p.Name)
+                    {
+                        case "columns":
+                            if (p.Value.ValueKind != JsonValueKind.String || !TryParseColumnNaming(p.Value.GetString()!, out columns))
+                                throw new MetaModelException(
+                                    $"{path}: \"naming.columns\" must be one of \"snake_case\", \"literal\", \"kebab-case\"",
+                                    ErrorCode.ERR_BAD_ATTR_VALUE);
+                            break;
+                        case "tables":
+                            if (p.Value.ValueKind != JsonValueKind.String || !TryParseTableNaming(p.Value.GetString()!, out tables))
+                                throw new MetaModelException(
+                                    $"{path}: \"naming.tables\" must be one of \"snake_case\", \"literal\"",
+                                    ErrorCode.ERR_BAD_ATTR_VALUE);
+                            break;
+                        default:
+                            throw new MetaModelException(
+                                $"{path}: \"naming\" has an unknown key \"{p.Name}\" (expected \"columns\" and/or \"tables\")",
+                                ErrorCode.ERR_BAD_ATTR_VALUE);
+                    }
+                }
+            }
+
             // Unknown top-level keys (including `scope`/`migrate`) are IGNORED by
             // design — see the file header.
-            return new NeutralConfig(specs, libraries);
+            return new NeutralConfig(specs, libraries, new PhysicalNaming(columns, tables));
+        }
+    }
+
+    /// The cross-port spellings (ADR-0058) — not .NET enum names, so the JSON value reads
+    /// the same in every port's config.
+    private static bool TryParseColumnNaming(string raw, out ColumnNamingStrategy strategy)
+    {
+        switch (raw)
+        {
+            case "literal":     strategy = ColumnNamingStrategy.Literal;   return true;
+            case "snake_case":  strategy = ColumnNamingStrategy.SnakeCase; return true;
+            case "kebab-case":  strategy = ColumnNamingStrategy.KebabCase; return true;
+            default:            strategy = ColumnNamingStrategy.Literal;   return false;
+        }
+    }
+
+    private static bool TryParseTableNaming(string raw, out TableNamingRule rule)
+    {
+        switch (raw)
+        {
+            case "literal":    rule = TableNamingRule.Literal;   return true;
+            case "snake_case": rule = TableNamingRule.SnakeCase; return true;
+            default:           rule = TableNamingRule.Literal;   return false;
         }
     }
 }

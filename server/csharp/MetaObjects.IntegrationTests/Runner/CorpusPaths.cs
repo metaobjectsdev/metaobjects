@@ -1,6 +1,9 @@
 // CorpusPaths — resolves the persistence-conformance corpus location relative to
 // the test assembly. Shared by the query-scenario runner + tests.
 
+using MetaObjects.Config;
+using MetaObjects.Meta;
+
 namespace MetaObjects.IntegrationTests.Runner;
 
 /// <summary>Resolves the corpus location relative to this test assembly.</summary>
@@ -55,4 +58,17 @@ internal static class CorpusPaths
     /// junction entity's <c>identity.reference</c> children (FR-017).
     /// </summary>
     public static readonly string CanonicalMetadataDir = CanonicalDir;
+
+    /// <summary>
+    /// The corpus's single metadata file. <see cref="QueryScenarioRunner.LoadCorpusMetadata"/>
+    /// loads exactly this file, the one metadata file the corpus declares.
+    /// </summary>
+    public static readonly string FitnessMetadataFile = Path.Combine(CanonicalDir, "meta.fitness.json");
+
+    /// <summary>
+    /// ADR-0058 — the corpus's committed physical-naming rules, read with the C# config
+    /// reader: <c>fixtures/persistence-conformance/.metaobjects/config.json</c>
+    /// pins <c>{"naming":{"columns":"literal"}}</c>, matching the committed schema artifacts.
+    /// </summary>
+    public static readonly PhysicalNaming Naming = NeutralConfig.Read(Corpus)?.Naming ?? PhysicalNaming.Default;
 }

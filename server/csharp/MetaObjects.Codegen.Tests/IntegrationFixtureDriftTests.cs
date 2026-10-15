@@ -24,8 +24,10 @@ namespace MetaObjects.Codegen.Tests;
 
 public class IntegrationFixtureDriftTests
 {
-    // The exact GenConfig the committed Generated/*.g.cs imply: literal column
-    // naming (priceCents, createdAt — not snake_case), no abstract shapes, and the
+    // The exact GenConfig the committed Generated/*.g.cs imply: the corpus's committed
+    // literal column naming (priceCents, createdAt — not snake_case; ADR-0058 —
+    // CorpusPaths.Naming reads fixtures/persistence-conformance/.metaobjects/
+    // config.json rather than this test hardcoding the rule), no abstract shapes, and the
     // names artifact referenced (the committed fixtures assume the default generator
     // suite, which includes `names`; GenConfig.IncludeNames itself now defaults to
     // false, so this fixture-modeling config sets it explicitly rather than relying
@@ -37,7 +39,7 @@ public class IntegrationFixtureDriftTests
     {
         OutDir = "/unused", // the generators key off Path; OutDir is not embedded in content
         Namespace = IntegrationNamespace,
-        ColumnNamingStrategy = ColumnNamingStrategy.Literal,
+        ColumnNamingStrategy = CorpusPaths.Naming.Columns,
         IncludeNames = true,
         EmitAbstractShapes = false,
     };

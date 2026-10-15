@@ -2,6 +2,9 @@
 // relative to the test assembly. Mirrors the Java runner's findCorpusRoot()
 // walk so the fixture path resolves identically across ports.
 
+using MetaObjects.Config;
+using MetaObjects.Meta;
+
 namespace MetaObjects.IntegrationTests.Api;
 
 internal static class ApiContractCorpusPaths
@@ -14,6 +17,15 @@ internal static class ApiContractCorpusPaths
     public static readonly string Corpus = Path.Combine(Repo, "fixtures", "api-contract-conformance");
     public static readonly string ScenariosDir = Path.Combine(Corpus, "scenarios");
     public static readonly string SeedFile = Path.Combine(Corpus, "seed.json");
+
+    /// <summary>
+    /// ADR-0058 — the corpus's committed physical-naming rules, read with the C# config
+    /// reader (not hardcoded): <c>fixtures/api-contract-conformance/.metaobjects/config.json</c>
+    /// pins <c>{"naming":{"columns":"literal"}}</c>, matching every generated-server lane's
+    /// committed expectations. Every lane that generates from this corpus's meta.json files
+    /// reads this instead of passing a strategy value.
+    /// </summary>
+    public static readonly PhysicalNaming Naming = NeutralConfig.Read(Corpus)?.Naming ?? PhysicalNaming.Default;
 
     // The corpus Author model — fed to the C# generators in the SP-F generated-server
     // lane (GeneratedAuthorServerFactory) to produce + host the real routes/AppDbContext.

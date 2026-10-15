@@ -73,6 +73,9 @@ public class CodegenCompileConformanceTests
             result.Errors.Count == 0,
             "The shared corpus must load cleanly before anything can be generated from it:\n"
                 + string.Join("\n", result.Errors.Select(e => $"  {e.Code}: {e.Message}")));
+        // ADR-0058 — the corpus's committed naming rule (read from its .metaobjects/config.json
+        // via CorpusPaths.Naming), not a hardcoded default.
+        result.Root.PhysicalNaming = CorpusPaths.Naming;
         return result.Root;
     }
 
@@ -110,7 +113,7 @@ public class CodegenCompileConformanceTests
                 // Never written — this run compiles in memory and emits nothing to disk.
                 OutDir = Path.Combine(Path.GetTempPath(), "unused-compile-conformance"),
                 Namespace = GeneratedNamespace,
-                ColumnNamingStrategy = ColumnNamingStrategy.Literal,
+                ColumnNamingStrategy = CorpusPaths.Naming.Columns,
                 IncludeNames = includeNames,
                 EmitAbstractShapes = false,
             },

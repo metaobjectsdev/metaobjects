@@ -50,7 +50,9 @@ public class EjectedGeneratorsAloneTests
         ["MetaObjects.Codegen.GenConfig"] = "the resolved generation config",
         ["MetaObjects.Codegen.GeneratorApplicability"] = "what the docs generator asks of the generators it documents, answered by the packaged ones",
         ["MetaObjects.Codegen.PerEntityGenerator"] = "the one-file-per-entity base class",
-        ["MetaObjects.Codegen.ColumnNamingStrategy"] = "config enum read by naming",
+        // ColumnNamingStrategy moved to MetaObjects.Meta (ADR-0058: one project setting read
+        // by every port, including core's MetaSource.PhysicalName) — no longer a type this
+        // package exports, so it has no entry here any more.
         // Naming, type mapping and binding: tables, ruled engine.
         ["MetaObjects.Codegen.CSharpNaming"] = "the naming and type-mapping tables",
         ["MetaObjects.Codegen.ValueObjectNames"] = "the one answer to what a value object's type is called and where it lives",

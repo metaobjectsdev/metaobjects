@@ -265,8 +265,7 @@ public sealed class OneGeneratorListTests : IDisposable
         var list = File.ReadAllText(Path.Combine(_tmp, "codegen", "Generators.cs"));
         Assert.Equal(CodegenScaffold.GeneratorsCs([]), list);
         Assert.Contains("public static class Generators", list);
-        Assert.Contains("public static IReadOnlyList<IGenerator> All { get; } = new GeneratorList\n", list);
-        Assert.Contains("        // ColumnNaming = ColumnNamingStrategy.SnakeCase,\n        Entries =\n        [\n        ],\n    };", list);
+        Assert.Contains("public static IReadOnlyList<IGenerator> All { get; } =\n    [\n    ];\n", list);
         Assert.Contains($"Version=\"{EjectCommand.ToolVersion()}\"", File.ReadAllText(Path.Combine(_tmp, "codegen", "Codegen.csproj")));
 
         // A second init keeps every file, edits included.

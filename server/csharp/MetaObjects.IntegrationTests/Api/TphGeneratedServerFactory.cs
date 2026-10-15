@@ -14,6 +14,7 @@
 // host-level JSON config an adopter sets in their ASP.NET host (the generated routes
 // return the entity object; the host owns serialization), NOT generator output.
 
+using MetaObjects.Meta;
 using System.Reflection;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Builder;
@@ -95,6 +96,8 @@ internal sealed class TphGeneratedServerFactory : IAsyncDisposable
     private static (Assembly Assembly, IReadOnlyList<string> RouteEntities) CompileGeneratedServer()
     {
         var loadResult = new MetaDataLoader().Load([new FileSource(ApiContractCorpusPaths.TphMetaJson)]);
+        // ADR-0058 — the corpus's committed naming rule, not a hardcoded default.
+        loadResult.Root.PhysicalNaming = ApiContractCorpusPaths.Naming;
         if (loadResult.Errors.Count != 0)
             throw new InvalidOperationException(
                 "tph corpus metadata failed to load: " +
@@ -115,7 +118,7 @@ internal sealed class TphGeneratedServerFactory : IAsyncDisposable
             {
                 OutDir = "/unused",
                 Namespace = GeneratedNamespace,
-                ColumnNamingStrategy = ColumnNamingStrategy.Literal,
+                ColumnNamingStrategy = ApiContractCorpusPaths.Naming.Columns,
                 EmitAbstractShapes = false,
                 // GenConfig.IncludeNames defaults to false (§A6 task 4); without it
                 // here the entity/DbContext output below never references the

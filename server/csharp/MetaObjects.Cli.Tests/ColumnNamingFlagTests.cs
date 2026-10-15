@@ -1,24 +1,23 @@
-using MetaObjects.Codegen;
 using Xunit;
 
 namespace MetaObjects.Cli.Tests;
 
 /// <summary>
-/// <c>dotnet meta gen --column-naming</c> selects how a field with no explicit
-/// <c>@column</c> becomes a physical column name.
+/// ADR-0058 — column and table naming is one project setting now: <c>naming</c> in
+/// <c>.metaobjects/config.json</c>, read by every port. This port's old
+/// <c>--column-naming</c> flag on <c>dotnet meta gen</c> / <c>dotnet meta verify --codegen</c>
+/// is REMOVED: it refuses with the migration message rather than silently doing nothing or
+/// guessing (the old value may have been right for an adopter's real database).
 ///
-/// <para>The strategy already existed — <c>GenConfig.ColumnNamingStrategy</c>, honoured by
-/// every C# generator — but the CLI never set it, so a <c>dotnet meta gen</c> adopter was
-/// pinned to <c>Literal</c> with no way out. That is a real break rather than a
-/// preference: schema migrations are Node-owned (ADR-0015) and <c>meta migrate</c>
-/// defaults to <c>snake_case</c>, so any multi-word field produced an EF entity mapping
-/// <c>[Column("createdAt")]</c> against a database column <c>created_at</c>.</para>
+/// <para>The DEFAULT also flipped: this port used to default columns to <c>literal</c> (the EF
+/// Core property=column convention); it now defaults to <c>snake_case</c>, matching what
+/// <c>meta migrate</c> has always created — the defect ADR-0058 exists to fix (gen's and
+/// migrate's defaults used to disagree).</para>
 ///
 /// <para>Driven through the entry point a project's codegen/Program.cs calls,
 /// <c>CodegenCli.Run(args, list)</c> (<see cref="OwnedRunner"/>), not by calling
-/// <c>GenCommand.Run</c>: the defect was precisely that the flag never reached the
-/// config, and only the real argument parsing can prove the wiring (same reason as
-/// <see cref="MetadataDirFallbackTests"/>).</para>
+/// <c>GenCommand.Run</c>: only the real argument parsing proves the flag is actually refused
+/// (same reason as <see cref="MetadataDirFallbackTests"/>).</para>
 /// </summary>
 [Collection(OwnedRunnerCollection.Name)]
 public sealed class ColumnNamingFlagTests : IDisposable
@@ -26,7 +25,7 @@ public sealed class ColumnNamingFlagTests : IDisposable
     private readonly string _tmp = Path.Combine(Path.GetTempPath(), "meta-cli-colnaming-" + Guid.NewGuid().ToString("N"));
 
     // `createdAt` has a case boundary; `purposeCode` carries an explicit @column that is
-    // deliberately NOT its snake_case, so "the strategy ran" and "@column won" stay distinguishable.
+    // deliberately NOT its snake_case, so "the rule ran" and "@column won" stay distinguishable.
     private const string Metadata = """
     { "metadata.root": { "package": "acme", "children": [
       { "object.entity": { "name": "Subscriber", "children": [
@@ -49,10 +48,23 @@ public sealed class ColumnNamingFlagTests : IDisposable
 
     public void Dispose() { try { Directory.Delete(_tmp, recursive: true); } catch { } }
 
+    /// <summary>Writes <c>.metaobjects/config.json</c> at the project root with the given
+    /// <c>naming</c> JSON body (e.g. <c>"\"columns\": \"literal\""</c>), or no <c>naming</c>
+    /// key at all when <paramref name="naming"/> is null.</summary>
+    private void WriteConfig(string? naming)
+    {
+        var dir = Path.Combine(_tmp, ".metaobjects");
+        Directory.CreateDirectory(dir);
+        var json = naming is null
+            ? """{ "schema_version": 1 }"""
+            : $$"""{ "schema_version": 1, "naming": { {{naming}} } }""";
+        File.WriteAllText(Path.Combine(dir, "config.json"), json);
+    }
+
     // §A6 (task 4) -- [Column] on Subscriber.g.cs now references
     // SubscriberNames.<Field>Column unconditionally; the entity file is BYTE-IDENTICAL
-    // regardless of --column-naming. The flag's effect is observable only in the
-    // names artifact's DECLARED CONSTANT VALUE, so a caller proving the flag reached
+    // regardless of the naming rule. The rule's effect is observable only in the names
+    // artifact's DECLARED CONSTANT VALUE, so a caller proving the rule reached
     // GenConfig.ColumnNamingStrategy must read SubscriberNames.g.cs, not Subscriber.g.cs
     // alone -- that is the whole reason this method returns both files.
     private (string Entity, string Names) GenerateWith(params string[] extraArgs)
@@ -70,31 +82,31 @@ public sealed class ColumnNamingFlagTests : IDisposable
     }
 
     [Fact]
-    public void Default_is_literal_unchanged()
+    public void Default_with_no_project_config_is_snake_case()
     {
-        // The entity always references the constant, unconditionally (§A6) -- that part
-        // does NOT vary with the flag and is asserted the same way in every test here.
-        // What DOES vary with the flag is the constant's declared VALUE, in
-        // SubscriberNames.g.cs: "createdAt" (unchanged) under the default strategy.
+        // No .metaobjects/config.json at all -- PhysicalNaming.Default applies.
+        var (entity, names) = GenerateWith();
+        Assert.Contains("[Column(SubscriberNames.CreatedAtColumn)]", entity);
+        Assert.Contains("public const string CreatedAtColumn = \"created_at\";", names);
+    }
+
+    [Fact]
+    public void Config_declaring_literal_columns_generates_literal()
+    {
+        WriteConfig("\"columns\": \"literal\"");
         var (entity, names) = GenerateWith();
         Assert.Contains("[Column(SubscriberNames.CreatedAtColumn)]", entity);
         Assert.Contains("public const string CreatedAtColumn = \"createdAt\";", names);
+        Assert.DoesNotContain("created_at", names);
     }
 
     [Fact]
-    public void Snake_case_maps_the_field_name_to_a_snake_case_column()
+    public void An_explicit_column_attr_wins_over_any_rule()
     {
-        var (entity, names) = GenerateWith("--column-naming", "snake_case");
-        Assert.Contains("[Column(SubscriberNames.CreatedAtColumn)]", entity);
-        Assert.Contains("public const string CreatedAtColumn = \"created_at\";", names);
-        Assert.DoesNotContain("public const string CreatedAtColumn = \"createdAt\";", names);
-    }
-
-    [Fact]
-    public void An_explicit_column_attr_wins_over_any_strategy()
-    {
-        foreach (var (entity, names) in new[] { GenerateWith(), GenerateWith("--column-naming", "snake_case") })
+        foreach (var naming in new string?[] { null, "\"columns\": \"literal\"" })
         {
+            if (naming is not null) WriteConfig(naming);
+            var (entity, names) = GenerateWith();
             Assert.Contains("[Column(SubscriberNames.PurposeCodeColumn)]", entity);
             Assert.Contains("public const string PurposeCodeColumn = \"reason\";", names);
             Assert.DoesNotContain("purpose_code", names);
@@ -102,81 +114,54 @@ public sealed class ColumnNamingFlagTests : IDisposable
     }
 
     [Fact]
-    public void An_unknown_strategy_is_a_usage_error_naming_the_valid_values()
+    public void The_removed_flag_is_refused_on_gen_naming_the_value_given()
     {
         var outDir = Path.Combine(_tmp, "generated-bad");
         var (exit, stdout, stderr) = OwnedRunner.Run(
-            _tmp, ["entity", "names"], "gen", MetaDir, "--out", outDir, "--column-naming", "PascalCase");
+            _tmp, ["entity", "names"], "gen", MetaDir, "--out", outDir, "--column-naming", "snake_case");
+        var output = stdout + stderr;
         Assert.Equal(2, exit);
-        Assert.Contains("snake_case", stdout + stderr);
-    }
-
-    // ---- ColumnNaming declared on the list (ADR-0034 Amendment 9: inputs live in the list) ----
-
-    private GeneratorList ListWith(ColumnNamingStrategy? naming) => new()
-    {
-        ColumnNaming = naming,
-        Entries = OwnedRunner.Declared(_tmp, "entity", "names"),
-    };
-
-    private (int Exit, string Out) Gen(IReadOnlyList<IGenerator> list, string outDir, params string[] extra)
-    {
-        var (exit, stdout, stderr) = OwnedRunner.Run(
-            _tmp, list, ["gen", MetaDir, "--out", outDir, "--namespace", "Acme.Generated", .. extra]);
-        return (exit, stdout + stderr);
-    }
-
-    private (int Exit, string Out) Verify(IReadOnlyList<IGenerator> list, string outDir, params string[] extra)
-    {
-        var (exit, stdout, stderr) = OwnedRunner.Run(_tmp, list, ["verify", "--codegen", MetaDir, "--out", outDir, .. extra]);
-        return (exit, stdout + stderr);
-    }
-
-    [Fact]
-    public void A_list_that_declares_snake_case_generates_snake_case_with_no_flag_and_verify_agrees()
-    {
-        var outDir = Path.Combine(_tmp, "generated-list");
-        var list = ListWith(ColumnNamingStrategy.SnakeCase);
-        var (exit, output) = Gen(list, outDir);
-        Assert.True(exit == 0, output);
-        Assert.Contains("public const string CreatedAtColumn = \"created_at\";",
-            File.ReadAllText(Path.Combine(outDir, "SubscriberNames.g.cs")));
-
-        var (verifyExit, verifyOut) = Verify(list, outDir);
-        Assert.True(verifyExit == 0, verifyOut);
-        Assert.Contains("OK (generated output is in sync)", verifyOut);
-    }
-
-    [Fact]
-    public void A_flag_that_agrees_with_the_list_is_accepted_and_one_that_contradicts_it_is_refused()
-    {
-        var list = ListWith(ColumnNamingStrategy.SnakeCase);
-        Assert.Equal(0, Gen(list, Path.Combine(_tmp, "agree"), "--column-naming", "snake_case").Exit);
-
-        var outDir = Path.Combine(_tmp, "contradict");
-        var (exit, output) = Gen(list, outDir, "--column-naming", "literal");
-        Assert.Equal(2, exit);
-        Assert.Contains(
-            "--column-naming literal contradicts ColumnNaming = ColumnNamingStrategy.SnakeCase in codegen/Generators.cs",
-            output);
+        Assert.Contains("--column-naming was removed in 1.1.0", output);
+        Assert.Contains("\"naming\": { \"columns\": \"snake_case\" }", output);
+        Assert.Contains("docs/features/migrations/physical-naming.md", output);
+        Assert.Contains("delete --column-naming", output);
         Assert.False(Directory.Exists(outDir));
-        Assert.Equal(2, Verify(list, Path.Combine(_tmp, "agree"), "--column-naming", "literal").Exit);
+    }
+
+    [Fact]
+    public void The_removed_flag_is_refused_on_verify_codegen()
+    {
+        var outDir = Path.Combine(_tmp, "generated-ok");
+        Assert.Equal(0, OwnedRunner.Run(_tmp, ["entity", "names"], "gen", MetaDir, "--out", outDir).ExitCode);
+
+        var (exit, stdout, stderr) = OwnedRunner.Run(
+            _tmp, ["entity", "names"], "verify", "--codegen", MetaDir, "--out", outDir, "--column-naming", "literal");
+        var output = stdout + stderr;
+        Assert.Equal(2, exit);
+        Assert.Contains("--column-naming was removed in 1.1.0", output);
+        Assert.Contains("\"naming\": { \"columns\": \"literal\" }", output);
     }
 
     [Fact]
     public void Verify_with_the_wrong_naming_says_the_naming_differs_instead_of_regenerate()
     {
-        // Committed with snake_case; the plain verify runs the default, literal.
+        // Committed under the project's snake_case rule; then the config changes to literal.
+        // The two disagree, and literal reproduces the committed output exactly, so verify
+        // must say WHICH naming to declare rather than "regenerate" (that would commit the
+        // wrong column names against the live database).
         var outDir = Path.Combine(_tmp, "generated-snake");
-        Assert.Equal(0, Gen(ListWith(null), outDir, "--column-naming", "snake_case").Exit);
+        WriteConfig("\"columns\": \"snake_case\"");
+        Assert.Equal(0, OwnedRunner.Run(_tmp, ["entity", "names"], "gen", MetaDir, "--out", outDir).ExitCode);
 
-        var (exit, output) = Verify(ListWith(null), outDir);
+        WriteConfig("\"columns\": \"literal\"");
+        var (exit, stdout, stderr) = OwnedRunner.Run(_tmp, ["entity", "names"], "verify", "--codegen", MetaDir, "--out", outDir);
+        var output = stdout + stderr;
         Assert.Equal(1, exit);
         Assert.Contains(
-            "The committed output was generated with column naming snake_case; this run used literal (the default). " +
-            "Do not regenerate",
+            "The committed output was generated with column naming snake_case; this run used literal",
             output);
-        Assert.Contains("ColumnNaming = ColumnNamingStrategy.SnakeCase on the GeneratorList in codegen/Generators.cs", output);
+        Assert.Contains("Do not regenerate", output);
+        Assert.Contains("\"naming\": { \"columns\": \"snake_case\" } in .metaobjects/config.json", output);
         Assert.DoesNotContain("Run 'dotnet meta gen' to regenerate", output);
     }
 
@@ -184,10 +169,12 @@ public sealed class ColumnNamingFlagTests : IDisposable
     public void Real_drift_still_says_regenerate()
     {
         var outDir = Path.Combine(_tmp, "generated-edited");
-        Assert.Equal(0, Gen(ListWith(ColumnNamingStrategy.SnakeCase), outDir).Exit);
+        WriteConfig("\"columns\": \"snake_case\"");
+        Assert.Equal(0, OwnedRunner.Run(_tmp, ["entity", "names"], "gen", MetaDir, "--out", outDir).ExitCode);
         File.AppendAllText(Path.Combine(outDir, "SubscriberNames.g.cs"), "// edited\n");
 
-        var (exit, output) = Verify(ListWith(ColumnNamingStrategy.SnakeCase), outDir);
+        var (exit, stdout, stderr) = OwnedRunner.Run(_tmp, ["entity", "names"], "verify", "--codegen", MetaDir, "--out", outDir);
+        var output = stdout + stderr;
         Assert.Equal(1, exit);
         Assert.Contains("Run 'dotnet meta gen' to regenerate", output);
         Assert.DoesNotContain("column naming", output);

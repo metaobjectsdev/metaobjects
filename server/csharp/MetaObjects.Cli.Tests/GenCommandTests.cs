@@ -78,8 +78,7 @@ public sealed class GenCommandTests : IDisposable
         var outcome = GenCommand.Run(
             MetaObjects.Loader.MetaDataLoader.FromDirectory(MetaDir), OutDir, "Acme.Generated",
             emitAbstractShapes: false, generatorNames: GenSuite.Names, templateRoot: null,
-            templateSpecPath: null, projectRoot: _tmp,
-            columnNaming: MetaObjects.Codegen.ColumnNamingStrategy.Literal, baseline: "adopt");
+            templateSpecPath: null, projectRoot: _tmp, baseline: "adopt");
 
         Assert.True(outcome.Ok);
         Assert.Equal(onDisk, File.ReadAllText(stale));   // not one byte written

@@ -129,13 +129,26 @@ public static class QueryScenarioRunner
         }
     }
 
-    /// <summary>Load the canonical corpus metadata (the M:N relationship + junction declarations).</summary>
+    /// <summary>
+    /// Load the canonical corpus metadata (the M:N relationship + junction declarations).
+    /// Loads the single <c>meta.fitness.json</c> file directly — NOT a directory walk of
+    /// <see cref="CorpusPaths.CanonicalMetadataDir"/> (<c>MetaDataLoader.FromDirectory</c>):
+    /// that directory is also the corpus's PROJECT root since ADR-0058, so it now holds
+    /// <c>.metaobjects/config.json</c> alongside the model, and a directory walk picks that
+    /// up as metadata too (<c>DirectorySource</c> recurses into every subdirectory, matching
+    /// every other port's loader) and fails to parse it. Mirrors the TypeScript reference's
+    /// own escape hatch for exactly this (<c>loadMetadataFile</c>, in
+    /// <c>integration-tests/src/load-metadata.ts</c>: "use when the surrounding directory
+    /// contains non-metadata files the directory loader would mistakenly try to parse").
+    /// </summary>
     private static MetaRoot LoadCorpusMetadata()
     {
-        var result = MetaDataLoader.FromDirectory(CorpusPaths.CanonicalMetadataDir);
+        var result = MetaDataLoader.FromUris([new Uri(CorpusPaths.FitnessMetadataFile)]);
         if (result.Errors.Count > 0)
             throw new InvalidOperationException(
                 "failed to load corpus metadata: " + string.Join("; ", result.Errors.Select(e => e.Message)));
+        // ADR-0058 — the corpus's committed naming rule, not a hardcoded default.
+        result.Root.PhysicalNaming = CorpusPaths.Naming;
         return result.Root;
     }
 

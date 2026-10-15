@@ -74,8 +74,8 @@ public static class CodegenScaffold
             "// `dotnet meta gen --list` is the catalog. `dotnet meta eject <name>` copies a generator into\n" +
             "// codegen/generators/ to own; list the copy (Codegen.Generators.<Name>) in place of the\n" +
             "// packaged one. `dotnet meta gen --generators <names>` narrows a run to the entries named.\n" +
-            "// ColumnNaming applies to the whole run: set it to the naming your database uses, and gen and\n" +
-            "// verify --codegen both read it here, so no command line has to carry --column-naming.\n" +
+            "// Column and table naming: the \"naming\" setting in .metaobjects/config.json, read by\n" +
+            "// every port (ADR-0058) -- not here.\n" +
             "//\n" +
             "// For example:\n" +
             "//   new MetaObjects.Codegen.Generators.EntityGenerator(),\n" +
@@ -86,15 +86,10 @@ public static class CodegenScaffold
             "\n" +
             "public static class Generators\n" +
             "{\n" +
-            "    public static IReadOnlyList<IGenerator> All { get; } = new GeneratorList\n" +
-            "    {\n" +
-            "        // How a field with no @column becomes a column name: Literal (the default), SnakeCase or KebabCase.\n" +
-            "        // ColumnNaming = ColumnNamingStrategy.SnakeCase,\n" +
-            "        Entries =\n" +
-            "        [\n" +
+            "    public static IReadOnlyList<IGenerator> All { get; } =\n" +
+            "    [\n" +
             lines +
-            "        ],\n" +
-            "    };\n" +
+            "    ];\n" +
             "}\n";
     }
 

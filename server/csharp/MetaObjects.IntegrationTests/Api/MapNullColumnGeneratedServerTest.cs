@@ -23,6 +23,7 @@
 //   dotnet test server/csharp/MetaObjects.IntegrationTests/MetaObjects.IntegrationTests.csproj \
 //     --filter "FullyQualifiedName~MapNullColumn"
 
+using MetaObjects.Meta;
 using System.Reflection;
 using System.Text;
 using System.Text.Json.Nodes;

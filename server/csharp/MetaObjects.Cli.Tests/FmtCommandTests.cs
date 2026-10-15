@@ -1,6 +1,7 @@
 using MetaObjects.Cli;
 using MetaObjects.Config;
 using MetaObjects.Loader;
+using MetaObjects.Meta;
 using Xunit;
 
 namespace MetaObjects.Cli.Tests;
@@ -216,7 +217,7 @@ public sealed class FmtCommandTests : IDisposable
     public void Run_reformats_messy_leaves_canonical_skips_overlay_and_yaml()
     {
         WriteFixture();
-        var resolved = new ResolvedMetadata(MetaDir, null, Array.Empty<string>());
+        var resolved = new ResolvedMetadata(MetaDir, null, Array.Empty<string>(), PhysicalNaming.Default);
 
         var result = FmtCommand.Run(resolved, check: false);
         Assert.Null(result.Fatal);
@@ -235,7 +236,7 @@ public sealed class FmtCommandTests : IDisposable
     public void Run_check_mode_changes_nothing_on_disk()
     {
         WriteFixture();
-        var resolved = new ResolvedMetadata(MetaDir, null, Array.Empty<string>());
+        var resolved = new ResolvedMetadata(MetaDir, null, Array.Empty<string>(), PhysicalNaming.Default);
         var before = File.ReadAllText(Path.Combine(MetaDir, "meta.base.json"));
 
         var result = FmtCommand.Run(resolved, check: true);
@@ -248,7 +249,7 @@ public sealed class FmtCommandTests : IDisposable
     public void Run_refuses_when_the_project_does_not_load_cleanly()
     {
         File.WriteAllText(Path.Combine(MetaDir, "bad.json"), "{ this is not valid json");
-        var resolved = new ResolvedMetadata(MetaDir, null, Array.Empty<string>());
+        var resolved = new ResolvedMetadata(MetaDir, null, Array.Empty<string>(), PhysicalNaming.Default);
 
         var result = FmtCommand.Run(resolved, check: false);
         Assert.NotNull(result.Fatal);

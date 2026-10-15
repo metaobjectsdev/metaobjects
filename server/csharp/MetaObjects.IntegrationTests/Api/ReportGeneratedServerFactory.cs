@@ -20,6 +20,7 @@
 // (`issuedOnMonth` as YYYY-MM-DD) is what the generated row's DateOnly property gives by
 // default, which is what an adopter mounting these routes gets.
 
+using MetaObjects.Meta;
 using System.Reflection;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -123,6 +124,8 @@ internal sealed class ReportGeneratedServerFactory : IAsyncDisposable
     private static (Assembly Assembly, IReadOnlyList<string> RoutedNames) CompileGeneratedServer()
     {
         var loadResult = new MetaDataLoader().Load([new FileSource(ApiContractCorpusPaths.ReportMetaJson)]);
+        // ADR-0058 — the corpus's committed naming rule, not a hardcoded default.
+        loadResult.Root.PhysicalNaming = ApiContractCorpusPaths.Naming;
         if (loadResult.Errors.Count != 0)
             throw new InvalidOperationException(
                 "report corpus metadata failed to load: " +
@@ -150,7 +153,7 @@ internal sealed class ReportGeneratedServerFactory : IAsyncDisposable
             {
                 OutDir = "/unused",
                 Namespace = GeneratedNamespace,
-                ColumnNamingStrategy = ColumnNamingStrategy.Literal,
+                ColumnNamingStrategy = ApiContractCorpusPaths.Naming.Columns,
                 EmitAbstractShapes = false,
                 // The entities bind through their names artifacts. A report has none (it binds its
                 // view and columns by literal), so this also proves no generated report file

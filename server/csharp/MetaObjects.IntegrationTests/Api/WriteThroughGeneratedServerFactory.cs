@@ -11,6 +11,7 @@
 //
 // Mirrors M2mGeneratedServerFactory; provisions the tables + view via WriteThroughFixture.
 
+using MetaObjects.Meta;
 using System.Reflection;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -87,6 +88,8 @@ internal sealed class WriteThroughGeneratedServerFactory : IAsyncDisposable
     private static (Assembly Assembly, IReadOnlyList<string> EntityNames) CompileGeneratedServer()
     {
         var loadResult = new MetaDataLoader().Load([new FileSource(ApiContractCorpusPaths.WriteThroughMetaJson)]);
+        // ADR-0058 — the corpus's committed naming rule, not a hardcoded default.
+        loadResult.Root.PhysicalNaming = ApiContractCorpusPaths.Naming;
         if (loadResult.Errors.Count != 0)
             throw new InvalidOperationException(
                 "write-through corpus metadata failed to load: " +
@@ -105,7 +108,7 @@ internal sealed class WriteThroughGeneratedServerFactory : IAsyncDisposable
             {
                 OutDir = "/unused",
                 Namespace = GeneratedNamespace,
-                ColumnNamingStrategy = ColumnNamingStrategy.Literal,
+                ColumnNamingStrategy = ApiContractCorpusPaths.Naming.Columns,
                 EmitAbstractShapes = false,
                 // GenConfig.IncludeNames defaults to false (§A6 task 4); without it
                 // here the entity/DbContext output below never references the
