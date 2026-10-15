@@ -91,7 +91,7 @@ as a naming mismatch, naming the setting, instead of advising a regenerate.
 | 1.0 | 1.1.0 |
 |---|---|
 | `metaobjects gen --column-naming <strategy>`, `metaobjects verify --codegen --column-naming <strategy>` | `"naming": { "columns": "<strategy>" }` in `.metaobjects/config.json`. The flag is refused (exit 2) |
-| `ObjectManager(..., column_naming="<strategy>")` | `ObjectManager(...)`. The manager reads the rule from the loaded root; the argument raises |
+| `ObjectManager(..., column_naming="<strategy>")` | `ObjectManager(...)`. The manager reads the rule from the loaded root; the argument raises. A model loaded outside the project directory gets the project's rules with `attach_naming(root, project_dir)` from `metaobjects.naming`, which reads that project's `.metaobjects/config.json` |
 | no flag: `*_names.py` and the `ObjectManager` used the field names (`literal`) | no setting: snake_case. Add `"naming": { "columns": "literal" }` to keep 1.0's column names |
 
 The 1.1.0 release candidates read a `columnNaming` key in `metaobjects.config.yaml`. It is

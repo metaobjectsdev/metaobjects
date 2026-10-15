@@ -28,11 +28,20 @@ from pathlib import Path
 
 import yaml  # type: ignore[import-untyped]  # PyYAML ships no type stubs
 
+from metaobjects.naming import removed_naming_source_message
+
 #: Config filename looked up in the cwd when ``--config`` is not given.
 CONFIG_FILENAME = "metaobjects.config.yaml"
 
 #: Default metadata directory (relative to the config file) when ``metadata:`` is omitted.
 DEFAULT_METADATA_DIR = "metaobjects"
+
+#: ADR-0058 Decision 4 — the key this loader never shipped reading (added on this branch
+#: for an earlier version of the physical-naming fix, then superseded by ADR-0058 before
+#: release). Named so the refusal below can quote it exactly; kept OUT of
+#: ``TOP_LEVEL_KEYS`` so the generic unknown-key check never fires for it — an adopter who
+#: followed the rc.3 guide and added it gets the naming-migration message, not "unknown key".
+_REMOVED_COLUMN_NAMING_KEY = "columnNaming"
 
 #: Every key this loader reads at the top level, and the ONLY ones it accepts.
 #: ``metaobjects-config.schema.json`` declares ``additionalProperties: false``, so the
@@ -41,14 +50,9 @@ DEFAULT_METADATA_DIR = "metaobjects"
 #: schema by ``test_schema_and_loader_accept_EXACTLY_the_same_keys``.
 TOP_LEVEL_KEYS: tuple[str, ...] = (
     "metadata", "providers", "libraries", "targets", "requirementTests", "apiDocs",
-    "columnNaming", "templates",
+    "templates",
 )
 
-#: The strategies ``columnNaming`` accepts: how a field with no ``@column`` becomes a column
-#: name, for every generator in the run. Spelled here, in the loader that validates them,
-#: rather than imported from ``metaobjects.naming``, for the reason the grain values below
-#: give; ``test_column_naming_values_match_the_cli`` keeps the two in step.
-COLUMN_NAMING_VALUES: tuple[str, ...] = ("snake_case", "literal", "kebab-case")
 
 #: The 1.0 docs block. Not a key this loader reads: it is recorded (``legacy_docs``) so
 #: ``gen`` and ``verify --codegen`` can refuse it with the line that says where it went,
@@ -176,10 +180,6 @@ class ProjectConfig:
     api_docs: ApiDocsConfig | None = None
     #: True when the file still carries the 1.0 ``docs`` block, which nothing reads.
     legacy_docs: bool = False
-    #: ``columnNaming``: how a field with no ``@column`` becomes a column name, for the whole
-    #: run (``gen`` and ``verify --codegen`` both read it). ``None`` => ``--column-naming``,
-    #: else the port default (``literal``).
-    column_naming: str | None = None
     #: ``templates``: the directory template refs resolve from (relative to ``config_dir`` or
     #: absolute). ``None`` => ``--templates`` / ``--prompts``, else ``prompts/`` when it exists,
     #: else ``templates/``.
@@ -332,6 +332,17 @@ def load_project_config(path: Path) -> ProjectConfig:
     if not isinstance(raw, dict):
         raise ConfigError(f"{path}: top level must be a mapping.")
     legacy_docs = LEGACY_DOCS_KEY in raw
+    if _REMOVED_COLUMN_NAMING_KEY in raw:
+        # ADR-0058 Decision 4 — this key never shipped (added on this branch for an
+        # earlier version of the physical-naming fix); an adopter who followed the
+        # rc.3 guide and added it anyway gets the naming-migration message, not a
+        # bare "unknown key" — raised BEFORE the generic check below, and the key is
+        # excluded from `TOP_LEVEL_KEYS` so that check never reaches it.
+        raise ConfigError(
+            f"{path}: " + removed_naming_source_message(
+                f"{_REMOVED_COLUMN_NAMING_KEY} in {CONFIG_FILENAME}", raw[_REMOVED_COLUMN_NAMING_KEY]
+            )
+        )
     _reject_unknown_keys(
         {k: v for k, v in raw.items() if k != LEGACY_DOCS_KEY}, TOP_LEVEL_KEYS, str(path)
     )
@@ -400,11 +411,6 @@ def load_project_config(path: Path) -> ProjectConfig:
         _parse_api_docs(raw["apiDocs"], f"{path}: 'apiDocs'") if "apiDocs" in raw else None
     )
 
-    column_naming = raw.get("columnNaming")
-    if column_naming is not None and column_naming not in COLUMN_NAMING_VALUES:
-        raise ConfigError(
-            f"{path}: 'columnNaming' must be one of {list(COLUMN_NAMING_VALUES)}, got {column_naming!r}."
-        )
     templates = raw.get("templates")
     if templates is not None and (not isinstance(templates, str) or not templates):
         raise ConfigError(f"{path}: 'templates' must be a non-empty string (a directory path).")
@@ -419,6 +425,5 @@ def load_project_config(path: Path) -> ProjectConfig:
         metadata_declared="metadata" in raw,
         api_docs=api_docs,
         legacy_docs=legacy_docs,
-        column_naming=column_naming,
         templates=templates,
     )

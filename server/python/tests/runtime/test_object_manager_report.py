@@ -22,6 +22,7 @@ from metaobjects.loader.sources import InMemoryStringSource
 from metaobjects.meta.core.object.meta_object import MetaObject
 from metaobjects.meta.core.object.object_constants import OBJECT_SUBTYPE_REPORT
 from metaobjects.meta.core.reporting.report_read_model import report_read_model
+from metaobjects.naming import NamingRules, attach_naming
 from metaobjects.runtime.object_manager import ObjectManager, SelectResult
 from metaobjects.serializer_json import canonical_serialize
 from metaobjects.shared.base_types import TYPE_OBJECT
@@ -58,7 +59,11 @@ class RecordingDriver:
 def _canonical_root():
     result = load_directory(CORPUS / "canonical")
     assert not result.errors, "\n".join(e.message for e in result.errors)
-    return result.root
+    # ADR-0058 — this corpus's project (CORPUS: fixtures/persistence-conformance/)
+    # pins `naming: {columns: literal}` in its `.metaobjects/config.json` (it is
+    # the committed cross-port schema's naming); `load_directory` is
+    # project-unaware, so attach it explicitly.
+    return attach_naming(result.root, CORPUS)
 
 
 def _om(root: Any, driver: RecordingDriver, **kw: Any) -> ObjectManager:
@@ -161,9 +166,11 @@ def test_count_reads_the_view() -> None:
 def test_the_naming_strategy_applies_to_the_derived_name() -> None:
     """The derived field carries no @column, so snake_case turns ``programTitle`` into
     ``program_title`` (a column the lowering emits under the same strategy)."""
+    # ADR-0058 — naming is read from the loaded root, not an ObjectManager kwarg.
     root = _canonical_root()
+    root.naming = NamingRules(columns="snake_case")
     drv = RecordingDriver()
-    _om(root, drv, column_naming="snake_case").find_many("ProgramMinutes", {"programTitle": "x"})
+    _om(root, drv).find_many("ProgramMinutes", {"programTitle": "x"})
     assert '"program_title"' in drv.sql[0]
     assert '"programTitle"' not in drv.sql[0]
 

@@ -9,6 +9,7 @@ from typing import Any
 import pg8000.dbapi as pg8000
 
 from metaobjects import load_directory
+from metaobjects.naming import attach_naming
 from metaobjects.runtime import ObjectManager, PostgresDriver
 
 from .normalization import canonical_row_set_json, canonical_rows_json, normalize_row
@@ -170,7 +171,13 @@ def _load(metadata_dir: Path):
     if result.errors:
         formatted = "; ".join(f"{e.code}: {e.message}" for e in result.errors)
         raise RuntimeError(f"{metadata_dir}: metadata did not load cleanly: {formatted}")
-    return result.root
+    # ADR-0058 — the corpus's project (metadata_dir's PARENT: fixtures/persistence-
+    # conformance/) pins `naming` in its `.metaobjects/config.json` — moved OUT of
+    # `canonical/` itself because a directory loader scanning `canonical/` for
+    # metadata would otherwise parse `config.json` as a (malformed) metadata file.
+    # `load_directory` is project-unaware, so attach it explicitly rather than
+    # relying on the port default.
+    return attach_naming(result.root, metadata_dir.parent)
 
 
 def _execute(info: Any, sql: str) -> None:

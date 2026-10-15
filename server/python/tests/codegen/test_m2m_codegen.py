@@ -126,7 +126,13 @@ _INDEX = build_object_index(list(_ENTITIES.values()))
 def test_hetero_descriptor() -> None:
     # Post now also declares `reviewers` (FW-8's TPH-target M:N fixture, onto
     # MemberAccount) — key by relation name rather than assuming a single result.
-    descs = {d.relation_name: d for d in resolve_m2m_descriptors(_ENTITIES["Post"], _INDEX)}
+    # column_naming="literal" is explicit here (ADR-0058 flipped the DEFAULT to
+    # snake_case): this test is about FK-pairing derivation, not naming, and the
+    # fixture field names (`postId`, ...) are the pre-existing expectation.
+    descs = {
+        d.relation_name: d
+        for d in resolve_m2m_descriptors(_ENTITIES["Post"], _INDEX, column_naming="literal")
+    }
     assert "tags" in descs
     d = descs["tags"]
     assert d.relation_name == "tags"
@@ -142,7 +148,11 @@ def test_hetero_descriptor() -> None:
 
 
 def test_directed_and_symmetric_descriptors() -> None:
-    descs = {d.relation_name: d for d in resolve_m2m_descriptors(_ENTITIES["Person"], _INDEX)}
+    # column_naming="literal" explicit — see test_hetero_descriptor above.
+    descs = {
+        d.relation_name: d
+        for d in resolve_m2m_descriptors(_ENTITIES["Person"], _INDEX, column_naming="literal")
+    }
     assert set(descs) == {"following", "friends"}
 
     following = descs["following"]
@@ -310,7 +320,11 @@ def test_dotted_junction_reference_still_derives_m2m_fields() -> None:
     correct behaviour: same shape, same descriptor, dotted spelling."""
     entities = _load_entities_edited(_dot_the_junction_references)
     index = build_object_index(list(entities.values()))
-    descs = {d.relation_name: d for d in resolve_m2m_descriptors(entities["Post"], index)}
+    # column_naming="literal" explicit — see test_hetero_descriptor above.
+    descs = {
+        d.relation_name: d
+        for d in resolve_m2m_descriptors(entities["Post"], index, column_naming="literal")
+    }
     d = descs["tags"]
     assert d.target_entity == "Tag"
     assert d.junction_table == "post_tags"

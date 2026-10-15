@@ -38,7 +38,12 @@ from ..meta.core.object.object_constants import OBJECT_SUBTYPE_REPORT
 from ..meta.core.reporting.report_read_model import report_read_model
 from ..meta.core.field.meta_field import MetaField
 from ..meta.core.field import field_constants as fc
-from ..naming import DEFAULT_COLUMN_NAMING, resolve_column_name
+from ..naming import (
+    DEFAULT_COLUMN_NAMING,
+    naming_rules_of,
+    removed_naming_source_message,
+    resolve_column_name,
+)
 from ..meta.core.identity import identity_constants as ic
 from ..meta.persistence.db import db_constants as dbc
 from ..meta.persistence.source.meta_source import MetaSource
@@ -184,17 +189,23 @@ class ObjectManager:
         self,
         root: MetaRoot,
         driver: PostgresDriver,
-        column_naming: str = DEFAULT_COLUMN_NAMING,
+        column_naming: str | None = None,
     ) -> None:
+        if column_naming is not None:
+            # ADR-0058 Decision 4 — `ObjectManager(column_naming=...)` was removed in
+            # 1.1.0: naming is one project setting now, read from the loaded root
+            # (never guessed — the old value may have been right for that adopter's
+            # database, and silently dropping it would rename every column).
+            raise ValueError(
+                removed_naming_source_message("ObjectManager(column_naming=...)", column_naming)
+            )
         self._root = root
         self._driver = driver
-        # How a field with no explicit `@column` becomes a physical column name.
-        # Config, never metadata: the same model must be able to drive a snake_case
-        # schema and a literal-column one. Defaults to `literal`, this port's
-        # historical behaviour — but note `meta migrate`, which owns schema for EVERY
-        # port (ADR-0015), defaults to `snake_case`, so a project whose tables it
-        # created wants `snake_case` here or an explicit `@column` per field.
-        self._column_naming = column_naming
+        # How a field with no explicit `@column` becomes a physical column name —
+        # ADR-0058: THE one project setting, read from the loaded root
+        # (`naming_rules_of`), so codegen's `names` generator and this runtime cannot
+        # disagree about what a constant means.
+        self._column_naming = naming_rules_of(root).columns
         self._entity_by_name: dict[str, MetaObject] = {}
         # ADR-0039 sanctioned own: top-level entity scan on the loader ROOT
         # (metadata.root is never extended, so own == effective) — mirrors the TS

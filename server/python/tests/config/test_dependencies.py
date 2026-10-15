@@ -27,6 +27,7 @@ from metaobjects.config.dependencies import (
 )
 from metaobjects import MetaDataLoader
 from metaobjects.errors import ErrorCode, ParseError
+from metaobjects.naming import NamingRules
 
 CORPUS = Path(__file__).resolve().parents[4] / "fixtures" / "dependency-conformance" / "artifacts"
 
@@ -315,6 +316,7 @@ def _collection(**overrides: object) -> Collection:
         files=(), own_files=(), file_ids={}, dependencies=(),
         imported_packages=frozenset(), imported_nodes=frozenset(),
         scope_include=(), in_migrate_scope=None, libraries=(),
+        naming=NamingRules(),
     )
     base.update(overrides)
     return Collection(**base)  # type: ignore[arg-type]

@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from metaobjects import load_directory
+from metaobjects.naming import attach_naming
 from metaobjects.runtime import ObjectManager
 from metaobjects.runtime.object_manager import SelectResult
 
@@ -45,7 +46,13 @@ class FakeDriver:
 
 
 def _om(responses: list[tuple[str, list[dict[str, Any]]]]) -> tuple[ObjectManager, FakeDriver]:
-    root = load_directory(_corpus_canonical()).root
+    result = load_directory(_corpus_canonical())
+    # ADR-0058 — the corpus's project (the canonical dir's PARENT) pins
+    # `naming: {columns: literal}` in its `.metaobjects/config.json`; `load_directory`
+    # is project-unaware, so attach it explicitly rather than relying on the
+    # port default (snake_case), which these fixture field names (`postId`, ...)
+    # do not match.
+    root = attach_naming(result.root, _corpus_canonical().parent)
     driver = FakeDriver(responses)
     return ObjectManager(root, driver), driver  # type: ignore[arg-type]
 

@@ -126,7 +126,13 @@ from metaobjects.codegen.generators.render_helper_generator import (
 )
 from metaobjects.codegen.value_objects import pkg_of, resolve_payload_vo
 from metaobjects.meta.template import template_constants as tc
-from metaobjects.naming import COLUMN_NAMING_STRATEGIES, DEFAULT_COLUMN_NAMING, package_of_resolution_key
+from metaobjects.naming import (
+    COLUMN_NAMING_STRATEGIES,
+    DEFAULT_COLUMN_NAMING,
+    NamingRules,
+    package_of_resolution_key,
+    removed_naming_source_message,
+)
 from metaobjects.render.filesystem_provider import FilesystemProvider
 from metaobjects.render.verify import (
     ERR_REQUIRED_SLOT_UNUSED,
@@ -485,6 +491,11 @@ def _load_root(
         refuse_library_package_misuse(result.root, all_libraries)
     except ParseError as exc:
         return None, [f"{exc.code}: {exc}"]
+    # ADR-0058 Decision 3 — the loaded root carries the ONE project naming setting,
+    # from the SAME neutral `.metaobjects/config.json` read above for `libraries`,
+    # so codegen and the runtime (both reached from an explicit-`metadata_dir` CLI
+    # invocation) read the same values `gen`/`verify --codegen` would.
+    result.root.naming = neutral.naming if neutral is not None else NamingRules()
     return result.root, []
 
 
@@ -543,6 +554,10 @@ def _load_collection_result(
         # ejected copy, still opted in) and one it does not (a new node in someone
         # else's package).
         refuse_library_package_misuse(result.root, all_libraries)
+        # ADR-0058 Decision 3 — the resolved `Collection` already carries this
+        # project's ONE naming setting (read at the same rung as `libraries`); attach
+        # it to the loaded root so codegen, the runtime and `verify` agree.
+        result.root.naming = collection.naming
     return result
 
 
@@ -703,34 +718,24 @@ def _template_root_for(args: argparse.Namespace) -> str:
 _CONFIG_NAME = "metaobjects.config.yaml"
 
 
-def _column_naming_for(args: argparse.Namespace, config: ProjectConfig) -> tuple[str, str, str | None]:
-    """``(strategy, where it came from, refusal)`` for a config-driven run.
-
-    ``columnNaming`` in the config wins; ``--column-naming`` applies when the config declares
-    none; else the port default. A flag that names another strategy than the config is refused
-    (the refusal is the third element; the caller prints it and exits 2): the config declares
-    the run's inputs once (ADR-0034 Amendment 9), and a flag that silently lost, or silently
-    won, is how a plain ``metaobjects gen`` came to rewrite every column name.
+def _refuse_column_naming_flag(args: argparse.Namespace) -> str | None:
+    """ADR-0058 Decision 4 — ``--column-naming`` was removed in 1.1.0: naming is one
+    project setting (``naming`` in ``.metaobjects/config.json``), read from the loaded
+    root (``MetaRoot.naming``) by every resolver. Returns the refusal (the caller
+    prints it and exits 2) when the flag was given at all, else ``None``.
     """
     flag = getattr(args, "column_naming", None)
-    if config.column_naming is not None:
-        if flag is not None and flag != config.column_naming:
-            return (
-                DEFAULT_COLUMN_NAMING, "",
-                f"error: --column-naming {flag} contradicts columnNaming: {config.column_naming} in "
-                f"{_CONFIG_NAME}. The config declares it once; drop the flag, or change the config.",
-            )
-        return config.column_naming, f"columnNaming in {_CONFIG_NAME}", None
-    if flag is not None:
-        return flag, "--column-naming", None
-    return DEFAULT_COLUMN_NAMING, "the default", None
+    if flag is None:
+        return None
+    return "error: " + removed_naming_source_message("--column-naming", flag)
 
 
 def _template_root_for_config(args: argparse.Namespace, config: ProjectConfig) -> tuple[str, str | None]:
     """``(template root, refusal)`` for a config-driven run: ``templates`` in the config, else
     :func:`_template_root_for`. A ``--templates`` (``gen``) or ``--prompts`` (``verify``) that
-    names another directory than the config is refused, for the reason
-    :func:`_column_naming_for` gives."""
+    names another directory than the config is refused: the config declares the run's inputs
+    once (ADR-0034 Amendment 9), and a flag that silently lost, or silently won, is how a plain
+    ``metaobjects gen`` came to disagree with ``verify`` about where the templates are."""
     declared = config.templates_dir()
     if declared is None:
         return _template_root_for(args), None
@@ -1572,12 +1577,15 @@ def _cmd_gen_config(args: argparse.Namespace) -> int:
         return 1
     _print_unknown_attr_warnings(unknown_attrs)
 
-    column_naming, _naming_source, naming_refusal = _column_naming_for(args, config)
+    naming_refusal = _refuse_column_naming_flag(args)
     template_root, templates_refusal = _template_root_for_config(args, config)
     for refusal in (naming_refusal, templates_refusal):
         if refusal is not None:
             print(refusal, file=sys.stderr)
             return 2
+    # ADR-0058 Decision 3 — the loaded root's `naming` (set from `.metaobjects/
+    # config.json` at load time) is THE strategy; never a flag or a config key.
+    column_naming = root.naming.columns
 
     selection = _selection_from_args(args)
     if _refuse_narrowing(args, selection, root, "metaobjects gen"):
@@ -1822,12 +1830,14 @@ def _verify_codegen_config(args: argparse.Namespace) -> int:
             return 2
     narrowed = selection is not None or _parse_entities(getattr(args, "entities", None)) is not None
 
-    column_naming, naming_source, naming_refusal = _column_naming_for(args, config)
+    naming_refusal = _refuse_column_naming_flag(args)
     template_root, templates_refusal = _template_root_for_config(args, config)
     for refusal in (naming_refusal, templates_refusal):
         if refusal is not None:
             print(refusal, file=sys.stderr)
             return 2
+    # ADR-0058 Decision 3 — the loaded root's `naming` is THE strategy.
+    column_naming = root.naming.columns
 
     # Map each unique real outDir to ONE temp slot name (shared real dir => shared slot).
     real_outdirs = sorted({config.out_dir_for(t) for t in closure})
@@ -1947,7 +1957,7 @@ def _verify_codegen_config(args: argparse.Namespace) -> int:
             _report_clean(changed, missing, extra)
             for _names, _count, changed, missing, extra in other_reports
         ):
-            print(column_naming_differs_message(other, column_naming, naming_source), file=sys.stderr)
+            print(column_naming_differs_message(other, column_naming), file=sys.stderr)
             return 1
     print("regenerate (metaobjects gen) and commit the result.", file=sys.stderr)
     return 1
@@ -1960,14 +1970,16 @@ def _report_clean(changed: list[str], missing: list[str], extra: list[str]) -> b
     return not changed and not missing and not extra
 
 
-def column_naming_differs_message(committed: str, used: str, source: str) -> str:
+def column_naming_differs_message(committed: str, used: str) -> str:
     """What ``verify --codegen`` says, in place of "regenerate", when the committed output was
-    generated with column naming ``committed`` and this run used ``used`` (from ``source``)."""
+    generated with column naming ``committed`` and this run's loaded root resolved ``used``
+    (ADR-0058: the one project ``naming`` setting, read from ``.metaobjects/config.json``)."""
     return (
         f"The committed output was generated with column naming {committed}; this run used "
-        f"{used} ({source}). Do not regenerate: that rewrites every column name the database "
-        f"does not have. Declare the naming once, as `columnNaming: {committed}` in "
-        f"{_CONFIG_NAME}, and gen and verify --codegen both read it."
+        f'{used} ("naming" in .metaobjects/config.json, or its default). Do not regenerate: '
+        f"that rewrites every column name the database does not have. Declare the naming once, "
+        f'as `"naming": {{ "columns": "{committed}" }}` in .metaobjects/config.json, and gen '
+        f"and verify --codegen both read it."
     )
 
 
@@ -2493,12 +2505,9 @@ def _build_parser() -> argparse.ArgumentParser:
         choices=COLUMN_NAMING_STRATEGIES,
         default=None,
         help=(
-            "column-naming strategy for a field with no explicit @column. Declare it "
-            "once as `columnNaming` in metaobjects.config.yaml instead, so a plain "
-            "`gen` and `verify --codegen` agree; a flag that contradicts the config is "
-            f"refused. Default: {DEFAULT_COLUMN_NAMING!r}, matching this port's "
-            "ObjectManager default — NOT `meta migrate`'s snake_case. Use the "
-            "strategy the schema was created with."
+            "removed in 1.1.0 (ADR-0058): naming is one project setting now, `naming` in "
+            ".metaobjects/config.json, read by every port from the loaded root. Passing "
+            "this flag at all is refused."
         ),
     )
     gen.add_argument(
@@ -2614,12 +2623,9 @@ def _build_parser() -> argparse.ArgumentParser:
         choices=COLUMN_NAMING_STRATEGIES,
         default=None,
         help=(
-            "column-naming strategy the committed output was generated with, when "
-            "metaobjects.config.yaml declares no `columnNaming` (default: "
-            f"{DEFAULT_COLUMN_NAMING!r}, matching `gen`'s default). The `names` "
-            "generator's constants are strategy-dependent, so a --codegen regen must "
-            "use the SAME strategy `gen` was run with or every <ENTITY>_<FIELD>_COLUMN "
-            "constant reports spurious drift."
+            "removed in 1.1.0 (ADR-0058): naming is one project setting now, `naming` in "
+            ".metaobjects/config.json, read by every port from the loaded root. Passing "
+            "this flag at all is refused."
         ),
     )
     verify.add_argument(

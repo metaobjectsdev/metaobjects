@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from metaobjects.errors import ErrorCode, ParseError
+from metaobjects.naming import COLUMN_NAMING_STRATEGIES, TABLE_NAMING_RULES, NamingRules
 
 #: The DEFAULT value of `sources` when the key is absent or empty — never a
 #: requirement, and never assumed to exist by any other code path.
@@ -64,6 +65,15 @@ class NeutralConfig:
     #: rather than resurfacing later as `ERR_UNRESOLVED_SUPER` against the
     #: adopter's own metadata, the wrong place to go looking.
     libraries: list[str]
+
+    #: ADR-0058 — the ONE project physical-naming setting. Absent or `{}` ⇒ both
+    #: rules default to `snake_case`. The loader attaches this to the loaded root
+    #: (`MetaRoot.naming`) so every resolver — codegen, the runtime, `verify` —
+    #: reads the SAME values. Validated HERE (unknown key / unknown value / a
+    #: non-object `naming` all raise) because an unparseable project setting should
+    #: fail the load loudly, not silently fall back to the default and rename
+    #: every column.
+    naming: NamingRules
 
 
 def read_neutral_config(config_dir: Path) -> NeutralConfig | None:
@@ -144,6 +154,7 @@ def read_neutral_config(config_dir: Path) -> NeutralConfig | None:
     scope_include = _read_scope_include(raw, path)
     migrate_scope = _read_migrate_scope(raw, path)
     libraries = _read_libraries(raw, path)
+    naming = _read_naming(raw, path)
 
     # Unknown top-level keys are IGNORED by design — see the module docstring.
     return NeutralConfig(
@@ -152,6 +163,7 @@ def read_neutral_config(config_dir: Path) -> NeutralConfig | None:
         scope_include=scope_include,
         migrate_scope=migrate_scope,
         libraries=libraries,
+        naming=naming,
     )
 
 
@@ -227,6 +239,49 @@ def _read_libraries(raw: dict[str, object], path: Path) -> list[str]:
             code=ErrorCode.ERR_UNKNOWN_LIBRARY,
         )
     return libraries
+
+
+#: Every key the `naming` block accepts, and the ONLY ones it accepts (ADR-0058
+#: Decision 1 — an unknown key is refused, not ignored, unlike unknown TOP-level keys).
+_NAMING_KEYS = ("columns", "tables")
+
+
+def _read_naming(raw: dict[str, object], path: Path) -> NamingRules:
+    """ADR-0058 — the `naming` block: one project physical-naming setting, read by
+    every port. Absent ⇒ both rules default (`snake_case`/`snake_case`); `{}` is
+    the SAME as absent (every key optional). Refuses a non-object `naming`, an
+    unknown key inside it, or a value outside the closed set each key accepts —
+    never falls back to the default on a mistake, which would silently rename
+    every column or table the next time metadata is read.
+    """
+    naming = raw.get("naming")
+    if naming is None:
+        return NamingRules()
+    if not isinstance(naming, dict):
+        raise ParseError(
+            f"{path}: 'naming' must be an object, e.g. {{\"columns\": \"snake_case\"}}",
+            code=ErrorCode.ERR_COLLECTION_NOT_FOUND,
+        )
+    unknown = sorted(set(naming) - set(_NAMING_KEYS))
+    if unknown:
+        raise ParseError(
+            f"{path}: 'naming' has unknown key(s) {unknown}; accepted: {list(_NAMING_KEYS)}",
+            code=ErrorCode.ERR_COLLECTION_NOT_FOUND,
+        )
+    columns = naming.get("columns", NamingRules.columns)
+    if columns not in COLUMN_NAMING_STRATEGIES:
+        raise ParseError(
+            f"{path}: 'naming.columns' must be one of {list(COLUMN_NAMING_STRATEGIES)}, "
+            f"got {columns!r}",
+            code=ErrorCode.ERR_COLLECTION_NOT_FOUND,
+        )
+    tables = naming.get("tables", NamingRules.tables)
+    if tables not in TABLE_NAMING_RULES:
+        raise ParseError(
+            f"{path}: 'naming.tables' must be one of {list(TABLE_NAMING_RULES)}, got {tables!r}",
+            code=ErrorCode.ERR_COLLECTION_NOT_FOUND,
+        )
+    return NamingRules(columns=columns, tables=tables)
 
 
 def _validate_dependency_spec(dep: object, path: Path) -> dict[str, str]:

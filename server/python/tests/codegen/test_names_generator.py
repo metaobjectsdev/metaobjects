@@ -409,63 +409,81 @@ def _meta_dir(tmp_path: Path) -> str:
     return str(d)
 
 
-def test_cli_column_naming_flag_reaches_the_generator(tmp_path: Path) -> None:
+def _write_project_naming(project_root: Path, naming: dict[str, str]) -> None:
+    """ADR-0058 — the ONE project setting, in the port-neutral config file that
+    ``project_root_for(metadata_dir)`` (``metadata_dir``'s PARENT) reads."""
+    dot = project_root / ".metaobjects"
+    dot.mkdir(parents=True, exist_ok=True)
+    (dot / "config.json").write_text(
+        json.dumps({"schema_version": 1, "naming": naming}), encoding="utf-8"
+    )
+
+
+def test_naming_config_reaches_the_generator(tmp_path: Path) -> None:
     meta_dir = _meta_dir(tmp_path)
     out = tmp_path / "out"
-    rc = main(as_config(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out), "--column-naming", "snake_case"]))
+    _write_project_naming(tmp_path, {"columns": "snake_case"})
+    rc = main(as_config(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)]))
     assert rc == 0
     content = (out / "program_names.py").read_text()
-    # priceCents has no explicit @column -> strategy-derived.
+    # priceCents has no explicit @column -> rule-derived.
     assert 'PROGRAM_PRICE_CENTS_COLUMN: Final[str] = "price_cents"' in content
-    # createdAt DOES declare @column: "created_ts" -> beats the strategy regardless.
+    # createdAt DOES declare @column: "created_ts" -> beats the rule regardless.
     assert 'PROGRAM_CREATED_AT_COLUMN: Final[str] = "created_ts"' in content
 
 
-def test_cli_column_naming_defaults_to_literal(tmp_path: Path) -> None:
+def test_cli_column_naming_defaults_to_snake_case(tmp_path: Path) -> None:
+    # ADR-0058 — the default FLIPPED in 1.1.0 (was `literal` in this port only).
     meta_dir = _meta_dir(tmp_path)
     out = tmp_path / "out"
     rc = main(as_config(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)]))
     assert rc == 0
     content = (out / "program_names.py").read_text()
-    assert 'PROGRAM_PRICE_CENTS_COLUMN: Final[str] = "priceCents"' in content
+    assert 'PROGRAM_PRICE_CENTS_COLUMN: Final[str] = "price_cents"' in content
 
 
-def test_verify_codegen_with_matching_column_naming_is_clean(tmp_path: Path, capsys) -> None:
-    """R31 — `verify --codegen` must accept `--column-naming` and thread it into its
-    OWN regen. `gen --column-naming snake_case` emits `names` constants under that
-    strategy; a `verify --codegen` blind to the flag would regenerate under the
-    `literal` default and convict every `<ENTITY>_<FIELD>_COLUMN` constant as drift —
-    the exact "gate fails work the product itself sanctions" pattern this project's
-    own CHANGELOG names as a defect class. Passing the SAME strategy must report
-    clean.
+def test_the_column_naming_flag_is_refused(tmp_path: Path, capsys) -> None:
+    # ADR-0058 Decision 4 — `--column-naming` was removed in 1.1.0.
+    meta_dir = _meta_dir(tmp_path)
+    out = tmp_path / "out"
+    rc = main(as_config(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out), "--column-naming", "snake_case"]))
+    assert rc == 2
+    err = capsys.readouterr().err
+    assert "--column-naming was removed in 1.1.0" in err
+
+
+def test_verify_codegen_with_matching_naming_is_clean(tmp_path: Path, capsys) -> None:
+    """R31 — `verify --codegen`'s own regen must use the SAME naming rule `gen` was
+    run with (both read it from the loaded root), or it convicts every
+    ``<ENTITY>_<FIELD>_COLUMN`` constant as drift — the exact "gate fails work the
+    product itself sanctions" pattern this project's own CHANGELOG names as a defect
+    class.
     """
     meta_dir = _meta_dir(tmp_path)
     out = tmp_path / "out"
-    assert main(as_config(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out), "--column-naming", "snake_case"])) == 0
+    _write_project_naming(tmp_path, {"columns": "snake_case"})
+    assert main(as_config(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)])) == 0
 
     capsys.readouterr()  # discard `gen`'s own stdout
-    rc = main(
-        as_config(["verify", meta_dir, "--codegen", "--generators", GEN_SUITE, "--out", str(out), "--column-naming", "snake_case"])
-    )
+    rc = main(as_config(["verify", meta_dir, "--codegen", "--generators", GEN_SUITE, "--out", str(out)]))
     captured = capsys.readouterr()
     assert rc == 0, captured.err
     assert "in sync" in captured.out
 
 
-def test_verify_codegen_with_mismatched_column_naming_reports_drift(tmp_path: Path, capsys) -> None:
-    """The discriminating half of the pair: a `verify --codegen` that silently
-    ignored `--column-naming` (or never threaded it into its regen) would also
-    pass the clean-case test above — only a MISMATCHED strategy proves the flag is
-    actually read rather than merely accepted by argparse.
-    """
+def test_verify_codegen_with_mismatched_naming_reports_drift(tmp_path: Path, capsys) -> None:
+    """The discriminating half of the pair: a `verify --codegen` that regenerated
+    under a DIFFERENT naming rule than `gen` used would also pass the clean-case
+    test above — only a mismatch proves the rule is actually read from the root."""
     meta_dir = _meta_dir(tmp_path)
     out = tmp_path / "out"
-    assert main(as_config(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out), "--column-naming", "snake_case"])) == 0
+    _write_project_naming(tmp_path, {"columns": "snake_case"})
+    assert main(as_config(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)])) == 0
 
+    # The project's naming rule changes after `gen` committed its output.
+    _write_project_naming(tmp_path, {"columns": "literal"})
     capsys.readouterr()
-    rc = main(
-        as_config(["verify", meta_dir, "--codegen", "--generators", GEN_SUITE, "--out", str(out), "--column-naming", "literal"])
-    )
+    rc = main(as_config(["verify", meta_dir, "--codegen", "--generators", GEN_SUITE, "--out", str(out)]))
     captured = capsys.readouterr()
     assert rc == 1
     assert "drifted:" in captured.err
