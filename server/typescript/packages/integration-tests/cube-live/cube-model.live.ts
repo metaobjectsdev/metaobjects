@@ -93,8 +93,11 @@ const CANONICAL_MODEL = join(CANONICAL_DIR, "meta.fitness.json");
 const CANONICAL_SCHEMA = join(CANONICAL_DIR, "schema.postgres.sql");
 const CANONICAL_SEED = join(CUBE_CANONICAL_DIR, "seed.sql");
 
-/** The persistence corpus's schema spells columns literally, and so does the golden. */
-const GEN_CONFIG = { dialect: "postgres", columnNamingStrategy: "literal" } as const;
+/**
+ * The persistence corpus's schema spells columns literally, and so does the golden: the corpus
+ * declares that in its `.metaobjects/config.json`, which `loadMetadataFile` applies (ADR-0058).
+ */
+const GEN_CONFIG = { dialect: "postgres" } as const;
 
 const TEST_TIMEOUT_MS = 600_000;
 /** Each corpus case's share of the corpus pass's budget: its empty-model wait plus its load. */

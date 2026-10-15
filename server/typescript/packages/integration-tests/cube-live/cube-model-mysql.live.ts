@@ -44,7 +44,8 @@ import { cubeQueryFor, type ExpectedReport, fromCubeRow, fromViewRow, getMeta, l
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", "..");
 const CANONICAL_MODEL = join(CANONICAL_DIR, "meta.fitness.json");
 const CANONICAL_SEED = join(REPO_ROOT, "fixtures", "cube-model", "canonical", "seed.mysql.sql");
-const GEN_CONFIG = { dialect: "mysql", columnNamingStrategy: "literal" } as const;
+/** Literal columns, as the corpus's `.metaobjects/config.json` declares and `loadMetadataFile` applies (ADR-0058). */
+const GEN_CONFIG = { dialect: "mysql" } as const;
 const TEST_TIMEOUT_MS = 600_000;
 
 /**
