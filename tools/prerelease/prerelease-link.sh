@@ -125,13 +125,13 @@ has_mvn()   { [ -n "$(mvn_roots | head -1)" ]; }
 mvn_roots() {
   local f d up nested
   while IFS= read -r f; do
-    d="$(dirname "$f")"; up="$d"; nested=0
+    d="${f%/*}"; up="$d"; nested=0
     while [ "$up" != "$PROJECT" ] && [ "$up" != "/" ]; do
-      up="$(dirname "$up")"
+      up="${up%/*}"
       [ -f "$up/pom.xml" ] && { nested=1; break; }
     done
     [ "$nested" -eq 0 ] && echo "$d"
-  done < <(project_find -name pom.xml -not -path '*/target/*')
+  done < <(mvn_poms)
 }
 
 # Every Maven pom in the project, modules included: each may pin a com.metaobjects version.
@@ -143,7 +143,7 @@ mvn_poms() { project_find -name pom.xml -not -path '*/target/*'; }
 py_roots() {
   project_find -name pyproject.toml -not -path '*/.venv/*' -not -path '*/venv/*' \
       -not -path '*/site-packages/*' -not -path '*/target/*' \
-    | while IFS= read -r f; do dirname "$f"; done | sort -u
+    | while IFS= read -r f; do printf '%s\n' "${f%/*}"; done | sort -u
 }
 
 # .NET local tool manifests (`.config/dotnet-tools.json`, or `dotnet-tools.json` at a root)
@@ -226,6 +226,11 @@ project_find() {  # project_find <find-expression...>
   while IFS= read -r r; do prune+=( -o -path "$r" ); done < <(foreign_roots)
   find "$PROJECT" \( "${prune[@]}" \) -prune -o \( "$@" \) -print 2>/dev/null
 }
+
+# "$1" as a path under $PROJECT with a trailing slash — empty when "$1" IS $PROJECT, so
+# "${rel}file" names a root file bare and a nested one at its depth. The git-exclude paths
+# and the lockfile names all need this same rule, spelled once.
+rel_prefix() { local p="${1#"$PROJECT"/}"; [ "$p" = "$1" ] && echo "" || echo "$p/"; }
 
 # Every independent npm install root: a directory owning a lockfile, plus $PROJECT.
 # npm and bun read `.npmrc` from the CURRENT directory and the user level — neither walks
@@ -451,7 +456,7 @@ lockfiles_with_prerelease() {
 
   local root prefix f
   while IFS= read -r root; do
-    prefix="${root#"$PROJECT"/}"; [ "$prefix" = "$root" ] && prefix="" || prefix="$prefix/"
+    prefix="$(rel_prefix "$root")"
     for f in package-lock.json npm-shrinkwrap.json yarn.lock pnpm-lock.yaml bun.lock; do
       [ -e "$root/$f" ] || continue
       vendor_prerelease_in "$root/$f" "$ns" "$re" && printf '%s\n' "${prefix}${f}"
@@ -498,8 +503,7 @@ drop_lockfiles() {
   # the per-root .npmrc exists to prevent.
   local prefix
   while IFS= read -r root; do
-    # $PROJECT itself does not match the "$PROJECT/" strip, so name its files bare.
-    prefix="${root#"$PROJECT"/}"; [ "$prefix" = "$root" ] && prefix="" || prefix="$prefix/"
+    prefix="$(rel_prefix "$root")"
     for l in package-lock.json npm-shrinkwrap.json yarn.lock pnpm-lock.yaml bun.lock bun.lockb; do
       [ -e "$root/$l" ] || continue
       tracked "${prefix}${l}" && warn "${prefix}${l} is TRACKED and is being DELETED — 'unlink' cannot restore it (git checkout -- ${prefix}${l})"
@@ -694,7 +698,7 @@ link_mvn_root() {  # link_mvn_root <dir holding an independent pom.xml>
 </settings>
 XML
         printf -- '-gs\n.mvn/settings.xml\n' > "$dir/.mvn/maven.config"
-        local rel="${dir#"$PROJECT"}"; rel="${rel#/}"; rel="${rel:+$rel/}"
+        local rel; rel="$(rel_prefix "$dir")"
         local_exclude "${rel}.mvn/settings.xml"; local_exclude "${rel}.mvn/maven.config"
         say "wrote .mvn/settings.xml + .mvn/maven.config (http repositories are blocked by default since Maven 3.8.1)"
       fi

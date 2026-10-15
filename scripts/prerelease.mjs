@@ -131,13 +131,25 @@ const MAVEN_URL = assertTarget(`${BASE}/api/packages/${OWNER}/maven`, "maven");
 const cliPkg = JSON.parse(readFileSync(join(ROOT, "server/typescript/packages/cli/package.json"), "utf8"));
 const COMMITTED = cliPkg.version;
 
+// One public-npm read, shared by the two callers that make it: the parsed install-v1
+// document, `null` for a MISS (the package or version is not published there yet), and the
+// UNREACHABLE sentinel for a network or parse failure. A miss and a failure collapse
+// together for `npmLatest` but not for `burnedPublicIters` — a 404 is silence, being
+// offline is a warning — so the helper keeps them apart and each caller picks its posture.
+const UNREACHABLE = Symbol("npm-unreachable");
+const fetchNpmDoc = async (name) => {
+  try {
+    const r = await fetch(`https://registry.npmjs.org/${name.replace("/", "%2f")}`,
+      { headers: { accept: "application/vnd.npm.install-v1+json" }, signal: AbortSignal.timeout(10_000) });
+    return r.ok ? await r.json() : null;
+  } catch { return UNREACHABLE; }
+};
+
 /** Public npm's `latest` for the CLI, or null when it cannot be read. */
 const npmLatest = async () => {
-  try {
-    const r = await fetch("https://registry.npmjs.org/@metaobjectsdev%2fcli",
-      { headers: { accept: "application/vnd.npm.install-v1+json" }, signal: AbortSignal.timeout(10_000) });
-    return r.ok ? ((await r.json())["dist-tags"] || {}).latest ?? null : null;
-  } catch { return null; }
+  const doc = await fetchNpmDoc("@metaobjectsdev/cli");
+  if (!doc || doc === UNREACHABLE) return null;
+  return (doc["dist-tags"] || {}).latest ?? null;
 };
 
 /**
@@ -190,13 +202,10 @@ const usedIters = async () => {
 // promoted to a public RC, so the counter skips it here instead of failing there.
 const burnedPublicIters = async () => {
   const results = await Promise.all(LOCKSTEP.map(async ({ pkg }) => {
-    try {
-      const r = await fetch(`https://registry.npmjs.org/${pkg.name.replace("/", "%2f")}`,
-        { headers: { accept: "application/vnd.npm.install-v1+json" }, signal: AbortSignal.timeout(10_000) });
-      if (!r.ok) return [];
-      const doc = await r.json();
-      return Object.keys(doc.versions || {}).map((v) => (v.match(ITER_RE) || [])[1]).filter(Boolean).map(Number);
-    } catch { return null; }   // offline: fail OPEN, the release preflight is the backstop
+    const doc = await fetchNpmDoc(pkg.name);
+    if (doc === UNREACHABLE) return null;   // offline: fail OPEN, the release preflight is the backstop
+    if (!doc) return [];                    // not on public npm yet: no burned numbers
+    return Object.keys(doc.versions || {}).map((v) => (v.match(ITER_RE) || [])[1]).filter(Boolean).map(Number);
   }));
   if (results.some((r) => r === null))
     console.warn(`\x1b[33m! could not reach public npm — the iteration number may reuse one that is already burned there\x1b[0m`);
@@ -205,10 +214,13 @@ const burnedPublicIters = async () => {
 
 const explicitIter = flag("iter", null);
 const burned = await burnedPublicIters();
-const ITER = Number(explicitIter ?? await (async () => {
+// The next free iteration across all four ecosystems. The `??` above skips this whole
+// call — including its registry fetches — when --iter was given.
+const nextIter = async () => {
   const taken = [...await usedIters(), ...burned];
   return taken.length ? Math.max(...taken) + 1 : 1;
-})());
+};
+const ITER = Number(explicitIter ?? await nextIter());
 if (!Number.isInteger(ITER) || ITER < 1) die(`--iter must be a positive integer, got ${ITER}`);
 if (explicitIter && burned.includes(ITER))
   console.warn(`\x1b[33m! ${BASEVER}-rc.${ITER} is already published on PUBLIC npm for at least one package.\n` +

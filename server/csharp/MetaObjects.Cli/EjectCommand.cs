@@ -30,6 +30,7 @@ using System.Reflection;
 using System.Text.RegularExpressions;
 using System.Xml;
 using System.Xml.Linq;
+using MetaObjects.AgentContext;
 using MetaObjects.Codegen;
 
 namespace MetaObjects.Cli;
@@ -63,10 +64,7 @@ public static class EjectCommand
     public static string PackageVersion(string? informational, Version? assembly)
     {
         if (!string.IsNullOrEmpty(informational))
-        {
-            var plus = informational.IndexOf('+');
-            return plus < 0 ? informational : informational[..plus];
-        }
+            return AgentContextScaffold.WithoutBuildMetadata(informational)!;
         return assembly?.ToString(3) ?? "1.0.0";
     }
 

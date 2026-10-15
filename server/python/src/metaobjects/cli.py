@@ -667,17 +667,8 @@ def _default_template_root(base: str | Path = ".") -> str:
             else LEGACY_TEMPLATES_DIR)
 
 
-def _template_root_for(args: argparse.Namespace) -> str:
-    """The on-disk template root for THIS invocation. Never ``None``.
-
-    EVERY path that builds a generator list must call this, for the same reason the C#
-    port says it of its template-spec resolution: ``gen`` and ``verify --codegen``
-    regenerate the same suite and diff the result, so if they resolve the template root
-    differently, ``verify`` builds ``render-helper`` against another directory and
-    reports the committed helpers as stale — with a remedy that loops, since
-    regenerating cannot fix a disagreement about where the templates are. That is also
-    why the fallback applies to BOTH commands: a default on one and not the other is the
-    same disagreement wearing a different hat.
+def _templates_dir_flag(args: argparse.Namespace) -> str | None:
+    """The template directory a flag names on THIS invocation, or ``None``.
 
     The two commands spell the directory differently, and that is not cosmetic. On
     ``gen`` it is ``--templates <dir>``. On ``verify`` ``--templates`` is the BOOLEAN
@@ -690,10 +681,22 @@ def _template_root_for(args: argparse.Namespace) -> str:
     gen_dir = getattr(args, "templates", None)
     if isinstance(gen_dir, str) and gen_dir:
         return gen_dir
-    explicit_verify = getattr(args, "templates_root", None)
-    if explicit_verify:
-        return explicit_verify
-    return _default_template_root()
+    return getattr(args, "templates_root", None)
+
+
+def _template_root_for(args: argparse.Namespace) -> str:
+    """The on-disk template root for THIS invocation. Never ``None``.
+
+    EVERY path that builds a generator list must call this, for the same reason the C#
+    port says it of its template-spec resolution: ``gen`` and ``verify --codegen``
+    regenerate the same suite and diff the result, so if they resolve the template root
+    differently, ``verify`` builds ``render-helper`` against another directory and
+    reports the committed helpers as stale — with a remedy that loops, since
+    regenerating cannot fix a disagreement about where the templates are. That is also
+    why the fallback applies to BOTH commands: a default on one and not the other is the
+    same disagreement wearing a different hat.
+    """
+    return _templates_dir_flag(args) or _default_template_root()
 
 
 #: Where the run's settings are declared, as the refusals and the drift advice name it.
@@ -731,8 +734,7 @@ def _template_root_for_config(args: argparse.Namespace, config: ProjectConfig) -
     declared = config.templates_dir()
     if declared is None:
         return _template_root_for(args), None
-    gen_dir = getattr(args, "templates", None)
-    flag = gen_dir if isinstance(gen_dir, str) and gen_dir else getattr(args, "templates_root", None)
+    flag = _templates_dir_flag(args)
     if flag and Path(flag).resolve() != Path(declared):
         return declared, (
             f"error: the template directory {flag!r} contradicts templates: {config.templates} in "
@@ -1917,12 +1919,12 @@ def _verify_codegen_config(args: argparse.Namespace) -> int:
             print(f"error: {msg}", file=sys.stderr)
         return 1
 
-    exit_code = 0
+    failed = False
     for names, expected_count, changed, missing, extra in reports:
-        if not changed and not missing and not extra:
+        if _report_clean(changed, missing, extra):
             print(f"metaobjects verify [{names}]: in sync ({expected_count} file(s)).")
             continue
-        exit_code = 1
+        failed = True
         print(
             f"error: [{names}] generated code is out of sync with metadata.",
             file=sys.stderr,
@@ -1933,7 +1935,7 @@ def _verify_codegen_config(args: argparse.Namespace) -> int:
             print(f"  missing: {k}", file=sys.stderr)
         for k in extra:
             print(f"  extra:   {k}", file=sys.stderr)
-    if exit_code == 0:
+    if not failed:
         return 0
 
     # The committed output may be right and this run's column naming wrong: the naming reaches
@@ -1942,13 +1944,20 @@ def _verify_codegen_config(args: argparse.Namespace) -> int:
     for other in (n for n in COLUMN_NAMING_STRATEGIES if n != column_naming):
         other_errors, other_reports = compare(other)
         if not other_errors and all(
-            not changed and not missing and not extra
+            _report_clean(changed, missing, extra)
             for _names, _count, changed, missing, extra in other_reports
         ):
             print(column_naming_differs_message(other, column_naming, naming_source), file=sys.stderr)
             return 1
     print("regenerate (metaobjects gen) and commit the result.", file=sys.stderr)
     return 1
+
+
+def _report_clean(changed: list[str], missing: list[str], extra: list[str]) -> bool:
+    """The drift verdict of one per-target report: nothing changed, nothing missing,
+    nothing extra. It is asked twice — the first pass' per-target print and the naming
+    probe — and the two spellings must mean the same thing."""
+    return not changed and not missing and not extra
 
 
 def column_naming_differs_message(committed: str, used: str, source: str) -> str:

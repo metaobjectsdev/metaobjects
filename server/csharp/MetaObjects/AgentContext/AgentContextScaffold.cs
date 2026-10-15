@@ -51,8 +51,10 @@ public static class AgentContextScaffold
             "Re-run 'npx meta agent-docs' to refresh the .claude/skills docs (it keeps the stack recorded in .metaobjects/).";
     }
 
-    /// <summary><paramref name="version"/> without its <c>+build</c> suffix, or <c>null</c>.</summary>
-    private static string? WithoutBuildMetadata(string? version)
+    /// <summary><paramref name="version"/> without its <c>+build</c> suffix, or <c>null</c>.
+    /// Public because the CLI's <c>EjectCommand.PackageVersion</c> makes the same semver §10
+    /// strip from the other end — one rule, one implementation.</summary>
+    public static string? WithoutBuildMetadata(string? version)
     {
         if (version is null) return null;
         var plus = version.IndexOf('+');

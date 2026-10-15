@@ -8,6 +8,8 @@
 // never edit it again. `dotnet meta eject` writes the same three files when they are missing,
 // with the generators it ejected already in the list.
 
+using MetaObjects.Codegen;
+
 namespace MetaObjects.Cli;
 
 /// <summary>The three files of the codegen project, as init and eject write them.</summary>
@@ -54,7 +56,7 @@ public static class CodegenScaffold
         "codegen/Program.cs does not run Generators.All, so `dotnet meta gen` and `dotnet meta verify --codegen` " +
         "refuse until it does. It is yours, so init and eject never edit it: replace it with the two-line entry",
         .. ProgramCs.TrimEnd('\n').Split('\n').Select(l => "  " + l),
-        "See https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md, section \"C#\".",
+        $"See {CodegenCli.DocsMigrationGuide}.",
     ];
 
     /// <summary>

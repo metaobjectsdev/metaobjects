@@ -34,7 +34,7 @@ final class RequiresCheck {
     /** One registered generator: its port, stable name, class name and what it requires. */
     private record Known(String port, String stableName, String classname, List<String> requires) {
         String simpleName() {
-            return classname.substring(classname.lastIndexOf('.') + 1);
+            return EjectSupport.simpleNameOf(classname);
         }
     }
 
@@ -56,7 +56,7 @@ final class RequiresCheck {
     /** The registry entry {@code classname} is, or {@code null}: by class name, then by simple name. */
     private static Known resolve(List<Known> known, String classname) {
         for (Known k : known) if (k.classname().equals(classname)) return k;
-        String simple = classname.substring(classname.lastIndexOf('.') + 1);
+        String simple = EjectSupport.simpleNameOf(classname);
         for (Known k : known) if (k.simpleName().equals(simple)) return k;
         return null;
     }
@@ -69,6 +69,11 @@ final class RequiresCheck {
      */
     static List<String> unmet(List<String> classnames) {
         List<Known> known = known();
+        // One {@code port:stableName} index: membership and the "what class fixes this"
+        // lookup read the same structure, so adding a port cannot leave one behind.
+        // {@code putIfAbsent} keeps the first entry, as the name lookup did.
+        Map<String, Known> byKey = new LinkedHashMap<>();
+        for (Known k : known) byKey.putIfAbsent(k.port() + ":" + k.stableName(), k);
         Map<String, Known> declared = new LinkedHashMap<>();
         Set<String> present = new LinkedHashSet<>();
         for (String classname : classnames) {
@@ -82,10 +87,9 @@ final class RequiresCheck {
             Known k = d.getValue();
             List<String> missing = new ArrayList<>();
             for (String r : k.requires()) {
-                if (present.contains(k.port() + ":" + r)) continue;
-                Known needed = known.stream()
-                        .filter(n -> n.port().equals(k.port()) && n.stableName().equals(r))
-                        .findFirst().orElse(null);
+                String key = k.port() + ":" + r;
+                if (present.contains(key)) continue;
+                Known needed = byKey.get(key);
                 missing.add("\"" + r + "\"" + (needed == null ? "" : " (" + needed.classname() + ")"));
             }
             if (!missing.isEmpty()) {

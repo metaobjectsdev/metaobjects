@@ -262,10 +262,17 @@ public static class CodegenCli
     /// <summary>The project's generator list, relative to its root.</summary>
     public const string GeneratorListPath = "codegen/Generators.cs";
 
+    /// <summary>The 1.1 docs migration guide, this port's section — the one pointer every fixed
+    /// line below shares. The other ports name it once (TypeScript <c>docs-removed.ts</c>'s
+    /// <c>DOCS_MIGRATION_GUIDE</c>, Python's <c>_MIGRATION_SECTION</c>, Java's
+    /// <c>DocsMojo.MIGRATION</c>); moving the document is one edit here too, not a six-site grep.</summary>
+    public const string DocsMigrationGuide =
+        "https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md, section \"C#\"";
+
     /// <summary>What <c>dotnet meta docs</c> prints, exit 2: the command was removed.</summary>
     public const string DocsCommandRemoved =
         "dotnet meta docs was removed in 1.1.0. `dotnet meta gen` writes documentation now: declare each docs " +
-        "generator in codegen/Generators.cs. See https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md, section \"C#\".";
+        "generator in codegen/Generators.cs. See " + DocsMigrationGuide + ".";
 
     /// <summary>The flags a 1.0 project passed to <c>gen</c> for documentation. Nothing reads them in 1.1.0;
     /// they are <see cref="Generators.ApiDocsGenerator"/>'s init properties now.</summary>
@@ -277,13 +284,13 @@ public static class CodegenCli
     public static string LegacyDocsConfiguration(string command, IEnumerable<string> flags) =>
         $"{command}: found 1.0 docs configuration ({string.Join(", ", flags)}). Nothing reads it any more, so this " +
         "run would write no documentation. Declare each docs generator in codegen/Generators.cs. See " +
-        "https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md, section \"C#\".";
+        DocsMigrationGuide + ".";
 
     /// <summary>What a gen run in a project with no <c>codegen/Generators.cs</c> prints, exit 2.</summary>
     /// <param name="command">The command's own name: <c>dotnet meta gen</c> or <c>dotnet meta verify --codegen</c>.</param>
     public static string NoGeneratorList(string command) =>
         $"{command}: no codegen/Generators.cs. The generator list lives there in 1.1.0, documentation included; " +
-        "`dotnet meta init` writes it. See https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md, section \"C#\".";
+        "`dotnet meta init` writes it. See " + DocsMigrationGuide + ".";
 
     /// <summary>What a gen or <c>verify --codegen</c> run prints, exit 2, when <c>codegen/Program.cs</c> does not
     /// run <c>Generators.All</c>: a 1.0 entry point declares its generators inline and would ignore the list.</summary>
@@ -291,7 +298,7 @@ public static class CodegenCli
     public static string LegacyProgram(string command) =>
         $"{command}: codegen/Program.cs does not run Generators.All, so it would ignore the generator list in " +
         "codegen/Generators.cs. Replace it with the two-line entry `using MetaObjects.Codegen;` and " +
-        "`return CodegenCli.Run(args, Generators.All);`. See https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md, section \"C#\".";
+        "`return CodegenCli.Run(args, Generators.All);`. See " + DocsMigrationGuide + ".";
 
     /// <summary>What a gen run prints, exit 2, when it finds 1.0 template-spec configuration: a
     /// project-root <c>template-spec.json</c> no entry declares, or <c>--template-spec</c>. Through
@@ -303,7 +310,7 @@ public static class CodegenCli
         $"{command}: found 1.0 template-spec configuration ({what}). Nothing reads it any more, so this run " +
         "would not render its templates. Declare it in codegen/Generators.cs as " +
         "`new MetaObjects.Codegen.TemplateCodegen.TemplateSpecGenerator { Spec = \"template-spec.json\" }`. " +
-        "See https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md, section \"C#\".";
+        "See " + DocsMigrationGuide + ".";
 
     /// <summary>
     /// The 1.0 template-spec configuration a run would have read and no longer does, or <c>null</c>:
