@@ -8,8 +8,8 @@ import com.metaobjects.field.MetaField;
  * <p>The strategy is CONFIG, not metadata (ADR-0023 does not apply). The same model has
  * to be able to drive a snake_case Postgres schema and a literal-column one — which is
  * exactly why it lives beside the persistence layer rather than in the metadata, and why
- * the byte-gated registry prose for {@code @column} describes the default as coming
- * <em>"via columnNamingStrategy"</em>.</p>
+ * the byte-gated registry prose for {@code @column} describes the default as coming from
+ * <em>"the project's naming.columns rule"</em>.</p>
  *
  * <p>Cross-port siblings sharing this vocabulary and this algorithm:</p>
  * <ul>

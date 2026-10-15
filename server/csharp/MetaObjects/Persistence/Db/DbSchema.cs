@@ -18,7 +18,7 @@ public static class DbSchema
         Name: DbConstants.FIELD_ATTR_COLUMN,
         ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
         Required: false,
-        Description: "Physical column name for this field on an rdb source. Defaults to the field name via columnNamingStrategy.");
+        Description: "Physical column name for this field on an rdb source. Defaults to the field name under the project's naming.columns rule (the \"naming\" setting in .metaobjects/config.json).");
 
     /// <summary><c>@db.indexed</c> — suppress the @filterable-without-index warning; on every field subtype.</summary>
     public static readonly AttrSchema DbIndexedSchema = new AttrSchema(

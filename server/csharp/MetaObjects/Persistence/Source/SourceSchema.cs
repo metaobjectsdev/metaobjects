@@ -22,8 +22,9 @@ public static class SourceSchema
             ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
             Required: false,
             Description: "Physical SQL table name for source.rdb @kind: \"table\" (default). FR-016: " +
-                "Defaults from the source's bare structural `name` via the project's columnNamingStrategy " +
-                "when omitted, then from the owning entity's name. Pre-1.0 legacy spelling for " +
+                "Defaults from the source's bare structural `name` under the project's naming.tables rule " +
+                "(the \"naming\" setting in .metaobjects/config.json) when omitted, then from the owning " +
+                "entity's name. Pre-1.0 legacy spelling for " +
                 "view/materializedView/storedProc/tableFunction kinds during the transition; " +
                 "canonical-serializer rewrites to the kind-matching alias."),
 

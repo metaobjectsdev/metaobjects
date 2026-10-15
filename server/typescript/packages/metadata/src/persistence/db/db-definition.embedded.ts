@@ -19,7 +19,7 @@ export const DB_DEFINITION: ProviderDefinition = {
           "name": "column",
           "min": 0,
           "max": 1,
-          "description": "Physical column name for this field on an rdb source. Defaults to the field name via columnNamingStrategy."
+          "description": "Physical column name for this field on an rdb source. Defaults to the field name under the project's naming.columns rule (the \"naming\" setting in .metaobjects/config.json)."
         },
         {
           "type": "attr",
@@ -108,7 +108,7 @@ export const DB_DEFINITION: ProviderDefinition = {
           "name": "table",
           "min": 0,
           "max": 1,
-          "description": "Physical SQL table name for source.rdb @kind: \"table\" (default). FR-016: Defaults from the source's bare structural `name` via the project's columnNamingStrategy when omitted, then from the owning entity's name. Pre-1.0 legacy spelling for view/materializedView/storedProc/tableFunction kinds during the transition; canonical-serializer rewrites to the kind-matching alias."
+          "description": "Physical SQL table name for source.rdb @kind: \"table\" (default). FR-016: Defaults from the source's bare structural `name` under the project's naming.tables rule (the \"naming\" setting in .metaobjects/config.json) when omitted, then from the owning entity's name. Pre-1.0 legacy spelling for view/materializedView/storedProc/tableFunction kinds during the transition; canonical-serializer rewrites to the kind-matching alias."
         },
         {
           "type": "attr",

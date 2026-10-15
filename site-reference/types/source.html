@@ -154,7 +154,7 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td></td>
 <td></td>
 <td>metaobjects-db</td>
-<td>Physical SQL table name for source.rdb @kind: &quot;table&quot; (default). FR-016: Defaults from the source&#39;s bare structural <code>name</code> via the project&#39;s columnNamingStrategy when omitted, then from the owning entity&#39;s name. Pre-1.0 legacy spelling for view/materializedView/storedProc/tableFunction kinds during the transition; canonical-serializer rewrites to the kind-matching alias.</td>
+<td>Physical SQL table name for source.rdb @kind: &quot;table&quot; (default). FR-016: Defaults from the source&#39;s bare structural <code>name</code> under the project&#39;s naming.tables rule (the &quot;naming&quot; setting in .metaobjects/config.json) when omitted, then from the owning entity&#39;s name. Pre-1.0 legacy spelling for view/materializedView/storedProc/tableFunction kinds during the transition; canonical-serializer rewrites to the kind-matching alias.</td>
 </tr>
 <tr>
 <td><code>@unmanaged</code></td>

@@ -312,14 +312,15 @@ CREATE TABLE councils (
 );
 ```
 
-To override the SQL column name per-field, use `@dbColumn`:
+To override the SQL column name per-field, use `@column`:
 
 ```jsonc
-{ "field.long": { "name": "councilId", "@dbColumn": "council_uuid" } }
+{ "field.long": { "name": "councilId", "@column": "council_uuid" } }
 ```
 
-The mapping policy is project-wide via `columnNamingStrategy` in
-`metaobjects.config.ts`: `snake_case` (default) | `literal` | `kebab-case`.
+The mapping policy is project-wide: `"naming": { "columns": … }` in
+`.metaobjects/config.json`, `snake_case` (default) | `literal` | `kebab-case`
+(ADR-0058; every port reads the same setting).
 
 ## License
 
