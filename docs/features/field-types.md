@@ -89,72 +89,53 @@ Three rows need a footnote:
 | `name` | string | Field name (camelCase). |
 | `@required` | bool | If true, generated type omits `?` / `Optional`. |
 | `@maxLength` | int | Length for string types (drives `varchar(N)`). |
-| `@column` | string | Physical column name (overrides `columnNamingStrategy`). |
+| `@column` | string | Physical column name (overrides the project's `naming.columns` rule). |
 | `@default` | any | Default value (literal or canonical SQL default function). |
 | `@filterable` | bool | Field appears in the generated server-side filter allowlist. |
 | `@sortable` | bool | Field appears in the server-side sort allowlist (defaults to `@filterable`). |
 
-## Column naming — `@column` and `columnNamingStrategy`
+## Column naming — `@column` and the `naming` setting
 
 A field has **two names**: the one your code calls it (`createdAt`, the metadata
 `name`, and what every port's generated property/attribute is called) and the one the
 database calls it. `@column` sets the second. It never changes the first.
 
-With no `@column`, the physical name comes from the project's **column-naming
-strategy** — `literal` (the field name verbatim), `snake_case`, or `kebab-case`. That
+With no `@column`, the physical name comes from the project's **column rule**:
+`snake_case` (the default), `literal` (the field name verbatim) or `kebab-case`. That
 is CONFIG, not metadata, on purpose: the same model has to be able to drive a
-snake_case Postgres schema and a literal-column one.
+snake_case Postgres schema and a literal-column one. It is ONE setting for the whole
+project, `naming` in `.metaobjects/config.json` (ADR-0058):
 
-**The defaults are not the same everywhere, and that is the thing to know:**
+```json
+{ "schema_version": 1, "naming": { "columns": "literal" } }
+```
 
-| Where | Default | How to set it |
-|---|---|---|
-| `meta migrate` (schema, every port — ADR-0015) | `snake_case` | `columnNamingStrategy` in `metaobjects.config.ts` |
-| TypeScript codegen + `ObjectManager` | `snake_case` | `columnNamingStrategy` in `metaobjects.config.ts`; `columnNamingStrategy` option on `ObjectManager` |
-| C# (`dotnet meta gen` + `verify`) | `literal` | `--column-naming snake_case` (both `gen` and `verify` take it — `verify` must be told the same strategy `gen` used, or its regen false-drifts) |
-| Python (`metaobjects gen` + `verify` + `ObjectManager`) | `literal` | `--column-naming snake_case` (`gen` and `verify`); `ObjectManager(..., column_naming=...)` (runtime) |
-| Java (Maven `generate`/`verify` + `ObjectManagerDB`) | `literal` | `<args><columnNaming>snake_case</columnNaming></args>` on a generator in the pom (codegen — `verify` reads the same pom `<args>` as `generate`, so nothing separate to pass); `SimpleMappingHandlerDB.setColumnNaming(...)` (runtime) |
-| Kotlin (Exposed table codegen) | `snake_case` | `<args><columnNaming>literal</columnNaming></args>` in the pom |
+Every port reads it: `meta migrate`, every port's codegen (its `names` generator
+included), every runtime `ObjectManager`, and `verify`. They cannot disagree, because
+none of them is configured separately. Table names follow the same pattern:
+`naming.tables` (`snake_case`, the default, or `literal`) applies to a source with no
+`@table`/`@view`/`@proc`/`@function`, after its own `name` and before the object's name
+is made plural.
 
-**Kotlin's `snake_case` codegen default and the JVM's shared `literal` runtime
-default point opposite ways on purpose, not by typo.** The Kotlin generator has
-always emitted `snake_case`; changing that default now would silently re-point
-every existing Exposed table binding at columns that no longer exist.
-`ObjectManagerDB`'s `literal` default predates the Kotlin generator entirely.
-Read the two rows above side by side and it looks like a copy-paste mistake —
-`ColumnNaming.java:26-28` states the divergence is intentional and why.
+Every port ships a per-object `names` generator that resolves physical names through
+that setting: one generated constants file per object, so a hand-written consumer
+references a constant instead of respelling a physical name as a string literal.
+Enablement differs by port; see each port's own doc
+(`docs/ports/{typescript,csharp,java,kotlin,python}.md`).
 
-Every port's codegen now takes exactly one column-naming option (the table
-above), and every port ships a per-object `names` generator that resolves
-physical names through it — one generated constants file per object, so a
-hand-written consumer references a constant instead of respelling a physical
-name as a string literal. Enablement and defaults differ by port; see each
-port's own doc (`docs/ports/{typescript,csharp,java,kotlin,python}.md`).
+**The setting is the answer.** Set it once, to the rule `meta migrate` created the schema
+with (that is `snake_case` unless you changed it), and every generated artifact in every
+port agrees with the database. A per-field `@column` is for a column whose name
+genuinely cannot be derived at all (a legacy column, a table whose schema is owned
+outside this project), not a substitute for the setting.
 
-**The option is the answer.** A project sets that one option per port to match
-the strategy `meta migrate` used to create the schema, once, and every
-generated artifact in that port agrees with the database. A per-field
-`@column` is for a column whose name genuinely cannot be derived at all — a
-legacy column, a table whose schema is owned outside this project — **not** a
-workaround for getting five ports' defaults to agree; treating it as the
-general answer means touching every field with a case boundary instead of
-touching one config value per port.
+Through 1.0 each port had its own column-naming option and its own default, and C#,
+Java and Python defaulted to `literal` while `meta migrate` created `snake_case`. Those
+options are refused in 1.1.0; [the migration guide](migrations/physical-naming.md) gives
+the one line that keeps 1.0's `literal` names where a database needs them.
 
-**The defaults disagree, and that is a real trap, not a hypothetical one.**
-`meta migrate` defaults `snake_case`; Java, Python and C# codegen default
-`literal`. A project that sets neither ends up with a migration and a
-generated binding spelling the same column two ways — the DDL creates
-`created_at`, the generated constant/property says `createdAt` — and nothing
-catches it before a query fails at the database. Worse, **codegen cannot see a
-runtime call**: nothing reconciles a codegen-time `--column-naming` /
-`columnNamingStrategy` / `<columnNaming>` with a *runtime* call like
-`SimpleMappingHandlerDB.setColumnNaming(...)` or
-`ObjectManager(column_naming=...)`. A project that changes one must change the
-other by hand, every time, in every port that has both a codegen-side and a
-runtime-side setting.
-
-A field can still declare `@column` explicitly for the case that setting the
-option cannot cover — a name that no strategy would ever produce:
+A field can still declare `@column` explicitly for the case the setting cannot
+cover — a name that no strategy would ever produce:
 
 ```json
 { "field.timestamp": { "name": "createdAt", "@column": "created_at" } }

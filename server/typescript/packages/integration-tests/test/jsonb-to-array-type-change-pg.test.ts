@@ -22,6 +22,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startPostgres, type RunningPg } from "../src/postgres-container.ts";
 
+/** The project setting `"naming": { "columns": "literal" }` (ADR-0058), set where the
+ *  project-aware load sets it: on the loaded root. */
+function literalColumns<T>(root: T): T {
+  (root as unknown as { physicalNaming: unknown }).physicalNaming = { columns: "literal", tables: "snake_case" };
+  return root;
+}
+
 const V1 = "20260911000000-threads";
 const V2 = "20260911000001-threads-to-arrays";
 
@@ -76,7 +83,7 @@ beforeEach(async () => {
 
 async function expectedFor(metaJson: string): Promise<SchemaSnapshot> {
   const root = (await new MetaDataLoader().load([new InMemoryStringSource(metaJson)])).root;
-  return buildExpectedSchema(root, { columnNamingStrategy: "literal", dialect: "postgres" });
+  return buildExpectedSchema(literalColumns(root), { dialect: "postgres" });
 }
 
 /** Diff → emit → write the migration files → apply them through the real runner. */

@@ -37,7 +37,6 @@ generated that the config does not declare.
 ```yaml
 # metaobjects.config.yaml
 metadata: metadata
-columnNaming: snake_case   # the naming your database's columns use: literal (default) | snake_case | kebab-case
 templates: prompts         # where template refs resolve from (default: prompts/, else templates/)
 targets:
   app:
@@ -45,13 +44,18 @@ targets:
     generators: [entity, filter-allowlist, routes]
 ```
 
-**Declare `columnNaming` in the config, never only on a command line.** It decides every
-column name the `names` constants and the generated queries use. A plain `metaobjects gen`
-reads it from the config; a script that passed `--column-naming snake_case` and is replaced
-by a plain `gen` would otherwise fall back to `literal` and rewrite every `*_names.py` with
-camelCase names the database does not have. A `--column-naming` or `--templates` that
-contradicts the config is refused, and `verify --codegen` names a naming mismatch as one
-rather than telling you to regenerate.
+**Column names come from `naming` in `.metaobjects/config.json`, the one setting every port
+reads** (ADR-0058): `meta migrate`, every port's codegen and every runtime `ObjectManager`.
+The default is `snake_case`, what `meta migrate` creates. A database whose columns are named
+exactly like the fields declares it there, once, for every port:
+
+```json
+{ "schema_version": 1, "naming": { "columns": "literal" } }
+```
+
+There is no per-port or command-line naming: `--column-naming` is refused, and
+`verify --codegen` names a naming mismatch as one rather than telling you to regenerate. A `--templates` that contradicts
+the config's `templates` is refused.
 
 ```bash
 metaobjects gen                               # runs every target's generators into its outDir
@@ -62,8 +66,8 @@ metaobjects verify --codegen                  # regenerate the same list into a 
 With no `metaobjects.config.yaml`, `gen` and `verify --codegen` exit 2 and write nothing.
 The 1.0 form `metaobjects gen <metadata_dir> --out <dir> --generators <names>` is not read;
 `--target`, `--entities`, `--provider` and `--baseline` still apply to the list;
-`--column-naming` and `--templates` only where the config declares no `columnNaming` /
-`templates` (a flag that disagrees with the config is refused). `verify --templates` reads
+`--templates` only where the config declares no `templates` (a flag that disagrees with the
+config is refused). `verify --templates` reads
 `metadata` and `templates` from the same config (`--prompts` overrides only when the config
 names no `templates`). `metaobjects verify` defaults to `--codegen` (it shares the exact
 `gen` code path so the two can't diverge). `--templates` is the prompt/template drift gate

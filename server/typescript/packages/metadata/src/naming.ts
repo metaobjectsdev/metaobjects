@@ -53,17 +53,74 @@ export function toKebabCase(s: string): string {
 }
 
 /**
- * Column-naming strategy applied by the persistence layer to fields with no
- * explicit `@column` override. Persistence-layer config (set on
- * ObjectManager / buildExpectedSchema / codegen config), not a metadata attr —
- * the same metadata can drive snake_case (PG convention) or literal (EF
- * convention) consumers. TS port defaults to snake_case; C# port defaults to
- * literal.
+ * How a field with no `@column` becomes a column name. One project setting,
+ * `naming.columns` in `.metaobjects/config.json`, read by every port (ADR-0058): the
+ * loaded root carries it ({@link physicalNamingOf}), so codegen, migrate, the runtime
+ * and verify resolve the same name. Not a metadata attr: `@column` is the per-field
+ * override, this is the rule for the rest.
  */
 export type ColumnNamingStrategy = "snake_case" | "literal" | "kebab-case";
 
-/** Single source of truth for the TS-port default. */
+/** Every column-naming rule, in the order the conformance corpus lists them. */
+export const COLUMN_NAMING_STRATEGIES: readonly ColumnNamingStrategy[] = ["snake_case", "literal", "kebab-case"];
+
+/** The default in EVERY port: what `meta migrate` has always created. */
 export const DEFAULT_COLUMN_NAMING_STRATEGY: ColumnNamingStrategy = "snake_case";
+
+/**
+ * How an object with no physical-name attribute (`@table`, `@view`, ...) and no source name
+ * gets its table name: the entity (or source) name cased by this rule. The entity-name
+ * fallback keeps the frozen legacy pluralizer under every rule ({@link pluralizeTableNameLegacy}).
+ */
+export type TableNamingRule = "snake_case" | "literal";
+
+/** Every table-naming rule. */
+export const TABLE_NAMING_RULES: readonly TableNamingRule[] = ["snake_case", "literal"];
+
+/** The project's physical-naming rules: `naming` in `.metaobjects/config.json` (ADR-0058). */
+export interface PhysicalNaming {
+  readonly columns: ColumnNamingStrategy;
+  readonly tables: TableNamingRule;
+}
+
+/** The default in every port, equal to what `meta migrate` has always created. */
+export const DEFAULT_PHYSICAL_NAMING: PhysicalNaming = Object.freeze({
+  columns: DEFAULT_COLUMN_NAMING_STRATEGY,
+  tables: "snake_case",
+});
+
+/**
+ * The physical-naming rules for the tree `node` belongs to: what its root carries, set by the
+ * project-aware load from `.metaobjects/config.json`, else {@link DEFAULT_PHYSICAL_NAMING}.
+ * Read through the root, not passed around, so every consumer of one loaded model resolves
+ * the same physical names.
+ */
+export function physicalNamingOf(node: MetaData): PhysicalNaming {
+  const naming = (node.root() as { physicalNaming?: PhysicalNaming }).physicalNaming;
+  return naming ?? DEFAULT_PHYSICAL_NAMING;
+}
+
+/** The migration guide every refusal of a former naming source names (ADR-0058). */
+export const PHYSICAL_NAMING_MIGRATION_GUIDE =
+  "https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/physical-naming.md";
+
+/**
+ * What a former column-naming source prints when it is still used (ADR-0058): the one
+ * setting, where it goes, and the guide. Same words in every port. `what` names the source
+ * exactly; `value` is the rule it gave, carried into the example so the move is mechanical.
+ */
+export function physicalNamingRemovedMessage(what: string, value: string = "literal"): string {
+  return (
+    `${what} was removed in 1.1.0. Column and table naming is one project setting now, read by ` +
+    `every port: "naming" in .metaobjects/config.json, for example "naming": { "columns": "${value}" }. ` +
+    `Move it there and delete ${what}. See ${PHYSICAL_NAMING_MIGRATION_GUIDE}`
+  );
+}
+
+/** `name` cased by the table rule. */
+export function applyTableNamingRule(name: string, rule: TableNamingRule): string {
+  return rule === "literal" ? name : toSnakeCase(name);
+}
 
 export function applyColumnNamingStrategy(name: string, strategy: ColumnNamingStrategy): string {
   switch (strategy) {
@@ -238,13 +295,13 @@ export function resolveTableName(entity: MetaData): string {
   const source = primaryRdbSource(entity);
   if (source !== undefined) return source.physicalName;
   // Frozen: this is a DEFAULT PHYSICAL name, not an API-surface name. See
-  // pluralizeTableNameLegacy's doc.
-  return pluralizeTableNameLegacy(toSnakeCase(entity.name));
+  // pluralizeTableNameLegacy's doc. Cased by the project's table rule (ADR-0058).
+  return pluralizeTableNameLegacy(applyTableNamingRule(entity.name, physicalNamingOf(entity).tables));
 }
 
 export function resolveColumnName(
   field: MetaData,
-  strategy: ColumnNamingStrategy = DEFAULT_COLUMN_NAMING_STRATEGY,
+  strategy: ColumnNamingStrategy = physicalNamingOf(field).columns,
 ): string {
   // ADR-0039: resolving — a concrete field may inherit @column via extends.
   const col = field.attr(FIELD_ATTR_COLUMN);
@@ -335,7 +392,7 @@ export interface EntityNameMap {
 
 export function buildNameMap(
   entity: MetaData,
-  strategy: ColumnNamingStrategy = DEFAULT_COLUMN_NAMING_STRATEGY,
+  strategy: ColumnNamingStrategy = physicalNamingOf(entity).columns,
 ): EntityNameMap {
   const jsToDb = new Map<string, string>();
   const dbToJs = new Map<string, string>();

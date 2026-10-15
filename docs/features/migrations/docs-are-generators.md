@@ -376,7 +376,7 @@ exists, else `templates/`.
 | the `api/csharp` subdirectory under `--out` | `ApiSubDir`, same default |
 | `dotnet meta gen --template-spec <json>`, or a project-root `template-spec.json` | a `TemplateSpecGenerator { Spec = "<json>" }` entry |
 | `dotnet meta gen --template-root <dir>` | `TemplateRoot` on the spec entry, and the constructor argument of the `render-helper` entry: `new MetaObjects.Codegen.Generators.RenderHelperGenerator("prompts")` |
-| `dotnet meta gen --column-naming <strategy>` (and the same flag on `verify --codegen`) | `ColumnNaming` on the list: `All { get; } = new GeneratorList { ColumnNaming = ColumnNamingStrategy.SnakeCase, Entries = [ ... ] };`. Gen and `verify --codegen` both read it; a flag that contradicts it is refused |
+| `dotnet meta gen --column-naming <strategy>` (and the same flag on `verify --codegen`) | `"naming": { "columns": "<strategy>" }` in `.metaobjects/config.json`, the one setting every port reads; the flag is refused. See [physical-naming.md](physical-naming.md) |
 | `dotnet meta docs --namespace <ns>` | the gen run's `--namespace`, as before |
 | whether you ran `dotnet meta docs` | whether `ApiDocsGenerator` is listed |
 | an owned api-docs copy, run by `dotnet meta docs` (1.1.0 release candidates only) | `new Codegen.Generators.ApiDocsGenerator { ... }` in the list, in place of the packaged one |
@@ -397,10 +397,8 @@ dotnet meta gen ./metaobjects --out ./Generated --generators api-docs
 ```
 
 Drop `--generators` from a `dotnet meta gen` or `verify --codegen` line that used it to choose
-the generators: the list chooses them now. Move `--column-naming` into the list as
-`ColumnNaming` (above) before you shorten a script's command line: a run with neither
-uses `literal`, and on a database with `snake_case` columns it rebinds every entity to
-columns that do not exist.
+the generators: the list chooses them now. A line that passed `--column-naming` is refused;
+move the value to `naming` in `.metaobjects/config.json` ([physical-naming.md](physical-naming.md)).
 
 ## Python
 
@@ -492,7 +490,7 @@ metaobjects gen
 | `gen --generators a,b,c` (the selection) | the target's `generators`; `--generators` now only narrows a run to declared entries, and naming one no target declares is refused |
 | `gen --template-spec <json>`, or the `template-spec.json` beside `<metadata_dir>` that 1.0 found on its own | `templateSpec: <json>` on the target its output belongs in; a leftover `template-spec.json` that no target declares fails the run with a line that starts `metaobjects gen: found 1.0 template-spec configuration (` |
 | `gen --entities a,b` | the target's `entities` (`--entities` still narrows a run) |
-| `gen --column-naming <strategy>` (and `verify --codegen --column-naming`) | top-level `columnNaming`, which `gen` and `verify --codegen` both read; a flag that contradicts it is refused |
+| `gen --column-naming <strategy>` (and `verify --codegen --column-naming`) | `"naming": { "columns": "<strategy>" }` in `.metaobjects/config.json`, the one setting every port reads; the flag is refused. See [physical-naming.md](physical-naming.md) |
 | `gen --templates <dir>` (and `verify --prompts <dir>`) | top-level `templates`, relative to the config file; `verify --templates` reads it, and `metadata`, from the config too |
 
 **Give the docs target an `outDir` that holds generated files only.**
@@ -505,11 +503,10 @@ generated pages count as foreign files, so in a shared directory each port's
 
 **Scripts and CI.** Replace `metaobjects docs ...` with `metaobjects gen`, and
 `metaobjects gen <metadata_dir> --out <dir> ...` with `metaobjects gen` once the config
-declares the list **and every setting the old line passed**: `--column-naming` becomes
-`columnNaming`, `--templates` becomes `templates`. A plain `metaobjects gen` with neither
-uses `literal` naming, and on a database with `snake_case` columns it rewrites every
-`*_names.py` with column names that do not exist. To write only the documentation, name the
-docs entry (or its target):
+declares the list **and every setting the old line passed**: `--templates` becomes
+`templates`, and `--column-naming` moves to `naming` in `.metaobjects/config.json`
+([physical-naming.md](physical-naming.md)). To write only the documentation, name the docs
+entry (or its target):
 
 ```
 metaobjects gen --generators api-docs

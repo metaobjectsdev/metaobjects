@@ -10,7 +10,7 @@ import {
   DEFAULT_DIALECT,
   missingDialectMessage,
 } from "@metaobjectsdev/codegen-ts";
-import type { AgentSchemaInput, ColumnNamingStrategy, Dialect, SchemaColumnLike } from "@metaobjectsdev/codegen-ts";
+import type { AgentSchemaInput, Dialect, SchemaColumnLike } from "@metaobjectsdev/codegen-ts";
 import { buildExpectedSchemaWithProvenance, columnTypeSql, qualifiedDbName } from "@metaobjectsdev/migrate-ts";
 import type { MetaRoot } from "@metaobjectsdev/metadata";
 import { describeError } from "./error-text.js";
@@ -23,7 +23,6 @@ import { describeError } from "./error-text.js";
 export function buildAgentSchemaInput(
   root: MetaRoot,
   configured: Dialect | undefined,
-  strategy: ColumnNamingStrategy,
   warn: (message: string) => void,
 ): AgentSchemaInput | undefined {
   // THE RUNNER'S OWN GUARD DECIDES THIS, not a default applied here. `DEFAULT_DIALECT` is
@@ -47,10 +46,9 @@ export function buildAgentSchemaInput(
   try {
     const built = buildExpectedSchemaWithProvenance(root, {
       dialect,
-      columnNamingStrategy: strategy,
       // Views come from codegen-ts (migrate-ts never generates view DDL), exactly as
       // `verify --db` threads them.
-      views: buildProjectionViews(root, { dialect, columnNamingStrategy: strategy }),
+      views: buildProjectionViews(root, { dialect }),
     });
     return {
       dialect,

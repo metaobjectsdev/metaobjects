@@ -93,8 +93,8 @@ column — never `AuthorNames.NAME_COLUMN`. The constant is for what the DSL doe
 reach: `exec("…")` raw SQL, a Flyway script, a log line, an external system's column
 mapping. There it is `AuthorNames.SOURCE_PRIMARY_TABLE` / `AuthorNames.NAME_COLUMN`
 (opt-in: `KotlinNamesGenerator` in the pom — see the codegen reference), never a literal.
-Give both generators the same `columnNaming`, or the table and the constants disagree about
-a column.
+Both read the project's one `naming` setting in `.metaobjects/config.json`, so the table
+and the constants always agree about a column.
 
 The object mirrors the metadata tree: `AuthorNames.NAME` is the OBJECT's name
 (`"Author"`), and a physical name sits under the member that says what it IS —

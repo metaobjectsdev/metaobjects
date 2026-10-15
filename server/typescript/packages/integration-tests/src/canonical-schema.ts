@@ -16,10 +16,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-import {
-  type ColumnNamingStrategy,
-  type MetaRoot,
-} from "@metaobjectsdev/metadata";
+import type { MetaRoot } from "@metaobjectsdev/metadata";
 import { buildExpectedSchema, diff, emit, type Dialect } from "@metaobjectsdev/migrate-ts";
 import { buildProjectionViews } from "@metaobjectsdev/codegen-ts";
 
@@ -32,15 +29,6 @@ import { CANONICAL_DIR } from "./paths.ts";
  * that match what introspection sees there.
  */
 export const CANONICAL_SCHEMA_DIALECT: CanonicalSchemaDialect = "postgres";
-
-/**
- * Column-naming strategy for the canonical schema. Pinned to "literal" so the
- * generated column names match the ObjectManager's runtime strategy the query
- * runners use (the runner constructs ObjectManager with `columnNamingStrategy:
- * "literal"`). A mismatch would yield a schema whose columns the runtime can't
- * address.
- */
-export const CANONICAL_COLUMN_NAMING: ColumnNamingStrategy = "literal";
 
 /** Absolute path to the committed canonical Postgres schema artifact. */
 export const CANONICAL_SCHEMA_SQL_PATH = resolve(CANONICAL_DIR, "schema.postgres.sql");
@@ -97,13 +85,11 @@ export async function generateCanonicalSchemaSql(
 ): Promise<string> {
   const dialectId = opts?.dialect ?? CANONICAL_SCHEMA_DIALECT;
   const dialect: Dialect = dialectId;
+  // Column naming is the root's: the corpus declares it in its .metaobjects/config.json
+  // (ADR-0058), and the load applied it — the same file every port's runner reads.
   const expected = buildExpectedSchema(root, {
     dialect,
-    columnNamingStrategy: CANONICAL_COLUMN_NAMING,
-    views: buildProjectionViews(root, {
-      dialect,
-      columnNamingStrategy: CANONICAL_COLUMN_NAMING,
-    }),
+    views: buildProjectionViews(root, { dialect }),
   });
   const r = await diff({ expected, actual: { tables: [], views: [] }, dialect });
   const { up } = emit(r.changes, { dialect, expectedSchema: expected });

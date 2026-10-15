@@ -17,7 +17,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { runGen, defineConfig, buildReportViews } from "@metaobjectsdev/codegen-ts";
-import { DEFAULT_COLUMN_NAMING_STRATEGY } from "@metaobjectsdev/metadata";
+import { DEFAULT_PHYSICAL_NAMING } from "@metaobjectsdev/metadata";
 import { entityFile, routesFile } from "@metaobjectsdev/test-generators";
 import { loadMetadataFile } from "./load-metadata.ts";
 import { seedInserts, SERVED_REPORTS, type ReportSeed } from "./api-contract-report-generated-server.ts";
@@ -92,6 +92,10 @@ export async function startSqliteReportServer(
   const tmp = mkdtempSync(join(genTmpRoot, "api-contract-report-sqlite-"));
 
   const root = await loadMetadataFile(metaPath);
+  // This lane provisions its own base tables in the generated Drizzle tables' default
+  // spelling (snake_case), not the corpus's committed literal-column schema the other ports
+  // read, so it sets the root to the default rules (ADR-0058: every resolver reads the root).
+  root.physicalNaming = DEFAULT_PHYSICAL_NAMING;
   const lr = await runGen({
     config: defineConfig({
       outDir: tmp,
@@ -114,10 +118,7 @@ export async function startSqliteReportServer(
 
   const client = await openEngine(engine, tmp);
 
-  const views = buildReportViews(root, {
-    dialect: "sqlite",
-    columnNamingStrategy: DEFAULT_COLUMN_NAMING_STRATEGY,
-  });
+  const views = buildReportViews(root, { dialect: "sqlite" });
   for (const t of BASE_TABLES) await client.run(t.ddl);
   for (const v of views) {
     if (v.sql === undefined) throw new Error(`view ${v.name} has no SQL`);

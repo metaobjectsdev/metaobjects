@@ -809,10 +809,12 @@ describe("ADR-0034 — the cube-model reference is byte-identical to the built-i
   /** The tree a run writes into a scratch project, so the runner's own selection applies. */
   async function runTree(make: () => Generator, extra: Partial<Parameters<typeof runGen>[0]>, config: { dialect: "postgres" | "mysql" | "sqlite" }) {
     const root = await loadModelFile(CANONICAL_MODEL);
+    // The canonical corpus declares literal columns in its .metaobjects/config.json (ADR-0058).
+    root.physicalNaming = { columns: "literal", tables: "snake_case" };
     const dir = mkdtempSync(join(tmpdir(), "cube-ref-run-"));
     try {
       await runGen({
-        config: defineConfig({ outDir: join(dir, "out"), columnNamingStrategy: "literal", dialect: config.dialect, generators: [make()] }),
+        config: defineConfig({ outDir: join(dir, "out"), dialect: config.dialect, generators: [make()] }),
         metadata: root,
         projectRoot: dir,
         ...extra,
@@ -1399,8 +1401,7 @@ describe("ADR-0034 Amendments 8 and 9 — the requirements and agent-docs refere
     const dialect = "postgres" as const;
     const built = buildExpectedSchemaWithProvenance(root, {
       dialect,
-      columnNamingStrategy: "snake_case",
-      views: buildProjectionViews(root, { dialect, columnNamingStrategy: "snake_case" }),
+      views: buildProjectionViews(root, { dialect }),
     });
     return {
       dialect,
@@ -1458,15 +1459,14 @@ describe("ADR-0034 Amendments 8 and 9 — the requirements and agent-docs refere
     test(`agent-docs — ${corpus.label}`, async () => {
       const root = await loadFiles(corpus.files);
       const schema = schemaFor(root);
-      const strategy = "snake_case" as const;
       for (const ui of [true, false]) {
         // Through the run's facts, through the factory's options, and with no schema at all.
         const door: DocsRunFacts = { apiSurfaces: [], modelPages: false, agentSchema: () => schema };
         const viaDoor = await run(root, builtinAgentDocs(), door, ui);
         expect(await run(root, refAgentDocs(), door, ui)).toEqual(viaDoor);
-        const viaOptions = await run(root, builtinAgentDocs({ schema, columnNamingStrategy: strategy }), undefined, ui);
+        const viaOptions = await run(root, builtinAgentDocs({ schema }), undefined, ui);
         expect(viaDoor).toEqual(viaOptions);
-        expect(await run(root, refAgentDocs({ schema, columnNamingStrategy: strategy }), undefined, ui)).toEqual(viaOptions);
+        expect(await run(root, refAgentDocs({ schema }), undefined, ui)).toEqual(viaOptions);
         expect(await run(root, refAgentDocs(), undefined, ui)).toEqual(await run(root, builtinAgentDocs(), undefined, ui));
         // The options win over the run's facts in both: a direct caller states what it means.
         expect(await run(root, refAgentDocs({ subDir: "for-agents" }), door, ui)).toEqual(

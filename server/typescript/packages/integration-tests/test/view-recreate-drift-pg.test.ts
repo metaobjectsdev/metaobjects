@@ -20,6 +20,13 @@ import { startPostgres, type RunningPg } from "../src/postgres-container.ts";
 import { loadMetadataDir } from "../src/load-metadata.ts";
 import { CANONICAL_DIR } from "../src/paths.ts";
 
+/** The project setting `"naming": { "columns": "literal" }` (ADR-0058), set where the
+ *  project-aware load sets it: on the loaded root. */
+function literalColumns<T>(root: T): T {
+  (root as unknown as { physicalNaming: unknown }).physicalNaming = { columns: "literal", tables: "snake_case" };
+  return root;
+}
+
 let pg: RunningPg;
 let k: Kysely<Record<string, unknown>>;
 let canonical: MetaRoot;
@@ -41,11 +48,9 @@ beforeEach(async () => {
   await sql.raw("DROP SCHEMA public CASCADE").execute(k);
   await sql.raw("CREATE SCHEMA public").execute(k);
 });
-
-const STRATEGY = "literal" as const;
-const views = () => buildProjectionViews(canonical, { dialect: "postgres", columnNamingStrategy: STRATEGY });
+const views = () => buildProjectionViews(literalColumns(canonical), { dialect: "postgres" });
 const expectedSchema = (): SchemaSnapshot =>
-  buildExpectedSchema(canonical, { columnNamingStrategy: STRATEGY, views: views() });
+  buildExpectedSchema(literalColumns(canonical), { views: views() });
 
 /**
  * The expected schema once the metadata widens `weeks.durationMinutes` to a bigint. Postgres blocks
@@ -94,7 +99,6 @@ describe("D3 — a view recreated only around a column change is not drift (post
     actual.tables.find((t) => t.name === "weeks")!.columns.find((c) => c.name === "durationMinutes")!.sqlType =
       { kind: "integer", bits: 64 };
     const drift = await computeDriftFromActual(actual, "postgres", canonical, {
-      columnNamingStrategy: STRATEGY,
       views: views(),
     });
     expect(drift.changes.map((c) => c.kind)).toEqual(["change-column-type"]);

@@ -154,7 +154,7 @@ describe("meta gen --list — the catalog", () => {
       // Facets read from the template's own header.
       expect(String(row.useWhen)).toContain("reporting vocabulary");
       expect(String(row.emits)).toContain("model/cubes/<Cube>.yml");
-      expect(row.configKeys).toEqual(["dialect", "columnNamingStrategy"]);
+      expect(row.configKeys).toEqual(["dialect"]);
       expect(row.requires).toEqual([]);
       // The emitted YAML imports nothing, so ejecting asks for no runtime package or peer.
       expect(row.install.runtime).toEqual([]);

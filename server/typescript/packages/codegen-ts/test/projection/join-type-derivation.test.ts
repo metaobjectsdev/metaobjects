@@ -47,7 +47,7 @@ const belongsToModel = (customerIdRequired: boolean, enforce = true) => [
 describe("#209 — belongs-to join type derived from FK optionality", () => {
   test("required FK → INNER JOIN (not LEFT OUTER)", async () => {
     const root = await load(belongsToModel(true));
-    const [v] = buildProjectionViews(root, { dialect: "postgres", columnNamingStrategy: "snake_case" });
+    const [v] = buildProjectionViews(root, { dialect: "postgres" });
     expect(v!.sql).toContain("INNER JOIN customers");
     expect(v!.sql).not.toContain("LEFT OUTER JOIN customers");
   });
@@ -58,14 +58,14 @@ describe("#209 — belongs-to join type derived from FK optionality", () => {
   // `ref_id` holds a group id this way). Pinned because LEFT OUTER was tried and reverted.
   test("required but UNENFORCED FK → INNER JOIN (reproduces the hand-written view)", async () => {
     const root = await load(belongsToModel(true, false));
-    const [v] = buildProjectionViews(root, { dialect: "postgres", columnNamingStrategy: "snake_case" });
+    const [v] = buildProjectionViews(root, { dialect: "postgres" });
     expect(v!.sql).toContain("INNER JOIN customers");
     expect(v!.sql).not.toContain("LEFT OUTER JOIN customers");
   });
 
   test("nullable FK → LEFT OUTER JOIN (preserved)", async () => {
     const root = await load(belongsToModel(false));
-    const [v] = buildProjectionViews(root, { dialect: "postgres", columnNamingStrategy: "snake_case" });
+    const [v] = buildProjectionViews(root, { dialect: "postgres" });
     expect(v!.sql).toContain("LEFT OUTER JOIN customers");
     expect(v!.sql).not.toContain("INNER JOIN customers");
   });
@@ -110,7 +110,7 @@ describe("#209 — nested join chain: an INNER hop under a LEFT ancestor demotes
 
   test("nullable ancestor (Order→Customer LEFT) forces the required Customer→Country hop to LEFT", async () => {
     const root = await load(nestedModel(false));
-    const [v] = buildProjectionViews(root, { dialect: "postgres", columnNamingStrategy: "snake_case" });
+    const [v] = buildProjectionViews(root, { dialect: "postgres" });
     // Both joins LEFT OUTER — an order with no customer must survive with NULLs, not
     // be dropped by an INNER JOIN countries whose ON references a NULLed customer col.
     expect(v!.sql).toContain("LEFT OUTER JOIN customers");
@@ -120,7 +120,7 @@ describe("#209 — nested join chain: an INNER hop under a LEFT ancestor demotes
 
   test("all-required chain stays INNER end to end", async () => {
     const root = await load(nestedModel(true));
-    const [v] = buildProjectionViews(root, { dialect: "postgres", columnNamingStrategy: "snake_case" });
+    const [v] = buildProjectionViews(root, { dialect: "postgres" });
     // Order→Customer required + Customer→Country required → both INNER (no base row lost).
     expect(v!.sql).toContain("INNER JOIN customers");
     expect(v!.sql).toContain("INNER JOIN countries");
@@ -154,7 +154,7 @@ describe("#209 — has-many (inverse-FK) join stays LEFT OUTER", () => {
         { "identity.primary": { name: "pk", extends: "Program.pk" } },
       ] } },
     ]);
-    const [v] = buildProjectionViews(root, { dialect: "postgres", columnNamingStrategy: "snake_case" });
+    const [v] = buildProjectionViews(root, { dialect: "postgres" });
     expect(v!.sql).toContain("LEFT OUTER JOIN weeks");
     expect(v!.sql).not.toContain("INNER JOIN weeks");
   });

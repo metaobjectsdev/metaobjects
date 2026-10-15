@@ -10,18 +10,38 @@ here.**
 
 ## [Unreleased]
 
+### Changed — one physical-naming setting, read by every port (ADR-0058)
+
+**This changes generated column names in C#, Java, Kotlin's runtime and Python unless you add
+one line.** Column and table names that the metadata does not give (`@column`, `@table`,
+`@view`, a source's `name`) now come from one project setting, `naming` in
+`.metaobjects/config.json`:
+`{ "naming": { "columns": "snake_case" | "literal" | "kebab-case", "tables": "snake_case" | "literal" } }`.
+`meta migrate`, every port's codegen (the names generators included), every runtime
+`ObjectManager` and `verify` read it from the loaded model, so codegen and the runtime can
+no longer disagree. Both rules default to `snake_case` in every port, which is what
+`meta migrate` creates; C#, Java, the JVM runtime and Python defaulted to `literal`. A
+database whose columns are named exactly like the fields adds
+`"naming": { "columns": "literal" }`. Every former place to set the rule is refused with a
+message naming the setting and the guide, never silently ignored: `columnNamingStrategy` in
+`metaobjects.config.ts` and on `ObjectManager` and `agentDocsFile()` (TypeScript),
+`--column-naming` (C#, Python), the `columnNaming` generator arg in `pom.xml` and
+`SimpleMappingHandlerDB.setColumnNaming` (Java, Kotlin), `ObjectManager(column_naming=)`
+(Python). The engine options that carried the rule (`buildExpectedSchema`,
+`buildProjectionViews`, `buildReportViews`, `computeDrift`, `planOffline`,
+`baselineFromMetadata`) read it from the model instead. Table names gain a `literal` rule.
+Every port runs the shared `fixtures/naming-conformance/physical-names/` corpus.
+Migration: `docs/features/migrations/physical-naming.md`.
+
+Found by the application-building test of 1.1.0-rc.3: following the migration guide, a plain
+`metaobjects gen` rewrote every `*_names.py` with camelCase column names the snake_case
+database does not have.
+
 ### Added
 
-- **Python: `columnNaming` and `templates` in `metaobjects.config.yaml`.** The column naming
-  and the template directory were flags only, so replacing a script's
-  `metaobjects gen <dir> --out ... --column-naming snake_case` with a plain `metaobjects gen`,
-  as the 1.1.0 migration guide said to, rewrote every `*_names.py` with camelCase column
-  names the database does not have. `gen`, `verify --codegen` and `verify --templates` read
-  both keys; a `--column-naming` or `--templates` that contradicts the config is refused.
-- **C#: `ColumnNaming` on the generator list.** `codegen/Generators.cs` may declare
-  `All { get; } = new GeneratorList { ColumnNaming = ColumnNamingStrategy.SnakeCase, Entries = [ ... ] };`.
-  `dotnet meta gen` and `verify --codegen` read it; a contradicting `--column-naming` is
-  refused. A plain collection keeps working. `dotnet meta init` scaffolds the new form.
+- **Python: `templates` in `metaobjects.config.yaml`.** The template directory was a flag
+  only; `gen`, `verify --codegen` and `verify --templates` read the key, and a `--templates`
+  that contradicts it is refused.
 - **Maven: `requires` is checked.** `mvn metaobjects:generate` fails, naming the missing
   companion and its class, when a listed generator's output references what an unlisted one
   writes (a Spring controller without the DTO, repository and filter allowlist; a Kotlin
@@ -33,8 +53,8 @@ here.**
 
 ### Fixed
 - `verify --codegen` (Python, C#) says when the committed output was generated with another
-  column naming, and how to declare it, instead of advising a regeneration that would commit
-  the wrong column names.
+  column rule, and names the `naming` setting, instead of advising a regeneration that would
+  commit the wrong column names.
 - Every "removed in 1.1.0" message and skill reference names the migration guide by its full
   public URL; the repository path they printed exists in no installed package.
 - The Java and Kotlin skills' only `pom.xml` examples generated code that did not compile;

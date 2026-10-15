@@ -41,29 +41,28 @@ using MetaObjects.Codegen;
 
 public static class Generators
 {
-    public static IReadOnlyList<IGenerator> All { get; } = new GeneratorList
-    {
-        // The naming your database's columns use: Literal (the default), SnakeCase or KebabCase.
-        ColumnNaming = ColumnNamingStrategy.SnakeCase,
-        Entries =
-        [
-            new MetaObjects.Codegen.Generators.EntityGenerator(),
-            new MetaObjects.Codegen.Generators.DbContextGenerator(),
-            new MetaObjects.Codegen.Generators.FilterAllowlistGenerator(),
-            new MetaObjects.Codegen.Generators.RoutesGenerator(),
-        ],
-    };
+    public static IReadOnlyList<IGenerator> All { get; } =
+    [
+        new MetaObjects.Codegen.Generators.EntityGenerator(),
+        new MetaObjects.Codegen.Generators.DbContextGenerator(),
+        new MetaObjects.Codegen.Generators.FilterAllowlistGenerator(),
+        new MetaObjects.Codegen.Generators.RoutesGenerator(),
+    ];
 }
 ```
 
-**Declare `ColumnNaming` on the list, never only on a command line.** It decides every
-column name the entity mapping and the `names` constants use, for every entry. `gen` and
-`verify --codegen` both read it from the list, so a plain `dotnet meta gen` cannot fall
-back to `Literal` and rebind the entities to camelCase columns the database does not have.
-A `--column-naming` that contradicts the list is refused, and `verify --codegen` names a
-naming mismatch as one rather than telling you to regenerate. A plain collection
-(`All { get; } = [ ... ];`) still works: it declares no naming, so `--column-naming`, else
-`Literal`, applies.
+**Column names come from `naming` in `.metaobjects/config.json`, the one setting every port
+reads** (ADR-0058): `meta migrate`, every port's codegen and every runtime `ObjectManager`.
+The default is `snake_case`, what `meta migrate` creates. A database whose columns are named
+exactly like the fields declares it there, once, for every port:
+
+```json
+{ "schema_version": 1, "naming": { "columns": "literal" } }
+```
+
+There is no per-port or command-line naming: `--column-naming` is refused, and
+`verify --codegen` names a naming mismatch as one rather than telling you to regenerate. Through 1.0 this port defaulted to the field names; a
+database built that way needs the `literal` line above.
 
 ```bash
 dotnet meta gen metaobjects --out Generated --namespace Acme.Generated   # runs the list

@@ -27,6 +27,13 @@ import { isInetResidue, isViewChange } from "../src/drift-residue.ts";
 import { loadMetadataDir } from "../src/load-metadata.ts";
 import { CANONICAL_DIR } from "../src/paths.ts";
 
+/** The project setting `"naming": { "columns": "literal" }` (ADR-0058), set where the
+ *  project-aware load sets it: on the loaded root. */
+function literalColumns<T>(root: T): T {
+  (root as unknown as { physicalNaming: unknown }).physicalNaming = { columns: "literal", tables: "snake_case" };
+  return root;
+}
+
 let tmpDir: string;
 let k: Kysely<Record<string, unknown>>;
 let canonical: MetaRoot;
@@ -41,14 +48,12 @@ afterEach(async () => {
   rmSync(tmpDir, { recursive: true, force: true });
 });
 
-const STRATEGY = "literal" as const;
-
 function viewsFor(dialect: "sqlite" | "d1") {
-  return buildProjectionViews(canonical, { dialect, columnNamingStrategy: STRATEGY });
+  return buildProjectionViews(literalColumns(canonical), { dialect });
 }
 
 function expectedFor(dialect: "sqlite" | "d1"): SchemaSnapshot {
-  return buildExpectedSchema(canonical, { dialect, columnNamingStrategy: STRATEGY, views: viewsFor(dialect) });
+  return buildExpectedSchema(literalColumns(canonical), { dialect, views: viewsFor(dialect) });
 }
 
 async function applyRaw(text: string): Promise<void> {
@@ -77,7 +82,6 @@ describe("D3 — a view recreated only around a table rebuild is not drift", () 
     test(`${dialect}: drift reports the FK and no view`, async () => {
       await migrateWithWeeksFkMissing();
       const drift = await computeDriftFromActual(await introspectSqlite(k), dialect, canonical, {
-        columnNamingStrategy: STRATEGY,
         views: viewsFor(dialect),
       });
       expect(drift.changes.some((c) => c.kind === "add-fk" && c.table === "weeks")).toBe(true);

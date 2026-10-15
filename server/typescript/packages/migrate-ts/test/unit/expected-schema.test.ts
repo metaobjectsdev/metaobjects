@@ -6,6 +6,13 @@ import type { MetaData } from "@metaobjectsdev/metadata";
 import { buildExpectedSchema } from "../../src/expected-schema.js";
 import type { SchemaSnapshot, ColumnDescriptor } from "../../src/types.js";
 
+/** The project setting `"naming": { "columns": "literal" }` (ADR-0058), set where the
+ *  project-aware load would set it: on the loaded root. */
+function literalColumns(root: MetaData): MetaData {
+  (root as MetaData & { physicalNaming: unknown }).physicalNaming = { columns: "literal", tables: "snake_case" };
+  return root;
+}
+
 async function loadFixture(name: string) {
   const json = readFileSync(join(import.meta.dir, "..", "fixtures", `${name}.json`), "utf8");
   const result = await new MetaDataLoader().load([new InMemoryStringSource(json)]);
@@ -363,7 +370,7 @@ describe("buildExpectedSchema — field.uuid (R6 Plan 2a)", () => {
         },
       },
     ]);
-    const snapshot = buildExpectedSchema(root, { dialect: "postgres", columnNamingStrategy: "literal" });
+    const snapshot = buildExpectedSchema(literalColumns(root), { dialect: "postgres" });
     const cols = snapshot.tables[0]?.columns ?? [];
     expect(cols.find((c) => c.name === "id")?.sqlType).toEqual({ kind: "uuid" });
     expect(cols.find((c) => c.name === "ownerId")?.sqlType).toEqual({ kind: "uuid" });
@@ -400,7 +407,7 @@ describe("buildExpectedSchema — field.uuid (R6 Plan 2a)", () => {
         },
       },
     ]);
-    const snapshot = buildExpectedSchema(root, { dialect: "postgres", columnNamingStrategy: "literal" });
+    const snapshot = buildExpectedSchema(literalColumns(root), { dialect: "postgres" });
     const idCol = snapshot.tables[0]?.columns.find((c) => c.name === "id");
     expect(idCol?.sqlType).toEqual({ kind: "uuid" });
     expect(idCol?.identity).toBe("uuid");
@@ -431,7 +438,7 @@ describe("buildExpectedSchema — @dbColumnType physical override (R6 Plan 2b)",
         },
       },
     ]);
-    const snapshot = buildExpectedSchema(root, { dialect: "postgres", columnNamingStrategy: "literal" });
+    const snapshot = buildExpectedSchema(literalColumns(root), { dialect: "postgres" });
     const col = snapshot.tables[0]?.columns.find((c) => c.name === "externalId");
     expect(col?.sqlType).toEqual({ kind: "uuid" });
   });
@@ -450,7 +457,7 @@ describe("buildExpectedSchema — @dbColumnType physical override (R6 Plan 2b)",
         },
       },
     ]);
-    const snapshot = buildExpectedSchema(root, { dialect: "postgres", columnNamingStrategy: "literal" });
+    const snapshot = buildExpectedSchema(literalColumns(root), { dialect: "postgres" });
     const col = snapshot.tables[0]?.columns.find((c) => c.name === "payload");
     expect(col?.sqlType).toEqual({ kind: "json" });
   });
@@ -471,7 +478,7 @@ describe("buildExpectedSchema — @dbColumnType physical override (R6 Plan 2b)",
         },
       },
     ]);
-    const snapshot = buildExpectedSchema(root, { dialect: "postgres", columnNamingStrategy: "literal" });
+    const snapshot = buildExpectedSchema(literalColumns(root), { dialect: "postgres" });
     const cols = snapshot.tables.find((t) => t.name === "a")?.columns ?? [];
     expect(cols.find((c) => c.name === "labels")?.sqlType).toEqual({ kind: "json" });
     expect(cols.find((c) => c.name === "tools")?.sqlType).toEqual({ kind: "json" });
@@ -491,7 +498,7 @@ describe("buildExpectedSchema — @dbColumnType physical override (R6 Plan 2b)",
         },
       },
     ]);
-    const snapshot = buildExpectedSchema(root, { dialect: "postgres", columnNamingStrategy: "literal" });
+    const snapshot = buildExpectedSchema(literalColumns(root), { dialect: "postgres" });
     const col = snapshot.tables[0]?.columns.find((c) => c.name === "recordedAt");
     expect(col?.sqlType).toEqual({ kind: "timestamp", withTimezone: true });
   });
@@ -510,7 +517,7 @@ describe("buildExpectedSchema — @dbColumnType physical override (R6 Plan 2b)",
         },
       },
     ]);
-    const snapshot = buildExpectedSchema(root, { dialect: "postgres", columnNamingStrategy: "literal" });
+    const snapshot = buildExpectedSchema(literalColumns(root), { dialect: "postgres" });
     const col = snapshot.tables[0]?.columns.find((c) => c.name === "createdAt");
     expect(col?.sqlType).toEqual({ kind: "timestamp", withTimezone: false });
   });

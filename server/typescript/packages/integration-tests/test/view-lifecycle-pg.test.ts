@@ -31,6 +31,13 @@ import { Kysely, PostgresDialect, sql } from "kysely";
 import { Pool } from "pg";
 import { startPostgres, type RunningPg } from "../src/postgres-container.ts";
 
+/** The project setting `"naming": { "columns": "literal" }` (ADR-0058), set where the
+ *  project-aware load sets it: on the loaded root. */
+function literalColumns<T>(root: T): T {
+  (root as unknown as { physicalNaming: unknown }).physicalNaming = { columns: "literal", tables: "snake_case" };
+  return root;
+}
+
 /**
  * A Program table plus a ProgramSummary projection over it (one passthrough + one
  * aggregate). `extraFields` lets a test append or insert projection fields to exercise
@@ -193,9 +200,8 @@ async function applyRaw(text: string): Promise<void> {
 
 async function expectedFor(metaJson: string): Promise<SchemaSnapshot> {
   const root = (await new MetaDataLoader().load([new InMemoryStringSource(metaJson)])).root;
-  return buildExpectedSchema(root, {
-    columnNamingStrategy: "literal",
-    views: buildProjectionViews(root, { dialect: "postgres", columnNamingStrategy: "literal" }),
+  return buildExpectedSchema(literalColumns(root), {
+    views: buildProjectionViews(literalColumns(root), { dialect: "postgres" }),
   });
 }
 
@@ -204,9 +210,8 @@ async function expectedFor(metaJson: string): Promise<SchemaSnapshot> {
  *  @unmanaged object is excluded from the act side. */
 async function migrate(metaJson: string, allow: AllowOptions = {}) {
   const root = (await new MetaDataLoader().load([new InMemoryStringSource(metaJson)])).root;
-  const expected = buildExpectedSchema(root, {
-    columnNamingStrategy: "literal",
-    views: buildProjectionViews(root, { dialect: "postgres", columnNamingStrategy: "literal" }),
+  const expected = buildExpectedSchema(literalColumns(root), {
+    views: buildProjectionViews(literalColumns(root), { dialect: "postgres" }),
   });
   const unmanagedNames = collectUnmanagedNames(root);
   const result = await diff({ expected, actual: await introspectPostgres(k), dialect: "postgres", viewReplaceProbe: postgresViewReplaceProbe(k), allow, unmanagedNames });

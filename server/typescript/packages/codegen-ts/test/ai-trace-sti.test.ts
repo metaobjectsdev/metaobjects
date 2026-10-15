@@ -141,7 +141,8 @@ describe("ai-trace #1c — STI table collapse", () => {
     rmSync(dir, { recursive: true, force: true });
     expect(loaded.errors).toEqual([]);
 
-    const expected = buildExpectedSchema(loaded.root, { columnNamingStrategy: "literal" });
+    loaded.root.physicalNaming = { columns: "literal", tables: "snake_case" };
+    const expected = buildExpectedSchema(loaded.root);
     const traceTables = expected.tables.filter((t) => t.name === "prompt_llm_call");
     expect(traceTables.length).toBe(1);
     expect(expected.tables.some((t) => t.name === "classify_call" || t.name === "summarize_call")).toBe(false);

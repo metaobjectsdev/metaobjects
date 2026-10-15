@@ -172,8 +172,8 @@ restate.
 
 `AuthorNames.COLUMNS_BY_FIELD` carries the whole map when you need to build a projection
 list. It is opt-in on the JVM — add `SpringNamesGenerator` to the pom's `<generators>`
-(see the codegen reference). Its `columnNaming` defaults to `literal`, the same
-resolution OMDB uses at runtime; pass the same value to both, or the constant names a
-column no row lands in. There is no typed handle to prefer on this port — `<Entity>Names`
+(see the codegen reference). It resolves columns through the project's one `naming` setting
+in `.metaobjects/config.json` (default `snake_case`), the same setting OMDB reads at
+runtime, so the constant always names the column a row lands in. There is no typed handle to prefer on this port — `<Entity>Names`
 is the only compile-checked route to a physical name, which is also why nothing else here
 catches a wrong pairing for free.

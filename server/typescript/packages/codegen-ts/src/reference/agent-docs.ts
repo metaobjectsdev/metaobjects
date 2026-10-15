@@ -26,8 +26,8 @@
 // HOW IT RUNS. Like every generator: list it in `generators` in metaobjects.config.ts, with
 // a `docs` target declared, and `meta gen` writes the pages (`meta verify --codegen` checks
 // them). `meta gen` builds the physical schema (it needs the project's dialect and column
-// naming strategy) and hands it over on `ctx.docs.agentSchema`; pass `schema` and
-// `columnNamingStrategy` as options to state them yourself instead.
+// naming, `naming` in .metaobjects/config.json) and hands it over on `ctx.docs.agentSchema`;
+// pass `schema` as an option to state it yourself instead.
 //
 // Everything below imports the engine from `@metaobjectsdev/codegen-ts`, the node types from
 // `@metaobjectsdev/metadata`, and the page renderers from `../generators/` — which
@@ -65,8 +65,10 @@ import {
   SOURCE_ROLE_PRIMARY,
   TYPE_ORIGIN,
   resolveColumnName,
+  physicalNamingOf,
+  physicalNamingRemovedMessage,
 } from "@metaobjectsdev/metadata";
-import type { ColumnNamingStrategy, MetaField, MetaObject } from "@metaobjectsdev/metadata";
+import type { MetaField, MetaObject } from "@metaobjectsdev/metadata";
 import {
   enumValues,
   intValueMapOf,
@@ -97,8 +99,6 @@ export interface AgentDocsFileOpts {
    * project with no physical schema gets no schema page rather than a page of unknowns.
    */
   schema?: AgentSchemaInput;
-  /** The project's column naming strategy, for the field→column mapping. */
-  columnNamingStrategy?: ColumnNamingStrategy;
 }
 
 /** One `origin.*` child rendered as a lineage phrase. `origin.*` NEVER inherits, so the
@@ -219,6 +219,12 @@ function enumLines(objects: readonly MetaObject[]): string[] {
 }
 
 export const agentDocsFile = function agentDocsFile(opts?: AgentDocsFileOpts): Generator {
+  // ADR-0058: the column naming is the project's one setting, on the loaded root. A 1.0
+  // option is refused rather than dropped: its value may be the one matching the database.
+  const removedNaming = (opts as { columnNamingStrategy?: unknown } | undefined)?.columnNamingStrategy;
+  if (removedNaming !== undefined) {
+    throw new Error(physicalNamingRemovedMessage("the columnNamingStrategy option of agentDocsFile()", String(removedNaming)));
+  }
   const dir = (opts?.subDir ?? DEFAULT_AGENT_DIR).replace(/\/$/, "");
 
   const generator: Generator = {
@@ -231,7 +237,7 @@ export const agentDocsFile = function agentDocsFile(opts?: AgentDocsFileOpts): G
       // caller that owns the schema builder, and the project's column naming. Options win:
       // they are what a direct caller of the factory states.
       const schemaInput = opts?.schema ?? ctx.docs?.agentSchema?.();
-      const columnNamingStrategy = opts?.columnNamingStrategy ?? ctx.renderContext?.columnNamingStrategy;
+      const columnNamingStrategy = ctx.renderContext?.columnNamingStrategy ?? physicalNamingOf(ctx.loadedRoot).columns;
 
       // ---- schema.md
       if (schemaInput !== undefined) {

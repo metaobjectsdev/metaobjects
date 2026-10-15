@@ -274,10 +274,10 @@ directory each `apiDocsFile()` writes to, from its `emitsApiDocs` marker) and wh
 model pages are written (`docsFile()`'s `emitsModelDocs` marker). An owned copy keeps the
 marker, so it is read the same way. `docsFile({ apiSurfaces })` names api pages that live
 somewhere else (another port's, with a `baseUrl` each) and wins over the fact. The agent
-pages need the physical schema, which `meta gen` computes from your dialect and column
-naming strategy when the list includes `agentDocsFile()` (the generator package owns none of
-it) and hands over on `ctx.docs.agentSchema`; pass `schema` and `columnNamingStrategy` as
-options to state them yourself.
+pages need the physical schema, which `meta gen` computes from your dialect and the
+project's `naming` setting when the list includes `agentDocsFile()` (the generator package
+owns none of it) and hands over on `ctx.docs.agentSchema`; pass `schema` as an option to state
+it yourself.
 
 | | The generator file decides | Copied beside it, so yours too |
 |---|---|---|

@@ -15,7 +15,6 @@
 
 import type { Kysely } from "kysely";
 import type { MetaRoot } from "@metaobjectsdev/metadata";
-import type { ColumnNamingStrategy } from "@metaobjectsdev/metadata";
 import { buildExpectedSchemaWithProvenance } from "../expected-schema.js";
 import { introspect } from "../introspect/index.js";
 import { diff } from "../diff/index.js";
@@ -33,12 +32,6 @@ export interface ComputeDriftOptions {
    * on it. `allow` only affects `blocked`. Defaults to `{}`.
    */
   allow?: AllowOptions;
-  /**
-   * Column-naming strategy for fields with no `@column` override. Must match
-   * the runtime's strategy or the expected schema's columns won't line up with
-   * what introspection sees. Defaults to `buildExpectedSchema`'s default.
-   */
-  columnNamingStrategy?: ColumnNamingStrategy;
   /**
    * Table-name patterns to ignore on both sides (passed through to `diff`).
    * Omit to keep `diff`'s default (migration-tracking sidecar tables).
@@ -130,9 +123,6 @@ export async function computeDriftFromActual(
   const scoped = scopeExpectedSchema(
     buildExpectedSchemaWithProvenance(metadata, {
       dialect,
-      ...(opts?.columnNamingStrategy !== undefined
-        ? { columnNamingStrategy: opts.columnNamingStrategy }
-        : {}),
       ...(opts?.views !== undefined ? { views: opts.views } : {}),
     }),
     opts?.inScope,

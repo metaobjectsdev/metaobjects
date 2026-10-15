@@ -132,7 +132,7 @@ function aliasPath(joins: readonly JoinNode[], alias: string): string[] | undefi
 describe("a report dimension's required agrees with the joins its view renders", () => {
   test("every dimension: the emitted joins, and required only over an all-INNER path", async () => {
     const { root, report: snapRealms } = await load();
-    const views = buildProjectionViews(root, { dialect: "postgres", columnNamingStrategy: "snake_case" });
+    const views = buildProjectionViews(root, { dialect: "postgres" });
     const sql = views.find((v) => v.name === VIEW)!.sql!;
     const keywords = joinKeywordsOf(sql);
     const spec = extractReportSpec(snapRealms, root, { columnNamingStrategy: "snake_case" });

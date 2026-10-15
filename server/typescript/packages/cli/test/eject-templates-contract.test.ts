@@ -317,8 +317,7 @@ function agentSchema(root: Awaited<ReturnType<MetaDataLoader["load"]>>["root"]):
   try {
     const built = buildExpectedSchemaWithProvenance(root, {
       dialect,
-      columnNamingStrategy: "snake_case",
-      views: buildProjectionViews(root, { dialect, columnNamingStrategy: "snake_case" }),
+      views: buildProjectionViews(root, { dialect }),
     });
     return {
       dialect,

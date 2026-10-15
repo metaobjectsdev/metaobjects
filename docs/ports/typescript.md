@@ -89,7 +89,6 @@ export default defineConfig({
   extStyle: "js",                      // ".js"-extensioned imports — nodenext- AND bundler-safe ("none" to opt out)
   apiPrefix: "/api",
   dbImport: "../db",                   // the module routesFile() imports `db` from — yours to write
-  columnNamingStrategy: "snake_case",  // "snake_case" | "literal" | "kebab-case"
   targets: { docs: { outDir: "./docs/generated" } },  // where the docs generators write
   generators: [entityFile(), queriesFile(), routesFile(), barrel(), docsFile(), apiDocsFile()],
   // providers: [yourProvider],        // optional — add custom metamodel subtypes/attrs
@@ -415,7 +414,7 @@ export const ProgramNames = {
 | `sources.<role>.table` / `.view` / `.proc` / … | the physical name, under the alias for that `kind` |
 | `sources.<role>.schema` | the DB schema, emitted only when one is declared |
 | `fields.<field>.name` | the **logical** name — the field as your code and the wire call it |
-| `fields.<field>.column` | the **physical** column — `@column` if declared, else `name` through `columnNamingStrategy` |
+| `fields.<field>.column` | the **physical** column — `@column` if declared, else `name` through the project's `naming.columns` rule (`.metaobjects/config.json`) |
 | `identities.<name>` / `indexes.<name>` | one `identity.*` / `index.*` child, keyed by its metamodel name |
 | `…​.index` | the database index name — on `identity.secondary` and `index.lookup` only |
 

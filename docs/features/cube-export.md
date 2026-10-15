@@ -79,8 +79,8 @@ YAML writer (`renderCubeYaml`) stay in the package, both exported from
 | `filter` | A predicate over entities, ANDed with the gate in the table above. It is the universe of the build: an entity it excludes gets no cube of its own, and its dimensions add no member to another cube. If another cube's `@via` reaches an excluded entity, it is still written as a join-target cube, without its own measures, segments or rollups, unless every hop onto it goes through an alias cube. |
 | `target` | The named output target the files are written under. |
 
-The config's `columnNamingStrategy` (default `snake_case`) names the columns in the SQL, as it
-does for the report views.
+The project's `naming.columns` rule in `.metaobjects/config.json` (default `snake_case`) names
+the columns in the SQL, as it does for the report views.
 
 **Dialects.** The exporter writes SQL for Postgres and MySQL only, the two dialects it quotes
 and casts for. A config whose `dialect` is `sqlite` or `d1` raises

@@ -21,7 +21,7 @@ import {
 import {
   isMetaObject,
   resolveColumnName,
-  type ColumnNamingStrategy,
+  physicalNamingOf,
   type MetaData,
 } from "@metaobjectsdev/metadata";
 import {
@@ -41,7 +41,6 @@ export interface UnindexedFkFinding {
 
 export interface UnindexedFkOptions {
   dialect: Dialect;
-  columnNamingStrategy: ColumnNamingStrategy;
   /** Skip an entity by FQN — imported (dependency) metadata is not the adopter's to index. */
   skip?: (fqn: string) => boolean;
 }
@@ -65,8 +64,9 @@ function pascal(s: string): string {
 export function scanForUnindexedForeignKeys(root: MetaData, opts: UnindexedFkOptions): UnindexedFkFinding[] {
   const { snapshot, provenance } = buildExpectedSchemaWithProvenance(root, {
     dialect: opts.dialect,
-    columnNamingStrategy: opts.columnNamingStrategy,
   });
+  // ADR-0058: the same column rule the expected schema just used, from the loaded root.
+  const columnNamingStrategy = physicalNamingOf(root).columns;
   // ADR-0039: effective children — resolve rather than rely on root being unextended.
   const objectsByFqn = new Map(
     root.children().filter(isMetaObject).map((o) => [o.resolutionKey(), o] as const),
@@ -90,7 +90,7 @@ export function scanForUnindexedForeignKeys(root: MetaData, opts: UnindexedFkOpt
       const ref = entity.referenceIdentities().find((r) => {
         const cols = r.fields.map((f) => {
           const field = entity.fields().find((x) => x.name === f);
-          return field !== undefined ? resolveColumnName(field, opts.columnNamingStrategy) : f;
+          return field !== undefined ? resolveColumnName(field, columnNamingStrategy) : f;
         });
         return cols.length === fk.columns.length && cols.every((c, i) => c === fk.columns[i]);
       });

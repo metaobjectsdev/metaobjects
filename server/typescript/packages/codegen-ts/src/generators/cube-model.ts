@@ -28,7 +28,7 @@
 //
 // Opt-in, and a reference helper (ADR-0034 Amendment 3): the files import nothing.
 
-import { DEFAULT_COLUMN_NAMING_STRATEGY, type MetaObject } from "@metaobjectsdev/metadata";
+import { physicalNamingOf, type MetaObject } from "@metaobjectsdev/metadata";
 import type { EmittedFile, GenContext, Generator } from "../generator.js";
 import { buildCubeModel, hasReportingVocabulary } from "../cube/build-cube-model.js";
 import { CubeModelError, ERR_CUBE_UNSUPPORTED_DIALECT } from "../cube/cube-errors.js";
@@ -136,7 +136,7 @@ function generateCubeFiles(ctx: GenContext, options: CubeModelGeneratorOptions):
 
   const model = buildCubeModel(ctx.loadedRoot, {
     dialect,
-    columnNamingStrategy: ctx.renderContext?.columnNamingStrategy ?? DEFAULT_COLUMN_NAMING_STRATEGY,
+    columnNamingStrategy: ctx.renderContext?.columnNamingStrategy ?? physicalNamingOf(ctx.loadedRoot).columns,
     // The generator's own filter, never the run's selection: see the header.
     matches: ctx.matches,
   });

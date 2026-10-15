@@ -37,6 +37,13 @@ import { isInetResidue } from "../src/drift-residue.ts";
 import { loadMetadataDir } from "../src/load-metadata.ts";
 import { CANONICAL_DIR } from "../src/paths.ts";
 
+/** The project setting `"naming": { "columns": "literal" }` (ADR-0058), set where the
+ *  project-aware load sets it: on the loaded root. */
+function literalColumns<T>(root: T): T {
+  (root as unknown as { physicalNaming: unknown }).physicalNaming = { columns: "literal", tables: "snake_case" };
+  return root;
+}
+
 let tmpDir: string;
 let k: Kysely<Record<string, unknown>>;
 
@@ -65,10 +72,9 @@ async function loadInline(metaJson: string): Promise<MetaRoot> {
 }
 
 function expectedFor(root: MetaRoot): SchemaSnapshot {
-  return buildExpectedSchema(root, {
+  return buildExpectedSchema(literalColumns(root), {
     dialect: "sqlite",
-    columnNamingStrategy: "literal",
-    views: buildProjectionViews(root, { dialect: "sqlite", columnNamingStrategy: "literal" }),
+    views: buildProjectionViews(literalColumns(root), { dialect: "sqlite" }),
   });
 }
 
@@ -105,7 +111,7 @@ async function select(query: string): Promise<Record<string, unknown>[]> {
 }
 
 function viewSql(root: MetaRoot, name: string): string {
-  const v = buildProjectionViews(root, { dialect: "sqlite", columnNamingStrategy: "literal" })
+  const v = buildProjectionViews(literalColumns(root), { dialect: "sqlite" })
     .find((x) => x.name === name);
   if (v === undefined) throw new Error(`no view ${name}`);
   return v.sql;

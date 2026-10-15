@@ -29,6 +29,13 @@ import { startPostgres, type RunningPg } from "../src/postgres-container.ts";
 import { loadMetadataDir } from "../src/load-metadata.ts";
 import { CANONICAL_DIR } from "../src/paths.ts";
 
+/** The project setting `"naming": { "columns": "literal" }` (ADR-0058), set where the
+ *  project-aware load sets it: on the loaded root. */
+function literalColumns<T>(root: T): T {
+  (root as unknown as { physicalNaming: unknown }).physicalNaming = { columns: "literal", tables: "snake_case" };
+  return root;
+}
+
 // ---------------------------------------------------------------------------------
 // Container + pipeline helpers (the same shape as view-lifecycle-pg.test.ts).
 // ---------------------------------------------------------------------------------
@@ -69,9 +76,8 @@ async function loadInline(metaJson: string): Promise<MetaRoot> {
 }
 
 function expectedFor(root: MetaRoot): SchemaSnapshot {
-  return buildExpectedSchema(root, {
-    columnNamingStrategy: "literal",
-    views: buildProjectionViews(root, { dialect: "postgres", columnNamingStrategy: "literal" }),
+  return buildExpectedSchema(literalColumns(root), {
+    views: buildProjectionViews(literalColumns(root), { dialect: "postgres" }),
   });
 }
 
@@ -124,7 +130,7 @@ function canonicalDecimal(v: unknown): string | null {
 
 /** The `CREATE VIEW` body this model's builder produces for `name`. */
 function viewSql(root: MetaRoot, name: string): string {
-  const v = buildProjectionViews(root, { dialect: "postgres", columnNamingStrategy: "literal" })
+  const v = buildProjectionViews(literalColumns(root), { dialect: "postgres" })
     .find((x) => x.name === name);
   if (v === undefined) throw new Error(`no view ${name}`);
   return v.sql;

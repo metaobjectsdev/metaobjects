@@ -12,7 +12,7 @@ import { emitStructured, narrate, toonEncode } from "../lib/format.js";
 import { buildKyselyFromUrl, inferDialect, redactUrl } from "../lib/kysely.js";
 import { log } from "../lib/log.js";
 import { loadMemory, resolveCollection, resolveConfigDir, type Collection } from "@metaobjectsdev/sdk";
-import { loadMemoryOptionsFrom, loadMetaobjectsConfig, resolveGenConfigDir } from "../lib/load-metaobjects-config.js";
+import { loadMemoryOptionsFrom, loadMetaobjectsConfig, RemovedNamingConfigError, resolveGenConfigDir } from "../lib/load-metaobjects-config.js";
 import { collectionLoadOptions } from "../lib/collection-load-options.js";
 import { exclusionNotes, importedOption, migrateScopeMismatch } from "../lib/migrate-scope.js";
 import {
@@ -715,7 +715,11 @@ export async function migrateCommand(
   let postgresLoadOptions: ReturnType<typeof loadMemoryOptionsFrom> = {};
   try {
     postgresLoadOptions = loadMemoryOptionsFrom(await loadMetaobjectsConfig(genRoot));
-  } catch {
+  } catch (e) {
+    if (e instanceof RemovedNamingConfigError) {
+      log.error(e.message);
+      return 2;
+    }
     postgresLoadOptions = {};
   }
 
@@ -765,23 +769,16 @@ export async function migrateCommand(
   let changeCounts: Record<string, number> = {};
 
   try {
-    // Column-naming strategy (from metaobjects.config) drives BOTH the table schema
-    // and projection view DDL — derive it once, up front, so every view path agrees.
-    let columnNamingStrategy: "snake_case" | "literal" | "kebab-case" = "snake_case";
-    try {
-      const cfg = await loadMetaobjectsConfig(genRoot);
-      if (cfg.columnNamingStrategy) columnNamingStrategy = cfg.columnNamingStrategy;
-    } catch {
-      // metaobjects.config.ts absent or invalid — use default snake_case
-    }
+    // Column naming (ADR-0058: `naming` in .metaobjects/config.json, carried by the loaded
+    // root) drives BOTH the table schema and projection view DDL — read it once, up front,
+    // so every view path agrees. A config.ts still setting the 1.0 key is refused, loudly.
     // Expected views from the SINGLE view-SQL source (codegen-ts emitViewDdl, via
     // buildProjectionViews). Threaded into the schema-diff so the diff produces all
     // view DDL (create/drop/replace + dependency-recreate) and emit() renders it —
     // there is no separate view-migration emitter.
-    const expectedViews = buildProjectionViews(metadata, { dialect: kysely.dialect, columnNamingStrategy });
+    const expectedViews = buildProjectionViews(metadata, { dialect: kysely.dialect });
     const built = buildExpectedSchemaWithProvenance(metadata, {
       dialect: kysely.dialect,
-      columnNamingStrategy,
       views: expectedViews,
     });
     const scopeRc = refuseScopeMismatch(collection, () => built.provenance, fmt);
@@ -1181,12 +1178,14 @@ export async function runBaseline(
     // and the columnNamingStrategy — mirroring the DB path (and `meta gen`) so
     // offline baseline resolves config-registered custom subtypes too (#157).
     let baselineLoadOptions: ReturnType<typeof loadMemoryOptionsFrom> = {};
-    let baselineStrategy: "snake_case" | "literal" | "kebab-case" = "snake_case";
     try {
       const cfg = await loadMetaobjectsConfig(genRoot);
       baselineLoadOptions = loadMemoryOptionsFrom(cfg);
-      if (cfg.columnNamingStrategy) baselineStrategy = cfg.columnNamingStrategy;
-    } catch {
+    } catch (e) {
+      if (e instanceof RemovedNamingConfigError) {
+        log.error(e.message);
+        return 2;
+      }
       // config absent — no custom providers, no libraries, default snake_case
     }
     // `baseline` records a STARTING POINT, so it is deliberately NOT scoped: the
@@ -1208,8 +1207,8 @@ export async function runBaseline(
       reportLoadError(log, "migrate baseline: failed to load metadata", err);
       return 1;
     }
-    const baselineViews = buildProjectionViews(metadata, { dialect: config.dialect, columnNamingStrategy: baselineStrategy });
-    snapshot = baselineFromMetadata(metadata, config.dialect, baselineStrategy, baselineViews);
+    const baselineViews = buildProjectionViews(metadata, { dialect: config.dialect });
+    snapshot = baselineFromMetadata(metadata, config.dialect, baselineViews);
   }
 
   if (config.dryRun) {
@@ -1348,12 +1347,14 @@ export async function runOfflineGenerate(
   // and the columnNamingStrategy — mirroring the DB path (and `meta gen`) so
   // offline generate resolves config-registered custom subtypes too (#157).
   let offlineLoadOptions: ReturnType<typeof loadMemoryOptionsFrom> = {};
-  let offlineStrategy: "snake_case" | "literal" | "kebab-case" = "snake_case";
   try {
     const cfg = await loadMetaobjectsConfig(genRoot);
     offlineLoadOptions = loadMemoryOptionsFrom(cfg);
-    if (cfg.columnNamingStrategy) offlineStrategy = cfg.columnNamingStrategy;
-  } catch {
+  } catch (e) {
+    if (e instanceof RemovedNamingConfigError) {
+      log.error(e.message);
+      return 2;
+    }
     // config absent — no custom providers, no libraries, default snake_case
   }
 
@@ -1372,12 +1373,11 @@ export async function runOfflineGenerate(
   warnReferentialActionConflicts(metadata, collection);
 
   const offlineDialect = config.dialect;
-  const offlineViews = buildProjectionViews(metadata, { dialect: offlineDialect, columnNamingStrategy: offlineStrategy });
+  const offlineViews = buildProjectionViews(metadata, { dialect: offlineDialect });
   const scopeRc = refuseScopeMismatch(
     collection,
     () => buildExpectedSchemaWithProvenance(metadata, {
       dialect: offlineDialect,
-      columnNamingStrategy: offlineStrategy,
       views: offlineViews,
     }).provenance,
     fmt,
@@ -1420,7 +1420,6 @@ export async function runOfflineGenerate(
       metadata,
       dialect: config.dialect,
       snapshot,
-      columnNamingStrategy: offlineStrategy,
       views: offlineViews,
       // Per-command scope — narrows BOTH sides of the offline diff (see planOffline).
       ...(offlineScope !== undefined ? { inScope: offlineScope } : {}),
@@ -1664,15 +1663,13 @@ async function runD1Migrate(
   warnReferentialActionConflicts(metadata, collection);
 
   // 4. Build expected schema + introspect actual.
-  let columnNamingStrategy: "snake_case" | "literal" | "kebab-case" = "snake_case";
-  try {
-    const cfg = await loadMetaobjectsConfig(genRoot);
-    if (cfg.columnNamingStrategy) columnNamingStrategy = cfg.columnNamingStrategy;
-  } catch {
-    // metaobjects.config.ts absent or invalid — use default snake_case
+  const removedNaming = await removedNamingConfig(genRoot);
+  if (removedNaming !== undefined) {
+    log.error(removedNaming);
+    return 2;
   }
-  const expectedViews = buildProjectionViews(metadata, { dialect: "d1", columnNamingStrategy });
-  const built = buildExpectedSchemaWithProvenance(metadata, { dialect: "d1", columnNamingStrategy, views: expectedViews });
+  const expectedViews = buildProjectionViews(metadata, { dialect: "d1" });
+  const built = buildExpectedSchemaWithProvenance(metadata, { dialect: "d1", views: expectedViews });
   const scopeRc = refuseScopeMismatch(collection, () => built.provenance, fmt);
   if (scopeRc !== undefined) return scopeRc;
   // Per-command scope — both-sided, exactly as on the Kysely path above.
@@ -1840,4 +1837,19 @@ async function runWranglerApply(
     });
     child.on("close", (code) => resolve(code ?? 1));
   });
+}
+
+/**
+ * ADR-0058: the refusal for a `metaobjects.config.ts` that still sets column naming, or
+ * undefined. Every other problem with that file stays tolerated here (migrate falls back to
+ * its defaults); this one cannot be, because the default rule would propose renaming every
+ * column.
+ */
+async function removedNamingConfig(genRoot: string): Promise<string | undefined> {
+  try {
+    await loadMetaobjectsConfig(genRoot);
+  } catch (e) {
+    if (e instanceof RemovedNamingConfigError) return e.message;
+  }
+  return undefined;
 }

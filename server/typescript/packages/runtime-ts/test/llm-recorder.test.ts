@@ -88,7 +88,8 @@ async function loadFixture(): Promise<MetaRoot> {
 
 function makeOm(root: MetaRoot): ObjectManager {
   const driver = inMemoryDriver({ pkFields: { TraceCall: ["id"] } });
-  return new ObjectManager({ metadata: root, driver, columnNamingStrategy: "literal" });
+  root.physicalNaming = { columns: "literal", tables: "snake_case" };
+  return new ObjectManager({ metadata: root, driver });
 }
 
 // =============================================================================

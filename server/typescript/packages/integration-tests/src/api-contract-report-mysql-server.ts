@@ -12,7 +12,6 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { runGen, defineConfig, buildReportViews } from "@metaobjectsdev/codegen-ts";
-import { DEFAULT_COLUMN_NAMING_STRATEGY } from "@metaobjectsdev/metadata";
 import { entityFile, routesFile } from "@metaobjectsdev/test-generators";
 import mysql from "mysql2/promise";
 import { seedInserts, SERVED_REPORTS, type ReportSeed } from "./api-contract-report-generated-server.ts";
@@ -105,7 +104,7 @@ export const db = drizzle(pool);
   const dbMod = (await import(pathToFileURL(join(tmp, "db.ts")).href)) as { pool: { end(cb: () => void): void } };
 
   const admin = await mysql.createConnection({ uri: mysqlUrl, timezone: "Z" });
-  const views = buildReportViews(root, { dialect: "mysql", columnNamingStrategy: DEFAULT_COLUMN_NAMING_STRATEGY });
+  const views = buildReportViews(root, { dialect: "mysql" });
   for (const v of views) await admin.query(`DROP VIEW IF EXISTS \`${v.name}\``);
   for (const t of [...BASE_TABLES].reverse()) await admin.query(`DROP TABLE IF EXISTS \`${t.name}\``);
   for (const t of BASE_TABLES) await admin.query(t.ddl);

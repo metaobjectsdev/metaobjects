@@ -139,11 +139,13 @@ The 1.0 form `metaobjects gen <metadata_dir> --out <dir> --generators <names>` i
 the metadata directory is `metadata` and each output directory is a target's `outDir`.
 `--generators <names>` now narrows a run to the declared entries named and never adds one
 (naming one no target declares is refused); `--target <name>` runs one target;
-`--entities`, `--provider`, `--baseline` and `--config` work as before. The column naming
-and the template directory are settings of the run, so they are config keys too:
-`columnNaming` and `templates` at the top level of `metaobjects.config.yaml`, read by `gen`,
-`verify --codegen` and `verify --templates` alike; `--column-naming` and `--templates` apply
-only where the config declares neither, and one that contradicts the config is refused. See [the migration section](../features/migrations/docs-are-generators.md#python)
+`--entities`, `--provider`, `--baseline` and `--config` work as before. The template
+directory is a setting of the run, so it is a config key too: `templates` at the top level of
+`metaobjects.config.yaml`, read by `gen`, `verify --codegen` and `verify --templates` alike;
+`--templates` applies only where the config declares none, and one that contradicts the
+config is refused. Column naming is not a Python setting at all: it is `naming` in
+`.metaobjects/config.json`, which every port reads, and `--column-naming` is refused
+([physical-naming.md](../features/migrations/physical-naming.md)). See [the migration section](../features/migrations/docs-are-generators.md#python)
 and the [config reference](../features/cli.md).
 
 ### Reports
@@ -184,18 +186,14 @@ source declares a `@schema`. On the 16-entity persistence-conformance model the 
 server-side selection emits 68 files and this emits 19 — so adopting the names tier does
 not drag a REST surface into a repo that does not want one.
 
-**Declare the column naming the schema was created with, as `columnNaming` in
-`metaobjects.config.yaml`.** It defaults to
-`literal` here, matching this port's `ObjectManager` — **not** `meta migrate`'s
-`snake_case`. On a schema built by `meta migrate`, the default emits
-`PROGRAM_PRICE_CENTS_COLUMN = "priceCents"` for a column actually named
-`price_cents`: a constant that names a column which does not exist, which is worse
-than the literal it replaced. Use `columnNaming: snake_case` there. A flag alone does
-not hold: a script that passed `--column-naming snake_case` and was replaced by a plain
-`metaobjects gen` rewrote every `*_names.py` with the camelCase names, and the config key is
-what a plain run reads. When `verify --codegen` finds the committed output was generated
-with another naming, it says so rather than telling you to regenerate. (A field carrying
-an explicit `@column` is unaffected either way.)
+**The column names come from the project's `naming` setting in `.metaobjects/config.json`**
+(ADR-0058), the one `meta migrate`, the `ObjectManager` and every other port read. It
+defaults to `snake_case`, what `meta migrate` creates, so on a schema it built a plain
+`metaobjects gen` emits `PROGRAM_PRICE_CENTS_COLUMN = "price_cents"`. A database whose
+columns are named exactly like the fields declares `"naming": { "columns": "literal" }`.
+When `verify --codegen` finds the committed output was generated with another rule, it says
+so rather than telling you to regenerate. (A field carrying an explicit `@column` is
+unaffected either way.)
 
 **Both `pydantic` and `fastapi` are consumer-installed, not transitive deps of
 `metaobjects` itself** — the entity/router files this emits `import pydantic`
@@ -313,7 +311,7 @@ SUBSCRIBER_COLUMNS_BY_FIELD: Final[dict[str, str]] = {
 | `<E>_SOURCE_<ROLE>_TABLE` / `_VIEW` / `_PROC` / … | the physical name, under the member for that `kind` |
 | `<E>_SOURCE_<ROLE>_SCHEMA` | the DB schema, emitted only when one is declared |
 | `<E>_<FIELD>_FIELD` | the **logical** name — the field as your code and the wire call it |
-| `<E>_<FIELD>_COLUMN` | the **physical** column — `@column` if declared, else the name through `column_naming` |
+| `<E>_<FIELD>_COLUMN` | the **physical** column — `@column` if declared, else the name through the project's `naming.columns` rule |
 | `<E>_IDENTITY_<NAME>_*` / `<E>_INDEX_<NAME>_*` | one `identity.*` / `index.*` child, keyed by its metamodel name |
 | `…_INDEX` | the database index name — on `identity.secondary` and `index.lookup` only |
 
@@ -400,13 +398,11 @@ by default here, unlike the JVM ports where it is opt-in — it fills a gap
 every other Python generated artifact leaves completely open, rather than
 adding a convenience alongside an existing typed one.
 
-The constants resolve through the **same column-naming strategy**
-`ObjectManager` uses (`literal` by default) — pass the identical value to
-both (`columnNaming` in `metaobjects.config.yaml`, `column_naming=` on
-`ObjectManager`), or the constant a consumer imports names a different column
-than the one a row actually lands in. `metaobjects verify --codegen` reads the same
-key, so its regen resolves the same column strings `gen` did instead of reporting
-spurious drift against a differently-configured run.
+The constants resolve through the **same column rule** the `ObjectManager` uses, because
+both read it from the loaded metadata, which carries the project's `naming` setting: the
+constant a consumer imports always names the column a row actually lands in. `metaobjects
+verify --codegen` reads the same setting, so its regen resolves the same column strings `gen`
+did.
 
 ### Requirement tests
 

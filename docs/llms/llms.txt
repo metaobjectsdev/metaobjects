@@ -70,7 +70,7 @@ MetaObjects pillars are capabilities of the same metadata spine, not separate pr
 MetaObjects deliberately does **not** ship one universal binary. Schema operations are language-agnostic and live in **one canonical Node `meta` CLI**; codegen is language-specific and runs in each language's own build tool (ADR-0015).
 
 - Node CLI binary name: `meta`
-- Project config file: `metaobjects.config.ts` (configures `outDir`, `targets`, `dialect`, `dbImport`, `apiPrefix`, `columnNamingStrategy`, and the `generators` array)
+- Project config file: `metaobjects.config.ts` (configures `outDir`, `targets`, `dialect`, `dbImport`, `apiPrefix`, and the `generators` array); column and table naming is `naming` in `.metaobjects/config.json`, read by every port
 - Codegen is **opt-in**: no port ships a default generator suite, `meta init` scaffolds `generators: []`, and `meta gen --list` is the catalog (`--probe` reports how many files each generator would emit for your model)
 - Project marker directory: `.metaobjects/`
 - Install (TypeScript reference): `npm install -D @metaobjectsdev/cli` (or `bun add @metaobjectsdev/cli`)

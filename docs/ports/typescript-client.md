@@ -89,7 +89,6 @@ export default defineConfig({
   outDir: "packages/database/src/generated",
   dialect: "postgres",
   apiPrefix: "/api",
-  columnNamingStrategy: "snake_case",
   generators: [
     entityFile(),
     queriesFile(),

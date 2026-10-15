@@ -1,4 +1,4 @@
-import { DEFAULT_COLUMN_NAMING_STRATEGY, type ColumnNamingStrategy, type MetaDataTypeProvider } from "@metaobjectsdev/metadata";
+import { physicalNamingRemovedMessage, type MetaDataTypeProvider } from "@metaobjectsdev/metadata";
 import type { RoutesExpose } from "./routes-expose.js";
 import type { Generator } from "./generator.js";
 import type { ExtStyle } from "./render-context.js";
@@ -118,8 +118,6 @@ export interface MetaobjectsGenConfig extends Omit<ResolvedGenConfig, "dbImport"
    * entries use the generator's default options. ADR-0021 #1.
    */
   generators: GeneratorSpec[];
-  /** How field names map to DB column names when @dbColumn is omitted. Defaults to "snake_case". */
-  columnNamingStrategy?: ColumnNamingStrategy;
   /**
    * Auto-pluralize the Drizzle collection (table) variable name derived from
    * each entity (`AgentConfig` → `agentConfigs`). Defaults to `true`. Set
@@ -225,7 +223,6 @@ export interface NormalizedMetaobjectsGenConfig
   extStyle: ExtStyle;
   /** Fully resolved — every string spec has been mapped to its factory result. */
   generators: Generator[];
-  columnNamingStrategy: ColumnNamingStrategy;
   pluralizeCollections: boolean;
   collectionNameOverrides: Record<string, string>;
   timestampMode: "date" | "string";
@@ -364,6 +361,13 @@ export function resolveGenerators(specs: readonly GeneratorSpec[]): Generator[] 
 
 /** Apply defaults to a MetaobjectsGenConfig, returning a NormalizedMetaobjectsGenConfig. */
 export function normalizeConfig(config: MetaobjectsGenConfig): NormalizedMetaobjectsGenConfig {
+  // ADR-0058: column naming is `naming` in .metaobjects/config.json, read by every port. A
+  // JavaScript config (or a cast) can still carry the 1.0 key; refuse rather than drop it,
+  // because the value it held may be the one that matches this project's database.
+  const removedNaming = (config as { columnNamingStrategy?: unknown }).columnNamingStrategy;
+  if (removedNaming !== undefined) {
+    throw new Error(physicalNamingRemovedMessage("columnNamingStrategy in metaobjects.config.ts", String(removedNaming)));
+  }
   const dialect = config.dialect ?? DEFAULT_DIALECT;
   return {
     ...config,
@@ -371,7 +375,6 @@ export function normalizeConfig(config: MetaobjectsGenConfig): NormalizedMetaobj
     dialect,
     extStyle: config.extStyle ?? DEFAULT_EXT_STYLE,
     generators: resolveGenerators(config.generators),
-    columnNamingStrategy: config.columnNamingStrategy ?? DEFAULT_COLUMN_NAMING_STRATEGY,
     pluralizeCollections: config.pluralizeCollections ?? true,
     collectionNameOverrides: config.collectionNameOverrides ?? {},
     // "date" mode is Postgres-only (see the doc comment on timestampMode above) —

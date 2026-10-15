@@ -28,6 +28,13 @@ import { Kysely, PostgresDialect, sql } from "kysely";
 import { Pool } from "pg";
 import { startPostgres, type RunningPg } from "../src/postgres-container.ts";
 
+/** The project setting `"naming": { "columns": "literal" }` (ADR-0058), set where the
+ *  project-aware load sets it: on the loaded root. */
+function literalColumns<T>(root: T): T {
+  (root as unknown as { physicalNaming: unknown }).physicalNaming = { columns: "literal", tables: "snake_case" };
+  return root;
+}
+
 type Db = Kysely<Record<string, unknown>>;
 
 let pg: RunningPg;
@@ -50,8 +57,6 @@ beforeEach(async () => {
   await sql.raw("DROP SCHEMA public CASCADE").execute(k);
   await sql.raw("CREATE SCHEMA public").execute(k);
 });
-
-const STRATEGY = "literal" as const;
 const PROBE_RELATION = "mo_view_replace_probe";
 
 const program = (extra: unknown[] = []) => ({
@@ -242,9 +247,8 @@ interface Model { expected: SchemaSnapshot; view: ViewDescriptor }
 /** The expected schema of a model, and the one view under test. */
 async function model(host: unknown, viewName: string, programFields: unknown[] = [], others: unknown[] = []): Promise<Model> {
   const root = await load(host, programFields, others);
-  const expected = buildExpectedSchema(root, {
-    columnNamingStrategy: STRATEGY,
-    views: buildProjectionViews(root, { dialect: "postgres", columnNamingStrategy: STRATEGY }),
+  const expected = buildExpectedSchema(literalColumns(root), {
+    views: buildProjectionViews(literalColumns(root), { dialect: "postgres" }),
   });
   const view = expected.views.find((v) => v.name === viewName);
   if (view === undefined) throw new Error(`no view '${viewName}' was derived`);

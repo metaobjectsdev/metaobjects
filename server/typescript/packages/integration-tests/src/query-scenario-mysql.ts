@@ -20,7 +20,6 @@ import mysql from "mysql2/promise";
 
 import { splitStatements } from "./sql-script.ts";
 
-import { CANONICAL_COLUMN_NAMING } from "./canonical-schema.ts";
 import { readCanonicalMysqlSchemaSql } from "./canonical-schema-mysql.ts";
 import { loadMetadataDir } from "./load-metadata.ts";
 import { runScenarioQueries } from "./query-scenario.ts";
@@ -86,7 +85,7 @@ export async function runQueryScenarioMysql(
 
     const root = await loadMetadataDir(canonicalDir);
     const driver = kyselyDriver({ db: kysely as never, dialect: "mysql" });
-    const om = new ObjectManager({ metadata: root, driver, columnNamingStrategy: CANONICAL_COLUMN_NAMING });
+    const om = new ObjectManager({ metadata: root, driver });
     await runScenarioQueries(scenario, om, root, "mysql");
   } finally {
     await kysely.destroy();

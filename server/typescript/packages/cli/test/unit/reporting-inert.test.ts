@@ -40,7 +40,7 @@ import { mkdtempSync, mkdirSync, copyFileSync, rmSync, readFileSync, readdirSync
 import { tmpdir } from "node:os";
 import { join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
-import { loadUris, OBJECT_SUBTYPE_REPORT, DEFAULT_COLUMN_NAMING_STRATEGY, type MetaRoot } from "@metaobjectsdev/metadata";
+import { loadUris, OBJECT_SUBTYPE_REPORT, type MetaRoot } from "@metaobjectsdev/metadata";
 import {
   runGen, makeRenderContext, buildPkMap, buildRelationMap, buildProjectionViews,
   type AgentSchemaInput, type GenContext, type Generator, type MetaobjectsGenConfig,
@@ -625,11 +625,9 @@ export default defineConfig({
     // The schema input is built exactly as lib/agent-schema.ts builds it for postgres.
     const agent = async (metadata: MetaRoot): Promise<Record<string, string>> => {
       const dialect = "postgres" as const;
-      const strategy = DEFAULT_COLUMN_NAMING_STRATEGY;
       const built = buildExpectedSchemaWithProvenance(metadata, {
         dialect,
-        columnNamingStrategy: strategy,
-        views: buildProjectionViews(metadata, { dialect, columnNamingStrategy: strategy }),
+        views: buildProjectionViews(metadata, { dialect }),
       });
       const schema: AgentSchemaInput = {
         dialect,
@@ -640,7 +638,7 @@ export default defineConfig({
         qualify: qualifiedDbName,
       };
       const out: Record<string, string> = {};
-      const files = await agentDocsFile({ schema, columnNamingStrategy: strategy }).generate(docsCtx(metadata));
+      const files = await agentDocsFile({ schema }).generate(docsCtx(metadata));
       for (const f of files) out[f.path] = f.content;
       return out;
     };

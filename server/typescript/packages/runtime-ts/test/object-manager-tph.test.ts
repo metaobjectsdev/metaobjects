@@ -76,7 +76,7 @@ beforeEach(async () => {
     },
     pkFields: { auths: ["id"] },
   });
-  om = new ObjectManager({ metadata: root, driver, columnNamingStrategy: "snake_case" });
+  om = new ObjectManager({ metadata: root, driver });
 });
 
 describe("ObjectManager TPH — subtype field/identity/source resolution (effective children)", () => {

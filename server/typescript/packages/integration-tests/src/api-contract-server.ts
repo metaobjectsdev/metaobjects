@@ -121,7 +121,7 @@ export async function startServer(connectionUri: string, root: MetaRoot): Promis
     .execute();
 
   const driver = kyselyDriver({ db: kysely as never, dialect: "postgres" });
-  const om = new ObjectManager({ metadata: root, driver, columnNamingStrategy: "literal" });
+  const om = new ObjectManager({ metadata: root, driver });
 
   const fastify = Fastify();
 

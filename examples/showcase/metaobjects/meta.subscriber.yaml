@@ -5,19 +5,14 @@
 # Sigil-free YAML (ADR-0006): bare keys here lower to @-prefixed attrs in canonical
 # JSON, while name/extends/children stay bare in both surfaces.
 #
-# `column: created_at` is declared rather than left to a default ON PURPOSE. The
-# per-port DEFAULT for a field with no `@column` differs by design — `meta migrate`
-# and TypeScript codegen snake_case it; C#, Java and Python codegen take the field
-# name verbatim (EF's property=column convention); Kotlin codegen defaults
-# snake_case while the shared JVM runtime defaults literal. For a real polyglot
-# project the lever is each port's column-naming OPTION (`columnNamingStrategy` /
-# `--column-naming` / `<columnNaming>`), set once per port to match the strategy
-# `meta migrate` created the schema with — see docs/features/field-types.md.
-# `@column` is for a name that genuinely cannot be derived (a legacy column, a
-# schema owned outside this project), not a workaround for getting five ports'
-# defaults to agree. This showcase declares it anyway, deliberately: the model
-# is meant to be copy-pasteable and self-describing on its own, without also
-# requiring every port's `meta gen` invocation on the site to pass a matching flag.
+# `column: created_at` is declared rather than left to the default ON PURPOSE. A
+# field with no `@column` takes its column name from the project's one `naming`
+# setting in .metaobjects/config.json, which every port reads (default snake_case,
+# what `meta migrate` creates) — see docs/features/field-types.md. `@column` is for a
+# name that genuinely cannot be derived (a legacy column, a schema owned outside this
+# project). This showcase declares it anyway, deliberately: the model is meant to be
+# copy-pasteable and self-describing on its own, whatever naming the project that
+# pastes it has set.
 #
 # It changes the COLUMN only. Every port's generated code still calls the field
 # `createdAt` — the language-level name and the physical name are separate axes.

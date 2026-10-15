@@ -44,7 +44,6 @@ export interface GenMigrateAdviceInput {
   dialect: "sqlite" | "postgres" | "mysql" | undefined;
   /** `.metaobjects/config.json` `migrate.dialect`, when set (may say `d1`). */
   migrateDialect: "sqlite" | "postgres" | "d1" | undefined;
-  columnNamingStrategy: "snake_case" | "literal" | "kebab-case" | undefined;
   projectRoot: string;
   /** The migrations directory `meta migrate` uses (holds the committed snapshot). */
   migrateOutDir: string;
@@ -67,7 +66,6 @@ export async function genMigrateAdvice(input: GenMigrateAdviceInput): Promise<st
   try {
     built = buildExpectedSchemaWithProvenance(input.metadata, {
       dialect: schemaDialect,
-      ...(input.columnNamingStrategy !== undefined ? { columnNamingStrategy: input.columnNamingStrategy } : {}),
     });
   } catch {
     // A model `meta migrate` would refuse (it says why); gen is not the place to report it.
@@ -112,7 +110,6 @@ function mysqlAdvice(input: GenMigrateAdviceInput): string | undefined {
   try {
     provenance = buildExpectedSchemaWithProvenance(input.metadata, {
       dialect: "postgres",
-      ...(input.columnNamingStrategy !== undefined ? { columnNamingStrategy: input.columnNamingStrategy } : {}),
     }).provenance;
   } catch {
     return undefined;
