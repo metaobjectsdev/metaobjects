@@ -75,8 +75,9 @@ A model loaded without a project (`new MetaDataLoader().load(...)`) has the defa
 | `dotnet meta gen --column-naming <strategy>`, `dotnet meta verify --codegen --column-naming <strategy>` | `"naming": { "columns": "<strategy>" }` in `.metaobjects/config.json`. The flag is refused (exit 2) |
 | no flag: generated EF mappings used the field names (`literal`) | no setting: snake_case. Add `"naming": { "columns": "literal" }` to keep 1.0's column names |
 
-`dotnet meta verify --codegen` reports drift that another column rule would reproduce exactly
-as a naming mismatch, naming the setting, instead of advising a regenerate.
+`dotnet meta verify --codegen` reports drift that another column rule, another table rule, or
+both would reproduce exactly as a naming mismatch, naming the setting, instead of advising a
+regenerate.
 
 ## Java and Kotlin
 
@@ -93,6 +94,10 @@ as a naming mismatch, naming the setting, instead of advising a regenerate.
 | `metaobjects gen --column-naming <strategy>`, `metaobjects verify --codegen --column-naming <strategy>` | `"naming": { "columns": "<strategy>" }` in `.metaobjects/config.json`. The flag is refused (exit 2) |
 | `ObjectManager(..., column_naming="<strategy>")` | `ObjectManager(...)`. The manager reads the rule from the loaded root; the argument raises. A model loaded outside the project directory gets the project's rules with `attach_naming(root, project_dir)` from `metaobjects.naming`, which reads that project's `.metaobjects/config.json` |
 | no flag: `*_names.py` and the `ObjectManager` used the field names (`literal`) | no setting: snake_case. Add `"naming": { "columns": "literal" }` to keep 1.0's column names |
+
+`metaobjects verify --codegen` reports drift that another column rule, another table rule, or
+both would reproduce exactly as a naming mismatch, naming the setting, instead of advising a
+regenerate.
 
 The 1.1.0 release candidates read a `columnNaming` key in `metaobjects.config.yaml`. It is
 refused the same way; move its value to `naming` in `.metaobjects/config.json`.

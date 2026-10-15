@@ -26,6 +26,8 @@ public sealed class ColumnNamingFlagTests : IDisposable
 
     // `createdAt` has a case boundary; `purposeCode` carries an explicit @column that is
     // deliberately NOT its snake_case, so "the rule ran" and "@column won" stay distinguishable.
+    // `OrderItem` names no table, so its table name comes from the table rule
+    // (snake_case "order_items", literal "OrderItems").
     private const string Metadata = """
     { "metadata.root": { "package": "acme", "children": [
       { "object.entity": { "name": "Subscriber", "children": [
@@ -33,6 +35,12 @@ public sealed class ColumnNamingFlagTests : IDisposable
         { "field.long":   { "name": "id" } },
         { "field.string": { "name": "createdAt" } },
         { "field.string": { "name": "purposeCode", "@column": "reason" } },
+        { "identity.primary": { "@fields": "id" } }
+      ]}},
+      { "object.entity": { "name": "OrderItem", "children": [
+        { "source.rdb": {} },
+        { "field.long":   { "name": "id" } },
+        { "field.long":   { "name": "unitPrice" } },
         { "identity.primary": { "@fields": "id" } }
       ]}}
     ]}}
@@ -158,10 +166,57 @@ public sealed class ColumnNamingFlagTests : IDisposable
         var output = stdout + stderr;
         Assert.Equal(1, exit);
         Assert.Contains(
-            "The committed output was generated with column naming snake_case; this run used literal",
+            "The committed output was generated with \"naming\": { \"columns\": \"snake_case\", \"tables\": \"snake_case\" }; " +
+            "this run used \"naming\": { \"columns\": \"literal\", \"tables\": \"snake_case\" } " +
+            "(.metaobjects/config.json; each rule defaults to snake_case). Do not regenerate",
             output);
-        Assert.Contains("Do not regenerate", output);
-        Assert.Contains("\"naming\": { \"columns\": \"snake_case\" } in .metaobjects/config.json", output);
+        Assert.Contains(
+            "Declare \"naming\": { \"columns\": \"snake_case\", \"tables\": \"snake_case\" } in .metaobjects/config.json",
+            output);
+        Assert.DoesNotContain("Run 'dotnet meta gen' to regenerate", output);
+    }
+
+    [Fact]
+    public void Verify_with_another_table_rule_says_the_naming_differs_instead_of_regenerate()
+    {
+        // Committed under literal tables ("OrderItems"); then the config drops the table rule, so
+        // the default snake_case ("order_items") disagrees. Regenerating would bind the entity to
+        // a table the database does not have, so verify names the table rule that reproduces it.
+        var outDir = Path.Combine(_tmp, "generated-literal-tables");
+        WriteConfig("\"tables\": \"literal\"");
+        Assert.Equal(0, OwnedRunner.Run(_tmp, ["entity", "names"], "gen", MetaDir, "--out", outDir).ExitCode);
+        Assert.Contains("\"OrderItems\"", File.ReadAllText(Path.Combine(outDir, "OrderItemNames.g.cs")));
+
+        WriteConfig(null);
+        var (exit, stdout, stderr) = OwnedRunner.Run(_tmp, ["entity", "names"], "verify", "--codegen", MetaDir, "--out", outDir);
+        var output = stdout + stderr;
+        Assert.Equal(1, exit);
+        Assert.Contains(
+            "The committed output was generated with \"naming\": { \"columns\": \"snake_case\", \"tables\": \"literal\" }; " +
+            "this run used \"naming\": { \"columns\": \"snake_case\", \"tables\": \"snake_case\" }",
+            output);
+        Assert.Contains(
+            "Declare \"naming\": { \"columns\": \"snake_case\", \"tables\": \"literal\" } in .metaobjects/config.json",
+            output);
+        Assert.DoesNotContain("Run 'dotnet meta gen' to regenerate", output);
+    }
+
+    [Fact]
+    public void Verify_finds_a_column_and_table_rule_that_differ_together()
+    {
+        // Committed under literal columns AND literal tables; the config now declares neither.
+        // No single rule change reproduces the committed tree; the two together do.
+        var outDir = Path.Combine(_tmp, "generated-literal-both");
+        WriteConfig("\"columns\": \"literal\", \"tables\": \"literal\"");
+        Assert.Equal(0, OwnedRunner.Run(_tmp, ["entity", "names"], "gen", MetaDir, "--out", outDir).ExitCode);
+
+        WriteConfig(null);
+        var (exit, stdout, stderr) = OwnedRunner.Run(_tmp, ["entity", "names"], "verify", "--codegen", MetaDir, "--out", outDir);
+        var output = stdout + stderr;
+        Assert.Equal(1, exit);
+        Assert.Contains(
+            "Declare \"naming\": { \"columns\": \"literal\", \"tables\": \"literal\" } in .metaobjects/config.json",
+            output);
         Assert.DoesNotContain("Run 'dotnet meta gen' to regenerate", output);
     }
 
@@ -177,6 +232,6 @@ public sealed class ColumnNamingFlagTests : IDisposable
         var output = stdout + stderr;
         Assert.Equal(1, exit);
         Assert.Contains("Run 'dotnet meta gen' to regenerate", output);
-        Assert.DoesNotContain("column naming", output);
+        Assert.DoesNotContain("The committed output was generated with", output);
     }
 }

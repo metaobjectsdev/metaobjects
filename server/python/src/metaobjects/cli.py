@@ -25,9 +25,10 @@ Two subcommands:
                      The column naming comes from ``naming.columns`` in
                      ``.metaobjects/config.json`` (ADR-0058), the same setting
                      ``gen`` reads, so the ``names`` generator's constants match
-                     the committed tree; when another column rule reproduces
-                     that tree, verify reports a naming mismatch naming the
-                     setting instead of asking you to regenerate.
+                     the committed tree; when another column rule, another
+                     table rule, or both reproduce that tree, verify reports a
+                     naming mismatch naming the setting instead of asking you
+                     to regenerate.
         --templates  template/prompt ``{{field}}`` ↔ payload-VO drift — the
                      render ``verify()`` gate — resolving each ``template.*``
                      node's refs via a filesystem provider rooted at
@@ -130,6 +131,7 @@ from metaobjects.meta.template import template_constants as tc
 from metaobjects.naming import (
     COLUMN_NAMING_STRATEGIES,
     DEFAULT_COLUMN_NAMING,
+    TABLE_NAMING_RULES,
     NamingRules,
     package_of_resolution_key,
     removed_naming_source_message,
@@ -1950,19 +1952,41 @@ def _verify_codegen_config(args: argparse.Namespace) -> int:
     if not failed:
         return 0
 
-    # The committed output may be right and this run's column naming wrong: the naming reaches
-    # every column constant, so "regenerate" would commit names the database does not have.
-    # When another naming reproduces the committed tree exactly, say that instead.
-    for other in (n for n in COLUMN_NAMING_STRATEGIES if n != column_naming):
-        other_errors, other_reports = compare(other)
+    # The committed output may be right and this run's naming wrong: the naming reaches every
+    # column and table name, so "regenerate" would commit names the database does not have.
+    # When another naming reproduces the committed tree exactly, say that instead. The table
+    # rule reaches codegen only through the root (`naming_rules_of`), so each probe sets the
+    # candidate on the root and restores the loaded naming afterwards.
+    used = root.naming
+    for candidate in naming_candidates(used):
+        root.naming = candidate
+        try:
+            other_errors, other_reports = compare(candidate.columns)
+        finally:
+            root.naming = used
         if not other_errors and all(
             _report_clean(changed, missing, extra)
             for _names, _count, changed, missing, extra in other_reports
         ):
-            print(column_naming_differs_message(other, column_naming), file=sys.stderr)
+            print(naming_differs_message(candidate, used), file=sys.stderr)
             return 1
     print("regenerate (metaobjects gen) and commit the result.", file=sys.stderr)
     return 1
+
+
+def naming_candidates(used: NamingRules) -> list[NamingRules]:
+    """Every naming other than ``used``, in the order ``verify --codegen`` probes them (the C#
+    port probes the same order): the used table rule first, so a different column rule alone
+    is tried before a different table rule; within each, the used column rule first, then
+    snake_case, literal, kebab-case."""
+    tables = sorted(TABLE_NAMING_RULES, key=lambda t: t != used.tables)
+    columns = sorted(COLUMN_NAMING_STRATEGIES, key=lambda c: c != used.columns)
+    return [
+        candidate
+        for t in tables
+        for c in columns
+        if (candidate := NamingRules(columns=c, tables=t)) != used
+    ]
 
 
 def _report_clean(changed: list[str], missing: list[str], extra: list[str]) -> bool:
@@ -1972,16 +1996,22 @@ def _report_clean(changed: list[str], missing: list[str], extra: list[str]) -> b
     return not changed and not missing and not extra
 
 
-def column_naming_differs_message(committed: str, used: str) -> str:
+def _naming_block(naming: NamingRules) -> str:
+    """A naming as the ``naming`` block that declares it."""
+    return f'"naming": {{ "columns": "{naming.columns}", "tables": "{naming.tables}" }}'
+
+
+def naming_differs_message(committed: NamingRules, used: NamingRules) -> str:
     """What ``verify --codegen`` says, in place of "regenerate", when the committed output was
-    generated with column naming ``committed`` and this run's loaded root resolved ``used``
-    (ADR-0058: the one project ``naming`` setting, read from ``.metaobjects/config.json``)."""
+    generated with ``committed`` and this run's loaded root resolved ``used`` (ADR-0058: the one
+    project ``naming`` setting, read from ``.metaobjects/config.json``). The C# port prints the
+    same text."""
     return (
-        f"The committed output was generated with column naming {committed}; this run used "
-        f'{used} ("naming" in .metaobjects/config.json, or its default). Do not regenerate: '
-        f"that rewrites every column name the database does not have. Declare the naming once, "
-        f'as `"naming": {{ "columns": "{committed}" }}` in .metaobjects/config.json, and gen '
-        f"and verify --codegen both read it."
+        f"The committed output was generated with {_naming_block(committed)}; this run used "
+        f"{_naming_block(used)} (.metaobjects/config.json; each rule defaults to snake_case). Do "
+        f"not regenerate: that rewrites column or table names to ones the database does not have. "
+        f"Declare {_naming_block(committed)} in .metaobjects/config.json, and gen and verify "
+        f"--codegen both read it."
     )
 
 

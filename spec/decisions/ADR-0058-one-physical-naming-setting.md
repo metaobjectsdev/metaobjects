@@ -87,6 +87,7 @@ reader and resolves the names through its own resolver.
   itself creates was the defect.
 - **Language-side names are untouched.** Properties, classes, DTO fields and wire keys keep
   their names; only physical database identifiers move.
-- `verify --codegen` drift that a different column rule would reproduce exactly says so, naming
-  `naming.columns` in `.metaobjects/config.json`, instead of advising a regenerate that would
-  commit the wrong names.
+- `verify --codegen` drift that a different column rule, a different table rule, or both would
+  reproduce exactly says so, naming the `naming` block in `.metaobjects/config.json` that
+  reproduces it, instead of advising a regenerate that would commit the wrong names. C# and
+  Python, the ports with this probe, print the same message and probe in the same order.

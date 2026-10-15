@@ -708,27 +708,70 @@ public static class CodegenCli
         return 0;
     }
 
-    /// <summary>The other column naming that reproduces the committed output exactly, or <c>null</c>.</summary>
-    private static ColumnNamingStrategy? MatchingColumnNaming(
-        GenConfig config, MetaRoot root, IReadOnlyList<IGenerator> suite, bool narrowed, ColumnNamingStrategy used)
+    /// <summary>
+    /// The other physical naming that reproduces the committed output exactly, or <c>null</c>.
+    /// Tries every other combination of the two ADR-0058 rules: another column rule alone,
+    /// then another table rule alone, then both together (<see cref="NamingCandidates"/>).
+    /// The table rule reaches codegen only through the root (<see cref="MetaSource.PhysicalName"/>
+    /// reads <see cref="PhysicalNaming.Of"/>), so each probe sets the candidate on the root
+    /// and restores <paramref name="used"/> afterwards.
+    /// </summary>
+    private static PhysicalNaming? MatchingNaming(
+        GenConfig config, MetaRoot root, IReadOnlyList<IGenerator> suite, bool narrowed, PhysicalNaming used)
     {
-        foreach (var other in Enum.GetValues<ColumnNamingStrategy>().Where(s => s != used))
+        foreach (var candidate in NamingCandidates(used))
         {
-            var probe = CodegenDrift.Compute(config with { ColumnNamingStrategy = other }, root, suite, narrowed);
-            if (probe.Error is null && probe.Clean) return other;
+            CodegenDrift.Result probe;
+            root.PhysicalNaming = candidate;
+            try
+            {
+                probe = CodegenDrift.Compute(config with { ColumnNamingStrategy = candidate.Columns }, root, suite, narrowed);
+            }
+            finally
+            {
+                root.PhysicalNaming = used;
+            }
+            if (probe.Error is null && probe.Clean) return candidate;
         }
         return null;
     }
 
+    /// <summary>
+    /// Every naming other than <paramref name="used"/>, in the order verify probes them (the
+    /// Python port probes the same order): the used table rule first, so a different column
+    /// rule alone is tried before a different table rule; within each, the used column rule
+    /// first, then snake_case, literal, kebab-case.
+    /// </summary>
+    private static IEnumerable<PhysicalNaming> NamingCandidates(PhysicalNaming used)
+    {
+        ColumnNamingStrategy[] columns =
+            [ColumnNamingStrategy.SnakeCase, ColumnNamingStrategy.Literal, ColumnNamingStrategy.KebabCase];
+        TableNamingRule[] tables = [TableNamingRule.SnakeCase, TableNamingRule.Literal];
+        foreach (var t in tables.OrderBy(t => t == used.Tables ? 0 : 1))
+            foreach (var c in columns.OrderBy(c => c == used.Columns ? 0 : 1))
+                if (new PhysicalNaming(c, t) is var candidate && candidate != used)
+                    yield return candidate;
+    }
+
+    /// <summary>The <c>naming.tables</c> spelling of <paramref name="rule"/> in
+    /// <c>.metaobjects/config.json</c>, for the ADR-0058 drift message below.</summary>
+    private static string TableNamingSpelling(TableNamingRule rule) =>
+        rule == TableNamingRule.Literal ? "literal" : "snake_case";
+
+    /// <summary>A naming as the <c>naming</c> block that declares it.</summary>
+    private static string NamingBlock(PhysicalNaming naming) =>
+        $"\"naming\": {{ \"columns\": \"{ColumnNamingFlag(naming.Columns)}\", " +
+        $"\"tables\": \"{TableNamingSpelling(naming.Tables)}\" }}";
+
     /// <summary>What <c>verify --codegen</c> says, in place of "regenerate", when the committed output was
-    /// generated with <paramref name="committed"/> and this run used <paramref name="used"/> — the rule
-    /// ADR-0058 reads from <c>.metaobjects/config.json</c> (default <c>snake_case</c>).</summary>
-    private static string ColumnNamingDiffers(ColumnNamingStrategy committed, ColumnNamingStrategy used) =>
-        $"The committed output was generated with column naming {ColumnNamingFlag(committed)}; this run used " +
-        $"{ColumnNamingFlag(used)} (\"naming.columns\" in .metaobjects/config.json, default snake_case). Do not " +
-        "regenerate: that rewrites every column name the database does not have. Declare " +
-        $"\"naming\": {{ \"columns\": \"{ColumnNamingFlag(committed)}\" }} in .metaobjects/config.json, and gen " +
-        "and verify --codegen both read it.";
+    /// generated with <paramref name="committed"/> and this run used <paramref name="used"/> — the rules
+    /// ADR-0058 reads from <c>.metaobjects/config.json</c> (each defaults to <c>snake_case</c>). The
+    /// Python port prints the same text.</summary>
+    private static string NamingDiffers(PhysicalNaming committed, PhysicalNaming used) =>
+        $"The committed output was generated with {NamingBlock(committed)}; this run used " +
+        $"{NamingBlock(used)} (.metaobjects/config.json; each rule defaults to snake_case). Do not " +
+        "regenerate: that rewrites column or table names to ones the database does not have. Declare " +
+        $"{NamingBlock(committed)} in .metaobjects/config.json, and gen and verify --codegen both read it.";
 
     private static int RunVerifyArgs(string[] rest, IReadOnlyList<IGenerator> declared)
     {
@@ -824,12 +867,13 @@ public static class CodegenCli
         }
         Console.Error.WriteLine($"{VerifyCommandName}: drift ({result.DriftedFiles.Count} file(s) differ from a fresh regen):");
         foreach (var line in result.Lines) Console.Error.WriteLine($"  {line}");
-        // The committed output may be right and this run's column naming wrong: the naming
-        // reaches every column name, so regenerating would commit the wrong names. When another
-        // naming reproduces the committed tree exactly, say that instead of "regenerate".
-        if (MatchingColumnNaming(config, load.Root, suite, a.Selection is { Count: > 0 }, columnNaming) is { } committed)
+        // The committed output may be right and this run's naming wrong: the naming reaches
+        // every column and table name, so regenerating would commit the wrong names. When
+        // another naming reproduces the committed tree exactly, say that instead of "regenerate".
+        var naming = load.Root.PhysicalNaming;
+        if (MatchingNaming(config, load.Root, suite, a.Selection is { Count: > 0 }, naming) is { } committed)
         {
-            Console.Error.WriteLine(ColumnNamingDiffers(committed, columnNaming));
+            Console.Error.WriteLine(NamingDiffers(committed, naming));
             return 1;
         }
         Console.Error.WriteLine("Run 'dotnet meta gen' to regenerate, then commit the result.");

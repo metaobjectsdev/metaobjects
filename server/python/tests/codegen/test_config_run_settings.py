@@ -32,7 +32,8 @@ REPO = Path(__file__).parents[4]
 FITNESS = REPO / "fixtures" / "persistence-conformance" / "canonical" / "meta.fitness.json"
 
 # `createdAt` has a case boundary, so its column is `createdAt` under `literal` and
-# `created_at` under `snake_case`.
+# `created_at` under `snake_case`. `OrderItem` names no table, so its table comes from the
+# table rule: `order_items` under `snake_case`, `OrderItems` under `literal`.
 MODEL = {
     "metadata.root": {
         "package": "acme",
@@ -41,6 +42,12 @@ MODEL = {
                 {"source.rdb": {"@table": "subscribers"}},
                 {"field.long": {"name": "id"}},
                 {"field.string": {"name": "createdAt"}},
+                {"identity.primary": {"@fields": "id"}},
+            ]}},
+            {"object.entity": {"name": "OrderItem", "children": [
+                {"source.rdb": {}},
+                {"field.long": {"name": "id"}},
+                {"field.long": {"name": "unitPrice"}},
                 {"identity.primary": {"@fields": "id"}},
             ]}},
         ],
@@ -170,11 +177,65 @@ def test_verify_with_another_naming_says_the_naming_differs_not_regenerate(
     assert main(["verify", "--codegen"]) == 1
     err = capsys.readouterr().err
     assert (
-        "The committed output was generated with column naming snake_case; this run used "
-        'literal ("naming" in .metaobjects/config.json, or its default). Do not regenerate'
-        in err
+        'The committed output was generated with "naming": { "columns": "snake_case", '
+        '"tables": "snake_case" }; this run used "naming": { "columns": "literal", '
+        '"tables": "snake_case" } (.metaobjects/config.json; each rule defaults to snake_case). '
+        "Do not regenerate" in err
     )
-    assert '`"naming": { "columns": "snake_case" }` in .metaobjects/config.json' in err
+    assert (
+        'Declare "naming": { "columns": "snake_case", "tables": "snake_case" } in '
+        ".metaobjects/config.json" in err
+    )
+    assert "regenerate (metaobjects gen)" not in err
+
+
+def _order_item_names(out: Path) -> str:
+    [path] = list(out.rglob("order_item_names.py"))
+    return path.read_text(encoding="utf-8")
+
+
+def test_verify_with_another_table_rule_says_the_naming_differs_not_regenerate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+) -> None:
+    # Committed under literal tables ("OrderItems"); then the config drops the table rule, so
+    # the default snake_case ("order_items") disagrees. Regenerating would bind the entity to a
+    # table the database does not have, so verify names the table rule that reproduces it.
+    out = _project(tmp_path, {"tables": "literal"})
+    monkeypatch.chdir(tmp_path)
+    assert main(["gen"]) == 0
+    assert '"OrderItems"' in _order_item_names(out)
+    _write_naming(tmp_path, {})
+    capsys.readouterr()
+    assert main(["verify", "--codegen"]) == 1
+    err = capsys.readouterr().err
+    assert (
+        'The committed output was generated with "naming": { "columns": "snake_case", '
+        '"tables": "literal" }; this run used "naming": { "columns": "snake_case", '
+        '"tables": "snake_case" }' in err
+    )
+    assert (
+        'Declare "naming": { "columns": "snake_case", "tables": "literal" } in '
+        ".metaobjects/config.json" in err
+    )
+    assert "regenerate (metaobjects gen)" not in err
+
+
+def test_verify_finds_a_column_and_table_rule_that_differ_together(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+) -> None:
+    # Committed under literal columns AND literal tables; the config now declares neither.
+    # No single rule change reproduces the committed tree; the two together do.
+    _project(tmp_path, {"columns": "literal", "tables": "literal"})
+    monkeypatch.chdir(tmp_path)
+    assert main(["gen"]) == 0
+    _write_naming(tmp_path, {})
+    capsys.readouterr()
+    assert main(["verify", "--codegen"]) == 1
+    err = capsys.readouterr().err
+    assert (
+        'Declare "naming": { "columns": "literal", "tables": "literal" } in '
+        ".metaobjects/config.json" in err
+    )
     assert "regenerate (metaobjects gen)" not in err
 
 
@@ -190,7 +251,7 @@ def test_real_drift_still_says_regenerate(
     assert main(["verify", "--codegen"]) == 1
     err = capsys.readouterr().err
     assert "regenerate (metaobjects gen) and commit the result." in err
-    assert "column naming" not in err
+    assert "The committed output was generated with" not in err
 
 
 # --- templates ----------------------------------------------------------------------------

@@ -53,8 +53,8 @@ database does not have.
 
 ### Fixed
 - `verify --codegen` (Python, C#) says when the committed output was generated with another
-  column rule, and names the `naming` setting, instead of advising a regeneration that would
-  commit the wrong column names.
+  column rule, another table rule, or both, and names the `naming` setting that reproduces it,
+  instead of advising a regeneration that would commit the wrong column or table names.
 - Every "removed in 1.1.0" message and skill reference names the migration guide by its full
   public URL; the repository path they printed exists in no installed package.
 - The Java and Kotlin skills' only `pom.xml` examples generated code that did not compile;
