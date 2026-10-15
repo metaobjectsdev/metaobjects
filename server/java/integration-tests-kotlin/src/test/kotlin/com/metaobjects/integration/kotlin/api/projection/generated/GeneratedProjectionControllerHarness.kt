@@ -66,11 +66,20 @@ class GeneratedProjectionControllerHarness(
     private val viewTables: Map<String, Table>
     private val dbSeq = AtomicInteger(0)
     private var host: TomcatHost? = null
+    /** ADR-0058 — the project's naming.columns rule, read from this corpus's config. */
+    private val columnsRule: String
 
     init {
         val metaJson = corpusRoot.resolve("projection/meta.json")
         val uri: URI = URIHelper.toURI("model:file:" + metaJson.toAbsolutePath().toString().replace('\\', '/'))
         val loader = loadUris("api-contract-projection-generated", listOf(uri))
+        // ADR-0058 — this corpus's committed .metaobjects/config.json (at corpusRoot,
+        // fixtures/api-contract-conformance/) declares naming.columns: literal; every field
+        // here declares no @column, so the generated columns and the runtime's reads of them
+        // depend on this. Read with the SAME NeutralConfig reader every port uses.
+        loader.root.physicalNaming =
+            com.metaobjects.config.SourceResolver.resolvePhysicalNaming(corpusRoot)
+        columnsRule = loader.root.physicalNaming.columns()
 
         val srcDir = genDir.resolve("src")
         Files.createDirectories(srcDir)
@@ -130,7 +139,9 @@ class GeneratedProjectionControllerHarness(
                 val table = viewTables.getValue(name)
                 // view column (the generated Exposed column's physical name) <- `invoices` column
                 val select = view.columns.joinToString(", ") { (viewCol, baseCol) ->
-                    val target = table.columns.first { it.name == snakeCase(viewCol) }
+                    val target = table.columns.first {
+                        it.name == com.metaobjects.database.ColumnNaming.apply(viewCol, columnsRule)
+                    }
                     "${identity(column(baseCol))} AS ${identity(target)}"
                 }
                 exec("CREATE VIEW ${view.name} AS SELECT $select FROM ${identity(invoiceTable)}")
@@ -150,11 +161,12 @@ class GeneratedProjectionControllerHarness(
 
     /**
      * The generated Exposed column for a metadata field name. Looked up by the PHYSICAL name
-     * the generator chose (snake_case is Kotlin's default), so the seed follows whatever the
+     * the generator chose — this corpus's naming.columns rule (ADR-0058), read from the SAME
+     * loaded root the generators resolved it from — so the seed follows whatever the
      * generator emitted rather than a spelling hardcoded here that could drift from it.
      */
     private fun column(field: String) =
-        invoiceTable.columns.firstOrNull { it.name == snakeCase(field) }
+        invoiceTable.columns.firstOrNull { it.name == com.metaobjects.database.ColumnNaming.apply(field, columnsRule) }
             ?: error(
                 "no column for metadata field '$field' on ${invoiceTable.tableName}; " +
                     "columns=${invoiceTable.columns.map { it.name }}",
@@ -198,12 +210,6 @@ class GeneratedProjectionControllerHarness(
             // No declared identity; the view carries an `id` column all the same.
             "InvoiceStub" to ViewSpec("v_invoice_stub", listOf("id" to "id", "reference" to "reference")),
         )
-
-        fun snakeCase(s: String): String = buildString {
-            for (c in s) {
-                if (c.isUpperCase()) { if (isNotEmpty()) append('_'); append(c.lowercaseChar()) } else append(c)
-            }
-        }
 
         fun literal(v: Any?): String = when (v) {
             null -> "NULL"

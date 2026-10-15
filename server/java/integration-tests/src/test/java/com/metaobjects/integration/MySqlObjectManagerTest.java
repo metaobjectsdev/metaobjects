@@ -70,6 +70,11 @@ final class MySqlObjectManagerTest {
 
         loader = MetaDataLoader.fromUris("mysql-shop",
             List.of(URIHelper.toURI("model:resource:meta.mysql-shop.json")));
+        // This fixture's hand-rolled DDL below declares every column literally
+        // (createdAt) — it needs the `literal` naming.columns rule (ADR-0058's default
+        // is now snake_case in every port).
+        loader.getRoot().setPhysicalNaming(
+                com.metaobjects.database.PhysicalNaming.of("literal", "snake_case"));
         mysql = new MySqlContainer();
         try (Connection c = mysql.open(); Statement s = c.createStatement()) {
             s.execute("DROP TABLE IF EXISTS products");

@@ -64,11 +64,27 @@ class GeneratedWriteThroughControllerHarness(
     private val orderTable: Table
     private val dbSeq = AtomicInteger(0)
     private var host: TomcatHost? = null
+    private val customerIdColumn: String
+    private val customerNameColumn: String
 
     init {
         val metaJson = corpusRoot.resolve("write-through/meta.json")
         val uri: URI = URIHelper.toURI("model:file:" + metaJson.toAbsolutePath().toString().replace('\\', '/'))
         val loader = loadUris("api-contract-write-through-generated", listOf(uri))
+        // ADR-0058 — this corpus's committed .metaobjects/config.json (at corpusRoot,
+        // fixtures/api-contract-conformance/) declares naming.columns: literal; every field
+        // here declares no @column, so the generated columns and the runtime's reads of them
+        // depend on this. Read with the SAME NeutralConfig reader every port uses.
+        loader.root.physicalNaming =
+            com.metaobjects.config.SourceResolver.resolvePhysicalNaming(corpusRoot)
+
+        // The physical name `Order.customerId` resolves to, under the SAME rule the
+        // generators below resolve it through — the hand-exec'd view/seed SQL in reset()
+        // below must reference this, not a literal "customer_id" that only matched the
+        // OLD per-port default.
+        val orderEntity = loader.metaObjects.first { it.shortName == "Order" }
+        customerIdColumn = com.metaobjects.database.ColumnNaming.resolve(orderEntity.getMetaField("customerId"))
+        customerNameColumn = com.metaobjects.database.ColumnNaming.resolve(orderEntity.getMetaField("customerName"))
 
         val srcDir = genDir.resolve("src")
         Files.createDirectories(srcDir)
@@ -116,19 +132,22 @@ class GeneratedWriteThroughControllerHarness(
         transaction(db) {
             SchemaUtils.create(customerTable, orderTable) // customers first (Order FK → Customer)
             // Exposed cannot CREATE a view — the generated OrderView is a SELECT-only Table binding.
-            // `name` is quoted: Exposed stores it as the reserved-word-quoted lowercase column "name",
-            // and H2 (PostgreSQL mode, no DATABASE_TO_LOWER) folds an UNquoted `c.name` to `NAME`,
-            // which would not match. id / customer_id are unquoted (stored uppercase) and resolve as-is.
+            // Every non-"id" column here is QUOTED: Exposed quotes a mixed-case/non-all-lowercase
+            // identifier in its own DDL to preserve case (e.g. a literal "customerId", under this
+            // corpus's naming.columns: literal rule), and H2 (PostgreSQL mode, no DATABASE_TO_LOWER)
+            // folds an unquoted reference to uppercase — which would not match that stored column.
+            // `id` alone is safe unquoted in every naming.columns rule this corpus exercises.
             exec(
                 "CREATE VIEW v_order_with_customer AS " +
-                    "SELECT o.id AS id, o.customer_id AS customer_id, c.\"name\" AS customer_name " +
-                    "FROM orders o JOIN customers c ON o.customer_id = c.id",
+                    "SELECT o.id AS id, o.\"$customerIdColumn\" AS \"$customerIdColumn\", " +
+                    "c.\"name\" AS \"$customerNameColumn\" " +
+                    "FROM orders o JOIN customers c ON o.\"$customerIdColumn\" = c.id",
             )
             for (c in customers) {
                 exec("INSERT INTO customers (id, \"name\") VALUES (${asLong(c["id"])}, ${sqlStr(c["name"])})")
             }
             for (o in orders) {
-                exec("INSERT INTO orders (id, customer_id) VALUES (${asLong(o["id"])}, ${asLong(o["customerId"])})")
+                exec("INSERT INTO orders (id, \"$customerIdColumn\") VALUES (${asLong(o["id"])}, ${asLong(o["customerId"])})")
             }
         }
 

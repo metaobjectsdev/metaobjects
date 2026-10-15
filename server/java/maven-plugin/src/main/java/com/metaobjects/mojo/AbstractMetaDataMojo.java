@@ -409,6 +409,14 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
 
         MetaDataLoader loader = configurable.getLoader();
 
+        // ADR-0058 — the project's physical-naming rules are a project-wide setting,
+        // independent of WHERE the pom told the loader to find its files (<sourceDir>,
+        // <sources>, or the neutral-config ladder above): read .metaobjects/config.json
+        // for `naming` regardless, and set it on the loaded root so every resolver
+        // downstream of this load (codegen, OMDB) reads the one setting.
+        loader.getRoot().setPhysicalNaming(
+                com.metaobjects.config.SourceResolver.resolvePhysicalNaming(getProjectBaseDir().toPath()));
+
         getLog().info("MetaData Mojo > Create Loader: " + loader.toString());
 
         // Strict provenance is RECORD-not-throw at the loader (ADR-0023): drain the

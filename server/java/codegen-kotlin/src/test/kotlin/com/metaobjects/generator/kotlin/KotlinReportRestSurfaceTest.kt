@@ -78,8 +78,17 @@ class KotlinReportRestSurfaceTest {
 
     private fun withModel() = loadDirectory("report-rest-with", fixtureDir("fixtures/codegen-noop/reporting/with"))
 
-    private fun canonical() =
-        loadDirectory("report-rest-canonical", fixtureDir("fixtures/persistence-conformance/canonical"))
+    private fun canonical(): MetaDataLoader {
+        val dir = fixtureDir("fixtures/persistence-conformance/canonical")
+        val loader = loadDirectory("report-rest-canonical", dir)
+        // ADR-0058: this corpus's committed .metaobjects/config.json — at the corpus ROOT
+        // (fixtures/persistence-conformance/), not under canonical/, so a directory loader
+        // pointed at canonical/ never walks into it — declares naming.columns: literal.
+        // Read with the SAME NeutralConfig reader every port uses, rather than the removed
+        // columnNaming generator arg.
+        loader.root.physicalNaming = com.metaobjects.config.SourceResolver.resolvePhysicalNaming(dir.parent)
+        return loader
+    }
 
     /** Compile everything but the controllers: Spring is not on this module's classpath. */
     private fun assertCompilesWithoutControllers(files: Map<String, String>) {
@@ -364,7 +373,7 @@ class KotlinReportRestSurfaceTest {
 
     @Test
     fun `the nine canonical reports' rows, tables and allowlists compile beside their entities`() {
-        val files = emit(canonical(), args = mapOf("columnNaming" to "literal"))
+        val files = emit(canonical())
         for (report in listOf(
             "ProgramMinutes", "FitnessTotals", "ProgramsByMonth", "ProgramsByWeek", "RecentPrograms", "AssetActivity",
             "ProgramRoster", "ProgramLongWeeks", "FitnessTotalsFilled",

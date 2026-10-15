@@ -65,7 +65,8 @@ import java.util.List;
  * <p>Mirrors the TypeScript {@code report-read-model.ts}.</p>
  */
 @SuppressWarnings("serial")
-public final class ReportReadModel extends ReportMetaObject {
+public final class ReportReadModel extends ReportMetaObject
+        implements com.metaobjects.database.PhysicalNamingHolder {
 
     private static final String CACHE_KEY = "ReportReadModel.of()";
 
@@ -90,6 +91,21 @@ public final class ReportReadModel extends ReportMetaObject {
 
     /** The declared report this model was built from; {@code null} only on a bare instance. */
     private transient MetaObject report;
+
+    /**
+     * ADR-0058 — this model's physical-naming rules, captured from the report's loaded
+     * root at build time ({@link #build}) since the model itself is detached and has no
+     * parent to walk to (see the class doc, "Why it is detached"). Read by
+     * {@link com.metaobjects.database.PhysicalNaming#of(MetaData)} for every derived
+     * field's column and the copied source's table/view name.
+     */
+    private transient com.metaobjects.database.PhysicalNaming physicalNaming =
+        com.metaobjects.database.PhysicalNaming.DEFAULT;
+
+    @Override
+    public com.metaobjects.database.PhysicalNaming getPhysicalNaming() {
+        return physicalNaming;
+    }
 
     /**
      * Constructs an EMPTY model node. Public only because the node contract requires a
@@ -163,6 +179,10 @@ public final class ReportReadModel extends ReportMetaObject {
         // The resolution key carries the package, so the model resolves as the report does.
         ReportReadModel model = new ReportReadModel(report.getName());
         model.report = report;
+        // ADR-0058 — captured from the ATTACHED report, before this model's own detachment
+        // would otherwise leave every derived field and the copied source resolving
+        // PhysicalNaming.DEFAULT regardless of the project's actual rule.
+        model.physicalNaming = com.metaobjects.database.PhysicalNaming.of(report);
         for (ReportShape.Field f : shape.fields()) {
             refuseObjectField(report, f);
             model.addChild(derivedField(f));

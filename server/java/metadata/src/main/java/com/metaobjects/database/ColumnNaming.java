@@ -18,16 +18,22 @@ import com.metaobjects.field.MetaField;
  *   <li>Python — {@code metaobjects.naming}</li>
  * </ul>
  *
- * <p><b>Why this class exists.</b> The two JVM ports disagreed. {@code ObjectManagerDB}'s
+ * <p><b>Why this class exists.</b> The two JVM ports used to disagree. {@code ObjectManagerDB}'s
  * {@code getColumnRef} resolved {@code @column} or the field name verbatim
  * ({@link #LITERAL}); the Kotlin Exposed generator hardcoded a camel-to-snake conversion
  * and ignored {@code @column} altogether. So one metadata model produced two different
- * column names on one JVM, and neither was configurable. Both now delegate here.</p>
+ * column names on one JVM, and neither was configurable one place. Both now delegate here,
+ * and — per ADR-0058 — read the SAME setting: {@link PhysicalNaming#of(com.metaobjects.MetaData)}
+ * resolves the {@code naming.columns} rule from the loaded root's {@code .metaobjects/config.json},
+ * so codegen and the runtime cannot disagree because neither configures its own strategy any
+ * more. See {@link #removedConfigurationMessage(String, String)} for the refusal every
+ * former configuration site (a pom generator arg, a runtime setter) now gives.</p>
  *
- * <p><b>Defaults do not move.</b> {@link #DEFAULT} is {@link #LITERAL} — what
- * {@code ObjectManagerDB} has always resolved — while the Kotlin generator keeps
- * {@code snake_case} as its own default, since that is what it always emitted. A default
- * that moved would silently re-point live queries at columns that do not exist.</p>
+ * <p><b>The default moved (ADR-0058).</b> {@link #DEFAULT} was {@link #LITERAL} — what
+ * {@code ObjectManagerDB} resolved before this class read the project setting — and is now
+ * {@link #SNAKE_CASE}, matching what {@code meta migrate} has always created and what every
+ * other port now defaults to. An adopter whose live database really has literal columns
+ * declares {@code "naming": { "columns": "literal" }} in {@code .metaobjects/config.json}.</p>
  */
 public final class ColumnNaming {
 
@@ -40,8 +46,31 @@ public final class ColumnNaming {
     /** camelCase / PascalCase to kebab-case. */
     public static final String KEBAB_CASE = "kebab-case";
 
-    /** The JVM runtime default. See the class javadoc on why it is not snake_case. */
-    public static final String DEFAULT = LITERAL;
+    /** The project default (ADR-0058) — what {@code meta migrate} has always created. */
+    public static final String DEFAULT = SNAKE_CASE;
+
+    /**
+     * ADR-0058's migration guide — named once so every refusal below points the same reader
+     * at the same page.
+     */
+    public static final String PHYSICAL_NAMING_MIGRATION_GUIDE =
+        "https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/physical-naming.md";
+
+    /**
+     * The exact refusal text for a configuration source ADR-0058 removed — a pom generator
+     * arg, a runtime setter, a Spring property. Never guesses at the right value: the caller's
+     * own value is echoed back as the example so the fix is a copy-paste.
+     *
+     * @param what  names the removed source exactly, e.g. {@code "the columnNaming generator
+     *              arg in pom.xml"} or {@code "SimpleMappingHandlerDB.setColumnNaming"}
+     * @param value the value the caller gave (echoed into the example as a {@code columns} rule)
+     */
+    public static String removedConfigurationMessage(String what, String value) {
+        return what + " was removed in 1.1.0. Column and table naming is one project setting "
+            + "now, read by every port: \"naming\" in .metaobjects/config.json, for example "
+            + "\"naming\": { \"columns\": \"" + value + "\" }. Move it there and delete " + what
+            + ". See " + PHYSICAL_NAMING_MIGRATION_GUIDE;
+    }
 
     /**
      * Apply a strategy to a bare name.
@@ -59,9 +88,13 @@ public final class ColumnNaming {
                         + LITERAL + ", " + SNAKE_CASE + ", " + KEBAB_CASE);
     }
 
-    /** THE physical column name for a field, under the {@link #DEFAULT} strategy. */
+    /**
+     * THE physical column name for a field, under the project's {@code naming.columns} rule
+     * (ADR-0058) — read from the loaded root ({@link PhysicalNaming#of(com.metaobjects.MetaData)}),
+     * {@link #DEFAULT} when the field belongs to no loaded root.
+     */
     public static String resolve(MetaField<?> field) {
-        return resolve(field, DEFAULT);
+        return resolve(field, PhysicalNaming.of(field).columns());
     }
 
     /**

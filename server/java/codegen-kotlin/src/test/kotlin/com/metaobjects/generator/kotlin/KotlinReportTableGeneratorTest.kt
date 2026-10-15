@@ -68,8 +68,23 @@ class KotlinReportTableGeneratorTest {
         }
     }
 
-    private fun canonical(args: Map<String, String> = mapOf("columnNaming" to "literal")) =
-        emit(loadDirectory("report-table-canonical", canonicalDir()), args)
+    /**
+     * This corpus's committed {@code .metaobjects/config.json} — at the corpus ROOT
+     * ({@code fixtures/persistence-conformance/}), not under {@code canonical/}, because a
+     * directory loader pointed at {@code canonical/} would otherwise walk into it and hand
+     * it to the canonical JSON parser as a metadata document — declares
+     * {@code naming.columns: literal} (ADR-0058). Read it with the SAME NeutralConfig reader
+     * every port uses, rather than the removed {@code columnNaming} generator arg.
+     */
+    private fun canonicalLoader(): MetaDataLoader {
+        val dir = canonicalDir()
+        val loader = loadDirectory("report-table-canonical", dir)
+        loader.root.physicalNaming = com.metaobjects.config.SourceResolver.resolvePhysicalNaming(dir.parent)
+        return loader
+    }
+
+    private fun canonical(args: Map<String, String> = emptyMap()) =
+        emit(canonicalLoader(), args)
 
     private fun assertCompiles(files: Map<String, String>) {
         val sources = files.filterKeys { it.endsWith(".kt") }
@@ -160,14 +175,18 @@ class KotlinReportTableGeneratorTest {
 
     @Test
     fun `the naming strategy applies to the derived field name`() {
-        val src = canonical(emptyMap()).getValue("fitness/ProgramMinutesTable.kt")   // snake_case default
+        // The project DEFAULT (snake_case, ADR-0058) -- not this corpus's committed
+        // naming.columns: literal, which canonical()/canonicalLoader() apply; a plain
+        // loadDirectory() here keeps the root at PhysicalNaming.DEFAULT.
+        val src = emit(loadDirectory("report-table-default-naming", canonicalDir()))
+            .getValue("fitness/ProgramMinutesTable.kt")
         assertTrue("    val avgMinutes = decimal(\"avg_minutes\", 38, 18).nullable()\n" in src, src)
         assertTrue("    val programTitle = varchar(\"program_title\", 200)\n" in src, src)
     }
 
     @Test
     fun `the Exposed 1x mode emits the same report table against the v1 packages`() {
-        val files = canonical(mapOf("columnNaming" to "literal", "exposedApi" to "1"))
+        val files = canonical(mapOf("exposedApi" to "1"))
         val byMonth = files.getValue("fitness/ProgramsByMonthTable.kt")
         assertTrue("import org.jetbrains.exposed.v1.core.Table\n" in byMonth, byMonth)
         assertTrue("import org.jetbrains.exposed.v1.javatime.date\n" in byMonth, byMonth)
@@ -180,8 +199,8 @@ class KotlinReportTableGeneratorTest {
     @Test
     fun `with the names generator in the run a report still binds by literal and gets a names artifact`() {
         val files = emit(
-            loadDirectory("report-table-names", canonicalDir()),
-            mapOf("columnNaming" to "literal", "useNames" to "true"),
+            canonicalLoader(),
+            mapOf("useNames" to "true"),
             listOf(KotlinNamesGenerator(), KotlinExposedTableGenerator()),
         )
         // The entity beside it does reference its artifact, so the arg really was on.
@@ -279,9 +298,11 @@ class KotlinReportTableGeneratorTest {
 
     /** The table and the row data class of `ProductRevenue`. */
     private fun productRevenueFiles(json: String): Pair<String, String> {
+        val loader = loadString("report-table-spine-default", json)
+        loader.root.physicalNaming = com.metaobjects.database.PhysicalNaming.of("literal", "snake_case")
         val files = emit(
-            loadString("report-table-spine-default", json),
-            mapOf("columnNaming" to "literal"),
+            loader,
+            emptyMap(),
             listOf(KotlinEntityGenerator(), KotlinExposedTableGenerator()),
         )
         assertCompiles(files)
@@ -587,12 +608,15 @@ class KotlinReportTableGeneratorTest {
             })
             assertEquals(emptyList(), errors.map { it.message })
             register()
+            // These fixtures assert literal column names (ADR-0058's default is now
+            // snake_case in every port).
+            root.physicalNaming = com.metaobjects.database.PhysicalNaming.of("literal", "snake_case")
         }
 
     private fun crossPackageTable(decoy: Boolean, measures: String = """["events"]"""): Map<String, String> =
         emit(
             loadFiles(sharedBase, evFile(decoy, measures)),
-            mapOf("columnNaming" to "literal"),
+            emptyMap(),
             listOf(KotlinEntityGenerator(), KotlinExposedTableGenerator()),
         )
 
@@ -669,11 +693,21 @@ class KotlinReportTableGeneratorTest {
     @Test
     fun `the canonical report tables compile beside the entities they reference`() {
         val files = emit(
-            loadDirectory("report-table-compile", canonicalDir()),
-            mapOf("columnNaming" to "literal", "packageName" to "fitness"),
+            canonicalLoader(),
+            mapOf("packageName" to "fitness"),
             listOf(KotlinEntityGenerator(), KotlinExposedTableGenerator()),
         )
         assertTrue(files.keys.count { it.endsWith("Table.kt") } >= 6, files.keys.toString())
         assertCompiles(files)
+    }
+
+    @Test
+    fun `the columnNaming generator arg is refused`() {
+        val e = assertFailsWith<GeneratorException> { canonical(mapOf("columnNaming" to "literal")) }
+        assertEquals(
+            com.metaobjects.database.ColumnNaming.removedConfigurationMessage(
+                "the columnNaming generator arg in pom.xml", "literal"),
+            e.message,
+        )
     }
 }

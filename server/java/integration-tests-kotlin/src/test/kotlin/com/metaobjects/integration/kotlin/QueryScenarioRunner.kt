@@ -109,7 +109,14 @@ object QueryScenarioRunner {
         //    cross-port SSOT via M2MFields.derive). Tagged uniquely so registry
         //    state can't leak across scenarios. Non-relate ops never touch it.
         val loaderTag = "ktx-query-" + java.util.UUID.randomUUID().toString().substring(0, 8)
-        val root: MetaRoot = MetaDataLoader.fromDirectory(loaderTag, corpus.resolve("canonical")).root
+        val canonicalDir = corpus.resolve("canonical")
+        val root: MetaRoot = MetaDataLoader.fromDirectory(loaderTag, canonicalDir).root
+        // ADR-0058: this corpus's committed .metaobjects/config.json — at the corpus ROOT
+        // (fixtures/persistence-conformance/, i.e. `corpus` here), not under canonical/, so
+        // a directory loader pointed at canonical/ never walks into it — declares
+        // naming.columns: literal. Read with the SAME NeutralConfig reader every port uses,
+        // rather than passing a strategy.
+        root.physicalNaming = com.metaobjects.config.SourceResolver.resolvePhysicalNaming(corpus)
 
         // 4. Run queries; each gets its own Exposed transaction.
         for (spec in scenario.queries) {
@@ -189,7 +196,7 @@ object QueryScenarioRunner {
         // port keys it (and the way the shared `expect:` blocks are written). Empty when
         // the entity is not in the loaded model — then column == field by construction.
         val columnToField: Map<String, String> =
-            entityMeta?.metaFields?.associate { ColumnNaming.resolve(it, ColumnNaming.LITERAL) to it.name }
+            entityMeta?.metaFields?.associate { ColumnNaming.resolve(it) to it.name }
                 ?: emptyMap()
 
         // op:roundtrip — WRITE the insert row through Exposed, read back by PK, drop PK.

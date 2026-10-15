@@ -83,7 +83,7 @@ as a naming mismatch, naming the setting, instead of advising a regenerate.
 | 1.0 | 1.1.0 |
 |---|---|
 | the `columnNaming` generator arg in `pom.xml` | `"naming": { "columns": "<value>" }` in `.metaobjects/config.json`. `mvn metaobjects:generate` fails while any generator still passes it |
-| `SimpleMappingHandlerDB.setColumnNaming(...)` | the rule comes from the loaded metadata; the setter throws |
+| `SimpleMappingHandlerDB.setColumnNaming(...)` | the rule comes from the loaded metadata; the setter throws. A Spring application loading metadata from the classpath points `metaobjects.physical-naming-config` at the project's `.metaobjects/config.json` packaged as a resource (for example `classpath:.metaobjects/config.json`); the loader sets the rules from that file |
 | no arg: Java codegen and the JVM runtime used the field names (`literal`) | no setting: snake_case in Java codegen, Kotlin codegen and the runtime alike. Add `"naming": { "columns": "literal" }` to keep 1.0's column names |
 
 ## Python

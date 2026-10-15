@@ -14,8 +14,10 @@ import com.metaobjects.generator.kotlin.KotlinTypeMapper
 import com.metaobjects.generator.kotlin.PackageMapping
 
 import com.metaobjects.MetaData
+import com.metaobjects.database.ColumnNaming
 import com.metaobjects.database.CoreDBMetaDataProvider
 import com.metaobjects.database.IndexNaming
+import com.metaobjects.database.PhysicalNaming
 import com.metaobjects.MetaRoot
 import com.metaobjects.field.EnumField
 import com.metaobjects.field.MapField
@@ -69,22 +71,6 @@ import com.metaobjects.generator.util.RestSurfaceGate
 open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
 
     /**
-     * The project's column-naming strategy for fields carrying no explicit `@column`,
-     * from the `columnNaming` generator arg
-     * (`<args><columnNaming>literal</columnNaming></args>` in the pom). Values match the
-     * cross-port vocabulary: `snake_case` (this port's default, and its historical
-     * behaviour), `literal`, `kebab-case`.
-     *
-     * It is CONFIG, not metadata — ADR-0023 does not apply. The same model must be able
-     * to drive a snake_case Postgres schema and a literal-column one, which is precisely
-     * why the strategy lives beside the generator rather than in the metadata, and why
-     * the byte-gated registry prose for `@column` describes it as the default *"via
-     * columnNamingStrategy"*.
-     */
-    protected fun columnNaming(): String =
-        getArg(KotlinGenUtil.ARG_COLUMN_NAMING, KotlinGenUtil.DEFAULT_COLUMN_NAMING)
-
-    /**
      * Task 6 — whether the table binding references `<Entity>Names.NAME` /
      * `<Entity>Names.<FIELD>_COLUMN` instead of respelling the physical name/column as a
      * string literal.
@@ -124,6 +110,14 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
 
     override fun execute(loader: MetaDataLoader) {
         parseArgs()
+        // ADR-0058 — the pom generator arg is REMOVED; refuse by name rather than silently
+        // ignoring a value that used to work. Column naming is read from the loaded root
+        // (com.metaobjects.database.PhysicalNaming) wherever a field or table name is
+        // resolved below — see the removed columnNaming() method's former call sites.
+        if (hasArg(KotlinGenUtil.ARG_COLUMN_NAMING)) {
+            throw GeneratorException(ColumnNaming.removedConfigurationMessage(
+                "the columnNaming generator arg in pom.xml", getArg(KotlinGenUtil.ARG_COLUMN_NAMING)))
+        }
         val outRoot = Paths.get(outDir.absolutePath)
 
         // Pass 1a: identity.reference decorations — per-entity field→FK target
@@ -725,7 +719,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         // and the artifact answers it by role; two sources in one role that DISAGREE are
         // refused when the artifact is built (KotlinGenUtil.sourcesOf), so a role key cannot
         // silently stand for the wrong name.
-        val names = if (bindsThroughNames(entity)) KotlinGenUtil.resolveObjectNames(entity, columnNaming()) else null
+        val names = if (bindsThroughNames(entity)) KotlinGenUtil.resolveObjectNames(entity) else null
         // The slot describing THIS source, and the only thing that decides whether the names
         // arm is taken at all. Null when the names generator is out of the run, or when the
         // source's @kind carries no physical-name alias — a future @kind with no alias
@@ -1158,7 +1152,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
      * for longer. A second copy of a substitution rule is a second chance to miss a branch.
      */
     protected fun columnExpr(entity: MetaObject, f: MetaField<*>): String {
-        if (!bindsThroughNames(entity)) return "\"${KotlinGenUtil.resolveColumnName(f, columnNaming())}\""
+        if (!bindsThroughNames(entity)) return "\"${KotlinGenUtil.resolveColumnName(f)}\""
         // ADR-0039: metaFields is the RESOLVING accessor — an inherited field is a HIT here,
         // and the artifact of `entity` is where its constant is read from.
         if (entity.metaFields.any { it.name == f.name }) return ownColumnExpr(entity, f)
@@ -1167,7 +1161,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         // a root-level abstract field, which no table loop can hand us; the literal is the
         // same last-resort fallback as running without the names generator.
         val declaring: MetaObject = f.declaringObject
-            ?: return "\"${KotlinGenUtil.resolveColumnName(f, columnNaming())}\""
+            ?: return "\"${KotlinGenUtil.resolveColumnName(f)}\""
         return "${namesObjectRef(entity, declaring)}.${KotlinNaming.namesMember(f.name)}_COLUMN"
     }
 
@@ -1207,7 +1201,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         val (_, shortName) = PackageMapping.splitFqn(entity.name)
         return if (bindsThroughNames(entity))
             "${KotlinNaming.namesObjectName(shortName)}.${KotlinNaming.namesMember(f.name)}_COLUMN"
-        else "\"${KotlinGenUtil.resolveColumnName(f, columnNaming())}\""
+        else "\"${KotlinGenUtil.resolveColumnName(f)}\""
     }
 
     /**
@@ -1297,8 +1291,8 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                     // `@column` on either wins — the same rule as the TS reference's
                     // flattenObjectField (`resolveColumnName(field, strategy) + "_" + inner.name`).
                     // E.g. parent "homeAddress" + sub "streetLine1" → "home_address_street_line1".
-                    val colName = KotlinGenUtil.resolveColumnName(field, columnNaming()) + "_" +
-                        KotlinGenUtil.resolveColumnName(subField, columnNaming())
+                    val colName = KotlinGenUtil.resolveColumnName(field) + "_" +
+                        KotlinGenUtil.resolveColumnName(subField)
                     // Task 6 — out of scope: this composite name belongs to neither a
                     // single field of `entity` nor of `target` — <Entity>Names has no
                     // constant for it. Always literal; useNames() does not reach here.
@@ -1912,7 +1906,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         val targetTable = PackageMapping.splitFqn(storageTarget.name).second + "Table"
         val relShortName = rel.shortName ?: rel.name
         val propertyName = readColumnAttr(rel) ?: (relShortName + "Id")
-        val colName = KotlinGenUtil.applyColumnNamingStrategy(propertyName, columnNaming())
+        val colName = KotlinGenUtil.applyColumnNamingStrategy(propertyName, PhysicalNaming.of(rel).columns())
         val refSuffix = referentialActionSuffix(rel.onDeleteRaw, rel.onUpdateRaw)
         return FkColumnSpec(
             propertyName = propertyName,
@@ -1946,7 +1940,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         val ownerShort = PackageMapping.splitFqn(storageOwner.name).second
         val ownerTable = ownerShort + "Table"
         val propertyName = ownerShort.replaceFirstChar { it.lowercaseChar() } + "Id"
-        val colName = KotlinGenUtil.applyColumnNamingStrategy(propertyName, columnNaming())
+        val colName = KotlinGenUtil.applyColumnNamingStrategy(propertyName, PhysicalNaming.of(owner).columns())
         val refSuffix = referentialActionSuffix(rel.onDeleteRaw, rel.onUpdateRaw)
         return FkColumnSpec(
             propertyName = propertyName,

@@ -79,22 +79,18 @@ import com.metaobjects.generator.util.GeneratedFileWriter
  * <p>Args:
  * <ul>
  *   <li>{@code outputDir} (required): output directory root.</li>
- *   <li>{@code columnNaming} (optional): the column-naming strategy — the SAME arg
- *       [KotlinExposedTableGenerator] and [KotlinNamesGenerator] read, so the column a
- *       result row is read by and the column the names artifact declares resolve through
- *       the identical resolver + argument.</li>
  *   <li>{@code useNames} (optional, derived by the Maven mojo — see
  *       [com.metaobjects.generator.EmitsPhysicalNameConstants]): when the names artifact is
  *       in the run, `PROC_NAME` is initialised from `<Entity>Names.NAME` and each result
  *       column is read through `<Entity>Names.<MEMBER>_COLUMN`, so neither physical name
  *       is spelled a second time.</li>
  * </ul>
+ *
+ * <p>{@code columnNaming} is REMOVED (ADR-0058, 1.1.0) — the column a result row is read by
+ * resolves from the loaded root now ([com.metaobjects.database.PhysicalNaming.of]), the SAME
+ * rule [KotlinExposedTableGenerator] and [KotlinNamesGenerator] resolve.</p>
  */
 open class KotlinStoredProcGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
-
-    /** See [KotlinExposedTableGenerator.columnNaming] — same arg, same default. */
-    protected fun columnNaming(): String =
-        getArg(KotlinGenUtil.ARG_COLUMN_NAMING, KotlinGenUtil.DEFAULT_COLUMN_NAMING)
 
     /**
      * See [KotlinExposedTableGenerator.useNames] — same arg, same default, same reason for
@@ -111,6 +107,11 @@ open class KotlinStoredProcGenerator : MultiFileDirectGeneratorBase<MetaObject>(
 
     override fun execute(loader: MetaDataLoader) {
         parseArgs()
+        // ADR-0058 — the pom generator arg is REMOVED; refuse by name.
+        if (hasArg(KotlinGenUtil.ARG_COLUMN_NAMING)) {
+            throw GeneratorException(com.metaobjects.database.ColumnNaming.removedConfigurationMessage(
+                "the columnNaming generator arg in pom.xml", getArg(KotlinGenUtil.ARG_COLUMN_NAMING)))
+        }
         val outRoot = Paths.get(outDir.absolutePath)
 
         for (entity in loader.metaObjects) {
@@ -366,7 +367,7 @@ open class KotlinStoredProcGenerator : MultiFileDirectGeneratorBase<MetaObject>(
     private fun columnExpr(shortName: String, field: MetaField<*>): String =
         if (useNames())
             "${KotlinNaming.namesObjectName(shortName)}.${KotlinNaming.namesMember(field.name)}_COLUMN"
-        else "\"${KotlinGenUtil.resolveColumnName(field, columnNaming())}\""
+        else "\"${KotlinGenUtil.resolveColumnName(field)}\""
 
     /**
      * Fully qualified Kotlin parameter type for a call-parameter field. Uses the

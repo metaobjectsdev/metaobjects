@@ -66,12 +66,24 @@ class KotlinNamesGeneratorTest {
       ] }
     }""".trimIndent()
 
-    private fun emit(model: String, args: Map<String, String> = emptyMap(), outDir: Path? = null): Map<String, String> {
+    private fun emit(
+        model: String,
+        args: Map<String, String> = emptyMap(),
+        outDir: Path? = null,
+        columnsRule: String? = null,
+    ): Map<String, String> {
         val dir = outDir ?: Files.createTempDirectory("names-")
         try {
             val gen = KotlinNamesGenerator()
             gen.setArgs(args + mapOf("outputDir" to dir.toString()))
-            gen.execute(loadString("test", model))
+            val loader = loadString("test", model)
+            // ADR-0058: the rule is read from the loaded root, never the removed
+            // columnNaming generator arg.
+            if (columnsRule != null) {
+                loader.root.physicalNaming =
+                    com.metaobjects.database.PhysicalNaming.of(columnsRule, "snake_case")
+            }
+            gen.execute(loader)
             return Files.walk(dir).use { stream ->
                 stream.filter { it.isRegularFile() }
                     .toList()
@@ -85,8 +97,8 @@ class KotlinNamesGeneratorTest {
         }
     }
 
-    private fun authorSource(args: Map<String, String> = emptyMap()): String =
-        emit(authorModel, args).getValue("acme/blog/AuthorNames.kt")
+    private fun authorSource(args: Map<String, String> = emptyMap(), columnsRule: String? = null): String =
+        emit(authorModel, args, columnsRule = columnsRule).getValue("acme/blog/AuthorNames.kt")
 
     @Test fun `emits const val members for the table and every column`() {
         val src = authorSource()
@@ -152,13 +164,24 @@ class KotlinNamesGeneratorTest {
         assertTrue("const val SOURCE_PRIMARY_SCHEMA: String = \"inventory\"" in src, src)
     }
 
-    @Test fun `the columnNaming arg is honoured, both arms`() {
+    @Test fun `the project's naming columns rule is honoured, both arms`() {
         // Default (snake_case): createdAt -> created_at.
         assertTrue("const val CREATED_AT_COLUMN: String = \"created_at\"" in authorSource(), authorSource())
         // literal: createdAt stays createdAt. An explicit @column still always wins.
-        val literalSrc = authorSource(mapOf("columnNaming" to "literal"))
+        val literalSrc = authorSource(columnsRule = "literal")
         assertTrue("const val CREATED_AT_COLUMN: String = \"createdAt\"" in literalSrc, literalSrc)
         assertTrue("const val CALL_PURPOSE_COLUMN: String = \"purpose_code\"" in literalSrc, literalSrc)
+    }
+
+    @Test fun `the columnNaming generator arg is refused`() {
+        val ex = assertFailsWith<GeneratorException> {
+            authorSource(mapOf("columnNaming" to "literal"))
+        }
+        assertEquals(
+            com.metaobjects.database.ColumnNaming.removedConfigurationMessage(
+                "the columnNaming generator arg in pom.xml", "literal"),
+            ex.message,
+        )
     }
 
     @Test fun `a view kind source is read-only and keeps its own kind`() {

@@ -65,6 +65,8 @@ class GeneratedReportControllerHarness(
     private val tables: Map<String, Table>
     private val dbSeq = AtomicInteger(0)
     private var host: TomcatHost? = null
+    /** ADR-0058 — the project's naming.columns rule, read from this corpus's config. */
+    private val columnsRule: String
 
     /** Every generated file, by path relative to the output root. */
     val emittedFiles: Set<String>
@@ -73,6 +75,13 @@ class GeneratedReportControllerHarness(
         val metaJson = corpusRoot.resolve("report/meta.json")
         val uri: URI = URIHelper.toURI("model:file:" + metaJson.toAbsolutePath().toString().replace('\\', '/'))
         val loader = loadUris("api-contract-report-generated", listOf(uri))
+        // ADR-0058 — this corpus's committed .metaobjects/config.json (at corpusRoot,
+        // fixtures/api-contract-conformance/) declares naming.columns: literal; every field
+        // here declares no @column, so the generated columns and the runtime's reads of them
+        // depend on this. Read with the SAME NeutralConfig reader every port uses.
+        loader.root.physicalNaming =
+            com.metaobjects.config.SourceResolver.resolvePhysicalNaming(corpusRoot)
+        columnsRule = loader.root.physicalNaming.columns()
 
         val srcDir = genDir.resolve("src")
         Files.createDirectories(srcDir)
@@ -138,11 +147,12 @@ class GeneratedReportControllerHarness(
 
     /**
      * The generated Exposed column for a derived field name. Looked up by the PHYSICAL name
-     * the generator chose (snake_case is Kotlin's default), so the seed follows whatever the
+     * the generator chose — this corpus's naming.columns rule (ADR-0058), read from the
+     * SAME loaded root the generators resolved it from — so the seed follows whatever the
      * generator emitted rather than a spelling hardcoded here that could drift from it.
      */
     private fun column(table: Table, field: String) =
-        table.columns.firstOrNull { it.name == snakeCase(field) }
+        table.columns.firstOrNull { it.name == com.metaobjects.database.ColumnNaming.apply(field, columnsRule) }
             ?: error("no column for derived field '$field' on ${table.tableName}; columns=${table.columns.map { it.name }}")
 
     fun exchange(method: String, path: String, jsonBody: Any?): Response {
@@ -171,12 +181,6 @@ class GeneratedReportControllerHarness(
             "InvoiceStatusTotals", "InvoicesByMonth", "InvoiceTotals", "InvoiceCalendar", "InvoiceDisputes",
             "ProductRevenue", "SalesByCategory", "SalesBySku", "ProductRefunds",
         )
-
-        private fun snakeCase(s: String): String = buildString {
-            for (c in s) {
-                if (c.isUpperCase()) { if (isNotEmpty()) append('_'); append(c.lowercaseChar()) } else append(c)
-            }
-        }
 
         /**
          * A seed value as a SQL literal. A date (`"2026-04-01"`) and the ratio (`"0.4"`, a

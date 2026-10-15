@@ -35,12 +35,19 @@ class KotlinExposedTableColumnNamingTest {
       ] }
     }""".trimIndent()
 
-    private fun generate(args: Map<String, String>): String {
+    private fun generate(args: Map<String, String>, columnsRule: String? = null): String {
         val outDir = Files.createTempDirectory("ktbl-colnaming-")
         try {
             val gen = KotlinExposedTableGenerator()
             gen.setArgs(args + mapOf("outputDir" to outDir.toString()))
-            gen.execute(loadString("test", fixture))
+            val loader = loadString("test", fixture)
+            // ADR-0058: the rule is read from the loaded root (naming.columns in
+            // .metaobjects/config.json), never the removed columnNaming generator arg.
+            if (columnsRule != null) {
+                loader.root.physicalNaming =
+                    com.metaobjects.database.PhysicalNaming.of(columnsRule, "snake_case")
+            }
+            gen.execute(loader)
             return Files.readString(outDir.resolve("acme/demo/LlmCallTable.kt"))
         } finally {
             outDir.toFile().deleteRecursively()
@@ -60,9 +67,20 @@ class KotlinExposedTableColumnNamingTest {
     }
 
     @Test fun `columnNaming literal leaves an unannotated field name alone`() {
-        val src = generate(mapOf("columnNaming" to "literal"))
+        val src = generate(emptyMap(), columnsRule = "literal")
         assertTrue("""val modelName = varchar("modelName", 40)""" in src, src)
         // An explicit @column always wins, whatever the strategy.
         assertTrue("""val callPurpose = varchar("purpose_code", 40)""" in src, src)
+    }
+
+    @Test fun `the removed columnNaming generator arg is refused`() {
+        val ex = kotlin.test.assertFailsWith<com.metaobjects.generator.GeneratorException> {
+            generate(mapOf("columnNaming" to "literal"))
+        }
+        kotlin.test.assertEquals(
+            com.metaobjects.database.ColumnNaming.removedConfigurationMessage(
+                "the columnNaming generator arg in pom.xml", "literal"),
+            ex.message,
+        )
     }
 }

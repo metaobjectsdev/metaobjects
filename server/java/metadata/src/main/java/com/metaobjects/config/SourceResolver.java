@@ -17,6 +17,7 @@ package com.metaobjects.config;
 
 import com.metaobjects.ErrorCode;
 import com.metaobjects.MetaDataException;
+import com.metaobjects.database.PhysicalNaming;
 import com.metaobjects.loader.DirectorySource;
 import com.metaobjects.loader.FileSource;
 
@@ -152,5 +153,21 @@ public final class SourceResolver {
         }
 
         return resolveSources(base, specs);
+    }
+
+    /**
+     * ADR-0058 — the project's physical-naming rules declared in {@code root}'s
+     * {@code .metaobjects/config.json}, or {@link PhysicalNaming#DEFAULT} when the file is
+     * absent. A caller that resolves a collection for project {@code root} (whether or not
+     * the pom names an explicit {@code <sourceDir>}/{@code <sources>}, which only changes
+     * where FILES come from — {@code naming} is a project-wide setting) should set this on
+     * the loaded root alongside the resolved files, so every resolver downstream of that
+     * load reads the one setting.
+     */
+    public static PhysicalNaming resolvePhysicalNaming(Path root) {
+        Path base = root.toAbsolutePath().normalize();
+        return NeutralConfig.read(base)
+                .map(NeutralConfig::getPhysicalNaming)
+                .orElse(PhysicalNaming.DEFAULT);
     }
 }

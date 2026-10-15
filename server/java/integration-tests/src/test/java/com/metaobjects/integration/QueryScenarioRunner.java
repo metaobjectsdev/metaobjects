@@ -52,6 +52,13 @@ public final class QueryScenarioRunner {
         // from a previous scenario doesn't leak across containers.
         String tag = "canonical-" + UUID.randomUUID().toString().substring(0, 8);
         MetaDataLoader loader = MetaDataLoader.fromDirectory(tag, canonicalDir);
+        // ADR-0058 — this corpus's committed .metaobjects/config.json (at the corpus ROOT,
+        // canonicalDir's parent, not under canonical/, so a directory loader pointed at
+        // canonical/ never walks into it) declares naming.columns: literal, which the
+        // committed DDL above was created under. Read with the SAME NeutralConfig reader
+        // every port uses, so ObjectManagerDB resolves the same columns that DDL has.
+        loader.getRoot().setPhysicalNaming(
+                com.metaobjects.config.SourceResolver.resolvePhysicalNaming(canonicalDir.getParent()));
 
         ObjectManagerDB omdb = newOmdb(pg, engine);
 

@@ -95,6 +95,11 @@ final class OpenJsonbWriteRoundtripTest {
         try (PostgresContainer pg = new PostgresContainer()) {
             MetaDataLoader loader = MetaDataLoader.fromDirectory(
                 "open-jsonb-" + UUID.randomUUID().toString().substring(0, 8), CANONICAL);
+            // ADR-0058 — this corpus's committed .metaobjects/config.json (at CORPUS, the
+            // parent of CANONICAL) declares naming.columns: literal, which the committed
+            // DDL below was created under.
+            loader.getRoot().setPhysicalNaming(
+                    com.metaobjects.config.SourceResolver.resolvePhysicalNaming(CORPUS));
             ObjectManagerDB omdb = newOmdb(pg);
             provisionSchema(pg);
 

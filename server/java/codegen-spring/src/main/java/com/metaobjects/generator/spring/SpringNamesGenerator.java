@@ -100,17 +100,14 @@ import java.util.Set;
  * <p>Args:</p>
  * <ul>
  *   <li>{@code outputDir} (required): output directory root.</li>
- *   <li>{@code columnNaming} (optional): the column-naming strategy — one of
- *       {@link ColumnNaming#LITERAL}, {@link ColumnNaming#SNAKE_CASE},
- *       {@link ColumnNaming#KEBAB_CASE}. Defaults to {@link ColumnNaming#DEFAULT}
- *       (literal) — matching {@code ObjectManagerDB}'s runtime resolution, NOT Kotlin's
- *       {@code snake_case} codegen default. A Java artifact defaulting differently from
- *       the Java runtime would itself be the kind of drift this program exists to
- *       remove. Codegen cannot see a runtime {@code setColumnNaming(...)} call on
- *       {@code ObjectManagerDB} — a project pairing that call with this generator must
- *       pass the SAME strategy string to both, by hand (see
- *       {@code docs/features/field-types.md}).</li>
  * </ul>
+ *
+ * <p><b>{@code columnNaming} is REMOVED (ADR-0058, 1.1.0).</b> Column naming is one
+ * project setting now — {@code naming.columns} in {@code .metaobjects/config.json}, read
+ * from the loaded root ({@link com.metaobjects.database.PhysicalNaming#of(MetaData)}) —
+ * the SAME rule OMDB's {@code SimpleMappingHandlerDB} resolves, so a Java artifact and the
+ * Java runtime cannot disagree any more. A pom still passing {@code <columnNaming>} fails
+ * the build by name.</p>
  */
 public class SpringNamesGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         implements EmitsPhysicalNameConstants {
@@ -124,7 +121,14 @@ public class SpringNamesGenerator extends MultiFileDirectGeneratorBase<MetaObjec
     public void execute(MetaDataLoader loader) {
         parseArgs();
         Path outRoot = Paths.get(outDir.getAbsolutePath());
-        String strategy = getArg("columnNaming", ColumnNaming.DEFAULT);
+        // ADR-0058 — the pom generator arg is REMOVED; refuse by name rather than silently
+        // ignoring a value that used to work, which would re-point this artifact's columns
+        // without telling anyone.
+        if (hasArg("columnNaming")) {
+            throw new GeneratorException(ColumnNaming.removedConfigurationMessage(
+                    "the columnNaming generator arg in pom.xml", getArg("columnNaming")));
+        }
+        String strategy = com.metaobjects.database.PhysicalNaming.of(loader.getRoot()).columns();
         // Pass 1 — every object that participates in the database (#248).
         Set<String> emitted = new HashSet<>();
         for (MetaObject entity : loader.getMetaObjects()) {

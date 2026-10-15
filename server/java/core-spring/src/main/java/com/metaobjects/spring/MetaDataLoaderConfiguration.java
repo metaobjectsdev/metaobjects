@@ -1,5 +1,6 @@
 package com.metaobjects.spring;
 
+import com.metaobjects.config.NeutralConfig;
 import com.metaobjects.loader.LoaderOptions;
 import com.metaobjects.loader.MetaDataLoader;
 
@@ -8,9 +9,13 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.Resource;
+import org.springframework.core.io.DefaultResourceLoader;
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -30,6 +35,9 @@ import java.util.List;
  *     - "file:/path/to/external-metadata.xml"
  *   auto-attrs: true
  *   strict: false
+ *   # ADR-0058 — this classpath runtime has no project directory, so give it the
+ *   # project's .metaobjects/config.json directly (a FILE location, never a bare rule).
+ *   physical-naming-config: "classpath:.metaobjects/config.json"
  * }</pre>
  * 
  * <p><strong>Or use @Bean methods directly:</strong></p>
@@ -56,11 +64,24 @@ public class MetaDataLoaderConfiguration {
     private boolean autoAttrs = true;
     private boolean strict = false;
     private boolean verbose = false;
-    
+
+    /**
+     * ADR-0058 — where to read the project's physical-naming rules from, for a runtime
+     * that loads metadata off the classpath and so has no project directory for
+     * {@code SourceResolver.resolvePhysicalNaming(Path)} to resolve against. A Spring
+     * resource location pointing at the {@code .metaobjects/config.json} FILE itself
+     * (never a directory) — e.g. {@code classpath:.metaobjects/config.json} or
+     * {@code file:/opt/app/.metaobjects/config.json}. Parsed with {@link NeutralConfig};
+     * never a bare rule value ({@code naming.columns}/{@code naming.tables}) configured
+     * here directly — ADR-0058 removed every such setter. Absent means the default
+     * ({@code snake_case}/{@code snake_case}), same as a project with no config file.
+     */
+    private String physicalNamingConfig;
+
     /**
      * Creates MetaDataLoader from application properties.
-     * 
-     * <p>This bean will be automatically discovered and registered by 
+     *
+     * <p>This bean will be automatically discovered and registered by
      * {@link MetaDataAutoConfiguration}.</p>
      */
     @Bean
@@ -70,12 +91,12 @@ public class MetaDataLoaderConfiguration {
             // Default: look for metadata files in classpath
             metadataSources = discoverDefaultMetadataSources();
         }
-        
+
         if (metadataSources.isEmpty()) {
             // No metadata sources configured - return null so it's optional
             return null;
         }
-        
+
         // Convert string sources to URIs
         List<URI> sourceURIs = new ArrayList<>();
         for (String source : metadataSources) {
@@ -86,7 +107,27 @@ public class MetaDataLoaderConfiguration {
         // Preserve the pre-unification strict=true default (the no-options
         // fromUris overload routes through createManual which uses strict=false).
         LoaderOptions opts = LoaderOptions.create(false, false, true);
-        return MetaDataLoader.fromUris("applicationLoader", sourceURIs, opts);
+        MetaDataLoader loader = MetaDataLoader.fromUris("applicationLoader", sourceURIs, opts);
+        applyPhysicalNaming(loader);
+        return loader;
+    }
+
+    /**
+     * ADR-0058 — reads {@link #physicalNamingConfig} (when set) and sets the project's
+     * physical-naming rules on the loaded root, so this classpath-runtime loader resolves
+     * the SAME rule codegen resolved against the project directory. A caller that never
+     * sets {@code metaobjects.physical-naming-config} gets the default, exactly like a
+     * project directory with no {@code .metaobjects/config.json}.
+     */
+    private void applyPhysicalNaming(MetaDataLoader loader) throws IOException {
+        if (physicalNamingConfig == null || physicalNamingConfig.isBlank()) return;
+        Resource resource = new DefaultResourceLoader().getResource(physicalNamingConfig);
+        String content;
+        try (InputStream in = resource.getInputStream()) {
+            content = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+        }
+        NeutralConfig cfg = NeutralConfig.parse(content, physicalNamingConfig);
+        loader.getRoot().setPhysicalNaming(cfg.getPhysicalNaming());
     }
     
     /**
@@ -151,4 +192,7 @@ public class MetaDataLoaderConfiguration {
     
     public boolean isVerbose() { return verbose; }
     public void setVerbose(boolean verbose) { this.verbose = verbose; }
+
+    public String getPhysicalNamingConfig() { return physicalNamingConfig; }
+    public void setPhysicalNamingConfig(String physicalNamingConfig) { this.physicalNamingConfig = physicalNamingConfig; }
 }

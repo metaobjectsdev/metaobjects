@@ -9,6 +9,7 @@ import com.metaobjects.field.TimeField
 import com.metaobjects.field.TimestampField
 import com.metaobjects.database.ColumnNaming
 import com.metaobjects.database.IndexNaming
+import com.metaobjects.database.PhysicalNaming
 import com.metaobjects.identity.MetaIdentity
 import com.metaobjects.index.Index
 import com.metaobjects.index.LookupIndex
@@ -467,7 +468,7 @@ public object KotlinGenUtil {
      */
     fun resolveSuperFragmentNames(
         obj: MetaObject,
-        strategy: String = DEFAULT_COLUMN_NAMING,
+        strategy: String = PhysicalNaming.of(obj).columns(),
     ): KotlinObjectNames? {
         if (!declaresNamesContent(obj)) return null
         val own = obj.getMetaFields(false)
@@ -495,7 +496,7 @@ public object KotlinGenUtil {
      * Returns `null` when [obj] has no primary source — #248: participation in the
      * database derives from a declared primary source, never from the object subtype.
      */
-    fun resolveObjectNames(obj: MetaObject, strategy: String = DEFAULT_COLUMN_NAMING): KotlinObjectNames? {
+    fun resolveObjectNames(obj: MetaObject, strategy: String = PhysicalNaming.of(obj).columns()): KotlinObjectNames? {
         // R27: the ONE selection algorithm, shared with KotlinExposedTableGenerator's
         // single-object emission path -- see primaryRdbSource's doc for why neither
         // firstRdbSource nor writableRdbSource/readOnlyRdbSource is the right selector.
@@ -846,15 +847,13 @@ public object KotlinGenUtil {
      * The project's column-naming strategy: how a field with NO explicit `@column`
      * becomes a physical column name.
      *
-     * The vocabulary and the algorithm are the shared JVM ones
-     * ([com.metaobjects.database.ColumnNaming]), which the Java runtime's
-     * `ObjectManagerDB` also resolves through — the two JVM ports used to disagree,
-     * this one hardcoding snake_case and ignoring `@column`, that one resolving literal.
-     *
-     * This generator's DEFAULT stays `snake_case`, which is what it always emitted;
-     * the shared default is `literal`, which is what the runtime always resolved.
-     * Neither moves, because a default that moved would silently re-point generated
-     * tables or live queries at columns that do not exist.
+     * ADR-0058 — one project setting now (`naming.columns` in `.metaobjects/config.json`),
+     * read from the loaded root ([PhysicalNaming.of]), the SAME rule the Java runtime's
+     * `ObjectManagerDB` resolves through. The two JVM ports used to disagree AND each
+     * configured its own rule separately (this one via a generator arg defaulting
+     * `snake_case`, that one via a runtime setter defaulting `literal`); neither configures
+     * anything of its own any more, so they cannot disagree. [DEFAULT_COLUMN_NAMING] is the
+     * ultimate fallback for a node with no loaded root at all.
      */
     const val COLUMN_NAMING_SNAKE_CASE: String = ColumnNaming.SNAKE_CASE
     const val COLUMN_NAMING_LITERAL: String = ColumnNaming.LITERAL
@@ -862,11 +861,9 @@ public object KotlinGenUtil {
     const val DEFAULT_COLUMN_NAMING: String = COLUMN_NAMING_SNAKE_CASE
 
     /**
-     * R16 — generator arg naming the column-naming strategy (`<args><columnNaming>` in
-     * the pom). Hoisted here (was a private-to-[KotlinExposedTableGenerator] companion
-     * constant) so [KotlinNamesGenerator] reads the SAME arg name as
-     * [KotlinExposedTableGenerator] — a second `"columnNaming"` string literal beside a
-     * second default is exactly the bug this whole program exists to remove.
+     * REMOVED (ADR-0058, 1.1.0) — the pom `<args><columnNaming>` generator arg. Kept as a
+     * named constant only so every generator's refusal (`hasArg(ARG_COLUMN_NAMING)`) names
+     * the same key; see [ColumnNaming.removedConfigurationMessage].
      */
     const val ARG_COLUMN_NAMING: String = "columnNaming"
 
@@ -903,7 +900,7 @@ public object KotlinGenUtil {
      *
      * ADR-0039: read RESOLVING — `@column` may be inherited through `extends`.
      */
-    fun resolveColumnName(field: MetaField<*>, strategy: String = DEFAULT_COLUMN_NAMING): String =
+    fun resolveColumnName(field: MetaField<*>, strategy: String = PhysicalNaming.of(field).columns()): String =
         ColumnNaming.resolve(field, strategy)
 
     fun camelToSnake(name: String): String {

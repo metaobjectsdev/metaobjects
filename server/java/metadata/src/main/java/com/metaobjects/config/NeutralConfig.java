@@ -24,6 +24,7 @@ import com.google.gson.stream.JsonToken;
 import com.google.gson.stream.MalformedJsonException;
 import com.metaobjects.ErrorCode;
 import com.metaobjects.MetaDataException;
+import com.metaobjects.database.PhysicalNaming;
 
 import java.io.IOException;
 import java.io.StringReader;
@@ -39,12 +40,12 @@ import java.util.Optional;
 /**
  * The port-neutral subset of {@code .metaobjects/config.json}.
  *
- * <p>Reads only {@code schema_version} and {@code sources}. The file also carries
- * TypeScript-owned keys ({@code pending_in_git}, {@code confidence_thresholds},
- * {@code extract}, {@code migrate}, {@code scope}); those are IGNORED rather than
- * modeled, so a new TS-only key never becomes a four-port change. {@code scope} in
- * particular is entirely out of scope for this reader — see
- * {@code docs/superpowers/specs/2026-08-19-cross-port-metadata-sources-design.md} §4.
+ * <p>Reads only {@code schema_version}, {@code sources}, and {@code naming} (ADR-0058, the
+ * project's physical-naming rules). The file also carries TypeScript-owned keys
+ * ({@code pending_in_git}, {@code confidence_thresholds}, {@code extract}, {@code migrate},
+ * {@code scope}); those are IGNORED rather than modeled, so a new TS-only key never becomes
+ * a four-port change. {@code scope} in particular is entirely out of scope for this reader
+ * — see {@code docs/superpowers/specs/2026-08-19-cross-port-metadata-sources-design.md} §4.
  */
 public final class NeutralConfig {
 
@@ -59,9 +60,11 @@ public final class NeutralConfig {
     private static final int SUPPORTED_SCHEMA_VERSION = 1;
 
     private final List<Map<String, String>> sources;
+    private final PhysicalNaming physicalNaming;
 
-    private NeutralConfig(List<Map<String, String>> sources) {
+    private NeutralConfig(List<Map<String, String>> sources, PhysicalNaming physicalNaming) {
         this.sources = List.copyOf(sources);
+        this.physicalNaming = physicalNaming;
     }
 
     /**
@@ -71,6 +74,14 @@ public final class NeutralConfig {
      */
     public List<Map<String, String>> getSources() {
         return sources;
+    }
+
+    /**
+     * ADR-0058 — the project's physical-naming rules ({@code naming} in this file), each
+     * absent rule at its default. Never {@code null}.
+     */
+    public PhysicalNaming getPhysicalNaming() {
+        return physicalNaming;
     }
 
     /**
@@ -95,6 +106,21 @@ public final class NeutralConfig {
                     ErrorCode.ERR_MALFORMED_JSON);
         }
 
+        return Optional.of(parse(content, path.toString()));
+    }
+
+    /**
+     * Parses {@code content} as a {@code .metaobjects/config.json} document, raised
+     * messages naming {@code origin} rather than a filesystem path — for a runtime that has
+     * no project directory to resolve against (ADR-0058's classpath-runtime case: give the
+     * loader this file's bytes, however it reads them — a classpath resource included),
+     * and gets the project's physical-naming rules back without ever supplying a rule value
+     * of its own.
+     *
+     * @param content the file's raw bytes, decoded as UTF-8
+     * @param origin   identifies the source in a raised message (a path, a classpath URI, …)
+     */
+    public static NeutralConfig parse(String content, String origin) {
         // `JsonParser.parseString` ALWAYS parses leniently, no matter how the
         // caller would like to configure it — a well-known Gson quirk: both
         // `JsonParser.parseReader` and `Gson#fromJson(JsonReader, ...)` force
@@ -116,7 +142,7 @@ public final class NeutralConfig {
             }
         } catch (IOException e) {
             throw new MetaDataException(
-                    path + " exists but could not be parsed as JSON: " + e.getMessage(),
+                    origin + " exists but could not be parsed as JSON: " + e.getMessage(),
                     ErrorCode.ERR_MALFORMED_JSON);
         }
 
@@ -125,13 +151,13 @@ public final class NeutralConfig {
             parsed = JsonParser.parseString(content);
         } catch (JsonSyntaxException e) {
             throw new MetaDataException(
-                    path + " exists but could not be parsed as JSON: " + e.getMessage(),
+                    origin + " exists but could not be parsed as JSON: " + e.getMessage(),
                     ErrorCode.ERR_MALFORMED_JSON);
         }
 
         if (!parsed.isJsonObject()) {
             throw new MetaDataException(
-                    path + " must contain a JSON object",
+                    origin + " must contain a JSON object",
                     ErrorCode.ERR_TOP_LEVEL_NOT_OBJECT);
         }
         JsonObject root = parsed.getAsJsonObject();
@@ -146,7 +172,7 @@ public final class NeutralConfig {
         if (version == null || !version.isJsonPrimitive() || !version.getAsJsonPrimitive().isNumber()
                 || version.getAsDouble() != SUPPORTED_SCHEMA_VERSION) {
             throw new MetaDataException(
-                    path + ": unsupported schema_version (expected " + SUPPORTED_SCHEMA_VERSION + ")",
+                    origin + ": unsupported schema_version (expected " + SUPPORTED_SCHEMA_VERSION + ")",
                     ErrorCode.ERR_BAD_ATTR_VALUE);
         }
 
@@ -160,20 +186,20 @@ public final class NeutralConfig {
         // typed as a present-but-object `sources` — it is not a special case.
         if (srcs != null && !srcs.isJsonArray()) {
             throw new MetaDataException(
-                    path + ": \"sources\" must be an array",
+                    origin + ": \"sources\" must be an array",
                     ErrorCode.ERR_BAD_ATTR_VALUE);
         }
         if (srcs != null) {
             for (JsonElement el : srcs.getAsJsonArray()) {
                 if (!el.isJsonObject()) {
                     throw new MetaDataException(
-                            path + ": each \"sources\" entry must be an object",
+                            origin + ": each \"sources\" entry must be an object",
                             ErrorCode.ERR_BAD_ATTR_VALUE);
                 }
                 JsonObject entry = el.getAsJsonObject();
                 if (entry.size() != 1) {
                     throw new MetaDataException(
-                            path + ": each \"sources\" entry must have exactly one key",
+                            origin + ": each \"sources\" entry must have exactly one key",
                             ErrorCode.ERR_BAD_ATTR_VALUE);
                 }
                 Map<String, String> spec = new LinkedHashMap<>();
@@ -186,13 +212,13 @@ public final class NeutralConfig {
                         // {"path": 123} load a directory literally named "123"
                         // rather than failing loudly on the typo'd config.
                         throw new MetaDataException(
-                                path + ": \"sources\" entry \"" + e.getKey() + "\" must be a string",
+                                origin + ": \"sources\" entry \"" + e.getKey() + "\" must be a string",
                                 ErrorCode.ERR_BAD_ATTR_VALUE);
                     }
                     String value = v.getAsString();
                     if (value.strip().isEmpty()) {
                         throw new MetaDataException(
-                                path + ": \"sources\" entry \"" + e.getKey() + "\" must not be empty",
+                                origin + ": \"sources\" entry \"" + e.getKey() + "\" must not be empty",
                                 ErrorCode.ERR_BAD_ATTR_VALUE);
                     }
                     spec.put(e.getKey(), value);
@@ -201,8 +227,51 @@ public final class NeutralConfig {
             }
         }
 
+        // ADR-0058 — the project's physical-naming rules. An unknown key, an unknown value,
+        // or a non-object `naming` is refused (never silently defaulted — a typo would
+        // otherwise bind a whole schema to the wrong names and report success).
+        String columns = PhysicalNaming.DEFAULT_COLUMNS;
+        String tables = PhysicalNaming.DEFAULT_TABLES;
+        JsonElement naming = root.get("naming");
+        if (naming != null && !(naming.isJsonObject())) {
+            throw new MetaDataException(
+                    origin + ": \"naming\" must be an object",
+                    ErrorCode.ERR_BAD_ATTR_VALUE);
+        }
+        if (naming != null) {
+            JsonObject namingObj = naming.getAsJsonObject();
+            for (String key : namingObj.keySet()) {
+                if (!"columns".equals(key) && !"tables".equals(key)) {
+                    throw new MetaDataException(
+                            origin + ": \"naming\" has unknown key \"" + key
+                                    + "\"; expected \"columns\" and/or \"tables\"",
+                            ErrorCode.ERR_BAD_ATTR_VALUE);
+                }
+            }
+            JsonElement columnsEl = namingObj.get("columns");
+            if (columnsEl != null) {
+                if (!columnsEl.isJsonPrimitive() || !columnsEl.getAsJsonPrimitive().isString()) {
+                    throw new MetaDataException(
+                            origin + ": \"naming.columns\" must be a string",
+                            ErrorCode.ERR_BAD_ATTR_VALUE);
+                }
+                columns = columnsEl.getAsString();
+            }
+            JsonElement tablesEl = namingObj.get("tables");
+            if (tablesEl != null) {
+                if (!tablesEl.isJsonPrimitive() || !tablesEl.getAsJsonPrimitive().isString()) {
+                    throw new MetaDataException(
+                            origin + ": \"naming.tables\" must be a string",
+                            ErrorCode.ERR_BAD_ATTR_VALUE);
+                }
+                tables = tablesEl.getAsString();
+            }
+        }
+        // PhysicalNaming.of validates the values themselves (unknown columns/tables rule).
+        PhysicalNaming physicalNaming = PhysicalNaming.of(columns, tables);
+
         // Unknown top-level keys (including `scope`/`migrate`) are IGNORED by
         // design — see the class javadoc.
-        return Optional.of(new NeutralConfig(specs));
+        return new NeutralConfig(specs, physicalNaming);
     }
 }

@@ -101,9 +101,23 @@ public class SpringNamesGeneratorTest extends SharedRegistryTestBase {
     // -------------------------------------------------------------------------
 
     private String emit(String fixtureJson, String relativeFilePath, Map<String, String> extraArgs) throws IOException {
+        return emit(fixtureJson, relativeFilePath, extraArgs, null);
+    }
+
+    /**
+     * @param columnsRule ADR-0058 — when non-null, set on the loaded root as the project's
+     *     {@code naming.columns} rule before the generator runs (replaces the removed
+     *     {@code columnNaming} generator arg).
+     */
+    private String emit(String fixtureJson, String relativeFilePath, Map<String, String> extraArgs,
+                         String columnsRule) throws IOException {
         Path outDir = tempFolder.newFolder().toPath();
         Path workspace = tempFolder.newFolder().toPath();
         MetaDataLoader loader = SpringTestFixtures.loadFixture(workspace, "names-fixture", fixtureJson);
+        if (columnsRule != null) {
+            loader.getRoot().setPhysicalNaming(
+                com.metaobjects.database.PhysicalNaming.of(columnsRule, "snake_case"));
+        }
 
         SpringNamesGenerator gen = new SpringNamesGenerator();
         Map<String, String> args = new HashMap<>(extraArgs);
@@ -122,6 +136,10 @@ public class SpringNamesGeneratorTest extends SharedRegistryTestBase {
 
     private String emitFor(String entityShortName, Map<String, String> args) throws IOException {
         return emit(AUTHOR_FIXTURE, "acme/blog/" + entityShortName + "Names.java", args);
+    }
+
+    private String emitFor(String entityShortName, String columnsRule) throws IOException {
+        return emit(AUTHOR_FIXTURE, "acme/blog/" + entityShortName + "Names.java", Map.of(), columnsRule);
     }
 
     // -------------------------------------------------------------------------
@@ -156,8 +174,9 @@ public class SpringNamesGeneratorTest extends SharedRegistryTestBase {
         assertTrue(src, src.contains("public static final String IDENTITY_PRIMARY_SUB_TYPE = \"primary\";"));
         assertFalse(src, src.contains("IDENTITY_PRIMARY_INDEX"));
         assertTrue(src, src.contains("public static final String CREATED_AT_FIELD = \"createdAt\";"));
-        // Java's default strategy is `literal`, matching ObjectManagerDB -- NOT snake_case.
-        assertTrue(src, src.contains("public static final String CREATED_AT_COLUMN = \"createdAt\";"));
+        // ADR-0058: the project default is now `snake_case` in every port (what
+        // `meta migrate` has always created), not Java's former `literal` default.
+        assertTrue(src, src.contains("public static final String CREATED_AT_COLUMN = \"created_at\";"));
         assertTrue(src, src.contains("protected AuthorNames() {}"));
     }
 
@@ -171,9 +190,26 @@ public class SpringNamesGeneratorTest extends SharedRegistryTestBase {
     }
 
     @Test
-    public void theColumnNamingArgIsHonoured() throws IOException {
-        assertTrue(emitFor("Author", Map.of("columnNaming", "snake_case"))
+    public void theProjectsNamingColumnsRuleIsHonoured() throws IOException {
+        // ADR-0058: the rule is read from the loaded root (naming.columns in
+        // .metaobjects/config.json), never a generator arg.
+        assertTrue(emitFor("Author", "literal")
+            .contains("public static final String CREATED_AT_COLUMN = \"createdAt\";"));
+        assertTrue(emitFor("Author", "snake_case")
             .contains("public static final String CREATED_AT_COLUMN = \"created_at\";"));
+    }
+
+    @Test
+    public void theColumnNamingGeneratorArgIsRefused() throws IOException {
+        try {
+            emitFor("Author", Map.of("columnNaming", "snake_case"));
+            fail("expected the removed columnNaming generator arg to fail the build");
+        } catch (GeneratorException e) {
+            assertEquals(
+                com.metaobjects.database.ColumnNaming.removedConfigurationMessage(
+                    "the columnNaming generator arg in pom.xml", "snake_case"),
+                e.getMessage());
+        }
     }
 
     @Test
@@ -181,11 +217,11 @@ public class SpringNamesGeneratorTest extends SharedRegistryTestBase {
         // Neither strategy would independently produce "purpose_code"
         // (literal -> "callPurpose", snake_case -> "call_purpose") -- the explicit
         // @column must win under BOTH.
-        String literal = emitFor("Author");
+        String literal = emitFor("Author", "literal");
         assertTrue(literal, literal.contains("public static final String CALL_PURPOSE_COLUMN = \"purpose_code\";"));
         assertFalse(literal, literal.contains("\"call_purpose\""));
 
-        String snake = emitFor("Author", Map.of("columnNaming", "snake_case"));
+        String snake = emitFor("Author", "snake_case");
         assertTrue(snake, snake.contains("public static final String CALL_PURPOSE_COLUMN = \"purpose_code\";"));
         assertFalse(snake, snake.contains("\"call_purpose\""));
     }
@@ -539,17 +575,20 @@ public class SpringNamesGeneratorTest extends SharedRegistryTestBase {
         Path workspace = tempFolder.newFolder().toPath();
         MetaDataLoader loader = SpringTestFixtures.loadFixture(workspace, "fitness", canonicalMeta);
 
-        SpringNamesGenerator gen = new SpringNamesGenerator();
-        Map<String, String> args = new HashMap<>();
-        args.put("outputDir", outDir.toString());
         // The canonical schema is pinned to the `literal` strategy -- see
         // server/typescript/packages/integration-tests/src/canonical-schema.ts's
         // CANONICAL_COLUMN_NAMING and fixtures/persistence-conformance/README.md's
-        // "Result format" section, which both say so outright. That is ALSO Java's
-        // own codegen default (see SpringNamesGenerator's javadoc), but it is passed
-        // explicitly here rather than left implicit, so this test keeps pinning the
-        // resolver against real DDL even if that default ever changes.
-        args.put("columnNaming", "literal");
+        // "Result format" section, which both say so outright, and (ADR-0058) the
+        // corpus's own committed fixtures/persistence-conformance/.metaobjects/
+        // config.json declares it: {"naming": {"columns": "literal"}}. Read through the
+        // SAME NeutralConfig reader every port uses, and set on the loaded root — never
+        // a generator arg (removed).
+        loader.getRoot().setPhysicalNaming(
+            com.metaobjects.config.SourceResolver.resolvePhysicalNaming(corpusRoot));
+
+        SpringNamesGenerator gen = new SpringNamesGenerator();
+        Map<String, String> args = new HashMap<>();
+        args.put("outputDir", outDir.toString());
         gen.setArgs(args);
         gen.execute(loader);
 
@@ -608,11 +647,15 @@ public class SpringNamesGeneratorTest extends SharedRegistryTestBase {
         Path outDir = tempFolder.newFolder().toPath();
         Path workspace = tempFolder.newFolder().toPath();
         MetaDataLoader loader = SpringTestFixtures.loadFixture(workspace, "fitness-compile", canonicalMeta);
+        // ADR-0058: the corpus's committed naming.columns: literal (see
+        // everyEmittedColumnConstantExistsInTheCanonicalSchema above) — read from the
+        // root, never a generator arg.
+        loader.getRoot().setPhysicalNaming(
+            com.metaobjects.config.SourceResolver.resolvePhysicalNaming(corpusRoot));
 
         SpringNamesGenerator gen = new SpringNamesGenerator();
         Map<String, String> args = new HashMap<>();
         args.put("outputDir", outDir.toString());
-        args.put("columnNaming", "literal");
         gen.setArgs(args);
         gen.execute(loader);
 

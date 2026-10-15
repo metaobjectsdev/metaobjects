@@ -45,7 +45,7 @@ import java.util.List;
  * @see MetaData#SUBTYPE_ROOT
  * @see com.metaobjects.loader.MetaDataLoader
  */
-public class MetaRoot extends MetaData {
+public class MetaRoot extends MetaData implements com.metaobjects.database.PhysicalNamingHolder {
 
     private static final Logger log = LoggerFactory.getLogger(MetaRoot.class);
 
@@ -173,6 +173,34 @@ public class MetaRoot extends MetaData {
     /** Loader-only: mark this root as having a synthesized (non-authored) name. */
     public void markSynthesizedName() {
         this.synthesizedName = true;
+    }
+
+    /**
+     * ADR-0058 — the project's physical-naming rules ({@code naming} in
+     * {@code .metaobjects/config.json}). Set by the project-aware load (the CLI-equivalent
+     * load path through {@code SourceResolver}/{@code NeutralConfig}, or a classpath-runtime
+     * loader told where that file lives); read by every resolver through
+     * {@link com.metaobjects.database.PhysicalNaming#of(MetaData)}. A tree loaded with no
+     * project keeps the default.
+     */
+    private transient com.metaobjects.database.PhysicalNaming physicalNaming =
+        com.metaobjects.database.PhysicalNaming.DEFAULT;
+
+    /** The project's physical-naming rules for this tree. Never {@code null}. */
+    public com.metaobjects.database.PhysicalNaming getPhysicalNaming() {
+        return physicalNaming;
+    }
+
+    /**
+     * Sets the project's physical-naming rules on this root. Called by the project-aware
+     * load path once {@code .metaobjects/config.json} (or its default) is resolved; never a
+     * bare rule value threaded through a generator arg or a runtime setter (ADR-0058 removed
+     * every one of those).
+     */
+    public void setPhysicalNaming(com.metaobjects.database.PhysicalNaming physicalNaming) {
+        this.physicalNaming = (physicalNaming != null)
+            ? physicalNaming
+            : com.metaobjects.database.PhysicalNaming.DEFAULT;
     }
 
     /**
