@@ -307,12 +307,12 @@ repin_npm() {  # repin_npm <version|"">
 repin_py() {  # repin_py <version|"">
   local v="$1"; [ -n "$v" ] || return 0
   local pv root; pv="$(py_version "$v")"
-  for root in $( { echo "$PROJECT"; py_roots; } | sort -u); do
+  while IFS= read -r root; do
     for f in "$root/pyproject.toml" "$root"/requirements*.txt "$root"/constraints*.txt; do
       [ -f "$f" ] || continue
       sed -i -E "s/(${PY_DIST}[[:space:]]*)(==|>=|~=)[[:space:]]*[0-9][^\"',[:space:]]*/\\1==${pv}/g" "$f"
     done
-  done
+  done < <( { echo "$PROJECT"; py_roots; } | sort -u)
   say "repinned $PY_DIST to $pv"
 }
 

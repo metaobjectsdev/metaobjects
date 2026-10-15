@@ -107,7 +107,7 @@ fi
 # Each port keeps its own build under ports/<port>/. `link` used to detect Maven and configure
 # Python at the root only, so these needed a `link --project` run each, and it never repinned
 # the .NET local tool manifest, which left `dotnet meta` on the previous release.
-poly="$WORK/poly"
+poly="$WORK/poly app"  # a space in the path: every root walker must keep it whole
 git init -q "$poly"
 mkdir -p "$poly/ports/python" "$poly/ports/java" "$poly/ports/kotlin" "$poly/ports/csharp" "$poly/.config"
 cat > "$poly/ports/python/pyproject.toml" <<'TOML'

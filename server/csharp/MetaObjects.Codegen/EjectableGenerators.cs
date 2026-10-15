@@ -23,6 +23,17 @@ public static class EjectableGenerators
     /// </summary>
     public const string ResourcePrefix = "MetaObjects.Codegen.Generators.";
 
+    /// <summary>The namespace every ejected copy is rewritten into (<see cref="RewriteForEject"/>):
+    /// an owned generator is listed in <c>codegen/Generators.cs</c> as
+    /// <c>Codegen.Generators.&lt;Name&gt;</c>.</summary>
+    public const string OwnedNamespace = "Codegen.Generators";
+
+    /// <summary>The expression that lists the OWNED copy of <paramref name="entry"/> in
+    /// <c>codegen/Generators.cs</c>: <see cref="GeneratorRegistry.ListEntry"/> with the packaged
+    /// namespace swapped for <see cref="OwnedNamespace"/>, since eject keeps the class name.</summary>
+    public static string OwnedListEntry(GeneratorRegistryEntry entry) =>
+        GeneratorRegistry.ListEntry(entry).Replace("MetaObjects.Codegen.Generators.", OwnedNamespace + ".", StringComparison.Ordinal);
+
     /// <summary>
     /// Every ejectable registry entry (<see cref="GeneratorRegistryEntry.SourceFileName"/>
     /// is set) — Native-tier order, matching <see cref="GeneratorRegistry.List"/>. The
@@ -149,7 +160,7 @@ public static class EjectableGenerators
         var usings = new[] { "MetaObjects", "MetaObjects.Codegen", "MetaObjects.Codegen.Generators" }
             .Where(ns => !source.Contains($"using {ns};", StringComparison.Ordinal))
             .Select(ns => $"using {ns};\n");
-        var replacement = string.Concat(usings) + "\nnamespace Codegen.Generators;";
+        var replacement = string.Concat(usings) + $"\nnamespace {OwnedNamespace};";
         var rewritten = source[..match.Index] + replacement + source[(match.Index + match.Length)..];
         rewritten = DroppedUsings.Replace(rewritten, "");
         return HelperRuntime.RewriteGeneratorForEject(rewritten);

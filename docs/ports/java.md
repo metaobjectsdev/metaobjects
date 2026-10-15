@@ -79,6 +79,18 @@ For Spring integration: add `metaobjects-core-spring`.
                   <outputDir>${project.build.directory}/generated-sources/java</outputDir>
                 </args>
               </generator>
+              <generator>
+                <classname>com.metaobjects.generator.spring.SpringValueObjectGenerator</classname>
+                <args>
+                  <outputDir>${project.build.directory}/generated-sources/java</outputDir>
+                </args>
+              </generator>
+              <generator>
+                <classname>com.metaobjects.generator.spring.SpringFilterAllowlistGenerator</classname>
+                <args>
+                  <outputDir>${project.build.directory}/generated-sources/java</outputDir>
+                </args>
+              </generator>
             </generators>
           </configuration>
         </execution>
@@ -298,8 +310,10 @@ name in every port.
 
 Wire any generator via the Maven plugin's `<generator>` entry pointing at its class.
 Every one is independently configurable; the typical starting set is
-`SpringControllerGenerator` + `SpringDtoGenerator` + `SpringRepositoryGenerator`
-(controller + DTO + repository).
+`SpringControllerGenerator` + `SpringDtoGenerator` + `SpringRepositoryGenerator` +
+`SpringFilterAllowlistGenerator` + `SpringValueObjectGenerator` (controller, DTO and
+repository, plus the filter allowlist the controller reads and the value-object records a DTO
+carries).
 
 **Extractors are their own entry.** `ExtractorCodeGenerator` is the one generator that
 writes `<Name>Extractor` classes, as in the other four ports: the pom lists it, or none are

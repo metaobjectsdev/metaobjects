@@ -239,6 +239,43 @@ public class GeneratorRequiresCompileTest {
         assertEquals(List.of(), RequiresCheck.unmet(pomExample("kotlin.md").stream().map(Entry::classname).toList()));
     }
 
+    /**
+     * Every {@code <generators>} list the repository ships for an adopter to copy (a doc, a skill,
+     * an example pom) passes the check the goal makes, so copying one never gets a refused build.
+     * The dated design records under {@code docs/superpowers/} quote poms as they were, and are not
+     * examples.
+     */
+    @Test
+    public void everyShippedGeneratorsListPassesTheCheck() throws IOException {
+        Pattern block = Pattern.compile("<generators>(.*?)</generators>", Pattern.DOTALL);
+        Pattern classname = Pattern.compile("<classname>\\s*([^<\\s]+)\\s*</classname>");
+        Path superpowers = repo.resolve("docs/superpowers");
+        List<String> failures = new ArrayList<>();
+        int lists = 0;
+        for (String root : List.of("docs", "examples", "agent-context")) {
+            List<Path> files;
+            try (Stream<Path> s = Files.walk(repo.resolve(root))) {
+                files = s.filter(Files::isRegularFile)
+                        .filter(p -> !p.startsWith(superpowers))
+                        .filter(p -> p.toString().matches(".*\\.(md|xml|json|mustache)$"))
+                        .filter(p -> !p.toString().contains("/node_modules/") && !p.toString().contains("/target/"))
+                        .sorted().toList();
+            }
+            for (Path file : files) {
+                Matcher m = block.matcher(Files.readString(file, StandardCharsets.UTF_8));
+                while (m.find()) {
+                    lists++;
+                    List<String> classnames = new ArrayList<>();
+                    Matcher c = classname.matcher(m.group(1));
+                    while (c.find()) classnames.add(c.group(1));
+                    for (String line : RequiresCheck.unmet(classnames)) failures.add(repo.relativize(file) + ": " + line);
+                }
+            }
+        }
+        assertTrue("found no <generators> list to check", lists > 0);
+        assertEquals("a shipped <generators> list the goal refuses", List.of(), failures);
+    }
+
     /** Compile every {@code .java} file under {@code root}; the errors, or "" when it compiles. */
     private String compileErrors(Path root) throws IOException {
         List<File> files = new ArrayList<>();

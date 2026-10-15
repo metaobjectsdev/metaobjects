@@ -292,9 +292,23 @@ public sealed class EjectCommandTests : IDisposable
         EjectCommand.Run(["entity"], _root, force: false);
 
         var lines = GenCommand.ListLines(_root);
-        Assert.Contains(lines, l => l.Contains(" entity —") && l.Contains("[owned — identical]"));
+        Assert.Contains(lines, l => l.Contains(" entity —") && l.Contains("[owned — identical]")
+            && l.Contains("\n      in codegen/Generators.cs: new Codegen.Generators.EntityGenerator()"));
         // Everything NOT ejected carries no ownership mark at all.
-        Assert.Contains(lines, l => l.Contains(" routes —") && !l.Contains("[owned"));
+        Assert.Contains(lines, l => l.Contains(" routes —") && !l.Contains("[owned")
+            && l.Contains("in codegen/Generators.cs: new MetaObjects.Codegen.Generators.RoutesGenerator()"));
+    }
+
+    // An owned generator printed the packaged class: copying that line into codegen/Generators.cs
+    // wired the package back in and the owned edits silently stopped running.
+    [Fact]
+    public void GenListLines_print_the_owned_copy_for_an_ejected_generator_with_a_constructor_argument()
+    {
+        EjectCommand.Run(["render-helper"], _root, force: false);
+
+        var renderHelper = Assert.Single(GenCommand.ListLines(_root), l => l.Contains(" render-helper —"));
+        Assert.Contains("[owned — identical]", renderHelper);
+        Assert.Contains("in codegen/Generators.cs: new Codegen.Generators.RenderHelperGenerator(\"prompts\")", renderHelper);
     }
 
     [Fact]

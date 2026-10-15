@@ -545,6 +545,10 @@ it found.
         <classname>com.metaobjects.generator.spring.SpringDtoGenerator</classname>
         <args><outputDir>${project.build.directory}/generated-sources/java</outputDir></args>
       </generator>
+      <generator>
+        <classname>com.metaobjects.generator.spring.SpringValueObjectGenerator</classname>
+        <args><outputDir>${project.build.directory}/generated-sources/java</outputDir></args>
+      </generator>
     </generators>
   </configuration>
   <executions>
@@ -571,6 +575,10 @@ to the same paths as the 8.0 pom above:
     <generators>
       <generator>
         <classname>com.metaobjects.generator.spring.SpringDtoGenerator</classname>
+        <args><outputDir>${project.build.directory}/generated-sources/java</outputDir></args>
+      </generator>
+      <generator>
+        <classname>com.metaobjects.generator.spring.SpringValueObjectGenerator</classname>
         <args><outputDir>${project.build.directory}/generated-sources/java</outputDir></args>
       </generator>
       <generator>
