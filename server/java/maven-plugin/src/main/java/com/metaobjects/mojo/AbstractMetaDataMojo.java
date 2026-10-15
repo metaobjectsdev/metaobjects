@@ -409,13 +409,9 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
 
         MetaDataLoader loader = configurable.getLoader();
 
-        // ADR-0058 — the project's physical-naming rules are a project-wide setting,
-        // independent of WHERE the pom told the loader to find its files (<sourceDir>,
-        // <sources>, or the neutral-config ladder above): read .metaobjects/config.json
-        // for `naming` regardless, and set it on the loaded root so every resolver
-        // downstream of this load (codegen, OMDB) reads the one setting.
-        loader.getRoot().setPhysicalNaming(
-                com.metaobjects.config.SourceResolver.resolvePhysicalNaming(getProjectBaseDir().toPath()));
+        // ADR-0058 — the project's physical-naming rules, set on the loaded root so every
+        // resolver downstream of this load (codegen, OMDB) reads the one setting.
+        loader.getRoot().setPhysicalNaming(resolvePhysicalNaming(srcDir));
 
         getLog().info("MetaData Mojo > Create Loader: " + loader.toString());
 
@@ -629,6 +625,42 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
             }
         }
         return sourceDir;
+    }
+
+    /**
+     * ADR-0058 — the {@code naming} setting of the project that holds this goal's metadata.
+     * When the pom names where metadata lives ({@code <sourceDir>}, or a {@code <sources>}
+     * entry that is a local path), that project is the nearest ancestor of the metadata
+     * location carrying a {@code .metaobjects/config.json}, searched up to the repository
+     * root — so a per-port pom in a subdirectory ({@code <sourceDir>../metaobjects</sourceDir>})
+     * reads the root project's rule, as C#'s {@code MetadataLocation} does. Otherwise, and
+     * when no such ancestor exists, the module basedir's config (or the default).
+     */
+    protected com.metaobjects.database.PhysicalNaming resolvePhysicalNaming(File srcDir) {
+        Path basedir = getProjectBaseDir().toPath();
+        Path location = srcDir != null ? srcDir.toPath() : localSourceLocation(basedir);
+        if (location != null) {
+            for (Path dir = location.toAbsolutePath().normalize(); dir != null; dir = dir.getParent()) {
+                java.util.Optional<com.metaobjects.config.NeutralConfig> cfg =
+                        com.metaobjects.config.NeutralConfig.read(dir);
+                if (cfg.isPresent()) return cfg.get().getPhysicalNaming();
+                if (Files.exists(dir.resolve(".git"))) break;
+            }
+        }
+        return com.metaobjects.config.SourceResolver.resolvePhysicalNaming(basedir);
+    }
+
+    /** The first {@code <sources>} entry that is an existing local path, as a directory; else null. */
+    private Path localSourceLocation(Path basedir) {
+        List<String> sources = loaderConfig.getSources();
+        if (sources == null) return null;
+        for (String s : sources) {
+            if (s.indexOf(':') >= 0) continue;
+            Path p = basedir.resolve(s);
+            if (Files.isDirectory(p)) return p;
+            if (Files.exists(p)) return p.getParent();
+        }
+        return null;
     }
 
     /**

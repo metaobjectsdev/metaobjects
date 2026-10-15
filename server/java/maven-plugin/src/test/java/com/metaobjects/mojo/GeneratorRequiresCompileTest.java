@@ -153,6 +153,8 @@ public class GeneratorRequiresCompileTest {
         assertTrue(unmet.get(0), unmet.get(0).startsWith(controller + " (\"routes\") needs \"dto\" ("
                 + GeneratorRegistry.get("dto").classname() + "), \"repository\""));
         assertTrue(unmet.get(0), unmet.get(0).contains("\"filter-allowlist\""));
+        assertTrue("dto's own requirement is named in the same refusal: " + unmet.get(0),
+                unmet.get(0).contains("\"value-object\" (" + GeneratorRegistry.get("value-object").classname() + ")"));
 
         MetaDataGeneratorMojo mojo = new MetaDataGeneratorMojo();
         try {

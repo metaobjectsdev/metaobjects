@@ -1635,7 +1635,11 @@ async function runD1Migrate(
   let d1LoadOptions: ReturnType<typeof loadMemoryOptionsFrom> = {};
   try {
     d1LoadOptions = loadMemoryOptionsFrom(await loadMetaobjectsConfig(genRoot));
-  } catch {
+  } catch (e) {
+    if (e instanceof RemovedNamingConfigError) {
+      log.error(e.message);
+      return 2;
+    }
     d1LoadOptions = {};
   }
 
@@ -1663,11 +1667,6 @@ async function runD1Migrate(
   warnReferentialActionConflicts(metadata, collection);
 
   // 4. Build expected schema + introspect actual.
-  const removedNaming = await removedNamingConfig(genRoot);
-  if (removedNaming !== undefined) {
-    log.error(removedNaming);
-    return 2;
-  }
   const expectedViews = buildProjectionViews(metadata, { dialect: "d1" });
   const built = buildExpectedSchemaWithProvenance(metadata, { dialect: "d1", views: expectedViews });
   const scopeRc = refuseScopeMismatch(collection, () => built.provenance, fmt);
@@ -1839,17 +1838,3 @@ async function runWranglerApply(
   });
 }
 
-/**
- * ADR-0058: the refusal for a `metaobjects.config.ts` that still sets column naming, or
- * undefined. Every other problem with that file stays tolerated here (migrate falls back to
- * its defaults); this one cannot be, because the default rule would propose renaming every
- * column.
- */
-async function removedNamingConfig(genRoot: string): Promise<string | undefined> {
-  try {
-    await loadMetaobjectsConfig(genRoot);
-  } catch (e) {
-    if (e instanceof RemovedNamingConfigError) return e.message;
-  }
-  return undefined;
-}

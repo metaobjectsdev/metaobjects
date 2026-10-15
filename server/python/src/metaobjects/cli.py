@@ -22,11 +22,12 @@ Two subcommands:
 
         --codegen    regenerate into a temp dir + diff against the committed
                      ``--out`` tree (Python's historical default behavior).
-                     The column naming comes from ``columnNaming`` in
-                     ``metaobjects.config.yaml`` (else ``--column-naming``), and
-                     must match the strategy ``gen`` was run with (R31) or the
-                     ``names`` generator's constants report drift; when another
-                     naming reproduces the committed tree, verify says so.
+                     The column naming comes from ``naming.columns`` in
+                     ``.metaobjects/config.json`` (ADR-0058), the same setting
+                     ``gen`` reads, so the ``names`` generator's constants match
+                     the committed tree; when another column rule reproduces
+                     that tree, verify reports a naming mismatch naming the
+                     setting instead of asking you to regenerate.
         --templates  template/prompt ``{{field}}`` ↔ payload-VO drift — the
                      render ``verify()`` gate — resolving each ``template.*``
                      node's refs via a filesystem provider rooted at

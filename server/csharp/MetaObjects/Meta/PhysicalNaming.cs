@@ -33,7 +33,7 @@ public enum ColumnNamingStrategy
 /// </summary>
 public enum TableNamingRule
 {
-    /// <summary>Name verbatim (no pluralization either — see <see cref="MetaSource.PhysicalName"/>).</summary>
+    /// <summary>Casing verbatim; the entity-name fallback is still pluralized (see <see cref="MetaSource.PhysicalName"/>).</summary>
     Literal,
     /// <summary>camelCase / PascalCase → snake_case. The default — what <c>meta migrate</c>
     /// has always created.</summary>

@@ -63,7 +63,8 @@ final class RequiresCheck {
 
     /**
      * One line per declared generator whose requirements the same list does not declare, naming
-     * what is missing and the class to add; empty when every requirement is met.
+     * everything missing (the requirements of a missing requirement included) and the class to
+     * add; empty when every requirement is met.
      *
      * @param classnames the {@code <classname>} of each {@code <generator>}, in declared order
      */
@@ -85,12 +86,18 @@ final class RequiresCheck {
         List<String> lines = new ArrayList<>();
         for (Map.Entry<String, Known> d : declared.entrySet()) {
             Known k = d.getValue();
+            // Transitively through what is missing, so one refusal names every companion; a
+            // declared requirement's own requirements are reported on its own line.
             List<String> missing = new ArrayList<>();
-            for (String r : k.requires()) {
+            Set<String> seen = new LinkedHashSet<>();
+            List<String> todo = new ArrayList<>(k.requires());
+            while (!todo.isEmpty()) {
+                String r = todo.remove(0);
                 String key = k.port() + ":" + r;
-                if (present.contains(key)) continue;
+                if (present.contains(key) || !seen.add(key)) continue;
                 Known needed = byKey.get(key);
                 missing.add("\"" + r + "\"" + (needed == null ? "" : " (" + needed.classname() + ")"));
+                if (needed != null) todo.addAll(needed.requires());
             }
             if (!missing.isEmpty()) {
                 lines.add(d.getKey() + " (\"" + k.stableName() + "\") needs " + String.join(", ", missing)

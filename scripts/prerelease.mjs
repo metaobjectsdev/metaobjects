@@ -188,11 +188,15 @@ const ITER_RE = new RegExp(`^\\d+\\.${BASEVER.split(".").slice(1).join("\\.")}(?
 // collide (a used number is a hard 409 on every one of them). Every page: the registry serves
 // 50 per page whatever `limit` asks, and a used number past the first page was invisible.
 const usedIters = async () => {
+  let list;
   try {
-    const list = await collectPages((page, limit) =>
+    list = await collectPages((page, limit) =>
       JSON.parse(sh(`curl -fsS --max-time 10 -u "${OWNER}:${TOKEN}" "${BASE}/api/v1/packages/${OWNER}?page=${page}&limit=${limit}"`)));
-    return list.map((p) => (p.version.match(ITER_RE) || [])[1]).filter(Boolean).map(Number);
-  } catch { return []; }
+  } catch (e) {
+    die(`could not list the pre-release registry's packages, so the next free iteration is unknown: ${e.message}\n` +
+        `  Retry, or pass --iter <n>.`);
+  }
+  return list.map((p) => (p.version.match(ITER_RE) || [])[1]).filter(Boolean).map(Number);
 };
 
 // ...and across PUBLIC npm as well. A version published there is permanent — unpublish is
