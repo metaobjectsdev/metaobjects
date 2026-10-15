@@ -1,0 +1,65 @@
+{
+  "metadata.root": {
+    "package": "acme::naming",
+    "children": [
+      {
+        "object.entity": {
+          "name": "OrderItem",
+          "children": [
+            { "source.rdb": {} },
+            { "field.long": { "name": "id" } },
+            { "field.timestamp": { "name": "createdAt" } },
+            { "field.int": { "name": "unitPriceCents" } },
+            { "field.string": { "name": "sku", "@column": "SKU_CODE" } },
+            { "identity.primary": { "name": "id", "@fields": "id" } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Person",
+          "children": [
+            { "source.rdb": { "@table": "people" } },
+            { "field.long": { "name": "id" } },
+            { "field.string": { "name": "firstName" } },
+            { "field.string": { "name": "lastName", "@column": "family_name" } },
+            { "identity.primary": { "name": "id", "@fields": "id" } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "AuditEntry",
+          "children": [
+            { "source.rdb": { "name": "AuditLog" } },
+            { "field.long": { "name": "id" } },
+            { "field.string": { "name": "eventType" } },
+            { "identity.primary": { "name": "id", "@fields": "id" } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Category",
+          "children": [
+            { "source.rdb": {} },
+            { "field.long": { "name": "id" } },
+            { "field.string": { "name": "displayName" } },
+            { "identity.primary": { "name": "id", "@fields": "id" } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "HTTPRequest",
+          "children": [
+            { "source.rdb": {} },
+            { "field.long": { "name": "id" } },
+            { "field.string": { "name": "requestURL" } },
+            { "identity.primary": { "name": "id", "@fields": "id" } }
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,61 @@
+{
+  "_comment": "Cross-port physical naming (ADR-0058). Each case is the `naming` block of a project's .metaobjects/config.json. A port parses it with the reader it uses for that file, loads meta.naming.json, and resolves every table and column below through the resolver its codegen, migrate (TypeScript), runtime and verify use. `tables` keys are object names; `columns` keys are `<Object>.<field>`. Overrides (@table, a source's structural name, @column) win under every rule; the entity-name fallback keeps the frozen legacy pluralizer under every rule. `invalid` blocks must be refused when the config is read.",
+  "cases": [
+    {
+      "name": "default",
+      "naming": null,
+      "tables": { "OrderItem": "order_items", "Person": "people", "AuditEntry": "audit_log", "Category": "categories", "HTTPRequest": "http_requests" },
+      "columns": {
+        "OrderItem.id": "id", "OrderItem.createdAt": "created_at", "OrderItem.unitPriceCents": "unit_price_cents", "OrderItem.sku": "SKU_CODE",
+        "Person.firstName": "first_name", "Person.lastName": "family_name",
+        "AuditEntry.eventType": "event_type", "Category.displayName": "display_name", "HTTPRequest.requestURL": "request_url"
+      }
+    },
+    {
+      "name": "empty block is the default",
+      "naming": {},
+      "tables": { "OrderItem": "order_items", "Person": "people", "AuditEntry": "audit_log", "Category": "categories", "HTTPRequest": "http_requests" },
+      "columns": {
+        "OrderItem.id": "id", "OrderItem.createdAt": "created_at", "OrderItem.unitPriceCents": "unit_price_cents", "OrderItem.sku": "SKU_CODE",
+        "Person.firstName": "first_name", "Person.lastName": "family_name",
+        "AuditEntry.eventType": "event_type", "Category.displayName": "display_name", "HTTPRequest.requestURL": "request_url"
+      }
+    },
+    {
+      "name": "literal columns",
+      "naming": { "columns": "literal" },
+      "tables": { "OrderItem": "order_items", "Person": "people", "AuditEntry": "audit_log", "Category": "categories", "HTTPRequest": "http_requests" },
+      "columns": {
+        "OrderItem.id": "id", "OrderItem.createdAt": "createdAt", "OrderItem.unitPriceCents": "unitPriceCents", "OrderItem.sku": "SKU_CODE",
+        "Person.firstName": "firstName", "Person.lastName": "family_name",
+        "AuditEntry.eventType": "eventType", "Category.displayName": "displayName", "HTTPRequest.requestURL": "requestURL"
+      }
+    },
+    {
+      "name": "literal tables",
+      "naming": { "tables": "literal" },
+      "tables": { "OrderItem": "OrderItems", "Person": "people", "AuditEntry": "AuditLog", "Category": "Categories", "HTTPRequest": "HTTPRequests" },
+      "columns": {
+        "OrderItem.id": "id", "OrderItem.createdAt": "created_at", "OrderItem.unitPriceCents": "unit_price_cents", "OrderItem.sku": "SKU_CODE",
+        "Person.firstName": "first_name", "Person.lastName": "family_name",
+        "AuditEntry.eventType": "event_type", "Category.displayName": "display_name", "HTTPRequest.requestURL": "request_url"
+      }
+    },
+    {
+      "name": "kebab-case columns, literal tables",
+      "naming": { "columns": "kebab-case", "tables": "literal" },
+      "tables": { "OrderItem": "OrderItems", "Person": "people", "AuditEntry": "AuditLog", "Category": "Categories", "HTTPRequest": "HTTPRequests" },
+      "columns": {
+        "OrderItem.id": "id", "OrderItem.createdAt": "created-at", "OrderItem.unitPriceCents": "unit-price-cents", "OrderItem.sku": "SKU_CODE",
+        "Person.firstName": "first-name", "Person.lastName": "family_name",
+        "AuditEntry.eventType": "event-type", "Category.displayName": "display-name", "HTTPRequest.requestURL": "request-url"
+      }
+    }
+  ],
+  "invalid": [
+    { "name": "unknown column rule", "naming": { "columns": "camelCase" } },
+    { "name": "kebab-case is not a table rule", "naming": { "tables": "kebab-case" } },
+    { "name": "unknown key", "naming": { "column": "literal" } },
+    { "name": "not an object", "naming": "snake_case" }
+  ]
+}
