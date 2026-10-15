@@ -15,6 +15,7 @@ import { runGen, defineConfig, buildReportViews } from "@metaobjectsdev/codegen-
 import { entityFile, routesFile } from "@metaobjectsdev/test-generators";
 import mysql from "mysql2/promise";
 import { seedInserts, SERVED_REPORTS, type ReportSeed } from "./api-contract-report-generated-server.ts";
+import { DEFAULT_PHYSICAL_NAMING } from "@metaobjectsdev/metadata";
 import { loadMetadataFile } from "./load-metadata.ts";
 
 export interface MysqlReportServerHandle {
@@ -72,6 +73,10 @@ export async function startMysqlReportServer(mysqlUrl: string, metaPath: string)
   const tmp = mkdtempSync(join(genTmpRoot, "api-contract-report-mysql-"));
 
   const root = await loadMetadataFile(metaPath);
+  // This lane provisions its own tables below in the generated Drizzle tables' default
+  // spelling (snake_case), not the corpus's literal-column naming the reference servers use,
+  // so it sets the root to the default rules (ADR-0058: every resolver reads the root).
+  root.physicalNaming = DEFAULT_PHYSICAL_NAMING;
   const lr = await runGen({
     config: defineConfig({
       outDir: tmp,

@@ -26,6 +26,7 @@ import { runGen, defineConfig } from "@metaobjectsdev/codegen-ts";
 import { entityFile, routesFile } from "@metaobjectsdev/test-generators";
 import pg from "pg";
 import { executeSql } from "./postgres-sql.ts";
+import { DEFAULT_PHYSICAL_NAMING } from "@metaobjectsdev/metadata";
 import { loadMetadataFile } from "./load-metadata.ts";
 
 export interface ProjectionSeed {
@@ -56,6 +57,10 @@ export async function startGeneratedProjectionServer(
 
   // 1. Emit the real artifacts for the projection model.
   const root = await loadMetadataFile(metaPath);
+  // This lane provisions its own tables below in the generated Drizzle tables' default
+  // spelling (snake_case), not the corpus's literal-column naming the reference servers use,
+  // so it sets the root to the default rules (ADR-0058: every resolver reads the root).
+  root.physicalNaming = DEFAULT_PHYSICAL_NAMING;
   const lr = await runGen({
     config: defineConfig({
       outDir: tmp,
