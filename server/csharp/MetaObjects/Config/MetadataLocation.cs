@@ -54,6 +54,24 @@ public static class MetadataLocation
         Path.GetDirectoryName(Path.GetFullPath(metadataDir)) ?? System.IO.Directory.GetCurrentDirectory();
 
     /// <summary>
+    /// The <c>.metaobjects/config.json</c> of the project holding an explicit metadata
+    /// directory: the nearest ancestor from <see cref="ProjectRootFor"/> up that carries one,
+    /// searched no further than the repository root (a directory containing <c>.git</c>), so
+    /// <c>dotnet meta gen /repo/model/catalog</c> reads <c>/repo/.metaobjects/config.json</c>,
+    /// as the Maven plugin does. Null when no such ancestor exists.
+    /// </summary>
+    private static NeutralConfig? ConfigFor(string metadataDir)
+    {
+        for (var dir = new DirectoryInfo(ProjectRootFor(metadataDir)); dir is not null; dir = dir.Parent)
+        {
+            if (NeutralConfig.Read(dir.FullName) is { } cfg) return cfg;
+            var git = Path.Combine(dir.FullName, ".git");
+            if (System.IO.Directory.Exists(git) || File.Exists(git)) break;
+        }
+        return null;
+    }
+
+    /// <summary>
     /// Resolve where metadata lives. An explicit <paramref name="metadataDir"/> is used as
     /// given; otherwise <paramref name="cwd"/>'s <c>.metaobjects/config.json</c>
     /// <c>sources</c> (or the default directory) decides. <c>libraries</c> is read from the
@@ -66,7 +84,7 @@ public static class MetadataLocation
     {
         if (metadataDir is not null)
         {
-            var explicitCfg = NeutralConfig.Read(ProjectRootFor(metadataDir));
+            var explicitCfg = ConfigFor(metadataDir);
             var explicitLibs = explicitCfg?.Libraries ?? Array.Empty<string>();
             var explicitNaming = explicitCfg?.Naming ?? PhysicalNaming.Default;
             return new ResolvedMetadata(metadataDir, null, explicitLibs, explicitNaming);

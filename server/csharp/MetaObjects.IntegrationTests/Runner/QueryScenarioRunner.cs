@@ -130,16 +130,12 @@ public static class QueryScenarioRunner
     }
 
     /// <summary>
-    /// Load the canonical corpus metadata (the M:N relationship + junction declarations).
-    /// Loads the single <c>meta.fitness.json</c> file directly — NOT a directory walk of
-    /// <see cref="CorpusPaths.CanonicalMetadataDir"/> (<c>MetaDataLoader.FromDirectory</c>):
-    /// that directory is also the corpus's PROJECT root since ADR-0058, so it now holds
-    /// <c>.metaobjects/config.json</c> alongside the model, and a directory walk picks that
-    /// up as metadata too (<c>DirectorySource</c> recurses into every subdirectory, matching
-    /// every other port's loader) and fails to parse it. Mirrors the TypeScript reference's
-    /// own escape hatch for exactly this (<c>loadMetadataFile</c>, in
-    /// <c>integration-tests/src/load-metadata.ts</c>: "use when the surrounding directory
-    /// contains non-metadata files the directory loader would mistakenly try to parse").
+    /// Load the canonical corpus metadata (the M:N relationship + junction declarations):
+    /// the corpus's one metadata file, <see cref="CorpusPaths.FitnessMetadataFile"/>. The
+    /// corpus's project config is one level up, at
+    /// <c>fixtures/persistence-conformance/.metaobjects/config.json</c>, so a load of this
+    /// file never reads it; its naming rule is set on the root from
+    /// <see cref="CorpusPaths.Naming"/>.
     /// </summary>
     private static MetaRoot LoadCorpusMetadata()
     {

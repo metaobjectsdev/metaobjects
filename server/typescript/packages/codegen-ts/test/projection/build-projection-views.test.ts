@@ -21,7 +21,6 @@ function literalColumns<T>(root: T): T {
   return root;
 }
 
-
 async function load(children: unknown[]) {
   const json = JSON.stringify({ "metadata.root": { package: "acme", children } });
   const { root, errors } = await new MetaDataLoader().load([new InMemoryStringSource(json)]);
@@ -324,9 +323,9 @@ describe("buildReportViews — view-backed reports (FR-044 Plan 2, Table A)", ()
   async function loadModel(model: Json) {
     const { root, errors } = await new MetaDataLoader().load([new InMemoryStringSource(JSON.stringify(model))]);
     expect(errors).toEqual([]);
-    return root;
+    return literalColumns(root);
   }
-  const PG = { dialect: "postgres", columnNamingStrategy: "literal" } as const;
+  const PG = { dialect: "postgres" } as const;
 
   test("a view-backed report yields one ExpectedView named by its source", async () => {
     const root = await loadModel(shop("with"));
@@ -507,7 +506,7 @@ describe("buildReportViews — view-backed reports (FR-044 Plan 2, Table A)", ()
 
   test("mysql is accepted by buildReportViews and emits backticks", async () => {
     const root = await loadModel(shop("with"));
-    const views = buildReportViews(literalColumns(root), { dialect: "mysql" });
+    const views = buildReportViews(root, { dialect: "mysql" });
     expect(views).toHaveLength(1);
     expect(views[0]!.sql).toContain("FROM `purchases` p");
     expect(views[0]!.sql).toContain("CASE WHEN p.`status` = 'active' THEN p.`id` END");
@@ -515,8 +514,8 @@ describe("buildReportViews — view-backed reports (FR-044 Plan 2, Table A)", ()
 
   test("d1 returns exactly the sqlite bodies", async () => {
     const root = await loadModel(shop("with"));
-    const d1 = buildReportViews(literalColumns(root), { dialect: "d1" });
-    const sqlite = buildReportViews(literalColumns(root), { dialect: "sqlite" });
+    const d1 = buildReportViews(root, { dialect: "d1" });
+    const sqlite = buildReportViews(root, { dialect: "sqlite" });
     expect(d1).toEqual(sqlite);
     expect(d1[0]!.sql).toContain('COUNT(CASE WHEN p."status" = \'active\' THEN p."id" END)');
   });

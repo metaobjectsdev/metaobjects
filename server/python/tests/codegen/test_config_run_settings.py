@@ -236,6 +236,15 @@ def test_a_template_directory_flag_that_contradicts_the_config_is_refused(
     assert main(["gen", "--templates", "tpl"]) == 0
 
 
+def test_an_absolute_templates_path_and_a_flag_naming_the_same_directory_agree(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _template_project(tmp_path, f"templates: {tmp_path / 'sub' / '..' / 'tpl'}\n")
+    monkeypatch.chdir(tmp_path)
+    assert main(["gen", "--templates", "tpl"]) == 0
+    assert main(["verify", "--templates", "--prompts", "tpl"]) == 0
+
+
 def test_verify_templates_with_no_config_and_no_metadata_dir_says_what_it_needs(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
 ) -> None:

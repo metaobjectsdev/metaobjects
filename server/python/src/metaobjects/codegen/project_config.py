@@ -228,8 +228,7 @@ def _reject_unknown_keys(
 
 
 def _resolve_under(base: Path, p: str) -> str:
-    q = Path(p)
-    return str(q if q.is_absolute() else (base / q).resolve())
+    return str((base / p).resolve())
 
 
 def _require_str_list(value: object, ctx: str) -> list[str]:

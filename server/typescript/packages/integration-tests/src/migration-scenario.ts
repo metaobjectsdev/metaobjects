@@ -3,13 +3,14 @@
 
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { buildExpectedSchema, diff, emit, introspectPostgres } from "@metaobjectsdev/migrate-ts";
 import { buildProjectionViews } from "@metaobjectsdev/codegen-ts";
+import type { MetaRoot } from "@metaobjectsdev/metadata";
 import { Kysely, PostgresDialect } from "kysely";
 import { Pool } from "pg";
 
-import { loadMetadataDir } from "./load-metadata.ts";
+import { applyNearestNaming, loadMetadataDir } from "./load-metadata.ts";
 import { canonicalJson, normalizeRow } from "./normalization.ts";
 import { executeSql, queryRows } from "./postgres-sql.ts";
 import type { MigrationScenario } from "./scenario.ts";
@@ -25,8 +26,7 @@ export async function runMigrationScenario(scenario: MigrationScenario, connecti
     await executeSql(connectionUri, scenario.seedData);
 
   // 3. Run the incremental migration against the target.
-  const targetDir = resolveTargetMetadata(scenario);
-  const targetRoot = await loadMetadataDir(targetDir);
+  const targetRoot = await loadTargetMetadata(scenario);
   // The cross-port corpus is authored with field names = column names verbatim
   // (it mirrors the C# adopter's EF schema), so it declares `"naming": { "columns":
   // "literal" }` in its .metaobjects/config.json (ADR-0058), which the load applied;
@@ -88,13 +88,13 @@ async function buildFullCreate(metadataDir: string): Promise<string> {
   return emit(result.changes, { dialect: "postgres" }).up;
 }
 
-function resolveTargetMetadata(s: MigrationScenario): string {
-  if (s.targetMetadataDir) return s.targetMetadataDir;
+async function loadTargetMetadata(s: MigrationScenario): Promise<MetaRoot> {
+  if (s.targetMetadataDir) return loadMetadataDir(s.targetMetadataDir);
   if (s.targetMetadataInline !== null) {
     const tmp = mkdtempSync(join(tmpdir(), "metaobjects-scenario-"));
     mkdirSync(tmp, { recursive: true });
     writeFileSync(join(tmp, "meta.json"), s.targetMetadataInline);
-    return tmp;
+    return applyNearestNaming(await loadMetadataDir(tmp), dirname(s.sourcePath));
   }
   throw new Error(`${s.sourcePath}: missing target-metadata / target-metadata-inline`);
 }

@@ -544,14 +544,14 @@ export async function migrateCommand(
   // this run — the same directory `resolveCollection` resolves the metadata
   // from, found the same way (design §4.6.1: "Per-port generator config is then
   // read from that same directory"). Everything below is relative to it: the
-  // `.metaobjects/config.json` operational block, `metaobjects.config.ts`'s
-  // `columnNamingStrategy`, the migrations `outDir`, `wrangler.toml` discovery.
+  // `.metaobjects/config.json` operational block and its `naming` (ADR-0058), the
+  // migrations `outDir`, `wrangler.toml` discovery.
   //
   // Read from ambient cwd instead, as this did, they DIVERGE the moment the two
   // differ: run `meta migrate` from a subdirectory of a project whose root
-  // declares `columnNamingStrategy: "literal"` and the metadata resolves from
-  // the ancestor while the strategy silently defaults to snake_case — emitting a
-  // migration that renames every column. Newly reachable, too: before metadata
+  // declares literal column naming and the metadata resolves from the ancestor
+  // while the rule silently defaults to snake_case — emitting a migration that
+  // renames every column. Newly reachable, too: before metadata
   // sources were resolvable that invocation just failed with "no metaobjects/
   // found".
   //
@@ -567,10 +567,8 @@ export async function migrateCommand(
   // answers a different question from `.metaobjects/config.json` (design §4.6 —
   // per-port "how is code generated here?" versus port-neutral "where does metadata
   // come from?"), and in a Maven- or pip-rooted monorepo the two legitimately sit in
-  // different directories. Reading it from `metaRoot` there silently defaults
-  // `columnNamingStrategy` for a package that declares one — the exact
-  // rename-every-column failure the co-location was introduced to prevent, arrived
-  // at from the other side (#326). Nearest wins, so a subdirectory declaring nothing
+  // different directories. Reading it from `metaRoot` there silently drops the
+  // providers and libraries a package declares (#326). Nearest wins, so a subdirectory declaring nothing
   // still walks up to the project root's config; identical to `metaRoot` in every
   // `meta init` project, where the two files sit together.
   const genRoot = resolveGenConfigDir(cwd, metaRoot);
@@ -710,8 +708,8 @@ export async function migrateCommand(
   }
 
   // Best-effort load of metaobjects.config.ts to pick up consumer-supplied
-  // providers. migrate's postgres/sqlite path also reads the config later
-  // for columnNamingStrategy; we load it once here and reuse below.
+  // providers. Column naming is not read here: it is `naming` in
+  // `.metaobjects/config.json`, set on the loaded root (ADR-0058).
   let postgresLoadOptions: ReturnType<typeof loadMemoryOptionsFrom> = {};
   try {
     postgresLoadOptions = loadMemoryOptionsFrom(await loadMetaobjectsConfig(genRoot));
@@ -1174,9 +1172,9 @@ export async function runBaseline(
       `your metadata; for a new/empty database run \`${greenfieldCreateCmd(config.dialect)}\` instead.`,
     );
     let metadata;
-    // Load metaobjects.config.ts ONCE, up front, for BOTH the consumer providers/libraries
-    // and the columnNamingStrategy — mirroring the DB path (and `meta gen`) so
-    // offline baseline resolves config-registered custom subtypes too (#157).
+    // Load metaobjects.config.ts ONCE, up front, for the consumer providers/libraries —
+    // mirroring the DB path (and `meta gen`) so offline baseline resolves
+    // config-registered custom subtypes too (#157).
     let baselineLoadOptions: ReturnType<typeof loadMemoryOptionsFrom> = {};
     try {
       const cfg = await loadMetaobjectsConfig(genRoot);
@@ -1343,9 +1341,9 @@ export async function runOfflineGenerate(
     );
     return 2;
   }
-  // Load metaobjects.config.ts ONCE, up front, for BOTH the consumer providers/libraries
-  // and the columnNamingStrategy — mirroring the DB path (and `meta gen`) so
-  // offline generate resolves config-registered custom subtypes too (#157).
+  // Load metaobjects.config.ts ONCE, up front, for the consumer providers/libraries —
+  // mirroring the DB path (and `meta gen`) so offline generate resolves
+  // config-registered custom subtypes too (#157).
   let offlineLoadOptions: ReturnType<typeof loadMemoryOptionsFrom> = {};
   try {
     const cfg = await loadMetaobjectsConfig(genRoot);
