@@ -311,6 +311,19 @@ public sealed class EjectCommandTests : IDisposable
         Assert.Contains("in codegen/Generators.cs: new Codegen.Generators.RenderHelperGenerator(\"prompts\")", renderHelper);
     }
 
+    // Eject listed every copy as `new Codegen.Generators.<Class>()`, so a project that ejected
+    // render-helper got a codegen/Generators.cs that did not compile (CS7036: no templateRoot).
+    [Fact]
+    public void Ejecting_render_helper_lists_it_with_its_template_root_argument()
+    {
+        EjectCommand.Run(["render-helper"], _root, force: false);
+        Assert.Contains("        new Codegen.Generators.RenderHelperGenerator(\"prompts\"),\n",
+            File.ReadAllText(Path.Combine(CodegenDir, "Generators.cs")));
+
+        var again = EjectCommand.Run(["render-helper"], _root, force: true);
+        Assert.Contains("  new Codegen.Generators.RenderHelperGenerator(\"prompts\"),", again.Out);
+    }
+
     [Fact]
     public void GenListLines_marks_an_edited_ejected_copy_as_differing()
     {

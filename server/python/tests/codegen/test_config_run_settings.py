@@ -129,6 +129,17 @@ def test_the_column_naming_flag_is_refused_on_gen_and_verify(
     capsys.readouterr()
     assert main(["verify", "--codegen", "--column-naming", "snake_case"]) == 2
     assert "--column-naming was removed in 1.1.0" in capsys.readouterr().err
+    # A verify that runs no codegen gate refuses it too, rather than ignoring it.
+    assert main(["verify", "--templates", "--column-naming", "snake_case"]) == 2
+    assert "--column-naming was removed in 1.1.0" in capsys.readouterr().err
+
+
+def test_the_column_naming_flag_is_refused_before_the_config_is_looked_for(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    assert main(["gen", "--column-naming", "literal"]) == 2
+    assert "--column-naming was removed in 1.1.0" in capsys.readouterr().err
 
 
 def test_the_column_naming_key_in_the_yaml_config_is_refused(tmp_path: Path) -> None:

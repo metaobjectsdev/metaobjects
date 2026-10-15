@@ -722,8 +722,9 @@ _CONFIG_NAME = "metaobjects.config.yaml"
 def _refuse_column_naming_flag(args: argparse.Namespace) -> str | None:
     """ADR-0058 Decision 4 — ``--column-naming`` was removed in 1.1.0: naming is one
     project setting (``naming`` in ``.metaobjects/config.json``), read from the loaded
-    root (``MetaRoot.naming``) by every resolver. Returns the refusal (the caller
-    prints it and exits 2) when the flag was given at all, else ``None``.
+    root (``MetaRoot.naming``) by every resolver. Returns the refusal (``gen`` and
+    ``verify`` print it and exit 2 before anything else runs) when the flag was given at
+    all, else ``None``.
     """
     flag = getattr(args, "column_naming", None)
     if flag is None:
@@ -1254,6 +1255,10 @@ def _warn_if_agent_context_stale() -> None:
 
 
 def _cmd_gen(args: argparse.Namespace) -> int:
+    naming_refusal = _refuse_column_naming_flag(args)
+    if naming_refusal is not None:
+        print(naming_refusal, file=sys.stderr)
+        return 2
     # `--list` is a pure discoverability path: print the registry and exit, no codegen.
     if getattr(args, "list", False):
         return _cmd_list(args)
@@ -1578,12 +1583,10 @@ def _cmd_gen_config(args: argparse.Namespace) -> int:
         return 1
     _print_unknown_attr_warnings(unknown_attrs)
 
-    naming_refusal = _refuse_column_naming_flag(args)
     template_root, templates_refusal = _template_root_for_config(args, config)
-    for refusal in (naming_refusal, templates_refusal):
-        if refusal is not None:
-            print(refusal, file=sys.stderr)
-            return 2
+    if templates_refusal is not None:
+        print(templates_refusal, file=sys.stderr)
+        return 2
     # ADR-0058 Decision 3 — the loaded root's `naming` (set from `.metaobjects/
     # config.json` at load time) is THE strategy; never a flag or a config key.
     column_naming = root.naming.columns
@@ -1831,12 +1834,10 @@ def _verify_codegen_config(args: argparse.Namespace) -> int:
             return 2
     narrowed = selection is not None or _parse_entities(getattr(args, "entities", None)) is not None
 
-    naming_refusal = _refuse_column_naming_flag(args)
     template_root, templates_refusal = _template_root_for_config(args, config)
-    for refusal in (naming_refusal, templates_refusal):
-        if refusal is not None:
-            print(refusal, file=sys.stderr)
-            return 2
+    if templates_refusal is not None:
+        print(templates_refusal, file=sys.stderr)
+        return 2
     # ADR-0058 Decision 3 — the loaded root's `naming` is THE strategy.
     column_naming = root.naming.columns
 
@@ -2422,6 +2423,10 @@ def _cmd_verify(args: argparse.Namespace) -> int:
     max (non-zero if ANY mode drifts). Bare ``verify`` (no subverb) keeps the
     historical default = ``--codegen`` + a one-line note advertising the subverbs.
     """
+    naming_refusal = _refuse_column_naming_flag(args)
+    if naming_refusal is not None:
+        print(naming_refusal, file=sys.stderr)
+        return 2
     _warn_if_agent_context_stale()
 
     run_db = args.db is not None

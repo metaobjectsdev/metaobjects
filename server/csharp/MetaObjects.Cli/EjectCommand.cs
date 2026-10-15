@@ -152,13 +152,6 @@ public static class EjectCommand
             : ["", warning + "."];
     }
 
-    /// <summary>The C# class name a stable registry name's ejected file declares —
-    /// derived from its SourceFileName (<c>EntityGenerator.cs</c> → <c>EntityGenerator</c>),
-    /// never re-derived from the stable name (which would drift from the real class the
-    /// moment the two spellings diverge, e.g. "db-context" → DbContextGenerator).</summary>
-    private static string ClassNameFor(GeneratorRegistryEntry entry) =>
-        Path.GetFileNameWithoutExtension(entry.SourceFileName!);
-
     /// <summary>
     /// Eject <paramref name="names"/> into <paramref name="root"/>/codegen/. Every name
     /// is validated before anything is written. Returns exit 2 (usage) for no names or
@@ -221,7 +214,7 @@ public static class EjectCommand
         // missing, the list with the generators just ejected. An existing file is the project's own.
         var csprojPath = Path.Combine(root, "codegen", "Codegen.csproj");
         var csprojExisted = File.Exists(csprojPath);
-        var entries = names.Select(n => $"new Codegen.Generators.{ClassNameFor(known[n])}()").ToList();
+        var entries = names.Select(n => EjectableGenerators.OwnedListEntry(known[n])).ToList();
         var scaffolded = CodegenScaffold.WriteMissing(root, entries);
         if (scaffolded.Count > 0)
         {
