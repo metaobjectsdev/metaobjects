@@ -367,7 +367,11 @@ repin_pom() {  # repin_pom <pom.xml> <maven version>
         if (s ~ /<(dependency|plugin)>/) { sp++; ours[sp] = 0; nest[sp] = 0; vline[sp] = 0; continue }
         if (sp == 0) continue
         if (s ~ /<\/(dependency|plugin)>/) {
-          if (ours[sp] && vline[sp]) gsub(/<version>[^<]*<\/version>/, "<version>" ver "</version>", L[vline[sp]])
+          # A property reference (${metaobjects.version}, inherited from a parent pom) is the
+          # indirection the property branch above preserves: rewriting it to a literal would
+          # cut the module off from its parent, and unlink would never put it back.
+          if (ours[sp] && vline[sp] && L[vline[sp]] !~ /<version>[[:space:]]*\$\{/)
+            gsub(/<version>[^<]*<\/version>/, "<version>" ver "</version>", L[vline[sp]])
           sp--; continue
         }
         if (nest[sp] == 0) {

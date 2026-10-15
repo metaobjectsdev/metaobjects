@@ -121,7 +121,18 @@ cat > "$poly/ports/java/pom.xml" <<'XML'
   <properties><metaobjects.version>8.0.9</metaobjects.version></properties>
 </project>
 XML
-mkdir -p "$poly/ports/java/module"
+mkdir -p "$poly/ports/java/module" "$poly/ports/java/inherits"
+cat > "$poly/ports/java/inherits/pom.xml" <<'XML'
+<project>
+  <dependencies>
+    <dependency>
+      <groupId>com.metaobjects</groupId>
+      <artifactId>metaobjects-om</artifactId>
+      <version>${metaobjects.version}</version>
+    </dependency>
+  </dependencies>
+</project>
+XML
 cat > "$poly/ports/java/module/pom.xml" <<'XML'
 <project>
   <dependencies>
@@ -197,6 +208,7 @@ check "the nested python project is repinned" 'grep -q "metaobjects==1.1.0rc9" "
 check "each independent pom gets the repositories" 'grep -q "<pluginRepositories>" "$poly/ports/java/pom.xml" && grep -q "<pluginRepositories>" "$poly/ports/kotlin/pom.xml"'
 check "a module pom inherits rather than gets a block" '! grep -q "<pluginRepositories>" "$poly/ports/java/module/pom.xml"'
 check "the version property is repinned" 'grep -q "<metaobjects.version>8.1.0-rc.9</metaobjects.version>" "$poly/ports/java/pom.xml"'
+check "an inherited version property is not made literal" 'grep -q "<version>\${metaobjects.version}</version>" "$poly/ports/java/inherits/pom.xml"'
 check "a module dependency is repinned" 'grep -q "<version>8.1.0-rc.9</version>" "$poly/ports/java/module/pom.xml"'
 check "a literal dependency version is repinned" 'grep -q "<version>8.1.0-rc.9</version>" "$poly/ports/kotlin/pom.xml"'
 check "another group's version is left alone" 'grep -q "<version>0.61.0</version>" "$poly/ports/kotlin/pom.xml" && grep -q "<version>2.0.21</version>" "$poly/ports/kotlin/pom.xml"'
@@ -207,6 +219,7 @@ check "another tool in the manifest is left alone" 'grep -q "\"dotnet-ef\": { \"
 
 MO_REGISTRY_BASE="http://127.0.0.1:$PORT" MO_REGISTRY_OWNER=owner MO_REGISTRY_TOKEN="" \
   bash "$LINK" unlink --project "$poly" --to 1.0.13 >"$WORK/out" 2>&1 || true
+check "an inherited version property survives link and unlink" 'grep -q "<version>\${metaobjects.version}</version>" "$poly/ports/java/inherits/pom.xml" && ! grep -q "<version>8" "$poly/ports/java/inherits/pom.xml"'
 check "unlink removes every managed block" '! grep -rq "metaobjects prerelease (managed)" "$poly/ports"'
 check "unlink repins the nested python project" 'grep -q "metaobjects==1.0.13" "$poly/ports/python/pyproject.toml"'
 check "unlink repins every pom" 'grep -q "8.0.13" "$poly/ports/java/pom.xml" && grep -q "8.0.13" "$poly/ports/java/module/pom.xml" && [ "$(grep -c "<version>8.0.13</version>" "$poly/ports/kotlin/pom.xml")" = 3 ]'
