@@ -54,7 +54,7 @@ FR-037 R5's arithmetic wave and will need its own agreement):
 |---|---|---|
 | `dimension.attribute` | `object.entity` | `@of` (required), `@via` |
 | `dimension.time` | `object.entity` | `@of` (required), `@via`, `@grains` (required, array) |
-| `measure.aggregate` | `object.entity` | `@agg` (required), `@of` (required, array), `@distinct`, `@filter`, `@segment`, `@default` |
+| `measure.aggregate` | `object.entity` | `@agg` (required), `@of` (required, array, except `any` / `all`), `@distinct`, `@filter`, `@segment`, `@default` |
 | `measure.ratio` | `object.entity` | `@numerator` (required), `@denominator` (required), `@default` |
 | `segment.filter` | `object.entity` | `@filter` (required) |
 | `object.report` | root | `@from` (required), `@dimensions` (array), `@measures` (required, array), `@segment`, `@filter`, `@spine` |
