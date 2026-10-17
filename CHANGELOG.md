@@ -10,158 +10,29 @@ here.**
 
 ## [Unreleased]
 
-### Changed — one physical-naming setting, read by every port (ADR-0058)
-
-**This changes generated column names in C#, Java, Kotlin's runtime and Python unless you add
-one line.** Column and table names that the metadata does not give (`@column`, `@table`,
-`@view`, a source's `name`) now come from one project setting, `naming` in
-`.metaobjects/config.json`:
-`{ "naming": { "columns": "snake_case" | "literal" | "kebab-case", "tables": "snake_case" | "literal" } }`.
-`meta migrate`, every port's codegen (the names generators included), every runtime
-`ObjectManager` and `verify` read it from the loaded model, so codegen and the runtime can
-no longer disagree. Both rules default to `snake_case` in every port, which is what
-`meta migrate` creates; C#, Java, the JVM runtime and Python defaulted to `literal`. A
-database whose columns are named exactly like the fields adds
-`"naming": { "columns": "literal" }`. Every former place to set the rule is refused with a
-message naming the setting and the guide, never silently ignored: `columnNamingStrategy` in
-`metaobjects.config.ts` and on `ObjectManager` and `agentDocsFile()` (TypeScript),
-`--column-naming` (C#, Python), the `columnNaming` generator arg in `pom.xml` and
-`SimpleMappingHandlerDB.setColumnNaming` (Java, Kotlin), `ObjectManager(column_naming=)`
-(Python). The engine options that carried the rule (`buildExpectedSchema`,
-`buildProjectionViews`, `buildReportViews`, `computeDrift`, `planOffline`,
-`baselineFromMetadata`) read it from the model instead. Table names gain a `literal` rule.
-Every port runs the shared `fixtures/naming-conformance/physical-names/` corpus.
-Migration: `docs/features/migrations/physical-naming.md`.
-
-Found by the application-building test of 1.1.0-rc.3: following the migration guide, a plain
-`metaobjects gen` rewrote every `*_names.py` with camelCase column names the snake_case
-database does not have.
-
-### Added
-
-- **Python: `templates` in `metaobjects.config.yaml`.** The template directory was a flag
-  only; `gen`, `verify --codegen` and `verify --templates` read the key, and a `--templates`
-  that contradicts it is refused.
-- **Maven: `requires` is checked.** `mvn metaobjects:generate` fails, naming the missing
-  companion and its class, when a listed generator's output references what an unlisted one
-  writes (a Spring controller without the DTO, repository and filter allowlist; a Kotlin
-  controller without the Exposed tables, filter allowlists and relation queries), where it
-  used to exit 0 and leave the build to fail in `javac` or `kotlinc`.
-  `<allowUnmetRequires>true</allowUnmetRequires>` runs such a list when the files are
-  supplied another way. Every Java and Kotlin `requires` closure, and the skills' pom
-  examples, are compiled over the fitness corpus in a test.
-- **`@agg: any` / `all` without `@of`, in every port.** A `measure.aggregate` with `@agg: any`
-  or `all` may omit `@of` and declare a `@filter` or `@segment` instead: it is then true when
-  some row (`any`) or every row (`all`) in the group passes that condition. `{ "name":
-  "hasError", "@agg": "any", "@filter": { "success": false } }` states "did any call fail"
-  (`bool_or(success = FALSE)`) over a `success` column, which a boolean `@of` could not. A row
-  whose condition is NULL is skipped, as `bool_or` skips one. It lowers
-  to `bool_or(<condition>)` / `bool_and(<condition>)` on Postgres and `MAX` / `MIN` of the
-  condition on SQLite, D1 and MySQL, and to the same SQL in the Cube model. The registry makes
-  `measure.aggregate` `@of` optional (`metamodelVersion` stays `1.1`), and a new loader rule M0
-  refuses, with `ERR_INVALID_MEASURE`, an `@of`-less measure whose `@agg` is not `any` or `all`
-  (it was `ERR_MISSING_REQUIRED_ATTR`) and an `@of`-less `any` / `all` with no condition.
-  Gated by the `reporting-any-all-predicate`, `error-measure-any-without-condition` and
-  `error-measure-sum-without-of` conformance fixtures. Found by an adopter on 1.1.0-rc.4.
-
-### Fixed
-- **A bare entity name the path already fixes resolves in that entity's package, in every port.**
-  A dimension's `"@of": "Realm.name"` after a `@via` hop onto `world::Realm` was resolved in
-  the declaring entity's package and refused (`must name a field of 'world::Realm', the entity
-  @via ... reaches`), so a cross-package `@of` needed the full name. It now resolves in the
-  package of the entity the `@via` reaches, and the owner of a report's `@spine` resolves in
-  `@from`'s package rather than the report's. A fully-qualified name is unchanged. The loader and every port's report shape use
-  the one rule. Gated by the `reporting-cross-package-short-names` conformance fixture. Found
-  by an adopter on 1.1.0-rc.4.
-- **`meta gen` with only documentation generators no longer says to wire a prompt generator.**
-  A project whose `generators` lists only docs generators was told, for each `template.prompt`,
-  to add `promptRender()`, and that the payload value objects "were emitted regardless" when the
-  run had emitted no code. The advisory now fires only when the run lists a generator that
-  writes code, and it says the value objects were emitted only when `entityFile()` (or another
-  entity-module generator) ran. Found by an adopter on 1.1.0-rc.4.
-- **`agentDocsFile()` says when it skips `agent/ui.md`.** The page is written only when the run
-  lists a client UI generator or the config sets `includeUiTier: true`, and before this a
-  project whose UI is generated by a separate config lost the page with no message. When the
-  config leaves `includeUiTier` unset, `meta gen` now warns `agent/ui.md not written: no client
-  UI generator in this run; set includeUiTier: true if another config generates the UI, or
-  includeUiTier: false if there is no UI.` A project with no UI anywhere sets `includeUiTier:
-  false`, which skips the page without the warning. Both settings are documented in
-  `docs/features/migrations/docs-are-generators.md`. Found by an adopter on 1.1.0-rc.4.
-- **A pre-release CLI's version in `.metaobjects/.agent-context.json` is caught.** `meta init`
-  stamps the running CLI's version into that committed file's `generatedBy`; run with a release
-  candidate, it recorded `1.1.0-rc.4` and `tools/prerelease/detect-prerelease-pins.sh` passed.
-  `meta init` now warns when it writes a pre-release `generatedBy`, and the detector fails on
-  one and names `meta init --refresh-docs --docs-only`, run with the release CLI, as the fix.
-  Found by an adopter on 1.1.0-rc.4.
-- **`prerelease-link` leaves a pom it did not change byte-identical, and reports only real
-  repins.** A `link` / `unlink` round trip added a final newline to a `pom.xml` that had none,
-  so `git status` showed it modified, and both commands said "repinned ... in `app/pom.xml`"
-  for a module pinned only through its parent's `${metaobjects.version}`. The rewrites keep a
-  file's final-newline state (`pom.xml`, and the blocks appended to `pyproject.toml` and
-  `.npmrc`), and a repin is reported only for a file whose text changed.
-  Found by an adopter on 1.1.0-rc.4.
-- **`prerelease-link unlink` removes the git exclude lines `link` added.** `link` appended its
-  ignore rules as bare lines to the clone's shared `info/exclude`, and `unlink` left them there.
-  They now sit in one managed block, which `unlink` removes without touching a line the user
-  wrote, and a repeated `link` does not add them twice. The file is shared by every worktree
-  of the clone, so an entry that another linked worktree, or another project linked in the same
-  worktree, still needs stays until that one is unlinked. A `NuGet.config` that `link` wrote is
-  removed on `unlink` rather than left as a bare XML declaration.
-- `verify --codegen` (Python, C#) says when the committed output was generated with another
-  column rule, another table rule, or both, and names the `naming` setting that reproduces it,
-  instead of advising a regeneration that would commit the wrong column or table names.
-- Every "removed in 1.1.0" message and skill reference names the migration guide by its full
-  public URL; the repository path they printed exists in no installed package.
-- The Java and Kotlin skills' only `pom.xml` examples generated code that did not compile;
-  each now lists the whole REST tier, and the Kotlin skill lists the runtime dependencies the
-  generated code needs and that the controller needs `KotlinRelationsGenerator`.
-- The migration guide and the skills give each port's documentation its own directory: in a
-  shared one, every port's `verify --codegen` reported the other ports' pages as drift.
-- `dotnet meta gen --list` prints the expression that lists each generator in
-  `codegen/Generators.cs` (`new MetaObjects.Codegen.Generators.RenderHelperGenerator("prompts")`)
-  and its options.
-- The C# "agent context is stale" notice no longer fires on build metadata alone
-  (`1.1.0-rc.3` against `1.1.0-rc.3+<sha>`).
-- `meta verify --docs` prints its removal line once, as plain text.
-- `metaobjects verify --templates` reads `metadata` and `templates` from
-  `metaobjects.config.yaml` instead of refusing the config.
-- The skills no longer say metadata lives under `metaobjects/` (it is the default only), and
-  name C#'s positional `<metadataDir>` (there is no `--metadata-dir`).
-- Pre-release tooling: `prerelease:publish` reads what is released from public npm and the
-  release tags, not `package.json`, so a cut during release preparation is not numbered one
-  minor too high, and it refuses a `--base` that skips an unpublished CHANGELOG section; the
-  iteration counter reads every page of the registry listing; a SIGTERM restores the version
-  files. `prerelease-link.sh` links and repins every Maven and Python project at any depth and
-  repins the .NET local tool manifest.
-
-- A generated documentation page that no current object produces (for example the
-  `<Object>.md` page of an object that was removed) is reported as drift. 1.0's
-  `meta verify --docs` was silent about every such page outside `agent/`, so an adopter kept
-  ten orphan pages with the gate green. `meta verify --codegen`, which checks documentation in
-  1.1.0 (see **Removed** under 1.1.0), reports each as a file a fresh run would not write.
-  Hand-written files in the docs directory are left alone.
-- The `hand-rolled-aggregate` advisory now names `object.report` for grouped, served or reported
-  figures, and says an `object.projection` with `origin.aggregate` still fits a per-row figure.
-- **The api reference (`apiDocsFile()`) honours `routesFile({ expose })` and
-  `routesFileHono({ expose })`.** The API pages listed all five verbs for an entity whose routes file mounts fewer (`DELETE` for an entity
-  exposed as `["list", "get"]`), so the adopter overrode the pages by hand. The generators now
-  carry the option in a `mountsRoutes` marker, and `meta gen` reads it off the declared list
-  (`runRoutesExpose`) per routes surface, even in a run narrowed by `--generators`, so a narrowed Fastify routes file beside a default Hono
-  one (or the reverse) narrows only its own section, and documents only the verbs mounted: `update` lists both `PATCH` and `PUT`,
-  a read-only projection or report still lists `GET`, and a TPH base is narrowed from its
-  read-only pair. Output without `expose` is byte-identical. **An owned (ejected) copy needs the
-  marker to be honoured:** run `meta eject routes --force` (and `routes-hono --force`), or add
-  `mountsRoutes: opts?.expose !== undefined ? { expose: opts.expose } : {}` beside the generator's
-  `name:`. TypeScript only: no other port has an `expose` option.
-
 ## [1.1.0] — 2026-10-10
 
 _npm `1.1.0` (all 14 `@metaobjectsdev/*` packages in lockstep), PyPI `1.1.0`, NuGet `1.1.0` and
-Maven Central `8.1.0`. **`metamodelVersion` moves `1.0` to `1.1`.** The vocabulary is additive: a
-model that uses none of the new names generates byte-for-byte what it did under 1.0. What loads
-changes only where the Java and Python parser fixes under **Fixed** bring those ports into line
-with TypeScript, and each entry says which models that affects. This is a MINOR because the
+Maven Central `8.1.0`. **`metamodelVersion` moves `1.0` to `1.1`.** The vocabulary is additive:
+a model that uses none of the new names loads as it did under 1.0, and what loads changes only
+where the Java and Python parser fixes under **Fixed** bring those ports into line with
+TypeScript. What it generates is NOT unchanged in every port: in C#, Java, Kotlin's runtime and
+Python the default for column and table names flips from the field name to `snake_case`, so a
+1.0 estate whose columns are named like its fields must add
+`"naming": { "columns": "literal" }` (see **Breaking** below). Each entry says which models it
+affects. This is a MINOR because the
 metamodel moved and reporting is a new feature, not because the package surface broke._
+
+**Breaking, C#, Java, Kotlin's runtime and Python: the default physical names are `snake_case`.**
+Column and table names the metadata does not give now come from one `naming` setting in
+`.metaobjects/config.json`, defaulting to `snake_case` in every port (it was the field name in
+those four). A database whose columns are named exactly like the fields adds
+`"naming": { "columns": "literal" }`. The per-port flags that used to carry the rule
+(`--column-naming`, the `columnNaming` pom arg, `ObjectManager(column_naming=)`,
+`columnNamingStrategy`) are removed and refused with a message naming the setting. Nothing in the
+build fails if you skip this: the first failure is a query against a column that does not exist.
+Migration: [physical-naming.md](docs/features/migrations/physical-naming.md). The entry is under
+**Changed**.
 
 **Breaking, in every port: documentation is generated the way code is.** Every generator,
 documentation included, is an entry in the project's generator list; one command runs the
@@ -239,6 +110,31 @@ requirements slice and the advisory lint port, the JSON Schema and OpenAPI gener
 generator catalog and the Atlas evaluation are 1.2 work.
 
 ### Added
+
+- **Python: `templates` in `metaobjects.config.yaml`.** The template directory was a flag
+  only; `gen`, `verify --codegen` and `verify --templates` read the key, and a `--templates`
+  that contradicts it is refused.
+- **Maven: `requires` is checked.** `mvn metaobjects:generate` fails, naming the missing
+  companion and its class, when a listed generator's output references what an unlisted one
+  writes (a Spring controller without the DTO, repository and filter allowlist; a Kotlin
+  controller without the Exposed tables, filter allowlists and relation queries), where it
+  used to exit 0 and leave the build to fail in `javac` or `kotlinc`.
+  `<allowUnmetRequires>true</allowUnmetRequires>` runs such a list when the files are
+  supplied another way. Every Java and Kotlin `requires` closure, and the skills' pom
+  examples, are compiled over the fitness corpus in a test.
+- **`@agg: any` / `all` without `@of`, in every port.** A `measure.aggregate` with `@agg: any`
+  or `all` may omit `@of` and declare a `@filter` or `@segment` instead: it is then true when
+  some row (`any`) or every row (`all`) in the group passes that condition. `{ "name":
+  "hasError", "@agg": "any", "@filter": { "success": false } }` states "did any call fail"
+  (`bool_or(success = FALSE)`) over a `success` column, which a boolean `@of` could not. A row
+  whose condition is NULL is skipped, as `bool_or` skips one. It lowers
+  to `bool_or(<condition>)` / `bool_and(<condition>)` on Postgres and `MAX` / `MIN` of the
+  condition on SQLite, D1 and MySQL, and to the same SQL in the Cube model. The registry makes
+  `measure.aggregate` `@of` optional (`metamodelVersion` stays `1.1`), and a new loader rule M0
+  refuses, with `ERR_INVALID_MEASURE`, an `@of`-less measure whose `@agg` is not `any` or `all`
+  (it was `ERR_MISSING_REQUIRED_ATTR`) and an `@of`-less `any` / `all` with no condition.
+  Gated by the `reporting-any-all-predicate`, `error-measure-any-without-condition` and
+  `error-measure-sum-without-of` conformance fixtures. Found by an adopter on 1.1.0-rc.4.
 
 - **The eject contract: every generator hands over its emit, and a test in every port holds
   it to that** (ADR-0034 Amendment 8). `fixtures/generator-registry-conformance/registry.json`
@@ -943,7 +839,32 @@ generator catalog and the Atlas evaluation are 1.2 work.
 
 ### Changed
 
-Eight corrections that shipped with report serving and reach models that declare no report.
+**One physical-naming setting, read by every port (ADR-0058).** **This changes generated column names in C#, Java, Kotlin's runtime and Python unless you add
+one line.** Column and table names that the metadata does not give (`@column`, `@table`,
+`@view`, a source's `name`) now come from one project setting, `naming` in
+`.metaobjects/config.json`:
+`{ "naming": { "columns": "snake_case" | "literal" | "kebab-case", "tables": "snake_case" | "literal" } }`.
+`meta migrate`, every port's codegen (the names generators included), every runtime
+`ObjectManager` and `verify` read it from the loaded model, so codegen and the runtime can
+no longer disagree. Both rules default to `snake_case` in every port, which is what
+`meta migrate` creates; C#, Java, the JVM runtime and Python defaulted to `literal`. A
+database whose columns are named exactly like the fields adds
+`"naming": { "columns": "literal" }`. Every former place to set the rule is refused with a
+message naming the setting and the guide, never silently ignored: `columnNamingStrategy` in
+`metaobjects.config.ts` and on `ObjectManager` and `agentDocsFile()` (TypeScript),
+`--column-naming` (C#, Python), the `columnNaming` generator arg in `pom.xml` and
+`SimpleMappingHandlerDB.setColumnNaming` (Java, Kotlin), `ObjectManager(column_naming=)`
+(Python). The engine options that carried the rule (`buildExpectedSchema`,
+`buildProjectionViews`, `buildReportViews`, `computeDrift`, `planOffline`,
+`baselineFromMetadata`) read it from the model instead. Table names gain a `literal` rule.
+Every port runs the shared `fixtures/naming-conformance/physical-names/` corpus.
+Migration: `docs/features/migrations/physical-naming.md`.
+
+Found by the application-building test of 1.1.0-rc.3: following the migration guide, a plain
+`metaobjects gen` rewrote every `*_names.py` with camelCase column names the snake_case
+database does not have.
+
+**Eight further changes.** Eight corrections that shipped with report serving and reach models that declare no report.
 Each one changes generated code or generated docs on the next gen run, as its entry says. A drift gate that covers that output reports it
 until you regenerate.
 
@@ -1347,6 +1268,118 @@ until you regenerate.
   - A project that never wired it sees no change.
 
 ### Fixed
+
+- **SQLite and D1: a backtick-quoted CHECK constraint name is read.** Introspection read
+  `CONSTRAINT "name"` and a bare name but not `` CONSTRAINT `name` `` (the quoting Drizzle-written
+  migrations use) or `[name]`, so the stored check had an empty name, and `meta verify --db` and
+  the `meta migrate` re-diff reported a false `add-check` / `drop-check` pair. The expression
+  comparison also treats `` `col` `` and `"col"` as the same identifier (a backtick inside a
+  string literal stays data).
+- **`meta gen --baseline=fresh` overwrites a file the committed manifest has no record of, even
+  when a git-ignored merge-base snapshot exists for it.** It used to three-way merge against that
+  stale snapshot (which survives a `git checkout`), so the old content stayed as a "hand edit".
+  A path the manifest does record still merges; only `fresh` ignores the stale body.
+- **Maven (Kotlin): `spring-config` requires the validator only when it emits the validator
+  hook.** A pom with `validatorEnabled=false` that generated under 1.0 was refused for lacking
+  `KotlinValidatorGenerator`; the requirement now follows the generator's configured args
+  (`ConfiguredRequires`). `packageName is required` from the validator and spring-config
+  generators now names the generator.
+- **Python: the api reference files each page under its own object's package.** Every page of a
+  model loaded from several files was written under the first file's package, and the back-links
+  pointed there.
+- **Python: M:N navigations are emitted as `Field(default_factory=list)`**, not a mutable `= []`
+  class default.
+- Pre-release tooling: a `prerelease:publish --dry-run` no longer ends with "is on the
+  pre-release registry", and the Java step is labelled for what it runs (`package`).
+
+- **A bare entity name the path already fixes resolves in that entity's package, in every port.**
+  A dimension's `"@of": "Realm.name"` after a `@via` hop onto `world::Realm` was resolved in
+  the declaring entity's package and refused (`must name a field of 'world::Realm', the entity
+  @via ... reaches`), so a cross-package `@of` needed the full name. It now resolves in the
+  package of the entity the `@via` reaches, and the owner of a report's `@spine` resolves in
+  `@from`'s package rather than the report's. A fully-qualified name is unchanged. The loader and every port's report shape use
+  the one rule. Gated by the `reporting-cross-package-short-names` conformance fixture. Found
+  by an adopter on 1.1.0-rc.4.
+- **`meta gen` with only documentation generators no longer says to wire a prompt generator.**
+  A project whose `generators` lists only docs generators was told, for each `template.prompt`,
+  to add `promptRender()`, and that the payload value objects "were emitted regardless" when the
+  run had emitted no code. The advisory now fires only when the run lists a generator that
+  writes code, and it says the value objects were emitted only when `entityFile()` (or another
+  entity-module generator) ran. Found by an adopter on 1.1.0-rc.4.
+- **`agentDocsFile()` says when it skips `agent/ui.md`.** The page is written only when the run
+  lists a client UI generator or the config sets `includeUiTier: true`, and before this a
+  project whose UI is generated by a separate config lost the page with no message. When the
+  config leaves `includeUiTier` unset, `meta gen` now warns `agent/ui.md not written: no client
+  UI generator in this run; set includeUiTier: true if another config generates the UI, or
+  includeUiTier: false if there is no UI.` A project with no UI anywhere sets `includeUiTier:
+  false`, which skips the page without the warning. Both settings are documented in
+  `docs/features/migrations/docs-are-generators.md`. Found by an adopter on 1.1.0-rc.4.
+- **A pre-release CLI's version in `.metaobjects/.agent-context.json` is caught.** `meta init`
+  stamps the running CLI's version into that committed file's `generatedBy`; run with a release
+  candidate, it recorded `1.1.0-rc.4` and `tools/prerelease/detect-prerelease-pins.sh` passed.
+  `meta init` now warns when it writes a pre-release `generatedBy`, and the detector fails on
+  one and names `meta init --refresh-docs --docs-only`, run with the release CLI, as the fix.
+  Found by an adopter on 1.1.0-rc.4.
+- **`prerelease-link` leaves a pom it did not change byte-identical, and reports only real
+  repins.** A `link` / `unlink` round trip added a final newline to a `pom.xml` that had none,
+  so `git status` showed it modified, and both commands said "repinned ... in `app/pom.xml`"
+  for a module pinned only through its parent's `${metaobjects.version}`. The rewrites keep a
+  file's final-newline state (`pom.xml`, and the blocks appended to `pyproject.toml` and
+  `.npmrc`), and a repin is reported only for a file whose text changed.
+  Found by an adopter on 1.1.0-rc.4.
+- **`prerelease-link unlink` removes the git exclude lines `link` added.** `link` appended its
+  ignore rules as bare lines to the clone's shared `info/exclude`, and `unlink` left them there.
+  They now sit in one managed block, which `unlink` removes without touching a line the user
+  wrote, and a repeated `link` does not add them twice. The file is shared by every worktree
+  of the clone, so an entry that another linked worktree, or another project linked in the same
+  worktree, still needs stays until that one is unlinked. A `NuGet.config` that `link` wrote is
+  removed on `unlink` rather than left as a bare XML declaration.
+- `verify --codegen` (Python, C#) says when the committed output was generated with another
+  column rule, another table rule, or both, and names the `naming` setting that reproduces it,
+  instead of advising a regeneration that would commit the wrong column or table names.
+- Every "removed in 1.1.0" message and skill reference names the migration guide by its full
+  public URL; the repository path they printed exists in no installed package.
+- The Java and Kotlin skills' only `pom.xml` examples generated code that did not compile;
+  each now lists the whole REST tier, and the Kotlin skill lists the runtime dependencies the
+  generated code needs and that the controller needs `KotlinRelationsGenerator`.
+- The migration guide and the skills give each port's documentation its own directory: in a
+  shared one, every port's `verify --codegen` reported the other ports' pages as drift.
+- `dotnet meta gen --list` prints the expression that lists each generator in
+  `codegen/Generators.cs` (`new MetaObjects.Codegen.Generators.RenderHelperGenerator("prompts")`)
+  and its options.
+- The C# "agent context is stale" notice no longer fires on build metadata alone
+  (`1.1.0-rc.3` against `1.1.0-rc.3+<sha>`).
+- `meta verify --docs` prints its removal line once, as plain text.
+- `metaobjects verify --templates` reads `metadata` and `templates` from
+  `metaobjects.config.yaml` instead of refusing the config.
+- The skills no longer say metadata lives under `metaobjects/` (it is the default only), and
+  name C#'s positional `<metadataDir>` (there is no `--metadata-dir`).
+- Pre-release tooling: `prerelease:publish` reads what is released from public npm and the
+  release tags, not `package.json`, so a cut during release preparation is not numbered one
+  minor too high, and it refuses a `--base` that skips an unpublished CHANGELOG section; the
+  iteration counter reads every page of the registry listing; a SIGTERM restores the version
+  files. `prerelease-link.sh` links and repins every Maven and Python project at any depth and
+  repins the .NET local tool manifest.
+
+- A generated documentation page that no current object produces (for example the
+  `<Object>.md` page of an object that was removed) is reported as drift. 1.0's
+  `meta verify --docs` was silent about every such page outside `agent/`, so an adopter kept
+  ten orphan pages with the gate green. `meta verify --codegen`, which checks documentation in
+  1.1.0 (see **Removed** under 1.1.0), reports each as a file a fresh run would not write.
+  Hand-written files in the docs directory are left alone.
+- The `hand-rolled-aggregate` advisory now names `object.report` for grouped, served or reported
+  figures, and says an `object.projection` with `origin.aggregate` still fits a per-row figure.
+- **The api reference (`apiDocsFile()`) honours `routesFile({ expose })` and
+  `routesFileHono({ expose })`.** The API pages listed all five verbs for an entity whose routes file mounts fewer (`DELETE` for an entity
+  exposed as `["list", "get"]`), so the adopter overrode the pages by hand. The generators now
+  carry the option in a `mountsRoutes` marker, and `meta gen` reads it off the declared list
+  (`runRoutesExpose`) per routes surface, even in a run narrowed by `--generators`, so a narrowed Fastify routes file beside a default Hono
+  one (or the reverse) narrows only its own section, and documents only the verbs mounted: `update` lists both `PATCH` and `PUT`,
+  a read-only projection or report still lists `GET`, and a TPH base is narrowed from its
+  read-only pair. Output without `expose` is byte-identical. **An owned (ejected) copy needs the
+  marker to be honoured:** run `meta eject routes --force` (and `routes-hono --force`), or add
+  `mountsRoutes: opts?.expose !== undefined ? { expose: opts.expose } : {}` beside the generator's
+  `name:`. TypeScript only: no other port has an `expose` option.
 
 - **The Java PlantUML generator no longer throws on a single-segment package.**
   `PlantUMLGenerator` failed with `StringIndexOutOfBoundsException` for any model whose

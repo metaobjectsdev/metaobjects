@@ -45,6 +45,25 @@ plugin does not bring:
 Keep all four Exposed artifacts on one version. The port guide's `pom.xml` lists them
 with versions.
 
+## Column and table names
+
+**Column and table names come from `naming` in `.metaobjects/config.json`, the one setting
+every port reads** (ADR-0058): `meta migrate`, every port's codegen, and the Exposed tables the Kotlin generators write. The
+default is `snake_case`, what `meta migrate` creates. Through 1.0 the Kotlin runtime's JDBC side defaulted to the
+field names; a database whose columns are named exactly like the fields declares it once:
+
+```json
+{ "schema_version": 1, "naming": { "columns": "literal" } }
+```
+
+There is no per-generator or runtime naming: the `columnNaming` generator arg fails
+`mvn metaobjects:generate`, and `SimpleMappingHandlerDB.setColumnNaming` throws (the Exposed
+tables and the names generator already read the setting). A Spring
+application that loads its metadata from the classpath points `metaobjects.physical-naming-config`
+at the project's `.metaobjects/config.json` packaged as a resource (for example
+`classpath:.metaobjects/config.json`). Details and the 1.0 to 1.1 steps:
+<https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/physical-naming.md>.
+
 ## Plugin config in `pom.xml`
 
 The plugin's `generate` goal binds to the `generate-sources` phase. Point its

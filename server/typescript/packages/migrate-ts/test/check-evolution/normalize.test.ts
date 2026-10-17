@@ -14,6 +14,10 @@ describe("normalizeCheckExpr", () => {
     expect(checkExprEquals("length(code) >= 3", "(length(code) >= 3)")).toBe(true);
     expect(checkExprEquals("status IN ('A', 'B')", "status in ('A', 'B')")).toBe(true);
   });
+  test("a backtick-quoted identifier equals the double-quoted one, but a backtick in a literal is data", () => {
+    expect(checkExprEquals("`status` IN ('open', 'closed')", '"status" IN (\'open\', \'closed\')')).toBe(true);
+    expect(checkExprEquals("slug ~ 'a`b`'", "slug ~ 'ab'")).toBe(false);
+  });
   test("PG `= ANY (ARRAY[...])` rewrite of an IN-list equals the generated IN form", () => {
     // The crux idempotency case: PG stores `status IN ('OPEN','CLOSED')` and
     // pg_get_constraintdef returns `status = ANY (ARRAY['OPEN'::text, 'CLOSED'::text])`.

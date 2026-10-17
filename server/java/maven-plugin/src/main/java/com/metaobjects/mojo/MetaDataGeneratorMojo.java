@@ -71,9 +71,7 @@ public class MetaDataGeneratorMojo extends AbstractMetaDataMojo
     /** Fail the goal, naming each missing companion, when the list does not declare what its
      *  generators' output references; with {@link #allowUnmetRequires}, warn instead. */
     void refuseUnmetRequires(List<Generator> generatorImpls) {
-        List<String> classnames = new ArrayList<>();
-        for (Generator g : generatorImpls) classnames.add(g.getClass().getName());
-        List<String> unmet = RequiresCheck.unmet(classnames);
+        List<String> unmet = RequiresCheck.unmetFor(generatorImpls);
         if (unmet.isEmpty()) return;
         if (allowUnmetRequires) {
             for (String line : unmet) getLog().warn("MetaData Mojo > " + line);

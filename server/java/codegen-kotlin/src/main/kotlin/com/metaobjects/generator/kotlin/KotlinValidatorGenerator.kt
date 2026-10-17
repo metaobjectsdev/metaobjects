@@ -48,7 +48,7 @@ open class KotlinValidatorGenerator : MultiFileDirectGeneratorBase<MetaObject>()
         parseArgs()
         val api = exposedApi()
         val pkg = getArg("packageName")
-            ?: throw GeneratorException("packageName is required")
+            ?: throw GeneratorException("KotlinValidatorGenerator (\"validator\"): packageName is required")
         val outRoot = Paths.get(outDir.absolutePath)
 
         val entries = loader.metaObjects

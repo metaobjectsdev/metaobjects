@@ -629,6 +629,12 @@ to the same paths as the 8.0 pom above:
 | the page header's project label, which was the module's `artifactId` | `projectName`, default `project`; set `${project.artifactId}` to keep 8.0's pages byte for byte |
 | `-Dmetaobjects.docs.*` properties | none; use Maven properties inside `<args>` if you need to override from the command line |
 
+**Remove any `columnNaming` generator arg from the same pom.** 8.1.0 refuses it, and the
+refusal points here because this is the pom you are editing. Column and table names are one
+setting now, `naming` in `.metaobjects/config.json`; if your database's columns are named
+exactly like your fields, add `"naming": { "columns": "literal" }` there. See
+[physical-naming.md](physical-naming.md), section "Java and Kotlin".
+
 **Give each api-docs entry an `outputDir` that holds generated files only.**
 `metaobjects:verify` now checks the pages, as it checks code: it regenerates each entry's
 `outputDir` and compares the whole tree, so a hand-written file there reads as stale.

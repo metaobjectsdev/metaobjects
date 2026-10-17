@@ -47,6 +47,24 @@ exact config, generator names and commands for this project; read it. The other 
 | `references/typescript-templates.md` | declarative Mustache template-codegen in a TypeScript project |
 | `references/typescript-docs.md` | the docs generators (`docsFile`, `apiDocsFile`, `agentDocsFile`, `requirementsFile`, `metamodelDocsFile`, `docsSiteFile`) in a TypeScript project |
 
+## Upgrading a project from 1.0 to 1.1
+
+Read both guides before the first `gen` of an upgrade, for every port the project uses; the
+build can stay green while the result is wrong.
+
+- https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/physical-naming.md: the default column and table names are now `snake_case` in every
+  port (C#, Java, Kotlin's runtime and Python defaulted to the field names). A database whose
+  columns are named like its fields needs `"naming": { "columns": "literal" }` in
+  `.metaobjects/config.json`, or regenerated code queries columns that do not exist. The
+  per-port naming flags and generator args are removed.
+- https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md: documentation is a generator in the project's list, and the docs
+  commands are removed.
+- **Resync the generators you own.** An ejected copy keeps the logic it was copied with, and a
+  plain `gen` does not refresh it. `meta eject --list` (`dotnet meta eject`, `metaobjects eject`,
+  `mvn metaobjects:eject`) reports each copy that differs from the reference;
+  `eject <name> --force` takes the new reference for a copy you never edited, and a copy you
+  edited is three-way merged instead. Steps for 1.0.x: https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/upgrading-within-1.0.md.
+
 ## Need an output? Write the generator — this is the primary path
 
 **When.** You need an output the model fully describes and no reference generator emits —

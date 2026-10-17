@@ -555,7 +555,13 @@ class EntityModelGenerator:
                 else:
                     element = d.target_entity
                     imports.add(f"from .{d.target_entity} import {d.target_entity}")
-                lines.append(f"    {d.relation_name}: list[{element}] = []")
+                # default_factory, not `= []`: a class-level list literal is one shared object
+                # as far as a linter or a reader can tell (pydantic copies it, a dataclass-style
+                # reader would not).
+                lines.append(
+                    f"    {d.relation_name}: list[{element}] = Field(default_factory=list)"
+                )
+                uses_field = True
         return lines, uses_field
 
     def _emit_create_lines(
@@ -655,9 +661,9 @@ class EntityModelGenerator:
 
         When *object_index* is supplied, M:N navigations (``relationship.*``
         ``@cardinality:"many" + @through``) are emitted as nested Pydantic
-        collections (``tags: list[Tag] = []``); a self-join uses a forward-ref string
-        (``following: list["Person"] = []``). Without an index, only scalar/object
-        fields are emitted (back-compat). *config* carries the FR-019 @provided-enum
+        collections (``tags: list[Tag] = Field(default_factory=list)``); a self-join uses a
+        forward-ref string (``following: list["Person"] = Field(default_factory=list)``).
+        Without an index, only scalar/object fields are emitted (back-compat). *config* carries the FR-019 @provided-enum
         resolution; when omitted, only the non-provided shared-materialize path is reachable."""
         imports: set[str] = set()
         base_class = "BaseModel"
