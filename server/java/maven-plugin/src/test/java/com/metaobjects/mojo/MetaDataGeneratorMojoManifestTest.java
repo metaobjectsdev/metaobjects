@@ -4,7 +4,10 @@ import com.metaobjects.generator.Generator;
 import com.metaobjects.generator.GeneratorBase;
 import com.metaobjects.generator.util.GeneratedFileWriter;
 import com.metaobjects.generator.util.HashManifest;
+import com.metaobjects.MetaDataException;
 import com.metaobjects.loader.MetaDataLoader;
+import org.apache.maven.plugin.MojoExecution;
+import org.apache.maven.plugin.descriptor.MojoDescriptor;
 import org.apache.maven.project.MavenProject;
 import org.junit.Before;
 import org.junit.Rule;
@@ -21,6 +24,7 @@ import java.util.Map;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 /**
  * {@code mvn metaobjects:generate}'s codegen hash manifest: the rename case (an orphan the
@@ -199,6 +203,101 @@ public class MetaDataGeneratorMojoManifestTest {
         assertTrue("genB/B.java is outside this execution's jurisdiction",
                 Files.exists(Path.of(dirB, "B.java")));
         assertTrue(manifest().containsKey("genB/B.java"));
+    }
+
+    /** One {@code <execution>} of the module {@code build} stands for, run as Maven runs it. */
+    private void runExecution(MavenProject build, String executionId, GeneratorParam... params) {
+        MetaDataGeneratorMojo execution = new MetaDataGeneratorMojo();
+        execution.setLoader(new LoaderParam());
+        execution.project = build;
+        execution.execution = new MojoExecution(new MojoDescriptor(), executionId);
+        execution.setGenerators(List.of(params));
+        execution.executeGenerators(null, execution.buildGenerators(getClass().getClassLoader(), null));
+    }
+
+    /** A fresh build of this module: a new project instance, so a new build context. */
+    private MavenProject newBuild() {
+        MavenProject build = new MavenProject();
+        build.setArtifactId("app");
+        build.setFile(projectRoot.resolve("pom.xml").toFile());
+        return build;
+    }
+
+    @Test
+    public void twoExecutionsSharingOneOutputDir_neitherSweepsTheOther_acrossBuilds() throws IOException {
+        String shared = tempFolder.newFolder("generated-sources").getAbsolutePath();
+        Path dto = Path.of(shared, "Dto.java");
+        Path controller = Path.of(shared, "Controller.java");
+        Path repository = Path.of(shared, "Repository.java");
+
+        for (int build = 1; build <= 2; build++) {
+            MavenProject module = newBuild();
+            runExecution(module, "codegen-web",
+                    param(shared, "Dto.java", MARKER_BODY, null),
+                    param(shared, "Controller.java", MARKER_BODY, null));
+            runExecution(module, "codegen-data",
+                    param(shared, "Repository.java", MARKER_BODY, null));
+
+            assertTrue("build " + build + ": the first execution's files survive the second's sweep",
+                    Files.exists(dto) && Files.exists(controller));
+            assertTrue("build " + build, Files.exists(repository));
+        }
+        Map<String, String> owners = HashManifest.loadOwners(projectRoot.resolve(".metaobjects").resolve(".gen-state"));
+        assertEquals("app:codegen-web", owners.get("generated-sources/Dto.java"));
+        assertEquals("app:codegen-web", owners.get("generated-sources/Controller.java"));
+        assertEquals("app:codegen-data", owners.get("generated-sources/Repository.java"));
+    }
+
+    @Test
+    public void sharedOutputDir_anExecutionStillSweepsItsOwnOrphans() throws IOException {
+        String shared = tempFolder.newFolder("generated-sources").getAbsolutePath();
+        MavenProject first = newBuild();
+        runExecution(first, "codegen-web", param(shared, "Telemetry.java", MARKER_BODY, null));
+        runExecution(first, "codegen-data", param(shared, "Repository.java", MARKER_BODY, null));
+
+        MavenProject second = newBuild();
+        runExecution(second, "codegen-web", param(shared, "TelemetryReading.java", MARKER_BODY, null));
+        runExecution(second, "codegen-data", param(shared, "Repository.java", MARKER_BODY, null));
+
+        assertFalse(Files.exists(Path.of(shared, "Telemetry.java")));
+        assertTrue(Files.exists(Path.of(shared, "TelemetryReading.java")));
+        assertTrue(Files.exists(Path.of(shared, "Repository.java")));
+    }
+
+    @Test
+    public void onePathEmittedByTwoExecutions_isAnErrorNamingBoth() throws IOException {
+        String shared = tempFolder.newFolder("generated-sources").getAbsolutePath();
+        MavenProject module = newBuild();
+        runExecution(module, "codegen-web", param(shared, "Dto.java", MARKER_BODY, null));
+        try {
+            runExecution(module, "codegen-data", param(shared, "Dto.java", MARKER_BODY, null));
+            fail("expected the second execution to be refused");
+        } catch (MetaDataException e) {
+            assertTrue(e.getMessage(), e.getMessage().contains("Dto.java")
+                    && e.getMessage().contains("app:codegen-web") && e.getMessage().contains("app:codegen-data"));
+        }
+    }
+
+    @Test
+    public void manifestWithoutOwners_isAdoptedByTheEmittingExecution_andNothingIsDeleted() throws IOException {
+        String outDir = tempFolder.newFolder("gen").getAbsolutePath();
+        Path kept = Path.of(outDir, "Kept.java");
+        Path old = Path.of(outDir, "Old.java");
+        Files.writeString(kept, MARKER_BODY);
+        Files.writeString(old, MARKER_BODY);
+        Path genState = projectRoot.resolve(".metaobjects").resolve(".gen-state");
+        Files.createDirectories(genState);
+        String hash = HashManifest.contentHash(MARKER_BODY);
+        Files.writeString(genState.resolve(".hashes.json"),
+                "{\n  \"gen/Kept.java\": \"" + hash + "\",\n  \"gen/Old.java\": \"" + hash + "\"\n}\n");
+
+        runExecution(newBuild(), "codegen", param(outDir, "Kept.java", MARKER_BODY, null));
+
+        assertTrue("nothing recorded without an owner is deleted", Files.exists(old));
+        assertTrue(Files.exists(kept));
+        Map<String, String> owners = HashManifest.loadOwners(genState);
+        assertEquals("app:codegen", owners.get("gen/Kept.java"));
+        assertFalse(owners.containsKey("gen/Old.java"));
     }
 
     // === multi-module: two basedirs, two manifests ===============================

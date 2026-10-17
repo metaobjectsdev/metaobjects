@@ -53,12 +53,16 @@ class SweepResult:
     discarded: list[str] = field(default_factory=list)
 
 
-def _walk(out_dir: Path) -> list[Path]:
+def _under(path: Path, dirs: list[Path]) -> bool:
+    return any(path.is_relative_to(d) for d in dirs)
+
+
+def _walk(out_dir: Path, nested: list[Path] | None = None) -> list[Path]:
     if not out_dir.is_dir():
         return []
     files: list[Path] = []
     for p in sorted(out_dir.rglob("*")):
-        if not p.is_file():
+        if not p.is_file() or _under(p, nested or []):
             continue
         rel = p.relative_to(out_dir)
         if any(part in _SKIPPED_DIRS for part in rel.parts) or p.suffix in _SKIPPED_SUFFIXES:
@@ -92,14 +96,15 @@ def sweep_orphans(
     emitted_real = {os.path.realpath(p) for p in emitted}
     forget: set[str] = set()
 
-    for out in dict.fromkeys(out_dirs):
-        out_path = Path(out).resolve()
+    resolved = list(dict.fromkeys(Path(out).resolve() for out in out_dirs))
+    for out_path in resolved:
+        nested = [o for o in resolved if o != out_path and o.is_relative_to(out_path)]
         # The out dir relative to the project: the prefix that turns an out-dir-relative
         # name into a manifest key. Both sides resolved, as `cli._out_prefix` does.
         prefix = os.path.relpath(out_path, root)
         outside = prefix.startswith("..") or os.path.isabs(prefix)
         seen_keys: set[str] = set()
-        for p in _walk(out_path):
+        for p in _walk(out_path, nested):
             if os.path.realpath(p) in emitted_real:
                 continue
             rel = str(p.relative_to(out_path))
@@ -137,6 +142,8 @@ def sweep_orphans(
                 if key in seen_keys or not key.startswith(prefix + os.sep):
                     continue
                 full = root / key
+                if _under(full.resolve(), nested):
+                    continue
                 if os.path.realpath(full) in emitted_real or full.exists():
                     continue
                 forget.add(key)

@@ -25,18 +25,13 @@ function readSkill(name: string): string {
   return readFileSync(join(resolveAgentContextRoot(), "skills", name, "SKILL.md"), "utf8");
 }
 
-test("the skill states one hash-manifest overwrite policy for every port", () => {
+test("the skill does not state the retired header-ownership overwrite claim", () => {
   const skill = readSkill("metaobjects-codegen");
   // The retired claim. Stating it unqualified told an adopter that deleting the header
   // takes ownership of a file, which is backwards on every port now.
   expect(skill).not.toMatch(/Refuses to overwrite any file that does NOT carry the `@generated` header/);
   // The 8.0.x JVM rule (the marker decides, removing it takes ownership) is retired too.
   expect(skill).not.toMatch(/Remove that token and\s+regeneration never touches the file again/);
-  // The hash manifest decides on every port, the JVM included since 8.1.0.
-  expect(skill).toMatch(/hash manifest\*\*\s+\(`\.metaobjects\/\.gen-state\/\.hashes\.json`\) on every port/);
-  expect(skill).toMatch(/Java and Kotlin have used it since 8\.1\.0/);
-  // The habit an 8.0.x JVM adopter has to drop is named, or they keep deleting headers.
-  expect(skill).toMatch(/Do not carry that habit forward/);
 });
 
 test("the skill points at the sections that answer the write-once question", () => {

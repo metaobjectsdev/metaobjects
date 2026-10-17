@@ -58,9 +58,9 @@ public class MetaDataGeneratorMojo extends AbstractMetaDataMojo
         }
 
         // Where this EXECUTION's codegen hash manifest lives: anchored on the module
-        // basedir, so two executions in one module share it (merged — each run only
-        // touches the keys under its own generators' output dirs) and two modules never
-        // collide (each has its own basedir). `null` in a unit test that sets no project
+        // basedir, so two executions in one module share it (merged — every entry names
+        // the execution that emitted it, and a sweep only touches its own) and two modules
+        // never collide (each has its own basedir). `null` in a unit test that sets no project
         // (e.g. SourceRootRegistrationTest), which keeps every write on the legacy
         // marker-only rule.
         Path projectRoot = project != null && project.getBasedir() != null
@@ -77,14 +77,16 @@ public class MetaDataGeneratorMojo extends AbstractMetaDataMojo
         // not, and a selection whose output depended on generator order produced a WARN and
         // a green build. Opening the run here is what makes the check reach a real build.
         try (GeneratedFileWriter.Run run = GeneratedFileWriter.beginRun()) {
+            String owner = ownerId();
             if (genStateDir != null) {
-                run.configureManifest(genStateDir, projectRoot);
+                run.configureManifest(genStateDir, projectRoot, owner);
             }
 
             // Every output dir THIS EXECUTION's generators write to, with the handEdits
             // policy of every generator that writes there — the orphan sweep's jurisdiction
-            // is scoped to these dirs only, so a sibling <execution> writing elsewhere (even
-            // sharing this same manifest file) is never touched.
+            // is scoped to these dirs, and within them to the files this execution owns, so
+            // a sibling <execution> sharing the manifest, or even an output dir, is never
+            // touched.
             Map<Path, List<String>> handEditsByDir = new LinkedHashMap<>();
             List<GeneratorParam> params = getGenerators();
 
@@ -105,8 +107,9 @@ public class MetaDataGeneratorMojo extends AbstractMetaDataMojo
                 }
             }
 
+            refuseSharedPaths(run.emittedPaths(), owner);
             if (genStateDir != null) {
-                sweepOrphans(genStateDir, projectRoot, handEditsByDir, run.emittedPaths());
+                sweepOrphans(genStateDir, projectRoot, handEditsByDir, run.emittedPaths(), owner);
             }
             reportManifestNotices(run, genStateDir, hadManifestAtStart);
         }
@@ -120,15 +123,15 @@ public class MetaDataGeneratorMojo extends AbstractMetaDataMojo
      * the dirs {@code handEditsByDir} names, so a sibling {@code <execution>} writing
      * elsewhere is untouched even though it shares this same manifest file.
      */
-    private void sweepOrphans(
-            Path genStateDir, Path projectRoot, Map<Path, List<String>> handEditsByDir, Set<Path> emitted) {
+    private void sweepOrphans(Path genStateDir, Path projectRoot, Map<Path, List<String>> handEditsByDir,
+                              Set<Path> emitted, String owner) {
         List<OrphanSweep.Entry> dirs = new ArrayList<>();
         for (Map.Entry<Path, List<String>> e : handEditsByDir.entrySet()) {
             boolean allOverwrite = !e.getValue().isEmpty() && e.getValue().stream()
                     .allMatch(GeneratorParam.HAND_EDITS_OVERWRITE::equals);
             dirs.add(new OrphanSweep.Entry(e.getKey(), e.getKey() + File.separator, allOverwrite));
         }
-        OrphanSweep.Result swept = OrphanSweep.sweep(genStateDir, projectRoot, dirs, emitted);
+        OrphanSweep.Result swept = OrphanSweep.sweep(genStateDir, projectRoot, dirs, emitted, owner);
         for (String path : swept.removed) {
             getLog().info("MetaData Mojo > Removed orphaned generated file no longer produced: " + path);
         }
@@ -139,6 +142,36 @@ public class MetaDataGeneratorMojo extends AbstractMetaDataMojo
             getLog().warn(OrphanSweep.refusedMessage(swept.refused, OWNER));
         }
     }
+
+    /**
+     * Fail the goal when a path this execution emitted was already emitted by another
+     * execution of this module in the same build: the two would overwrite each other, and
+     * the manifest can record only one owner. The record lives in the project's build
+     * context, so it spans this build's executions and nothing else.
+     */
+    private void refuseSharedPaths(Set<Path> emitted, String owner) {
+        if (project == null) return;
+        @SuppressWarnings("unchecked")
+        Map<Path, String> emittedBy = (Map<Path, String>) project.getContextValue(EMITTED_BY_CONTEXT_KEY);
+        if (emittedBy == null) {
+            emittedBy = new HashMap<>();
+            project.setContextValue(EMITTED_BY_CONTEXT_KEY, emittedBy);
+        }
+        List<String> shared = new ArrayList<>();
+        for (Path path : new TreeSet<>(emitted)) {
+            String previous = emittedBy.putIfAbsent(path, owner);
+            if (previous != null && !previous.equals(owner)) {
+                shared.add(path + " (executions '" + previous + "' and '" + owner + "')");
+            }
+        }
+        if (!shared.isEmpty()) {
+            throw new MetaDataException("Two executions of " + OWNER + " in this module emitted the same "
+                    + "file, so each would overwrite the other's output: " + String.join(", ", shared)
+                    + ". Declare the generator that emits it in only one <execution>.");
+        }
+    }
+
+    private static final String EMITTED_BY_CONTEXT_KEY = MetaDataGeneratorMojo.class.getName() + ".emittedBy";
 
     /** The one-time notices about the manifest itself: first-run adoption, and files this
      *  run could not record because they landed outside the project root. */

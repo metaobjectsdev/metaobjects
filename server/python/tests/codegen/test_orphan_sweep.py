@@ -171,3 +171,52 @@ def test_a_target_run_spares_a_shared_directory_another_target_writes(
     assert pages
     assert main(["gen", "--target", "app"]) == 0
     assert all(p.exists() for p in pages)
+
+
+def _nested_layout(root: Path) -> tuple[Path, Path, Path, Path]:
+    from metaobjects.codegen.overwrite_policy import _save_hashes, content_hash
+
+    gen_state = root / ".metaobjects" / ".gen-state"
+    parent = root / "gen"
+    child = parent / "child"
+    child.mkdir(parents=True)
+    kept = parent / "kept.txt"
+    orphan = child / "orphan.txt"
+    kept.write_text("kept", encoding="utf-8")
+    orphan.write_text("original", encoding="utf-8")
+    _save_hashes(str(gen_state), {
+        "gen/kept.txt": content_hash("kept"),
+        "gen/child/orphan.txt": content_hash("original"),
+    })
+    orphan.write_text("edited", encoding="utf-8")
+    return gen_state, parent, child, orphan
+
+
+def test_a_nested_out_dir_is_judged_once_by_its_own_verdict(tmp_path: Path) -> None:
+    from metaobjects.codegen.orphan_sweep import sweep_orphans
+
+    gen_state, parent, child, orphan = _nested_layout(tmp_path)
+    result = sweep_orphans(
+        str(gen_state), str(tmp_path), [str(parent), str(child)], {str(parent / "kept.txt")},
+        overwrite_dirs=frozenset({str(child)}),
+    )
+    assert result.removed == [str(orphan)]
+    assert result.discarded == ["gen/child/orphan.txt"]
+    assert result.refused == []
+    assert not orphan.exists()
+    assert "gen/child/orphan.txt" not in _manifest(tmp_path)
+
+
+def test_a_nested_out_dir_that_keeps_is_not_overwritten_by_its_parent(tmp_path: Path) -> None:
+    from metaobjects.codegen.orphan_sweep import sweep_orphans
+
+    gen_state, parent, child, orphan = _nested_layout(tmp_path)
+    result = sweep_orphans(
+        str(gen_state), str(tmp_path), [str(parent), str(child)], {str(parent / "kept.txt")},
+        overwrite_dirs=frozenset({str(parent)}),
+    )
+    assert result.removed == []
+    assert result.discarded == []
+    assert result.refused == ["gen/child/orphan.txt"]
+    assert orphan.read_text(encoding="utf-8") == "edited"
+    assert "gen/child/orphan.txt" in _manifest(tmp_path)

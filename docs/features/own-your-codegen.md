@@ -493,9 +493,10 @@ forbids renaming it, so the body has to stay where it is.
 **Java and Kotlin decide from the same committed hash manifest (since 8.1.0, ADR-0059).**
 Generated **source** on these ports, the code MetaObjects authors, goes through
 `GeneratedFileWriter`, which records every file it writes in
-`<module basedir>/.metaobjects/.gen-state/.hashes.json`, the same file and shape as the other
-ports. Two executions in one module share it, and each touches only the keys under its own
-output directories; two modules have two manifests. A file that still hashes to its record is
+`<module basedir>/.metaobjects/.gen-state/.hashes.json`, the same file as the other
+ports. Two executions in one module share it: each entry the JVM writes names the execution
+that wrote it, and an execution touches only its own entries, even in an output directory it
+shares with another; two modules have two manifests. A file that still hashes to its record is
 overwritten; an edited one is refused by name (`<handEdits>keep</handEdits>`, the default) or
 replaced (`<handEdits>overwrite</handEdits>`). There is **no three-way merge**
 (TypeScript-only). **Commit the manifest.**
@@ -588,8 +589,16 @@ handles those files by one rule:
 
 On **Java and Kotlin** every `mvn metaobjects:generate` execution is a full run, since its
 `<generators>` list is always complete. Each execution sweeps only the output directories its
-own generators write to, so two executions in one module never delete each other's files. A
-refused orphan is a warning there, as every JVM refusal is (ADR-0059).
+own generators write to, and in them only the files it recorded: every manifest entry names
+its owner, `<artifactId>:<execution id>`. So two executions in one module never delete each
+other's files, even when they share an output directory. One file emitted by two executions
+in the same build fails the goal, naming both. An entry with no owner (written before owners
+existed, or by another port) is taken by the first execution that emits it, and is never
+deleted otherwise. Running the goal from the command line runs it as execution
+`default-cli`; run `mvn metaobjects:generate@<id>` to run a declared execution under its own
+id. A refused orphan is a warning there, as every JVM refusal is (ADR-0059).
+`mvn metaobjects:verify` leaves out a file owned by an execution whose generators it did not
+run, since `generate` never deletes it for them.
 
 `verify --codegen` judges extra files on the same evidence, so the gate and `gen` cannot
 disagree. A file the manifest does not record is not drift. An untouched stale file is

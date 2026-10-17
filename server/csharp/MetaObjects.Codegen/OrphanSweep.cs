@@ -71,6 +71,11 @@ public static class OrphanSweep
         return key.StartsWith("..", StringComparison.Ordinal) || Path.IsPathRooted(key) ? null : key;
     }
 
+    private static bool IsUnder(string path, string dir) =>
+        Path.GetFullPath(path).StartsWith(
+            Path.TrimEndingDirectorySeparator(Path.GetFullPath(dir)) + Path.DirectorySeparatorChar,
+            StringComparison.Ordinal);
+
     /// <summary>
     /// Delete the untouched files under <paramref name="dirs"/> that the manifest records and
     /// <paramref name="emitted"/> (absolute paths this run produced, refused ones included) does
@@ -91,9 +96,12 @@ public static class OrphanSweep
         var forget = new HashSet<string>(StringComparer.Ordinal);
         var root = Path.GetFullPath(projectRoot);
 
-        foreach (var (dir, label) in dirs.DistinctBy(d => Path.GetFullPath(d.Dir)))
+        var distinct = dirs.DistinctBy(d => Path.GetFullPath(d.Dir)).ToList();
+        var all = distinct.Select(d => Path.GetFullPath(d.Dir)).ToList();
+        foreach (var (dir, label) in distinct)
         {
             var full = Path.GetFullPath(dir);
+            var nested = all.Where(o => o != full && IsUnder(o, full)).ToList();
             var prefix = KeyFor(root, full);
             if (prefix is null) continue; // nothing outside the project is ours to delete
             var overwrite = overwriteDirs?.Contains(full) == true;
@@ -103,6 +111,7 @@ public static class OrphanSweep
                              .OrderBy(p => p, StringComparer.Ordinal))
                 {
                     if (emitted.Contains(Path.GetFullPath(path))) continue;
+                    if (nested.Any(n => IsUnder(path, n))) continue;
                     var dirRel = Path.GetRelativePath(full, path);
                     if (dirRel.Split(Path.DirectorySeparatorChar).Contains(".metaobjects")) continue;
                     var key = KeyFor(root, path)!;
@@ -135,6 +144,7 @@ public static class OrphanSweep
                 if (!key.StartsWith(under, StringComparison.Ordinal)) continue;
                 var path = Path.GetFullPath(Path.Combine(root, key));
                 if (emitted.Contains(path) || File.Exists(path)) continue;
+                if (nested.Any(n => IsUnder(path, n))) continue;
                 forget.Add(key);
             }
         }
@@ -144,7 +154,6 @@ public static class OrphanSweep
             foreach (var key in forget) hashes.Remove(key);
             HashManifest.Save(genStateDir, hashes);
         }
-        // A directory nested in another is walked twice; each file is reported once.
         return new Result(removed, refused.Distinct().Order(StringComparer.Ordinal).ToList(),
             discarded.Distinct().Order(StringComparer.Ordinal).ToList());
     }

@@ -166,3 +166,53 @@ describe("handEdits", () => {
     expect(result.warnings.find((w) => w.includes("NOT deleted"))).toContain(join(OUT, "Telemetry.ts"));
   });
 });
+
+describe("nested output directories", () => {
+  const writer = (name: string, files: string[], extra: Partial<Generator> = {}): Generator => ({
+    name,
+    generate: () => files.map((path) => ({ path, content: `${name}\n` })),
+    ...extra,
+  });
+
+  async function nested(generators: Generator[]) {
+    return runGen({
+      config: {
+        outDir: OUT,
+        extStyle: "js",
+        targets: { inner: { outDir: `${OUT}/inner` } },
+        generators,
+      },
+      metadata: await model("A"),
+      projectRoot,
+    });
+  }
+
+  const scenario = async (outerMode: "keep" | "overwrite", innerMode: "keep" | "overwrite", innerFirst: boolean) => {
+    const build = (innerFile: string): Generator[] => {
+      const outer = writer("outer", ["outer.txt"], { handEdits: outerMode });
+      const inner = writer("inner", [innerFile], { handEdits: innerMode, target: "inner" });
+      return innerFirst ? [inner, outer] : [outer, inner];
+    };
+    await nested(build("old.txt"));
+    const orphan = abs(`${OUT}/inner/old.txt`);
+    writeFileSync(orphan, `${readFileSync(orphan, "utf8")}// mine\n`);
+    const result = await nested(build("new.txt"));
+    return { result, orphan, rel: join(OUT, "inner", "old.txt") };
+  };
+
+  for (const innerFirst of [false, true]) {
+    test(`an edited orphan in an inner overwrite directory is judged by it (inner first: ${innerFirst})`, async () => {
+      const { result, orphan, rel } = await scenario("keep", "overwrite", innerFirst);
+      expect(existsSync(orphan)).toBe(false);
+      expect(result.warnings).toContainEqual(expect.stringContaining(`deleted hand-edited ${rel}`));
+      expect(result.warnings.filter((w) => w.includes("NOT deleted"))).toEqual([]);
+      expect(result.warnings.filter((w) => w.includes("orphanPolicy sets force"))).toEqual([]);
+    });
+
+    test(`an edited orphan in an inner keep directory is refused (inner first: ${innerFirst})`, async () => {
+      const { result, orphan, rel } = await scenario("overwrite", "keep", innerFirst);
+      expect(existsSync(orphan)).toBe(true);
+      expect(result.warnings.find((w) => w.includes("NOT deleted"))).toContain(rel);
+    });
+  }
+});

@@ -128,6 +128,48 @@ public sealed class OrphanSweepTests : IDisposable
         Assert.DoesNotContain("to regenerate", drift.Err);
     }
 
+    private sealed class OneEdited(string outDir, HandEdits edits) : IGenerator
+    {
+        public string Name => "child";
+        public string? OutDir => outDir;
+        public HandEdits HandEdits => edits;
+        public IEnumerable<EmittedFile> Generate(GenContext ctx) =>
+            ctx.Root.Objects().Select(o => new EmittedFile($"{o.Name}.md", $"# {o.Name}\n"));
+    }
+
+    private (int Code, string Out, string Err) NestedRun(HandEdits parent, HandEdits child)
+    {
+        var nested = Path.Combine(Out, "docs");
+        _suite = [new PerValue().WithHandEdits(parent), new OneEdited(nested, child)];
+        Model("acme", "Old");
+        Assert.Equal(0, Gen().Code);
+        var orphan = Path.Combine(nested, "Old.md");
+        Assert.True(File.Exists(orphan));
+        File.AppendAllText(orphan, "mine\n");
+        Model("acme", "New");
+        return Gen();
+    }
+
+    [Fact]
+    public void An_edited_orphan_in_a_nested_overwrite_dir_is_judged_once_by_that_dir()
+    {
+        var run = NestedRun(HandEdits.Keep, HandEdits.Overwrite);
+        Assert.Equal(0, run.Code);
+        Assert.False(File.Exists(Path.Combine(Out, "docs", "Old.md")));
+        Assert.Contains("deleted hand-edited gen/docs/Old.md", run.Err);
+        Assert.DoesNotContain("NOT deleted", run.Err);
+    }
+
+    [Fact]
+    public void An_edited_orphan_in_a_nested_keep_dir_is_refused_not_deleted_by_an_overwrite_parent()
+    {
+        var run = NestedRun(HandEdits.Overwrite, HandEdits.Keep);
+        Assert.True(File.Exists(Path.Combine(Out, "docs", "Old.md")));
+        Assert.Contains("NOT deleted", run.Err);
+        Assert.Contains("gen/docs/Old.md", run.Err);
+        Assert.DoesNotContain("deleted hand-edited", run.Err);
+    }
+
     [Fact]
     public void Pages_that_move_package_in_their_own_directory_leave_no_stale_copy()
     {

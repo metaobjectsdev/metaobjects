@@ -864,14 +864,16 @@ generator catalog and the Atlas evaluation are 1.2 work.
 **Java and Kotlin: codegen decides overwrites from the committed hash manifest (ADR-0059).**
 **Commit `.metaobjects/.gen-state/.hashes.json` in every module that runs the plugin.**
 `GeneratedFileWriter` records each file it writes (module-relative path to SHA-256), the same
-file and shape as TypeScript, Python and C#. A file that still matches its record is
+file as TypeScript, Python and C#. A file that still matches its record is
 overwritten; an edited one is refused by name with a warning, where 8.0.x overwrote it; a file
 with no record is adopted when it carries the `GENERATED` token and refused when it does not.
 The first run on an 8.0.x project adopts every generated file, deletes nothing and prints one
 notice. After a full run, a recorded file no generator emitted is deleted when untouched and
 refused when edited, and `mvn metaobjects:verify` reports it with the matching remedy. Two
-executions in one module share the manifest without touching each other's files; two modules
-have two. User templates, api-docs pages and the `META-INF/services` registration are not
+executions in one module share the manifest without touching each other's files: each entry
+names its owner (`<artifactId>:<execution id>`), an execution sweeps only its own entries even
+in a shared output directory, and one file emitted by two executions fails the goal; two
+modules have two. User templates, api-docs pages and the `META-INF/services` registration are not
 recorded, so they are never deleted. A refusal stays a warning on the JVM. To keep the 8.0.x
 outcome for output nobody edits, set `<handEdits>overwrite</handEdits>` on that `<generator>`.
 Migration: [jvm-codegen-hash-manifest.md](docs/features/migrations/jvm-codegen-hash-manifest.md).

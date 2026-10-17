@@ -55,6 +55,11 @@ const VALID_ENTITY_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
  *  generator. */
 const RUN_WIDE_SWEEP = "meta gen";
 
+function isNestedIn(path: string, dir: string): boolean {
+  const rel = relative(dir, path);
+  return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel);
+}
+
 export interface RunGenOpts {
   config: MetaobjectsGenConfig;
   metadata: MetaData;
@@ -193,11 +198,13 @@ export interface RunGenResult {
   conflicts: WriteResult[];
   /**
    * Where this run discards hand edits (`Generator.handEdits: "overwrite"`): the absolute
-   * paths emitted by a generator that says so, and the output directories where every
-   * generator writing into them says so (the only places an edited orphan is deleted).
-   * `verify --codegen` reads it to tell a hand edit `meta gen` keeps from one it replaces.
+   * paths emitted by a generator that says so. `verify --codegen` reads it to tell a hand
+   * edit `meta gen` keeps from one it replaces.
    */
-  handEditsOverwrite?: { paths: ReadonlySet<string>; outDirs: ReadonlySet<string> };
+  handEditsOverwrite?: { paths: ReadonlySet<string> };
+  /** The jobs the orphan sweep ran (or, on a dry run, would run) with, so a caller can
+   *  classify an orphan by `orphanVerdict` exactly as the sweep does. */
+  orphanSweepJobs?: readonly OrphanJob[];
 }
 
 /**
@@ -788,7 +795,6 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   const overwriteOwners = new Set<string>();
   const handEditsOverwrite = (): NonNullable<RunGenResult["handEditsOverwrite"]> => ({
     paths: new Set(emitted.filter((f) => f.handEdits === "overwrite").map((f) => f.fullPath)),
-    outDirs: new Set([...outDirOverwrites].filter(([, all]) => all).map(([dir]) => dir)),
   });
   // Generators that ran and produced no file. See the note at the `files.length === 0`
   // check below. A Set because a generator may run once per target.
@@ -1082,13 +1088,20 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
     opts.generatorNames === undefined && baseline !== "adopt"
       ? [
           ...orphanJobs,
-          ...[...runOutDirs].map((writeOutDir) => ({
-            generatorName: RUN_WIDE_SWEEP,
-            writeOutDir,
-            policy: outDirOverwrites.get(writeOutDir) === true
-              ? { owns: () => true, force: true }
-              : { owns: () => true },
-          })),
+          ...[...runOutDirs].map((writeOutDir) => {
+            const nested = [...runOutDirs].filter((other) => isNestedIn(other, writeOutDir));
+            const owns = (rel: string): boolean => {
+              const full = resolve(writeOutDir, rel);
+              return !nested.some((inner) => isNestedIn(full, inner) || full === inner);
+            };
+            return {
+              generatorName: RUN_WIDE_SWEEP,
+              writeOutDir,
+              policy: outDirOverwrites.get(writeOutDir) === true
+                ? { owns, force: true }
+                : { owns },
+            };
+          }),
         ]
       : orphanJobs;
 
@@ -1204,7 +1217,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
     // A preview that hides a pending deletion is worse than no preview at all, so
     // the sweep still runs — in decide-and-report mode, touching nothing.
     sweep(true);
-    return { files: writes, warnings, conflicts, handEditsOverwrite: handEditsOverwrite() };
+    return { files: writes, warnings, conflicts, handEditsOverwrite: handEditsOverwrite(), orphanSweepJobs: sweepJobs };
   }
 
   for (const file of emitted) {
@@ -1246,7 +1259,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   // Amendment 9), tool state included.
   if (installedEngine !== undefined && config.generators.length > 0) saveEngineVersion(genStateDir, installedEngine);
 
-  return { files: writes, warnings, conflicts, handEditsOverwrite: handEditsOverwrite() };
+  return { files: writes, warnings, conflicts, handEditsOverwrite: handEditsOverwrite(), orphanSweepJobs: sweepJobs };
 }
 
 /**

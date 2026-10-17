@@ -36,8 +36,15 @@ does not cover deletion, and deletion without evidence is not safe on any port.
 1. **The JVM keeps the same manifest as the other ports.** It is
    `<module basedir>/.metaobjects/.gen-state/.hashes.json`, with project-relative keys and
    SHA-256 hex values, sorted, pretty-printed, with a trailing newline. Two executions in one
-   module share the file; each touches only the keys under its own generators' output
-   directories. Two modules have two manifests.
+   module share the file, and may share an output directory, so each entry the JVM writes
+   also names its **owner**, the execution that emitted it:
+   `"<path>": { "hash": "<sha-256 hex>", "owner": "<artifactId>:<execution id>" }`. An
+   execution sweeps only entries it owns, under its own generators' output directories, so a
+   sibling execution's files are never its orphans. One path emitted by two executions in
+   the same build is an error naming both. An entry in the plain `"<path>": "<hash>"` form
+   has no owner: the first execution that emits the path takes it, and no sweep deletes it
+   otherwise, so a manifest without owners loses nothing on the run that adopts it. Two
+   modules have two manifests.
 2. **The overwrite decision is the hash, not the marker.** For a file at a generated path:
    - absent: write it and record it;
    - same content as fresh output: unchanged, and its record is confirmed;
@@ -73,6 +80,10 @@ does not cover deletion, and deletion without evidence is not safe on any port.
 
 ## Consequences
 
+- The owner is the execution id, and running the goal from the command line runs it as
+  `default-cli`. Alternating a command-line run with a lifecycle run of the same generators
+  moves the owner back and forth in the committed file; `mvn metaobjects:generate@<id>` runs
+  a declared execution under its own id.
 - Adopters commit one new file per module, `.metaobjects/.gen-state/.hashes.json`. A clone
   without it adopts again on its first run, which is harmless, but it cannot delete a stale
   file or protect an edit until a manifest exists.

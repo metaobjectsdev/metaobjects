@@ -4,7 +4,9 @@ import com.metaobjects.generator.Generator;
 import com.metaobjects.generator.GeneratorBase;
 import com.metaobjects.generator.util.GeneratedFileWriter;
 import com.metaobjects.loader.MetaDataLoader;
+import org.apache.maven.plugin.MojoExecution;
 import org.apache.maven.plugin.MojoFailureException;
+import org.apache.maven.plugin.descriptor.MojoDescriptor;
 import org.apache.maven.project.MavenProject;
 import org.junit.Before;
 import org.junit.Rule;
@@ -228,5 +230,34 @@ public class MetaDataVerifyMojoManifestTest {
                     msg.contains("generated code is stale"));
             assertTrue(msg.contains("will NOT delete them"));
         }
+    }
+
+    /**
+     * Two executions share one output dir; a verify that regenerates only the first
+     * execution's generators must not report the second's files as stale, because
+     * {@code generate} never deletes another execution's file.
+     */
+    @Test
+    public void sharedOutputDir_anotherExecutionsFiles_areNotDrift() throws Exception {
+        Path basedir = tempFolder.getRoot().toPath();
+        String shared = tempFolder.newFolder("generated-sources").getAbsolutePath();
+        MavenProject module = new MavenProject();
+        module.setArtifactId("app");
+        module.setFile(basedir.resolve("pom.xml").toFile());
+        for (String[] exec : new String[][] {{"codegen-web", "Dto.java"}, {"codegen-data", "Repository.java"}}) {
+            MetaDataGeneratorMojo gen = new MetaDataGeneratorMojo();
+            gen.setLoader(new LoaderParam());
+            gen.project = module;
+            gen.execution = new MojoExecution(new MojoDescriptor(), exec[0]);
+            gen.setGenerators(List.of(param(shared, exec[1], MARKER_BODY, null)));
+            gen.executeGenerators(null, gen.buildGenerators(getClass().getClassLoader(), null));
+        }
+
+        MetaDataVerifyMojo verify = new MetaDataVerifyMojo();
+        verify.project = mavenProject(basedir);
+        verify.setLoader(testLoader());
+        verify.setGenerators(List.of(param(shared, "Dto.java", MARKER_BODY, null)));
+
+        verify.execute();
     }
 }

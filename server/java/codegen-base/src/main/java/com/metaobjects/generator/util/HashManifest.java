@@ -2,8 +2,10 @@ package com.metaobjects.generator.util;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
-import com.google.gson.JsonSyntaxException;
-import com.google.gson.reflect.TypeToken;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParseException;
+import com.google.gson.JsonParser;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -33,6 +35,13 @@ import java.util.TreeMap;
  * reviewable, where a full snapshot of every previously-generated file would be a second
  * copy of everything. A hash already answers the only question the write decision needs:
  * is this file byte-for-byte what we wrote last time?
+ *
+ * <p>An entry this port writes also names its OWNER, the Maven execution that emitted
+ * the file ({@code <artifactId>:<execution id>}): {@code "<path>": { "hash": "<sha-256
+ * hex>", "owner": "<owner>" }}. Two {@code <execution>}s of one module share this file,
+ * and may share an output directory, so the owner is what keeps one execution's orphan
+ * sweep off the other's files. An entry in the plain {@code "<path>": "<hash>"} form,
+ * the form the other ports write, reads as recorded with no owner.
  */
 public final class HashManifest {
 
@@ -73,43 +82,84 @@ public final class HashManifest {
     }
 
     /**
-     * Load the manifest. An absent or corrupt one reads as EMPTY, which fails closed —
-     * every path then reads as unrecorded rather than being guessed at.
+     * Load the manifest's hashes. An absent or corrupt one reads as EMPTY, which fails
+     * closed — every path then reads as unrecorded rather than being guessed at.
      */
     public static Map<String, String> load(Path genStateDir) {
+        return read(genStateDir, "hash");
+    }
+
+    /** Load the owner of every entry that names one; an entry with no owner is absent. */
+    public static Map<String, String> loadOwners(Path genStateDir) {
+        return read(genStateDir, "owner");
+    }
+
+    private static Map<String, String> read(Path genStateDir, String field) {
+        Map<String, String> out = new LinkedHashMap<>();
         Path path = pathFor(genStateDir);
-        if (!Files.isRegularFile(path)) return new LinkedHashMap<>();
+        if (!Files.isRegularFile(path)) return out;
+        JsonElement parsed;
         try {
-            String json = Files.readString(path, StandardCharsets.UTF_8);
-            Map<String, String> parsed = GSON.fromJson(json, new TypeToken<Map<String, String>>() {}.getType());
-            return parsed == null ? new LinkedHashMap<>() : new LinkedHashMap<>(parsed);
-        } catch (IOException | JsonSyntaxException e) {
-            return new LinkedHashMap<>();
+            parsed = JsonParser.parseString(Files.readString(path, StandardCharsets.UTF_8));
+        } catch (IOException | JsonParseException e) {
+            return out;
         }
+        if (!parsed.isJsonObject()) return out;
+        for (Map.Entry<String, JsonElement> e : parsed.getAsJsonObject().entrySet()) {
+            JsonElement value = e.getValue();
+            if ("hash".equals(field) && value.isJsonPrimitive() && value.getAsJsonPrimitive().isString()) {
+                out.put(e.getKey(), value.getAsString());
+            } else if (value.isJsonObject()) {
+                JsonElement v = value.getAsJsonObject().get(field);
+                if (v != null && v.isJsonPrimitive() && v.getAsJsonPrimitive().isString()) {
+                    out.put(e.getKey(), v.getAsString());
+                }
+            }
+        }
+        return out;
     }
 
     /**
-     * Persist the manifest with SORTED keys, pretty-printed, one trailing newline.
+     * Persist the manifest with SORTED keys, pretty-printed, one trailing newline. A key
+     * with an owner is written as {@code { "hash", "owner" }}, one without as the plain hash.
      * Sorted because the file is committed: insertion order would make the diff — and any
      * merge conflict between two people who both regenerated — depend on which generator
      * happened to run first.
      */
-    public static void save(Path genStateDir, Map<String, String> hashes) {
+    public static void save(Path genStateDir, Map<String, String> hashes, Map<String, String> owners) {
         try {
             Files.createDirectories(genStateDir);
-            Map<String, String> ordered = new TreeMap<>(hashes);
-            String json = GSON.toJson(ordered, new TypeToken<Map<String, String>>() {}.getType());
-            Files.writeString(pathFor(genStateDir), json + "\n", StandardCharsets.UTF_8);
+            JsonObject root = new JsonObject();
+            for (Map.Entry<String, String> e : new TreeMap<>(hashes).entrySet()) {
+                String owner = owners.get(e.getKey());
+                if (owner == null) {
+                    root.addProperty(e.getKey(), e.getValue());
+                } else {
+                    JsonObject entry = new JsonObject();
+                    entry.addProperty("hash", e.getValue());
+                    entry.addProperty("owner", owner);
+                    root.add(e.getKey(), entry);
+                }
+            }
+            Files.writeString(pathFor(genStateDir), GSON.toJson(root) + "\n", StandardCharsets.UTF_8);
         } catch (IOException e) {
             throw new UncheckedIOException("Could not write codegen hash manifest at " + genStateDir, e);
         }
     }
 
-    /** Record that {@code key} was written with {@code content}: load, mutate, save. */
-    public static void record(Path genStateDir, String key, String content) {
+    /** Record that {@code owner} wrote {@code key} with {@code content}: load, mutate, save. */
+    public static void record(Path genStateDir, String key, String content, String owner) {
+        recordHash(genStateDir, key, contentHash(content), owner);
+    }
+
+    /** Record {@code hash} for {@code key}, owned by {@code owner} ({@code null}: no owner). */
+    public static void recordHash(Path genStateDir, String key, String hash, String owner) {
         Map<String, String> hashes = load(genStateDir);
-        hashes.put(key, contentHash(content));
-        save(genStateDir, hashes);
+        Map<String, String> owners = loadOwners(genStateDir);
+        hashes.put(key, hash);
+        if (owner == null) owners.remove(key);
+        else owners.put(key, owner);
+        save(genStateDir, hashes, owners);
     }
 
     /** The hash recorded for {@code key}, or {@code null} if never recorded. */

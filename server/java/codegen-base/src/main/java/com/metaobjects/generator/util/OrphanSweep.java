@@ -26,6 +26,12 @@ import java.util.stream.Stream;
  *       manifest records writing and that no generator of the run emitted this time.
  *       A file the manifest does not record is not ours, whatever its name, and is
  *       never touched (a {@link Verdict#STRANGER}).</li>
+ *   <li>On the JVM a candidate must also be OWNED by the sweeping execution: two
+ *       {@code <execution>}s of one module share the manifest and may share an output
+ *       directory, so a file another execution recorded, or one recorded with no owner
+ *       at all, is never this execution's orphan.</li>
+ *   <li>A file is judged once, by the innermost swept directory that holds it, so a
+ *       directory nested in another is judged by its own generators' policy.</li>
  *   <li>An untouched candidate ({@link Verdict#PRISTINE} — its content still hashes to
  *       what was recorded) is deleted and its manifest entry dropped.</li>
  *   <li>An edited candidate ({@link Verdict#EDITED}) is, by default, REFUSED by name and
@@ -125,18 +131,20 @@ public final class OrphanSweep {
     }
 
     /**
-     * Delete the untouched files under {@code dirs} that the manifest records and
-     * {@code emitted} (normalized absolute paths this run produced, refused hand-edits
-     * included) does not hold, and forget every recorded path under those directories
-     * whose file is already gone. No-op (empty result, manifest untouched) when the
-     * project has no manifest yet — there is nothing recorded, so nothing could be an
-     * orphan.
+     * Delete the untouched files under {@code dirs} that the manifest records as written
+     * by {@code owner} and {@code emitted} (normalized absolute paths this run produced,
+     * refused hand-edits included) does not hold, and forget every path recorded for
+     * {@code owner} under those directories whose file is already gone. No-op (empty
+     * result, manifest untouched) when the project has no manifest yet — there is nothing
+     * recorded, so nothing could be an orphan.
      */
-    public static Result sweep(Path genStateDir, Path projectRoot, List<Entry> dirs, Set<Path> emitted) {
+    public static Result sweep(Path genStateDir, Path projectRoot, List<Entry> dirs, Set<Path> emitted,
+                               String owner) {
         if (!HashManifest.exists(genStateDir)) {
             return new Result(List.of(), List.of(), List.of());
         }
         Map<String, String> hashes = HashManifest.load(genStateDir);
+        Map<String, String> owners = HashManifest.loadOwners(genStateDir);
         Set<String> forget = new LinkedHashSet<>();
         List<String> removed = new ArrayList<>();
         List<String> overwrittenDeleted = new ArrayList<>();
@@ -155,6 +163,9 @@ public final class OrphanSweep {
             Path full = e.dir.toAbsolutePath().normalize();
             String prefix = keyFor(root, full);
             if (prefix == null) continue; // nothing outside the project is ours to delete
+            List<Path> nested = byDir.keySet().stream()
+                    .filter(d -> !d.equals(full) && d.startsWith(full))
+                    .collect(Collectors.toList());
 
             if (Files.isDirectory(full)) {
                 List<Path> files;
@@ -165,9 +176,10 @@ public final class OrphanSweep {
                 }
                 for (Path file : files) {
                     Path normFile = file.toAbsolutePath().normalize();
-                    if (emitted.contains(normFile)) continue;
+                    if (emitted.contains(normFile) || isUnder(normFile, nested)) continue;
                     String key = keyFor(root, normFile);
                     if (key == null || !hashes.containsKey(key)) continue; // stranger — not ours
+                    if (!owner.equals(owners.get(key))) continue; // another execution's, or unowned
 
                     String relDisplay = full.relativize(normFile).toString().replace(java.io.File.separatorChar, '/');
                     Verdict verdict = classify(hashes, root, normFile);
@@ -198,9 +210,9 @@ public final class OrphanSweep {
             // stranger's file created later under that name is not mistaken for ours.
             String under = prefix.isEmpty() ? "" : prefix + "/";
             for (String key : hashes.keySet()) {
-                if (!key.startsWith(under)) continue;
+                if (!key.startsWith(under) || !owner.equals(owners.get(key))) continue;
                 Path path = root.resolve(key).normalize();
-                if (emitted.contains(path) || Files.exists(path)) continue;
+                if (emitted.contains(path) || isUnder(path, nested) || Files.exists(path)) continue;
                 forget.add(key);
             }
         }
@@ -208,13 +220,20 @@ public final class OrphanSweep {
         if (!forget.isEmpty()) {
             Map<String, String> updated = new LinkedHashMap<>(hashes);
             for (String key : forget) updated.remove(key);
-            HashManifest.save(genStateDir, updated);
+            HashManifest.save(genStateDir, updated, owners);
         }
 
         removed.sort(String::compareTo);
         overwrittenDeleted.sort(String::compareTo);
         List<String> distinctRefused = refused.stream().distinct().sorted().collect(Collectors.toList());
         return new Result(removed, overwrittenDeleted, distinctRefused);
+    }
+
+    private static boolean isUnder(Path path, List<Path> dirs) {
+        for (Path d : dirs) {
+            if (path.startsWith(d)) return true;
+        }
+        return false;
     }
 
     private static void delete(Path path) {

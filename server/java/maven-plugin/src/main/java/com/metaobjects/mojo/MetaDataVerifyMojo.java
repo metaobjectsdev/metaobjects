@@ -28,6 +28,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -367,9 +368,13 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
         }
 
         for (GenTarget t : targets) {
-            List<String> handEdits = handEditsByOutputDir.get(t.realDir.toAbsolutePath().normalize());
+            Path realKey = t.realDir.toAbsolutePath().normalize();
+            List<String> handEdits = handEditsByOutputDir.get(realKey);
             t.allOverwrite = handEdits != null && !handEdits.isEmpty()
                     && handEdits.stream().allMatch(GeneratorParam.HAND_EDITS_OVERWRITE::equals);
+            for (Path other : tempByOutputDir.keySet()) {
+                if (!other.equals(realKey) && other.startsWith(realKey)) t.nestedDirs.add(other);
+            }
         }
 
         // The committed manifest, when this project has one — null otherwise, which keeps
@@ -391,10 +396,12 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
             }
 
             // Compare each output directory's temp tree against its committed tree.
+            Map<String, String> ownHashes = hashes == null ? null
+                    : ownedBy(hashes, HashManifest.loadOwners(genStateDir), targets, projectRoot);
             List<String> drift = new ArrayList<>();
             List<String> editedOrphans = new ArrayList<>();
             for (GenTarget t : targets) {
-                drift.addAll(compareTrees(t, hashes, projectRoot, editedOrphans));
+                drift.addAll(compareTrees(t, ownHashes, projectRoot, editedOrphans));
             }
 
             if (!drift.isEmpty()) {
@@ -431,6 +438,31 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
     }
 
     /**
+     * The manifest entries {@code generate} would sweep for the generators this verify
+     * runs: those owned by an execution that recorded one of the files just regenerated,
+     * or by this execution itself. A file another execution owns, or one recorded with no
+     * owner, is never an orphan to {@code generate}, so it is left out and reads as a
+     * stranger here too.
+     */
+    private Map<String, String> ownedBy(Map<String, String> hashes, Map<String, String> owners,
+                                        List<GenTarget> targets, Path projectRoot) throws MojoExecutionException {
+        Set<String> runOwners = new HashSet<>();
+        runOwners.add(ownerId());
+        for (GenTarget t : targets) {
+            for (String rel : relativeFiles(t.tempDir)) {
+                String key = OrphanSweep.keyFor(projectRoot, t.realDir.resolve(rel));
+                String owner = key != null ? owners.get(key) : null;
+                if (owner != null) runOwners.add(owner);
+            }
+        }
+        Map<String, String> owned = new LinkedHashMap<>();
+        for (Map.Entry<String, String> e : hashes.entrySet()) {
+            if (runOwners.contains(owners.get(e.getKey()))) owned.put(e.getKey(), e.getValue());
+        }
+        return owned;
+    }
+
+    /**
      * Compare one output directory's freshly-generated temp tree — the union of every
      * generator configured to write there — against its committed tree.
      * Returns a list of human-readable drift descriptions (empty if in sync).
@@ -460,6 +492,7 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
             boolean inGen = generated.contains(rel);
             boolean inCommitted = committed.contains(rel);
             Path committedFile = t.realDir.resolve(rel);
+            if (t.isNested(committedFile)) continue;
             if (inGen && !inCommitted) {
                 drift.add("[missing-from-repo] " + committedFile + " (generator produces it; not committed)");
             } else if (!inGen && inCommitted) {
@@ -578,10 +611,17 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
         final Path tempDir;
         /** True iff every generator writing into {@code realDir} this run has {@code handEdits=overwrite}. */
         boolean allOverwrite;
+        /** Other targets' output dirs nested inside {@code realDir}: their files are theirs to judge. */
+        final List<Path> nestedDirs = new ArrayList<>();
 
         GenTarget(Path realDir, Path tempDir) {
             this.realDir = realDir;
             this.tempDir = tempDir;
+        }
+
+        boolean isNested(Path file) {
+            Path full = file.toAbsolutePath().normalize();
+            return nestedDirs.stream().anyMatch(full::startsWith);
         }
     }
 }

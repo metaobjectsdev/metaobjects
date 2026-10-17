@@ -45,6 +45,7 @@ import {
   DOCS_TARGET_NAME,
   readGeneratedHash,
   listGeneratedPaths,
+  orphanVerdict,
   NAMES_FILE_SUFFIX,
   generatorRegistry,
   normalizeConfig,
@@ -344,6 +345,10 @@ export async function computeCodegenDrift(
           if (haveWriteRecords && readGeneratedHash(projectGenStateDir, relKey) === undefined) {
             continue;
           }
+          const verdict = haveWriteRecords
+            ? orphanVerdict(regen.orphanSweepJobs ?? [], tempRoot, relative(tempRoot, join(fresh, rel)))
+            : undefined;
+          if (verdict?.kept === true) continue;
           driftedFiles.add(relKey);
           // `meta gen` deletes an orphan it can prove untouched and REFUSES one edited
           // since it was written, so the remedy differs by which this is. Asked of the
@@ -354,11 +359,11 @@ export async function computeCodegenDrift(
             lines.push(`- ${relKey} (committed but regen would not emit it)`);
           } else if (readGeneratedHash(projectGenStateDir, relKey) === contentHash(readFileSync(join(committed, rel), "utf8"))) {
             lines.push(`- ${relKey} (committed but regen would not emit it; 'meta gen' deletes it)`);
-          } else if (overwrite?.outDirs.has(fresh) === true) {
-            // Every generator writing here says handEdits: "overwrite", so gen deletes it.
+          } else if (verdict?.force === true) {
+            // The sweep force-deletes an edited orphan here, so gen deletes it.
             lines.push(
               `- ${relKey} (no generator emits it any more, and it was edited by hand; ` +
-                `handEdits is "overwrite", so 'meta gen' deletes it)`,
+                `a force or handEdits: "overwrite" orphan policy owns it, so 'meta gen' deletes it)`,
             );
           } else {
             editedOrphans.add(relKey);

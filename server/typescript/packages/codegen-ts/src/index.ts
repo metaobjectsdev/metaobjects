@@ -409,7 +409,7 @@ export type {
   ReconcileOrphansArgs,
   OrphanPolicy,
 } from "./reconcile-orphans.js";
-export { sweepOrphans } from "./orphan-sweep.js";
+export { sweepOrphans, orphanVerdict } from "./orphan-sweep.js";
 export type {
   OrphanJob,
   SweepOrphansArgs,

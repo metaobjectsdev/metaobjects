@@ -329,15 +329,17 @@ public static class CodegenCli
         IReadOnlyList<IGenerator> declared, string? templateSpecFlag, string projectRoot)
     {
         if (templateSpecFlag is not null) return "--template-spec";
-        if (declared.Any(g => g is TemplateSpecGenerator)) return null;
+        if (declared.Any(g => Unwrapped(g) is TemplateSpecGenerator)) return null;
         return File.Exists(Path.Combine(projectRoot, TemplateSpecFileName)) ? TemplateSpecFileName : null;
     }
+
+    private static IGenerator Unwrapped(IGenerator g) => g is HandEditsGenerator h ? h.Inner : g;
 
     /// <summary>Read every declared template spec once, so a missing or malformed file is a clean
     /// error before anything is written. <c>null</c> when they all read.</summary>
     private static string? CheckTemplateSpecs(IReadOnlyList<IGenerator> suite)
     {
-        foreach (var spec in suite.OfType<TemplateSpecGenerator>())
+        foreach (var spec in suite.Select(Unwrapped).OfType<TemplateSpecGenerator>())
         {
             try { _ = spec.Generators(); }
             catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException or JsonException)

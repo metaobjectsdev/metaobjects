@@ -57,6 +57,18 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
     @Parameter( defaultValue = "${mojoExecution}", readonly = true, required = true )
     protected MojoExecution execution;
 
+    /**
+     * The owner a codegen hash manifest entry is recorded against: the module's
+     * artifactId and the {@code <execution><id>}. {@code default} when no
+     * execution is injected (a unit test, an embedder).
+     */
+    protected String ownerId() {
+        String executionId = execution != null && execution.getExecutionId() != null
+                ? execution.getExecutionId() : "default";
+        String module = project != null ? project.getArtifactId() : null;
+        return module != null ? module + ":" + executionId : executionId;
+    }
+
     @Parameter(name="loader")
     private LoaderParam loaderConfig = null;
     public LoaderParam getLoader() {

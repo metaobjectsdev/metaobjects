@@ -19,8 +19,19 @@ manifest, the same one TypeScript, Python and C# use:
 <module basedir>/.metaobjects/.gen-state/.hashes.json
 ```
 
-It maps each generated file's module-relative path to the SHA-256 of what was written. With
-it:
+It maps each generated file's module-relative path to the SHA-256 of what was written and
+to the execution that wrote it, its owner (`<artifactId>:<execution id>`):
+
+```json
+{
+  "target/generated-sources/java/com/acme/CustomerDto.java": {
+    "hash": "3f1c…",
+    "owner": "app:codegen"
+  }
+}
+```
+
+With it:
 
 - a file that still matches its record is overwritten as before;
 - **a file you edited is refused by name**, and the build logs a warning (it does not fail);
@@ -58,6 +69,13 @@ it:
 
 3. Run `mvn metaobjects:generate` again. A file that a renamed or deleted object used to
    produce is now removed. Review that diff.
+
+If one module declares several `metaobjects:generate` executions, each one deletes only the
+files it recorded as their owner, so executions that share an output directory never delete
+each other's output. A file emitted by two executions in one build fails the goal, naming
+both: declare that generator in one execution only. Run a declared execution by id with
+`mvn metaobjects:generate@<id>`; a bare `mvn metaobjects:generate` runs as `default-cli`
+and records that as the owner.
 
 A clone without the manifest adopts again on its first run. That is harmless, but until a
 manifest exists the run cannot delete a stale file or protect an edit.

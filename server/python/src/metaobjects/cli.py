@@ -1751,7 +1751,7 @@ _UNCOMPARED_DIRS = {"__pycache__", ".gen-state", ".metaobjects"}
 _UNCOMPARED_SUFFIXES = {".pyc", ".pyo"}
 
 
-def _relative_set(root: Path) -> dict[str, str]:
+def _relative_set(root: Path, nested: list[Path] | None = None) -> dict[str, str]:
     """Map every generated-artifact file under ``root`` to its content, keyed by rel path.
 
     Deliberately NOT scoped to ``*.py``. It was, with a note saying to broaden it "if a
@@ -1768,7 +1768,7 @@ def _relative_set(root: Path) -> dict[str, str]:
     if not root.exists():
         return files
     for p in sorted(root.rglob("*")):
-        if not p.is_file():
+        if not p.is_file() or any(p.is_relative_to(n) for n in nested or []):
             continue
         rel = p.relative_to(root)
         if any(part in _UNCOMPARED_DIRS for part in rel.parts):
@@ -2026,10 +2026,12 @@ def _verify_codegen_config(args: argparse.Namespace) -> int:
                 tmp_slot = temp_for[real_outdir]
                 if narrowed and tmp_slot not in targeted:
                     continue
-                expected = _relative_set(Path(tmp_slot))
-                committed = _relative_set(Path(real_outdir))
+                inside = [o for o in real_outdirs if o != real_outdir and Path(o).is_relative_to(real_outdir)]
+                expected = _relative_set(Path(tmp_slot), [Path(temp_for[o]) for o in inside])
+                committed = _relative_set(Path(real_outdir), [Path(o) for o in inside])
                 if narrowed:
-                    declared = _relative_set(Path(declared_for[real_outdir]))
+                    declared = _relative_set(
+                        Path(declared_for[real_outdir]), [Path(declared_for[o]) for o in inside])
                     expected = {k: declared[k] for k in expected if k in declared}
 
                 changed = sorted(
