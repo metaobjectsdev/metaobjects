@@ -20,13 +20,15 @@ manifest, the same one TypeScript, Python and C# use:
 ```
 
 It maps each generated file's module-relative path to the SHA-256 of what was written and
-to the execution that wrote it, its owner (`<artifactId>:<execution id>`):
+to its owner: the generator that wrote it (its registry id, or the class name of a
+generator of your own) and that generator's output directory within the module:
 
 ```json
 {
   "target/generated-sources/java/com/acme/CustomerDto.java": {
     "hash": "3f1c…",
-    "owner": "app:codegen"
+    "generator": "java:dto",
+    "outputDir": "target/generated-sources/java"
   }
 }
 ```
@@ -70,12 +72,12 @@ With it:
 3. Run `mvn metaobjects:generate` again. A file that a renamed or deleted object used to
    produce is now removed. Review that diff.
 
-If one module declares several `metaobjects:generate` executions, each one deletes only the
-files it recorded as their owner, so executions that share an output directory never delete
-each other's output. A file emitted by two executions in one build fails the goal, naming
-both: declare that generator in one execution only. Run a declared execution by id with
-`mvn metaobjects:generate@<id>`; a bare `mvn metaobjects:generate` runs as `default-cli`
-and records that as the owner.
+If one module declares several `metaobjects:generate` executions, a run deletes only its own
+generators' orphans and the files of generators the module no longer configures, so
+executions that share an output directory never delete each other's output. The owner does
+not name the Maven execution, so `mvn metaobjects:generate` (which runs as `default-cli`)
+and the lifecycle execution agree on it. A file emitted by two generators in one build fails
+the goal, naming both: configure only one generator to emit it.
 
 A clone without the manifest adopts again on its first run. That is harmless, but until a
 manifest exists the run cannot delete a stale file or protect an edit.

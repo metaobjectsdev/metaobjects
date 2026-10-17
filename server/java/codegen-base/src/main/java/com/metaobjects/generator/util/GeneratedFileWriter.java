@@ -10,7 +10,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -132,18 +133,19 @@ public final class GeneratedFileWriter {
         private final Map<Path, String> writerByPath = new HashMap<>();
         private String current = "(unattributed generator)";
         private String currentHandEdits = HAND_EDITS_KEEP;
+        private HashManifest.Owner currentOwner;
 
         // Manifest configuration — unset (null genStateDir/projectRoot) means "no manifest
         // for this run", which keeps every write on the legacy marker-only rule. Set once,
         // by the Mojo, right after beginRun().
         private Path genStateDir;
         private Path projectRoot;
-        private String owner;
 
         // Every path write() was asked to produce this run, whatever the outcome — written,
-        // unchanged, refused or adopted. This is the "emitted" set the caller's orphan sweep
-        // must not touch: a refused or adopted path is still spoken for.
-        private final Set<Path> emittedPaths = new HashSet<>();
+        // unchanged, refused or adopted — with the owner of each generator that asked. Its
+        // key set is the "emitted" set the caller's orphan sweep must not touch: a refused
+        // or adopted path is still spoken for.
+        private final Map<Path, Set<HashManifest.Owner>> emittedOwners = new LinkedHashMap<>();
         // Aggregate state for the Mojo's end-of-run notices.
         private final List<String> adoptedPaths = new ArrayList<>();
         private final List<String> overwrittenHandEditedPaths = new ArrayList<>();
@@ -154,39 +156,44 @@ public final class GeneratedFileWriter {
         /** Name the generator whose writes follow, with {@code handEdits=keep}. Equivalent
          *  to {@code attributeTo(generatorName, "keep")}. */
         public Run attributeTo(String generatorName) {
-            return attributeTo(generatorName, HAND_EDITS_KEEP);
+            return attributeTo(generatorName, HAND_EDITS_KEEP, null);
         }
 
         /**
-         * Name the generator whose writes follow and its {@code handEdits} policy
-         * ({@link #HAND_EDITS_KEEP} or {@link #HAND_EDITS_OVERWRITE}). Called once per
-         * generator by the runner, before that generator executes.
+         * Name the generator whose writes follow, its {@code handEdits} policy
+         * ({@link #HAND_EDITS_KEEP} or {@link #HAND_EDITS_OVERWRITE}) and the
+         * {@link HashManifest.Owner} its writes are recorded against ({@code null}: none).
+         * Called once per generator by the runner, before that generator executes.
          */
-        public Run attributeTo(String generatorName, String handEdits) {
+        public Run attributeTo(String generatorName, String handEdits, HashManifest.Owner owner) {
             this.current = generatorName;
             this.currentHandEdits = handEdits;
+            this.currentOwner = owner;
             return this;
         }
 
         /**
          * Turn on manifest-aware writes for this run: {@code genStateDir} is the directory
          * holding {@code .hashes.json} (typically {@code <basedir>/.metaobjects/.gen-state}),
-         * {@code projectRoot} is what manifest keys are relative to (typically the module
-         * basedir), and {@code owner} names the execution every path this run emits is
-         * recorded against. Called once, by the Mojo, right after {@link #beginRun}. Leaving
+         * and {@code projectRoot} is what manifest keys are relative to (typically the
+         * module basedir). Called once, by the Mojo, right after {@link #beginRun}. Leaving
          * this unset keeps every write on the legacy marker-only rule.
          */
-        public Run configureManifest(Path genStateDir, Path projectRoot, String owner) {
+        public Run configureManifest(Path genStateDir, Path projectRoot) {
             this.genStateDir = genStateDir;
             this.projectRoot = projectRoot;
-            this.owner = owner;
             return this;
         }
 
         /** The files written, left in place, or adopted this run — the orphan sweep's
          *  "do not touch" set. */
         public Set<Path> emittedPaths() {
-            return emittedPaths;
+            return emittedOwners.keySet();
+        }
+
+        /** Each emitted path with the owners of the generators that emitted it. */
+        public Map<Path, Set<HashManifest.Owner>> emittedOwners() {
+            return emittedOwners;
         }
 
         /** Project-relative paths adopted into a fresh manifest (or a manifest that had no
@@ -251,9 +258,9 @@ public final class GeneratedFileWriter {
         return ACTIVE_RUN.get();
     }
 
-    /** {@link Run#attributeTo(String, String)}'s default: refuse a hand-edited file by name. */
+    /** {@link Run#attributeTo(String, String, HashManifest.Owner)}'s default: refuse a hand-edited file by name. */
     public static final String HAND_EDITS_KEEP = "keep";
-    /** {@link Run#attributeTo(String, String)}: replace a hand-edited file with fresh output. */
+    /** {@link Run#attributeTo(String, String, HashManifest.Owner)}: replace a hand-edited file with fresh output. */
     public static final String HAND_EDITS_OVERWRITE = "overwrite";
 
     /** What happened to one file. */
@@ -307,7 +314,8 @@ public final class GeneratedFileWriter {
     public static Outcome write(Path outFile, String content) throws IOException {
         Run run = ACTIVE_RUN.get();
         if (run != null) {
-            run.emittedPaths.add(outFile.toAbsolutePath().normalize());
+            run.emittedOwners.computeIfAbsent(outFile.toAbsolutePath().normalize(), k -> new LinkedHashSet<>())
+                .add(run.currentOwner);
         }
 
         if (run == null || run.genStateDir == null) {
@@ -322,7 +330,7 @@ public final class GeneratedFileWriter {
 
         if (!Files.exists(outFile)) {
             performWrite(outFile, content, run);
-            HashManifest.record(run.genStateDir, key, content, run.owner);
+            HashManifest.record(run.genStateDir, key, content, run.currentOwner);
             return Outcome.WRITTEN;
         }
 
@@ -337,7 +345,7 @@ public final class GeneratedFileWriter {
             // replace under any policy.
             if (looksGenerated(current)) {
                 performWrite(outFile, content, run);
-                HashManifest.record(run.genStateDir, key, content, run.owner);
+                HashManifest.record(run.genStateDir, key, content, run.currentOwner);
                 run.adoptedPaths.add(outFile.toString());
                 return Outcome.WRITTEN;
             }
@@ -349,26 +357,26 @@ public final class GeneratedFileWriter {
             // Nothing to write, but re-affirm the record: a first run over already-correct
             // output should leave the file recognised as ours next time.
             run.claim(outFile, content);
-            HashManifest.record(run.genStateDir, key, content, run.owner);
+            HashManifest.record(run.genStateDir, key, content, run.currentOwner);
             return Outcome.UNCHANGED;
         }
 
         if (recorded.equals(HashManifest.contentHash(current))) {
             // Pristine: matches what we last wrote, safe to overwrite with fresh content.
             performWrite(outFile, content, run);
-            HashManifest.record(run.genStateDir, key, content, run.owner);
+            HashManifest.record(run.genStateDir, key, content, run.currentOwner);
             return Outcome.WRITTEN;
         }
 
         // Edited: differs from both the fresh output and the last recorded hash.
         if (HAND_EDITS_OVERWRITE.equals(run.currentHandEdits)) {
             performWrite(outFile, content, run);
-            HashManifest.record(run.genStateDir, key, content, run.owner);
+            HashManifest.record(run.genStateDir, key, content, run.currentOwner);
             run.overwrittenHandEditedPaths.add(outFile.toString());
             LOG.warn("overwrote hand-edited " + outFile + " (handEdits: overwrite)");
             return Outcome.WRITTEN;
         }
-        HashManifest.recordHash(run.genStateDir, key, recorded, run.owner);
+        HashManifest.recordHash(run.genStateDir, key, recorded, run.currentOwner);
         LOG.warn(refusedHandEditedMessage(outFile));
         return Outcome.REFUSED;
     }

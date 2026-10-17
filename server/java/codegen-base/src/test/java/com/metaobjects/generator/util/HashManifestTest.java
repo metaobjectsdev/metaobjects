@@ -16,7 +16,7 @@ import static org.junit.Assert.assertTrue;
 /** The committed hash manifest: shape, merge semantics, fail-closed reads. */
 public class HashManifestTest {
 
-    private static final String OWNER = "app:generate";
+    private static final HashManifest.Owner OWNER = new HashManifest.Owner("entity", "gen");
 
     @Rule
     public TemporaryFolder tmp = new TemporaryFolder();
@@ -90,26 +90,30 @@ public class HashManifestTest {
     }
 
     @Test
-    public void ownedEntryIsWrittenWithItsOwner_plainEntryReadsAsUnowned() throws Exception {
+    public void ownedEntryIsWrittenWithItsOwner_plainAndExecutionIdEntriesReadAsUnowned() throws Exception {
         Path genState = tmp.getRoot().toPath().resolve(".metaobjects/.gen-state");
         Files.createDirectories(genState);
-        // The plain form, as the TypeScript, Python and C# ports write it.
-        Files.writeString(genState.resolve(".hashes.json"), "{\n  \"src/Plain.java\": \"abc\"\n}\n");
+        // The plain form, as the TypeScript, Python and C# ports write it, and the
+        // execution-id owner an earlier 8.1.0 build wrote.
+        Files.writeString(genState.resolve(".hashes.json"), "{\n  \"src/Plain.java\": \"abc\",\n"
+            + "  \"src/Legacy.java\": { \"hash\": \"def\", \"owner\": \"app:codegen\" }\n}\n");
 
         HashManifest.record(genState, "src/Owned.java", "owned", OWNER);
 
         Map<String, String> hashes = HashManifest.load(genState);
         assertEquals("abc", hashes.get("src/Plain.java"));
+        assertEquals("def", hashes.get("src/Legacy.java"));
         assertEquals(HashManifest.contentHash("owned"), hashes.get("src/Owned.java"));
-        Map<String, String> owners = HashManifest.loadOwners(genState);
-        assertEquals(OWNER, owners.get("src/Owned.java"));
-        assertFalse(owners.containsKey("src/Plain.java"));
+        Map<String, HashManifest.Owner> owners = HashManifest.loadOwners(genState);
+        assertEquals(Map.of("src/Owned.java", OWNER), owners);
 
         com.google.gson.JsonObject raw = com.google.gson.JsonParser.parseString(
             Files.readString(genState.resolve(".hashes.json"))).getAsJsonObject();
         assertEquals("abc", raw.get("src/Plain.java").getAsString());
+        assertEquals("def", raw.get("src/Legacy.java").getAsString());
         com.google.gson.JsonObject owned = raw.getAsJsonObject("src/Owned.java");
         assertEquals(HashManifest.contentHash("owned"), owned.get("hash").getAsString());
-        assertEquals(OWNER, owned.get("owner").getAsString());
+        assertEquals("entity", owned.get("generator").getAsString());
+        assertEquals("gen", owned.get("outputDir").getAsString());
     }
 }

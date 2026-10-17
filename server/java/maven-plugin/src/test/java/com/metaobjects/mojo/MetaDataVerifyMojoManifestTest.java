@@ -4,10 +4,14 @@ import com.metaobjects.generator.Generator;
 import com.metaobjects.generator.GeneratorBase;
 import com.metaobjects.generator.util.GeneratedFileWriter;
 import com.metaobjects.loader.MetaDataLoader;
+import org.apache.maven.model.Build;
+import org.apache.maven.model.Plugin;
+import org.apache.maven.model.PluginExecution;
 import org.apache.maven.plugin.MojoExecution;
 import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugin.descriptor.MojoDescriptor;
 import org.apache.maven.project.MavenProject;
+import org.codehaus.plexus.util.xml.Xpp3Dom;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -232,32 +236,103 @@ public class MetaDataVerifyMojoManifestTest {
         }
     }
 
-    /**
-     * Two executions share one output dir; a verify that regenerates only the first
-     * execution's generators must not report the second's files as stale, because
-     * {@code generate} never deletes another execution's file.
-     */
-    @Test
-    public void sharedOutputDir_anotherExecutionsFiles_areNotDrift() throws Exception {
-        Path basedir = tempFolder.getRoot().toPath();
-        String shared = tempFolder.newFolder("generated-sources").getAbsolutePath();
+    public static class DtoGenerator extends ConfigurableFileGenerator {}
+    public static class RepositoryGenerator extends ConfigurableFileGenerator {}
+
+    private GeneratorParam gen(Class<?> generator, String outDir, String filename) {
+        GeneratorParam p = param(outDir, filename, MARKER_BODY, null);
+        p.setClassname(generator.getName());
+        return p;
+    }
+
+    /** This module with {@code metaobjects:generate} configured to run {@code generators}
+     *  in one execution, as Maven's effective model presents it. */
+    private MavenProject module(Path basedir, GeneratorParam... generators) {
+        Xpp3Dom configuration = new Xpp3Dom("configuration");
+        Xpp3Dom list = new Xpp3Dom("generators");
+        for (GeneratorParam p : generators) {
+            Xpp3Dom generator = new Xpp3Dom("generator");
+            Xpp3Dom classname = new Xpp3Dom("classname");
+            classname.setValue(p.getClassname());
+            generator.addChild(classname);
+            Xpp3Dom args = new Xpp3Dom("args");
+            Xpp3Dom outputDir = new Xpp3Dom(GeneratorBase.ARG_OUTPUTDIR);
+            outputDir.setValue(p.getArgs().get(GeneratorBase.ARG_OUTPUTDIR));
+            args.addChild(outputDir);
+            generator.addChild(args);
+            list.addChild(generator);
+        }
+        configuration.addChild(list);
+        Plugin plugin = new Plugin();
+        plugin.setGroupId("com.metaobjects");
+        plugin.setArtifactId("metaobjects-maven-plugin");
+        PluginExecution execution = new PluginExecution();
+        execution.setId("codegen");
+        execution.addGoal("generate");
+        execution.setConfiguration(configuration);
+        plugin.addExecution(execution);
+        Build build = new Build();
+        build.addPlugin(plugin);
         MavenProject module = new MavenProject();
         module.setArtifactId("app");
         module.setFile(basedir.resolve("pom.xml").toFile());
-        for (String[] exec : new String[][] {{"codegen-web", "Dto.java"}, {"codegen-data", "Repository.java"}}) {
-            MetaDataGeneratorMojo gen = new MetaDataGeneratorMojo();
-            gen.setLoader(new LoaderParam());
-            gen.project = module;
-            gen.execution = new MojoExecution(new MojoDescriptor(), exec[0]);
-            gen.setGenerators(List.of(param(shared, exec[1], MARKER_BODY, null)));
-            gen.executeGenerators(null, gen.buildGenerators(getClass().getClassLoader(), null));
-        }
+        module.getModel().setBuild(build);
+        return module;
+    }
+
+    private void generateIn(MavenProject module, GeneratorParam... params) {
+        MetaDataGeneratorMojo gen = new MetaDataGeneratorMojo();
+        gen.setLoader(new LoaderParam());
+        gen.project = module;
+        gen.execution = new MojoExecution(new MojoDescriptor(), "codegen");
+        gen.setGenerators(List.of(params));
+        gen.executeGenerators(null, gen.buildGenerators(getClass().getClassLoader(), null));
+    }
+
+    /**
+     * Two generators share one output dir; a verify that regenerates only the first must
+     * not report the second's files as stale, because {@code generate} never deletes a
+     * configured generator's file for another.
+     */
+    @Test
+    public void sharedOutputDir_anotherConfiguredGeneratorsFiles_areNotDrift() throws Exception {
+        Path basedir = tempFolder.getRoot().toPath();
+        String shared = tempFolder.newFolder("generated-sources").getAbsolutePath();
+        GeneratorParam dto = gen(DtoGenerator.class, shared, "Dto.java");
+        GeneratorParam repository = gen(RepositoryGenerator.class, shared, "Repository.java");
+        MavenProject module = module(basedir, dto, repository);
+        generateIn(module, dto, repository);
 
         MetaDataVerifyMojo verify = new MetaDataVerifyMojo();
-        verify.project = mavenProject(basedir);
+        verify.project = module;
         verify.setLoader(testLoader());
-        verify.setGenerators(List.of(param(shared, "Dto.java", MARKER_BODY, null)));
+        verify.setGenerators(List.of(dto));
 
         verify.execute();
+    }
+
+    /** A generator removed from the configuration leaves files only {@code generate}
+     *  deletes; verify reports them with that remedy, wherever they live. */
+    @Test
+    public void removedGeneratorsFiles_areDriftThatGenerateDeletes() throws Exception {
+        Path basedir = tempFolder.getRoot().toPath();
+        String genDir = tempFolder.newFolder("gen").getAbsolutePath();
+        String webDir = tempFolder.newFolder("web").getAbsolutePath();
+        GeneratorParam dto = gen(DtoGenerator.class, genDir, "Dto.java");
+        GeneratorParam route = gen(RepositoryGenerator.class, webDir, "Route.java");
+        generateIn(module(basedir, dto, route), dto, route);
+
+        MetaDataVerifyMojo verify = new MetaDataVerifyMojo();
+        verify.project = module(basedir, dto);
+        verify.setLoader(testLoader());
+        verify.setGenerators(List.of(dto));
+
+        try {
+            verify.execute();
+            fail("expected MojoFailureException");
+        } catch (MojoFailureException e) {
+            assertTrue(e.getMessage(), e.getMessage().contains("Route.java")
+                    && e.getMessage().contains("'mvn metaobjects:generate' deletes it"));
+        }
     }
 }

@@ -12,7 +12,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 /**
  * The orphan sweep: delete a file {@code mvn metaobjects:generate} wrote earlier and no
@@ -26,12 +25,16 @@ import java.util.stream.Stream;
  *       manifest records writing and that no generator of the run emitted this time.
  *       A file the manifest does not record is not ours, whatever its name, and is
  *       never touched (a {@link Verdict#STRANGER}).</li>
- *   <li>On the JVM a candidate must also be OWNED by the sweeping execution: two
- *       {@code <execution>}s of one module share the manifest and may share an output
- *       directory, so a file another execution recorded, or one recorded with no owner
- *       at all, is never this execution's orphan.</li>
+ *   <li>On the JVM every entry names its {@link HashManifest.Owner}, the generator and
+ *       output directory that emitted it ({@link #isCandidate}). An entry is this run's
+ *       to judge when this run's own generators own it, or when what owns it is configured
+ *       in no {@code metaobjects:generate} execution of the module (a removed generator,
+ *       or an entry with no owner in one of this run's output directories). An entry
+ *       another configured generator owns is that generator's, even in a shared output
+ *       directory.</li>
  *   <li>A file is judged once, by the innermost swept directory that holds it, so a
- *       directory nested in another is judged by its own generators' policy.</li>
+ *       directory nested in another is judged by its own generators' policy; a file in
+ *       none of them is judged as {@code keep}.</li>
  *   <li>An untouched candidate ({@link Verdict#PRISTINE} — its content still hashes to
  *       what was recorded) is deleted and its manifest entry dropped.</li>
  *   <li>An edited candidate ({@link Verdict#EDITED}) is, by default, REFUSED by name and
@@ -131,89 +134,80 @@ public final class OrphanSweep {
     }
 
     /**
-     * Delete the untouched files under {@code dirs} that the manifest records as written
-     * by {@code owner} and {@code emitted} (normalized absolute paths this run produced,
-     * refused hand-edits included) does not hold, and forget every path recorded for
-     * {@code owner} under those directories whose file is already gone. No-op (empty
-     * result, manifest untouched) when the project has no manifest yet — there is nothing
-     * recorded, so nothing could be an orphan.
+     * Whether the sweep may judge an entry owned by {@code owner} ({@code null}: recorded
+     * with no owner): {@code runOwners} own it, or {@code configured} (every
+     * generator/output-directory pair configured in the module; {@code null} when that is
+     * unknown) does not hold it. An entry with no owner counts only inside one of this
+     * run's output directories ({@code inRunDir}), since outside them it may be another
+     * port's.
+     */
+    public static boolean isCandidate(HashManifest.Owner owner, boolean inRunDir,
+                                      Set<HashManifest.Owner> runOwners, Set<HashManifest.Owner> configured) {
+        if (owner != null && runOwners.contains(owner)) return true;
+        if (configured == null) return false;
+        return owner == null ? inRunDir : !configured.contains(owner);
+    }
+
+    /**
+     * Delete the untouched recorded files no generator of this run emitted ({@code emitted}:
+     * normalized absolute paths this run produced, refused hand-edits included) that the
+     * run may judge ({@link #isCandidate}), and forget every such entry whose file is
+     * already gone. No-op (empty result, manifest untouched) when the project has no
+     * manifest yet — there is nothing recorded, so nothing could be an orphan.
      */
     public static Result sweep(Path genStateDir, Path projectRoot, List<Entry> dirs, Set<Path> emitted,
-                               String owner) {
+                               Set<HashManifest.Owner> runOwners, Set<HashManifest.Owner> configured) {
         if (!HashManifest.exists(genStateDir)) {
             return new Result(List.of(), List.of(), List.of());
         }
         Map<String, String> hashes = HashManifest.load(genStateDir);
-        Map<String, String> owners = HashManifest.loadOwners(genStateDir);
+        Map<String, HashManifest.Owner> owners = HashManifest.loadOwners(genStateDir);
         Set<String> forget = new LinkedHashSet<>();
         List<String> removed = new ArrayList<>();
         List<String> overwrittenDeleted = new ArrayList<>();
         List<String> refused = new ArrayList<>();
         Path root = projectRoot.toAbsolutePath().normalize();
 
-        // De-dupe by normalized directory — two generators sharing an outputDir supply
-        // the same Entry twice; only its first (any, since dirs sharing a path carry the
-        // same allowOverwrite — callers build Entry per unique dir) is needed.
         Map<Path, Entry> byDir = new LinkedHashMap<>();
         for (Entry e : dirs) {
             byDir.putIfAbsent(e.dir.toAbsolutePath().normalize(), e);
         }
 
-        for (Entry e : byDir.values()) {
-            Path full = e.dir.toAbsolutePath().normalize();
-            String prefix = keyFor(root, full);
-            if (prefix == null) continue; // nothing outside the project is ours to delete
-            List<Path> nested = byDir.keySet().stream()
-                    .filter(d -> !d.equals(full) && d.startsWith(full))
-                    .collect(Collectors.toList());
-
-            if (Files.isDirectory(full)) {
-                List<Path> files;
-                try (Stream<Path> walk = Files.walk(full)) {
-                    files = walk.filter(Files::isRegularFile).collect(Collectors.toList());
-                } catch (IOException ex) {
-                    throw new UncheckedIOException("Could not walk generated output dir [" + full + "]", ex);
-                }
-                for (Path file : files) {
-                    Path normFile = file.toAbsolutePath().normalize();
-                    if (emitted.contains(normFile) || isUnder(normFile, nested)) continue;
-                    String key = keyFor(root, normFile);
-                    if (key == null || !hashes.containsKey(key)) continue; // stranger — not ours
-                    if (!owner.equals(owners.get(key))) continue; // another execution's, or unowned
-
-                    String relDisplay = full.relativize(normFile).toString().replace(java.io.File.separatorChar, '/');
-                    Verdict verdict = classify(hashes, root, normFile);
-                    switch (verdict) {
-                        case PRISTINE:
-                            delete(normFile);
-                            forget.add(key);
-                            removed.add(e.label + relDisplay);
-                            break;
-                        case EDITED:
-                            if (e.allowOverwrite) {
-                                delete(normFile);
-                                forget.add(key);
-                                overwrittenDeleted.add(e.label + relDisplay);
-                            } else {
-                                refused.add(key);
-                            }
-                            break;
-                        case STRANGER:
-                        default:
-                            // Already excluded above by the hashes.containsKey() check.
-                            break;
-                    }
-                }
-            }
-
-            // Recorded under this directory, not emitted, and already gone: forget it, so a
-            // stranger's file created later under that name is not mistaken for ours.
-            String under = prefix.isEmpty() ? "" : prefix + "/";
-            for (String key : hashes.keySet()) {
-                if (!key.startsWith(under) || !owner.equals(owners.get(key))) continue;
-                Path path = root.resolve(key).normalize();
-                if (emitted.contains(path) || isUnder(path, nested) || Files.exists(path)) continue;
+        for (String key : hashes.keySet()) {
+            Path path = root.resolve(key).normalize();
+            if (!path.startsWith(root) || emitted.contains(path)) continue;
+            Path dir = innermost(byDir.keySet(), path);
+            if (!isCandidate(owners.get(key), dir != null, runOwners, configured)) continue;
+            if (!Files.exists(path)) {
+                // Already gone: forget it, so a stranger's file created later under that
+                // name is not mistaken for ours.
                 forget.add(key);
+                continue;
+            }
+            if (!Files.isRegularFile(path)) continue;
+
+            Entry e = dir != null ? byDir.get(dir) : null;
+            String shown = e != null
+                    ? e.label + dir.relativize(path).toString().replace(java.io.File.separatorChar, '/')
+                    : key;
+            switch (classify(hashes, root, path)) {
+                case PRISTINE:
+                    delete(path);
+                    forget.add(key);
+                    removed.add(shown);
+                    break;
+                case EDITED:
+                    if (e != null && e.allowOverwrite) {
+                        delete(path);
+                        forget.add(key);
+                        overwrittenDeleted.add(shown);
+                    } else {
+                        refused.add(key);
+                    }
+                    break;
+                case STRANGER:
+                default:
+                    break;
             }
         }
 
@@ -229,11 +223,13 @@ public final class OrphanSweep {
         return new Result(removed, overwrittenDeleted, distinctRefused);
     }
 
-    private static boolean isUnder(Path path, List<Path> dirs) {
+    /** The deepest of {@code dirs} holding {@code path}, or {@code null}. */
+    public static Path innermost(Iterable<Path> dirs, Path path) {
+        Path best = null;
         for (Path d : dirs) {
-            if (path.startsWith(d)) return true;
+            if (path.startsWith(d) && (best == null || d.getNameCount() > best.getNameCount())) best = d;
         }
-        return false;
+        return best;
     }
 
     private static void delete(Path path) {

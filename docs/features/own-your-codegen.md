@@ -494,9 +494,9 @@ forbids renaming it, so the body has to stay where it is.
 Generated **source** on these ports, the code MetaObjects authors, goes through
 `GeneratedFileWriter`, which records every file it writes in
 `<module basedir>/.metaobjects/.gen-state/.hashes.json`, the same file as the other
-ports. Two executions in one module share it: each entry the JVM writes names the execution
-that wrote it, and an execution touches only its own entries, even in an output directory it
-shares with another; two modules have two manifests. A file that still hashes to its record is
+ports. Two executions in one module share it: each entry the JVM writes names the generator
+and output directory that wrote it, and a run never deletes a file another configured
+generator owns, even in an output directory they share; two modules have two manifests. A file that still hashes to its record is
 overwritten; an edited one is refused by name (`<handEdits>keep</handEdits>`, the default) or
 replaced (`<handEdits>overwrite</handEdits>`). There is **no three-way merge**
 (TypeScript-only). **Commit the manifest.**
@@ -588,17 +588,19 @@ handles those files by one rule:
 - **A dry run** (`meta gen --dry-run`) reports what it would remove and removes nothing.
 
 On **Java and Kotlin** every `mvn metaobjects:generate` execution is a full run, since its
-`<generators>` list is always complete. Each execution sweeps only the output directories its
-own generators write to, and in them only the files it recorded: every manifest entry names
-its owner, `<artifactId>:<execution id>`. So two executions in one module never delete each
-other's files, even when they share an output directory. One file emitted by two executions
-in the same build fails the goal, naming both. An entry with no owner (written before owners
-existed, or by another port) is taken by the first execution that emits it, and is never
-deleted otherwise. Running the goal from the command line runs it as execution
-`default-cli`; run `mvn metaobjects:generate@<id>` to run a declared execution under its own
-id. A refused orphan is a warning there, as every JVM refusal is (ADR-0059).
-`mvn metaobjects:verify` leaves out a file owned by an execution whose generators it did not
-run, since `generate` never deletes it for them.
+`<generators>` list is always complete. Every manifest entry names its owner: the generator's
+registry id and its output directory within the module, not the Maven execution, so
+`default-cli`, a renamed execution and the lifecycle execution agree. A recorded file no
+generator emitted in this build is an orphan when this run's own generators own it, or when
+no `metaobjects:generate` execution of the module (nor the plugin-level configuration)
+configures its owner any more: a removed generator's files are deleted wherever they live.
+A file another configured generator owns is never an orphan to this run, so two executions
+in one module never delete each other's files, even when they share an output directory.
+One file emitted by two generator/output-directory pairs in the same build fails the goal,
+naming both. The first build on a manifest that names no generator owner records the owners
+and deletes nothing. A refused orphan is a warning there, as every JVM refusal is
+(ADR-0059). `mvn metaobjects:verify` applies the same rule, so a removed generator's file is
+drift that `generate` deletes.
 
 `verify --codegen` judges extra files on the same evidence, so the gate and `gen` cannot
 disagree. A file the manifest does not record is not drift. An untouched stale file is

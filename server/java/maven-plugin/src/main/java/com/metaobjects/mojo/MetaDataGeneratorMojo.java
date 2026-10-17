@@ -59,8 +59,9 @@ public class MetaDataGeneratorMojo extends AbstractMetaDataMojo
 
         // Where this EXECUTION's codegen hash manifest lives: anchored on the module
         // basedir, so two executions in one module share it (merged — every entry names
-        // the execution that emitted it, and a sweep only touches its own) and two modules
-        // never collide (each has its own basedir). `null` in a unit test that sets no project
+        // the generator and output dir that emitted it, and a sweep leaves another
+        // configured generator's entries alone) and two modules never collide (each has
+        // its own basedir). `null` in a unit test that sets no project
         // (e.g. SourceRootRegistrationTest), which keeps every write on the legacy
         // marker-only rule.
         Path projectRoot = project != null && project.getBasedir() != null
@@ -70,6 +71,7 @@ public class MetaDataGeneratorMojo extends AbstractMetaDataMojo
         // Captured BEFORE any write this run — read afterwards (every write that creates
         // the manifest would make a fresh adoption look like it never happened).
         boolean hadManifestAtStart = genStateDir != null && HashManifest.exists(genStateDir);
+        boolean migrating = genStateDir != null && migratingOwners(genStateDir);
 
         // This loop IS the Java port's runner — the one place that spans generators — so it
         // is the only place that can see two of them claiming one output path. TypeScript's
@@ -77,17 +79,17 @@ public class MetaDataGeneratorMojo extends AbstractMetaDataMojo
         // not, and a selection whose output depended on generator order produced a WARN and
         // a green build. Opening the run here is what makes the check reach a real build.
         try (GeneratedFileWriter.Run run = GeneratedFileWriter.beginRun()) {
-            String owner = ownerId();
             if (genStateDir != null) {
-                run.configureManifest(genStateDir, projectRoot, owner);
+                run.configureManifest(genStateDir, projectRoot);
             }
 
             // Every output dir THIS EXECUTION's generators write to, with the handEdits
-            // policy of every generator that writes there — the orphan sweep's jurisdiction
-            // is scoped to these dirs, and within them to the files this execution owns, so
-            // a sibling <execution> sharing the manifest, or even an output dir, is never
-            // touched.
+            // policy of every generator that writes there, and the owner of every
+            // generator that ran: the sweep judges this run's own entries and entries whose
+            // owner the module configures nowhere, so a sibling <execution> sharing the
+            // manifest, or even an output dir, is never touched.
             Map<Path, List<String>> handEditsByDir = new LinkedHashMap<>();
+            Set<HashManifest.Owner> runOwners = new HashSet<>();
             List<GeneratorParam> params = getGenerators();
 
             for (int i = 0; i < generatorImpls.size(); i++) {
@@ -95,7 +97,9 @@ public class MetaDataGeneratorMojo extends AbstractMetaDataMojo
                 getLog().info("MetaData Mojo > Executing Generator: " + gen.getClass().getName() );
                 GeneratorParam param = params != null && i < params.size() ? params.get(i) : null;
                 String handEdits = param != null ? param.validatedHandEdits() : GeneratorParam.HAND_EDITS_KEEP;
-                run.attributeTo( gen.getClass().getSimpleName(), handEdits );
+                HashManifest.Owner owner = genStateDir != null && param != null ? ownerOf(param) : null;
+                if (owner != null) runOwners.add(owner);
+                run.attributeTo( gen.getClass().getSimpleName(), handEdits, owner );
                 gen.execute( loader );
 
                 if (genStateDir != null && param != null) {
@@ -107,9 +111,12 @@ public class MetaDataGeneratorMojo extends AbstractMetaDataMojo
                 }
             }
 
-            refuseSharedPaths(run.emittedPaths(), owner);
-            if (genStateDir != null) {
-                sweepOrphans(genStateDir, projectRoot, handEditsByDir, run.emittedPaths(), owner);
+            Set<Path> emittedThisBuild = refuseSharedPaths(run.emittedOwners());
+            if (migrating) {
+                getLog().info("MetaData Mojo > Recorded the generator and output dir of every generated "
+                        + "file in `.metaobjects/.gen-state/.hashes.json`; this build deletes no orphaned file.");
+            } else if (genStateDir != null) {
+                sweepOrphans(genStateDir, projectRoot, handEditsByDir, emittedThisBuild, runOwners);
             }
             reportManifestNotices(run, genStateDir, hadManifestAtStart);
         }
@@ -118,20 +125,20 @@ public class MetaDataGeneratorMojo extends AbstractMetaDataMojo
     }
 
     /**
-     * Delete the files under this execution's output dirs that the manifest records and
-     * this run did not emit — the files no generator produces any more. Scoped to exactly
-     * the dirs {@code handEditsByDir} names, so a sibling {@code <execution>} writing
-     * elsewhere is untouched even though it shares this same manifest file.
+     * Delete the recorded files this run did not emit and may judge
+     * ({@link OrphanSweep#isCandidate}): its own generators' files, and files whose
+     * generator the module configures in no execution any more.
      */
     private void sweepOrphans(Path genStateDir, Path projectRoot, Map<Path, List<String>> handEditsByDir,
-                              Set<Path> emitted, String owner) {
+                              Set<Path> emitted, Set<HashManifest.Owner> runOwners) {
         List<OrphanSweep.Entry> dirs = new ArrayList<>();
         for (Map.Entry<Path, List<String>> e : handEditsByDir.entrySet()) {
             boolean allOverwrite = !e.getValue().isEmpty() && e.getValue().stream()
                     .allMatch(GeneratorParam.HAND_EDITS_OVERWRITE::equals);
             dirs.add(new OrphanSweep.Entry(e.getKey(), e.getKey() + File.separator, allOverwrite));
         }
-        OrphanSweep.Result swept = OrphanSweep.sweep(genStateDir, projectRoot, dirs, emitted, owner);
+        OrphanSweep.Result swept = OrphanSweep.sweep(
+                genStateDir, projectRoot, dirs, emitted, runOwners, configuredOwners());
         for (String path : swept.removed) {
             getLog().info("MetaData Mojo > Removed orphaned generated file no longer produced: " + path);
         }
@@ -144,33 +151,61 @@ public class MetaDataGeneratorMojo extends AbstractMetaDataMojo
     }
 
     /**
-     * Fail the goal when a path this execution emitted was already emitted by another
-     * execution of this module in the same build: the two would overwrite each other, and
-     * the manifest can record only one owner. The record lives in the project's build
-     * context, so it spans this build's executions and nothing else.
+     * Fail the goal when one path was emitted by two generator/output-dir pairs in this
+     * build, in this execution or another of this module: the two would overwrite each
+     * other, and the manifest can record only one owner. The record lives in the
+     * project's build context, so it spans this build's executions and nothing else.
+     * Returns every path emitted in this build so far, which no sweep may treat as an
+     * orphan.
      */
-    private void refuseSharedPaths(Set<Path> emitted, String owner) {
-        if (project == null) return;
+    private Set<Path> refuseSharedPaths(Map<Path, Set<HashManifest.Owner>> emitted) {
         @SuppressWarnings("unchecked")
-        Map<Path, String> emittedBy = (Map<Path, String>) project.getContextValue(EMITTED_BY_CONTEXT_KEY);
+        Map<Path, HashManifest.Owner> emittedBy = project == null ? null
+                : (Map<Path, HashManifest.Owner>) project.getContextValue(EMITTED_BY_CONTEXT_KEY);
         if (emittedBy == null) {
             emittedBy = new HashMap<>();
-            project.setContextValue(EMITTED_BY_CONTEXT_KEY, emittedBy);
+            if (project != null) project.setContextValue(EMITTED_BY_CONTEXT_KEY, emittedBy);
         }
         List<String> shared = new ArrayList<>();
-        for (Path path : new TreeSet<>(emitted)) {
-            String previous = emittedBy.putIfAbsent(path, owner);
-            if (previous != null && !previous.equals(owner)) {
-                shared.add(path + " (executions '" + previous + "' and '" + owner + "')");
+        for (Path path : new TreeSet<>(emitted.keySet())) {
+            Set<HashManifest.Owner> owners = new LinkedHashSet<>();
+            HashManifest.Owner previous = emittedBy.get(path);
+            if (previous != null) owners.add(previous);
+            for (HashManifest.Owner owner : emitted.get(path)) {
+                if (owner != null) owners.add(owner);
+            }
+            if (owners.isEmpty()) continue;
+            emittedBy.putIfAbsent(path, owners.iterator().next());
+            if (owners.size() > 1) {
+                shared.add(path + " (" + owners.stream().map(o -> "'" + o + "'")
+                        .collect(java.util.stream.Collectors.joining(" and ")) + ")");
             }
         }
         if (!shared.isEmpty()) {
-            throw new MetaDataException("Two executions of " + OWNER + " in this module emitted the same "
+            throw new MetaDataException("Two generators of " + OWNER + " in this module emitted the same "
                     + "file, so each would overwrite the other's output: " + String.join(", ", shared)
-                    + ". Declare the generator that emits it in only one <execution>.");
+                    + ". Configure only one generator to emit it, in one output directory.");
         }
+        Set<Path> emittedThisBuild = new HashSet<>(emittedBy.keySet());
+        emittedThisBuild.addAll(emitted.keySet());
+        return emittedThisBuild;
     }
 
+    /**
+     * Whether this build is the first to record owners: the manifest has entries but none
+     * names its generator (an 8.1.0 pre-release recorded the Maven execution instead, or
+     * nothing). That build records the owners and deletes nothing. Decided once per build,
+     * before any execution writes, and kept in the project's build context.
+     */
+    private boolean migratingOwners(Path genStateDir) {
+        Object known = project.getContextValue(MIGRATING_CONTEXT_KEY);
+        if (known instanceof Boolean b) return b;
+        boolean migrating = !HashManifest.load(genStateDir).isEmpty() && HashManifest.loadOwners(genStateDir).isEmpty();
+        project.setContextValue(MIGRATING_CONTEXT_KEY, migrating);
+        return migrating;
+    }
+
+    private static final String MIGRATING_CONTEXT_KEY = MetaDataGeneratorMojo.class.getName() + ".migratingOwners";
     private static final String EMITTED_BY_CONTEXT_KEY = MetaDataGeneratorMojo.class.getName() + ".emittedBy";
 
     /** The one-time notices about the manifest itself: first-run adoption, and files this

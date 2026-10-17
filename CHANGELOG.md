@@ -871,9 +871,10 @@ The first run on an 8.0.x project adopts every generated file, deletes nothing a
 notice. After a full run, a recorded file no generator emitted is deleted when untouched and
 refused when edited, and `mvn metaobjects:verify` reports it with the matching remedy. Two
 executions in one module share the manifest without touching each other's files: each entry
-names its owner (`<artifactId>:<execution id>`), an execution sweeps only its own entries even
-in a shared output directory, and one file emitted by two executions fails the goal; two
-modules have two. User templates, api-docs pages and the `META-INF/services` registration are not
+names its owner (the generator's registry id and its output directory, not the Maven
+execution), a run deletes only its own generators' orphans and those of generators the module
+no longer configures, even in a shared output directory, and one file emitted by two
+generators fails the goal; two modules have two. User templates, api-docs pages and the `META-INF/services` registration are not
 recorded, so they are never deleted. A refusal stays a warning on the JVM. To keep the 8.0.x
 outcome for output nobody edits, set `<handEdits>overwrite</handEdits>` on that `<generator>`.
 Migration: [jvm-codegen-hash-manifest.md](docs/features/migrations/jvm-codegen-hash-manifest.md).

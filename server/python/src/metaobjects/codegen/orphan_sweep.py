@@ -79,13 +79,17 @@ def sweep_orphans(
     *,
     dry_run: bool = False,
     overwrite_dirs: frozenset[str] = frozenset(),
+    exclude_nested: frozenset[str] = frozenset(),
 ) -> SweepResult:
     """Delete the untouched files under ``out_dirs`` that the manifest records and
     ``emitted`` (absolute paths this run produced, refused ones included) does not hold.
 
     In a directory of ``overwrite_dirs`` (every generator writing there is declared
     ``handEdits: overwrite``) an edited such file is deleted too, and listed in
-    ``discarded``. ``dry_run`` decides and reports without touching the disk or the manifest.
+    ``discarded``. A file under another output directory nested in a swept one, swept or
+    listed in ``exclude_nested`` (every configured output directory), is that directory's,
+    and is left alone. ``dry_run`` decides and reports without touching the disk or the
+    manifest.
     """
     overwrite_real = {os.path.realpath(d) for d in overwrite_dirs}
     result = SweepResult()
@@ -97,8 +101,9 @@ def sweep_orphans(
     forget: set[str] = set()
 
     resolved = list(dict.fromkeys(Path(out).resolve() for out in out_dirs))
+    every_dir = set(resolved) | {Path(out).resolve() for out in exclude_nested}
     for out_path in resolved:
-        nested = [o for o in resolved if o != out_path and o.is_relative_to(out_path)]
+        nested = [o for o in every_dir if o != out_path and o.is_relative_to(out_path)]
         # The out dir relative to the project: the prefix that turns an out-dir-relative
         # name into a manifest key. Both sides resolved, as `cli._out_prefix` does.
         prefix = os.path.relpath(out_path, root)

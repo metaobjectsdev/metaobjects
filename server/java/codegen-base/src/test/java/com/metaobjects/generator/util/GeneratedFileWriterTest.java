@@ -254,7 +254,7 @@ public class GeneratedFileWriterTest {
         Path out = project.resolve("gen/X.java");
 
         try (GeneratedFileWriter.Run run = GeneratedFileWriter.beginRun()) {
-            run.configureManifest(genState, project, "test");
+            run.configureManifest(genState, project);
             assertEquals(GeneratedFileWriter.Outcome.WRITTEN, GeneratedFileWriter.write(out, GENERATED_BODY));
         }
         assertEquals(GENERATED_BODY, Files.readString(out));
@@ -270,7 +270,7 @@ public class GeneratedFileWriterTest {
         Files.writeString(out, GENERATED_BODY); // pre-existing, never recorded
 
         try (GeneratedFileWriter.Run run = GeneratedFileWriter.beginRun()) {
-            run.configureManifest(genState, project, "test");
+            run.configureManifest(genState, project);
             assertEquals(GeneratedFileWriter.Outcome.WRITTEN, GeneratedFileWriter.write(out, GENERATED_BODY));
             assertEquals(List.of(out.toString()), run.adoptedPaths());
         }
@@ -287,7 +287,7 @@ public class GeneratedFileWriterTest {
         Files.writeString(out, mine);
 
         try (GeneratedFileWriter.Run run = GeneratedFileWriter.beginRun()) {
-            run.configureManifest(genState, project, "test");
+            run.configureManifest(genState, project);
             assertEquals(GeneratedFileWriter.Outcome.REFUSED, GeneratedFileWriter.write(out, GENERATED_BODY));
             assertTrue(run.adoptedPaths().isEmpty());
         }
@@ -302,12 +302,12 @@ public class GeneratedFileWriterTest {
         Path out = project.resolve("gen/X.java");
 
         try (GeneratedFileWriter.Run run = GeneratedFileWriter.beginRun()) {
-            run.configureManifest(genState, project, "test");
+            run.configureManifest(genState, project);
             GeneratedFileWriter.write(out, GENERATED_BODY);
         }
         String fresh = "/** GENERATED — REST controller for Council. */\npublic class X { int y; }\n";
         try (GeneratedFileWriter.Run run = GeneratedFileWriter.beginRun()) {
-            run.configureManifest(genState, project, "test");
+            run.configureManifest(genState, project);
             assertEquals(GeneratedFileWriter.Outcome.WRITTEN, GeneratedFileWriter.write(out, fresh));
         }
         assertEquals(fresh, Files.readString(out));
@@ -321,11 +321,11 @@ public class GeneratedFileWriterTest {
         Path out = project.resolve("gen/X.java");
 
         try (GeneratedFileWriter.Run run = GeneratedFileWriter.beginRun()) {
-            run.configureManifest(genState, project, "test");
+            run.configureManifest(genState, project);
             GeneratedFileWriter.write(out, GENERATED_BODY);
         }
         try (GeneratedFileWriter.Run run = GeneratedFileWriter.beginRun()) {
-            run.configureManifest(genState, project, "test");
+            run.configureManifest(genState, project);
             assertEquals(GeneratedFileWriter.Outcome.UNCHANGED, GeneratedFileWriter.write(out, GENERATED_BODY));
         }
     }
@@ -337,11 +337,11 @@ public class GeneratedFileWriterTest {
         Path out = project.resolve("gen/X.java");
 
         try (GeneratedFileWriter.Run run = GeneratedFileWriter.beginRun()) {
-            run.configureManifest(genState, project, "test");
+            run.configureManifest(genState, project);
             GeneratedFileWriter.write(out, GENERATED_BODY);
         }
         try (GeneratedFileWriter.Run run = GeneratedFileWriter.beginRun()) {
-            run.configureManifest(genState, project, "test");
+            run.configureManifest(genState, project);
             run.attributeTo("GeneratorA");
             assertEquals(GeneratedFileWriter.Outcome.UNCHANGED, GeneratedFileWriter.write(out, GENERATED_BODY));
             run.attributeTo("GeneratorB");
@@ -363,7 +363,7 @@ public class GeneratedFileWriterTest {
         Path out = project.resolve("gen/X.java");
 
         try (GeneratedFileWriter.Run run = GeneratedFileWriter.beginRun()) {
-            run.configureManifest(genState, project, "test");
+            run.configureManifest(genState, project);
             GeneratedFileWriter.write(out, GENERATED_BODY);
         }
         String edited = GENERATED_BODY + "// mine\n";
@@ -371,8 +371,8 @@ public class GeneratedFileWriterTest {
 
         String fresh = "/** GENERATED — REST controller for Council. */\npublic class X { int z; }\n";
         try (GeneratedFileWriter.Run run = GeneratedFileWriter.beginRun()) {
-            run.configureManifest(genState, project, "test");
-            run.attributeTo("SomeGenerator", GeneratedFileWriter.HAND_EDITS_KEEP);
+            run.configureManifest(genState, project);
+            run.attributeTo("SomeGenerator", GeneratedFileWriter.HAND_EDITS_KEEP, null);
             assertEquals(GeneratedFileWriter.Outcome.REFUSED, GeneratedFileWriter.write(out, fresh));
         }
         assertEquals(edited, Files.readString(out));
@@ -387,15 +387,15 @@ public class GeneratedFileWriterTest {
         Path out = project.resolve("gen/X.java");
 
         try (GeneratedFileWriter.Run run = GeneratedFileWriter.beginRun()) {
-            run.configureManifest(genState, project, "test");
+            run.configureManifest(genState, project);
             GeneratedFileWriter.write(out, GENERATED_BODY);
         }
         Files.writeString(out, GENERATED_BODY + "// mine\n");
 
         String fresh = "/** GENERATED — REST controller for Council. */\npublic class X { int z; }\n";
         try (GeneratedFileWriter.Run run = GeneratedFileWriter.beginRun()) {
-            run.configureManifest(genState, project, "test");
-            run.attributeTo("SomeGenerator", GeneratedFileWriter.HAND_EDITS_OVERWRITE);
+            run.configureManifest(genState, project);
+            run.attributeTo("SomeGenerator", GeneratedFileWriter.HAND_EDITS_OVERWRITE, null);
             assertEquals(GeneratedFileWriter.Outcome.WRITTEN, GeneratedFileWriter.write(out, fresh));
             assertEquals(List.of(out.toString()), run.overwrittenHandEditedPaths());
         }
@@ -415,8 +415,8 @@ public class GeneratedFileWriterTest {
         Files.writeString(out, mine);
 
         try (GeneratedFileWriter.Run run = GeneratedFileWriter.beginRun()) {
-            run.configureManifest(genState, project, "test");
-            run.attributeTo("SomeGenerator", GeneratedFileWriter.HAND_EDITS_OVERWRITE);
+            run.configureManifest(genState, project);
+            run.attributeTo("SomeGenerator", GeneratedFileWriter.HAND_EDITS_OVERWRITE, null);
             assertEquals(GeneratedFileWriter.Outcome.REFUSED, GeneratedFileWriter.write(out, GENERATED_BODY));
         }
         assertEquals(mine, Files.readString(out));
@@ -429,7 +429,7 @@ public class GeneratedFileWriterTest {
         Path outside = tmp.newFolder().toPath().resolve("X.java"); // sibling, not under project
 
         try (GeneratedFileWriter.Run run = GeneratedFileWriter.beginRun()) {
-            run.configureManifest(genState, project, "test");
+            run.configureManifest(genState, project);
             assertEquals(GeneratedFileWriter.Outcome.WRITTEN, GeneratedFileWriter.write(outside, GENERATED_BODY));
             assertEquals(1, run.untrackedCount());
         }

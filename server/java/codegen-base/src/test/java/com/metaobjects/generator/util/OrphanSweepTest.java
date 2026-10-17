@@ -18,7 +18,7 @@ import static org.junit.Assert.assertTrue;
 /** The orphan sweep: classify, delete, refuse, forget — against a real manifest and tree. */
 public class OrphanSweepTest {
 
-    private static final String OWNER = "app:generate";
+    private static final HashManifest.Owner OWNER = new HashManifest.Owner("entity", "gen");
 
     @Rule
     public TemporaryFolder tmp = new TemporaryFolder();
@@ -94,7 +94,7 @@ public class OrphanSweepTest {
         Set<Path> emitted = new LinkedHashSet<>(Set.of(newFile.toAbsolutePath().normalize()));
 
         OrphanSweep.Entry entry = new OrphanSweep.Entry(outDir, "gen/", false);
-        OrphanSweep.Result result = OrphanSweep.sweep(genStateDir, projectRoot, List.of(entry), emitted, OWNER);
+        OrphanSweep.Result result = OrphanSweep.sweep(genStateDir, projectRoot, List.of(entry), emitted, Set.of(OWNER), null);
 
         assertFalse("old file should be deleted", Files.exists(oldFile));
         assertTrue(result.removed.contains("gen/Telemetry.java"));
@@ -115,7 +115,7 @@ public class OrphanSweepTest {
         Files.writeString(oldFile, "/** GENERATED */\npublic class Telemetry { /* mine */ }\n");
 
         OrphanSweep.Entry entry = new OrphanSweep.Entry(outDir, "gen/", false);
-        OrphanSweep.Result result = OrphanSweep.sweep(genStateDir, projectRoot, List.of(entry), Set.of(), OWNER);
+        OrphanSweep.Result result = OrphanSweep.sweep(genStateDir, projectRoot, List.of(entry), Set.of(), Set.of(OWNER), null);
 
         assertTrue("edited orphan must be left in place", Files.exists(oldFile));
         assertTrue(result.refused.contains("gen/Telemetry.java"));
@@ -134,7 +134,7 @@ public class OrphanSweepTest {
         Files.writeString(oldFile, "/** GENERATED */\npublic class Telemetry { /* mine */ }\n");
 
         OrphanSweep.Entry entry = new OrphanSweep.Entry(outDir, "gen/", true);
-        OrphanSweep.Result result = OrphanSweep.sweep(genStateDir, projectRoot, List.of(entry), Set.of(), OWNER);
+        OrphanSweep.Result result = OrphanSweep.sweep(genStateDir, projectRoot, List.of(entry), Set.of(), Set.of(OWNER), null);
 
         assertFalse("overwrite policy deletes a hand-edited orphan", Files.exists(oldFile));
         assertTrue(result.overwrittenDeleted.contains("gen/Telemetry.java"));
@@ -153,7 +153,7 @@ public class OrphanSweepTest {
         HashManifest.record(genStateDir, "gen/Other.java", "x", OWNER);
 
         OrphanSweep.Entry entry = new OrphanSweep.Entry(outDir, "gen/", false);
-        OrphanSweep.Result result = OrphanSweep.sweep(genStateDir, projectRoot, List.of(entry), Set.of(), OWNER);
+        OrphanSweep.Result result = OrphanSweep.sweep(genStateDir, projectRoot, List.of(entry), Set.of(), Set.of(OWNER), null);
 
         assertTrue(Files.exists(stray));
         assertFalse(result.removed.contains("gen/HandWritten.java"));
@@ -167,7 +167,7 @@ public class OrphanSweepTest {
         Files.writeString(stray, "whatever\n");
 
         OrphanSweep.Entry entry = new OrphanSweep.Entry(outDir, "gen/", false);
-        OrphanSweep.Result result = OrphanSweep.sweep(genStateDir, projectRoot, List.of(entry), Set.of(), OWNER);
+        OrphanSweep.Result result = OrphanSweep.sweep(genStateDir, projectRoot, List.of(entry), Set.of(), Set.of(OWNER), null);
 
         assertTrue(result.removed.isEmpty());
         assertTrue(result.refused.isEmpty());
@@ -183,7 +183,7 @@ public class OrphanSweepTest {
         HashManifest.record(genStateDir, "gen/Deleted.java", "irrelevant", OWNER);
 
         OrphanSweep.Entry entry = new OrphanSweep.Entry(outDir, "gen/", false);
-        OrphanSweep.Result result = OrphanSweep.sweep(genStateDir, projectRoot, List.of(entry), Set.of(), OWNER);
+        OrphanSweep.Result result = OrphanSweep.sweep(genStateDir, projectRoot, List.of(entry), Set.of(), Set.of(OWNER), null);
 
         assertFalse(HashManifest.load(genStateDir).containsKey("gen/Deleted.java"));
     }
@@ -202,47 +202,89 @@ public class OrphanSweepTest {
         Path fileB = dirB.resolve("B.java");
         Files.writeString(fileA, "a");
         Files.writeString(fileB, "b");
-        HashManifest.record(genStateDir, "genA/A.java", "a", OWNER);
-        HashManifest.record(genStateDir, "genB/B.java", "b", OWNER);
+        HashManifest.Owner ownerA = new HashManifest.Owner("entity", "genA");
+        HashManifest.record(genStateDir, "genA/A.java", "a", ownerA);
+        HashManifest.record(genStateDir, "genB/B.java", "b", new HashManifest.Owner("dto", "genB"));
 
         // Only dirA's execution runs this sweep (dirB's execution's generators did not run
         // this time), and dirA emitted nothing — A.java is now an orphan of dirA only.
         OrphanSweep.Entry entryA = new OrphanSweep.Entry(dirA, "genA/", false);
-        OrphanSweep.Result result = OrphanSweep.sweep(genStateDir, projectRoot, List.of(entryA), Set.of(), OWNER);
+        OrphanSweep.Result result = OrphanSweep.sweep(genStateDir, projectRoot, List.of(entryA), Set.of(), Set.of(ownerA), null);
 
         assertFalse("A.java is dirA's orphan", Files.exists(fileA));
         assertTrue("B.java is untouched — outside dirA's jurisdiction", Files.exists(fileB));
         assertTrue(HashManifest.load(genStateDir).containsKey("genB/B.java"));
     }
 
-    // === sweep: only the sweeping execution's own entries are candidates =====
+    // === sweep: whose entries a run may judge ==================================
+
+    private static final HashManifest.Owner DTO = new HashManifest.Owner("dto", "gen");
+    private static final HashManifest.Owner REMOVED = new HashManifest.Owner("routes", "web");
+
+    private Path sharedLayout() throws Exception {
+        setUpProject();
+        Files.writeString(outDir.resolve("Mine.java"), "m");
+        Files.writeString(outDir.resolve("Theirs.java"), "t");
+        Files.writeString(outDir.resolve("Unowned.java"), "u");
+        Path web = projectRoot.resolve("web");
+        Files.createDirectories(web);
+        Files.writeString(web.resolve("Route.java"), "r");
+        Path other = projectRoot.resolve("other");
+        Files.createDirectories(other);
+        Files.writeString(other.resolve("Plain.java"), "p");
+        HashManifest.record(genStateDir, "gen/Mine.java", "m", OWNER);
+        HashManifest.record(genStateDir, "gen/Theirs.java", "t", DTO);
+        HashManifest.record(genStateDir, "gen/Unowned.java", "u", null);
+        HashManifest.record(genStateDir, "gen/TheirsGone.java", "g", DTO);
+        HashManifest.record(genStateDir, "web/Route.java", "r", REMOVED);
+        HashManifest.record(genStateDir, "other/Plain.java", "p", null);
+        return web;
+    }
 
     @Test
-    public void sharedDirectory_otherOwnersAndUnownedEntries_areNeverCandidates() throws Exception {
-        setUpProject();
-        Path mine = outDir.resolve("Mine.java");
-        Path theirs = outDir.resolve("Theirs.java");
-        Path unowned = outDir.resolve("Unowned.java");
-        Files.writeString(mine, "m");
-        Files.writeString(theirs, "t");
-        Files.writeString(unowned, "u");
-        HashManifest.record(genStateDir, "gen/Mine.java", "m", OWNER);
-        HashManifest.record(genStateDir, "gen/Theirs.java", "t", "app:other");
-        HashManifest.record(genStateDir, "gen/Unowned.java", "u", null);
-        HashManifest.record(genStateDir, "gen/TheirsGone.java", "g", "app:other");
+    public void anotherConfiguredGeneratorsEntries_areNeverCandidates_evenInASharedDirectory() throws Exception {
+        Path web = sharedLayout();
 
         OrphanSweep.Entry entry = new OrphanSweep.Entry(outDir, "gen/", true);
-        OrphanSweep.Result result = OrphanSweep.sweep(genStateDir, projectRoot, List.of(entry), Set.of(), OWNER);
+        OrphanSweep.Result result = OrphanSweep.sweep(genStateDir, projectRoot, List.of(entry), Set.of(),
+            Set.of(OWNER), Set.of(OWNER, DTO, REMOVED));
+
+        assertEquals(List.of("gen/Mine.java", "gen/Unowned.java"), result.removed);
+        assertTrue(Files.exists(outDir.resolve("Theirs.java")));
+        assertTrue(Files.exists(web.resolve("Route.java")));
+        assertTrue("an entry with no owner outside this run's directories may be another port's",
+            Files.exists(projectRoot.resolve("other/Plain.java")));
+        assertTrue("another generator's gone file is that generator's to forget",
+            HashManifest.load(genStateDir).containsKey("gen/TheirsGone.java"));
+        assertEquals(DTO, HashManifest.loadOwners(genStateDir).get("gen/Theirs.java"));
+    }
+
+    @Test
+    public void anEntryWhoseOwnerIsConfiguredNowhere_isAnOrphan_whereverItLives() throws Exception {
+        Path web = sharedLayout();
+
+        OrphanSweep.Entry entry = new OrphanSweep.Entry(outDir, "gen/", false);
+        OrphanSweep.Result result = OrphanSweep.sweep(genStateDir, projectRoot, List.of(entry), Set.of(),
+            Set.of(OWNER), Set.of(OWNER));
+
+        assertEquals(List.of("gen/Mine.java", "gen/Theirs.java", "gen/Unowned.java", "web/Route.java"),
+            result.removed);
+        assertFalse(Files.exists(web.resolve("Route.java")));
+        assertFalse(HashManifest.load(genStateDir).containsKey("gen/TheirsGone.java"));
+        assertTrue(Files.exists(projectRoot.resolve("other/Plain.java")));
+    }
+
+    @Test
+    public void withTheModulesConfigurationUnknown_onlyTheRunsOwnEntriesAreCandidates() throws Exception {
+        Path web = sharedLayout();
+
+        OrphanSweep.Entry entry = new OrphanSweep.Entry(outDir, "gen/", false);
+        OrphanSweep.Result result = OrphanSweep.sweep(genStateDir, projectRoot, List.of(entry), Set.of(),
+            Set.of(OWNER), null);
 
         assertEquals(List.of("gen/Mine.java"), result.removed);
-        assertFalse(Files.exists(mine));
-        assertTrue(Files.exists(theirs));
-        assertTrue(Files.exists(unowned));
-        assertTrue(HashManifest.load(genStateDir).containsKey("gen/Theirs.java"));
-        assertTrue(HashManifest.load(genStateDir).containsKey("gen/Unowned.java"));
-        assertTrue("another execution's gone file is that execution's to forget",
-            HashManifest.load(genStateDir).containsKey("gen/TheirsGone.java"));
-        assertEquals("app:other", HashManifest.loadOwners(genStateDir).get("gen/Theirs.java"));
+        assertTrue(Files.exists(outDir.resolve("Unowned.java")));
+        assertTrue(Files.exists(web.resolve("Route.java")));
     }
 
     // === sweep: a nested directory is judged by its own policy ==================
@@ -259,7 +301,7 @@ public class OrphanSweepTest {
         OrphanSweep.Entry outerKeep = new OrphanSweep.Entry(outDir, "gen/", false);
         OrphanSweep.Entry innerOverwrite = new OrphanSweep.Entry(inner, "inner/", true);
         OrphanSweep.Result result = OrphanSweep.sweep(
-            genStateDir, projectRoot, List.of(outerKeep, innerOverwrite), Set.of(), OWNER);
+            genStateDir, projectRoot, List.of(outerKeep, innerOverwrite), Set.of(), Set.of(OWNER), null);
 
         assertFalse(Files.exists(orphan));
         assertEquals(List.of("inner/Old.java"), result.overwrittenDeleted);
@@ -278,7 +320,7 @@ public class OrphanSweepTest {
         OrphanSweep.Entry outerOverwrite = new OrphanSweep.Entry(outDir, "gen/", true);
         OrphanSweep.Entry innerKeep = new OrphanSweep.Entry(inner, "inner/", false);
         OrphanSweep.Result result = OrphanSweep.sweep(
-            genStateDir, projectRoot, List.of(outerOverwrite, innerKeep), Set.of(), OWNER);
+            genStateDir, projectRoot, List.of(outerOverwrite, innerKeep), Set.of(), Set.of(OWNER), null);
 
         assertTrue(Files.exists(orphan));
         assertEquals(List.of("gen/inner/Old.java"), result.refused);

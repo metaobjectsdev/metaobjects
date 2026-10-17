@@ -1704,9 +1704,11 @@ def _sweep_orphans_after_gen(
         out for out in targeted
         if all(t.name in ran for t in config.targets if config.out_dir_for(t) == out)
     )
+    configured = frozenset(config.out_dir_for(t) for t in config.targets)
     narrowed = selection is not None or _parse_entities(getattr(args, "entities", None)) is not None
     if narrowed:
-        pending = sweep_orphans(gen_state_dir, project_root, out_dirs, emitted, dry_run=True)
+        pending = sweep_orphans(
+            gen_state_dir, project_root, out_dirs, emitted, dry_run=True, exclude_nested=configured)
         if pending.removed or pending.refused:
             print(
                 "warning: Skipped orphan cleanup: this run was narrowed by --generators or "
@@ -1718,6 +1720,7 @@ def _sweep_orphans_after_gen(
     result = sweep_orphans(
         gen_state_dir, project_root, out_dirs, emitted,
         overwrite_dirs=frozenset(out for out in out_dirs if _overwrites_hand_edits(config, out)),
+        exclude_nested=configured,
     )
     for key in result.discarded:
         print(

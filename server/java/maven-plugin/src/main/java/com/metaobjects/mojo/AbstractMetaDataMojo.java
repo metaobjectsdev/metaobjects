@@ -16,12 +16,16 @@ import com.metaobjects.loader.LoaderConfigurationConstants;
 import com.metaobjects.loader.LoaderOptions;
 import com.metaobjects.generator.EmitsPhysicalNameConstants;
 import com.metaobjects.loader.MetaDataLoader;
+import com.metaobjects.generator.util.HashManifest;
+import org.apache.maven.model.Plugin;
+import org.apache.maven.model.PluginExecution;
 import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoExecution;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.project.MavenProject;
+import org.codehaus.plexus.util.xml.Xpp3Dom;
 
 import java.io.File;
 import java.lang.reflect.Constructor;
@@ -33,6 +37,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -57,16 +62,71 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
     @Parameter( defaultValue = "${mojoExecution}", readonly = true, required = true )
     protected MojoExecution execution;
 
+    /** This plugin's key in a module's build model. */
+    static final String PLUGIN_KEY = "com.metaobjects:metaobjects-maven-plugin";
+
     /**
-     * The owner a codegen hash manifest entry is recorded against: the module's
-     * artifactId and the {@code <execution><id>}. {@code default} when no
-     * execution is injected (a unit test, an embedder).
+     * What a codegen hash manifest entry {@code g} writes is recorded against: the
+     * generator's registry id and its output directory relative to the module basedir.
+     * It names the configuration, not the Maven execution, so a command-line run, a
+     * renamed execution and the lifecycle execution with the same configuration agree.
+     * {@code null} for a generator with no {@code outputDir}.
      */
-    protected String ownerId() {
-        String executionId = execution != null && execution.getExecutionId() != null
-                ? execution.getExecutionId() : "default";
-        String module = project != null ? project.getArtifactId() : null;
-        return module != null ? module + ":" + executionId : executionId;
+    protected HashManifest.Owner ownerOf(GeneratorParam g) {
+        return ownerOf(g.getClassname(), mergeAndOverwriteArgs(g).get(GeneratorBase.ARG_OUTPUTDIR));
+    }
+
+    private HashManifest.Owner ownerOf(String classname, String outputDir) {
+        if (classname == null || outputDir == null) return null;
+        Path dir = Path.of(outputDir).toAbsolutePath().normalize();
+        String shown = dir.toString();
+        if (project != null && project.getBasedir() != null) {
+            Path base = project.getBasedir().toPath().toAbsolutePath().normalize();
+            if (dir.startsWith(base)) shown = base.relativize(dir).toString();
+        }
+        return new HashManifest.Owner(RequiresCheck.registryId(classname),
+                shown.replace(File.separatorChar, '/'));
+    }
+
+    /**
+     * Every generator/output-directory pair the module configures for
+     * {@code metaobjects:generate}: in each of its executions and in the plugin-level
+     * configuration a command-line run uses. {@code null} when the module's build model
+     * does not declare this plugin, so what is configured is unknown.
+     */
+    protected Set<HashManifest.Owner> configuredOwners() {
+        if (project == null) return null;
+        Plugin plugin = project.getPlugin(PLUGIN_KEY);
+        if (plugin == null) return null;
+        Set<HashManifest.Owner> out = new HashSet<>();
+        addConfiguredOwners(plugin.getConfiguration(), out);
+        for (PluginExecution e : plugin.getExecutions()) {
+            if (e.getGoals().contains("generate")) addConfiguredOwners(e.getConfiguration(), out);
+        }
+        return out;
+    }
+
+    private void addConfiguredOwners(Object configuration, Set<HashManifest.Owner> out) {
+        if (!(configuration instanceof Xpp3Dom dom)) return;
+        Map<String, String> domGlobals = childValues(dom.getChild("globals"));
+        Xpp3Dom generators = dom.getChild("generators");
+        if (generators == null) return;
+        for (Xpp3Dom generator : generators.getChildren()) {
+            Xpp3Dom classname = generator.getChild("classname");
+            if (classname == null) continue;
+            Map<String, String> args = mergeArgs(domGlobals, childValues(generator.getChild("args")));
+            HashManifest.Owner owner = ownerOf(classname.getValue(), args.get(GeneratorBase.ARG_OUTPUTDIR));
+            if (owner != null) out.add(owner);
+        }
+    }
+
+    private static Map<String, String> childValues(Xpp3Dom dom) {
+        Map<String, String> out = new HashMap<>();
+        if (dom == null) return out;
+        for (Xpp3Dom child : dom.getChildren()) {
+            if (child.getValue() != null) out.put(child.getName(), child.getValue().trim());
+        }
+        return out;
     }
 
     @Parameter(name="loader")
@@ -269,9 +329,24 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
 
     public Map<String, String> mergeAndOverwriteArgs(GeneratorParam g) {
 
+        Map<String,String> allargs = mergeArgs(globals, g.getArgs());
+
+        // Dump the args to debug
+        getLog().debug( "-- Generator ["+g.getClass().getSimpleName()+"] merged Args");
+        for ( String key : allargs.keySet()) {
+            getLog().debug( "    "+key+" = '"+allargs.get(key) +
+                    ((globals!=null && allargs.get(key).equals(globals.get(key)))?"  #GLOBAL#":""));
+        }
+
+        return allargs;
+    }
+
+    /** {@code args} over {@code globalArgs}, with every path arg resolved against the
+     *  module basedir. */
+    private Map<String, String> mergeArgs(Map<String, String> globalArgs, Map<String, String> args) {
         Map<String,String> allargs = new HashMap<>();
-        if ( globals != null ) allargs.putAll(globals);
-        if ( g.getArgs() != null ) allargs.putAll(g.getArgs());
+        if ( globalArgs != null ) allargs.putAll(globalArgs);
+        if ( args != null ) allargs.putAll(args);
 
         File basedir = project != null ? project.getBasedir() : null;
         if ( basedir != null ) {
@@ -281,14 +356,6 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
                 allargs.put(key, basedir.toPath().resolve(value).normalize().toString());
             }
         }
-
-        // Dump the args to debug
-        getLog().debug( "-- Generator ["+g.getClass().getSimpleName()+"] merged Args");
-        for ( String key : allargs.keySet()) {
-            getLog().debug( "    "+key+" = '"+allargs.get(key) +
-                    ((globals!=null && allargs.get(key).equals(globals.get(key)))?"  #GLOBAL#":""));
-        }
-
         return allargs;
     }
 

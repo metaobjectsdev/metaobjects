@@ -403,6 +403,9 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
             for (GenTarget t : targets) {
                 drift.addAll(compareTrees(t, ownHashes, projectRoot, editedOrphans));
             }
+            if (ownHashes != null) {
+                drift.addAll(strandedOutsideTargets(ownHashes, targets, projectRoot, editedOrphans));
+            }
 
             if (!drift.isEmpty()) {
                 StringBuilder sb = new StringBuilder();
@@ -438,28 +441,67 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
     }
 
     /**
-     * The manifest entries {@code generate} would sweep for the generators this verify
-     * runs: those owned by an execution that recorded one of the files just regenerated,
-     * or by this execution itself. A file another execution owns, or one recorded with no
-     * owner, is never an orphan to {@code generate}, so it is left out and reads as a
-     * stranger here too.
+     * The manifest entries {@code generate} would judge as orphans for the generators this
+     * verify runs ({@link OrphanSweep#isCandidate}): their own entries, and entries whose
+     * generator the module configures in no execution. Another configured generator's
+     * entry is left out and reads as a stranger here, as it is to {@code generate}. Empty
+     * while the manifest names no owner yet: the build that records them deletes nothing.
      */
-    private Map<String, String> ownedBy(Map<String, String> hashes, Map<String, String> owners,
-                                        List<GenTarget> targets, Path projectRoot) throws MojoExecutionException {
-        Set<String> runOwners = new HashSet<>();
-        runOwners.add(ownerId());
-        for (GenTarget t : targets) {
-            for (String rel : relativeFiles(t.tempDir)) {
-                String key = OrphanSweep.keyFor(projectRoot, t.realDir.resolve(rel));
-                String owner = key != null ? owners.get(key) : null;
-                if (owner != null) runOwners.add(owner);
+    private Map<String, String> ownedBy(Map<String, String> hashes, Map<String, HashManifest.Owner> owners,
+                                        List<GenTarget> targets, Path projectRoot) {
+        Map<String, String> owned = new LinkedHashMap<>();
+        if (owners.isEmpty()) return owned;
+        Set<HashManifest.Owner> runOwners = new HashSet<>();
+        for (GeneratorParam g : getGenerators() != null ? getGenerators() : List.<GeneratorParam>of()) {
+            HashManifest.Owner owner = ownerOf(g);
+            if (owner != null) runOwners.add(owner);
+        }
+        Set<HashManifest.Owner> configured = configuredOwners();
+        Path root = projectRoot.toAbsolutePath().normalize();
+        for (Map.Entry<String, String> e : hashes.entrySet()) {
+            boolean inRunDir = targetHolding(targets, root.resolve(e.getKey()).normalize()) != null;
+            if (OrphanSweep.isCandidate(owners.get(e.getKey()), inRunDir, runOwners, configured)) {
+                owned.put(e.getKey(), e.getValue());
             }
         }
-        Map<String, String> owned = new LinkedHashMap<>();
-        for (Map.Entry<String, String> e : hashes.entrySet()) {
-            if (runOwners.contains(owners.get(e.getKey()))) owned.put(e.getKey(), e.getValue());
-        }
         return owned;
+    }
+
+    private static GenTarget targetHolding(List<GenTarget> targets, Path file) {
+        for (GenTarget t : targets) {
+            if (file.startsWith(t.realDir.toAbsolutePath().normalize())) return t;
+        }
+        return null;
+    }
+
+    /**
+     * The orphans {@code generate} deletes outside every output dir this verify compares:
+     * files a generator the module no longer configures wrote into a directory nothing
+     * writes any more.
+     */
+    private List<String> strandedOutsideTargets(Map<String, String> ownHashes, List<GenTarget> targets,
+                                                Path projectRoot, List<String> editedOrphans) {
+        List<String> drift = new ArrayList<>();
+        Path root = projectRoot.toAbsolutePath().normalize();
+        for (String key : new TreeSet<>(ownHashes.keySet())) {
+            Path file = root.resolve(key).normalize();
+            if (targetHolding(targets, file) != null || !Files.isRegularFile(file)) continue;
+            switch (OrphanSweep.classify(ownHashes, root, file)) {
+                case PRISTINE:
+                    drift.add("[stale-in-repo] " + file + " (committed; no configured generator produces it; "
+                            + "'mvn " + GEN_GOAL + "' deletes it)");
+                    break;
+                case EDITED:
+                    drift.add("[stale-in-repo] " + file + " (no configured generator emits it any more, and "
+                            + "it was edited by hand: delete it, or move your edits into a file of your own "
+                            + "and then delete it)");
+                    editedOrphans.add(file.toString());
+                    break;
+                default:
+                    break;
+            }
+        }
+        return drift;
     }
 
     /**

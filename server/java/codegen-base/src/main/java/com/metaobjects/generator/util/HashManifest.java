@@ -36,16 +36,27 @@ import java.util.TreeMap;
  * copy of everything. A hash already answers the only question the write decision needs:
  * is this file byte-for-byte what we wrote last time?
  *
- * <p>An entry this port writes also names its OWNER, the Maven execution that emitted
- * the file ({@code <artifactId>:<execution id>}): {@code "<path>": { "hash": "<sha-256
- * hex>", "owner": "<owner>" }}. Two {@code <execution>}s of one module share this file,
- * and may share an output directory, so the owner is what keeps one execution's orphan
- * sweep off the other's files. An entry in the plain {@code "<path>": "<hash>"} form,
- * the form the other ports write, reads as recorded with no owner.
+ * <p>An entry this port writes also names its {@link Owner}, what emitted the file: the
+ * generator's registry id and its output directory within the module, {@code "<path>": {
+ * "hash": "<sha-256 hex>", "generator": "<id>", "outputDir": "<dir>" }}. The owner does
+ * not depend on which Maven execution ran, so a command-line run, a renamed execution and
+ * the lifecycle execution with the same configuration agree on it. An entry in the plain
+ * {@code "<path>": "<hash>"} form, the form the other ports write, reads as recorded with
+ * no owner, and so does an entry carrying the execution-id {@code "owner"} field an
+ * earlier 8.1.0 build wrote.
  */
 public final class HashManifest {
 
     private HashManifest() {}
+
+    /** What emitted a recorded file: a generator's registry id and its module-relative
+     *  output directory. */
+    public record Owner(String generator, String outputDir) {
+        @Override
+        public String toString() {
+            return generator + " -> " + outputDir;
+        }
+    }
 
     private static final String FILE_NAME = ".hashes.json";
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
@@ -86,16 +97,33 @@ public final class HashManifest {
      * closed — every path then reads as unrecorded rather than being guessed at.
      */
     public static Map<String, String> load(Path genStateDir) {
-        return read(genStateDir, "hash");
+        Map<String, String> out = new LinkedHashMap<>();
+        for (Map.Entry<String, JsonElement> e : entries(genStateDir).entrySet()) {
+            JsonElement value = e.getValue();
+            if (value.isJsonPrimitive() && value.getAsJsonPrimitive().isString()) {
+                out.put(e.getKey(), value.getAsString());
+            } else if (value.isJsonObject()) {
+                String v = stringField(value.getAsJsonObject(), "hash");
+                if (v != null) out.put(e.getKey(), v);
+            }
+        }
+        return out;
     }
 
     /** Load the owner of every entry that names one; an entry with no owner is absent. */
-    public static Map<String, String> loadOwners(Path genStateDir) {
-        return read(genStateDir, "owner");
+    public static Map<String, Owner> loadOwners(Path genStateDir) {
+        Map<String, Owner> out = new LinkedHashMap<>();
+        for (Map.Entry<String, JsonElement> e : entries(genStateDir).entrySet()) {
+            if (!e.getValue().isJsonObject()) continue;
+            String generator = stringField(e.getValue().getAsJsonObject(), "generator");
+            String outputDir = stringField(e.getValue().getAsJsonObject(), "outputDir");
+            if (generator != null && outputDir != null) out.put(e.getKey(), new Owner(generator, outputDir));
+        }
+        return out;
     }
 
-    private static Map<String, String> read(Path genStateDir, String field) {
-        Map<String, String> out = new LinkedHashMap<>();
+    private static Map<String, JsonElement> entries(Path genStateDir) {
+        Map<String, JsonElement> out = new LinkedHashMap<>();
         Path path = pathFor(genStateDir);
         if (!Files.isRegularFile(path)) return out;
         JsonElement parsed;
@@ -106,38 +134,36 @@ public final class HashManifest {
         }
         if (!parsed.isJsonObject()) return out;
         for (Map.Entry<String, JsonElement> e : parsed.getAsJsonObject().entrySet()) {
-            JsonElement value = e.getValue();
-            if ("hash".equals(field) && value.isJsonPrimitive() && value.getAsJsonPrimitive().isString()) {
-                out.put(e.getKey(), value.getAsString());
-            } else if (value.isJsonObject()) {
-                JsonElement v = value.getAsJsonObject().get(field);
-                if (v != null && v.isJsonPrimitive() && v.getAsJsonPrimitive().isString()) {
-                    out.put(e.getKey(), v.getAsString());
-                }
-            }
+            out.put(e.getKey(), e.getValue());
         }
         return out;
     }
 
+    private static String stringField(JsonObject object, String field) {
+        JsonElement v = object.get(field);
+        return v != null && v.isJsonPrimitive() && v.getAsJsonPrimitive().isString() ? v.getAsString() : null;
+    }
+
     /**
      * Persist the manifest with SORTED keys, pretty-printed, one trailing newline. A key
-     * with an owner is written as {@code { "hash", "owner" }}, one without as the plain hash.
-     * Sorted because the file is committed: insertion order would make the diff — and any
-     * merge conflict between two people who both regenerated — depend on which generator
-     * happened to run first.
+     * with an owner is written as {@code { "hash", "generator", "outputDir" }}, one without
+     * as the plain hash. Sorted because the file is committed: insertion order would make
+     * the diff — and any merge conflict between two people who both regenerated — depend
+     * on which generator happened to run first.
      */
-    public static void save(Path genStateDir, Map<String, String> hashes, Map<String, String> owners) {
+    public static void save(Path genStateDir, Map<String, String> hashes, Map<String, Owner> owners) {
         try {
             Files.createDirectories(genStateDir);
             JsonObject root = new JsonObject();
             for (Map.Entry<String, String> e : new TreeMap<>(hashes).entrySet()) {
-                String owner = owners.get(e.getKey());
+                Owner owner = owners.get(e.getKey());
                 if (owner == null) {
                     root.addProperty(e.getKey(), e.getValue());
                 } else {
                     JsonObject entry = new JsonObject();
                     entry.addProperty("hash", e.getValue());
-                    entry.addProperty("owner", owner);
+                    entry.addProperty("generator", owner.generator());
+                    entry.addProperty("outputDir", owner.outputDir());
                     root.add(e.getKey(), entry);
                 }
             }
@@ -148,14 +174,14 @@ public final class HashManifest {
     }
 
     /** Record that {@code owner} wrote {@code key} with {@code content}: load, mutate, save. */
-    public static void record(Path genStateDir, String key, String content, String owner) {
+    public static void record(Path genStateDir, String key, String content, Owner owner) {
         recordHash(genStateDir, key, contentHash(content), owner);
     }
 
     /** Record {@code hash} for {@code key}, owned by {@code owner} ({@code null}: no owner). */
-    public static void recordHash(Path genStateDir, String key, String hash, String owner) {
+    public static void recordHash(Path genStateDir, String key, String hash, Owner owner) {
         Map<String, String> hashes = load(genStateDir);
-        Map<String, String> owners = loadOwners(genStateDir);
+        Map<String, Owner> owners = loadOwners(genStateDir);
         hashes.put(key, hash);
         if (owner == null) owners.remove(key);
         else owners.put(key, owner);

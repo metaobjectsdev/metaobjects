@@ -37,14 +37,24 @@ does not cover deletion, and deletion without evidence is not safe on any port.
    `<module basedir>/.metaobjects/.gen-state/.hashes.json`, with project-relative keys and
    SHA-256 hex values, sorted, pretty-printed, with a trailing newline. Two executions in one
    module share the file, and may share an output directory, so each entry the JVM writes
-   also names its **owner**, the execution that emitted it:
-   `"<path>": { "hash": "<sha-256 hex>", "owner": "<artifactId>:<execution id>" }`. An
-   execution sweeps only entries it owns, under its own generators' output directories, so a
-   sibling execution's files are never its orphans. One path emitted by two executions in
-   the same build is an error naming both. An entry in the plain `"<path>": "<hash>"` form
-   has no owner: the first execution that emits the path takes it, and no sweep deletes it
-   otherwise, so a manifest without owners loses nothing on the run that adopts it. Two
-   modules have two manifests.
+   also names its **owner**, what emitted it: the generator's registry id
+   (`<port>:<name>`, or the class name of a generator of your own) and its output
+   directory relative to the module basedir,
+   `"<path>": { "hash": "<sha-256 hex>", "generator": "java:dto", "outputDir": "target/generated-sources/java" }`.
+   The owner names the configuration, not the Maven execution, so `default-cli`, a renamed
+   execution and the lifecycle execution with the same configuration agree on it. The
+   sweep reads the module's `metaobjects:generate` executions and plugin-level
+   configuration from the build model to know every generator/output-directory pair the
+   module configures. A recorded file is an orphan when no generator emitted it in this
+   build and either its owner is one of this run's own generators, or its owner is
+   configured in no execution of the module (a removed generator, wherever its files
+   live). An entry with no owner (the plain `"<path>": "<hash>"` form other ports write)
+   counts as configured nowhere only inside this run's output directories. A file another
+   configured generator owns is never this run's orphan, even in a shared output
+   directory. One path emitted by two generator/output-directory pairs in the same build
+   is an error naming both. The first build on a manifest that names no generator owner
+   (an 8.1.0 pre-release recorded the execution id instead) records the owners and deletes
+   nothing. Two modules have two manifests.
 2. **The overwrite decision is the hash, not the marker.** For a file at a generated path:
    - absent: write it and record it;
    - same content as fresh output: unchanged, and its record is confirmed;
@@ -80,10 +90,9 @@ does not cover deletion, and deletion without evidence is not safe on any port.
 
 ## Consequences
 
-- The owner is the execution id, and running the goal from the command line runs it as
-  `default-cli`. Alternating a command-line run with a lifecycle run of the same generators
-  moves the owner back and forth in the committed file; `mvn metaobjects:generate@<id>` runs
-  a declared execution under its own id.
+- Renaming a generator's output directory, or moving it to a generator of another
+  registry id, changes its owner: the old pair is configured nowhere, so the next build
+  deletes its untouched files and regenerates them under the new owner.
 - Adopters commit one new file per module, `.metaobjects/.gen-state/.hashes.json`. A clone
   without it adopts again on its first run, which is harmless, but it cannot delete a stale
   file or protect an edit until a manifest exists.

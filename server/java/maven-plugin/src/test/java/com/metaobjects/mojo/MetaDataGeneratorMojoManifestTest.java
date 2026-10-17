@@ -6,9 +6,13 @@ import com.metaobjects.generator.util.GeneratedFileWriter;
 import com.metaobjects.generator.util.HashManifest;
 import com.metaobjects.MetaDataException;
 import com.metaobjects.loader.MetaDataLoader;
+import org.apache.maven.model.Build;
+import org.apache.maven.model.Plugin;
+import org.apache.maven.model.PluginExecution;
 import org.apache.maven.plugin.MojoExecution;
 import org.apache.maven.plugin.descriptor.MojoDescriptor;
 import org.apache.maven.project.MavenProject;
+import org.codehaus.plexus.util.xml.Xpp3Dom;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -88,6 +92,10 @@ public class MetaDataGeneratorMojoManifestTest {
     private List<Generator> build(GeneratorParam... params) {
         mojo.setGenerators(List.of(params));
         return mojo.buildGenerators(getClass().getClassLoader(), null);
+    }
+
+    private Map<String, HashManifest.Owner> owners() {
+        return HashManifest.loadOwners(projectRoot.resolve(".metaobjects").resolve(".gen-state"));
     }
 
     private Map<String, String> manifest() {
@@ -205,6 +213,65 @@ public class MetaDataGeneratorMojoManifestTest {
         assertTrue(manifest().containsKey("genB/B.java"));
     }
 
+    /** Distinct generators, so each is its own generator/output-dir owner. */
+    public static class DtoGenerator extends ConfigurableFileGenerator {}
+    public static class ControllerGenerator extends ConfigurableFileGenerator {}
+    public static class RepositoryGenerator extends ConfigurableFileGenerator {}
+    public static class RouteGenerator extends ConfigurableFileGenerator {}
+
+    private static GeneratorParam gen(Class<?> generator, String outputDir, String filename) {
+        GeneratorParam p = param(outputDir, filename, MARKER_BODY, null);
+        p.setClassname(generator.getName());
+        return p;
+    }
+
+    private static Xpp3Dom configuration(GeneratorParam... params) {
+        Xpp3Dom configuration = new Xpp3Dom("configuration");
+        Xpp3Dom generators = new Xpp3Dom("generators");
+        for (GeneratorParam p : params) {
+            Xpp3Dom generator = new Xpp3Dom("generator");
+            Xpp3Dom classname = new Xpp3Dom("classname");
+            classname.setValue(p.getClassname());
+            generator.addChild(classname);
+            Xpp3Dom args = new Xpp3Dom("args");
+            for (Map.Entry<String, String> e : p.getArgs().entrySet()) {
+                Xpp3Dom arg = new Xpp3Dom(e.getKey());
+                arg.setValue(e.getValue());
+                args.addChild(arg);
+            }
+            generator.addChild(args);
+            generators.addChild(generator);
+        }
+        configuration.addChild(generators);
+        return configuration;
+    }
+
+    /**
+     * A fresh build of this module (a new project instance, so a new build context) whose
+     * POM configures {@code metaobjects:generate} with {@code pluginLevel} and one
+     * execution per {@code executions} entry, as Maven's effective model presents it.
+     */
+    private MavenProject newBuild(Xpp3Dom pluginLevel, Map<String, Xpp3Dom> executions) {
+        MavenProject build = new MavenProject();
+        build.setArtifactId("app");
+        build.setFile(projectRoot.resolve("pom.xml").toFile());
+        Plugin plugin = new Plugin();
+        plugin.setGroupId("com.metaobjects");
+        plugin.setArtifactId("metaobjects-maven-plugin");
+        plugin.setConfiguration(pluginLevel);
+        for (Map.Entry<String, Xpp3Dom> e : executions.entrySet()) {
+            PluginExecution execution = new PluginExecution();
+            execution.setId(e.getKey());
+            execution.addGoal("generate");
+            execution.setConfiguration(e.getValue());
+            plugin.addExecution(execution);
+        }
+        Build model = new Build();
+        model.addPlugin(plugin);
+        build.getModel().setBuild(model);
+        return build;
+    }
+
     /** One {@code <execution>} of the module {@code build} stands for, run as Maven runs it. */
     private void runExecution(MavenProject build, String executionId, GeneratorParam... params) {
         MetaDataGeneratorMojo execution = new MetaDataGeneratorMojo();
@@ -215,71 +282,124 @@ public class MetaDataGeneratorMojoManifestTest {
         execution.executeGenerators(null, execution.buildGenerators(getClass().getClassLoader(), null));
     }
 
-    /** A fresh build of this module: a new project instance, so a new build context. */
-    private MavenProject newBuild() {
-        MavenProject build = new MavenProject();
-        build.setArtifactId("app");
-        build.setFile(projectRoot.resolve("pom.xml").toFile());
-        return build;
-    }
-
     @Test
     public void twoExecutionsSharingOneOutputDir_neitherSweepsTheOther_acrossBuilds() throws IOException {
         String shared = tempFolder.newFolder("generated-sources").getAbsolutePath();
-        Path dto = Path.of(shared, "Dto.java");
-        Path controller = Path.of(shared, "Controller.java");
-        Path repository = Path.of(shared, "Repository.java");
+        GeneratorParam dto = gen(DtoGenerator.class, shared, "Dto.java");
+        GeneratorParam controller = gen(ControllerGenerator.class, shared, "Controller.java");
+        GeneratorParam repository = gen(RepositoryGenerator.class, shared, "Repository.java");
+        Map<String, Xpp3Dom> executions = Map.of(
+                "codegen-web", configuration(dto, controller), "codegen-data", configuration(repository));
 
         for (int build = 1; build <= 2; build++) {
-            MavenProject module = newBuild();
-            runExecution(module, "codegen-web",
-                    param(shared, "Dto.java", MARKER_BODY, null),
-                    param(shared, "Controller.java", MARKER_BODY, null));
-            runExecution(module, "codegen-data",
-                    param(shared, "Repository.java", MARKER_BODY, null));
+            MavenProject module = newBuild(null, executions);
+            runExecution(module, "codegen-web", dto, controller);
+            runExecution(module, "codegen-data", repository);
 
             assertTrue("build " + build + ": the first execution's files survive the second's sweep",
-                    Files.exists(dto) && Files.exists(controller));
-            assertTrue("build " + build, Files.exists(repository));
+                    Files.exists(Path.of(shared, "Dto.java")) && Files.exists(Path.of(shared, "Controller.java")));
+            assertTrue("build " + build, Files.exists(Path.of(shared, "Repository.java")));
         }
-        Map<String, String> owners = HashManifest.loadOwners(projectRoot.resolve(".metaobjects").resolve(".gen-state"));
-        assertEquals("app:codegen-web", owners.get("generated-sources/Dto.java"));
-        assertEquals("app:codegen-web", owners.get("generated-sources/Controller.java"));
-        assertEquals("app:codegen-data", owners.get("generated-sources/Repository.java"));
+        Map<String, HashManifest.Owner> owners = owners();
+        assertEquals(new HashManifest.Owner(DtoGenerator.class.getName(), "generated-sources"),
+                owners.get("generated-sources/Dto.java"));
+        assertEquals(new HashManifest.Owner(RepositoryGenerator.class.getName(), "generated-sources"),
+                owners.get("generated-sources/Repository.java"));
     }
 
     @Test
-    public void sharedOutputDir_anExecutionStillSweepsItsOwnOrphans() throws IOException {
+    public void sharedOutputDir_aGeneratorStillSweepsItsOwnOrphans() throws IOException {
         String shared = tempFolder.newFolder("generated-sources").getAbsolutePath();
-        MavenProject first = newBuild();
-        runExecution(first, "codegen-web", param(shared, "Telemetry.java", MARKER_BODY, null));
-        runExecution(first, "codegen-data", param(shared, "Repository.java", MARKER_BODY, null));
+        GeneratorParam repository = gen(RepositoryGenerator.class, shared, "Repository.java");
+        Map<String, Xpp3Dom> executions = Map.of(
+                "codegen-web", configuration(gen(DtoGenerator.class, shared, "Telemetry.java")),
+                "codegen-data", configuration(repository));
 
-        MavenProject second = newBuild();
-        runExecution(second, "codegen-web", param(shared, "TelemetryReading.java", MARKER_BODY, null));
-        runExecution(second, "codegen-data", param(shared, "Repository.java", MARKER_BODY, null));
+        MavenProject first = newBuild(null, executions);
+        runExecution(first, "codegen-web", gen(DtoGenerator.class, shared, "Telemetry.java"));
+        runExecution(first, "codegen-data", repository);
+
+        MavenProject second = newBuild(null, executions);
+        runExecution(second, "codegen-web", gen(DtoGenerator.class, shared, "TelemetryReading.java"));
+        runExecution(second, "codegen-data", repository);
 
         assertFalse(Files.exists(Path.of(shared, "Telemetry.java")));
         assertTrue(Files.exists(Path.of(shared, "TelemetryReading.java")));
         assertTrue(Files.exists(Path.of(shared, "Repository.java")));
     }
 
+    /**
+     * The lifecycle execution generates; the user runs {@code mvn metaobjects:generate},
+     * which Maven runs as {@code default-cli} with the plugin-level configuration; then an
+     * entity is deleted and the lifecycle execution runs again. Its file must go.
+     */
     @Test
-    public void onePathEmittedByTwoExecutions_isAnErrorNamingBoth() throws IOException {
-        String shared = tempFolder.newFolder("generated-sources").getAbsolutePath();
-        MavenProject module = newBuild();
-        runExecution(module, "codegen-web", param(shared, "Dto.java", MARKER_BODY, null));
-        try {
-            runExecution(module, "codegen-data", param(shared, "Dto.java", MARKER_BODY, null));
-            fail("expected the second execution to be refused");
-        } catch (MetaDataException e) {
-            assertTrue(e.getMessage(), e.getMessage().contains("Dto.java")
-                    && e.getMessage().contains("app:codegen-web") && e.getMessage().contains("app:codegen-data"));
-        }
+    public void commandLineRunThenLifecycleRun_aDeletedEntitysFileIsDeleted() throws IOException {
+        String outDir = tempFolder.newFolder("generated-sources").getAbsolutePath();
+        Xpp3Dom pluginLevel = configuration(gen(DtoGenerator.class, outDir, "Telemetry.java"));
+        Map<String, Xpp3Dom> executions = Map.of("codegen", pluginLevel);
+
+        runExecution(newBuild(pluginLevel, executions), "codegen", gen(DtoGenerator.class, outDir, "Telemetry.java"));
+        runExecution(newBuild(pluginLevel, executions), "default-cli", gen(DtoGenerator.class, outDir, "Telemetry.java"));
+        runExecution(newBuild(pluginLevel, executions), "codegen", gen(DtoGenerator.class, outDir, "Other.java"));
+
+        assertFalse("the deleted entity's file is an orphan, whichever execution wrote it last",
+                Files.exists(Path.of(outDir, "Telemetry.java")));
+        assertFalse(manifest().containsKey("generated-sources/Telemetry.java"));
     }
 
     @Test
-    public void manifestWithoutOwners_isAdoptedByTheEmittingExecution_andNothingIsDeleted() throws IOException {
+    public void renamedExecution_stillSweepsTheOrphansTheOldIdWrote() throws IOException {
+        String outDir = tempFolder.newFolder("generated-sources").getAbsolutePath();
+        GeneratorParam before = gen(DtoGenerator.class, outDir, "Telemetry.java");
+        runExecution(newBuild(null, Map.of("codegen", configuration(before))), "codegen", before);
+
+        GeneratorParam after = gen(DtoGenerator.class, outDir, "TelemetryReading.java");
+        runExecution(newBuild(null, Map.of("generate-java", configuration(after))), "generate-java", after);
+
+        assertFalse(Files.exists(Path.of(outDir, "Telemetry.java")));
+        assertTrue(Files.exists(Path.of(outDir, "TelemetryReading.java")));
+    }
+
+    @Test
+    public void generatorRemovedFromConfiguration_itsFilesAreDeletedEvenInADirectoryNothingWrites()
+            throws IOException {
+        String genDir = tempFolder.newFolder("gen").getAbsolutePath();
+        String webDir = tempFolder.newFolder("web").getAbsolutePath();
+        GeneratorParam dto = gen(DtoGenerator.class, genDir, "Dto.java");
+        GeneratorParam route = gen(RouteGenerator.class, webDir, "Route.java");
+        runExecution(newBuild(null, Map.of("codegen", configuration(dto, route))), "codegen", dto, route);
+        assertTrue(Files.exists(Path.of(webDir, "Route.java")));
+
+        runExecution(newBuild(null, Map.of("codegen", configuration(dto))), "codegen", dto);
+
+        assertFalse("no execution configures its generator any more", Files.exists(Path.of(webDir, "Route.java")));
+        assertFalse(manifest().containsKey("web/Route.java"));
+        assertTrue(Files.exists(Path.of(genDir, "Dto.java")));
+    }
+
+    @Test
+    public void onePathEmittedByTwoGenerators_isAnErrorNamingBoth() throws IOException {
+        String shared = tempFolder.newFolder("generated-sources").getAbsolutePath();
+        GeneratorParam dto = gen(DtoGenerator.class, shared, "Dto.java");
+        GeneratorParam repository = gen(RepositoryGenerator.class, shared, "Dto.java");
+        MavenProject module = newBuild(null, Map.of(
+                "codegen-web", configuration(dto), "codegen-data", configuration(repository)));
+        runExecution(module, "codegen-web", dto);
+        try {
+            runExecution(module, "codegen-data", repository);
+            fail("expected the second generator to be refused");
+        } catch (MetaDataException e) {
+            assertTrue(e.getMessage(), e.getMessage().contains("Dto.java")
+                    && e.getMessage().contains(DtoGenerator.class.getName() + " -> generated-sources")
+                    && e.getMessage().contains(RepositoryGenerator.class.getName() + " -> generated-sources"));
+        }
+    }
+
+    /** A manifest an 8.1.0 pre-release wrote names the Maven execution, or nothing. The first
+     *  build records owners and deletes nothing; the next one sweeps what nothing emits. */
+    @Test
+    public void manifestWithoutGeneratorOwners_firstBuildRecordsOwnersAndDeletesNothing() throws IOException {
         String outDir = tempFolder.newFolder("gen").getAbsolutePath();
         Path kept = Path.of(outDir, "Kept.java");
         Path old = Path.of(outDir, "Old.java");
@@ -288,16 +408,22 @@ public class MetaDataGeneratorMojoManifestTest {
         Path genState = projectRoot.resolve(".metaobjects").resolve(".gen-state");
         Files.createDirectories(genState);
         String hash = HashManifest.contentHash(MARKER_BODY);
-        Files.writeString(genState.resolve(".hashes.json"),
-                "{\n  \"gen/Kept.java\": \"" + hash + "\",\n  \"gen/Old.java\": \"" + hash + "\"\n}\n");
+        Files.writeString(genState.resolve(".hashes.json"), "{\n"
+                + "  \"gen/Kept.java\": { \"hash\": \"" + hash + "\", \"owner\": \"app:codegen\" },\n"
+                + "  \"gen/Old.java\": { \"hash\": \"" + hash + "\", \"owner\": \"app:codegen\" }\n}\n");
+        GeneratorParam dto = gen(DtoGenerator.class, outDir, "Kept.java");
+        Map<String, Xpp3Dom> executions = Map.of("codegen", configuration(dto));
 
-        runExecution(newBuild(), "codegen", param(outDir, "Kept.java", MARKER_BODY, null));
+        runExecution(newBuild(null, executions), "codegen", dto);
 
-        assertTrue("nothing recorded without an owner is deleted", Files.exists(old));
+        assertTrue("the build that records owners deletes nothing", Files.exists(old));
+        assertEquals(new HashManifest.Owner(DtoGenerator.class.getName(), "gen"), owners().get("gen/Kept.java"));
+        assertFalse(owners().containsKey("gen/Old.java"));
+
+        runExecution(newBuild(null, executions), "codegen", dto);
+
+        assertFalse("recorded in this run's directory, emitted by nothing", Files.exists(old));
         assertTrue(Files.exists(kept));
-        Map<String, String> owners = HashManifest.loadOwners(genState);
-        assertEquals("app:codegen", owners.get("gen/Kept.java"));
-        assertFalse(owners.containsKey("gen/Old.java"));
     }
 
     // === multi-module: two basedirs, two manifests ===============================
