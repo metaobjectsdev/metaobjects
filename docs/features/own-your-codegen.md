@@ -611,10 +611,12 @@ main build or any profile: their files would share one owner. `generate` and `ve
 before writing anything, naming both executions and the profile each comes from; give each
 its own `<outputDir>`, or merge them into one execution. The plugin-level `<configuration>`
 is no execution of its own, so a command-line run beside the execution that inherits it is
-one configuration run twice. An execution switched off with `<phase>none</phase>` (how a
-module disables one it inherits from a parent POM) is not counted, and its generators are
-not configured; run explicitly (`mvn metaobjects:generate@<id>`), it is refused when an
-enabled execution owns the same generator and output directory.
+one configuration run twice. An execution with `<phase>none</phase>` (how a module disables
+one it inherits from a parent POM, or declares one that runs only on demand) is not counted
+by this check, but its generators still count as configured, so a lifecycle build or
+`verify` never treats the output of an on-demand run as stranded. Run explicitly
+(`mvn metaobjects:generate@<id>`), it is refused when an enabled execution owns the same
+generator and output directory.
 One file emitted with different content by two generator/output-directory pairs in the same
 build fails the goal, naming both; the same bytes from both are one file, and a file you own
 is refused for each, not a collision. The first build on a manifest that names no generator owner records the owners

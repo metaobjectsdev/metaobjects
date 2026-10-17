@@ -389,6 +389,22 @@ public class ConfiguredGeneratorsTest {
         assertTrue(Files.exists(gen.resolve("A.java")) && Files.exists(client.resolve("B.java")));
     }
 
+    @Test
+    public void onDemandExecutionsOutput_isKeptByTheLifecycleBuildAndVerify() throws Exception {
+        Path gen = root.resolve("gen");
+        Path scaffold = root.resolve("src/main/scaffold");
+        Path pom = pom(root, "app", "", plugin("codegen", generators(DTO, "${project.basedir}/gen"))
+                .replace("</executions>", "<execution><id>scaffold</id><phase>none</phase><goals><goal>generate"
+                        + "</goal></goals><configuration>" + generators(DTO, "${project.basedir}/src/main/scaffold")
+                        + "</configuration></execution></executions>"), "");
+
+        generate(build(pom), "scaffold", NO_PROFILES, gen(DTO, scaffold, "A.java"));
+        generate(build(pom), "codegen", NO_PROFILES, gen(DTO, gen, "Dto.java"));
+
+        assertTrue("mvn compile leaves what generate@scaffold wrote", Files.exists(scaffold.resolve("A.java")));
+        verify(build(pom), gen(DTO, gen, "Dto.java"));
+    }
+
     /** A parent declares execution {@code codegen}; the child switches it off with
      *  {@code <phase>none</phase>} and declares {@code codegen-app} on the same generator and dir. */
     private Path childDisablingTheParentsExecution() throws IOException {

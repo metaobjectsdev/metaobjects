@@ -66,8 +66,9 @@ does not cover deletion, and deletion without evidence is not safe on any port.
    `generate` and `verify` before anything is written, naming both executions and the
    profile each comes from. The plugin-level configuration is no execution of its own, so
    `default-cli` beside the execution that inherits it is one configuration. An execution
-   disabled with `<phase>none</phase>` counts nowhere: it owns no pair and configures no
-   generator. Invoked explicitly (`generate@<id>`), it is refused when an enabled execution
+   with `<phase>none</phase>` (an inherited one switched off, or an on-demand one) is left
+   out of this check but its pairs still count as configured, so its output is never
+   stranded by a lifecycle build or `verify`. Invoked explicitly (`generate@<id>`), it is refused when an enabled execution
    owns one of its pairs. One path emitted with different content by two generator/output-directory
    pairs in the same build is an error naming both; byte-identical re-emission is one file,
    and a path the adopter hand-owns is refused for each generator, not a collision. The first build on a manifest that names no generator owner

@@ -86,7 +86,10 @@ and `metaobjects:verify` now fail before writing anything, naming both execution
 profile each comes from). The fix is one line: give each execution its own `<outputDir>`,
 or merge the two into one execution. The plugin-level `<configuration>` is not an execution
 of its own, so `mvn metaobjects:generate` beside the execution that inherits it is fine, and
-an inherited execution switched off with `<phase>none</phase>` is not counted.
+an execution with `<phase>none</phase>` (inherited and switched off, or run only on demand)
+is not counted. Its generators still count as configured, so the output of
+`mvn metaobjects:generate@<id>` is never removed by a lifecycle build; that explicit run is
+refused when an enabled execution owns the same generator and `<outputDir>`.
 
 A clone without the manifest adopts again on its first run. That is harmless, but until a
 manifest exists the run cannot delete a stale file or protect an edit.

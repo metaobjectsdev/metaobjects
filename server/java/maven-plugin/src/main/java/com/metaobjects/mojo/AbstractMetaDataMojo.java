@@ -127,7 +127,8 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
      * neither execution could tell the other's output from its own orphans. The
      * plugin-level configuration is no execution of its own: a command-line run of it and
      * the one execution that inherits it are the same configuration. An execution disabled
-     * with {@code <phase>none</phase>} is not counted; run explicitly
+     * with {@code <phase>none</phase>} is not counted here, though its pairs still count as
+     * configured, so the output of an on-demand run is never stranded; run explicitly
      * ({@code mvn metaobjects:generate@<id>}), it is refused when an enabled execution owns
      * one of its generator/output-directory pairs.
      */
@@ -208,12 +209,14 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
             Xpp3Dom pluginLevel = plugin.getConfiguration() instanceof Xpp3Dom dom ? dom : null;
             out.addAll(configuredIn(pluginLevel));
             for (PluginExecution e : plugin.getExecutions()) {
-                if (!isEnabledGenerate(e)) continue;
+                if (!e.getGoals().contains("generate")) continue;
                 if (!(e.getConfiguration() instanceof Xpp3Dom execution)) continue;
                 for (HashManifest.Owner owner : configuredIn(pluginLevel == null ? execution
                         : Xpp3Dom.mergeXpp3Dom(new Xpp3Dom(execution), pluginLevel))) {
                     out.add(owner);
-                    executions.computeIfAbsent(owner, k -> new LinkedHashSet<>()).add(e.getId());
+                    if (isEnabledGenerate(e)) {
+                        executions.computeIfAbsent(owner, k -> new LinkedHashSet<>()).add(e.getId());
+                    }
                 }
             }
         }
