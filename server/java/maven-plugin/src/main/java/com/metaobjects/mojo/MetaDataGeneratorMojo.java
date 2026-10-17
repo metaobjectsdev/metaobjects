@@ -136,7 +136,7 @@ public class MetaDataGeneratorMojo extends AbstractMetaDataMojo
         List<OrphanSweep.Entry> dirs = new ArrayList<>();
         for (Map.Entry<Path, List<String>> e : handEditsByDir.entrySet()) {
             boolean allOverwrite = !e.getValue().isEmpty() && e.getValue().stream()
-                    .allMatch(GeneratorParam.HAND_EDITS_OVERWRITE::equals);
+                    .allMatch(GeneratorParam.HAND_EDITS_OVERWRITE::equals) && noConfiguredWriterKeeps(e.getKey());
             dirs.add(new OrphanSweep.Entry(e.getKey(), e.getKey() + File.separator, allOverwrite));
         }
         OrphanSweep.Result swept = OrphanSweep.sweep(

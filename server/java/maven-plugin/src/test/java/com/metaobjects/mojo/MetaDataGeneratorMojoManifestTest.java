@@ -142,10 +142,12 @@ public class MetaDataGeneratorMojoManifestTest {
                 manifest().containsKey("gen/Telemetry.java"));
     }
 
-    // === hand-edited orphan: deleted under handEdits=overwrite ==================
+    // === hand-edited orphan under handEdits=overwrite, configuration unknown ======
 
+    /** Whether every configured writer of the directory overwrites is unknown here (no
+     *  Maven model to read), so the edit is kept; ConfiguredGeneratorsTest covers deletion. */
     @Test
-    public void handEditedOrphan_overwritePolicy_isDeleted() throws IOException {
+    public void handEditedOrphan_overwritePolicy_configurationUnknown_isKept() throws IOException {
         String outDir = tempFolder.newFolder("gen").getAbsolutePath();
         Path oldFile = Path.of(outDir, "Telemetry.java");
 
@@ -156,8 +158,8 @@ public class MetaDataGeneratorMojoManifestTest {
         mojo.executeGenerators(null,
                 build(param(outDir, "TelemetryReading.java", MARKER_BODY, GeneratorParam.HAND_EDITS_OVERWRITE)));
 
-        assertFalse("handEdits=overwrite deletes a hand-edited orphan too", Files.exists(oldFile));
-        assertFalse(manifest().containsKey("gen/Telemetry.java"));
+        assertTrue("never deleted on a guess", Files.exists(oldFile));
+        assertTrue(manifest().containsKey("gen/Telemetry.java"));
     }
 
     // === first-run adoption ======================================================

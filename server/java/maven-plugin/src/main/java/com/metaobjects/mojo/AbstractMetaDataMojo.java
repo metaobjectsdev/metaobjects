@@ -93,14 +93,29 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
 
     private HashManifest.Owner ownerOf(String classname, String outputDir) {
         if (classname == null || outputDir == null) return null;
-        Path dir = Path.of(outputDir).toAbsolutePath().normalize();
+        return new HashManifest.Owner(RequiresCheck.registryId(classname), moduleDir(Path.of(outputDir)));
+    }
+
+    /** {@code dir} as an owner names it: relative to the module basedir when inside it. */
+    private String moduleDir(Path outputDir) {
+        Path dir = outputDir.toAbsolutePath().normalize();
         String shown = dir.toString();
         if (project != null && project.getBasedir() != null) {
             Path base = project.getBasedir().toPath().toAbsolutePath().normalize();
             if (dir.startsWith(base)) shown = base.relativize(dir).toString();
         }
-        return new HashManifest.Owner(RequiresCheck.registryId(classname),
-                shown.replace(File.separatorChar, '/'));
+        return shown.replace(File.separatorChar, '/');
+    }
+
+    /**
+     * Whether no generator the module configures for {@code dir}, in any execution or the
+     * plugin-level configuration, keeps hand edits: an edited orphan there may be deleted
+     * only when every writer of the directory says {@code handEdits=overwrite}. {@code false}
+     * when what is configured is unknown, so an edited orphan is never deleted on a guess.
+     */
+    protected boolean noConfiguredWriterKeeps(Path dir) {
+        ConfiguredOwners c = configured();
+        return c.owners() != null && !c.keepDirs().contains(moduleDir(dir));
     }
 
     /**
@@ -168,8 +183,9 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
         return read;
     }
 
-    private record ConfiguredOwners(Set<HashManifest.Owner> owners, Map<HashManifest.Owner, List<String>> executions) {
-        static final ConfiguredOwners UNKNOWN = new ConfiguredOwners(null, Map.of());
+    private record ConfiguredOwners(Set<HashManifest.Owner> owners, Map<HashManifest.Owner, List<String>> executions,
+                                    Set<String> keepDirs) {
+        static final ConfiguredOwners UNKNOWN = new ConfiguredOwners(null, Map.of(), Set.of());
     }
 
     private static final String CONFIGURED_OWNERS_CONTEXT_KEY =
@@ -192,6 +208,7 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
             models.add(alone);
         }
         Set<HashManifest.Owner> out = new HashSet<>();
+        Set<String> keepDirs = new HashSet<>();
         Map<HashManifest.Owner, Set<String>> executions = new HashMap<>();
         Map<String, String> profileOf = new HashMap<>();
         Set<String> baseIds = generateExecutionIds(base);
@@ -207,12 +224,12 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
             if (plugin == null) continue;
             declared = true;
             Xpp3Dom pluginLevel = plugin.getConfiguration() instanceof Xpp3Dom dom ? dom : null;
-            out.addAll(configuredIn(pluginLevel));
+            out.addAll(configuredIn(pluginLevel, keepDirs));
             for (PluginExecution e : plugin.getExecutions()) {
                 if (!e.getGoals().contains("generate")) continue;
                 if (!(e.getConfiguration() instanceof Xpp3Dom execution)) continue;
                 for (HashManifest.Owner owner : configuredIn(pluginLevel == null ? execution
-                        : Xpp3Dom.mergeXpp3Dom(new Xpp3Dom(execution), pluginLevel))) {
+                        : Xpp3Dom.mergeXpp3Dom(new Xpp3Dom(execution), pluginLevel), keepDirs)) {
                     out.add(owner);
                     if (isEnabledGenerate(e)) {
                         executions.computeIfAbsent(owner, k -> new LinkedHashSet<>()).add(e.getId());
@@ -225,7 +242,7 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
         executions.forEach((owner, ids) -> byOwner.put(owner, ids.stream()
                 .map(id -> "'" + id + "'" + (profileOf.containsKey(id) ? " (profile '" + profileOf.get(id) + "')" : ""))
                 .toList()));
-        return new ConfiguredOwners(out, byOwner);
+        return new ConfiguredOwners(out, byOwner, keepDirs);
     }
 
     private static Set<String> generateExecutionIds(MavenProject model) {
@@ -275,7 +292,9 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
         }
     }
 
-    private List<HashManifest.Owner> configuredIn(Xpp3Dom dom) {
+    /** The generator/output-directory pairs {@code dom} configures; adds to {@code keepDirs}
+     *  the output directory of each one that keeps hand edits. */
+    private List<HashManifest.Owner> configuredIn(Xpp3Dom dom, Set<String> keepDirs) {
         List<HashManifest.Owner> out = new ArrayList<>();
         if (dom == null) return out;
         Map<String, String> domGlobals = childValues(dom.getChild("globals"));
@@ -286,7 +305,13 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
             if (classname == null) continue;
             Map<String, String> args = mergeArgs(domGlobals, childValues(generator.getChild("args")));
             HashManifest.Owner owner = ownerOf(classname.getValue(), args.get(GeneratorBase.ARG_OUTPUTDIR));
-            if (owner != null) out.add(owner);
+            if (owner == null) continue;
+            out.add(owner);
+            Xpp3Dom handEdits = generator.getChild("handEdits");
+            if (handEdits == null || handEdits.getValue() == null
+                    || !GeneratorParam.HAND_EDITS_OVERWRITE.equals(handEdits.getValue().trim())) {
+                keepDirs.add(owner.outputDir());
+            }
         }
         return out;
     }

@@ -458,6 +458,47 @@ public class ConfiguredGeneratorsTest {
         verify(build(pom), gen(DTO, gen, "Dto.java"));
     }
 
+    private static String overwriting(String classname, String outputDir) {
+        return "<generators><generator><classname>" + classname + "</classname><handEdits>overwrite</handEdits>"
+                + "<args><outputDir>" + outputDir + "</outputDir></args></generator></generators>";
+    }
+
+    private static GeneratorParam overwritingGen(String classname, Path outputDir, String filename) {
+        GeneratorParam p = gen(classname, outputDir, filename);
+        p.setHandEdits(GeneratorParam.HAND_EDITS_OVERWRITE);
+        return p;
+    }
+
+    @Test
+    public void editedOrphan_everyWriterOfItsDirOverwrites_isDeleted() throws Exception {
+        Path gen = root.resolve("gen");
+        Path pom = pom(root, "app", "", plugin("codegen-web", overwriting(DTO, "${project.basedir}/gen")), "");
+        generate(build(pom), "codegen-web", NO_PROFILES, overwritingGen(DTO, gen, "Telemetry.java"));
+        Files.writeString(gen.resolve("Telemetry.java"), "/** GENERATED */\npublic class X { int mine; }\n");
+
+        generate(build(pom), "codegen-web", NO_PROFILES, overwritingGen(DTO, gen, "TelemetryReading.java"));
+
+        assertFalse(Files.exists(gen.resolve("Telemetry.java")));
+    }
+
+    @Test
+    public void editedOrphan_anotherExecutionKeepsInItsDir_isRefusedNotDeleted() throws Exception {
+        Path gen = root.resolve("gen");
+        Path pom = pom(root, "app", "", plugin("codegen-web", overwriting(DTO, "${project.basedir}/gen"))
+                .replace("</executions>", execution("codegen-data", generators(CLIENT, "${project.basedir}/gen"))
+                        + "</executions>"), "");
+        MavenProject first = build(pom);
+        generate(first, "codegen-web", NO_PROFILES, overwritingGen(DTO, gen, "Telemetry.java"));
+        generate(first, "codegen-data", NO_PROFILES, gen(CLIENT, gen, "Repository.java"));
+        Files.writeString(gen.resolve("Telemetry.java"), "/** GENERATED */\npublic class X { int mine; }\n");
+
+        MavenProject second = build(pom);
+        generate(second, "codegen-web", NO_PROFILES, overwritingGen(DTO, gen, "TelemetryReading.java"));
+        generate(second, "codegen-data", NO_PROFILES, gen(CLIENT, gen, "Repository.java"));
+
+        assertTrue("one keep writer in the directory keeps the edit", Files.exists(gen.resolve("Telemetry.java")));
+    }
+
     /** A manifest an 8.1.0 pre-release wrote names the Maven execution, or nothing. The first
      *  build records owners and deletes nothing; the next one sweeps what nothing emits. */
     @Test

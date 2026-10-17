@@ -372,7 +372,8 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
             Path realKey = t.realDir.toAbsolutePath().normalize();
             List<String> handEdits = handEditsByOutputDir.get(realKey);
             t.allOverwrite = handEdits != null && !handEdits.isEmpty()
-                    && handEdits.stream().allMatch(GeneratorParam.HAND_EDITS_OVERWRITE::equals);
+                    && handEdits.stream().allMatch(GeneratorParam.HAND_EDITS_OVERWRITE::equals)
+                    && noConfiguredWriterKeeps(realKey);
             for (Path other : tempByOutputDir.keySet()) {
                 if (!other.equals(realKey) && other.startsWith(realKey)) t.nestedDirs.add(other);
             }
@@ -651,7 +652,8 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
     static final class GenTarget {
         final Path realDir;
         final Path tempDir;
-        /** True iff every generator writing into {@code realDir} this run has {@code handEdits=overwrite}. */
+        /** True iff every generator writing into {@code realDir}, this run's and every one the module
+         *  configures, has {@code handEdits=overwrite}. */
         boolean allOverwrite;
         /** Other targets' output dirs nested inside {@code realDir}: their files are theirs to judge. */
         final List<Path> nestedDirs = new ArrayList<>();
