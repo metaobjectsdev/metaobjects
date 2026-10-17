@@ -239,6 +239,45 @@ exclude_block_lines() {  # exclude_block_lines <file>
   ' "$1" 2>/dev/null
 }
 
+# The lines of the exclude file outside the managed block: a user's own rules, and the bare
+# entries an earlier version of this script wrote before it kept them in a block.
+exclude_outside_lines() {  # exclude_outside_lines <file>
+  awk -v b="$BEGIN" -v e="$END" '
+    index($0,b) { skip=1; next } index($0,e) { skip=0; next } !skip { print }
+  ' "$1" 2>/dev/null
+}
+
+# Every exclude entry `link` writes for this project, named from the repository root.
+written_exclude_paths() {
+  local prefix root rel
+  prefix="$(git -C "$PROJECT" rev-parse --show-prefix 2>/dev/null || true)"
+  while IFS= read -r root; do echo "$prefix$(rel_prefix "$root").npmrc"; done < <(npm_install_roots)
+  if has_nuget; then echo "${prefix}NuGet.config"; fi
+  while IFS= read -r root; do
+    rel="$(rel_prefix "$root")"
+    echo "$prefix${rel}.mvn/settings.xml"; echo "$prefix${rel}.mvn/maven.config"
+  done < <(mvn_roots)
+}
+
+# An earlier version of this script wrote its exclude entries as bare lines, outside any block.
+# They are indistinguishable from a line a user added, so they are named, never removed.
+legacy_exclude_notice() {
+  local ex stale p cmd
+  ex="$(exclude_file)"
+  [ -n "$ex" ] && [ -f "$ex" ] || return 0
+  stale="$(written_exclude_paths | sort -u | grep -xF -f <(exclude_outside_lines "$ex") || true)"
+  [ -n "$stale" ] || return 0
+  warn "$ex holds entries outside the managed block that name files this script writes"
+  warn "(left by an earlier version of it); unlink never removes a line it did not put in its block:"
+  cmd="grep -vxF"
+  while IFS= read -r p; do
+    printf '    %s\n' "$p"
+    cmd+=" -e $(printf '%q' "$p")"
+  done <<< "$stale"
+  say "once no work tree of this clone is linked, remove them with:"
+  say "  $cmd $(printf '%q' "$ex") > $(printf '%q' "$ex.tmp") && mv $(printf '%q' "$ex.tmp") $(printf '%q' "$ex")"
+}
+
 # Keep an untracked managed file out of commits without touching the shared .gitignore or any
 # line a user put in info/exclude themselves. Everything this adds lives in one managed block:
 # `unlink` removes exactly that block via `strip_block`, never a line it did not add,
@@ -254,6 +293,7 @@ local_exclude() {  # local_exclude <relative-path>
   [ -f "$ex" ] || : > "$ex"
   line="$prefix$rel"
   exclude_block_lines "$ex" | grep -qxF "$line" && return 0
+  exclude_outside_lines "$ex" | grep -qxF "$line" && return 0
   set_exclude_block "$ex" "$(exclude_block_lines "$ex"; printf '%s\n' "$line")"
 }
 
@@ -921,6 +961,7 @@ case "$ACTION" in
         maven)  link_mvn ;;
       esac
     done
+    legacy_exclude_notice
     install_detector
     drop_lockfiles
     echo
@@ -946,6 +987,7 @@ case "$ACTION" in
     echo
     echo "── unlinking $PROJECT → public registries @ $TO ──"
     unlink_all
+    legacy_exclude_notice
     has_npm   && repin_npm   "$TO"
     has_py    && repin_py    "$TO"
     has_nuget && repin_nuget "$TO"

@@ -10,7 +10,9 @@
 #     .npmrc (which can hold a registry credential) is not ignored. The exclude entries `link`
 #     adds live in one managed block, so `unlink` removes exactly that block (and nothing a
 #     user put in the file by hand), and a repeated `link` does not duplicate it. Unlinking one
-#     worktree or project keeps an entry another linked worktree or project still needs.
+#     worktree or project keeps an entry another linked worktree or project still needs. A bare
+#     entry an earlier version wrote outside the block is named with its cleanup command, never
+#     removed, and never duplicated inside the block.
 # R3  a link/unlink round trip leaves a pom.xml that lacked a trailing newline byte-identical
 #     (the previous awk-based rewrites unconditionally added one), and `link`/`unlink` report
 #     "repinned ... in <file>" only for a pom whose own text actually changed — not a module
@@ -153,6 +155,30 @@ check "the other subproject's .npmrc is still ignored by git" 'git -C "$multi" c
 check "git status shows no .npmrc after one subproject is unlinked" '! git -C "$multi" status --porcelain | grep -q "\.npmrc"'
 unlink_project "$multi/apps/api"
 check "unlinking the last subproject removes the managed block" '! grep -q "metaobjects prerelease (managed)" "$mcommon/info/exclude"'
+
+# D11: a clone linked by an earlier version of the script holds a bare `.npmrc` line outside any
+# block. `link` must not add a duplicate of it inside the block, and both `link` and `unlink`
+# name it with the command that removes it, while leaving the line itself alone.
+legacy="$WORK/legacy"
+git init -q "$legacy"
+cp "$WORK/main/package.json" "$legacy/package.json"
+git -C "$legacy" add -A && git -C "$legacy" commit -q -m init
+lcommon="$(git -C "$legacy" rev-parse --git-common-dir)"
+case "$lcommon" in /*) ;; *) lcommon="$legacy/$lcommon" ;; esac
+printf '.npmrc\n' >> "$lcommon/info/exclude"
+if link "$legacy"; then pass "link succeeds over a bare legacy exclude line"; else fail "link over a legacy line failed: $(tail -5 "$WORK/out")"; fi
+check "link adds no duplicate of the bare legacy line" '[ "$(grep -cxF .npmrc "$lcommon/info/exclude")" = 1 ]'
+check "the .npmrc stays ignored by git through the legacy line" 'git -C "$legacy" check-ignore -q -- .npmrc'
+check "link names the legacy line" 'grep -q "entries outside the managed block" "$WORK/out" && grep -qx "    .npmrc" "$WORK/out"'
+unlink_project "$legacy"
+check "unlink names the legacy line" 'grep -q "entries outside the managed block" "$WORK/out" && grep -qx "    .npmrc" "$WORK/out"'
+check "unlink leaves the legacy line in place" 'grep -qxF .npmrc "$lcommon/info/exclude"'
+cleanup_cmd="$(sed -n 's/^    grep -vxF /grep -vxF /p' "$WORK/out")"
+check "the notice carries one cleanup command" '[ "$(printf "%s\n" "$cleanup_cmd" | grep -c .)" = 1 ]'
+eval "$cleanup_cmd"
+check "the printed cleanup command removes the legacy line" '! grep -qxF .npmrc "$lcommon/info/exclude"'
+unlink_project "$legacy"
+check "with no legacy line left, unlink prints no notice" '! grep -q "entries outside the managed block" "$WORK/out"'
 
 # The assertion: an .npmrc git does not ignore makes link fail.
 git -C "$WORK/main" worktree add -q "$WORK/wt2" -b linked2

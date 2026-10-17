@@ -958,22 +958,22 @@ describe("@agg any / all without @of, end to end", () => {
     rpt("CallsByGame", { "@from": "Call", "@dimensions": ["game"], "@measures": ["hasError", "allSlow"] }, "v_calls_by_game"),
   ];
 
-  test("postgres: bool_or / bool_and of the condition, with no FILTER", async () => {
+  test("postgres: bool_or / bool_and of the condition, a NULL condition not passing, with no FILTER", async () => {
     const sql = (await viewsOf(calls(), "postgres"))["v_calls_by_game"];
-    expect(sql).toContain(`    bool_or(c."success" = FALSE) AS "hasError",`);
-    expect(sql).toContain(`    COALESCE(bool_and(c."latencyMs" > 1000), FALSE) AS "allSlow"`);
+    expect(sql).toContain(`    bool_or(COALESCE(c."success" = FALSE, FALSE)) AS "hasError",`);
+    expect(sql).toContain(`    COALESCE(bool_and(COALESCE(c."latencyMs" > 1000, FALSE)), FALSE) AS "allSlow"`);
     expect(sql).not.toContain("FILTER");
   });
 
   test("sqlite, d1 and mysql: MAX / MIN of the condition, which is 0 / 1 / NULL there", async () => {
     for (const dialect of ["sqlite", "d1"] as const) {
       const sql = (await viewsOf(calls(), dialect))["v_calls_by_game"];
-      expect(sql).toContain(`MAX(c."success" = 0) AS "hasError"`);
-      expect(sql).toContain(`COALESCE(MIN(c."latencyMs" > 1000), 0) AS "allSlow"`);
+      expect(sql).toContain(`MAX(COALESCE(c."success" = 0, 0)) AS "hasError"`);
+      expect(sql).toContain(`COALESCE(MIN(COALESCE(c."latencyMs" > 1000, 0)), 0) AS "allSlow"`);
     }
     const my = (await viewsOf(calls(), "mysql"))["v_calls_by_game"];
-    expect(my).toContain("MAX(c.`success` = FALSE) AS `hasError`");
-    expect(my).toContain("COALESCE(MIN(c.`latencyMs` > 1000), 0) AS `allSlow`");
+    expect(my).toContain("MAX(COALESCE(c.`success` = FALSE, 0)) AS `hasError`");
+    expect(my).toContain("COALESCE(MIN(COALESCE(c.`latencyMs` > 1000, 0)), 0) AS `allSlow`");
   });
 });
 
@@ -991,24 +991,24 @@ describe("@agg any / all without @of under @spine", () => {
 
   test("postgres: the condition is aggregated over the fact rows only", async () => {
     const sql = (await viewsOf(unlabelled(), "postgres"))["v_any_unlabelled"];
-    expect(sql).toContain(`    bool_or(w."label" IS NULL) FILTER (WHERE w."programId" IS NOT NULL) AS "anyUnlabelled",`);
-    expect(sql).toContain(`    bool_and(w."label" IS NULL) FILTER (WHERE w."programId" IS NOT NULL) AS "allUnlabelled"`);
+    expect(sql).toContain(`    bool_or(COALESCE(w."label" IS NULL, FALSE)) FILTER (WHERE w."programId" IS NOT NULL) AS "anyUnlabelled",`);
+    expect(sql).toContain(`    bool_and(COALESCE(w."label" IS NULL, FALSE)) FILTER (WHERE w."programId" IS NOT NULL) AS "allUnlabelled"`);
   });
 
   test("sqlite and mysql: the padding row's condition is NULL, which MAX / MIN skip", async () => {
     const lite = (await viewsOf(unlabelled(), "sqlite"))["v_any_unlabelled"];
-    expect(lite).toContain(`MAX(CASE WHEN w."programId" IS NOT NULL THEN w."label" IS NULL END) AS "anyUnlabelled"`);
-    expect(lite).toContain(`MIN(CASE WHEN w."programId" IS NOT NULL THEN w."label" IS NULL END) AS "allUnlabelled"`);
+    expect(lite).toContain(`MAX(CASE WHEN w."programId" IS NOT NULL THEN COALESCE(w."label" IS NULL, 0) END) AS "anyUnlabelled"`);
+    expect(lite).toContain(`MIN(CASE WHEN w."programId" IS NOT NULL THEN COALESCE(w."label" IS NULL, 0) END) AS "allUnlabelled"`);
     const my = (await viewsOf(unlabelled(), "mysql"))["v_any_unlabelled"];
-    expect(my).toContain("MAX(CASE WHEN w.`programId` IS NOT NULL THEN w.`label` IS NULL END) AS `anyUnlabelled`");
+    expect(my).toContain("MAX(CASE WHEN w.`programId` IS NOT NULL THEN COALESCE(w.`label` IS NULL, 0) END) AS `anyUnlabelled`");
   });
 
-  test("without @spine the SQL is unchanged", async () => {
+  test("without @spine there is no fact-row FILTER", async () => {
     const plain = fitness([
       rpt("AnyUnlabelledPlain", { "@from": "Week", "@dimensions": ["programKey"], "@measures": ["anyUnlabelled"] }, "v_any_unlabelled_plain"),
     ], [], [{ "measure.aggregate": { name: "anyUnlabelled", "@agg": "any", "@filter": { label: { isNull: true } } } }]);
     const sql = (await viewsOf(plain, "postgres"))["v_any_unlabelled_plain"];
-    expect(sql).toContain(`    bool_or(w."label" IS NULL) AS "anyUnlabelled"`);
+    expect(sql).toContain(`    bool_or(COALESCE(w."label" IS NULL, FALSE)) AS "anyUnlabelled"`);
   });
 });
 

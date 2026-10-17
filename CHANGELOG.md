@@ -126,10 +126,11 @@ generator catalog and the Atlas evaluation are 1.2 work.
   or `all` may omit `@of` and declare a `@filter` or `@segment` instead: it is then true when
   some row (`any`) or every row (`all`) in the group passes that condition. `{ "name":
   "hasError", "@agg": "any", "@filter": { "success": false } }` states "did any call fail"
-  (`bool_or(success = FALSE)`) over a `success` column, which a boolean `@of` could not. A row
-  whose condition is NULL is skipped, as `bool_or` skips one. It lowers
-  to `bool_or(<condition>)` / `bool_and(<condition>)` on Postgres and `MAX` / `MIN` of the
-  condition on SQLite, D1 and MySQL, and to the same SQL in the Cube model. The registry makes
+  over a `success` column, which a boolean `@of` could not. A row whose condition is NULL
+  counts as not passing, as a `WHERE` drops it, so only a group with no rows reads NULL. It
+  lowers to `bool_or(COALESCE(<condition>, FALSE))` / `bool_and(...)` on Postgres and `MAX` /
+  `MIN` of `COALESCE(<condition>, 0)` on SQLite, D1 and MySQL, and to the same SQL in the Cube
+  model. The registry makes
   `measure.aggregate` `@of` optional (`metamodelVersion` stays `1.1`), and a new loader rule M0
   refuses, with `ERR_INVALID_MEASURE`, an `@of`-less measure whose `@agg` is not `any` or `all`
   (it was `ERR_MISSING_REQUIRED_ATTR`) and an `@of`-less `any` / `all` with no condition.

@@ -16,7 +16,8 @@ and an `object.report` combines them by name. Four node kinds:
 - `measure.aggregate` (`@agg`: `count`, `sum`, `avg`, `min`, `max`, `any`, `all`) and `measure.ratio`
   (`@numerator` / `@denominator`, both measures of the entity). `any` / `all` take a
   `field.boolean` `@of`, or no `@of` and a `@filter` or `@segment`: `{ "name": "hasError",
-  "@agg": "any", "@filter": { "success": false } }` is "some row has `success` false";
+  "@agg": "any", "@filter": { "success": false } }` is "some row has `success` false" (a row
+  whose condition is null does not pass);
 - `segment.filter` — a named, reusable `@filter` ("active purchase");
 - `object.report` — a top-level object: `@from` an entity, `@dimensions` (`name` or
   `name:grain`), `@measures`.

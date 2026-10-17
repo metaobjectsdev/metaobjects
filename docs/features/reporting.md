@@ -507,9 +507,11 @@ A measure with no `@of` must declare a `@filter` or a `@segment` (rule M0); ever
 - **How it lowers.** Postgres writes `bool_or(x)` / `bool_and(x)`, with `FILTER (WHERE …)`
   for a condition. SQLite and MySQL have no boolean aggregate, and a boolean there is `0` or
   `1`, so they write `MAX(x)` for `any` and `MIN(x)` for `all` (`MAX(CASE WHEN … THEN x END)`
-  for a condition). Without `@of` the condition is the aggregated value: `bool_or(<condition>)`
-  on Postgres and `MAX(<condition>)` elsewhere, where a comparison is `0`, `1` or null. A row
-  whose condition is null (a null `success`) is skipped, as a null `@of` is. The runtime reads the column as the boolean it is typed as. A default is
+  for a condition). Without `@of` the condition is the aggregated value:
+  `bool_or(COALESCE(<condition>, FALSE))` on Postgres and `MAX(COALESCE(<condition>, 0))`
+  elsewhere, where a comparison is `0`, `1` or null. A row whose condition is null (a null
+  `success`) counts as not passing, as a `WHERE` drops it, so `all` over `true, null` is `false`
+  and only a group with no rows reads null. The runtime reads the column as the boolean it is typed as. A default is
   `COALESCE(<the aggregate>, FALSE)` on Postgres and `COALESCE(<the aggregate>, 0)` elsewhere.
 - **Cube.** The export writes a `type: boolean` measure holding the same aggregate, see
   [cube-export.md](cube-export.md).

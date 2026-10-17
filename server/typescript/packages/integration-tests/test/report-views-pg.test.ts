@@ -770,7 +770,7 @@ describe("report views — inline models on real Postgres", () => {
     expect(Number(row!.ratioTotal)).toBe(0.75);
   }, 60_000);
 
-  test("@agg any / all without @of: some row / every row passes the condition; a NULL condition is skipped", async () => {
+  test("@agg any / all without @of: some row / every row passes the condition; a NULL condition does not pass", async () => {
     const root = await loadInline(JSON.stringify({ "metadata.root": { package: "acme", children: [
       { "object.entity": { name: "Call", children: [
         { "source.rdb": { "@table": "calls" } },
@@ -786,7 +786,7 @@ describe("report views — inline models on real Postgres", () => {
         "@measures": ["hasError", "allSucceeded"], children: [
         { "source.rdb": { "@kind": "view", "@view": "v_calls_by_game" } } ] } },
     ]}}));
-    expect(viewSql(root, "v_calls_by_game")).toContain(`bool_or(c."success" = FALSE) AS "hasError"`);
+    expect(viewSql(root, "v_calls_by_game")).toContain(`bool_or(COALESCE(c."success" = FALSE, FALSE)) AS "hasError"`);
     const { expected } = await migrate(root);
     await assertConverged(expected);
     await applyRaw(`
@@ -795,8 +795,8 @@ describe("report views — inline models on real Postgres", () => {
     expect(await select(`SELECT * FROM "v_calls_by_game" ORDER BY "game"`)).toEqual([
       { game: "1", hasError: "t", allSucceeded: "f" },
       { game: "2", hasError: "f", allSucceeded: "t" },
-      { game: "3", hasError: "f", allSucceeded: "t" },
-      { game: "4", hasError: null, allSucceeded: null },
+      { game: "3", hasError: "f", allSucceeded: "f" },
+      { game: "4", hasError: "f", allSucceeded: "f" },
     ]);
   }, 60_000);
 });

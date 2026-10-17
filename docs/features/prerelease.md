@@ -173,7 +173,11 @@ per-worktree exclude), so the paths `link` adds there live inside their own mana
 too: `unlink` removes exactly that block, never a line a user added to the file by hand,
 and a repeated `link` does not duplicate it. An entry that another worktree of the same
 clone, or another project linked in the same worktree, still needs stays until that one is
-unlinked too. Files that *are* tracked by definition
+unlinked too. A clone linked by an earlier version of the script holds those entries as bare
+lines outside any block, which `unlink` cannot tell from a line a user added. `link` and
+`unlink` name such lines and print the one command that removes them, and leave them in
+place; `link` does not add a second copy inside the block while one is there. Run that
+command once no worktree of the clone is linked. Files that *are* tracked by definition
 (`pyproject.toml`, `pom.xml`) get a loud warning instead — there is no way to make an edit
 to a tracked file uncommittable, which is precisely why the detector in §5 exists.
 

@@ -72,13 +72,15 @@ function aggregate(a: ReportAggregate, d: ReportDialect, factRef?: string): stri
   } else if (refs.length === 0) {
     // @agg any / all with no @of (rule M0): the condition IS the quantified predicate, "some row
     // (every row) passes". A comparison is a boolean on Postgres and 0 / 1 / NULL elsewhere, so
-    // MAX / MIN of it is the OR / AND, and a row whose predicate is NULL is skipped as bool_or skips it.
+    // MAX / MIN of it is the OR / AND. A row whose predicate is NULL does not pass, as WHERE would
+    // drop it, so the predicate is COALESCEd to false and only an empty group reads NULL.
     if (c === undefined) throw new Error(`report-ddl-emit: @agg '${a.agg}' has neither @of nor a condition.`);
+    const passes = `COALESCE(${c}, ${d === "postgres" ? "FALSE" : "0"})`;
     // Under @spine the padding row's condition can still be true (`col IS NULL`), so only fact
     // rows are aggregated, and a spine row with no facts reads null as every other measure does.
-    if (factRef === undefined) sql = `${fn}(${c})`;
-    else if (d === "postgres") sql = `${fn}(${c}) FILTER (WHERE ${ref(factRef, d)} IS NOT NULL)`;
-    else sql = `${fn}(CASE WHEN ${ref(factRef, d)} IS NOT NULL THEN ${c} END)`;
+    if (factRef === undefined) sql = `${fn}(${passes})`;
+    else if (d === "postgres") sql = `${fn}(${passes}) FILTER (WHERE ${ref(factRef, d)} IS NOT NULL)`;
+    else sql = `${fn}(CASE WHEN ${ref(factRef, d)} IS NOT NULL THEN ${passes} END)`;
   } else {
     const x = refs[0]!;
     const distinct = a.distinct ? "DISTINCT " : "";

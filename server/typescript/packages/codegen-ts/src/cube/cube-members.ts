@@ -245,7 +245,7 @@ function aggregateSpec(
     // No @of (rule M0): the condition is the quantified predicate, as in the view.
     if (col === undefined) {
       if (c === undefined) throw new Error(`${where}: @agg '${agg}' has neither @of nor a condition.`);
-      return { sql: `${fn}(${c})`, type: "boolean" };
+      return { sql: `${fn}(COALESCE(${c}, ${d === "postgres" ? "FALSE" : "0"}))`, type: "boolean" };
     }
     if (d === "postgres") {
       return { sql: c === undefined ? `${fn}(${col})` : `${fn}(${col}) FILTER (WHERE ${c})`, type: "boolean" };
