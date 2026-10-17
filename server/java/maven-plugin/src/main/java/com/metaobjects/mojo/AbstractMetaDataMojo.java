@@ -113,10 +113,25 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
      * property or execution differently each count. Maven builds each model, so profile
      * properties, inherited profiles and basedirs resolve as they do when the profile is
      * on. {@code null} when a model cannot be built or none declares this plugin, so what
-     * is configured is unknown.
+     * is configured is unknown. Computed once per module per build and kept in the
+     * project's build context, since every execution of the module reads the same POMs.
      */
     protected Set<HashManifest.Owner> configuredOwners() {
         if (project == null || project.getFile() == null || projectBuilder == null || session == null) return null;
+        if (project.getContextValue(CONFIGURED_OWNERS_CONTEXT_KEY) instanceof ConfiguredOwners known) {
+            return known.owners();
+        }
+        Set<HashManifest.Owner> owners = readConfiguredOwners();
+        project.setContextValue(CONFIGURED_OWNERS_CONTEXT_KEY, new ConfiguredOwners(owners));
+        return owners;
+    }
+
+    private record ConfiguredOwners(Set<HashManifest.Owner> owners) {}
+
+    private static final String CONFIGURED_OWNERS_CONTEXT_KEY =
+            AbstractMetaDataMojo.class.getName() + ".configuredOwners";
+
+    private Set<HashManifest.Owner> readConfiguredOwners() {
         Set<String> profileIds = new LinkedHashSet<>();
         for (MavenProject p = project; p != null; p = p.getParent()) {
             if (p.getModel() == null) continue;

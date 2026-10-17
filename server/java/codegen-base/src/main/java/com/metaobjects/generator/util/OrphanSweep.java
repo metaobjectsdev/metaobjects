@@ -11,6 +11,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 /**
@@ -139,13 +140,14 @@ public final class OrphanSweep {
      * generator/output-directory pair configured in the module; {@code null} when that is
      * unknown) does not hold it. An entry with no owner counts only inside one of this
      * run's output directories ({@code inRunDir}), since outside them it may be another
-     * port's.
+     * port's. {@code configured} is asked only when the answer depends on it.
      */
     public static boolean isCandidate(HashManifest.Owner owner, boolean inRunDir,
-                                      Set<HashManifest.Owner> runOwners, Set<HashManifest.Owner> configured) {
+                                      Set<HashManifest.Owner> runOwners, Supplier<Set<HashManifest.Owner>> configured) {
         if (owner != null && runOwners.contains(owner)) return true;
-        if (configured == null) return false;
-        return owner == null ? inRunDir : !configured.contains(owner);
+        if (owner == null && !inRunDir) return false;
+        Set<HashManifest.Owner> known = configured.get();
+        return known != null && (owner == null || !known.contains(owner));
     }
 
     /**
@@ -156,7 +158,7 @@ public final class OrphanSweep {
      * manifest yet — there is nothing recorded, so nothing could be an orphan.
      */
     public static Result sweep(Path genStateDir, Path projectRoot, List<Entry> dirs, Set<Path> emitted,
-                               Set<HashManifest.Owner> runOwners, Set<HashManifest.Owner> configured) {
+                               Set<HashManifest.Owner> runOwners, Supplier<Set<HashManifest.Owner>> configured) {
         if (!HashManifest.exists(genStateDir)) {
             return new Result(List.of(), List.of(), List.of());
         }

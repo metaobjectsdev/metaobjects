@@ -27,6 +27,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
@@ -119,13 +120,26 @@ public class ConfiguredGeneratorsTest {
         return rule.lookup(ProjectBuilder.class).build(pom.toFile(), request(activeProfiles)).getProject();
     }
 
+    /** The {@link ProjectBuilder} the mojos use, counted: every call is one model build. */
+    private ProjectBuilder modelBuilder;
+
+    private ProjectBuilder modelBuilder() throws Exception {
+        if (modelBuilder == null) modelBuilder = Mockito.spy(rule.lookup(ProjectBuilder.class));
+        return modelBuilder;
+    }
+
+    private long modelBuilds() throws Exception {
+        return Mockito.mockingDetails(modelBuilder()).getInvocations().stream()
+                .filter(i -> i.getMethod().getName().equals("build")).count();
+    }
+
     private <M extends AbstractMetaDataMojo> M inBuild(M mojo, MavenProject module, String executionId,
                                                          String... activeProfiles) throws Exception {
         MavenSession session = Mockito.mock(MavenSession.class);
         Mockito.when(session.getProjectBuildingRequest()).thenReturn(request(activeProfiles));
         mojo.project = module;
         mojo.session = session;
-        mojo.projectBuilder = rule.lookup(ProjectBuilder.class);
+        mojo.projectBuilder = modelBuilder();
         mojo.execution = new MojoExecution(new MojoDescriptor(), executionId);
         return mojo;
     }
@@ -288,6 +302,44 @@ public class ConfiguredGeneratorsTest {
 
         assertFalse("no execution configures its generator any more", Files.exists(webDir.resolve("Route.java")));
         assertTrue(Files.exists(mainDir.resolve("Dto.java")));
+    }
+
+    @Test
+    public void buildWhoseEntriesAreAllItsOwn_buildsNoExtraModel() throws Exception {
+        Path mainDir = root.resolve("gen");
+        Path pom = pom(root, "app", "", plugin("codegen", generators(DTO, "${project.basedir}/gen")),
+                profile("client", "", plugin("client", generators(CLIENT, "${project.basedir}/client"))));
+        generate(build(pom), "codegen", NO_PROFILES, gen(DTO, mainDir, "Old.java"));
+        generate(build(pom), "codegen", NO_PROFILES, gen(DTO, mainDir, "Dto.java"));
+        generate(build(pom), "codegen", NO_PROFILES, gen(DTO, mainDir, "Dto.java"));
+
+        assertFalse("this run's own orphan is still cleaned", Files.exists(mainDir.resolve("Old.java")));
+        assertEquals(0, modelBuilds());
+    }
+
+    @Test
+    public void twoExecutionsInOneModule_readTheConfiguredGeneratorsOnce() throws Exception {
+        Path mainDir = root.resolve("gen");
+        Path webDir = root.resolve("web");
+        Path clientDir = root.resolve("client");
+        String client = "<execution><id>client</id><goals><goal>generate</goal></goals><configuration>"
+                + generators(CLIENT, "${project.basedir}/client") + "</configuration></execution>";
+        Path pom = pom(root, "app", "", plugin("codegen", generators(DTO, "${project.basedir}/gen",
+                CLIENT, "${project.basedir}/web")).replace("</executions>", client + "</executions>"), "");
+        MavenProject first = build(pom);
+        generate(first, "codegen", NO_PROFILES, gen(DTO, mainDir, "Dto.java"), gen(CLIENT, webDir, "Route.java"));
+        generate(first, "client", NO_PROFILES, gen(CLIENT, clientDir, "Client.java"));
+        Files.writeString(webDir.resolve("Route.java"), "/** GENERATED */\npublic class X { int mine; }\n");
+
+        pom(root, "app", "", plugin("codegen", generators(DTO, "${project.basedir}/gen"))
+                .replace("</executions>", client + "</executions>"), "");
+        long before = modelBuilds();
+        MavenProject second = build(pom);
+        generate(second, "codegen", NO_PROFILES, gen(DTO, mainDir, "Dto.java"));
+        generate(second, "client", NO_PROFILES, gen(CLIENT, clientDir, "Client.java"));
+
+        assertTrue("an edited orphan of a removed generator is refused", Files.exists(webDir.resolve("Route.java")));
+        assertEquals("one model (no profiles) for the module, shared by both executions", 1, modelBuilds() - before);
     }
 
     /** A manifest an 8.1.0 pre-release wrote names the Maven execution, or nothing. The first

@@ -456,11 +456,10 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
             HashManifest.Owner owner = ownerOf(g);
             if (owner != null) runOwners.add(owner);
         }
-        Set<HashManifest.Owner> configured = configuredOwners();
         Path root = projectRoot.toAbsolutePath().normalize();
         for (Map.Entry<String, String> e : hashes.entrySet()) {
             boolean inRunDir = targetHolding(targets, root.resolve(e.getKey()).normalize()) != null;
-            if (OrphanSweep.isCandidate(owners.get(e.getKey()), inRunDir, runOwners, configured)) {
+            if (OrphanSweep.isCandidate(owners.get(e.getKey()), inRunDir, runOwners, this::configuredOwners)) {
                 owned.put(e.getKey(), e.getValue());
             }
         }

@@ -139,7 +139,7 @@ public class MetaDataGeneratorMojo extends AbstractMetaDataMojo
             dirs.add(new OrphanSweep.Entry(e.getKey(), e.getKey() + File.separator, allOverwrite));
         }
         OrphanSweep.Result swept = OrphanSweep.sweep(
-                genStateDir, projectRoot, dirs, emitted, runOwners, configuredOwners());
+                genStateDir, projectRoot, dirs, emitted, runOwners, this::configuredOwners);
         for (String path : swept.removed) {
             getLog().info("MetaData Mojo > Removed orphaned generated file no longer produced: " + path);
         }
