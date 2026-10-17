@@ -89,7 +89,10 @@ does not cover deletion, and deletion without evidence is not safe on any port.
 5. **The orphan sweep is the cross-port rule.** After a full run, a recorded file under the
    execution's output directories that no generator emitted is deleted when untouched and
    refused by name when edited. Under `handEdits: overwrite` an edited orphan is also deleted
-   when every generator writing into its directory overwrites. `mvn metaobjects:verify` judges
+   when every generator writing into its directory overwrites. The TypeScript, Python and C#
+   manifests do not record which generator wrote a file, which is why the rule is
+   directory-wide there; the JVM manifest records the generator but applies the same
+   directory-wide rule, so every port behaves the same. `mvn metaobjects:verify` judges
    extra files on the same evidence. The rule is written once in
    `docs/features/own-your-codegen.md`, "Files that are no longer generated".
 6. **A refusal stays a warning on the JVM.** The build does not fail over a refused file.

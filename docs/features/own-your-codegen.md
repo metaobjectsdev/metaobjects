@@ -649,9 +649,11 @@ Every file `overwrite` discards is named, one line each (`overwrote hand-edited 
 silently. `overwrite` applies only to files the manifest records `gen` writing: a file with
 no record is not generated output and is still refused.
 
-The manifest records which files `gen` wrote, not which generator wrote each one. So an
-edited orphan is deleted only when **every** generator writing into its output directory
-sets `overwrite`. One `keep` entry in the directory keeps the file and the refusal.
+On TypeScript, Python and C# the manifest records which files `gen` wrote, not which
+generator wrote each one. So an edited orphan is deleted only when **every** generator
+writing into its output directory sets `overwrite`. One `keep` entry in the directory keeps
+the file and the refusal. The Java and Kotlin manifest does record each file's generator,
+but applies the same directory-wide rule, so every port behaves the same.
 
 `verify --codegen` follows the same setting. Under `overwrite` an edit is drift that `gen`
 fixes, and the report says "gen replaces it" or "gen deletes it" and tells you to
