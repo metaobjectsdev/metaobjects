@@ -61,12 +61,11 @@ does not cover deletion, and deletion without evidence is not safe on any port.
    live). An entry with no owner (the plain `"<path>": "<hash>"` form other ports write)
    counts as configured nowhere only inside this run's output directories. A file another
    configured generator owns is never this run's orphan, even in a shared output
-   directory. An owner more than one execution configures (one generator into one
-   directory over two metadata sets) is judged only by the last of those executions in
-   declared order, once all of them have run in the build, against what all of them
-   emitted; a standalone run of one of them never sweeps it, and `mvn metaobjects:verify`
-   does not report its entries as orphans. The same path emitted by two executions with
-   the same owner is an error naming both executions, whatever the content. One path emitted with different content by two generator/output-directory
+   directory. Every owner has exactly one execution: two executions that configure the
+   same generator into the same output directory, in any of the models above, fail
+   `generate` and `verify` before anything is written, naming both executions and the
+   profile each comes from. The plugin-level configuration is no execution of its own, so
+   `default-cli` beside the execution that inherits it is one configuration. One path emitted with different content by two generator/output-directory
    pairs in the same build is an error naming both; byte-identical re-emission is one file,
    and a path the adopter hand-owns is refused for each generator, not a collision. The first build on a manifest that names no generator owner
    (an 8.1.0 pre-release recorded the execution id instead) records the owners and deletes

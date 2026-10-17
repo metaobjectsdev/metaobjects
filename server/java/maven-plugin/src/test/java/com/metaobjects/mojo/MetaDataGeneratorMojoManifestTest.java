@@ -414,7 +414,7 @@ public class MetaDataGeneratorMojoManifestTest {
         MavenProject module = newBuild(null, Map.of(
                 "codegen-web", configuration(dto), "codegen-data", configuration(repository)));
 
-        runExecution(module, "codegen-web", dto);
+        runExecution(module, "codegen-web", dto, repository);
         runExecution(module, "codegen-data", repository);
 
         assertEquals(MARKER_BODY, Files.readString(Path.of(shared, "Status.java")));

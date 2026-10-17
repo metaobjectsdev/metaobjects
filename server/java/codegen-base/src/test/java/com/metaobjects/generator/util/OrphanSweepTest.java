@@ -94,7 +94,7 @@ public class OrphanSweepTest {
         Set<Path> emitted = new LinkedHashSet<>(Set.of(newFile.toAbsolutePath().normalize()));
 
         OrphanSweep.Entry entry = new OrphanSweep.Entry(outDir, "gen/", false);
-        OrphanSweep.Result result = OrphanSweep.sweep(genStateDir, projectRoot, List.of(entry), emitted, Set.of(OWNER)::contains, () -> null);
+        OrphanSweep.Result result = OrphanSweep.sweep(genStateDir, projectRoot, List.of(entry), emitted, Set.of(OWNER), () -> null);
 
         assertFalse("old file should be deleted", Files.exists(oldFile));
         assertTrue(result.removed.contains("gen/Telemetry.java"));
@@ -115,7 +115,7 @@ public class OrphanSweepTest {
         Files.writeString(oldFile, "/** GENERATED */\npublic class Telemetry { /* mine */ }\n");
 
         OrphanSweep.Entry entry = new OrphanSweep.Entry(outDir, "gen/", false);
-        OrphanSweep.Result result = OrphanSweep.sweep(genStateDir, projectRoot, List.of(entry), Set.of(), Set.of(OWNER)::contains, () -> null);
+        OrphanSweep.Result result = OrphanSweep.sweep(genStateDir, projectRoot, List.of(entry), Set.of(), Set.of(OWNER), () -> null);
 
         assertTrue("edited orphan must be left in place", Files.exists(oldFile));
         assertTrue(result.refused.contains("gen/Telemetry.java"));
@@ -134,7 +134,7 @@ public class OrphanSweepTest {
         Files.writeString(oldFile, "/** GENERATED */\npublic class Telemetry { /* mine */ }\n");
 
         OrphanSweep.Entry entry = new OrphanSweep.Entry(outDir, "gen/", true);
-        OrphanSweep.Result result = OrphanSweep.sweep(genStateDir, projectRoot, List.of(entry), Set.of(), Set.of(OWNER)::contains, () -> null);
+        OrphanSweep.Result result = OrphanSweep.sweep(genStateDir, projectRoot, List.of(entry), Set.of(), Set.of(OWNER), () -> null);
 
         assertFalse("overwrite policy deletes a hand-edited orphan", Files.exists(oldFile));
         assertTrue(result.overwrittenDeleted.contains("gen/Telemetry.java"));
@@ -153,7 +153,7 @@ public class OrphanSweepTest {
         HashManifest.record(genStateDir, "gen/Other.java", "x", OWNER);
 
         OrphanSweep.Entry entry = new OrphanSweep.Entry(outDir, "gen/", false);
-        OrphanSweep.Result result = OrphanSweep.sweep(genStateDir, projectRoot, List.of(entry), Set.of(), Set.of(OWNER)::contains, () -> null);
+        OrphanSweep.Result result = OrphanSweep.sweep(genStateDir, projectRoot, List.of(entry), Set.of(), Set.of(OWNER), () -> null);
 
         assertTrue(Files.exists(stray));
         assertFalse(result.removed.contains("gen/HandWritten.java"));
@@ -167,7 +167,7 @@ public class OrphanSweepTest {
         Files.writeString(stray, "whatever\n");
 
         OrphanSweep.Entry entry = new OrphanSweep.Entry(outDir, "gen/", false);
-        OrphanSweep.Result result = OrphanSweep.sweep(genStateDir, projectRoot, List.of(entry), Set.of(), Set.of(OWNER)::contains, () -> null);
+        OrphanSweep.Result result = OrphanSweep.sweep(genStateDir, projectRoot, List.of(entry), Set.of(), Set.of(OWNER), () -> null);
 
         assertTrue(result.removed.isEmpty());
         assertTrue(result.refused.isEmpty());
@@ -183,7 +183,7 @@ public class OrphanSweepTest {
         HashManifest.record(genStateDir, "gen/Deleted.java", "irrelevant", OWNER);
 
         OrphanSweep.Entry entry = new OrphanSweep.Entry(outDir, "gen/", false);
-        OrphanSweep.Result result = OrphanSweep.sweep(genStateDir, projectRoot, List.of(entry), Set.of(), Set.of(OWNER)::contains, () -> null);
+        OrphanSweep.Result result = OrphanSweep.sweep(genStateDir, projectRoot, List.of(entry), Set.of(), Set.of(OWNER), () -> null);
 
         assertFalse(HashManifest.load(genStateDir).containsKey("gen/Deleted.java"));
     }
@@ -209,7 +209,7 @@ public class OrphanSweepTest {
         // Only dirA's execution runs this sweep (dirB's execution's generators did not run
         // this time), and dirA emitted nothing — A.java is now an orphan of dirA only.
         OrphanSweep.Entry entryA = new OrphanSweep.Entry(dirA, "genA/", false);
-        OrphanSweep.Result result = OrphanSweep.sweep(genStateDir, projectRoot, List.of(entryA), Set.of(), Set.of(ownerA)::contains, () -> null);
+        OrphanSweep.Result result = OrphanSweep.sweep(genStateDir, projectRoot, List.of(entryA), Set.of(), Set.of(ownerA), () -> null);
 
         assertFalse("A.java is dirA's orphan", Files.exists(fileA));
         assertTrue("B.java is untouched — outside dirA's jurisdiction", Files.exists(fileB));
@@ -247,7 +247,7 @@ public class OrphanSweepTest {
 
         OrphanSweep.Entry entry = new OrphanSweep.Entry(outDir, "gen/", true);
         OrphanSweep.Result result = OrphanSweep.sweep(genStateDir, projectRoot, List.of(entry), Set.of(),
-            Set.of(OWNER)::contains, () -> Set.of(OWNER, DTO, REMOVED));
+            Set.of(OWNER), () -> Set.of(OWNER, DTO, REMOVED));
 
         assertEquals(List.of("gen/Mine.java", "gen/Unowned.java"), result.removed);
         assertTrue(Files.exists(outDir.resolve("Theirs.java")));
@@ -265,7 +265,7 @@ public class OrphanSweepTest {
 
         OrphanSweep.Entry entry = new OrphanSweep.Entry(outDir, "gen/", false);
         OrphanSweep.Result result = OrphanSweep.sweep(genStateDir, projectRoot, List.of(entry), Set.of(),
-            Set.of(OWNER)::contains, () -> Set.of(OWNER));
+            Set.of(OWNER), () -> Set.of(OWNER));
 
         assertEquals(List.of("gen/Mine.java", "gen/Theirs.java", "gen/Unowned.java", "web/Route.java"),
             result.removed);
@@ -280,7 +280,7 @@ public class OrphanSweepTest {
 
         OrphanSweep.Entry entry = new OrphanSweep.Entry(outDir, "gen/", false);
         OrphanSweep.Result result = OrphanSweep.sweep(genStateDir, projectRoot, List.of(entry), Set.of(),
-            Set.of(OWNER)::contains, () -> null);
+            Set.of(OWNER), () -> null);
 
         assertEquals(List.of("gen/Mine.java"), result.removed);
         assertTrue(Files.exists(outDir.resolve("Unowned.java")));
@@ -301,7 +301,7 @@ public class OrphanSweepTest {
         OrphanSweep.Entry outerKeep = new OrphanSweep.Entry(outDir, "gen/", false);
         OrphanSweep.Entry innerOverwrite = new OrphanSweep.Entry(inner, "inner/", true);
         OrphanSweep.Result result = OrphanSweep.sweep(
-            genStateDir, projectRoot, List.of(outerKeep, innerOverwrite), Set.of(), Set.of(OWNER)::contains, () -> null);
+            genStateDir, projectRoot, List.of(outerKeep, innerOverwrite), Set.of(), Set.of(OWNER), () -> null);
 
         assertFalse(Files.exists(orphan));
         assertEquals(List.of("inner/Old.java"), result.overwrittenDeleted);
@@ -320,7 +320,7 @@ public class OrphanSweepTest {
         OrphanSweep.Entry outerOverwrite = new OrphanSweep.Entry(outDir, "gen/", true);
         OrphanSweep.Entry innerKeep = new OrphanSweep.Entry(inner, "inner/", false);
         OrphanSweep.Result result = OrphanSweep.sweep(
-            genStateDir, projectRoot, List.of(outerOverwrite, innerKeep), Set.of(), Set.of(OWNER)::contains, () -> null);
+            genStateDir, projectRoot, List.of(outerOverwrite, innerKeep), Set.of(), Set.of(OWNER), () -> null);
 
         assertTrue(Files.exists(orphan));
         assertEquals(List.of("gen/inner/Old.java"), result.refused);

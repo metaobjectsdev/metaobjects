@@ -121,17 +121,23 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
     }
 
     /**
-     * The ids of the module's {@code metaobjects:generate} executions that configure
-     * {@code owner}, in declared order; empty when none does or that is unknown. The
-     * plugin-level configuration alone is no execution.
+     * Fail before anything is written when two {@code metaobjects:generate} executions of
+     * the module, in any of the models {@link #configuredOwners} reads, configure the same
+     * generator into the same output directory. Their files would share one owner, so
+     * neither execution could tell the other's output from its own orphans. The
+     * plugin-level configuration is no execution of its own: a command-line run of it and
+     * the one execution that inherits it are the same configuration.
      */
-    protected List<String> executionsConfiguring(HashManifest.Owner owner) {
-        return configured().executions().getOrDefault(owner, List.of());
-    }
-
-    /** Whether more than one execution of the module configures {@code owner}. */
-    protected boolean sharedByExecutions(HashManifest.Owner owner) {
-        return executionsConfiguring(owner).size() > 1;
+    protected void refuseSharedGeneratorDirs() {
+        List<String> shared = new ArrayList<>();
+        configured().executions().forEach((owner, by) -> {
+            if (by.size() > 1) shared.add("'" + owner + "' in executions " + String.join(" and ", by));
+        });
+        if (shared.isEmpty()) return;
+        shared.sort(String::compareTo);
+        throw new MetaDataException("Two metaobjects:generate executions of this module configure the same "
+                + "generator into the same output directory: " + String.join("; ", shared) + ". Give each "
+                + "execution its own <outputDir>, or merge them into one execution.");
     }
 
     private ConfiguredOwners configured() {
@@ -171,6 +177,14 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
         }
         Set<HashManifest.Owner> out = new HashSet<>();
         Map<HashManifest.Owner, Set<String>> executions = new HashMap<>();
+        Map<String, String> profileOf = new HashMap<>();
+        Set<String> baseIds = generateExecutionIds(base);
+        List<String> profiles = new ArrayList<>(profileIds);
+        for (int i = 0; i < profiles.size(); i++) {
+            for (String id : generateExecutionIds(models.get(i + 2))) {
+                if (!baseIds.contains(id)) profileOf.putIfAbsent(id, profiles.get(i));
+            }
+        }
         boolean declared = false;
         for (MavenProject model : models) {
             Plugin plugin = model.getPlugin(PLUGIN_KEY);
@@ -190,8 +204,20 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
         }
         if (!declared) return ConfiguredOwners.UNKNOWN;
         Map<HashManifest.Owner, List<String>> byOwner = new HashMap<>();
-        executions.forEach((owner, ids) -> byOwner.put(owner, List.copyOf(ids)));
+        executions.forEach((owner, ids) -> byOwner.put(owner, ids.stream()
+                .map(id -> "'" + id + "'" + (profileOf.containsKey(id) ? " (profile '" + profileOf.get(id) + "')" : ""))
+                .toList()));
         return new ConfiguredOwners(out, byOwner);
+    }
+
+    private static Set<String> generateExecutionIds(MavenProject model) {
+        Set<String> ids = new HashSet<>();
+        Plugin plugin = model.getPlugin(PLUGIN_KEY);
+        if (plugin == null) return ids;
+        for (PluginExecution e : plugin.getExecutions()) {
+            if (e.getGoals().contains("generate")) ids.add(e.getId());
+        }
+        return ids;
     }
 
     /** This module built by Maven with only profile {@code active} on ({@code null}: none of

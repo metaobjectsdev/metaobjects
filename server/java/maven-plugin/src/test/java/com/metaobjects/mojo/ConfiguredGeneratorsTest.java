@@ -306,20 +306,6 @@ public class ConfiguredGeneratorsTest {
     }
 
     @Test
-    public void noOpBuild_buildsNoExtraModel() throws Exception {
-        Path mainDir = root.resolve("gen");
-        Path pom = pom(root, "app", "", plugin("codegen", generators(DTO, "${project.basedir}/gen")),
-                profile("client", "", plugin("client", generators(CLIENT, "${project.basedir}/client"))));
-        generate(build(pom), "codegen", NO_PROFILES, gen(DTO, mainDir, "Old.java"));
-        generate(build(pom), "codegen", NO_PROFILES, gen(DTO, mainDir, "Dto.java"));
-        assertFalse("this run's own orphan is still cleaned", Files.exists(mainDir.resolve("Old.java")));
-
-        long before = modelBuilds();
-        generate(build(pom), "codegen", NO_PROFILES, gen(DTO, mainDir, "Dto.java"));
-        assertEquals(0, modelBuilds() - before);
-    }
-
-    @Test
     public void twoExecutionsInOneModule_readTheConfiguredGeneratorsOnce() throws Exception {
         Path mainDir = root.resolve("gen");
         Path webDir = root.resolve("web");
@@ -344,70 +330,81 @@ public class ConfiguredGeneratorsTest {
         assertEquals("one model (no profiles) for the module, shared by both executions", 1, modelBuilds() - before);
     }
 
-    /** Executions {@code core} and {@code ext}, in that order, both configuring {@code DTO} into
-     *  {@code gen} (as one generator over two metadata sets would). */
-    private Path coreAndExt() throws IOException {
-        String ext = "<execution><id>ext</id><goals><goal>generate</goal></goals><configuration>"
-                + generators(DTO, "${project.basedir}/gen") + "</configuration></execution>";
-        return pom(root, "app", "", plugin("core", generators(DTO, "${project.basedir}/gen"))
-                .replace("</executions>", ext + "</executions>"), "");
+    private static String execution(String id, String generators) {
+        return "<execution><id>" + id + "</id><goals><goal>generate</goal></goals><configuration>"
+                + generators + "</configuration></execution>";
     }
 
     @Test
-    public void oneGeneratorInOneDirFromTwoExecutions_neitherSweepsTheOther_acrossBuilds() throws Exception {
+    public void oneGeneratorInOneDirFromTwoExecutions_failsBeforeWritingAnything() throws Exception {
         Path gen = root.resolve("gen");
-        Path pom = coreAndExt();
-        for (int build = 1; build <= 2; build++) {
-            MavenProject module = build(pom);
-            generate(module, "core", NO_PROFILES, gen(DTO, gen, "A.java"));
-            assertTrue("build " + build + ": core leaves ext's file", build == 1 || Files.exists(gen.resolve("B.java")));
-            generate(module, "ext", NO_PROFILES, gen(DTO, gen, "B.java"));
-            assertTrue("build " + build, Files.exists(gen.resolve("A.java")) && Files.exists(gen.resolve("B.java")));
+        Path pom = pom(root, "app", "", plugin("core", generators(DTO, "${project.basedir}/gen"))
+                .replace("</executions>", execution("ext", generators(DTO, "${project.basedir}/gen")) + "</executions>"), "");
+        try {
+            generate(build(pom), "core", NO_PROFILES, gen(DTO, gen, "A.java"));
+            fail("expected two executions of one generator into one dir to be refused");
+        } catch (MetaDataException e) {
+            assertTrue(e.getMessage(), e.getMessage().contains("'core' and 'ext'")
+                    && e.getMessage().contains("its own <outputDir>"));
         }
-        verify(build(pom), gen(DTO, gen, "A.java"));
+        assertFalse("nothing written", Files.exists(gen.resolve("A.java")));
+        try {
+            verify(build(pom), gen(DTO, gen, "A.java"));
+            fail("expected verify to refuse it too");
+        } catch (MetaDataException e) {
+            assertTrue(e.getMessage(), e.getMessage().contains("'core' and 'ext'"));
+        }
     }
 
     @Test
-    public void standaloneRunOfOneSharingExecution_deletesNothingOfTheOther() throws Exception {
+    public void oneGeneratorInOneDirFromAProfilesExecution_failsNamingTheProfile() throws Exception {
         Path gen = root.resolve("gen");
-        Path pom = coreAndExt();
-        MavenProject first = build(pom);
-        generate(first, "core", NO_PROFILES, gen(DTO, gen, "A.java"));
-        generate(first, "ext", NO_PROFILES, gen(DTO, gen, "B.java"));
-
-        generate(build(pom), "core", NO_PROFILES, gen(DTO, gen, "A.java"));
-
-        assertTrue("generate@core leaves ext's file", Files.exists(gen.resolve("B.java")));
+        Path pom = pom(root, "app", "", plugin("core", generators(DTO, "${project.basedir}/gen")),
+                profile("extra", "", plugin("extra", generators(DTO, "${project.basedir}/gen"))));
+        try {
+            generate(build(pom), "core", NO_PROFILES, gen(DTO, gen, "A.java"));
+            fail("expected a profile's execution of the same generator and dir to be refused");
+        } catch (MetaDataException e) {
+            assertTrue(e.getMessage(), e.getMessage().contains("'core' and 'extra' (profile 'extra')"));
+        }
+        assertFalse(Files.exists(gen.resolve("A.java")));
     }
 
     @Test
-    public void entityRemovedFromTheLastSharingExecution_isCleanedByTheFullBuild() throws Exception {
+    public void twoExecutionsInTwoDirs_eachCleansItsOwnOrphans() throws Exception {
         Path gen = root.resolve("gen");
-        Path pom = coreAndExt();
+        Path client = root.resolve("client");
+        Path pom = pom(root, "app", "", plugin("core", generators(DTO, "${project.basedir}/gen"))
+                .replace("</executions>", execution("ext", generators(DTO, "${project.basedir}/client")) + "</executions>"), "");
         MavenProject first = build(pom);
         generate(first, "core", NO_PROFILES, gen(DTO, gen, "A.java"));
-        generate(first, "ext", NO_PROFILES, gen(DTO, gen, "B.java"), gen(DTO, gen, "C.java"));
+        generate(first, "ext", NO_PROFILES, gen(DTO, client, "B.java"), gen(DTO, client, "C.java"));
 
         MavenProject second = build(pom);
         generate(second, "core", NO_PROFILES, gen(DTO, gen, "A.java"));
-        generate(second, "ext", NO_PROFILES, gen(DTO, gen, "B.java"));
+        assertTrue("core leaves ext's files", Files.exists(client.resolve("C.java")));
+        generate(second, "ext", NO_PROFILES, gen(DTO, client, "B.java"));
 
-        assertFalse("no execution emits it any more", Files.exists(gen.resolve("C.java")));
-        assertTrue(Files.exists(gen.resolve("A.java")) && Files.exists(gen.resolve("B.java")));
+        assertFalse("no execution emits it any more", Files.exists(client.resolve("C.java")));
+        assertTrue(Files.exists(gen.resolve("A.java")) && Files.exists(client.resolve("B.java")));
     }
 
+    /** {@code mvn metaobjects:generate compile}: the command-line run and the execution that
+     *  inherits the plugin-level configuration are one configuration, run twice. */
     @Test
-    public void onePathFromOneGeneratorInTwoExecutions_isAnErrorNamingBoth() throws Exception {
+    public void commandLineRunAndTheExecutionInheritingItsConfiguration_inOneBuild_isGreen() throws Exception {
         Path gen = root.resolve("gen");
-        MavenProject module = build(coreAndExt());
-        generate(module, "core", NO_PROFILES, gen(DTO, gen, "Same.java"));
-        try {
-            generate(module, "ext", NO_PROFILES, gen(DTO, gen, "Same.java"));
-            fail("expected the same file from two executions to be an error");
-        } catch (MetaDataException e) {
-            assertTrue(e.getMessage(), e.getMessage().contains("Same.java")
-                    && e.getMessage().contains("'core'") && e.getMessage().contains("'ext'"));
-        }
+        Path pom = pom(root, "app", "", "<plugin><groupId>com.metaobjects</groupId>"
+                + "<artifactId>metaobjects-maven-plugin</artifactId><version>8.1.0</version>"
+                + "<configuration>" + generators(DTO, "${project.basedir}/gen") + "</configuration>"
+                + "<executions><execution><id>codegen</id><goals><goal>generate</goal></goals></execution>"
+                + "</executions></plugin>", "");
+        MavenProject module = build(pom);
+        generate(module, "default-cli", NO_PROFILES, gen(DTO, gen, "Dto.java"));
+        generate(module, "codegen", NO_PROFILES, gen(DTO, gen, "Dto.java"));
+
+        assertTrue(Files.exists(gen.resolve("Dto.java")));
+        verify(build(pom), gen(DTO, gen, "Dto.java"));
     }
 
     /** A manifest an 8.1.0 pre-release wrote names the Maven execution, or nothing. The first
