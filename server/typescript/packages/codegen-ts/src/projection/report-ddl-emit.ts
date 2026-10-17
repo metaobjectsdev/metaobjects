@@ -46,8 +46,9 @@ function aggFunction(agg: ReportAggregate["agg"], d: ReportDialect): string {
 }
 
 /** One aggregate (Table C): the bare aggregate, the condition by dialect, the cast, then the
- *  Table D default around all of it. */
-function aggregate(a: ReportAggregate, d: ReportDialect): string {
+ *  Table D default around all of it. `factRef` is set under `@spine`: a column of @from that is
+ *  null only on the padding row a spine row with no facts gets. */
+function aggregate(a: ReportAggregate, d: ReportDialect, factRef?: string): string {
   const refs = a.refs.map((r) => ref(r, d));
   const c = a.filter === undefined ? undefined : cond(a.filter, d);
   const fn = aggFunction(a.agg, d);
@@ -73,7 +74,11 @@ function aggregate(a: ReportAggregate, d: ReportDialect): string {
     // (every row) passes". A comparison is a boolean on Postgres and 0 / 1 / NULL elsewhere, so
     // MAX / MIN of it is the OR / AND, and a row whose predicate is NULL is skipped as bool_or skips it.
     if (c === undefined) throw new Error(`report-ddl-emit: @agg '${a.agg}' has neither @of nor a condition.`);
-    sql = `${fn}(${c})`;
+    // Under @spine the padding row's condition can still be true (`col IS NULL`), so only fact
+    // rows are aggregated, and a spine row with no facts reads null as every other measure does.
+    if (factRef === undefined) sql = `${fn}(${c})`;
+    else if (d === "postgres") sql = `${fn}(${c}) FILTER (WHERE ${ref(factRef, d)} IS NOT NULL)`;
+    else sql = `${fn}(CASE WHEN ${ref(factRef, d)} IS NOT NULL THEN ${c} END)`;
   } else {
     const x = refs[0]!;
     const distinct = a.distinct ? "DISTINCT " : "";
@@ -92,7 +97,7 @@ interface RenderedColumn {
   readonly grouped: boolean;
 }
 
-function column(c: ReportColumn, d: ReportDialect): RenderedColumn {
+function column(c: ReportColumn, d: ReportDialect, factRef: string | undefined): RenderedColumn {
   const alias = q(c.dbColAlias, d);
   switch (c.kind) {
     case "dimension":
@@ -100,12 +105,12 @@ function column(c: ReportColumn, d: ReportDialect): RenderedColumn {
     case "timeDimension":
       return { expr: truncateToGrain(ref(c.ref, d), c.grain, c.temporal, d), alias, grouped: true };
     case "aggregate":
-      return { expr: aggregate(c.aggregate, d), alias, grouped: false };
+      return { expr: aggregate(c.aggregate, d, factRef), alias, grouped: false };
     case "ratio": {
       // Each operand is its FULL Table C expression (condition and cast included), and its own
       // Table D default; the ratio's default wraps the whole quotient, which is always real.
-      const num = aggregate(c.numerator, d);
-      const den = aggregate(c.denominator, d);
+      const num = aggregate(c.numerator, d, factRef);
+      const den = aggregate(c.denominator, d, factRef);
       const top = d === "postgres" ? "NUMERIC" : d === "sqlite" ? "REAL" : undefined;
       const quotient = `${top === undefined ? num : `CAST(${num} AS ${top})`} / NULLIF(${den}, 0)`;
       const dv = c.defaultValue === undefined ? undefined : { value: c.defaultValue, real: true };
@@ -180,8 +185,15 @@ function spineFrom(spec: ReportViewSpec, depth: number, options: ReportEmitOptio
 
 export function emitReportViewDdl(spec: ReportViewSpec, options: ReportEmitOptions): string {
   const d = options.dialect;
+  // Under @spine, @from's side of the first hop's ON equality: non-null on every fact row the
+  // join keeps, null on the padding row of a spine row with no facts.
+  const first = spec.spineDepth === undefined ? undefined : spec.joinTree.joins[0];
+  const factRef =
+    first === undefined
+      ? undefined
+      : `${spec.joinTree.baseAlias}.${first.referenceHolder === "source" ? first.fkColumn : first.pkColumn}`;
   // Rendered once: a dimension's SELECT expression is its GROUP BY term, so they cannot differ.
-  const cols = spec.columns.map((c) => column(c, d));
+  const cols = spec.columns.map((c) => column(c, d, factRef));
   const select = cols.map((c) => `    ${c.expr} AS ${c.alias}`).join(",\n");
   const groupBy = cols.filter((c) => c.grouped).map((c) => c.expr);
 

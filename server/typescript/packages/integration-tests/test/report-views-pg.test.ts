@@ -450,9 +450,10 @@ const UNLABELLED_MODEL = JSON.stringify({ "metadata.root": { package: "acme", ch
     { "dimension.attribute": { name: "programKey", "@of": "Program.id", "@via": "Week.fkProgram" } },
     { "measure.aggregate": { name: "unlabelled", "@agg": "count", "@of": "Week.id", "@filter": { label: { isNull: true } } } },
     { "measure.aggregate": { name: "unlabelledMinutes", "@agg": "sum", "@of": "Week.durationMinutes", "@filter": { label: { isNull: true } } } },
+    { "measure.aggregate": { name: "anyUnlabelled", "@agg": "any", "@filter": { label: { isNull: true } } } },
   ] } },
   { "object.report": { name: "UnlabelledWeeks", "@from": "Week", "@spine": "Week.fkProgram",
-    "@dimensions": ["programKey"], "@measures": ["unlabelled", "unlabelledMinutes"], children: [
+    "@dimensions": ["programKey"], "@measures": ["unlabelled", "unlabelledMinutes", "anyUnlabelled"], children: [
     { "source.rdb": { "@kind": "view", "@view": "v_unlabelled_weeks" } } ] } },
 ]}});
 
@@ -619,11 +620,12 @@ describe("report views — inline models on real Postgres", () => {
 
     await applyRaw(UNLABELLED_ROWS);
     // Program 3's null-extended row has a null label, and the count still reads 0: it counts
-    // the fact's id, which is null there too. The sum of nothing is null (no @default).
+    // the fact's id, which is null there too. The sum of nothing is null (no @default), and so
+    // is an `any` over no facts, though `label IS NULL` holds on the null-extended row.
     expect(await select(`SELECT * FROM "v_unlabelled_weeks" ORDER BY "programKey"`)).toEqual([
-      { programKey: "1", unlabelled: "1", unlabelledMinutes: "60" },
-      { programKey: "2", unlabelled: "0", unlabelledMinutes: null },
-      { programKey: "3", unlabelled: "0", unlabelledMinutes: null },
+      { programKey: "1", unlabelled: "1", unlabelledMinutes: "60", anyUnlabelled: "t" },
+      { programKey: "2", unlabelled: "0", unlabelledMinutes: null, anyUnlabelled: "f" },
+      { programKey: "3", unlabelled: "0", unlabelledMinutes: null, anyUnlabelled: null },
     ]);
   }, 60_000);
 

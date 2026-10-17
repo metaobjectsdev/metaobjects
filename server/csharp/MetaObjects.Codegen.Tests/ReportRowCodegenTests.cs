@@ -490,11 +490,25 @@ public class ReportRowCodegenTests
     [Fact]
     public void An_any_measure_with_no_of_still_compiles_through_the_real_compiler()
     {
-        var files = EmitAll(RunnerContext(LoadAnyMeasureModel()));
-        Assert.True(files.ContainsKey("CallTotals.g.cs"));
-        var tree = CSharpSyntaxTree.ParseText(files["CallTotals.g.cs"]);
-        var diagnostics = tree.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error).ToList();
-        Assert.Empty(diagnostics);
+        var ctx = RunnerContext(LoadAnyMeasureModel(), Config(includeNames: true));
+        var files = new IGenerator[]
+            {
+                new EntityGenerator(), new DbContextGenerator(), new FilterAllowlistGenerator(), new NamesGenerator(),
+            }
+            .SelectMany(g => g.Generate(ctx)).ToList();
+        Assert.Contains(files, f => f.Path == "CallTotals.g.cs");
+        var trees = files
+            .Select(f => CSharpSyntaxTree.ParseText(f.Content, new CSharpParseOptions(LanguageVersion.CSharp12), path: f.Path))
+            .ToList();
+        var comp = CSharpCompilation.Create(
+            "report_any_rows_" + Guid.NewGuid().ToString("N"), trees,
+            DbContextCompileTests.BuildReferences(),
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+        var errors = comp.GetDiagnostics()
+            .Where(d => d.Severity == DiagnosticSeverity.Error)
+            .Select(d => $"{d.Location.GetLineSpan().Path}: {d.Id}: {d.GetMessage()}")
+            .ToList();
+        Assert.True(errors.Count == 0, string.Join("\n", errors));
     }
 
     // ---------------------------------------------------------------------

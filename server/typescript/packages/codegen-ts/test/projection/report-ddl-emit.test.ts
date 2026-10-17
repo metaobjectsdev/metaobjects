@@ -977,6 +977,41 @@ describe("@agg any / all without @of, end to end", () => {
   });
 });
 
+describe("@agg any / all without @of under @spine", () => {
+  // A program with no weeks gets one padding row whose `label` is null, so `label IS NULL` is
+  // true on it: only fact rows are aggregated, so that program reads null, not true.
+  const unlabelled = (): Json[] => fitness([
+    rpt("AnyUnlabelled", {
+      "@from": "Week", "@spine": "Week.fkProgram", "@dimensions": ["programKey"], "@measures": ["anyUnlabelled", "allUnlabelled"],
+    }, "v_any_unlabelled"),
+  ], [], [
+    { "measure.aggregate": { name: "anyUnlabelled", "@agg": "any", "@filter": { label: { isNull: true } } } },
+    { "measure.aggregate": { name: "allUnlabelled", "@agg": "all", "@filter": { label: { isNull: true } } } },
+  ]);
+
+  test("postgres: the condition is aggregated over the fact rows only", async () => {
+    const sql = (await viewsOf(unlabelled(), "postgres"))["v_any_unlabelled"];
+    expect(sql).toContain(`    bool_or(w."label" IS NULL) FILTER (WHERE w."programId" IS NOT NULL) AS "anyUnlabelled",`);
+    expect(sql).toContain(`    bool_and(w."label" IS NULL) FILTER (WHERE w."programId" IS NOT NULL) AS "allUnlabelled"`);
+  });
+
+  test("sqlite and mysql: the padding row's condition is NULL, which MAX / MIN skip", async () => {
+    const lite = (await viewsOf(unlabelled(), "sqlite"))["v_any_unlabelled"];
+    expect(lite).toContain(`MAX(CASE WHEN w."programId" IS NOT NULL THEN w."label" IS NULL END) AS "anyUnlabelled"`);
+    expect(lite).toContain(`MIN(CASE WHEN w."programId" IS NOT NULL THEN w."label" IS NULL END) AS "allUnlabelled"`);
+    const my = (await viewsOf(unlabelled(), "mysql"))["v_any_unlabelled"];
+    expect(my).toContain("MAX(CASE WHEN w.`programId` IS NOT NULL THEN w.`label` IS NULL END) AS `anyUnlabelled`");
+  });
+
+  test("without @spine the SQL is unchanged", async () => {
+    const plain = fitness([
+      rpt("AnyUnlabelledPlain", { "@from": "Week", "@dimensions": ["programKey"], "@measures": ["anyUnlabelled"] }, "v_any_unlabelled_plain"),
+    ], [], [{ "measure.aggregate": { name: "anyUnlabelled", "@agg": "any", "@filter": { label: { isNull: true } } } }]);
+    const sql = (await viewsOf(plain, "postgres"))["v_any_unlabelled_plain"];
+    expect(sql).toContain(`    bool_or(w."label" IS NULL) AS "anyUnlabelled"`);
+  });
+});
+
 // ── A bare @of owner after @via resolves in the package of the entity @via reaches ─────
 
 describe("a via dimension's bare @of owner across packages", () => {
