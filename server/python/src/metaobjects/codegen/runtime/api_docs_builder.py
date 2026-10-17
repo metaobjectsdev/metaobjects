@@ -38,6 +38,7 @@ from .api_docs_model import (
     FieldShape,
 )
 from metaobjects.codegen import type_map
+from metaobjects.codegen.model_walk import package_of
 from .m2m_codegen import (
     build_object_index,
     resolve_m2m_descriptors,
@@ -210,7 +211,7 @@ class PythonApiModelBuilder:
 
         if not symbols:
             return None
-        return ApiUnit(obj.name, _package_of(obj), unit_kind, symbols)
+        return ApiUnit(obj.name, package_of(obj), unit_kind, symbols)
 
     def _build_report_unit(self, obj: MetaObject, root: MetaData) -> ApiUnit:
         """The unit for a SERVED report (FR-044 Table G): the row model plus the read-only
@@ -229,7 +230,7 @@ class PythonApiModelBuilder:
             ),
             *self._read_only_symbols(model_obj),
         ]
-        return ApiUnit(obj.name, _package_of(obj), "report", symbols)
+        return ApiUnit(obj.name, package_of(obj), "report", symbols)
 
     def _read_only_symbols(self, obj: MetaObject) -> list[ApiSymbol]:
         """What the READ-ONLY router (``is_read_only_routed``) actually mounts and emits,
@@ -431,7 +432,7 @@ class PythonApiModelBuilder:
                 )
             )
 
-        return ApiUnit(name, _package_of(tmpl), "template", symbols)
+        return ApiUnit(name, package_of(tmpl), "template", symbols)
 
     # ----- field shapes -------------------------------------------------------
 
@@ -469,18 +470,6 @@ class PythonApiModelBuilder:
                 FieldShape(f.name, type_expr, optional=not is_field_required(f))
             )
         return rows
-
-
-def _package_of(node: MetaData) -> str:
-    """The unit's metadata package (``"acme::shop"``) — drives the doc-page layout
-    path. Resolved from the nearest ancestor that carries one (objects inherit the
-    file/root package)."""
-    pkg = node.package
-    parent = node.parent
-    while pkg is None and parent is not None:
-        pkg = parent.package
-        parent = parent.parent
-    return pkg or ""
 
 
 def build_api_model(root: MetaData, project: str) -> ApiModel:

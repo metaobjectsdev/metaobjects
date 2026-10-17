@@ -167,6 +167,30 @@ public class GeneratorRequiresCompileTest {
         mojo.refuseUnmetRequires(List.of(construct(controller)));
     }
 
+    /** spring-config references the generated validator only when {@code validatorEnabled} is on,
+     *  so the check follows the instance's args: a pom with it off built before the check existed. */
+    @Test
+    public void springConfigRequiresTheValidatorOnlyWhenTheValidatorIsEnabled() throws Exception {
+        String classname = "com.metaobjects.generator.kotlin.KotlinSpringConfigGenerator";
+        MetaDataGeneratorMojo mojo = new MetaDataGeneratorMojo();
+
+        Generator disabled = construct(classname).setArgs(Map.of("validatorEnabled", "false"));
+        mojo.refuseUnmetRequires(List.of(disabled));
+        assertEquals(List.of(), RequiresCheck.unmetFor(List.of(disabled)));
+
+        for (Generator enabled : List.of(construct(classname), construct(classname).setArgs(Map.of("validatorEnabled", "true")))) {
+            List<String> unmet = RequiresCheck.unmetFor(List.of(enabled));
+            assertEquals(1, unmet.size());
+            assertTrue(unmet.get(0), unmet.get(0).contains("\"validator\""));
+            try {
+                mojo.refuseUnmetRequires(List.of(enabled));
+                fail("spring-config with the validator hook ran without the validator");
+            } catch (MetaDataException expected) {
+                assertTrue(expected.getMessage(), expected.getMessage().contains("\"validator\""));
+            }
+        }
+    }
+
     @Test
     public void anOwnedCopyIsMatchedByItsSimpleNameAndAnUnknownGeneratorRequiresNothing() {
         assertEquals(1, RequiresCheck.unmet(List.of("com.acme.codegen.SpringControllerGenerator")).size());

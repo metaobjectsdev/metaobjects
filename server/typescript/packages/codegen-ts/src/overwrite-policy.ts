@@ -503,13 +503,26 @@ function classifyWrite(
   // File exists. Load the canonical snapshot if any.
   const genStateDir = resolveGenStateDir(opts);
   const relPath = opts.outputRelPath ?? defaultOutputRelPath(path);
-  const snapshot = readSnapshotChecked(genStateDir, relPath);
+  const storedSnapshot = readSnapshotChecked(genStateDir, relPath);
   const current = readFileSync(path, "utf-8");
+
+  // A snapshot body is a gitignored local cache, so it outlives a `git checkout` that
+  // moves the file to content it never described. `--baseline=fresh` is documented to
+  // overwrite a file the committed manifest has NO RECORD of; a stale body for such a path
+  // is not a merge base, and merging against it keeps the old content as a "hand edit".
+  // Only `fresh`, and only for a path with no recorded hash: every other mode still merges.
+  const snapshot =
+    storedSnapshot !== undefined &&
+    (opts.baseline ?? "default") === "fresh" &&
+    readGeneratedHash(genStateDir, relPath) === undefined
+      ? undefined
+      : storedSnapshot;
 
   // First-time regen on a pre-existing file (no snapshot) — caveat 3. `baseline`
   // only ever applies here: BaselineMode's own doc comment says so ("When
   // .gen-state is absent but the file exists"), and a snapshot body — handled
-  // below — always gets the real three-way merge regardless of baseline.
+  // below — always gets the real three-way merge, except the unrecorded-path
+  // case of `fresh` just above.
   if (snapshot === undefined) {
     if ((opts.baseline ?? "default") === "fresh") {
       // Opt-in escape hatch: overwrite and seed the snapshot from fresh.

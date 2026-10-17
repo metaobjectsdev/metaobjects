@@ -3,7 +3,7 @@
 **Changed in:** 1.1.0 (Maven 8.1.0) · **Ports affected:** all five
 **Automatic fix:** none. Each section below is written so you, or a coding agent working in
 your repository, can make the change by hand. Decision record:
-[ADR-0058](../../../spec/decisions/ADR-0058-one-physical-naming-setting.md).
+[ADR-0058](https://github.com/metaobjectsdev/metaobjects/blob/main/spec/decisions/ADR-0058-one-physical-naming-setting.md).
 
 ## What changed
 
@@ -92,7 +92,7 @@ regenerate.
 | 1.0 | 1.1.0 |
 |---|---|
 | `metaobjects gen --column-naming <strategy>`, `metaobjects verify --codegen --column-naming <strategy>` | `"naming": { "columns": "<strategy>" }` in `.metaobjects/config.json`. The flag is refused (exit 2) |
-| `ObjectManager(..., column_naming="<strategy>")` | `ObjectManager(...)`. The manager reads the rule from the loaded root; the argument raises. A model loaded outside the project directory gets the project's rules with `attach_naming(root, project_dir)` from `metaobjects.naming`, which reads that project's `.metaobjects/config.json` |
+| `ObjectManager(..., column_naming="<strategy>")` | `ObjectManager(...)`. The manager reads the rule from the loaded root; the argument raises. A model loaded outside the project directory gets the project's rules with `attach_naming(root, project_dir)` from `metaobjects.naming`, which reads that project's `.metaobjects/config.json` and returns the root, so `root = attach_naming(root, project_dir)` |
 | no flag: `*_names.py` and the `ObjectManager` used the field names (`literal`) | no setting: snake_case. Add `"naming": { "columns": "literal" }` to keep 1.0's column names |
 
 `metaobjects verify --codegen` reports drift that another column rule, another table rule, or

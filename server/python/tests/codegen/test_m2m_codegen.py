@@ -180,15 +180,22 @@ def test_entity_without_m2m_has_no_descriptors() -> None:
 
 def test_pydantic_nested_collection_emitted() -> None:
     src = render_entity_model(_ENTITIES["Post"], _INDEX)
-    assert "tags: list[Tag] = []" in src
+    assert "tags: list[Tag] = Field(default_factory=list)" in src
     assert "from .Tag import Tag" in src
+
+
+def test_pydantic_nested_collection_default_is_a_factory_and_imports_field() -> None:
+    for name in ("Post", "Person"):
+        src = render_entity_model(_ENTITIES[name], _INDEX)
+        assert "= []" not in src, src
+        assert "from pydantic import" in src and "Field" in src.split("from pydantic import", 1)[1].split("\n", 1)[0], src
 
 
 def test_pydantic_self_referential_collection() -> None:
     src = render_entity_model(_ENTITIES["Person"], _INDEX)
     # Self-join: the element type is the entity itself (forward ref string).
-    assert 'following: list["Person"] = []' in src
-    assert 'friends: list["Person"] = []' in src
+    assert 'following: list["Person"] = Field(default_factory=list)' in src
+    assert 'friends: list["Person"] = Field(default_factory=list)' in src
 
 
 # ---------------------------------------------------------------------------

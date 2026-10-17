@@ -406,10 +406,14 @@ if (wants("java")) {
   await run(`cd server/java && mvn -B -s ${settings} -Dmaven.repo.local=${repo} ${goal} -DskipTests` +
      ` -DaltDeploymentRepository="mo-prerelease::${MAVEN_URL}"`,
      { stdio: "inherit" });
-  ok(DRY ? "java: dry run (install only)" : `java: reactor @ ${V.maven} → ${expectedHost}`);
+  ok(DRY ? "java: dry run, built (package), nothing deployed" : `java: reactor @ ${V.maven} → ${expectedHost}`);
 }
 
 restore();
-console.log(`\n\x1b[32m\x1b[1m✅ ${CANON} is on the pre-release registry.\x1b[0m`);
-console.log(`   link a consumer: tools/prerelease/prerelease-link.sh link --project <dir> --version ${CANON}`);
-console.log(`   consumer guide:  docs/features/prerelease.md\n`);
+if (DRY) {
+  console.log(`\n\x1b[32m\x1b[1m✔ dry run of ${CANON} passed; nothing was published.\x1b[0m\n`);
+} else {
+  console.log(`\n\x1b[32m\x1b[1m✅ ${CANON} is on the pre-release registry.\x1b[0m`);
+  console.log(`   link a consumer: tools/prerelease/prerelease-link.sh link --project <dir> --version ${CANON}`);
+  console.log(`   consumer guide:  docs/features/prerelease.md\n`);
+}

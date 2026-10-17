@@ -70,6 +70,22 @@ describe("parseSqliteChecks — anonymous + comment/literal safety", () => {
   });
 });
 
+describe("parseSqliteChecks — every identifier quoting SQLite accepts names the constraint", () => {
+  // Drizzle-written migrations quote with backticks. An unread quoting left the name empty,
+  // so the declared check never matched its stored twin: a false add-check/drop-check pair.
+  test.each([
+    ['"items_status_chk"', "items_status_chk"],
+    ["`items_status_chk`", "items_status_chk"],
+    ["[items_status_chk]", "items_status_chk"],
+    ["items_status_chk", "items_status_chk"],
+    ["`odd``name`", "odd`name"],
+    ['"odd""name"', 'odd"name'],
+  ])("CONSTRAINT %s", (quoted, name) => {
+    const sql = `CREATE TABLE "items" ("id" INTEGER, \`status\` text CONSTRAINT ${quoted} CHECK (\`status\` IN ('open', 'closed')))`;
+    expect(parseSqliteChecks(sql)).toEqual([{ name, expression: "`status` IN ('open', 'closed')" }]);
+  });
+});
+
 describe("hole 2 — drop-view exemption is keyed by (schema, name), not name", () => {
   const view = (name: string, schema?: string): ViewDescriptor =>
     ({ name, sql: "SELECT 1", ...(schema !== undefined ? { schema } : {}) }) as ViewDescriptor;

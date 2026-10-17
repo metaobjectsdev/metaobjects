@@ -29,12 +29,25 @@
 // cast from a `::` inside a regex literal.
 
 /**
+ * `` `status` `` → `status`, OUTSIDE single-quoted literals. SQLite stores a CHECK exactly as
+ * it was written, and Drizzle-written migrations quote identifiers with backticks, so the
+ * stored text and the double-quoted one generated here would otherwise never compare equal.
+ * A backtick inside a literal (a regex pattern) is data and is left alone.
+ */
+function unwrapBacktickIdentifiers(expr: string): string {
+  return expr
+    .split(/('(?:[^']|'')*')/)
+    .map((part, i) => (i % 2 === 1 ? part : part.replace(/`(\w+)`/g, "$1")))
+    .join("");
+}
+
+/**
  * Canonical form: drop casts/brackets/parens, fold `= ANY (ARRAY[…])` back to `IN`,
  * lower-case, collapse whitespace, canonicalize cast target types, and collapse spacing
  * around commas, casts and SYMBOLIC operators (outside single-quoted literals).
  */
 export function normalizeCheckExpr(expr: string): string {
-  const stripped = expr
+  const stripped = unwrapBacktickIdentifiers(expr)
     .toLowerCase()
     // Drop `::text` / `::"MyType"` type casts PG adds to literals. The lookbehind
     // restricts the strip to a cast that immediately follows a CLOSING single
