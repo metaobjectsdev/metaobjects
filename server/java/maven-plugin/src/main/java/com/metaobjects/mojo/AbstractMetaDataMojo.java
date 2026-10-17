@@ -19,6 +19,7 @@ import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.generator.util.HashManifest;
 import org.apache.maven.model.Plugin;
 import org.apache.maven.model.PluginExecution;
+import org.apache.maven.model.Profile;
 import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoExecution;
 import org.apache.maven.plugin.MojoExecutionException;
@@ -91,23 +92,46 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
     /**
      * Every generator/output-directory pair the module configures for
      * {@code metaobjects:generate}: in each of its executions and in the plugin-level
-     * configuration a command-line run uses. {@code null} when the module's build model
-     * does not declare this plugin, so what is configured is unknown.
+     * configuration a command-line run uses, in the main build and in every profile,
+     * active or not, so a profile switched off for one build does not make its generators'
+     * files look stranded. {@code null} when the module's build model declares this plugin
+     * nowhere, so what is configured is unknown.
      */
     protected Set<HashManifest.Owner> configuredOwners() {
         if (project == null) return null;
-        Plugin plugin = project.getPlugin(PLUGIN_KEY);
-        if (plugin == null) return null;
+        Plugin main = project.getPlugin(PLUGIN_KEY);
+        List<Plugin> plugins = new ArrayList<>();
+        if (main != null) plugins.add(main);
+        List<Profile> profiles = project.getModel() != null ? project.getModel().getProfiles() : List.of();
+        for (Profile profile : profiles) {
+            Plugin plugin = profile.getBuild() != null ? profile.getBuild().getPluginsAsMap().get(PLUGIN_KEY) : null;
+            if (plugin != null) plugins.add(plugin);
+        }
+        if (plugins.isEmpty()) return null;
+        Object mainLevel = main != null ? main.getConfiguration() : null;
         Set<HashManifest.Owner> out = new HashSet<>();
-        addConfiguredOwners(plugin.getConfiguration(), out);
-        for (PluginExecution e : plugin.getExecutions()) {
-            if (e.getGoals().contains("generate")) addConfiguredOwners(e.getConfiguration(), out);
+        for (Plugin plugin : plugins) {
+            Xpp3Dom pluginLevel = plugin == main ? merged(mainLevel, null) : merged(plugin.getConfiguration(), mainLevel);
+            addConfiguredOwners(pluginLevel, out);
+            for (PluginExecution e : plugin.getExecutions()) {
+                if (!e.getGoals().contains("generate")) continue;
+                addConfiguredOwners(plugin == main ? merged(e.getConfiguration(), null)
+                        : merged(e.getConfiguration(), pluginLevel), out);
+            }
         }
         return out;
     }
 
-    private void addConfiguredOwners(Object configuration, Set<HashManifest.Owner> out) {
-        if (!(configuration instanceof Xpp3Dom dom)) return;
+    /** {@code dominant} over {@code recessive}, as Maven merges an execution's configuration
+     *  over its plugin's; {@code null} when neither is a configuration. */
+    private static Xpp3Dom merged(Object dominant, Object recessive) {
+        Xpp3Dom r = recessive instanceof Xpp3Dom dom ? dom : null;
+        if (!(dominant instanceof Xpp3Dom d)) return r;
+        return r == null ? d : Xpp3Dom.mergeXpp3Dom(new Xpp3Dom(d), r);
+    }
+
+    private void addConfiguredOwners(Xpp3Dom dom, Set<HashManifest.Owner> out) {
+        if (dom == null) return;
         Map<String, String> domGlobals = childValues(dom.getChild("globals"));
         Xpp3Dom generators = dom.getChild("generators");
         if (generators == null) return;

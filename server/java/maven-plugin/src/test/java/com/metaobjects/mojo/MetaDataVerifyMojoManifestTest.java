@@ -6,7 +6,9 @@ import com.metaobjects.generator.util.GeneratedFileWriter;
 import com.metaobjects.loader.MetaDataLoader;
 import org.apache.maven.model.Build;
 import org.apache.maven.model.Plugin;
+import org.apache.maven.model.BuildBase;
 import org.apache.maven.model.PluginExecution;
+import org.apache.maven.model.Profile;
 import org.apache.maven.plugin.MojoExecution;
 import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugin.descriptor.MojoDescriptor;
@@ -248,6 +250,44 @@ public class MetaDataVerifyMojoManifestTest {
     /** This module with {@code metaobjects:generate} configured to run {@code generators}
      *  in one execution, as Maven's effective model presents it. */
     private MavenProject module(Path basedir, GeneratorParam... generators) {
+        Build build = new Build();
+        build.addPlugin(plugin("codegen", configuration(generators)));
+        MavenProject module = new MavenProject();
+        module.setArtifactId("app");
+        module.setFile(basedir.resolve("pom.xml").toFile());
+        module.getModel().setBuild(build);
+        return module;
+    }
+
+    /** Declare profile {@code id} running {@code generators} in an execution of the same
+     *  id. When it is active, Maven's effective build also carries that execution. */
+    private MavenProject withProfile(MavenProject module, String id, boolean active, GeneratorParam... generators) {
+        BuildBase profileBuild = new BuildBase();
+        profileBuild.addPlugin(plugin(id, configuration(generators)));
+        Profile profile = new Profile();
+        profile.setId(id);
+        profile.setBuild(profileBuild);
+        module.getModel().addProfile(profile);
+        if (active) {
+            module.getPlugin(AbstractMetaDataMojo.PLUGIN_KEY).addExecution(
+                    plugin(id, configuration(generators)).getExecutions().get(0));
+        }
+        return module;
+    }
+
+    private static Plugin plugin(String executionId, Xpp3Dom configuration) {
+        Plugin plugin = new Plugin();
+        plugin.setGroupId("com.metaobjects");
+        plugin.setArtifactId("metaobjects-maven-plugin");
+        PluginExecution execution = new PluginExecution();
+        execution.setId(executionId);
+        execution.addGoal("generate");
+        execution.setConfiguration(configuration);
+        plugin.addExecution(execution);
+        return plugin;
+    }
+
+    private static Xpp3Dom configuration(GeneratorParam... generators) {
         Xpp3Dom configuration = new Xpp3Dom("configuration");
         Xpp3Dom list = new Xpp3Dom("generators");
         for (GeneratorParam p : generators) {
@@ -263,28 +303,18 @@ public class MetaDataVerifyMojoManifestTest {
             list.addChild(generator);
         }
         configuration.addChild(list);
-        Plugin plugin = new Plugin();
-        plugin.setGroupId("com.metaobjects");
-        plugin.setArtifactId("metaobjects-maven-plugin");
-        PluginExecution execution = new PluginExecution();
-        execution.setId("codegen");
-        execution.addGoal("generate");
-        execution.setConfiguration(configuration);
-        plugin.addExecution(execution);
-        Build build = new Build();
-        build.addPlugin(plugin);
-        MavenProject module = new MavenProject();
-        module.setArtifactId("app");
-        module.setFile(basedir.resolve("pom.xml").toFile());
-        module.getModel().setBuild(build);
-        return module;
+        return configuration;
     }
 
     private void generateIn(MavenProject module, GeneratorParam... params) {
+        generateIn(module, "codegen", params);
+    }
+
+    private void generateIn(MavenProject module, String executionId, GeneratorParam... params) {
         MetaDataGeneratorMojo gen = new MetaDataGeneratorMojo();
         gen.setLoader(new LoaderParam());
         gen.project = module;
-        gen.execution = new MojoExecution(new MojoDescriptor(), "codegen");
+        gen.execution = new MojoExecution(new MojoDescriptor(), executionId);
         gen.setGenerators(List.of(params));
         gen.executeGenerators(null, gen.buildGenerators(getClass().getClassLoader(), null));
     }
@@ -334,5 +364,51 @@ public class MetaDataVerifyMojoManifestTest {
             assertTrue(e.getMessage(), e.getMessage().contains("Route.java")
                     && e.getMessage().contains("'mvn metaobjects:generate' deletes it"));
         }
+    }
+
+    public static class ClientGenerator extends ConfigurableFileGenerator {}
+
+    /** {@code mvn -Pclient compile}, then a plain {@code mvn compile} and a plain
+     *  {@code mvn metaobjects:verify}: the inactive profile still configures its generator,
+     *  so its files are neither deleted nor drift. */
+    @Test
+    public void inactiveProfilesGeneratorFiles_areKept_andVerifyStaysGreen() throws Exception {
+        Path basedir = tempFolder.getRoot().toPath();
+        String mainDir = tempFolder.newFolder("gen").getAbsolutePath();
+        String clientDir = tempFolder.newFolder("client").getAbsolutePath();
+        GeneratorParam dto = gen(DtoGenerator.class, mainDir, "Dto.java");
+        GeneratorParam client = gen(ClientGenerator.class, clientDir, "Client.java");
+
+        MavenProject withClient = withProfile(module(basedir, dto), "client", true, client);
+        generateIn(withClient, "codegen", dto);
+        generateIn(withClient, "client", client);
+
+        generateIn(withProfile(module(basedir, dto), "client", false, client), "codegen", dto);
+        assertTrue(Files.exists(Path.of(clientDir, "Client.java")));
+
+        MetaDataVerifyMojo verify = new MetaDataVerifyMojo();
+        verify.project = withProfile(module(basedir, dto), "client", false, client);
+        verify.setLoader(testLoader());
+        verify.setGenerators(List.of(dto));
+        verify.execute();
+    }
+
+    /** A generator removed from the profile is configured nowhere, so its files are cleaned
+     *  even while the profile is off. */
+    @Test
+    public void generatorRemovedFromAProfile_itsFilesAreDeleted() throws Exception {
+        Path basedir = tempFolder.getRoot().toPath();
+        String mainDir = tempFolder.newFolder("gen").getAbsolutePath();
+        String clientDir = tempFolder.newFolder("client").getAbsolutePath();
+        GeneratorParam dto = gen(DtoGenerator.class, mainDir, "Dto.java");
+        GeneratorParam client = gen(ClientGenerator.class, clientDir, "Client.java");
+
+        MavenProject withClient = withProfile(module(basedir, dto), "client", true, client);
+        generateIn(withClient, "codegen", dto);
+        generateIn(withClient, "client", client);
+
+        generateIn(withProfile(module(basedir, dto), "client", false), "codegen", dto);
+
+        assertFalse(Files.exists(Path.of(clientDir, "Client.java")));
     }
 }

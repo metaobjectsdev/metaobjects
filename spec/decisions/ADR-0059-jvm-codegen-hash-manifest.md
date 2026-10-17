@@ -44,8 +44,10 @@ does not cover deletion, and deletion without evidence is not safe on any port.
    The owner names the configuration, not the Maven execution, so `default-cli`, a renamed
    execution and the lifecycle execution with the same configuration agree on it. The
    sweep reads the module's `metaobjects:generate` executions and plugin-level
-   configuration from the build model to know every generator/output-directory pair the
-   module configures. A recorded file is an orphan when no generator emitted it in this
+   configuration from the build model, in the main build and in every profile whether
+   active or not, to know every generator/output-directory pair the module configures. A
+   pair declared only in a profile that is off for this build is still configured, so its
+   files are never treated as stranded. A recorded file is an orphan when no generator emitted it in this
    build and either its owner is one of this run's own generators, or its owner is
    configured in no execution of the module (a removed generator, wherever its files
    live). An entry with no owner (the plain `"<path>": "<hash>"` form other ports write)
