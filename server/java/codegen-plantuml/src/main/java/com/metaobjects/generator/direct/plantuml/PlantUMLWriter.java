@@ -369,18 +369,7 @@ public class PlantUMLWriter extends FileDirectWriter<PlantUMLWriter> {
     }
 
     protected MetaObject getTargetObject(AssociationRelationship relationship) {
-        // Get the target object name from the relationship
-        if (relationship.hasMetaAttr(MetaRelationship.ATTR_OBJECT_REF)) {
-            String targetObjectName = relationship.getMetaAttr(MetaRelationship.ATTR_OBJECT_REF).getValueAsString();
-            if (targetObjectName != null) {
-                try {
-                    return MetaDataUtil.findMetaObjectByName(targetObjectName, this);
-                } catch (Exception e) {
-                    if (debug) log.warn("Could not find target object: " + targetObjectName, e);
-                }
-            }
-        }
-        return null;
+        return com.metaobjects.loader.References.refTarget(relationship, MetaRelationship.ATTR_OBJECT_REF);
     }
 
     protected void writeObjectKeyRelationships(MetaObject mo ) throws IOException {

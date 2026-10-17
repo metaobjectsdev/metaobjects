@@ -77,9 +77,6 @@ public static class FindInbound
     {
         // ADR-0039: resolving — @responseRef may be inherited via an abstract template base.
         if (tmpl.Attr(TEMPLATE_ATTR_RESPONSE_REF) is not string reference) return null;
-        // ADR-0042/#228: resolve package-aware — a bare ref binds the template's OWN package first,
-        // never a bare-tail/global scan that could bind the WRONG package's same-short-named object.
-        var referrerPkg = global::MetaObjects.NamingRefs.EffectivePackage(tmpl);
         // Resolve through the SAME payload-target resolver @payloadRef obeys (object.value, or a
         // sourceless object.projection) — NOT the any-object ResolveObjectRef.
         //
@@ -94,7 +91,7 @@ public static class FindInbound
         // Java is immune by construction — its FindInbound.responseShape resolves value-only
         // too. This makes C# fail closed the same way: an unresolvable-or-wrong-typed ref yields
         // no parser rather than an uncompilable one.
-        var vo = ValueObjectNames.ResolveValueObject(root, reference, referrerPkg);
+        var vo = ValueObjectNames.PayloadShapeOf(tmpl, TEMPLATE_ATTR_RESPONSE_REF);
         if (vo is null) return null;
         return new InboundShape(vo, reference, ResponseFormatOf(tmpl));
     }

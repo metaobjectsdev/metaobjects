@@ -569,10 +569,11 @@ final class ReportingValidation {
                         + "', which is not to-one. " + walk.toOneReason());
                 return null;
             }
-            String targetRef = stringAttr(hop, isReference ? MetaIdentity.ATTR_REFERENCES : MetaRelationship.ATTR_OBJECT_REF);
-            // ADR-0042 — a hop target resolves in the package of the entity declaring the hop.
+            String hopAttr = isReference ? MetaIdentity.ATTR_REFERENCES : MetaRelationship.ATTR_OBJECT_REF;
+            String targetRef = stringAttr(hop, hopAttr);
+            // ADR-0059 R3 — a hop target resolves in the package of the node that declares the hop's attribute.
             MetaData target = targetRef == null ? null
-                    : ValidationPhase.resolveRootObject(root, targetRef, pkgOf(current));
+                    : ValidationPhase.resolveRootObject(root, targetRef, References.referrerPackageFor(hop, hopAttr));
             if (target == null) {
                 err.accept(named + " hop '" + hopName + "' on '" + nameOf.apply(current) + "' targets no object.");
                 return null;

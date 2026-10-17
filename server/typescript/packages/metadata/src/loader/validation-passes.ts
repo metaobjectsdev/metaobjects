@@ -2206,8 +2206,10 @@ export function validateOneSideReferenceResolution(root: MetaRoot): ParseError[]
       const objectRef = rel.attr(RELATIONSHIP_ATTR_OBJECT_REF);
       if (typeof objectRef !== "string" || objectRef === "") continue;
 
-      // ADR-0059 R7: match references by the target node when it resolves.
-      const targetNode = refTarget(rel, RELATIONSHIP_ATTR_OBJECT_REF) ?? objectRef;
+      // ADR-0059 R7: match references by the bound target node. An unresolved
+      // @objectRef is reported by its own pass.
+      const targetNode = refTarget(rel, RELATIONSHIP_ATTR_OBJECT_REF);
+      if (targetNode === undefined) continue;
       const candidates = referenceCandidatesFor(obj, targetNode);
 
       const sourceRefField = rel.attr(RELATIONSHIP_ATTR_SOURCE_REF_FIELD);

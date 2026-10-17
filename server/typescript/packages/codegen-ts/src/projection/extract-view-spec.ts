@@ -56,6 +56,7 @@ import {
   findReferencesBetween,
   resolveRelationshipReference,
   resolveObjectRef,
+  refTarget,
   type AggregateFunction,
   type ReferenceLookup,
 } from "@metaobjectsdev/metadata";
@@ -356,19 +357,25 @@ function findReferenceHop(obj: MetaData, name: string): MetaData | undefined {
 function resolveHop(
   obj: MetaData,
   name: string,
-): { hop: MetaData; targetName: string; cardinality: "one" | "many" } | undefined {
+): { hop: MetaData; target: MetaObject | undefined; cardinality: "one" | "many" } | undefined {
+  // ADR-0059 R3/R7 — a hop's target is the object its reference attribute binds to, resolved
+  // in the package of the node that declares that attribute, never the walked entity's.
   const rel = findRelationship(obj, name);
   if (rel) {
-    const targetName = rel.attr(RELATIONSHIP_ATTR_OBJECT_REF) as string | undefined;
-    if (!targetName) return undefined;
+    if (!rel.attr(RELATIONSHIP_ATTR_OBJECT_REF)) return undefined;
+    const target = refTarget(rel, RELATIONSHIP_ATTR_OBJECT_REF);
     const cardAttr = rel.attr(RELATIONSHIP_ATTR_CARDINALITY) as string | undefined;
-    return { hop: rel, targetName, cardinality: cardAttr === CARDINALITY_ONE ? "one" : "many" };
+    return {
+      hop: rel,
+      target: isMetaObject(target) ? target : undefined,
+      cardinality: cardAttr === CARDINALITY_ONE ? "one" : "many",
+    };
   }
   const ref = findReferenceHop(obj, name);
   if (ref) {
-    const targetName = ref.attr(IDENTITY_REFERENCE_ATTR_REFERENCES) as string | undefined;
-    if (!targetName) return undefined;
-    return { hop: ref, targetName, cardinality: "one" };
+    if (!ref.attr(IDENTITY_REFERENCE_ATTR_REFERENCES)) return undefined;
+    const target = refTarget(ref, IDENTITY_REFERENCE_ATTR_REFERENCES);
+    return { hop: ref, target: isMetaObject(target) ? target : undefined, cardinality: "one" };
   }
   return undefined;
 }
@@ -419,7 +426,7 @@ function resolveHopReference(
 export function hopReferenceIdentity(holder: MetaObject, hopName: string, root: MetaRoot): MetaReferenceIdentity | undefined {
   const resolved = resolveHop(holder, hopName);
   if (!resolved) return undefined;
-  const target = resolveEntityRef(root, resolved.targetName, packageOf(holder));
+  const target = resolved.target;
   if (!target) return undefined;
   const ref = resolveHopReference(holder, resolved.hop, hopName, target);
   if (Array.isArray(ref)) return ref.length === 1 ? ref[0]!.referenceIdentity : undefined;
@@ -701,7 +708,7 @@ function viaTerminalEntity(via: string, root: MetaRoot, referrerPkg: string): st
   for (const relName of segments.slice(1)) {
     const resolved = resolveHop(currentObj, relName);
     if (!resolved) return undefined;
-    const target = resolveEntityRef(root, resolved.targetName, packageOf(currentObj));
+    const target = resolved.target;
     if (!target) return undefined;
     currentObj = target;
     terminal = target.resolutionKey();
@@ -855,11 +862,7 @@ export function walkViaPath(via: string, root: MetaRoot, referrerPkg: string, ct
     // a traversed relationship/reference may inherit its target via extends.
     const resolved = resolveHop(currentObj, relName);
     if (!resolved) break;
-    const { hop, targetName, cardinality } = resolved;
-    // @objectRef/@references may be package-qualified ("pkg::Entity"); resolve it
-    // package-aware relative to the hop's source entity (the loader qualifies a
-    // same-package ref even when authored bare), so the join binds the exact target.
-    const target = resolveEntityRef(root, targetName, packageOf(currentObj));
+    const { hop, target, cardinality } = resolved;
     if (!target) break;
 
     // #368: two identity.reference declarations onto the same target are legal

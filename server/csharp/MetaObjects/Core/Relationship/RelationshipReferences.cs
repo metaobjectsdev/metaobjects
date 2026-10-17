@@ -96,6 +96,16 @@ public static class RelationshipReferences
     }
 
     /// <summary>
+    /// Every identity.reference on <paramref name="holder"/> whose <c>@references</c> is bound to
+    /// <paramref name="target"/> (ADR-0059 R7: identity of the bound target, never a short name).
+    /// </summary>
+    public static List<MetaReferenceIdentity> ReferenceCandidatesFor(MetaObject holder, MetaData target) =>
+        holder.ReferenceIdentities()
+            .Where(r => RefFkField(r) is not null)
+            .Where(r => ReferenceEquals(NamingRefs.RefTarget(r, IDENTITY_REFERENCE_ATTR_REFERENCES), target))
+            .ToList();
+
+    /// <summary>
     /// Which identity.reference does this <c>@cardinality: one</c> relationship
     /// navigate through? The ladder, in order:
     /// <list type="number">
@@ -109,9 +119,20 @@ public static class RelationshipReferences
     /// tell them apart use <see cref="ReferenceCandidatesFor"/>.
     /// </summary>
     public static MetaReferenceIdentity? ResolveRelationshipReference(
-        MetaObject holder, string relationshipName, string targetEntity, string? sourceRefField = null)
+        MetaObject holder, string relationshipName, string targetEntity, string? sourceRefField = null) =>
+        ResolveFromCandidates(ReferenceCandidatesFor(holder, targetEntity), relationshipName, sourceRefField);
+
+    /// <summary>
+    /// <see cref="ResolveRelationshipReference(MetaObject, string, string, string?)"/> given the
+    /// relationship's bound target node: candidates are the references bound to that same node.
+    /// </summary>
+    public static MetaReferenceIdentity? ResolveRelationshipReference(
+        MetaObject holder, string relationshipName, MetaData target, string? sourceRefField = null) =>
+        ResolveFromCandidates(ReferenceCandidatesFor(holder, target), relationshipName, sourceRefField);
+
+    private static MetaReferenceIdentity? ResolveFromCandidates(
+        List<MetaReferenceIdentity> candidates, string relationshipName, string? sourceRefField)
     {
-        var candidates = ReferenceCandidatesFor(holder, targetEntity);
         if (candidates.Count == 0) return null;
         if (candidates.Count == 1) return candidates[0];
 

@@ -138,6 +138,7 @@ from ..meta.persistence.db.db_constants import (
 )
 from ..source import resolved_source
 from ..naming_refs import did_you_mean_hint, resolve_object_ref, referrer_package_of
+from ..naming_refs import ref_target as bound_ref_target
 from ..meta.core.relationship.relationship_references import (
     reference_candidates_for,
     reference_fields,
@@ -1715,8 +1716,10 @@ def _validate_via_path(
 
         # ADR-0042 — the hop target (@objectRef/@references) resolves in the package
         # of the entity that DECLARES the relationship/reference, i.e. current_entity.
-        hop_pkg = referrer_package_of(current_entity)
-        next_entity = resolve_object_ref(root, obj_ref, hop_pkg)
+        next_entity = bound_ref_target(
+            rel_node,
+            IDENTITY_REFERENCE_ATTR_REFERENCES if _is_reference_hop(rel_node) else RELATIONSHIP_ATTR_OBJECT_REF,
+        )
         if next_entity is None:
             # FR5d — the hop's target points at a missing entity.
             kind = "reference" if _is_reference_hop(rel_node) else "relationship"
@@ -1893,7 +1896,7 @@ def _infer_via_single_hop(
         for rel in base.children()
         if rel.type == TYPE_RELATIONSHIP
         and isinstance(rel.get_meta_attr(RELATIONSHIP_ATTR_OBJECT_REF), str)
-        and _strip_package(rel.get_meta_attr(RELATIONSHIP_ATTR_OBJECT_REF)) == target_entity.name
+        and bound_ref_target(rel, RELATIONSHIP_ATTR_OBJECT_REF) is target_entity
     ]
     if len(candidates) == 1:
         return [candidates[0]]
@@ -2598,11 +2601,6 @@ def _validate_origin_paths(
 # reference (validation-passes.ts validateRelationships).
 
 
-def _strip_package(name: str) -> str:
-    idx = name.rfind(PACKAGE_SEP)
-    return name[idx + len(PACKAGE_SEP):] if idx >= 0 else name
-
-
 def _junction_reference_fk_fields(junction: MetaData) -> list[str]:
     """FK field names declared by an entity's effective identity.reference children.
 
@@ -2862,7 +2860,8 @@ def _validate_one_side_reference_resolution(
             if not isinstance(object_ref, str) or object_ref == "":
                 continue
 
-            candidates = reference_candidates_for(obj, object_ref)
+            bound_target = bound_ref_target(rel, RELATIONSHIP_ATTR_OBJECT_REF)
+            candidates = reference_candidates_for(obj, bound_target)
 
             source_ref_field = rel.get_meta_attr(RELATIONSHIP_ATTR_SOURCE_REF_FIELD)
             declared = (
@@ -2899,7 +2898,7 @@ def _validate_one_side_reference_resolution(
             # (ladder step 3) decides.
             if len(candidates) <= 1:
                 continue
-            resolved = resolve_relationship_reference(obj, rel.name, object_ref)
+            resolved = resolve_relationship_reference(obj, rel.name, bound_target)
             if resolved is not None:
                 continue
 

@@ -113,8 +113,7 @@ open class KotlinRenderHelperGenerator : MultiFileDirectGeneratorBase<MetaObject
         if (payloadRef.isNullOrEmpty()) {
             return // loader validation normally catches this first
         }
-        // ADR-0042 — resolve @payloadRef under the loader's package-local contract (#228).
-        val payloadVo = KotlinGenUtil.resolveValueObjectRef(loader, payloadRef, template.getPackage())
+        val payloadVo = KotlinGenUtil.payloadTarget(template, "payloadRef")
             ?: return // not a VO
 
         val (templatePkg, templateShort) = PackageMapping.splitFqn(template.name)

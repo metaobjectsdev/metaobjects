@@ -174,11 +174,7 @@ public class LlmTraceHelperGenerator extends MultiFileDirectGeneratorBase<MetaOb
         String responseRef = prompt.getResponseRef();
         if (responseRef == null || responseRef.isEmpty()) return; // @responseRef gates the helper
 
-        // #228 — referrer is the PROMPT (the @responseRef is authored on it), not the
-        // entity: findPackageForMetaData walks parents, so a nested prompt still
-        // resolves the entity's effective package when the prompt itself carries none.
-        MetaObject responseVo = resolveValueObject(loader, responseRef,
-            com.metaobjects.util.MetaDataUtil.findPackageForMetaData(prompt));
+        MetaObject responseVo = SpringNaming.payloadTarget(prompt, "responseRef");
         if (responseVo == null) {
             throw new GeneratorException(
                 "trace-helper: entity \"" + entity.getName() + "\" prompt @responseRef \""

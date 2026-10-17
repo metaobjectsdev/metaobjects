@@ -650,8 +650,7 @@ public static partial class ValidationPasses
                             // entity — the #270 shape, this time baked into DDL.
                             // ADR-0042 — a bare @objectRef resolves in the DECLARING owner's
                             // package (an inherited field resolves in the package that declared it).
-                            var refTarget = FindObject(root, objectRef,
-                                NamingRefs.EffectivePackage(field.Parent ?? obj));
+                            var refTarget = NamingRefs.RefTarget(field, FIELD_ATTR_OBJECT_REF);
                             if (refTarget is not null && refTarget.SubType != OBJECT_SUBTYPE_VALUE)
                             {
                                 errors.Add(new MetaError(
@@ -1173,9 +1172,7 @@ public static partial class ValidationPasses
                 return null;
             }
 
-            // ADR-0042 — the hop target (@objectRef/@references) resolves in the package of
-            // the entity that DECLARES the relationship/reference, i.e. currentObj.
-            var nextObj = FindObject(root, refStr, NamingRefs.EffectivePackage(currentObj));
+            var nextObj = NamingRefs.RefTarget(rel, IsReferenceHop(rel) ? IDENTITY_REFERENCE_ATTR_REFERENCES : RELATIONSHIP_ATTR_OBJECT_REF);
             if (nextObj is null)
             {
                 // FR5d — the hop's target points at a missing entity.
@@ -1308,12 +1305,7 @@ public static partial class ValidationPasses
     {
         var candidates = baseEntity.Children()
             .Where(c => c.Type == TYPE_RELATIONSHIP)
-            .Where(rel =>
-            {
-                // ADR-0039: resolving — a relationship may inherit @objectRef via extends (TS validation-passes.ts:709).
-                var r = rel.Attr(RELATIONSHIP_ATTR_OBJECT_REF);
-                return r is string rs && StripPackageName(rs) == targetEntity.Name;
-            })
+            .Where(rel => ReferenceEquals(NamingRefs.RefTarget(rel, RELATIONSHIP_ATTR_OBJECT_REF), targetEntity))
             .ToList();
         string referrer = $"{obj.Fqn()}::{fieldName}";
         if (candidates.Count == 1) return new List<MetaData> { candidates[0] };
@@ -1334,12 +1326,6 @@ public static partial class ValidationPasses
             ErrorCode.ERR_AMBIGUOUS_PATH,
             Envelope: ResolvedSource.From(originSource, referrer, fromAttr)));
         return null;
-    }
-
-    private static string StripPackageName(string name)
-    {
-        int idx = name.LastIndexOf("::", StringComparison.Ordinal);
-        return idx >= 0 ? name[(idx + 2)..] : name;
     }
 
     /// ADR-0029 decision 6 — a passthrough via-path must be effectively to-one at
@@ -3233,8 +3219,7 @@ public static partial class ValidationPasses
                 // ADR-0042: resolve @objectRef and compare NODE IDENTITY — a bare "Widget" in this
                 // package is self, but an FQN "other::Widget" (a different same-short-name entity)
                 // is NOT (comparing stripped short names would misclassify it).
-                bool isSelfJoin = objectRef is string objRefStr &&
-                    ReferenceEquals(NamingRefs.ResolveObjectRef(root, objRefStr, referrerPkg), declaringEntity);
+                bool isSelfJoin = ReferenceEquals(NamingRefs.RefTarget(rel, RELATIONSHIP_ATTR_OBJECT_REF), declaringEntity);
                 if (symmetric && !isSelfJoin)
                 {
                     errors.Add(new MetaError(
@@ -3245,8 +3230,7 @@ public static partial class ValidationPasses
                 }
 
                 // Rule (c): @through must name an entity declaring exactly two identity.reference children.
-                // ADR-0042 — a bare @through resolves in the declaring entity's package.
-                var junction = FindObject(root, (string)through!, referrerPkg);
+                var junction = NamingRefs.RefTarget(rel, RELATIONSHIP_ATTR_THROUGH);
                 if (junction is null)
                 {
                     errors.Add(new MetaError(
@@ -3344,7 +3328,10 @@ public static partial class ValidationPasses
                 if (rel.Attr(RELATIONSHIP_ATTR_CARDINALITY) is not string cardinality || cardinality != CARDINALITY_ONE) continue;
                 if (rel.Attr(RELATIONSHIP_ATTR_OBJECT_REF) is not string objectRef || objectRef.Length == 0) continue;
 
-                var candidates = RelationshipReferences.ReferenceCandidatesFor(obj, objectRef);
+                var objectRefTarget = NamingRefs.RefTarget(rel, RELATIONSHIP_ATTR_OBJECT_REF);
+                var candidates = objectRefTarget is null
+                    ? RelationshipReferences.ReferenceCandidatesFor(obj, objectRef)
+                    : RelationshipReferences.ReferenceCandidatesFor(obj, objectRefTarget);
 
                 var sourceRefField = rel.Attr(RELATIONSHIP_ATTR_SOURCE_REF_FIELD);
                 string? declared = sourceRefField is string srf && srf.Length > 0 ? srf : null;
@@ -3373,7 +3360,9 @@ public static partial class ValidationPasses
                 // candidates — ResolveRelationshipReference's name-pairing step
                 // (ladder step 3) decides.
                 if (candidates.Count <= 1) continue;
-                var resolved = RelationshipReferences.ResolveRelationshipReference(obj, rel.Name, objectRef);
+                var resolved = objectRefTarget is null
+                    ? RelationshipReferences.ResolveRelationshipReference(obj, rel.Name, objectRef)
+                    : RelationshipReferences.ResolveRelationshipReference(obj, rel.Name, objectRefTarget);
                 if (resolved is not null) continue;
 
                 errors.Add(new MetaError(
@@ -3489,8 +3478,7 @@ public static partial class ValidationPasses
         // NamingRefs.ResolveObjectRef matcher, referred from the DECLARING entity's
         // package. A second resolution rule here is what made this helper disagree
         // with the derivation and emit rule (d)'s finding a second time.
-        string referrerPkg = rel.Parent is { } declaring ? NamingRefs.EffectivePackage(declaring) : "";
-        var junction = NamingRefs.ResolveObjectRef(root, through, referrerPkg) as MetaObject;
+        var junction = NamingRefs.RefTarget(rel, RELATIONSHIP_ATTR_THROUGH) as MetaObject;
         if (junction is null) return true;
         if (junction.SubType != OBJECT_SUBTYPE_ENTITY) return true;
         if (CountJunctionReferences(junction) != 2) return true;
@@ -3587,7 +3575,7 @@ public static partial class ValidationPasses
             // an FQN resolves exactly. Shares the single NamingRefs.ResolveObjectRef matcher.
             // #210 — a template-level payload target widened to object.value OR a
             // sourceless object.projection (a SOURCED projection stays illegal).
-            var payload = NamingRefs.ResolveObjectRef(root, payloadRef, NamingRefs.EffectivePackage(tmpl));
+            var payload = NamingRefs.RefTarget(tmpl, TEMPLATE_ATTR_PAYLOAD_REF);
             if (payload is null || !IsLegalPayloadTarget(payload))
             {
                 // FR5d — @payloadRef is a reference; emit format=resolved with
@@ -3611,7 +3599,7 @@ public static partial class ValidationPasses
             // ADR-0039: resolving — a template may inherit @responseRef via extends.
             if (tmpl.Attr(TEMPLATE_ATTR_RESPONSE_REF) is string responseRef)
             {
-                var resVo = NamingRefs.ResolveObjectRef(root, responseRef, NamingRefs.EffectivePackage(tmpl));
+                var resVo = NamingRefs.RefTarget(tmpl, TEMPLATE_ATTR_RESPONSE_REF);
                 if (resVo is null || !IsLegalPayloadTarget(resVo))
                 {
                     errors.Add(new MetaError(
@@ -3697,8 +3685,7 @@ public static partial class ValidationPasses
             if (field.Attr(FIELD_ATTR_OBJECT_REF) is not string @ref || @ref == "") continue;
             // ADR-0042: a bare ref resolves in the DECLARING owner's package (an
             // inherited field resolves in the package that declared it).
-            var owner = field.Parent ?? payload;
-            var target = NamingRefs.ResolveObjectRef(root, @ref, NamingRefs.EffectivePackage(owner));
+            var target = NamingRefs.RefTarget(field, FIELD_ATTR_OBJECT_REF);
             if (target is null) continue; // dangling — reported by the @objectRef resolution check
             if (target.SubType != OBJECT_SUBTYPE_VALUE)
             {
@@ -4225,7 +4212,6 @@ public static partial class ValidationPasses
             // else root-level); an FQN resolves exactly. Shares the single
             // NamingRefs.ResolveObjectRef matcher — NO bare-name-anywhere fallback (which would
             // silently bind a same-named value-object in another package).
-            string referrerPkg = NamingRefs.EffectivePackage(obj);
             foreach (var source in obj.OwnChildren()
                 .Where(c => c.Type == TYPE_SOURCE && c.SubType == SOURCE_SUBTYPE_RDB && c is MetaSource)
                 .Cast<MetaSource>())
@@ -4244,7 +4230,7 @@ public static partial class ValidationPasses
                     continue;
                 }
 
-                var target = NamingRefs.ResolveObjectRef(root, refName, referrerPkg);
+                var target = NamingRefs.RefTarget(source, SOURCE_ATTR_PARAMETER_REF);
                 if (target is null)
                 {
                     errors.Add(new MetaError(

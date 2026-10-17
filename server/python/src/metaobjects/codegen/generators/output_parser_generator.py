@@ -39,7 +39,7 @@ from metaobjects.codegen.generators.find_inbound import (
     is_xml,
     response_shape,
 )
-from metaobjects.codegen.value_objects import model_class_name, model_import, pkg_of
+from metaobjects.codegen.value_objects import model_class_name, model_import
 from metaobjects.meta.core.object.meta_object import MetaObject
 from metaobjects.meta.meta_data import MetaData
 
@@ -90,7 +90,7 @@ def render_output_parser(template: MetaData, root: MetaData) -> str | None:
     # ADR-0052: the shape parsed INTO is @responseRef — the reply. `response_shape`
     # resolves it through the SAME value-object target rule @payloadRef obeys, so a
     # parser can never bind a shape that has no generated model.
-    shape = response_shape(root, template, pkg_of(template))
+    shape = response_shape(template)
     if shape is None:
         return None
     payload = shape.vo

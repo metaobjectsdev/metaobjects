@@ -50,6 +50,16 @@ It meets the bar this README sets. The incident: a two-hop enum field (`A.x exte
 the shared type in the others, and every behavior corpus stayed green, because both shapes
 store and validate the same members. The rule it gates is ADR-0026 Amendment 1.
 
+## `cross-package-binding/` is a shared input with a decision table, too
+
+`cross-package-binding/` holds one metadata input and `expected-bindings.json`, a port-neutral
+DECISION TABLE: for every relationship and `identity.reference`, the object it binds to and
+the tables and join fields generated code uses. It records a RESOLUTION, never generated
+bytes. The incident: codegen in every port bound a reference by short name or re-resolved an
+inherited bare reference in the inheritor's package, so the first same-named object loaded
+won, while every behavior corpus stayed green because none declares two same-named objects.
+The rule it gates is ADR-0059 Decision 7.
+
 ## Do not delete this README / do not re-propose FR-007
 
 Keep this file so the gap-that-isn't stays documented. If you believe a codegen corpus is warranted,

@@ -82,6 +82,14 @@ public object KotlinGenUtil {
     }
 
     /**
+     * The payload-shape target a reference attribute on [node] (`payloadRef` or `responseRef`) is
+     * bound to, as the loader recorded it, or null when it does not resolve or is not a legal
+     * payload target.
+     */
+    fun payloadTarget(node: com.metaobjects.MetaData, attr: String): MetaObject? =
+        com.metaobjects.loader.References.refTarget(node, attr)?.takeIf { isLegalPayloadTarget(it) }
+
+    /**
      * Resolve [ref] to its payload-shape target under the same ADR-0042 package-local
      * contract as [resolveObjectRef]. #210 — a template-level payload target is an
      * `object.value` OR a SOURCELESS `object.projection` (rejects entities and sourced

@@ -208,13 +208,7 @@ open class KotlinStoredProcGenerator : MultiFileDirectGeneratorBase<MetaObject>(
         val parameterRef = sourceRdb.takeIf { it.hasMetaAttr(RdbSource.ATTR_PARAMETER_REF) }
             ?.let { runCatching { it.getMetaAttr(RdbSource.ATTR_PARAMETER_REF).valueAsString }.getOrNull() }
             ?.takeIf { it.isNotEmpty() }
-        // ADR-0042: a bare ref resolves package-locally against the referrer's METADATA
-        // package — `entity.getPackage()` ("acme::demo"), never the mapped Kotlin package
-        // `pkg` ("acme.demo") that PackageMapping.splitFqn hands back. Passing the Kotlin
-        // one silently resolves NOTHING, which reads exactly like "this callable declares no
-        // arguments" and emits a zero-argument wrapper — the same silent-shortfall shape as
-        // the @param bug this replaces.
-        val argsObject = KotlinGenUtil.resolveObjectRef(loader, parameterRef, entity.getPackage())
+        val argsObject = com.metaobjects.loader.References.refTarget(sourceRdb, RdbSource.ATTR_PARAMETER_REF)
         if (parameterRef != null && argsObject == null) {
             LOG.warn(
                 "KotlinStoredProcGenerator: callable \"{}\" @parameterRef \"{}\" did not " +

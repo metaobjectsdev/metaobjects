@@ -167,7 +167,7 @@ def resolve_m2m_descriptors(
 ) -> list[M2mDescriptor]:
     """Resolve every M:N navigation on *entity* into a build-time descriptor.
 
-    *object_index* is a bare-name → entity map of the loaded model. A relationship
+    *object_index* is a resolution-key → entity map of the loaded model. A relationship
     that fails derivation (missing/malformed junction, ambiguous self-join) raises
     :class:`M2MDerivationError` — the loader validates this; reaching it here is a
     metadata error, surfaced loudly (never silently skipped).
@@ -235,6 +235,7 @@ def resolve_m2m_descriptors(
 
 
 def build_object_index(entities: list[MetaObject]) -> dict[str, MetaObject]:
-    """Bare-name → entity map (the codegen resolution surface, mirroring the
-    runtime resolver's ``object_index``)."""
-    return {e.name: e for e in entities}
+    """Resolution-key → entity map (the codegen resolution surface, mirroring the
+    runtime resolver's ``object_index``). Keyed by ``resolution_key()`` so two
+    same-short-name entities in different packages stay distinct."""
+    return {e.resolution_key(): e for e in entities}

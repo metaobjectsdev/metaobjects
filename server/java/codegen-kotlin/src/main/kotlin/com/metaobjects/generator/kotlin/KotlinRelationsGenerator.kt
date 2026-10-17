@@ -151,13 +151,13 @@ open class KotlinRelationsGenerator : MultiFileDirectGeneratorBase<MetaObject>()
         // Resolve each to-many composition target → (relShortName, targetShort). Skip
         // relationships whose @objectRef cannot be resolved (defensive — the loader's
         // validation phase already gates the attr being present).
-        data class Helper(val relShortName: String, val targetTable: String)
+        data class Helper(val relShortName: String, val targetTable: String, val targetPackage: String)
         val helpers = manyRels.mapNotNull { rel ->
-            val ref = rel.objectRef ?: return@mapNotNull null
-            val target = KotlinGenUtil.resolveObjectByShortOrFqn(loader, ref) ?: return@mapNotNull null
-            val targetShort = PackageMapping.splitFqn(target.name).second
+            val target = com.metaobjects.loader.References.refTarget(rel, MetaRelationship.ATTR_OBJECT_REF)
+                ?: return@mapNotNull null
+            val (targetPkg, targetShort) = PackageMapping.splitFqn(target.name)
             val relShort = rel.shortName ?: rel.name
-            Helper(relShort, targetShort + "Table")
+            Helper(relShort, targetShort + "Table", targetPkg)
         }
         if (helpers.isEmpty() && m2mNavs.isEmpty() && reverseFks.isEmpty()) return
 
@@ -207,6 +207,10 @@ open class KotlinRelationsGenerator : MultiFileDirectGeneratorBase<MetaObject>()
             if (pkParamSimpleName == "UUID" || reverseFks.any { it.valueType == "UUID" }) {
                 append("import java.util.UUID\n")
             }
+            val crossPackageTables = KotlinM2mSupport.importLines(m2mNavs.map { it.nav }, pkg, junction = true, dataClass = false) +
+                helpers.filter { it.targetPackage != pkg }
+                    .map { if (it.targetPackage.isEmpty()) it.targetTable else "${it.targetPackage}.${it.targetTable}" }
+            for (line in crossPackageTables.toSortedSet()) append("import $line\n")
             append("\n")
             append("/** GENERATED — extension fns for `$ownerShort` to-many relationships. Do not hand-edit. */\n")
             var first = true

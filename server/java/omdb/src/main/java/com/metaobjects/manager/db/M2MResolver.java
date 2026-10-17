@@ -79,8 +79,8 @@ public final class M2MResolver {
 
         M2MFields fields = M2MFields.derive(rel, sourceMeta, root);
 
-        MetaObject junction = mustGetEntity(root, rel.getThrough());
-        MetaObject target = mustGetEntity(root, rel.getObjectRef());
+        MetaObject junction = mustGetEntity(rel, MetaRelationship.ATTR_THROUGH, rel.getThrough());
+        MetaObject target = mustGetEntity(rel, MetaRelationship.ATTR_OBJECT_REF, rel.getObjectRef());
 
         String sourcePkField = primaryKeyField(sourceMeta);
         Object sourceId = readField(sourceMeta, source, sourcePkField);
@@ -159,9 +159,8 @@ public final class M2MResolver {
         return String.valueOf(a).equals(String.valueOf(b));
     }
 
-    private static MetaObject mustGetEntity(MetaRoot root, String name) {
-        // ADR-0059 R7: a reference value is canonical after load; match its exact resolution key.
-        MetaObject found = com.metaobjects.loader.References.lookupCanonical(root, name);
+    private static MetaObject mustGetEntity(MetaRelationship rel, String attr, String name) {
+        MetaObject found = com.metaobjects.loader.References.refTarget(rel, attr);
         if (found == null) throw new IllegalStateException("Entity '" + name + "' not found in model root");
         return found;
     }

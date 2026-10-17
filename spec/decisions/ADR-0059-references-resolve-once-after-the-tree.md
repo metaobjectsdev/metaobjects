@@ -12,7 +12,7 @@ syntax under the metamodel version).
   loader does a pure FQN match). ADR-0032 §2's reference grammar (`::Name` root-absolute,
   `..::Name` parent-relative, `pkg::Name` exact, bare `Name`) stands, and now applies to every
   source.
-- **Amends [ADR-0042](ADR-0042-bare-refs-package-local.md).** §2 (a bare name is package-local,
+- **Amends [ADR-0042](ADR-0042-bare-references-are-package-local.md).** §2 (a bare name is package-local,
   then root-level) stands. §3's sentence that the desugar folds bare names is replaced by
   Decision 1 below, and §4's `extends` claim is corrected by Decision 3: a bare `extends`
   resolves in its own file's package, then at the root, and never binds an object in another
@@ -84,13 +84,20 @@ order and positions do not change.
 
 **6. Canonical spelling.** A packaged target is written `pkg::Name`. A root-level target is
 written `::Name` from a packaged referrer and `Name` from a root-level one. The dotted tail is
-kept. Every canonical spelling resolves to the same node with or without a referrer.
+kept. A canonical value is absolute: `pkg::Name` and `::Name` name exactly one node, and a bare
+canonical `Name` means the root-level object. It keeps that meaning wherever it is read, so a
+root-level declarer's bare `Name` inherited by a node in package `acme` still names the root
+`Name` when `acme::Name` exists.
 
-**7. Consumers read the resolved model.** A consumer with a referrer keeps calling the shared
-resolver, which accepts every form. A consumer without one reads the bound target
+**7. Consumers read the resolved model.** Every consumer after load reads the bound target
 (`refTarget(node, attr)` in TypeScript) or resolves the canonical value exactly
-(`lookupCanonical`). Code that compared a reference value to an object's short name compares
-the target node instead.
+(`lookupCanonical`). It never resolves a canonical value again with a referrer package, because
+the package of the node that inherits an attribute is not the package it was written in, and
+applying it would turn a bare root-level `Name` into `<inheritor's package>::Name`. A
+validation pass, which runs before `resolveReferences` and reads authored values, resolves in
+the package of the node that physically declares the attribute (Decision 3). Code that
+compared a reference value to an object's short name compares the target node instead, and
+no consumer binds by short name.
 
 **8. The serializer writes canonical values.** `canonicalSerialize` writes the canonical
 attribute values and the canonical `extends`. Document package rule:

@@ -126,7 +126,7 @@ from metaobjects.codegen import eject as owned
 from metaobjects.codegen.generators.render_helper_generator import (
     _derive_payload_field_tree,
 )
-from metaobjects.codegen.value_objects import pkg_of, resolve_payload_vo
+from metaobjects.codegen.value_objects import bound_payload_vo
 from metaobjects.meta.template import template_constants as tc
 from metaobjects.naming import (
     COLUMN_NAMING_STRATEGIES,
@@ -2130,9 +2130,7 @@ def _verify_templates(args: argparse.Namespace) -> int:
             print(f"error: [{tmpl.name}] missing @payloadRef.", file=sys.stderr)
             error_count += 1
             continue
-        # ADR-0042 (#228): the referrer is THIS template — a bare @payloadRef
-        # resolves in ITS OWN package first.
-        vo = resolve_payload_vo(root, payload_ref, pkg_of(tmpl))
+        vo = bound_payload_vo(tmpl, tc.TEMPLATE_ATTR_PAYLOAD_REF)
         if vo is None:
             print(
                 f"error: [{tmpl.name}] @payloadRef '{payload_ref}' did not "

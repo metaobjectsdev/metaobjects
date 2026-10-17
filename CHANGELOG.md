@@ -867,6 +867,10 @@ loaded, then rewrites each to its canonical spelling before the tree is frozen. 
   object the loader bound, and `MetaRoot.findObject` accepts a canonical value.
 - Two conformance gates run in every port: each fixture loads to the same model from JSON and
   from YAML, and each `expected.json` loads and serializes back to itself.
+- TypeScript `referenceCandidatesFor` / `resolveRelationshipReference` and Python
+  `reference_candidates_for` / `resolve_relationship_reference` take the target object, not a
+  name: pass `refTarget(rel, "objectRef")` (`ref_target` in Python). The name form matched by
+  short name.
 
 **One physical-naming setting, read by every port (ADR-0058).** **This changes generated column names in C#, Java, Kotlin's runtime and Python unless you add
 one line.** Column and table names that the metadata does not give (`@column`, `@table`,
@@ -1331,6 +1335,35 @@ until you regenerate.
   runtime and route codegen), in the PlantUML diagram and in extract and render helpers. Java: a
   field that an overlay adds from another file resolves a bare `extends` in that file's own
   package, as the other ports do.
+- **A `@via` or `@spine` hop inherited from another package reaches the object its reference
+  names, in every port (ADR-0059).** The loader and the report shape resolved an inherited
+  hop's `@objectRef` or `@references` in the package of the entity being walked. A hop that
+  `base::Order` declares onto a bare `Customer` bound `app::Customer` when walked from
+  `app::BigOrder`, so the dimension was refused or its `@of` read the wrong entity. It now
+  resolves in the package of the node that declares the hop. TypeScript's view lowering and
+  Cube export walk hops the same way.
+- **Codegen and the runtime never bind a reference by short name, and never resolve an
+  inherited reference again in the inheritor's package (ADR-0059 Decision 7).** A root-level
+  declarer writes a root target bare. Inherited into package `acme` while `acme::Name` exists,
+  a consumer that resolved it again from `acme` bound `acme::Name`, and a consumer that matched
+  by short name bound whichever same-named object loaded first. Every consumer now reads the
+  target the loader bound:
+  - TypeScript: the M:N traversal route, the Drizzle `relations()` block and FK
+    `.references()`, reverse finders, the TanStack M:N hook, the M:N derivation, `meta
+    migrate`'s referential actions, the docs-site link graph, and the runtime's extract and
+    validators. A relation-map entry carries the bound `target` (and `junction`).
+  - Python: to-one relationship checks and `@via` inference compare bound targets, and the
+    M:N derivation and router codegen read them.
+  - C#: the M:N derivation and navigation, reverse finders, referential actions, the
+    validation passes and the payload lookups of the template generators.
+  - Java and Kotlin: the M:N derivation, Spring M:N support and repositories, OMDB's M:N
+    resolver, PlantUML, the template generators and the validation passes. Kotlin's generated
+    code also imports a cross-package or root-level M:N table and FK target; it used to
+    resolve to a same-named type in its own package.
+  A new shared input, `fixtures/codegen-conformance/cross-package-binding/`, carries a decision
+  table every port's codegen test answers.
+- **Python: the YAML twin gate fails on a JSON load that crashes.** It used to skip the fixture
+  as if its providers did not compose.
 - **SQLite and D1: a backtick-quoted CHECK constraint name is read.** Introspection read
   `CONSTRAINT "name"` and a bare name but not `` CONSTRAINT `name` `` (the quoting Drizzle-written
   migrations use) or `[name]`, so the stored check had an empty name, and `meta verify --db` and

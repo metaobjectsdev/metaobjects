@@ -41,31 +41,13 @@ public static class ExtractDelegateEmitter
     // =========================================================================
 
     /// <summary>
-    /// Resolve an OBJECT reference under the ADR-0042 package-local contract (FQN-exact when
-    /// qualified; else the referrer's own package, else root-level) — never a bare-tail
-    /// fallback (the #219/#228 "wrong node" class: under a cross-package short-name collision,
-    /// a bare-tail match binds WHICHEVER same-named object happens to load first, regardless of
-    /// which package <paramref name="name"/> actually points at).
-    /// </summary>
-    public static MetaData? FindObject(MetaData root, string name, string referrerPkg) =>
-        global::MetaObjects.NamingRefs.ResolveObjectRef(root, name, referrerPkg);
-
-    /// <summary>
-    /// The <c>@objectRef</c> target VO for a nested-object field, or null when unresolvable.
-    /// The referrer package is the FIELD's own declaring package (ADR-0042 — the field's parent
-    /// object, not necessarily the walk's root VO, since a field may be inherited via extends
-    /// from an abstract VO declared in a different package). Shared with
+    /// The <c>@objectRef</c> target VO for a nested-object field, or null when unresolvable: the
+    /// target the loader bound (ADR-0059 R7), resolved in the package of the node that declared the
+    /// attribute even when the field is inherited via <c>extends</c>. Shared with
     /// <see cref="ExtractorGenerator"/> (the extract tier walks the same VO graph).
     /// </summary>
-    public static MetaData? RefVo(MetaData field, MetaData root)
-    {
-        // ADR-0039: resolving — @objectRef may be inherited via extends (TS reads f.attr).
-        if (field.Attr(FIELD_ATTR_OBJECT_REF) is not string objectRef) return null;
-        var referrerPkg = field.Parent is not null
-            ? global::MetaObjects.NamingRefs.EffectivePackage(field.Parent)
-            : "";
-        return FindObject(root, objectRef, referrerPkg);
-    }
+    public static MetaData? RefVo(MetaData field, MetaData root) =>
+        global::MetaObjects.NamingRefs.RefTarget(field, FIELD_ATTR_OBJECT_REF);
 
     /// <summary>
     /// True iff the field is a nested object reference (<c>field.object</c>) — distinct from the

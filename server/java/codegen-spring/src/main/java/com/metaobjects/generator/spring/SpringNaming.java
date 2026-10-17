@@ -122,6 +122,16 @@ public final class SpringNaming {
     }
 
     /**
+     * The payload-shape target a reference attribute on {@code node} is bound to (the target the
+     * loader recorded; {@code attr} is {@code payloadRef} or {@code responseRef}), or {@code null}
+     * when it does not resolve or is not a legal payload target.
+     */
+    public static MetaObject payloadTarget(MetaData node, String attr) {
+        MetaObject obj = com.metaobjects.loader.References.refTarget(node, attr);
+        return (obj != null && isLegalPayloadTarget(obj)) ? obj : null;
+    }
+
+    /**
      * #210 — a template-level payload target ({@code @payloadRef} / {@code @responseRef})
      * is an {@code object.value} OR a SOURCELESS {@code object.projection}.
      * "Sourceless" is the #248 persistability contract: no declared/inherited

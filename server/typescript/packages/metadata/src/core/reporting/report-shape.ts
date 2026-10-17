@@ -7,7 +7,7 @@
 import type { MetaData } from "../../shared/meta-data.js";
 import type { MetaRoot } from "../../shared/meta-root.js";
 import { isMetaObject } from "../../shared/node-guards.js";
-import { resolveObjectRef } from "../../naming-refs.js";
+import { refTarget, resolveObjectRef } from "../../naming-refs.js";
 import { CHILD_REF_SEPARATOR, PACKAGE_SEPARATOR } from "../../shared/structural.js";
 import type { MetaObject } from "../object/meta-object.js";
 import type { MetaField } from "../field/meta-field.js";
@@ -162,7 +162,7 @@ function reportingViaTerminal(
   if (hops === undefined) return undefined;
   let current: MetaObject = from;
   for (const hop of hops) {
-    const target = resolveViaHop(current, hop, root)?.target;
+    const target = resolveViaHop(current, hop)?.target;
     if (target === undefined) return undefined;
     current = target;
   }
@@ -240,7 +240,8 @@ export function reportSpineHops(report: MetaObject, from: MetaObject, root: Meta
 /**
  * One hop of a `@via`/`@spine` path, as the loader's rule R8 walks it: the `relationship.*`
  * (read through its `@objectRef`) or `identity.reference` (through its `@references`) of
- * `current` named `hopName`, with its target resolved in `current`'s package. Returns
+ * `current` named `hopName`, with its target resolved in the package of the node that declares
+ * the hop's reference attribute (ADR-0059 R3). Returns
  * `target: undefined` for an unresolvable hop or a ref attr that is not a string / does not
  * reach a metadata object.
  * ADR-0039: resolving children(), so a hop inherited through extends is found.
@@ -248,7 +249,6 @@ export function reportSpineHops(report: MetaObject, from: MetaObject, root: Meta
 function resolveViaHop(
   current: MetaObject,
   hopName: string,
-  root: MetaRoot,
 ): { hop: MetaData; isReference: boolean; target: MetaObject | undefined } | undefined {
   const rel = current.children().find((c) => c.type === TYPE_RELATIONSHIP && c.name === hopName);
   const refNode = rel !== undefined
@@ -259,8 +259,7 @@ function resolveViaHop(
   const hop = rel ?? refNode;
   if (hop === undefined) return undefined;
   const isReference = rel === undefined;
-  const ref = hop.attr(isReference ? IDENTITY_REFERENCE_ATTR_REFERENCES : RELATIONSHIP_ATTR_OBJECT_REF);
-  const node = typeof ref === "string" ? resolveObjectRef(root, ref, packageOfKey(current.resolutionKey())).node : undefined;
+  const node = refTarget(hop, isReference ? IDENTITY_REFERENCE_ATTR_REFERENCES : RELATIONSHIP_ATTR_OBJECT_REF);
   return { hop, isReference, target: isMetaObject(node) ? node : undefined };
 }
 
@@ -276,7 +275,7 @@ export function reportSpineEntity(report: MetaObject, from: MetaObject, root: Me
   if (hops === undefined) return undefined;
   let current: MetaObject = from;
   for (const hop of hops) {
-    const target = resolveViaHop(current, hop, root)?.target;
+    const target = resolveViaHop(current, hop)?.target;
     if (target === undefined) throw unresolved(report.name, `@spine '${reportSpine(report) ?? ""}' hop '${hop}'`);
     current = target;
   }
@@ -316,7 +315,7 @@ function isTimeGrain(grain: string | undefined): grain is TimeGrain {
 function viaJoinsInner(hops: readonly string[], from: MetaObject, root: MetaRoot): boolean {
   let current = from;
   for (const hopName of hops) {
-    const resolved = resolveViaHop(current, hopName, root);
+    const resolved = resolveViaHop(current, hopName);
     if (resolved === undefined || resolved.target === undefined) return false;
     const { hop, isReference, target } = resolved;
 

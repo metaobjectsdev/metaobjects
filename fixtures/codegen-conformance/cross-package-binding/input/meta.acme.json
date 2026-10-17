@@ -1,0 +1,48 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      {
+        "object.value": {
+          "name": "Customer",
+          "children": [
+            {
+              "field.string": {
+                "name": "code",
+                "@required": true,
+                "@maxLength": 40
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.value": {
+          "name": "Label",
+          "children": [
+            {
+              "field.string": {
+                "name": "code",
+                "@required": true,
+                "@maxLength": 40
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Order",
+          "extends": "::BaseOrder",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "orders"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

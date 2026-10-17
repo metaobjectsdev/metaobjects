@@ -17,6 +17,7 @@ package com.metaobjects.relationship;
 
 import com.metaobjects.identity.MetaIdentity;
 import com.metaobjects.identity.ReferenceIdentity;
+import com.metaobjects.loader.References;
 import com.metaobjects.object.MetaObject;
 
 import java.util.ArrayList;
@@ -100,6 +101,18 @@ public final class RelationshipReferences {
      * <p>ADR-0039: resolving — {@code holder.getIdentities()} (no-arg, includeParentData
      * defaulting true) honors references inherited via extends.</p>
      */
+    public static List<ReferenceIdentity> referenceCandidatesFor(MetaObject holder, MetaObject targetNode) {
+        List<ReferenceIdentity> out = new ArrayList<>();
+        if (targetNode == null) return out;
+        for (MetaIdentity id : holder.getIdentities()) {
+            if (!(id instanceof ReferenceIdentity)) continue;
+            ReferenceIdentity ref = (ReferenceIdentity) id;
+            if (ReferenceFkUtil.refFkField(ref) == null) continue;
+            if (References.refTarget(ref, MetaIdentity.ATTR_REFERENCES) == targetNode) out.add(ref);
+        }
+        return out;
+    }
+
     public static List<ReferenceIdentity> referenceCandidatesFor(MetaObject holder, String targetEntity) {
         String target = ReferenceFkUtil.stripPackage(targetEntity);
         List<ReferenceIdentity> out = new ArrayList<>();
@@ -134,7 +147,20 @@ public final class RelationshipReferences {
      */
     public static ReferenceIdentity resolveRelationshipReference(
             MetaObject holder, String relationshipName, String targetEntity, String sourceRefField) {
-        List<ReferenceIdentity> candidates = referenceCandidatesFor(holder, targetEntity);
+        return pick(referenceCandidatesFor(holder, targetEntity), relationshipName, sourceRefField);
+    }
+
+    /**
+     * The same ladder given the target NODE: a reference matches when the loader (or, before
+     * it ran, the declaring package) bound its {@code @references} to that node, never by short name.
+     */
+    public static ReferenceIdentity resolveRelationshipReference(
+            MetaObject holder, String relationshipName, MetaObject targetNode, String sourceRefField) {
+        return pick(referenceCandidatesFor(holder, targetNode), relationshipName, sourceRefField);
+    }
+
+    private static ReferenceIdentity pick(List<ReferenceIdentity> candidates, String relationshipName,
+                                          String sourceRefField) {
         if (candidates.isEmpty()) return null;
         if (candidates.size() == 1) return candidates.get(0);
 

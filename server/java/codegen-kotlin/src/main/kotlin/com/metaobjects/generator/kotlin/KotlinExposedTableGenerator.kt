@@ -900,8 +900,8 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             fun consider(targetFqn: String?, targetTable: String?) {
                 if (targetFqn == null || targetTable == null) return
                 val targetPkg = PackageMapping.splitFqn(targetFqn).first
-                if (targetPkg.isNotEmpty() && targetPkg != pkg) {
-                    add("$targetPkg.$targetTable")
+                if (targetPkg != pkg) {
+                    add(if (targetPkg.isEmpty()) targetTable else "$targetPkg.$targetTable")
                 }
             }
             for (fk in fkColumns) consider(fk.targetFqn, fk.targetTable)
@@ -2115,7 +2115,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             rel.through == null && rel.objectRef != null &&
                 KotlinGenUtil.resolveObjectByShortOrFqn(loader, rel.objectRef) === target &&
                 RelationshipReferences.resolveRelationshipReference(
-                    entity, rel.shortName, rel.objectRef, rel.sourceRefField) === ref
+                    entity, rel.shortName, target, rel.sourceRefField) === ref
         }
         var rel = childSide
         // When the tier-3 satisfiability guard fires, the reverse relationship's

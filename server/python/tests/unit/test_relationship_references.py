@@ -42,6 +42,10 @@ def _find_object(root: MetaData, name: str) -> MetaData:
     return next(c for c in root.children() if c.type == TYPE_OBJECT and c.name == name)
 
 
+def _team(holder: MetaData) -> MetaData:
+    return _find_object(holder.root(), "Team")
+
+
 def _load_object(doc: dict, name: str) -> MetaData:
     result = MetaDataLoader().load([InMemoryStringSource(json.dumps(doc))])
     assert result.errors == [], [e.message for e in result.errors]
@@ -53,21 +57,26 @@ def _load_match() -> MetaData:
 
 
 def test_enumerates_every_candidate_reference_for_the_target() -> None:
-    candidates = reference_candidates_for(_load_match(), "Team")
+    match = _load_match()
+    candidates = reference_candidates_for(match, _team(match))
     assert [c.name for c in candidates] == ["homeTeamRef", "awayTeamRef"]
+
+
+def test_an_unbound_target_matches_no_candidate() -> None:
+    assert reference_candidates_for(_load_match(), None) == []
 
 
 def test_name_pairing_resolves_each_association_to_its_own_reference() -> None:
     match = _load_match()
-    home = resolve_relationship_reference(match, "homeTeam", "Team")
-    away = resolve_relationship_reference(match, "awayTeam", "Team")
+    home = resolve_relationship_reference(match, "homeTeam", _team(match))
+    away = resolve_relationship_reference(match, "awayTeam", _team(match))
     assert home is not None and home.name == "homeTeamRef"
     assert away is not None and away.name == "awayTeamRef"
 
 
 def test_source_ref_field_wins_over_name_pairing() -> None:
     match = _load_match()
-    resolved = resolve_relationship_reference(match, "homeTeam", "Team", "awayTeamId")
+    resolved = resolve_relationship_reference(match, "homeTeam", _team(match), "awayTeamId")
     assert resolved is not None and resolved.name == "awayTeamRef"
 
 
@@ -86,7 +95,7 @@ def test_a_single_candidate_resolves_regardless_of_name() -> None:
         ]}},
     ]}}
     match = _load_object(doc, "Match")
-    resolved = resolve_relationship_reference(match, "champion", "Team")
+    resolved = resolve_relationship_reference(match, "champion", _team(match))
     assert resolved is not None and resolved.name == "anythingAtAll"
 
 
@@ -113,7 +122,7 @@ def test_unpairable_names_return_none_rather_than_guessing() -> None:
     result = MetaDataLoader().load([InMemoryStringSource(json.dumps(doc))])
     assert [e.code.value for e in result.errors] == ["ERR_INVALID_RELATIONSHIP"]
     match = _find_object(result.root, "Match")
-    assert resolve_relationship_reference(match, "winner", "Team") is None
+    assert resolve_relationship_reference(match, "winner", _team(match)) is None
 
 
 def test_suffix_stripping_never_applies_to_the_relationship_name() -> None:
@@ -136,7 +145,7 @@ def test_suffix_stripping_never_applies_to_the_relationship_name() -> None:
     result = MetaDataLoader().load([InMemoryStringSource(json.dumps(doc))])
     assert [e.code.value for e in result.errors] == ["ERR_INVALID_RELATIONSHIP"]
     match = _find_object(result.root, "Match")
-    assert resolve_relationship_reference(match, "valid", "Team") is None
+    assert resolve_relationship_reference(match, "valid", _team(match)) is None
 
 
 # ---------------------------------------------------------------------------
@@ -175,8 +184,7 @@ def test_dotted_references_are_enumerated_as_candidates() -> None:
     # Both the bare-dotted "Team.id" and the FQN-dotted "repro::Team.id" forms
     # resolve to the entity "Team" — the package separator is never mistaken
     # for the field separator.
-    assert [c.name for c in reference_candidates_for(match, "Team")] == ["alphaRef", "betaRef"]
-    assert [c.name for c in reference_candidates_for(match, "repro::Team")] == ["alphaRef", "betaRef"]
+    assert [c.name for c in reference_candidates_for(match, _team(match))] == ["alphaRef", "betaRef"]
 
 
 def test_dotted_references_resolve_through_source_ref_field() -> None:
@@ -186,7 +194,7 @@ def test_dotted_references_resolve_through_source_ref_field() -> None:
     # this raised ERR_INVALID_RELATIONSHIP ("names no identity.reference
     # targeting Team. Candidates: .") on a model TypeScript accepted.
     match = _load_object(doc, "Match")
-    resolved = resolve_relationship_reference(match, "winner", "Team", "betaFk")
+    resolved = resolve_relationship_reference(match, "winner", _team(match), "betaFk")
     assert resolved is not None and resolved.name == "betaRef"
 
 
@@ -200,4 +208,4 @@ def test_dotted_references_are_still_ambiguous_without_disambiguation() -> None:
     assert [e.code.value for e in result.errors] == ["ERR_INVALID_RELATIONSHIP"]
     assert "alphaRef(alphaFk), betaRef(betaFk)" in result.errors[0].message
     match = _find_object(result.root, "Match")
-    assert resolve_relationship_reference(match, "winner", "Team") is None
+    assert resolve_relationship_reference(match, "winner", _team(match)) is None

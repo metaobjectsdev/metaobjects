@@ -60,19 +60,17 @@ from metaobjects.meta.core.field.meta_field import MetaField
 from metaobjects.meta.persistence.db import db_constants as dbc
 from metaobjects.meta.core.identity.identity_constants import (
     IDENTITY_ATTR_FIELDS,
+    IDENTITY_REFERENCE_ATTR_REFERENCES,
     IDENTITY_SUBTYPE_REFERENCE,
 )
 from metaobjects.meta.core.object.meta_object import MetaObject
 from metaobjects.meta.core.object.object_constants import OBJECT_SUBTYPE_REPORT
-from metaobjects.meta.core.relationship.relationship_references import (
-    reference_target_entity,
-)
 from metaobjects.meta.persistence.source.source_constants import (
     SOURCE_KIND_TABLE,
 )
 from metaobjects.naming import DEFAULT_COLUMN_NAMING
+from metaobjects.naming_refs import ref_target
 from metaobjects.shared.base_types import TYPE_IDENTITY
-from metaobjects.shared.separators import PACKAGE_SEP
 
 from ..runtime.fr010_field_mapping import is_required
 from ..runtime.m2m_codegen import (
@@ -400,15 +398,12 @@ def reverse_fks_for(entity: MetaObject) -> list[ReverseFk]:
             fk_field = fields.split(",")[0].strip() or None
         # #368 fallout: @references may be the dotted `Entity.field` /
         # `Entity.fieldA,fieldB` explicit-fields form (e.g. "acme::sport::Team.id"),
-        # not just a bare/qualified entity name. reference_target_entity() already
-        # drops that dotted tail (ADR-0039: resolving); strip_package here then bares
-        # the remaining qualified entity name, same as the pre-existing package strip.
-        target = reference_target_entity(c)
-        if isinstance(target, str) and PACKAGE_SEP in target:
-            target = target[target.rfind(PACKAGE_SEP) + len(PACKAGE_SEP):]
-        if not fk_field or not target:
+        # not just a bare/qualified entity name; ref_target binds the owner entity and
+        # drops that dotted tail, and its short name is the generated identifier.
+        bound = ref_target(c, IDENTITY_REFERENCE_ATTR_REFERENCES)
+        if not fk_field or bound is None:
             continue
-        out.append(ReverseFk(fk_field=fk_field, target_entity=target))
+        out.append(ReverseFk(fk_field=fk_field, target_entity=bound.name))
     return out
 
 

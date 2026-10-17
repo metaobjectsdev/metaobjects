@@ -1,0 +1,42 @@
+{
+  "relations": {
+    "a::Post.tags": {
+      "cardinality": "many",
+      "target": "b::Tag",
+      "targetTable": "b_tags",
+      "junction": "a::PostTag",
+      "junctionTable": "post_tags",
+      "sourceJoinField": "postId",
+      "targetJoinField": "tagId"
+    },
+    "a::Post.featuredTag": {
+      "cardinality": "one",
+      "target": "b::Tag",
+      "targetTable": "b_tags",
+      "fkField": "featuredTagId"
+    },
+    "acme::Order.customer": {
+      "cardinality": "one",
+      "target": "Customer",
+      "targetTable": "customers",
+      "fkField": "customerId"
+    },
+    "acme::Order.labels": {
+      "cardinality": "many",
+      "target": "Label",
+      "targetTable": "labels",
+      "junction": "OrderLabel",
+      "junctionTable": "order_labels",
+      "sourceJoinField": "orderId",
+      "targetJoinField": "labelId"
+    }
+  },
+  "references": {
+    "a::Post.featuredTagRef": "b::Tag",
+    "a::PostTag.postRef": "a::Post",
+    "a::PostTag.tagRef": "b::Tag",
+    "acme::Order.customerRef": "Customer",
+    "OrderLabel.orderRef": "BaseOrder",
+    "OrderLabel.labelRef": "Label"
+  }
+}

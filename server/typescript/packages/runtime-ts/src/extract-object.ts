@@ -30,7 +30,7 @@ import {
   isMetaRoot,
   type MetaData,
   TYPE_OBJECT,
-  resolveObjectRef,
+  refTarget,
   FIELD_SUBTYPE_ENUM,
   FIELD_SUBTYPE_OBJECT,
   FIELD_SUBTYPE_STRING,
@@ -378,10 +378,9 @@ function attrString(node: MetaData, attr: string): string | null {
 }
 
 /**
- * Resolve a field's `@objectRef` to its MetaObject via the canonical ADR-0042 package-local
- * resolver (`resolveObjectRef` from `@metaobjectsdev/metadata`): an FQN ref (contains `::`)
- * matches EXACTLY on `resolutionKey()`; a bare ref resolves in the field's OWN declaring
- * package (`field.parent?.package ?? field.parent?.fileDefaultPackage`), else root-level.
+ * Resolve a field's `@objectRef` to its MetaObject: the target the loader bound
+ * (`refTarget` from `@metaobjectsdev/metadata`, ADR-0059 R7), resolved in the package of
+ * the node that declared the attribute, never by short name.
  *
  * #228: this previously called `MetaRoot.findObject(name)` directly — a bare-`name`-only
  * lookup — and, for an FQN ref (which never matches any object's bare `.name`), fell back to
@@ -404,8 +403,7 @@ function resolveFieldObjectRef(field: MetaField): MetaObject | undefined {
   // class check fails for a real root, so every field.object @objectRef falls to
   // the opaque-leaf guard and extraction silently stops descending.
   if (!isMetaRoot(root)) return undefined;
-  const referrerPkg = field.parent?.package ?? field.parent?.fileDefaultPackage ?? "";
-  const { node } = resolveObjectRef(root, ref, referrerPkg);
+  const node = refTarget(field, FIELD_ATTR_OBJECT_REF);
   return node !== undefined && node.type === TYPE_OBJECT ? (node as MetaObject) : undefined;
 }
 

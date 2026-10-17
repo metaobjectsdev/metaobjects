@@ -56,7 +56,7 @@ from metaobjects.apidocs.naming import snake_case as _snake_case
 from metaobjects.codegen.constants import generated_header
 from metaobjects.codegen.format import ruff_format
 from metaobjects.codegen.generator import EmittedFile, GenContext, Generator
-from metaobjects.codegen.value_objects import model_class_name, pkg_of, resolve_payload_vo
+from metaobjects.codegen.value_objects import bound_payload_vo, model_class_name
 from metaobjects.meta.core.field import field_constants as fc
 from metaobjects.meta.core.field.meta_field import MetaField
 from metaobjects.meta.core.object.meta_object import MetaObject
@@ -69,7 +69,7 @@ from metaobjects.render.verify import (
     PayloadField,
     verify,
 )
-from metaobjects.naming_refs import resolve_object_ref
+from metaobjects.naming_refs import ref_target
 from metaobjects.shared.base_types import TYPE_FIELD, TYPE_TEMPLATE
 from metaobjects.shared.separators import PACKAGE_SEP
 
@@ -91,26 +91,6 @@ def _py_str(s: str) -> str:
 
 
 
-def _resolve_nested_object_ref(
-    root: MetaData, reference: str, referrer_pkg: str
-) -> MetaObject | None:
-    """Resolve a ``field.object``'s ``@objectRef`` to its target ``object.value``.
-
-    ADR-0042: package-local — an FQN ref (contains ``::``) resolves EXACTLY on the
-    package-qualified name; a bare ref resolves in the referrer's package FIRST
-    (else a root-level object), never a same-named ``object.value`` in another
-    package via a bare-tail fallback. *referrer_pkg* is the DECLARING field's
-    package (which differs from the VO's when the field is inherited via extends
-    from an abstract VO in another package). Shares the single ``resolve_object_ref``
-    matcher. Mirrors the TS ``findObject`` in payload-field-tree.ts."""
-    if not reference:
-        return None
-    target = resolve_object_ref(root, reference, referrer_pkg)
-    if target is not None and target.sub_type == OBJECT_SUBTYPE_VALUE:
-        return target  # type: ignore[return-value]
-    return None
-
-
 def _derive_payload_field_tree(
     root: MetaData, vo: MetaObject, seen: frozenset[str]
 ) -> list[PayloadField]:
@@ -121,10 +101,6 @@ def _derive_payload_field_tree(
     if vo is None or vo.resolution_key() in seen:
         return []
     next_seen = seen | {vo.resolution_key()}
-    # A nested @objectRef resolves in the FIELD's own declaring package (below),
-    # which differs from this VO's when the field is inherited via extends from an
-    # abstract VO in another package (the bare ref was authored there).
-    vo_pkg = pkg_of(vo)
     fields: list[PayloadField] = []
     for f in vo.children():
         if f.type != TYPE_FIELD or not isinstance(f, MetaField):
@@ -132,8 +108,7 @@ def _derive_payload_field_tree(
         if f.sub_type == fc.FIELD_SUBTYPE_OBJECT:
             ref = f.attrs().get(fc.FIELD_ATTR_OBJECT_REF)
             if isinstance(ref, str) and ref:
-                field_pkg = pkg_of(f.parent) if f.parent is not None else vo_pkg
-                target = _resolve_nested_object_ref(root, ref, field_pkg)
+                target = ref_target(f, fc.FIELD_ATTR_OBJECT_REF)
                 if target is not None and target.sub_type == OBJECT_SUBTYPE_VALUE:
                     children = _derive_payload_field_tree(root, target, next_seen)
                     # ADR-0039 resolving read: an array of this VO (vs a single
@@ -253,9 +228,7 @@ class RenderHelperGenerator:
                     "@payloadRef — skipped."
                 )
                 continue
-            # ADR-0042 (#228): the referrer is THIS template — a bare @payloadRef
-            # resolves in ITS OWN package first.
-            vo = resolve_payload_vo(root, payload_ref, pkg_of(tmpl))
+            vo = bound_payload_vo(tmpl, tc.TEMPLATE_ATTR_PAYLOAD_REF)
             if vo is None:
                 ctx.warn(
                     f"{_GENERATOR_NAME}: template.{tmpl.sub_type} '{tmpl.name}' @payloadRef "

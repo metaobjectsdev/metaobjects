@@ -85,7 +85,29 @@ object KotlinM2mSupport {
         val targetScalarFields: List<String>,
         val targetDiscriminator: TargetDiscriminator?,
         val symmetric: Boolean,
+        val junctionPackage: String = "",
     )
+
+    /**
+     * The import lines a file in [sourcePkg] needs to name what each of [navs] reaches in ANOTHER
+     * package: the target's Exposed table (and the junction's, with [junction]) and, with
+     * [dataClass], the target data class when it is root-level (a packaged target is qualified
+     * inline). A root-level name is imported explicitly so it wins over a same-named declaration
+     * in [sourcePkg].
+     */
+    fun importLines(navs: Collection<M2mNav>, sourcePkg: String, junction: Boolean, dataClass: Boolean): Set<String> {
+        val out = sortedSetOf<String>()
+        fun add(pkg: String, name: String) {
+            if (pkg == sourcePkg) return
+            out.add(if (pkg.isEmpty()) name else "$pkg.$name")
+        }
+        for (nav in navs) {
+            add(nav.targetPackage, nav.targetTableObj)
+            if (junction) add(nav.junctionPackage, nav.junctionTableObj)
+            if (dataClass && nav.targetPackage.isEmpty()) add(nav.targetPackage, nav.targetType)
+        }
+        return out
+    }
 
     /**
      * Resolve every M:N relationship declared on [entity]. Returns an empty list
@@ -105,15 +127,15 @@ object KotlinM2mSupport {
             if (through.isNullOrEmpty()) continue
 
             val fields = M2MFields.derive(rel, entity, root)
-            val declaredTarget = KotlinGenUtil.resolveObjectByShortOrFqn(loader, rel.objectRef ?: continue) ?: continue
-            val junction = KotlinGenUtil.resolveObjectByShortOrFqn(loader, through) ?: continue
+            val declaredTarget = com.metaobjects.loader.References.refTarget(rel, MetaRelationship.ATTR_OBJECT_REF) ?: continue
+            val junction = com.metaobjects.loader.References.refTarget(rel, MetaRelationship.ATTR_THROUGH) ?: continue
 
             // FW-3: a TPH subtype (e.g. `BridgeAuth`) has no Exposed Table object and no data
             // class of its own — its rows live in, and are shaped like, the discriminator base's
             // (`AuthTable` / `Auth`). Redirect the target's PHYSICAL identity to that storage
             // object; `targetShortName` above keeps naming the DECLARED target for diagnostics.
             val target = KotlinTphPlan.storageObjectOf(declaredTarget)
-            val junctionShort = PackageMapping.splitFqn(junction.name).second
+            val (junctionPkg, junctionShort) = PackageMapping.splitFqn(junction.name)
             val (targetPkg, targetShort) = PackageMapping.splitFqn(target.name)
             val declaredShort = PackageMapping.splitFqn(declaredTarget.name).second
             // The STORAGE object's full column set — base + folded subtype columns when it is a
@@ -176,6 +198,7 @@ object KotlinM2mSupport {
                     targetScalarFields = targetScalars,
                     targetDiscriminator = targetDiscriminator,
                     symmetric = rel.isSymmetric,
+                    junctionPackage = junctionPkg,
                 )
             )
         }

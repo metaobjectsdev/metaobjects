@@ -45,7 +45,7 @@ from metaobjects.codegen.generators.find_inbound import (
     inbound_templates,
     response_shape,
 )
-from metaobjects.codegen.value_objects import is_field_required, model_class_name, pkg_of
+from metaobjects.codegen.value_objects import is_field_required, model_class_name
 from metaobjects.meta.core.field import field_constants as fc
 from metaobjects.meta.core.object.meta_object import MetaObject
 from metaobjects.meta.meta_data import MetaData
@@ -136,7 +136,7 @@ def render_extractor(
     ``@responseFormat`` is a closed json|xml set, so every responding prompt has a
     tolerant ``extract_lenient_*_with_loader`` to sit over."""
     # ADR-0052: the extract tier reads a REPLY, so it binds @responseRef.
-    shape = response_shape(root, template, pkg_of(template))
+    shape = response_shape(template)
     if shape is None:
         return None
     payload = shape.vo

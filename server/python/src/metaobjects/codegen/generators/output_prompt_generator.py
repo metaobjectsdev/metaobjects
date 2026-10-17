@@ -31,7 +31,6 @@ from metaobjects.codegen.generators.find_inbound import (
     inbound_templates,
     response_shape,
 )
-from metaobjects.codegen.value_objects import pkg_of
 from metaobjects.meta.core.object.meta_object import MetaObject
 from metaobjects.meta.meta_data import MetaData
 
@@ -65,7 +64,7 @@ def render_output_prompt(
     parser generator share this contract)."""
     # ADR-0052: the fragment describes the RESPONSE shape, so it binds @responseRef —
     # never @payloadRef, which types the request this prompt renders outbound.
-    shape = response_shape(root, template, pkg_of(template))
+    shape = response_shape(template)
     if shape is None:
         return None
     payload = shape.vo

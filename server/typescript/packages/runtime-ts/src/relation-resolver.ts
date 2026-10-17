@@ -32,7 +32,7 @@ export interface RelationDescriptor {
  */
 function findReferenceFkField(
   holder: MetaData,
-  targetName: string | MetaData,
+  targetName: MetaData,
   relationshipName: string,
   sourceRefField?: string,
 ): string | undefined {

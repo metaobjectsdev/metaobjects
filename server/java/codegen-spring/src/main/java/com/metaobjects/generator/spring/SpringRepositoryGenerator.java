@@ -426,8 +426,9 @@ public class SpringRepositoryGenerator extends MultiFileDirectGeneratorBase<Meta
             List<String> fields = ref.getFields();
             if (fields.size() != 1) continue; // single-column FKs only
             String fkField = fields.get(0);
+            MetaObject bound = com.metaobjects.loader.References.refTarget(ref, "references");
             String target = ref.getTargetEntity();
-            String targetShort = target == null ? "" : stripPackage(target);
+            String targetShort = bound != null ? bound.getShortName() : target == null ? "" : stripPackage(target);
             String valueType = "Long";
             if (entity.hasMetaField(fkField)) {
                 MetaField<?> f = entity.getMetaField(fkField);

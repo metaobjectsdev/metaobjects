@@ -11,6 +11,7 @@ using MetaObjects.Meta;
 using MetaObjects.Persistence.Db;
 using static MetaObjects.Core.Field.FieldConstants;
 using static MetaObjects.Core.Relationship.RelationshipConstants;
+using static MetaObjects.Core.Identity.IdentityConstants;
 
 namespace MetaObjects.Codegen.Generators;
 
@@ -494,11 +495,8 @@ public class DbContextGenerator : IGenerator
     private string? ReferenceConfig(
         string owner, MetaObject entity, MetaReferenceIdentity reference, GenContext ctx)
     {
-        if (reference.TargetEntity is not { } targetName) return null;
-        // ADR-0042: a bare @references resolves in the DECLARING owner's package.
-        var target = NamingRefs.ResolveObjectRef(
-            ctx.Root, targetName,
-            NamingRefs.EffectivePackage(reference.Parent ?? entity)) as MetaObject;
+        if (reference.TargetEntity is null) return null;
+        var target = NamingRefs.RefTarget(reference, IDENTITY_REFERENCE_ATTR_REFERENCES) as MetaObject;
         if (target is null || !target.IsEntity() || !InstanceArtifacts.EmitsInstanceArtifacts(target))
             return null;
 

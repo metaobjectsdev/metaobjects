@@ -65,10 +65,10 @@ def _load(sources: list[InMemoryStringSource], fix: Fixture) -> tuple[list[str],
     """(ordered error codes, canonical, effective), or None when the fixture's
     providers do not compose (a provider-composition fixture: no tree to compare)."""
     try:
-        providers = _resolve_providers(fix.providers)
-        result = MetaDataLoader(providers=providers, strict=True).load(sources)
+        loader = MetaDataLoader(providers=_resolve_providers(fix.providers), strict=True)
     except (ParseError, ValueError):
         return None
+    result = loader.load(sources)
     codes = [e.code.name for e in result.errors]
     if codes:
         return codes, None, None

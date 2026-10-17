@@ -378,6 +378,9 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             append("import java.time.LocalDateTime\n")
             append("import java.time.LocalTime\n")
             append("import java.time.format.DateTimeFormatter\n")
+            for (line in KotlinM2mSupport.importLines(m2mNavs, pkg, junction = false, dataClass = true)) {
+                append("import $line\n")
+            }
             append("\n")
             appendSortSurface(this, shortName, entity, sortFields)
 
@@ -826,7 +829,12 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             append("import java.time.LocalDate\n")
             append("import java.time.LocalDateTime\n")
             append("import java.time.LocalTime\n")
-            append("import java.time.format.DateTimeFormatter\n\n")
+            append("import java.time.format.DateTimeFormatter\n")
+            val tphNavs = baseM2mNavs + plan.subtypes.flatMap { subtypeM2mNavs(it) }
+            for (line in KotlinM2mSupport.importLines(tphNavs, pkg, junction = false, dataClass = true)) {
+                append("import $line\n")
+            }
+            append("\n")
 
             // sort allowlist (base scalar columns — the polymorphic sort surface)
             append("/** GENERATED — sort allowlist for $shortName (cross-port API contract). */\n")

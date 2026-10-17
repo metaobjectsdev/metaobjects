@@ -3,7 +3,7 @@
 // plus the relations() block auto-emitted at the end.
 
 import { code, imp, joinCode, type Code } from "ts-poet";
-import { MetaObject, MetaField, MetaIndex, isMetaObject, stripPackage } from "@metaobjectsdev/metadata";
+import { MetaObject, MetaField, MetaIndex, isMetaObject } from "@metaobjectsdev/metadata";
 import {
   IDENTITY_ATTR_FIELDS, IDENTITY_ATTR_GENERATION,
   IDENTITY_ATTR_EXPR, IDENTITY_ATTR_USING, IDENTITY_ATTR_ORDERS, IDENTITY_ATTR_WHERE,
@@ -12,6 +12,8 @@ import {
   FIELD_ATTR_OBJECT_REF,
   FIELD_SUBTYPE_TIMESTAMP,
   FIELD_SUBTYPE_DATE,
+  IDENTITY_REFERENCE_ATTR_REFERENCES,
+  refTarget,
 } from "@metaobjectsdev/metadata";
 import { fieldDeclaringPackage, type RenderContext } from "../render-context.js";
 import { crossEntitySpecifier, valueObjectModuleSpecifier } from "../import-path.js";
@@ -411,6 +413,7 @@ ${joinCode(columnLines, { on: ",\n", trim: false })}
 interface FkInfo {
   targetVarName: string;    // e.g., "users"
   targetEntityName: string; // e.g., "User" — used for the import path
+  targetPackage: string | undefined; // the target's effective package, for the import path
   targetPkField: string;    // e.g., "id"
 }
 
@@ -439,20 +442,16 @@ function buildFkMapForEntity(obj: MetaObject, ctx: RenderContext): Map<string, F
     const fkField = fkFieldNames[0]!;
     // Two subtypes declaring the same reference fold to one column with one FK.
     if (result.has(fkField)) continue;
-    const targetName = ref.targetEntity;
-    if (!targetName) continue;
-    // @references may be authored bare OR package-qualified, and the loader can
-    // resolve it to an FQN (e.g. the YAML front-end qualifies it). Strip the
-    // package so the lookup matches the object's bare name — mirrors the
-    // relation-resolver, which already does this.
-    const targetObj = ctx.loadedRoot.findObject(stripPackage(targetName));
-    if (!targetObj) continue;
+    // ADR-0059 R7 — the object `@references` binds to, never a short-name lookup.
+    const targetObj = refTarget(ref, IDENTITY_REFERENCE_ATTR_REFERENCES);
+    if (!isMetaObject(targetObj)) continue;
     // A TPH subtype has no table const of its own; its rows live in the base's table.
     const storage = tphStorageObject(targetObj);
     const targetPkField = ref.resolvedTargetPkField(ctx.loadedRoot) ?? "id";
     result.set(fkField, {
       targetVarName: ctx.collectionName(storage.name),
       targetEntityName: storage.name,
+      targetPackage: effectivePackage(storage),
       targetPkField,
     });
   }
@@ -671,7 +670,7 @@ function renderColumn(
       const targetSpec = crossEntitySpecifier(
         ctx.outputLayout,
         entityPackage,
-        ctx.packageOf.get(fkInfo.targetEntityName),
+        fkInfo.targetPackage,
         fkInfo.targetEntityName,
         ctx.extStyle,
       );

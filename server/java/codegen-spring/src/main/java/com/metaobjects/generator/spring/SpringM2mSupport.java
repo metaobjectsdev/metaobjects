@@ -2,6 +2,7 @@ package com.metaobjects.generator.spring;
 
 import com.metaobjects.MetaRoot;
 import com.metaobjects.loader.MetaDataLoader;
+import com.metaobjects.loader.References;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.relationship.M2MFields;
 import com.metaobjects.relationship.MetaRelationship;
@@ -90,8 +91,8 @@ public final class SpringM2mSupport {
 
             M2MFields fields = M2MFields.derive(rel, entity, root);
 
-            MetaObject target = findEntity(root, rel.getObjectRef());
-            MetaObject junction = findEntity(root, through);
+            MetaObject target = References.refTarget(rel, MetaRelationship.ATTR_OBJECT_REF);
+            MetaObject junction = References.refTarget(rel, MetaRelationship.ATTR_THROUGH);
             if (target == null || junction == null) continue;
 
             String[] targetSplit = SpringNaming.splitFqn(target.getName());
@@ -127,10 +128,5 @@ public final class SpringM2mSupport {
                 targetDiscriminatorValue));
         }
         return out;
-    }
-
-    /** ADR-0059 R7: a reference value is canonical after load; match its exact resolution key. */
-    private static MetaObject findEntity(MetaRoot root, String name) {
-        return com.metaobjects.loader.References.lookupCanonical(root, name);
     }
 }

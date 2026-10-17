@@ -119,6 +119,7 @@ import {
   TYPE_SOURCE,
   SOURCE_ATTR_PARAMETER_REF,
   resolveObjectRef,
+  refTarget,
   stripPackage,
 } from "@metaobjectsdev/metadata";
 import {
@@ -896,9 +897,8 @@ function callableArgsRef(obj: MetaObject, root: MetaRoot): string | undefined {
     if (typeof ref === "string" && ref !== "") {
       // Only count it when it resolves to a value object (the template's guard).
       // ADR-0039: resolving — root has no super (children()==ownChildren()).
-      // ADR-0042: a bare @parameterRef resolves in the callable entity's package.
-      const referrerPkg = obj.package ?? obj.fileDefaultPackage ?? "";
-      const vo = resolveObjectRef(root, ref, referrerPkg).node;
+      // ADR-0059 R7: the bound target, resolved where @parameterRef was declared.
+      const vo = refTarget(child, SOURCE_ATTR_PARAMETER_REF);
       if (vo?.subType === OBJECT_SUBTYPE_VALUE) return ref;
     }
   }

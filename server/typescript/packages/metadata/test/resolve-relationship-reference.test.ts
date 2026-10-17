@@ -6,6 +6,7 @@ import {
   resolveRelationshipReference,
 } from "../src/core/relationship/resolve-relationship-reference.js";
 import type { MetaObject } from "../src/core/object/meta-object.js";
+import type { MetaRoot } from "../src/shared/meta-root.js";
 
 const MATCH_MODEL = {
   "metadata.root": {
@@ -47,22 +48,28 @@ async function loadMatch(): Promise<MetaObject> {
   return root.findObject("Match")!;
 }
 
+/** The `Team` entity in `match`'s model: the ladder takes the bound target node, never a name. */
+function teamOf(match: MetaObject): MetaObject {
+  return (match.root() as MetaRoot).findObject("Team")!;
+}
+
 describe("resolveRelationshipReference", () => {
   test("enumerates every candidate reference for the target", async () => {
-    const candidates = referenceCandidatesFor(await loadMatch(), "Team");
+    const match = await loadMatch();
+    const candidates = referenceCandidatesFor(match, teamOf(match));
     expect(candidates.map((r) => r.name)).toEqual(["homeTeamRef", "awayTeamRef"]);
   });
 
   test("name pairing resolves each association to its own reference", async () => {
     const match = await loadMatch();
-    expect(resolveRelationshipReference(match, "homeTeam", "Team")?.name).toBe("homeTeamRef");
-    expect(resolveRelationshipReference(match, "awayTeam", "Team")?.name).toBe("awayTeamRef");
+    expect(resolveRelationshipReference(match, "homeTeam", teamOf(match))?.name).toBe("homeTeamRef");
+    expect(resolveRelationshipReference(match, "awayTeam", teamOf(match))?.name).toBe("awayTeamRef");
   });
 
   test("@sourceRefField wins over name pairing", async () => {
     const match = await loadMatch();
     expect(
-      resolveRelationshipReference(match, "homeTeam", "Team", "awayTeamId")?.name,
+      resolveRelationshipReference(match, "homeTeam", teamOf(match), "awayTeamId")?.name,
     ).toBe("awayTeamRef");
   });
 
@@ -92,7 +99,7 @@ describe("resolveRelationshipReference", () => {
     ]);
     expect(errors).toEqual([]);
     const match = root.findObject("Match")!;
-    expect(resolveRelationshipReference(match, "champion", "Team")?.name).toBe("anythingAtAll");
+    expect(resolveRelationshipReference(match, "champion", teamOf(match))?.name).toBe("anythingAtAll");
   });
 
   test("unpairable names return undefined rather than guessing", async () => {
@@ -127,7 +134,7 @@ describe("resolveRelationshipReference", () => {
     // value directly against the merged root rather than requiring a clean load.
     expect(errors.map((e) => (e as { code?: string }).code)).toEqual(["ERR_INVALID_RELATIONSHIP"]);
     const match = root.findObject("Match")!;
-    expect(resolveRelationshipReference(match, "winner", "Team")).toBeUndefined();
+    expect(resolveRelationshipReference(match, "winner", teamOf(match))).toBeUndefined();
   });
 
   test("suffix stripping never applies to the relationship name", async () => {
@@ -162,6 +169,6 @@ describe("resolveRelationshipReference", () => {
     // rather than guessing" above.
     expect(errors.map((e) => (e as { code?: string }).code)).toEqual(["ERR_INVALID_RELATIONSHIP"]);
     const match = root.findObject("Match")!;
-    expect(resolveRelationshipReference(match, "valid", "Team")).toBeUndefined();
+    expect(resolveRelationshipReference(match, "valid", teamOf(match))).toBeUndefined();
   });
 });

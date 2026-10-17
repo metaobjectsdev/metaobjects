@@ -110,8 +110,7 @@ public class RenderHelperGenerator : IGenerator
             // @payloadRef must resolve to an object.value or sourceless
             // object.projection (#210; same contract as the parser/prompt
             // generators). Its POCO, emitted by EntityGenerator, is the payload type.
-            // ADR-0042: a bare @payloadRef resolves in the template's package.
-            var vo = ValueObjectNames.ResolveValueObject(ctx.Root, payloadRef, global::MetaObjects.NamingRefs.EffectivePackage(tmpl));
+            var vo = ValueObjectNames.PayloadShapeOf(tmpl, TEMPLATE_ATTR_PAYLOAD_REF);
             if (vo is null) continue;
 
             // EmitHelper runs the build-time drift gate first and THROWS (fails
@@ -144,9 +143,8 @@ public class RenderHelperGenerator : IGenerator
     {
         if (!IsRenderable(tmpl)) return false;
         // ADR-0039: resolving — @payloadRef may be inherited via an abstract template base.
-        if (tmpl.Attr(TEMPLATE_ATTR_PAYLOAD_REF) is not string payloadRef) return false;
-        // ADR-0042: a bare @payloadRef resolves in the template's package.
-        return ValueObjectNames.ResolveValueObject(root, payloadRef, global::MetaObjects.NamingRefs.EffectivePackage(tmpl)) is not null;
+        if (tmpl.Attr(TEMPLATE_ATTR_PAYLOAD_REF) is not string) return false;
+        return ValueObjectNames.PayloadShapeOf(tmpl, TEMPLATE_ATTR_PAYLOAD_REF) is not null;
     }
 
     protected virtual EmittedFile EmitHelper(MetaData tmpl, MetaData vo, string payloadRef, GenContext ctx)
@@ -159,7 +157,7 @@ public class RenderHelperGenerator : IGenerator
 
         // Payload field tree — reused by the build-time gate AND baked into the
         // emitted RenderRequest.Verify so the runtime check matches the gate.
-        var fields = DerivePayloadFieldTree(ctx.Root, vo, new HashSet<string>(StringComparer.Ordinal));
+        var fields = DerivePayloadFieldTree(vo, new HashSet<string>(StringComparer.Ordinal));
         var ft = FieldTreeLiteral(fields);
 
         // ADR-0039: resolving — @kind may be inherited via an abstract template base.
@@ -254,15 +252,14 @@ public class RenderHelperGenerator : IGenerator
     }
 
     // -------------------------------------------------------------------------
-    // Payload field-tree walk — nested @objectRef resolved FQN-exact when
-    // fully-qualified (ADR-0041) else by short name (cross-port render-helper
-    // consensus: TS refMatchesObject / Java+Kotlin resolveNestedObjectRef). Object-ref
+    // Payload field-tree walk — nested @objectRef read from the target the loader
+    // bound (ADR-0059 R7), never re-resolved by name. Object-ref
     // fields recurse into their target object.value (SUBTYPE_VALUE only); a `seen` set
     // guards reference cycles.
     // -------------------------------------------------------------------------
 
     private static IReadOnlyList<PayloadField> DerivePayloadFieldTree(
-        MetaRoot root, MetaData vo, HashSet<string> seen)
+        MetaData vo, HashSet<string> seen)
     {
         if (vo is null || !seen.Add(vo.ResolutionKey())) return [];
         var fields = new List<PayloadField>();
@@ -275,18 +272,12 @@ public class RenderHelperGenerator : IGenerator
             var isArray = f.ResolvedIsArray();
             if (f.SubType == FIELD_SUBTYPE_OBJECT &&
                 // ADR-0039: resolving — @objectRef may be inherited via extends (TS reads f.attr).
-                f.Attr(FIELD_ATTR_OBJECT_REF) is string refName)
+                f.Attr(FIELD_ATTR_OBJECT_REF) is string)
             {
-                // ADR-0042: a nested @objectRef resolves in the DECLARING field's package —
-                // which differs from this VO's when the field is inherited via extends from an
-                // abstract VO in another package (the bare ref was authored there).
-                var fieldPkg = f.Parent is not null
-                    ? global::MetaObjects.NamingRefs.EffectivePackage(f.Parent)
-                    : global::MetaObjects.NamingRefs.EffectivePackage(vo);
-                var target = ResolveNestedObjectRef(root, refName, fieldPkg);
+                var target = global::MetaObjects.NamingRefs.RefTarget(f, FIELD_ATTR_OBJECT_REF);
                 if (target is not null && target.SubType == OBJECT_SUBTYPE_VALUE)
                 {
-                    var children = DerivePayloadFieldTree(root, target, new HashSet<string>(seen, StringComparer.Ordinal));
+                    var children = DerivePayloadFieldTree(target, new HashSet<string>(seen, StringComparer.Ordinal));
                     fields.Add(new PayloadField(f.Name, children, isArray));
                     continue;
                 }
@@ -294,22 +285,6 @@ public class RenderHelperGenerator : IGenerator
             fields.Add(new PayloadField(f.Name, IsArray: isArray));
         }
         return fields;
-    }
-
-    /// <summary>
-    /// Resolve a <c>field.object</c>'s <c>@objectRef</c> to its target <c>object.value</c>.
-    /// ADR-0042: package-local — an FQN ref (contains <c>::</c>) resolves EXACTLY on its
-    /// resolution key (never a bare-tail fallback that would bind a same-named
-    /// <c>object.value</c> in the WRONG package); a bare ref resolves in
-    /// <paramref name="referrerPkg"/> (the declaring field's package), else a root-level
-    /// object. Shares the single NamingRefs.ResolveObjectRef matcher (loader + codegen must
-    /// not drift). Returns null when no match is found.
-    /// </summary>
-    private static MetaData? ResolveNestedObjectRef(MetaRoot root, string reference, string referrerPkg)
-    {
-        if (string.IsNullOrEmpty(reference)) return null;
-        var obj = global::MetaObjects.NamingRefs.ResolveObjectRef(root, reference, referrerPkg);
-        return obj is not null && obj.SubType == OBJECT_SUBTYPE_VALUE ? obj : null;
     }
 
     /// <summary>

@@ -38,7 +38,7 @@ from metaobjects.meta.core.object.object_constants import (
 )
 from metaobjects.meta.meta_data import MetaData
 from metaobjects.naming import package_of_resolution_key
-from metaobjects.naming_refs import resolve_object_ref
+from metaobjects.naming_refs import ref_target, resolve_object_ref
 from metaobjects.shared.base_types import TYPE_OBJECT, TYPE_SOURCE
 from metaobjects.shared.separators import PACKAGE_SEP
 
@@ -79,6 +79,16 @@ def is_legal_payload_target(obj: MetaData) -> bool:
     # ADR-0039: resolving — a source anywhere in the extends chain binds the projection to a
     # backing store, which disqualifies it as a payload shape.
     return not any(c.type == TYPE_SOURCE for c in obj.children())
+
+
+def bound_payload_vo(node: MetaData, attr_name: str) -> MetaObject | None:
+    """The value-object shape *node*'s ``@payloadRef`` / ``@responseRef`` is bound to
+    (ADR-0059 R7): the target the loader recorded once, never a re-resolution in the
+    template's package. Rejects entities and sourced projections (#210)."""
+    obj = ref_target(node, attr_name)
+    if not isinstance(obj, MetaObject) or not is_legal_payload_target(obj):
+        return None
+    return obj
 
 
 def resolve_payload_vo(root: MetaData, ref: str, referrer_pkg: str) -> MetaObject | None:
@@ -192,18 +202,13 @@ _REF_TARGET: "weakref.WeakKeyDictionary[MetaData, MetaObject | None]" = (
 
 
 def object_ref_target(field: MetaData) -> MetaObject | None:
-    """The object a field's ``@objectRef`` names, resolved FQN-exact / package-local
-    (ADR-0042) in the FIELD's declaring package — which differs from the owner's when the
-    field is inherited through ``extends``. Never a bare short-name scan: that binds whichever
-    same-named object loaded first."""
-    ref = field.attrs().get(fc.FIELD_ATTR_OBJECT_REF)
-    if not isinstance(ref, str) or not ref:
-        return None
+    """The object a field's ``@objectRef`` is bound to (ADR-0059 R7), which for an
+    inherited field is the object it named in the package that declared it. Never a bare
+    short-name scan: that binds whichever same-named object loaded first."""
     hit = _REF_TARGET.get(field, _MISSING)
     if hit is not _MISSING:
         return hit
-    referrer_pkg = pkg_of(field.parent) if field.parent is not None else ""
-    target = resolve_object_ref(root_of(field), ref, referrer_pkg)
+    target = ref_target(field, fc.FIELD_ATTR_OBJECT_REF)
     result = target if isinstance(target, MetaObject) else None
     _REF_TARGET[field] = result
     return result

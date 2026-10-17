@@ -36,7 +36,7 @@ import {
   reportShape,
   reportSpine,
   reportSpineHops,
-  resolveObjectRef,
+  refTarget,
   resolveTableName,
   resolveTableSchema,
   stripPackage,
@@ -538,8 +538,7 @@ class CubeModelBuilder {
         relationship = "many_to_one";
       } else if (child.type === TYPE_RELATIONSHIP && child.attr(RELATIONSHIP_ATTR_CARDINALITY) === CARDINALITY_ONE) {
         // Resolved first, so a relationship onto an entity that is no cube is never walked.
-        const targetRef = child.attr(RELATIONSHIP_ATTR_OBJECT_REF);
-        const target = typeof targetRef === "string" ? resolveObjectRef(this.root, targetRef, packageOf(entity)).node : undefined;
+        const target = refTarget(child, RELATIONSHIP_ATTR_OBJECT_REF);
         if (!isMetaObject(target) || !this.drafts.has(target.resolutionKey())) continue;
         relationship = "one_to_one";
       } else {

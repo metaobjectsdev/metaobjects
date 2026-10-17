@@ -14,7 +14,7 @@ import {
   reportingMemberOwner,
   reportingViaHops,
   resolveDimensionOf,
-  resolveObjectRef,
+  refTarget,
   resolveReportingFieldRef,
   type MeasureAgg,
   type MetaData,
@@ -65,10 +65,9 @@ export function viaHopError(where: string, attr: string, via: string, hop: strin
   if (node === undefined) {
     return new Error(`${head}: it names no relationship or identity.reference of that entity.`);
   }
-  const targetRef = node.attr(
-    node.type === TYPE_IDENTITY ? IDENTITY_REFERENCE_ATTR_REFERENCES : RELATIONSHIP_ATTR_OBJECT_REF,
-  );
-  const target = typeof targetRef === "string" ? resolveObjectRef(root, targetRef, packageOf(at)).node : undefined;
+  const refAttr = node.type === TYPE_IDENTITY ? IDENTITY_REFERENCE_ATTR_REFERENCES : RELATIONSHIP_ATTR_OBJECT_REF;
+  const targetRef = node.attr(refAttr);
+  const target = refTarget(node, refAttr);
   if (target === undefined) {
     return new Error(`${head}: its target '${String(targetRef ?? "")}' does not resolve to an object.`);
   }

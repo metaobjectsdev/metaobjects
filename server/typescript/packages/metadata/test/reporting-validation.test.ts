@@ -1669,3 +1669,70 @@ describe("report accessors", () => {
     expect(reportSpine(report("DailyRevenue"))).toBeUndefined();
   });
 });
+
+// ADR-0059 R3 — a `@via` hop inherited from another package resolves its target in the
+// package of the node that declares the hop's `@objectRef`, not the walked entity's. Here
+// `base::Order.customer` means `base::Customer`; `app::BigOrder` inherits it while
+// `app::Customer` exists and loads first.
+describe("inherited @via hop across packages", () => {
+  const baseFile = {
+    "metadata.root": {
+      package: "base",
+      children: [
+        {
+          "object.entity": {
+            name: "Customer",
+            children: [{ "source.rdb": { "@table": "base_customers" } }, field("long", "id"), field("string", "name"), primary()],
+          },
+        },
+        {
+          "object.entity": {
+            name: "Order",
+            children: [
+              { "source.rdb": { "@table": "orders" } },
+              field("long", "id"),
+              field("long", "customerId"),
+              primary(),
+              { "identity.reference": { name: "customerRef", "@references": "Customer", "@fields": ["customerId"] } },
+              { "relationship.association": { name: "customer", "@objectRef": "Customer", "@cardinality": "one" } },
+            ],
+          },
+        },
+      ],
+    },
+  };
+  const appFile = {
+    "metadata.root": {
+      package: "app",
+      children: [
+        {
+          "object.entity": {
+            name: "Customer",
+            children: [{ "source.rdb": { "@table": "app_customers" } }, field("long", "id"), field("string", "nickname"), primary()],
+          },
+        },
+        {
+          "object.entity": {
+            name: "BigOrder",
+            extends: "base::Order",
+            children: [
+              { "source.rdb": { "@table": "big_orders" } },
+              { "dimension.attribute": { name: "customerName", "@of": "Customer.name", "@via": "BigOrder.customer" } },
+            ],
+          },
+        },
+      ],
+    },
+  };
+
+  test("the hop binds base::Customer, so @of resolves there and loads clean", async () => {
+    const { root, errors } = await new MetaDataLoader().load([
+      new InMemoryStringSource(JSON.stringify(appFile), { id: "meta.app.json" }),
+      new InMemoryStringSource(JSON.stringify(baseFile), { id: "meta.base.json" }),
+    ]);
+    expect(errors.map((e) => e.code)).toEqual([]);
+    const bigOrder = root.objects().find((o) => o.resolutionKey() === "app::BigOrder")!;
+    const dim = bigOrder.children().find((c) => c.name === "customerName")!;
+    expect(dim.attr("of")).toBe("base::Customer.name");
+  });
+});

@@ -8,7 +8,8 @@ import { type RenderContext } from "@metaobjectsdev/codegen-ts/engine";
 import { crossEntitySpecifier } from "@metaobjectsdev/codegen-ts/engine";
 import type { RelationEntry } from "@metaobjectsdev/codegen-ts/engine";
 import { effectivePackage } from "@metaobjectsdev/codegen-ts/engine";
-import { tphStorageName } from "@metaobjectsdev/codegen-ts/engine";
+import { tphStorageObject } from "@metaobjectsdev/codegen-ts/engine";
+import { pkInfoOf } from "@metaobjectsdev/codegen-ts/engine";
 
 /**
  * Render the relations() block for one entity.
@@ -32,7 +33,7 @@ export function renderRelationsBlock(entity: MetaObject, ctx: RenderContext): Co
 
   const thisEntityPackage = effectivePackage(entity);
   const lines: Code[] = entries.map((entry) =>
-    renderRelationEntry(entry, ctx, entity.name, varName, thisEntityPackage),
+    renderRelationEntry(entry, ctx, entity, varName, thisEntityPackage),
   );
 
   return code`export const ${relationsVarName} = ${relationsFn}(${varName}, (${params}) => ({
@@ -44,7 +45,7 @@ ${joinCode(lines, { on: ",\n", trim: false })}
 function renderRelationEntry(
   entry: RelationEntry,
   ctx: RenderContext,
-  thisEntityName: string,
+  thisEntity: MetaObject,
   thisVarName: string,
   thisEntityPackage: string | undefined,
 ): Code {
@@ -53,11 +54,11 @@ function renderRelationEntry(
   // then hops junction → target via the junction's one() sides). The
   // mountM2mRoute the routes generator emits performs the flattened two-stage
   // traversal for the REST contract.
-  if (entry.cardinality === CARDINALITY_MANY && entry.junctionEntity !== undefined) {
+  if (entry.cardinality === CARDINALITY_MANY && entry.junctionEntity !== undefined && entry.junction !== undefined) {
     const junctionSpec = crossEntitySpecifier(
       ctx.outputLayout,
       thisEntityPackage,
-      ctx.packageOf.get(entry.junctionEntity),
+      effectivePackage(entry.junction),
       entry.junctionEntity,
       ctx.extStyle,
     );
@@ -67,22 +68,23 @@ function renderRelationEntry(
 
   // Bind to the table that stores the target's rows: a TPH subtype's module has no
   // table const, so a navigation onto `Carrier` binds `parties` from `Party`.
-  const targetTableEntity = tphStorageName(entry.targetEntity, ctx.loadedRoot);
+  const targetTable = tphStorageObject(entry.target);
+  const targetTableEntity = targetTable.name;
   // A navigation onto this entity's OWN table (`Order.parent`, or a TPH base onto one of
   // its subtypes) names the local const: importing it from this very module clashes with
   // its declaration (TS2440). Otherwise imp() tracks and emits the cross-entity import.
-  const targetVarSym = targetTableEntity === thisEntityName
+  const targetVarSym = targetTable === thisEntity
     ? thisVarName
     : imp(`${ctx.collectionName(targetTableEntity)}@${crossEntitySpecifier(
       ctx.outputLayout,
       thisEntityPackage,
-      ctx.packageOf.get(targetTableEntity),
+      effectivePackage(targetTable),
       targetTableEntity,
       ctx.extStyle,
     )}`);
 
   if (entry.cardinality === CARDINALITY_ONE) {
-    const pkInfo = ctx.pkMap.get(targetTableEntity);
+    const pkInfo = pkInfoOf(targetTable);
     const targetPkField = pkInfo?.fieldName ?? "id";
     return code`  ${entry.name}: one(${targetVarSym}, { fields: [${thisVarName}.${entry.fkField ?? "id"}], references: [${targetVarSym}.${targetPkField}] })`;
   }

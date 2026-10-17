@@ -82,9 +82,19 @@ public static class ValueObjectNames
     /// <c>object.projection</c> ("sourceless" per the #248 persistability contract: no
     /// declared/inherited <c>source.*</c> child; nested <c>@objectRef</c> targets stay
     /// value-only — <c>RenderHelperGenerator.ResolveNestedObjectRef</c>).</summary>
-    public static MetaData? ResolveValueObject(MetaRoot root, string payloadRef, string referrerPkg = "")
+    public static MetaData? ResolveValueObject(MetaRoot root, string payloadRef, string referrerPkg = "") =>
+        AsPayloadShape(global::MetaObjects.NamingRefs.ResolveObjectRef(root, payloadRef, referrerPkg));
+
+    /// <summary>
+    /// The payload shape the reference attribute <paramref name="attr"/> of <paramref name="tmpl"/>
+    /// (<c>@payloadRef</c> / <c>@responseRef</c>) is bound to, or null when it is unbound or not
+    /// a payload shape (ADR-0059 R7).
+    /// </summary>
+    public static MetaData? PayloadShapeOf(MetaData tmpl, string attr) =>
+        AsPayloadShape(global::MetaObjects.NamingRefs.RefTarget(tmpl, attr));
+
+    private static MetaData? AsPayloadShape(MetaData? obj)
     {
-        var obj = global::MetaObjects.NamingRefs.ResolveObjectRef(root, payloadRef, referrerPkg);
         if (obj is null) return null;
         if (obj.SubType == OBJECT_SUBTYPE_VALUE) return obj;
         if (obj.SubType != OBJECT_SUBTYPE_PROJECTION) return null;

@@ -1,0 +1,162 @@
+{
+  "metadata.root": {
+    "children": [
+      {
+        "object.entity": {
+          "name": "Customer",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "customers"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "name",
+                "@required": true,
+                "@maxLength": 80
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id",
+                "@generation": "increment"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Label",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "labels"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "name",
+                "@required": true,
+                "@maxLength": 80
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id",
+                "@generation": "increment"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "BaseOrder",
+          "abstract": true,
+          "children": [
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "customerId"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id",
+                "@generation": "increment"
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "customerRef",
+                "@fields": "customerId",
+                "@references": "Customer"
+              }
+            },
+            {
+              "relationship.association": {
+                "name": "customer",
+                "@cardinality": "one",
+                "@objectRef": "Customer"
+              }
+            },
+            {
+              "relationship.association": {
+                "name": "labels",
+                "@cardinality": "many",
+                "@objectRef": "Label",
+                "@through": "OrderLabel"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "OrderLabel",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "order_labels"
+              }
+            },
+            {
+              "field.long": {
+                "name": "orderId",
+                "@required": true
+              }
+            },
+            {
+              "field.long": {
+                "name": "labelId",
+                "@required": true
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "orderId",
+                  "labelId"
+                ]
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "orderRef",
+                "@fields": "orderId",
+                "@references": "BaseOrder"
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "labelRef",
+                "@fields": "labelId",
+                "@references": "Label"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

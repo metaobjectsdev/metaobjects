@@ -73,7 +73,7 @@ def resolve_n2m_descriptor(
     the caller should fall through to its 1:1 / 1:N relation path. Raises
     :class:`N2mResolutionError` when the relationship IS M:N but malformed.
 
-    *object_index* is a bare-name → object map of the loaded model's top-level
+    *object_index* is a resolution-key → object map of the loaded model's top-level
     objects (mirrors the TS ``root.findObject`` resolution surface).
     """
     # ADR-0039: effective children — a M:N relationship may be inherited via

@@ -43,16 +43,21 @@ public static class PayloadFieldTree
     /// ANOTHER package binds its OWN package's object — never whichever one loads first.
     /// </summary>
     public static IReadOnlyList<PayloadField> Build(MetaData root, string voName, string referrerPkg = "") =>
-        BuildTree(root, voName, referrerPkg, new HashSet<string>(StringComparer.Ordinal));
+        Resolve(root, voName, referrerPkg) is { } vo ? Build(vo) : [];
 
-    private static IReadOnlyList<PayloadField> BuildTree(MetaData root, string voName, string referrerPkg, HashSet<string> visiting)
+    /// <summary>
+    /// The verify field tree of an already-bound payload object. Nested <c>@objectRef</c>s are
+    /// read from the targets the loader bound (ADR-0059 R7), never re-resolved by name.
+    /// </summary>
+    public static IReadOnlyList<PayloadField> Build(MetaData vo) =>
+        BuildTree(vo, new HashSet<string>(StringComparer.Ordinal));
+
+    private static IReadOnlyList<PayloadField> BuildTree(MetaData? vo, HashSet<string> visiting)
     {
-        var vo = Resolve(root, voName, referrerPkg);
         // ADR-0039: dedupe/cycle-guard by ResolutionKey (FQN), never the bare ref string — two
         // DIFFERENT same-short-named nodes reached via different bare refs must not collapse
         // onto "already visiting" (the #219-class dedupe defect).
         if (vo is null || !visiting.Add(vo.ResolutionKey())) return [];
-        var voPkg = global::MetaObjects.NamingRefs.EffectivePackage(vo);
         var fields = new List<PayloadField>();
         foreach (var f in vo.Children().Where(c => c.Type == TYPE_FIELD))
         {
@@ -61,16 +66,10 @@ public static class PayloadFieldTree
             // array-of-scalars (no `-last`) from a single scalar, and an array-of-objects from
             // a single nested object (both carry child Fields; only IsArray disambiguates).
             var isArray = f.ResolvedIsArray();
-            // ADR-0039: resolving — @objectRef may be inherited via extends (TS reads f.attr).
-            if (f.SubType == FIELD_SUBTYPE_OBJECT && f.Attr(FIELD_ATTR_OBJECT_REF) is string refName)
+            if (f.SubType == FIELD_SUBTYPE_OBJECT && f.Attr(FIELD_ATTR_OBJECT_REF) is string)
             {
-                // ADR-0042: a nested @objectRef resolves in the FIELD's OWN declaring package,
-                // which may differ from this VO's when the field is inherited via extends from
-                // an abstract VO in another package.
-                var fieldPkg = f.Parent is not null
-                    ? global::MetaObjects.NamingRefs.EffectivePackage(f.Parent)
-                    : voPkg;
-                fields.Add(new PayloadField(f.Name, BuildTree(root, refName, fieldPkg, visiting), isArray));
+                var nested = global::MetaObjects.NamingRefs.RefTarget(f, FIELD_ATTR_OBJECT_REF);
+                fields.Add(new PayloadField(f.Name, BuildTree(nested, visiting), isArray));
             }
             else
                 fields.Add(new PayloadField(f.Name, IsArray: isArray));

@@ -17,7 +17,7 @@ suffix list, same order, same "candidate side only" stripping).
 from __future__ import annotations
 
 from ...meta_data import MetaData
-from ....naming_refs import ref_target, resolve_object_ref, referrer_package_of, split_child_tail
+from ....naming_refs import ref_target
 from ....shared.base_types import TYPE_IDENTITY
 from ....shared.separators import PACKAGE_SEP
 from ..identity.identity_constants import (
@@ -110,18 +110,13 @@ def reference_pairing_keys(ref: MetaData) -> set[str]:
     return keys
 
 
-def reference_candidates_for(holder: MetaData, target: "str | MetaData") -> list[MetaData]:
+def reference_candidates_for(holder: MetaData, target: MetaData | None) -> list[MetaData]:
     """Every identity.reference on ``holder`` whose @references binds to ``target``.
 
     ADR-0059 R7: compared by the BOUND object, never by a short name. ``target`` is the
-    entity itself, or a reference string resolved in ``holder``'s package. An unresolved
-    target matches nothing.
+    entity node. A ``None`` target matches nothing.
     """
-    if isinstance(target, str):
-        owner, _tail = split_child_tail(target)
-        target_node = resolve_object_ref(holder.root(), owner, referrer_package_of(holder))
-    else:
-        target_node = target
+    target_node = target
     if target_node is None:
         return []
     candidates: list[MetaData] = []
@@ -140,7 +135,7 @@ def reference_candidates_for(holder: MetaData, target: "str | MetaData") -> list
 def resolve_relationship_reference(
     holder: MetaData,
     relationship_name: str,
-    target_entity: "str | MetaData",
+    target_entity: MetaData | None,
     source_ref_field: str | None = None,
 ) -> MetaData | None:
     """Which identity.reference does this ``@cardinality: one`` relationship

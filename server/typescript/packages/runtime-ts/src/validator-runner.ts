@@ -1,7 +1,7 @@
 // Pure function: NEVER throws. ObjectManager wraps a non-ok result in a ValidationError on writes;
 // om.validate() returns the result directly.
 
-import { isMetaObject, isMetaRoot, resolveObjectRef, type MetaData } from "@metaobjectsdev/metadata";
+import { isMetaObject, isMetaRoot, refTarget, type MetaData } from "@metaobjectsdev/metadata";
 import {
   TYPE_FIELD, TYPE_VALIDATOR,
   VALIDATOR_SUBTYPE_REQUIRED, VALIDATOR_SUBTYPE_LENGTH, VALIDATOR_SUBTYPE_REGEX,
@@ -190,13 +190,9 @@ function resolveVoRef(field: MetaData): MetaData | undefined {
   // class check fails for a real root and every VO reference silently stops
   // resolving, skipping nested value-object validation with no error.
   if (!isMetaRoot(root)) return undefined;
-  // ADR-0042 — the SINGLE object-ref resolver every ref site shares: an FQN matches
-  // its resolution key exactly; a bare ref resolves in the DECLARING owner's package
-  // (an inherited field resolves in the package that declared it), then a root-level
-  // object — never a same-named object in some other package.
-  const owner = field.parent ?? root;
-  const referrerPkg = owner.package ?? owner.fileDefaultPackage ?? "";
-  const target = resolveObjectRef(root, ref, referrerPkg).node;
+  // ADR-0059 R7 — the object the loader bound `@objectRef` to, resolved in the package
+  // of the node that declared it — never a same-named object in some other package.
+  const target = refTarget(field, FIELD_ATTR_OBJECT_REF);
   return target?.subType === OBJECT_SUBTYPE_VALUE ? target : undefined;
 }
 
