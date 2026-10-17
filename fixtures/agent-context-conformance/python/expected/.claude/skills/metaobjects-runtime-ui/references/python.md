@@ -122,5 +122,6 @@ row = await conn.fetchrow(
 ```
 
 There is no typed handle to prefer on this port, so this is never the wrong choice here.
-Pass the same `--column-naming` to `metaobjects gen` that you pass as `column_naming=` to
-`ObjectManager` (both default to `literal`), or the constant names a column no row lands in.
+The constants and the `ObjectManager` both resolve columns through the project's one `naming`
+setting in `.metaobjects/config.json` (default `snake_case`), so the constant always names
+the column a row lands in.

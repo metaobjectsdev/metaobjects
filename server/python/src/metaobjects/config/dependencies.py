@@ -16,7 +16,7 @@ from typing import Any, Callable, Sequence
 
 from metaobjects.errors import ErrorCode, ParseError
 from metaobjects.meta.meta_data import MetaData
-from metaobjects.naming import package_of_resolution_key
+from metaobjects.naming import NamingRules, package_of_resolution_key
 from metaobjects.registry_manifest import METAMODEL_VERSION
 from metaobjects.shared.base_types import TYPE_OBJECT
 
@@ -652,6 +652,12 @@ class Collection:
     #: whatever a per-port config surface additionally supplies (e.g. Python's
     #: own `metaobjects.config.yaml` `libraries:` key) before resolving sources.
     libraries: tuple[str, ...]
+
+    #: ADR-0058 — this project's ONE physical-naming setting, read from the neutral
+    #: `.metaobjects/config.json` at the same rung as `libraries`/`scope_include`
+    #: above. The caller attaches this to the loaded root (`MetaRoot.naming`) so
+    #: codegen, the runtime and `verify` all read the same values.
+    naming: NamingRules
 
     def imported(self, fqn: str) -> bool:
         """Is `fqn` in a package one of this project's dependencies owns?"""

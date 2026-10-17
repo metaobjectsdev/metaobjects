@@ -36,6 +36,13 @@ import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { startPostgres, type RunningPg } from "../src/postgres-container.ts";
 
+/** The project setting `"naming": { "columns": "literal" }` (ADR-0058), set where the
+ *  project-aware load sets it: on the loaded root. */
+function literalColumns<T>(root: T): T {
+  (root as unknown as { physicalNaming: unknown }).physicalNaming = { columns: "literal", tables: "snake_case" };
+  return root;
+}
+
 // The map is deliberately SPARSE and non-ordinal (0/5/9) so any accidental
 // index-of-@values correspondence shows up as a wrong number rather than passing
 // by coincidence — the failure mode the design's Goal 3 calls out.
@@ -119,7 +126,7 @@ async function applyRaw(ddl: string): Promise<void> {
 
 async function expectedFor(metaJson: string): Promise<SchemaSnapshot> {
   const root = (await new MetaDataLoader().load([new InMemoryStringSource(metaJson)])).root;
-  return buildExpectedSchema(root, { columnNamingStrategy: "literal", dialect: "postgres" });
+  return buildExpectedSchema(literalColumns(root), { dialect: "postgres" });
 }
 
 /** build → introspect → diff → emit → apply, then return the expected side. */
@@ -398,12 +405,9 @@ describe("int-backed field.enum in a projection view — real Postgres", () => {
    *  table-only one above. */
   async function migrateWithViews(metaJson: string): Promise<SchemaSnapshot> {
     const root = (await new MetaDataLoader().load([new InMemoryStringSource(metaJson)])).root;
-    const expected = buildExpectedSchema(root, {
-      columnNamingStrategy: "literal",
+    const expected = buildExpectedSchema(literalColumns(root), {
       dialect: "postgres",
-      views: buildProjectionViews(root, {
-        dialect: "postgres", columnNamingStrategy: "literal",
-      }),
+      views: buildProjectionViews(literalColumns(root), { dialect: "postgres" }),
     });
     const result = await diff({
       expected, actual: await introspectPostgres(k), dialect: "postgres",
@@ -437,9 +441,7 @@ describe("int-backed field.enum in a projection view — real Postgres", () => {
     const root = (await new MetaDataLoader().load([
       new InMemoryStringSource(metaWithView()),
     ])).root;
-    const views = buildProjectionViews(root, {
-      dialect: "postgres", columnNamingStrategy: "literal",
-    });
+    const views = buildProjectionViews(literalColumns(root), { dialect: "postgres" });
     const body = views.find((v) => v.name === "v_published_orders")?.sql ?? "";
     expect(body).toMatch(/WHERE o\.status = 5/);
     expect(body).not.toContain("'PUBLISHED'");

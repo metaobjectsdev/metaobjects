@@ -27,6 +27,7 @@ from datetime import date, datetime
 from typing import Any
 
 from metaobjects import load_string
+from metaobjects.naming import NamingRules
 from metaobjects.runtime import ObjectManager
 from metaobjects.runtime.object_manager import SelectResult
 
@@ -117,6 +118,10 @@ class FakeWriteDriver:
 
 def _om() -> tuple[ObjectManager, FakeWriteDriver]:
     root = load_string(json.dumps(_META)).root
+    # This test is about @autoSet stamping, not naming (ADR-0058 flipped the
+    # DEFAULT to snake_case) — pin `literal` so the fixture's field names
+    # (`createdAt`, ...) stay the column names these assertions pin.
+    root.naming = NamingRules(columns="literal")
     driver = FakeWriteDriver()
     return ObjectManager(root, driver), driver  # type: ignore[arg-type]
 

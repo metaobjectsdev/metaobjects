@@ -8,6 +8,8 @@
 # D11 in a linked git worktree the exclude file is the shared one in the common dir, nothing
 #     stray is written into the work tree, and `link` refuses to report success while a written
 #     .npmrc (which can hold a registry credential) is not ignored.
+# P4  a polyglot repository with one project per port and no root project files: every Maven
+#     and Python project is linked and repinned, and the .NET local tool manifest too.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -100,6 +102,135 @@ if link "$WORK/wt2"; then fail "link reported success with a non-ignored .npmrc"
   grep -q "git does not ignore: .npmrc" "$WORK/out" && pass "link refuses when .npmrc is not ignored" \
     || fail "link failed, but not with the ignore message: $(tail -3 "$WORK/out")"
 fi
+
+# ── P4: a polyglot repository with one project per port and no root project files ────────
+# Each port keeps its own build under ports/<port>/. `link` used to detect Maven and configure
+# Python at the root only, so these needed a `link --project` run each, and it never repinned
+# the .NET local tool manifest, which left `dotnet meta` on the previous release.
+poly="$WORK/poly app"  # a space in the path: every root walker must keep it whole
+git init -q "$poly"
+mkdir -p "$poly/ports/python" "$poly/ports/java" "$poly/ports/kotlin" "$poly/ports/csharp" "$poly/.config"
+cat > "$poly/ports/python/pyproject.toml" <<'TOML'
+[project]
+name = "consumer"
+version = "0.1.0"
+dependencies = ["metaobjects==1.0.9"]
+TOML
+cat > "$poly/ports/java/pom.xml" <<'XML'
+<project>
+  <properties><metaobjects.version>8.0.9</metaobjects.version></properties>
+</project>
+XML
+mkdir -p "$poly/ports/java/module" "$poly/ports/java/inherits"
+cat > "$poly/ports/java/inherits/pom.xml" <<'XML'
+<project>
+  <dependencies>
+    <dependency>
+      <groupId>com.metaobjects</groupId>
+      <artifactId>metaobjects-om</artifactId>
+      <version>${metaobjects.version}</version>
+    </dependency>
+  </dependencies>
+</project>
+XML
+cat > "$poly/ports/java/module/pom.xml" <<'XML'
+<project>
+  <dependencies>
+    <dependency>
+      <groupId>com.metaobjects</groupId>
+      <artifactId>metaobjects-om</artifactId>
+      <version>8.0.9</version>
+    </dependency>
+  </dependencies>
+</project>
+XML
+cat > "$poly/ports/kotlin/pom.xml" <<'XML'
+<project>
+  <dependencies>
+    <dependency>
+      <groupId>com.metaobjects</groupId>
+      <artifactId>metaobjects-metadata-ktx</artifactId>
+      <version>8.0.9</version>
+    </dependency>
+    <dependency>
+      <groupId>org.jetbrains.exposed</groupId>
+      <artifactId>exposed-core</artifactId>
+      <version>0.61.0</version>
+    </dependency>
+  </dependencies>
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>com.metaobjects</groupId>
+        <artifactId>metaobjects-maven-plugin</artifactId>
+        <configuration>
+          <generators>
+            <generator><classname>x</classname></generator>
+          </generators>
+        </configuration>
+        <dependencies>
+          <dependency>
+            <groupId>com.metaobjects</groupId>
+            <artifactId>metaobjects-codegen-kotlin</artifactId>
+            <version>8.0.9</version>
+          </dependency>
+          <dependency>
+            <groupId>org.jetbrains.kotlin</groupId>
+            <artifactId>kotlin-stdlib</artifactId>
+            <version>2.0.21</version>
+          </dependency>
+        </dependencies>
+        <version>8.0.9</version>
+      </plugin>
+    </plugins>
+  </build>
+</project>
+XML
+cat > "$poly/ports/csharp/App.csproj" <<'XML'
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup><PackageReference Include="MetaObjects.Codegen" Version="1.0.9" /></ItemGroup>
+</Project>
+XML
+cat > "$poly/.config/dotnet-tools.json" <<'JSON'
+{
+  "version": 1,
+  "isRoot": true,
+  "tools": {
+    "dotnet-ef": { "version": "8.0.0", "commands": ["dotnet-ef"] },
+    "metaobjects.cli": { "version": "1.0.9", "commands": ["dotnet-meta"] }
+  }
+}
+JSON
+mkdir -p "$poly/ports/csharp/.config"
+cat > "$poly/ports/csharp/.config/dotnet-tools.json" <<'JSON'
+{ "version": 1, "isRoot": true, "tools": { "metaobjects.cli": { "commands": ["dotnet-meta"] } } }
+JSON
+git -C "$poly" add -A && git -C "$poly" commit -q -m init
+if link "$poly"; then pass "link succeeds in a polyglot repository"; else fail "polyglot link failed: $(tail -5 "$WORK/out")"; fi
+check "a manifest with no tool version reports that nothing was pinned" 'grep -q "ports/csharp/.config/dotnet-tools.json names MetaObjects.Cli but no version for it was found: nothing pinned" "$WORK/out" && ! grep -q "repinned MetaObjects.Cli to 1.1.0-rc.9 in ports/csharp/" "$WORK/out"'
+check "a repinned manifest is reported as repinned" 'grep -q "repinned MetaObjects.Cli to 1.1.0-rc.9 in .config/dotnet-tools.json" "$WORK/out"'
+check "the nested python project is linked" 'grep -q "metaobjects-prerelease" "$poly/ports/python/pyproject.toml"'
+check "the nested python project is repinned" 'grep -q "metaobjects==1.1.0rc9" "$poly/ports/python/pyproject.toml"'
+check "each independent pom gets the repositories" 'grep -q "<pluginRepositories>" "$poly/ports/java/pom.xml" && grep -q "<pluginRepositories>" "$poly/ports/kotlin/pom.xml"'
+check "a module pom inherits rather than gets a block" '! grep -q "<pluginRepositories>" "$poly/ports/java/module/pom.xml"'
+check "the version property is repinned" 'grep -q "<metaobjects.version>8.1.0-rc.9</metaobjects.version>" "$poly/ports/java/pom.xml"'
+check "an inherited version property is not made literal" 'grep -q "<version>\${metaobjects.version}</version>" "$poly/ports/java/inherits/pom.xml"'
+check "a module dependency is repinned" 'grep -q "<version>8.1.0-rc.9</version>" "$poly/ports/java/module/pom.xml"'
+check "a literal dependency version is repinned" 'grep -q "<version>8.1.0-rc.9</version>" "$poly/ports/kotlin/pom.xml"'
+check "another group's version is left alone" 'grep -q "<version>0.61.0</version>" "$poly/ports/kotlin/pom.xml" && grep -q "<version>2.0.21</version>" "$poly/ports/kotlin/pom.xml"'
+check "every metaobjects version in the pom is repinned, a plugin's after its configuration included" '[ "$(grep -c "<version>8.1.0-rc.9</version>" "$poly/ports/kotlin/pom.xml")" = 3 ] && ! grep -q "8.0.9" "$poly/ports/kotlin/pom.xml"'
+check "the package reference is repinned" 'grep -q "Version=\"1.1.0-rc.9\"" "$poly/ports/csharp/App.csproj"'
+check "the local tool manifest is repinned" 'grep -q "\"metaobjects.cli\": { \"version\": \"1.1.0-rc.9\"" "$poly/.config/dotnet-tools.json"'
+check "another tool in the manifest is left alone" 'grep -q "\"dotnet-ef\": { \"version\": \"8.0.0\"" "$poly/.config/dotnet-tools.json"'
+
+MO_REGISTRY_BASE="http://127.0.0.1:$PORT" MO_REGISTRY_OWNER=owner MO_REGISTRY_TOKEN="" \
+  bash "$LINK" unlink --project "$poly" --to 1.0.13 >"$WORK/out" 2>&1 || true
+check "an inherited version property survives link and unlink" 'grep -q "<version>\${metaobjects.version}</version>" "$poly/ports/java/inherits/pom.xml" && ! grep -q "<version>8" "$poly/ports/java/inherits/pom.xml"'
+check "unlink removes every managed block" '! grep -rq "metaobjects prerelease (managed)" "$poly/ports"'
+check "unlink repins the nested python project" 'grep -q "metaobjects==1.0.13" "$poly/ports/python/pyproject.toml"'
+check "unlink repins every pom" 'grep -q "8.0.13" "$poly/ports/java/pom.xml" && grep -q "8.0.13" "$poly/ports/java/module/pom.xml" && [ "$(grep -c "<version>8.0.13</version>" "$poly/ports/kotlin/pom.xml")" = 3 ]'
+check "unlink repins the local tool" 'grep -q "\"metaobjects.cli\": { \"version\": \"1.0.13\"" "$poly/.config/dotnet-tools.json"'
+check "unlink removes every .mvn workaround" '[ ! -e "$poly/ports/java/.mvn" ] && [ ! -e "$poly/ports/kotlin/.mvn" ]'
 
 [ "$fails" -eq 0 ] || { echo "$fails failure(s)" >&2; exit 1; }
 echo "all prerelease-link tests passed"

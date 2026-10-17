@@ -29,17 +29,33 @@ All artifacts share `groupId` `com.metaobjects` and one version property:
 | `metaobjects-codegen-kotlin` | the Kotlin (KotlinPoet) generators |
 | `metaobjects-maven-plugin` | the build-time codegen plugin |
 
-Generated entities and Exposed tables need the consumer's own runtime deps —
-`org.jetbrains.exposed:exposed-core` and
-`org.jetbrains.kotlinx:kotlinx-serialization-json` (the latter for
-`@Serializable`/parser output).
+The generated code compiles against the consumer's own runtime dependencies, which the
+plugin does not bring:
+
+| Dependency | Why |
+|---|---|
+| `org.jetbrains.exposed:exposed-core` | every generated `Table` |
+| `org.jetbrains.exposed:exposed-java-time` | date, time and timestamp columns |
+| `org.jetbrains.exposed:exposed-json` | `@storage: jsonb` columns |
+| `org.jetbrains.exposed:exposed-jdbc` | the controller's and repository's queries, and `Database.connect` at run time |
+| `com.fasterxml.jackson.core:jackson-databind`, `com.fasterxml.jackson.module:jackson-module-kotlin`, `com.fasterxml.jackson.datatype:jackson-datatype-jsr310` | the generated jsonb mapper and the controller's request binding |
+| `org.jetbrains.kotlinx:kotlinx-serialization-json` | the parser tier, and `@dbColumnType: jsonb` open bags |
+| `org.springframework:spring-web` (for example through `spring-boot-starter-web`) and `jakarta.validation:jakarta.validation-api` | the controller |
+
+Keep all four Exposed artifacts on one version. The port guide's `pom.xml` lists them
+with versions.
 
 ## Plugin config in `pom.xml`
 
 The plugin's `generate` goal binds to the `generate-sources` phase. Point its
 `<loader><sourceDir>` at your metadata and list one `<generator>` per output you
 want, by fully-qualified class name. The Kotlin generators run through the same
-Java plugin via the shared SPI:
+Java plugin via the shared SPI. The example is the whole REST tier: the controller's
+output names the entity data classes, the Exposed tables, the filter allowlists and the
+relation queries `KotlinRelationsGenerator` writes, so the five move together.
+`mvn metaobjects:generate` refuses a list that declares a generator without the ones its
+output references, naming what to add (`<allowUnmetRequires>true</allowUnmetRequires>`
+only when you supply those files by hand or declare them in another `<execution>`):
 
 ```xml
 <build>
@@ -64,6 +80,14 @@ Java plugin via the shared SPI:
               </generator>
               <generator>
                 <classname>com.metaobjects.generator.kotlin.KotlinExposedTableGenerator</classname>
+                <args><outputDir>${project.build.directory}/generated-sources/kotlin</outputDir></args>
+              </generator>
+              <generator>
+                <classname>com.metaobjects.generator.kotlin.KotlinRelationsGenerator</classname>
+                <args><outputDir>${project.build.directory}/generated-sources/kotlin</outputDir></args>
+              </generator>
+              <generator>
+                <classname>com.metaobjects.generator.kotlin.KotlinFilterAllowlistGenerator</classname>
                 <args><outputDir>${project.build.directory}/generated-sources/kotlin</outputDir></args>
               </generator>
               <generator>
@@ -152,7 +176,12 @@ payload field shapes for the generated code — plus a page per entity, under
 ```
 
 Optional `<args>`: `apiSubDir` (default `api/kotlin`), `layout` (`flat` or `package`),
-`projectName`, `modelBaseUrl`. Give it an `outputDir` of generated files only.
+`projectName`, `modelBaseUrl`. Give it an `outputDir` of generated files only. In a repository with more than one port, give each port's documentation its own
+directory: another port's generated pages count as foreign files, and in a shared
+directory each port's `verify --codegen` reports the other ports' pages as drift.
+Migrating a pom that bound `metaobjects:docs`:
+<https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md>,
+section "Java and Kotlin".
 
 **Before calling any generated code, read `api/kotlin/AGENT-API.md`.**
 
@@ -165,11 +194,11 @@ All live in `metaobjects-codegen-kotlin` under
 |---|---|
 | `KotlinEntityGenerator` | `<Entity>.kt` — `data class` (no `@Serializable`; Jackson-compatible) per `object.entity` / `object.value` / `object.projection`. A value object's data class is also the template tier's payload/response type (ADR-0056) — wire this generator with any template-tier one. A TPH `@discriminator` base's data class is the **union** of every subtype's columns (each folded nullable, validation dropped) so one wire shape backs the polymorphic + per-subtype endpoints. |
 | `KotlinExposedTableGenerator` | `<Entity>Table.kt` — Exposed `Table` object (PK + FK + `@storage` columns) for entities with `source.rdb`. A TPH `@discriminator` base emits ONE `Table` for the whole hierarchy — every subtype-only column folded in `.nullable()` (a row of another subtype stores null there) — single-table inheritance; subtype entities emit no table of their own. |
-| `KotlinRelationsGenerator` | `<Entity>Relations.kt` — extension fns for `@cardinality="many"` query helpers |
-| `KotlinSpringControllerGenerator` | `<Entity>Controller.kt` — Spring `@RestController`, five CRUD endpoints on the cross-port REST contract, for writable entities (`source.rdb` `@kind="table"`). A TPH `@discriminator` base emits ONE controller: polymorphic `GET /<base>(+/{id})` plus a per-subtype CRUD set at `/<base>/<discriminatorValue lowercased>` — create injects the discriminator from the URL (never the body); get/update/delete are scoped to the subtype (cross-subtype → 404); the discriminator is immutable. |
+| `KotlinRelationsGenerator` | `<Entity>Relations.kt` — extension fns for `@cardinality="many"` query helpers (`<relation>Query`). The controller's traversal routes call them, so wire it whenever you wire the controller. |
+| `KotlinSpringControllerGenerator` | `<Entity>Controller.kt` — Spring `@RestController`, five CRUD endpoints on the cross-port REST contract, for writable entities (`source.rdb` `@kind="table"`). Needs `KotlinEntityGenerator`, `KotlinExposedTableGenerator`, `KotlinFilterAllowlistGenerator` and `KotlinRelationsGenerator` in the same list. A TPH `@discriminator` base emits ONE controller: polymorphic `GET /<base>(+/{id})` plus a per-subtype CRUD set at `/<base>/<discriminatorValue lowercased>` — create injects the discriminator from the URL (never the body); get/update/delete are scoped to the subtype (cross-subtype → 404); the discriminator is immutable. |
 | `KotlinRepositoryGenerator` | `<Entity>RepositoryBase.kt` — an `open class` consumer persistence seam per writable entity (the Kotlin peer of Java's `SpringRepositoryGenerator`, but with method bodies). Carries the #203 `@autoSet` CRUD stamping: `onCreate` columns stamped once at insert, `onUpdate` columns re-stamped on every write, both excluded from the caller-supplied set. |
 | `KotlinOutputParserGenerator` | the strict parser-on-receipt for a **responding `template.prompt`** — one carrying `@responseRef` (ADR-0052: INBOUND; a `template.output` emits no parser). See the prompts reference. |
-| `KotlinExtractorGenerator` | the FR-010 strict `extract` for a responding `template.prompt` (the value object's all-nullable `<Vo>Extracted` mirror → its data class) |
+| `KotlinExtractorGenerator` | the FR-010 strict `extract` for a responding `template.prompt` (the value object's all-nullable `<Vo>Extracted` mirror → its data class). Needs `KotlinOutputParserGenerator` and `KotlinEntityGenerator` in the same list: it calls the parser and its mirror. |
 | `KotlinOutputPromptGenerator` | the FR-010 output-format prompt fragment for a responding `template.prompt` (presentation via `@promptStyle: guide`/`inline`/`exampleOnly`) |
 | `KotlinRenderHelperGenerator` | the typed render helper for a `template.prompt` payload |
 | `KotlinValidatorGenerator` | `MetadataStartupValidator.kt` + `ExposedTableValidator.kt` (once per project) |
@@ -242,7 +271,8 @@ JUnit 4 project uses `renderer` or ejects.
 its default rendering (pass `-Dport`: the name is ejectable on both JVM ports). The
 requirement checks in `mvn metaobjects:verify` are core and are not ejectable.
 
-Metadata lives under `src/main/metaobjects/` in the same canonical JSON the other
+Metadata lives wherever the plugin's `<loader><sourceDir>` points (the examples here use
+`src/main/metaobjects`; nothing requires that path), in the same canonical JSON the other
 ports read — fused-key form, `source.rdb` + `@table`, `@column` for a renamed
 physical column.
 

@@ -5,7 +5,7 @@
       "type": "field",
       "subType": "*",
       "children": [
-        { "type": "attr", "subType": "string", "name": "column", "min": 0, "max": 1, "description": "Physical column name for this field on an rdb source. Defaults to the field name via columnNamingStrategy." },
+        { "type": "attr", "subType": "string", "name": "column", "min": 0, "max": 1, "description": "Physical column name for this field on an rdb source. Defaults to the field name under the project's naming.columns rule (the \"naming\" setting in .metaobjects/config.json)." },
         { "type": "attr", "subType": "boolean", "name": "db.indexed", "min": 0, "max": 1, "description": "When true, suppress the @filterable-without-index Loader warning (the field is indexed by other means)." },
         { "type": "attr", "subType": "string", "name": "dbColumnType", "min": 0, "max": 1, "allowedValues": ["uuid", "jsonb"], "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2." }
       ]
@@ -35,7 +35,7 @@
       "type": "source",
       "subType": "rdb",
       "children": [
-        { "type": "attr", "subType": "string", "name": "table", "min": 0, "max": 1, "description": "Physical SQL table name for source.rdb @kind: \"table\" (default). FR-016: Defaults from the source's bare structural `name` via the project's columnNamingStrategy when omitted, then from the owning entity's name. Pre-1.0 legacy spelling for view/materializedView/storedProc/tableFunction kinds during the transition; canonical-serializer rewrites to the kind-matching alias." },
+        { "type": "attr", "subType": "string", "name": "table", "min": 0, "max": 1, "description": "Physical SQL table name for source.rdb @kind: \"table\" (default). FR-016: Defaults from the source's bare structural `name` under the project's naming.tables rule (the \"naming\" setting in .metaobjects/config.json) when omitted, then from the owning entity's name. Pre-1.0 legacy spelling for view/materializedView/storedProc/tableFunction kinds during the transition; canonical-serializer rewrites to the kind-matching alias." },
         { "type": "attr", "subType": "string", "name": "view", "min": 0, "max": 1, "description": "Physical SQL view name for source.rdb @kind: \"view\". Same internal slot as @table." },
         { "type": "attr", "subType": "string", "name": "materializedView", "min": 0, "max": 1, "description": "Physical SQL materialized-view name for source.rdb @kind: \"materializedView\". Same internal slot as @table." },
         { "type": "attr", "subType": "string", "name": "proc", "min": 0, "max": 1, "description": "Physical SQL stored-procedure name for source.rdb @kind: \"storedProc\". Same internal slot as @table." },

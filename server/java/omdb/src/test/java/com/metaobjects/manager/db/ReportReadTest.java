@@ -79,6 +79,13 @@ public class ReportReadTest {
     public static void setupDB() throws Exception {
         registry = new MetaDataLoaderRegistry(ServiceRegistryFactory.getDefault());
         loader = MetaDataLoader.fromResources("test-report", List.of("meta.report.json"));
+        // This fixture's hand-rolled DDL below declares every derived column literally
+        // (minAmount, amountCents, totalMinutesOrZero, ...) -- it was built for, and still
+        // needs, the `literal` naming.columns rule (ADR-0058's default is now snake_case
+        // in every port). theProjectsNamingColumnsRuleAppliesToTheDerivedFieldName below
+        // proves the OTHER rule resolves too, through its own loader.
+        loader.getRoot().setPhysicalNaming(
+            com.metaobjects.database.PhysicalNaming.of("literal", "snake_case"));
         registry.registerLoader(loader);
 
         dbFile = "omb-report-" + System.currentTimeMillis();
@@ -376,11 +383,42 @@ public class ReportReadTest {
     }
 
     @Test
-    public void theNamingStrategyAppliesToTheDerivedFieldName() {
+    public void theProjectsNamingColumnsRuleAppliesToTheDerivedFieldName() throws Exception {
+        // ADR-0058: the rule is read from the loaded root (naming.columns in
+        // .metaobjects/config.json), never a runtime setter -- proved through a SEPARATE
+        // loader of the same fixture (the shared `loader` is pinned `literal` above, to
+        // match its hand-rolled DDL) rather than mutating shared static state mid-suite.
+        MetaDataLoader snakeCaseLoader = MetaDataLoader.fromResources(
+            "test-report-snake-case", List.of("meta.report.json"));
+        try {
+            snakeCaseLoader.getRoot().setPhysicalNaming(
+                com.metaobjects.database.PhysicalNaming.of("snake_case", "snake_case"));
+            MetaObject salesByRegion = null;
+            for (MetaObject mo : snakeCaseLoader.getMetaObjects()) {
+                if ("SalesByRegion".equals(mo.getShortName())) salesByRegion = mo;
+            }
+            assertNotNull(salesByRegion);
+
+            SimpleMappingHandlerDB handler = new SimpleMappingHandlerDB();
+            ObjectMappingDB mapping = (ObjectMappingDB) handler.getReadMapping(omdb.readObjectFor(salesByRegion));
+            assertEquals(Set.of("region", "sales", "revenue", "min_amount"), columnsOf(mapping));
+        } finally {
+            snakeCaseLoader.destroy();
+        }
+    }
+
+    @Test
+    public void setColumnNamingIsRefused() {
         SimpleMappingHandlerDB handler = new SimpleMappingHandlerDB();
-        handler.setColumnNaming("snake_case");
-        ObjectMappingDB mapping = (ObjectMappingDB) handler.getReadMapping(omdb.readObjectFor(object("SalesByRegion")));
-        assertEquals(Set.of("region", "sales", "revenue", "min_amount"), columnsOf(mapping));
+        try {
+            handler.setColumnNaming("snake_case");
+            fail("expected the removed runtime setter to refuse");
+        } catch (MetaDataException e) {
+            assertEquals(
+                com.metaobjects.database.ColumnNaming.removedConfigurationMessage(
+                    "SimpleMappingHandlerDB.setColumnNaming", "snake_case"),
+                e.getMessage());
+        }
     }
 
     @Test

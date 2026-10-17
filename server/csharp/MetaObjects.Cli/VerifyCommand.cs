@@ -101,6 +101,16 @@ public static class VerifyCommand
         /// (<c>Program.cs</c>'s <c>ResolveMetadataDirOrExit</c>). Empty when none declared.
         /// </summary>
         public IReadOnlyList<string> Libraries { get; init; } = Array.Empty<string>();
+        /// <summary>
+        /// ADR-0058 — the project's physical-naming rules, read from the SAME
+        /// <c>.metaobjects/config.json</c> as <see cref="Libraries"/> (<c>Program.cs</c>'s
+        /// <c>ResolveMetadataDirOrExit</c>). Set on the loaded root by <see cref="LoadMetadata"/>
+        /// so the <c>--codegen</c> gate's regen agrees with whatever rule <c>gen</c> used,
+        /// without either command being passed a strategy value. Defaults to
+        /// <see cref="MetaObjects.Meta.PhysicalNaming.Default"/> for a caller that builds
+        /// <see cref="Options"/> directly and names no project.
+        /// </summary>
+        public MetaObjects.Meta.PhysicalNaming Naming { get; init; } = MetaObjects.Meta.PhysicalNaming.Default;
         /// <summary>Templates root for the <c>--templates</c> gate (<c>--templates &lt;root&gt;</c>).</summary>
         public string? TemplatesRoot { get; init; }
         /// <summary>The committed output dir for the <c>--codegen</c> gate (<c>--out &lt;dir&gt;</c>).</summary>
@@ -131,18 +141,6 @@ public static class VerifyCommand
         /// defaults strict; <c>gen</c>/<c>docs</c>/<c>agent-docs</c> stay lax.
         /// </summary>
         public bool Strict { get; init; } = true;
-
-        /// <summary>
-        /// The <c>--column-naming</c> strategy the committed <c>--out</c> was produced
-        /// with (default <see cref="ColumnNamingStrategy.Literal"/>, matching <c>gen</c>'s
-        /// default). Only consumed by the <c>--codegen</c> gate's own regen — see
-        /// <see cref="RunCodegenDrift"/>. A regen defaulting to <c>Literal</c> while the
-        /// committed output was produced with, say, <c>gen --column-naming snake_case</c>
-        /// convicts every <c>&lt;Entity&gt;Names.g.cs</c> physical-column constant as
-        /// drift on an otherwise-clean project — the gate must be told which strategy to
-        /// regenerate under, exactly like <c>--namespace</c> above.
-        /// </summary>
-        public ColumnNamingStrategy ColumnNaming { get; init; } = ColumnNamingStrategy.Literal;
 
         /// <summary>True when <c>--codegen</c> was requested but ran in an ejected
         /// project's owned runner instead (<see cref="CodegenHandoff"/>). It still counts
@@ -249,9 +247,15 @@ public static class VerifyCommand
     /// excluded) when present, else <c>FromDirectory(opts.MetadataDir)</c> (an
     /// explicit CLI argument — the legacy, unfiltered directory load).
     /// </summary>
-    private static LoadResult LoadMetadata(Options opts) => opts.MetadataFiles is { } files
-        ? MetaDataLoader.FromUris(files.Select(f => new Uri(f)).ToList(), opts.Libraries, opts.Strict)
-        : MetaDataLoader.FromDirectory(opts.MetadataDir, opts.Libraries, strict: opts.Strict);
+    private static LoadResult LoadMetadata(Options opts)
+    {
+        var result = opts.MetadataFiles is { } files
+            ? MetaDataLoader.FromUris(files.Select(f => new Uri(f)).ToList(), opts.Libraries, opts.Strict)
+            : MetaDataLoader.FromDirectory(opts.MetadataDir, opts.Libraries, strict: opts.Strict);
+        // ADR-0058 — every resolver reads naming.columns/naming.tables from the root.
+        result.Root.PhysicalNaming = opts.Naming;
+        return result;
+    }
 
     // ------------------------------------------------------------------------
     // The requirement gate (ADR-0057) — runs on EVERY verify, with no subverb.
@@ -434,10 +438,10 @@ public static class VerifyCommand
         {
             OutDir = opts.OutDir, Namespace = ns,
             IncludeNames = GeneratorRegistry.IncludesNames(names),
-            // Must match the strategy `gen` produced --out with, or the `names`
-            // generator's physical-column constants regenerate under the wrong
-            // strategy and every one reports spurious drift (see Options.ColumnNaming).
-            ColumnNamingStrategy = opts.ColumnNaming,
+            // ADR-0058 — one project setting, read from the loaded root: `gen` produced
+            // --out reading the SAME root's naming.columns, so this regen agrees with it
+            // by construction rather than needing a flag told to match.
+            ColumnNamingStrategy = load.Root.PhysicalNaming.Columns,
         };
         return Codegen.CodegenDrift.Compute(config, load.Root, generators);
     }

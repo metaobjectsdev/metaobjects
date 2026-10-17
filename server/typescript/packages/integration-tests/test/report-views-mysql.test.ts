@@ -37,6 +37,13 @@ import { startMysql, type MysqlContainerHandle } from "../src/mysql-container.ts
 import { loadMetadataDir } from "../src/load-metadata.ts";
 import { CANONICAL_DIR } from "../src/paths.ts";
 
+/** The project setting `"naming": { "columns": "literal" }` (ADR-0058), set where the
+ *  project-aware load sets it: on the loaded root. */
+function literalColumns<T>(root: T): T {
+  (root as unknown as { physicalNaming: unknown }).physicalNaming = { columns: "literal", tables: "snake_case" };
+  return root;
+}
+
 const REPO_ROOT = resolve(import.meta.dir, "../../../../..");
 
 let container: MysqlContainerHandle;
@@ -85,7 +92,7 @@ async function loadInline(metaJson: string): Promise<MetaRoot> {
 }
 
 function reportViews(root: MetaRoot) {
-  return buildReportViews(root, { dialect: "mysql", columnNamingStrategy: "literal" });
+  return buildReportViews(literalColumns(root), { dialect: "mysql" });
 }
 
 /**

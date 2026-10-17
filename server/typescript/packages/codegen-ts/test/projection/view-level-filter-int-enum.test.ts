@@ -242,7 +242,7 @@ describe("origin.aggregate @filter on an int-backed enum lowers to the integer",
   test("postgres FILTER (WHERE …) compares the integer", async () => {
     const root = await load(model());
     const [v] = buildProjectionViews(root, {
-      dialect: "postgres", columnNamingStrategy: "snake_case",
+      dialect: "postgres",
     });
     expect(v!.sql).toMatch(/FILTER \(WHERE [a-z0-9]+\.status = 7\)/);
     expect(v!.sql).not.toContain("'ACTIVE'");
@@ -251,7 +251,7 @@ describe("origin.aggregate @filter on an int-backed enum lowers to the integer",
   test("sqlite CASE WHEN compares the integer", async () => {
     const root = await load(model());
     const [v] = buildProjectionViews(root, {
-      dialect: "sqlite", columnNamingStrategy: "snake_case",
+      dialect: "sqlite",
     });
     expect(v!.sql).toMatch(/CASE WHEN [a-z0-9]+\.status = 7 THEN/);
     expect(v!.sql).not.toContain("'ACTIVE'");

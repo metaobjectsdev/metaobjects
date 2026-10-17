@@ -21,7 +21,11 @@ import {
 } from "../src/independent-oracle.ts";
 import { generateApp, generatedPathOf } from "../src/generated-app.ts";
 import { loadMetadataFile } from "../src/load-metadata.ts";
-import { CANONICAL_COLUMN_NAMING, CANONICAL_SCHEMA_SQL_PATH } from "../src/canonical-schema.ts";
+import { CANONICAL_SCHEMA_SQL_PATH } from "../src/canonical-schema.ts";
+
+/** The column rule the canonical corpus declares in its .metaobjects/config.json, restated
+ *  here rather than read back through the code under test: this is the independent oracle. */
+const CANONICAL_COLUMN_NAMING = "literal" as const;
 import { CANONICAL_DIR } from "../src/paths.ts";
 import { executeSql } from "../src/postgres-sql.ts";
 import { startPostgres, type RunningPg } from "../src/postgres-container.ts";

@@ -55,7 +55,7 @@ import {
   FIELD_ATTR_LENIENT,
   STORAGE_FLATTENED,
   DOC_ATTR_DESCRIPTION,
-  applyColumnNamingStrategy, DEFAULT_COLUMN_NAMING_STRATEGY,
+  applyColumnNamingStrategy, physicalNamingOf,
   resolveTableName, resolveColumnName, resolveTableSchema, resolveIndexName,
 } from "@metaobjectsdev/metadata";
 import type { SqlType } from "./sql-type.js";
@@ -86,12 +86,6 @@ export interface BuildExpectedSchemaOptions {
    * patterns produce INTEGER / TEXT in the actual DB.
    */
   dialect?: Dialect;
-  /**
-   * Column-naming strategy for fields with no `@column` override. Defaults to
-   * `"snake_case"`. Must match the runtime's `ObjectManager` strategy — a
-   * mismatch yields a schema whose columns the runtime can't address.
-   */
-  columnNamingStrategy?: ColumnNamingStrategy;
   /**
    * Expected views (projection → CREATE VIEW body), computed by the caller via
    * codegen-ts's `buildProjectionViews` and threaded in. migrate-ts does NOT
@@ -175,7 +169,9 @@ export function buildExpectedSchemaWithProvenance(
   // D1 is SQLite at the SQL level; normalize it so downstream dialect checks
   // don't need to handle "d1" separately.
   const dialect = opts?.dialect === "d1" ? "sqlite" : opts?.dialect;
-  const strategy: ColumnNamingStrategy = opts?.columnNamingStrategy ?? DEFAULT_COLUMN_NAMING_STRATEGY;
+  // ADR-0058: the project's one column rule, carried by the loaded root — the value codegen
+  // and every runtime read, so the schema and the code that addresses it cannot disagree.
+  const strategy: ColumnNamingStrategy = physicalNamingOf(root).columns;
 
   // Pass 1: collect entities + their resolved table names.
   // Skip:

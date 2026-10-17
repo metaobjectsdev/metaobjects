@@ -86,6 +86,14 @@
       <version>${project.version}</version>
       <scope>test</scope>
     </dependency>
+    <!-- The parser tier's generated code imports com.metaobjects.object.extract, which an adopter
+         gets from metaobjects-om. GeneratorRequiresCompileTest compiles that tier's output. -->
+    <dependency>
+      <groupId>com.metaobjects</groupId>
+      <artifactId>metaobjects-om</artifactId>
+      <version>${project.version}</version>
+      <scope>test</scope>
+    </dependency>
 
     <!-- SP-F Unit 2 generated-controller lane: generate + compile + host the EMITTED
          Kotlin Spring @RestController for Author against the api-contract corpus.

@@ -210,7 +210,13 @@ final class LlmCallTraceRoundTripTest {
         URI modelUri = URIHelper.toURI("model:file:" + libraryModel.toAbsolutePath());
         URI dbUri = URIHelper.toURI("model:file:" + libraryDb.toAbsolutePath());
         URI entityUri = URIHelper.toURI("model:resource:meta.ai-trace.yaml");
-        return MetaDataLoader.fromUris("test-ai-trace", List.of(modelUri, dbUri, entityUri));
+        MetaDataLoader loader = MetaDataLoader.fromUris("test-ai-trace", List.of(modelUri, dbUri, entityUri));
+        // This fixture's hand-rolled DDL below declares every column literally
+        // ("parentSpanId", quoted) — it needs the `literal` naming.columns rule
+        // (ADR-0058's default is now snake_case in every port).
+        loader.getRoot().setPhysicalNaming(
+                com.metaobjects.database.PhysicalNaming.of("literal", "snake_case"));
+        return loader;
     }
 
     /** Walk up from the working dir to locate a repo-relative file. */

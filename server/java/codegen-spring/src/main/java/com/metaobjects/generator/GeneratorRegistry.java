@@ -254,6 +254,13 @@ public final class GeneratorRegistry {
             return ejectResources;
         }
 
+        /** Stable names of the Java generators whose output this one's output references:
+         *  without them in the same {@code <generators>}, the generated code does not compile.
+         *  {@code mvn metaobjects:generate} refuses such a list (see {@link #REQUIRES}). */
+        public List<String> requires() {
+            return REQUIRES.getOrDefault(stableName, List.of());
+        }
+
         @Override
         public String toString() {
             return "GeneratorInfo{" + stableName + " -> " + classname
@@ -310,6 +317,23 @@ public final class GeneratorRegistry {
             "com.metaobjects.generator.direct.plantuml.PlantUMLWriter";
     private static final String MUSTACHE_GENERATOR =
             "com.metaobjects.generator.mustache.MustacheTemplateGenerator";
+
+    /**
+     * What each generator's output references from another generator's output, by stable name
+     * — the Java peer of the {@code requires} the TypeScript, C# and Python registries carry.
+     * Without it a pom that listed {@code SpringControllerGenerator} alone generated, exited 0,
+     * and failed to compile on {@code <Entity>FilterAllowlist}, {@code <Entity>Dto} and the value
+     * objects a DTO carries. {@code GeneratorRequiresCompileTest} proves each closure compiles
+     * over the shared fitness corpus. Declared before {@link #REGISTRY}: static initializers run
+     * in order.
+     */
+    private static final Map<String, List<String>> REQUIRES = Map.of(
+            "routes", List.of("dto", "repository", "filter-allowlist"),
+            "dto", List.of("value-object"),
+            "repository", List.of("dto"),
+            "output-parser", List.of("value-object"),
+            "render-helper", List.of("value-object"),
+            "extractor", List.of("entity"));
 
     private static final Map<String, GeneratorInfo> REGISTRY = buildRegistry();
 

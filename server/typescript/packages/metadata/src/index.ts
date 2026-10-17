@@ -347,13 +347,15 @@ export type { AttrSchemaValidationResult } from "./attr-schema-validate.js";
 // share identical name resolution. See spec §4.1.
 export {
   toSnakeCase, toKebabCase, pluralize, pluralizeTableNameLegacy,
-  applyColumnNamingStrategy, DEFAULT_COLUMN_NAMING_STRATEGY,
+  applyColumnNamingStrategy, DEFAULT_COLUMN_NAMING_STRATEGY, COLUMN_NAMING_STRATEGIES,
+  TABLE_NAMING_RULES, DEFAULT_PHYSICAL_NAMING, physicalNamingOf, applyTableNamingRule,
+  PHYSICAL_NAMING_MIGRATION_GUIDE, physicalNamingRemovedMessage,
   resolveTableName, resolveColumnName, resolveTableSchema, resolveIndexName,
   primaryRdbSource, sourceAddressKey,
   buildNameMap,
   stripPackage, packageOfResolutionKey,
 } from "./naming.js";
-export type { EntityNameMap, ColumnNamingStrategy } from "./naming.js";
+export type { EntityNameMap, ColumnNamingStrategy, PhysicalNaming, TableNamingRule } from "./naming.js";
 
 // Retired vocabulary: the map the loader reads to explain a retirement, and the raw-document
 // rewriter `meta upgrade` drives from the SAME entries — so the error message and the fix

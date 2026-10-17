@@ -1,16 +1,17 @@
 """The column-naming strategy: how a field with no explicit ``@column`` becomes a
 physical column name.
 
-This port hardcoded ``literal`` — ``@column or field.name`` — in both the runtime and
-codegen, with no way to select anything else. That is a break rather than a preference:
-schema migrations are Node-owned (ADR-0015) and ``meta migrate`` defaults to
-``snake_case``, so an entity with a multi-word field name produced runtime SQL against
-``createdAt`` while the database column was ``created_at``. The byte-gated registry
-prose for ``@column`` has always described the default as coming "via
-columnNamingStrategy".
+This port used to hardcode ``literal`` — ``@column or field.name`` — in both the
+runtime and codegen, with no way to select anything else. That was a break rather than
+a preference: schema migrations are Node-owned (ADR-0015) and ``meta migrate`` defaults
+to ``snake_case``, so an entity with a multi-word field name produced runtime SQL
+against ``createdAt`` while the database column was ``created_at``.
 
-The DEFAULT stays ``literal`` — that is what this port already did, and an adopter whose
-database matches it must not move.
+ADR-0058 (1.1.0) made naming ONE project setting (``naming`` in
+``.metaobjects/config.json``, read by every port from the loaded root) and FLIPPED the
+default to ``snake_case`` — what ``meta migrate`` has always created — in every port,
+this one included. An adopter whose database genuinely has literal column names adds
+``"naming": { "columns": "literal" }``.
 """
 from __future__ import annotations
 
@@ -36,9 +37,11 @@ def _field(name: str, column: str | None = None) -> MetaField:
     return f
 
 
-def test_default_is_literal_this_ports_historical_behaviour() -> None:
-    assert DEFAULT_COLUMN_NAMING == COLUMN_NAMING_LITERAL
-    assert resolve_column_name(_field("createdAt")) == "createdAt"
+def test_default_is_snake_case_adr_0058() -> None:
+    assert DEFAULT_COLUMN_NAMING == COLUMN_NAMING_SNAKE_CASE
+    # A hand-built field with no loaded root resolves `naming_rules_of`'s own
+    # defaults — same answer as a project that declares no `naming` block at all.
+    assert resolve_column_name(_field("createdAt")) == "created_at"
 
 
 @pytest.mark.parametrize(
@@ -103,3 +106,19 @@ def test_a_codegen_column_naming_strategy_is_no_longer_refused() -> None:
     # Every strategy now constructs cleanly — the `names` generator is the reader.
     for strategy in (COLUMN_NAMING_LITERAL, COLUMN_NAMING_SNAKE_CASE, COLUMN_NAMING_KEBAB_CASE):
         assert GenConfig(out_dir="", column_naming=strategy).column_naming == strategy
+
+
+def test_object_manager_column_naming_argument_is_refused() -> None:
+    """ADR-0058 Decision 4: the 1.0 runtime setter is refused with the shared message, before
+    the manager touches its driver, so the value it held is never silently dropped."""
+    from metaobjects.runtime.object_manager import ObjectManager
+
+    with pytest.raises(ValueError) as excinfo:
+        ObjectManager(None, driver=None, column_naming="literal")  # type: ignore[arg-type]
+    assert str(excinfo.value) == (
+        'ObjectManager(column_naming=...) was removed in 1.1.0. Column and table naming is one '
+        'project setting now, read by every port: "naming" in .metaobjects/config.json, for '
+        'example "naming": { "columns": "literal" }. Move it there and delete '
+        "ObjectManager(column_naming=...). See "
+        "https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/physical-naming.md"
+    )

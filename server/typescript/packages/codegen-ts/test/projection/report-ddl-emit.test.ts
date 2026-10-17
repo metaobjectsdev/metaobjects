@@ -12,6 +12,14 @@ import type {
 } from "../../src/projection/report-spec.js";
 import type { JoinNode, ViewFilterClause, ViewSpec } from "../../src/projection/view-spec.js";
 
+/** The project setting `"naming": { "columns": "literal" }` (ADR-0058), set where the
+ *  project-aware load sets it: on the loaded root. */
+function literalColumns<T>(root: T): T {
+  (root as unknown as { physicalNaming: unknown }).physicalNaming = { columns: "literal", tables: "snake_case" };
+  return root;
+}
+
+
 const pg = (baseTableName: string, joinTables: Record<string, string> = {}): ReportEmitOptions =>
   ({ dialect: "postgres", baseTableName, joinTables, bodyOnly: true });
 const sqlite = (baseTableName: string, joinTables: Record<string, string> = {}): ReportEmitOptions =>
@@ -722,7 +730,7 @@ async function viewsOf(children: Json[], dialect: "postgres" | "sqlite" | "d1" |
   const { root, errors } = await new MetaDataLoader().load([source]);
   expect(errors).toEqual([]);
   const out: Record<string, string> = {};
-  for (const v of buildReportViews(root, { dialect, columnNamingStrategy: "literal" })) out[v.name] = v.sql;
+  for (const v of buildReportViews(literalColumns(root), { dialect })) out[v.name] = v.sql;
   return out;
 }
 

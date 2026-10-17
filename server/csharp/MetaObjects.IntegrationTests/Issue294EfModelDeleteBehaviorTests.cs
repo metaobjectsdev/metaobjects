@@ -14,6 +14,7 @@
 // adopter detected the failure (model-only, no database: an unreachable host is enough
 // because IModel is built without connecting).
 
+using MetaObjects.Meta;
 using System.Reflection;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;

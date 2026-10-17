@@ -1,7 +1,7 @@
 // RenderContext — cross-cutting state passed to every template.
 
 import type { MetaRoot, MetaData, MetaField } from "@metaobjectsdev/metadata";
-import { resolveObjectRef, stripPackage } from "@metaobjectsdev/metadata";
+import { physicalNamingOf, resolveObjectRef, stripPackage } from "@metaobjectsdev/metadata";
 import type { Dialect } from "./column-mapper.js";
 import { normalizeTimestampMode } from "./dialect-module.js";
 import type { PkInfo } from "./pk-resolver.js";
@@ -207,7 +207,8 @@ export function makeRenderContext(opts: RenderContextInput): RenderContext {
     ...opts,
     extStyle: opts.extStyle ?? "js",
     omImport: opts.omImport ?? "../index",
-    columnNamingStrategy: opts.columnNamingStrategy ?? "snake_case",
+    // ADR-0058: the project's one setting, carried by the loaded root.
+    columnNamingStrategy: opts.columnNamingStrategy ?? physicalNamingOf(opts.loadedRoot).columns,
     // "date" mode is Postgres-only — normalize to "string" on sqlite/D1 here too
     // (the OTHER choke point besides normalizeConfig; a bare-context caller, e.g.
     // a unit test or a generator invoked outside `runGen`, must get the same

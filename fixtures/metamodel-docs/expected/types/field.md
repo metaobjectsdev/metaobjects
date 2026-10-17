@@ -20,7 +20,7 @@ Abstract base field — the shared root subtype that concrete field subtypes spe
 
 | Attribute | Type | Required | Default | Allowed values | Provider | Description |
 | --- | --- | --- | --- | --- | --- | --- |
-| `@column` | string | no |  |  | metaobjects-db | Physical column name for this field on an rdb source. Defaults to the field name via columnNamingStrategy. |
+| `@column` | string | no |  |  | metaobjects-db | Physical column name for this field on an rdb source. Defaults to the field name under the project's naming.columns rule (the "naming" setting in .metaobjects/config.json). |
 | `@db.indexed` | boolean | no |  |  | metaobjects-db | When true, suppress the @filterable-without-index Loader warning (the field is indexed by other means). |
 | `@dbColumnType` | string | no |  | `uuid`, `jsonb` | metaobjects-db | Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid \| jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2. |
 | `@default` | any | no |  |  | metaobjects-core-types | Default value applied to the column when no value is supplied. Its type follows the field's own subtype (string / boolean / number / ...). Converted at consumption time via MetaField.defaultValue(). |
@@ -53,7 +53,7 @@ True/false flag. Binds to the native boolean type; DB column is BOOLEAN.
 
 | Attribute | Type | Required | Default | Allowed values | Provider | Description |
 | --- | --- | --- | --- | --- | --- | --- |
-| `@column` | string | no |  |  | metaobjects-db | Physical column name for this field on an rdb source. Defaults to the field name via columnNamingStrategy. |
+| `@column` | string | no |  |  | metaobjects-db | Physical column name for this field on an rdb source. Defaults to the field name under the project's naming.columns rule (the "naming" setting in .metaobjects/config.json). |
 | `@db.indexed` | boolean | no |  |  | metaobjects-db | When true, suppress the @filterable-without-index Loader warning (the field is indexed by other means). |
 | `@dbColumnType` | string | no |  | `uuid`, `jsonb` | metaobjects-db | Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid \| jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2. |
 | `@default` | any | no |  |  | metaobjects-core-types | Default value applied to the column when no value is supplied. Its type follows the field's own subtype (string / boolean / number / ...). Converted at consumption time via MetaField.defaultValue(). |
@@ -88,7 +88,7 @@ Stores money as integer minor units (cents). Binds to long; the client formats v
 
 | Attribute | Type | Required | Default | Allowed values | Provider | Description |
 | --- | --- | --- | --- | --- | --- | --- |
-| `@column` | string | no |  |  | metaobjects-db | Physical column name for this field on an rdb source. Defaults to the field name via columnNamingStrategy. |
+| `@column` | string | no |  |  | metaobjects-db | Physical column name for this field on an rdb source. Defaults to the field name under the project's naming.columns rule (the "naming" setting in .metaobjects/config.json). |
 | `@currency` | string | no | `USD` |  | metaobjects-core-types | ISO 4217 currency code for a currency-subtype field. Storage is integer minor units; defaults to 'USD' when omitted. |
 | `@db.indexed` | boolean | no |  |  | metaobjects-db | When true, suppress the @filterable-without-index Loader warning (the field is indexed by other means). |
 | `@dbColumnType` | string | no |  | `uuid`, `jsonb` | metaobjects-db | Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid \| jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2. |
@@ -123,7 +123,7 @@ Calendar date (no time-of-day). Binds to the native date/temporal type; DB colum
 | Attribute | Type | Required | Default | Allowed values | Provider | Description |
 | --- | --- | --- | --- | --- | --- | --- |
 | `@autoSet` | string | no |  | `onCreate`, `onUpdate` | metaobjects-db | Auto-set semantics for timestamp-like fields: 'onCreate' stamps on insert, 'onUpdate' stamps on every write. |
-| `@column` | string | no |  |  | metaobjects-db | Physical column name for this field on an rdb source. Defaults to the field name via columnNamingStrategy. |
+| `@column` | string | no |  |  | metaobjects-db | Physical column name for this field on an rdb source. Defaults to the field name under the project's naming.columns rule (the "naming" setting in .metaobjects/config.json). |
 | `@db.indexed` | boolean | no |  |  | metaobjects-db | When true, suppress the @filterable-without-index Loader warning (the field is indexed by other means). |
 | `@dbColumnType` | string | no |  | `uuid`, `jsonb` | metaobjects-db | Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid \| jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2. |
 | `@default` | any | no |  |  | metaobjects-core-types | Default value applied to the column when no value is supplied. Its type follows the field's own subtype (string / boolean / number / ...). Converted at consumption time via MetaField.defaultValue(). |
@@ -158,7 +158,7 @@ Precision-exact decimal (use @precision/@scale). Native TS binding is string (lo
 
 | Attribute | Type | Required | Default | Allowed values | Provider | Description |
 | --- | --- | --- | --- | --- | --- | --- |
-| `@column` | string | no |  |  | metaobjects-db | Physical column name for this field on an rdb source. Defaults to the field name via columnNamingStrategy. |
+| `@column` | string | no |  |  | metaobjects-db | Physical column name for this field on an rdb source. Defaults to the field name under the project's naming.columns rule (the "naming" setting in .metaobjects/config.json). |
 | `@db.indexed` | boolean | no |  |  | metaobjects-db | When true, suppress the @filterable-without-index Loader warning (the field is indexed by other means). |
 | `@dbColumnType` | string | no |  | `uuid`, `jsonb` | metaobjects-db | Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid \| jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2. |
 | `@default` | any | no |  |  | metaobjects-core-types | Default value applied to the column when no value is supplied. Its type follows the field's own subtype (string / boolean / number / ...). Converted at consumption time via MetaField.defaultValue(). |
@@ -193,7 +193,7 @@ Double-precision (64-bit) IEEE-754 floating point. Binds to the native double/nu
 
 | Attribute | Type | Required | Default | Allowed values | Provider | Description |
 | --- | --- | --- | --- | --- | --- | --- |
-| `@column` | string | no |  |  | metaobjects-db | Physical column name for this field on an rdb source. Defaults to the field name via columnNamingStrategy. |
+| `@column` | string | no |  |  | metaobjects-db | Physical column name for this field on an rdb source. Defaults to the field name under the project's naming.columns rule (the "naming" setting in .metaobjects/config.json). |
 | `@db.indexed` | boolean | no |  |  | metaobjects-db | When true, suppress the @filterable-without-index Loader warning (the field is indexed by other means). |
 | `@dbColumnType` | string | no |  | `uuid`, `jsonb` | metaobjects-db | Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid \| jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2. |
 | `@default` | any | no |  |  | metaobjects-core-types | Default value applied to the column when no value is supplied. Its type follows the field's own subtype (string / boolean / number / ...). Converted at consumption time via MetaField.defaultValue(). |
@@ -229,7 +229,7 @@ String-backed enumeration constrained to a closed set of member symbols (@values
 | Attribute | Type | Required | Default | Allowed values | Provider | Description |
 | --- | --- | --- | --- | --- | --- | --- |
 | `@coerceDefault` | string | no |  |  | metaobjects-prompt | Fallback enum member used by tolerant extract when a present value cannot be coerced; must be one of the field's @values. |
-| `@column` | string | no |  |  | metaobjects-db | Physical column name for this field on an rdb source. Defaults to the field name via columnNamingStrategy. |
+| `@column` | string | no |  |  | metaobjects-db | Physical column name for this field on an rdb source. Defaults to the field name under the project's naming.columns rule (the "naming" setting in .metaobjects/config.json). |
 | `@db.indexed` | boolean | no |  |  | metaobjects-db | When true, suppress the @filterable-without-index Loader warning (the field is indexed by other means). |
 | `@dbColumnType` | string | no |  | `uuid`, `jsonb` | metaobjects-db | Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid \| jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2. |
 | `@default` | any | no |  |  | metaobjects-core-types | Default value applied to the column when no value is supplied. Its type follows the field's own subtype (string / boolean / number / ...). Converted at consumption time via MetaField.defaultValue(). |
@@ -266,7 +266,7 @@ Single-precision floating point. Binds to the native double/number type (TS has 
 
 | Attribute | Type | Required | Default | Allowed values | Provider | Description |
 | --- | --- | --- | --- | --- | --- | --- |
-| `@column` | string | no |  |  | metaobjects-db | Physical column name for this field on an rdb source. Defaults to the field name via columnNamingStrategy. |
+| `@column` | string | no |  |  | metaobjects-db | Physical column name for this field on an rdb source. Defaults to the field name under the project's naming.columns rule (the "naming" setting in .metaobjects/config.json). |
 | `@db.indexed` | boolean | no |  |  | metaobjects-db | When true, suppress the @filterable-without-index Loader warning (the field is indexed by other means). |
 | `@dbColumnType` | string | no |  | `uuid`, `jsonb` | metaobjects-db | Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid \| jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2. |
 | `@default` | any | no |  |  | metaobjects-core-types | Default value applied to the column when no value is supplied. Its type follows the field's own subtype (string / boolean / number / ...). Converted at consumption time via MetaField.defaultValue(). |
@@ -299,7 +299,7 @@ An IP-address string (IPv4 or IPv6) (ADR-0036/0037 — a concept with a native t
 
 | Attribute | Type | Required | Default | Allowed values | Provider | Description |
 | --- | --- | --- | --- | --- | --- | --- |
-| `@column` | string | no |  |  | metaobjects-db | Physical column name for this field on an rdb source. Defaults to the field name via columnNamingStrategy. |
+| `@column` | string | no |  |  | metaobjects-db | Physical column name for this field on an rdb source. Defaults to the field name under the project's naming.columns rule (the "naming" setting in .metaobjects/config.json). |
 | `@db.indexed` | boolean | no |  |  | metaobjects-db | When true, suppress the @filterable-without-index Loader warning (the field is indexed by other means). |
 | `@dbColumnType` | string | no |  | `uuid`, `jsonb` | metaobjects-db | Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid \| jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2. |
 | `@default` | any | no |  |  | metaobjects-core-types | Default value applied to the column when no value is supplied. Its type follows the field's own subtype (string / boolean / number / ...). Converted at consumption time via MetaField.defaultValue(). |
@@ -333,7 +333,7 @@ An IP-address string (IPv4 or IPv6) (ADR-0036/0037 — a concept with a native t
 
 | Attribute | Type | Required | Default | Allowed values | Provider | Description |
 | --- | --- | --- | --- | --- | --- | --- |
-| `@column` | string | no |  |  | metaobjects-db | Physical column name for this field on an rdb source. Defaults to the field name via columnNamingStrategy. |
+| `@column` | string | no |  |  | metaobjects-db | Physical column name for this field on an rdb source. Defaults to the field name under the project's naming.columns rule (the "naming" setting in .metaobjects/config.json). |
 | `@db.indexed` | boolean | no |  |  | metaobjects-db | When true, suppress the @filterable-without-index Loader warning (the field is indexed by other means). |
 | `@dbColumnType` | string | no |  | `uuid`, `jsonb` | metaobjects-db | Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid \| jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2. |
 | `@default` | any | no |  |  | metaobjects-core-types | Default value applied to the column when no value is supplied. Its type follows the field's own subtype (string / boolean / number / ...). Converted at consumption time via MetaField.defaultValue(). |
@@ -366,7 +366,7 @@ An IP-address string (IPv4 or IPv6) (ADR-0036/0037 — a concept with a native t
 
 | Attribute | Type | Required | Default | Allowed values | Provider | Description |
 | --- | --- | --- | --- | --- | --- | --- |
-| `@column` | string | no |  |  | metaobjects-db | Physical column name for this field on an rdb source. Defaults to the field name via columnNamingStrategy. |
+| `@column` | string | no |  |  | metaobjects-db | Physical column name for this field on an rdb source. Defaults to the field name under the project's naming.columns rule (the "naming" setting in .metaobjects/config.json). |
 | `@db.indexed` | boolean | no |  |  | metaobjects-db | When true, suppress the @filterable-without-index Loader warning (the field is indexed by other means). |
 | `@dbColumnType` | string | no |  | `uuid`, `jsonb` | metaobjects-db | Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid \| jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2. |
 | `@default` | any | no |  |  | metaobjects-core-types | Default value applied to the column when no value is supplied. Its type follows the field's own subtype (string / boolean / number / ...). Converted at consumption time via MetaField.defaultValue(). |
@@ -401,7 +401,7 @@ An open-keyed map (Record<string,V> / dict[str,V]) stored in a single jsonb colu
 
 | Attribute | Type | Required | Default | Allowed values | Provider | Description |
 | --- | --- | --- | --- | --- | --- | --- |
-| `@column` | string | no |  |  | metaobjects-db | Physical column name for this field on an rdb source. Defaults to the field name via columnNamingStrategy. |
+| `@column` | string | no |  |  | metaobjects-db | Physical column name for this field on an rdb source. Defaults to the field name under the project's naming.columns rule (the "naming" setting in .metaobjects/config.json). |
 | `@db.indexed` | boolean | no |  |  | metaobjects-db | When true, suppress the @filterable-without-index Loader warning (the field is indexed by other means). |
 | `@dbColumnType` | string | no |  | `uuid`, `jsonb` | metaobjects-db | Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid \| jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2. |
 | `@default` | any | no |  |  | metaobjects-core-types | Default value applied to the column when no value is supplied. Its type follows the field's own subtype (string / boolean / number / ...). Converted at consumption time via MetaField.defaultValue(). |
@@ -438,7 +438,7 @@ A nested structured value (set @objectRef to the target object). Storage is gove
 
 | Attribute | Type | Required | Default | Allowed values | Provider | Description |
 | --- | --- | --- | --- | --- | --- | --- |
-| `@column` | string | no |  |  | metaobjects-db | Physical column name for this field on an rdb source. Defaults to the field name via columnNamingStrategy. |
+| `@column` | string | no |  |  | metaobjects-db | Physical column name for this field on an rdb source. Defaults to the field name under the project's naming.columns rule (the "naming" setting in .metaobjects/config.json). |
 | `@db.indexed` | boolean | no |  |  | metaobjects-db | When true, suppress the @filterable-without-index Loader warning (the field is indexed by other means). |
 | `@dbColumnType` | string | no |  | `uuid`, `jsonb` | metaobjects-db | Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid \| jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2. |
 | `@default` | any | no |  |  | metaobjects-core-types | Default value applied to the column when no value is supplied. Its type follows the field's own subtype (string / boolean / number / ...). Converted at consumption time via MetaField.defaultValue(). |
@@ -473,7 +473,7 @@ Variable-length text. Binds to the native string type; DB column is VARCHAR/TEXT
 
 | Attribute | Type | Required | Default | Allowed values | Provider | Description |
 | --- | --- | --- | --- | --- | --- | --- |
-| `@column` | string | no |  |  | metaobjects-db | Physical column name for this field on an rdb source. Defaults to the field name via columnNamingStrategy. |
+| `@column` | string | no |  |  | metaobjects-db | Physical column name for this field on an rdb source. Defaults to the field name under the project's naming.columns rule (the "naming" setting in .metaobjects/config.json). |
 | `@db.indexed` | boolean | no |  |  | metaobjects-db | When true, suppress the @filterable-without-index Loader warning (the field is indexed by other means). |
 | `@dbColumnType` | string | no |  | `uuid`, `jsonb` | metaobjects-db | Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid \| jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2. |
 | `@default` | any | no |  |  | metaobjects-core-types | Default value applied to the column when no value is supplied. Its type follows the field's own subtype (string / boolean / number / ...). Converted at consumption time via MetaField.defaultValue(). |
@@ -507,7 +507,7 @@ Time-of-day (no calendar date). Binds to the native date/temporal type; DB colum
 | Attribute | Type | Required | Default | Allowed values | Provider | Description |
 | --- | --- | --- | --- | --- | --- | --- |
 | `@autoSet` | string | no |  | `onCreate`, `onUpdate` | metaobjects-db | Auto-set semantics for timestamp-like fields: 'onCreate' stamps on insert, 'onUpdate' stamps on every write. |
-| `@column` | string | no |  |  | metaobjects-db | Physical column name for this field on an rdb source. Defaults to the field name via columnNamingStrategy. |
+| `@column` | string | no |  |  | metaobjects-db | Physical column name for this field on an rdb source. Defaults to the field name under the project's naming.columns rule (the "naming" setting in .metaobjects/config.json). |
 | `@db.indexed` | boolean | no |  |  | metaobjects-db | When true, suppress the @filterable-without-index Loader warning (the field is indexed by other means). |
 | `@dbColumnType` | string | no |  | `uuid`, `jsonb` | metaobjects-db | Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid \| jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2. |
 | `@default` | any | no |  |  | metaobjects-core-types | Default value applied to the column when no value is supplied. Its type follows the field's own subtype (string / boolean / number / ...). Converted at consumption time via MetaField.defaultValue(). |
@@ -541,7 +541,7 @@ Date + time-of-day instant (optionally with timezone). Binds to the native date/
 | Attribute | Type | Required | Default | Allowed values | Provider | Description |
 | --- | --- | --- | --- | --- | --- | --- |
 | `@autoSet` | string | no |  | `onCreate`, `onUpdate` | metaobjects-db | Auto-set semantics for timestamp-like fields: 'onCreate' stamps on insert, 'onUpdate' stamps on every write. |
-| `@column` | string | no |  |  | metaobjects-db | Physical column name for this field on an rdb source. Defaults to the field name via columnNamingStrategy. |
+| `@column` | string | no |  |  | metaobjects-db | Physical column name for this field on an rdb source. Defaults to the field name under the project's naming.columns rule (the "naming" setting in .metaobjects/config.json). |
 | `@db.indexed` | boolean | no |  |  | metaobjects-db | When true, suppress the @filterable-without-index Loader warning (the field is indexed by other means). |
 | `@dbColumnType` | string | no |  | `uuid`, `jsonb` | metaobjects-db | Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid \| jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2. |
 | `@default` | any | no |  |  | metaobjects-core-types | Default value applied to the column when no value is supplied. Its type follows the field's own subtype (string / boolean / number / ...). Converted at consumption time via MetaField.defaultValue(). |
@@ -575,7 +575,7 @@ A URI/URL string (ADR-0036/0037 — a concept with a native type + behavior, so 
 
 | Attribute | Type | Required | Default | Allowed values | Provider | Description |
 | --- | --- | --- | --- | --- | --- | --- |
-| `@column` | string | no |  |  | metaobjects-db | Physical column name for this field on an rdb source. Defaults to the field name via columnNamingStrategy. |
+| `@column` | string | no |  |  | metaobjects-db | Physical column name for this field on an rdb source. Defaults to the field name under the project's naming.columns rule (the "naming" setting in .metaobjects/config.json). |
 | `@db.indexed` | boolean | no |  |  | metaobjects-db | When true, suppress the @filterable-without-index Loader warning (the field is indexed by other means). |
 | `@dbColumnType` | string | no |  | `uuid`, `jsonb` | metaobjects-db | Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid \| jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2. |
 | `@default` | any | no |  |  | metaobjects-core-types | Default value applied to the column when no value is supplied. Its type follows the field's own subtype (string / boolean / number / ...). Converted at consumption time via MetaField.defaultValue(). |
@@ -609,7 +609,7 @@ Logical UUID identity scalar. A bare scalar (no required attrs, no loader value-
 
 | Attribute | Type | Required | Default | Allowed values | Provider | Description |
 | --- | --- | --- | --- | --- | --- | --- |
-| `@column` | string | no |  |  | metaobjects-db | Physical column name for this field on an rdb source. Defaults to the field name via columnNamingStrategy. |
+| `@column` | string | no |  |  | metaobjects-db | Physical column name for this field on an rdb source. Defaults to the field name under the project's naming.columns rule (the "naming" setting in .metaobjects/config.json). |
 | `@db.indexed` | boolean | no |  |  | metaobjects-db | When true, suppress the @filterable-without-index Loader warning (the field is indexed by other means). |
 | `@dbColumnType` | string | no |  | `uuid`, `jsonb` | metaobjects-db | Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid \| jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2. |
 | `@default` | any | no |  |  | metaobjects-core-types | Default value applied to the column when no value is supplied. Its type follows the field's own subtype (string / boolean / number / ...). Converted at consumption time via MetaField.defaultValue(). |

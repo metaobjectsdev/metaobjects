@@ -40,13 +40,13 @@ async function loadWriteThroughOrder() {
 
 describe("#213 — write-through entity emits its replica view", () => {
   test("a view named after the read source is produced", async () => {
-    const views = buildProjectionViews(await loadWriteThroughOrder(), { dialect: "postgres", columnNamingStrategy: "snake_case" });
+    const views = buildProjectionViews(await loadWriteThroughOrder(), { dialect: "postgres" });
     const v = views.find((x) => x.name === "v_order_with_customer");
     expect(v).toBeDefined();
   });
 
   test("the SELECT is o.* (stored fields from the base) + the derived join column", async () => {
-    const views = buildProjectionViews(await loadWriteThroughOrder(), { dialect: "postgres", columnNamingStrategy: "snake_case" });
+    const views = buildProjectionViews(await loadWriteThroughOrder(), { dialect: "postgres" });
     const sql = views.find((x) => x.name === "v_order_with_customer")!.sql;
     expect(sql).toContain("FROM orders");
     // stored fields project from the base alias
@@ -58,7 +58,7 @@ describe("#213 — write-through entity emits its replica view", () => {
   });
 
   test("the derived column does NOT project from the base (it is the joined value)", async () => {
-    const views = buildProjectionViews(await loadWriteThroughOrder(), { dialect: "postgres", columnNamingStrategy: "snake_case" });
+    const views = buildProjectionViews(await loadWriteThroughOrder(), { dialect: "postgres" });
     const sql = views.find((x) => x.name === "v_order_with_customer")!.sql;
     // customer_name comes from the join alias, never `o.customer_name`.
     expect(sql).not.toMatch(/o\.customer_name/);

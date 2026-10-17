@@ -5,6 +5,7 @@
 
 using System.IO;
 using MetaObjects.Config;
+using MetaObjects.Meta;
 using Xunit;
 
 namespace MetaObjects.Conformance.Tests;
@@ -69,6 +70,33 @@ public sealed class MetadataLocationTests : IDisposable
         var meta = MetadataLocation.Resolve(MetaDir, cwd: _root);
 
         Assert.NotEmpty(meta.Load().Errors);
+    }
+
+    [Fact]
+    public void An_explicit_directory_nested_below_the_project_reads_the_root_config()
+    {
+        WriteConfig("""{ "schema_version": 1, "sources": [], "naming": { "columns": "literal", "tables": "literal" } }""");
+        Directory.CreateDirectory(Path.Combine(_root, ".git"));
+        var nested = Path.Combine(_root, "model", "catalog");
+        Directory.CreateDirectory(nested);
+
+        var meta = MetadataLocation.Resolve(nested, cwd: Path.GetTempPath());
+
+        Assert.Equal(new PhysicalNaming(ColumnNamingStrategy.Literal, TableNamingRule.Literal), meta.Naming);
+    }
+
+    [Fact]
+    public void The_config_search_stops_at_the_repository_root()
+    {
+        WriteConfig("""{ "schema_version": 1, "sources": [], "naming": { "columns": "literal", "tables": "literal" } }""");
+        var repo = Path.Combine(_root, "repo");
+        Directory.CreateDirectory(Path.Combine(repo, ".git"));
+        var nested = Path.Combine(repo, "model", "catalog");
+        Directory.CreateDirectory(nested);
+
+        var meta = MetadataLocation.Resolve(nested, cwd: Path.GetTempPath());
+
+        Assert.Equal(PhysicalNaming.Default, meta.Naming);
     }
 
     [Fact]

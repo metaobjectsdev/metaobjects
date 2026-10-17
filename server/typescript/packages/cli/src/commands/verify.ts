@@ -30,7 +30,7 @@ import { scanForRemovedProps, type RemovedPropFinding } from "../lib/removed-pro
 import { replayRemedy } from "../lib/replay-remedy.js";
 import { FileProvider, mustacheTagLine } from "../lib/file-provider.js";
 import { derivePayloadFieldTree } from "../lib/payload-field-tree.js";
-import { loadMemoryOptionsFrom, loadMetaobjectsConfig, resolveGenCollection, resolveGenConfigDir } from "../lib/load-metaobjects-config.js";
+import { loadMemoryOptionsFrom, loadMetaobjectsConfig, RemovedNamingConfigError, resolveGenCollection, resolveGenConfigDir } from "../lib/load-metaobjects-config.js";
 import { collectionLoadOptions } from "../lib/collection-load-options.js";
 import { computeCodegenDrift } from "../lib/codegen-drift.js";
 import { hasLegacyDocsBlock, legacyDocsConfigMessage, REMOVED_VERIFY_DOCS } from "../lib/docs-removed.js";
@@ -111,7 +111,7 @@ import {
   TEMPLATE_ATTR_HTML_BODY_REF,
   TEMPLATE_ATTR_TEXT_BODY_REF,
   REQUIREMENT_STATUSES,
-  DEFAULT_COLUMN_NAMING_STRATEGY,
+  physicalNamingOf,
 } from "@metaobjectsdev/metadata";
 import { verify, ERR_REQUIRED_SLOT_UNUSED, ERR_PARTIAL_UNRESOLVED } from "@metaobjectsdev/render";
 import { describeLoadError, reportLoadError } from "../lib/load-error.js";
@@ -182,10 +182,11 @@ export async function verifyCommand(
     return 2;
   }
   // ADR-0034 Amendment 9: documentation is checked by `--codegen` with everything else the
-  // generator list declares. The old flag still parses, so it can say where it went.
+  // generator list declares. The old flag still parses, so it can say where it went. It says
+  // so once, as plain text on stderr, like every other removed command: a structured copy on
+  // stdout printed the same sentence a second time, escaped (`error: "\`meta verify ...`).
   if (flags.docs) {
     log.error(REMOVED_VERIFY_DOCS);
-    emitStructured({ error: REMOVED_VERIFY_DOCS }, fmt);
     return 2;
   }
   const migrateFlags: MigrateFlags = { ...EMPTY_MIGRATE_FLAGS, format: flags.migrationFormat };
@@ -275,7 +276,13 @@ export async function verifyCommand(
   let forgeConfig: MetaobjectsGenConfig | undefined;
   try {
     forgeConfig = await loadMetaobjectsConfig(genConfigDir);
-  } catch {
+  } catch (e) {
+    // ADR-0058: the one config problem verify cannot fall back from — the default column
+    // rule would report every column of a database built with the old value as drift.
+    if (e instanceof RemovedNamingConfigError) {
+      log.error(e.message);
+      return 2;
+    }
     forgeConfig = undefined;
   }
   // Both of the gen config's contributions to the load, together — see
@@ -653,11 +660,9 @@ export async function verifyCommand(
     // passes no `governed` and gets the comparison exactly as it was.
     let governed: GovernedScope | undefined;
     if (schemaScope !== undefined) {
-      const viewStrategy = forgeConfig?.columnNamingStrategy ?? "snake_case";
       const built = buildExpectedSchemaWithProvenance(root, {
         dialect,
-        columnNamingStrategy: viewStrategy,
-        views: buildProjectionViews(root, { dialect, columnNamingStrategy: viewStrategy }),
+        views: buildProjectionViews(root, { dialect }),
       });
       governed = scopeExpectedSchema(built, schemaScope, importedOption(collection));
     }
@@ -1013,7 +1018,6 @@ export async function verifyCommand(
       if (scanDialect !== "mysql") {
         unindexedFks = scanForUnindexedForeignKeys(root, {
           dialect: scanDialect,
-          columnNamingStrategy: forgeConfig?.columnNamingStrategy ?? "snake_case",
           skip: collection.imported,
         });
       }
@@ -1251,11 +1255,9 @@ export async function verifyCommand(
     // consults it.
     const scopeMismatch = migrateScopeMismatch(collection, () => {
       const dialect: Dialect = usingD1 ? "d1" : (flags.dialect ?? inferDialect(flags.db as string));
-      const viewStrategy = forgeConfig?.columnNamingStrategy ?? "snake_case";
       return buildExpectedSchemaWithProvenance(root, {
         dialect,
-        columnNamingStrategy: viewStrategy,
-        views: buildProjectionViews(root, { dialect, columnNamingStrategy: viewStrategy }),
+        views: buildProjectionViews(root, { dialect }),
       }).provenance;
     });
     if (scopeMismatch !== undefined) {
@@ -1310,8 +1312,7 @@ export async function verifyCommand(
       const migrateConfig = await resolveMigrateConfig(migrateFlags, projectRoot);
       // Expected views from the single view-SQL source (codegen-ts), so view-body
       // drift is detected against the live DB.
-      const viewStrategy = forgeConfig?.columnNamingStrategy ?? "snake_case";
-      const expectedViews = buildProjectionViews(root, { dialect: kysely.dialect, columnNamingStrategy: viewStrategy });
+      const expectedViews = buildProjectionViews(root, { dialect: kysely.dialect });
       let driftResult;
       let actual: SchemaSnapshot;
       try {
@@ -1411,8 +1412,7 @@ export async function verifyCommand(
     }
 
     const allow = tokensToAllowOptions(flags.allow);
-    const viewStrategy = forgeConfig?.columnNamingStrategy ?? "snake_case";
-    const expectedViews = buildProjectionViews(root, { dialect: "d1", columnNamingStrategy: viewStrategy });
+    const expectedViews = buildProjectionViews(root, { dialect: "d1" });
     let driftResult;
     try {
       driftResult = await computeDriftFromActual(actual, "d1", root, {
@@ -1626,7 +1626,6 @@ export async function verifyCommand(
         agentSchema: () => buildAgentSchemaInput(
           codegenRoot,
           config.dialect,
-          config.columnNamingStrategy ?? DEFAULT_COLUMN_NAMING_STRATEGY,
           (m) => log.warn(`verify --codegen: [agent-docs] ${m}`),
         ),
       });

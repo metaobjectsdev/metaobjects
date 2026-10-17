@@ -13,6 +13,7 @@ import {
   validateAttrSchema,
   type MetaDataTypeProvider,
   type MetaRoot,
+  type PhysicalNaming,
 } from "@metaobjectsdev/metadata";
 import { FileSource } from "@metaobjectsdev/metadata/core";
 // FR-043 — a node-only subpath (it reaches the filesystem), which is why it is imported
@@ -104,6 +105,12 @@ export interface LoadMemoryOptions {
    * reachable from the command line while its input was not (#333).
    */
   libraries?: readonly string[];
+  /**
+   * ADR-0058 — the project's physical-naming rules, set on the loaded root so every name
+   * resolver reads them. With no `files` the collection supplies them; a caller passing
+   * `files` passes them too (`resolveCollection(...).physicalNaming`), or gets the default.
+   */
+  physicalNaming?: PhysicalNaming;
 }
 
 /** Default provider bundle threaded by {@link loadMemory} when no options
@@ -159,7 +166,7 @@ export async function loadMemory(
   repoRoot: string,
   options?: LoadMemoryOptions,
 ): Promise<MetaRoot> {
-  const { result, importedPackages, importedNodes, libraries } =
+  const { result, importedPackages, importedNodes, libraries, physicalNaming } =
     await loadCollectionRaw(repoRoot, options, options?.strict === true);
 
   if (result.errors.length > 0) {
@@ -178,6 +185,7 @@ export async function loadMemory(
   // copy, still opted in) and one it does not (a new node in someone else's package).
   refuseLibraryPackageMisuse(result.root, libraries);
 
+  if (physicalNaming !== undefined) result.root.physicalNaming = physicalNaming;
   return result.root;
 }
 
@@ -236,6 +244,7 @@ async function loadCollectionRaw(
   importedPackages: readonly string[] | undefined;
   importedNodes: ReadonlySet<string> | undefined;
   libraries: readonly string[] | undefined;
+  physicalNaming: PhysicalNaming | undefined;
 }> {
   const extra = options?.providers ?? [];
   let providers: readonly MetaDataTypeProvider[];
@@ -262,6 +271,7 @@ async function loadCollectionRaw(
   let importedPackages: readonly string[] | undefined;
   let importedNodes: ReadonlySet<string> | undefined;
   let libraries: readonly string[] | undefined = options?.libraries;
+  let physicalNaming: PhysicalNaming | undefined = options?.physicalNaming;
   if (options?.files !== undefined) {
     paths = [...options.files];
     fileIds = options.fileIds;
@@ -280,6 +290,7 @@ async function loadCollectionRaw(
     importedPackages = collection.importedPackages;
     importedNodes = collection.importedNodes;
     libraries ??= collection.libraries;
+    physicalNaming ??= collection.physicalNaming;
   }
 
   const loader = new MetaDataLoader({
@@ -305,7 +316,7 @@ async function loadCollectionRaw(
       return id === undefined ? new FileSource(p) : new FileSource(p, { id });
     }),
   ]);
-  return { result, registry, importedPackages, importedNodes, libraries };
+  return { result, registry, importedPackages, importedNodes, libraries, physicalNaming };
 }
 
 /** Every source file that contributed to a node, across the envelope variants that

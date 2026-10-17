@@ -57,7 +57,15 @@ public class ObjectFieldCodegenTests
         // IncludeNames: true -- the b.ToJson(CustomerNames....Column) assertions below
         // need the db-context generator to reference the names artifact;
         // GenConfig.IncludeNames defaults to false.
-        Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated", IncludeNames = true },
+        // ColumnNamingStrategy: this file's assertions are about the FLATTENING mechanism
+        // (each nested scalar -> "{parentCol}_{nestedCol}", literal field names, unrelated
+        // to ADR-0058's naming.columns default), so it pins Literal explicitly now that the
+        // project default is SnakeCase rather than drifting with it.
+        Config = new GenConfig
+        {
+            OutDir = "/tmp", Namespace = "Acme.Generated", IncludeNames = true,
+            ColumnNamingStrategy = ColumnNamingStrategy.Literal,
+        },
     };
 
     [Fact]

@@ -14,6 +14,13 @@ import { resolve } from "node:path";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { buildProjectionViews, buildReportViews } from "../../src/projection/build-projection-views.js";
 
+/** The project setting `"naming": { "columns": "literal" }` (ADR-0058), set where the
+ *  project-aware load sets it: on the loaded root. */
+function literalColumns<T>(root: T): T {
+  (root as unknown as { physicalNaming: unknown }).physicalNaming = { columns: "literal", tables: "snake_case" };
+  return root;
+}
+
 async function load(children: unknown[]) {
   const json = JSON.stringify({ "metadata.root": { package: "acme", children } });
   const { root, errors } = await new MetaDataLoader().load([new InMemoryStringSource(json)]);
@@ -63,7 +70,7 @@ describe("buildProjectionViews — package-qualified @from + inherited source fi
       },
     ]);
 
-    const views = buildProjectionViews(root, { dialect: "postgres", columnNamingStrategy: "snake_case" });
+    const views = buildProjectionViews(root, { dialect: "postgres" });
     expect(views.length).toBe(1);
     const v = views[0]!;
     expect(v.name).toBe("v_program");
@@ -130,7 +137,7 @@ describe("buildProjectionViews — scoped aggregate (origin.aggregate @filter)",
 
   test("postgres: filtered max renders FILTER (WHERE …); plain count unaffected", async () => {
     const root = await load(model({ status: { eq: "active" } }));
-    const [v] = buildProjectionViews(root, { dialect: "postgres", columnNamingStrategy: "snake_case" });
+    const [v] = buildProjectionViews(root, { dialect: "postgres" });
     expect(v!.sql).toContain("COUNT(DISTINCT");          // plain count still emits
     expect(v!.sql).toMatch(/MAX\([a-z0-9]+\.ordinal\) FILTER \(WHERE [a-z0-9]+\.status = 'active'\) AS active_max/);
     expect(v!.sql).toContain("LEFT OUTER JOIN weeks");   // inverse-FK join present
@@ -138,13 +145,13 @@ describe("buildProjectionViews — scoped aggregate (origin.aggregate @filter)",
 
   test("scalar filter desugars to eq (status: 'active')", async () => {
     const root = await load(model({ status: "active" }));
-    const [v] = buildProjectionViews(root, { dialect: "postgres", columnNamingStrategy: "snake_case" });
+    const [v] = buildProjectionViews(root, { dialect: "postgres" });
     expect(v!.sql).toMatch(/FILTER \(WHERE [a-z0-9]+\.status = 'active'\)/);
   });
 
   test("sqlite: filtered max renders the portable CASE WHEN form", async () => {
     const root = await load(model({ status: { eq: "active" } }));
-    const [v] = buildProjectionViews(root, { dialect: "sqlite", columnNamingStrategy: "snake_case" });
+    const [v] = buildProjectionViews(root, { dialect: "sqlite" });
     expect(v!.sql).toMatch(/MAX\(CASE WHEN [a-z0-9]+\.status = 'active' THEN [a-z0-9]+\.ordinal END\) AS active_max/);
     expect(v!.sql).not.toContain("FILTER (WHERE");
   });
@@ -196,7 +203,7 @@ describe("buildProjectionViews — package-qualified relationship @objectRef", (
 
   test("qualified @objectRef still resolves the inverse-FK join + aggregate", async () => {
     const root = await load(model);
-    const [v] = buildProjectionViews(root, { dialect: "postgres", columnNamingStrategy: "snake_case" });
+    const [v] = buildProjectionViews(root, { dialect: "postgres" });
     expect(v!.sql).toContain("LEFT OUTER JOIN weeks"); // join present, not dropped
     expect(v!.sql).toContain("COUNT(DISTINCT");        // aggregate emitted, not degraded away
     expect(v!.sql).toMatch(/COUNT\(DISTINCT [a-z0-9]+\.id\) AS week_count/);
@@ -239,7 +246,7 @@ describe("buildProjectionViews — #208 @sql / @unmanaged DDL-ownership escape v
 
   test("an @sql projection with extends-bound identity gets its verbatim body, not a synthesized SELECT", async () => {
     const root = await load(model({ "@kind": "view", "@view": "v_node_tree", "@sql": RECURSIVE_BODY }));
-    const views = buildProjectionViews(root, { dialect: "postgres", columnNamingStrategy: "snake_case" });
+    const views = buildProjectionViews(root, { dialect: "postgres" });
     const v = views.find((vv) => vv.name === "v_node_tree");
     expect(v).toBeDefined();
     expect(v!.sql).toBe(RECURSIVE_BODY);       // verbatim body, NOT a synthesized "SELECT nodes.id AS id …"
@@ -250,7 +257,7 @@ describe("buildProjectionViews — #208 @sql / @unmanaged DDL-ownership escape v
 
   test("an @unmanaged projection produces no ExpectedView (skipped entirely)", async () => {
     const root = await load(model({ "@kind": "view", "@view": "v_node_tree", "@unmanaged": true }));
-    const views = buildProjectionViews(root, { dialect: "postgres", columnNamingStrategy: "snake_case" });
+    const views = buildProjectionViews(root, { dialect: "postgres" });
     expect(views.find((vv) => vv.name === "v_node_tree")).toBeUndefined();
   });
 
@@ -280,7 +287,7 @@ describe("buildProjectionViews — #208 @sql / @unmanaged DDL-ownership escape v
         },
       },
     ]);
-    const views = buildProjectionViews(root, { dialect: "postgres", columnNamingStrategy: "snake_case" });
+    const views = buildProjectionViews(root, { dialect: "postgres" });
     const v = views.find((vv) => vv.name === "v_programs_ranked");
     expect(v).toBeDefined();
     expect(v!.sql).toContain("rank() OVER"); // verbatim @sql body
@@ -294,7 +301,7 @@ describe("buildProjectionViews — #208 @sql / @unmanaged DDL-ownership escape v
     const root = await load(
       model({ "@kind": "materializedView", "@materializedView": "mv_node_tree", "@sql": RECURSIVE_BODY }),
     );
-    expect(() => buildProjectionViews(root, { dialect: "postgres", columnNamingStrategy: "snake_case" })).toThrow(
+    expect(() => buildProjectionViews(root, { dialect: "postgres" })).toThrow(
       /not yet migrate-managed on @kind: "materializedView"/,
     );
   });
@@ -316,9 +323,9 @@ describe("buildReportViews — view-backed reports (FR-044 Plan 2, Table A)", ()
   async function loadModel(model: Json) {
     const { root, errors } = await new MetaDataLoader().load([new InMemoryStringSource(JSON.stringify(model))]);
     expect(errors).toEqual([]);
-    return root;
+    return literalColumns(root);
   }
-  const PG = { dialect: "postgres", columnNamingStrategy: "literal" } as const;
+  const PG = { dialect: "postgres" } as const;
 
   test("a view-backed report yields one ExpectedView named by its source", async () => {
     const root = await loadModel(shop("with"));
@@ -499,7 +506,7 @@ describe("buildReportViews — view-backed reports (FR-044 Plan 2, Table A)", ()
 
   test("mysql is accepted by buildReportViews and emits backticks", async () => {
     const root = await loadModel(shop("with"));
-    const views = buildReportViews(root, { dialect: "mysql", columnNamingStrategy: "literal" });
+    const views = buildReportViews(root, { dialect: "mysql" });
     expect(views).toHaveLength(1);
     expect(views[0]!.sql).toContain("FROM `purchases` p");
     expect(views[0]!.sql).toContain("CASE WHEN p.`status` = 'active' THEN p.`id` END");
@@ -507,8 +514,8 @@ describe("buildReportViews — view-backed reports (FR-044 Plan 2, Table A)", ()
 
   test("d1 returns exactly the sqlite bodies", async () => {
     const root = await loadModel(shop("with"));
-    const d1 = buildReportViews(root, { dialect: "d1", columnNamingStrategy: "literal" });
-    const sqlite = buildReportViews(root, { dialect: "sqlite", columnNamingStrategy: "literal" });
+    const d1 = buildReportViews(root, { dialect: "d1" });
+    const sqlite = buildReportViews(root, { dialect: "sqlite" });
     expect(d1).toEqual(sqlite);
     expect(d1[0]!.sql).toContain('COUNT(CASE WHEN p."status" = \'active\' THEN p."id" END)');
   });

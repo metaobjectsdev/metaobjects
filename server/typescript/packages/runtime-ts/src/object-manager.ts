@@ -17,7 +17,7 @@ import {
 } from "./query-builder.js";
 import { tphSubtypeOf, type TphSubtype } from "./tph.js";
 import {
-  buildNameMap, resolveTableName, DEFAULT_COLUMN_NAMING_STRATEGY,
+  buildNameMap, resolveTableName, physicalNamingOf, physicalNamingRemovedMessage,
   type ColumnNamingStrategy, type EntityNameMap,
 } from "@metaobjectsdev/metadata";
 import { coerceRowOnRead, coerceRowOnWrite } from "./type-coercer.js";
@@ -43,12 +43,6 @@ import { VALID_ENTITY_NAME, DEFAULT_IF_MISSING } from "./constants.js";
 export interface ObjectManagerOptions {
   metadata: MetaData;
   driver: PersistenceDriver;
-  /**
-   * Column-naming strategy for fields with no `@column` override. Defaults to
-   * `"snake_case"`. Must agree with the codegen / migration config that
-   * created the schema (a mismatch yields columns the runtime can't address).
-   */
-  columnNamingStrategy?: ColumnNamingStrategy;
 }
 
 export interface ReadOpts extends QueryOpts {
@@ -72,7 +66,15 @@ export class ObjectManager {
   constructor(opts: ObjectManagerOptions) {
     this.metadata = opts.metadata;
     this.driver = opts.driver;
-    this.columnNamingStrategy = opts.columnNamingStrategy ?? DEFAULT_COLUMN_NAMING_STRATEGY;
+    // ADR-0058: the column rule is the project's one setting (`naming` in
+    // .metaobjects/config.json), carried by the loaded root — the same value codegen and
+    // `meta migrate` read, so the runtime cannot address columns the schema does not have.
+    // The 1.0 option is refused rather than dropped: its value may be the one that matches.
+    const removedNaming = (opts as { columnNamingStrategy?: unknown }).columnNamingStrategy;
+    if (removedNaming !== undefined) {
+      throw new Error(physicalNamingRemovedMessage("the ObjectManager columnNamingStrategy option", String(removedNaming)));
+    }
+    this.columnNamingStrategy = physicalNamingOf(this.metadata).columns;
   }
 
   private nameMap(entity: MetaData): EntityNameMap {
@@ -306,7 +308,7 @@ export class ObjectManager {
   async transaction<T>(fn: (txOm: ObjectManager) => Promise<T>): Promise<T> {
     return this.driver.transaction(async (txDriver) => {
       const txOm = new ObjectManager({
-        metadata: this.metadata, driver: txDriver, columnNamingStrategy: this.columnNamingStrategy,
+        metadata: this.metadata, driver: txDriver,
       });
       return fn(txOm);
     });

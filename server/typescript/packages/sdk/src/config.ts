@@ -3,6 +3,14 @@ import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { SourceSpec } from "./sources.js";
 import { DependencySpecSchema, type DependencySpec } from "./dependencies.js";
+import {
+  COLUMN_NAMING_STRATEGIES,
+  DEFAULT_PHYSICAL_NAMING,
+  TABLE_NAMING_RULES,
+  type PhysicalNaming,
+  type ColumnNamingStrategy,
+  type TableNamingRule,
+} from "@metaobjectsdev/metadata";
 
 const DialectEnum = z.enum(["sqlite", "postgres", "d1"]);
 
@@ -174,9 +182,32 @@ export const ConfigSchema = z.object({
     })
     .default({}),
   migrate: MigrateBlock.optional(),
+  /**
+   * How a metadata name becomes a physical database name when the metadata gives none
+   * (ADR-0058). `columns` applies to a field with no `@column`; `tables` to an object whose
+   * source names no table, view or procedure, through the frozen pluralizer. One setting for
+   * the PROJECT, read here by every port, because every port reads and writes the one database
+   * `meta migrate` created: codegen, migrate, the runtime and verify all resolve through it.
+   * Absent means `snake_case` for both, which is what `meta migrate` has always created.
+   */
+  naming: z
+    .object({
+      columns: z.enum(COLUMN_NAMING_STRATEGIES as [ColumnNamingStrategy, ...ColumnNamingStrategy[]]).optional(),
+      tables: z.enum(TABLE_NAMING_RULES as [TableNamingRule, ...TableNamingRule[]]).optional(),
+    })
+    .strict()
+    .optional(),
 }).strict();
 
 export type Config = z.infer<typeof ConfigSchema>;
+
+/** The physical-naming rules a config declares, each absent rule at its default (ADR-0058). */
+export function physicalNamingFromConfig(cfg: Pick<Config, "naming">): PhysicalNaming {
+  return {
+    columns: cfg.naming?.columns ?? DEFAULT_PHYSICAL_NAMING.columns,
+    tables: cfg.naming?.tables ?? DEFAULT_PHYSICAL_NAMING.tables,
+  };
+}
 
 export const DEFAULT_CONFIG: Config = ConfigSchema.parse({ schema_version: 1 });
 

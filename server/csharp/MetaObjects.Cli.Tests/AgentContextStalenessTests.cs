@@ -66,6 +66,16 @@ public sealed class AgentContextStalenessTests
         Assert.NotNull(AgentContextScaffold.AgentContextStaleness(m, "1.2.3-rc.1"));
     }
 
+    // Build metadata is not part of the version. The .NET SDK stamps the source revision into
+    // this tool's informational version; the manifest the Node side writes carries none.
+    [Fact]
+    public void Build_metadata_alone_is_in_sync()
+    {
+        Assert.Null(AgentContextScaffold.AgentContextStaleness(ManifestWith("1.1.0-rc.3"), "1.1.0-rc.3+0affc6adf1234"));
+        Assert.Null(AgentContextScaffold.AgentContextStaleness(ManifestWith("1.1.0+abc"), "1.1.0+def"));
+        Assert.NotNull(AgentContextScaffold.AgentContextStaleness(ManifestWith("1.1.0-rc.2"), "1.1.0-rc.3+0affc6adf1234"));
+    }
+
     // ---- 2. version source --------------------------------------------------
 
     [Fact]
@@ -104,9 +114,15 @@ public sealed class AgentContextStalenessTests
     public void Prerelease_context_still_nudges()
         => Assert.NotNull(AgentContextScaffold.AgentContextStaleness(ManifestWith("0.24.5-rc.1"), "0.24.4"));
 
+    // Build metadata does not change the ordering either: the .NET SDK's `+<sha>` on the install
+    // made every context ahead of it unorderable, so the exemption never fired for a real build.
     [Fact]
-    public void Build_metadata_still_nudges()
-        => Assert.NotNull(AgentContextScaffold.AgentContextStaleness(ManifestWith("0.24.5+abc"), "0.24.4"));
+    public void Build_metadata_does_not_change_the_ordering()
+    {
+        Assert.Null(AgentContextScaffold.AgentContextStaleness(ManifestWith("1.1.2"), "1.1.0+0affc6adf1234"));
+        Assert.Null(AgentContextScaffold.AgentContextStaleness(ManifestWith("0.24.5+abc"), "0.24.4"));
+        Assert.NotNull(AgentContextScaffold.AgentContextStaleness(ManifestWith("1.1.0"), "1.1.2+0affc6adf1234"));
+    }
 
     [Fact]
     public void Unresolved_install_never_asserts_in_sync()

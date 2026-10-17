@@ -7,6 +7,7 @@ import { randomBytes } from "node:crypto";
 import { createJiti } from "jiti";
 import type { MetaDataTypeProvider, MetaobjectsGenConfig } from "@metaobjectsdev/codegen-ts";
 import { resolveCollection, type Collection } from "@metaobjectsdev/sdk";
+import { physicalNamingRemovedMessage } from "@metaobjectsdev/metadata";
 
 const CONFIG_FILE = "metaobjects.config.ts";
 
@@ -307,6 +308,14 @@ export async function resolveGenCollection(
   }
 }
 
+/**
+ * A `metaobjects.config.ts` that still sets column naming (ADR-0058). Its own class because
+ * the commands that tolerate a missing or broken config (`meta migrate` falls back to
+ * defaults) must NOT tolerate this one: falling back to the default rule would propose
+ * renaming every column of a database built with the old value.
+ */
+export class RemovedNamingConfigError extends Error {}
+
 export async function loadMetaobjectsConfig(projectRoot: string): Promise<MetaobjectsGenConfig> {
   const fullPath = resolve(projectRoot, CONFIG_FILE);
   if (!existsSync(fullPath)) {
@@ -488,6 +497,16 @@ export async function loadMetaobjectsConfig(projectRoot: string): Promise<Metaob
           `about the PROJECT, not about how one port generates code from it, and that ` +
           `file is the port-neutral one every port already reads. Move the array across ` +
           `verbatim — the tokens are unchanged.`,
+      );
+    }
+    // ADR-0058 — column naming moved to `naming` in .metaobjects/config.json, the one
+    // setting every port reads. Refused, never dropped: the old value may be the one that
+    // matches this project's database, and dropping it would rename every column.
+    const removedNaming = (cfg as unknown as Record<string, unknown>).columnNamingStrategy;
+    if (removedNaming !== undefined) {
+      throw new RemovedNamingConfigError(
+        `metaobjects.config.ts at ${fullPath}: ` +
+          physicalNamingRemovedMessage("columnNamingStrategy in metaobjects.config.ts", String(removedNaming)),
       );
     }
     return cfg;

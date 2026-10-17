@@ -10,6 +10,15 @@ namespace MetaObjects.Meta;
 /// </summary>
 public class MetaRoot(TypeId typeId, string name) : MetaData(typeId, name)
 {
+    /// <summary>
+    /// The project's physical-naming rules (<c>naming</c> in <c>.metaobjects/config.json</c>,
+    /// ADR-0058). Set by the project-aware load (<see cref="MetaObjects.Config.MetadataLocation"/>),
+    /// read by every name resolver through <see cref="PhysicalNaming.Of"/>. A tree loaded with
+    /// no project — or built directly via <c>MetaDataLoader.FromDirectory</c>/<c>FromUris</c>
+    /// with no project-aware wrapper — keeps the default.
+    /// </summary>
+    public PhysicalNaming PhysicalNaming { get; set; } = PhysicalNaming.Default;
+
     /// <summary>Object entities defined at this root level.</summary>
     public IReadOnlyList<MetaObject> Objects()
     {

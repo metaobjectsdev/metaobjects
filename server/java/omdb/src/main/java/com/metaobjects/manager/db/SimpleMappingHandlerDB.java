@@ -53,8 +53,6 @@ public class SimpleMappingHandlerDB implements MappingHandler {
 	// from object-level @dbTable / @dbView (dropped in Stage 2).
 	public final static String COL_REF      = "column";
 
-	/** @see #setColumnNaming(String) */
-	private String columnNaming = ColumnNaming.DEFAULT;
 	public final static String SEQ_REF      = "dbSequence";
 	public final static String SEQ_START_REF   = "dbSeqStart";
 
@@ -496,23 +494,28 @@ public class SimpleMappingHandlerDB implements MappingHandler {
     }
 
     /**
-     * Retrieves the table name from the MetaObject — the {@code @table} of its
-     * primary writable {@code source.rdb} child (source-v2 ADR-0007).
+     * Retrieves the table name from the MetaObject: the physical name of its primary
+     * writable {@code source.rdb} child, resolved by the source's own rule
+     * ({@link MetaSource#getPhysicalName()}, ADR-0018) — the kind-matching {@code @table},
+     * else the source's structural name, else the owning entity's name, both of the latter
+     * cased by the project's {@code naming.tables} rule (ADR-0058) and, for the entity-name
+     * fallback, pluralized. One rule for the table `meta migrate` creates and the table
+     * OMDB reads and writes.
      *
      * @return the table name, or {@code null} if no primary writable source
      */
     protected String getTableRef( MetaObject mc )
     {
-      return mc.getPrimaryRdbTableName();
+      return mc.findPrimaryWritableSource().map( MetaSource::getPhysicalName ).orElse( null );
     }
 
     /**
      * Retrieves the table column for the MetaField: the {@code @column}
-     * override if present, else the field name (literal — matching the C#
-     * port default + EF Core convention). Cross-port: TS defaults to
-     * snake_case via its persistence-layer config, but the Java omdb path
-     * doesn't carry a per-loader strategy knob yet, so literal is the safe
-     * default that any team can override with {@code @column}.
+     * override if present, else the field name cased by the project's
+     * {@code naming.columns} rule (ADR-0058) — read from the loaded root
+     * ({@link com.metaobjects.database.PhysicalNaming#of(com.metaobjects.MetaData)}), the
+     * SAME rule the Kotlin Exposed generator resolves, so the two JVM ports cannot
+     * disagree about what a column is called.
      *
      * <p>Previously this returned {@code null} when {@code @column} was
      * absent, causing the field to be silently skipped in
@@ -526,37 +529,26 @@ public class SimpleMappingHandlerDB implements MappingHandler {
     {
       String col = getPersistenceAttribute( mf, COL_REF );
       if ( col != null ) return col;
-      // No explicit @column: the project's column-naming strategy decides. Shared with
-      // the Kotlin Exposed generator via ColumnNaming so the two JVM ports cannot
-      // disagree about what a column is called — they used to, this one resolving
-      // literal while that one hardcoded snake_case.
-      return ColumnNaming.apply( mf.getName(), columnNaming );
+      // No explicit @column: the project's naming.columns rule decides (ADR-0058).
+      return ColumnNaming.apply( mf.getName(), com.metaobjects.database.PhysicalNaming.of( mf ).columns() );
     }
 
     /**
-     * How a field with NO explicit {@code @column} becomes a column name:
-     * {@code literal} (the default and this port's historical behaviour),
-     * {@code snake_case}, or {@code kebab-case}.
+     * REMOVED (ADR-0058, 1.1.0). Column naming is one project setting now, read from
+     * {@code naming.columns} in {@code .metaobjects/config.json} by every port — never a
+     * per-instance runtime setter, which could silently disagree with codegen's reading of
+     * the same project. Always throws.
      *
-     * <p>Worth setting: schema migrations are owned by the Node {@code meta} CLI for
-     * every port (ADR-0015) and {@code meta migrate} defaults to {@code snake_case}, so
-     * a database whose tables it created wants {@code snake_case} here — otherwise a
-     * multi-word field name queries a column that does not exist.</p>
+     * @throws MetaDataException naming the migration guide
      */
     public void setColumnNaming( String strategy )
     {
-      // Validate eagerly: a typo caught at configuration time beats one that surfaces
-      // as a "column does not exist" on the first query of every multi-word field.
-      ColumnNaming.apply( "probe", strategy );
-      this.columnNaming = strategy;
+      throw new MetaDataException(
+          ColumnNaming.removedConfigurationMessage(
+              "SimpleMappingHandlerDB.setColumnNaming", strategy),
+          com.metaobjects.ErrorCode.ERR_BAD_ATTR_VALUE );
     }
 
-    /** @return the configured column-naming strategy (default {@link ColumnNaming#DEFAULT}). */
-    public String getColumnNaming()
-    {
-      return columnNaming;
-    }
-    
     /**
      * Retrieves the sequence name for the MetaField
      *

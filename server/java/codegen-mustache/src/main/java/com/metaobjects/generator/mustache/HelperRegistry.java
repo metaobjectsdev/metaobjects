@@ -1,5 +1,8 @@
 package com.metaobjects.generator.mustache;
 
+import com.metaobjects.database.ColumnNaming;
+import com.metaobjects.database.PhysicalNaming;
+import com.metaobjects.source.MetaSource;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.field.MetaField;
 import com.metaobjects.relationship.AssociationRelationship;
@@ -546,52 +549,27 @@ public class HelperRegistry {
     // ========================================
 
     /**
-     * Get the database column name for a MetaField.
-     * Returns the explicit dbColumn attribute if present, otherwise converts
-     * the field name from camelCase to snake_case.
+     * The database column name for a MetaField: its {@code @column}, else its name through the
+     * project's {@code naming.columns} rule (ADR-0058) — the one resolver codegen, OMDB and
+     * every other port use, so a template never spells a column the schema does not have.
      */
     private String getColumnName(MetaField metaField) {
-        // Check for explicit dbColumn attribute first
-        if (metaField.hasMetaAttr(COLUMN)) {
-            String explicitColumn = metaField.getMetaAttr(COLUMN).getValueAsString();
-            if (explicitColumn != null && !explicitColumn.trim().isEmpty()) {
-                log.debug("Using explicit dbColumn: {} for field: {}", explicitColumn, metaField.getName());
-                return explicitColumn.trim();
-            }
-        }
-
-        // Default: Convert field name from camelCase to snake_case
-        String fieldName = metaField.getName();
-        String columnName = camelCaseToSnakeCase(fieldName);
-        log.debug("Generated column name: {} from field: {}", columnName, fieldName);
-        return columnName;
+        return ColumnNaming.resolve(metaField);
     }
 
     /**
-     * Get the database table name for a MetaObject.
-     *
-     * <p>Source-v2 ADR-0007: returns the {@code @table} of the primary writable
-     * {@code source.rdb} child if present, or — for view-backed projections —
-     * the {@code @table} of the primary read-only source. Falls back to the
-     * snake_case form of the object name when neither is declared.</p>
+     * The database table (or view) name for a MetaObject: the physical name of its primary
+     * writable {@code source.rdb}, else — for a view-backed projection — of its primary
+     * read-only one, resolved by the source's own four-step rule under the project's
+     * {@code naming.tables} rule (ADR-0018, ADR-0058). An object with no source has no table;
+     * its name is cased by the same table rule.
      */
     private String getTableName(MetaObject metaObject) {
-        // Primary writable source.rdb @table
-        String explicitTable = metaObject.getPrimaryRdbTableName();
-        if (explicitTable == null) {
-            // Projection: primary read-only source.rdb @table
-            explicitTable = metaObject.getPrimaryRdbViewName();
-        }
-        if (explicitTable != null && !explicitTable.trim().isEmpty()) {
-            log.debug("Using source.rdb @table: {} for object: {}", explicitTable, metaObject.getName());
-            return explicitTable.trim();
-        }
-
-        // Default: Convert object name from camelCase to snake_case
-        String objectName = metaObject.getName();
-        String tableName = camelCaseToSnakeCase(objectName);
-        log.debug("Generated table name: {} from object: {}", tableName, objectName);
-        return tableName;
+        return metaObject.findPrimaryWritableSource()
+            .or(metaObject::findPrimaryReadOnlySource)
+            .map(MetaSource::getPhysicalName)
+            .orElseGet(() -> PhysicalNaming.applyTableRule(
+                metaObject.getName(), PhysicalNaming.of(metaObject).tables()));
     }
 
     /**

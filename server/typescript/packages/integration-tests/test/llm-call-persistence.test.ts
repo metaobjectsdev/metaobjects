@@ -41,6 +41,13 @@ import { kyselyDriver } from "@metaobjectsdev/runtime-ts/drivers";
 import { startPostgres } from "../src/postgres-container.ts";
 import { executeSql } from "../src/postgres-sql.ts";
 
+/** The project setting `"naming": { "columns": "literal" }` (ADR-0058), set where the
+ *  project-aware load sets it: on the loaded root. */
+function literalColumns<T>(root: T): T {
+  (root as unknown as { physicalNaming: unknown }).physicalNaming = { columns: "literal", tables: "snake_case" };
+  return root;
+}
+
 // ---------------------------------------------------------------------------
 // App metadata authored as YAML, loaded with `libraries: ["ai"]` so the entities
 // extend the SHIPPED metaobjects::ai::LlmCallBase (not a bespoke field-by-field
@@ -103,7 +110,7 @@ async function loadWithAiLibrary(): Promise<MetaRoot> {
 
 /** Synthesise CREATE TABLE DDL for the whole root via migrate-ts. */
 async function ddlFor(root: MetaRoot): Promise<string> {
-  const expected = buildExpectedSchema(root, { columnNamingStrategy: "literal" });
+  const expected = buildExpectedSchema(literalColumns(root));
   const diffResult = await diff({ expected, actual: { tables: [], views: [] } });
   const { up } = emit(diffResult.changes, { dialect: "postgres" });
   expect(up.trim().length, "DDL must be non-empty").toBeGreaterThan(0);
@@ -129,7 +136,7 @@ describe("LLM call persistence — real Postgres round-trip", () => {
         }),
       });
       const driver = kyselyDriver({ db: kysely as never, dialect: "postgres" });
-      const om = new ObjectManager({ metadata: root, driver, columnNamingStrategy: "literal" });
+      const om = new ObjectManager({ metadata: literalColumns(root), driver });
       const rec = new LlmCallDbRecorder(om, "ApiCall", {
         // Surface any persist failure as a test failure rather than the
         // recorder's default swallow — we are explicitly asserting "no throw".
@@ -194,7 +201,7 @@ describe("LLM call persistence — real Postgres round-trip", () => {
         }),
       });
       const driver = kyselyDriver({ db: kysely as never, dialect: "postgres" });
-      const om = new ObjectManager({ metadata: root, driver, columnNamingStrategy: "literal" });
+      const om = new ObjectManager({ metadata: literalColumns(root), driver });
 
       const voRequest = { question: "ship it?" };
       const voResponse = { verdict: "approve", score: 90 };

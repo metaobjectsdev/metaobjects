@@ -24,6 +24,13 @@ import {
 import { buildProjectionViews } from "@metaobjectsdev/codegen-ts";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 
+/** The project setting `"naming": { "columns": "literal" }` (ADR-0058), set where the
+ *  project-aware load sets it: on the loaded root. */
+function literalColumns<T>(root: T): T {
+  (root as unknown as { physicalNaming: unknown }).physicalNaming = { columns: "literal", tables: "snake_case" };
+  return root;
+}
+
 // Same Program → Week → ProgramSummary graph as the PG value-probe: one field per
 // #195 origin kind (predicateAgg any/all, collectAgg, first, computed). literal naming
 // → view column names are the field names verbatim.
@@ -95,10 +102,9 @@ async function applyRaw(text: string): Promise<void> {
 describe("view value-probe — real SQLite (#195 origins)", () => {
   test("any/all/collect/computed/first converge on real SQLite, incl. empty-set pins", async () => {
     const root = (await new MetaDataLoader().load([new InMemoryStringSource(META)])).root;
-    const expected = buildExpectedSchema(root, {
+    const expected = buildExpectedSchema(literalColumns(root), {
       dialect: "sqlite",
-      columnNamingStrategy: "literal",
-      views: buildProjectionViews(root, { dialect: "sqlite", columnNamingStrategy: "literal" }),
+      views: buildProjectionViews(literalColumns(root), { dialect: "sqlite" }),
     });
 
     const actual0 = await introspectSqlite(k);

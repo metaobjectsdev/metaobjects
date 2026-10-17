@@ -116,37 +116,18 @@ describe("apiPrefix config option", () => {
   });
 });
 
-describe("columnNamingStrategy config option", () => {
-  test("defaults to snake_case when omitted", () => {
-    const config = normalizeConfig(defineConfig({
-      outDir: "out",
-      extStyle: "none",
-      dbImport: "../db",
-      dialect: "sqlite",
-      generators: [],
-    }));
-    expect(config.columnNamingStrategy).toBe("snake_case");
+describe("columnNamingStrategy is refused (ADR-0058)", () => {
+  // The 1.0 key held a column rule that may be the one matching the adopter's database, so
+  // it is refused with the setting that replaced it, never silently dropped.
+  test("a config still carrying it is refused, naming the value and the new setting", () => {
+    const cfg = { outDir: "out", dbImport: "../db", dialect: "sqlite", generators: [], columnNamingStrategy: "literal" } as unknown as MetaobjectsGenConfig;
+    expect(() => normalizeConfig(cfg)).toThrow(
+      'columnNamingStrategy in metaobjects.config.ts was removed in 1.1.0. Column and table naming is one project setting now, read by every port: "naming" in .metaobjects/config.json, for example "naming": { "columns": "literal" }. Move it there and delete columnNamingStrategy in metaobjects.config.ts. See https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/physical-naming.md',
+    );
   });
-  test("accepts 'literal' override", () => {
-    const config = normalizeConfig(defineConfig({
-      outDir: "out",
-      extStyle: "none",
-      dbImport: "../db",
-      dialect: "sqlite",
-      columnNamingStrategy: "literal",
-      generators: [],
-    }));
-    expect(config.columnNamingStrategy).toBe("literal");
-  });
-  test("accepts 'kebab-case' override", () => {
-    const config = normalizeConfig(defineConfig({
-      outDir: "out",
-      extStyle: "none",
-      dbImport: "../db",
-      dialect: "sqlite",
-      columnNamingStrategy: "kebab-case",
-      generators: [],
-    }));
-    expect(config.columnNamingStrategy).toBe("kebab-case");
+  test("a config without it normalizes as before", () => {
+    const config = normalizeConfig(defineConfig({ outDir: "out", extStyle: "none", dbImport: "../db", dialect: "sqlite", generators: [] }));
+    expect("columnNamingStrategy" in config).toBe(false);
   });
 });
+

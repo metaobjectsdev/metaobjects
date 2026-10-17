@@ -221,40 +221,43 @@ def test_verify_codegen_no_args_no_yaml_falls_back_to_neutral_config(
     assert main(as_config(["verify", "--codegen", "--generators", GEN_SUITE, "--out", "gen/models"])) == 1
 
 
-def test_verify_codegen_neutral_fallback_threads_column_naming(
+def test_verify_codegen_neutral_fallback_threads_naming(
     tmp_path: Path, monkeypatch, capsys
 ) -> None:
     """R31, at the `.metaobjects/config.json` fallback rung (no positional
-    <metadata_dir>, no metaobjects.config.yaml): `verify --codegen` must thread
-    `--column-naming` into its OWN regen here too, not only in explicit flag mode.
-    A `names_generator.py`-bearing `Program` gets its `PROGRAM_PRICE_CENTS_COLUMN`
-    constant emitted under the strategy `gen` was run with; a verify blind to the
-    flag at this rung would report every such constant as drift.
+    <metadata_dir>, no metaobjects.config.yaml): `verify --codegen`'s own regen must
+    read the SAME `naming` rule from the loaded root `gen` was run with, here too,
+    not only at the explicit-directory rung. A `names_generator.py`-bearing `Program`
+    gets its `PROGRAM_PRICE_CENTS_COLUMN` constant emitted under the rule `gen` ran
+    with; a verify that resolved a different rule at this rung would report every
+    such constant as drift.
     """
     model = tmp_path / "model"
     model.mkdir()
     (model / "meta.fitness.json").write_text(FITNESS.read_text())
     d = tmp_path / ".metaobjects"
     d.mkdir()
-    (d / "config.json").write_text(
-        '{"schema_version": 1, "sources": [{"path": "model"}]}'
-    )
+
+    def _write_config(naming: str) -> None:
+        (d / "config.json").write_text(
+            json.dumps(
+                {"schema_version": 1, "sources": [{"path": "model"}], "naming": {"columns": naming}}
+            )
+        )
 
     monkeypatch.chdir(tmp_path)
-    assert main(as_config(["gen", "--generators", GEN_SUITE, "--out", "gen/models", "--column-naming", "snake_case"])) == 0
+    _write_config("snake_case")
+    assert main(as_config(["gen", "--generators", GEN_SUITE, "--out", "gen/models"])) == 0
 
     capsys.readouterr()
-    # Matching strategy -> clean.
-    rc_clean = main(
-        as_config(["verify", "--codegen", "--generators", GEN_SUITE, "--out", "gen/models", "--column-naming", "snake_case"])
-    )
+    # Matching rule -> clean.
+    rc_clean = main(as_config(["verify", "--codegen", "--generators", GEN_SUITE, "--out", "gen/models"]))
     assert rc_clean == 0, capsys.readouterr().err
 
-    # Mismatched strategy -> the discriminating half: proves the flag is actually
-    # read at this rung, not merely accepted and dropped.
-    rc_drift = main(
-        as_config(["verify", "--codegen", "--generators", GEN_SUITE, "--out", "gen/models", "--column-naming", "literal"])
-    )
+    # The project's rule changes after `gen` committed -> the discriminating half:
+    # proves the rule is actually read from the root at this rung, not ignored.
+    _write_config("literal")
+    rc_drift = main(as_config(["verify", "--codegen", "--generators", GEN_SUITE, "--out", "gen/models"]))
     err = capsys.readouterr().err
     assert rc_drift == 1
     assert "drifted:" in err

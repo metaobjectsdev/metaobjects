@@ -39,6 +39,8 @@ export const CANONICAL_CONFIG = { dialect: "postgres", columnNamingStrategy: "li
 
 export interface CubeRunConfig {
   readonly dialect: Dialect;
+  /** The corpus case's column rule, set on the root the way a project's
+   *  `.metaobjects/config.json` `naming` block is (ADR-0058). Absent: the root's own. */
   readonly columnNamingStrategy?: ColumnNamingStrategy;
 }
 
@@ -64,13 +66,15 @@ export function readTree(dir: string): Map<string, string> {
  */
 export async function cubeModelTree(root: MetaRoot, config: CubeRunConfig, generator: Generator = cubeModel()): Promise<Map<string, string>> {
   const dir = mkdtempSync(join(tmpdir(), "cube-model-"));
+  if (config.columnNamingStrategy !== undefined) {
+    root.physicalNaming = { ...root.physicalNaming, columns: config.columnNamingStrategy };
+  }
   try {
     const outDir = join(dir, "out");
     await runGen({
       config: defineConfig({
         outDir,
         dialect: config.dialect,
-        ...(config.columnNamingStrategy !== undefined ? { columnNamingStrategy: config.columnNamingStrategy } : {}),
         generators: [generator],
       }),
       metadata: root,

@@ -7,8 +7,16 @@ import { MetaData } from "./meta-data.js";
 import { TYPE_OBJECT, TYPE_FIELD } from "./base-types.js";
 import type { MetaObject } from "../core/object/meta-object.js";
 import type { MetaField } from "../core/field/meta-field.js";
+import { DEFAULT_PHYSICAL_NAMING, type PhysicalNaming } from "../naming.js";
 
 export class MetaRoot extends MetaData {
+  /**
+   * The project's physical-naming rules (`naming` in `.metaobjects/config.json`, ADR-0058).
+   * Set by the project-aware load (`loadMemory`, `resolveCollection`), read by every name
+   * resolver through `physicalNamingOf`. A tree loaded with no project has the default.
+   */
+  physicalNaming: PhysicalNaming = DEFAULT_PHYSICAL_NAMING;
+
   /** Object entities defined at this root level. */
   objects(): MetaObject[] {
     return this.cached("objects", () =>

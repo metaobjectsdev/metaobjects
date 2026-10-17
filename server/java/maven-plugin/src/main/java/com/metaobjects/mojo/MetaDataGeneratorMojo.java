@@ -1,5 +1,6 @@
 package com.metaobjects.mojo;
 
+import com.metaobjects.MetaDataException;
 import com.metaobjects.generator.Generator;
 import com.metaobjects.generator.GeneratorBase;
 import com.metaobjects.generator.util.GeneratedFileWriter;
@@ -7,6 +8,7 @@ import com.metaobjects.generator.util.RouteNaming;
 import com.metaobjects.loader.MetaDataLoader;
 import org.apache.maven.plugins.annotations.LifecyclePhase;
 import org.apache.maven.plugins.annotations.Mojo;
+import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.plugins.annotations.ResolutionScope;
 
 import java.io.File;
@@ -23,8 +25,22 @@ import java.util.stream.Stream;
         threadSafe = true)   // #233: safe under `mvn -T` once the registry warm-up + per-instance loader key land
 public class MetaDataGeneratorMojo extends AbstractMetaDataMojo
 {
+    /**
+     * Run a list whose generators' {@code requires} are not all declared beside them
+     * ({@link RequiresCheck}). Off by default: such a list writes code that does not compile.
+     * Set it only when the project supplies those files by hand, or declares the companion
+     * generator in another {@code <execution>}.
+     */
+    @Parameter(property = "metaobjects.allowUnmetRequires", defaultValue = "false")
+    boolean allowUnmetRequires;
+
     @Override
     protected void executeGenerators(MetaDataLoader loader, List<Generator> generatorImpls) {
+
+        // Before any generator runs: a list whose controller (say) is declared without the
+        // generators its output references writes code that does not compile, and this goal
+        // used to exit 0 on it.
+        refuseUnmetRequires(generatorImpls);
 
         // Refuse before any generator runs — the one choke point that sees the WHOLE
         // entity set every route-emitting generator below (Java's codegen-spring AND
@@ -50,6 +66,22 @@ public class MetaDataGeneratorMojo extends AbstractMetaDataMojo
         }
 
         registerGeneratedSourceRoots();
+    }
+
+    /** Fail the goal, naming each missing companion, when the list does not declare what its
+     *  generators' output references; with {@link #allowUnmetRequires}, warn instead. */
+    void refuseUnmetRequires(List<Generator> generatorImpls) {
+        List<String> classnames = new ArrayList<>();
+        for (Generator g : generatorImpls) classnames.add(g.getClass().getName());
+        List<String> unmet = RequiresCheck.unmet(classnames);
+        if (unmet.isEmpty()) return;
+        if (allowUnmetRequires) {
+            for (String line : unmet) getLog().warn("MetaData Mojo > " + line);
+            return;
+        }
+        throw new MetaDataException(String.join("\n", unmet)
+                + "\nAdd each to <generators>. If you supply those files by hand, or declare the "
+                + "generator in another <execution>, set <allowUnmetRequires>true</allowUnmetRequires>.");
     }
 
     /**

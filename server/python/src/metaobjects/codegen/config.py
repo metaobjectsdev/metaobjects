@@ -48,10 +48,11 @@ class GenConfig:
     # @provided enum whose package resolves to no module is a codegen-time error.
     # The column-naming strategy: read by the ``names`` generator
     # (codegen/generators/names_generator.py) for any field with no explicit
-    # ``@column``, matching whatever the runtime (``ObjectManager(...,
-    # column_naming=...)``) was told. The two must agree, or the constant this
-    # generator emits names a different column than the one a row actually lands
-    # in.
+    # ``@column``. The CLI fills it from ``naming.columns`` in
+    # ``.metaobjects/config.json`` (ADR-0058), the same setting the runtime
+    # ``ObjectManager`` reads from the loaded root. The two must agree, or the
+    # constant this generator emits names a different column than the one a row
+    # actually lands in.
     column_naming: str = DEFAULT_COLUMN_NAMING
     # First-time-on-existing-file behaviour. "default" refuses a file that cannot be
     # proved to be generated output; "adopt" records what is on disk as the baseline and

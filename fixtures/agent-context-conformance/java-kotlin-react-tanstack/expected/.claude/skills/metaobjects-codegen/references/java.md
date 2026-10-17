@@ -32,7 +32,13 @@ All artifacts share `groupId` `com.metaobjects` and one version property:
 
 The plugin's `generate` goal binds to the `generate-sources` phase. Point its
 `<loader><sourceDir>` at your metadata and list one `<generator>` per output you
-want, by fully-qualified class name.
+want, by fully-qualified class name. The example is the whole Spring REST tier: the
+controller's output names the DTO, the repository and the filter allowlist, and a DTO
+names the value-object records its `field.object` columns carry, so the five move
+together. `mvn metaobjects:generate` refuses a list that declares a generator without
+the ones its output references (each registry entry's `requires`), naming what to add;
+set `<allowUnmetRequires>true</allowUnmetRequires>` only when you supply those files by
+hand or declare them in another `<execution>`.
 
 ```xml
 <build>
@@ -52,17 +58,23 @@ want, by fully-qualified class name.
             </loader>
             <generators>
               <generator>
-                <classname>com.metaobjects.generator.spring.SpringControllerGenerator</classname>
-                <args>
-                  <outputDir>${project.build.directory}/generated-sources/java</outputDir>
-                </args>
-              </generator>
-              <generator>
                 <classname>com.metaobjects.generator.spring.SpringDtoGenerator</classname>
                 <args><outputDir>${project.build.directory}/generated-sources/java</outputDir></args>
               </generator>
               <generator>
+                <classname>com.metaobjects.generator.spring.SpringValueObjectGenerator</classname>
+                <args><outputDir>${project.build.directory}/generated-sources/java</outputDir></args>
+              </generator>
+              <generator>
                 <classname>com.metaobjects.generator.spring.SpringRepositoryGenerator</classname>
+                <args><outputDir>${project.build.directory}/generated-sources/java</outputDir></args>
+              </generator>
+              <generator>
+                <classname>com.metaobjects.generator.spring.SpringFilterAllowlistGenerator</classname>
+                <args><outputDir>${project.build.directory}/generated-sources/java</outputDir></args>
+              </generator>
+              <generator>
+                <classname>com.metaobjects.generator.spring.SpringControllerGenerator</classname>
                 <args><outputDir>${project.build.directory}/generated-sources/java</outputDir></args>
               </generator>
             </generators>
@@ -154,7 +166,12 @@ payload field shapes for the generated code — plus a page per entity, under
 ```
 
 Optional `<args>`: `apiSubDir` (default `api/java`), `layout` (`flat` or `package`),
-`projectName`, `modelBaseUrl`. Give it an `outputDir` of generated files only.
+`projectName`, `modelBaseUrl`. Give it an `outputDir` of generated files only. In a repository with more than one port, give each port's documentation its own
+directory: another port's generated pages count as foreign files, and in a shared
+directory each port's `verify --codegen` reports the other ports' pages as drift.
+Migrating a pom that bound `metaobjects:docs`:
+<https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md>,
+section "Java and Kotlin".
 
 **Before calling any generated code, read `api/java/AGENT-API.md`** — it carries the
 concrete imports and signatures so you don't have to guess them.
@@ -162,8 +179,10 @@ concrete imports and signatures so you don't have to guess them.
 ## `codegen-spring` generators
 
 Most live in `metaobjects-codegen-spring` under
-`com.metaobjects.generator.spring.*`; wire any subset, typically all three of the
-first group together. (`JavaObjectCodeGenerator`, last row below, lives in the
+`com.metaobjects.generator.spring.*`. A subset must be closed over what its output
+references: the controller needs the DTO, repository and filter allowlist; the DTO and
+the template-tier generators need the value-object records; the repository needs the DTO.
+`mvn metaobjects:generate` refuses a list that is not. (`JavaObjectCodeGenerator`, last row below, lives in the
 separate `metaobjects-codegen-base` module instead.)
 
 | Generator | Output |
@@ -264,7 +283,8 @@ backed by an `object.value`: `SpringValueObjectGenerator` emits that VO as a Jav
 and OMDB's Jackson codec serializes it to/from the column (a single VO, or `List<VO>` for
 an array) — the same typed-jsonb round-trip the other ports ship.
 
-Metadata lives under `src/main/metaobjects/` in the same canonical JSON the other
+Metadata lives wherever the plugin's `<loader><sourceDir>` points (the examples here use
+`src/main/metaobjects`; nothing requires that path), in the same canonical JSON the other
 ports read — fused-key form, `source.rdb` + `@table`, `@column` for a renamed
 physical column.
 

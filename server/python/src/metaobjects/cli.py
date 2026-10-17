@@ -22,13 +22,18 @@ Two subcommands:
 
         --codegen    regenerate into a temp dir + diff against the committed
                      ``--out`` tree (Python's historical default behavior).
-                     ``--column-naming`` must match the strategy ``gen`` was
-                     run with (R31) or the ``names`` generator's constants
-                     report spurious drift.
+                     The column naming comes from ``naming.columns`` in
+                     ``.metaobjects/config.json`` (ADR-0058), the same setting
+                     ``gen`` reads, so the ``names`` generator's constants match
+                     the committed tree; when another column rule, another
+                     table rule, or both reproduce that tree, verify reports a
+                     naming mismatch naming the setting instead of asking you
+                     to regenerate.
         --templates  template/prompt ``{{field}}`` ↔ payload-VO drift — the
                      render ``verify()`` gate — resolving each ``template.*``
                      node's refs via a filesystem provider rooted at
-                     ``--templates-root``.
+                     ``templates`` in ``metaobjects.config.yaml`` (else
+                     ``--prompts``), over the config's ``metadata``.
         --db URL     REJECTED in the Python port (exit 2): schema verify is the
                      migrate engine (ADR-0015), not this CLI.
 
@@ -123,7 +128,14 @@ from metaobjects.codegen.generators.render_helper_generator import (
 )
 from metaobjects.codegen.value_objects import pkg_of, resolve_payload_vo
 from metaobjects.meta.template import template_constants as tc
-from metaobjects.naming import COLUMN_NAMING_STRATEGIES, DEFAULT_COLUMN_NAMING, package_of_resolution_key
+from metaobjects.naming import (
+    COLUMN_NAMING_STRATEGIES,
+    DEFAULT_COLUMN_NAMING,
+    TABLE_NAMING_RULES,
+    NamingRules,
+    package_of_resolution_key,
+    removed_naming_source_message,
+)
 from metaobjects.render.filesystem_provider import FilesystemProvider
 from metaobjects.render.verify import (
     ERR_REQUIRED_SLOT_UNUSED,
@@ -159,7 +171,7 @@ class NoGeneratorsSelectedError(ValueError):
 
 
 #: The migration section every 1.1.0 refusal below points at (ADR-0034 Amendment 9).
-_MIGRATION_SECTION = 'See docs/features/migrations/docs-are-generators.md, section "Python".'
+_MIGRATION_SECTION = 'See https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md, section "Python".'
 
 #: What ``metaobjects docs`` prints, exit 2: the command was removed in 1.1.0.
 DOCS_COMMAND_REMOVED = (
@@ -482,6 +494,11 @@ def _load_root(
         refuse_library_package_misuse(result.root, all_libraries)
     except ParseError as exc:
         return None, [f"{exc.code}: {exc}"]
+    # ADR-0058 Decision 3 — the loaded root carries the ONE project naming setting,
+    # from the SAME neutral `.metaobjects/config.json` read above for `libraries`,
+    # so codegen and the runtime (both reached from an explicit-`metadata_dir` CLI
+    # invocation) read the same values `gen`/`verify --codegen` would.
+    result.root.naming = neutral.naming if neutral is not None else NamingRules()
     return result.root, []
 
 
@@ -540,6 +557,10 @@ def _load_collection_result(
         # ejected copy, still opted in) and one it does not (a new node in someone
         # else's package).
         refuse_library_package_misuse(result.root, all_libraries)
+        # ADR-0058 Decision 3 — the resolved `Collection` already carries this
+        # project's ONE naming setting (read at the same rung as `libraries`); attach
+        # it to the loaded root so codegen, the runtime and `verify` agree.
+        result.root.naming = collection.naming
     return result
 
 
@@ -664,17 +685,8 @@ def _default_template_root(base: str | Path = ".") -> str:
             else LEGACY_TEMPLATES_DIR)
 
 
-def _template_root_for(args: argparse.Namespace) -> str:
-    """The on-disk template root for THIS invocation. Never ``None``.
-
-    EVERY path that builds a generator list must call this, for the same reason the C#
-    port says it of its template-spec resolution: ``gen`` and ``verify --codegen``
-    regenerate the same suite and diff the result, so if they resolve the template root
-    differently, ``verify`` builds ``render-helper`` against another directory and
-    reports the committed helpers as stale — with a remedy that loops, since
-    regenerating cannot fix a disagreement about where the templates are. That is also
-    why the fallback applies to BOTH commands: a default on one and not the other is the
-    same disagreement wearing a different hat.
+def _templates_dir_flag(args: argparse.Namespace) -> str | None:
+    """The template directory a flag names on THIS invocation, or ``None``.
 
     The two commands spell the directory differently, and that is not cosmetic. On
     ``gen`` it is ``--templates <dir>``. On ``verify`` ``--templates`` is the BOOLEAN
@@ -687,10 +699,57 @@ def _template_root_for(args: argparse.Namespace) -> str:
     gen_dir = getattr(args, "templates", None)
     if isinstance(gen_dir, str) and gen_dir:
         return gen_dir
-    explicit_verify = getattr(args, "templates_root", None)
-    if explicit_verify:
-        return explicit_verify
-    return _default_template_root()
+    return getattr(args, "templates_root", None)
+
+
+def _template_root_for(args: argparse.Namespace) -> str:
+    """The on-disk template root for THIS invocation. Never ``None``.
+
+    EVERY path that builds a generator list must call this, for the same reason the C#
+    port says it of its template-spec resolution: ``gen`` and ``verify --codegen``
+    regenerate the same suite and diff the result, so if they resolve the template root
+    differently, ``verify`` builds ``render-helper`` against another directory and
+    reports the committed helpers as stale — with a remedy that loops, since
+    regenerating cannot fix a disagreement about where the templates are. That is also
+    why the fallback applies to BOTH commands: a default on one and not the other is the
+    same disagreement wearing a different hat.
+    """
+    return _templates_dir_flag(args) or _default_template_root()
+
+
+#: Where the run's settings are declared, as the refusals and the drift advice name it.
+_CONFIG_NAME = "metaobjects.config.yaml"
+
+
+def _refuse_column_naming_flag(args: argparse.Namespace) -> str | None:
+    """ADR-0058 Decision 4 — ``--column-naming`` was removed in 1.1.0: naming is one
+    project setting (``naming`` in ``.metaobjects/config.json``), read from the loaded
+    root (``MetaRoot.naming``) by every resolver. Returns the refusal (``gen`` and
+    ``verify`` print it and exit 2 before anything else runs) when the flag was given at
+    all, else ``None``.
+    """
+    flag = getattr(args, "column_naming", None)
+    if flag is None:
+        return None
+    return "error: " + removed_naming_source_message("--column-naming", flag)
+
+
+def _template_root_for_config(args: argparse.Namespace, config: ProjectConfig) -> tuple[str, str | None]:
+    """``(template root, refusal)`` for a config-driven run: ``templates`` in the config, else
+    :func:`_template_root_for`. A ``--templates`` (``gen``) or ``--prompts`` (``verify``) that
+    names another directory than the config is refused: the config declares the run's inputs
+    once (ADR-0034 Amendment 9), and a flag that silently lost, or silently won, is how a plain
+    ``metaobjects gen`` came to disagree with ``verify`` about where the templates are."""
+    declared = config.templates_dir()
+    if declared is None:
+        return _template_root_for(args), None
+    flag = _templates_dir_flag(args)
+    if flag and Path(flag).resolve() != Path(declared):
+        return declared, (
+            f"error: the template directory {flag!r} contradicts templates: {config.templates} in "
+            f"{_CONFIG_NAME}. The config declares it once; drop the flag, or change the config."
+        )
+    return declared, None
 
 
 def _resolve_generators(
@@ -1198,6 +1257,10 @@ def _warn_if_agent_context_stale() -> None:
 
 
 def _cmd_gen(args: argparse.Namespace) -> int:
+    naming_refusal = _refuse_column_naming_flag(args)
+    if naming_refusal is not None:
+        print(naming_refusal, file=sys.stderr)
+        return 2
     # `--list` is a pure discoverability path: print the registry and exit, no codegen.
     if getattr(args, "list", False):
         return _cmd_list(args)
@@ -1522,6 +1585,14 @@ def _cmd_gen_config(args: argparse.Namespace) -> int:
         return 1
     _print_unknown_attr_warnings(unknown_attrs)
 
+    template_root, templates_refusal = _template_root_for_config(args, config)
+    if templates_refusal is not None:
+        print(templates_refusal, file=sys.stderr)
+        return 2
+    # ADR-0058 Decision 3 — the loaded root's `naming` (set from `.metaobjects/
+    # config.json` at load time) is THE strategy; never a flag or a config key.
+    column_naming = root.naming.columns
+
     selection = _selection_from_args(args)
     if _refuse_narrowing(args, selection, root, "metaobjects gen"):
         return 2
@@ -1539,8 +1610,8 @@ def _cmd_gen_config(args: argparse.Namespace) -> int:
         baseline=getattr(args, "baseline", None) or "default",
         refused_out=refused,
         select=collection.in_scope,
-        build_ctx=GeneratorBuildContext(_template_root_for(args)),
-        column_naming=getattr(args, "column_naming", None) or DEFAULT_COLUMN_NAMING,
+        build_ctx=GeneratorBuildContext(template_root),
+        column_naming=column_naming,
         selection=selection,
     )
     if errors:
@@ -1765,104 +1836,183 @@ def _verify_codegen_config(args: argparse.Namespace) -> int:
             return 2
     narrowed = selection is not None or _parse_entities(getattr(args, "entities", None)) is not None
 
-    with tempfile.TemporaryDirectory() as temp_root, tempfile.TemporaryDirectory() as declared_root:
-        # Map each unique real outDir to ONE temp slot (shared real dir => shared slot).
-        temp_for: dict[str, str] = {}
-        for t in closure:
-            real = config.out_dir_for(t)
-            if real not in temp_for:
-                temp_for[real] = _temp_slot_for(Path(temp_root), real, config.config_dir)
-        remapped = [
-            dataclasses.replace(t, out_dir=temp_for[config.out_dir_for(t)]) for t in closure
-        ]
+    template_root, templates_refusal = _template_root_for_config(args, config)
+    if templates_refusal is not None:
+        print(templates_refusal, file=sys.stderr)
+        return 2
+    # ADR-0058 Decision 3 — the loaded root's `naming` is THE strategy.
+    column_naming = root.naming.columns
 
-        # The exact gen pipeline into the temp tree — verify now rejects exactly
-        # what gen rejects (incl. the cross-target duplicate-output-path guard).
-        # gen_state_dir stays None: this regenerates into a temp tree purely to
-        # diff, so recording a manifest would mutate the user's project from a
-        # read-only drift check, keyed to a directory deleted seconds later.
-        # build_ctx from the SAME resolver `gen` uses — a verify that resolved the
-        # template root differently would regenerate render-helper against another
-        # directory and convict the committed output of being stale.
-        targeted: set[str] = set()
-        regen = dict(
-            select=collection.in_scope,
-            build_ctx=GeneratorBuildContext(_template_root_for(args)),
-            # R31: the `names` generator's constants are strategy-dependent, so the regen
-            # must use the strategy `gen` wrote with, or every constant reads as drift.
-            column_naming=getattr(args, "column_naming", None) or DEFAULT_COLUMN_NAMING,
-        )
-        _written, errors = _run_gen_targets(
-            config, remapped, root, selection=selection, targeted_out=targeted, **regen)
-        # A narrowed run's paths get the content the whole declared list writes, which is
-        # what `gen` committed: a second regen of the un-narrowed closure supplies it.
-        declared_for: dict[str, str] = {}
-        if narrowed and not errors:
-            unnarrowed = [t for t in config.targets if config.out_dir_for(t) in temp_for]
-            for real in temp_for:
-                declared_for[real] = _temp_slot_for(Path(declared_root), real, config.config_dir)
+    # Map each unique real outDir to ONE temp slot name (shared real dir => shared slot).
+    real_outdirs = sorted({config.out_dir_for(t) for t in closure})
+
+    def compare(naming: str) -> tuple[list[str], list[tuple[str, int, list[str], list[str], list[str]]]]:
+        """Regenerate the closure with ``naming`` and diff it against every committed outDir:
+        ``(errors, [(target names, expected count, changed, missing, extra)])``."""
+        with tempfile.TemporaryDirectory() as temp_root, tempfile.TemporaryDirectory() as declared_root:
+            temp_for = {
+                real: _temp_slot_for(Path(temp_root), real, config.config_dir) for real in real_outdirs
+            }
+            remapped = [
+                dataclasses.replace(t, out_dir=temp_for[config.out_dir_for(t)]) for t in closure
+            ]
+
+            # The exact gen pipeline into the temp tree — verify now rejects exactly
+            # what gen rejects (incl. the cross-target duplicate-output-path guard).
+            # gen_state_dir stays None: this regenerates into a temp tree purely to
+            # diff, so recording a manifest would mutate the user's project from a
+            # read-only drift check, keyed to a directory deleted seconds later.
+            # build_ctx from the SAME resolver `gen` uses — a verify that resolved the
+            # template root differently would regenerate render-helper against another
+            # directory and convict the committed output of being stale.
+            targeted: set[str] = set()
+            regen = dict(
+                select=collection.in_scope,
+                build_ctx=GeneratorBuildContext(template_root),
+                # R31: the `names` generator's constants are strategy-dependent, so the regen
+                # must use the strategy `gen` wrote with, or every constant reads as drift.
+                column_naming=naming,
+            )
             _written, errors = _run_gen_targets(
-                config,
-                [dataclasses.replace(t, out_dir=declared_for[config.out_dir_for(t)])
-                 for t in unnarrowed],
-                root, **regen)
-        if errors:
-            for msg in errors:
-                print(f"error: {msg}", file=sys.stderr)
+                config, remapped, root, selection=selection, targeted_out=targeted, **regen)
+            # A narrowed run's paths get the content the whole declared list writes, which is
+            # what `gen` committed: a second regen of the un-narrowed closure supplies it.
+            declared_for: dict[str, str] = {}
+            if narrowed and not errors:
+                unnarrowed = [t for t in config.targets if config.out_dir_for(t) in temp_for]
+                for real in temp_for:
+                    declared_for[real] = _temp_slot_for(Path(declared_root), real, config.config_dir)
+                _written, errors = _run_gen_targets(
+                    config,
+                    [dataclasses.replace(t, out_dir=declared_for[config.out_dir_for(t)])
+                     for t in unnarrowed],
+                    root, **regen)
+            if errors:
+                return errors, []
+
+            reports: list[tuple[str, int, list[str], list[str], list[str]]] = []
+            for real_outdir in real_outdirs:
+                tmp_slot = temp_for[real_outdir]
+                if narrowed and tmp_slot not in targeted:
+                    continue
+                expected = _relative_set(Path(tmp_slot))
+                committed = _relative_set(Path(real_outdir))
+                if narrowed:
+                    declared = _relative_set(Path(declared_for[real_outdir]))
+                    expected = {k: declared[k] for k in expected if k in declared}
+
+                changed = sorted(
+                    k for k in expected if k in committed and expected[k] != committed[k]
+                )
+                missing = sorted(k for k in expected if k not in committed)
+                if narrowed:
+                    extra: list[str] = []
+                else:
+                    # Same jurisdiction rule as _diff_report — this rung inlines its diff to
+                    # report per-target, so the guard has to be inlined with it. Without it,
+                    # broadening the comparison past *.py convicts every stranger's file.
+                    #
+                    # PER-TARGET prefix, because that is the whole point on this rung: two
+                    # targets with different outDirs share one manifest, and the key that tells
+                    # their identically-named files apart is the one anchored on the project.
+                    is_ours = _is_ours_for(
+                        gen_state_dir_for(config.metadata_dir()),
+                        _out_prefix(real_outdir, project_root_for(config.metadata_dir())),
+                    )
+                    extra = sorted(k for k in committed if k not in expected and is_ours(k))
+
+                names = "+".join(
+                    t.name for t in closure if config.out_dir_for(t) == real_outdir
+                )
+                reports.append((names, len(expected), changed, missing, extra))
+            return [], reports
+
+    errors, reports = compare(column_naming)
+    if errors:
+        for msg in errors:
+            print(f"error: {msg}", file=sys.stderr)
+        return 1
+
+    failed = False
+    for names, expected_count, changed, missing, extra in reports:
+        if _report_clean(changed, missing, extra):
+            print(f"metaobjects verify [{names}]: in sync ({expected_count} file(s)).")
+            continue
+        failed = True
+        print(
+            f"error: [{names}] generated code is out of sync with metadata.",
+            file=sys.stderr,
+        )
+        for k in changed:
+            print(f"  drifted: {k}", file=sys.stderr)
+        for k in missing:
+            print(f"  missing: {k}", file=sys.stderr)
+        for k in extra:
+            print(f"  extra:   {k}", file=sys.stderr)
+    if not failed:
+        return 0
+
+    # The committed output may be right and this run's naming wrong: the naming reaches every
+    # column and table name, so "regenerate" would commit names the database does not have.
+    # When another naming reproduces the committed tree exactly, say that instead. The table
+    # rule reaches codegen only through the root (`naming_rules_of`), so each probe sets the
+    # candidate on the root and restores the loaded naming afterwards.
+    used = root.naming
+    for candidate in naming_candidates(used):
+        root.naming = candidate
+        try:
+            other_errors, other_reports = compare(candidate.columns)
+        finally:
+            root.naming = used
+        if not other_errors and all(
+            _report_clean(changed, missing, extra)
+            for _names, _count, changed, missing, extra in other_reports
+        ):
+            print(naming_differs_message(candidate, used), file=sys.stderr)
             return 1
+    print("regenerate (metaobjects gen) and commit the result.", file=sys.stderr)
+    return 1
 
-        exit_code = 0
-        for real_outdir in sorted(temp_for):
-            tmp_slot = temp_for[real_outdir]
-            if narrowed and tmp_slot not in targeted:
-                continue
-            expected = _relative_set(Path(tmp_slot))
-            committed = _relative_set(Path(real_outdir))
-            if narrowed:
-                declared = _relative_set(Path(declared_for[real_outdir]))
-                expected = {k: declared[k] for k in expected if k in declared}
 
-            changed = sorted(
-                k for k in expected if k in committed and expected[k] != committed[k]
-            )
-            missing = sorted(k for k in expected if k not in committed)
-            if narrowed:
-                extra: list[str] = []
-            else:
-                # Same jurisdiction rule as _diff_report — this rung inlines its diff to
-                # report per-target, so the guard has to be inlined with it. Without it,
-                # broadening the comparison past *.py convicts every stranger's file.
-                #
-                # PER-TARGET prefix, because that is the whole point on this rung: two
-                # targets with different outDirs share one manifest, and the key that tells
-                # their identically-named files apart is the one anchored on the project.
-                is_ours = _is_ours_for(
-                    gen_state_dir_for(config.metadata_dir()),
-                    _out_prefix(real_outdir, project_root_for(config.metadata_dir())),
-                )
-                extra = sorted(k for k in committed if k not in expected and is_ours(k))
+def naming_candidates(used: NamingRules) -> list[NamingRules]:
+    """Every naming other than ``used``, in the order ``verify --codegen`` probes them (the C#
+    port probes the same order): the used table rule first, so a different column rule alone
+    is tried before a different table rule; within each, the used column rule first, then
+    snake_case, literal, kebab-case."""
+    tables = sorted(TABLE_NAMING_RULES, key=lambda t: t != used.tables)
+    columns = sorted(COLUMN_NAMING_STRATEGIES, key=lambda c: c != used.columns)
+    return [
+        candidate
+        for t in tables
+        for c in columns
+        if (candidate := NamingRules(columns=c, tables=t)) != used
+    ]
 
-            names = "+".join(
-                t.name for t in closure if config.out_dir_for(t) == real_outdir
-            )
-            if not changed and not missing and not extra:
-                print(
-                    f"metaobjects verify [{names}]: in sync ({len(expected)} file(s))."
-                )
-                continue
-            exit_code = max(exit_code, 1)
-            print(
-                f"error: [{names}] generated code is out of sync with metadata.",
-                file=sys.stderr,
-            )
-            for k in changed:
-                print(f"  drifted: {k}", file=sys.stderr)
-            for k in missing:
-                print(f"  missing: {k}", file=sys.stderr)
-            for k in extra:
-                print(f"  extra:   {k}", file=sys.stderr)
-            print("regenerate (metaobjects gen) and commit the result.", file=sys.stderr)
-        return exit_code
+
+def _report_clean(changed: list[str], missing: list[str], extra: list[str]) -> bool:
+    """The drift verdict of one per-target report: nothing changed, nothing missing,
+    nothing extra. It is asked twice — the first pass' per-target print and the naming
+    probe — and the two spellings must mean the same thing."""
+    return not changed and not missing and not extra
+
+
+def _naming_block(naming: NamingRules) -> str:
+    """A naming as the ``naming`` block that declares it."""
+    return f'"naming": {{ "columns": "{naming.columns}", "tables": "{naming.tables}" }}'
+
+
+def naming_differs_message(committed: NamingRules, used: NamingRules) -> str:
+    """What ``verify --codegen`` says, in place of "regenerate", when the committed output was
+    generated with ``committed`` and this run's loaded root resolved ``used`` (ADR-0058: the one
+    project ``naming`` setting, read from ``.metaobjects/config.json``). The C# port prints the
+    same text."""
+    return (
+        f"The committed output was generated with {_naming_block(committed)}; this run used "
+        f"{_naming_block(used)} (.metaobjects/config.json; each rule defaults to snake_case). Do "
+        f"not regenerate: that rewrites column or table names to ones the database does not have. "
+        f"Declare {_naming_block(committed)} in .metaobjects/config.json, and gen and verify "
+        f"--codegen both read it."
+    )
 
 
 #: The text-ref attrs a ``template.*`` node may carry. Each is resolved through
@@ -1900,30 +2050,56 @@ def _verify_templates(args: argparse.Namespace) -> int:
     (exit 1). Clean → 0. Reuses the render engine + field-tree walk; nothing is
     reimplemented here.
     """
-    if args.metadata_dir is None:
-        print(
-            "error: verify --templates requires <metadata_dir> (it is not "
-            "config-driven; the config's targets registry drives --codegen only).",
-            file=sys.stderr,
-        )
-        return 2
-
-    template_root = getattr(args, "templates_root", None)
-    if not template_root:
-        print(
-            "error: verify --templates requires --prompts (the on-disk "
-            "template/prompt dir).",
-            file=sys.stderr,
-        )
-        return 2
-
     # ADR-0023 strict-by-default (#96) — same as --codegen: an undeclared @attr
     # fails verify unless --lax is passed.
     strict = not getattr(args, "lax", False)
     providers, providers_ok = _providers_from_args(args)
     if not providers_ok:
         return 1
-    root, errors = _load_root(args.metadata_dir, strict=strict, providers=providers)
+
+    # The metadata and the template root come from the same metaobjects.config.yaml that
+    # `gen` and `verify --codegen` read, when the run names no <metadata_dir>: a gate that
+    # refused the project's own config made every adopter spell the paths a second time.
+    config_path = _find_config(args) if args.metadata_dir is None else None
+    if args.metadata_dir is None and config_path is None:
+        print(
+            "error: verify --templates needs the metadata: run it beside a "
+            "metaobjects.config.yaml (or pass --config), or name <metadata_dir>.",
+            file=sys.stderr,
+        )
+        return 2
+    if config_path is not None:
+        try:
+            config = load_project_config(config_path)
+        except ConfigError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
+        template_root, templates_refusal = _template_root_for_config(args, config)
+        if templates_refusal is not None:
+            print(templates_refusal, file=sys.stderr)
+            return 2
+        config_providers, config_providers_ok = _config_providers(config)
+        if not config_providers_ok:
+            return 1
+        collection = _resolve_metadata_location_or_print_error(
+            config, project_root_for(config.metadata_dir())
+        )
+        if collection is None:
+            return 1
+        root, errors = _load_root_from_collection(
+            collection, strict=strict, providers=[*config_providers, *providers],
+            libraries=config.libraries,
+        )
+    else:
+        template_root = getattr(args, "templates_root", None)
+        if not template_root:
+            print(
+                "error: verify --templates requires --prompts (the on-disk "
+                "template/prompt dir) when it is given <metadata_dir>.",
+                file=sys.stderr,
+            )
+            return 2
+        root, errors = _load_root(args.metadata_dir, strict=strict, providers=providers)
     if root is None:
         print("error: failed to load metadata:", file=sys.stderr)
         for msg in errors:
@@ -2277,6 +2453,10 @@ def _cmd_verify(args: argparse.Namespace) -> int:
     max (non-zero if ANY mode drifts). Bare ``verify`` (no subverb) keeps the
     historical default = ``--codegen`` + a one-line note advertising the subverbs.
     """
+    naming_refusal = _refuse_column_naming_flag(args)
+    if naming_refusal is not None:
+        print(naming_refusal, file=sys.stderr)
+        return 2
     _warn_if_agent_context_stale()
 
     run_db = args.db is not None
@@ -2359,13 +2539,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "--column-naming",
         dest="column_naming",
         choices=COLUMN_NAMING_STRATEGIES,
-        default=DEFAULT_COLUMN_NAMING,
+        default=None,
         help=(
-            "column-naming strategy for a field with no explicit @column "
-            f"(default: {DEFAULT_COLUMN_NAMING!r}, matching this port's "
-            "ObjectManager default — NOT `meta migrate`'s snake_case). Read by "
-            "the `names` generator; pass the same strategy the schema was "
-            "created with."
+            "removed in 1.1.0 (ADR-0058): naming is one project setting now, `naming` in "
+            ".metaobjects/config.json, read by every port from the loaded root. Passing "
+            "this flag at all is refused."
         ),
     )
     gen.add_argument(
@@ -2464,7 +2642,8 @@ def _build_parser() -> argparse.ArgumentParser:
         nargs="?",
         default=None,
         help=(
-            "directory of metadata JSON/YAML files, required by --templates. Not read "
+            "directory of metadata JSON/YAML files for --templates when there is no "
+            "metaobjects.config.yaml (with one, its `metadata` is read). Not read "
             "since 1.1.0 by --codegen, which always runs config mode: set `metadata` "
             "in metaobjects.config.yaml instead."
         ),
@@ -2478,13 +2657,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "--column-naming",
         dest="column_naming",
         choices=COLUMN_NAMING_STRATEGIES,
-        default=DEFAULT_COLUMN_NAMING,
+        default=None,
         help=(
-            "column-naming strategy the committed --out was generated with (default: "
-            f"{DEFAULT_COLUMN_NAMING!r}, matching `gen`'s default). The `names` "
-            "generator's constants are strategy-dependent, so a --codegen regen must "
-            "use the SAME strategy `gen` was run with or every <ENTITY>_<FIELD>_COLUMN "
-            "constant reports spurious drift."
+            "removed in 1.1.0 (ADR-0058): naming is one project setting now, `naming` in "
+            ".metaobjects/config.json, read by every port from the loaded root. Passing "
+            "this flag at all is refused."
         ),
     )
     verify.add_argument(
@@ -2492,7 +2669,8 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help=(
             "template drift: each template.* node's {{field}} ↔ payload-VO "
-            "field tree (render verify); requires --prompts"
+            "field tree (render verify); reads `metadata` and `templates` from "
+            "metaobjects.config.yaml, or takes <metadata_dir> with --prompts"
         ),
     )
     verify.add_argument(

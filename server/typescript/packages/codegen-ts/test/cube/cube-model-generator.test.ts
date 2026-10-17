@@ -179,11 +179,13 @@ describe("dialect and naming come from the config", () => {
     expect(files.get("model/cubes/Program.yml")).toContain("sql_table: '`programs`'");
   });
 
-  test("the column naming strategy is the config's (snake_case by default)", async () => {
+  test("the column naming is the project's (snake_case by default)", async () => {
     const root = await loadOne([program(), week([weeksCount, { "dimension.attribute": { name: "program", "@of": "Week.programId" } }])]);
     const snake = await gen(root, { generators: [cubeModel()] });
     expect(snake.get("model/cubes/Week.yml")).toContain(`sql: '{CUBE}."program_id"'`);
-    const literal = await gen(root, { columnNamingStrategy: "literal", generators: [cubeModel()] });
+    // ADR-0058: `"naming": { "columns": "literal" }` in .metaobjects/config.json, on the root.
+    root.physicalNaming = { columns: "literal", tables: "snake_case" };
+    const literal = await gen(root, { generators: [cubeModel()] });
     expect(literal.get("model/cubes/Week.yml")).toContain(`sql: '{CUBE}."programId"'`);
   });
 });

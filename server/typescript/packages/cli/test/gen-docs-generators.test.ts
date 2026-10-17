@@ -122,7 +122,7 @@ describe("the removed docs commands say where they went (ADR-0034 Amendment 9)",
     expect(stderr()).toContain(REMOVED_DOCS_COMMAND);
     expect(REMOVED_DOCS_COMMAND).toBe(
       "`meta docs` was removed in 1.1.0. `meta gen` writes documentation now: declare each docs generator " +
-        "in `generators` in metaobjects.config.ts. See docs/features/migrations/docs-are-generators.md, " +
+        "in `generators` in metaobjects.config.ts. See https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md, " +
         'section "TypeScript".',
     );
     expect(existsSync(join(root, "docs"))).toBe(false);
@@ -134,9 +134,21 @@ describe("the removed docs commands say where they went (ADR-0034 Amendment 9)",
     expect(stderr()).toContain(REMOVED_VERIFY_DOCS);
     expect(REMOVED_VERIFY_DOCS).toBe(
       "`meta verify --docs` was removed in 1.1.0. `meta verify --codegen` checks documentation now, " +
-        "with everything else `generators` declares. See docs/features/migrations/docs-are-generators.md, " +
+        "with everything else `generators` declares. See https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md, " +
         'section "TypeScript".',
     );
+  });
+
+  test("`meta verify --docs` says it once, as plain text, in every output format", async () => {
+    const root = project({ config: base("[docsFile()]") });
+    for (const format of ["toon", "json", "text"]) {
+      out.length = 0;
+      err.length = 0;
+      expect(await run(["verify", "--docs", "--format", format, "--cwd", root])).toBe(2);
+      expect(out).toEqual([]);
+      expect(err.filter((l) => l.includes("was removed in 1.1.0"))).toHaveLength(1);
+      expect(stderr()).not.toContain('\\"TypeScript\\"');
+    }
   });
 });
 
@@ -146,7 +158,7 @@ describe("meta gen refuses a config it cannot read the list from", () => {
     const before = filesUnder(root);
     expect(await run(["gen", "--cwd", root])).toBe(2);
     expect(stderr()).toContain(NO_CONFIG_MESSAGE);
-    expect(NO_CONFIG_MESSAGE).toContain('A 1.0 project that ran `meta docs` with no config: see docs/features/migrations/docs-are-generators.md, section "TypeScript".');
+    expect(NO_CONFIG_MESSAGE).toContain('A 1.0 project that ran `meta docs` with no config: see https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md, section "TypeScript".');
     expect(filesUnder(root)).toEqual(before);
   });
 
@@ -158,7 +170,7 @@ describe("meta gen refuses a config it cannot read the list from", () => {
     expect(legacyDocsConfigMessage("meta gen")).toBe(
       "meta gen: found 1.0 docs configuration (the docs block in metaobjects.config.ts). Nothing reads it any " +
         "more, so this run would write no documentation. Declare each docs generator in `generators` in " +
-        'metaobjects.config.ts. See docs/features/migrations/docs-are-generators.md, section "TypeScript".',
+        'metaobjects.config.ts. See https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md, section "TypeScript".',
     );
     expect(filesUnder(root)).toEqual(before);
   });
@@ -383,7 +395,7 @@ describe("upgrading from 1.0: pages `meta docs` wrote without recording them", (
     await run(["gen", "--cwd", root]);
     expect(readFileSync(join(docsDir, "README.md"), "utf8")).toBe("1.0 page README.md\n");
 
-    // docs/features/migrations/docs-are-generators.md, "The first run after the upgrade".
+    // https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md, "The first run after the upgrade".
     expect(await run(["gen", "--generators", "docs", "--baseline=fresh", "--cwd", root])).toBe(0);
     for (const [f, content] of Object.entries(fresh)) expect(readFileSync(join(docsDir, f), "utf8")).toBe(content);
     expect(readFileSync(codeFile, "utf8")).toBe(editedCode);

@@ -17,6 +17,7 @@ from contextlib import closing
 from pathlib import Path
 
 from metaobjects import FileSource, MetaDataLoader
+from metaobjects.naming import NamingRules
 from metaobjects.runtime import (
     LlmCallInput,
     ObjectManager,
@@ -81,6 +82,10 @@ def test_typed_trace_round_trips_through_postgres() -> None:
         FileSource(Path(__file__).parent / "meta_ai_trace.yaml"),
     ])
     assert not result.errors, f"metadata failed to load: {result.errors}"
+    # This test is about the recorder, not naming (ADR-0058 flipped the DEFAULT to
+    # snake_case) — pin `literal` so the fixture's field names stay the column
+    # names `_DDL` above declares (`"traceId"`, ...).
+    result.root.naming = NamingRules(columns="literal")
 
     with PostgresContainer() as pg:
         info = pg.info()

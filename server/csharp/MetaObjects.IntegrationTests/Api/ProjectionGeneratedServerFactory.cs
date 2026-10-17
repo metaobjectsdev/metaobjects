@@ -14,6 +14,7 @@
 // artifact under test and boot a server with no /api/invoice_summaries at all — every
 // scenario would then fail as a 404 and blame the generator for the harness.
 
+using MetaObjects.Meta;
 using System.Reflection;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -92,6 +93,8 @@ internal sealed class ProjectionGeneratedServerFactory : IAsyncDisposable
     private static (Assembly Assembly, IReadOnlyList<string> RoutedNames) CompileGeneratedServer()
     {
         var loadResult = new MetaDataLoader().Load([new FileSource(ApiContractCorpusPaths.ProjectionMetaJson)]);
+        // ADR-0058 — the corpus's committed naming rule, not a hardcoded default.
+        loadResult.Root.PhysicalNaming = ApiContractCorpusPaths.Naming;
         if (loadResult.Errors.Count != 0)
             throw new InvalidOperationException(
                 "projection corpus metadata failed to load: " +
@@ -115,7 +118,7 @@ internal sealed class ProjectionGeneratedServerFactory : IAsyncDisposable
             {
                 OutDir = "/unused",
                 Namespace = GeneratedNamespace,
-                ColumnNamingStrategy = ColumnNamingStrategy.Literal,
+                ColumnNamingStrategy = ApiContractCorpusPaths.Naming.Columns,
                 EmitAbstractShapes = false,
                 // The DbContext maps the projection with .ToView(InvoiceSummaryNames.SourcePrimaryView);
                 // without IncludeNames that constant is never referenced and the NamesGenerator

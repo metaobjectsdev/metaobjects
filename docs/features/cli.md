@@ -352,6 +352,7 @@ requirementTests:                # optional; options of the `requirement-tests` 
   filter: codegen.requirement_hooks:include    # "module:symbol", resolved config-relative
   renderer: codegen.requirement_hooks:render   # "module:symbol", resolved config-relative
   warnUncovered: true            # the default
+templates: prompts               # optional; where template refs resolve from (default prompts/, else templates/)
 apiDocs:                         # optional; options of the `api-docs` generator, every key optional
   apiSubDir: api/python          # the default
   projectName: shop              # default "project"
@@ -366,7 +367,7 @@ targets:
     generators: [entity]
     entities: [Author, Book]     # optional allowlist; omit = every entity
   docs:
-    outDir: docs/generated
+    outDir: docs/python          # a directory of its own: another port's pages here read as drift
     generators: [api-docs]       # the api reference is an entry like any other
     templateSpec: template-spec.json   # optional; a declarative template-spec, relative to this file
 ```
@@ -387,9 +388,11 @@ targets:
 - **`--config <path>`** picks the config file explicitly on either command; without it both
   look for `./metaobjects.config.yaml` in the current directory. **No config is an error**:
   `gen` and `verify --codegen` print `no metaobjects.config.yaml`, exit 2 and write nothing.
-- **Run options still apply to the list:** `--column-naming`, `--entities` (narrows each
-  target's entities), `--provider` (added to `providers`), `--templates` (`--prompts` on
-  `verify`), `--baseline`.
+- **Run options still apply to the list:** `--entities` (narrows each target's entities),
+  `--provider` (added to `providers`), `--templates` (`--prompts` on `verify`), `--baseline`.
+  Column naming is not a run option: it is `naming` in `.metaobjects/config.json`, which every
+  port reads, and `--column-naming` is refused
+  ([physical-naming.md](migrations/physical-naming.md)).
 - **Providers resolve config-relative.** A `providers:` entry is imported
   with the config file's own directory prepended to `sys.path`, so a
   consumer provider module living beside the config resolves with no

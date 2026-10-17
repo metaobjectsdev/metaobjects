@@ -29,6 +29,7 @@ from decimal import Decimal
 import pg8000.dbapi as pg8000
 
 from metaobjects import load_directory
+from metaobjects.naming import attach_naming
 from metaobjects.runtime import ObjectManager, PostgresDriver
 
 from .postgres_container import PostgresContainer
@@ -78,11 +79,15 @@ def test_runtime_returns_native_types_not_wire_strings() -> None:
 
         result = load_directory(canonical_dir)
         assert not result.errors, result.errors
+        # ADR-0058 — the corpus's project (canonical_dir's PARENT) pins
+        # `naming: {columns: literal}` in its `.metaobjects/config.json`;
+        # `load_directory` is project-unaware.
+        root = attach_naming(result.root, canonical_dir.parent)
 
         with closing(pg8000.connect(
             host=info.host, port=info.port, user=info.user, password=info.password, database=info.database,
         )) as conn:
-            om = ObjectManager(result.root, PostgresDriver(conn))
+            om = ObjectManager(root, PostgresDriver(conn))
 
             # --- Measurement: native integer + native exact decimal ---------------
             m = om.find_by_id("Measurement", 1)

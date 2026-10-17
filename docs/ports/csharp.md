@@ -278,12 +278,16 @@ entity extends gets a class of its own carrying the columns it declares and **no
 members at all** — it has no table and must never acquire one. `ColumnsByField` stays
 complete on every class, inherited entries included.
 
-The default column-naming strategy is `literal` here (unlike TypeScript's
-`snake_case`) — see the "Column naming" section of
-[`features/field-types.md`](../features/field-types.md) for why the defaults
-disagree across ports and what to do about it. Both `dotnet meta gen` and
-`dotnet meta verify` take the same `--column-naming` flag, so a
-`verify --codegen` regen resolves the identical column strings `gen` did.
+Column names come from the project's `naming` setting in `.metaobjects/config.json`
+(ADR-0058), the one every port reads, default `snake_case` (what `meta migrate` creates). A
+database whose columns are named exactly like the fields declares
+`"naming": { "columns": "literal" }`; through 1.0 that was this port's default. `dotnet meta gen`
+and `dotnet meta verify --codegen` both read the setting, so a plain run and the drift gate
+resolve the identical column strings; `--column-naming` is refused
+([physical-naming.md](../features/migrations/physical-naming.md)). `verify --codegen` says so
+when the committed output was generated with another rule, rather than telling you to
+regenerate. See the "Column naming" section of
+[`features/field-types.md`](../features/field-types.md).
 
 ## Use
 

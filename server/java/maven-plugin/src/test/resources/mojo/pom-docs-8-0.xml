@@ -42,6 +42,12 @@
                                 <outputDir>target/docs-8-0-test/generated</outputDir>
                             </args>
                         </generator>
+                        <generator>
+                            <classname>com.metaobjects.generator.spring.SpringValueObjectGenerator</classname>
+                            <args>
+                                <outputDir>target/docs-8-0-test/generated</outputDir>
+                            </args>
+                        </generator>
                     </generators>
                 </configuration>
                 <executions>

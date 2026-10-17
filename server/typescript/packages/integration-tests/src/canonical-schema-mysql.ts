@@ -16,7 +16,6 @@ import type { MetaRoot } from "@metaobjectsdev/metadata";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-import { CANONICAL_COLUMN_NAMING } from "./canonical-schema.ts";
 import { CANONICAL_DIR } from "./paths.ts";
 
 export const CANONICAL_MYSQL_SCHEMA_SQL_PATH = resolve(CANONICAL_DIR, "schema.mysql.sql");
@@ -116,7 +115,7 @@ const TABLES = [
  * drift apart in layout while each keeps its own HEADER/TABLES.
  */
 export function renderMysqlSchemaArtifact(header: string, tables: readonly string[], root: MetaRoot): string {
-  const views = buildReportViews(root, { dialect: "mysql", columnNamingStrategy: CANONICAL_COLUMN_NAMING });
+  const views = buildReportViews(root, { dialect: "mysql" });
   const statements = [
     ...tables,
     ...views.map((v) => `CREATE VIEW \`${v.name}\` AS\n${v.sql}`),

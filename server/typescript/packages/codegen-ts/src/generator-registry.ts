@@ -194,7 +194,7 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
     requires: [],
     runtimePackages: ["@metaobjectsdev/runtime-ts"],
     runtimePeers: ["drizzle-orm", "zod"],
-    configKeys: ["dialect", "extStyle", "outputLayout", "columnNamingStrategy",
+    configKeys: ["dialect", "extStyle", "outputLayout",
       "pluralizeCollections", "collectionNameOverrides", "providedEnumModule", "apiPrefix"],
     ejectable: ejectable("entity"),
   },
@@ -207,7 +207,6 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
     factory: () => namesFile(),
     factoryExport: "namesFile",
     options: "filter?, target?",
-    configKeys: ["columnNamingStrategy"],
     ejectable: ejectable("names"),
   },
   barrel: {
@@ -255,7 +254,7 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
     requires: ["entity"],
     runtimePackages: ["@metaobjectsdev/runtime-ts"],
     runtimePeers: ["fastify"],
-    configKeys: ["dbImport", "apiPrefix", "dialect", "extStyle", "outputLayout", "columnNamingStrategy"],
+    configKeys: ["dbImport", "apiPrefix", "dialect", "extStyle", "outputLayout"],
     ejectable: ejectable("routes"),
   },
   "routes-hono": {
@@ -321,7 +320,7 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
     tier: "neutral",
     factory: () => agentDocsFile(),
     factoryExport: "agentDocsFile",
-    options: "subDir?, schema?, columnNamingStrategy?, target?",
+    options: "subDir?, schema?, target?",
     ejectable: ejectable("agent-docs"),
   },
   "metamodel-docs": {
@@ -362,7 +361,6 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
     options: "filter?, target?",
     requires: ["entity"],
     runtimePeers: ["drizzle-orm"],
-    configKeys: ["columnNamingStrategy"],
     ejectable: ejectable("callable"),
   },
   "prompt-render": {
@@ -491,7 +489,7 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
     requires: [],
     runtimePackages: [],
     runtimePeers: [],
-    configKeys: ["dialect", "columnNamingStrategy"],
+    configKeys: ["dialect"],
     ejectable: ejectable("cube-model"),
   },
   "shared-model": {

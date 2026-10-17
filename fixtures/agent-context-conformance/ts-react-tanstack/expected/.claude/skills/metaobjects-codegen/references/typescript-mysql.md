@@ -97,7 +97,8 @@ The loop above ignores `view.schema`, which is the report source's `@schema` whe
 one. If yours does, create the view in that schema yourself (qualify the name in your
 migration); the loop will not.
 
-Pass `columnNamingStrategy` to match your tables' column names (the default is `snake_case`).
+The column names follow the project's `naming.columns` rule in `.metaobjects/config.json`
+(default `snake_case`); set it there to match your tables.
 The bodies are valid under MySQL's default `sql_mode`, `ONLY_FULL_GROUP_BY` included, and a
 change to a report means a new `CREATE OR REPLACE VIEW` (or `DROP` and `CREATE`) in your
 migrations; nothing diffs the live view for you. A `@spine` report's body is valid as

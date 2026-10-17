@@ -153,7 +153,7 @@ describe("generator-registry (ADR-0021 D3)", () => {
     expect(entry.requires).toEqual([]);
     expect(entry.runtimePackages).toEqual([]);
     expect(entry.runtimePeers).toEqual([]);
-    expect(entry.configKeys).toEqual(["dialect", "columnNamingStrategy"]);
+    expect(entry.configKeys).toEqual(["dialect"]);
     expect(entry.options).toBe("dialect?, filter?, target?");
     expect(entry.description).toContain("model/cubes/*.yml");
     expect(entry.factory().name).toBe("cube-model");

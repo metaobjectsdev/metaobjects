@@ -37,6 +37,11 @@ generator exporting `<camelName>Generator()` — and adds its import and entry t
 prints the two lines to add). It refuses a reference generator's name (eject that one
 instead) and never overwrites your file without `--force`. Then edit the emit.
 
+In a repository that also has a C# port, `dotnet meta init` writes its codegen project into
+this same `codegen/` (`Generators.cs`, `Program.cs`, `Codegen.csproj`, and C# ejects in
+`codegen/generators/`). The two coexist: `tsconfig.codegen.json` includes only
+`codegen/**/*.ts`, and the C# project compiles only `*.cs`.
+
 Everything a generator reads comes from `@metaobjectsdev/codegen-ts`: `perEntity` /
 `perPackage` / `perModel`, `isAbstract`, `hasAnyRdbSource`, `isProjection`,
 `servesReadApi` / `servesWriteApi`, `objectRefTarget`, `enumValues`, `effectivePackage`,
@@ -81,7 +86,6 @@ export default defineConfig({
   dialect: "postgres",                 // "postgres" | "sqlite" | "d1" | "mysql" (mysql: codegen + runtime; migrate does not own it)
   extStyle: "js",                      // "js" (default) for Node ESM / plain tsc; "none" for a bundler-resolution toolchain — see `owning-generators.md` "Your framework isn't the default"
   apiPrefix: "/api",                   // flows to routes AND client fetch URLs
-  columnNamingStrategy: "snake_case",  // "snake_case" (default) | "literal" | "kebab-case"
   timestampMode: "string",             // "string" (default, ISO-8601 wire contract) | "date" (Drizzle native Date)
   pluralizeCollections: true,          // default; table VARS auto-pluralize (AgentConfig → agentConfigs)
   collectionNameOverrides: {           // per-entity escape hatch for names the rule gets wrong

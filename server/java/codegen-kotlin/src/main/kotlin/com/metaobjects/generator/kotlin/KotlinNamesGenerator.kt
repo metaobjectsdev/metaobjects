@@ -76,24 +76,27 @@ import java.nio.file.Paths
  *
  * Args:
  *  - `outputDir` (required): output directory root.
- *  - `columnNaming` (optional): the column-naming strategy — the SAME generator arg
- *    [KotlinExposedTableGenerator] reads (via [KotlinGenUtil.ARG_COLUMN_NAMING]), so a
- *    run resolves the column string this artifact declares and the column
- *    [KotlinExposedTableGenerator] binds through the identical resolver + argument.
+ *
+ * `columnNaming` is REMOVED (ADR-0058, 1.1.0) — column naming is `naming.columns` in
+ * `.metaobjects/config.json` now, read from the loaded root
+ * ([com.metaobjects.database.PhysicalNaming.of]), the SAME rule [KotlinExposedTableGenerator]
+ * resolves, so the column this artifact declares and the column that generator binds
+ * through cannot disagree any more.
  */
 open class KotlinNamesGenerator :
     MultiFileDirectGeneratorBase<MetaObject>(), EmitsPhysicalNameConstants {
-
-    /** See [KotlinExposedTableGenerator.columnNaming] — same arg, same default. */
-    protected fun columnNaming(): String =
-        getArg(KotlinGenUtil.ARG_COLUMN_NAMING, KotlinGenUtil.DEFAULT_COLUMN_NAMING)
 
     override fun getFilterClass(): Class<MetaObject> = MetaObject::class.java
 
     override fun execute(loader: MetaDataLoader) {
         parseArgs()
+        // ADR-0058 — the pom generator arg is REMOVED; refuse by name.
+        if (hasArg(KotlinGenUtil.ARG_COLUMN_NAMING)) {
+            throw GeneratorException(com.metaobjects.database.ColumnNaming.removedConfigurationMessage(
+                "the columnNaming generator arg in pom.xml", getArg(KotlinGenUtil.ARG_COLUMN_NAMING)))
+        }
         val outRoot = Paths.get(outDir.absolutePath)
-        val strategy = columnNaming()
+        val strategy = com.metaobjects.database.PhysicalNaming.of(loader.root).columns()
         // Pass 1 — every object that participates in the database (#248).
         val emitted = mutableSetOf<String>()
         for (entity in loader.metaObjects) {

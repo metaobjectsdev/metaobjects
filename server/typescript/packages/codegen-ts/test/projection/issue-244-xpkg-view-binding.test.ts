@@ -53,7 +53,7 @@ describe("#244 — FQN @from/@via in a projection binds the qualified package's 
   for (const order of ["core-first", "reporting-first"] as const) {
     test(`joins acme::core "customer" (not reporting_customer) — ${order}`, async () => {
       const root = await loadBoth(order);
-      const view = buildProjectionViews(root, { dialect: "postgres", columnNamingStrategy: "snake_case" })
+      const view = buildProjectionViews(root, { dialect: "postgres" })
         .find((v) => v.name === "order_tier_view");
       expect(view).toBeDefined();
       // The join + dependency must be the acme::core Customer table.

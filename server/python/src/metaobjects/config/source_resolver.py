@@ -6,7 +6,7 @@ from typing import Callable
 
 from metaobjects.errors import ErrorCode, ParseError
 from metaobjects.loader.sources import DirectorySource
-from metaobjects.naming import package_of_resolution_key
+from metaobjects.naming import NamingRules, package_of_resolution_key
 from metaobjects.scope import compile_scope, matches_scope
 
 from .dependencies import (
@@ -154,6 +154,7 @@ def _collection_from_own_files(
     scope_include: list[str] = cfg.scope_include if cfg is not None else []
     migrate_scope: list[str] | None = cfg.migrate_scope if cfg is not None else None
     libraries: list[str] = cfg.libraries if cfg is not None else []
+    naming: NamingRules = cfg.naming if cfg is not None else NamingRules()
 
     lock = read_lock(root)
     dependencies: list[ResolvedDependency] = (
@@ -183,6 +184,7 @@ def _collection_from_own_files(
             migrate_scope, imported_packages, has_dependencies=bool(dependencies)
         ),
         libraries=tuple(libraries),
+        naming=naming,
     )
 
 

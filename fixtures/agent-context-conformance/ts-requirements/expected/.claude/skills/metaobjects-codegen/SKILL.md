@@ -135,7 +135,10 @@ systems — and have it import the generated types.
 
 You run a `gen` step. The runner:
 
-1. Loads all metadata under `metaobjects/` (the same loader the runtime uses).
+1. Loads the project's metadata from wherever its configuration points (the same loader
+   the runtime uses): `sources` in `.metaobjects/config.json` (TypeScript, and C# when gen
+   names no `<metadataDir>`), `metadata` in `metaobjects.config.yaml` (Python), the
+   plugin's `<loader><sourceDir>` (Java, Kotlin). `metaobjects/` is only the default.
 2. Resolves output targets and precomputes shared render state.
 3. Runs each configured **generator** — most emit one file per entity; some emit a
    single shared file (a barrel, a DB-context, an app-config).

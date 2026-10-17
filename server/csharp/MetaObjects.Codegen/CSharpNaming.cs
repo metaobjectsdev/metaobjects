@@ -169,21 +169,6 @@ public sealed record ObjectNames
 /// <summary>The object whose names artifact this one extends.</summary>
 public sealed record SuperNames(string Name, string? Package);
 
-/// <summary>
-/// Column-naming strategy for fields with no <c>@column</c> override. C# port
-/// defaults to <see cref="Literal"/> (EF Core property=column convention); TS
-/// port defaults to <see cref="SnakeCase"/> (PG convention).
-/// </summary>
-public enum ColumnNamingStrategy
-{
-    /// <summary>Field name verbatim. EF Core default.</summary>
-    Literal,
-    /// <summary>camelCase / PascalCase → snake_case. PG / TS default.</summary>
-    SnakeCase,
-    /// <summary>camelCase / PascalCase → kebab-case.</summary>
-    KebabCase,
-}
-
 /// <summary>Field-subtype -> C# type + naming helpers for the EF Core generators.</summary>
 public static class CSharpNaming
 {
@@ -447,7 +432,7 @@ public static class CSharpNaming
     /// field name run through <paramref name="strategy"/>. Shared so the schema
     /// DDL and the [Column] annotation agree.
     /// </summary>
-    public static string Column(MetaField field, ColumnNamingStrategy strategy = ColumnNamingStrategy.Literal) =>
+    public static string Column(MetaField field, ColumnNamingStrategy strategy = ColumnNamingStrategy.SnakeCase) =>
         field.DbColumn ?? ApplyStrategy(field.Name, strategy);
 
     /// <summary>Apply <paramref name="strategy"/> to a raw field name.</summary>
@@ -508,7 +493,7 @@ public static class CSharpNaming
     /// the object subtype.
     /// </para>
     /// </summary>
-    public static ObjectNames? ResolveObjectNames(MetaObject obj, ColumnNamingStrategy strategy = ColumnNamingStrategy.Literal)
+    public static ObjectNames? ResolveObjectNames(MetaObject obj, ColumnNamingStrategy strategy = ColumnNamingStrategy.SnakeCase)
     {
         // FR-044 — a report resolves no names artifact, so NamesGenerator emits none and
         // the report's generated row (ReportRows) spells its view and columns as literals
@@ -726,7 +711,7 @@ public static class CSharpNaming
     /// walk and the emit cannot disagree about which ancestors exist.</para>
     /// </summary>
     public static ObjectNames? ResolveSuperFragmentNames(
-        MetaObject obj, ColumnNamingStrategy strategy = ColumnNamingStrategy.Literal)
+        MetaObject obj, ColumnNamingStrategy strategy = ColumnNamingStrategy.SnakeCase)
     {
         if (!DeclaresNamesContent(obj)) return null;
         var own = obj.OwnFields();

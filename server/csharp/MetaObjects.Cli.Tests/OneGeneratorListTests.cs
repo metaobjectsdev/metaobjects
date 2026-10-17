@@ -165,7 +165,7 @@ public sealed class OneGeneratorListTests : IDisposable
         Assert.False(Directory.Exists(DocsDir));
         Assert.Equal(
             "dotnet meta docs was removed in 1.1.0. `dotnet meta gen` writes documentation now: declare each docs " +
-            "generator in codegen/Generators.cs. See docs/features/migrations/docs-are-generators.md, section \"C#\".",
+            "generator in codegen/Generators.cs. See https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md, section \"C#\".",
             CodegenCli.DocsCommandRemoved);
     }
 
@@ -184,7 +184,7 @@ public sealed class OneGeneratorListTests : IDisposable
     private static readonly string LegacyLine =
         "dotnet meta gen: found 1.0 docs configuration (--project, --model-base-url). Nothing reads it any more, " +
         "so this run would write no documentation. Declare each docs generator in codegen/Generators.cs. See " +
-        "docs/features/migrations/docs-are-generators.md, section \"C#\".";
+        "https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md, section \"C#\".";
 
     [Fact]
     public void Gen_given_1_0_docs_flags_prints_the_amendment_line_and_writes_nothing()
@@ -220,7 +220,7 @@ public sealed class OneGeneratorListTests : IDisposable
         Assert.Equal(2, exit);
         Assert.Equal(
             "dotnet meta gen: no codegen/Generators.cs. The generator list lives there in 1.1.0, documentation " +
-            "included; `dotnet meta init` writes it. See docs/features/migrations/docs-are-generators.md, section \"C#\".",
+            "included; `dotnet meta init` writes it. See https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md, section \"C#\".",
             stderr.Trim());
         Assert.Equal(CodegenCli.NoGeneratorList("dotnet meta gen"), stderr.Trim());
         Assert.Empty(FilesUnder(OutDir));
@@ -265,7 +265,7 @@ public sealed class OneGeneratorListTests : IDisposable
         var list = File.ReadAllText(Path.Combine(_tmp, "codegen", "Generators.cs"));
         Assert.Equal(CodegenScaffold.GeneratorsCs([]), list);
         Assert.Contains("public static class Generators", list);
-        Assert.Contains("public static IReadOnlyList<IGenerator> All { get; } =\n    [\n    ];", list);
+        Assert.Contains("public static IReadOnlyList<IGenerator> All { get; } =\n    [\n    ];\n", list);
         Assert.Contains($"Version=\"{EjectCommand.ToolVersion()}\"", File.ReadAllText(Path.Combine(_tmp, "codegen", "Codegen.csproj")));
 
         // A second init keeps every file, edits included.
@@ -320,7 +320,7 @@ public sealed class OneGeneratorListTests : IDisposable
     private static string LegacyProgramLine(string command) =>
         $"{command}: codegen/Program.cs does not run Generators.All, so it would ignore the generator list in " +
         "codegen/Generators.cs. Replace it with the two-line entry `using MetaObjects.Codegen;` and " +
-        "`return CodegenCli.Run(args, Generators.All);`. See docs/features/migrations/docs-are-generators.md, section \"C#\".";
+        "`return CodegenCli.Run(args, Generators.All);`. See https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md, section \"C#\".";
 
     [Fact]
     public void Gen_with_a_1_0_program_refuses_with_the_migration_line_and_writes_nothing()
@@ -358,7 +358,7 @@ public sealed class OneGeneratorListTests : IDisposable
         Assert.DoesNotContain(lines, l => l.Contains("is the generator list `dotnet meta gen` runs", StringComparison.Ordinal));
         Assert.Contains(lines, l => l.StartsWith("codegen/Program.cs does not run Generators.All", StringComparison.Ordinal));
         Assert.Contains("  return CodegenCli.Run(args, Generators.All);", lines);
-        Assert.Contains("See docs/features/migrations/docs-are-generators.md, section \"C#\".", lines);
+        Assert.Contains("See https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md, section \"C#\".", lines);
         Assert.Equal(LegacyProgramCs, File.ReadAllText(Path.Combine(_tmp, "codegen", "Program.cs")));
     }
 
@@ -374,7 +374,7 @@ public sealed class OneGeneratorListTests : IDisposable
         Assert.DoesNotContain(outcome.Out, l => l.Contains("run that list", StringComparison.Ordinal));
         Assert.Contains(outcome.Out, l => l.StartsWith("codegen/Program.cs does not run Generators.All", StringComparison.Ordinal));
         Assert.Contains("  return CodegenCli.Run(args, Generators.All);", outcome.Out);
-        Assert.Contains("See docs/features/migrations/docs-are-generators.md, section \"C#\".", outcome.Out);
+        Assert.Contains("See https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md, section \"C#\".", outcome.Out);
         Assert.Equal(LegacyProgramCs, File.ReadAllText(Path.Combine(_tmp, "codegen", "Program.cs")));
     }
 

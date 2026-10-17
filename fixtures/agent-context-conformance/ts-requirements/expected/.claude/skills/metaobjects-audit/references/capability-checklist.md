@@ -351,9 +351,10 @@ to nothing, and does not check that each claimed node complies).
     non-`table` source-kind / flattened-object codegen is partial). **C#** has no
     ObjectManager runtime tier (EF Core *is* the runtime) — hand services over the generated
     `DbContext` are expected.
-- **Single-source config** — `apiPrefix` (URL prefix wired into routes + hooks) and
-  `columnNamingStrategy` (snake_case / literal / kebab-case) and per-target output dirs:
-  hunt these values hard-coded in multiple places instead of resolved from config.
+- **Single-source config** — `apiPrefix` (URL prefix wired into routes + hooks), the
+  `naming` block of `.metaobjects/config.json` (column and table rules, read by every port)
+  and per-target output dirs: hunt these values hard-coded in multiple places instead of
+  resolved from config.
 - **CALIBRATION — planned, not yet shipped:** the declared-API surface (`api.base`,
   `api.operational`, `operation.query`, `operation.command`, `binding.rest`) and MCP exposure
   of declared prompts/tools are **not yet in the registry** — their absence is not an adopter

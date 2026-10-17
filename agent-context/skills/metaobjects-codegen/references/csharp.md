@@ -51,6 +51,19 @@ public static class Generators
 }
 ```
 
+**Column names come from `naming` in `.metaobjects/config.json`, the one setting every port
+reads** (ADR-0058): `meta migrate`, every port's codegen and every runtime `ObjectManager`.
+The default is `snake_case`, what `meta migrate` creates. A database whose columns are named
+exactly like the fields declares it there, once, for every port:
+
+```json
+{ "schema_version": 1, "naming": { "columns": "literal" } }
+```
+
+There is no per-port or command-line naming: `--column-naming` is refused, and
+`verify --codegen` names a naming mismatch as one rather than telling you to regenerate. Through 1.0 this port defaulted to the field names; a
+database built that way needs the `literal` line above.
+
 ```bash
 dotnet meta gen metaobjects --out Generated --namespace Acme.Generated   # runs the list
 dotnet meta gen --list                      # list registered generators
@@ -62,6 +75,15 @@ dotnet meta verify metaobjects --codegen --out Generated   # codegen-drift gate 
 no `codegen/Generators.cs` they exit 2 and write nothing. `--generators` narrows a run to the
 declared entries named and never adds one: naming an entry the list does not declare is
 refused. `verify --codegen` regenerates the same list, so it never disagrees with `gen`.
+
+**Where `codegen/` goes, and sharing it with a TypeScript port.** `gen` looks for
+`codegen/` in the project root: the parent of the `<metadataDir>` it is given, or the
+directory it runs in when given none. Run `dotnet meta init` there (or pass that directory as
+`--root <dir>`); a `codegen/` anywhere else is never run. In a repository that also has a
+TypeScript port, that is the same `codegen/` the TypeScript side keeps its owned generators
+in, and C# ejects land in its `codegen/generators/` beside the `.ts` copies. They coexist:
+`Codegen.csproj` compiles only `*.cs` and `tsconfig.codegen.json` only `*.ts`. Ignore the
+build output (`codegen/bin/`, `codegen/obj/`) in `.gitignore`.
 
 `dotnet meta verify` defaults to `--templates` (the FR-004 prompt/template drift
 gate, see the prompts reference); `--codegen` is the codegen-output drift gate.
@@ -78,23 +100,26 @@ is a two-line entry point that passes the list to `CodegenCli.Run`. `dotnet meta
 set and no separate docs command. `--generators <names>` narrows a run to entries the
 list already declares, by stable name; it never adds one, and naming an entry the list
 does not declare is refused. `dotnet meta gen --list` is the catalog of what the port
-registers, not what this project runs. Output lands under `--namespace` in
+registers, not what this project runs; under each name it prints the expression that lists
+that generator in `codegen/Generators.cs` and its options. Output lands under `--namespace` in
 `--out` unless a generator's own init properties say otherwise — documentation
 does (below).
 
-| Stable name | Output |
-|---|---|
-| `entity` | `<Entity>.g.cs` — an EF Core entity class per `object.entity` / projection: PascalCase props mapped via `[Column]`, `[Table]`, `[Key]` (or class-level `[PrimaryKey]` for composites), `[MaxLength]`/validators, nullability from `@required`. Enum fields → a nested (or shared) C# `enum`; object fields → owned-type navigations; every concrete value object and sourceless projection → a POCO, which is also the template tier's payload/response type (ADR-0056; package-qualified, e.g. `AcmeAlphaNote`, when another object shares its short name). A TPH `@discriminator` base is emitted `abstract` with `: Base` subtypes (single-table). |
-| `db-context` | one `AppDbContext` — a `DbSet<T>` per entity + `OnModelCreating`: `.HasConversion<string>()` (enums), `.OwnsOne(...)`/`.ToJson(...)` (owned/jsonb object fields), `.HasPrecision(p,s)` (decimals), `.UsingEntity<>(...)` (M:N), `.HasDiscriminator(e => e.Type).HasValue<Sub>(...)` (TPH). |
-| `routes` | `<Entity>Routes.cs` — ASP.NET **Minimal API** CRUD per writable entity (`source.rdb @kind="table"`) on the cross-port REST contract (`?filter[field][op]=`, `?sort=field:asc`, `?limit`/`?offset`, `?withCount=1` envelope, 400/404 envelopes). A TPH base emits polymorphic `GET /<base>(+/{id})` + a per-subtype CRUD set at `/<base>/<discriminatorValue lowercased>` (create injects the discriminator, cross-subtype get/update/delete → 404). |
-| `filter-allowlist` | per-entity `<Entity>FilterAllowlist` (FR-009 — the server-side field+operator allowlist the routes validate against). |
-| `callable` | `<Entity>.callable.g.cs` — an FR-015 calling method for a `source.rdb @kind="storedProc"|"tableFunction"`, via EF `FromSqlInterpolated` (args from the `@parameterRef` value object in declaration order). |
-| `output-parser` / `extractor` / `output-prompt` / `render-helper` | the prompt-pillar artifacts for a **responding `template.prompt`** — one carrying `@responseRef` (ADR-0052: these tiers are INBOUND; `template.output` is outbound only and emits no parser). The strict parser, the tolerant `extract`, the **output-format prompt fragment** (`output-prompt`; presentation via `@promptStyle: guide`/`inline`/`exampleOnly`), and the typed render helper. They reference the value objects' POCOs from `entity` and declare no payload type — wire `entity` too (`--list` says so). See the **prompts** reference. |
-| `names` | `<Entity>Names.g.cs` — `public abstract class <Entity>Names` of `const` physical database names, MIRRORING THE METADATA TREE: the object's own `Type`/`SubType`/`Name` (`Name` is the OBJECT's name, never a physical one), then per `source.rdb` keyed by `@role` — `SourcePrimaryType`/`SubType`/`Kind`, `SourcePrimarySchema` when declared, and the physical name under the alias for its `@kind` (`SourcePrimaryTable` / `SourceReplicaView` / `SourcePrimaryProc` / `…Function` / `…MaterializedView`) — then a `<Field>Field`/`<Field>Column` pair per field, then each identity and index (`IdentityPkName`, and `IdentityUqCustEmailIndex` / `IndexIxCustStatusIndex` — the DATABASE name, carried for `identity.secondary` and `index.lookup` only), then a complete `ColumnsByField`. There is no `ReadOnly`: it is a derivation over `@kind`, so ask `SourcePrimaryKind`. Emitted for every object with a declared or inherited primary source, PLUS a fragment for any abstract base such an object extends (its own identity + columns, and NO source members — it has no table). A class whose object extends another one **inherits** it (`class CopayAuthNames : AuthNames`) rather than restating its constants — a C# `const` is inherited, so `CopayAuthNames.IdColumn` and `CopayAuthNames.SourcePrimaryTable` resolve through the base (`Type`/`SubType`/`Name` are redeclared with `new`, since every artifact carries its own). `abstract`, not `static`, precisely so it can be inherited; it still cannot be instantiated. In the run, `entity` and `db-context` reference the constants (`[Table(OrderNames.SourcePrimaryTable)]`, `[Column(OrderNames.StatusColumn)]`, `.ToView(OrderNames.SourceReplicaView)`); a run without `names` falls back to literals. |
-| `template` | the generic Mustache `templateGenerator()` primitive. |
+| Stable name | Entry in `codegen/Generators.cs` (`new MetaObjects.Codegen.Generators.…`) | Output |
+|---|---|---|
+| `entity` | `EntityGenerator()` | `<Entity>.g.cs` — an EF Core entity class per `object.entity` / projection: PascalCase props mapped via `[Column]`, `[Table]`, `[Key]` (or class-level `[PrimaryKey]` for composites), `[MaxLength]`/validators, nullability from `@required`. Enum fields → a nested (or shared) C# `enum`; object fields → owned-type navigations; every concrete value object and sourceless projection → a POCO, which is also the template tier's payload/response type (ADR-0056; package-qualified, e.g. `AcmeAlphaNote`, when another object shares its short name). A TPH `@discriminator` base is emitted `abstract` with `: Base` subtypes (single-table). |
+| `db-context` | `DbContextGenerator()` | one `AppDbContext` — a `DbSet<T>` per entity + `OnModelCreating`: `.HasConversion<string>()` (enums), `.OwnsOne(...)`/`.ToJson(...)` (owned/jsonb object fields), `.HasPrecision(p,s)` (decimals), `.UsingEntity<>(...)` (M:N), `.HasDiscriminator(e => e.Type).HasValue<Sub>(...)` (TPH). |
+| `routes` | `RoutesGenerator()` | `<Entity>Routes.cs` — ASP.NET **Minimal API** CRUD per writable entity (`source.rdb @kind="table"`) on the cross-port REST contract (`?filter[field][op]=`, `?sort=field:asc`, `?limit`/`?offset`, `?withCount=1` envelope, 400/404 envelopes). A TPH base emits polymorphic `GET /<base>(+/{id})` + a per-subtype CRUD set at `/<base>/<discriminatorValue lowercased>` (create injects the discriminator, cross-subtype get/update/delete → 404). |
+| `filter-allowlist` | `FilterAllowlistGenerator()` | per-entity `<Entity>FilterAllowlist` (FR-009 — the server-side field+operator allowlist the routes validate against). |
+| `callable` | `CallableGenerator()` | `<Entity>.callable.g.cs` — an FR-015 calling method for a `source.rdb @kind="storedProc"|"tableFunction"`, via EF `FromSqlInterpolated` (args from the `@parameterRef` value object in declaration order). |
+| `output-parser` / `extractor` / `output-prompt` / `render-helper` | `OutputParserGenerator()`, `ExtractorGenerator()`, `OutputPromptGenerator()`, `RenderHelperGenerator("prompts")` (its constructor argument is the template root its refs resolve from) | the prompt-pillar artifacts for a **responding `template.prompt`** — one carrying `@responseRef` (ADR-0052: these tiers are INBOUND; `template.output` is outbound only and emits no parser). The strict parser, the tolerant `extract`, the **output-format prompt fragment** (`output-prompt`; presentation via `@promptStyle: guide`/`inline`/`exampleOnly`), and the typed render helper. They reference the value objects' POCOs from `entity` and declare no payload type — wire `entity` too (`--list` says so). See the **prompts** reference. |
+| `names` | `NamesGenerator()` | `<Entity>Names.g.cs` — `public abstract class <Entity>Names` of `const` physical database names, MIRRORING THE METADATA TREE: the object's own `Type`/`SubType`/`Name` (`Name` is the OBJECT's name, never a physical one), then per `source.rdb` keyed by `@role` — `SourcePrimaryType`/`SubType`/`Kind`, `SourcePrimarySchema` when declared, and the physical name under the alias for its `@kind` (`SourcePrimaryTable` / `SourceReplicaView` / `SourcePrimaryProc` / `…Function` / `…MaterializedView`) — then a `<Field>Field`/`<Field>Column` pair per field, then each identity and index (`IdentityPkName`, and `IdentityUqCustEmailIndex` / `IndexIxCustStatusIndex` — the DATABASE name, carried for `identity.secondary` and `index.lookup` only), then a complete `ColumnsByField`. There is no `ReadOnly`: it is a derivation over `@kind`, so ask `SourcePrimaryKind`. Emitted for every object with a declared or inherited primary source, PLUS a fragment for any abstract base such an object extends (its own identity + columns, and NO source members — it has no table). A class whose object extends another one **inherits** it (`class CopayAuthNames : AuthNames`) rather than restating its constants — a C# `const` is inherited, so `CopayAuthNames.IdColumn` and `CopayAuthNames.SourcePrimaryTable` resolve through the base (`Type`/`SubType`/`Name` are redeclared with `new`, since every artifact carries its own). `abstract`, not `static`, precisely so it can be inherited; it still cannot be instantiated. In the run, `entity` and `db-context` reference the constants (`[Table(OrderNames.SourcePrimaryTable)]`, `[Column(OrderNames.StatusColumn)]`, `.ToView(OrderNames.SourceReplicaView)`); a run without `names` falls back to literals. |
+| `template` | `TemplateGenerator.Create(name, template, walk, provider)` (a factory, not `new`) | the generic Mustache `templateGenerator()` primitive. |
 
-Metadata lives under `metaobjects/` (or wherever you point `--metadata-dir`) in the
-same canonical JSON every port reads — fused-key form, `source.rdb` + `@table`,
+Metadata lives in the directory the gen run's positional `<metadataDir>` argument
+names (`dotnet meta gen ./model --out …`); with none, `sources` in
+`.metaobjects/config.json` decides, and `metaobjects/` is only that file's default. There
+is no `--metadata-dir` flag. It is the same canonical JSON every port reads — fused-key form, `source.rdb` + `@table`,
 `@column` for a renamed physical column.
 
 **Projections (read-only views).** An `object.projection` (read-only `source.rdb`
@@ -161,7 +186,7 @@ reference is `ApiDocsGenerator`, an ordinary entry in the same list as every oth
 generator:
 
 ```csharp
-new ApiDocsGenerator { OutDir = "Docs" }   // → Docs/api/csharp (AGENT-API.md + per-entity pages)
+new ApiDocsGenerator { OutDir = "docs/csharp" }   // → docs/csharp/api/csharp (AGENT-API.md + per-entity pages)
 ```
 
 `dotnet meta gen` writes it, alongside everything else `codegen/Generators.cs` declares.
@@ -169,8 +194,8 @@ new ApiDocsGenerator { OutDir = "Docs" }   // → Docs/api/csharp (AGENT-API.md 
 generated code. **Before calling any generated code, read `api/csharp/AGENT-API.md`.**
 Options (init properties): `OutDir` (give it a directory of generated files only; unset, the pages land under `--out`), `ApiSubDir` (default `api/csharp`),
 `ProjectName`, `ModelBaseUrl`. To write only the documentation,
-`dotnet meta gen --generators api-docs`. Migrating a project that ran `dotnet meta docs`:
-`docs/features/migrations/docs-are-generators.md`, section "C#".
+`dotnet meta gen --generators api-docs`. In a repository with more than one port, give each port's documentation its own directory: another port's generated pages count as foreign files, and in a shared directory each port's `verify --codegen` reports the other ports' pages as drift. Migrating a project that ran `dotnet meta docs`:
+<https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md>, section "C#".
 
 ## Persistence + routes are the deployed artifact
 

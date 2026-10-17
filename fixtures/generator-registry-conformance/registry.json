@@ -367,7 +367,6 @@
         "codegenPackages": ["MetaObjects.Codegen.**"],
         "engine": [
           "MetaObjects.Codegen.CSharpNaming",
-          "MetaObjects.Codegen.ColumnNamingStrategy",
           "MetaObjects.Codegen.EmittedFile",
           "MetaObjects.Codegen.FieldNames",
           "MetaObjects.Codegen.GenConfig",

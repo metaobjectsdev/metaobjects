@@ -61,7 +61,9 @@ from metaobjects.codegen.runtime.m2m_codegen import (
 )
 from metaobjects.codegen.generators.router_generator import render_router
 from metaobjects.codegen.generators.tph_plan import tph_plan_for, tph_subtype_binding
+from metaobjects.config.neutral_config import read_neutral_config
 from metaobjects.meta.core.object.meta_object import MetaObject
+from metaobjects.naming import DEFAULT_COLUMN_NAMING
 from metaobjects.shared.base_types import TYPE_OBJECT
 from metaobjects.source_resolution import resolve_table_name
 
@@ -140,10 +142,20 @@ def build_generated_m2m_app(m2m_dir: Path) -> tuple[FastAPI, "_CombinedM2mRepo"]
     entities = _load_entities(m2m_dir / "meta.json")
     index = build_object_index(list(entities.values()))
 
+    # ADR-0058 — this corpus's project (fixtures/api-contract-conformance) pins
+    # `naming` in its `.metaobjects/config.json` (the rule its seed.json's keys and
+    # the generated routers must agree on); read it via the neutral config reader
+    # rather than hardcoding a strategy, so a project declaring none still falls
+    # back to the port default.
+    cfg = read_neutral_config(m2m_dir.parent)
+    column_naming = cfg.naming.columns if cfg is not None else DEFAULT_COLUMN_NAMING
+
     # Vanilla (non-TPH-source) M:N descriptors, across both source entities.
     vanilla_descriptors: list[M2mDescriptor] = []
     for src_name in ("Post", "Person"):
-        vanilla_descriptors.extend(resolve_m2m_descriptors(entities[src_name], index))
+        vanilla_descriptors.extend(
+            resolve_m2m_descriptors(entities[src_name], index, column_naming)
+        )
 
     # The TPH discriminator base (Account). Every M:N reachable ANYWHERE in the
     # hierarchy — base-declared (badges), abstract-mid-declared (scopes, via
@@ -155,10 +167,10 @@ def build_generated_m2m_app(m2m_dir: Path) -> tuple[FastAPI, "_CombinedM2mRepo"]
     if plan is None:
         raise RuntimeError("Account is expected to be a TPH discriminator base")
     tph_union: dict[str, M2mDescriptor] = {
-        d.relation_name: d for d in resolve_m2m_descriptors(account, index)
+        d.relation_name: d for d in resolve_m2m_descriptors(account, index, column_naming)
     }
     for st in plan.subtypes:
-        for d in resolve_m2m_descriptors(st.entity, index):
+        for d in resolve_m2m_descriptors(st.entity, index, column_naming):
             tph_union.setdefault(d.relation_name, d)
     tph_descriptors = list(tph_union.values())
 

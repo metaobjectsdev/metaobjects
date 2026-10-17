@@ -6,6 +6,7 @@ physical-name aliases (@table / @view / @materializedView / @proc / @function)
 """
 from __future__ import annotations
 
+from ....naming import TABLE_NAMING_LITERAL, naming_rules_of
 from ...meta_data import MetaData
 from .source_constants import (
     ALL_PHYSICAL_NAME_ALIASES,
@@ -130,16 +131,24 @@ class MetaSource(MetaData):
         # super node.
         return self.get_meta_attr(SOURCE_ATTR_UNMANAGED) is True
 
-    def physical_name(self) -> str:
-        """Resolved physical SQL name for this source (FR-016 / ADR-0018).
+    def physical_name(self, table_naming: str | None = None) -> str:
+        """Resolved physical SQL name for this source (FR-016 / ADR-0018, table
+        casing per ADR-0058).
 
         Four-step rule:
             1. Kind-matching alias (e.g. ``@proc`` when ``@kind: "storedProc"``).
             2. Legacy ``@table`` for non-table kind (pre-1.0 fallback).
-            3. Source's bare structural ``name`` via snake_case
-               (no pluralize — the source's name IS the logical name).
-            4. Owning entity's name via the frozen legacy ``pluralize(snake_case())``
-               — see module-level ``_pluralize``'s docstring for why it is frozen.
+            3. Source's bare structural ``name``, cased by the project's ``tables``
+               rule (no pluralize — the source's name IS the logical name).
+            4. Owning entity's name, cased by the same rule and THEN pluralized by
+               the frozen legacy ``pluralize()`` — see module-level ``_pluralize``'s
+               docstring for why it is frozen — under EVERY rule.
+
+        ``table_naming`` defaults to ``None``, which resolves the ``tables`` rule from
+        this source's own loaded root (:func:`metaobjects.naming.naming_rules_of` —
+        ADR-0058: the loaded root carries the ONE project setting). Pass an explicit
+        value only to probe an alternate rule against a committed tree, never as a
+        second, independently-configured source.
 
         Callers needing the legacy raw ``@table`` slot only should use
         :meth:`table_name`; codegen / runtime should use ``physical_name``.
@@ -159,14 +168,18 @@ class MetaSource(MetaData):
             if isinstance(legacy, str) and legacy:
                 return legacy
 
-        # Step 3: source's structural name → snake_case (no pluralize).
-        if self.name:
-            return _to_snake_case(self.name)
+        rule = table_naming if table_naming is not None else naming_rules_of(self).tables
+        literal = rule == TABLE_NAMING_LITERAL
 
-        # Step 4: owning entity's name → pluralize(snake_case).
+        # Step 3: source's structural name, cased by the rule (no pluralize).
+        if self.name:
+            return self.name if literal else _to_snake_case(self.name)
+
+        # Step 4: owning entity's name, cased by the rule, then pluralized.
         owner = self.parent
         if owner is not None and getattr(owner, "name", ""):
-            return _pluralize(_to_snake_case(owner.name))
+            cased = owner.name if literal else _to_snake_case(owner.name)
+            return _pluralize(cased)
 
         return ""
 

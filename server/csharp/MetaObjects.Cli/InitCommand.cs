@@ -8,6 +8,8 @@
 // never edit it again. `dotnet meta eject` writes the same three files when they are missing,
 // with the generators it ejected already in the list.
 
+using MetaObjects.Codegen;
+
 namespace MetaObjects.Cli;
 
 /// <summary>The three files of the codegen project, as init and eject write them.</summary>
@@ -54,7 +56,7 @@ public static class CodegenScaffold
         "codegen/Program.cs does not run Generators.All, so `dotnet meta gen` and `dotnet meta verify --codegen` " +
         "refuse until it does. It is yours, so init and eject never edit it: replace it with the two-line entry",
         .. ProgramCs.TrimEnd('\n').Split('\n').Select(l => "  " + l),
-        "See docs/features/migrations/docs-are-generators.md, section \"C#\".",
+        $"See {CodegenCli.DocsMigrationGuide}.",
     ];
 
     /// <summary>
@@ -64,7 +66,7 @@ public static class CodegenScaffold
     /// </summary>
     public static string GeneratorsCs(IEnumerable<string> entries)
     {
-        var lines = string.Concat(entries.Select(e => $"        {e},\n"));
+        var lines = string.Concat(entries.Select(e => $"            {e},\n"));
         return
             "// The generator list (ADR-0034 Amendment 9). `dotnet meta gen` runs exactly these entries and\n" +
             "// `dotnet meta verify --codegen` regenerates them and compares; nothing else is generated,\n" +
@@ -72,11 +74,14 @@ public static class CodegenScaffold
             "// `dotnet meta gen --list` is the catalog. `dotnet meta eject <name>` copies a generator into\n" +
             "// codegen/generators/ to own; list the copy (Codegen.Generators.<Name>) in place of the\n" +
             "// packaged one. `dotnet meta gen --generators <names>` narrows a run to the entries named.\n" +
+            "// Column and table naming: the \"naming\" setting in .metaobjects/config.json, read by\n" +
+            "// every port (ADR-0058) -- not here.\n" +
             "//\n" +
             "// For example:\n" +
             "//   new MetaObjects.Codegen.Generators.EntityGenerator(),\n" +
             "//   new MetaObjects.Codegen.Generators.DbContextGenerator(),\n" +
-            "//   new MetaObjects.Codegen.Generators.ApiDocsGenerator { OutDir = \"docs/generated\", ProjectName = \"shop\" },\n" +
+            "//   new MetaObjects.Codegen.Generators.RenderHelperGenerator(\"prompts\"),   // the template root\n" +
+            "//   new MetaObjects.Codegen.Generators.ApiDocsGenerator { OutDir = \"docs/csharp\", ProjectName = \"shop\" },\n" +
             "using MetaObjects.Codegen;\n" +
             "\n" +
             "public static class Generators\n" +

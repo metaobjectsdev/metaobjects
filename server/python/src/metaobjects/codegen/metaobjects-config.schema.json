@@ -17,6 +17,11 @@
       "items": { "type": "string", "pattern": "^[^:]+:[^:]+$" },
       "description": "Consumer provider refs as 'module:symbol', resolved relative to this config file's directory (no PYTHONPATH needed)."
     },
+    "templates": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The directory template refs resolve from, relative to this config file (gen's --templates, verify's --prompts). Default: prompts/ when it exists, else templates/. A flag that names another directory is refused."
+    },
     "libraries": {
       "type": "array",
       "items": { "type": "string" },

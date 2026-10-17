@@ -71,7 +71,7 @@ async function build(dialect: SqliteDialect, entities: unknown[], views: Expecte
   const json = JSON.stringify({ "metadata.root": { package: "acme", children: entities } });
   const { root, errors } = await new MetaDataLoader().load([new InMemoryStringSource(json)]);
   expect(errors).toEqual([]);
-  return buildExpectedSchema(root, { dialect, columnNamingStrategy: "snake_case", views });
+  return buildExpectedSchema(root, { dialect, views });
 }
 
 async function introspect(): Promise<SchemaSnapshot> {

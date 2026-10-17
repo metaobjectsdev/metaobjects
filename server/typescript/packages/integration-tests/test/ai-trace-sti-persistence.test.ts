@@ -28,6 +28,13 @@ import { kyselyDriver } from "@metaobjectsdev/runtime-ts/drivers";
 import { startPostgres } from "../src/postgres-container.ts";
 import { executeSql } from "../src/postgres-sql.ts";
 
+/** The project setting `"naming": { "columns": "literal" }` (ADR-0058), set where the
+ *  project-aware load sets it: on the loaded root. */
+function literalColumns<T>(root: T): T {
+  (root as unknown as { physicalNaming: unknown }).physicalNaming = { columns: "literal", tables: "snake_case" };
+  return root;
+}
+
 const META = JSON.stringify({
   "metadata.root": {
     package: "test::ai",
@@ -116,7 +123,7 @@ describe("ai-trace #1c — shared-table persistence (real Postgres)", () => {
 
     // ONE-TABLE assertion: the STI subtypes do NOT each get their own table —
     // exactly one prompt_llm_call table is synthesised for the whole hierarchy.
-    const expected = buildExpectedSchema(root, { columnNamingStrategy: "literal" });
+    const expected = buildExpectedSchema(literalColumns(root));
     expect(expected.tables.filter((t) => t.name === "prompt_llm_call").length).toBe(1);
 
     const diffResult = await diff({ expected, actual: { tables: [], views: [] } });
@@ -132,7 +139,7 @@ describe("ai-trace #1c — shared-table persistence (real Postgres)", () => {
         }),
       });
       const driver = kyselyDriver({ db: kysely as never, dialect: "postgres" });
-      const om = new ObjectManager({ metadata: root, driver, columnNamingStrategy: "literal" });
+      const om = new ObjectManager({ metadata: literalColumns(root), driver });
 
       // The generic recorder writes only the base envelope + raw I/O; the typed
       // voResponse is supplied by the generated typed helper. Here we model that

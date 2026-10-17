@@ -143,9 +143,15 @@ public class MetaSource(TypeId typeId, string name) : MetaData(typeId, name)
     /// <list type="number">
     ///   <item>Kind-matching alias (e.g. <c>@proc</c> when <c>@kind: "storedProc"</c>).</item>
     ///   <item>Legacy <c>@table</c> for non-table kind (pre-1.0 fallback).</item>
-    ///   <item>Source's bare structural <c>name</c> via <c>snake_case</c>.</item>
-    ///   <item>Owning entity's name via <c>pluralize(snake_case)</c>.</item>
+    ///   <item>Source's bare structural <c>name</c>, cased by the project's table rule.</item>
+    ///   <item>Owning entity's name, cased by the project's table rule, through the frozen
+    ///   legacy pluralizer.</item>
     /// </list>
+    /// <para>
+    /// The table rule is <c>naming.tables</c> in <c>.metaobjects/config.json</c> (ADR-0058),
+    /// carried by the loaded root (<see cref="MetaObjects.Meta.PhysicalNaming.Of"/>); default
+    /// <c>snake_case</c>.
+    /// </para>
     /// <para>
     /// Callers needing the legacy raw <c>@table</c> slot only should use
     /// <see cref="TableName"/>; codegen / migrate / runtime should use
@@ -174,19 +180,20 @@ public class MetaSource(TypeId typeId, string name) : MetaData(typeId, name)
                 if (Attr(SOURCE_ATTR_TABLE) is string legacy && legacy != "") return legacy;
             }
 
-            // Step 3: source's structural `name` via snake_case (no pluralization —
-            // the source's name IS the logical name).
+            // Step 3: source's structural `name`, cased by the project's table rule
+            // (ADR-0058; no pluralization — the source's name IS the logical name).
             if (Name != "")
             {
-                return SourceNaming.ToSnakeCase(Name);
+                return PhysicalNaming.ApplyTableNamingRule(Name, PhysicalNaming.Of(this).Tables);
             }
 
-            // Step 4: owning entity's name via pluralize(snake_case). The MetaData
-            // parent of a source is always the entity that declared it.
+            // Step 4: owning entity's name, cased by the project's table rule, through the
+            // FROZEN legacy pluralizer under every rule. The MetaData parent of a source is
+            // always the entity that declared it.
             var owner = Parent;
             if (owner is not null && owner.Name != "")
             {
-                return SourceNaming.Pluralize(SourceNaming.ToSnakeCase(owner.Name));
+                return SourceNaming.Pluralize(PhysicalNaming.ApplyTableNamingRule(owner.Name, PhysicalNaming.Of(this).Tables));
             }
 
             return "";

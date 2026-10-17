@@ -273,15 +273,55 @@ public sealed class EjectCommandTests : IDisposable
         Assert.Equal(expected, File.ReadAllText(copyPath));
     }
 
+    // `--list` gave stable names only, while codegen/Generators.cs holds constructed generators:
+    // an adopter guessed class names and learned RenderHelperGenerator's argument from CS7036.
+    [Fact]
+    public void GenListLines_print_the_entry_to_put_in_the_list_and_its_options()
+    {
+        var lines = GenCommand.ListLines(_root);
+        Assert.Contains(lines, l => l.Contains(" entity —")
+            && l.Contains("\n      in codegen/Generators.cs: new MetaObjects.Codegen.Generators.EntityGenerator()"));
+        var renderHelper = Assert.Single(lines, l => l.Contains(" render-helper —"));
+        Assert.Contains("in codegen/Generators.cs: new MetaObjects.Codegen.Generators.RenderHelperGenerator(\"prompts\")", renderHelper);
+        Assert.Contains("options: templateRoot", renderHelper);
+    }
+
     [Fact]
     public void GenListLines_marks_an_unmodified_ejected_copy_identical()
     {
         EjectCommand.Run(["entity"], _root, force: false);
 
         var lines = GenCommand.ListLines(_root);
-        Assert.Contains(lines, l => l.Contains(" entity —") && l.Contains("[owned — identical]"));
+        Assert.Contains(lines, l => l.Contains(" entity —") && l.Contains("[owned — identical]")
+            && l.Contains("\n      in codegen/Generators.cs: new Codegen.Generators.EntityGenerator()"));
         // Everything NOT ejected carries no ownership mark at all.
-        Assert.Contains(lines, l => l.Contains(" routes —") && !l.Contains("[owned"));
+        Assert.Contains(lines, l => l.Contains(" routes —") && !l.Contains("[owned")
+            && l.Contains("in codegen/Generators.cs: new MetaObjects.Codegen.Generators.RoutesGenerator()"));
+    }
+
+    // An owned generator printed the packaged class: copying that line into codegen/Generators.cs
+    // wired the package back in and the owned edits silently stopped running.
+    [Fact]
+    public void GenListLines_print_the_owned_copy_for_an_ejected_generator_with_a_constructor_argument()
+    {
+        EjectCommand.Run(["render-helper"], _root, force: false);
+
+        var renderHelper = Assert.Single(GenCommand.ListLines(_root), l => l.Contains(" render-helper —"));
+        Assert.Contains("[owned — identical]", renderHelper);
+        Assert.Contains("in codegen/Generators.cs: new Codegen.Generators.RenderHelperGenerator(\"prompts\")", renderHelper);
+    }
+
+    // Eject listed every copy as `new Codegen.Generators.<Class>()`, so a project that ejected
+    // render-helper got a codegen/Generators.cs that did not compile (CS7036: no templateRoot).
+    [Fact]
+    public void Ejecting_render_helper_lists_it_with_its_template_root_argument()
+    {
+        EjectCommand.Run(["render-helper"], _root, force: false);
+        Assert.Contains("        new Codegen.Generators.RenderHelperGenerator(\"prompts\"),\n",
+            File.ReadAllText(Path.Combine(CodegenDir, "Generators.cs")));
+
+        var again = EjectCommand.Run(["render-helper"], _root, force: true);
+        Assert.Contains("  new Codegen.Generators.RenderHelperGenerator(\"prompts\"),", again.Out);
     }
 
     [Fact]

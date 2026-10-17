@@ -2,12 +2,12 @@
  * The config a command reads comes from the directory the METADATA was resolved
  * from, never from ambient cwd.
  *
- * `metaobjects.config.ts` carries `columnNamingStrategy`. Once metadata resolves
- * from the nearest ancestor holding `.metaobjects/config.json`, reading that file
- * from cwd instead silently splits the two: run `meta migrate` from a subdirectory
- * of a project whose root declares `literal` and the metadata comes from the
- * ancestor while the strategy defaults to `snake_case` — emitting a migration that
- * RENAMES EVERY COLUMN. Newly reachable, too: before metadata sources were
+ * The column naming lives in `.metaobjects/config.json` (`naming`, ADR-0058), the file
+ * metadata resolution itself walks up to, so the two can no longer split: before, the
+ * rule sat in `metaobjects.config.ts`, and a `meta migrate` run from a subdirectory of a
+ * project whose root declared `literal` took the metadata from the ancestor while the
+ * rule defaulted to `snake_case` — emitting a migration that RENAMED EVERY COLUMN. This
+ * gate keeps that shut. Newly reachable, too: before metadata sources were
  * resolvable, that invocation just failed with "no metaobjects/ found".
  *
  * The gate is byte-level and comparative, not a spot-check on one identifier: the
@@ -42,9 +42,10 @@ const USERS = JSON.stringify({
   },
 });
 
-/** A project whose ROOT declares `columnNamingStrategy: "literal"`, with an
- *  otherwise-empty subdirectory to run from. */
-function scaffold(): string {
+/** A project whose ROOT declares `"naming": { "columns": "literal" }`, with an
+ *  otherwise-empty subdirectory to run from. `extraConfig` is spliced into
+ *  metaobjects.config.ts. */
+function scaffold(extraConfig = ""): string {
   mkdirSync(WORKSPACE_TMP, { recursive: true });
   const repo = mkdtempSync(join(WORKSPACE_TMP, "migrate-config-dir-"));
   mkdirSync(join(repo, "metaobjects"), { recursive: true });
@@ -52,7 +53,7 @@ function scaffold(): string {
   mkdirSync(join(repo, ".metaobjects"), { recursive: true });
   writeFileSync(
     join(repo, ".metaobjects", "config.json"),
-    JSON.stringify({ schema_version: 1 }),
+    JSON.stringify({ schema_version: 1, naming: { columns: "literal" } }),
     "utf8",
   );
   writeFileSync(
@@ -61,8 +62,7 @@ function scaffold(): string {
 import { defineConfig } from "@metaobjectsdev/codegen-ts";
 export default defineConfig({
   outDir: ${JSON.stringify(join(repo, "generated"))},
-  dialect: "sqlite",
-  columnNamingStrategy: "literal",
+  dialect: "sqlite",${extraConfig}
   generators: [],
 });
 `,
@@ -91,6 +91,28 @@ async function migrateFrom(repo: string, runDir: string): Promise<string> {
 }
 
 describe("meta migrate — config comes from the resolved config dir", () => {
+  test("a metaobjects.config.ts still setting columnNamingStrategy is refused, exit 2, nothing written", async () => {
+    const repo = scaffold(`\n  columnNamingStrategy: "literal",`);
+    const errors: string[] = [];
+    const original = console.error;
+    console.error = (...args: unknown[]) => { errors.push(args.map(String).join(" ")); };
+    try {
+      const exit = await run([
+        "migrate", "--from-db", "--cwd", repo,
+        "--db", `file:${join(repo, "local.db")}`,
+        "--dialect", "sqlite", "--slug", "init",
+      ]);
+      expect(exit).toBe(2);
+      expect(errors.join("\n")).toContain(
+          'columnNamingStrategy in metaobjects.config.ts was removed in 1.1.0. Column and table naming is one project setting now, read by every port: "naming" in .metaobjects/config.json, for example "naming": { "columns": "literal" }.',
+      );
+      expect(readdirSync(join(repo, ".metaobjects"))).not.toContain("migrations");
+    } finally {
+      console.error = original;
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
   test("a subdirectory run emits byte-identical SQL to a project-root run", async () => {
     const fromRoot = scaffold();
     const fromSubdir = scaffold();

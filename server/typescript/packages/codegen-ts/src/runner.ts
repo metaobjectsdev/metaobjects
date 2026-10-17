@@ -9,7 +9,7 @@ import { existsSync, readFileSync, rmSync } from "node:fs";
 import type { MetaData, MetaObject } from "@metaobjectsdev/metadata";
 import {
   isMetaRoot, OBJECT_SUBTYPE_VALUE, FIELD_SUBTYPE_TIMESTAMP, FIELD_ATTR_FILTERABLE,
-  composeRegistry, coreProviders,
+  composeRegistry, coreProviders, physicalNamingOf,
 } from "@metaobjectsdev/metadata";
 import { assignEmittedNames } from "./naming/collision-names.js";
 import { assertNoCollectionNameCollisions } from "./naming/collection-name-collision.js";
@@ -781,7 +781,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
       outDir: selfTarget.outDir,
       dbImport: selfTarget.dbImport,
       extStyle: config.extStyle,
-      columnNamingStrategy: config.columnNamingStrategy,
+      columnNamingStrategy: physicalNamingOf(root).columns,
       pluralizeCollections: config.pluralizeCollections,
       collectionNameOverrides: config.collectionNameOverrides,
       timestampMode: config.timestampMode,

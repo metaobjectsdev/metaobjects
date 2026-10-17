@@ -109,6 +109,12 @@ public final class GeneratedM2mControllerHarness implements AutoCloseable {
 
         // 1. Load the shared M:N corpus.
         MetaDataLoader loader = loadCorpus(corpusRoot.resolve("meta.json"));
+        // ADR-0058 — this corpus's committed .metaobjects/config.json (at corpusRoot,
+        // fixtures/api-contract-conformance/) declares naming.columns: literal; every field
+        // here declares no @column, so the generated columns and the runtime's reads of them
+        // depend on this. Read with the SAME NeutralConfig reader every port uses.
+        loader.getRoot().setPhysicalNaming(
+                com.metaobjects.config.SourceResolver.resolvePhysicalNaming(corpusRoot));
 
         // 2. Generate controllers + DTOs + repository interfaces + filter allowlists for ALL entities.
         runGenerator(new SpringControllerGenerator(), loader, srcDir);

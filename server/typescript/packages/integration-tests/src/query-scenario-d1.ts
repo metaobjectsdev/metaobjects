@@ -12,7 +12,6 @@ import { kyselyDriver } from "@metaobjectsdev/runtime-ts/drivers";
 import { Miniflare } from "miniflare";
 import { Kysely } from "kysely";
 
-import { CANONICAL_COLUMN_NAMING } from "./canonical-schema.ts";
 import { d1Dialect, type D1Like } from "./d1-kysely.ts";
 import { loadMetadataDir } from "./load-metadata.ts";
 import { runScenarioQueries } from "./query-scenario.ts";
@@ -63,6 +62,6 @@ export async function runQueryScenarioD1(
 
   const kysely = new Kysely<never>({ dialect: d1Dialect(local.d1) });
   const driver = kyselyDriver({ db: kysely as never, dialect: "sqlite" });
-  const om = new ObjectManager({ metadata: root, driver, columnNamingStrategy: CANONICAL_COLUMN_NAMING });
+  const om = new ObjectManager({ metadata: root, driver });
   await runScenarioQueries(scenario, om, root, "sqlite", "d1");
 }

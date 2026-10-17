@@ -33,12 +33,19 @@ import { kyselyDriver } from "@metaobjectsdev/runtime-ts/drivers";
 import { Kysely, PostgresDialect } from "kysely";
 import { Pool } from "pg";
 
-import { CANONICAL_COLUMN_NAMING, readCanonicalSchemaSql } from "../src/canonical-schema.ts";
+import { readCanonicalSchemaSql } from "../src/canonical-schema.ts";
 import { loadMetadataDir } from "../src/load-metadata.ts";
 import { CANONICAL_DIR } from "../src/paths.ts";
 import { pristineDefaultTypes } from "../src/pg-pristine-default-types.ts";
 import { executeSql } from "../src/postgres-sql.ts";
 import { startPostgres } from "../src/postgres-container.ts";
+
+/** The project setting `"naming": { "columns": "literal" }` (ADR-0058), set where the
+ *  project-aware load sets it: on the loaded root. */
+function literalColumns<T>(root: T): T {
+  (root as unknown as { physicalNaming: unknown }).physicalNaming = { columns: "literal", tables: "snake_case" };
+  return root;
+}
 
 const MEASUREMENT_SEED = `
 INSERT INTO "measurements" ("id","tempC","massKg","preciseKg")
@@ -77,10 +84,8 @@ describe("SP-D Unit 4 — runtime returns native types, not wire-strings", () =>
       try {
         const driver = kyselyDriver({ db: kysely as never, dialect: "postgres" });
         const om = new ObjectManager({
-          metadata: root,
-          driver,
-          columnNamingStrategy: CANONICAL_COLUMN_NAMING,
-        });
+          metadata: literalColumns(root),
+          driver });
 
         // --- Measurement: native integer wire form + native decimal-as-string -----
         const m = await om.findById("Measurement", 1);

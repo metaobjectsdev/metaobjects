@@ -79,6 +79,18 @@ For Spring integration: add `metaobjects-core-spring`.
                   <outputDir>${project.build.directory}/generated-sources/java</outputDir>
                 </args>
               </generator>
+              <generator>
+                <classname>com.metaobjects.generator.spring.SpringValueObjectGenerator</classname>
+                <args>
+                  <outputDir>${project.build.directory}/generated-sources/java</outputDir>
+                </args>
+              </generator>
+              <generator>
+                <classname>com.metaobjects.generator.spring.SpringFilterAllowlistGenerator</classname>
+                <args>
+                  <outputDir>${project.build.directory}/generated-sources/java</outputDir>
+                </args>
+              </generator>
             </generators>
           </configuration>
         </execution>
@@ -298,8 +310,10 @@ name in every port.
 
 Wire any generator via the Maven plugin's `<generator>` entry pointing at its class.
 Every one is independently configurable; the typical starting set is
-`SpringControllerGenerator` + `SpringDtoGenerator` + `SpringRepositoryGenerator`
-(controller + DTO + repository).
+`SpringControllerGenerator` + `SpringDtoGenerator` + `SpringRepositoryGenerator` +
+`SpringFilterAllowlistGenerator` + `SpringValueObjectGenerator` (controller, DTO and
+repository, plus the filter allowlist the controller reads and the value-object records a DTO
+carries).
 
 **Extractors are their own entry.** `ExtractorCodeGenerator` is the one generator that
 writes `<Name>Extractor` classes, as in the other four ports: the pom lists it, or none are
@@ -489,26 +503,16 @@ purely for the hand-written persistence layer the consumer supplies (Spring
 Data JPA, jOOQ, plain JDBC); nothing this toolchain itself generates ever
 reads it. It is the *only* route to a compile-checked physical name in this
 port, which is also why nothing else here can catch a wrong pairing for
-free — get `columnNaming` wrong and the constant simply names a column the
+free — a constant resolved under the wrong rule simply names a column the
 migration never created.
 
-`SpringNamesGenerator` takes the same `columnNaming` generator arg as every
-other physical-naming lever in this program, defaulting to `literal` (matching
-`ObjectManagerDB`'s runtime resolution — deliberately not Kotlin's `snake_case`
-codegen default, since a Java artifact defaulting differently from the Java
-runtime would itself be the drift this program exists to remove):
-
-```xml
-<args>
-  <outputDir>${project.build.directory}/generated-sources/java</outputDir>
-  <columnNaming>snake_case</columnNaming>
-</args>
-```
-
-Codegen cannot see a runtime `SimpleMappingHandlerDB.setColumnNaming(...)`
-call — a project pairing that call with this generator must pass the same
-strategy string to both, by hand (see
-[`features/field-types.md`](../features/field-types.md)).
+`SpringNamesGenerator` resolves names through the project's `naming` setting in
+`.metaobjects/config.json` (ADR-0058), the same setting `ObjectManagerDB` and every other
+port read, default `snake_case`. A database whose columns are named exactly like the fields
+declares `"naming": { "columns": "literal" }`. The 1.0 `columnNaming` generator arg and
+`SimpleMappingHandlerDB.setColumnNaming(...)` are refused
+([physical-naming.md](../features/migrations/physical-naming.md)), so codegen and the runtime
+cannot be configured apart.
 
 ### Requirement tests — `JUnitRequirementTestsGenerator`
 

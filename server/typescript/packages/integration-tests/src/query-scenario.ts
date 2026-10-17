@@ -22,10 +22,7 @@ import {
 import { Kysely, PostgresDialect } from "kysely";
 import { Pool } from "pg";
 
-import {
-  CANONICAL_COLUMN_NAMING,
-  readCanonicalSchemaSql,
-} from "./canonical-schema.ts";
+import { readCanonicalSchemaSql } from "./canonical-schema.ts";
 import { toWireRow, type WireEngine } from "./engine-wire.ts";
 import { loadMetadataDir } from "./load-metadata.ts";
 import { canonicalJson, normalizeRow } from "./normalization.ts";
@@ -67,11 +64,10 @@ export async function runQueryScenario(
     // kyselyDriver wants Kysely<Record<string, Row>>; the actual row types are
     // resolved per-query so the placeholder generic is harmless.
     const driver = kyselyDriver({ db: kysely as never, dialect: "postgres" });
-    // Runtime column-naming MUST match what the committed schema artifact was
-    // generated with (CANONICAL_COLUMN_NAMING), or the ObjectManager addresses
-    // columns the schema doesn't have. See migration-scenario.ts for why both
-    // runners pin "literal".
-    const om = new ObjectManager({ metadata: root, driver, columnNamingStrategy: CANONICAL_COLUMN_NAMING });
+    // The runtime's column naming is the root's, from the corpus's
+    // .metaobjects/config.json (ADR-0058) — the same file the committed schema artifact
+    // was generated under, so the ObjectManager addresses the columns the schema has.
+    const om = new ObjectManager({ metadata: root, driver });
     await runScenarioQueries(scenario, om, root, "postgres");
   } finally {
     await kysely.destroy();

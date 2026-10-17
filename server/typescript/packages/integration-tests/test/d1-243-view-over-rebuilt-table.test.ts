@@ -18,6 +18,13 @@ import { buildExpectedSchema, diff, emit, introspectSqlite } from "@metaobjectsd
 import { buildProjectionViews } from "@metaobjectsdev/codegen-ts";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 
+/** The project setting `"naming": { "columns": "literal" }` (ADR-0058), set where the
+ *  project-aware load sets it: on the loaded root. */
+function literalColumns<T>(root: T): T {
+  (root as unknown as { physicalNaming: unknown }).physicalNaming = { columns: "literal", tables: "snake_case" };
+  return root;
+}
+
 let tmpDir: string;
 let dbPath: string;
 let k: Kysely<Record<string, unknown>>;
@@ -74,10 +81,9 @@ function meta(values: string[]): string {
 
 async function build(values: string[], dialect: "sqlite" | "d1") {
   const root = (await new MetaDataLoader().load([new InMemoryStringSource(meta(values))])).root;
-  const columnNamingStrategy = "literal" as const;
-  return buildExpectedSchema(root, {
-    dialect, columnNamingStrategy,
-    views: buildProjectionViews(root, { dialect, columnNamingStrategy }),
+  return buildExpectedSchema(literalColumns(root), {
+    dialect,
+    views: buildProjectionViews(literalColumns(root), { dialect }),
   });
 }
 
@@ -163,10 +169,9 @@ describe("#243 — dependent view over an enum/CHECK-rebuilt table", () => {
   }
   async function buildChild(values: string[]) {
     const root = (await new MetaDataLoader().load([new InMemoryStringSource(metaChild(values))])).root;
-    const columnNamingStrategy = "literal" as const;
-    return buildExpectedSchema(root, {
-      dialect: "d1", columnNamingStrategy,
-      views: buildProjectionViews(root, { dialect: "d1", columnNamingStrategy }),
+    return buildExpectedSchema(literalColumns(root), {
+      dialect: "d1",
+      views: buildProjectionViews(literalColumns(root), { dialect: "d1" }),
     });
   }
 
@@ -224,10 +229,9 @@ describe("#243 — dependent view over an enum/CHECK-rebuilt table", () => {
   }
   async function buildParentView(values: string[]) {
     const root = (await new MetaDataLoader().load([new InMemoryStringSource(metaParentView(values))])).root;
-    const columnNamingStrategy = "literal" as const;
-    return buildExpectedSchema(root, {
-      dialect: "d1", columnNamingStrategy,
-      views: buildProjectionViews(root, { dialect: "d1", columnNamingStrategy }),
+    return buildExpectedSchema(literalColumns(root), {
+      dialect: "d1",
+      views: buildProjectionViews(literalColumns(root), { dialect: "d1" }),
     });
   }
 

@@ -18,10 +18,10 @@ import static org.junit.Assert.assertThrows;
  * configured. Both now delegate here, and the algorithm matches the TypeScript,
  * C# and Python siblings so a polyglot project sees one rule.</p>
  *
- * <p>The JVM default is {@code literal}, which is what {@code ObjectManagerDB} has
- * always resolved; the Kotlin generator keeps {@code snake_case} as ITS default, since
- * that is what it always emitted. A default that moved would silently re-point live
- * queries at columns that do not exist.</p>
+ * <p>ADR-0058 flipped the JVM default from {@code literal} to {@code snake_case} — what
+ * {@code meta migrate} has always created, and what every other port now defaults to. An
+ * adopter whose live database really has literal columns declares
+ * {@code "naming": { "columns": "literal" }} in {@code .metaobjects/config.json}.</p>
  */
 public class ColumnNamingTest extends SharedRegistryTestBase {
 
@@ -33,9 +33,9 @@ public class ColumnNamingTest extends SharedRegistryTestBase {
     }
 
     @Test
-    public void defaultIsLiteral() {
-        assertEquals(ColumnNaming.LITERAL, ColumnNaming.DEFAULT);
-        assertEquals("createdAt", ColumnNaming.resolve(field("createdAt", null)));
+    public void defaultIsSnakeCase() {
+        assertEquals(ColumnNaming.SNAKE_CASE, ColumnNaming.DEFAULT);
+        assertEquals("created_at", ColumnNaming.resolve(field("createdAt", null)));
     }
 
     @Test

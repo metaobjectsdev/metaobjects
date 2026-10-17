@@ -9,7 +9,6 @@ import { describe, expect, test } from "bun:test";
 import { buildReportViews } from "@metaobjectsdev/codegen-ts";
 
 import {
-  CANONICAL_COLUMN_NAMING,
   canonicalSchemaSqlPath,
   generateCanonicalSchemaSql,
   readCanonicalSchemaSql,
@@ -21,6 +20,13 @@ import {
 } from "../src/canonical-schema-mysql.ts";
 import { loadMetadataDir } from "../src/load-metadata.ts";
 import { CANONICAL_DIR } from "../src/paths.ts";
+
+/** The project setting `"naming": { "columns": "literal" }` (ADR-0058), set where the
+ *  project-aware load sets it: on the loaded root. */
+function literalColumns<T>(root: T): T {
+  (root as unknown as { physicalNaming: unknown }).physicalNaming = { columns: "literal", tables: "snake_case" };
+  return root;
+}
 
 describe("canonical schema artifacts for the other engines", () => {
   test("schema.sqlite.sql matches what TS generates from metadata (no drift)", async () => {
@@ -49,7 +55,7 @@ describe("canonical schema artifacts for the other engines", () => {
     // must appear in every engine's artifact, and a lowering that emitted zero views is a
     // failure, not an empty loop.
     const root = await loadMetadataDir(CANONICAL_DIR);
-    const views = buildReportViews(root, { dialect: "mysql", columnNamingStrategy: CANONICAL_COLUMN_NAMING }).map((v) => v.name);
+    const views = buildReportViews(literalColumns(root), { dialect: "mysql" }).map((v) => v.name);
     expect(views.length).toBeGreaterThan(0);
     const sqlite = readCanonicalSchemaSql("sqlite");
     const mysql = readCanonicalMysqlSchemaSql();

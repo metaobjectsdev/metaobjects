@@ -9,9 +9,11 @@
 //   bun run prerelease:publish --iter 5              # pin the iteration number
 //   bun run prerelease:publish --base 0.25.0         # override the in-development version
 //
-// The base version is read from CHANGELOG.md's topmost `## [x.y.z]` header — the
-// repository's own declaration of what is being worked on — falling back to minor+1 when
-// that entry is already released. `--base` overrides both.
+// The base version is the lowest CHANGELOG.md `## [x.y.z]` section that is not released yet —
+// the repository's own declaration of what is being worked on — falling back to minor+1 when
+// every section is released. "Released" is read from public npm and the release tags, never
+// from package.json (release prep bumps that first). `--base` may override, but never to skip
+// an unpublished section.
 //   bun run prerelease:publish --dry-run             # build + normalize + gate, publish nothing
 //
 // Registry address and token come from tools/prerelease/registry.env (gitignored) or the
@@ -55,10 +57,13 @@
 //      bare `mvn deploy` has no target at all.
 //   6. Version declarations are edited in place and ALWAYS restored on exit; the script
 //      refuses to start if any of them is already dirty.
-import { execSync, execFileSync } from "node:child_process";
+import { execSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { mavenVersion } from "./maven-coordinate.mjs";
+import {
+  changelogVersions, collectPages, decideBase, installRestoreHandlers, releasedVersion, run as runStep,
+} from "./prerelease-version.mjs";
 
 const argv = process.argv.slice(2);
 const flag = (n, d) => { const i = argv.indexOf(`--${n}`); return i === -1 ? d : argv[i + 1]; };
@@ -72,6 +77,8 @@ const ok = (m) => console.log(`\x1b[32m✓\x1b[0m ${m}`);
 const info = (m) => console.log(`  ${m}`);
 const die = (m) => { console.error(`\x1b[31m✗ ${m}\x1b[0m`); process.exit(1); };
 const sh = (cmd, o = {}) => execSync(cmd, { encoding: "utf8", cwd: ROOT, stdio: "pipe", ...o });
+// Every step after the restore handlers are installed goes through this, so a signal can stop it.
+const run = (cmd, o = {}) => runStep(cmd, { cwd: ROOT, ...o });
 
 // ── registry config: environment first, then the gitignored env file ──────────────────
 const envFile = join(ROOT, "tools/prerelease/registry.env");
@@ -122,58 +129,76 @@ const NUGET_SRC = assertTarget(`${BASE}/api/packages/${OWNER}/nuget/index.json`,
 const MAVEN_URL = assertTarget(`${BASE}/api/packages/${OWNER}/maven`, "maven");
 
 // ── version scheme ────────────────────────────────────────────────────────────────────
+// What the repository says it is: the lockstep set is every package carrying this version.
 const cliPkg = JSON.parse(readFileSync(join(ROOT, "server/typescript/packages/cli/package.json"), "utf8"));
-const RELEASED = cliPkg.version;
+const COMMITTED = cliPkg.version;
 
-const cmpVer = (a, b) => {
-  const [x, y] = [a, b].map((v) => v.split(".").map(Number));
-  return x[0] - y[0] || x[1] - y[1] || x[2] - y[2];
+// One public-npm read, shared by the two callers that make it: the parsed install-v1
+// document, `null` for a MISS (the package or version is not published there yet), and the
+// UNREACHABLE sentinel for a network or parse failure. A miss and a failure collapse
+// together for `npmLatest` but not for `burnedPublicIters` — a 404 is silence, being
+// offline is a warning — so the helper keeps them apart and each caller picks its posture.
+const UNREACHABLE = Symbol("npm-unreachable");
+const fetchNpmDoc = async (name) => {
+  try {
+    const r = await fetch(`https://registry.npmjs.org/${name.replace("/", "%2f")}`,
+      { headers: { accept: "application/vnd.npm.install-v1+json" }, signal: AbortSignal.timeout(10_000) });
+    return r.ok ? await r.json() : null;
+  } catch { return UNREACHABLE; }
+};
+
+/** Public npm's `latest` for the CLI, or null when it cannot be read. */
+const npmLatest = async () => {
+  const doc = await fetchNpmDoc("@metaobjectsdev/cli");
+  if (!doc || doc === UNREACHABLE) return null;
+  return (doc["dist-tags"] || {}).latest ?? null;
 };
 
 /**
- * The version this cut is FOR, read from the repository's own declaration of it.
- *
- * `package.json` still carries the last RELEASED version — versions bump at release time —
- * so it cannot answer "what is being worked on". CHANGELOG.md can: its topmost `## [x.y.z]`
- * header is written when the work lands, ahead of the bump. Guessing minor+1 instead had a
- * standing cost, because a PATCH line is a normal outcome (0.23.3 after 0.23.2): the tool
- * derived 0.24.0 while the changelog said 0.23.3, and every single invocation needed
- * `--base` to talk it out of the wrong answer. One forgotten flag burns a version number on
- * the registry, permanently.
- *
- * Falls back to minor+1 when the changelog's top entry is already released — i.e. nobody
- * has declared the next version yet, which is exactly the case the old guess was written
- * for. `--base` still overrides both.
+ * What is RELEASED, read from where a release leaves its mark: public npm and the `v<x.y.z>`
+ * tags. Through 1.1.0's release candidates this was `package.json`, which release preparation
+ * bumps BEFORE anything is published, so the CHANGELOG's `[1.1.0]` looked shipped and every rc
+ * was cut as 1.2.0 unless `--base` was passed. See scripts/prerelease-version.mjs.
  */
-const declaredBase = (() => {
-  const m = readFileSync(join(ROOT, "CHANGELOG.md"), "utf8").match(/^## \[(\d+\.\d+\.\d+)\]/m);
-  return m && cmpVer(m[1], RELEASED) > 0 ? m[1] : null;
-})();
-const BASE_SOURCE = flag("base", null) !== null ? "--base"
-  : declaredBase !== null ? "CHANGELOG.md"
-  : `guessed from released ${RELEASED}`;
-const BASEVER = flag("base", declaredBase ?? (() => {
-  const [maj, min] = RELEASED.split(".").map(Number);
-  return `${maj}.${min + 1}.0`;
-})());
-if (!/^\d+\.\d+\.\d+$/.test(BASEVER)) die(`--base must be a plain x.y.z, got ${BASEVER}`);
+const RELEASED = releasedVersion({
+  npmLatest: await npmLatest(),
+  tags: sh("git tag --list 'v*'").split("\n"),
+  major: Number(COMMITTED.split(".")[0]),
+});
+
+let decided;
+try {
+  decided = decideBase({
+    released: RELEASED,
+    changelog: changelogVersions(readFileSync(join(ROOT, "CHANGELOG.md"), "utf8")),
+    explicit: flag("base", null),
+  });
+} catch (e) { die(e.message); }
+const BASEVER = decided.base;
+const BASE_SOURCE = decided.source;
 
 // The lockstep package names, needed before the iteration number is chosen.
 const LOCKSTEP = sh("ls -d server/typescript/packages/*/ client/web/packages/*/").trim().split("\n")
   .map((d) => d.replace(/\/$/, ""))
   .map((dir) => ({ dir, pkg: JSON.parse(readFileSync(join(ROOT, dir, "package.json"), "utf8")) }))
-  .filter(({ pkg }) => !pkg.private && pkg.version === RELEASED);
+  .filter(({ pkg }) => !pkg.private && pkg.version === COMMITTED);
 
 const ITER_RE = new RegExp(`^\\d+\\.${BASEVER.split(".").slice(1).join("\\.")}(?:-rc\\.|rc)(\\d+)$`);
 
 // Iteration: explicit, else 1 + the highest already taken — across ALL FOUR ecosystems on
 // the pre-release registry, so `--only npm` today and `--only csharp` tomorrow cannot
-// collide (a used number is a hard 409 on every one of them).
-const usedIters = () => {
+// collide (a used number is a hard 409 on every one of them). Every page: the registry serves
+// 50 per page whatever `limit` asks, and a used number past the first page was invisible.
+const usedIters = async () => {
+  let list;
   try {
-    const list = JSON.parse(sh(`curl -fsS --max-time 10 -u "${OWNER}:${TOKEN}" "${BASE}/api/v1/packages/${OWNER}?limit=1000"`));
-    return list.map((p) => (p.version.match(ITER_RE) || [])[1]).filter(Boolean).map(Number);
-  } catch { return []; }
+    list = await collectPages((page, limit) =>
+      JSON.parse(sh(`curl -fsS --max-time 10 -u "${OWNER}:${TOKEN}" "${BASE}/api/v1/packages/${OWNER}?page=${page}&limit=${limit}"`)));
+  } catch (e) {
+    die(`could not list the pre-release registry's packages, so the next free iteration is unknown: ${e.message}\n` +
+        `  Retry, or pass --iter <n>.`);
+  }
+  return list.map((p) => (p.version.match(ITER_RE) || [])[1]).filter(Boolean).map(Number);
 };
 
 // ...and across PUBLIC npm as well. A version published there is permanent — unpublish is
@@ -183,13 +208,10 @@ const usedIters = () => {
 // promoted to a public RC, so the counter skips it here instead of failing there.
 const burnedPublicIters = async () => {
   const results = await Promise.all(LOCKSTEP.map(async ({ pkg }) => {
-    try {
-      const r = await fetch(`https://registry.npmjs.org/${pkg.name.replace("/", "%2f")}`,
-        { headers: { accept: "application/vnd.npm.install-v1+json" }, signal: AbortSignal.timeout(10_000) });
-      if (!r.ok) return [];
-      const doc = await r.json();
-      return Object.keys(doc.versions || {}).map((v) => (v.match(ITER_RE) || [])[1]).filter(Boolean).map(Number);
-    } catch { return null; }   // offline: fail OPEN, the release preflight is the backstop
+    const doc = await fetchNpmDoc(pkg.name);
+    if (doc === UNREACHABLE) return null;   // offline: fail OPEN, the release preflight is the backstop
+    if (!doc) return [];                    // not on public npm yet: no burned numbers
+    return Object.keys(doc.versions || {}).map((v) => (v.match(ITER_RE) || [])[1]).filter(Boolean).map(Number);
   }));
   if (results.some((r) => r === null))
     console.warn(`\x1b[33m! could not reach public npm — the iteration number may reuse one that is already burned there\x1b[0m`);
@@ -198,10 +220,13 @@ const burnedPublicIters = async () => {
 
 const explicitIter = flag("iter", null);
 const burned = await burnedPublicIters();
-const ITER = Number(explicitIter ?? (() => {
-  const taken = [...usedIters(), ...burned];
+// The next free iteration across all four ecosystems. The `??` above skips this whole
+// call — including its registry fetches — when --iter was given.
+const nextIter = async () => {
+  const taken = [...await usedIters(), ...burned];
   return taken.length ? Math.max(...taken) + 1 : 1;
-})());
+};
+const ITER = Number(explicitIter ?? await nextIter());
 if (!Number.isInteger(ITER) || ITER < 1) die(`--iter must be a positive integer, got ${ITER}`);
 if (explicitIter && burned.includes(ITER))
   console.warn(`\x1b[33m! ${BASEVER}-rc.${ITER} is already published on PUBLIC npm for at least one package.\n` +
@@ -232,7 +257,7 @@ const wants = (p) => ONLY.includes(p);
 console.log(`\n── pre-release ${CANON}${DRY ? "  (DRY RUN)" : ""} → ${expectedHost} ──\n`);
 // Name where the base came from. A version number is spent permanently the moment it is
 // published, so the one value worth reading before the run is the one that was inferred.
-info(`released: ${RELEASED}   base: ${BASEVER} (from ${BASE_SOURCE})   iteration: ${ITER}`);
+info(`released: ${RELEASED ?? "unknown"}   committed: ${COMMITTED}   base: ${BASEVER} (from ${BASE_SOURCE})   iteration: ${ITER}`);
 info(`npm ${V.npm}  ·  pypi ${V.pypi}  ·  nuget ${V.nuget}  ·  maven ${V.maven}`);
 info(`ports: ${ONLY.join(", ")}\n`);
 ok(`publish target verified: ${expectedHost} (configured registry; not a public one)`);
@@ -272,8 +297,7 @@ const restore = () => {
   if (!touched.length) return;
   try { sh(`git checkout -- ${touched.map((f) => `'${f}'`).join(" ")}`); } catch {}
 };
-process.on("exit", restore);
-process.on("SIGINT", () => { restore(); process.exit(130); });
+installRestoreHandlers(restore);
 
 const scratch = (name) => { const d = join(SCRATCH, name); rmSync(d, { recursive: true, force: true }); mkdirSync(d, { recursive: true }); return d; };
 // Kept between runs (so Maven does not re-download the world every time) and deliberately
@@ -295,13 +319,13 @@ if (wants("npm")) {
   ok(`npm lockstep set: ${set.length} packages → ${V.npm}`);
 
   touch("bun.lock");
-  sh("rm -f bun.lock && bun install");                  // re-pins workspace:* to V.npm
-  sh("bun run clean && bun run build");
+  await run("rm -f bun.lock && bun install");                  // re-pins workspace:* to V.npm
+  await run("bun run clean && bun run build");
   ok("relocked + clean rebuild");
 
   const p = scratch("pack");
-  sh(`cd server/typescript/packages/cli && bun pm pack --destination ${p}`);
-  const pj = JSON.parse(sh(`tar -xzOf ${p}/*.tgz package/package.json`));
+  await run(`cd server/typescript/packages/cli && bun pm pack --destination ${p}`);
+  const pj = JSON.parse(await run(`tar -xzOf ${p}/*.tgz package/package.json`));
   const bad = Object.entries(pj.dependencies || {}).filter(([k, v]) => k.startsWith("@metaobjectsdev/") && v !== V.npm);
   if (bad.length) die(`packed cli pins stale sibling deps: ${JSON.stringify(bad)}`);
   ok(`packed deps pinned to ${V.npm}`);
@@ -315,15 +339,15 @@ if (wants("npm")) {
   const ordered = [...set].sort((a, b) => TIERS.indexOf(a.short) - TIERS.indexOf(b.short));
 
   // GATE 3 — ask bun where it would actually publish, and believe only that.
-  const probe = execFileSync("bun", ["publish", "--dry-run"],
-    { cwd: join(ROOT, ordered[0].dir), env: { ...process.env, HOME: home }, encoding: "utf8" });
+  const probe = await run("bun publish --dry-run",
+    { cwd: join(ROOT, ordered[0].dir), env: { ...process.env, HOME: home } });
   const seen = (probe.match(/^Registry:\s*(\S+)/m) || [])[1];
   if (seen !== NPM_REG) die(`bun would publish to ${seen}, not ${NPM_REG} — aborting`);
   ok(`bun publish target verified by dry-run: ${seen}`);
 
   if (!DRY) for (const pkg of ordered) {
-    execFileSync("bun", ["publish", "--tag", "prerelease"],
-      { cwd: join(ROOT, pkg.dir), env: { ...process.env, HOME: home }, stdio: "pipe" });
+    await run("bun publish --tag prerelease",
+      { cwd: join(ROOT, pkg.dir), env: { ...process.env, HOME: home } });
     info(`published ${pkg.short}@${V.npm}`);
   }
   ok(DRY ? "npm: dry run, nothing published" : `npm: ${ordered.length} packages @ ${V.npm} (dist-tag prerelease)`);
@@ -335,10 +359,10 @@ if (wants("python")) {
   touch(f);
   writeFileSync(join(ROOT, f), readFileSync(join(ROOT, f), "utf8").replace(/^version = ".*"$/m, `version = "${V.pypi}"`));
   const dist = scratch("pydist");
-  sh(`cd server/python && uv build --out-dir ${dist}`);
+  await run(`cd server/python && uv build --out-dir ${dist}`);
   ok(`python built ${V.pypi}`);
   if (!DRY) {
-    sh(`cd server/python && uv publish --publish-url "${PYPI_URL}" --username "${OWNER}" --password "${TOKEN}" ${dist}/*`);
+    await run(`cd server/python && uv publish --publish-url "${PYPI_URL}" --username "${OWNER}" --password "${TOKEN}" ${dist}/*`);
     ok(`python: metaobjects ${V.pypi} → ${expectedHost}`);
   } else ok("python: dry run, nothing published");
 }
@@ -349,10 +373,10 @@ if (wants("csharp")) {
   const out = scratch("nupkg");
   const projs = ["MetaObjects/MetaObjects", "MetaObjects.Render/MetaObjects.Render",
                  "MetaObjects.Codegen/MetaObjects.Codegen", "MetaObjects.Cli/MetaObjects.Cli"];
-  for (const p of projs) sh(`cd server/csharp && dotnet pack ${p}.csproj -c Release -o ${out} -p:Version=${V.nuget} --nologo -v q`);
+  for (const p of projs) await run(`cd server/csharp && dotnet pack ${p}.csproj -c Release -o ${out} -p:Version=${V.nuget} --nologo -v q`);
   ok(`csharp packed ${V.nuget} (4 packages)`);
   if (!DRY) {
-    sh(`dotnet nuget push "${out}/*.nupkg" --source "${NUGET_SRC}" --api-key "${TOKEN}"`);
+    await run(`dotnet nuget push "${out}/*.nupkg" --source "${NUGET_SRC}" --api-key "${TOKEN}"`);
     ok(`csharp: 4 packages @ ${V.nuget} → ${expectedHost}`);
   } else ok("csharp: dry run, nothing published");
 }
@@ -364,12 +388,12 @@ if (wants("java")) {
   // silently skips the two reactor-EXCLUDED integration-test modules, whose parent
   // version then lags (see scripts/check-pom-versions.sh, docs/RELEASING.md).
   const poms = [
-    ...sh(`grep -rl '${javaReleased}' --include=pom.xml server/java`).trim().split("\n").filter(Boolean),
+    ...(await run(`grep -rl '${javaReleased}' --include=pom.xml server/java`)).trim().split("\n").filter(Boolean),
     "examples/showcase/jvm/pom.xml",
   ];
   touch(...poms);
-  sh(`sed -i 's/${javaReleased.replace(/\./g, "\\.")}/${V.maven}/g' ${poms.map((f) => `'${f}'`).join(" ")}`);
-  sh("scripts/check-pom-versions.sh");
+  await run(`sed -i 's/${javaReleased.replace(/\./g, "\\.")}/${V.maven}/g' ${poms.map((f) => `'${f}'`).join(" ")}`);
+  await run("scripts/check-pom-versions.sh");
   ok(`java poms → ${V.maven}`);
   const settings = join(scratch("m2"), "settings.xml");
   writeFileSync(settings,
@@ -379,7 +403,7 @@ if (wants("java")) {
   // `package` for a dry run, not `install`: a dry run must not write artifacts anywhere.
   const goal = DRY ? "package" : "deploy";
   const repo = keptScratch("m2repo");
-  sh(`cd server/java && mvn -B -s ${settings} -Dmaven.repo.local=${repo} ${goal} -DskipTests` +
+  await run(`cd server/java && mvn -B -s ${settings} -Dmaven.repo.local=${repo} ${goal} -DskipTests` +
      ` -DaltDeploymentRepository="mo-prerelease::${MAVEN_URL}"`,
      { stdio: "inherit" });
   ok(DRY ? "java: dry run (install only)" : `java: reactor @ ${V.maven} → ${expectedHost}`);

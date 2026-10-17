@@ -71,12 +71,18 @@ public sealed record GenConfig
     /// <summary>C# namespace for generated types.</summary>
     public required string Namespace { get; init; }
     /// <summary>
-    /// Strategy applied to field names with no <c>@column</c> override. Defaults
-    /// to <see cref="ColumnNamingStrategy.Literal"/> (EF Core convention).
+    /// Strategy applied to field names with no <c>@column</c> override. ADR-0058 — one
+    /// project setting (<c>naming.columns</c> in <c>.metaobjects/config.json</c>), read by
+    /// every port; defaults to <see cref="ColumnNamingStrategy.SnakeCase"/>, matching what
+    /// <c>meta migrate</c> has always created. A real CLI run (<c>CodegenCli.RunGen</c> /
+    /// <c>VerifyCommand</c>'s codegen-drift gate) always sets this from the loaded root's
+    /// <see cref="MetaRoot.PhysicalNaming"/> rather than relying on this default; it is reached
+    /// only by a hand-built <c>GenConfig</c> that names no project (a programmatic embedder,
+    /// or a test fixture).
     /// Plumbed through every <c>CSharpNaming.Column</c> call site in the entity +
     /// DbContext generators.
     /// </summary>
-    public ColumnNamingStrategy ColumnNamingStrategy { get; init; } = ColumnNamingStrategy.Literal;
+    public ColumnNamingStrategy ColumnNamingStrategy { get; init; } = ColumnNamingStrategy.SnakeCase;
 
     /// <summary>
     /// C1 — the RUN-LEVEL presence gate for the <c>&lt;Entity&gt;Names</c> artifact:

@@ -177,7 +177,8 @@ describe("ObjectManager reads a view-backed report (FR-044)", () => {
       seed: { v_fitness_totals: [{ weeks: 6, totalMinutes: 310, longShare: "0.5000" }] },
       pkFields: { v_fitness_totals: ["weeks"] },
     });
-    const om = new ObjectManager({ metadata: root, driver, columnNamingStrategy: "literal" });
+    root.physicalNaming = { columns: "literal", tables: "snake_case" };
+    const om = new ObjectManager({ metadata: root, driver });
     expect(await om.findMany("FitnessTotals")).toEqual([{ weeks: 6, totalMinutes: 310, longShare: "0.5000" }]);
   });
 

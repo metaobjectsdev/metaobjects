@@ -63,6 +63,10 @@
               <args><outputDir>../generated/java</outputDir></args>
             </generator>
             <generator>
+              <classname>com.metaobjects.generator.spring.SpringValueObjectGenerator</classname>
+              <args><outputDir>../generated/java</outputDir></args>
+            </generator>
+            <generator>
               <classname>com.metaobjects.generator.kotlin.KotlinEntityGenerator</classname>
               <args><outputDir>../generated/kotlin</outputDir></args>
             </generator>

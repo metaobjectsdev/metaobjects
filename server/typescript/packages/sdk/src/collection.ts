@@ -18,8 +18,10 @@ import {
   packageOfResolutionKey,
   SUBTYPE_ROOT,
   TYPE_METADATA,
+  DEFAULT_PHYSICAL_NAMING,
+  type PhysicalNaming,
 } from "@metaobjectsdev/metadata";
-import { CONFIG_FILE, loadConfig, type Config } from "./config.js";
+import { CONFIG_FILE, loadConfig, physicalNamingFromConfig, type Config } from "./config.js";
 import { discoverCollectionRoot, exists, isDir } from "./discovery.js";
 import { compileScope, matchesScope, type Scope } from "./scope.js";
 import { DEFAULT_METADATA_DIR, DEFAULT_METAOBJECTS_DIR, isMetadataFile } from "./metadata-files.js";
@@ -76,6 +78,9 @@ export interface Collection {
    *  Path-like tokens (`"iam"`, `"iam/db"`). Empty for a project that names none,
    *  which is every project that has not asked for one. */
   readonly libraries: readonly string[];
+  /** ADR-0058 — the project's physical-naming rules (`naming` in `.metaobjects/config.json`),
+   *  defaults applied. `loadMemory` sets them on the loaded root, so every resolver reads them. */
+  readonly physicalNaming: PhysicalNaming;
   /** FR-023 — the `FileSource` id each file loads under, for the dependency
    *  ARTIFACTS only (`dep:<name>/<artifact>`); own files are absent and keep the
    *  default `basename(path)`. Threaded to `loadMemory` so every node an artifact
@@ -254,6 +259,7 @@ export async function resolveCollection(
   let migrateSpec: string[] | undefined;
   let dependencySpecs: readonly DependencySpec[] = [];
   let libraries: readonly string[] = [];
+  let physicalNaming: PhysicalNaming = DEFAULT_PHYSICAL_NAMING;
 
   if (hasConfig) {
     // No try/catch here: a config.json that EXISTS but fails to load
@@ -268,6 +274,7 @@ export async function resolveCollection(
     migrateSpec = cfg.migrate?.scope;
     dependencySpecs = cfg.dependencies;
     libraries = cfg.libraries;
+    physicalNaming = physicalNamingFromConfig(cfg);
     // An unknown token is a hard config error naming the valid ones, while
     // `librarySources` keeps skipping one silently for a programmatic caller. The two
     // are deliberately different: an API caller asking for a library this version does
@@ -376,6 +383,7 @@ export async function resolveCollection(
     sources: [...dependencySources, ...ownSources],
     dependencies,
     libraries,
+    physicalNaming,
     fileIds: new Map(dependencies.map((d) => [d.artifactPath, d.sourceId])),
     importedPackages: [...importedPackages].sort(),
     importedNodes,

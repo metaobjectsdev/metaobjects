@@ -156,13 +156,15 @@ def test_an_unknown_top_level_key_is_refused_not_silently_dropped(tmp_path: Path
     p = _write(
         tmp_path,
         """
-        columnNaming: snake_case
+        columnNamingStrategy: snake_case
         targets:
           models:
             outDir: out
         """,
     )
-    with pytest.raises(ConfigError, match="columnNaming"):
+    # TypeScript's spelling of the key, which a polyglot adopter could copy across; this
+    # file's key is `columnNaming`, and the refusal names it among the accepted ones.
+    with pytest.raises(ConfigError, match="columnNamingStrategy"):
         load_project_config(p)
 
 

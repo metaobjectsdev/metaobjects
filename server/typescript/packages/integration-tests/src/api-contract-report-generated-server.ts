@@ -20,7 +20,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { runGen, defineConfig, buildReportViews } from "@metaobjectsdev/codegen-ts";
 import {
-  DEFAULT_COLUMN_NAMING_STRATEGY, resolveColumnName, resolveTableName, type MetaRoot,
+  DEFAULT_PHYSICAL_NAMING, resolveColumnName, resolveTableName, type MetaRoot,
 } from "@metaobjectsdev/metadata";
 import { entityFile, routesFile } from "@metaobjectsdev/test-generators";
 import pg from "pg";
@@ -77,7 +77,7 @@ export function seedInserts(root: MetaRoot, seed: ReportSeed): SeedInsert[] {
         if (value !== null && !["string", "number", "boolean"].includes(typeof value)) {
           throw new Error(`seed.json: '${table}.${name}' is not a scalar: ${JSON.stringify(value)}`);
         }
-        columns.push(resolveColumnName(field, DEFAULT_COLUMN_NAMING_STRATEGY));
+        columns.push(resolveColumnName(field));
         values.push(value);
       }
       out.push({ table, columns, values });
@@ -171,6 +171,10 @@ export async function startGeneratedReportServer(
 
   // 1. Emit the real artifacts for the report model.
   const root = await loadMetadataFile(metaPath);
+  // This lane provisions its own base tables in the generated Drizzle tables' default
+  // spelling (snake_case), not the corpus's committed literal-column schema the other ports
+  // read, so it sets the root to the default rules (ADR-0058: every resolver reads the root).
+  root.physicalNaming = DEFAULT_PHYSICAL_NAMING;
   const lr = await runGen({
     config: defineConfig({
       outDir: tmp,
@@ -203,10 +207,7 @@ export const db = drizzle(pool);
 
   // 3. Provision the base tables (snake_case, the EMITTED Drizzle tables' spelling) and
   //    each view from the real lowering under the same naming strategy.
-  const views = buildReportViews(root, {
-    dialect: "postgres",
-    columnNamingStrategy: DEFAULT_COLUMN_NAMING_STRATEGY,
-  });
+  const views = buildReportViews(root, { dialect: "postgres" });
   const createViews = views
     .map((v) => {
       if (v.sql === undefined) throw new Error(`view ${v.name} has no SQL`);

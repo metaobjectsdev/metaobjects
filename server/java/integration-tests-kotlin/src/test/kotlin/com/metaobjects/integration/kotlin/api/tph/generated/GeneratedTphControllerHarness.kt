@@ -69,6 +69,12 @@ class GeneratedTphControllerHarness(
         val metaJson = corpusRoot.resolve("tph/meta.json")
         val uri: URI = URIHelper.toURI("model:file:" + metaJson.toAbsolutePath().toString().replace('\\', '/'))
         val loader = loadUris("api-contract-tph-generated", listOf(uri))
+        // ADR-0058 — this corpus's committed .metaobjects/config.json (at corpusRoot,
+        // fixtures/api-contract-conformance/) declares naming.columns: literal; every field
+        // here declares no @column, so the generated columns and the runtime's reads of them
+        // depend on this. Read with the SAME NeutralConfig reader every port uses.
+        loader.root.physicalNaming =
+            com.metaobjects.config.SourceResolver.resolvePhysicalNaming(corpusRoot)
 
         val srcDir = genDir.resolve("src")
         Files.createDirectories(srcDir)

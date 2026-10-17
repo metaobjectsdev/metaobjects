@@ -28,6 +28,7 @@
 // (bigserial id, the corpus column types). It is provisioning scaffolding, not the
 // artifact under test — the artifact is the generated routes + AppDbContext.
 
+using MetaObjects.Meta;
 using System.Reflection;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -156,6 +157,8 @@ internal sealed class GeneratedAuthorServerFactory : IAsyncDisposable
     {
         var loadResult = new MetaDataLoader().Load(
             [new FileSource(ApiContractCorpusPaths.MetaJson)]);
+        // ADR-0058 — the corpus's committed naming rule, not a hardcoded default.
+        loadResult.Root.PhysicalNaming = ApiContractCorpusPaths.Naming;
         if (loadResult.Errors.Count != 0)
             throw new InvalidOperationException(
                 "corpus metadata failed to load: " +
@@ -171,7 +174,7 @@ internal sealed class GeneratedAuthorServerFactory : IAsyncDisposable
             {
                 OutDir = "/unused",
                 Namespace = GeneratedNamespace,
-                ColumnNamingStrategy = ColumnNamingStrategy.Literal,
+                ColumnNamingStrategy = ApiContractCorpusPaths.Naming.Columns,
                 EmitAbstractShapes = false,
                 // GenConfig.IncludeNames defaults to false (§A6 task 4); without it
                 // here the entity/DbContext output below never references the

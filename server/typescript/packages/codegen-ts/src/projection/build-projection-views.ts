@@ -24,6 +24,7 @@ import {
   TYPE_ORIGIN,
   resolveTableName,
   resolveTableSchema,
+  physicalNamingOf,
 } from "@metaobjectsdev/metadata";
 import { isProjection, isWriteThrough } from "./projection-detector.js";
 import { extractViewSpec, packageOf, projectionViewSource, refNamedOwner } from "./extract-view-spec.js";
@@ -65,7 +66,6 @@ export interface ExpectedView {
 
 export interface BuildProjectionViewsOptions {
   dialect: "postgres" | "sqlite" | "d1";
-  columnNamingStrategy?: ColumnNamingStrategy;
 }
 
 export function buildProjectionViews(
@@ -79,7 +79,8 @@ export function buildProjectionViews(
   }
   // D1 is SQLite at the SQL level.
   const dialect: "postgres" | "sqlite" = opts.dialect === "d1" ? "sqlite" : opts.dialect;
-  const columnNamingStrategy = opts.columnNamingStrategy ?? "snake_case";
+  // ADR-0058: the project's one column rule, from the loaded root.
+  const columnNamingStrategy = physicalNamingOf(root).columns;
 
   // Keyed by resolutionKey() (FQN), NOT bare name — two packages may declare a
   // same-named entity, and the view-spec's join targets are FQN so they bind the exact
@@ -135,13 +136,12 @@ export function buildProjectionViews(
 
   // FR-044 — the view of every view-backed object.report, appended AFTER the two loops
   // above so the views a report-free model returns keep their order.
-  out.push(...buildReportViews(root, { dialect: opts.dialect, columnNamingStrategy }));
+  out.push(...buildReportViews(root, { dialect: opts.dialect }));
   return out;
 }
 
 export interface BuildReportViewsOptions {
   dialect: "postgres" | "sqlite" | "d1" | "mysql";
-  columnNamingStrategy?: ColumnNamingStrategy;
 }
 
 /**
@@ -162,7 +162,8 @@ export function buildReportViews(root: MetaData, opts: BuildReportViewsOptions):
   }
   // D1 is SQLite at the SQL level.
   const dialect: ReportDialect = opts.dialect === "d1" ? "sqlite" : opts.dialect;
-  const columnNamingStrategy = opts.columnNamingStrategy ?? "snake_case";
+  // ADR-0058: the project's one column rule, from the loaded root.
+  const columnNamingStrategy = physicalNamingOf(root).columns;
   const joinTables: Record<string, string> = {};
   for (const obj of root.objects()) joinTables[obj.resolutionKey()] = resolveTableName(obj);
 

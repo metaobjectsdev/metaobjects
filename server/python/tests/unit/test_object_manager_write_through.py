@@ -15,6 +15,7 @@ import re
 from typing import Any
 
 from metaobjects import load_string
+from metaobjects.naming import NamingRules
 from metaobjects.runtime import ObjectManager
 from metaobjects.runtime.object_manager import SelectResult
 
@@ -89,6 +90,10 @@ class FakeDriver:
 
 def _om() -> tuple[ObjectManager, FakeDriver]:
     root = load_string(json.dumps(_META)).root
+    # This test is about write-through (table vs replica-view routing), not naming
+    # (ADR-0058 flipped the DEFAULT to snake_case) — pin `literal` so the fixture's
+    # field names stay the column names these assertions pin.
+    root.naming = NamingRules(columns="literal")
     d = FakeDriver()
     return ObjectManager(root, d), d  # type: ignore[arg-type]
 

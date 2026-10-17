@@ -71,7 +71,7 @@ import {
   type CubeSpec,
 } from "../cube/cube-model-spec.js";
 import { renderCubeViewYaml, renderCubeYaml } from "../cube/cube-yaml.js";
-import { DEFAULT_COLUMN_NAMING_STRATEGY, type MetaObject } from "@metaobjectsdev/metadata";
+import { physicalNamingOf, type MetaObject } from "@metaobjectsdev/metadata";
 
 export interface CubeModelGeneratorOptions {
   /** The SQL dialect of the database Cube reads. Default: the codegen config's `dialect`. */
@@ -169,7 +169,7 @@ function generateCubeFiles(ctx: GenContext, options: CubeModelGeneratorOptions):
 
   const model = buildCubeModel(ctx.loadedRoot, {
     dialect,
-    columnNamingStrategy: ctx.renderContext?.columnNamingStrategy ?? DEFAULT_COLUMN_NAMING_STRATEGY,
+    columnNamingStrategy: ctx.renderContext?.columnNamingStrategy ?? physicalNamingOf(ctx.loadedRoot).columns,
     // The generator's own filter, never the run's selection: see the header.
     matches: ctx.matches,
   });

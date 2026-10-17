@@ -6,7 +6,7 @@
 // Extends MetaData directly: no model wrapper, no metaOf() indirection.
 
 import { MetaData } from "../../shared/meta-data.js";
-import { pluralizeTableNameLegacy, toSnakeCase } from "../../naming.js";
+import { applyTableNamingRule, physicalNamingOf, pluralizeTableNameLegacy } from "../../naming.js";
 import {
   SOURCE_ATTR_TABLE,
   SOURCE_ATTR_VIEW,
@@ -100,9 +100,11 @@ export class MetaSource extends MetaData {
    * four-step rule:
    *   1. Kind-matching alias (e.g. @proc when @kind: "storedProc").
    *   2. Legacy @table for non-table kind (pre-1.0 fallback).
-   *   3. Source's bare structural `name` via snake_case.
-   *   4. Owning entity's name via the frozen legacy pluralize(snake_case) —
-   *      see pluralizeTableNameLegacy's doc for why it is frozen.
+   *   3. Source's bare structural `name`, cased by the project's table rule.
+   *   4. Owning entity's name, cased by the project's table rule, through the frozen
+   *      legacy pluralizer — see pluralizeTableNameLegacy's doc for why it is frozen.
+   * The table rule is `naming.tables` in `.metaobjects/config.json` (ADR-0058), carried by
+   * the loaded root; default `snake_case`.
    *
    * Callers needing the legacy raw @table slot only should use `tableName`;
    * codegen / migrate / runtime should use `physicalName`.
@@ -128,7 +130,7 @@ export class MetaSource extends MetaData {
     // Step 3: source's structural `name` via snake_case (no pluralization —
     // the source's name IS the logical name).
     if (this.name !== "") {
-      return toSnakeCase(this.name);
+      return applyTableNamingRule(this.name, physicalNamingOf(this).tables);
     }
 
     // Step 4: owning entity's name via pluralize(snake_case). The MetaData
@@ -136,7 +138,7 @@ export class MetaSource extends MetaData {
     // rule — this is a DEFAULT PHYSICAL name, not an API-surface name.
     const owner = this.parent;
     if (owner !== undefined && owner.name !== "") {
-      return pluralizeTableNameLegacy(toSnakeCase(owner.name));
+      return pluralizeTableNameLegacy(applyTableNamingRule(owner.name, physicalNamingOf(this).tables));
     }
 
     return "";

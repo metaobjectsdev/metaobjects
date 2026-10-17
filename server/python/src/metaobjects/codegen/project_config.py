@@ -28,11 +28,20 @@ from pathlib import Path
 
 import yaml  # type: ignore[import-untyped]  # PyYAML ships no type stubs
 
+from metaobjects.naming import removed_naming_source_message
+
 #: Config filename looked up in the cwd when ``--config`` is not given.
 CONFIG_FILENAME = "metaobjects.config.yaml"
 
 #: Default metadata directory (relative to the config file) when ``metadata:`` is omitted.
 DEFAULT_METADATA_DIR = "metaobjects"
+
+#: ADR-0058 Decision 4 — the key this loader never shipped reading (added on this branch
+#: for an earlier version of the physical-naming fix, then superseded by ADR-0058 before
+#: release). Named so the refusal below can quote it exactly; kept OUT of
+#: ``TOP_LEVEL_KEYS`` so the generic unknown-key check never fires for it — an adopter who
+#: followed the rc.3 guide and added it gets the naming-migration message, not "unknown key".
+_REMOVED_COLUMN_NAMING_KEY = "columnNaming"
 
 #: Every key this loader reads at the top level, and the ONLY ones it accepts.
 #: ``metaobjects-config.schema.json`` declares ``additionalProperties: false``, so the
@@ -41,7 +50,9 @@ DEFAULT_METADATA_DIR = "metaobjects"
 #: schema by ``test_schema_and_loader_accept_EXACTLY_the_same_keys``.
 TOP_LEVEL_KEYS: tuple[str, ...] = (
     "metadata", "providers", "libraries", "targets", "requirementTests", "apiDocs",
+    "templates",
 )
+
 
 #: The 1.0 docs block. Not a key this loader reads: it is recorded (``legacy_docs``) so
 #: ``gen`` and ``verify --codegen`` can refuse it with the line that says where it went,
@@ -169,6 +180,10 @@ class ProjectConfig:
     api_docs: ApiDocsConfig | None = None
     #: True when the file still carries the 1.0 ``docs`` block, which nothing reads.
     legacy_docs: bool = False
+    #: ``templates``: the directory template refs resolve from (relative to ``config_dir`` or
+    #: absolute). ``None`` => ``--templates`` / ``--prompts``, else ``prompts/`` when it exists,
+    #: else ``templates/``.
+    templates: str | None = None
 
     def metadata_dir(self) -> str:
         """The metadata dir resolved against ``config_dir`` (absolute path string)."""
@@ -180,6 +195,10 @@ class ProjectConfig:
     def out_dir_for(self, target: TargetConfig) -> str:
         """``target.out_dir`` resolved against ``config_dir`` (absolute path string)."""
         return _resolve_under(self.config_dir, target.out_dir)
+
+    def templates_dir(self) -> str | None:
+        """``templates`` resolved against ``config_dir``, or ``None`` when not declared."""
+        return None if self.templates is None else _resolve_under(self.config_dir, self.templates)
 
     def template_spec_for(self, target: TargetConfig) -> str | None:
         """``target.template_spec`` resolved against ``config_dir``, or ``None``."""
@@ -209,8 +228,7 @@ def _reject_unknown_keys(
 
 
 def _resolve_under(base: Path, p: str) -> str:
-    q = Path(p)
-    return str(q if q.is_absolute() else (base / q).resolve())
+    return str((base / p).resolve())
 
 
 def _require_str_list(value: object, ctx: str) -> list[str]:
@@ -313,6 +331,17 @@ def load_project_config(path: Path) -> ProjectConfig:
     if not isinstance(raw, dict):
         raise ConfigError(f"{path}: top level must be a mapping.")
     legacy_docs = LEGACY_DOCS_KEY in raw
+    if _REMOVED_COLUMN_NAMING_KEY in raw:
+        # ADR-0058 Decision 4 — this key never shipped (added on this branch for an
+        # earlier version of the physical-naming fix); an adopter who followed the
+        # rc.3 guide and added it anyway gets the naming-migration message, not a
+        # bare "unknown key" — raised BEFORE the generic check below, and the key is
+        # excluded from `TOP_LEVEL_KEYS` so that check never reaches it.
+        raise ConfigError(
+            f"{path}: " + removed_naming_source_message(
+                f"{_REMOVED_COLUMN_NAMING_KEY} in {CONFIG_FILENAME}", raw[_REMOVED_COLUMN_NAMING_KEY]
+            )
+        )
     _reject_unknown_keys(
         {k: v for k, v in raw.items() if k != LEGACY_DOCS_KEY}, TOP_LEVEL_KEYS, str(path)
     )
@@ -381,6 +410,10 @@ def load_project_config(path: Path) -> ProjectConfig:
         _parse_api_docs(raw["apiDocs"], f"{path}: 'apiDocs'") if "apiDocs" in raw else None
     )
 
+    templates = raw.get("templates")
+    if templates is not None and (not isinstance(templates, str) or not templates):
+        raise ConfigError(f"{path}: 'templates' must be a non-empty string (a directory path).")
+
     return ProjectConfig(
         config_dir=path.parent.resolve(),
         metadata=metadata,
@@ -391,4 +424,5 @@ def load_project_config(path: Path) -> ProjectConfig:
         metadata_declared="metadata" in raw,
         api_docs=api_docs,
         legacy_docs=legacy_docs,
+        templates=templates,
     )

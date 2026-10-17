@@ -567,9 +567,8 @@ With `useNames` on, `AuthorTable` reads `Table(AuthorNames.SOURCE_PRIMARY_TABLE)
 above —
 useful once you have hand-written code depending on `AuthorNames` too, so the
 table binding and that code share one resolution instead of two independent
-ones that could drift. Both generators must be given the **same**
-`columnNaming` argument, or the table and the constants file disagree with
-each other about a column's name.
+ones that could drift. Both read the project's one `naming` setting
+(`.metaobjects/config.json`, ADR-0058), so they always agree about a column's name.
 
 A suite without the names generator keeps the literals, which is what makes the output
 compile either way — referencing `AuthorNames` in a run that generated no such object

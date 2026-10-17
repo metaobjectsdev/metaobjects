@@ -34,7 +34,6 @@ import { findRuntimeBoundaryCrossings, runtimeBoundaryWarnings } from "../lib/ru
 import { hasLegacyDocsBlock, legacyDocsConfigMessage, NO_CONFIG_MESSAGE } from "../lib/docs-removed.js";
 import { buildAgentSchemaInput } from "../lib/agent-schema.js";
 import { existsSync } from "node:fs";
-import { DEFAULT_COLUMN_NAMING_STRATEGY } from "@metaobjectsdev/metadata";
 
 /**
  * Print a load failure with everything the loader's ADR-0009 envelope carried — the stable
@@ -246,7 +245,6 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
       agentSchema: () => buildAgentSchemaInput(
         metadata,
         forgeConfig.dialect,
-        forgeConfig.columnNamingStrategy ?? DEFAULT_COLUMN_NAMING_STRATEGY,
         (m) => { const w = `[agent-docs] ${m}`; log.warn(w); warnings.push(w); },
       ),
       // FR-043 §6 — the shipped-library selection. Always passed, including as `[]`:
@@ -316,7 +314,6 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
     metadata,
     dialect: forgeConfig.dialect,
     migrateDialect: migrateDefaults.dialect,
-    columnNamingStrategy: forgeConfig.columnNamingStrategy,
     projectRoot,
     migrateOutDir: migrateDefaults.outDir,
     migrateFormat: migrateDefaults.format,
@@ -517,8 +514,7 @@ async function listCatalogCommand(
         agentSchema: () => buildAgentSchemaInput(
           metadata,
           forgeConfig.dialect,
-          forgeConfig.columnNamingStrategy ?? DEFAULT_COLUMN_NAMING_STRATEGY,
-          () => {},
+            () => {},
         ),
       },
     };

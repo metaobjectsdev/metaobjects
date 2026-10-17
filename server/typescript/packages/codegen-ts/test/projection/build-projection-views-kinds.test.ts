@@ -97,13 +97,13 @@ describe("buildProjectionViews — non-plain-view projection kinds", () => {
     const root = await load(MODEL);
     // THE BUG: this call crashed outright ("cannot derive the base entity")
     // because the proc projection reached extractViewSpec.
-    const views = buildProjectionViews(root, { dialect: "postgres", columnNamingStrategy: "snake_case" });
+    const views = buildProjectionViews(root, { dialect: "postgres" });
     expect(views.map((v) => v.name)).toEqual(["v_programs"]);
   });
 
   test("a matview projection emits NO plain-view DDL (hand-managed, not silently mis-created)", async () => {
     const root = await load(MODEL);
-    const views = buildProjectionViews(root, { dialect: "postgres", columnNamingStrategy: "snake_case" });
+    const views = buildProjectionViews(root, { dialect: "postgres" });
     expect(views.some((v) => v.name === "mv_program_stats")).toBe(false);
   });
 
@@ -113,7 +113,7 @@ describe("buildProjectionViews — non-plain-view projection kinds", () => {
     // discriminator keyed on origins alone would silently stop managing it — the view
     // would vanish from migrate's plan and `verify --db` would go blind to it.
     const root = await load(MODEL);
-    const views = buildProjectionViews(root, { dialect: "postgres", columnNamingStrategy: "snake_case" });
+    const views = buildProjectionViews(root, { dialect: "postgres" });
     expect(views.map((v) => v.name)).toContain("v_programs");
   });
 });
@@ -141,7 +141,7 @@ describe("buildProjectionViews — a STANDALONE read-model must not abort the wh
 
   test("does NOT throw, and migrate still manages every other view in the model", async () => {
     const root = await load([...MODEL, STANDALONE]);
-    const views = buildProjectionViews(root, { dialect: "postgres", columnNamingStrategy: "snake_case" });
+    const views = buildProjectionViews(root, { dialect: "postgres" });
     // The whole model still migrates…
     expect(views.map((v) => v.name)).toEqual(["v_programs"]);
     // …and the hand-authored view is left alone: neither created nor dropped.

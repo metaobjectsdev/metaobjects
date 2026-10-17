@@ -6,6 +6,7 @@
 using System.IO;
 using System.Text.Json;
 using MetaObjects.Codegen;
+using MetaObjects.Config;
 using MetaObjects.Loader;
 
 namespace MetaObjects.Cli;
@@ -62,10 +63,9 @@ public static class GenCommand
     public static Outcome Run(
         string metadataDir, string outDir, string ns, bool emitAbstractShapes,
         IReadOnlyList<string>? generatorNames, string? templateRoot, string? templateSpecPath = null,
-        ColumnNamingStrategy columnNaming = ColumnNamingStrategy.Literal,
         string baseline = "default")
-        => Run(MetaDataLoader.FromDirectory(metadataDir), outDir, ns, emitAbstractShapes,
-            generatorNames, templateRoot, templateSpecPath, ProjectRootFor(metadataDir), columnNaming,
+        => Run(MetadataLocation.Resolve(metadataDir, Directory.GetCurrentDirectory()).Load(), outDir, ns,
+            emitAbstractShapes, generatorNames, templateRoot, templateSpecPath, ProjectRootFor(metadataDir),
             baseline);
 
     /// <summary>
@@ -126,7 +126,6 @@ public static class GenCommand
         LoadResult load, string outDir, string ns, bool emitAbstractShapes,
         IReadOnlyList<string>? generatorNames, string? templateRoot, string? templateSpecPath = null,
         string? projectRoot = null,
-        ColumnNamingStrategy columnNaming = ColumnNamingStrategy.Literal,
         string baseline = "default")
     {
         var loadErrors = load.Errors.Select(e => e.Code.ToString()).ToList();
@@ -168,7 +167,7 @@ public static class GenCommand
         // `codegen/Program.cs` calls too, with its owned generators composed into the same
         // selection (CodegenCli.ComposeGenerators) — one implementation, not two.
         var apiOutcome = MetaObjects.Codegen.CodegenCli.RunGen(
-            load, outDir, ns, emitAbstractShapes, generators, projectRoot, columnNaming, baseline);
+            load, outDir, ns, emitAbstractShapes, generators, projectRoot, baseline);
         return new Outcome(apiOutcome.LoadErrors, apiOutcome.Result);
     }
 
@@ -185,7 +184,9 @@ public static class GenCommand
 
     /// <summary>
     /// The lines `dotnet meta gen --list` prints: one `&lt;stable-name&gt; — &lt;description&gt;`
-    /// per registered generator, native first, marked `[owned — identical]` / `[owned —
+    /// per registered generator, native first, each followed by the expression that lists it
+    /// in codegen/Generators.cs (<see cref="GeneratorRegistry.ListEntry"/>, or the owned copy's
+    /// <see cref="EjectableGenerators.OwnedListEntry"/> once ejected) and its options, marked `[owned — identical]` / `[owned —
     /// DIFFERS: N behind, M of your own]` when <paramref name="cwd"/> already has an
     /// ejected copy (<see cref="OwnedCopy.Status"/>), plus one line for an owned helper
     /// runtime copy (<see cref="OwnedCopy.RuntimeStatus"/>) when there is one. Pure (no
@@ -198,8 +199,11 @@ public static class GenCommand
             {
                 var owned = OwnedCopy.Status(cwd, e);
                 var ownedMark = owned is not null ? $" [owned — {owned}]" : "";
+                var listEntry = owned is not null ? EjectableGenerators.OwnedListEntry(e) : GeneratorRegistry.ListEntry(e);
                 var requires = e.Requires.Count > 0 ? $" (requires: {string.Join(", ", e.Requires)})" : "";
-                return $"  {e.Name} — {e.Description}" + requires + (e.Note is not null ? $" [{e.Note}]" : "") + ownedMark;
+                var options = e.Options is not null ? $"\n      options: {e.Options}" : "";
+                return $"  {e.Name} — {e.Description}" + requires + (e.Note is not null ? $" [{e.Note}]" : "") + ownedMark +
+                       $"\n      in codegen/Generators.cs: {listEntry}" + options;
             })
             .ToList();
         // The helper runtime an ejected routes generator brought with it is owned code too,

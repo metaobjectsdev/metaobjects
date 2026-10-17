@@ -32,12 +32,14 @@ One canonical internal string, normalized per ecosystem in exactly one place
 | form | `<base>-rc.<N>` | `0.24.0-rc.3` | `0.24.0rc3` | `0.24.0-rc.3` | `7.24.0-rc.3` |
 | why | | SemVer2 verbatim | PEP 440 canonical form | SemVer2 verbatim | same `minor.patch`, major is the npm major plus 7 (`1.1.0-rc.2` is `8.1.0-rc.2`) |
 
-`<base>` is the in-development version, read from **CHANGELOG.md's topmost `## [x.y.z]`
-header** — the repository's own declaration of what is being worked on, written when the
-work lands and therefore ahead of the `package.json` bump, which still carries the last
-*released* version. It falls back to the next minor only when that top entry is already
-released, i.e. when nobody has declared a next version yet; `--base` overrides both, and
-the run prints which of the three it used. Deriving it as minor+1 unconditionally was
+`<base>` is the in-development version: the lowest **CHANGELOG.md `## [x.y.z]` section that is
+not released yet** — the repository's own declaration of what is being worked on. "Released"
+is read from where a release leaves its mark, public npm's `latest` for the CLI and the
+`v<x.y.z>` tags, never from `package.json`: release preparation bumps `package.json` first,
+and reading it as released numbered every candidate cut during release prep one minor too
+high (`1.2.0-rc.3` while `1.1.0` was the work in hand). The base falls back to the next minor
+only when every section is released; `--base` overrides, but never to skip an unpublished
+section (the run refuses), and the run prints which source it used. Deriving it as minor+1 unconditionally was
 wrong on every PATCH line — `0.23.3` after `0.23.2` is an ordinary outcome, and the tool
 would say `0.24.0` while the changelog said `0.23.3`, so every invocation needed `--base`
 to be talked out of it. One forgotten flag burns a version number permanently.
@@ -143,7 +145,12 @@ tools/prerelease/prerelease-link.sh check
 tools/prerelease/prerelease-link.sh unlink --to 0.23.2
 ```
 
-`link` detects which ecosystems the project uses and configures only those, scoped to the
+`link` detects which ecosystems the project uses, at any depth, and configures only those:
+every independent Maven build (a `pom.xml` with none above it; modules inherit) and every
+Python project (`pyproject.toml`) gets its own block, so a repository with one project per
+port under `ports/` needs one `link`, and every `pom.xml` is repinned, modules included. The
+.NET local tool manifest (`.config/dotnet-tools.json`) is repinned with the packages, so
+`dotnet meta` moves to the candidate too. Configuration is scoped to the
 vendor namespaces (`@metaobjectsdev/*`, `metaobjects`, `MetaObjects*`, `com.metaobjects`).
 Everything else keeps resolving from the public registry — verified: `zod` and `pyyaml`
 still come from npmjs.org and pypi.org while the vendor packages come from the pre-release

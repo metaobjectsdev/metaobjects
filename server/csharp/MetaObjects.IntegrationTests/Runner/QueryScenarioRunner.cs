@@ -129,13 +129,22 @@ public static class QueryScenarioRunner
         }
     }
 
-    /// <summary>Load the canonical corpus metadata (the M:N relationship + junction declarations).</summary>
+    /// <summary>
+    /// Load the canonical corpus metadata (the M:N relationship + junction declarations):
+    /// the corpus's one metadata file, <see cref="CorpusPaths.FitnessMetadataFile"/>. The
+    /// corpus's project config is one level up, at
+    /// <c>fixtures/persistence-conformance/.metaobjects/config.json</c>, so a load of this
+    /// file never reads it; its naming rule is set on the root from
+    /// <see cref="CorpusPaths.Naming"/>.
+    /// </summary>
     private static MetaRoot LoadCorpusMetadata()
     {
-        var result = MetaDataLoader.FromDirectory(CorpusPaths.CanonicalMetadataDir);
+        var result = MetaDataLoader.FromUris([new Uri(CorpusPaths.FitnessMetadataFile)]);
         if (result.Errors.Count > 0)
             throw new InvalidOperationException(
                 "failed to load corpus metadata: " + string.Join("; ", result.Errors.Select(e => e.Message)));
+        // ADR-0058 — the corpus's committed naming rule, not a hardcoded default.
+        result.Root.PhysicalNaming = CorpusPaths.Naming;
         return result.Root;
     }
 

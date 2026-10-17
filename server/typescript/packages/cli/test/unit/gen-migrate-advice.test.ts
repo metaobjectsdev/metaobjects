@@ -46,7 +46,6 @@ function input(over: Partial<GenMigrateAdviceInput> & Pick<GenMigrateAdviceInput
   return {
     dialect: "sqlite",
     migrateDialect: undefined,
-    columnNamingStrategy: undefined,
     migrateOutDir: OUT_DIR,
     migrateFormat: "default",
     changedFiles: ["src/generated/Pet.ts"],
