@@ -33,6 +33,8 @@
 #    groupId and the version live on different lines (or behind a property), so a
 #    same-line match cannot see it. The project's OWN 1.0.0-SNAPSHOT version is normal
 #    and is deliberately not flagged.
+# 6. A pre-release `generatedBy` in .metaobjects/.agent-context.json, a committed file
+#    that `meta init` stamps with the running CLI's version.
 #
 # Pure text scan: no network, no package manager, no toolchain.
 set -uo pipefail
@@ -50,7 +52,7 @@ NS_RE='@metaobjectsdev/|com\.metaobjects|(^|[^A-Za-z])MetaObjects(\.|"|<|$)|(^|[
 # Without it, check 1 cannot run. It is announced rather than skipped in silence — a
 # guard that says nothing when it does not run is indistinguishable from one that ran and
 # found nothing, which is the failure mode this whole script exists to prevent. The other
-# four checks are host-independent and still run; check 3 in particular catches a
+# five checks are host-independent and still run; check 3 in particular catches a
 # pre-release PIN regardless of where it came from.
 CFG="$(cd "$(dirname "$0")" && pwd)/registry.env"
 # shellcheck source=/dev/null
