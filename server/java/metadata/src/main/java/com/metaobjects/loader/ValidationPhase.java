@@ -2019,6 +2019,7 @@ public final class ValidationPhase {
                 if (objectRef == null || objectRef.isEmpty()) continue;
 
                 MetaObject objectRefNode = References.refTarget(rel, MetaRelationship.ATTR_OBJECT_REF);
+                if (objectRefNode == null) continue;
                 List<ReferenceIdentity> candidates =
                     RelationshipReferences.referenceCandidatesFor(obj, objectRefNode);
 

@@ -46,7 +46,7 @@ import { renderDocsFor } from "./jsdoc.js";
 import { sharedEnumForField } from "@metaobjectsdev/codegen-ts/engine";
 import { sharedEnumImportSpecifier } from "@metaobjectsdev/codegen-ts/engine";
 import { sharedEnumZodConstName } from "./enums-file.js";
-import { fieldDeclaringPackage, type RenderContext } from "@metaobjectsdev/codegen-ts/engine";
+import type { RenderContext } from "@metaobjectsdev/codegen-ts/engine";
 import { valueObjectModuleSpecifier } from "@metaobjectsdev/codegen-ts/engine";
 // FR-035: the SAME required-predicate that drives the Drizzle column's .notNull()
 // drives the UpdateSchema's .nullable() exclusion — shared so they cannot drift.
@@ -626,7 +626,7 @@ function zodFieldExpr(
       // Drizzle .$type<> use) so all three agree. Without owner/ctx (bare
       // unit-test calls) fall back to the bare name + flat same-dir.
       const ownerPkg = (ctx && owner) ? effectivePackage(owner) : undefined;
-      const refName = (ctx && owner) ? ctx.resolveValueObjectName(ref, fieldDeclaringPackage(field, ownerPkg)) : stripPackage(ref);
+      const refName = (ctx && owner) ? ctx.resolveValueObjectName(field) : stripPackage(ref);
       const moduleSpec = (ctx && owner)
         ? valueObjectModuleSpecifier(refName, ctx.packageOf, ownerPkg, ctx.outputLayout, ctx.extStyle)
         : `./${refName}.js`;
@@ -648,7 +648,7 @@ function zodFieldExpr(
     const ref = field.attr(FIELD_ATTR_OBJECT_REF);
     if (typeof ref === "string" && ref.length > 0) {
       const ownerPkg = (ctx && owner) ? effectivePackage(owner) : undefined;
-      const refName = (ctx && owner) ? ctx.resolveValueObjectName(ref, fieldDeclaringPackage(field, ownerPkg)) : stripPackage(ref);
+      const refName = (ctx && owner) ? ctx.resolveValueObjectName(field) : stripPackage(ref);
       const moduleSpec = (ctx && owner)
         ? valueObjectModuleSpecifier(refName, ctx.packageOf, ownerPkg, ctx.outputLayout, ctx.extStyle)
         : `./${refName}.js`;

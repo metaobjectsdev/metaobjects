@@ -1,7 +1,7 @@
 // RenderContext — cross-cutting state passed to every template.
 
-import type { MetaRoot, MetaData, MetaField } from "@metaobjectsdev/metadata";
-import { physicalNamingOf, resolveObjectRef, stripPackage } from "@metaobjectsdev/metadata";
+import type { MetaRoot, MetaData } from "@metaobjectsdev/metadata";
+import { FIELD_ATTR_OBJECT_REF, physicalNamingOf, refTarget, stripPackage } from "@metaobjectsdev/metadata";
 import type { Dialect } from "./column-mapper.js";
 import { normalizeTimestampMode } from "./dialect-module.js";
 import type { PkInfo } from "./pk-resolver.js";
@@ -106,12 +106,12 @@ export interface RenderContext {
    *  Zod schema, and module filename). Non-value objects (entities) are never in
    *  the collision set, so this returns their bare `name`. */
   valueObjectEmittedName: (obj: MetaData) => string;
-  /** The ADR-0044 emitted name for a REFERENCE to a value object (`@objectRef`,
-   *  bare or FQN), resolved package-locally (ADR-0042) from `referrerPkg`. Falls
-   *  back to the bare (package-stripped) ref when it resolves to no emitted value
+  /** The ADR-0044 emitted name for the value object a field's `@objectRef` names, read
+   *  as the loader bound it (ADR-0059 R7: resolved where the attribute was declared).
+   *  Falls back to the bare (package-stripped) ref when it resolves to no emitted value
    *  object — which is also the byte-identical result whenever there is no
    *  collision. */
-  resolveValueObjectName: (ref: string, referrerPkg: string | undefined) => string;
+  resolveValueObjectName: (field: MetaData) => string;
   /** FR-019: module specifier to import externally-PROVIDED shared enums from
    *  (`@provided: true` declarations). Undefined when unset — referencing a
    *  provided enum without it is a codegen-time error. */
@@ -150,17 +150,6 @@ export type RenderContextInput = Omit<RenderContext, "extStyle" | "omImport" | "
   /** Per-entity exact collection-var-name overrides, keyed by bare entity name. */
   collectionNameOverrides?: Record<string, string>;
 };
-
-/** ADR-0042/#228 — the package a field's `@objectRef` resolves in: the FIELD's OWN
- *  declaring package (which differs from the referring object's when the field is
- *  inherited via `extends` from an abstract node in another package), falling back
- *  to `fallbackPkg` (the referring object's package). THE single source of truth for
- *  the referrer package passed to `RenderContext.resolveValueObjectName`, so every
- *  value-object reference site resolves a cross-package short-name collision
- *  identically (they cannot drift). */
-export function fieldDeclaringPackage(field: MetaField, fallbackPkg: string | undefined): string | undefined {
-  return field.parent?.package ?? field.parent?.fileDefaultPackage ?? fallbackPkg;
-}
 
 /** Append the configured extension to a cross-entity module specifier (which is
  *  always a bare, extension-less relative path like `./Foo`). */
@@ -202,7 +191,6 @@ export function makeRenderContext(opts: RenderContextInput): RenderContext {
   // absent (bare template unit-tests), the map is empty, so both accessors return
   // bare names and every consumer is byte-identical to pre-#228 output.
   const valueObjectNames = opts.valueObjectNames ?? new Map<string, string>();
-  const loadedRoot = opts.loadedRoot;
   return {
     ...opts,
     extStyle: opts.extStyle ?? "js",
@@ -222,10 +210,13 @@ export function makeRenderContext(opts: RenderContextInput): RenderContext {
     packageOf: opts.packageOf ?? new Map(),
     valueObjectNames,
     valueObjectEmittedName: (obj: MetaData) => valueObjectNames.get(obj.resolutionKey()) ?? obj.name,
-    resolveValueObjectName: (ref: string, referrerPkg: string | undefined) => {
-      const { node } = resolveObjectRef(loadedRoot, ref, referrerPkg ?? "");
+    resolveValueObjectName: (field: MetaData) => {
+      const node = refTarget(field, FIELD_ATTR_OBJECT_REF);
       const emitted = node !== undefined ? valueObjectNames.get(node.resolutionKey()) : undefined;
-      return emitted ?? stripPackage(ref);
+      if (emitted !== undefined) return emitted;
+      // ADR-0039: resolving — @objectRef may be inherited via extends.
+      const ref = field.attr(FIELD_ATTR_OBJECT_REF);
+      return stripPackage(typeof ref === "string" ? ref : "");
     },
     selfTarget: defaultTarget,
     entityModuleTarget: opts.entityModuleTarget ?? defaultTarget,

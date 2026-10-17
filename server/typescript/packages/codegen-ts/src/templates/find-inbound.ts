@@ -23,7 +23,7 @@ import {
   RESPONSE_FORMAT_DEFAULT,
   RESPONSE_FORMAT_XML,
   type ResponseFormat,
-  resolveObjectRef,
+  refTarget,
 } from "@metaobjectsdev/metadata";
 
 /** What an inbound generator needs about one responding prompt. */
@@ -73,8 +73,8 @@ export function responseShape(root: MetaData, tmpl: MetaData): InboundShape | un
   // ADR-0039: resolving — @responseRef may be inherited via extends.
   const ref = tmpl.attr(TEMPLATE_ATTR_RESPONSE_REF);
   if (typeof ref !== "string") return undefined;
-  // ADR-0042: a bare @responseRef resolves package-locally, then root-level.
-  const vo = resolveObjectRef(root, ref, tmpl.package ?? tmpl.fileDefaultPackage ?? "").node;
+  // ADR-0059 R7: the value object the loader bound for @responseRef.
+  const vo = refTarget(tmpl, TEMPLATE_ATTR_RESPONSE_REF);
   if (!vo) return undefined;
   return { vo, ref, format: responseFormatOf(tmpl) };
 }

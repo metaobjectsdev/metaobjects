@@ -21,7 +21,7 @@ import {
   TEMPLATE_ATTR_RESPONSE_REF,
   VALIDATOR_SUBTYPE_ARRAY,
   RESPONSE_FORMAT_XML,
-  resolveObjectRef,
+  refTarget,
 } from "@metaobjectsdev/metadata";
 import type { MetaField } from "@metaobjectsdev/metadata";
 import { enumValues } from "../enum-meta.js";
@@ -88,12 +88,6 @@ const SCALAR_ZOD: Record<string, string> = {
 };
 
 // ADR-0039: resolving — root has no super (children()==ownChildren()); a top-level object/template may itself extend, so resolve rather than work-by-accident.
-// ADR-0042: resolveObjectRef gives package-local-before-root-level precedence for a bare ref, FQN-exact otherwise.
-function findObject(root: MetaData, name: string, referrerPkg = ""): MetaData | undefined {
-  return resolveObjectRef(root, name, referrerPkg).node;
-}
-
-// ADR-0039: resolving — root has no super (children()==ownChildren()); a top-level object/template may itself extend, so resolve rather than work-by-accident.
 function findTemplate(root: MetaData, name: string): MetaData | undefined {
   return root.children().find((c) => c.type === TYPE_TEMPLATE && c.name === name);
 }
@@ -116,16 +110,14 @@ function fieldZod(field: MetaData, root: MetaData, seen: ReadonlySet<string>, de
   const isArray = field.resolvedIsArray();
   let base: string;
   if (field.subType === FIELD_SUBTYPE_OBJECT) {
-    const refName = field.attr(FIELD_ATTR_OBJECT_REF);
-    if (typeof refName !== "string") {
-      base = "z.unknown()";
-    } else if (seen.has(refName)) {
-      // Cycle guard — emit unknown for self-references (rare; lazy schemas not in scope for v1).
+    // ADR-0059 R7: the VO the loader bound for @objectRef, resolved where it was declared.
+    const inner = refTarget(field, FIELD_ATTR_OBJECT_REF);
+    if (inner === undefined || seen.has(inner.resolutionKey())) {
+      // Unresolvable, or a cycle guard — emit unknown for self-references (rare; lazy
+      // schemas not in scope for v1).
       base = "z.unknown()";
     } else {
-      // ADR-0042: a bare nested @objectRef resolves in the declaring VO's package.
-      const inner = findObject(root, refName, field.parent?.package ?? field.parent?.fileDefaultPackage ?? "");
-      base = inner ? renderObjectSchema(inner, root, new Set(seen).add(refName), depth + 1) : "z.unknown()";
+      base = renderObjectSchema(inner, root, new Set(seen).add(inner.resolutionKey()), depth + 1);
     }
   } else if (field.subType === FIELD_SUBTYPE_ENUM) {
     // The members are declared, resolving (so an `extends`-inherited @values is seen),
@@ -196,9 +188,9 @@ export function renderOutputParser(
         : `template "${templateName}" missing @responseRef`,
     );
   }
-  const { vo, ref: payloadRef } = shape;
+  const { vo } = shape;
 
-  const schema = renderObjectSchema(vo, root, new Set([payloadRef]), 0);
+  const schema = renderObjectSchema(vo, root, new Set([vo.resolutionKey()]), 0);
   // One base for every symbol in this file, shared with promptRender()'s handle — the
   // three template emitters used to spell the same node three ways (see naming.ts).
   const base = templateSymbolBase(templateName);

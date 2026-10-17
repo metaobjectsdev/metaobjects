@@ -694,26 +694,24 @@ function primaryKeyColumn(entity: MetaObject, ctx: ExtractContext): string | und
 }
 
 /**
- * Walk a `@via` dotted path to its terminal (related) entity name. any/all carry no
+ * Walk a `@via` dotted path to its terminal (related) entity. any/all carry no
  * `@of` to name the aggregated entity, so it is derived from the last `@via` hop.
  * Returns undefined if any hop fails to resolve (a prior loader error already fired).
  */
-function viaTerminalEntity(via: string, root: MetaRoot, referrerPkg: string): string | undefined {
+function viaTerminalEntity(via: string, root: MetaRoot, referrerPkg: string): MetaObject | undefined {
   const segments = via.split(".");
   const rawEntity = segments[0];
   if (!rawEntity) return undefined;
   let currentObj = resolveEntityRef(root, rawEntity, referrerPkg);
   if (!currentObj) return undefined;
-  let terminal = currentObj.resolutionKey();
   for (const relName of segments.slice(1)) {
     const resolved = resolveHop(currentObj, relName);
     if (!resolved) return undefined;
     const target = resolved.target;
     if (!target) return undefined;
     currentObj = target;
-    terminal = target.resolutionKey();
   }
-  return terminal;
+  return currentObj;
 }
 
 /**
@@ -1156,11 +1154,10 @@ function buildSelectSpec(
         // hop, and @filter is the (required) quantified predicate.
         const via = origin.ownAttr(ORIGIN_AGGREGATE_ATTR_VIA) as string | undefined;
         if (!via) continue;
-        const relatedName = viaTerminalEntity(via, root, projPkg);
-        if (!relatedName) continue;
-        const relatedEntity = resolveEntityRef(root, relatedName, projPkg);
-        const sourceAlias = findAliasInTree(joinTree, relatedName);
-        if (!relatedEntity || sourceAlias === undefined) continue;
+        const relatedEntity = viaTerminalEntity(via, root, projPkg);
+        if (!relatedEntity) continue;
+        const sourceAlias = findAliasInTree(joinTree, relatedEntity.resolutionKey());
+        if (sourceAlias === undefined) continue;
         const joinedPk = primaryKeyColumn(relatedEntity, ctx);
         if (joinedPk === undefined) continue;
         const pred = filterAttr !== undefined
@@ -1194,19 +1191,15 @@ function buildSelectSpec(
         // caller that reached codegen without loading, never a silent-drop path.
         const via = origin.ownAttr(ORIGIN_AGGREGATE_ATTR_VIA) as string | undefined;
         if (!via) continue;
-        // ADR-0039: resolving — @objectRef may be inherited via extends.
-        const objectRef = field.attr(FIELD_ATTR_OBJECT_REF) as string | undefined;
-        if (!objectRef) continue;
-        const relatedName = viaTerminalEntity(via, root, projPkg);
-        if (!relatedName) continue;
-        const relatedEntity = resolveEntityRef(root, relatedName, projPkg);
+        const relatedEntity = viaTerminalEntity(via, root, projPkg);
         if (!relatedEntity) continue;
         const sourceAlias = findAliasInTree(joinTree, relatedEntity.resolutionKey());
         if (sourceAlias === undefined) continue;
         const joinedPk = primaryKeyColumn(relatedEntity, ctx);
         if (joinedPk === undefined) continue;
-        // ADR-0042 — a bare @objectRef resolves in the projection's package.
-        const vo = resolveObjectRef(root, objectRef, projPkg).node;
+        // ADR-0059 R7 — the VO the loader bound for @objectRef, resolved where it was declared.
+        // ADR-0039: resolving — @objectRef may be inherited via extends.
+        const vo = refTarget(field, FIELD_ATTR_OBJECT_REF);
         if (!vo) continue;
         // ADR-0039: resolving — a value object may inherit members via extends, and the
         // terminal entity may inherit fields. The VO's member list IS the exposure: a

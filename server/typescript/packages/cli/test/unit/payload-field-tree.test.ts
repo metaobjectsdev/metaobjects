@@ -47,7 +47,7 @@ const model = [
 describe("derivePayloadFieldTree — mirrors the payload-codegen VO walk", () => {
   test("scalar fields become leaf nodes; an object-ref field becomes a nested tree", async () => {
     const root = await loadRoot(model);
-    const tree = derivePayloadFieldTree(root, "AuthorBrief", "acme::ai");
+    const tree = derivePayloadFieldTree(root.findObject("acme::ai::AuthorBrief"));
     expect(tree).toEqual([
       { name: "displayName" },
       { name: "postCount" },
@@ -75,7 +75,7 @@ describe("derivePayloadFieldTree — mirrors the payload-codegen VO walk", () =>
         },
       },
     ]);
-    expect(derivePayloadFieldTree(root, "Card", "acme::ai")).toEqual([
+    expect(derivePayloadFieldTree(root.findObject("acme::ai::Card"))).toEqual([
       { name: "title" },
       { name: "aliases", isArray: true },
       { name: "labels", isArray: true },
@@ -86,7 +86,7 @@ describe("derivePayloadFieldTree — mirrors the payload-codegen VO walk", () =>
 
   test("an unknown view-object name yields an empty tree", async () => {
     const root = await loadRoot(model);
-    expect(derivePayloadFieldTree(root, "Nope")).toEqual([]);
+    expect(derivePayloadFieldTree(root.findObject("Nope"))).toEqual([]);
   });
 
   // ADR-0041: two packages each declare an object.value `Note` (alpha: alphaText, beta:
@@ -104,7 +104,7 @@ describe("derivePayloadFieldTree — mirrors the payload-codegen VO walk", () =>
           { "field.object": { name: "fromAlpha", "@objectRef": "acme::alpha::Note" } },
           { "field.object": { name: "fromBeta", "@objectRef": "acme::beta::Note" } } ] } } ] } },
     );
-    expect(derivePayloadFieldTree(root, "Digest", "acme::app")).toEqual([
+    expect(derivePayloadFieldTree(root.findObject("acme::app::Digest"))).toEqual([
       { name: "fromAlpha", fields: [{ name: "alphaText" }] },
       { name: "fromBeta", fields: [{ name: "betaText" }] },
     ]);

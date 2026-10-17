@@ -17,7 +17,7 @@
 //     interface — the type `extract<Name>` returns — via the SAME
 //     `fieldTsTypeString` mapping the VO interface emitter uses.
 
-import type { MetaObject, MetaField, MetaRoot } from "@metaobjectsdev/metadata";
+import { type MetaData, type MetaObject, type MetaField, isMetaObject, refTarget } from "@metaobjectsdev/metadata";
 import { fieldTsTypeString } from "../templates/inferred-types.js";
 import {
   insertSchemaFields,
@@ -93,15 +93,15 @@ export function updateFieldShapes(obj: MetaObject): FieldShape[] {
 }
 
 /**
- * The extractor PAYLOAD field shape — the field interface of the value object
- * `extract<Name>` returns (the `@payloadRef` target). Same `fieldTsTypeString`
- * mapping + `isFieldRequired` optionality the VO interface emitter uses, so it
- * matches the emitted payload type. Returns undefined when the ref does not
- * resolve to a loaded object.
+ * The field shape of the value object a template reference attribute names
+ * (`@payloadRef` / `@responseRef`), read as the loader bound it (ADR-0059 R7). Same
+ * `fieldTsTypeString` mapping + `isFieldRequired` optionality the VO interface emitter
+ * uses, so it matches the emitted type. Returns undefined when the ref does not resolve
+ * to a loaded object.
  */
-export function payloadFieldShapes(root: MetaRoot, payloadRef: string): FieldShape[] | undefined {
-  const vo = root.findObject(payloadRef);
-  if (vo === undefined) return undefined;
+export function payloadFieldShapes(tmpl: MetaData, attrName: string): FieldShape[] | undefined {
+  const vo = refTarget(tmpl, attrName);
+  if (vo === undefined || !isMetaObject(vo)) return undefined;
   return modelFieldShapes(vo);
 }
 

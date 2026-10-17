@@ -147,7 +147,7 @@ export class MetaReferenceIdentity extends MetaIdentity {
    * points at. Priority: explicit dotted-form `@references: "Entity.field"`
    * override → target entity's primary identity field → "id" fallback.
    *
-   * Returns undefined only if the target entity cannot be found in `root`.
+   * Returns undefined only if the target entity does not resolve.
    * Centralizes the FK-target resolution rule used by projection view DDL,
    * Drizzle schema emit, and migration schema comparison.
    */
@@ -155,13 +155,11 @@ export class MetaReferenceIdentity extends MetaIdentity {
     const explicit = this.targetFields[0];
     if (explicit !== undefined) return explicit;
 
-    const targetName = this.targetEntity;
-    if (targetName === undefined) return undefined;
     // ADR-0059 R7: the target the loader bound for @references, else (a tree built
     // without the loader) the value resolved from this reference's package.
     const bound = refTarget(this, IDENTITY_REFERENCE_ATTR_REFERENCES);
-    const targetObj = bound !== undefined && bound.type === TYPE_OBJECT ? (bound as MetaObject) : root.findObject(targetName);
-    if (!targetObj) return undefined;
+    if (bound === undefined || bound.type !== TYPE_OBJECT) return undefined;
+    const targetObj = bound as MetaObject;
 
     const primary = targetObj.primaryIdentity();
     // ADR-0039: resolving — the target's @fields may be inherited via extends.

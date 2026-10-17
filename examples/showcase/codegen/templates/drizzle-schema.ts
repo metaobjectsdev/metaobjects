@@ -15,7 +15,7 @@ import {
   IDENTITY_REFERENCE_ATTR_REFERENCES,
   refTarget,
 } from "@metaobjectsdev/metadata";
-import { fieldDeclaringPackage, type RenderContext } from "@metaobjectsdev/codegen-ts/engine";
+import type { RenderContext } from "@metaobjectsdev/codegen-ts/engine";
 import { crossEntitySpecifier, valueObjectModuleSpecifier } from "@metaobjectsdev/codegen-ts/engine";
 import {
   mapColumnType, PG_IDENTITY_CAPABLE_FNS,
@@ -708,7 +708,7 @@ function renderColumn(
   const voSym = (name: string) => {
     const refRaw = field.attr(FIELD_ATTR_OBJECT_REF);
     const emitted = typeof refRaw === "string"
-      ? ctx.resolveValueObjectName(refRaw, fieldDeclaringPackage(field, entityPackage))
+      ? ctx.resolveValueObjectName(field)
       : name;
     return imp(`t:${emitted}@${valueObjectModuleSpecifier(emitted, ctx.packageOf, entityPackage, ctx.outputLayout, ctx.extStyle)}`);
   };

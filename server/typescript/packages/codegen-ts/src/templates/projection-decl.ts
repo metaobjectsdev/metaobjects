@@ -18,7 +18,7 @@ import {
 import { projectionViewName } from "../projection/extract-view-spec.js";
 import { GENERATED_HEADER, GENERATED_EDIT_NOTE } from "../constants.js";
 import type { ColumnNamingStrategy } from "../metaobjects-config.js";
-import { fieldDeclaringPackage, type RenderContext } from "../render-context.js";
+import type { RenderContext } from "../render-context.js";
 import { valueObjectModuleSpecifier } from "../import-path.js";
 import type { Dialect } from "../metaobjects-config.js";
 import { physicalNameExpr, sourceSchemaExpr, type ObjectNames } from "../names.js";
@@ -113,7 +113,7 @@ export function renderProjectionDecl(
     const ref = field.attr(FIELD_ATTR_OBJECT_REF);
     const rawRef = typeof ref === "string" ? ref : "";
     const name = ctx
-      ? ctx.resolveValueObjectName(rawRef, fieldDeclaringPackage(field, projectionPkg))
+      ? ctx.resolveValueObjectName(field)
       : stripPackage(rawRef);
     const module = ctx
       ? valueObjectModuleSpecifier(name, ctx.packageOf, projectionPkg, ctx.outputLayout, ctx.extStyle)

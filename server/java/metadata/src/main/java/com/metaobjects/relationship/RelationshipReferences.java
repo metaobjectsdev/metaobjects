@@ -113,19 +113,6 @@ public final class RelationshipReferences {
         return out;
     }
 
-    public static List<ReferenceIdentity> referenceCandidatesFor(MetaObject holder, String targetEntity) {
-        String target = ReferenceFkUtil.stripPackage(targetEntity);
-        List<ReferenceIdentity> out = new ArrayList<>();
-        for (MetaIdentity id : holder.getIdentities()) {
-            if (!(id instanceof ReferenceIdentity)) continue;
-            ReferenceIdentity ref = (ReferenceIdentity) id;
-            if (!target.equals(ReferenceFkUtil.stripPackage(ref.getTargetEntity()))) continue;
-            if (ReferenceFkUtil.refFkField(ref) == null) continue;
-            out.add(ref);
-        }
-        return out;
-    }
-
     /**
      * Which identity.reference does this {@code @cardinality: one} relationship navigate
      * through? The ladder, in order:
@@ -137,22 +124,14 @@ public final class RelationshipReferences {
      *   <li>otherwise -&gt; {@code null} (caller reports the ambiguity)</li>
      * </ol>
      * Returns {@code null} for "no candidate" and "cannot choose" alike; callers that need
-     * to tell them apart use {@link #referenceCandidatesFor}.
+     * to tell them apart use {@link #referenceCandidatesFor}. A reference matches when its {@code @references}
+     * is bound to the target node, never by short name.
      *
      * @param holder the entity whose effective reference set is searched
      * @param relationshipName the relationship's own (short) name, used for name-pairing
-     * @param targetEntity the relationship's {@code @objectRef}
+     * @param targetNode the node the relationship's {@code @objectRef} is bound to
      * @param sourceRefField the relationship's declared {@code @sourceRefField}, or
      *                        {@code null}/empty when absent
-     */
-    public static ReferenceIdentity resolveRelationshipReference(
-            MetaObject holder, String relationshipName, String targetEntity, String sourceRefField) {
-        return pick(referenceCandidatesFor(holder, targetEntity), relationshipName, sourceRefField);
-    }
-
-    /**
-     * The same ladder given the target NODE: a reference matches when the loader (or, before
-     * it ran, the declaring package) bound its {@code @references} to that node, never by short name.
      */
     public static ReferenceIdentity resolveRelationshipReference(
             MetaObject holder, String relationshipName, MetaObject targetNode, String sourceRefField) {
@@ -177,11 +156,5 @@ public final class RelationshipReferences {
             if (referencePairingKeys(ref).contains(wanted)) paired.add(ref);
         }
         return paired.size() == 1 ? paired.get(0) : null;
-    }
-
-    /** Overload for the common case with no declared {@code @sourceRefField}. */
-    public static ReferenceIdentity resolveRelationshipReference(
-            MetaObject holder, String relationshipName, String targetEntity) {
-        return resolveRelationshipReference(holder, relationshipName, targetEntity, null);
     }
 }

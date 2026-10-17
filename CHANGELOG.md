@@ -864,7 +864,14 @@ loaded, then rewrites each to its canonical spelling before the tree is frozen. 
 - A loaded model's reference values are canonical (`pkg::Name`, or `::Name` for a root-level
   target from a package). Code that reads a reference attribute and compares it to an object's
   short name must compare the target instead: `refTarget(node, attr)` (TypeScript) returns the
-  object the loader bound, and `MetaRoot.findObject` accepts a canonical value.
+  object the loader bound, and `lookupCanonical(root, value)` resolves a canonical value exactly
+  (a bare canonical `Name` is the root-level object). `MetaRoot.findObject` binds a qualified
+  value exactly, but a bare name still matches the first object of that short name in any
+  package, so do not pass it a reference value.
+- TypeScript `RenderContext.resolveValueObjectName` takes the field (`resolveValueObjectName(field)`)
+  and reads the value object its `@objectRef` is bound to; `fieldDeclaringPackage` is removed. An
+  ejected `entity`, `drizzle-schema`, `zod-validators`, `inferred-types` or `projection-decl`
+  template needs a resync.
 - Two conformance gates run in every port: each fixture loads to the same model from JSON and
   from YAML, and each `expected.json` loads and serializes back to itself.
 - TypeScript `referenceCandidatesFor` / `resolveRelationshipReference` and Python
@@ -1360,8 +1367,22 @@ until you regenerate.
     resolver, PlantUML, the template generators and the validation passes. Kotlin's generated
     code also imports a cross-package or root-level M:N table and FK target; it used to
     resolve to a same-named type in its own package.
+  - TypeScript, also: `meta migrate`'s flattened `@storage` columns and FK target table and
+    column, the template payload, response and trace-helper types, the render-helper and
+    `meta verify` payload field trees, the template docs page's payload and field links, the
+    API reference's payload shapes, a report's `@from` in the report docs and view lowering, a
+    collect-whole-object origin's value object and `@via` terminal in the view lowering, the
+    extractor and output-parser value objects, and the CLI deprecation lint's `@objectRef`,
+    `@references` and `@via` hops.
   A new shared input, `fixtures/codegen-conformance/cross-package-binding/`, carries a decision
   table every port's codegen test answers.
+- **A to-one relationship whose `@objectRef` does not resolve reports only the unresolved
+  reference, in every port.** Python, Java and C# also reported `ERR_INVALID_RELATIONSHIP` when
+  the relationship declared `@sourceRefField`, and C# matched the candidate references by short
+  name. Gated by `fixtures/conformance/error-relationship-one-unresolved-objectref-sourceref/`.
+  C# `ReferenceCandidatesFor` / `ResolveRelationshipReference` and Java
+  `referenceCandidatesFor` / `resolveRelationshipReference` lose their name overloads; pass the
+  target object.
 - **Python: the YAML twin gate fails on a JSON load that crashes.** It used to skip the fixture
   as if its providers did not compose.
 - **SQLite and D1: a backtick-quoted CHECK constraint name is read.** Introspection read

@@ -81,21 +81,6 @@ public static class RelationshipReferences
     }
 
     /// <summary>
-    /// Every identity.reference on <paramref name="holder"/> whose @references targets
-    /// <paramref name="targetEntity"/>. Package-insensitive on both sides: @references
-    /// and @objectRef may each be bare or fully qualified.
-    /// </summary>
-    public static List<MetaReferenceIdentity> ReferenceCandidatesFor(MetaObject holder, string targetEntity)
-    {
-        string target = StripPackage(targetEntity);
-        // ADR-0039: resolving — ReferenceIdentities() honors references inherited via extends.
-        return holder.ReferenceIdentities()
-            .Where(r => StripPackage(r.TargetEntity) == target)
-            .Where(r => RefFkField(r) is not null)
-            .ToList();
-    }
-
-    /// <summary>
     /// Every identity.reference on <paramref name="holder"/> whose <c>@references</c> is bound to
     /// <paramref name="target"/> (ADR-0059 R7: identity of the bound target, never a short name).
     /// </summary>
@@ -117,14 +102,7 @@ public static class RelationshipReferences
     /// </list>
     /// Returns null for "no candidate" and "cannot choose" alike; callers that need to
     /// tell them apart use <see cref="ReferenceCandidatesFor"/>.
-    /// </summary>
-    public static MetaReferenceIdentity? ResolveRelationshipReference(
-        MetaObject holder, string relationshipName, string targetEntity, string? sourceRefField = null) =>
-        ResolveFromCandidates(ReferenceCandidatesFor(holder, targetEntity), relationshipName, sourceRefField);
-
-    /// <summary>
-    /// <see cref="ResolveRelationshipReference(MetaObject, string, string, string?)"/> given the
-    /// relationship's bound target node: candidates are the references bound to that same node.
+    /// Candidates are the references bound to the relationship's target node.
     /// </summary>
     public static MetaReferenceIdentity? ResolveRelationshipReference(
         MetaObject holder, string relationshipName, MetaData target, string? sourceRefField = null) =>

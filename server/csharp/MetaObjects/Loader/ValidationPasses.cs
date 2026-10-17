@@ -3329,9 +3329,8 @@ public static partial class ValidationPasses
                 if (rel.Attr(RELATIONSHIP_ATTR_OBJECT_REF) is not string objectRef || objectRef.Length == 0) continue;
 
                 var objectRefTarget = NamingRefs.RefTarget(rel, RELATIONSHIP_ATTR_OBJECT_REF);
-                var candidates = objectRefTarget is null
-                    ? RelationshipReferences.ReferenceCandidatesFor(obj, objectRef)
-                    : RelationshipReferences.ReferenceCandidatesFor(obj, objectRefTarget);
+                if (objectRefTarget is null) continue;
+                var candidates = RelationshipReferences.ReferenceCandidatesFor(obj, objectRefTarget);
 
                 var sourceRefField = rel.Attr(RELATIONSHIP_ATTR_SOURCE_REF_FIELD);
                 string? declared = sourceRefField is string srf && srf.Length > 0 ? srf : null;
@@ -3360,9 +3359,7 @@ public static partial class ValidationPasses
                 // candidates — ResolveRelationshipReference's name-pairing step
                 // (ladder step 3) decides.
                 if (candidates.Count <= 1) continue;
-                var resolved = objectRefTarget is null
-                    ? RelationshipReferences.ResolveRelationshipReference(obj, rel.Name, objectRef)
-                    : RelationshipReferences.ResolveRelationshipReference(obj, rel.Name, objectRefTarget);
+                var resolved = RelationshipReferences.ResolveRelationshipReference(obj, rel.Name, objectRefTarget);
                 if (resolved is not null) continue;
 
                 errors.Add(new MetaError(

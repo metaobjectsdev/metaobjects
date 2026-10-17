@@ -101,6 +101,7 @@ import {
   TEMPLATE_SUBTYPE_PROMPT,
   TEMPLATE_SUBTYPE_OUTPUT,
   TEMPLATE_ATTR_PAYLOAD_REF,
+  refTarget,
   TEMPLATE_ATTR_TEXT_REF,
   TEMPLATE_ATTR_REQUIRED_SLOTS,
   TEMPLATE_ATTR_REQUIRED_TAGS,
@@ -1134,7 +1135,7 @@ export async function verifyCommand(
 
       // @payloadRef must resolve to a loaded object.value (drives the field tree
       // every render-engine drift check runs against).
-      const fieldTree = derivePayloadFieldTree(root, payloadRef, tmpl.package ?? tmpl.fileDefaultPackage ?? "");
+      const fieldTree = derivePayloadFieldTree(refTarget(tmpl, TEMPLATE_ATTR_PAYLOAD_REF));
       if (fieldTree.length === 0) {
         log.error(
           `[${tmpl.name}] (${tmpl.subType}) ${ERR_PARTIAL_UNRESOLVED}: ` +

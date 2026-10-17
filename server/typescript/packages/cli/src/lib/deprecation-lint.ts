@@ -50,6 +50,7 @@ import {
   ORIGIN_AGGREGATE_ATTR_OF,
   isMetaObject,
   resolveObjectRef,
+  refTarget,
   type MetaData,
   type MetaObject,
 } from "@metaobjectsdev/metadata";
@@ -166,12 +167,11 @@ function findHop(entity: MetaObject, hopName: string): MetaData | undefined {
   );
 }
 
-/** The entity a resolved hop (relationship or identity.reference) points at, raw. */
-function hopTargetRef(hop: MetaData): string | undefined {
-  const v = hop.type === TYPE_RELATIONSHIP
-    ? hop.attr(RELATIONSHIP_ATTR_OBJECT_REF)
-    : hop.attr(IDENTITY_REFERENCE_ATTR_REFERENCES);
-  return typeof v === "string" && v !== "" ? headOf(v) : undefined;
+/** The entity a resolved hop (relationship or identity.reference) points at, as the
+ *  loader bound it (ADR-0059 R7: resolved where the hop's reference was declared). */
+function hopTarget(hop: MetaData): MetaObject | undefined {
+  const target = refTarget(hop, hop.type === TYPE_RELATIONSHIP ? RELATIONSHIP_ATTR_OBJECT_REF : IDENTITY_REFERENCE_ATTR_REFERENCES);
+  return target !== undefined && isMetaObject(target) ? target : undefined;
 }
 
 /**
@@ -187,18 +187,15 @@ function hopTargetRef(hop: MetaData): string | undefined {
  * directory takes.
  */
 function checkEntityFieldPath(
-  root: MetaData,
   referrer: MetaData,
   referrerPath: string,
   verb: string,
   raw: string,
-  referrerPkg: string,
+  entity: MetaObject | undefined,
   out: Diagnostic[],
 ): void {
-  const head = headOf(raw);
-  const entity = resolveEntityRef(root, head, referrerPkg);
   if (entity === undefined) return;
-  const fieldName = raw.slice(head.length + 1);
+  const fieldName = raw.slice(headOf(raw).length + 1);
   const field = fieldName !== "" ? entity.fields().find((f) => f.name === fieldName) : undefined;
   if (field !== undefined && considerTarget(referrer, referrerPath, verb, field, out)) {
     return; // the field itself is the deprecated thing — don't ALSO warn about its (fine) entity.
@@ -232,9 +229,7 @@ function checkViaPath(
     const hop = findHop(current, hopName);
     if (hop === undefined) return;
     considerTarget(origin, referrerPath, verb, hop, out);
-    const targetRef = hopTargetRef(hop);
-    if (targetRef === undefined) return;
-    const next = resolveEntityRef(root, targetRef, packageOf(current));
+    const next = hopTarget(hop);
     if (next === undefined) return;
     considerTarget(origin, referrerPath, verb, next, out);
     current = next;
@@ -252,11 +247,11 @@ function checkOrigin(root: MetaData, origin: MetaData, referrerPath: string, out
   // same stance every origin accessor in meta-origin.ts takes).
   const from = origin.ownAttr(ORIGIN_PASSTHROUGH_ATTR_FROM);
   if (typeof from === "string" && from !== "") {
-    checkEntityFieldPath(root, origin, referrerPath, `${subtypeLabel} @from references`, from, referrerPkg, out);
+    checkEntityFieldPath(origin, referrerPath, `${subtypeLabel} @from references`, from, resolveEntityRef(root, headOf(from), referrerPkg), out);
   }
   const of_ = origin.ownAttr(ORIGIN_AGGREGATE_ATTR_OF);
   if (typeof of_ === "string" && of_ !== "") {
-    checkEntityFieldPath(root, origin, referrerPath, `${subtypeLabel} @of references`, of_, referrerPkg, out);
+    checkEntityFieldPath(origin, referrerPath, `${subtypeLabel} @of references`, of_, resolveEntityRef(root, headOf(of_), referrerPkg), out);
   }
   const via = origin.ownAttr(ORIGIN_PASSTHROUGH_ATTR_VIA);
   if (typeof via === "string" && via !== "") {
@@ -273,12 +268,9 @@ function checkNode(root: MetaData, node: MetaData, path: string, out: Diagnostic
   // @objectRef — relationship.* (its target object) and field.object/value (a
   // value-typed field's own objectRef). Same attr name on both (naming-refs.ts).
   if (node.type === TYPE_RELATIONSHIP || node.type === TYPE_FIELD) {
-    const ref = node.attr(node.type === TYPE_RELATIONSHIP ? RELATIONSHIP_ATTR_OBJECT_REF : FIELD_ATTR_OBJECT_REF);
-    if (typeof ref === "string" && ref !== "") {
-      const owner = owningObject(node);
-      const target = resolveEntityRef(root, ref, owner !== undefined ? packageOf(owner) : "");
-      if (target !== undefined) considerTarget(node, path, "references (@objectRef)", target, out);
-    }
+    // ADR-0059 R7: the target the loader bound, resolved where @objectRef was declared.
+    const target = refTarget(node, node.type === TYPE_RELATIONSHIP ? RELATIONSHIP_ATTR_OBJECT_REF : FIELD_ATTR_OBJECT_REF);
+    if (target !== undefined && isMetaObject(target)) considerTarget(node, path, "references (@objectRef)", target, out);
   }
 
   // @references — identity.reference's FK target. May be bare ("Entity",
@@ -290,8 +282,8 @@ function checkNode(root: MetaData, node: MetaData, path: string, out: Diagnostic
   if (node.type === TYPE_IDENTITY && node.subType === IDENTITY_SUBTYPE_REFERENCE) {
     const raw = node.attr(IDENTITY_REFERENCE_ATTR_REFERENCES);
     if (typeof raw === "string" && raw !== "") {
-      const owner = owningObject(node);
-      checkEntityFieldPath(root, node, path, "references (@references)", raw, owner !== undefined ? packageOf(owner) : "", out);
+      const target = refTarget(node, IDENTITY_REFERENCE_ATTR_REFERENCES);
+      checkEntityFieldPath(node, path, "references (@references)", raw, target !== undefined && isMetaObject(target) ? target : undefined, out);
     }
   }
 

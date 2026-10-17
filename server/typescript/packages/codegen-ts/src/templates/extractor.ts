@@ -30,7 +30,7 @@ import {
   FIELD_ATTR_OBJECT_REF,
   FIELD_ATTR_REQUIRED,
   TEMPLATE_ATTR_RESPONSE_REF,
-  resolveObjectRef,
+  refTarget,
 } from "@metaobjectsdev/metadata";
 import { responseShape } from "./find-inbound.js";
 import { templateSymbolBase } from "../naming.js";
@@ -42,23 +42,15 @@ import type { RenderContext } from "../render-context.js";
 import { emittedVoName, valueObjectImport } from "./value-object-import.js";
 
 // ADR-0039: resolving — root has no super (children()==ownChildren()); a top-level object/template may itself extend, so resolve rather than work-by-accident.
-// ADR-0042: resolveObjectRef gives package-local-before-root-level precedence for a bare ref, FQN-exact otherwise.
-function findObject(root: MetaData, name: string, referrerPkg = ""): MetaData | undefined {
-  return resolveObjectRef(root, name, referrerPkg).node;
-}
-
-// ADR-0039: resolving — root has no super (children()==ownChildren()); a top-level object/template may itself extend, so resolve rather than work-by-accident.
 function findTemplate(root: MetaData, name: string): MetaData | undefined {
   return root.children().find((c) => c.type === TYPE_TEMPLATE && c.name === name);
 }
 
-/** The @objectRef target VO for a nested-object field, or undefined when unresolvable. */
-function refVo(field: MetaData, root: MetaData): MetaData | undefined {
-  const ref = field.attr(FIELD_ATTR_OBJECT_REF);
-  if (typeof ref !== "string") return undefined;
-  // ADR-0042: resolve as authored — a bare ref binds the declaring VO's package,
-  // an FQN exactly; NO bare-tail fallback (never bind a same-named VO elsewhere).
-  return findObject(root, ref, field.parent?.package ?? field.parent?.fileDefaultPackage ?? "");
+/** The @objectRef target VO for a nested-object field (ADR-0059 R7: the target the
+ *  loader bound, resolved where the attribute was declared), or undefined when
+ *  unresolvable. */
+function refVo(field: MetaData): MetaData | undefined {
+  return refTarget(field, FIELD_ATTR_OBJECT_REF);
 }
 
 function isObjectField(field: MetaData): boolean {
@@ -111,7 +103,7 @@ function strictArg(field: MetaData, root: MetaData, ownerName: string, ctx?: Ren
   const required = isFieldRequired(field);
 
   if (isObjectField(field)) {
-    const target = refVo(field, root);
+    const target = refVo(field);
     if (target === undefined) {
       // Unresolved @objectRef — the payload type would be `unknown`; pass through as-is.
       return required ? `m.${name}!` : `m.${name} ?? undefined`;
@@ -206,7 +198,7 @@ function emitMapper(
 
   for (const f of fields(vo)) {
     if (isObjectField(f)) {
-      const target = refVo(f, root);
+      const target = refVo(f);
       if (target !== undefined) emitMapper(target, root, seen, out, ctx);
     }
   }
@@ -263,7 +255,7 @@ function reachablePayloadGroups(
     // Recurse into nested object refs (their interfaces live in their own modules).
     for (const f of fields(cur)) {
       if (isObjectField(f)) {
-        const target = refVo(f, root);
+        const target = refVo(f);
         if (target !== undefined) visit(target);
       }
     }
@@ -279,7 +271,7 @@ function reachableMirrorTypes(vo: MetaData, root: MetaData, ctx?: RenderContext)
   const visit = (cur: MetaData) => {
     for (const f of fields(cur)) {
       if (isObjectField(f)) {
-        const target = refVo(f, root);
+        const target = refVo(f);
         if (target !== undefined && !seen.has(target.resolutionKey())) {
           seen.add(target.resolutionKey());
           out.push(mirrorName(target, ctx));

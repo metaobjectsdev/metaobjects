@@ -540,7 +540,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             if (field !is ObjectField) continue
             if (readStorage(field) != STORAGE_FLATTENED) continue
             val ref = readObjectRef(field) ?: continue
-            val target = KotlinGenUtil.resolveObjectByShortOrFqn(loader, ref) ?: continue
+            val target = KotlinGenUtil.lookupCanonicalObject(loader, ref) ?: continue
             if (target.metaFields.any { KotlinTypeMapper.usesInetUriHelper(it) }) return true
         }
         return false
@@ -560,7 +560,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                 if (readStorage(field) != STORAGE_FLATTENED) return true   // typed jsonb object column
                 // A flattened object.value sub-field can itself be a field.map (a jsonb Jackson column).
                 val ref = readObjectRef(field) ?: continue
-                val target = KotlinGenUtil.resolveObjectByShortOrFqn(loader, ref) ?: continue
+                val target = KotlinGenUtil.lookupCanonicalObject(loader, ref) ?: continue
                 if (target.metaFields.any { it is MapField }) return true
             }
         }
@@ -813,7 +813,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         val hasStringJsonbOpenBag = entity.metaFields.any { KotlinTypeMapper.isJsonbOpenBag(it) } ||
             entity.metaFields.any { f ->
                 f is ObjectField && readStorage(f) == STORAGE_FLATTENED &&
-                    (readObjectRef(f)?.let { KotlinGenUtil.resolveObjectByShortOrFqn(loader, it) }
+                    (readObjectRef(f)?.let { KotlinGenUtil.lookupCanonicalObject(loader, it) }
                         ?.metaFields?.any { KotlinTypeMapper.isJsonbOpenBag(it) } ?: false)
             }
         // Object/map jsonb columns → the Jackson metaJsonbMapper codec (a same-package `internal`
@@ -841,7 +841,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                 if (field !is ObjectField) continue
                 if (readStorage(field) != STORAGE_FLATTENED) continue
                 val ref = readObjectRef(field) ?: continue
-                val target = KotlinGenUtil.resolveObjectByShortOrFqn(loader, ref) ?: continue
+                val target = KotlinGenUtil.lookupCanonicalObject(loader, ref) ?: continue
                 if (target.metaFields.any { KotlinTypeMapper.usesInstantWithTimeZone(it) }) {
                     needsInstantTzHelper = true
                     break
@@ -879,7 +879,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             if (field !is ObjectField) continue
             if (readStorage(field) != STORAGE_FLATTENED) continue
             val ref = readObjectRef(field) ?: continue
-            val target = KotlinGenUtil.resolveObjectByShortOrFqn(loader, ref) ?: continue
+            val target = KotlinGenUtil.lookupCanonicalObject(loader, ref) ?: continue
             for (subField in target.metaFields) {
                 if (subField is EnumField) continue
                 // jsonb open bag → its `jsonb`/`Json` imports come via the jsonb-import decision (skip here).
@@ -1283,7 +1283,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             val storage = readStorage(field)        // null → default to jsonb
             if (storage == STORAGE_FLATTENED) {
                 val ref = readObjectRef(field) ?: continue
-                val target = KotlinGenUtil.resolveObjectByShortOrFqn(loader, ref) ?: continue
+                val target = KotlinGenUtil.lookupCanonicalObject(loader, ref) ?: continue
                 for (subField in target.metaFields) {
                     val propertyName = parentName + subField.name.replaceFirstChar { it.uppercase() }
                     // Physical column name: the parent's resolved column + "_" + the
@@ -1319,7 +1319,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                 // field of either object.)
                 val colExpr = ownColumnExpr(entity, field)
                 val ref = readObjectRef(field)
-                val target = ref?.let { KotlinGenUtil.resolveObjectByShortOrFqn(loader, it) }
+                val target = ref?.let { KotlinGenUtil.lookupCanonicalObject(loader, it) }
                 val decode = if (target != null) {
                     // Fully-qualify the VO (Kotlin dotted form) so the emitted column needs no extra import.
                     val voFqn = PackageMapping.toKotlin(target.name)
@@ -1365,7 +1365,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
      * `kotlin.String`, `java.math.BigDecimal`); neither resolvable → `Any` (an untyped JSON bag).
      */
     private fun mapValueTypeFqn(field: MapField, loader: MetaDataLoader): String {
-        val target = readObjectRef(field)?.let { KotlinGenUtil.resolveObjectByShortOrFqn(loader, it) }
+        val target = readObjectRef(field)?.let { KotlinGenUtil.lookupCanonicalObject(loader, it) }
         if (target != null) return PackageMapping.toKotlin(target.name)
         return KotlinTypeMapper.mapValueScalarTypeName(field)?.toString() ?: "Any"
     }
@@ -1844,7 +1844,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                 if (child.subType != CompositionRelationship.SUBTYPE_COMPOSITION) continue
 
                 val objectRef = child.objectRef ?: continue
-                val target = KotlinGenUtil.resolveObjectByShortOrFqn(loader, objectRef) ?: continue
+                val target = KotlinGenUtil.lookupCanonicalObject(loader, objectRef) ?: continue
 
                 if (child.cardinality == MetaRelationship.CARDINALITY_MANY) {
                     // Inferred: FK belongs on `target`, pointing back at `entity`.
@@ -2036,7 +2036,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                 }
                 val fieldName = fields[0]
                 val targetEntityName = child.targetEntity ?: continue
-                val target = KotlinGenUtil.resolveObjectByShortOrFqn(loader, targetEntityName) ?: continue
+                val target = KotlinGenUtil.lookupCanonicalObject(loader, targetEntityName) ?: continue
                 // FW-3: `target` may be a TPH subtype (e.g. `@references: BridgeAuth`) or an
                 // abstract mid-level, neither of which has an Exposed Table of its own — its rows
                 // live in, and its primary key belongs to, the discriminator base's shared table.
@@ -2113,7 +2113,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         // engine's resolveReferentialActions and the C# ReferentialActions port.
         val childSide = entity.relationships.firstOrNull { rel ->
             rel.through == null && rel.objectRef != null &&
-                KotlinGenUtil.resolveObjectByShortOrFqn(loader, rel.objectRef) === target &&
+                KotlinGenUtil.lookupCanonicalObject(loader, rel.objectRef) === target &&
                 RelationshipReferences.resolveRelationshipReference(
                     entity, rel.shortName, target, rel.sourceRefField) === ref
         }
@@ -2172,7 +2172,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             .filterIsInstance<ReferenceIdentity>()
             .filter { r ->
                 r.isEnforced && r.targetEntity != null &&
-                    KotlinGenUtil.resolveObjectByShortOrFqn(loader, r.targetEntity) === target
+                    KotlinGenUtil.lookupCanonicalObject(loader, r.targetEntity) === target
             }
         if (enforcedRefsToTarget.singleOrNull() !== ref) return null
         // #368: fail closed on ambiguity rather than taking the first match — when more
@@ -2185,7 +2185,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         // lives on [entity]. Mirrors the TS findReverseRelationship.
         return target.relationships.filter { rel ->
             rel.through == null && rel.objectRef != null &&
-                KotlinGenUtil.resolveObjectByShortOrFqn(loader, rel.objectRef) === entity
+                KotlinGenUtil.lookupCanonicalObject(loader, rel.objectRef) === entity
         }.singleOrNull()
     }
 

@@ -1730,7 +1730,7 @@ describe("inherited @via hop across packages", () => {
       new InMemoryStringSource(JSON.stringify(appFile), { id: "meta.app.json" }),
       new InMemoryStringSource(JSON.stringify(baseFile), { id: "meta.base.json" }),
     ]);
-    expect(errors.map((e) => e.code)).toEqual([]);
+    expect(errors).toEqual([]);
     const bigOrder = root.objects().find((o) => o.resolutionKey() === "app::BigOrder")!;
     const dim = bigOrder.children().find((c) => c.name === "customerName")!;
     expect(dim.attr("of")).toBe("base::Customer.name");

@@ -30,7 +30,7 @@ import {
   TYPE_TEMPLATE,
   TEMPLATE_SUBTYPE_OUTPUT,
   TEMPLATE_ATTR_PAYLOAD_REF,
-  resolveObjectRef,
+  refTarget,
 } from "@metaobjectsdev/metadata";
 import {
   oncePerRun,
@@ -63,7 +63,7 @@ export const renderHelper = function renderHelper(opts?: RenderHelperOpts): Gene
       for (const t of outputs) {
         const payloadRef = t.attr(TEMPLATE_ATTR_PAYLOAD_REF);
         if (typeof payloadRef !== "string") continue;
-        const vo = resolveObjectRef(root, payloadRef, t.package ?? t.fileDefaultPackage ?? "").node;
+        const vo = refTarget(t, TEMPLATE_ATTR_PAYLOAD_REF);
         if (!vo) continue;
         const path = `${dirPrefix}${t.name}.render.ts`;
         files.push({

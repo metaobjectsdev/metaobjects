@@ -13,6 +13,9 @@ import {
   OBJECT_ATTR_DISCRIMINATOR,
   OBJECT_ATTR_DISCRIMINATOR_VALUE,
   isWritableSource,
+  isMetaObject,
+  refTarget,
+  IDENTITY_REFERENCE_ATTR_REFERENCES,
   IDENTITY_ATTR_GENERATION,
   IDENTITY_ATTR_ORDERS,
   IDENTITY_ATTR_WHERE,
@@ -229,15 +232,10 @@ export function buildExpectedSchemaWithProvenance(
     }
     entities.push({ entity: child as MetaObject, tableName });
   }
-  // FK targets resolve by FULLY-QUALIFIED name, not bare name. The loader qualifies a
-  // reference's targetEntity to its canonical FQN (e.g. "acme::a::Foo"), and each entity's
-  // `resolutionKey()` is that same "<package>::<name>" form — so an FK target binds the
-  // EXACT entity in the EXACT package. Keying by bare name (the prior behavior) silently
-  // mis-resolved when two packages declared a same-named entity: the last one loaded won
-  // the map, so a cross-package FK could point at the wrong table.
-  const AMBIGUOUS = Symbol("ambiguous-bare-name");
-  const byFqn = new Map<string, string>();
-  const byBare = new Map<string, string | typeof AMBIGUOUS>();
+  // FK targets resolve to the entity the loader bound for `@references` (ADR-0059 R7),
+  // keyed by that entity's resolution key, so an FK binds the EXACT entity in the EXACT
+  // package and never a same-named entity elsewhere.
+  const byKey = new Map<string, string>();
   const tableOwners = [...entities, ...fkTargetOnly];
   const baseTables = new Map(tableOwners.map((e) => [e.entity.resolutionKey(), e.tableName]));
   const subtypeTargets = tphMembers.flatMap(({ entity, base }) => {
@@ -246,33 +244,9 @@ export function buildExpectedSchemaWithProvenance(
     return tableName === undefined ? [] : [{ entity, tableName }];
   });
   for (const e of [...tableOwners, ...subtypeTargets]) {
-    byFqn.set(e.entity.resolutionKey(), e.tableName);
-    const bare = e.entity.name;
-    byBare.set(bare, byBare.has(bare) ? AMBIGUOUS : e.tableName);
+    byKey.set(e.entity.resolutionKey(), e.tableName);
   }
-  // Resolve an FK target to its physical table, mirroring the metadata package's
-  // `resolutionKey()` contract so migrate binds the SAME entity the loader/codegen would.
-  // A reference's `targetEntity` is the raw `@references` value (usually BARE), so a bare
-  // ref is qualified with the REFERRER's package first (`<referrerPkg>::<ref>`), then the
-  // root-level (empty-package) object, then an UNAMBIGUOUS bare name. Keying by bare name
-  // alone (the prior behavior) let the last-loaded of two same-named entities win the map,
-  // so a cross-package FK could silently point at the wrong table.
-  const resolveTargetTable = (targetRef: string, referrerKey: string): string | undefined => {
-    const direct = byFqn.get(targetRef);
-    if (direct !== undefined) return direct;
-    if (!targetRef.includes("::")) {
-      const sep = referrerKey.lastIndexOf("::");
-      if (sep >= 0) {
-        const pkgLocal = byFqn.get(`${referrerKey.slice(0, sep)}::${targetRef}`);
-        if (pkgLocal !== undefined) return pkgLocal;
-      }
-      const rootLevel = byFqn.get(`::${targetRef}`);
-      if (rootLevel !== undefined) return rootLevel;
-    }
-    const bare = targetRef.includes("::") ? targetRef.slice(targetRef.lastIndexOf("::") + 2) : targetRef;
-    const byBareHit = byBare.get(bare);
-    return byBareHit === AMBIGUOUS ? undefined : byBareHit;
-  };
+  const resolveTargetTable = (target: MetaObject): string | undefined => byKey.get(target.resolutionKey());
 
   // Provenance: qualified physical name → declaring object's FQN. Recorded as the
   // descriptors are built, never re-derived from a SQL name (lossy) and never by a
@@ -540,7 +514,7 @@ function tphConcreteSubtypes(base: MetaObject, root: MetaData): MetaObject[] {
 function buildTable(
   entity: MetaObject,
   tableName: string,
-  resolveTargetTable: (targetRef: string, referrerKey: string) => string | undefined,
+  resolveTargetTable: (target: MetaObject) => string | undefined,
   root: MetaRoot,
   strategy: ColumnNamingStrategy,
   dialect: Dialect | undefined,
@@ -577,7 +551,7 @@ function buildTable(
     ) {
       // Flattened storage: expand nested value-object fields as prefixed columns.
       // The parent field.object itself does NOT produce its own column.
-      columns.push(...flattenObjectField(field, root, strategy));
+      columns.push(...flattenObjectField(field, strategy));
     } else {
       columns.push(buildColumn(field, isPk, isPk ? pkGeneration : undefined, strategy));
     }
@@ -998,7 +972,7 @@ function crossFieldCheck(
 function buildForeignKeys(
   entity: MetaObject,
   tableName: string,
-  resolveTargetTable: (targetRef: string, referrerKey: string) => string | undefined,
+  resolveTargetTable: (target: MetaObject) => string | undefined,
   root: MetaRoot,
   strategy: ColumnNamingStrategy,
   onConflict?: (conflict: ReferentialActionConflict) => void,
@@ -1025,9 +999,9 @@ function buildForeignKeys(
   for (const { holder, refChild } of refs) {
     // @enforce: false → logical-only reference; not a physical FK constraint.
     if (!refChild.enforce) continue;
-    const targetEntity = refChild.targetEntity;
-    if (targetEntity === undefined) continue;
-    const refTable = resolveTargetTable(targetEntity, holder.resolutionKey());
+    const targetObj = refTarget(refChild, IDENTITY_REFERENCE_ATTR_REFERENCES);
+    if (targetObj === undefined || !isMetaObject(targetObj)) continue;
+    const refTable = resolveTargetTable(targetObj);
     if (!refTable) continue;
 
     const fkFieldJsNames = readIdentityFields(refChild);
@@ -1045,18 +1019,12 @@ function buildForeignKeys(
     // PK field `id` with `@column: "Id"`), exactly like fkCols above — the raw
     // naming strategy alone would emit the logical name and phantom-diff every
     // FK into that table (expected ["id"] vs actual ["Id"]).
-    // targetEntity may be package-qualified (FQN); findObject is keyed by bare
-    // name — same fallback as resolvedTargetPkField/resolveTargetTable.
-    const targetObj = root.findObject(targetEntity)
-      ?? (targetEntity.includes("::")
-        ? root.findObject(targetEntity.slice(targetEntity.lastIndexOf("::") + 2))
-        : undefined);
     const explicitTargetFields = refChild.targetFields;
     const targetFieldNames = explicitTargetFields.length > 1
       ? explicitTargetFields
       : [refChild.resolvedTargetPkField(root) ?? "id"];
     const refColumns = targetFieldNames.map((jsName) => {
-      const targetField = targetObj ? findField(targetObj, jsName) : undefined;
+      const targetField = findField(targetObj, jsName);
       return targetField
         ? resolveColumnName(targetField, strategy)
         : applyColumnNamingStrategy(jsName, strategy);
@@ -1103,13 +1071,11 @@ function buildForeignKeys(
  * becomes `<parent_col>_<nested_col>` in the owning entity's table.
  */
 function flattenObjectField(
-  field: MetaData, root: MetaRoot, strategy: ColumnNamingStrategy,
+  field: MetaData, strategy: ColumnNamingStrategy,
 ): ColumnDescriptor[] {
   // ADR-0039: resolving — @objectRef may be inherited via extends.
-  const ref = field.attr(FIELD_ATTR_OBJECT_REF);
-  if (typeof ref !== "string" || ref.length === 0) return [];
-  const targetObject = root.findObject(ref);
-  if (targetObject === undefined) return [];
+  const targetObject = refTarget(field, FIELD_ATTR_OBJECT_REF);
+  if (targetObject === undefined || !isMetaObject(targetObject)) return [];
   const prefix = resolveColumnName(field, strategy) + "_";
   const cols: ColumnDescriptor[] = [];
   for (const nested of targetObject.fields()) {

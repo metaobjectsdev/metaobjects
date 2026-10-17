@@ -2861,6 +2861,8 @@ def _validate_one_side_reference_resolution(
                 continue
 
             bound_target = bound_ref_target(rel, RELATIONSHIP_ATTR_OBJECT_REF)
+            if bound_target is None:
+                continue
             candidates = reference_candidates_for(obj, bound_target)
 
             source_ref_field = rel.get_meta_attr(RELATIONSHIP_ATTR_SOURCE_REF_FIELD)

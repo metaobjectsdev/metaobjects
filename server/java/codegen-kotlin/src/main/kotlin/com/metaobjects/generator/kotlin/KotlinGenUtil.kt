@@ -53,7 +53,7 @@ public object KotlinGenUtil {
      * an exact resolution-key match (`pkg::Name`, `::Name`, or a root-level `Name`), with any
      * dotted child tail ignored. Never matches on a short name. Returns null when nothing matches.
      */
-    fun resolveObjectByShortOrFqn(loader: MetaDataLoader, ref: String): MetaObject? =
+    fun lookupCanonicalObject(loader: MetaDataLoader, ref: String): MetaObject? =
         com.metaobjects.loader.References.lookupCanonical(loader.root, ref)
 
     // =========================================================================
@@ -66,9 +66,10 @@ public object KotlinGenUtil {
     // public [SymbolTable] (rather than a divergent codegen copy) keeps codegen's
     // @payloadRef resolution identical to the loader's, so under a cross-package
     // short-name collision codegen binds the SAME value-object the loader validated —
-    // never a load-order-dependent decoy (the #244 class). The bare-tail/first-match
-    // [resolveObjectByShortOrFqn] above is deliberately left as-is: it backs the
-    // @from/@of/@via dotted-ref navigation (a different ref kind, #244's own domain).
+    // never a load-order-dependent decoy (the #244 class). [lookupCanonicalObject] above is a
+    // different operation: an exact canonical lookup, where a canonical value is absolute
+    // (`pkg::Name`, `::Name`, or a bare `Name` meaning the root-level object), never a
+    // short-name match.
     // =========================================================================
 
     /**

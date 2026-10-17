@@ -58,9 +58,14 @@ public class Issue368RelationshipReferenceLadderTest extends SharedRegistryTestB
         return (MetaObject) loader.getRoot().getChildOfType("object", "repro::Match");
     }
 
+    private static MetaObject teamOf(MetaObject holder) {
+        return ((com.metaobjects.MetaRoot) holder.getParent()).findObject("repro::Team");
+    }
+
     @Test
     public void enumeratesEveryCandidateReferenceForTheTarget() {
-        List<ReferenceIdentity> candidates = RelationshipReferences.referenceCandidatesFor(loadMatch(), "Team");
+        MetaObject match = loadMatch();
+        List<ReferenceIdentity> candidates = RelationshipReferences.referenceCandidatesFor(match, teamOf(match));
         assertEquals(2, candidates.size());
         assertEquals("homeTeamRef", candidates.get(0).getShortName());
         assertEquals("awayTeamRef", candidates.get(1).getShortName());
@@ -70,16 +75,16 @@ public class Issue368RelationshipReferenceLadderTest extends SharedRegistryTestB
     public void namePairingResolvesEachAssociationToItsOwnReference() {
         MetaObject match = loadMatch();
         assertEquals("homeTeamRef",
-            RelationshipReferences.resolveRelationshipReference(match, "homeTeam", "Team").getShortName());
+            RelationshipReferences.resolveRelationshipReference(match, "homeTeam", teamOf(match), null).getShortName());
         assertEquals("awayTeamRef",
-            RelationshipReferences.resolveRelationshipReference(match, "awayTeam", "Team").getShortName());
+            RelationshipReferences.resolveRelationshipReference(match, "awayTeam", teamOf(match), null).getShortName());
     }
 
     @Test
     public void sourceRefFieldWinsOverNamePairing() {
         MetaObject match = loadMatch();
         assertEquals("awayTeamRef",
-            RelationshipReferences.resolveRelationshipReference(match, "homeTeam", "Team", "awayTeamId")
+            RelationshipReferences.resolveRelationshipReference(match, "homeTeam", teamOf(match), "awayTeamId")
                 .getShortName());
     }
 
@@ -89,7 +94,7 @@ public class Issue368RelationshipReferenceLadderTest extends SharedRegistryTestB
         // return null -- it must NOT fall through to step 3 (name-pairing), even
         // though "homeTeam" would otherwise pair cleanly with "homeTeamRef".
         MetaObject match = loadMatch();
-        assertNull(RelationshipReferences.resolveRelationshipReference(match, "homeTeam", "Team", "doesNotExist"));
+        assertNull(RelationshipReferences.resolveRelationshipReference(match, "homeTeam", teamOf(match), "doesNotExist"));
     }
 
     @Test
@@ -110,7 +115,7 @@ public class Issue368RelationshipReferenceLadderTest extends SharedRegistryTestB
         assertTrue(loader.getErrors().isEmpty());
         MetaObject match = (MetaObject) loader.getRoot().getChildOfType("object", "repro::Match");
         assertEquals("anythingAtAll",
-            RelationshipReferences.resolveRelationshipReference(match, "champion", "Team").getShortName());
+            RelationshipReferences.resolveRelationshipReference(match, "champion", teamOf(match), null).getShortName());
     }
 
     @Test
@@ -141,7 +146,7 @@ public class Issue368RelationshipReferenceLadderTest extends SharedRegistryTestB
             // expected -- rule (e) rejects this model
         }
         MetaObject match = (MetaObject) loader.getRoot().getChildOfType("object", "repro::Match");
-        assertNull(RelationshipReferences.resolveRelationshipReference(match, "winner", "Team"));
+        assertNull(RelationshipReferences.resolveRelationshipReference(match, "winner", teamOf(match), null));
     }
 
     @Test
@@ -169,6 +174,6 @@ public class Issue368RelationshipReferenceLadderTest extends SharedRegistryTestB
             // expected -- "valid" must not pair with "valRef"
         }
         MetaObject match = (MetaObject) loader.getRoot().getChildOfType("object", "repro::Match");
-        assertNull(RelationshipReferences.resolveRelationshipReference(match, "valid", "Team"));
+        assertNull(RelationshipReferences.resolveRelationshipReference(match, "valid", teamOf(match), null));
     }
 }

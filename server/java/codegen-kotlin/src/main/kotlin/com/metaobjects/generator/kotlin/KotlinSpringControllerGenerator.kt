@@ -1850,7 +1850,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
      * `@objectRef` cannot resolve (defensive — the loader gates the attr's presence).
      */
     private fun voElementTypeFqn(field: ObjectField, loader: MetaDataLoader): String {
-        val target = readObjectRef(field)?.let { KotlinGenUtil.resolveObjectByShortOrFqn(loader, it) }
+        val target = readObjectRef(field)?.let { KotlinGenUtil.lookupCanonicalObject(loader, it) }
         return target?.let { PackageMapping.toKotlin(it.name) }
             ?: "com.fasterxml.jackson.databind.JsonNode"
     }

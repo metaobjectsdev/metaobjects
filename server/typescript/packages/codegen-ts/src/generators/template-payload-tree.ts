@@ -20,68 +20,49 @@
 
 import {
   type MetaObject,
-  type MetaRoot,
   FIELD_SUBTYPE_OBJECT,
   FIELD_ATTR_OBJECT_REF,
+  isMetaObject,
+  refTarget,
   stripPackage,
-  resolveObjectRef,
 } from "@metaobjectsdev/metadata";
 import { isFieldRequired, neutralTypeStr } from "./docs-data-builder.js";
 import type { AnnotatePayloadField } from "./template-source-annotate.js";
 
-// ADR-0041/0042: FQN-exact object resolution — a "::"-qualified @objectRef binds the exact
-// package (never a bare-tail fallback), so a same-named object.value in another package
-// can't be wrongly bound (which would attach the wrong owner/type/link to a doc node); a
-// bare ref binds the referrer's package FIRST, else a root-level object.
-// Mirrors render-helper.ts's findObject + the CLI payload-field-tree resolver.
-function findObject(root: MetaRoot, ref: string, referrerPkg = ""): MetaObject | undefined {
-  return resolveObjectRef(root, ref, referrerPkg).node as MetaObject | undefined;
-}
-
 /**
- * Walk the payload VO `voName` into an enriched `AnnotatePayloadField[]`. Each
- * node carries `owner` (the short name of the VO that DECLARES the field — the
- * link target), `type` (the neutral logical type), and `required`. Object-ref
- * fields recurse into their referenced VO with `owner` switched to that nested
- * VO; a `seen` set guards a (pathological) reference cycle (returns `[]` rather
- * than recursing forever).
+ * Walk the payload VO `vo` into an enriched `AnnotatePayloadField[]`. Each
+ * node carries `owner` (the short name of the VO that DECLARES the field),
+ * `ownerKey` (its resolution key — the link target), `type` (the neutral logical type), and `required`. Object-ref
+ * fields recurse into the VO the loader bound for their `@objectRef` (ADR-0059 R7),
+ * with `owner` switched to that nested VO; a `seen` set guards a (pathological)
+ * reference cycle (returns `[]` rather than recursing forever).
  *
- * Returns `[]` when the VO can't be resolved — the annotator then leaves the
- * referencing variables unresolved (flagged "not on payload"), never throws.
+ * Returns `[]` when the VO is undefined (the ref did not resolve) — the annotator
+ * then leaves the referencing variables unresolved (flagged "not on payload"),
+ * never throws.
  */
 export function buildEnrichedPayloadTree(
-  root: MetaRoot,
-  voName: string,
-  referrerPkg = "",
-  seen: ReadonlySet<string> = new Set(),
+  vo: MetaObject | undefined,
+  seen: ReadonlySet<MetaObject> = new Set(),
 ): AnnotatePayloadField[] {
-  if (seen.has(voName)) return [];
-  const vo: MetaObject | undefined = findObject(root, voName, referrerPkg);
-  if (vo === undefined) return [];
+  if (vo === undefined || seen.has(vo)) return [];
   const owner = stripPackage(vo.name);
-  // ADR-0042: a nested @objectRef resolves in the FIELD's own declaring package
-  // (fallback below), which differs from this VO's when the field is inherited via
-  // extends from an abstract VO in another package (the bare ref was authored there).
-  const voPkg = vo.package ?? vo.fileDefaultPackage ?? "";
-  const nextSeen = new Set(seen).add(voName);
+  const ownerKey = vo.resolutionKey();
+  const nextSeen = new Set(seen).add(vo);
   const out: AnnotatePayloadField[] = [];
   for (const f of vo.fields()) {
     const node: AnnotatePayloadField = {
       name: f.name,
       owner,
+      ownerKey,
       type: neutralTypeStr(f),
       required: isFieldRequired(f),
       ...(f.resolvedIsArray() ? { isArray: true } : {}),
     };
     if (f.subType === FIELD_SUBTYPE_OBJECT) {
-      const ref = f.attr(FIELD_ATTR_OBJECT_REF);
-      if (typeof ref === "string" && ref.length > 0) {
-        // Owner switches to the nested VO for its fields (the recursion below
-        // re-derives `owner` from the resolved VO's own name). Pass the FULL ref
-        // (not stripPackage), resolved package-locally against the FIELD's declaring
-        // package (ADR-0042 — the bare ref was authored there, not on the concrete VO).
-        const fieldPkg = f.parent?.package ?? f.parent?.fileDefaultPackage ?? voPkg;
-        node.fields = buildEnrichedPayloadTree(root, ref, fieldPkg, nextSeen);
+      const target = refTarget(f, FIELD_ATTR_OBJECT_REF);
+      if (target !== undefined && isMetaObject(target)) {
+        node.fields = buildEnrichedPayloadTree(target, nextSeen);
       }
     }
     out.push(node);

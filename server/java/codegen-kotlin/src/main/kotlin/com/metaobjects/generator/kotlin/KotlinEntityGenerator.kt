@@ -427,7 +427,7 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         KotlinTypeMapper.enumTypeName(field, owner, fr019Config)?.let { return it }
         if (field is ObjectField) {
             val ref = readObjectRef(field)
-            val target = ref?.let { KotlinGenUtil.resolveObjectByShortOrFqn(loader, it) }
+            val target = ref?.let { KotlinGenUtil.lookupCanonicalObject(loader, it) }
             if (target != null) {
                 val (targetPkg, targetShort) = PackageMapping.splitFqn(target.name)
                 return ClassName(targetPkg, targetShort)
@@ -438,7 +438,7 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         // which needs the loader to resolve, so build the Map<String, VO> here.
         if (field is MapField) {
             val ref = readObjectRef(field)
-            val target = ref?.let { KotlinGenUtil.resolveObjectByShortOrFqn(loader, it) }
+            val target = ref?.let { KotlinGenUtil.lookupCanonicalObject(loader, it) }
             if (target != null) {
                 val (targetPkg, targetShort) = PackageMapping.splitFqn(target.name)
                 return MAP.parameterizedBy(STRING, ClassName(targetPkg, targetShort))

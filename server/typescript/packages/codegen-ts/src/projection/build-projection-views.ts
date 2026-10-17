@@ -16,8 +16,8 @@ import {
   isMetaRoot,
   isReadOnlySource,
   isWritableSource,
-  reportFrom,
-  resolveObjectRef,
+  OBJECT_REPORT_ATTR_FROM,
+  refTarget,
   SOURCE_KIND_VIEW,
   TYPE_FIELD,
   TYPE_IDENTITY,
@@ -27,7 +27,7 @@ import {
   physicalNamingOf,
 } from "@metaobjectsdev/metadata";
 import { isProjection, isWriteThrough } from "./projection-detector.js";
-import { extractViewSpec, packageOf, projectionViewSource, refNamedOwner } from "./extract-view-spec.js";
+import { extractViewSpec, projectionViewSource, refNamedOwner } from "./extract-view-spec.js";
 import { extractReportSpec } from "./extract-report-spec.js";
 import { emitReportViewDdl } from "./report-ddl-emit.js";
 import type { ReportViewSpec } from "./report-spec.js";
@@ -359,10 +359,9 @@ function collectSqlDependsOn(
     const t = joinTables[owner.resolutionKey()];
     if (t !== undefined) tables.add(t);
   }
-  // A report's `@from` table (resolved package-locally, as reportShape does).
+  // A report's `@from` table (ADR-0059 R7: the entity the loader bound for @from).
   if (isReport(host)) {
-    const fromName = reportFrom(host);
-    const from = fromName === undefined ? undefined : resolveObjectRef(root, fromName, packageOf(host)).node;
+    const from = refTarget(host, OBJECT_REPORT_ATTR_FROM);
     const t = from === undefined ? undefined : joinTables[from.resolutionKey()];
     if (t !== undefined) tables.add(t);
   }

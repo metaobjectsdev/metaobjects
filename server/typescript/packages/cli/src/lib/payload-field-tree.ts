@@ -10,53 +10,32 @@ import {
   FIELD_SUBTYPE_OBJECT,
   FIELD_ATTR_OBJECT_REF,
   isMetaField,
-  resolveObjectRef,
+  refTarget,
 } from "@metaobjectsdev/metadata";
 import type { PayloadField } from "@metaobjectsdev/render";
 
-function findObject(root: MetaData, name: string, referrerPkg: string): MetaData | undefined {
-  // ADR-0039: effective children — resolve rather than rely on root being unextended.
-  // ADR-0042: package-local — an FQN @objectRef binds the exact package; a bare ref
-  // binds the referrer's package FIRST (else root-level), never a same-named object.value
-  // in another package. The SAME resolver render-helper.ts's findObject uses (must not drift).
-  return resolveObjectRef(root, name, referrerPkg).node;
-}
-
 /**
  * Walk an `object.value` view-object into a render `PayloadField[]`. Object-ref
- * fields recurse into their referenced view-object; a `seen` set guards against
- * a (pathological) reference cycle. `referrerPkg` (ADR-0042) is the package of
- * the node that declares `voName` (the template for the root call; the parent VO
- * for a nested recursion), so a bare ref resolves package-locally.
+ * fields recurse into the view-object the loader bound for their `@objectRef`
+ * (ADR-0059 R7); a `seen` set guards against a (pathological) reference cycle.
+ * Returns `[]` when `vo` is undefined (the ref did not resolve).
  */
 export function derivePayloadFieldTree(
-  root: MetaData,
-  voName: string,
-  referrerPkg = "",
-  seen: ReadonlySet<string> = new Set(),
+  vo: MetaData | undefined,
+  seen: ReadonlySet<MetaData> = new Set(),
 ): PayloadField[] {
-  if (seen.has(voName)) return [];
-  const vo = findObject(root, voName, referrerPkg);
-  if (!vo) return [];
-  // A nested @objectRef resolves in the FIELD's own declaring package (fallback
-  // below), which differs from this VO's when the field is inherited via extends
-  // from an abstract VO in another package (the bare ref was authored there).
-  const voPkg = vo.package ?? vo.fileDefaultPackage ?? "";
-  const nextSeen = new Set(seen).add(voName);
+  if (vo === undefined || seen.has(vo)) return [];
+  const nextSeen = new Set(seen).add(vo);
   const fields: PayloadField[] = [];
   for (const f of vo.children().filter(isMetaField)) {
     // ADR-0039: effective array-ness — `isArray` may be inherited via extends. Carried only
     // when true, so verify can tell a list of objects from a single object and a list of
     // scalars from a scalar.
     const arrayness = f.resolvedIsArray() ? { isArray: true } : {};
-    if (f.subType === FIELD_SUBTYPE_OBJECT) {
+    if (f.subType === FIELD_SUBTYPE_OBJECT && typeof f.attr(FIELD_ATTR_OBJECT_REF) === "string") {
       // ADR-0039: effective attr — @objectRef may be inherited via extends.
-      const ref = f.attr(FIELD_ATTR_OBJECT_REF);
-      if (typeof ref === "string") {
-        const fieldPkg = f.parent?.package ?? f.parent?.fileDefaultPackage ?? voPkg;
-        fields.push({ name: f.name, fields: derivePayloadFieldTree(root, ref, fieldPkg, nextSeen), ...arrayness });
-        continue;
-      }
+      fields.push({ name: f.name, fields: derivePayloadFieldTree(refTarget(f, FIELD_ATTR_OBJECT_REF), nextSeen), ...arrayness });
+      continue;
     }
     fields.push({ name: f.name, ...arrayness });
   }
