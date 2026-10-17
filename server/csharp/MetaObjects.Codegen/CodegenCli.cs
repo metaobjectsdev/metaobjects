@@ -712,25 +712,19 @@ public static class CodegenCli
     /// The other physical naming that reproduces the committed output exactly, or <c>null</c>.
     /// Tries every other combination of the two ADR-0058 rules: another column rule alone,
     /// then another table rule alone, then both together (<see cref="NamingCandidates"/>).
-    /// The table rule reaches codegen only through the root (<see cref="MetaSource.PhysicalName"/>
-    /// reads <see cref="PhysicalNaming.Of"/>), so each probe sets the candidate on the root
-    /// and restores <paramref name="used"/> afterwards.
+    /// Each probe regenerates from a FRESH load carrying the candidate: the table rule reaches
+    /// codegen through the root, and a loaded tree caches what it resolved from it
+    /// (<see cref="MetaObject.DbTable"/>), so re-pointing the already-generated root would
+    /// keep the table names the first regen resolved.
     /// </summary>
     private static PhysicalNaming? MatchingNaming(
-        GenConfig config, MetaRoot root, IReadOnlyList<IGenerator> suite, bool narrowed, PhysicalNaming used)
+        GenConfig config, Func<MetaRoot> load, IReadOnlyList<IGenerator> suite, bool narrowed, PhysicalNaming used)
     {
         foreach (var candidate in NamingCandidates(used))
         {
-            CodegenDrift.Result probe;
+            var root = load();
             root.PhysicalNaming = candidate;
-            try
-            {
-                probe = CodegenDrift.Compute(config with { ColumnNamingStrategy = candidate.Columns }, root, suite, narrowed);
-            }
-            finally
-            {
-                root.PhysicalNaming = used;
-            }
+            var probe = CodegenDrift.Compute(config with { ColumnNamingStrategy = candidate.Columns }, root, suite, narrowed);
             if (probe.Error is null && probe.Clean) return candidate;
         }
         return null;
@@ -871,7 +865,7 @@ public static class CodegenCli
         // every column and table name, so regenerating would commit the wrong names. When
         // another naming reproduces the committed tree exactly, say that instead of "regenerate".
         var naming = load.Root.PhysicalNaming;
-        if (MatchingNaming(config, load.Root, suite, a.Selection is { Count: > 0 }, naming) is { } committed)
+        if (MatchingNaming(config, () => meta.Load(strict: !a.Lax).Root, suite, a.Selection is { Count: > 0 }, naming) is { } committed)
         {
             Console.Error.WriteLine(NamingDiffers(committed, naming));
             return 1;

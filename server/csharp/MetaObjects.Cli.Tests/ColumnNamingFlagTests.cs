@@ -202,6 +202,26 @@ public sealed class ColumnNamingFlagTests : IDisposable
     }
 
     [Fact]
+    public void Verify_finds_another_table_rule_when_only_the_entity_generator_runs()
+    {
+        // Without `names`, the entity's [Table("...")] carries the table name itself, resolved
+        // through the loaded tree (which caches it). The probe must still see the other rule.
+        var outDir = Path.Combine(_tmp, "generated-entity-only");
+        WriteConfig("\"tables\": \"literal\"");
+        Assert.Equal(0, OwnedRunner.Run(_tmp, ["entity"], "gen", MetaDir, "--out", outDir).ExitCode);
+        Assert.Contains("[Table(\"OrderItems\")]", File.ReadAllText(Path.Combine(outDir, "OrderItem.g.cs")));
+
+        WriteConfig(null);
+        var (exit, stdout, stderr) = OwnedRunner.Run(_tmp, ["entity"], "verify", "--codegen", MetaDir, "--out", outDir);
+        var output = stdout + stderr;
+        Assert.Equal(1, exit);
+        Assert.Contains(
+            "Declare \"naming\": { \"columns\": \"snake_case\", \"tables\": \"literal\" } in .metaobjects/config.json",
+            output);
+        Assert.DoesNotContain("Run 'dotnet meta gen' to regenerate", output);
+    }
+
+    [Fact]
     public void Verify_finds_a_column_and_table_rule_that_differ_together()
     {
         // Committed under literal columns AND literal tables; the config now declares neither.

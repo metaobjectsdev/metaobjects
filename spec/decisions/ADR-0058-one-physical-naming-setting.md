@@ -2,10 +2,11 @@
 
 ## Status
 
-**Accepted** (2026-10-14), for 1.1.0. Registers no vocabulary: `metamodelVersion` stays `1.1`
-and `fixtures/registry-conformance/expected-registry.json` is untouched. `@column`, `@table`,
-`@view`, `@proc`, `@function` and a source's structural `name` keep their meaning and their
-precedence ([ADR-0018](ADR-0018-per-kind-physical-name-attrs.md)'s four-step rule).
+**Accepted** (2026-10-14), for 1.1.0. Registers no vocabulary: `metamodelVersion` stays `1.1`.
+`fixtures/registry-conformance/expected-registry.json` changes in prose only: the `@column` and
+`@table` descriptions name the `naming` setting instead of the removed `columnNamingStrategy`.
+`@column`, `@table`, `@view`, `@proc`, `@function` and a source's structural `name` keep their
+meaning and their precedence ([ADR-0018](ADR-0018-per-kind-physical-name-attrs.md)'s four-step rule).
 [ADR-0015](ADR-0015-single-shared-migrate-engine.md) is unchanged: `meta migrate` stays
 TypeScript's.
 
