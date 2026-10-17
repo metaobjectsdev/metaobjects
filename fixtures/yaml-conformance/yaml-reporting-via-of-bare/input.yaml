@@ -1,0 +1,53 @@
+# The rc.5 model written as sigil-free YAML: after `via`, a bare `of` owner
+# resolves in the package of the entity the via reaches (ADR-0059 R3).
+metadata:
+  children:
+    - object.entity:
+        name: Realm
+        package: acme::world
+        children:
+          - source.rdb:
+              table: realms
+          - field.long: id
+          - field.string:
+              name: name
+              required: true
+          - identity.primary:
+              name: id
+              fields: [id]
+    - object.entity:
+        name: Game
+        package: acme::play
+        children:
+          - source.rdb:
+              table: games
+          - field.long: id
+          - field.long:
+              name: realmId
+              required: true
+          - identity.primary:
+              name: id
+              fields: [id]
+          - identity.reference:
+              name: fkRealm
+              references: acme::world::Realm
+              fields: [realmId]
+          - dimension.attribute:
+              name: realmName
+              of: Realm.name
+              via: Game.fkRealm
+          - measure.aggregate:
+              name: games
+              agg: count
+              of: Game.id
+    - object.report:
+        name: GamesByRealm
+        package: acme::reports
+        from: acme::play::Game
+        spine: Game.fkRealm
+        dimensions: [realmName]
+        measures: [games]
+        children:
+          - source.rdb:
+              kind: view
+              view: v_games_by_realm

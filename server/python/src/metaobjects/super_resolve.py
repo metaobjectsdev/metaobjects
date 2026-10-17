@@ -1,9 +1,9 @@
 """Deferred super/extends resolution over the merged tree (2nd pass, pre-freeze).
 
 Mirrors TS ``resolveDeferredSupers`` in super-resolve.ts:
-- Build the FQN index keyed by node.fqn() (own), over the whole merged tree.
-- Collect every node carrying an unresolved super_ref, tracking each node's
-  inherited context package.
+- Index the root's top-level nodes by exact resolution key (ADR-0059 R2).
+- Collect every node carrying an unresolved super_ref; its referrer package is its
+  own file's effective package.
 - Resolve supers ON DEMAND with memoization + cycle detection (#188), NOT in a
   single physical-declaration-order pass — so resolution is order-independent.
 """
@@ -12,6 +12,7 @@ from __future__ import annotations
 from .errors import ErrorCode, MetaError
 from .meta.core.identity.identity_constants import IDENTITY_UNIQUE_KEY_SUBTYPES
 from .meta.meta_data import MetaData
+from .naming_refs import RefOverDropError, owner_candidate_keys
 from .shared.base_types import TYPE_IDENTITY
 from .shared.separators import PACKAGE_SEP
 from .source import resolved_source
@@ -71,13 +72,9 @@ def resolve_supers(root: MetaData, errors: list[MetaError]) -> None:
     """
     index = _build_index(root)
 
-    # Every node carrying a super_ref, over the PHYSICAL declaration tree, with
-    # the inherited context package captured at that node's walk position (the
-    # effective_pkg the original pre-order walk computed — kept byte-identical so
-    # every existing fixture resolves the same way).
+    # Every node carrying a super_ref, over the PHYSICAL declaration tree.
     pending: list[MetaData] = []
-    pkg_of: dict[MetaData, str | None] = {}
-    _collect(root, "", pending, pkg_of)
+    _collect(root, pending)
 
     # Nodes already attempted this pass. On-demand resolution can reach a node
     # via the ``pending`` loop AND via owner/target recursion — ``attempted``
@@ -96,15 +93,10 @@ def resolve_supers(root: MetaData, errors: list[MetaError]) -> None:
         if node in attempted:
             return  # already resolved-or-failed this pass — never re-report
         attempted.add(node)
-        # Referrer context package: own ``package`` if declared, else the
-        # file-default package captured at parse time, else the inherited walk
-        # context. Captured during _collect (mirrors the original ``_walk``
-        # effective_pkg). Using file_default_package (not just the threaded
-        # ctx_pkg) is what lets a bare / same-package / cross-package ``extends``
-        # resolve over the MERGED tree.
-        effective_pkg = pkg_of[node] if node in pkg_of else (
-            node.package or node.file_default_package or None
-        )
+        # ADR-0059 R3: the referrer package of an ``extends`` is the declaring node's
+        # own file package: its ``package``, else the file-default package captured at
+        # parse time ("" for a file that declares none).
+        effective_pkg = node.effective_package()
 
         # For a dotted child-targeting ref, ``_resolve`` reads the OWNER's
         # effective ``children()`` — which only includes inherited members once
@@ -113,16 +105,25 @@ def resolve_supers(root: MetaData, errors: list[MetaError]) -> None:
         if _is_child_targeting_ref(node.super_ref):
             owner_ref = _owner_ref(node.super_ref)
             if owner_ref is not None:
-                owner = _resolve(owner_ref, effective_pkg, index)
-                if owner is not None:
+                owner = _try_resolve(owner_ref, effective_pkg, index)
+                if owner is not None and owner != _OVER_DROP:
                     resolve_node(owner)
 
         # FR-024: thread the referrer's type so dotted ``Entity.child`` refs
         # resolve type-scoped (a field ref selects fields; an identity ref
         # identities).
-        target = _resolve(node.super_ref, effective_pkg, index, referrer_type=node.type)
+        target = _try_resolve(node.super_ref, effective_pkg, index, referrer_type=node.type)
 
-        if target is None:
+        if target == _OVER_DROP:
+            # ADR-0059 R2 -- ``..::`` dropped more segments than the package has.
+            errors.append(MetaError(
+                f"the extends ref '{node.super_ref}' on {node.fqn()} climbs above the "
+                f"root package \u2014 each '..::' drops one segment of the declaring package",
+                ErrorCode.ERR_BAD_ATTR_VALUE,
+                path=node.fqn(),
+                envelope=resolved_source(node.source, node.fqn(), node.super_ref),
+            ))
+        elif target is None:
             # FR5d / ADR-0009: emit a ResolvedSource envelope carrying the
             # referrer's files / json_path plus the referrer FQN + unresolved
             # target. Mirrors TS resolveDeferredSupers in meta-data-loader.ts.
@@ -160,61 +161,31 @@ def resolve_supers(root: MetaData, errors: list[MetaError]) -> None:
         resolve_node(node)
 
 
-def _collect(
-    node: MetaData,
-    ctx_pkg: str,
-    pending: list[MetaData],
-    pkg_of: dict[MetaData, str | None],
-) -> None:
-    """Pre-order walk: record every node carrying a super_ref plus the effective
-    context package at its walk position, then recurse over own_children().
-
-    Mirrors the referrer-context computation of the original ``_walk`` so the
-    on-demand resolver uses exactly the same effective_pkg the pre-order walk
-    did — resolution stays byte-identical for every existing fixture; only the
-    ORDER in which supers are wired changes (now order-independent, #188).
-    """
+def _collect(node: MetaData, pending: list[MetaData]) -> None:
+    """Pre-order walk over the PHYSICAL declaration tree: record every node carrying a
+    super_ref."""
     if node.super_ref:
-        # own ``package`` if declared, else the file-default package captured at
-        # parse time, else the inherited walk context.
-        pkg_of[node] = node.package or node.file_default_package or ctx_pkg or None
         pending.append(node)
-
-    # The context package for children is this node's own package, if set, else inherit.
-    next_ctx = node.package or ctx_pkg
-    # ADR-0039 sanctioned own: this IS the super-resolution collection walk — it
+    # ADR-0039 sanctioned own: this IS the super-resolution collection walk -- it
     # runs BEFORE extends is resolved (resolution sets super_data), so it must
     # iterate own children.
     for child in node.own_children():
-        _collect(child, next_ctx, pending, pkg_of)
+        _collect(child, pending)
 
 
 def _build_index(root: MetaData) -> dict[str, MetaData]:
-    """Build a lookup index over the whole merged tree (own_children walk).
-
-    Each named node is registered under its own ``fqn()`` AND — when it has no
-    own ``package`` but a file-default package was captured at parse time —
-    under the package-folded key ``<file_default_package>::<name>``. The second
-    key is what makes a cross-package fully-qualified ``extends`` resolve over
-    the merged tree (object ``fqn()`` stays bare because the parser does not
-    fold the file-default package onto the object's own package). Mirrors the
-    TS ``findInTree`` matcher (own ``fqn()`` OR ``resolutionKey()``).
-    """
+    """The root's top-level named nodes, keyed by exact resolution key
+    (``<package | file-default package>::<name>``, or the bare name for a root-level
+    node). The key is captured at parse time, so a match does not depend on load order
+    or on post-merge tree shape. Exact only: a bare key never matches a packaged node
+    (ADR-0059 R2). First declaration wins."""
     idx: dict[str, MetaData] = {}
-    _index_walk(root, idx)
+    # ADR-0039 sanctioned own: super-resolution reads the PHYSICAL declaration layer;
+    # the root has no super, so its own children are its children.
+    for c in root.own_children():
+        if c.name:
+            idx.setdefault(c.resolution_key(), c)
     return idx
-
-
-def _index_walk(node: MetaData, idx: dict[str, MetaData]) -> None:
-    if node.name:
-        idx.setdefault(node.fqn(), node)
-        if not node.package and node.file_default_package:
-            folded = f"{node.file_default_package}{PACKAGE_SEP}{node.name}"
-            idx.setdefault(folded, node)
-    # ADR-0039 sanctioned own: index-building walk over the declared tree (feeds
-    # super-resolution; runs before extends is resolved).
-    for child in node.own_children():
-        _index_walk(child, idx)
 
 
 def _is_child_targeting_ref(ref: str) -> bool:
@@ -241,37 +212,41 @@ def _owner_ref(ref: str) -> str | None:
     return ref[:seg_start] + parts[0]
 
 
+_OVER_DROP = object()
+
+
+def _try_resolve(
+    ref: str,
+    context_pkg: str | None,
+    index: dict[str, MetaData],
+    referrer_type: str | None = None,
+):
+    """:func:`_resolve`, with a ``..::`` over-drop returned as the ``_OVER_DROP`` marker
+    (ADR-0059 R2: a bad value, not a missing target)."""
+    try:
+        return _resolve(ref, context_pkg, index, referrer_type)
+    except RefOverDropError:
+        return _OVER_DROP
+
+
 def _resolve(
     ref: str,
     context_pkg: str | None,
     index: dict[str, MetaData],
     referrer_type: str | None = None,
 ) -> MetaData | None:
-    """Resolve a super_ref string against the FQN index.
+    """Resolve a super_ref string against the top-level index (ADR-0059 R2).
 
-    Resolution forms:
-    - absolute ``::pkg::Name``  → strip leading ``::``, look up ``pkg::Name``.
-    - relative ``..::rest``     → count leading ``..::`` levels; if levels exceed
-                                  context depth or remainder is empty → ``None``
-                                  (→ ERR_UNRESOLVED_SUPER); else look up
-                                  ``reducedCtx::rest`` (mirrors TS exactly).
-    - bare/qualified ``Name``   → try ``context::ref`` first, then bare ``ref``.
-    - dotted ``Owner.child``    → FR-024 (ADR-0029): resolve the OWNER with the
-                                  strategies above, then select the child among
-                                  the owner's EFFECTIVE children (``children()``,
-                                  so inherited children resolve) by name + the
-                                  REFERRER's type (type-scoped: a field ref
-                                  resolves fields, an identity ref identities).
-                                  Dotted refs never fall through to the bare
-                                  lookup; multi-dot (``X.y.z``) TRAVERSES child
-                                  names to any depth (intermediate segments by
-                                  unique name); only degenerate empty segments →
-                                  ``None``; no ``referrer_type`` → ``None``.
-                                  Mirrors TS super-resolve.ts.
+    Plain forms go through ``owner_candidate_keys``: ``::pkg::Name`` root-absolute,
+    ``..::rest`` parent-relative (raises ``RefOverDropError`` on over-drop),
+    ``pkg::Name`` exact, bare ``Name`` in the context package then root-level.
+
+    A dotted ``Owner.child`` (FR-024, ADR-0029) resolves the OWNER the same way, then
+    selects the child among the owner's EFFECTIVE children (so inherited children
+    resolve) by name + the REFERRER's type. Multi-dot traverses child names to any
+    depth (intermediate segments by unique name); degenerate empty segments, or no
+    ``referrer_type``, resolve to ``None``.
     """
-    abs_prefix = PACKAGE_SEP  # "::"
-    rel_prefix = ".." + PACKAGE_SEP  # "..::
-
     if _is_child_targeting_ref(ref):
         # Addressing model (ADR-0029): the package qualifies the ROOT-level node
         # only; each subsequent segment traverses CHILD NAMES to any depth
@@ -300,24 +275,10 @@ def _resolve(
                 return child
         return None
 
-    if ref.startswith(abs_prefix):                          # absolute ::pkg::Name
-        return index.get(ref[len(abs_prefix):])
-
-    if ref.startswith(rel_prefix):                          # relative ..::rest
-        parts = ref.split(PACKAGE_SEP)
-        levels = 0
-        while levels < len(parts) and parts[levels] == "..":
-            levels += 1
-        pkg_parts = context_pkg.split(PACKAGE_SEP) if context_pkg else []
-        remainder = parts[levels:]
-        if len(pkg_parts) < levels or len(remainder) == 0:
-            return None
-        all_parts = pkg_parts[: len(pkg_parts) - levels] + remainder
-        return index.get(PACKAGE_SEP.join(all_parts))
-
-    # bare or pkg-qualified (no leading :: / ..)
-    if context_pkg:
-        hit = index.get(f"{context_pkg}{PACKAGE_SEP}{ref}")
+    # ADR-0059 R2: a plain ref binds one top-level node by its form -- the same
+    # candidate keys every other reference uses. Raises RefOverDropError on over-drop.
+    for key in owner_candidate_keys(ref, context_pkg or ""):
+        hit = index.get(key)
         if hit is not None:
             return hit
-    return index.get(ref)
+    return None

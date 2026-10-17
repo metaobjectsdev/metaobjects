@@ -1,0 +1,117 @@
+{
+  "metadata.root": {
+    "children": [
+      {
+        "object.entity": {
+          "name": "Realm",
+          "package": "acme::world",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "realms"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "name",
+                "@required": true
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Game",
+          "package": "acme::play",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "games"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "realmId",
+                "@required": true
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "fkRealm",
+                "@fields": [
+                  "realmId"
+                ],
+                "@references": "acme::world::Realm"
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "realmName",
+                "@of": "acme::world::Realm.name",
+                "@via": "acme::play::Game.fkRealm"
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "games",
+                "@agg": "count",
+                "@of": [
+                  "acme::play::Game.id"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.report": {
+          "name": "GamesByRealm",
+          "package": "acme::reports",
+          "@dimensions": [
+            "realmName"
+          ],
+          "@from": "acme::play::Game",
+          "@measures": [
+            "games"
+          ],
+          "@spine": "acme::play::Game.fkRealm",
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_games_by_realm"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

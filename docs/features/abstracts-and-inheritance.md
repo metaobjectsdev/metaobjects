@@ -150,7 +150,12 @@ This means:
   attrs.
 - **Cross-package references** use fully-qualified names:
   `extends: "shared::auditable"`. Same-package references can use the bare
-  name.
+  name: a bare name binds the declaring file's own package, then the root, and
+  never an object in another package. `::Name` reaches a root-level object even
+  when the package declares the same name, and `..::Name` names a sibling in the
+  parent package. These forms mean the same in YAML and canonical JSON
+  ([ADR-0059](../../spec/decisions/ADR-0059-references-resolve-once-after-the-tree.md)).
+  Exported JSON writes every reference fully qualified.
 
 If `extends:` references a name that doesn't resolve, the loader emits
 `ERR_UNRESOLVED_SUPER` with the unresolved reference and the source location.

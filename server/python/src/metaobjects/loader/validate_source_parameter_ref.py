@@ -34,7 +34,7 @@ from ..meta.core.object.object_constants import (
     OBJECT_SUBTYPE_ENTITY,
     OBJECT_SUBTYPE_VALUE,
 )
-from ..naming_refs import resolve_object_ref
+from ..naming_refs import resolve_object_ref, referrer_package_of
 from ..shared.base_types import TYPE_OBJECT, TYPE_SOURCE
 
 _CALLABLE_KINDS = frozenset({SOURCE_KIND_STORED_PROC, SOURCE_KIND_TABLE_FUNCTION})
@@ -54,7 +54,7 @@ def validate_source_parameter_ref(root: MetaData, errors: list[MetaError]) -> No
         # package, else root-level); an FQN resolves exactly. Shares the single
         # resolve_object_ref matcher — NO bare-name-anywhere fallback (which would
         # silently bind a same-named value-object in another package).
-        referrer_pkg = obj.package or obj.file_default_package or ""
+        referrer_pkg = referrer_package_of(obj)
         for source in obj.own_children():
             if source.type != TYPE_SOURCE or source.sub_type != SOURCE_SUBTYPE_RDB:
                 continue

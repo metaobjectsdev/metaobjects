@@ -39,7 +39,7 @@ def test_entity_dict_neutral_fields() -> None:
 def test_order_relationship() -> None:
     d = build_entity_template_data(_obj("Order"))
     assert d["relationships"] == [
-        {"name": "product", "cardinality": "one", "targetRef": "Product"}
+        {"name": "product", "cardinality": "one", "targetRef": "shop::Product"}
     ]
 
 

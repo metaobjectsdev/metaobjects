@@ -51,10 +51,12 @@ export function renderOutputPrompt(root: MetaData, templateName: string): string
         : `template "${templateName}" missing @responseRef`,
     );
   }
-  const { vo, ref: payloadRef } = shape;
+  const { vo } = shape;
 
-  // rootName == response VO name so the fragment and extract() agree.
-  const spec = specLiteral(vo, tmpl, payloadRef);
+  // rootName == response VO's short name, as extractObject() uses it, so the fragment and
+  // extract() agree. Never the reference value: that is canonical (`pkg::Name`, ADR-0059)
+  // and not a valid XML element name.
+  const spec = specLiteral(vo, tmpl, vo.name);
   // templateSymbolBase, as render-helper.ts and output-parser.ts do: a lowercase-initial
   // template name emitted `rendershipmentRiskFormat` beside `renderShipmentRisk` from
   // prompt-render, so one model produced two conventions for two sibling functions.

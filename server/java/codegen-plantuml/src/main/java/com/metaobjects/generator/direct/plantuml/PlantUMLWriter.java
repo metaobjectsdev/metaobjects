@@ -605,7 +605,8 @@ public class PlantUMLWriter extends FileDirectWriter<PlantUMLWriter> {
         }
         // TODO:  This should be handled differently
         else if (attr.getName().equals(ObjectField.ATTR_OBJECTREF)) {
-            return "\""+MetaDataUtil.expandPackageForPath(MetaDataUtil.findPackageForMetaData( attr ), attr.getValueAsString() )+"\"";
+            // ADR-0059: the value is already canonical (pkg::Name); never re-expand it.
+            return "\""+attr.getValueAsString()+"\"";
         }
         else if ( attr.getDataType() == DataTypes.STRING_ARRAY ) {
             return "\""+val.toString()+"\"";

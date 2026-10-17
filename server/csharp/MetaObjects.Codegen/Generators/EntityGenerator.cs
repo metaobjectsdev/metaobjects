@@ -1485,7 +1485,7 @@ public class EntityGenerator : IGenerator
         if (agg.Of is not { } of) return null;
         var dot = of.LastIndexOf('.');
         if (dot <= 0 || dot == of.Length - 1) return null;
-        var sourceObj = ctx.Root.FindObject(CSharpNaming.StripPkg(of[..dot]));
+        var sourceObj = ctx.Root.FindObject(of[..dot]);
         var sourceField = sourceObj?.FindField(of[(dot + 1)..]);
         return sourceField is null ? null : CSharpNaming.ScalarForField(sourceField);
     }

@@ -61,9 +61,12 @@ warning lists, through these ordered stages. Mirror the order; the mechanism is 
    children **accumulate** (append, not re-sort). An `@overlay` node with no existing target
    → `ERR_OVERLAY_NO_TARGET`.
 4. **Deferred super-resolution** over the *fully merged* tree (so a source can extend a base
-   defined in a later file). Package-aware reference forms: bare `Name` (context package,
-   then root), absolute `::pkg::Name`, relative `..::pkg::Name` (walk up N package levels).
-   Unresolved → `ERR_UNRESOLVED_SUPER`. Idempotent walk; skip already-resolved nodes.
+   defined in a later file). Package-aware reference forms (ADR-0059): bare `Name` (the
+   declaring file's package, then root), root-absolute `::pkg::Name` (exact, no package-local
+   retry), parent-relative `..::Name` (drop one package segment per `..::`; over-drop →
+   `ERR_BAD_ATTR_VALUE`). Every source hands these strings over as written — the YAML desugar
+   does not rewrite them. Unresolved → `ERR_UNRESOLVED_SUPER`. Idempotent walk; skip
+   already-resolved nodes.
 5. **Validation passes**, in this order:
    1. **Subtype rules** — a value object must not carry a primary identity (error
       `ERR_SUBTYPE_RULE_VIOLATION`); a concrete (non-abstract) entity should have a primary
@@ -89,8 +92,13 @@ warning lists, through these ordered stages. Mirror the order; the mechanism is 
    6. **DataGrid filter values** — a dataGrid `@filter` must reference a `@filterable`
       sibling field and use an operator allowed for that field's subtype
       (`ERR_BAD_ATTR_FILTER`). This is the canonical *legitimately-central* cross-node pass.
-6. **Freeze** the tree recursively (immutable thereafter; enables per-node read caching).
-7. **Return** the root + errors + warnings.
+6. **Resolve references once** (ADR-0059): for every own reference attribute (`extends`,
+   `@objectRef`, `@through`, `@references`, `@from`, `@via`, `@of`, `@parameterRef`,
+   `@payloadRef`, `@responseRef`, `@spine`) that resolves, record the target, keep the
+   authored string, and rewrite the value to its canonical spelling (`pkg::Name`; `::Name`
+   for a root-level target from a packaged referrer). Unresolved references stay as written.
+7. **Freeze** the tree recursively (immutable thereafter; enables per-node read caching).
+8. **Return** the root + errors + warnings.
 
 ## 4. The extensibility model (ADR-0002/0003/0004 in practice)
 

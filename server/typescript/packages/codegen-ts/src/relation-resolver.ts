@@ -9,6 +9,7 @@ import type { MetaRoot, MetaObject, MetaRelationship } from "@metaobjectsdev/met
 import {
   RELATIONSHIP_ATTR_CARDINALITY,
   RELATIONSHIP_ATTR_OBJECT_REF,
+  refTarget,
   RELATIONSHIP_ATTR_THROUGH,
   RELATIONSHIP_ATTR_SOURCE_REF_FIELD,
   CARDINALITY_ONE,
@@ -172,8 +173,9 @@ export function buildRelationMap(
       // means an unloadable model reached codegen — skip rather than guess.
       // ADR-0039: resolving — @sourceRefField may be inherited via extends.
       const declaredRefField = child.attr(RELATIONSHIP_ATTR_SOURCE_REF_FIELD) as string | undefined;
+      // ADR-0059 R7: match references by the bound target node when it resolves.
       const matching = resolveRelationshipReference(
-        obj, child.name, targetEntity, declaredRefField,
+        obj, child.name, refTarget(child, RELATIONSHIP_ATTR_OBJECT_REF) ?? targetEntity, declaredRefField,
       );
       if (!matching) continue;
 

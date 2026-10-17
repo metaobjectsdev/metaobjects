@@ -33,6 +33,13 @@ class MetaAttr(MetaData):
     def __init__(self, type_: str, sub_type: str, name: str) -> None:
         super().__init__(type_, sub_type, name)
         self.value: object = None
+        # ADR-0059 R5 -- for a reference attribute, the top-level object each reference
+        # names, set once by the loader's ``resolve_references`` pass (one node for a
+        # scalar value; a list with ``None`` where an element did not resolve).
+        self.resolved_target: object = None
+        # ADR-0059 R5 -- the value exactly as authored, kept when ``resolve_references``
+        # rewrites ``value`` to its canonical spelling. ``meta fmt`` writes this back.
+        self.authored_value: object = None
 
     @property
     def data_type(self) -> DataType:

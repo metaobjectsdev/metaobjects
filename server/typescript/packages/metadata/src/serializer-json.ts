@@ -41,15 +41,28 @@ const SOURCE_RDB_FUSED_KEY = `${TYPE_SOURCE}${TYPE_SUBTYPE_SEPARATOR}${SOURCE_SU
 // Public API
 // ---------------------------------------------------------------------------
 
+/**
+ * How references are written (ADR-0059 R8).
+ * - "canonical" (default): each reference as the loader resolved it — `pkg::Name`,
+ *   `::Name` for a root-level target from a packaged referrer — and the document
+ *   package rule below. The output loads back to the same model from any source.
+ * - "authored": each reference, `extends` included, exactly as written, and every
+ *   `package` where it was written. Only `meta fmt` uses it, so formatting never
+ *   rewrites what an author wrote (ADR-0059, C2).
+ */
+export type RefSpelling = "canonical" | "authored";
+
 export interface SerializeOptions {
   /** Pretty-print indent. 0 = no whitespace. Default 2. */
   indent?: number;
+  /** Reference spelling; default "canonical". */
+  refs?: RefSpelling;
 }
 
 export function serializeJson(model: MetaData, opts?: SerializeOptions): string {
   const indent = opts?.indent ?? 2;
 
-  const nodeObj = serializeNode(model, false);
+  const nodeObj = serializeNode(model, false, opts?.refs ?? "canonical", undefined);
   return JSON.stringify(nodeObj, null, indent === 0 ? undefined : indent);
 }
 
@@ -82,17 +95,57 @@ function fusedKey(type: string, subType: string): string {
 // Serialize a single node — returns { "<type>.<subType>": { ...body } }
 // ---------------------------------------------------------------------------
 
+/**
+ * How a node's `package` key is written. `undefined`: the node's own `package`, as
+ * authored. Otherwise the package the document rule (ADR-0059 R8) assigns it; ""
+ * writes none.
+ */
+type PackageSlot = string | undefined;
+
 function serializeNode(
   model: MetaData,
   effective: boolean,
+  refs: RefSpelling,
+  pkgSlot: PackageSlot,
 ): Record<string, unknown> {
-  const inner = serializeNodeInner(model, effective);
+  const inner = serializeNodeInner(model, effective, refs, pkgSlot);
   return { [fusedKey(model.type, model.subType)]: inner };
+}
+
+/** Effective package of a top-level node (ADR-0059 R10): own, else its file's. A
+ *  node built in code has no file, so it takes the root's package, as re-loading the
+ *  output would give it. */
+function topLevelPackage(node: MetaData, root: MetaData): string {
+  return node.package ?? node.fileDefaultPackage ?? root.package ?? "";
+}
+
+/**
+ * ADR-0059 R8 document package rule, for a `metadata.root` in canonical mode.
+ * Every top-level node in one non-empty package P: the root carries P (a node keeps
+ * a package it carries itself, as before). Otherwise the root carries none and each packaged top-level node
+ * carries its own. A root with no named top-level node keeps its own package.
+ */
+function documentPackages(root: MetaData): { rootPkg: string | undefined; perNode: boolean } {
+  // ADR-0039: own — the serializer writes the declared layer; the root has no super.
+  const named = root.ownChildren().filter((c) => c.name !== "");
+  if (named.length === 0) return { rootPkg: root.package, perNode: false };
+  const pkgs = new Set(named.map((c) => topLevelPackage(c, root)));
+  if (pkgs.size === 1) {
+    const only = [...pkgs][0]!;
+    // When every node already names P itself and the root names none, the
+    // document is already complete as written; adding a root package would only
+    // repeat it.
+    const selfNamed = root.package === undefined && named.every((c) => c.package === only);
+    if (only !== "") return { rootPkg: selfNamed ? undefined : only, perNode: false };
+  }
+  return { rootPkg: undefined, perNode: true };
 }
 
 function serializeNodeInner(
   model: MetaData,
   effective: boolean,
+  refs: RefSpelling,
+  pkgSlot: PackageSlot,
 ): Record<string, unknown> {
   // Canonical body-key order:
   //   1. name  2. package  3. extends  4. abstract
@@ -104,12 +157,19 @@ function serializeNodeInner(
     obj[RESERVED_KEY_NAME] = model.name;
   }
 
-  if (model.package !== undefined && model.package !== "") {
-    obj[RESERVED_KEY_PACKAGE] = model.package;
+  const isDocRoot = model.type === TYPE_METADATA && model.subType === SUBTYPE_ROOT;
+  const doc = isDocRoot && refs === "canonical" ? documentPackages(model) : undefined;
+
+  const pkg = doc !== undefined ? doc.rootPkg : pkgSlot !== undefined ? pkgSlot : model.package;
+  if (pkg !== undefined && pkg !== "") {
+    obj[RESERVED_KEY_PACKAGE] = pkg;
   }
 
-  if (model.superRef !== undefined) {
-    obj[RESERVED_KEY_EXTENDS] = model.superRef;
+  // After the loader's resolveReferences pass `superRef` is canonical (ADR-0059 R5);
+  // the authored spelling is kept beside it for `meta fmt`.
+  const superRef = refs === "authored" ? (model.authoredSuperRef ?? model.superRef) : model.superRef;
+  if (superRef !== undefined) {
+    obj[RESERVED_KEY_EXTENDS] = superRef;
   }
 
   if (model.isAbstract === true) {
@@ -141,13 +201,20 @@ function serializeNodeInner(
 
   const serializedChildren: Record<string, unknown>[] = [];
   for (const child of childList) {
-    // Attrs never appear in children(); only structural nodes recurse.
-    serializedChildren.push(serializeNode(child, effective));
+    // Attrs never appear in children(); only structural nodes recurse. A top-level
+    // node's package follows the document rule; deeper nodes keep their own.
+    // In a one-package document a node keeps any package it carries itself (the parser
+    // gives a root-level field its file's package), so single-package output is unchanged.
+    const childSlot: PackageSlot =
+      doc === undefined || !doc.perNode ? undefined : child.name !== "" ? topLevelPackage(child, model) : "";
+    serializedChildren.push(serializeNode(child, effective, refs, childSlot));
   }
 
   // Attrs ALWAYS emit inline @name (D5 — attrs have no children, one canonical form).
   for (const [attrName, attrValue] of attrMap) {
-    obj[`${ATTR_PREFIX}${attrName}`] = attrValue;
+    // ADR-0039: own — the authored value lives on the declaring attr node.
+    const authored = refs === "authored" && !effective ? model.ownMetaAttr(attrName)?.authoredValue : undefined;
+    obj[`${ATTR_PREFIX}${attrName}`] = authored ?? attrValue;
   }
 
   if (serializedChildren.length > 0) {
@@ -167,8 +234,8 @@ function serializeNodeInner(
 // byte-identical output from the same input metamodel.
 // ---------------------------------------------------------------------------
 
-export function canonicalSerialize(model: MetaData): string {
-  const raw = serializeJson(model, { indent: 2 });
+export function canonicalSerialize(model: MetaData, opts?: { refs?: RefSpelling }): string {
+  const raw = serializeJson(model, { indent: 2, refs: opts?.refs ?? "canonical" });
 
   const parsed = JSON.parse(raw) as unknown;
   // FR-016 / ADR-0018: rewrite legacy @table → kind-matching alias on source.rdb
@@ -188,7 +255,7 @@ export function canonicalSerialize(model: MetaData): string {
  * Used by the conformance harness's expected-effective fixtures.
  */
 export function canonicalSerializeEffective(model: MetaData): string {
-  const nodeObj = serializeNode(model, true);
+  const nodeObj = serializeNode(model, true, "canonical", undefined);
   const raw = JSON.stringify(nodeObj, null, 2);
 
   const parsed = JSON.parse(raw) as unknown;

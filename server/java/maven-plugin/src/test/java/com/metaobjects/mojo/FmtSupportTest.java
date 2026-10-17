@@ -88,14 +88,11 @@ public class FmtSupportTest {
     public void anUnsafeCandidateIsNeverWritten() throws IOException {
         Path base = dir.resolve("meta.base.json");
         byte[] before = Files.readAllBytes(base);
-        // Baseline loads LAX (strict=false) — the messy file carries no unknown
-        // attrs, so this is clean either way. Force the SAFETY-CHECK reload loader
-        // to disagree about something the baseline never saw, by handing it a
-        // DIFFERENT loader name than the baseline used — the canonical output's
-        // (leaked) top-level "package" then differs from the baseline's, so the
-        // byte-identical check fails even though the candidate is a legitimate
-        // reformat. This manufactures the "unsafe" branch deterministically,
-        // without depending on finding a real formatter bug to trigger it.
+        // Force the SAFETY-CHECK reload loader to disagree about something the baseline
+        // never saw, by pre-seeding it with an extra object — the canonical output then
+        // differs from the baseline's, so the equivalence check fails even though the
+        // candidate is a legitimate reformat. This manufactures the "unsafe" branch
+        // deterministically, without depending on finding a real formatter bug to trigger it.
         MetaDataLoader baseline = loadBaseline(base, false);
 
         FmtSupport.RunResult result = FmtSupport.run(
@@ -105,8 +102,9 @@ public class FmtSupportTest {
             List.of(),
             () -> {
                 MetaDataLoader l = new MetaDataLoader(
-                    LoaderOptions.create(false, false, false), MetaDataLoader.SUBTYPE_MANUAL, "not-acme");
+                    LoaderOptions.create(false, false, false), MetaDataLoader.SUBTYPE_MANUAL, "acme");
                 l.init();
+                l.getRoot().addChild(com.metaobjects.object.ValueMetaObject.create("seeded::Extra"));
                 return l;
             },
             loaderName -> freshLoader(false),

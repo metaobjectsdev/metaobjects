@@ -774,7 +774,12 @@ public abstract class MetaObject extends MetaData {
         return useCache("getRelationshipsByTarget()", targetObject, target -> {
             Collection<MetaRelationship> filtered = new ArrayList<>();
             for (MetaRelationship rel : getRelationships()) {
-                if (target.equals(rel.getObjectRef())) {
+                // ADR-0059 R7: compare the bound target, not the spelling.
+                MetaObject bound = com.metaobjects.loader.References.refTarget(rel, "objectRef");
+                MetaData top = com.metaobjects.loader.References.topLevelRoot(this);
+                MetaData want = top instanceof com.metaobjects.MetaRoot
+                    ? ((com.metaobjects.MetaRoot) top).findObject(target) : null;
+                if (bound != null && want != null ? bound == want : target.equals(rel.getObjectRef())) {
                     filtered.add(rel);
                 }
             }

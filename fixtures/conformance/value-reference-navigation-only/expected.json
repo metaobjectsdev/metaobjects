@@ -48,7 +48,7 @@
                 "@fields": [
                   "tableId"
                 ],
-                "@references": "Table"
+                "@references": "gaming::poker::Table"
               }
             }
           ]

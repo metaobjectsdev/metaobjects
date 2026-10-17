@@ -160,24 +160,9 @@ public final class M2MResolver {
     }
 
     private static MetaObject mustGetEntity(MetaRoot root, String name) {
-        // ADR-0041: a FULLY-QUALIFIED ref (contains "::") resolves EXACTLY on the
-        // object's package-qualified name — never a bare-tail fallback (the closed
-        // bug: an FQN @objectRef / @through binding a same-named entity in the WRONG
-        // package). A bare ref matches the entity's short name.
-        boolean fqn = name != null && name.contains(com.metaobjects.MetaData.PKG_SEPARATOR);
-        // ADR-0039: root-level entity scan — root is never extended, so own children
-        // is correct (entities are declared directly under root, not inherited into it).
-        for (var child : root.getChildren(MetaObject.class, false)) {
-            if (fqn ? name.equals(child.getName()) : stripPackage(name).equals(child.getShortName())) {
-                return child;
-            }
-        }
-        throw new IllegalStateException("Entity '" + name + "' not found in model root");
-    }
-
-    private static String stripPackage(String name) {
-        if (name == null) return null;
-        int idx = name.lastIndexOf(com.metaobjects.MetaData.PKG_SEPARATOR);
-        return (idx >= 0) ? name.substring(idx + com.metaobjects.MetaData.PKG_SEPARATOR.length()) : name;
+        // ADR-0059 R7: a reference value is canonical after load; match its exact resolution key.
+        MetaObject found = com.metaobjects.loader.References.lookupCanonical(root, name);
+        if (found == null) throw new IllegalStateException("Entity '" + name + "' not found in model root");
+        return found;
     }
 }

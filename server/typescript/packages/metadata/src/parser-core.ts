@@ -39,6 +39,7 @@ import {
   extendsTargetCompatible,
   EXTENDS_TARGET_MISMATCH_RULE,
 } from "./super-resolve.js";
+import { RefOverDropError } from "./naming-refs.js";
 import { JsonPathBuilder, type Segment as JsonPathSegment } from "./json-path.js";
 import { getYamlPosition, type YamlPosition } from "./core/yaml-positions.js";
 import {
@@ -66,7 +67,6 @@ import {
 import { ATTR_SUBTYPE_PROPERTIES, ATTR_SUBTYPE_STRINGARRAY } from "./core/attr/attr-constants.js";
 import { attrClassFor } from "./attr-class-map.js";
 import type { AttrValue } from "./shared/meta-data.js";
-import { isRelativeRef, REF_BEARING_ATTR_NAMES } from "./naming-refs.js";
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -232,44 +232,6 @@ function reportProblem(
     throw new ParseError(msg, { code, source: errSource() });
   }
   warnings.push(msg);
-}
-
-// ---------------------------------------------------------------------------
-// FR-032 (ADR-0032) — canonical-JSON ref guard.
-//
-// Canonical JSON is the self-contained interchange form: every ref-bearing attr
-// MUST be fully-qualified. A relative authoring form (leading `::` or `..::`)
-// surviving into canonical JSON is `ERR_RELATIVE_REF_IN_CANONICAL`. The guard
-// fires ONLY for JSON-format input — YAML-format input has already been
-// desugar-expanded via expandRef (so any `::`/`..::` there is correct authoring
-// that was lowered to FQN before buildTree sees it). Like ERR_RESERVED_ATTR,
-// this is a hard error routed through the loader's error sink even in lax mode.
-// ---------------------------------------------------------------------------
-
-function guardRelativeRefInCanonical(
-  refLabel: string,
-  rawValue: unknown,
-  strict: boolean,
-  warnings: string[],
-  path: string,
-): void {
-  if (_currentFormat !== "json") return;
-  if (typeof rawValue !== "string") return;
-  if (!isRelativeRef(rawValue)) return;
-  const msg =
-    `Relative reference '${rawValue}' on ${refLabel} at ${path} is not allowed in ` +
-    `canonical JSON — canonical JSON must be fully-qualified. Relative forms ` +
-    `(leading '::' or '..::') are YAML-authoring sugar that the desugar expands.`;
-  if (strict) {
-    throw new ParseError(msg, { code: "ERR_RELATIVE_REF_IN_CANONICAL", source: errSource() });
-  }
-  if (_currentErrors !== undefined) {
-    _currentErrors.push(
-      new ParseError(msg, { code: "ERR_RELATIVE_REF_IN_CANONICAL", source: errSource() }),
-    );
-  } else {
-    warnings.push(msg);
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -701,10 +663,11 @@ export function buildTree(parsed: unknown, opts: ParseOptions): ParseResult {
     if (opts.intoRoot !== undefined) {
       // --- Merge mode: parse root's attrs/children into the existing root ---
       // The JSON root's own package/super/reserved-keys are not re-applied to the
-      // existing root. BUT: children from the NEW JSON should inherit from the
-      // NEW root's package, not the existing root's.
+      // existing root. Children from the NEW document take the NEW document's
+      // package — and a document with no `package` declares root-level nodes,
+      // whatever was loaded before it (ADR-0059 R10: the default package is per file).
       const newRootPkg = rootDataObj[RESERVED_KEY_PACKAGE];
-      const contextPkg = (typeof newRootPkg === "string" ? newRootPkg : opts.intoRoot.package) ?? "";
+      const contextPkg = typeof newRootPkg === "string" ? newRootPkg : "";
       parseNodeInto(
         rootDataObj,
         opts.intoRoot,
@@ -825,9 +788,9 @@ function parseNodeFresh(
   // this node by its effective qualified key regardless of post-merge tree
   // shape or load order. This does NOT touch the node's `package` or `fqn()`
   // (objects stay bare per FR5d). Mirrors Java's parse-time getDefaultPackageName().
-  if (inheritedContextPkg !== "") {
-    model.setFileDefaultPackage(inheritedContextPkg);
-  }
+  // Recorded even when empty: "" says the file declares no package (ADR-0059
+  // R10), which is not the same as a node built in code with no file at all.
+  model.setFileDefaultPackage(inheritedContextPkg);
 
   // --- Apply reserved keys (package, extends, abstract, isArray) ---
   applyReservedKeys(model, nodeData, strict, source, path, warnings, inheritedContextPkg);
@@ -861,7 +824,17 @@ function parseNodeFresh(
   if (model.superRef !== undefined && accumRoot !== undefined && !_deferSuperResolution) {
     // FR-024: thread the referrer's type so dotted `Entity.child` refs resolve
     // type-scoped — kept consistent with the deferred path (super-resolve.ts).
-    const superModel = resolveSuperRef(model.superRef, effectivePkg, accumRoot, { type: model.type });
+    let superModel: MetaData | undefined;
+    try {
+      superModel = resolveSuperRef(model.superRef, effectivePkg, accumRoot, { type: model.type });
+    } catch (e) {
+      if (!(e instanceof RefOverDropError)) throw e;
+      // ADR-0059 R2 — `..::` dropped more segments than the package has.
+      throw new ParseError(
+        `the extends ref '${model.superRef}' on ${model.fqn()} climbs above the root package — each '..::' drops one segment of the declaring package`,
+        { code: "ERR_BAD_ATTR_VALUE", source: resolvedSource(errSource(), model.fqn(), model.superRef) },
+      );
+    }
     if (superModel !== undefined) {
       // FR-024 — a dotted child-targeting ref must resolve to a node of the
       // SAME type and subtype as the extending node. Dotted-only check; the
@@ -1458,9 +1431,6 @@ function applyReservedKeys(
     if (typeof rawExtends !== "string") {
       reportProblem(`"${RESERVED_KEY_EXTENDS}" must be a string at ${path}`, strict, warnings, "ERR_UNRESOLVED_SUPER");
     } else {
-      // FR-032: canonical JSON `extends` must be FQN; reject a surviving
-      // relative form (no-op for YAML-format input, which was desugar-expanded).
-      guardRelativeRefInCanonical(`"${RESERVED_KEY_EXTENDS}"`, rawExtends, strict, warnings, path);
       model.setSuper(rawExtends);
     }
   }
@@ -1547,13 +1517,6 @@ function applyInlineAttrsAndUnknownKeys(
     }
 
     const rawVal = nodeData[key];
-
-    // FR-032: a ref-bearing inline attr (@objectRef/@references/@from/@of/@via/
-    // @parameterRef/@payloadRef/@responseRef) in canonical JSON must be FQN —
-    // reject a surviving relative form. No-op for YAML-format input.
-    if (REF_BEARING_ATTR_NAMES.has(attrName)) {
-      guardRelativeRefInCanonical(`${ATTR_PREFIX}${attrName}`, rawVal, strict, warnings, path);
-    }
 
     try {
       const attr = materializeAttr(model, attrName, rawVal, registry);

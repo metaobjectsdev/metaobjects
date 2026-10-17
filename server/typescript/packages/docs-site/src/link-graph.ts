@@ -2,6 +2,7 @@ import type { MetaData, MetaObject, MetaRelationship, MetaRoot } from "@metaobje
 import {
   deriveM2MFields, reportFrom, resolveRelationshipReference, stripPackage,
   OBJECT_REPORT_ATTR_FROM, OBJECT_SUBTYPE_REPORT, TYPE_OBJECT,
+  RELATIONSHIP_ATTR_OBJECT_REF, refTarget,
 } from "@metaobjectsdev/metadata";
 import { type LoadedModel, treeOf } from "./load.js";
 
@@ -55,6 +56,8 @@ export class LinkGraph {
       (this._to.get(r.to) ?? this._to.set(r.to, []).get(r.to)!).push(r);
     };
     const resolveRef = (raw: string, ctxPkg: string): string | undefined => {
+      // `::Name` is root-absolute (ADR-0059): the loader writes it for a root-level target.
+      if (raw.startsWith("::")) return this._nodes.has(raw.slice(2)) ? raw.slice(2) : undefined;
       const cand = raw.includes("::") ? raw : `${ctxPkg}::${raw}`;
       return this._nodes.has(cand) ? cand : (this._nodes.has(raw) ? raw : undefined);
     };
@@ -116,7 +119,9 @@ export class LinkGraph {
           // reference to draw its own "fk" edge, which is the safe (extra-info, not
           // missing-edge) outcome for a docs graph.
           const target = stripPackage(objectRef);
-          const match = resolveRelationshipReference(obj, rel.name, target, rel.sourceRefField);
+          const match = resolveRelationshipReference(
+            obj, rel.name, refTarget(rel, RELATIONSHIP_ATTR_OBJECT_REF) ?? target, rel.sourceRefField,
+          );
           const fkField = match?.fields?.[0];
           if (fkField) coveredFk.add(`${to}::${fkField}`);
           addRef({ from: fqn, to, via: rel.name, kind: "relationship", cardinality, onDelete, subtype });

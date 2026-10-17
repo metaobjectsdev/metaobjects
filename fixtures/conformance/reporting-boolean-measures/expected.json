@@ -39,7 +39,7 @@
                 "name": "hasFailure",
                 "@agg": "any",
                 "@of": [
-                  "Call.failed"
+                  "acme::ops::Call.failed"
                 ]
               }
             },
@@ -48,7 +48,7 @@
                 "name": "allFailed",
                 "@agg": "all",
                 "@of": [
-                  "Call.failed"
+                  "acme::ops::Call.failed"
                 ]
               }
             },
@@ -58,7 +58,7 @@
                 "@agg": "any",
                 "@default": 0,
                 "@of": [
-                  "Call.failed"
+                  "acme::ops::Call.failed"
                 ]
               }
             },
@@ -68,7 +68,7 @@
                 "@agg": "all",
                 "@default": 1,
                 "@of": [
-                  "Call.failed"
+                  "acme::ops::Call.failed"
                 ]
               }
             }
@@ -78,7 +78,7 @@
       {
         "object.report": {
           "name": "CallFlags",
-          "@from": "Call",
+          "@from": "acme::ops::Call",
           "@measures": [
             "hasFailure",
             "allFailed",

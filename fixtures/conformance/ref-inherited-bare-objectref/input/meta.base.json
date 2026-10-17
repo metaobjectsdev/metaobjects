@@ -1,0 +1,32 @@
+{
+  "metadata.root": {
+    "package": "base",
+    "children": [
+      {
+        "object.value": {
+          "name": "Thing",
+          "children": [
+            {
+              "field.string": {
+                "name": "label"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.value": {
+          "name": "Holder",
+          "children": [
+            {
+              "field.object": {
+                "name": "thing",
+                "@objectRef": "Thing"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

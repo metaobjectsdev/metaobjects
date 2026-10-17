@@ -36,22 +36,24 @@ public final class SymbolTable {
     }
 
     /**
-     * ADR-0042 package-local resolution: an FQN ref (contains {@code ::}) matches EXACTLY
-     * on the resolution key; a bare ref matches the referrer's own package
-     * ({@code <referrerPkg>::<ref>}), else a root-level (empty-package) object whose key IS
-     * the bare ref. Package-local BEFORE root-level. Returns {@code null} when nothing matches.
+     * ADR-0059 R2 resolution: {@code ::Rest} root-absolute, {@code ..::Rest} parent-relative,
+     * {@code pkg::Name} exact, bare {@code Name} in the referrer's own package then root-level.
+     * Exact keys only. An over-dropping {@code ..::} resolves to nothing; the walk reports it.
      *
-     * @param ref         the reference value (bare or FQN)
-     * @param referrerPkg the effective package of the node declaring the ref ("" for root-level)
+     * @param ref         the reference value
+     * @param referrerPkg the effective package of the declaring node ("" for root-level)
      */
     public MetaObject resolveObject(String ref, String referrerPkg) {
-        if (ref.indexOf(MetaData.PKG_SEPARATOR) >= 0) {
-            return byKey.get(ref);
+        java.util.List<String> keys;
+        try {
+            keys = com.metaobjects.loader.References.ownerCandidateKeys(ref, referrerPkg);
+        } catch (com.metaobjects.loader.References.OverDropException e) {
+            return null;
         }
-        String pkg = (referrerPkg == null) ? "" : referrerPkg;
-        String localKey = pkg.isEmpty() ? ref : pkg + MetaData.PKG_SEPARATOR + ref;
-        MetaObject own = byKey.get(localKey);
-        if (own != null) return own;
-        return byKey.get(ref); // root-level (empty-package) object whose key is the bare name
+        for (String key : keys) {
+            MetaObject hit = byKey.get(key);
+            if (hit != null) return hit;
+        }
+        return null;
     }
 }

@@ -10,7 +10,10 @@
 
 import type { MetaObject } from "../object/meta-object.js";
 import type { MetaReferenceIdentity } from "../identity/meta-identity.js";
+import type { MetaData } from "../../shared/meta-data.js";
 import { stripPackage } from "../../naming.js";
+import { refTarget } from "../../naming-refs.js";
+import { IDENTITY_REFERENCE_ATTR_REFERENCES } from "../identity/identity-constants.js";
 
 /**
  * Trailing suffixes stripped from a CANDIDATE's name/FK field when building its
@@ -52,19 +55,21 @@ export function referencePairingKeys(ref: MetaReferenceIdentity): Set<string> {
 
 /**
  * Every identity.reference on `holder` whose @references targets `targetEntity`.
- * Package-insensitive on both sides: @references and @objectRef may each be bare
- * or fully qualified.
+ * Given the target NODE, a reference matches when the loader bound its @references to
+ * that node (ADR-0059 R7: identity, never a short name). Given only a name, the match
+ * is package-insensitive on both sides, for callers that hold no node.
  */
 export function referenceCandidatesFor(
   holder: MetaObject,
-  targetEntity: string,
+  targetEntity: string | MetaData,
 ): MetaReferenceIdentity[] {
-  const target = stripPackage(targetEntity);
   // ADR-0039: resolving — referenceIdentities() honors references inherited via extends.
-  return holder
-    .referenceIdentities()
-    .filter((ref) => stripPackage(ref.targetEntity ?? "") === target)
-    .filter((ref) => refFkField(ref) !== undefined);
+  const all = holder.referenceIdentities().filter((ref) => refFkField(ref) !== undefined);
+  if (typeof targetEntity !== "string") {
+    return all.filter((ref) => refTarget(ref, IDENTITY_REFERENCE_ATTR_REFERENCES) === targetEntity);
+  }
+  const target = stripPackage(targetEntity);
+  return all.filter((ref) => stripPackage(ref.targetEntity ?? "") === target);
 }
 
 /**
@@ -82,7 +87,7 @@ export function referenceCandidatesFor(
 export function resolveRelationshipReference(
   holder: MetaObject,
   relationshipName: string,
-  targetEntity: string,
+  targetEntity: string | MetaData,
   sourceRefField?: string,
 ): MetaReferenceIdentity | undefined {
   const candidates = referenceCandidatesFor(holder, targetEntity);

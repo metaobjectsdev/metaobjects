@@ -1127,3 +1127,11 @@ def _check_no_relative_dates(node: MetaData, sink: _ErrorSink) -> None:
     # ADR-0039: own — a tree walk; each declared node is visited once, at its declaration.
     for child in node.own_children():
         _check_no_relative_dates(child, sink)
+
+
+def dimension_via_terminal(root: MetaData, declaring: MetaData, via: str) -> MetaData | None:
+    """The entity a dimension's ``@via`` reaches, walked from ``declaring`` with D2's rules,
+    or ``None`` when the walk fails (D2 reports why). ADR-0059 R3: a dimension's ``@of``
+    resolves in this entity's package, so the loader's ``resolve_references`` pass reuses
+    the walk rather than restating it."""
+    return _walk_to_one_via(root, declaring, via, lambda _message: None, _d2_walk(declaring))

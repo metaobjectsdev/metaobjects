@@ -202,7 +202,7 @@ public class ConformanceTest {
         return PROVIDER_ALIASES;
     }
 
-    private static final Set<String> AVAILABLE_PROVIDERS = discoverAvailableProviders();
+    static final Set<String> AVAILABLE_PROVIDERS = discoverAvailableProviders();
 
     // ERR_* token in legacy message-only exceptions; e.g. "... ERR_BAD_ATTR_VALUE: ..."
     private static final Pattern ERR_TOKEN = Pattern.compile("\\bERR_[A-Z][A-Z0-9_]*\\b");
@@ -694,7 +694,7 @@ public class ConformanceTest {
     // helpers
     // -----------------------------------------------------------------------
 
-    private static List<Path> listInputFiles(Path inputDir) {
+    static List<Path> listInputFiles(Path inputDir) {
         List<Path> files = new ArrayList<>();
         try (DirectoryStream<Path> stream = Files.newDirectoryStream(inputDir, "*.json")) {
             for (Path p : stream) {
@@ -714,7 +714,7 @@ public class ConformanceTest {
      * otherwise scan the message text for an {@code ERR_*} token.
      * Returns {@code ERR_UNKNOWN} when neither yields anything.
      */
-    private static String extractErrorCode(MetaDataException ex) {
+    static String extractErrorCode(MetaDataException ex) {
         return ex.getCode()
             .map(Enum::name)
             .orElseGet(() -> scanMessageForErrorCode(ex.getMessage()));
@@ -735,7 +735,7 @@ public class ConformanceTest {
      * name to mitigate the loader-root-name leak in the Java loader (the
      * serializer emits the loader's name as the top-level {@code package} key).
      */
-    private static String detectLoaderName(List<Path> inputFiles) {
+    static String detectLoaderName(List<Path> inputFiles) {
         for (Path p : inputFiles) {
             try {
                 String content = new String(Files.readAllBytes(p), StandardCharsets.UTF_8);

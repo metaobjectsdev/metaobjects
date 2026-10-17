@@ -1,0 +1,38 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      {
+        "object.value": {
+          "name": "Apple",
+          "children": [
+            {
+              "field.string": {
+                "name": "localOnly"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.value": {
+          "name": "RootApple",
+          "extends": "::Apple"
+        }
+      },
+      {
+        "object.value": {
+          "name": "Basket",
+          "children": [
+            {
+              "field.object": {
+                "name": "fruit",
+                "@objectRef": "::Apple"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

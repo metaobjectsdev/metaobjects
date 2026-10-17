@@ -77,14 +77,14 @@
                 "@fields": [
                   "catalogId"
                 ],
-                "@references": "Catalog"
+                "@references": "acme::shop::Catalog"
               }
             },
             {
               "relationship.association": {
                 "name": "catalog",
                 "@cardinality": "one",
-                "@objectRef": "Catalog"
+                "@objectRef": "acme::shop::Catalog"
               }
             }
           ]
@@ -143,14 +143,14 @@
                 "@fields": [
                   "programId"
                 ],
-                "@references": "Program"
+                "@references": "acme::shop::Program"
               }
             },
             {
               "relationship.association": {
                 "name": "program",
                 "@cardinality": "one",
-                "@objectRef": "Program"
+                "@objectRef": "acme::shop::Program"
               }
             },
             {
@@ -166,15 +166,15 @@
             {
               "dimension.attribute": {
                 "name": "programId",
-                "@of": "Program.id",
-                "@via": "Purchase.program"
+                "@of": "acme::shop::Program.id",
+                "@via": "acme::shop::Purchase.program"
               }
             },
             {
               "dimension.attribute": {
                 "name": "programTitle",
-                "@of": "Program.title",
-                "@via": "Purchase.program"
+                "@of": "acme::shop::Program.title",
+                "@via": "acme::shop::Purchase.program"
               }
             },
             {
@@ -184,8 +184,8 @@
                   "month",
                   "year"
                 ],
-                "@of": "Program.publishedAt",
-                "@via": "Purchase.program"
+                "@of": "acme::shop::Program.publishedAt",
+                "@via": "acme::shop::Purchase.program"
               }
             },
             {
@@ -195,21 +195,21 @@
                   "day",
                   "month"
                 ],
-                "@of": "Purchase.purchasedAt"
+                "@of": "acme::shop::Purchase.purchasedAt"
               }
             },
             {
               "dimension.attribute": {
                 "name": "programByRef",
-                "@of": "Program.title",
-                "@via": "Purchase.fkProgram"
+                "@of": "acme::shop::Program.title",
+                "@via": "acme::shop::Purchase.fkProgram"
               }
             },
             {
               "dimension.attribute": {
                 "name": "catalogName",
-                "@of": "Catalog.name",
-                "@via": "Purchase.program.catalog"
+                "@of": "acme::shop::Catalog.name",
+                "@via": "acme::shop::Purchase.program.catalog"
               }
             },
             {
@@ -217,7 +217,7 @@
                 "name": "purchases",
                 "@agg": "count",
                 "@of": [
-                  "Purchase.id"
+                  "acme::shop::Purchase.id"
                 ]
               }
             },
@@ -227,7 +227,7 @@
                 "@agg": "sum",
                 "@default": 0,
                 "@of": [
-                  "Purchase.amountCents"
+                  "acme::shop::Purchase.amountCents"
                 ]
               }
             },
@@ -237,7 +237,7 @@
                 "@agg": "avg",
                 "@default": 0,
                 "@of": [
-                  "Purchase.amountCents"
+                  "acme::shop::Purchase.amountCents"
                 ]
               }
             },
@@ -247,7 +247,7 @@
                 "@agg": "min",
                 "@default": -1,
                 "@of": [
-                  "Purchase.amountCents"
+                  "acme::shop::Purchase.amountCents"
                 ]
               }
             },
@@ -256,7 +256,7 @@
                 "name": "lastPurchaseAt",
                 "@agg": "max",
                 "@of": [
-                  "Purchase.purchasedAt"
+                  "acme::shop::Purchase.purchasedAt"
                 ]
               }
             },
@@ -280,7 +280,7 @@
             "publishedAt:month",
             "catalogName"
           ],
-          "@from": "Purchase",
+          "@from": "acme::shop::Purchase",
           "@measures": [
             "purchases",
             "revenue",
@@ -290,7 +290,7 @@
             "revenuePerPurchase"
           ],
           "@segment": "active",
-          "@spine": "Purchase.program",
+          "@spine": "acme::shop::Purchase.program",
           "children": [
             {
               "source.rdb": {
@@ -307,12 +307,12 @@
           "@dimensions": [
             "catalogName"
           ],
-          "@from": "Purchase",
+          "@from": "acme::shop::Purchase",
           "@measures": [
             "purchases",
             "revenue"
           ],
-          "@spine": "Purchase.program.catalog"
+          "@spine": "acme::shop::Purchase.program.catalog"
         }
       },
       {
@@ -321,7 +321,7 @@
           "@dimensions": [
             "purchasedAt:day"
           ],
-          "@from": "Purchase",
+          "@from": "acme::shop::Purchase",
           "@measures": [
             "revenue"
           ]

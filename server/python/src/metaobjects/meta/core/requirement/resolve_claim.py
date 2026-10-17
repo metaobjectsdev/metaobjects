@@ -9,7 +9,7 @@ forked. Mirrors the TS reference ``metadata/src/core/requirement/resolve-claim.t
 from __future__ import annotations
 
 from metaobjects.meta.meta_data import MetaData
-from metaobjects.naming_refs import resolve_object_ref
+from metaobjects.naming_refs import RefOverDropError, owner_candidate_keys, resolve_object_ref
 from metaobjects.shared.base_types import TYPE_OBJECT, TYPE_REQUIREMENT
 from metaobjects.shared.separators import PACKAGE_SEP
 
@@ -47,21 +47,20 @@ def resolve_claim_target(root: MetaData, owner: str, referrer_pkg: str) -> MetaD
 
     candidates = [c for c in root.children() if c.type != TYPE_OBJECT and c.type != TYPE_REQUIREMENT]
 
-    # A fully-qualified reference binds exactly, like every other FQN in the model.
-    if PACKAGE_SEP in owner:
-        return next((c for c in candidates if c.resolution_key() == owner), None)
-    # A bare reference prefers the referrer's own package, then a root-level node of that
-    # bare name. An ambiguous bare name binds NOTHING — the same fail-closed rule objects
-    # use, because silently picking one of two same-named nodes is how a claim ends up
-    # pointing at the wrong thing without anyone noticing.
-    if referrer_pkg:
-        local = [c for c in candidates if c.resolution_key() == f"{referrer_pkg}{PACKAGE_SEP}{owner}"]
-        if len(local) == 1:
-            return local[0]
-    # Root-level (unpackaged) only, matching resolve_object_ref's own bare fallback. A bare
-    # ref must not reach into an arbitrary package just because the name is unique there.
-    bare = [c for c in candidates if c.name == owner and c.resolution_key() == owner]
-    return bare[0] if len(bare) == 1 else None
+    # Same exact-key forms as every other reference (ADR-0059 R2): `::Rest`, `..::Rest`,
+    # `pkg::Name`, and a bare name in the referrer's own package then root-level. An
+    # ambiguous key binds NOTHING -- the same fail-closed rule objects use, because
+    # silently picking one of two same-named nodes is how a claim ends up pointing at
+    # the wrong thing without anyone noticing.
+    try:
+        keys = owner_candidate_keys(owner, referrer_pkg)
+    except RefOverDropError:
+        return None
+    for key in keys:
+        hits = [c for c in candidates if c.name and c.resolution_key() == key]
+        if len(hits) == 1:
+            return hits[0]
+    return None
 
 
 def resolve_member(obj: MetaData, path: list[str]) -> MetaData | None:

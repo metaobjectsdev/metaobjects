@@ -1,10 +1,10 @@
 {
   "metadata.root": {
-    "package": "xpkg::a",
     "children": [
       {
         "object.entity": {
           "name": "Base",
+          "package": "xpkg::a",
           "abstract": true,
           "children": [
             {
@@ -23,6 +23,7 @@
       {
         "object.entity": {
           "name": "Base",
+          "package": "xpkg::b",
           "abstract": true,
           "children": [
             {
@@ -41,6 +42,7 @@
       {
         "object.entity": {
           "name": "Widget",
+          "package": "xpkg::c",
           "extends": "xpkg::b::Base",
           "children": [
             {
@@ -77,4 +79,3 @@
     ]
   }
 }
-

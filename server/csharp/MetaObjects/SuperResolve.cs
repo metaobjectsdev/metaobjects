@@ -1,17 +1,16 @@
-// super reference resolution — package navigation helpers
+// super reference resolution (ADR-0059)
 //
-// Ported from typescript/packages/metadata/src/super-resolve.ts.
+// An `extends` ref resolves through the same rules as every other reference
+// (NamingRefs.OwnerCandidateKeys): `::Rest` root-absolute, `..::Rest` parent-relative,
+// `pkg::Name` exact, bare `Name` in the declaring node's own file package, then root-level
+// — never another package. The package context is the declaring node's effective package
+// (`Package ?? FileDefaultPackage`).
 //
-// Reference syntax (Java metaobjects-core conventions):
-//   Bare name       "Fruit"            → resolve in contextPackage, then root fallback
-//   Absolute        "::fishstore::Fish" → strip leading ::, walk from root
-//   Relative parent "..::common::id"   → up one package level, then resolve "common::id"
-//   Multi-level     "..::..::shared::User" → up two levels, then resolve "shared::User"
-//   Same-package    "common::id"       → try contextPackage prepend first, then root-rooted
+// FR-024: a ref whose final `::`-segment is dotted (`pkg::Customer.id`) targets a child
+// nested in the owner object — resolved type-scoped to the referrer.
 //
-// Super resolution is IMMEDIATE during parse (Java behavior). This module
-// provides only the lookup helper; the parser calls it inline. The deferred
-// multi-pass walker (resolveDeferredSupers) is added in Task 5.1.
+// Super resolution is deferred by the loader (ResolveDeferredSupers); the parser calls
+// ResolveSuperRef inline only when deferral is off.
 
 using MetaObjects.Meta;
 using MetaObjects.Shared;
@@ -29,31 +28,17 @@ internal static class SuperResolve
     // -----------------------------------------------------------------------
 
     /// <summary>
-    /// Recursively searches the tree for a node whose <see cref="MetaData.Fqn"/>
-    /// matches. Returns the first match, or null.
+    /// The top-level node (a direct child of <paramref name="root"/>) whose resolution key is
+    /// exactly <paramref name="key"/> — <c>&lt;package | fileDefaultPackage&gt;::&lt;name&gt;</c>, or
+    /// the bare name for a root-level node. The key is captured at parse time, so the match does
+    /// not depend on load order or post-merge tree shape. Exact only (ADR-0059 R2).
     /// </summary>
-    private static MetaData? FindInTree(MetaData root, string fqn)
+    private static MetaData? FindTopLevel(MetaData root, string key)
     {
-        if (root.Fqn() == fqn) return root;
-        // Match by EFFECTIVE qualified key (file-default package folded onto the
-        // bare name, captured at parse time) for nodes carrying no own package —
-        // the cross-PACKAGE cross-file case. Mirrors the TS findInTree second
-        // clause. The parser keeps an object's Fqn() bare for the FR5d
-        // referrer-envelope contract, so this clause is what lets a fully-qualified
-        // `extends: acme::common::BaseEntity` resolve against a `BaseEntity`
-        // declared under `package: acme::common` in a separate file.
-        if (root.Package is null && root.Name != "" && root.ResolutionKey() == fqn)
-        {
-            return root;
-        }
-        // ADR-0039: OwnChildren — super-resolution tree walk. This IS the extends-resolution
-        // machinery, so it must traverse only the physically-declared children (resolving
-        // Children() would recurse through the very super chain being built).
+        // ADR-0039: OwnChildren — super-resolution reads the PHYSICAL declaration layer; the
+        // root has no super, so its own children are its children.
         foreach (MetaData child in root.OwnChildren())
-        {
-            MetaData? found = FindInTree(child, fqn);
-            if (found is not null) return found;
-        }
+            if (child.Name != "" && child.ResolutionKey() == key) return child;
         return null;
     }
 
@@ -160,6 +145,7 @@ internal static class SuperResolve
     /// <param name="root">The root MetaData of the accumulating tree to search within.</param>
     /// <param name="referrerScope">FR-024: the extending node's type — required to resolve dotted refs.</param>
     /// <returns>The resolved MetaData, or null if the reference cannot be resolved.</returns>
+    /// <exception cref="RefOverDropException">A <c>..::</c> ref drops more segments than the package has.</exception>
     public static MetaData? ResolveSuperRef(
         string reference,
         string contextPackage,
@@ -197,57 +183,16 @@ internal static class SuperResolve
         }
 
         // ---------------------------------------------------------------------
-        // 1. Absolute reference: leading "::"
+        // A plain ref binds one top-level node by its form (ADR-0059 R2). An
+        // over-dropping `..::` throws RefOverDropException; the deferred pass reports it.
         // ---------------------------------------------------------------------
-        if (reference.StartsWith(PACKAGE_SEPARATOR, StringComparison.Ordinal))
+        foreach (string key in NamingRefs.OwnerCandidateKeys(reference, contextPackage))
         {
-            string absolutePath = reference[PACKAGE_SEPARATOR.Length..];
-            return FindInTree(root, absolutePath);
-        }
-
-        // ---------------------------------------------------------------------
-        // 2. Relative reference: one or more leading "..::"
-        // ---------------------------------------------------------------------
-        if (reference.StartsWith(PACKAGE_PARENT + PACKAGE_SEPARATOR,
-                StringComparison.Ordinal))
-        {
-            string[] parts = Split(reference);
-            int levels = 0;
-            while (levels < parts.Length && parts[levels] == PACKAGE_PARENT)
-            {
-                levels++;
-            }
-
-            string[] pkgParts = contextPackage != "" ? Split(contextPackage) : [];
-            string[] remainder = parts.Skip(levels).ToArray();
-            if (pkgParts.Length < levels || remainder.Length == 0)
-            {
-                return null;
-            }
-
-            IEnumerable<string> allParts = pkgParts.Take(pkgParts.Length - levels).Concat(remainder);
-            return FindInTree(root, string.Join(PACKAGE_SEPARATOR, allParts));
-        }
-
-        // ---------------------------------------------------------------------
-        // 3. Bare name OR same-package shorthand (contains "::" but no leading
-        //    "::" or "..::"): try contextPackage prepend first, then root-rooted.
-        // ---------------------------------------------------------------------
-        if (contextPackage != "")
-        {
-            MetaData? found = FindInTree(root,
-                $"{contextPackage}{PACKAGE_SEPARATOR}{reference}");
+            MetaData? found = FindTopLevel(root, key);
             if (found is not null) return found;
         }
-        return FindInTree(root, reference);
+        return null;
     }
-
-    /// <summary>
-    /// Split a package path on the <c>::</c> separator. Mirrors the JS
-    /// <c>String.prototype.split</c> on a multi-char separator.
-    /// </summary>
-    private static string[] Split(string value) =>
-        value.Split(PACKAGE_SEPARATOR, StringSplitOptions.None);
 
     // -----------------------------------------------------------------------
     // Deferred resolution — second pass after all files parsed
@@ -267,6 +212,9 @@ internal static class SuperResolve
     {
         Unresolved,
         TargetMismatch,
+        /// <summary>A <c>..::</c> ref drops more package segments than the declaring node's package has
+        /// (ADR-0059 R2; loader emits ERR_BAD_ATTR_VALUE).</summary>
+        OverDrop,
     }
 
     /// <summary>A node's type + subType identity, for the target-mismatch message.</summary>
@@ -315,17 +263,22 @@ internal static class SuperResolve
     {
         var failures = new List<DeferredSuperFailure>();
 
-        // Every SuperRef-bearing node over the PHYSICAL declaration tree, plus each
-        // node's effective context-package (node.Package ?? nearest-ancestor
-        // package) — the same value the pre-order walk threaded.
+        // Every SuperRef-bearing node over the PHYSICAL declaration tree. Each node's package
+        // context is its own (ADR-0059 R3): `Package ?? FileDefaultPackage`, so a node resolves
+        // in the file that declared it, not in the first file's package.
         var pending = new List<MetaData>();
-        var effectivePkgOf = new Dictionary<MetaData, string>(ReferenceEqualityComparer.Instance);
-        Walk(root, "", (node, ctxPkg) =>
+        Walk(root, node =>
         {
-            if (node.SuperRef is null) return;
-            effectivePkgOf[node] = node.Package ?? ctxPkg;
-            pending.Add(node);
+            if (node.SuperRef is not null) pending.Add(node);
         });
+
+        // ADR-0059 R2: an over-dropping `..::` is a bad value, not a missing target.
+        const string overDrop = "over-drop";
+        object? TryResolve(string reference, string pkg, ReferrerScope? scope = null)
+        {
+            try { return ResolveSuperRef(reference, pkg, root, scope); }
+            catch (RefOverDropException) { return overDrop; }
+        }
 
         // Nodes already attempted this pass. On-demand resolution can reach a node
         // via the `pending` loop AND via owner/target recursion — `attempted` makes
@@ -342,7 +295,7 @@ internal static class SuperResolve
         {
             if (node.SuperRef is null || node.SuperData is not null) return;
             if (!attempted.Add(node)) return; // already resolved-or-failed this pass — never re-report
-            string effectivePkg = effectivePkgOf.TryGetValue(node, out var pkg) ? pkg : (node.Package ?? "");
+            string effectivePkg = NamingRefs.EffectivePackageOf(node);
 
             // For a dotted child-targeting ref, ResolveSuperRef reads the OWNER's
             // effective Children() — which includes inherited members only once the
@@ -353,14 +306,19 @@ internal static class SuperResolve
                 (string OwnerRef, string[] Path)? parsed = ParseChildTargetingRef(node.SuperRef);
                 if (parsed is not null)
                 {
-                    MetaData? ownerNode = ResolveSuperRef(parsed.Value.OwnerRef, effectivePkg, root);
-                    if (ownerNode is not null) ResolveNode(ownerNode);
+                    if (TryResolve(parsed.Value.OwnerRef, effectivePkg) is MetaData ownerNode) ResolveNode(ownerNode);
                 }
             }
 
             // FR-024: thread the referrer's type so dotted `Entity.child` refs resolve
             // type-scoped (a field ref selects fields; an identity ref identities).
-            MetaData? target = ResolveSuperRef(node.SuperRef, effectivePkg, root, new ReferrerScope(node.Type));
+            object? resolved = TryResolve(node.SuperRef, effectivePkg, new ReferrerScope(node.Type));
+            if (ReferenceEquals(resolved, overDrop))
+            {
+                failures.Add(new DeferredSuperFailure(node.Fqn(), node.SuperRef, node, SuperFailureKind.OverDrop));
+                return;
+            }
+            MetaData? target = resolved as MetaData;
 
             if (target is not null)
             {
@@ -400,15 +358,14 @@ internal static class SuperResolve
         return failures.AsReadOnly();
     }
 
-    private static void Walk(MetaData node, string ctxPkg, Action<MetaData, string> visit)
+    private static void Walk(MetaData node, Action<MetaData> visit)
     {
-        visit(node, ctxPkg);
-        string nextCtx = node.Package ?? ctxPkg;
+        visit(node);
         // ADR-0039: OwnChildren — this is a declaration-structure walk internal to
         // super-resolution; it must visit only physically-declared children.
         foreach (MetaData child in node.OwnChildren())
         {
-            Walk(child, nextCtx, visit);
+            Walk(child, visit);
         }
     }
 }

@@ -16,6 +16,9 @@ import {
   IDENTITY_REFERENCE_ATTR_ON_UPDATE,
 } from "./identity-constants.js";
 import type { MetaRoot } from "../../shared/meta-root.js";
+import type { MetaObject } from "../object/meta-object.js";
+import { TYPE_OBJECT } from "../../shared/base-types.js";
+import { refTarget } from "../../naming-refs.js";
 
 /** Strongly-typed identity generation strategies. */
 export type IdentityGeneration = "increment" | "uuid" | "assigned";
@@ -154,14 +157,10 @@ export class MetaReferenceIdentity extends MetaIdentity {
 
     const targetName = this.targetEntity;
     if (targetName === undefined) return undefined;
-    // targetEntity may be package-qualified (FQN); findObject is keyed by bare
-    // name, so fall back to the bare suffix after the last "::". Mirrors the
-    // resolveTargetTable fix; without it a cross-package reference resolves no
-    // target and the PK column wrongly defaults to "id".
-    const targetObj = root.findObject(targetName)
-      ?? (targetName.includes("::")
-        ? root.findObject(targetName.slice(targetName.lastIndexOf("::") + 2))
-        : undefined);
+    // ADR-0059 R7: the target the loader bound for @references, else (a tree built
+    // without the loader) the value resolved from this reference's package.
+    const bound = refTarget(this, IDENTITY_REFERENCE_ATTR_REFERENCES);
+    const targetObj = bound !== undefined && bound.type === TYPE_OBJECT ? (bound as MetaObject) : root.findObject(targetName);
     if (!targetObj) return undefined;
 
     const primary = targetObj.primaryIdentity();

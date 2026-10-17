@@ -407,6 +407,16 @@ final class ReportingValidation {
         }
     }
 
+    /**
+     * ADR-0059 R3 — the entity a dimension's {@code @via} reaches, walked from {@code declaring}
+     * with D2's rules, or {@code null} when the walk fails (D2 reports why). A dimension's
+     * {@code @of} resolves in this entity's package, so the loader's {@code resolveReferences}
+     * pass reuses the walk rather than restating it.
+     */
+    static MetaData dimensionViaTerminal(MetaRoot root, MetaData declaring, String via) {
+        return walkToOneVia(root, declaring, via, m -> { }, d2Walk(declaring));
+    }
+
     private static void checkDimension(MemberCtx ctx, MetaDimension dim) {
         Consumer<String> err = message ->
                 ctx.sink().push(dim, ErrorCode.ERR_INVALID_DIMENSION, ctx.label(), ": " + message, ctx.suffix());

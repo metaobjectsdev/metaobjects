@@ -1,0 +1,9 @@
+{
+  "metadata.root": {
+    "package": "a",
+    "children": [
+      { "object.value": { "name": "Order", "children": [ { "field.string": { "name": "code" } } ] } },
+      { "object.value": { "name": "Base", "children": [ { "field.long": { "name": "id" } } ] } }
+    ]
+  }
+}

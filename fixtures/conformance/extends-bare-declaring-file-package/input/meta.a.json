@@ -1,0 +1,19 @@
+{
+  "metadata.root": {
+    "package": "alpha",
+    "children": [
+      {
+        "object.value": {
+          "name": "Apple",
+          "children": [
+            {
+              "field.string": {
+                "name": "alphaOnly"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

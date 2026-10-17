@@ -12,10 +12,15 @@ from ..errors import ErrorCode, MetaError
 from ..meta.core.object.meta_object import MetaObject
 from ..meta.meta_data import MetaData
 from ..meta.meta_root import MetaRoot
-from ..naming_refs import did_you_mean_hint
+from ..naming_refs import (
+    RefOverDropError,
+    did_you_mean_hint,
+    owner_candidate_keys,
+    referrer_package_for,
+    split_child_tail,
+)
 from ..registry import TypeRegistry
 from ..shared.base_types import TYPE_OBJECT
-from ..shared.separators import PACKAGE_SEP
 
 
 class SymbolTable:
@@ -39,15 +44,19 @@ class SymbolTable:
         return t
 
     def resolve_object(self, reference: str, referrer_pkg: str) -> MetaData | None:
-        """ADR-0042 package-local resolution: FQN → exact resolution-key match;
-        bare → the referrer's own package (``<referrer_pkg>::<ref>``), else a
-        root-level object. Mirrors the TS ``resolveObject``."""
-        if PACKAGE_SEP in reference:
-            return self._index.get(reference)
-        local_key = (
-            f"{referrer_pkg}{PACKAGE_SEP}{reference}" if referrer_pkg else reference
-        )
-        return self._index.get(local_key) or self._index.get(reference)
+        """ADR-0059 R2 resolution: ``::Rest`` root-absolute, ``..::Rest`` parent-relative,
+        ``pkg::Name`` exact, bare ``Name`` in the referrer's own package then root-level.
+        Exact keys only. An over-dropping ``..::`` resolves to nothing here; the walk
+        reports it as ERR_BAD_ATTR_VALUE. Mirrors the TS ``resolve``."""
+        try:
+            keys = owner_candidate_keys(reference, referrer_pkg)
+        except RefOverDropError:
+            return None
+        for key in keys:
+            hit = self._index.get(key)
+            if hit is not None:
+                return hit
+        return None
 
 
 class ValidationContext:
@@ -68,22 +77,11 @@ class ValidationContext:
 
 def run(root: MetaRoot, registry: TypeRegistry) -> list[MetaError]:
     ctx = ValidationContext(SymbolTable.build(root), root)
-    _walk(root, registry, ctx, "")
+    _walk(root, registry, ctx)
     return ctx.errors
 
 
-def _walk(
-    node: MetaData, registry: TypeRegistry, ctx: ValidationContext, referrer_pkg: str
-) -> None:
-    # ADR-0042: a top-level object establishes the package context for its subtree;
-    # nested ref-bearing nodes (relationship/field.object/identity.reference) resolve
-    # BARE refs against it. Nested nodes carry no `package`, so they inherit the
-    # enclosing object's (via file_default_package, else the threaded context).
-    pkg = (
-        (node.package or node.file_default_package or referrer_pkg)
-        if node.type == TYPE_OBJECT
-        else referrer_pkg
-    )
+def _walk(node: MetaData, registry: TypeRegistry, ctx: ValidationContext) -> None:
     type_def = registry.find(node.type, node.sub_type)
     if type_def is not None:
         for desc in type_def.references:
@@ -94,12 +92,24 @@ def _walk(
             raw = node.get_meta_attr(desc.attr)
             if not isinstance(raw, str) or raw == "":
                 continue  # absence is the required-attr pass's job
-            entity_ref = raw.split(".", 1)[0] if desc.dotted_field_path else raw
-            # ADR-0042: bare refs resolve package-local against the enclosing object.
-            target = ctx.symbols.resolve_object(entity_ref, pkg)
+            entity_ref = split_child_tail(raw)[0] if desc.dotted_field_path else raw
+            # ADR-0059 R3 (P4): an inherited reference resolves in the package of the
+            # top-level node that physically declares it, not the inheritor's.
+            ref_pkg = referrer_package_for(node, desc.attr)
             # Qualify the node name with its owning entity (e.g. "Order.items") so the error
             # is locatable from the message alone, not just the source envelope.
             qname = f"{node.parent.name}.{node.name}" if node.parent and node.parent.name else node.name
+            try:
+                owner_candidate_keys(entity_ref, ref_pkg)
+            except RefOverDropError:
+                ctx.error(
+                    "ERR_BAD_ATTR_VALUE", node,
+                    f'{node.type}.{node.sub_type} "{node.name}" @{desc.attr} "{raw}" climbs '
+                    "above the root package \u2014 each '..::' drops one segment of the "
+                    "declaring package.",
+                )
+                continue
+            target = ctx.symbols.resolve_object(entity_ref, ref_pkg)
             if target is None:
                 ctx.error(
                     desc.error_code, node,
@@ -125,4 +135,4 @@ def _walk(
     # node once at its declaration site (own children); inherited nodes are
     # validated where they are declared. Mirrors the TS ``node.ownChildren()`` walk.
     for child in node.own_children():
-        _walk(child, registry, ctx, pkg)
+        _walk(child, registry, ctx)

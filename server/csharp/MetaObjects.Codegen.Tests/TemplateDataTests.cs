@@ -53,7 +53,7 @@ public class TemplateDataTests
         Assert.Single(rels);
         Assert.Equal("product", rels[0]["name"]);
         Assert.Equal("one", rels[0]["cardinality"]);
-        Assert.Equal("Product", rels[0]["targetRef"]);
+        Assert.Equal("shop::Product", rels[0]["targetRef"]);
     }
 
     [Fact]

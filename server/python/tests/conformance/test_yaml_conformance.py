@@ -33,6 +33,7 @@ from metaobjects.source.error_source import (
     YamlSource,
 )
 from metaobjects.super_resolve import resolve_supers
+from metaobjects.loader.resolve_references import resolve_references
 from metaobjects.loader.validation_passes import run_validations
 
 # Full default provider set: core types + DB-domain (@column / @dbColumnType) +
@@ -141,6 +142,7 @@ def _load_yaml_to_canonical(yaml_text: str) -> tuple[str, list[str], list[MetaEr
         resolve_supers(root, errors)
 
     run_validations(root, registry, errors, warnings)
+    resolve_references(root)
     root.freeze()
 
     canonical = canonical_serialize(root)

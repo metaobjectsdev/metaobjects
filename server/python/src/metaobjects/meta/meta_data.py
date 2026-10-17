@@ -26,7 +26,11 @@ class MetaData:
         # per-file root packages are no longer reachable via the parent chain.
         # Mirrors TS ``MetaData.fileDefaultPackage`` / ``resolutionKey()``.
         self.file_default_package: Optional[str] = None
+        # ADR-0059 R5 -- ``super_ref`` is canonical after the loader's
+        # ``resolve_references`` pass; the ``extends`` value as authored is kept here
+        # (set only when the pass rewrote it) for ``meta fmt``.
         self.super_ref: Optional[str] = None
+        self.authored_super_ref: Optional[str] = None
         self.super_data: Optional[MetaData] = None
         self.is_abstract = False
         self.is_overlay = False
@@ -107,15 +111,26 @@ class MetaData:
         this node in": ``package`` is ``None`` on an object that inherits its file's
         root package. Mirrors C# ``NamingRefs.EffectivePackage``.
         """
-        pkg = self.package or self.file_default_package
-        if not pkg:
-            node = self.parent
-            while node is not None:
-                if node.package:
-                    pkg = node.package
-                    break
-                node = node.parent
-        return pkg or ""
+        if self.package:
+            return self.package
+        # ADR-0059 R10 -- the default package is per FILE: a parsed node records its
+        # file's package, "" when the file declares none, and never inherits the merge
+        # target's. Only a node built in code (no file) falls back to an ancestor.
+        if self.file_default_package is not None:
+            return self.file_default_package
+        node = self.parent
+        while node is not None:
+            if node.package:
+                return node.package
+            node = node.parent
+        return ""
+
+    def root(self) -> "MetaData":
+        """The topmost ancestor of this node (itself when it has no parent)."""
+        node = self
+        while node.parent is not None:
+            node = node.parent
+        return node
 
     def _require_mutable(self) -> None:
         if self._frozen:
@@ -164,6 +179,23 @@ class MetaData:
         semantic property that may be inherited from an abstract parent.
         """
         return self.attrs().get(name)
+
+    def authored_attr(self, name: str) -> object:
+        """ADR-0059 -- effective attr value for *name* as the author WROTE it: for a
+        reference the loader rewrote to its canonical spelling, the authored string; for
+        every other attr, the value. For human-facing text (descriptions) only -- code
+        that binds a reference reads :meth:`get_meta_attr`."""
+        node: Optional[MetaData] = self
+        seen: set[int] = set()
+        while node is not None and id(node) not in seen:
+            seen.add(id(node))
+            # ADR-0039 sanctioned own: locating the layer that declares the attr.
+            attr = node._attr_nodes.get(name)
+            if attr is not None:
+                authored = getattr(attr, "authored_value", None)
+                return authored if authored is not None else getattr(attr, "value", None)
+            node = node.super_data
+        return None
 
     def resolved_is_array(self) -> bool:
         """RESOLVING array-ness — the effective ``isArray`` for this node.

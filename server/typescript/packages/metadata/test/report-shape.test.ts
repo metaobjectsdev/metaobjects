@@ -464,7 +464,7 @@ describe("reportShape Table C (FR-044 @spine and measure @default)", () => {
     const { root, errors } = await new MetaDataLoader().load([file("acme", [catalog, program, broken, spineSales])]);
     expect(errors.length).toBe(1);
     expect(() => reportShape(report(root, "SpineSales"), root)).toThrow(
-      "report 'SpineSales': dimension 'programSubtitle' @via 'Program.catalog' does not resolve.",
+      "report 'SpineSales': dimension 'programSubtitle' @via 'acme::Program.catalog' does not resolve.",
     );
   });
 

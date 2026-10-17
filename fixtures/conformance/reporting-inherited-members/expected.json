@@ -24,7 +24,7 @@
                   "day",
                   "week"
                 ],
-                "@of": "BaseEvent.occurredAt"
+                "@of": "acme::shop::BaseEvent.occurredAt"
               }
             },
             {
@@ -32,7 +32,7 @@
                 "name": "events",
                 "@agg": "count",
                 "@of": [
-                  "BaseEvent.id"
+                  "acme::shop::BaseEvent.id"
                 ]
               }
             }
@@ -42,7 +42,7 @@
       {
         "object.entity": {
           "name": "WorkoutEvent",
-          "extends": "BaseEvent",
+          "extends": "acme::shop::BaseEvent",
           "children": [
             {
               "source.rdb": {
@@ -71,7 +71,7 @@
           "@dimensions": [
             "occurredAt:day"
           ],
-          "@from": "WorkoutEvent",
+          "@from": "acme::shop::WorkoutEvent",
           "@measures": [
             "events"
           ]

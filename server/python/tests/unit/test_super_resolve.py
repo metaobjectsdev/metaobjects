@@ -172,7 +172,7 @@ def test_resolve_relative_ref_resolves_against_reduced_context() -> None:
 # ---------------------------------------------------------------------------
 
 def test_resolve_over_deep_relative_ref_emits_error() -> None:
-    """More ``..::`` levels than context segments → unresolved → ERR_UNRESOLVED_SUPER."""
+    """More ``..::`` levels than context segments → ERR_BAD_ATTR_VALUE (ADR-0059 R2)."""
     root = _root("acme")
     base = _node("object", "entity", "Base")
     root.add_child(base)
@@ -186,7 +186,7 @@ def test_resolve_over_deep_relative_ref_emits_error() -> None:
     resolve_supers(root, errors)
 
     assert len(errors) == 1
-    assert errors[0].code == ErrorCode.ERR_UNRESOLVED_SUPER
+    assert errors[0].code == ErrorCode.ERR_BAD_ATTR_VALUE
     assert sub.super_data is None
 
 

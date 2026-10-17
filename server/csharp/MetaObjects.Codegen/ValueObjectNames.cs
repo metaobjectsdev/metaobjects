@@ -68,16 +68,12 @@ public static class ValueObjectNames
     }
 
     /// <summary>
-    /// The object a field's <c>@objectRef</c> names, resolved FQN-exact / package-local (ADR-0042)
-    /// in the FIELD's declaring package — which differs from the owner's when the field is
-    /// inherited through <c>extends</c>. Never a bare short-name scan: that binds whichever
-    /// same-named object loaded first.
+    /// The object a field's <c>@objectRef</c> names (ADR-0059 R7): the target the loader bound,
+    /// resolved in the package of the node that declared the attribute even when the field is
+    /// inherited through <c>extends</c>. Never a bare short-name scan.
     /// </summary>
     public static MetaObject? ResolveFieldRef(MetaData field, MetaData root) =>
-        field.Attr(MetaObjects.Core.Field.FieldConstants.FIELD_ATTR_OBJECT_REF) is string oref && oref.Length > 0
-            ? global::MetaObjects.NamingRefs.ResolveObjectRef(
-                root, oref, field.Parent is { } p ? global::MetaObjects.NamingRefs.EffectivePackage(p) : "") as MetaObject
-            : null;
+        global::MetaObjects.NamingRefs.RefTarget(field, MetaObjects.Core.Field.FieldConstants.FIELD_ATTR_OBJECT_REF) as MetaObject;
 
     /// <summary>The payload shape a <c>@payloadRef</c> names, or null. ADR-0042:
     /// package-local — an FQN binds the exact package; a bare ref binds

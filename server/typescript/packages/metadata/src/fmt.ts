@@ -149,7 +149,9 @@ export function formatMetadataFile(content: string, opts: FormatFileOptions): Fo
       };
     }
 
-    return { ok: true, text: canonicalSerialize(result.root) };
+    // ADR-0059 (C2): formatting never rewrites a reference — refs and packages are
+    // written as authored; only layout, key order and sugar are normalized.
+    return { ok: true, text: canonicalSerialize(result.root, { refs: "authored" }) };
   } catch (err) {
     return {
       ok: false,

@@ -90,7 +90,7 @@ public class Fr015CodegenTests
         var root = Load();
         var ps = root.FindObject("PhaseSummary")!.Sources()[0];
         Assert.True(ps.IsCallable());
-        Assert.Equal("PhaseSummaryArgs", ps.ParameterRef);
+        Assert.Equal("acme::analytics::PhaseSummaryArgs", ps.ParameterRef);
 
         var plain = root.FindObject("Plain")!.Sources()[0];
         Assert.False(plain.IsCallable());

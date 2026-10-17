@@ -151,6 +151,19 @@ public static class ConformanceAdapter
     /// Load a fixture's input directory using the specified provider ids.
     /// </summary>
     public static LoadOutcome LoadFixture(string inputDir, IReadOnlyList<string> providers)
+        => LoadFixtureCore(inputDir, providers, sources: null);
+
+    /// <summary>
+    /// ADR-0059 gates — load in-memory texts (in order) instead of a directory, so the same
+    /// document can be read as JSON or as YAML without touching disk. Strict, like
+    /// <see cref="LoadFixture"/>.
+    /// </summary>
+    public static LoadOutcome LoadSources(
+        IReadOnlyList<IMetaDataSource> sources, IReadOnlyList<string> providers)
+        => LoadFixtureCore("", providers, sources);
+
+    private static LoadOutcome LoadFixtureCore(
+        string inputDir, IReadOnlyList<string> providers, IReadOnlyList<IMetaDataSource>? sources)
     {
         var resolved = providers
             .Select(id => Providers.TryGetValue(id, out var p)
@@ -180,7 +193,9 @@ public static class ConformanceAdapter
         // ADR-0023 — the library (and its conformance corpora) load strict: an
         // authored @-attr declared by no registered provider -> ERR_UNKNOWN_ATTR.
         // The public Strict option stays default-false so downstream can loosen.
-        var result = MetaDataLoader.FromDirectory(inputDir, registry, strict: true);
+        var result = sources is null
+            ? MetaDataLoader.FromDirectory(inputDir, registry, strict: true)
+            : new MetaDataLoader(registry, strict: true).Load(sources);
 
         // FR5a — surface the full envelope per error. Normalize files[] to
         // be relative to inputDir (the harness's portable file token).
@@ -228,7 +243,7 @@ public static class ConformanceAdapter
 
     private static string RelativizeFile(string filePath, string inputDir)
     {
-        if (filePath.StartsWith(inputDir, StringComparison.Ordinal))
+        if (inputDir.Length > 0 && filePath.StartsWith(inputDir, StringComparison.Ordinal))
         {
             var rel = System.IO.Path.GetRelativePath(inputDir, filePath);
             return rel.Replace('\\', '/');

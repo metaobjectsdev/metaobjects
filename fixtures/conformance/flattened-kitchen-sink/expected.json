@@ -1,10 +1,10 @@
 {
   "metadata.root": {
-    "package": "acme::ai",
     "children": [
       {
         "object.value": {
           "name": "ProductPromptPayload",
+          "package": "acme::ai",
           "@description": "Typed projection passed to the product prompt/output/toolcall templates.",
           "children": [
             {
@@ -43,6 +43,7 @@
       {
         "object.value": {
           "name": "ProductDescription",
+          "package": "acme::ai",
           "@description": "The typed shape describeProduct expects back from the model.",
           "children": [
             {
@@ -61,6 +62,7 @@
       {
         "template.prompt": {
           "name": "describeProduct",
+          "package": "acme::ai",
           "@format": "xml",
           "@payloadRef": "acme::ai::ProductPromptPayload",
           "@promptStyle": "guide",
@@ -72,6 +74,7 @@
       {
         "template.output": {
           "name": "productCard",
+          "package": "acme::ai",
           "@format": "html",
           "@payloadRef": "acme::ai::ProductPromptPayload",
           "@textRef": "product/card"
@@ -80,6 +83,7 @@
       {
         "template.toolcall": {
           "name": "lookupProduct",
+          "package": "acme::ai",
           "@payloadRef": "acme::ai::ProductPromptPayload",
           "@toolName": "lookup_product"
         }
@@ -87,6 +91,7 @@
       {
         "object.value": {
           "name": "Dimensions",
+          "package": "acme::catalog",
           "extends": "acme::common::BaseValue",
           "@description": "Owned value object stored flattened onto the product row.",
           "children": [
@@ -113,6 +118,7 @@
       {
         "object.value": {
           "name": "SeoMeta",
+          "package": "acme::catalog",
           "extends": "acme::common::BaseValue",
           "@description": "Structured value object stored as a JSONB document.",
           "children": [
@@ -138,6 +144,7 @@
       {
         "object.entity": {
           "name": "Product",
+          "package": "acme::catalog",
           "extends": "acme::common::BaseEntity",
           "@description": "Kitchen-sink entity exercising every field subtype and attribute band.",
           "@uiHints": {
@@ -313,7 +320,7 @@
                 "name": "suppliers",
                 "@cardinality": "many",
                 "@objectRef": "acme::catalog::Supplier",
-                "@through": "ProductSupplier"
+                "@through": "acme::catalog::ProductSupplier"
               }
             },
             {
@@ -363,6 +370,7 @@
       {
         "object.entity": {
           "name": "Category",
+          "package": "acme::catalog",
           "extends": "acme::common::BaseEntity",
           "@description": "Owns products; composition-related to its products.",
           "children": [
@@ -392,6 +400,7 @@
       {
         "object.entity": {
           "name": "Supplier",
+          "package": "acme::catalog",
           "extends": "acme::common::BaseEntity",
           "@description": "A product supplier; reachable via the M:N junction.",
           "children": [
@@ -412,7 +421,7 @@
                 "@cardinality": "many",
                 "@objectRef": "acme::catalog::Supplier",
                 "@symmetric": true,
-                "@through": "SupplierPeer"
+                "@through": "acme::catalog::SupplierPeer"
               }
             }
           ]
@@ -421,6 +430,7 @@
       {
         "object.entity": {
           "name": "ProductSupplier",
+          "package": "acme::catalog",
           "@description": "Junction for the Product<->Supplier M:N association.",
           "children": [
             {
@@ -475,6 +485,7 @@
       {
         "object.entity": {
           "name": "SupplierPeer",
+          "package": "acme::catalog",
           "@description": "Symmetric self-join junction for Supplier peers.",
           "children": [
             {
@@ -529,6 +540,7 @@
       {
         "object.projection": {
           "name": "ProductSummary",
+          "package": "acme::catalog",
           "@description": "Read-only projection: a passthrough origin and a count aggregate.",
           "children": [
             {
@@ -581,6 +593,7 @@
       {
         "object.entity": {
           "name": "BaseEntity",
+          "package": "acme::common",
           "abstract": true,
           "@description": "Shared abstract base — every concrete entity inherits id + createdAt.",
           "children": [
@@ -622,6 +635,7 @@
       {
         "object.value": {
           "name": "BaseValue",
+          "package": "acme::common",
           "abstract": true,
           "@description": "Abstract value-object base carrying an audit label.",
           "children": [
@@ -636,4 +650,3 @@
     ]
   }
 }
-

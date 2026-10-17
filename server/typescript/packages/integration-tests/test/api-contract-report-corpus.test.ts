@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   IDENTITY_REFERENCE_ATTR_REFERENCES, IDENTITY_SUBTYPE_REFERENCE, OBJECT_SUBTYPE_REPORT, TYPE_IDENTITY,
-  pluralize, reportReadSource, reportShape, resolveTableName, toSnakeCase,
+  isMetaObject, pluralize, refTarget, reportReadSource, reportShape, resolveTableName, toSnakeCase,
 } from "@metaobjectsdev/metadata";
 import { loadMetadataFile } from "../src/load-metadata.ts";
 import { loadScenarios } from "../src/api-contract-scenario.ts";
@@ -68,8 +68,9 @@ describe("api-contract report corpus", () => {
       if (entity === undefined) throw new Error(`no entity has table ${table}`);
       for (const ref of entity.children()) {
         if (ref.type !== TYPE_IDENTITY || ref.subType !== IDENTITY_SUBTYPE_REFERENCE) continue;
-        const target = root.objects().find((o) => o.name === ref.attr(IDENTITY_REFERENCE_ATTR_REFERENCES));
-        if (target === undefined) throw new Error(`${entity.name}.${ref.name} references no object`);
+        // ADR-0059: the target the loader bound, not a short-name match on the reference value.
+        const target = refTarget(ref, IDENTITY_REFERENCE_ATTR_REFERENCES);
+        if (target === undefined || !isMetaObject(target)) throw new Error(`${entity.name}.${ref.name} references no object`);
         expect(tables.indexOf(resolveTableName(target))).toBeLessThan(i);
         expect(tables.indexOf(resolveTableName(target))).toBeGreaterThanOrEqual(0);
       }

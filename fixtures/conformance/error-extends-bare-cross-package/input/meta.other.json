@@ -1,0 +1,19 @@
+{
+  "metadata.root": {
+    "package": "other",
+    "children": [
+      {
+        "object.value": {
+          "name": "Base",
+          "children": [
+            {
+              "field.string": {
+                "name": "otherOnly"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

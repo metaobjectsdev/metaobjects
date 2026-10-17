@@ -295,53 +295,6 @@ public static class Parser
     }
 
     // -----------------------------------------------------------------------
-    // FR-032 (ADR-0032) — relative-ref guard for canonical JSON.
-    //
-    // The bare (sigil-free) inline attribute names whose VALUE is a metadata
-    // reference. In canonical JSON these are @-prefixed (@objectRef, …). Mirrors
-    // YamlDesugar.RefBearingAttrNames + the Java/TS REF_BEARING_ATTR_NAMES. The
-    // structural `extends` key is a reference too, but is guarded separately (it
-    // is the bare RESERVED_KEY_EXTENDS body key, not an @-prefixed attr).
-    // -----------------------------------------------------------------------
-
-    private static readonly HashSet<string> RefBearingAttrNames = new(StringComparer.Ordinal)
-    {
-        "objectRef", "references", "from", "of", "via",
-        "payloadRef", "responseRef", "parameterRef",
-        "through", // ADR-0042: the M:N junction ref joins the desugar+resolution set.
-    };
-
-    /// <summary>
-    /// FR-032 (ADR-0032) — guard a ref-bearing value against relative forms.
-    /// Canonical JSON is the self-contained interchange form: every ref-bearing
-    /// attribute MUST be fully qualified. A relative authoring form (leading
-    /// <c>::</c> or <c>..::</c>) surviving into canonical JSON is
-    /// <see cref="ErrorCode.ERR_RELATIVE_REF_IN_CANONICAL"/>. The C# canonical
-    /// parser only ever handles canonical JSON (the YAML desugar expands these
-    /// forms before the parser sees them), so no format check is needed. Throwing
-    /// halts the parse so exactly one error is produced, mirroring the
-    /// <see cref="ErrorCode.ERR_RESERVED_ATTR"/> rejection style.
-    /// </summary>
-    private static void GuardRelativeRefInCanonical(string refLabel, string? rawValue, ParseState st)
-    {
-        if (rawValue is null) return;
-        string parentPrefix = PACKAGE_PARENT + PACKAGE_SEPARATOR; // "..::"
-        if (!rawValue.StartsWith(PACKAGE_SEPARATOR, StringComparison.Ordinal)
-            && !rawValue.StartsWith(parentPrefix, StringComparison.Ordinal))
-        {
-            return;
-        }
-        string path = st.Builder.ToString();
-        string msg =
-            $"relative reference '{rawValue}' on {refLabel} at {path} is not allowed in " +
-            $"canonical JSON — canonical JSON must be fully-qualified. Relative forms " +
-            $"(leading '{PACKAGE_SEPARATOR}' or '{parentPrefix}') are YAML-authoring sugar " +
-            $"that the desugar expands.";
-        throw new ParseException(
-            msg, ErrorCode.ERR_RELATIVE_REF_IN_CANONICAL, st.Source, path, st.CurrentSource());
-    }
-
-    // -----------------------------------------------------------------------
     // splitTypeKey — split a fused wrapper key into (type, subType, explicit).
     //
     // Canonical JSON always writes the full type.subType. An omitted subType
@@ -613,8 +566,9 @@ public static class Parser
             // The JSON root's own package/super/reserved-keys are not re-applied
             // to the existing root. BUT: children from the NEW JSON should inherit
             // from the NEW root's package, not the existing root's.
-            string contextPkg = TryGetString(rootData, RESERVED_KEY_PACKAGE)
-                ?? opts.IntoRoot.Package ?? "";
+            // ADR-0059 R10: the default package is per file — a document with no `package`
+            // declares root-level nodes, whatever was loaded before it.
+            string contextPkg = TryGetString(rootData, RESERVED_KEY_PACKAGE) ?? "";
             ParseNodeInto(rootData, opts.IntoRoot, opts.IntoRoot, contextPkg, st);
             return Finish(st, opts, opts.IntoRoot);
         }
@@ -730,10 +684,9 @@ public static class Parser
         // EFFECTIVE qualified key <fileDefaultPackage>::<name> even after the
         // node merges (with no own package) into an accumulating root carrying a
         // DIFFERENT file's package. Mirrors the TS parser's setFileDefaultPackage.
-        if (model.Package is null && inheritedContextPkg != "")
-        {
-            model.SetFileDefaultPackage(inheritedContextPkg);
-        }
+        // Recorded even when empty: "" says the file declares no package (ADR-0059 R10),
+        // which is not the same as a node built in code with no file at all.
+        model.SetFileDefaultPackage(inheritedContextPkg);
 
         // --- Determine the effective context package for super resolution ---
         string effectivePkg = model.Package ?? inheritedContextPkg;
@@ -744,8 +697,20 @@ public static class Parser
         {
             // FR-024: thread the referrer's type so dotted `Entity.child` refs resolve
             // type-scoped — kept consistent with the deferred path (SuperResolve.cs).
-            MetaData? superModel = SuperResolve.ResolveSuperRef(
-                model.SuperRef, effectivePkg, accumRoot, new SuperResolve.ReferrerScope(model.Type));
+            MetaData? superModel;
+            try
+            {
+                superModel = SuperResolve.ResolveSuperRef(
+                    model.SuperRef, effectivePkg, accumRoot, new SuperResolve.ReferrerScope(model.Type));
+            }
+            catch (RefOverDropException)
+            {
+                // ADR-0059 R2 — `..::` dropped more segments than the package has.
+                throw new ParseException(
+                    $"the extends ref '{model.SuperRef}' on {model.Fqn()} climbs above the root package — each '..::' drops one segment of the declaring package",
+                    ErrorCode.ERR_BAD_ATTR_VALUE, st.Source, st.Builder.ToString(),
+                    ResolvedSource.From(st.CurrentSource(), model.Fqn(), model.SuperRef));
+            }
             if (superModel is not null)
             {
                 // FR-024 — a dotted child-targeting ref must resolve to a node of the
@@ -1363,8 +1328,6 @@ public static class Parser
             }
             else
             {
-                // FR-032 — reject a relative `extends` ref in canonical JSON.
-                GuardRelativeRefInCanonical($"\"{RESERVED_KEY_EXTENDS}\"", rawExtends.GetString(), st);
                 model.SetSuper(rawExtends.GetString()!);
             }
         }
@@ -1582,15 +1545,6 @@ public static class Parser
                 st.Errors.Add(new MetaError(msg, ErrorCode.ERR_RESERVED_ATTR, st.Source, path,
                     st.CurrentSource()));
                 continue;
-            }
-
-            // FR-032 — reject a relative ref value on a ref-bearing inline @-attr
-            // (@objectRef/@references/@from/@of/@via/@payloadRef/@responseRef/
-            // @parameterRef) in canonical JSON. Only string values can be relative.
-            if (RefBearingAttrNames.Contains(attrName)
-                && rawVal.ValueKind == JsonValueKind.String)
-            {
-                GuardRelativeRefInCanonical($"\"{ATTR_PREFIX}{attrName}\"", rawVal.GetString(), st);
             }
 
             AttrSchema? attrSpec = st.Registry

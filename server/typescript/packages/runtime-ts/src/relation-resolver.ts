@@ -6,6 +6,7 @@ import {
   CARDINALITY_ONE, CARDINALITY_MANY,
   DEFAULT_COLUMN_NAMING_STRATEGY,
   resolveRelationshipReference,
+  refTarget,
 } from "@metaobjectsdev/metadata";
 import { MetadataError } from "./errors.js";
 import {
@@ -31,7 +32,7 @@ export interface RelationDescriptor {
  */
 function findReferenceFkField(
   holder: MetaData,
-  targetName: string,
+  targetName: string | MetaData,
   relationshipName: string,
   sourceRefField?: string,
 ): string | undefined {
@@ -68,26 +69,26 @@ export function resolveRelationDescriptor(
         { entity: sourceEntity.name },
       );
     }
+    // ADR-0059 R7: the target the loader bound, never a short-name match.
+    const target = refTarget(child, RELATIONSHIP_ATTR_OBJECT_REF);
+    if (!target || target.type !== TYPE_OBJECT) {
+      throw new MetadataError(
+        `Target entity '${targetEntityName}' not found for relation '${relationName}' on '${sourceEntity.name}'`,
+        { entity: sourceEntity.name },
+      );
+    }
     // ADR-0039: resolving — @sourceRefField may be inherited via extends.
     const declaredRefField = child.attr(RELATIONSHIP_ATTR_SOURCE_REF_FIELD) as string | undefined;
-    const fkField = findReferenceFkField(sourceEntity, targetEntityName, child.name, declaredRefField);
+    const fkField = findReferenceFkField(sourceEntity, target, child.name, declaredRefField);
     if (!fkField) {
       throw new MetadataError(
         `Relationship '${relationName}' on '${sourceEntity.name}' has no identity.reference targeting '${targetEntityName}'`,
         { entity: sourceEntity.name },
       );
     }
-    // ADR-0039: effective children — resolve rather than rely on root being unextended.
-    const target = root.children().find((c) => c.type === TYPE_OBJECT && c.name === targetEntityName);
-    if (!target) {
-      throw new MetadataError(
-        `Target entity '${targetEntityName}' not found for relation '${relationName}' on '${sourceEntity.name}'`,
-        { entity: sourceEntity.name },
-      );
-    }
     return {
       cardinality: "one",
-      targetEntityName,
+      targetEntityName: target.name,
       sourceField: fkField,
       targetField: resolvePkFields(target)[0]!,
     };
@@ -103,15 +104,15 @@ export function resolveRelationDescriptor(
       // ADR-0039: effective attrs — @cardinality/@objectRef may be inherited.
       const card = child.attr(RELATIONSHIP_ATTR_CARDINALITY);
       if (card !== CARDINALITY_ONE) continue;
-      const targetEntityName = child.attr(RELATIONSHIP_ATTR_OBJECT_REF) as string | undefined;
-      if (targetEntityName !== sourceEntity.name) continue;
+      // ADR-0059 R7: compare the bound target, not a name.
+      if (refTarget(child, RELATIONSHIP_ATTR_OBJECT_REF) !== sourceEntity) continue;
       const inverseName = inversePluralName(other.name);
       if (inverseName !== relationName) continue;
       // ADR-0039: resolving — @sourceRefField may be inherited via extends. This
       // FK lives on `other` and belongs to `other`'s own relationship `child` —
       // not to anything declared on sourceEntity (see #368 module comment).
       const declaredRefField = child.attr(RELATIONSHIP_ATTR_SOURCE_REF_FIELD) as string | undefined;
-      const fkField = findReferenceFkField(other, sourceEntity.name, child.name, declaredRefField);
+      const fkField = findReferenceFkField(other, sourceEntity, child.name, declaredRefField);
       if (!fkField) {
         throw new MetadataError(
           `Inverse relationship for '${relationName}' on '${sourceEntity.name}': entity '${other.name}' has no identity.reference targeting '${sourceEntity.name}'`,

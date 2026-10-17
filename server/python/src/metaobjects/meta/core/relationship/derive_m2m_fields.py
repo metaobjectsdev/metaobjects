@@ -44,9 +44,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from ...meta_data import MetaData
-from ....naming_refs import resolve_object_ref
+from ....naming_refs import resolve_object_ref, referrer_package_of
 from ....shared.base_types import TYPE_IDENTITY, TYPE_OBJECT
-from ....shared.separators import PACKAGE_SEP
 from ..identity.identity_constants import (
     IDENTITY_ATTR_FIELDS,
     IDENTITY_SUBTYPE_REFERENCE,
@@ -67,12 +66,6 @@ class M2MFields:
 
     source_field: str
     target_field: str
-
-
-def _strip_package(name: str) -> str:
-    """Return the bare object name from a (possibly package-qualified) reference."""
-    idx = name.rfind(PACKAGE_SEP)
-    return name[idx + len(PACKAGE_SEP):] if idx >= 0 else name
 
 
 def _reference_children(junction: MetaData) -> list[MetaData]:
@@ -100,47 +93,10 @@ def _ref_fk_field(ref: MetaData) -> str | None:
     return None
 
 
-def _ref_target_entity(ref: MetaData) -> str | None:
-    """The @references target-entity name of a reference (bare, package-stripped).
-
-    GAP FIXED (was pre-existing, pre-dates #368; parked during that fix because
-    repairing it changes M:N derivation behaviour, which was out of scope there):
-    a junction reference authored with the dotted ``Entity.field`` explicit-fields
-    form ("Team.id") used to compare the WHOLE @references value against a bare
-    entity name and never match, so a M:N relationship through such a junction
-    derived no fields at all. Delegates the dotted-tail split to
-    ``relationship_references.reference_target_entity`` (the #368 fix's canonical
-    head-parse) and then strips any package prefix to keep this function's
-    bare-name contract.
-
-    Note this function is now reached only on the DEFENSIVE fallback path — when
-    ``@objectRef`` does not resolve to an entity at all, which loader validation
-    normally prevents. Both junction matches otherwise run through
-    :func:`_ref_target_qualified`, which keeps the package and compares by
-    resolved entity identity.
-    """
-    target = reference_target_entity(ref)
-    return _strip_package(target) if target else None
-
-
 def _ref_target_qualified(ref: MetaData) -> str | None:
-    """The target-entity half of a reference's ``@references``, PACKAGE INTACT.
-
-    Distinct from :func:`_ref_target_entity`, which strips the package for the
-    legacy bare-name compare. Identity resolution needs the qualified form to tell
-    ``a::NodeBase`` from ``b::NodeBase``, and needs the dotted ``Entity.field``
-    form reduced to its entity head — which is exactly what the canonical
-    :func:`~metaobjects.meta.core.relationship.relationship_references.reference_target_entity`
-    already computes, so this delegates rather than keeping a third copy of the
-    parse. That helper searches the dot only AFTER the last ``::``, so a package
-    segment can never be mistaken for the field separator; a local ``find(".")``
-    would have assumed packages never contain a dot instead of declining the
-    assumption.
-
-    Delegating also finishes the seam with the branch that makes
-    :func:`_ref_target_entity` split: one parse, one behaviour, both sides of the
-    same ``if``.
-    """
+    """The target-entity half of a reference's ``@references`` (dotted ``Entity.field``
+    form reduced to its entity head), package intact, for resolution in the junction's
+    package."""
     return reference_target_entity(ref)
 
 
@@ -224,7 +180,7 @@ def derive_m2m_fields(
     # derive against the wrong junction, whose references point nowhere near the
     # navigating entity — see the TS reference's derive-m2m-fields.ts header for
     # the same fix.
-    referrer_pkg = declaring.package or declaring.file_default_package or ""
+    referrer_pkg = referrer_package_of(declaring)
 
     through_name = rel.through()
     if through_name is None:
@@ -281,17 +237,19 @@ def derive_m2m_fields(
     # loader validation normally guarantees it does. Same carve-out the Java
     # reference makes.
     target_entity_node = _find_entity(root, target_name, referrer_pkg)
-    is_self_join = (
-        _is_subject(target_entity_node)
-        if target_entity_node is not None
-        else _strip_package(target_name) in subject_names
-    )
+    if target_entity_node is None:
+        # ADR-0059 R7: no short-name fallback. An unbound @objectRef is a model error.
+        raise M2MDerivationError(
+            f'relationship "{declaring.name}.{rel.name}" @objectRef "{target_name}" '
+            f"does not resolve to an entity"
+        )
+    is_self_join = _is_subject(target_entity_node)
 
     # The junction owns its references' @references names, so those resolve in
     # the JUNCTION's package; the relationship's own @objectRef resolves in the
     # DECLARING entity's. Under `extends` across packages these differ, and using
     # one for both is what bound a bare @objectRef to the wrong same-named entity.
-    junction_pkg = junction.package or junction.file_default_package or ""
+    junction_pkg = referrer_package_of(junction)
 
     def _ref_entity(r: MetaData) -> MetaData | None:
         return _find_entity(root, _ref_target_qualified(r), junction_pkg)
@@ -307,21 +265,14 @@ def derive_m2m_fields(
         # bare compare could match the SOURCE-side reference again whenever the
         # target's short name equals the source's, and silently return (src_fk, src_fk).
         # Java matches identity on both sides (findRefToSubject + findRefToObject).
-        target_ref = (
-            next((r for r in refs if _ref_entity(r) is target_entity_node), None)
-            if target_entity_node is not None
-            else next(
-                (r for r in refs if _ref_target_entity(r) == _strip_package(target_name)),
-                None,
-            )
-        )
+        target_ref = next((r for r in refs if _ref_entity(r) is target_entity_node), None)
         source_field = _ref_fk_field(source_ref) if source_ref is not None else None
         target_field = _ref_fk_field(target_ref) if target_ref is not None else None
         if source_field is None or target_field is None:
             raise M2MDerivationError(
                 f'junction "{through_name}" for relationship '
                 f'"{declaring.name}.{rel.name}" must declare one identity.reference '
-                f'to {subject_label} and one to "{_strip_package(target_name)}"'
+                f'to {subject_label} and one to "{target_entity_node.name}"'
             )
         return M2MFields(source_field=source_field, target_field=target_field)
 

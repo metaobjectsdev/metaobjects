@@ -1,10 +1,10 @@
 {
   "metadata.root": {
-    "package": "xpkg::home",
     "children": [
       {
         "object.entity": {
           "name": "Base",
+          "package": "xpkg::home",
           "abstract": true,
           "children": [
             {
@@ -23,7 +23,8 @@
       {
         "object.entity": {
           "name": "Gadget",
-          "extends": "Base",
+          "package": "xpkg::home",
+          "extends": "xpkg::home::Base",
           "children": [
             {
               "source.rdb": {
@@ -49,6 +50,7 @@
       {
         "object.entity": {
           "name": "Base",
+          "package": "xpkg::other",
           "abstract": true,
           "children": [
             {
@@ -67,4 +69,3 @@
     ]
   }
 }
-

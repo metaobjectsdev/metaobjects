@@ -929,7 +929,7 @@ describe("registry dispatch — origin subtype classes", () => {
     expect(origin).toBeInstanceOf(MetaPassthroughOrigin);
     expect(origin).toBeInstanceOf(MetaOrigin);
     expect(origin).toBeInstanceOf(MetaData);
-    expect((origin as MetaPassthroughOrigin).from).toBe("Program.title");
+    expect((origin as MetaPassthroughOrigin).from).toBe("demo::Program.title");
   });
 
   it("parsed origin.aggregate node is instanceof MetaAggregateOrigin and MetaOrigin", async () => {
@@ -994,8 +994,8 @@ describe("registry dispatch — origin subtype classes", () => {
     expect(origin).toBeInstanceOf(MetaOrigin);
     expect(origin).toBeInstanceOf(MetaData);
     expect((origin as MetaAggregateOrigin).agg).toBe("count");
-    expect((origin as MetaAggregateOrigin).of).toBe("Week.id");
-    expect((origin as MetaAggregateOrigin).via).toBe("Program.weeks");
+    expect((origin as MetaAggregateOrigin).of).toBe("demo::Week.id");
+    expect((origin as MetaAggregateOrigin).via).toBe("demo::Program.weeks");
   });
 
   it("origin.passthrough is NOT instanceof MetaAggregateOrigin", () => {

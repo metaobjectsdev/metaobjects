@@ -1620,14 +1620,14 @@ describe("report accessors", () => {
     const purchase = root.children().find((c) => c.name === "Purchase")!;
     const revenue = purchase.children().find((c) => c.name === "revenue")!;
     expect(revenue).toBeInstanceOf(MetaMeasure);
-    expect((revenue as MetaMeasure).ofColumns()).toEqual(["Purchase.amountCents"]);
+    expect((revenue as MetaMeasure).ofColumns()).toEqual(["acme::shop::Purchase.amountCents"]);
     const event = root.children().find((c) => c.name === "WorkoutEvent")!;
     const days = event.children().find((c) => c.name === "daysEngaged") as MetaMeasure;
     expect(days.ofColumns()).toEqual([
-      "WorkoutEvent.programId",
-      "WorkoutEvent.customerEmail",
-      "WorkoutEvent.weekNumber",
-      "WorkoutEvent.dayNumber",
+      "acme::shop::WorkoutEvent.programId",
+      "acme::shop::WorkoutEvent.customerEmail",
+      "acme::shop::WorkoutEvent.weekNumber",
+      "acme::shop::WorkoutEvent.dayNumber",
     ]);
   });
 
@@ -1665,7 +1665,7 @@ describe("report accessors", () => {
     const { root, errors } = await loadInline(m);
     expect(errors).toEqual([]);
     const report = (name: string) => root.children().find((c) => c.name === name)!;
-    expect(reportSpine(report("ProgramPurchases"))).toBe("Purchase.program");
+    expect(reportSpine(report("ProgramPurchases"))).toBe("acme::shop::Purchase.program");
     expect(reportSpine(report("DailyRevenue"))).toBeUndefined();
   });
 });

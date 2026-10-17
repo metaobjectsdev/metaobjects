@@ -85,7 +85,9 @@ def test_super_resolve_context_package_multi_level() -> None:
     container = _N("object", "entity", "Container")
     container.package = "acme::sub"
     leaf = _N("object", "entity", "Leaf")
-    leaf.super_ref = "Base"  # "Base" exists as root-level bare key
+    # ADR-0059 R2: a bare ref binds the referrer's own package then root-level, never
+    # another package; "Base" lives in "acme", so reach it with a parent-relative ref.
+    leaf.super_ref = "..::Base"
     container.add_child(leaf)
     root.add_child(container)
 

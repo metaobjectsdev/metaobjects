@@ -34,7 +34,10 @@ export abstract class MetaData {
   // order and post-merge tree shape. Mirrors Java's BaseMetaDataParser, which
   // folds getDefaultPackageName() into the registered name at parse time.
   fileDefaultPackage?: string;
-  superRef?: string;         // raw super reference string, pre-resolution
+  superRef?: string;         // super reference string; canonical after the loader's resolveReferences pass
+  /** ADR-0059 R5 — the `extends` value exactly as authored, kept when the loader's
+   *  `resolveReferences` pass rewrites `superRef` to its canonical spelling. */
+  authoredSuperRef?: string;
   private _superData?: MetaData; // post-resolution pointer; set by setSuperResolved() after parsing
   isAbstract: boolean = false;
 
@@ -382,6 +385,24 @@ export abstract class MetaData {
   attr(name: string): AttrValue | undefined {
     assertNotStructuralKeyword(name, "attr");
     return this.attrs().get(name);
+  }
+
+  /**
+   * ADR-0059 — effective attr value for `name` as the author WROTE it: for a
+   * reference the loader rewrote to its canonical spelling, the authored string;
+   * for every other attr, the value. For human-facing text (descriptions) only —
+   * code that binds a reference reads `attr()`.
+   */
+  authoredAttr(name: string): AttrValue | undefined {
+    assertNotStructuralKeyword(name, "authoredAttr");
+    const seen = new Set<MetaData>();
+    for (let n: MetaData | undefined = this; n !== undefined && !seen.has(n); n = n._superData) {
+      seen.add(n);
+      // ADR-0039: own — locating the layer that declares the attr, walking the super chain.
+      const node = n._attrNodes.get(name);
+      if (node !== undefined) return node.authoredValue ?? node.value;
+    }
+    return undefined;
   }
 
   /** True if `name` resolves to an effective attr (own or inherited). */

@@ -158,7 +158,7 @@ public final class FmtSupport {
             return FormatFileResult.failure(overlay, message);
         }
 
-        return FormatFileResult.success(CanonicalJsonSerializer.canonicalSerialize(loader.getRoot()));
+        return FormatFileResult.success(CanonicalJsonSerializer.canonicalSerialize(loader.getRoot(), CanonicalJsonSerializer.RefSpelling.AUTHORED));
     }
 
     /**

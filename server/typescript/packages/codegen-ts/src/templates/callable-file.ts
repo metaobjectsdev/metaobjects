@@ -30,6 +30,7 @@ import {
   TYPE_FIELD,
   TYPE_SOURCE,
   OBJECT_SUBTYPE_VALUE,
+  refTarget,
 } from "@metaobjectsdev/metadata";
 import { GENERATED_HEADER } from "../constants.js";
 import { crossEntitySpecifier } from "../import-path.js";
@@ -90,18 +91,16 @@ export function renderCallableFile(entity: MetaObject, ctx?: RenderContext): str
   const procName = source.physicalName;
   // ADR-0039: resolving — a source may inherit @parameterRef via extends.
   const argsRef = source.attr(SOURCE_ATTR_PARAMETER_REF);
-  const argsObjectName = typeof argsRef === "string" && argsRef !== "" ? argsRef : undefined;
+  const argsRefValue = typeof argsRef === "string" && argsRef !== "" ? argsRef : undefined;
 
-  // Resolve the parameter value-object (when set) — same root as the entity.
-  const root = entity.root();
-  // ADR-0039: resolving — root has no super (children()==ownChildren()).
+  // ADR-0059 R7: the parameter value-object the loader bound, never a short-name match.
+  const argsTarget = argsRefValue !== undefined ? refTarget(source, SOURCE_ATTR_PARAMETER_REF) : undefined;
   const argsObject =
-    argsObjectName !== undefined
-      ? (root.children().find(
-          (c) =>
-            c.subType === OBJECT_SUBTYPE_VALUE && c.name === argsObjectName,
-        ) as MetaObject | undefined)
+    argsTarget !== undefined && argsTarget.subType === OBJECT_SUBTYPE_VALUE
+      ? (argsTarget as MetaObject)
       : undefined;
+  // The generated type is named after the object, not the reference spelling.
+  const argsObjectName = argsObject?.name ?? argsRefValue;
 
   // Build the parameter list for the SQL call site. Declaration order = arg
   // order. Empty when argsObject is undefined (zero-arg proc).

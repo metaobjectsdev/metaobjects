@@ -300,44 +300,12 @@ public static class ExtractObject
     private static bool IsArrayType(MetaField field) => field.ResolvedIsArray();
 
     /// <summary>
-    /// Resolve a field's <c>@objectRef</c> to its target <see cref="MetaObject"/> by matching the
-    /// objectRef value against each object's <see cref="MetaData.ResolutionKey"/> (the canonical
-    /// form an objectRef carries), falling back to a bare short-name match. Searches the whole
-    /// tree from the root. Returns null when unresolved.
+    /// Resolve a field's <c>@objectRef</c> to its target <see cref="MetaObject"/>: the target the
+    /// loader bound (ADR-0059 R7), else the value resolved from the package of the node that
+    /// declared it. Never a short-name match. Returns null when unresolved.
     /// </summary>
-    private static MetaObject? ResolveObjectRef(MetaField field)
-    {
-        if (field.ObjectRef is not { } objectRef) return null;
-        var root = field.Root();
-        MetaObject? byKey = null;
-        MetaObject? byName = null;
-        string shortName = StripPkg(objectRef);
-        foreach (MetaObject mo in DescendantObjects(root))
-        {
-            if (mo.ResolutionKey() == objectRef) { byKey = mo; break; }
-            if (byName is null && mo.Name == shortName) byName = mo;
-        }
-        return byKey ?? byName;
-    }
-
-    /// <summary>Strip the package prefix from a resolution-key / objectRef value, leaving the short name.</summary>
-    private static string StripPkg(string nameOrKey)
-    {
-        int idx = nameOrKey.LastIndexOf("::", System.StringComparison.Ordinal);
-        return idx >= 0 ? nameOrKey[(idx + 2)..] : nameOrKey;
-    }
-
-    /// <summary>All <see cref="MetaObject"/> nodes in the tree rooted at <paramref name="node"/>.</summary>
-    private static IEnumerable<MetaObject> DescendantObjects(MetaData node)
-    {
-        if (node is MetaObject mo) yield return mo;
-        // ADR-0039: OwnChildren — a PHYSICAL tree walk to enumerate every declared object node
-        // exactly once. Resolving Children() would fold each node's super-inherited children into
-        // the traversal, double-visiting objects; this walk needs the declaration structure only.
-        foreach (MetaData child in node.OwnChildren())
-            foreach (MetaObject d in DescendantObjects(child))
-                yield return d;
-    }
+    private static MetaObject? ResolveObjectRef(MetaField field) =>
+        global::MetaObjects.NamingRefs.RefTarget(field, FIELD_ATTR_OBJECT_REF) as MetaObject;
 
     /// <summary>A fresh identity-based visited set for the cycle guard.</summary>
     private static HashSet<MetaObject> NewVisited() =>

@@ -1,0 +1,21 @@
+# `..::` drops one segment of the referrer's package (ADR-0059 R2): from
+# acme::sub, `..::Base` and `..::Thing` name acme::Base and acme::Thing.
+metadata:
+  package: acme
+  children:
+    - object.value:
+        name: Base
+        children:
+          - field.string: baseOnly
+    - object.value:
+        name: Thing
+        children:
+          - field.string: label
+    - object.value:
+        name: X
+        package: acme::sub
+        extends: ..::Base
+        children:
+          - field.object:
+              name: thing
+              objectRef: ..::Thing

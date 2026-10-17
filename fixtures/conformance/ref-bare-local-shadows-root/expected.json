@@ -1,0 +1,52 @@
+{
+  "metadata.root": {
+    "children": [
+      {
+        "object.value": {
+          "name": "Apple",
+          "package": "acme",
+          "children": [
+            {
+              "field.string": {
+                "name": "localOnly"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.value": {
+          "name": "LocalApple",
+          "package": "acme",
+          "extends": "acme::Apple"
+        }
+      },
+      {
+        "object.value": {
+          "name": "Basket",
+          "package": "acme",
+          "children": [
+            {
+              "field.object": {
+                "name": "fruit",
+                "@objectRef": "acme::Apple"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.value": {
+          "name": "Apple",
+          "children": [
+            {
+              "field.string": {
+                "name": "rootOnly"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

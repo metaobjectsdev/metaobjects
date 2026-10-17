@@ -1,0 +1,18 @@
+{
+  "metadata.root": {
+    "children": [
+      {
+        "object.value": {
+          "name": "Apple",
+          "children": [
+            {
+              "field.string": {
+                "name": "rootOnly"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -1,10 +1,10 @@
 {
   "metadata.root": {
-    "package": "xpkg::partner",
     "children": [
       {
         "object.entity": {
           "name": "Account",
+          "package": "xpkg::partner",
           "children": [
             {
               "field.long": {
@@ -30,6 +30,7 @@
       {
         "object.entity": {
           "name": "AccountLink",
+          "package": "xpkg::partner",
           "children": [
             {
               "field.long": {
@@ -78,6 +79,7 @@
       {
         "object.entity": {
           "name": "Account",
+          "package": "xpkg::store",
           "children": [
             {
               "field.long": {
@@ -111,6 +113,7 @@
       {
         "object.entity": {
           "name": "AccountLink",
+          "package": "xpkg::store",
           "children": [
             {
               "field.long": {

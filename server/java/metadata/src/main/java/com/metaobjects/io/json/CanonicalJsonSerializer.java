@@ -124,7 +124,26 @@ public final class CanonicalJsonSerializer {
      * @return canonical JSON string
      */
     public static String canonicalSerialize(MetaData node) {
-        JsonElement tree = serializeNode(node, /*effective=*/false, /*parentPackage=*/null);
+        return canonicalSerialize(node, RefSpelling.CANONICAL);
+    }
+
+    /**
+     * How references are written (ADR-0059 R8).
+     * <ul>
+     *   <li>{@link #CANONICAL} (default): each reference as the loader resolved it
+     *       ({@code pkg::Name}, {@code ::Name} for a root-level target from a packaged referrer)
+     *       and the document package rule. The output loads back to the same model from any
+     *       source.</li>
+     *   <li>{@link #AUTHORED}: each reference, {@code extends} included, exactly as written, and
+     *       every {@code package} where it was written. Only {@code fmt} uses it, so formatting
+     *       never rewrites what an author wrote.</li>
+     * </ul>
+     */
+    public enum RefSpelling { CANONICAL, AUTHORED }
+
+    /** As {@link #canonicalSerialize(MetaData)}, choosing how references are spelled. */
+    public static String canonicalSerialize(MetaData node, RefSpelling refs) {
+        JsonElement tree = serializeNode(node, /*effective=*/false, refs, /*pkgSlot=*/null, /*parentPackage=*/null);
         // FR-016 / ADR-0018: rewrite legacy @table → kind-matching alias on
         // source.rdb wrappers so canonical output pins per-kind naming
         // regardless of which spelling was on input.
@@ -143,7 +162,7 @@ public final class CanonicalJsonSerializer {
      * @return canonical JSON string
      */
     public static String canonicalSerializeEffective(MetaData node) {
-        JsonElement tree = serializeNode(node, /*effective=*/true, /*parentPackage=*/null);
+        JsonElement tree = serializeNode(node, /*effective=*/true, RefSpelling.CANONICAL, /*pkgSlot=*/null, /*parentPackage=*/null);
         rewriteSourceRdbPhysicalNames(tree);
         return toCanonicalString(tree);
     }
@@ -250,9 +269,10 @@ public final class CanonicalJsonSerializer {
      *                      if there is no parent (i.e. this is the tree root).
      *                      Used to suppress redundant {@code package} keys.
      */
-    private static JsonElement serializeNode(MetaData node, boolean effective, String parentPackage) {
+    private static JsonElement serializeNode(MetaData node, boolean effective, RefSpelling refs,
+                                             String pkgSlot, String parentPackage) {
         String fusedKey = node.getType() + TYPE_SUBTYPE_SEPARATOR + node.getSubType();
-        JsonObject body = serializeBody(node, effective, parentPackage);
+        JsonObject body = serializeBody(node, effective, refs, pkgSlot, parentPackage);
 
         JsonObject wrapper = new JsonObject();
         wrapper.add(fusedKey, body);
@@ -273,7 +293,8 @@ public final class CanonicalJsonSerializer {
      *   <li>{@code children} — structural child nodes (recursive); non-empty only</li>
      * </ol>
      */
-    private static JsonObject serializeBody(MetaData node, boolean effective, String parentPackage) {
+    private static JsonObject serializeBody(MetaData node, boolean effective, RefSpelling refs,
+                                            String pkgSlot, String parentPackage) {
         JsonObject body = new JsonObject();
 
         // 1. name — omit empty names, auto-generated names, and root-node names.
@@ -306,8 +327,16 @@ public final class CanonicalJsonSerializer {
         // package). Effective package is recovered structurally on reload from
         // the parent context, so suppressing it here is byte-correct and
         // round-trips.
-        String nodePackage = resolveNodePackage(node);
-        if (nodePackage != null && !nodePackage.isEmpty()) {
+        // ADR-0059 R8 — in canonical mode the document root assigns every named top-level node's
+        // package by the document rule (see documentPackages); nodes below keep their own.
+        DocPackages doc = (node instanceof MetaRoot && refs == RefSpelling.CANONICAL)
+            ? documentPackages((MetaRoot) node) : null;
+        String nodePackage = doc != null ? doc.rootPkg() : resolveNodePackage(node);
+        if (pkgSlot != null) {
+            // Per-node mode: the package the document rule assigns this top-level node.
+            if (!pkgSlot.isEmpty()) body.addProperty(KEY_PACKAGE, pkgSlot);
+            nodePackage = pkgSlot;
+        } else if (nodePackage != null && !nodePackage.isEmpty()) {
             boolean isRoot = node instanceof MetaRoot;
             // Cross-port byte-parity: when the author explicitly wrote a
             // `package` key on this node's body, round-trip it on the way out.
@@ -342,10 +371,16 @@ public final class CanonicalJsonSerializer {
         // `meta fmt` formats a file standalone, deferring super resolution on
         // purpose, so an authored cross-file `extends` reaches here with
         // hasSuperData() false and must still round-trip).
+        // ADR-0059 R8: after the loader's resolveReferences pass the canonical spelling is recorded
+        // beside the authored one; canonical mode writes it, authored mode (fmt) writes what was
+        // authored.
         String authoredSuperRef = node.getAuthoredSuperRef();
-        String superRef = (authoredSuperRef != null && !authoredSuperRef.isEmpty())
-            ? authoredSuperRef
-            : (node.hasSuperData() ? node.getSuperData().getName() : null);
+        String canonicalSuperRef = node.getCanonicalSuperRef();
+        String superRef = (refs == RefSpelling.CANONICAL && canonicalSuperRef != null && !canonicalSuperRef.isEmpty())
+            ? canonicalSuperRef
+            : (authoredSuperRef != null && !authoredSuperRef.isEmpty())
+                ? authoredSuperRef
+                : (node.hasSuperData() ? node.getSuperData().getName() : null);
         if (superRef != null && !superRef.isEmpty()) {
             body.addProperty(KEY_EXTENDS, superRef);
         }
@@ -395,7 +430,10 @@ public final class CanonicalJsonSerializer {
             if (ATTR_NAME_IS_ABSTRACT.equals(attrName) || ATTR_NAME_IS_ARRAY.equals(attrName)) {
                 continue;
             }
-            JsonElement attrValue = attrValueToJson(attr);
+            // ADR-0039: own — the authored value lives on the declaring attr node.
+            JsonElement attrValue = (refs == RefSpelling.AUTHORED && !effective && attr.getAuthoredValue() != null)
+                ? authoredAttrToJson(attr)
+                : attrValueToJson(attr);
             sortedAttrs.put(ATTR_PREFIX + attrName, attrValue);
         }
         for (Map.Entry<String, JsonElement> e : sortedAttrs.entrySet()) {
@@ -409,7 +447,12 @@ public final class CanonicalJsonSerializer {
         if (!structuralChildren.isEmpty()) {
             JsonArray childArray = new JsonArray();
             for (MetaData child : structuralChildren) {
-                childArray.add(serializeNode(child, effective, childParentPackage));
+                String childSlot = null;
+                if (doc != null && doc.perNode()) {
+                    childSlot = (child.getShortName() != null && !child.getShortName().isEmpty())
+                        ? topLevelPackage(child) : "";
+                }
+                childArray.add(serializeNode(child, effective, refs, childSlot, childParentPackage));
             }
             body.add(KEY_CHILDREN, childArray);
         }
@@ -509,6 +552,49 @@ public final class CanonicalJsonSerializer {
     // ---------------------------------------------------------------------------
     // Helpers — package resolution
     // ---------------------------------------------------------------------------
+
+    /** The package a top-level node carries: its own (name-derived) package, "" for root-level. */
+    private static String topLevelPackage(MetaData node) {
+        String p = node.getPackage();
+        return p == null ? "" : p;
+    }
+
+    /** ADR-0059 R8 — {@code rootPkg} null = write none; {@code perNode} = each named top-level node carries its own. */
+    private record DocPackages(String rootPkg, boolean perNode) {}
+
+    /**
+     * ADR-0059 R8 document package rule, for a {@code metadata.root} in canonical mode. Every
+     * named top-level node in one non-empty package P: the root carries P (a node keeps a
+     * package it carries itself, as before) unless the root names none and every node names P
+     * itself. Otherwise the root carries none and each packaged top-level node carries its own.
+     * A root with no named top-level node keeps its own package.
+     */
+    private static DocPackages documentPackages(MetaRoot root) {
+        // ADR-0039: own — the serializer writes the declared layer; the root has no super.
+        List<MetaData> named = new ArrayList<>();
+        for (MetaData c : root.getChildren()) {
+            if (c instanceof MetaAttribute) continue;
+            String sn = c.getShortName();
+            if (sn != null && !sn.isEmpty()) named.add(c);
+        }
+        if (named.isEmpty()) return new DocPackages(resolveNodePackage(root), false);
+        java.util.Set<String> pkgs = new java.util.LinkedHashSet<>();
+        for (MetaData c : named) pkgs.add(topLevelPackage(c));
+        if (pkgs.size() == 1) {
+            String only = pkgs.iterator().next();
+            if (!only.isEmpty()) {
+                String rootOwn = resolveNodePackage(root);
+                boolean selfNamed = (rootOwn == null || rootOwn.isEmpty());
+                if (selfNamed) {
+                    for (MetaData c : named) {
+                        if (!c.isPackageAuthored() || !only.equals(topLevelPackage(c))) { selfNamed = false; break; }
+                    }
+                }
+                return new DocPackages(selfNamed ? null : only, false);
+            }
+        }
+        return new DocPackages(null, true);
+    }
 
     /**
      * Returns the "canonical package" for a node.
@@ -724,6 +810,18 @@ public final class CanonicalJsonSerializer {
         }
 
         return primitiveToJson(value);
+    }
+
+    /** An attribute's authored (pre-canonicalization) value: a string, or a list of strings. */
+    @SuppressWarnings("rawtypes")
+    private static JsonElement authoredAttrToJson(MetaAttribute attr) {
+        Object authored = attr.getAuthoredValue();
+        if (authored instanceof List) {
+            JsonArray arr = new JsonArray();
+            for (Object o : (List<?>) authored) arr.add(String.valueOf(o));
+            return arr;
+        }
+        return new JsonPrimitive(String.valueOf(authored));
     }
 
     /** Converts a non-null primitive-ish value to a JsonPrimitive. */

@@ -5,6 +5,9 @@ import {
   TYPE_ORIGIN,
   TYPE_RELATIONSHIP,
   isMetaObject,
+  TYPE_OBJECT,
+  lookupCanonical,
+  splitChildTail,
   isReadOnlySource,
   SOURCE_ROLE_PRIMARY,
   SOURCE_ATTR_SCHEMA,
@@ -400,7 +403,7 @@ function resolveHopReference(
   }
   // ADR-0039: resolving — @sourceRefField may be inherited via extends.
   const sourceRefField = hop.attr(RELATIONSHIP_ATTR_SOURCE_REF_FIELD) as string | undefined;
-  const matching = resolveRelationshipReference(holder, hopName, target.name, sourceRefField);
+  const matching = resolveRelationshipReference(holder, hopName, target, sourceRefField);
   if (matching) {
     return { holder, other: target, referenceIdentity: matching };
   }
@@ -544,15 +547,12 @@ export function projectionViewRole(projection: MetaObject): string | undefined {
 export function refNamedOwner(node: MetaData, root: MetaRoot): MetaObject | undefined {
   const ref = (node as { superRef?: string }).superRef;
   if (ref === undefined) return undefined;
-  // The entity portion is everything before the FIRST "." (packages use "::", the
-  // member path uses ".").
-  const dot = ref.indexOf(".");
-  if (dot <= 0) return undefined;
-  const entityRef = ref.slice(0, dot);
-  // An FQN `extends` binds the EXACT package's entity (#244); a bare ref keeps the prior
-  // findObject behavior (a projection extends its base by bare name in the same package).
-  if (entityRef.includes("::")) return resolveEntityRef(root, entityRef, "");
-  return root.findObject(entityRef) ?? undefined;
+  // The loader has rewritten `extends` to its canonical spelling (ADR-0059 R5), so the
+  // owner is looked up exactly, with no referrer and no short-name match (R7).
+  const { owner, tail } = splitChildTail(ref);
+  if (tail === "") return undefined;
+  const found = lookupCanonical(root, owner, { ownerType: TYPE_OBJECT });
+  return isMetaObject(found) ? found : undefined;
 }
 
 /** Effective package of an object, taken from its resolution key ("<pkg>::<Name>"). */

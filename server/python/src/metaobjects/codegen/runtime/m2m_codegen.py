@@ -46,9 +46,13 @@ from metaobjects.meta.core.relationship.derive_m2m_fields import (
     derive_m2m_fields,
 )
 from metaobjects.meta.core.relationship.meta_relationship import MetaRelationship
-from metaobjects.meta.core.relationship.relationship_constants import CARDINALITY_MANY
+from metaobjects.meta.core.relationship.relationship_constants import (
+    CARDINALITY_MANY,
+    RELATIONSHIP_ATTR_OBJECT_REF,
+    RELATIONSHIP_ATTR_THROUGH,
+)
+from metaobjects.naming_refs import ref_target
 from metaobjects.shared.base_types import TYPE_IDENTITY
-from metaobjects.shared.separators import PACKAGE_SEP
 
 
 @dataclass(frozen=True)
@@ -75,11 +79,6 @@ class M2mDescriptor:
     #: filter to just that subtype rather than every row of the shared table.
     #: Defaulted so existing positional construction (if any) stays valid.
     target_discriminator: str | None = None
-
-
-def _strip_package(name: str) -> str:
-    idx = name.rfind(PACKAGE_SEP)
-    return name[idx + len(PACKAGE_SEP):] if idx >= 0 else name
 
 
 def _physical_table(entity: MetaObject, *, relation_context: str) -> str:
@@ -178,11 +177,12 @@ def resolve_m2m_descriptors(
     # loop-invariant; only the target varies per relation.
     source_plural = route_path(entity.name)
     for rel in m2m_relationships(entity):
-        target_name = _strip_package(rel.object_ref() or "")
-        junction_name = _strip_package(rel.through() or "")
-        target = object_index.get(target_name)
-        junction = object_index.get(junction_name)
-        if target is None or junction is None:
+        # ADR-0059 R7: the BOUND targets, not a name stripped from the ref.
+        target = ref_target(rel, RELATIONSHIP_ATTR_OBJECT_REF)
+        junction = ref_target(rel, RELATIONSHIP_ATTR_THROUGH)
+        target_name = rel.object_ref() or ""
+        junction_name = rel.through() or ""
+        if not isinstance(target, MetaObject) or not isinstance(junction, MetaObject):
             raise M2MDerivationError(
                 f'M:N relationship "{entity.name}.{rel.name}": @objectRef '
                 f'"{target_name}" / @through "{junction_name}" must resolve to '

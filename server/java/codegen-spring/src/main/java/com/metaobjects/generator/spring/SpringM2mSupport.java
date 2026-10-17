@@ -129,20 +129,8 @@ public final class SpringM2mSupport {
         return out;
     }
 
+    /** ADR-0059 R7: a reference value is canonical after load; match its exact resolution key. */
     private static MetaObject findEntity(MetaRoot root, String name) {
-        if (name == null) return null;
-        // ADR-0041: a FULLY-QUALIFIED ref (contains "::") resolves EXACTLY on the
-        // object's package-qualified name — it never falls back to a bare-tail match
-        // (the closed bug: an FQN @objectRef / @through binding a same-named object
-        // in the WRONG package). A bare ref matches the object's short name (first
-        // match wins; cross-package same-package-preference is the deferred codegen
-        // follow-up, mirroring the TS residual note).
-        boolean fqn = name.indexOf("::") >= 0;
-        // ADR-0039: root-level entity scan — root is never extended, so own children
-        // is correct (entities are declared directly under root, not inherited into it).
-        for (MetaObject mo : root.getChildren(MetaObject.class, false)) {
-            if (fqn ? name.equals(mo.getName()) : name.equals(mo.getShortName())) return mo;
-        }
-        return null;
+        return com.metaobjects.loader.References.lookupCanonical(root, name);
     }
 }

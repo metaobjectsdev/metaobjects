@@ -39,6 +39,7 @@ from metaobjects.meta.core.field.meta_field import MetaField
 from metaobjects.meta.core.validator import validator_constants as vc
 from metaobjects.meta.template.template_constants import TEMPLATE_ATTR_XML_TEXT
 from metaobjects.meta.meta_data import MetaData
+from metaobjects.naming_refs import ref_target
 from metaobjects.shared.base_types import TYPE_VALIDATOR
 from metaobjects.render.extract import (
     FieldKind,
@@ -425,25 +426,12 @@ def _resolved_attr_string(node: MetaData, attr: str) -> str | None:
 
 
 def _resolve_object_ref(field: MetaField) -> MetaObject | None:
-    """Resolve a field's ``@objectRef`` to its ``MetaObject`` by walking to the tree
-    root and matching on ``resolution_key()`` (the package-folded FQN the objectRef
-    uses), with a short-name fallback. Returns ``None`` when unresolvable (→ the
-    opaque-leaf / leave-unset guard). Reflection-free: a pure metadata-tree walk."""
-    ref = field.object_ref
-    if ref is None:
-        return None
-    root = _root_of(field)
-    if root is None:
-        return None
-    objects = [c for c in root.children() if isinstance(c, MetaObject)]
-    direct = next((o for o in objects if o.resolution_key() == ref), None)
-    if direct is not None:
-        return direct
-    # Short-name fallback: a bare ref or the trailing segment after the last "::".
-    from metaobjects.shared.separators import PACKAGE_SEP
-
-    short = ref.rsplit(PACKAGE_SEP, 1)[-1] if PACKAGE_SEP in ref else ref
-    return next((o for o in objects if o.name == short), None)
+    """Resolve a field's ``@objectRef`` to its ``MetaObject``: the target the loader bound
+    once (ADR-0059 R7), else the ref resolved from the declaring node's package. Never a
+    short-name match. Returns ``None`` when unresolvable (-> the opaque-leaf /
+    leave-unset guard). Reflection-free: a pure metadata-tree walk."""
+    target = ref_target(field, fc.FIELD_ATTR_OBJECT_REF)
+    return target if isinstance(target, MetaObject) else None
 
 
 def _root_of(node: MetaData) -> MetaData | None:

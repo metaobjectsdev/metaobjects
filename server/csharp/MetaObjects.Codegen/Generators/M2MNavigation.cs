@@ -114,9 +114,9 @@ public static class M2MNavigationBuilder
         // hetero M:N as a self-join. Falls back to the previous resolution when the
         // qualified name does not resolve exactly, so nothing that bound before stops.
         var target = M2MDerivation.ResolveEntity(root, targetRef)
-            ?? root.FindObject(CSharpNaming.StripPkg(targetRef));
+            ?? root.FindObject(targetRef);
         var junction = M2MDerivation.ResolveEntity(root, throughRef)
-            ?? root.FindObject(CSharpNaming.StripPkg(throughRef));
+            ?? root.FindObject(throughRef);
         if (target is null || junction is null) return null;
 
         // Owner ruling 2026-09-20: an un-pairable junction is a LOAD ERROR

@@ -15,7 +15,7 @@ import type { MetaObject } from "../core/object/meta-object.js";
 import type { MetaReferenceIdentity } from "../core/identity/meta-identity.js";
 import { contradictionHint, contradictionsFor } from "../attr-contradictions.js";
 import { ParseError, type ErrorCode } from "../errors.js";
-import { resolveObjectRef, didYouMeanHint } from "../naming-refs.js";
+import { resolveObjectRef, didYouMeanHint, refTarget } from "../naming-refs.js";
 import { PACKAGE_SEPARATOR, CHILD_REF_SEPARATOR } from "../shared/structural.js";
 import { resolvedSource, type ErrorSource } from "../source.js";
 import {
@@ -138,7 +138,6 @@ import type { MetaRelationship } from "../core/relationship/meta-relationship.js
 // Rule (f) runs the REAL M:N derivation so the loader and codegen cannot drift.
 import { deriveM2MFields, M2MDerivationError } from "../core/relationship/derive-m2m-fields.js";
 import { isReadOnlySource, isWritableSource } from "../shared/node-guards.js";
-import { stripPackage } from "../naming.js";
 import {
   FILTER_COMPOSE_OR,
   FILTER_COMPOSE_AND,
@@ -957,8 +956,8 @@ function _inferViaSingleHop(
     .filter((c) => c.type === TYPE_RELATIONSHIP)
     .filter((rel) => {
       // ADR-0039: resolving — a relationship may inherit @objectRef via extends.
-      const ref = rel.attr(RELATIONSHIP_ATTR_OBJECT_REF);
-      return typeof ref === "string" && stripPackage(ref) === targetEntity.name;
+      // ADR-0059 R7: compare the bound target, never a short name.
+      return refTarget(rel, RELATIONSHIP_ATTR_OBJECT_REF) === targetEntity;
     });
   // FR5d — referrer is `<host-FQN>::<fieldName>`, target is the from/of ref
   // whose implicit path could not be resolved.
@@ -2207,7 +2206,9 @@ export function validateOneSideReferenceResolution(root: MetaRoot): ParseError[]
       const objectRef = rel.attr(RELATIONSHIP_ATTR_OBJECT_REF);
       if (typeof objectRef !== "string" || objectRef === "") continue;
 
-      const candidates = referenceCandidatesFor(obj, objectRef);
+      // ADR-0059 R7: match references by the target node when it resolves.
+      const targetNode = refTarget(rel, RELATIONSHIP_ATTR_OBJECT_REF) ?? objectRef;
+      const candidates = referenceCandidatesFor(obj, targetNode);
 
       const sourceRefField = rel.attr(RELATIONSHIP_ATTR_SOURCE_REF_FIELD);
       const declared = typeof sourceRefField === "string" && sourceRefField !== ""
@@ -2237,7 +2238,7 @@ export function validateOneSideReferenceResolution(root: MetaRoot): ParseError[]
       // No @sourceRefField declared: ambiguity only exists with 2+ candidates —
       // resolveRelationshipReference's name-pairing step (ladder step 3) decides.
       if (candidates.length <= 1) continue;
-      const resolved = resolveRelationshipReference(obj, rel.name, objectRef);
+      const resolved = resolveRelationshipReference(obj, rel.name, targetNode);
       if (resolved) continue;
 
       errors.push(

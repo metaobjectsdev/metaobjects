@@ -62,6 +62,19 @@ function fixturePath(name: string): string {
 //     canonical merged form where this flag is always false.
 // ---------------------------------------------------------------------------
 
+/**
+ * ADR-0059 R8: the serializer may move a package between the root and its top-level
+ * nodes (one root package, or one per node), so the root's own package and a
+ * top-level node's own package are not round-trip invariants. What a package decides
+ * is: each top-level node's effective package. Deeper nodes keep their own.
+ */
+function sameEffectivePackage(a: MetaData, b: MetaData, path: string): boolean {
+  if (path === "root") return true;
+  if (!/^root\.children\[\d+\]$/.test(path)) return a.package === b.package;
+  const eff = (n: MetaData): string => n.package ?? n.fileDefaultPackage ?? n.parent?.package ?? "";
+  return eff(a) === eff(b);
+}
+
 function assertModelsEqual(a: MetaData, b: MetaData, path = "root"): void {
   // Type identity
   if (a.type !== b.type) throw new Error(`${path}: type mismatch — expected "${a.type}", got "${b.type}"`);
@@ -69,7 +82,9 @@ function assertModelsEqual(a: MetaData, b: MetaData, path = "root"): void {
 
   // Name and package
   if (a.name !== b.name) throw new Error(`${path}: name mismatch — expected "${a.name}", got "${b.name}"`);
-  if (a.package !== b.package) throw new Error(`${path}: package mismatch — expected "${String(a.package)}", got "${String(b.package)}"`);
+  // ADR-0059 R8: the serializer may move a package between the root and its
+  // top-level nodes, so compare what a package decides — each node's resolution key.
+  if (!sameEffectivePackage(a, b, path)) throw new Error(`${path}: package mismatch — expected "${String(a.package)}", got "${String(b.package)}"`);
 
   // Super ref (raw string, not resolved pointer)
   if (a.superRef !== b.superRef) throw new Error(`${path}: superRef mismatch — expected "${String(a.superRef)}", got "${String(b.superRef)}"`);
@@ -557,7 +572,8 @@ describe("Super resolution sanity: fruitbasket-metadata.json", () => {
     const { root } = await loadFixture("fruitbasket-metadata.json");
     const apple = root.ownChildByTypeAndName(TYPE_OBJECT, "Apple")!;
     expect(apple).toBeDefined();
-    expect(apple.superRef).toBe("Fruit");
+    expect(apple.superRef).toBe("simple::fruitbasket::Fruit");
+    expect(apple.authoredSuperRef).toBe("Fruit");
     expect(apple.superResolved).toBeDefined();
     expect(apple.superResolved!.name).toBe("Fruit");
   });
@@ -566,7 +582,8 @@ describe("Super resolution sanity: fruitbasket-metadata.json", () => {
     const { root } = await loadFixture("fruitbasket-metadata.json");
     const macintosh = root.ownChildByTypeAndName(TYPE_OBJECT, "Macintosh")!;
     expect(macintosh).toBeDefined();
-    expect(macintosh.superRef).toBe("Apple");
+    expect(macintosh.superRef).toBe("simple::fruitbasket::Apple");
+    expect(macintosh.authoredSuperRef).toBe("Apple");
     expect(macintosh.superResolved).toBeDefined();
     expect(macintosh.superResolved!.name).toBe("Apple");
   });

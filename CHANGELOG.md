@@ -59,7 +59,20 @@ number. The first landed on 1.0.x: 439 lines of handler code retired. The second
 and it is a SQL reduction only: in an adopter, hand-written SQL went from 75 lines to 15 (-80%).
 Total hand-written lines did not fall, so do not read it as a total line reduction.
 
-**Four diffs to expect when you upgrade.**
+**Breaking, TypeScript, Python and C#: a bare `extends` no longer binds an object in another
+package.** It now fails with `ERR_UNRESOLVED_SUPER`, as Java already did and ADR-0042 requires. A
+bare name binds the declaring file's own package, then the root. Qualify the reference:
+`extends: other::Base`. The entry is under **Changed** (ADR-0059).
+
+**Five diffs to expect when you upgrade.**
+
+- **References are written fully qualified (ADR-0059).** `meta export` and canonical
+  serialization write every reference as `pkg::Name`, a root-level target referenced from a
+  package as `::Name`, and a model that spans packages with a `package` on each top-level object.
+  Exported JSON now loads back to the same model. The neutral template data's `targetRef` carries
+  the same canonical value (`rel product -> shop::Product`), so a Mustache template that prints it
+  changes. Documentation pages and error messages still quote a reference as you wrote it. `meta
+  fmt` still writes references as you wrote them. Regenerate, then review the diff.
 
 - **An ejected generator needs a resync (G11).** An owned copy keeps the gate and the options it
   was copied with, so it does not receive the new report behaviour until you resync it. The
@@ -840,6 +853,21 @@ generator catalog and the Atlas evaluation are 1.2 work.
 
 ### Changed
 
+**References mean the same thing in YAML and JSON, in every port (ADR-0059).** Every source now
+keeps references as written, and one resolver per port binds them after the whole model has
+loaded, then rewrites each to its canonical spelling before the tree is frozen. So:
+
+- `::Name` and `..::Name` work in canonical JSON as well as YAML. `ERR_RELATIVE_REF_IN_CANONICAL`
+  is retired, and the conformance fixture that asserted it is removed.
+- A bare `extends` resolves in its own file's package, then at the root. It no longer binds an
+  object in another package (TypeScript, Python, C#; Java already refused it): qualify it.
+- A loaded model's reference values are canonical (`pkg::Name`, or `::Name` for a root-level
+  target from a package). Code that reads a reference attribute and compares it to an object's
+  short name must compare the target instead: `refTarget(node, attr)` (TypeScript) returns the
+  object the loader bound, and `MetaRoot.findObject` accepts a canonical value.
+- Two conformance gates run in every port: each fixture loads to the same model from JSON and
+  from YAML, and each `expected.json` loads and serializes back to itself.
+
 **One physical-naming setting, read by every port (ADR-0058).** **This changes generated column names in C#, Java, Kotlin's runtime and Python unless you add
 one line.** Column and table names that the metadata does not give (`@column`, `@table`,
 `@view`, a source's `name`) now come from one project setting, `naming` in
@@ -1270,6 +1298,39 @@ until you regenerate.
 
 ### Fixed
 
+- **References resolve the same way from every source (ADR-0059).**
+  - YAML `::Name` reaches the root-level object even when the package declares the same name. It
+    used to bind the local object silently.
+  - A bare `@of` after `@via` resolves in the package the `@via` reaches, from YAML too.
+  - In JSON, an inherited bare reference resolves in the package that declared it. It used to
+    fail with `ERR_UNRESOLVED_OBJECT_REF`.
+  - A file without `package` declares root-level objects whatever order the files load in.
+  - Canonical serialization of a model that spans packages loads back to the same model.
+  - C#: `extends` resolves in its own file's package, not the first file's.
+  - Java: `@through` follows the same reference rules as the other ports.
+- **YAML metadata loads to the same model as its JSON twin in three more cases.** The new YAML
+  twin check found three defects:
+  - C#: a YAML overlay was merged into its base as soon as the overlay's file was parsed,
+    because the YAML parser dropped the loader's "defer overlays" setting. Fields could land in a
+    different order from the JSON load, and an overlay parsed before its base failed with
+    `ERR_OVERLAY_NO_TARGET`. Overlays in YAML now merge after every file loads, as in JSON
+    (ADR-0055).
+  - Java: a non-string `default:` on a field (`default: false` on a `field.boolean`) failed with
+    `ERR_YAML_COERCION`.
+  - Java: a documentation attribute that takes a list (`aliases`, `seeAlso`) with more than one
+    entry failed with `ERR_YAML_COERCION`.
+- **TypeScript: generated code reads the target a reference names, never the reference
+  string.** A stored procedure whose `@parameterRef` was written fully qualified (`pkg::Args`)
+  got a wrapper with no `args` parameter, because the generator looked the value object up by
+  short name. An output-format spec's `rootName` (used as an XML element name) was the
+  `@responseRef` string; it is now the value object's name, as `extract()` already used. The
+  Mermaid entity diagram names a reference target by its entity name.
+- **C#, Java, Kotlin and Python: codegen and the runtime find a reference's target by the object
+  the loader bound, not by its short name.** Two objects with the same name in different packages
+  could bind the wrong one in M:N navigation (Spring repositories, OMDB, Exposed, the Python
+  runtime and route codegen), in the PlantUML diagram and in extract and render helpers. Java: a
+  field that an overlay adds from another file resolves a bare `extends` in that file's own
+  package, as the other ports do.
 - **SQLite and D1: a backtick-quoted CHECK constraint name is read.** Introspection read
   `CONSTRAINT "name"` and a bare name but not `` CONSTRAINT `name` `` (the quoting Drizzle-written
   migrations use) or `[name]`, so the stored check had an empty name, and `meta verify --db` and

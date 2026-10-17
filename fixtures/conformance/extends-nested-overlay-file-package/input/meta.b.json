@@ -1,0 +1,11 @@
+{
+  "metadata.root": {
+    "package": "b",
+    "children": [
+      { "object.value": { "name": "Base", "children": [ { "field.long": { "name": "bid" } } ] } },
+      { "object.value": { "name": "Order", "package": "a", "overlay": true, "children": [
+        { "field.long": { "name": "x", "extends": "Base.bid" } }
+      ] } }
+    ]
+  }
+}

@@ -16,6 +16,9 @@ import {
   FIELD_SUBTYPE_OBJECT,
   FIELD_ATTR_OBJECT_REF,
   OBJECT_SUBTYPE_VALUE,
+  IDENTITY_REFERENCE_ATTR_REFERENCES,
+  refTarget,
+  stripPackage,
 } from "@metaobjectsdev/metadata";
 
 /** Render the fenced ```mermaid erDiagram``` block for the whole model (entities +
@@ -190,8 +193,11 @@ function renderRelationships(entities: MetaObject[]): string[] {
   const lines: string[] = [];
   for (const entity of entities) {
     for (const ref of entity.referenceIdentities()) {
-      const refTo = ref.targetEntity;
-      if (typeof refTo !== "string" || refTo.length === 0) continue;
+      // Mermaid names a node by the entity's short name, as every other line here does;
+      // the reference value is canonical (`pkg::Name`, ADR-0059) and not a Mermaid id.
+      const raw = ref.targetEntity;
+      if (typeof raw !== "string" || raw.length === 0) continue;
+      const refTo = refTarget(ref, IDENTITY_REFERENCE_ATTR_REFERENCES)?.name ?? stripPackage(raw);
       // One-to-many by default — a foreign key on `entity` references one row on `refTo`.
       lines.push(`${refTo} ||--o{ ${entity.name} : "references"`);
     }

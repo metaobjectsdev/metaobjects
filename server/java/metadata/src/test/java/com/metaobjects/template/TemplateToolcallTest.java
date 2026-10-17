@@ -110,7 +110,7 @@ public class TemplateToolcallTest extends SharedRegistryTestBase {
 
         ToolcallTemplate tc = (ToolcallTemplate) node;
         assertEquals("lookup_weather", tc.getToolName());
-        assertEquals("WeatherToolOutput", tc.getPayloadRef());
+        assertEquals("acme::tools::WeatherToolOutput", tc.getPayloadRef());
         assertEquals("tools-team", tc.getOwner());
         assertEquals("0.7.0", tc.getSince());
     }

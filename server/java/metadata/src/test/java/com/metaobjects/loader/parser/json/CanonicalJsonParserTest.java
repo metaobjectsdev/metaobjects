@@ -113,6 +113,9 @@ public class CanonicalJsonParserTest extends SharedRegistryTestBase {
         CanonicalJsonParser parser = new CanonicalJsonParser(loader, "extends-test.json");
         parser.loadFromStream(new ByteArrayInputStream(canonical.getBytes(StandardCharsets.UTF_8)));
 
+        // extends is bound by the loader's deferred pass (ADR-0059), never at parse time.
+        loader.drainPendingExtends();
+
         MetaData concrete = loader.getRoot().getChildOfType("object", "acme::ConcreteProduct");
         assertNotNull("ConcreteProduct should exist", concrete);
         assertEquals("ConcreteProduct should be subType entity", "entity", concrete.getSubType());

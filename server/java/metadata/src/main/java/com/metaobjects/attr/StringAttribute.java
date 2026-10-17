@@ -97,6 +97,15 @@ public class StringAttribute extends MetaAttribute<String> {
     }
 
     /**
+     * Replaces the value with a list of items, kept as given (no comma splitting). Used by the
+     * loader's reference-resolution pass to write a list of canonical references (ADR-0059 R5).
+     */
+    public void setArrayValue(List<String> items) {
+        setArray(true);
+        setValueAsObjectDirect(new ArrayList<>(items));
+    }
+
+    /**
      * Direct value setting that bypasses DataConverter when in array mode
      */
     private void setValueAsObjectDirect(Object value) {

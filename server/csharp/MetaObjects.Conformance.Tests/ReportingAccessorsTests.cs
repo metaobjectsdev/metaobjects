@@ -57,7 +57,7 @@ public class ReportingAccessorsTests
     {
         var r = LoadPositiveFixture();
         var report = Root(r, "DailyRevenue");
-        Assert.Equal("Purchase", ReportAccessors.ReportFrom(report));
+        Assert.Equal("acme::shop::Purchase", ReportAccessors.ReportFrom(report));
         Assert.Equal(["purchases", "revenue"], ReportAccessors.ReportMeasureNames(report));
     }
 
@@ -76,13 +76,13 @@ public class ReportingAccessorsTests
     {
         var r = LoadPositiveFixture();
         var revenue = Assert.IsType<MetaMeasure>(Root(r, "Purchase").Children().Single(c => c.Name == "revenue"));
-        Assert.Equal(["Purchase.amountCents"], revenue.OfColumns());
+        Assert.Equal(["acme::shop::Purchase.amountCents"], revenue.OfColumns());
         Assert.Equal(AGG_SUM, revenue.Agg());
         Assert.Equal("active", revenue.SegmentName());
 
         var days = Assert.IsType<MetaMeasure>(Root(r, "WorkoutEvent").Children().Single(c => c.Name == "daysEngaged"));
         Assert.Equal(
-            ["WorkoutEvent.programId", "WorkoutEvent.customerEmail", "WorkoutEvent.weekNumber", "WorkoutEvent.dayNumber"],
+            ["acme::shop::WorkoutEvent.programId", "acme::shop::WorkoutEvent.customerEmail", "acme::shop::WorkoutEvent.weekNumber", "acme::shop::WorkoutEvent.dayNumber"],
             days.OfColumns());
         Assert.True(days.Distinct());
 
@@ -101,7 +101,7 @@ public class ReportingAccessorsTests
         var purchase = Root(r, "Purchase");
         var dim = Assert.IsType<MetaDimension>(purchase.ChildByTypeAndName(TYPE_DIMENSION, "program"));
         Assert.False(dim.IsTime());
-        Assert.Equal("Purchase.programId", dim.Of());
+        Assert.Equal("acme::shop::Purchase.programId", dim.Of());
         Assert.Equal(TYPE_RELATIONSHIP, purchase.ChildByTypeAndName(TYPE_RELATIONSHIP, "program")!.Type);
     }
 
@@ -111,7 +111,7 @@ public class ReportingAccessorsTests
         var r = LoadPositiveFixture();
         var dim = Assert.IsType<MetaDimension>(Root(r, "Purchase").ChildByTypeAndName(TYPE_DIMENSION, "programCreatedAt"));
         Assert.True(dim.IsTime());
-        Assert.Equal("Purchase.program", dim.Via());
+        Assert.Equal("acme::shop::Purchase.program", dim.Via());
         Assert.Equal([GRAIN_MONTH, GRAIN_YEAR], dim.Grains());
     }
 
@@ -170,8 +170,8 @@ public class ReportingAccessorsTests
     public void ReportSpine_is_the_declared_path_and_null_when_the_report_declares_none()
     {
         var r = LoadFixture("reporting-spine-and-default");
-        Assert.Equal("Purchase.program", ReportAccessors.ReportSpine(Root(r, "ProgramSales")));
-        Assert.Equal("Purchase.program.catalog", ReportAccessors.ReportSpine(Root(r, "CatalogSales")));
+        Assert.Equal("acme::shop::Purchase.program", ReportAccessors.ReportSpine(Root(r, "ProgramSales")));
+        Assert.Equal("acme::shop::Purchase.program.catalog", ReportAccessors.ReportSpine(Root(r, "CatalogSales")));
         Assert.Null(ReportAccessors.ReportSpine(Root(r, "SalesByDay")));
     }
 

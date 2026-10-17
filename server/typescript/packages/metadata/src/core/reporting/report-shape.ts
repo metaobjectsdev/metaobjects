@@ -328,7 +328,7 @@ function viaJoinsInner(hops: readonly string[], from: MetaObject, root: MetaRoot
     } else {
       const sourceRefField = hop.attr(RELATIONSHIP_ATTR_SOURCE_REF_FIELD);
       reference = resolveRelationshipReference(
-        current, hopName, target.name, typeof sourceRefField === "string" ? sourceRefField : undefined,
+        current, hopName, target, typeof sourceRefField === "string" ? sourceRefField : undefined,
       );
     }
     if (reference === undefined) return false;

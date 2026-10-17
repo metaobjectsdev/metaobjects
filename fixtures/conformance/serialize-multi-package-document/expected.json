@@ -1,0 +1,65 @@
+{
+  "metadata.root": {
+    "children": [
+      {
+        "object.value": {
+          "name": "Product",
+          "package": "shop::catalog",
+          "children": [
+            {
+              "field.string": {
+                "name": "sku"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.value": {
+          "name": "Order",
+          "package": "shop::orders",
+          "children": [
+            {
+              "field.object": {
+                "name": "customer",
+                "@objectRef": "shop::people::Customer"
+              }
+            },
+            {
+              "field.object": {
+                "name": "product",
+                "@objectRef": "shop::catalog::Product"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.value": {
+          "name": "Note",
+          "package": "shop::orders",
+          "children": [
+            {
+              "field.string": {
+                "name": "text"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.value": {
+          "name": "Customer",
+          "package": "shop::people",
+          "children": [
+            {
+              "field.string": {
+                "name": "email"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

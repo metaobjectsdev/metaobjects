@@ -102,14 +102,14 @@
               "relationship.association": {
                 "name": "currentScene",
                 "@cardinality": "one",
-                "@objectRef": "Scene"
+                "@objectRef": "game::Scene"
               }
             },
             {
               "relationship.association": {
                 "name": "player",
                 "@cardinality": "one",
-                "@objectRef": "Player"
+                "@objectRef": "game::Player"
               }
             },
             {
@@ -127,7 +127,7 @@
                 "@fields": [
                   "currentSceneId"
                 ],
-                "@references": "Scene"
+                "@references": "game::Scene"
               }
             },
             {
@@ -136,7 +136,7 @@
                 "@fields": [
                   "lastOpeningNarrativeSceneId"
                 ],
-                "@references": "Scene"
+                "@references": "game::Scene"
               }
             },
             {
@@ -145,7 +145,7 @@
                 "@fields": [
                   "transitioningFromSceneId"
                 ],
-                "@references": "Scene"
+                "@references": "game::Scene"
               }
             },
             {
@@ -154,7 +154,7 @@
                 "@fields": [
                   "playerId"
                 ],
-                "@references": "Player"
+                "@references": "game::Player"
               }
             }
           ]
@@ -163,4 +163,3 @@
     ]
   }
 }
-

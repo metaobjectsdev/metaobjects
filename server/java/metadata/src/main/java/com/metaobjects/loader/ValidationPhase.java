@@ -312,6 +312,11 @@ public final class ValidationPhase {
             }
             throw findings.get(findings.size() - 1);
         }
+
+        // ADR-0059 R5 — after the last validation pass, resolve every reference once: record the
+        // bound target and rewrite the value to its canonical spelling. The passes above resolved
+        // the AUTHORED strings, so their codes and order are unchanged.
+        References.resolveReferences(root);
     }
 
     /** Run one validation pass, catching its finding (if any) into {@code collected} so the
@@ -4197,27 +4202,10 @@ public final class ValidationPhase {
      */
     public static MetaObject resolveRootObject(MetaRoot root, String ref, String referrerPkg) {
         if (ref == null) return null;
-        String pkg = (referrerPkg == null) ? "" : referrerPkg;
-        if (ref.indexOf(MetaData.PKG_SEPARATOR) >= 0) {
-            for (MetaData child : root.getChildren(MetaData.class, false)) {
-                if (child instanceof MetaObject && ref.equals(child.getName())) {
-                    return (MetaObject) child;
-                }
-            }
-            return null;
-        }
-        String localKey = pkg.isEmpty() ? ref : pkg + MetaData.PKG_SEPARATOR + ref;
-        MetaObject own = null;
-        MetaObject rootLevel = null;
-        for (MetaData child : root.getChildren(MetaData.class, false)) {
-            if (!(child instanceof MetaObject)) continue;
-            String key = child.getName();
-            if (key == null) continue;
-            if (key.equals(localKey)) own = (MetaObject) child;
-            if (key.equals(ref)) rootLevel = (MetaObject) child;
-        }
-        if (own != null) return own;
-        return localKey.equals(ref) ? null : rootLevel;
+        // ADR-0059 R2 — the one resolver: ::Rest, ..::Rest, pkg::Name, bare Name. An over-dropping
+        // ..:: resolves to nothing here; the walk that owns the ref reports ERR_BAD_ATTR_VALUE.
+        MetaData node = References.resolveObjectRef(root, ref, referrerPkg).node();
+        return node instanceof MetaObject ? (MetaObject) node : null;
     }
 
     /** ADR-0042 §5 — a did-you-mean suffix for an UNRESOLVED object reference: the FQNs of

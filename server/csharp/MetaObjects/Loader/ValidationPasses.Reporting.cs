@@ -401,6 +401,14 @@ public static partial class ValidationPasses
                 "can never multiply the measured rows.");
     }
 
+    /// <summary>
+    /// The entity a dimension's <c>@via</c> reaches, walked from <paramref name="declaring"/> with D2's
+    /// rules, or null when the walk fails (D2 reports why). ADR-0059 R3: a dimension's <c>@of</c>
+    /// resolves in this entity's package, so the loader's reference pass reuses the walk.
+    /// </summary>
+    internal static MetaData? DimensionViaTerminal(MetaData root, MetaData declaring, string via) =>
+        WalkToOneVia(root, declaring, via, _ => { }, D2Walk(declaring));
+
     /// <summary>R8 — a report's @spine, started at @from; Owner resolves in @from's package
     /// (it must be @from or an entity @from extends), whatever package the report is in.</summary>
     private static ToOneWalk SpineWalk(MetaData from, string fromKey) =>

@@ -33,9 +33,77 @@ public abstract class MetaData
     /// </summary>
     private string? _fileDefaultPackage;
 
+    /// <summary>
+    /// ADR-0059 R10 — the package of the file this node was parsed from: "" when that file
+    /// declares none, null for a node built in code with no file at all.
+    /// </summary>
+    public string? FileDefaultPackage => _fileDefaultPackage;
+
     /// <summary>Raw super reference string, pre-resolution.</summary>
     private string? _superRef;
     public string? SuperRef => _superRef;
+
+    /// <summary>
+    /// ADR-0059 R5 — the <c>extends</c> value exactly as authored, kept when the loader's
+    /// <c>ResolveReferences</c> pass rewrites <see cref="SuperRef"/> to its canonical spelling.
+    /// </summary>
+    public string? AuthoredSuperRef { get; private set; }
+
+    private Dictionary<string, object>? _resolvedTargets;
+    private Dictionary<string, object?>? _authoredAttrs;
+
+    /// <summary>
+    /// ADR-0059 R5 — the object an own reference attribute named, bound once by the loader.
+    /// Null when the attribute is a list, did not resolve, or was never bound.
+    /// </summary>
+    public MetaData? ResolvedTargetOf(string attrName) =>
+        _resolvedTargets is not null && _resolvedTargets.TryGetValue(attrName, out var t) ? t as MetaData : null;
+
+    /// <summary>The bound target of each element of an own list-valued reference attribute (null entries where unresolved).</summary>
+    public IReadOnlyList<MetaData?>? ResolvedTargetsOf(string attrName) =>
+        _resolvedTargets is not null && _resolvedTargets.TryGetValue(attrName, out var t) ? t as IReadOnlyList<MetaData?> : null;
+
+    /// <summary>Loader-internal: record the bound target(s) of an own reference attribute.</summary>
+    public void SetResolvedTarget(string attrName, object target)
+    {
+        AssertNotFrozen();
+        (_resolvedTargets ??= new Dictionary<string, object>())[attrName] = target;
+    }
+
+    /// <summary>
+    /// Loader-internal: rewrite an own reference attribute to its canonical value, keeping the
+    /// authored value (first write wins).
+    /// </summary>
+    public void SetCanonicalAttr(string name, object? canonical)
+    {
+        AssertNotFrozen();
+        _authoredAttrs ??= new Dictionary<string, object?>();
+        if (!_authoredAttrs.ContainsKey(name)) _authoredAttrs[name] = _attrs.GetValueOrDefault(name);
+        _attrs[name] = canonical;
+    }
+
+    /// <summary>Own attr value as the author wrote it (the canonical value when it was never rewritten).</summary>
+    public object? OwnAuthoredAttr(string name)
+    {
+        if (_authoredAttrs is not null && _authoredAttrs.TryGetValue(name, out var v)) return v;
+        return OwnAttr(name);
+    }
+
+    /// <summary>
+    /// ADR-0059 — effective attr value as the author WROTE it: for a reference the loader rewrote
+    /// to canonical, the authored string; otherwise the value. For human-facing text only — code
+    /// that binds a reference reads <see cref="Attr"/>.
+    /// </summary>
+    public object? AuthoredAttr(string name)
+    {
+        var seen = new HashSet<MetaData>(ReferenceEqualityComparer.Instance);
+        for (MetaData? n = this; n is not null && seen.Add(n); n = n._superData)
+        {
+            // ADR-0039: own — locating the layer that declares the attr, walking the super chain.
+            if (n._attrs.ContainsKey(name)) return n.OwnAuthoredAttr(name);
+        }
+        return null;
+    }
 
     /// <summary>Post-resolution super pointer; set by SetSuperResolved() after parsing.</summary>
     private MetaData? _superData;
@@ -153,7 +221,9 @@ public abstract class MetaData
         // neither is present (e.g. programmatic construction) fall back to the
         // nearest-ancestor package walk.
         var pkg = _package ?? _fileDefaultPackage;
-        if (string.IsNullOrEmpty(pkg))
+        // ADR-0059 R10: a recorded file package ("" included) is final — a file with no package
+        // declares root-level nodes and must not borrow the merged root's package.
+        if (_package is null && _fileDefaultPackage is null)
         {
             var node = _parent;
             while (node is not null)
@@ -219,6 +289,14 @@ public abstract class MetaData
     {
         AssertNotFrozen();
         _superRef = superRef;
+    }
+
+    /// <summary>Loader-internal: rewrite <c>extends</c> to its canonical spelling, keeping the authored one.</summary>
+    public void SetCanonicalSuper(string canonical)
+    {
+        AssertNotFrozen();
+        AuthoredSuperRef ??= _superRef;
+        _superRef = canonical;
     }
 
     // ---------------------------------------------------------------------------

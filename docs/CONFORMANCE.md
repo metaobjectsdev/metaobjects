@@ -26,7 +26,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 
 | Corpus | Fixtures | TS | Java | Kotlin | C# | Python |
 |---|---|---|---|---|---|---|
-| [`fixtures/conformance/`](../fixtures/conformance/) (metamodel) | 384 | ✓ | ✓ | inherits via `metadata-ktx` | ✓ | ✓ |
+| [`fixtures/conformance/`](../fixtures/conformance/) (metamodel) | 394 | ✓ | ✓ | inherits via `metadata-ktx` | ✓ | ✓ |
 | [`fixtures/yaml-conformance/`](../fixtures/yaml-conformance/) | 16 | 16 / 16 | 15 / 16 (1 ledgered: `yaml-quoted-leading-zero` — Java pipeline strips quotes off `"007"`) | inherits via Java | 15 / 16 (1 ledgered: `error-yaml-coerced-hex-in-string` — YamlDotNet doesn't coerce `0xFF`) | 16 / 16 |
 | [`fixtures/verify-conformance/`](../fixtures/verify-conformance/) | 37 | ✓ | ✓ | inherits via Java | ✓ | ✓ |
 | [`fixtures/verify-strict-conformance/`](../fixtures/verify-strict-conformance/) | 1 | ✓ | — | — | — | ✓ |
@@ -267,12 +267,13 @@ unit-test runners (`bun test`, `dotnet test`, `pytest`, `mvn test`) pull Docker.
 
 ## Fixture-to-doc mapping
 
-### `fixtures/conformance/` — metamodel loader + canonical serializer (384)
+### `fixtures/conformance/` — metamodel loader + canonical serializer (394)
 
 | Fixture prefix | Feature doc |
 |---|---|
 | `loader-basic-*`, `error-parse-*` | [features/loaders.md](features/loaders.md) |
 | `extends-*`, `error-extends-*` | [features/entities.md](features/entities.md) (inheritance) |
+| `ref-*`, `error-ref-*`, `package-default-per-file`, `serialize-multi-package-document` | [features/abstracts-and-inheritance.md](features/abstracts-and-inheritance.md) (how a reference resolves: bare, `::`, `..::`, per-file package; ADR-0059) |
 | `identity-*`, `subtype-entity-*`, `subtype-value-*` | [features/entities.md](features/entities.md) (identity / entity vs value) |
 | `attr-*`, `error-attr-*`, `error-reserved-word-as-attr` | [features/entities.md](features/entities.md) (attributes) |
 | `doc-common-attrs-*` | [features/entities.md](features/entities.md) (documentation common attrs) |
@@ -541,7 +542,7 @@ files into a real Cube.
 
 ## Orphaned fixtures (tested but not yet documented)
 
-The fixtures in the nine corpora mapped above (metamodel 384 + yaml 16 + verify 37
+The fixtures in the nine corpora mapped above (metamodel 394 + yaml 16 + verify 37
 + render 16 + persistence 54 + api-contract 91 + source-resolution 25 + scope 10 +
 dependency 23) each map to a feature doc, and so do the two requirement corpora and the
 `cube-model` corpus, whose case lists live in their own READMEs. None are orphaned today. The remaining

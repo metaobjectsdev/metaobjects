@@ -523,6 +523,16 @@ function walkToOneVia(
   return current;
 }
 
+/**
+ * The entity a dimension's `@via` reaches, walked from `declaring` with D2's rules,
+ * or undefined when the walk fails (D2 reports why). ADR-0059 R3: a dimension's `@of`
+ * resolves in this entity's package, so the loader's `resolveReferences` pass reuses
+ * the walk rather than restating it.
+ */
+export function dimensionViaTerminal(root: MetaData, declaring: MetaData, via: string): MetaData | undefined {
+  return walkToOneVia(root, declaring, via, () => {}, d2Walk(declaring));
+}
+
 function checkMeasure(ctx: MemberCtx, measure: MetaMeasure): void {
   const err = (message: string): void =>
     ctx.sink.push(measure, ERR_INVALID_MEASURE, ctx.label, `: ${message}`, ctx.suffix);

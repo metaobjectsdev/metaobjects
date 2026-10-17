@@ -1,0 +1,39 @@
+{
+  "metadata.root": {
+    "children": [
+      {
+        "object.value": {
+          "name": "Apple",
+          "package": "alpha",
+          "children": [
+            {
+              "field.string": {
+                "name": "alphaOnly"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.value": {
+          "name": "Apple",
+          "package": "beta",
+          "children": [
+            {
+              "field.string": {
+                "name": "betaOnly"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.value": {
+          "name": "Sub",
+          "package": "beta",
+          "extends": "beta::Apple"
+        }
+      }
+    ]
+  }
+}

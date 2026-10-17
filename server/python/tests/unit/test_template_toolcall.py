@@ -114,7 +114,7 @@ def test_template_toolcall_loads_with_required_attrs() -> None:
     toolcall = toolcalls[0]
     assert toolcall.name == "lookupWeather"
     assert toolcall.attr(tc.TEMPLATE_ATTR_TOOL_NAME) == "lookup_weather"
-    assert toolcall.attr(tc.TEMPLATE_ATTR_PAYLOAD_REF) == "WeatherToolOutput"
+    assert toolcall.attr(tc.TEMPLATE_ATTR_PAYLOAD_REF) == "acme::tools::WeatherToolOutput"
 
 
 def test_template_toolcall_missing_tool_name_emits_err_missing_required_attr() -> None:

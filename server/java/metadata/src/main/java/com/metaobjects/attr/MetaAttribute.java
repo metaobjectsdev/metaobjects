@@ -150,6 +150,22 @@ public class MetaAttribute<T> extends MetaData implements DataTypeAware<T>, Meta
     
     
     
+    // ADR-0059 R5 — set once by the loader's resolveReferences pass for a reference attribute.
+    private Object resolvedTarget = null;
+    private Object authoredValue = null;
+
+    /** The top-level object this reference attribute names (a {@code MetaData}; a list for a list value), or null. */
+    public Object getResolvedTarget() { return resolvedTarget; }
+
+    /** Records the bound target (ADR-0059 R5). */
+    public void setResolvedTarget(Object resolvedTarget) { this.resolvedTarget = resolvedTarget; }
+
+    /** The value exactly as authored, kept when the loader rewrote it to its canonical spelling; else null. */
+    public Object getAuthoredValue() { return authoredValue; }
+
+    /** Records the authored value (ADR-0059 R5). */
+    public void setAuthoredValue(Object authoredValue) { this.authoredValue = authoredValue; }
+
     /**
      * Safe value getter with Optional wrapper
      */

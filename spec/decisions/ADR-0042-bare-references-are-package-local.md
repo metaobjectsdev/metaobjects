@@ -4,7 +4,7 @@
 
 **Accepted** (2026-07-12). **Amends [ADR-0041](ADR-0041-cross-package-reference-resolution.md)** — supersedes its Decision §2(b) "unique elsewhere" and §2(c) `ERR_AMBIGUOUS_REF`. ADR-0041 §1 (FQN-exact) and §2(a) (same-package preference) stand. Aligns with **[ADR-0032](ADR-0032-canonical-fqn-refs.md)**.
 
-**Implementation status: in progress** (as of 2026-07-12). The decision is accepted; the coordinated 5-port implementation is not yet merged. The TS reference-port core (the source-agnostic bare→FQN fold at load + package-local resolvers) is validated (2100/2125 metadata tests; the remainder are the expected golden/accessor updates). Fixes #191, closes #174 (superseded). See the implementation plan for the remaining work (TS golden regen + the other four ports + release).
+**Implementation status: implemented** (`3a2944f21`, `c20ccefbb`); **amended by [ADR-0059](ADR-0059-references-resolve-once-after-the-tree.md)**, which replaces §3's desugar sentence (sources no longer interpret references; one resolver binds them after the tree loads) and corrects §4's `extends` claim. §2 stands.
 
 ## Context
 

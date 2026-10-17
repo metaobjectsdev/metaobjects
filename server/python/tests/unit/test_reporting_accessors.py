@@ -102,13 +102,13 @@ def test_dimension_accessors(vocab: MetaData) -> None:
     program = _child(purchase, TYPE_DIMENSION, "program")
     assert isinstance(program, MetaDimension)
     assert not program.is_time()
-    assert program.of() == "Purchase.programId"
+    assert program.of() == "acme::shop::Purchase.programId"
     assert program.via() is None
     assert program.grains() == []
 
     title = _child(purchase, TYPE_DIMENSION, "programTitle")
     assert isinstance(title, MetaDimension)
-    assert title.via() == "Purchase.program"
+    assert title.via() == "acme::shop::Purchase.program"
 
     purchased_at = _child(purchase, TYPE_DIMENSION, "purchasedAt")
     assert isinstance(purchased_at, MetaDimension)
@@ -130,8 +130,8 @@ def test_measure_accessors(vocab: MetaData) -> None:
     assert revenue.agg() == "sum"
     assert not revenue.distinct()
     # @of is isArray: the authored bare string coerces to a one-element list.
-    assert revenue.get_meta_attr("of") == ["Purchase.amountCents"]
-    assert revenue.of_columns() == ["Purchase.amountCents"]
+    assert revenue.get_meta_attr("of") == ["acme::shop::Purchase.amountCents"]
+    assert revenue.of_columns() == ["acme::shop::Purchase.amountCents"]
     assert revenue.segment_name() == "active"
     assert revenue.filter() is None
 
@@ -148,10 +148,10 @@ def test_measure_accessors(vocab: MetaData) -> None:
     days = _child(event, TYPE_MEASURE, "daysEngaged")
     assert isinstance(days, MetaMeasure)
     assert days.of_columns() == [
-        "WorkoutEvent.programId",
-        "WorkoutEvent.customerEmail",
-        "WorkoutEvent.weekNumber",
-        "WorkoutEvent.dayNumber",
+        "acme::shop::WorkoutEvent.programId",
+        "acme::shop::WorkoutEvent.customerEmail",
+        "acme::shop::WorkoutEvent.weekNumber",
+        "acme::shop::WorkoutEvent.dayNumber",
     ]
     ratio = _child(event, TYPE_MEASURE, "avgDaysPerStarter")
     assert isinstance(ratio, MetaMeasure)
@@ -177,7 +177,7 @@ def test_inherited_members_resolve_through_extends() -> None:
     assert occurred.grains() == ["day", "week"]
     events = _child(event, TYPE_MEASURE, "events")
     assert isinstance(events, MetaMeasure)
-    assert events.of_columns() == ["BaseEvent.id"]
+    assert events.of_columns() == ["acme::shop::BaseEvent.id"]
 
 
 # ---------------------------------------------------------------------------
@@ -187,7 +187,7 @@ def test_inherited_members_resolve_through_extends() -> None:
 
 def test_report_accessors(vocab: MetaData) -> None:
     daily = _object(vocab, "DailyRevenue")
-    assert report_from(daily) == "Purchase"
+    assert report_from(daily) == "acme::shop::Purchase"
     assert report_dimension_items(daily) == [ReportDimensionItem("purchasedAt", "day")]
     assert report_measure_names(daily) == ["purchases", "revenue"]
     # A relative-date operand survives desugaring unchanged under an explicit op.
@@ -246,7 +246,7 @@ def test_report_spine_is_the_declared_path_else_none(vocab: MetaData) -> None:
     )
     result = _load(doc)
     assert result.errors == [], [e.message for e in result.errors]
-    assert report_spine(_object(result.root, "ProgramPurchases")) == "Purchase.program"
+    assert report_spine(_object(result.root, "ProgramPurchases")) == "acme::shop::Purchase.program"
     assert report_spine(_object(vocab, "DailyRevenue")) is None
 
 

@@ -114,7 +114,7 @@ const duplicateXCloneProvider: MetaDataTypeProvider = {
  * the actual provider objects to compose a registry. Test-only providers
  * (suffixed below) feed the provider-extension-* fixtures.
  */
-const PROVIDERS: Readonly<Record<string, MetaDataTypeProvider>> = {
+export const PROVIDERS: Readonly<Record<string, MetaDataTypeProvider>> = {
   [coreTypesProvider.id]: coreTypesProvider, // "metaobjects-core-types"
   [dbProvider.id]: dbProvider,               // "metaobjects-db"
   [docProvider.id]: docProvider,             // "metaobjects-documentation"

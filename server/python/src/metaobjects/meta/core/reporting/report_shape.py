@@ -269,7 +269,7 @@ def report_spine_hops(report: MetaObject, from_: MetaObject, root: MetaRoot) -> 
         return None
     hops = reporting_via_hops(spine, from_, from_, root)
     if hops is None:
-        raise _unresolved(report.name, f"@spine '{spine}'")
+        raise _unresolved(report.name, f"@spine '{report.authored_attr('spine')}'")
     return hops
 
 
@@ -348,7 +348,7 @@ def _via_joins_inner(hops: list[str], from_: MetaObject, root: MetaRoot) -> bool
             reference = resolve_relationship_reference(
                 current,
                 hop_name,
-                target.name,
+                target,
                 source_ref_field if isinstance(source_ref_field, str) else None,
             )
         if reference is None:
@@ -387,13 +387,13 @@ def _dimension_required(
             return False
         hops = reporting_via_hops(via, reporting_member_owner(dim, from_), from_, root)
         if hops is None:
-            raise _unresolved(report_name, f"dimension '{dim.name}' @via '{via}'")
+            raise _unresolved(report_name, f"dimension '{dim.name}' @via '{dim.authored_attr('via')}'")
         return _via_joins_inner(hops, from_, root)
     if via is None:
         return False  # a column of @from: null in a spine row with no facts
     hops = reporting_via_hops(via, reporting_member_owner(dim, from_), from_, root)
     if hops is None:
-        raise _unresolved(report_name, f"dimension '{dim.name}' @via '{via}'")
+        raise _unresolved(report_name, f"dimension '{dim.name}' @via '{dim.authored_attr('via')}'")
     return hops == spine and (of_required or _is_primary_key_field(named, of))
 
 
@@ -410,7 +410,7 @@ def _dimension_field(
     via = dim.via()
     # A @via that does not walk is the @via's error, not the @of's (the @of resolves at its end).
     if via is not None and _reporting_via_terminal(via, reporting_member_owner(dim, from_), from_, root) is None:
-        raise _unresolved(report_name, f"dimension '{dim.name}' @via '{via}'")
+        raise _unresolved(report_name, f"dimension '{dim.name}' @via '{dim.authored_attr('via')}'")
     ref = resolve_dimension_of(dim, from_, root)
     if ref is None:
         raise _unresolved(report_name, f"dimension '{item.name}' @of")

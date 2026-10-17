@@ -12,6 +12,8 @@ import {
   type MetaRoot,
   TYPE_TEMPLATE,
   TEMPLATE_ATTR_PAYLOAD_REF,
+  IDENTITY_REFERENCE_ATTR_REFERENCES,
+  refTarget,
   REQUIREMENT_ATTR_STATEMENT,
   OBJECT_SUBTYPE_VALUE,
   OBJECT_SUBTYPE_ENTITY,
@@ -522,7 +524,9 @@ function describeIdentity(id: MetaIdentity): string {
   if (id.subType === IDENTITY_SUBTYPE_REFERENCE) {
     // The subType discriminator guarantees the instance is a MetaReferenceIdentity;
     // narrow to it so we can use its typed `referencesRaw` getter directly.
-    const raw = (id as MetaReferenceIdentity).referencesRaw;
+    // Human-facing text prints the reference as the author wrote it (ADR-0059); the
+    // loaded value is canonical.
+    const raw = id.authoredAttr(IDENTITY_REFERENCE_ATTR_REFERENCES);
     if (typeof raw === "string" && raw.length > 0) {
       return `**Reference:** ${fieldList} → \`${raw}\``;
     }
@@ -677,9 +681,8 @@ export function buildEntityDocData(
   // template may inherit @payloadRef via extends; resolve rather than work-by-accident.
   for (const child of root.children()) {
     if (child.type !== TYPE_TEMPLATE) continue;
-    const ref = child.attr(TEMPLATE_ATTR_PAYLOAD_REF);
-    if (typeof ref !== "string") continue;
-    if (stripPackage(ref) !== entity.name) continue;
+    // ADR-0059 R7: the payload the loader bound, never a short-name match.
+    if (refTarget(child, TEMPLATE_ATTR_PAYLOAD_REF) !== entity) continue;
     // Link to the template's own doc page. The href is derived from the SAME
     // page-placement function used to write the template page, so it resolves
     // in BOTH layouts (flat → `./<Tmpl>.md`; package → a correct relative path

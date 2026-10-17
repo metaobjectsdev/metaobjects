@@ -1,0 +1,21 @@
+{
+  "metadata.root": {
+    "package": "acme::sub",
+    "children": [
+      {
+        "object.value": {
+          "name": "X",
+          "extends": "..::Base",
+          "children": [
+            {
+              "field.object": {
+                "name": "thing",
+                "@objectRef": "..::Thing"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -108,11 +108,11 @@ public class M2MSlimVocabularyTest extends SharedRegistryTestBase {
     public void accessorsReadSlimVocabulary() {
         MetaDataLoader loader = loadThrough(DIRECTED, "directed.json");
         MetaRelationship r = rel(loader, "acme::User", "follows");
-        assertEquals("Follow", r.getThrough());
+        assertEquals("acme::Follow", r.getThrough());
         assertEquals("followerId", r.getSourceRefField());
         assertFalse(r.isSymmetric());
         assertEquals("many", r.getCardinality());
-        assertEquals("User", r.getObjectRef());
+        assertEquals("acme::User", r.getObjectRef());
     }
 
     @Test
@@ -120,7 +120,7 @@ public class M2MSlimVocabularyTest extends SharedRegistryTestBase {
         MetaDataLoader loader = loadThrough(SYMMETRIC, "symmetric.json");
         MetaRelationship r = rel(loader, "acme::User", "friends");
         assertTrue(r.isSymmetric());
-        assertEquals("Friendship", r.getThrough());
+        assertEquals("acme::Friendship", r.getThrough());
         assertNull(r.getSourceRefField());
     }
 

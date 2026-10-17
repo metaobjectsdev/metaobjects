@@ -55,6 +55,7 @@ Write one when a decision is **cross-cutting** (affects more than one language p
 - [ADR-0056 — A value object's type is generated once — the template tier references it](ADR-0056-value-object-types-are-generated-once.md) — *Accepted* (supersedes the payload-tier half of ADR-0044)
 - [ADR-0057 — Requirement checks and requirement tests run in every port](ADR-0057-requirement-checks-and-tests-in-every-port.md) — *Accepted* (reverses the "Checks — TypeScript only" split recorded in `docs/CONFORMANCE.md`)
 - [ADR-0058 — One physical-naming setting, read by every port](ADR-0058-one-physical-naming-setting.md) — *Accepted* (one `naming` block in `.metaobjects/config.json` replaces the per-port column-naming flags, pom args, config keys and runtime setters)
+- [ADR-0059 — References resolve once, after the tree](ADR-0059-references-resolve-once-after-the-tree.md) — *Accepted* (sources keep references as written; one resolver per port binds them before freeze and the serializer writes them canonical; supersedes ADR-0032 §3–§4, amends ADR-0042)
 
 > **Index gap — ADR-0031 through ADR-0051 are on disk but not listed above.** The index stopped
 > being maintained after ADR-0030; the files are authoritative, this list is not. Read

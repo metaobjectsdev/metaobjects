@@ -22,7 +22,7 @@
                 "@cardinality": "many",
                 "@objectRef": "acme::social::User",
                 "@sourceRefField": "followerId",
-                "@through": "Follow"
+                "@through": "acme::social::Follow"
               }
             },
             {

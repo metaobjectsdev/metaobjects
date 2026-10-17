@@ -15,6 +15,16 @@ using MetaObjects.Persistence.Source;
 namespace MetaObjects;
 
 /// <summary>
+/// How references are written (ADR-0059 R8).
+/// <see cref="Canonical"/> (default): each reference as the loader resolved it (<c>pkg::Name</c>,
+/// <c>::Name</c> for a root-level target from a packaged referrer) and the document package rule;
+/// the output loads back to the same model from any source. <see cref="Authored"/>: each reference,
+/// <c>extends</c> included, exactly as written, and every <c>package</c> where it was written. Only
+/// <c>fmt</c> uses it, so formatting never rewrites what an author wrote.
+/// </summary>
+public enum RefSpelling { Canonical, Authored }
+
+/// <summary>
 /// Canonical JSON serializer. Produces byte-identical output to the TypeScript
 /// <c>canonicalSerialize</c> / <c>canonicalSerializeEffective</c> functions.
 /// </summary>
@@ -29,9 +39,9 @@ public static class SerializerJson
     /// Output is deterministic: attrs sorted alphabetically, trailing LF.
     /// Byte-identical to the TypeScript <c>canonicalSerialize</c>.
     /// </summary>
-    public static string CanonicalSerialize(MetaData model)
+    public static string CanonicalSerialize(MetaData model, RefSpelling refs = RefSpelling.Canonical)
     {
-        var nodeObj = SerializeNode(model, effective: false);
+        var nodeObj = SerializeNode(model, effective: false, refs, null);
         // FR-016 / ADR-0018: rewrite legacy @table → kind-matching alias on
         // source.rdb wrappers (run before alphabetical sort so the rewritten
         // key sorts in its canonical position).
@@ -48,7 +58,7 @@ public static class SerializerJson
     /// </summary>
     public static string CanonicalSerializeEffective(MetaData model)
     {
-        var nodeObj = SerializeNode(model, effective: true);
+        var nodeObj = SerializeNode(model, effective: true, RefSpelling.Canonical, null);
         RewriteSourceRdbPhysicalNames(nodeObj);
         var sorted = SortAttrKeys(nodeObj)!;
         return Stringify(sorted) + "\n";
@@ -139,15 +149,42 @@ public static class SerializerJson
     // Serialize a single node → { "<type>.<subType>": { ...body } }
     // ---------------------------------------------------------------------------
 
-    private static JsonObject SerializeNode(MetaData model, bool effective)
+    private static JsonObject SerializeNode(MetaData model, bool effective, RefSpelling refs, string? pkgSlot)
     {
-        var inner = SerializeNodeInner(model, effective);
+        var inner = SerializeNodeInner(model, effective, refs, pkgSlot);
         var wrapper = new JsonObject();
         wrapper.Add(FusedKey(model.Type, model.SubType), inner);
         return wrapper;
     }
 
-    private static JsonObject SerializeNodeInner(MetaData model, bool effective)
+    /// <summary>Effective package of a top-level node (ADR-0059 R10): own, else its file's. A node
+    /// built in code has no file, so it takes the root's package, as re-loading the output would.</summary>
+    private static string TopLevelPackage(MetaData node, MetaData root) =>
+        node.Package ?? node.FileDefaultPackage ?? root.Package ?? "";
+
+    /// <summary>
+    /// ADR-0059 R8 document package rule, for a <c>metadata.root</c> in canonical mode. Every named
+    /// top-level node in one non-empty package P: the root carries P (a node keeps a package it
+    /// carries itself). When the root states no package and every node names P itself, the root
+    /// package stays absent. Otherwise no root package and each named top-level node carries its
+    /// effective package. A root with no named top-level node keeps its own package.
+    /// </summary>
+    private static (string? RootPkg, bool PerNode) DocumentPackages(MetaData root)
+    {
+        // ADR-0039: own — the serializer writes the declared layer; the root has no super.
+        var named = root.OwnChildren().Where(c => c.Name != "").ToList();
+        if (named.Count == 0) return (root.Package, false);
+        var pkgs = named.Select(c => TopLevelPackage(c, root)).Distinct().ToList();
+        if (pkgs.Count == 1)
+        {
+            string only = pkgs[0];
+            bool selfNamed = root.Package is null && named.All(c => c.Package == only);
+            if (only != "") return (selfNamed ? null : only, false);
+        }
+        return (null, true);
+    }
+
+    private static JsonObject SerializeNodeInner(MetaData model, bool effective, RefSpelling refs, string? pkgSlot)
     {
         // Canonical body-key order:
         //   1. name  2. package  3. extends  4. abstract
@@ -161,14 +198,21 @@ public static class SerializerJson
             obj.Add(RESERVED_KEY_NAME, JsonValue.Create(model.Name));
         }
 
-        if (model.Package is not null && model.Package != "")
+        bool isDocRoot = model.Type == TYPE_METADATA && model.SubType == SUBTYPE_ROOT;
+        (string? RootPkg, bool PerNode)? doc = isDocRoot && refs == RefSpelling.Canonical ? DocumentPackages(model) : null;
+
+        string? pkg = doc is not null ? doc.Value.RootPkg : pkgSlot ?? model.Package;
+        if (!string.IsNullOrEmpty(pkg))
         {
-            obj.Add(RESERVED_KEY_PACKAGE, JsonValue.Create(model.Package));
+            obj.Add(RESERVED_KEY_PACKAGE, JsonValue.Create(pkg));
         }
 
-        if (model.SuperRef is not null)
+        // After the loader's ResolveReferences pass SuperRef is canonical (ADR-0059 R5); the
+        // authored spelling is kept beside it for `fmt`.
+        string? superRef = refs == RefSpelling.Authored ? model.AuthoredSuperRef ?? model.SuperRef : model.SuperRef;
+        if (superRef is not null)
         {
-            obj.Add(RESERVED_KEY_EXTENDS, JsonValue.Create(model.SuperRef));
+            obj.Add(RESERVED_KEY_EXTENDS, JsonValue.Create(superRef));
         }
 
         if (model.IsAbstract)
@@ -204,13 +248,21 @@ public static class SerializerJson
         foreach (var child in childList)
         {
             if (child.Type == TYPE_ATTR) continue;
-            serializedChildren.Add(SerializeNode(child, effective));
+            // A top-level node's package follows the document rule; deeper nodes keep their own.
+            // In a one-package document a node keeps any package it carries itself, so
+            // single-package output is unchanged.
+            string? childSlot = doc is not null && doc.Value.PerNode
+                ? (child.Name != "" ? TopLevelPackage(child, model) : "")
+                : null;
+            serializedChildren.Add(SerializeNode(child, effective, refs, childSlot));
         }
 
         // Inline @-attrs — always emitted as @name; attrs have no child form.
         foreach (var (attrName, attrValue) in attrMap)
         {
-            obj.Add($"{ATTR_PREFIX}{attrName}", AttrValueToJsonNode(attrValue));
+            // ADR-0039: own — the authored value lives on the declaring node.
+            object? shown = refs == RefSpelling.Authored && !effective ? model.OwnAuthoredAttr(attrName) : attrValue;
+            obj.Add($"{ATTR_PREFIX}{attrName}", AttrValueToJsonNode(shown));
         }
 
         // children — emit only if non-empty

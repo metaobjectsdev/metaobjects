@@ -49,15 +49,12 @@ public object KotlinGenUtil {
     const val AUTO_SET_ON_UPDATE = "onUpdate"
 
     /**
-     * Resolve a MetaObject (entity OR value) by exact FQN match or by short-name match
-     * (the trailing segment after the last `::`). Returns null when neither matches.
+     * Resolve a MetaObject (entity OR value) from a CANONICAL reference value (ADR-0059 R7):
+     * an exact resolution-key match (`pkg::Name`, `::Name`, or a root-level `Name`), with any
+     * dotted child tail ignored. Never matches on a short name. Returns null when nothing matches.
      */
-    fun resolveObjectByShortOrFqn(loader: MetaDataLoader, ref: String): MetaObject? {
-        for (child in loader.metaObjects) {
-            if (child.name == ref || child.name.substringAfterLast("::") == ref) return child
-        }
-        return null
-    }
+    fun resolveObjectByShortOrFqn(loader: MetaDataLoader, ref: String): MetaObject? =
+        com.metaobjects.loader.References.lookupCanonical(loader.root, ref)
 
     // =========================================================================
     // ADR-0042 — canonical package-local object-ref resolution (@payloadRef).

@@ -30,7 +30,7 @@ from ..meta.core.object.object_constants import OBJECT_SUBTYPE_VALUE
 from ..meta.core.validator import validator_constants as vc
 from ..meta.meta_data import MetaData
 from ..meta.persistence.db import db_constants as dbc
-from ..naming_refs import resolve_object_ref
+from ..naming_refs import resolve_object_ref, referrer_package_of
 from ..shared.base_types import TYPE_FIELD, TYPE_VALIDATOR
 
 
@@ -219,7 +219,7 @@ def _resolve_vo_ref(field: MetaData) -> MetaObject | None:
     # (an inherited field resolves in the package that declared it), then a root-level
     # object — never a same-named object in some other package.
     owner = field.parent if field.parent is not None else root
-    referrer_pkg = owner.package or owner.file_default_package or ""
+    referrer_pkg = referrer_package_of(owner)
     target = resolve_object_ref(root, ref, referrer_pkg)
     return target if isinstance(target, MetaObject) and target.sub_type == OBJECT_SUBTYPE_VALUE else None
 

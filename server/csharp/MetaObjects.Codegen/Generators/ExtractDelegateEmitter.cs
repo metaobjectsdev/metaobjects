@@ -217,7 +217,7 @@ public static class ExtractDelegateEmitter
         // duplicate-type error, since they land in different namespaces), yet
         // root.FindObject(bareName) at RUNTIME silently binds whichever one loaded first —
         // reachable, compiling, silent wrong-node extraction. Bake the FULL ResolutionKey (FQN)
-        // and resolve via the canonical NamingRefs.ResolveObjectRef matcher (FQN-exact,
+        // and resolve via the canonical NamingRefs.LookupCanonical lookup (ADR-0059 R7) (FQN-exact,
         // load-order-independent) ONLY when this payload's bare name is actually AMBIGUOUS at
         // the metadata root (more than one root-level object.* shares it — the SAME domain
         // MetaRoot.FindObject itself searches). A UNIQUE (the overwhelmingly common) payload
@@ -256,11 +256,11 @@ public static class ExtractDelegateEmitter
         sb.AppendLine($"    public static global::MetaObjects.Render.Extract.ExtractionResult<{rootMirror}> ExtractLenient(");
         sb.AppendLine($"        global::MetaObjects.Meta.MetaRoot root, string text, ExtractOptions? opts = null)");
         sb.AppendLine("    {");
-        // NamingRefs.ResolveObjectRef returns MetaData?; ExtractLenient(MetaObject, ...) needs a
+        // NamingRefs.LookupCanonical returns MetaData?; ExtractLenient(MetaObject, ...) needs a
         // MetaObject — the "as" narrows (never a hard cast throw) matching root.FindObject's own
         // MetaObject? return type on the unique path.
         sb.AppendLine(payloadNameAmbiguous
-            ? "        var mo = global::MetaObjects.NamingRefs.ResolveObjectRef(root, PAYLOAD_FQN, \"\") as global::MetaObjects.Meta.MetaObject"
+            ? "        var mo = global::MetaObjects.NamingRefs.LookupCanonical(root, PAYLOAD_FQN) as global::MetaObjects.Meta.MetaObject"
             : "        var mo = root.FindObject(PAYLOAD_FQN)");
         sb.AppendLine("            ?? throw new global::System.InvalidOperationException(");
         sb.AppendLine("                $\"payload object \\\"{PAYLOAD_FQN}\\\" not found in the loaded metadata\");");

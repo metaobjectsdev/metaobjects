@@ -30,6 +30,7 @@ from ..shared.base_types import SUBTYPE_ROOT, TYPE_METADATA
 from ..source import CodeSource, ErrorSource, JsonSource, LoaderWarning
 from ..super_resolve import resolve_supers
 from .merge import merge_roots
+from .resolve_references import resolve_references
 from .sources import (
     DirectorySource,
     InMemoryStringSource,
@@ -140,6 +141,10 @@ class MetaDataLoader:
             envelope_warnings=result.envelope_warnings,
             strict=self._strict,
         )
+        if roots:
+            # ADR-0059 R5 -- after the last validation pass, before freeze: resolve every
+            # reference once, record its target and rewrite it to its canonical spelling.
+            resolve_references(result.root)
         result.root.freeze()
         return result
 
