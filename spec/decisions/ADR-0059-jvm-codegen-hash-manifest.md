@@ -51,8 +51,9 @@ does not cover deletion, and deletion without evidence is not safe on any port.
    live). An entry with no owner (the plain `"<path>": "<hash>"` form other ports write)
    counts as configured nowhere only inside this run's output directories. A file another
    configured generator owns is never this run's orphan, even in a shared output
-   directory. One path emitted by two generator/output-directory pairs in the same build
-   is an error naming both. The first build on a manifest that names no generator owner
+   directory. One path emitted with different content by two generator/output-directory
+   pairs in the same build is an error naming both; byte-identical re-emission is one file,
+   and a path the adopter hand-owns is refused for each generator, not a collision. The first build on a manifest that names no generator owner
    (an 8.1.0 pre-release recorded the execution id instead) records the owners and deletes
    nothing. Two modules have two manifests.
 2. **The overwrite decision is the hash, not the marker.** For a file at a generated path:

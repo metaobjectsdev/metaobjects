@@ -596,8 +596,9 @@ no `metaobjects:generate` execution of the module (nor the plugin-level configur
 configures its owner any more: a removed generator's files are deleted wherever they live.
 A file another configured generator owns is never an orphan to this run, so two executions
 in one module never delete each other's files, even when they share an output directory.
-One file emitted by two generator/output-directory pairs in the same build fails the goal,
-naming both. The first build on a manifest that names no generator owner records the owners
+One file emitted with different content by two generator/output-directory pairs in the same
+build fails the goal, naming both; the same bytes from both are one file, and a file you own
+is refused for each, not a collision. The first build on a manifest that names no generator owner records the owners
 and deletes nothing. A refused orphan is a warning there, as every JVM refusal is
 (ADR-0059). `mvn metaobjects:verify` applies the same rule, so a removed generator's file is
 drift that `generate` deletes.

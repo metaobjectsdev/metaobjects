@@ -76,8 +76,8 @@ If one module declares several `metaobjects:generate` executions, a run deletes 
 generators' orphans and the files of generators the module no longer configures, so
 executions that share an output directory never delete each other's output. The owner does
 not name the Maven execution, so `mvn metaobjects:generate` (which runs as `default-cli`)
-and the lifecycle execution agree on it. A file emitted by two generators in one build fails
-the goal, naming both: configure only one generator to emit it.
+and the lifecycle execution agree on it. A file two generators emit with different content in
+one build fails the goal, naming both: configure only one generator to emit it.
 
 A clone without the manifest adopts again on its first run. That is harmless, but until a
 manifest exists the run cannot delete a stale file or protect an edit.

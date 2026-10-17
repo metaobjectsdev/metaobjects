@@ -111,7 +111,7 @@ public class MetaDataGeneratorMojo extends AbstractMetaDataMojo
                 }
             }
 
-            Set<Path> emittedThisBuild = refuseSharedPaths(run.emittedOwners());
+            Set<Path> emittedThisBuild = refuseSharedPaths(run.emissions(), run.emittedPaths());
             if (migrating) {
                 getLog().info("MetaData Mojo > Recorded the generator and output dir of every generated "
                         + "file in `.metaobjects/.gen-state/.hashes.json`; this build deletes no orphaned file.");
@@ -151,45 +151,43 @@ public class MetaDataGeneratorMojo extends AbstractMetaDataMojo
     }
 
     /**
-     * Fail the goal when one path was emitted by two generator/output-dir pairs in this
-     * build, in this execution or another of this module: the two would overwrite each
-     * other, and the manifest can record only one owner. The record lives in the
-     * project's build context, so it spans this build's executions and nothing else.
-     * Returns every path emitted in this build so far, which no sweep may treat as an
-     * orphan.
+     * Fail the goal when two generator/output-dir pairs emitted one path with different
+     * content in this build, in this execution or another of this module: the output would
+     * depend on which ran last. Byte-identical re-emission is one file, and a path the
+     * adopter hand-owns is no generator's output, so neither is a collision. The record
+     * lives in the project's build context, so it spans this build's executions and
+     * nothing else. Returns every path emitted in this build so far, which no sweep may
+     * treat as an orphan.
      */
-    private Set<Path> refuseSharedPaths(Map<Path, Set<HashManifest.Owner>> emitted) {
+    private Set<Path> refuseSharedPaths(Map<Path, Map<HashManifest.Owner, String>> emissions, Set<Path> emitted) {
         @SuppressWarnings("unchecked")
-        Map<Path, HashManifest.Owner> emittedBy = project == null ? null
-                : (Map<Path, HashManifest.Owner>) project.getContextValue(EMITTED_BY_CONTEXT_KEY);
+        Map<Path, Emission> emittedBy = project == null ? null
+                : (Map<Path, Emission>) project.getContextValue(EMITTED_BY_CONTEXT_KEY);
         if (emittedBy == null) {
             emittedBy = new HashMap<>();
             if (project != null) project.setContextValue(EMITTED_BY_CONTEXT_KEY, emittedBy);
         }
         List<String> shared = new ArrayList<>();
-        for (Path path : new TreeSet<>(emitted.keySet())) {
-            Set<HashManifest.Owner> owners = new LinkedHashSet<>();
-            HashManifest.Owner previous = emittedBy.get(path);
-            if (previous != null) owners.add(previous);
-            for (HashManifest.Owner owner : emitted.get(path)) {
-                if (owner != null) owners.add(owner);
-            }
-            if (owners.isEmpty()) continue;
-            emittedBy.putIfAbsent(path, owners.iterator().next());
-            if (owners.size() > 1) {
-                shared.add(path + " (" + owners.stream().map(o -> "'" + o + "'")
-                        .collect(java.util.stream.Collectors.joining(" and ")) + ")");
+        for (Path path : new TreeSet<>(emissions.keySet())) {
+            for (Map.Entry<HashManifest.Owner, String> e : emissions.get(path).entrySet()) {
+                Emission previous = emittedBy.putIfAbsent(path, new Emission(e.getKey(), e.getValue()));
+                if (previous != null && !previous.owner().equals(e.getKey()) && !previous.hash().equals(e.getValue())) {
+                    shared.add(path + " ('" + previous.owner() + "' and '" + e.getKey() + "')");
+                }
             }
         }
         if (!shared.isEmpty()) {
             throw new MetaDataException("Two generators of " + OWNER + " in this module emitted the same "
-                    + "file, so each would overwrite the other's output: " + String.join(", ", shared)
-                    + ". Configure only one generator to emit it, in one output directory.");
+                    + "file with different content, so each would overwrite the other's output: "
+                    + String.join(", ", shared) + ". Configure only one generator to emit it, in one output "
+                    + "directory.");
         }
         Set<Path> emittedThisBuild = new HashSet<>(emittedBy.keySet());
-        emittedThisBuild.addAll(emitted.keySet());
+        emittedThisBuild.addAll(emitted);
         return emittedThisBuild;
     }
+
+    private record Emission(HashManifest.Owner owner, String hash) {}
 
     /**
      * Whether this build is the first to record owners: the manifest has entries but none

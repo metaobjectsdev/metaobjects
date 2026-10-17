@@ -142,10 +142,12 @@ public final class GeneratedFileWriter {
         private Path projectRoot;
 
         // Every path write() was asked to produce this run, whatever the outcome — written,
-        // unchanged, refused or adopted — with the owner of each generator that asked. Its
-        // key set is the "emitted" set the caller's orphan sweep must not touch: a refused
-        // or adopted path is still spoken for.
-        private final Map<Path, Set<HashManifest.Owner>> emittedOwners = new LinkedHashMap<>();
+        // unchanged, refused or adopted. This is the "emitted" set the caller's orphan sweep
+        // must not touch: a refused or adopted path is still spoken for.
+        private final Set<Path> emittedPaths = new LinkedHashSet<>();
+        // Per path, the content hash each owner emitted, for every write that is ours to
+        // make: a file the adopter hand-owns is no generator's output, so it is left out.
+        private final Map<Path, Map<HashManifest.Owner, String>> emissions = new LinkedHashMap<>();
         // Aggregate state for the Mojo's end-of-run notices.
         private final List<String> adoptedPaths = new ArrayList<>();
         private final List<String> overwrittenHandEditedPaths = new ArrayList<>();
@@ -188,12 +190,13 @@ public final class GeneratedFileWriter {
         /** The files written, left in place, or adopted this run — the orphan sweep's
          *  "do not touch" set. */
         public Set<Path> emittedPaths() {
-            return emittedOwners.keySet();
+            return emittedPaths;
         }
 
-        /** Each emitted path with the owners of the generators that emitted it. */
-        public Map<Path, Set<HashManifest.Owner>> emittedOwners() {
-            return emittedOwners;
+        /** Each path a generator emitted as its own output (not refused as hand-owned), with
+         *  the hash of the content each owner emitted there. */
+        public Map<Path, Map<HashManifest.Owner, String>> emissions() {
+            return emissions;
         }
 
         /** Project-relative paths adopted into a fresh manifest (or a manifest that had no
@@ -214,7 +217,14 @@ public final class GeneratedFileWriter {
             return untrackedCount;
         }
 
+        private void note(Path outFile, String content) {
+            if (currentOwner == null) return;
+            emissions.computeIfAbsent(outFile.toAbsolutePath().normalize(), k -> new LinkedHashMap<>())
+                .putIfAbsent(currentOwner, HashManifest.contentHash(content));
+        }
+
         private void claim(Path outFile, String content) {
+            note(outFile, content);
             Path key = outFile.toAbsolutePath().normalize();
             String previous = contentByPath.get(key);
             if (previous == null) {
@@ -314,8 +324,7 @@ public final class GeneratedFileWriter {
     public static Outcome write(Path outFile, String content) throws IOException {
         Run run = ACTIVE_RUN.get();
         if (run != null) {
-            run.emittedOwners.computeIfAbsent(outFile.toAbsolutePath().normalize(), k -> new LinkedHashSet<>())
-                .add(run.currentOwner);
+            run.emittedPaths.add(outFile.toAbsolutePath().normalize());
         }
 
         if (run == null || run.genStateDir == null) {
@@ -377,6 +386,7 @@ public final class GeneratedFileWriter {
             return Outcome.WRITTEN;
         }
         HashManifest.recordHash(run.genStateDir, key, recorded, run.currentOwner);
+        run.note(outFile, content);
         LOG.warn(refusedHandEditedMessage(outFile));
         return Outcome.REFUSED;
     }

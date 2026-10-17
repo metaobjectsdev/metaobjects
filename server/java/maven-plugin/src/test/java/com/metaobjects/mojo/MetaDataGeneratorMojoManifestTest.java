@@ -382,7 +382,8 @@ public class MetaDataGeneratorMojoManifestTest {
     public void onePathEmittedByTwoGenerators_isAnErrorNamingBoth() throws IOException {
         String shared = tempFolder.newFolder("generated-sources").getAbsolutePath();
         GeneratorParam dto = gen(DtoGenerator.class, shared, "Dto.java");
-        GeneratorParam repository = gen(RepositoryGenerator.class, shared, "Dto.java");
+        GeneratorParam repository = withContent(gen(RepositoryGenerator.class, shared, "Dto.java"),
+                "/** GENERATED */\npublic class Dto { int other; }\n");
         MavenProject module = newBuild(null, Map.of(
                 "codegen-web", configuration(dto), "codegen-data", configuration(repository)));
         runExecution(module, "codegen-web", dto);
@@ -394,6 +395,46 @@ public class MetaDataGeneratorMojoManifestTest {
                     && e.getMessage().contains(DtoGenerator.class.getName() + " -> generated-sources")
                     && e.getMessage().contains(RepositoryGenerator.class.getName() + " -> generated-sources"));
         }
+    }
+
+    private static GeneratorParam withContent(GeneratorParam p, String content) {
+        Map<String, String> args = new java.util.HashMap<>(p.getArgs());
+        args.put("content", content);
+        p.setArgs(args);
+        return p;
+    }
+
+    /** Two generators emitting different content at a path the adopter hand-owns: neither
+     *  write reaches disk, so each is a warning and the build stays green. */
+    @Test
+    public void handOwnedPathTwoGeneratorsEmit_isRefusedTwice_notACollision() throws IOException {
+        String shared = tempFolder.newFolder("generated-sources").getAbsolutePath();
+        Path mine = Path.of(shared, "Telemetry.java");
+        String handWritten = "// mine, no marker\npublic class Telemetry {}\n";
+        Files.writeString(mine, handWritten);
+        GeneratorParam dto = gen(DtoGenerator.class, shared, "Telemetry.java");
+        GeneratorParam repository = withContent(gen(RepositoryGenerator.class, shared, "Telemetry.java"),
+                "/** GENERATED */\npublic record Telemetry() {}\n");
+
+        runExecution(newBuild(null, Map.of("codegen", configuration(dto, repository))), "codegen", dto, repository);
+
+        assertEquals(handWritten, Files.readString(mine));
+        assertFalse(manifest().containsKey("generated-sources/Telemetry.java"));
+    }
+
+    /** One artifact emitted byte-for-byte by two generators is one file, not a collision. */
+    @Test
+    public void byteIdenticalReEmissionByTwoGenerators_isOneFile() throws IOException {
+        String shared = tempFolder.newFolder("generated-sources").getAbsolutePath();
+        GeneratorParam dto = gen(DtoGenerator.class, shared, "Status.java");
+        GeneratorParam repository = gen(RepositoryGenerator.class, shared, "Status.java");
+        MavenProject module = newBuild(null, Map.of(
+                "codegen-web", configuration(dto), "codegen-data", configuration(repository)));
+
+        runExecution(module, "codegen-web", dto, repository);
+        runExecution(module, "codegen-data", repository);
+
+        assertEquals(MARKER_BODY, Files.readString(Path.of(shared, "Status.java")));
     }
 
     /** A manifest an 8.1.0 pre-release wrote names the Maven execution, or nothing. The first
