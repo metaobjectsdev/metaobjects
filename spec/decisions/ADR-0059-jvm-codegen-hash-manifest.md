@@ -43,14 +43,19 @@ does not cover deletion, and deletion without evidence is not safe on any port.
    `"<path>": { "hash": "<sha-256 hex>", "generator": "java:dto", "outputDir": "target/generated-sources/java" }`.
    The owner names the configuration, not the Maven execution, so `default-cli`, a renamed
    execution and the lifecycle execution with the same configuration agree on it. The
-   sweep asks Maven to build the module again with every profile the module and its
-   parent POMs declare switched on, using this build's request settings, and reads the
-   `metaobjects:generate` executions and plugin-level configuration of that model to know
-   every generator/output-directory pair the module configures. Maven resolves profile-only
-   properties, inherited profiles and basedirs there exactly as on a build with the
-   profile on, so a pair declared only in a profile that is off for this build is still
-   configured and its files are never treated as stranded. When that model cannot be
-   built, the sweep judges only this run's own entries. A recorded file is an orphan when no generator emitted it in this
+   sweep knows every generator/output-directory pair the module configures from the
+   `metaobjects:generate` executions and plugin-level configuration of several models of
+   the module, and takes their union: the module as this build sees it (its active
+   profiles), the module with no profile, and the module with each profile the module and
+   its parent POMs declare switched on alone. Maven builds each of them with this build's
+   request settings, so profile-only properties, inherited profiles and basedirs resolve
+   exactly as on a build with that profile on. A pair declared only in a profile that is
+   off for this build is therefore still configured, and so is a pair two mutually
+   exclusive profiles resolve differently (each sets the same property or overrides the
+   same execution's `<generators>` its own way); its files are never treated as stranded.
+   A combination of two or more inactive profiles is not modelled: a pair that exists only
+   when two profiles are on together counts only on a build that activates both. When a
+   model cannot be built, the sweep judges only this run's own entries. A recorded file is an orphan when no generator emitted it in this
    build and either its owner is one of this run's own generators, or its owner is
    configured in no execution of the module (a removed generator, wherever its files
    live). An entry with no owner (the plain `"<path>": "<hash>"` form other ports write)

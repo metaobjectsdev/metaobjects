@@ -111,6 +111,7 @@ public class MetaDataGeneratorMojo extends AbstractMetaDataMojo
                 }
             }
 
+            run.flush();
             Set<Path> emittedThisBuild = refuseSharedPaths(run.emissions(), run.emittedPaths());
             if (migrating) {
                 getLog().info("MetaData Mojo > Recorded the generator and output dir of every generated "

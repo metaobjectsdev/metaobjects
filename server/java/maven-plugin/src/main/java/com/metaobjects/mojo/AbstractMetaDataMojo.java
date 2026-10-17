@@ -47,6 +47,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -105,41 +106,58 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
     /**
      * Every generator/output-directory pair the module configures for
      * {@code metaobjects:generate}: in each of its executions and in the plugin-level
-     * configuration a command-line run uses, with every profile of the module and its
-     * parents active, so a profile switched off for one build does not make its
-     * generators' files look stranded. Maven builds that model, so profile properties,
-     * inherited profiles and basedirs resolve as they do when the profile is on.
-     * {@code null} when that model cannot be built or does not declare this plugin, so
-     * what is configured is unknown.
+     * configuration a command-line run uses. It is the union over the module built with
+     * no profile, with each profile of the module and its parents active alone, and with
+     * this build's own active profiles, so a profile switched off for one build does not
+     * make its generators' files look stranded, and two profiles that set the same
+     * property or execution differently each count. Maven builds each model, so profile
+     * properties, inherited profiles and basedirs resolve as they do when the profile is
+     * on. {@code null} when a model cannot be built or none declares this plugin, so what
+     * is configured is unknown.
      */
     protected Set<HashManifest.Owner> configuredOwners() {
-        MavenProject all = allProfilesProject();
-        Plugin plugin = all != null ? all.getPlugin(PLUGIN_KEY) : null;
-        if (plugin == null) return null;
-        Set<HashManifest.Owner> out = new HashSet<>();
-        Xpp3Dom pluginLevel = plugin.getConfiguration() instanceof Xpp3Dom dom ? dom : null;
-        addConfiguredOwners(pluginLevel, out);
-        for (PluginExecution e : plugin.getExecutions()) {
-            if (!e.getGoals().contains("generate")) continue;
-            if (!(e.getConfiguration() instanceof Xpp3Dom execution)) continue;
-            addConfiguredOwners(pluginLevel == null ? execution
-                    : Xpp3Dom.mergeXpp3Dom(new Xpp3Dom(execution), pluginLevel), out);
-        }
-        return out;
-    }
-
-    /** This module built by Maven with every profile it and its parents declare active;
-     *  {@code null} outside a Maven session or when the build fails. */
-    private MavenProject allProfilesProject() {
         if (project == null || project.getFile() == null || projectBuilder == null || session == null) return null;
-        List<String> profileIds = new ArrayList<>();
+        Set<String> profileIds = new LinkedHashSet<>();
         for (MavenProject p = project; p != null; p = p.getParent()) {
             if (p.getModel() == null) continue;
             for (Profile profile : p.getModel().getProfiles()) profileIds.add(profile.getId());
         }
+        List<MavenProject> models = new ArrayList<>();
+        models.add(project);
+        MavenProject base = projectWith(null, profileIds);
+        if (base == null) return null;
+        models.add(base);
+        for (String id : profileIds) {
+            MavenProject alone = projectWith(id, profileIds);
+            if (alone == null) return null;
+            models.add(alone);
+        }
+        Set<HashManifest.Owner> out = new HashSet<>();
+        boolean declared = false;
+        for (MavenProject model : models) {
+            Plugin plugin = model.getPlugin(PLUGIN_KEY);
+            if (plugin == null) continue;
+            declared = true;
+            Xpp3Dom pluginLevel = plugin.getConfiguration() instanceof Xpp3Dom dom ? dom : null;
+            addConfiguredOwners(pluginLevel, out);
+            for (PluginExecution e : plugin.getExecutions()) {
+                if (!e.getGoals().contains("generate")) continue;
+                if (!(e.getConfiguration() instanceof Xpp3Dom execution)) continue;
+                addConfiguredOwners(pluginLevel == null ? execution
+                        : Xpp3Dom.mergeXpp3Dom(new Xpp3Dom(execution), pluginLevel), out);
+            }
+        }
+        return declared ? out : null;
+    }
+
+    /** This module built by Maven with only profile {@code active} on ({@code null}: none of
+     *  {@code all}); {@code null} when the build fails. */
+    private MavenProject projectWith(String active, Set<String> all) {
+        List<String> inactive = new ArrayList<>(all);
+        inactive.remove(active);
         ProjectBuildingRequest request = new DefaultProjectBuildingRequest(session.getProjectBuildingRequest());
-        request.setActiveProfileIds(profileIds);
-        request.setInactiveProfileIds(List.of());
+        request.setActiveProfileIds(active == null ? List.of() : List.of(active));
+        request.setInactiveProfileIds(inactive);
         request.setResolveDependencies(false);
         request.setValidationLevel(ModelBuildingRequest.VALIDATION_LEVEL_MINIMAL);
         request.setProject(null);

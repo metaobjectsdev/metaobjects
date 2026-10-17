@@ -1084,12 +1084,22 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   // entries' output unproduced by construction, so all of it would look orphaned. The opt-in
   // policy jobs are scoped to their own generator's namespace and keep running there.
   // `--baseline=adopt` writes nothing, so it deletes nothing either.
+  //
+  // It covers every declared outDir, written this run or not, as `meta verify --codegen`
+  // walks every declared outDir: a directory whose generators were all moved or removed
+  // still holds their recorded output, and the gate tells the user `meta gen` deletes it.
+  const sweepDirs = [...new Set([
+    ...runOutDirs,
+    ...Object.values(targets)
+      .filter((t) => t.outDir.length > 0)
+      .map((t) => (projectRoot !== undefined && !isAbsolute(t.outDir) ? resolve(projectRoot, t.outDir) : t.outDir)),
+  ])];
   const sweepJobs: OrphanJob[] =
     opts.generatorNames === undefined && baseline !== "adopt"
       ? [
           ...orphanJobs,
-          ...[...runOutDirs].map((writeOutDir) => {
-            const nested = [...runOutDirs].filter((other) => isNestedIn(other, writeOutDir));
+          ...sweepDirs.map((writeOutDir) => {
+            const nested = sweepDirs.filter((other) => isNestedIn(other, writeOutDir));
             const owns = (rel: string): boolean => {
               const full = resolve(writeOutDir, rel);
               return !nested.some((inner) => isNestedIn(full, inner) || full === inner);

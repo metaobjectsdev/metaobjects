@@ -1970,6 +1970,9 @@ def _verify_codegen_config(args: argparse.Namespace) -> int:
 
     # Map each unique real outDir to ONE temp slot name (shared real dir => shared slot).
     real_outdirs = sorted({config.out_dir_for(t) for t in closure})
+    # Every configured outDir, run or not: one nested in a verified outDir is its own
+    # target's, as gen's sweep treats it, so its files are never this outDir's extras.
+    configured_outdirs = sorted({config.out_dir_for(t) for t in config.targets})
 
     def compare(naming: str) -> tuple[list[str], list[_DirReport]]:
         """Regenerate the closure with ``naming`` and diff it against every committed outDir.
@@ -2029,9 +2032,12 @@ def _verify_codegen_config(args: argparse.Namespace) -> int:
                 tmp_slot = temp_for[real_outdir]
                 if narrowed and tmp_slot not in targeted:
                     continue
-                inside = [o for o in real_outdirs if o != real_outdir and Path(o).is_relative_to(real_outdir)]
+                nested = [
+                    o for o in configured_outdirs if o != real_outdir and Path(o).is_relative_to(real_outdir)
+                ]
+                inside = [o for o in nested if o in temp_for]
                 expected = _relative_set(Path(tmp_slot), [Path(temp_for[o]) for o in inside])
-                committed = _relative_set(Path(real_outdir), [Path(o) for o in inside])
+                committed = _relative_set(Path(real_outdir), [Path(o) for o in nested])
                 if narrowed:
                     declared = _relative_set(
                         Path(declared_for[real_outdir]), [Path(declared_for[o]) for o in inside])

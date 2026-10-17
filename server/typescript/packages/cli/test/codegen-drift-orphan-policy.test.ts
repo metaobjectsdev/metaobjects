@@ -91,3 +91,31 @@ describe("verify --codegen classifies orphans by the sweep's own policy", () => 
     expect(existsSync(orphan)).toBe(true);
   });
 });
+
+describe("a declared outDir no selected generator writes", () => {
+  const plain = (target?: string): Generator => ({
+    name: "plain",
+    generate: () => [{ path: "A.txt", content: "A\n" }],
+    ...(target !== undefined && { target }),
+  });
+  const moved: MetaobjectsGenConfig = {
+    outDir: OUT,
+    extStyle: "js",
+    targets: { web: { outDir: "web" } },
+    generators: [plain("web")],
+  };
+
+  test("verify reports its recorded file as deleted by gen, gen deletes it, and verify is then clean", async () => {
+    await runGen({ config: { outDir: OUT, extStyle: "js", generators: [plain()] }, metadata: await model("A"), projectRoot });
+    const left = join(projectRoot, OUT, "A.txt");
+    expect(existsSync(left)).toBe(true);
+
+    const drift = await computeCodegenDrift(moved, await model("A"), projectRoot);
+    expect(drift.lines.join("\n")).toContain(`${join(OUT, "A.txt")} (committed but regen would not emit it; 'meta gen' deletes it)`);
+
+    await runGen({ config: moved, metadata: await model("A"), projectRoot });
+    expect(existsSync(left)).toBe(false);
+    expect(existsSync(join(projectRoot, "web", "A.txt"))).toBe(true);
+    expect((await computeCodegenDrift(moved, await model("A"), projectRoot)).clean).toBe(true);
+  });
+});

@@ -190,6 +190,24 @@ def test_a_target_run_spares_a_nested_directory_of_a_target_that_did_not_run(
     assert main(["gen", "--target", "app"]) == 0
     assert all(p.exists() for p in pages)
 
+
+def test_verify_of_a_target_does_not_report_a_nested_target_s_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+) -> None:
+    config = (
+        "targets:\n"
+        "  app:\n    outDir: gen\n    generators: [entity]\n"
+        "  docs:\n    outDir: gen/docs\n    generators: [api-docs]\n"
+    )
+    _project(tmp_path, [_entity("Leg")], config=config)
+    monkeypatch.chdir(tmp_path)
+    assert main(["gen"]) == 0
+    assert list((tmp_path / "gen" / "docs").rglob("Leg.md"))
+    capsys.readouterr()
+    assert main(["verify", "--codegen", "--target", "app"]) == 0
+    assert "extra" not in capsys.readouterr().err
+
+
 def _nested_layout(root: Path) -> tuple[Path, Path, Path, Path]:
     from metaobjects.codegen.overwrite_policy import _save_hashes, content_hash
 

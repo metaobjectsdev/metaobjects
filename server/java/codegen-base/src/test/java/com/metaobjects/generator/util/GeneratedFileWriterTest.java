@@ -10,6 +10,7 @@ import java.nio.file.Path;
 import java.util.List;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
@@ -259,6 +260,41 @@ public class GeneratedFileWriterTest {
         }
         assertEquals(GENERATED_BODY, Files.readString(out));
         assertEquals(HashManifest.contentHash(GENERATED_BODY), HashManifest.recordedHash(genState, "gen/X.java"));
+    }
+
+    @Test
+    public void manifestIsWrittenOncePerRun_onFlushNotOnEachWrite() throws Exception {
+        Path project = tmp.newFolder().toPath();
+        Path genState = project.resolve(".metaobjects/.gen-state");
+
+        try (GeneratedFileWriter.Run run = GeneratedFileWriter.beginRun()) {
+            run.configureManifest(genState, project);
+            GeneratedFileWriter.write(project.resolve("gen/A.java"), GENERATED_BODY);
+            GeneratedFileWriter.write(project.resolve("gen/B.java"), GENERATED_BODY);
+            assertFalse(HashManifest.exists(genState));
+            run.flush();
+            assertEquals(HashManifest.contentHash(GENERATED_BODY), HashManifest.recordedHash(genState, "gen/A.java"));
+            assertEquals(HashManifest.contentHash(GENERATED_BODY), HashManifest.recordedHash(genState, "gen/B.java"));
+        }
+    }
+
+    @Test
+    public void runThatChangesNothing_leavesTheManifestFileAlone() throws Exception {
+        Path project = tmp.newFolder().toPath();
+        Path genState = project.resolve(".metaobjects/.gen-state");
+        Path out = project.resolve("gen/X.java");
+        Files.createDirectories(out.getParent());
+        Files.writeString(out, GENERATED_BODY);
+        Files.createDirectories(genState);
+        String manifest = "{\"gen/X.java\": \"" + HashManifest.contentHash(GENERATED_BODY) + "\"}";
+        Files.writeString(genState.resolve(".hashes.json"), manifest);
+
+        try (GeneratedFileWriter.Run run = GeneratedFileWriter.beginRun()) {
+            run.configureManifest(genState, project);
+            assertEquals(GeneratedFileWriter.Outcome.UNCHANGED, GeneratedFileWriter.write(out, GENERATED_BODY));
+        }
+        assertEquals("not rewritten (a rewrite would pretty-print it)", manifest,
+                Files.readString(genState.resolve(".hashes.json")));
     }
 
     @Test

@@ -14,6 +14,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Pattern;
 
@@ -140,6 +141,10 @@ public final class GeneratedFileWriter {
         // by the Mojo, right after beginRun().
         private Path genStateDir;
         private Path projectRoot;
+        // The manifest, read once when it is configured and written back once by flush().
+        private Map<String, String> hashes;
+        private Map<String, HashManifest.Owner> owners;
+        private boolean dirty;
 
         // Every path write() was asked to produce this run, whatever the outcome — written,
         // unchanged, refused or adopted. This is the "emitted" set the caller's orphan sweep
@@ -184,7 +189,24 @@ public final class GeneratedFileWriter {
         public Run configureManifest(Path genStateDir, Path projectRoot) {
             this.genStateDir = genStateDir;
             this.projectRoot = projectRoot;
+            this.hashes = HashManifest.load(genStateDir);
+            this.owners = HashManifest.loadOwners(genStateDir);
             return this;
+        }
+
+        /** Write this run's manifest changes to disk, if any. The Mojo calls it once every
+         *  generator has run, before its orphan sweep reads the manifest; {@link #close}
+         *  calls it for whatever is still unwritten. */
+        public void flush() {
+            if (!dirty) return;
+            HashManifest.save(genStateDir, hashes, owners);
+            dirty = false;
+        }
+
+        private void record(String key, String hash) {
+            if (!hash.equals(hashes.put(key, hash))) dirty = true;
+            HashManifest.Owner previous = currentOwner == null ? owners.remove(key) : owners.put(key, currentOwner);
+            if (!Objects.equals(previous, currentOwner)) dirty = true;
         }
 
         /** The files written, left in place, or adopted this run — the orphan sweep's
@@ -245,7 +267,11 @@ public final class GeneratedFileWriter {
 
         @Override
         public void close() {
-            ACTIVE_RUN.remove();
+            try {
+                flush();
+            } finally {
+                ACTIVE_RUN.remove();
+            }
         }
     }
 
@@ -339,12 +365,12 @@ public final class GeneratedFileWriter {
 
         if (!Files.exists(outFile)) {
             performWrite(outFile, content, run);
-            HashManifest.record(run.genStateDir, key, content, run.currentOwner);
+            run.record(key, HashManifest.contentHash(content));
             return Outcome.WRITTEN;
         }
 
         String current = Files.readString(outFile, StandardCharsets.UTF_8);
-        String recorded = HashManifest.recordedHash(run.genStateDir, key);
+        String recorded = run.hashes.get(key);
 
         if (recorded == null) {
             // Never recorded under this key. Marker present ⇒ this toolchain's own prior
@@ -354,7 +380,7 @@ public final class GeneratedFileWriter {
             // replace under any policy.
             if (looksGenerated(current)) {
                 performWrite(outFile, content, run);
-                HashManifest.record(run.genStateDir, key, content, run.currentOwner);
+                run.record(key, HashManifest.contentHash(content));
                 run.adoptedPaths.add(outFile.toString());
                 return Outcome.WRITTEN;
             }
@@ -366,26 +392,26 @@ public final class GeneratedFileWriter {
             // Nothing to write, but re-affirm the record: a first run over already-correct
             // output should leave the file recognised as ours next time.
             run.claim(outFile, content);
-            HashManifest.record(run.genStateDir, key, content, run.currentOwner);
+            run.record(key, HashManifest.contentHash(content));
             return Outcome.UNCHANGED;
         }
 
         if (recorded.equals(HashManifest.contentHash(current))) {
             // Pristine: matches what we last wrote, safe to overwrite with fresh content.
             performWrite(outFile, content, run);
-            HashManifest.record(run.genStateDir, key, content, run.currentOwner);
+            run.record(key, HashManifest.contentHash(content));
             return Outcome.WRITTEN;
         }
 
         // Edited: differs from both the fresh output and the last recorded hash.
         if (HAND_EDITS_OVERWRITE.equals(run.currentHandEdits)) {
             performWrite(outFile, content, run);
-            HashManifest.record(run.genStateDir, key, content, run.currentOwner);
+            run.record(key, HashManifest.contentHash(content));
             run.overwrittenHandEditedPaths.add(outFile.toString());
             LOG.warn("overwrote hand-edited " + outFile + " (handEdits: overwrite)");
             return Outcome.WRITTEN;
         }
-        HashManifest.recordHash(run.genStateDir, key, recorded, run.currentOwner);
+        run.record(key, recorded);
         run.note(outFile, content);
         LOG.warn(refusedHandEditedMessage(outFile));
         return Outcome.REFUSED;

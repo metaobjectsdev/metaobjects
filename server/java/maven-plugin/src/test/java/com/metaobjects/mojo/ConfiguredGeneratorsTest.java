@@ -32,8 +32,9 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 /**
- * Which generators a module configures is read from the module as Maven builds it with
- * every profile on: a generator an inactive profile runs is still configured, so a plain
+ * Which generators a module configures is read from the module as Maven builds it with no
+ * profile, with each profile alone and with the build's own profiles: a generator an
+ * inactive profile runs is still configured, so a plain
  * build neither deletes its files nor reports them as drift, and a generator removed from
  * the POM (main build or profile) is not, so its files are cleaned. Every module here is a
  * real POM on disk, built by Maven's own {@link ProjectBuilder}.
@@ -210,6 +211,42 @@ public class ConfiguredGeneratorsTest {
 
         assertTrue(Files.exists(clientDir.resolve("Client.java")));
         verify(build(pom), gen(DTO, mainDir, "Dto.java"));
+    }
+
+    @Test
+    public void exclusiveProfilesSettingOneOutputDir_eachKeepsItsFiles_inBothDirections() throws Exception {
+        Path pgDir = root.resolve("src/gen/pg");
+        Path mysqlDir = root.resolve("src/gen/mysql");
+        Path pom = pom(root, "app", "", plugin("codegen", generators(DTO, "${gen.dir}")),
+                profile("pg", "<gen.dir>${project.basedir}/src/gen/pg</gen.dir>", "")
+                        + profile("mysql", "<gen.dir>${project.basedir}/src/gen/mysql</gen.dir>", ""));
+
+        generate(build(pom, "pg"), "codegen", new String[] {"pg"}, gen(DTO, pgDir, "Dto.java"));
+        generate(build(pom, "mysql"), "codegen", new String[] {"mysql"}, gen(DTO, mysqlDir, "Dto.java"));
+        assertTrue("-Pmysql leaves what -Ppg configures", Files.exists(pgDir.resolve("Dto.java")));
+        verify(build(pom, "mysql"), gen(DTO, mysqlDir, "Dto.java"));
+
+        generate(build(pom, "pg"), "codegen", new String[] {"pg"}, gen(DTO, pgDir, "Dto.java"));
+        assertTrue("-Ppg leaves what -Pmysql configures", Files.exists(mysqlDir.resolve("Dto.java")));
+        verify(build(pom, "pg"), gen(DTO, pgDir, "Dto.java"));
+    }
+
+    @Test
+    public void twoProfilesOverridingOneExecutionsGenerators_eachKeepsItsFiles() throws Exception {
+        Path aDir = root.resolve("a");
+        Path bDir = root.resolve("b");
+        Path pom = pom(root, "app", "", "",
+                profile("a", "", plugin("codegen", generators(DTO, "${project.basedir}/a")))
+                        + profile("b", "", plugin("codegen", generators(CLIENT, "${project.basedir}/b"))));
+
+        generate(build(pom, "a"), "codegen", new String[] {"a"}, gen(DTO, aDir, "A.java"));
+        generate(build(pom, "b"), "codegen", new String[] {"b"}, gen(CLIENT, bDir, "B.java"));
+        assertTrue("profile b's run leaves what profile a configures", Files.exists(aDir.resolve("A.java")));
+        verify(build(pom, "b"), gen(CLIENT, bDir, "B.java"));
+
+        generate(build(pom, "a"), "codegen", new String[] {"a"}, gen(DTO, aDir, "A.java"));
+        assertTrue("profile a's run leaves what profile b configures", Files.exists(bDir.resolve("B.java")));
+        verify(build(pom, "a"), gen(DTO, aDir, "A.java"));
     }
 
     @Test

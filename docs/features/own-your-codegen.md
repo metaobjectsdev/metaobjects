@@ -575,7 +575,10 @@ handles those files by one rule:
 - **A candidate is a file the manifest says `gen` wrote.** It lies under an output directory
   of the run, `.metaobjects/.gen-state/.hashes.json` records writing it, and no generator
   emitted it this run. A file the manifest does not record is not generated output, whatever
-  its name or header, and is never a candidate.
+  its name or header, and is never a candidate. In TypeScript a full `meta gen` covers every
+  declared output directory (`outDir` and each `targets.*.outDir`), whether or not a
+  generator still writes there, so moving every generator out of a directory still cleans
+  it, as `meta verify --codegen` reports.
 - **An untouched candidate is deleted.** Its content still hashes to what was recorded, so
   nothing of yours is in it. The file goes and its manifest entry is dropped. `gen` lists it
   as removed.
@@ -595,9 +598,12 @@ generator emitted in this build is an orphan when this run's own generators own 
 no `metaobjects:generate` execution of the module (nor the plugin-level configuration)
 configures its owner any more: a removed generator's files are deleted wherever they live.
 Executions inside a profile count whether the profile is active or not, including profiles a
-parent POM declares: Maven builds the module with every profile on to read them, so a profile's
-own properties resolve as they do under `-P<profile>`, and a plain build keeps the files of a
-generator only `-P<profile>` runs.
+parent POM declares. Maven builds the module with this build's profiles, with no profile, and
+with each profile on alone, and the configured generators are the union of the three. A
+profile's own properties resolve as they do under `-P<profile>`, so a plain build keeps the
+files of a generator only `-P<profile>` runs, and `-Pmysql` keeps the files `-Ppg` wrote when
+the two profiles point one generator at different directories. A generator that only exists
+when two profiles are on together counts only on a build that activates both.
 A file another configured generator owns is never an orphan to this run, so two executions
 in one module never delete each other's files, even when they share an output directory.
 One file emitted with different content by two generator/output-directory pairs in the same
