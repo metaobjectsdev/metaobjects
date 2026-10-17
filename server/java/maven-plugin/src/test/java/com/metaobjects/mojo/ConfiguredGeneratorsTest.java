@@ -389,6 +389,41 @@ public class ConfiguredGeneratorsTest {
         assertTrue(Files.exists(gen.resolve("A.java")) && Files.exists(client.resolve("B.java")));
     }
 
+    /** A parent declares execution {@code codegen}; the child switches it off with
+     *  {@code <phase>none</phase>} and declares {@code codegen-app} on the same generator and dir. */
+    private Path childDisablingTheParentsExecution() throws IOException {
+        pom(root, "parent", "", plugin("codegen", generators(DTO, "${project.basedir}/gen")), "");
+        return pom(root.resolve("app"), "app",
+                "<parent><groupId>test</groupId><artifactId>parent</artifactId><version>1</version></parent>",
+                "<plugin><groupId>com.metaobjects</groupId><artifactId>metaobjects-maven-plugin</artifactId>"
+                        + "<executions><execution><id>codegen</id><phase>none</phase></execution>"
+                        + execution("codegen-app", generators(DTO, "${project.basedir}/gen"))
+                        + "</executions></plugin>", "");
+    }
+
+    @Test
+    public void executionDisabledWithPhaseNone_isNotASecondOwner() throws Exception {
+        Path gen = root.resolve("app").resolve("gen");
+        Path pom = childDisablingTheParentsExecution();
+
+        generate(build(pom), "codegen-app", NO_PROFILES, gen(DTO, gen, "A.java"));
+
+        assertTrue(Files.exists(gen.resolve("A.java")));
+        verify(build(pom), gen(DTO, gen, "A.java"));
+    }
+
+    @Test
+    public void disabledExecutionInvokedExplicitly_isRefusedWhenAnEnabledOneOwnsItsPair() throws Exception {
+        Path gen = root.resolve("app").resolve("gen");
+        try {
+            generate(build(childDisablingTheParentsExecution()), "codegen", NO_PROFILES, gen(DTO, gen, "A.java"));
+            fail("expected generate@codegen to be refused");
+        } catch (MetaDataException e) {
+            assertTrue(e.getMessage(), e.getMessage().contains("'codegen-app' and 'codegen'"));
+        }
+        assertFalse("nothing written", Files.exists(gen.resolve("A.java")));
+    }
+
     /** {@code mvn metaobjects:generate compile}: the command-line run and the execution that
      *  inherits the plugin-level configuration are one configuration, run twice. */
     @Test

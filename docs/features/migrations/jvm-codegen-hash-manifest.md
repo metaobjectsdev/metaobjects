@@ -85,7 +85,8 @@ neither run could tell the other's output from its own stale files. `metaobjects
 and `metaobjects:verify` now fail before writing anything, naming both executions (and the
 profile each comes from). The fix is one line: give each execution its own `<outputDir>`,
 or merge the two into one execution. The plugin-level `<configuration>` is not an execution
-of its own, so `mvn metaobjects:generate` beside the execution that inherits it is fine.
+of its own, so `mvn metaobjects:generate` beside the execution that inherits it is fine, and
+an inherited execution switched off with `<phase>none</phase>` is not counted.
 
 A clone without the manifest adopts again on its first run. That is harmless, but until a
 manifest exists the run cannot delete a stale file or protect an edit.

@@ -65,7 +65,10 @@ does not cover deletion, and deletion without evidence is not safe on any port.
    same generator into the same output directory, in any of the models above, fail
    `generate` and `verify` before anything is written, naming both executions and the
    profile each comes from. The plugin-level configuration is no execution of its own, so
-   `default-cli` beside the execution that inherits it is one configuration. One path emitted with different content by two generator/output-directory
+   `default-cli` beside the execution that inherits it is one configuration. An execution
+   disabled with `<phase>none</phase>` counts nowhere: it owns no pair and configures no
+   generator. Invoked explicitly (`generate@<id>`), it is refused when an enabled execution
+   owns one of its pairs. One path emitted with different content by two generator/output-directory
    pairs in the same build is an error naming both; byte-identical re-emission is one file,
    and a path the adopter hand-owns is refused for each generator, not a collision. The first build on a manifest that names no generator owner
    (an 8.1.0 pre-release recorded the execution id instead) records the owners and deletes

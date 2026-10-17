@@ -126,13 +126,28 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
      * generator into the same output directory. Their files would share one owner, so
      * neither execution could tell the other's output from its own orphans. The
      * plugin-level configuration is no execution of its own: a command-line run of it and
-     * the one execution that inherits it are the same configuration.
+     * the one execution that inherits it are the same configuration. An execution disabled
+     * with {@code <phase>none</phase>} is not counted; run explicitly
+     * ({@code mvn metaobjects:generate@<id>}), it is refused when an enabled execution owns
+     * one of its generator/output-directory pairs.
      */
     protected void refuseSharedGeneratorDirs() {
         List<String> shared = new ArrayList<>();
-        configured().executions().forEach((owner, by) -> {
+        Map<HashManifest.Owner, List<String>> executions = configured().executions();
+        executions.forEach((owner, by) -> {
             if (by.size() > 1) shared.add("'" + owner + "' in executions " + String.join(" and ", by));
         });
+        String self = execution != null ? execution.getExecutionId() : null;
+        if (isDisabledGenerateExecution(self) && getGenerators() != null) {
+            for (GeneratorParam g : getGenerators()) {
+                HashManifest.Owner owner = ownerOf(g);
+                List<String> by = owner != null ? executions.get(owner) : null;
+                if (by != null && !by.isEmpty()) {
+                    shared.add("'" + owner + "' in executions " + String.join(" and ", by) + " and '" + self
+                            + "' (<phase>none</phase>, invoked explicitly)");
+                }
+            }
+        }
         if (shared.isEmpty()) return;
         shared.sort(String::compareTo);
         throw new MetaDataException("Two metaobjects:generate executions of this module configure the same "
@@ -193,7 +208,7 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
             Xpp3Dom pluginLevel = plugin.getConfiguration() instanceof Xpp3Dom dom ? dom : null;
             out.addAll(configuredIn(pluginLevel));
             for (PluginExecution e : plugin.getExecutions()) {
-                if (!e.getGoals().contains("generate")) continue;
+                if (!isEnabledGenerate(e)) continue;
                 if (!(e.getConfiguration() instanceof Xpp3Dom execution)) continue;
                 for (HashManifest.Owner owner : configuredIn(pluginLevel == null ? execution
                         : Xpp3Dom.mergeXpp3Dom(new Xpp3Dom(execution), pluginLevel))) {
@@ -215,9 +230,26 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
         Plugin plugin = model.getPlugin(PLUGIN_KEY);
         if (plugin == null) return ids;
         for (PluginExecution e : plugin.getExecutions()) {
-            if (e.getGoals().contains("generate")) ids.add(e.getId());
+            if (isEnabledGenerate(e)) ids.add(e.getId());
         }
         return ids;
+    }
+
+    /** A {@code metaobjects:generate} execution not switched off with {@code <phase>none</phase>}
+     *  (how a module disables an execution it inherits). */
+    private static boolean isEnabledGenerate(PluginExecution e) {
+        return e.getGoals().contains("generate") && !"none".equals(e.getPhase());
+    }
+
+    /** Whether {@code id} names a generate execution of this module disabled with
+     *  {@code <phase>none</phase>}, as {@code mvn metaobjects:generate@<id>} can still run. */
+    private boolean isDisabledGenerateExecution(String id) {
+        Plugin plugin = project != null && id != null ? project.getPlugin(PLUGIN_KEY) : null;
+        if (plugin == null) return false;
+        for (PluginExecution e : plugin.getExecutions()) {
+            if (id.equals(e.getId()) && e.getGoals().contains("generate") && !isEnabledGenerate(e)) return true;
+        }
+        return false;
     }
 
     /** This module built by Maven with only profile {@code active} on ({@code null}: none of
