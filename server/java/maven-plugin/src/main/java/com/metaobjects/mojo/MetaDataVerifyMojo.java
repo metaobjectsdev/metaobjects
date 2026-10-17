@@ -444,7 +444,9 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
      * The manifest entries {@code generate} would judge as orphans for the generators this
      * verify runs ({@link OrphanSweep#isCandidate}): their own entries, and entries whose
      * generator the module configures in no execution. Another configured generator's
-     * entry is left out and reads as a stranger here, as it is to {@code generate}. Empty
+     * entry is left out and reads as a stranger here, as it is to {@code generate}. So is
+     * the entry of a pair several executions configure: only the last of them judges it, in
+     * a build that runs them all, and verify is not that execution. Empty
      * while the manifest names no owner yet: the build that records them deletes nothing.
      */
     private Map<String, String> ownedBy(Map<String, String> hashes, Map<String, HashManifest.Owner> owners,
@@ -459,7 +461,8 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
         Path root = projectRoot.toAbsolutePath().normalize();
         for (Map.Entry<String, String> e : hashes.entrySet()) {
             boolean inRunDir = targetHolding(targets, root.resolve(e.getKey()).normalize()) != null;
-            if (OrphanSweep.isCandidate(owners.get(e.getKey()), inRunDir, runOwners, this::configuredOwners)) {
+            if (OrphanSweep.isCandidate(owners.get(e.getKey()), inRunDir,
+                    owner -> runOwners.contains(owner) && !sharedByExecutions(owner), this::configuredOwners)) {
                 owned.put(e.getKey(), e.getValue());
             }
         }

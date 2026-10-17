@@ -72,6 +72,7 @@ public class MetaDataGeneratorMojo extends AbstractMetaDataMojo
         // the manifest would make a fresh adoption look like it never happened).
         boolean hadManifestAtStart = genStateDir != null && HashManifest.exists(genStateDir);
         boolean migrating = genStateDir != null && migratingOwners(genStateDir);
+        if (project != null) ranThisBuild().add(executionId());
 
         // This loop IS the Java port's runner — the one place that spans generators — so it
         // is the only place that can see two of them claiming one output path. TypeScript's
@@ -138,8 +139,15 @@ public class MetaDataGeneratorMojo extends AbstractMetaDataMojo
                     .allMatch(GeneratorParam.HAND_EDITS_OVERWRITE::equals);
             dirs.add(new OrphanSweep.Entry(e.getKey(), e.getKey() + File.separator, allOverwrite));
         }
-        OrphanSweep.Result swept = OrphanSweep.sweep(
-                genStateDir, projectRoot, dirs, emitted, runOwners, this::configuredOwners);
+        Set<HashManifest.Owner> deferred = new TreeSet<>(Comparator.comparing(HashManifest.Owner::toString));
+        OrphanSweep.Result swept = OrphanSweep.sweep(genStateDir, projectRoot, dirs, emitted,
+                owner -> judges(owner, runOwners, deferred), this::configuredOwners);
+        for (HashManifest.Owner owner : deferred) {
+            List<String> by = executionsConfiguring(owner);
+            getLog().info("MetaData Mojo > Not cleaning up files of '" + owner + "' in this execution: executions "
+                    + String.join(", ", by) + " all configure it, so only '" + by.get(by.size() - 1)
+                    + "' removes its files no longer generated, in a build that runs every one of them.");
+        }
         for (String path : swept.removed) {
             getLog().info("MetaData Mojo > Removed orphaned generated file no longer produced: " + path);
         }
@@ -152,13 +160,47 @@ public class MetaDataGeneratorMojo extends AbstractMetaDataMojo
     }
 
     /**
+     * Whether this execution judges the recorded entries of {@code owner}: one of its own
+     * generator/output-dir pairs. A pair more than one execution of the module configures
+     * is judged only by the last of them in declared order, and only once every one of
+     * them has run in this build, against what all of them emitted; until then another
+     * execution's output under the same pair would read as an orphan. Such a pair passed
+     * over is added to {@code deferred}.
+     */
+    private boolean judges(HashManifest.Owner owner, Set<HashManifest.Owner> runOwners,
+                           Set<HashManifest.Owner> deferred) {
+        if (!runOwners.contains(owner)) return false;
+        List<String> by = executionsConfiguring(owner);
+        if (by.size() < 2) return true;
+        if (by.get(by.size() - 1).equals(executionId()) && ranThisBuild().containsAll(by)) return true;
+        deferred.add(owner);
+        return false;
+    }
+
+    private String executionId() {
+        return execution != null ? execution.getExecutionId() : null;
+    }
+
+    /** The ids of this module's executions of this goal that have run in this build. */
+    private Set<String> ranThisBuild() {
+        @SuppressWarnings("unchecked")
+        Set<String> ran = (Set<String>) project.getContextValue(RAN_CONTEXT_KEY);
+        if (ran == null) {
+            ran = new HashSet<>();
+            project.setContextValue(RAN_CONTEXT_KEY, ran);
+        }
+        return ran;
+    }
+
+    /**
      * Fail the goal when two generator/output-dir pairs emitted one path with different
      * content in this build, in this execution or another of this module: the output would
      * depend on which ran last. Byte-identical re-emission is one file, and a path the
-     * adopter hand-owns is no generator's output, so neither is a collision. The record
-     * lives in the project's build context, so it spans this build's executions and
-     * nothing else. Returns every path emitted in this build so far, which no sweep may
-     * treat as an orphan.
+     * adopter hand-owns is no generator's output, so neither is a collision. Two executions
+     * whose same pair emitted one path collide whatever the content: they are two
+     * configurations of one generator writing one file. The record lives in the project's
+     * build context, so it spans this build's executions and nothing else. Returns every
+     * path emitted in this build so far, which no sweep may treat as an orphan.
      */
     private Set<Path> refuseSharedPaths(Map<Path, Map<HashManifest.Owner, String>> emissions, Set<Path> emitted) {
         @SuppressWarnings("unchecked")
@@ -169,10 +211,18 @@ public class MetaDataGeneratorMojo extends AbstractMetaDataMojo
             if (project != null) project.setContextValue(EMITTED_BY_CONTEXT_KEY, emittedBy);
         }
         List<String> shared = new ArrayList<>();
+        List<String> twice = new ArrayList<>();
+        String self = executionId();
         for (Path path : new TreeSet<>(emissions.keySet())) {
             for (Map.Entry<HashManifest.Owner, String> e : emissions.get(path).entrySet()) {
-                Emission previous = emittedBy.putIfAbsent(path, new Emission(e.getKey(), e.getValue()));
-                if (previous != null && !previous.owner().equals(e.getKey()) && !previous.hash().equals(e.getValue())) {
+                Emission previous = emittedBy.putIfAbsent(path, new Emission(e.getKey(), e.getValue(), self));
+                if (previous == null) continue;
+                if (previous.owner().equals(e.getKey())) {
+                    if (!Objects.equals(previous.execution(), self)) {
+                        twice.add(path + " ('" + e.getKey() + "' in executions '" + previous.execution()
+                                + "' and '" + self + "')");
+                    }
+                } else if (!previous.hash().equals(e.getValue())) {
                     shared.add(path + " ('" + previous.owner() + "' and '" + e.getKey() + "')");
                 }
             }
@@ -183,12 +233,18 @@ public class MetaDataGeneratorMojo extends AbstractMetaDataMojo
                     + String.join(", ", shared) + ". Configure only one generator to emit it, in one output "
                     + "directory.");
         }
+        if (!twice.isEmpty()) {
+            throw new MetaDataException("Two executions of " + OWNER + " in this module configure the same "
+                    + "generator into the same output directory and both emitted the same file, so one "
+                    + "overwrites the other's output: " + String.join(", ", twice) + ". Give one of them its "
+                    + "own output directory, or let only one execution emit the file.");
+        }
         Set<Path> emittedThisBuild = new HashSet<>(emittedBy.keySet());
         emittedThisBuild.addAll(emitted);
         return emittedThisBuild;
     }
 
-    private record Emission(HashManifest.Owner owner, String hash) {}
+    private record Emission(HashManifest.Owner owner, String hash, String execution) {}
 
     /**
      * Whether this build is the first to record owners: the manifest has entries but none
@@ -206,6 +262,7 @@ public class MetaDataGeneratorMojo extends AbstractMetaDataMojo
 
     private static final String MIGRATING_CONTEXT_KEY = MetaDataGeneratorMojo.class.getName() + ".migratingOwners";
     private static final String EMITTED_BY_CONTEXT_KEY = MetaDataGeneratorMojo.class.getName() + ".emittedBy";
+    private static final String RAN_CONTEXT_KEY = MetaDataGeneratorMojo.class.getName() + ".ran";
 
     /** The one-time notices about the manifest itself: first-run adoption, and files this
      *  run could not record because they landed outside the project root. */

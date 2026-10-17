@@ -117,21 +117,43 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
      * project's build context, since every execution of the module reads the same POMs.
      */
     protected Set<HashManifest.Owner> configuredOwners() {
-        if (project == null || project.getFile() == null || projectBuilder == null || session == null) return null;
-        if (project.getContextValue(CONFIGURED_OWNERS_CONTEXT_KEY) instanceof ConfiguredOwners known) {
-            return known.owners();
-        }
-        Set<HashManifest.Owner> owners = readConfiguredOwners();
-        project.setContextValue(CONFIGURED_OWNERS_CONTEXT_KEY, new ConfiguredOwners(owners));
-        return owners;
+        return configured().owners();
     }
 
-    private record ConfiguredOwners(Set<HashManifest.Owner> owners) {}
+    /**
+     * The ids of the module's {@code metaobjects:generate} executions that configure
+     * {@code owner}, in declared order; empty when none does or that is unknown. The
+     * plugin-level configuration alone is no execution.
+     */
+    protected List<String> executionsConfiguring(HashManifest.Owner owner) {
+        return configured().executions().getOrDefault(owner, List.of());
+    }
+
+    /** Whether more than one execution of the module configures {@code owner}. */
+    protected boolean sharedByExecutions(HashManifest.Owner owner) {
+        return executionsConfiguring(owner).size() > 1;
+    }
+
+    private ConfiguredOwners configured() {
+        if (project == null || project.getFile() == null || projectBuilder == null || session == null) {
+            return ConfiguredOwners.UNKNOWN;
+        }
+        if (project.getContextValue(CONFIGURED_OWNERS_CONTEXT_KEY) instanceof ConfiguredOwners known) {
+            return known;
+        }
+        ConfiguredOwners read = readConfiguredOwners();
+        project.setContextValue(CONFIGURED_OWNERS_CONTEXT_KEY, read);
+        return read;
+    }
+
+    private record ConfiguredOwners(Set<HashManifest.Owner> owners, Map<HashManifest.Owner, List<String>> executions) {
+        static final ConfiguredOwners UNKNOWN = new ConfiguredOwners(null, Map.of());
+    }
 
     private static final String CONFIGURED_OWNERS_CONTEXT_KEY =
             AbstractMetaDataMojo.class.getName() + ".configuredOwners";
 
-    private Set<HashManifest.Owner> readConfiguredOwners() {
+    private ConfiguredOwners readConfiguredOwners() {
         Set<String> profileIds = new LinkedHashSet<>();
         for (MavenProject p = project; p != null; p = p.getParent()) {
             if (p.getModel() == null) continue;
@@ -140,29 +162,36 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
         List<MavenProject> models = new ArrayList<>();
         models.add(project);
         MavenProject base = projectWith(null, profileIds);
-        if (base == null) return null;
+        if (base == null) return ConfiguredOwners.UNKNOWN;
         models.add(base);
         for (String id : profileIds) {
             MavenProject alone = projectWith(id, profileIds);
-            if (alone == null) return null;
+            if (alone == null) return ConfiguredOwners.UNKNOWN;
             models.add(alone);
         }
         Set<HashManifest.Owner> out = new HashSet<>();
+        Map<HashManifest.Owner, Set<String>> executions = new HashMap<>();
         boolean declared = false;
         for (MavenProject model : models) {
             Plugin plugin = model.getPlugin(PLUGIN_KEY);
             if (plugin == null) continue;
             declared = true;
             Xpp3Dom pluginLevel = plugin.getConfiguration() instanceof Xpp3Dom dom ? dom : null;
-            addConfiguredOwners(pluginLevel, out);
+            out.addAll(configuredIn(pluginLevel));
             for (PluginExecution e : plugin.getExecutions()) {
                 if (!e.getGoals().contains("generate")) continue;
                 if (!(e.getConfiguration() instanceof Xpp3Dom execution)) continue;
-                addConfiguredOwners(pluginLevel == null ? execution
-                        : Xpp3Dom.mergeXpp3Dom(new Xpp3Dom(execution), pluginLevel), out);
+                for (HashManifest.Owner owner : configuredIn(pluginLevel == null ? execution
+                        : Xpp3Dom.mergeXpp3Dom(new Xpp3Dom(execution), pluginLevel))) {
+                    out.add(owner);
+                    executions.computeIfAbsent(owner, k -> new LinkedHashSet<>()).add(e.getId());
+                }
             }
         }
-        return declared ? out : null;
+        if (!declared) return ConfiguredOwners.UNKNOWN;
+        Map<HashManifest.Owner, List<String>> byOwner = new HashMap<>();
+        executions.forEach((owner, ids) -> byOwner.put(owner, List.copyOf(ids)));
+        return new ConfiguredOwners(out, byOwner);
     }
 
     /** This module built by Maven with only profile {@code active} on ({@code null}: none of
@@ -185,11 +214,12 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
         }
     }
 
-    private void addConfiguredOwners(Xpp3Dom dom, Set<HashManifest.Owner> out) {
-        if (dom == null) return;
+    private List<HashManifest.Owner> configuredIn(Xpp3Dom dom) {
+        List<HashManifest.Owner> out = new ArrayList<>();
+        if (dom == null) return out;
         Map<String, String> domGlobals = childValues(dom.getChild("globals"));
         Xpp3Dom generators = dom.getChild("generators");
-        if (generators == null) return;
+        if (generators == null) return out;
         for (Xpp3Dom generator : generators.getChildren()) {
             Xpp3Dom classname = generator.getChild("classname");
             if (classname == null) continue;
@@ -197,6 +227,7 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
             HashManifest.Owner owner = ownerOf(classname.getValue(), args.get(GeneratorBase.ARG_OUTPUTDIR));
             if (owner != null) out.add(owner);
         }
+        return out;
     }
 
     private static Map<String, String> childValues(Xpp3Dom dom) {

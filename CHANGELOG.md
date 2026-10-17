@@ -874,7 +874,11 @@ executions in one module share the manifest without touching each other's files:
 names its owner (the generator's registry id and its output directory, not the Maven
 execution), a run deletes only its own generators' orphans and those of generators the module
 no longer configures, even in a shared output directory, and one file two generators
-emit with different content fails the goal; two modules have two. User templates, api-docs pages and the `META-INF/services` registration are not
+emit with different content fails the goal. When two executions configure the same generator
+into the same output directory, only the last of them in declared order removes that
+generator's orphans, and only in a build that runs them all, so a standalone
+`generate@<id>` deletes nothing of the other's; the same file from both fails the goal. Two
+modules have two. User templates, api-docs pages and the `META-INF/services` registration are not
 recorded, so they are never deleted. A refusal stays a warning on the JVM. To keep the 8.0.x
 outcome for output nobody edits, set `<handEdits>overwrite</handEdits>` on that `<generator>`.
 Migration: [jvm-codegen-hash-manifest.md](docs/features/migrations/jvm-codegen-hash-manifest.md).

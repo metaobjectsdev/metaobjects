@@ -11,6 +11,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
@@ -136,15 +137,16 @@ public final class OrphanSweep {
 
     /**
      * Whether the sweep may judge an entry owned by {@code owner} ({@code null}: recorded
-     * with no owner): {@code runOwners} own it, or {@code configured} (every
+     * with no owner): this run judges its owner's entries ({@code judgedByRun}), or {@code configured} (every
      * generator/output-directory pair configured in the module; {@code null} when that is
      * unknown) does not hold it. An entry with no owner counts only inside one of this
      * run's output directories ({@code inRunDir}), since outside them it may be another
      * port's. {@code configured} is asked only when the answer depends on it.
      */
     public static boolean isCandidate(HashManifest.Owner owner, boolean inRunDir,
-                                      Set<HashManifest.Owner> runOwners, Supplier<Set<HashManifest.Owner>> configured) {
-        if (owner != null && runOwners.contains(owner)) return true;
+                                      Predicate<HashManifest.Owner> judgedByRun,
+                                      Supplier<Set<HashManifest.Owner>> configured) {
+        if (owner != null && judgedByRun.test(owner)) return true;
         if (owner == null && !inRunDir) return false;
         Set<HashManifest.Owner> known = configured.get();
         return known != null && (owner == null || !known.contains(owner));
@@ -158,7 +160,8 @@ public final class OrphanSweep {
      * manifest yet — there is nothing recorded, so nothing could be an orphan.
      */
     public static Result sweep(Path genStateDir, Path projectRoot, List<Entry> dirs, Set<Path> emitted,
-                               Set<HashManifest.Owner> runOwners, Supplier<Set<HashManifest.Owner>> configured) {
+                               Predicate<HashManifest.Owner> judgedByRun,
+                               Supplier<Set<HashManifest.Owner>> configured) {
         if (!HashManifest.exists(genStateDir)) {
             return new Result(List.of(), List.of(), List.of());
         }
@@ -179,7 +182,7 @@ public final class OrphanSweep {
             Path path = root.resolve(key).normalize();
             if (!path.startsWith(root) || emitted.contains(path)) continue;
             Path dir = innermost(byDir.keySet(), path);
-            if (!isCandidate(owners.get(key), dir != null, runOwners, configured)) continue;
+            if (!isCandidate(owners.get(key), dir != null, judgedByRun, configured)) continue;
             if (!Files.exists(path)) {
                 // Already gone: forget it, so a stranger's file created later under that
                 // name is not mistaken for ours.

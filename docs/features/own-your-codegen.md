@@ -606,6 +606,12 @@ the two profiles point one generator at different directories. A generator that 
 when two profiles are on together counts only on a build that activates both.
 A file another configured generator owns is never an orphan to this run, so two executions
 in one module never delete each other's files, even when they share an output directory.
+When two executions configure the same generator into the same output directory (one
+generator over two sets of metadata, say), their files share one owner. Only the last of
+those executions in declared order removes that owner's orphans, and only in a build that
+ran every one of them, judging against what all of them emitted; a standalone
+`mvn metaobjects:generate@<id>` leaves them alone and says so in one line. The same file
+emitted by both executions fails the goal, naming both, whatever its content.
 One file emitted with different content by two generator/output-directory pairs in the same
 build fails the goal, naming both; the same bytes from both are one file, and a file you own
 is refused for each, not a collision. The first build on a manifest that names no generator owner records the owners
