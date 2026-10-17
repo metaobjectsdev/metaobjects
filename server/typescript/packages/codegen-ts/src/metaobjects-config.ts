@@ -143,7 +143,7 @@ export interface MetaobjectsGenConfig extends Omit<ResolvedGenConfig, "dbImport"
    * adopter's BUNDLER TOPOLOGY, not about the entity — the metamodel contains nothing
    * that could derive it, and every non-TS port would carry a registration it can never
    * dispatch on, which is the `source.rdb @role` mistake that retired four members in
-   * 0.21.0. It sits here beside `extStyle` and `columnNamingStrategy` for the same
+   * 0.21.0. It sits here beside `extStyle` for the same
    * reason `pluralizeCollections` does: a per-port codegen concern (ADR-0001), so
    * config, and no cross-port conformance cost.
    *
