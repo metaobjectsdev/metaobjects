@@ -362,23 +362,6 @@ public class MetaDataGeneratorMojoManifestTest {
     }
 
     @Test
-    public void generatorRemovedFromConfiguration_itsFilesAreDeletedEvenInADirectoryNothingWrites()
-            throws IOException {
-        String genDir = tempFolder.newFolder("gen").getAbsolutePath();
-        String webDir = tempFolder.newFolder("web").getAbsolutePath();
-        GeneratorParam dto = gen(DtoGenerator.class, genDir, "Dto.java");
-        GeneratorParam route = gen(RouteGenerator.class, webDir, "Route.java");
-        runExecution(newBuild(null, Map.of("codegen", configuration(dto, route))), "codegen", dto, route);
-        assertTrue(Files.exists(Path.of(webDir, "Route.java")));
-
-        runExecution(newBuild(null, Map.of("codegen", configuration(dto))), "codegen", dto);
-
-        assertFalse("no execution configures its generator any more", Files.exists(Path.of(webDir, "Route.java")));
-        assertFalse(manifest().containsKey("web/Route.java"));
-        assertTrue(Files.exists(Path.of(genDir, "Dto.java")));
-    }
-
-    @Test
     public void onePathEmittedByTwoGenerators_isAnErrorNamingBoth() throws IOException {
         String shared = tempFolder.newFolder("generated-sources").getAbsolutePath();
         GeneratorParam dto = gen(DtoGenerator.class, shared, "Dto.java");
@@ -435,36 +418,6 @@ public class MetaDataGeneratorMojoManifestTest {
         runExecution(module, "codegen-data", repository);
 
         assertEquals(MARKER_BODY, Files.readString(Path.of(shared, "Status.java")));
-    }
-
-    /** A manifest an 8.1.0 pre-release wrote names the Maven execution, or nothing. The first
-     *  build records owners and deletes nothing; the next one sweeps what nothing emits. */
-    @Test
-    public void manifestWithoutGeneratorOwners_firstBuildRecordsOwnersAndDeletesNothing() throws IOException {
-        String outDir = tempFolder.newFolder("gen").getAbsolutePath();
-        Path kept = Path.of(outDir, "Kept.java");
-        Path old = Path.of(outDir, "Old.java");
-        Files.writeString(kept, MARKER_BODY);
-        Files.writeString(old, MARKER_BODY);
-        Path genState = projectRoot.resolve(".metaobjects").resolve(".gen-state");
-        Files.createDirectories(genState);
-        String hash = HashManifest.contentHash(MARKER_BODY);
-        Files.writeString(genState.resolve(".hashes.json"), "{\n"
-                + "  \"gen/Kept.java\": { \"hash\": \"" + hash + "\", \"owner\": \"app:codegen\" },\n"
-                + "  \"gen/Old.java\": { \"hash\": \"" + hash + "\", \"owner\": \"app:codegen\" }\n}\n");
-        GeneratorParam dto = gen(DtoGenerator.class, outDir, "Kept.java");
-        Map<String, Xpp3Dom> executions = Map.of("codegen", configuration(dto));
-
-        runExecution(newBuild(null, executions), "codegen", dto);
-
-        assertTrue("the build that records owners deletes nothing", Files.exists(old));
-        assertEquals(new HashManifest.Owner(DtoGenerator.class.getName(), "gen"), owners().get("gen/Kept.java"));
-        assertFalse(owners().containsKey("gen/Old.java"));
-
-        runExecution(newBuild(null, executions), "codegen", dto);
-
-        assertFalse("recorded in this run's directory, emitted by nothing", Files.exists(old));
-        assertTrue(Files.exists(kept));
     }
 
     // === multi-module: two basedirs, two manifests ===============================

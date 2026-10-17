@@ -594,8 +594,10 @@ registry id and its output directory within the module, not the Maven execution,
 generator emitted in this build is an orphan when this run's own generators own it, or when
 no `metaobjects:generate` execution of the module (nor the plugin-level configuration)
 configures its owner any more: a removed generator's files are deleted wherever they live.
-Executions inside a profile count whether the profile is active or not, so a plain build
-keeps the files of a generator only `-P<profile>` runs.
+Executions inside a profile count whether the profile is active or not, including profiles a
+parent POM declares: Maven builds the module with every profile on to read them, so a profile's
+own properties resolve as they do under `-P<profile>`, and a plain build keeps the files of a
+generator only `-P<profile>` runs.
 A file another configured generator owns is never an orphan to this run, so two executions
 in one module never delete each other's files, even when they share an output directory.
 One file emitted with different content by two generator/output-directory pairs in the same

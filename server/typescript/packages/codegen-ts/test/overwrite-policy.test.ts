@@ -6,7 +6,7 @@ import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { decideAndWrite } from "../src/overwrite-policy.js";
+import { contentHash, decideAndWrite, forgetGeneratedPaths, readGeneratedHash } from "../src/overwrite-policy.js";
 
 let tmp: string;
 let state: string;
@@ -90,5 +90,36 @@ describe("decideAndWrite (three-way merge)", () => {
     writeFileSync(path, "current\n");
     const result = decideAndWrite(path, "fresh\n", "skip-existing");
     expect(result.status).toBe("skipped");
+  });
+});
+
+describe("shared manifest with object-valued entries", () => {
+  test("reads an object entry's hash and preserves its fields on record and forget", () => {
+    const jvm = { hash: contentHash("jvm body"), generator: "java:dto", outputDir: "target/gen" };
+    const manifest = join(state, ".hashes.json");
+    writeFileSync(manifest, JSON.stringify({ "Jvm.java": jvm, "Plain.txt": "abc", "Gone.java": { ...jvm } }, null, 2) + "\n");
+
+    expect(readGeneratedHash(state, "Jvm.java")).toBe(jvm.hash);
+
+    const result = decideAndWrite(join(tmp, "Other.ts"), "x\n", {
+      genStateDir: state,
+      outputRelPath: "Other.ts",
+    });
+    expect(result.status).toBe("new");
+
+    forgetGeneratedPaths(state, ["Gone.java"]);
+
+    const saved = JSON.parse(readFileSync(manifest, "utf-8"));
+    expect(saved["Jvm.java"]).toEqual(jvm);
+    expect(saved["Plain.txt"]).toBe("abc");
+    expect(saved["Other.ts"]).toBe(contentHash("x\n"));
+    expect("Gone.java" in saved).toBe(false);
+
+    const jvmFile = join(tmp, "Jvm.java");
+    writeFileSync(jvmFile, "jvm body");
+    const rewrite = decideAndWrite(jvmFile, "jvm body v2", { genStateDir: state, outputRelPath: "Jvm.java" });
+    expect(rewrite.status).not.toBe("refused");
+    const after = JSON.parse(readFileSync(manifest, "utf-8"));
+    expect(after["Jvm.java"]).toEqual({ ...jvm, hash: contentHash("jvm body v2") });
   });
 });

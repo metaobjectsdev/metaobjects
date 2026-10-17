@@ -150,14 +150,13 @@ function sha256(content: string | Buffer): string {
   return createHash("sha256").update(content).digest("hex");
 }
 
-function loadHashes(genStateDir: string): HashesFile {
+function readRawManifest(genStateDir: string): Record<string, unknown> {
   const f = join(genStateDir, HASHES_FILE);
   if (!existsSync(f)) return {};
   try {
-    const txt = readFileSync(f, "utf-8");
-    const parsed: unknown = JSON.parse(txt);
+    const parsed: unknown = JSON.parse(readFileSync(f, "utf-8"));
     if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      return parsed as HashesFile;
+      return parsed as Record<string, unknown>;
     }
     return {};
   } catch {
@@ -165,14 +164,37 @@ function loadHashes(genStateDir: string): HashesFile {
   }
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function entryHash(value: unknown): string | undefined {
+  if (typeof value === "string") return value;
+  if (isRecord(value) && typeof value.hash === "string") return value.hash;
+  return undefined;
+}
+
+function loadHashes(genStateDir: string): HashesFile {
+  const hashes: HashesFile = {};
+  for (const [key, value] of Object.entries(readRawManifest(genStateDir))) {
+    const hash = entryHash(value);
+    if (hash !== undefined) hashes[key] = hash;
+  }
+  return hashes;
+}
+
 function saveHashes(genStateDir: string, hashes: HashesFile): void {
   mkdirSync(genStateDir, { recursive: true });
+  const raw = readRawManifest(genStateDir);
   // Keys SORTED, because this file is committed. Insertion order would make the
   // diff — and any merge conflict between two people who both regenerated —
   // depend on which entity happened to generate first, which is noise nobody can
   // review.
-  const sorted: HashesFile = {};
-  for (const key of Object.keys(hashes).sort()) sorted[key] = hashes[key]!;
+  const sorted: Record<string, unknown> = {};
+  for (const key of Object.keys(hashes).sort()) {
+    const existing = raw[key];
+    sorted[key] = isRecord(existing) ? { ...existing, hash: hashes[key] } : hashes[key];
+  }
   writeFileSync(join(genStateDir, HASHES_FILE), JSON.stringify(sorted, null, 2) + "\n");
 }
 

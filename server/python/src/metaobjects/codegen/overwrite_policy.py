@@ -74,7 +74,7 @@ def has_hash_manifest(gen_state_dir: str) -> bool:
     return os.path.exists(_manifest_path(gen_state_dir))
 
 
-def _load_hashes(gen_state_dir: str) -> dict[str, str]:
+def _read_raw(gen_state_dir: str) -> dict[str, object]:
     path = _manifest_path(gen_state_dir)
     if not os.path.exists(path):
         return {}
@@ -87,15 +87,39 @@ def _load_hashes(gen_state_dir: str) -> dict[str, str]:
         return {}
     if not isinstance(parsed, dict):
         return {}
-    return {k: v for k, v in parsed.items() if isinstance(k, str) and isinstance(v, str)}
+    return parsed
+
+
+def _entry_hash(value: object) -> str | None:
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict) and isinstance(value.get("hash"), str):
+        return value["hash"]
+    return None
+
+
+def _load_hashes(gen_state_dir: str) -> dict[str, str]:
+    hashes: dict[str, str] = {}
+    for key, value in _read_raw(gen_state_dir).items():
+        recorded = _entry_hash(value)
+        if isinstance(key, str) and recorded is not None:
+            hashes[key] = recorded
+    return hashes
 
 
 def _save_hashes(gen_state_dir: str, hashes: dict[str, str]) -> None:
     os.makedirs(gen_state_dir, exist_ok=True)
+    raw = _read_raw(gen_state_dir)
     # Keys SORTED, because this file is committed. Insertion order would make the
     # diff — and any merge conflict between two people who both regenerated — depend
     # on which entity happened to generate first.
-    ordered = {k: hashes[k] for k in sorted(hashes)}
+    ordered: dict[str, object] = {}
+    for k in sorted(hashes):
+        existing = raw.get(k)
+        if isinstance(existing, dict):
+            ordered[k] = {**existing, "hash": hashes[k]}
+        else:
+            ordered[k] = hashes[k]
     with open(_manifest_path(gen_state_dir), "w", encoding="utf-8") as fh:
         json.dump(ordered, fh, indent=2)
         fh.write("\n")

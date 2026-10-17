@@ -43,11 +43,14 @@ does not cover deletion, and deletion without evidence is not safe on any port.
    `"<path>": { "hash": "<sha-256 hex>", "generator": "java:dto", "outputDir": "target/generated-sources/java" }`.
    The owner names the configuration, not the Maven execution, so `default-cli`, a renamed
    execution and the lifecycle execution with the same configuration agree on it. The
-   sweep reads the module's `metaobjects:generate` executions and plugin-level
-   configuration from the build model, in the main build and in every profile whether
-   active or not, to know every generator/output-directory pair the module configures. A
-   pair declared only in a profile that is off for this build is still configured, so its
-   files are never treated as stranded. A recorded file is an orphan when no generator emitted it in this
+   sweep asks Maven to build the module again with every profile the module and its
+   parent POMs declare switched on, using this build's request settings, and reads the
+   `metaobjects:generate` executions and plugin-level configuration of that model to know
+   every generator/output-directory pair the module configures. Maven resolves profile-only
+   properties, inherited profiles and basedirs there exactly as on a build with the
+   profile on, so a pair declared only in a profile that is off for this build is still
+   configured and its files are never treated as stranded. When that model cannot be
+   built, the sweep judges only this run's own entries. A recorded file is an orphan when no generator emitted it in this
    build and either its owner is one of this run's own generators, or its owner is
    configured in no execution of the module (a removed generator, wherever its files
    live). An entry with no owner (the plain `"<path>": "<hash>"` form other ports write)
@@ -57,7 +60,9 @@ does not cover deletion, and deletion without evidence is not safe on any port.
    pairs in the same build is an error naming both; byte-identical re-emission is one file,
    and a path the adopter hand-owns is refused for each generator, not a collision. The first build on a manifest that names no generator owner
    (an 8.1.0 pre-release recorded the execution id instead) records the owners and deletes
-   nothing. Two modules have two manifests.
+   nothing. Two modules have two manifests. The TypeScript, Python and C# readers take an
+   object entry's `hash` as its recorded hash and keep its other fields when they save, so
+   a manifest a Maven module shares with another port's project keeps every entry.
 2. **The overwrite decision is the hash, not the marker.** For a file at a generated path:
    - absent: write it and record it;
    - same content as fresh output: unchanged, and its record is confirmed;

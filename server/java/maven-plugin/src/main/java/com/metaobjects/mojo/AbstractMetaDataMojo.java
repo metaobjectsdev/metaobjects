@@ -19,13 +19,20 @@ import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.generator.util.HashManifest;
 import org.apache.maven.model.Plugin;
 import org.apache.maven.model.PluginExecution;
+import org.apache.maven.execution.MavenSession;
 import org.apache.maven.model.Profile;
+import org.apache.maven.model.building.ModelBuildingRequest;
 import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoExecution;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
+import org.apache.maven.plugins.annotations.Component;
 import org.apache.maven.plugins.annotations.Parameter;
+import org.apache.maven.project.DefaultProjectBuildingRequest;
 import org.apache.maven.project.MavenProject;
+import org.apache.maven.project.ProjectBuilder;
+import org.apache.maven.project.ProjectBuildingException;
+import org.apache.maven.project.ProjectBuildingRequest;
 import org.codehaus.plexus.util.xml.Xpp3Dom;
 
 import java.io.File;
@@ -60,6 +67,12 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
     @Parameter( defaultValue = "${project}", readonly = true, required = true )
     protected MavenProject project;
 
+    @Parameter( defaultValue = "${session}", readonly = true )
+    protected MavenSession session;
+
+    @Component
+    protected ProjectBuilder projectBuilder;
+
     @Parameter( defaultValue = "${mojoExecution}", readonly = true, required = true )
     protected MojoExecution execution;
 
@@ -92,42 +105,51 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
     /**
      * Every generator/output-directory pair the module configures for
      * {@code metaobjects:generate}: in each of its executions and in the plugin-level
-     * configuration a command-line run uses, in the main build and in every profile,
-     * active or not, so a profile switched off for one build does not make its generators'
-     * files look stranded. {@code null} when the module's build model declares this plugin
-     * nowhere, so what is configured is unknown.
+     * configuration a command-line run uses, with every profile of the module and its
+     * parents active, so a profile switched off for one build does not make its
+     * generators' files look stranded. Maven builds that model, so profile properties,
+     * inherited profiles and basedirs resolve as they do when the profile is on.
+     * {@code null} when that model cannot be built or does not declare this plugin, so
+     * what is configured is unknown.
      */
     protected Set<HashManifest.Owner> configuredOwners() {
-        if (project == null) return null;
-        Plugin main = project.getPlugin(PLUGIN_KEY);
-        List<Plugin> plugins = new ArrayList<>();
-        if (main != null) plugins.add(main);
-        List<Profile> profiles = project.getModel() != null ? project.getModel().getProfiles() : List.of();
-        for (Profile profile : profiles) {
-            Plugin plugin = profile.getBuild() != null ? profile.getBuild().getPluginsAsMap().get(PLUGIN_KEY) : null;
-            if (plugin != null) plugins.add(plugin);
-        }
-        if (plugins.isEmpty()) return null;
-        Object mainLevel = main != null ? main.getConfiguration() : null;
+        MavenProject all = allProfilesProject();
+        Plugin plugin = all != null ? all.getPlugin(PLUGIN_KEY) : null;
+        if (plugin == null) return null;
         Set<HashManifest.Owner> out = new HashSet<>();
-        for (Plugin plugin : plugins) {
-            Xpp3Dom pluginLevel = plugin == main ? merged(mainLevel, null) : merged(plugin.getConfiguration(), mainLevel);
-            addConfiguredOwners(pluginLevel, out);
-            for (PluginExecution e : plugin.getExecutions()) {
-                if (!e.getGoals().contains("generate")) continue;
-                addConfiguredOwners(plugin == main ? merged(e.getConfiguration(), null)
-                        : merged(e.getConfiguration(), pluginLevel), out);
-            }
+        Xpp3Dom pluginLevel = plugin.getConfiguration() instanceof Xpp3Dom dom ? dom : null;
+        addConfiguredOwners(pluginLevel, out);
+        for (PluginExecution e : plugin.getExecutions()) {
+            if (!e.getGoals().contains("generate")) continue;
+            if (!(e.getConfiguration() instanceof Xpp3Dom execution)) continue;
+            addConfiguredOwners(pluginLevel == null ? execution
+                    : Xpp3Dom.mergeXpp3Dom(new Xpp3Dom(execution), pluginLevel), out);
         }
         return out;
     }
 
-    /** {@code dominant} over {@code recessive}, as Maven merges an execution's configuration
-     *  over its plugin's; {@code null} when neither is a configuration. */
-    private static Xpp3Dom merged(Object dominant, Object recessive) {
-        Xpp3Dom r = recessive instanceof Xpp3Dom dom ? dom : null;
-        if (!(dominant instanceof Xpp3Dom d)) return r;
-        return r == null ? d : Xpp3Dom.mergeXpp3Dom(new Xpp3Dom(d), r);
+    /** This module built by Maven with every profile it and its parents declare active;
+     *  {@code null} outside a Maven session or when the build fails. */
+    private MavenProject allProfilesProject() {
+        if (project == null || project.getFile() == null || projectBuilder == null || session == null) return null;
+        List<String> profileIds = new ArrayList<>();
+        for (MavenProject p = project; p != null; p = p.getParent()) {
+            if (p.getModel() == null) continue;
+            for (Profile profile : p.getModel().getProfiles()) profileIds.add(profile.getId());
+        }
+        ProjectBuildingRequest request = new DefaultProjectBuildingRequest(session.getProjectBuildingRequest());
+        request.setActiveProfileIds(profileIds);
+        request.setInactiveProfileIds(List.of());
+        request.setResolveDependencies(false);
+        request.setValidationLevel(ModelBuildingRequest.VALIDATION_LEVEL_MINIMAL);
+        request.setProject(null);
+        try {
+            return projectBuilder.build(project.getFile(), request).getProject();
+        } catch (ProjectBuildingException e) {
+            getLog().warn("MetaData Mojo > Could not read every profile's configuration of this module, so files "
+                    + "only a removed generator wrote are not cleaned up this run: " + e.getMessage());
+            return null;
+        }
     }
 
     private void addConfiguredOwners(Xpp3Dom dom, Set<HashManifest.Owner> out) {
