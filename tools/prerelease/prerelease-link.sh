@@ -197,6 +197,14 @@ finish_rewrite() {  # finish_rewrite <file> <tmpfile> <had 0|1>
   return 0
 }
 
+# The END marker of a block appended to a file, ending in a newline only when the file did
+# before the block was added (<had>, from `had_newline`). The newline that separates the
+# file's last line from the block is the one the block's END would otherwise carry, so
+# `strip_block` hands the file back with its own final-newline state.
+end_block() {  # end_block <had 0|1>
+  if [ "$1" = 1 ]; then echo "$END"; else printf '%s' "$END"; fi
+}
+
 # Remove a managed block from a file, leaving the rest byte-identical.
 strip_block() {  # strip_block <file> <begin> <end>
   local f="$1" b="$2" e="$3" had
@@ -260,12 +268,10 @@ set_exclude_block() {  # set_exclude_block <exclude-file> <lines>
   } > "$ex.tmp" && mv "$ex.tmp" "$ex"
 }
 
-# The OTHER work trees of this clone, one path per line. They read the same exclude file, so
-# an entry one of them still needs must outlive this work tree's `unlink`.
-other_worktrees() {
-  local self
-  self="$(git -C "$PROJECT" rev-parse --show-toplevel 2>/dev/null)" || return 0
-  git -C "$PROJECT" worktree list --porcelain 2>/dev/null | sed -n 's/^worktree //p' | grep -vxF -- "$self" || true
+# Every work tree of this clone, this one included, one path per line. They all read the same
+# exclude file, so an entry any of them still needs must outlive an `unlink`.
+worktrees() {
+  git -C "$PROJECT" worktree list --porcelain 2>/dev/null | sed -n 's/^worktree //p' || true
 }
 
 # Whether a file is one `link` wrote and has not removed: it carries a managed marker, or, for
@@ -656,18 +662,19 @@ link_npm() {
   # pre-release pin and no registry to resolve it from — `link` reported success and the
   # breakage surfaced later as `notarget` inside that sub-project. `check` already walked
   # nested roots; that asymmetry was the bug.
-  local wrote=0 root rel f written=()
+  local wrote=0 root rel f had written=()
   while IFS= read -r root; do
     f="$root/.npmrc"
     strip_block "$f" "$BEGIN" "$END"
     # A pre-existing .npmrc without its own trailing newline would otherwise run its last
     # line straight into the BEGIN marker text (`cat` and `echo "$BEGIN"` land on the same
     # line) — not just a cosmetic newline difference but real content corruption.
-    { if [ -f "$f" ]; then cat "$f"; ends_in_newline "$f" || echo; fi
+    had="$(had_newline "$f")"
+    { if [ -f "$f" ]; then cat "$f"; [ "$had" = 1 ] || echo; fi
       echo "$BEGIN"
       echo "$NPM_SCOPE:registry=$BASE/api/packages/$OWNER/npm/"
       [ -n "$auth" ] && echo "$auth"
-      echo "$END"; } > "$f.tmp" && mv "$f.tmp" "$f"
+      end_block "$had"; } > "$f.tmp" && mv "$f.tmp" "$f"
     rel="${f#"$PROJECT"/}"; [ "$rel" = "$f" ] && rel=".npmrc"
     if tracked "$rel"; then
       warn "$rel is TRACKED in this project — the managed block is committable. Remove it with 'unlink' before pushing."
@@ -697,14 +704,15 @@ link_npm() {
 }
 
 link_py() {
-  local root f n=0
+  local root f had n=0
   while IFS= read -r root; do
     f="$root/pyproject.toml"; n=$((n + 1))
     strip_block "$f" "$BEGIN" "$END"
+    had="$(had_newline "$f")"
     # `explicit = true` + [tool.uv.sources] is per-package index pinning: nothing resolves
     # from this index unless a source names it, so the rest of PyPI is untouched. pip's
     # --extra-index-url has no equivalent, which is why uv is the documented path.
-    { cat "$f"; echo; echo "$BEGIN"
+    { cat "$f"; [ "$had" = 1 ] || echo; echo "$BEGIN"
       echo '[[tool.uv.index]]'
       echo 'name = "metaobjects-prerelease"'
       echo "url = \"$BASE/api/packages/$OWNER/pypi/simple\""
@@ -712,7 +720,7 @@ link_py() {
       echo
       echo '[tool.uv.sources]'
       echo "$PY_DIST = { index = \"metaobjects-prerelease\" }"
-      echo "$END"; } > "$f.tmp" && mv "$f.tmp" "$f"
+      end_block "$had"; } > "$f.tmp" && mv "$f.tmp" "$f"
     say "linked ${f#"$PROJECT"/}"
   done < <(py_roots)
   if [ "$n" -eq 0 ]; then warn "no pyproject.toml — configure pip manually, or add one"; return 0; fi
@@ -851,27 +859,18 @@ run_detector() {
 
 # ── unlink ────────────────────────────────────────────────────────────────────────────
 unlink_all() {
-  # The git-exclude block link() wrote — removed by identity, same as every other
-  # managed block, so a line a user added to info/exclude by hand survives untouched. The
-  # file is shared by every work tree of the clone, so an entry another work tree's managed
-  # file still needs stays: dropping it would let `git add -A` there stage an .npmrc that can
-  # hold a registry credential.
-  local ex line wt keep=""
-  ex="$(exclude_file)"
-  if [ -n "$ex" ]; then
-    while IFS= read -r line; do
-      while IFS= read -r wt; do
-        if is_managed_file "$wt/$line"; then keep+="$line"$'\n'; break; fi
-      done < <(other_worktrees)
-    done < <(exclude_block_lines "$ex")
-    set_exclude_block "$ex" "${keep%$'\n'}"
-  fi
   # Every root `link` could have written to, or a sub-project keeps a managed block
   # pointing at a registry that will not serve it once the pre-release is gone.
   local root
   while IFS= read -r root; do strip_block "$root/.npmrc" "$BEGIN" "$END"; done < <(npm_install_roots)
   while IFS= read -r root; do strip_block "$root/pyproject.toml" "$BEGIN" "$END"; done < <(py_roots)
   strip_block "$PROJECT/NuGet.config"  "$XBEGIN" "$XEND"
+  # A NuGet.config `link` wrote is the XML declaration and the managed block, nothing else;
+  # what the strip leaves of it is not a valid config, so it goes. A user's own file, with a
+  # block added by hand, keeps everything outside the block.
+  if [ -f "$PROJECT/NuGet.config" ] && ! grep -v '^<?xml [^>]*?>$' "$PROJECT/NuGet.config" | grep -q '[^[:space:]]'; then
+    rm -f "$PROJECT/NuGet.config"
+  fi
   while IFS= read -r root; do
     strip_block "$root/pom.xml" "$XBEGIN" "$XEND"
     # The http-blocker workaround is a whole file we authored, not a block inside someone
@@ -887,6 +886,22 @@ unlink_all() {
       say "removed the .mvn http-blocker workaround in ${root#"$PROJECT"}"
     fi
   done < <(mvn_roots)
+  # The git-exclude block link() wrote — removed by identity, same as every other
+  # managed block, so a line a user added to info/exclude by hand survives untouched. The
+  # file is shared by every work tree of the clone and names paths from the repository root,
+  # so an entry a managed file still needs stays: one another work tree holds, or another
+  # project linked in this one. Dropping it would let `git add -A` stage an .npmrc that can
+  # hold a registry credential. This runs last, once this project's own files are gone.
+  local ex line wt keep=""
+  ex="$(exclude_file)"
+  if [ -n "$ex" ]; then
+    while IFS= read -r line; do
+      while IFS= read -r wt; do
+        if is_managed_file "$wt/$line"; then keep+="$line"$'\n'; break; fi
+      done < <(worktrees)
+    done < <(exclude_block_lines "$ex")
+    set_exclude_block "$ex" "${keep%$'\n'}"
+  fi
   say "removed managed registry config"
 }
 

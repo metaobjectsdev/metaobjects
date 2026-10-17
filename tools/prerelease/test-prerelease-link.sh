@@ -10,7 +10,7 @@
 #     .npmrc (which can hold a registry credential) is not ignored. The exclude entries `link`
 #     adds live in one managed block, so `unlink` removes exactly that block (and nothing a
 #     user put in the file by hand), and a repeated `link` does not duplicate it. Unlinking one
-#     worktree keeps an entry another linked worktree of the same clone still needs.
+#     worktree or project keeps an entry another linked worktree or project still needs.
 # R3  a link/unlink round trip leaves a pom.xml that lacked a trailing newline byte-identical
 #     (the previous awk-based rewrites unconditionally added one), and `link`/`unlink` report
 #     "repinned ... in <file>" only for a pom whose own text actually changed — not a module
@@ -133,6 +133,27 @@ check "unlink removes the managed block from the shared exclude file" '! grep -q
 check "unlink removes the .npmrc entry it added" '! grep -qxF .npmrc "$common/info/exclude"'
 check "unlink leaves a user's own exclude rule alone" 'grep -qxF a-users-own-rule "$common/info/exclude"'
 
+# D11: two projects linked in ONE work tree share the block too, each entry named from the
+# repository root. Unlinking one keeps the entry the other's .npmrc still needs.
+multi="$WORK/multi"
+git init -q "$multi"
+mkdir -p "$multi/apps/web" "$multi/apps/api"
+for app in web api; do
+  printf '{ "name": "%s", "version": "1.0.0", "dependencies": { "@metaobjectsdev/metadata": "^1.0.0" } }\n' "$app" \
+    > "$multi/apps/$app/package.json"
+done
+git -C "$multi" add -A && git -C "$multi" commit -q -m init
+mcommon="$(git -C "$multi" rev-parse --git-common-dir)"
+case "$mcommon" in /*) ;; *) mcommon="$multi/$mcommon" ;; esac
+if link "$multi/apps/web" && link "$multi/apps/api"; then pass "link succeeds for two projects of one worktree"; else fail "link of two subprojects failed: $(tail -5 "$WORK/out")"; fi
+unlink_project "$multi/apps/web"
+check "unlinking one subproject removes its own .npmrc" '[ ! -f "$multi/apps/web/.npmrc" ]'
+check "unlinking one subproject drops its own exclude entry" '! grep -qxF apps/web/.npmrc "$mcommon/info/exclude"'
+check "the other subproject's .npmrc is still ignored by git" 'git -C "$multi" check-ignore -q -- apps/api/.npmrc'
+check "git status shows no .npmrc after one subproject is unlinked" '! git -C "$multi" status --porcelain | grep -q "\.npmrc"'
+unlink_project "$multi/apps/api"
+check "unlinking the last subproject removes the managed block" '! grep -q "metaobjects prerelease (managed)" "$mcommon/info/exclude"'
+
 # The assertion: an .npmrc git does not ignore makes link fail.
 git -C "$WORK/main" worktree add -q "$WORK/wt2" -b linked2
 # A global excludes file is not what we control, so defeat the ignore by negating it in .gitignore.
@@ -247,9 +268,11 @@ cat > "$poly/ports/csharp/.config/dotnet-tools.json" <<'JSON'
 { "version": 1, "isRoot": true, "tools": { "metaobjects.cli": { "commands": ["dotnet-meta"] } } }
 JSON
 git -C "$poly" add -A && git -C "$poly" commit -q -m init
+cp "$poly/ports/python/pyproject.toml" "$WORK/poly-pyproject.toml.orig"
 if link "$poly"; then pass "link succeeds in a polyglot repository"; else fail "polyglot link failed: $(tail -5 "$WORK/out")"; fi
 check "a manifest with no tool version reports that nothing was pinned" 'grep -q "ports/csharp/.config/dotnet-tools.json names MetaObjects.Cli but no version for it was found: nothing pinned" "$WORK/out" && ! grep -q "repinned MetaObjects.Cli to 1.1.0-rc.9 in ports/csharp/" "$WORK/out"'
 check "a repinned manifest is reported as repinned" 'grep -q "repinned MetaObjects.Cli to 1.1.0-rc.9 in .config/dotnet-tools.json" "$WORK/out"'
+check "link writes a NuGet.config at the root" 'grep -qF "metaobjects-prerelease" "$poly/NuGet.config"'
 check "the nested python project is linked" 'grep -q "metaobjects-prerelease" "$poly/ports/python/pyproject.toml"'
 check "the nested python project is repinned" 'grep -q "metaobjects==1.1.0rc9" "$poly/ports/python/pyproject.toml"'
 check "each independent pom gets the repositories" 'grep -q "<pluginRepositories>" "$poly/ports/java/pom.xml" && grep -q "<pluginRepositories>" "$poly/ports/kotlin/pom.xml"'
@@ -273,6 +296,10 @@ MO_REGISTRY_BASE="http://127.0.0.1:$PORT" MO_REGISTRY_OWNER=owner MO_REGISTRY_TO
   bash "$LINK" unlink --project "$poly" --to 1.0.13 >"$WORK/out" 2>&1 || true
 check "an inherited version property survives link and unlink" 'grep -q "<version>\${metaobjects.version}</version>" "$poly/ports/java/inherits/pom.xml" && ! grep -q "<version>8" "$poly/ports/java/inherits/pom.xml"'
 check "unlink removes every managed block" '! grep -rq "metaobjects prerelease (managed)" "$poly/ports"'
+check "the round trip leaves the pyproject.toml byte-identical (repin aside)" \
+  'sed "s/metaobjects==1.0.13/metaobjects==1.0.9/" "$poly/ports/python/pyproject.toml" | cmp -s - "$WORK/poly-pyproject.toml.orig"'
+check "unlink removes the NuGet.config link wrote" '[ ! -e "$poly/NuGet.config" ]'
+check "git status shows no NuGet.config after the round trip" '! git -C "$poly" status --porcelain | grep -q "NuGet.config"'
 check "unlink repins the nested python project" 'grep -q "metaobjects==1.0.13" "$poly/ports/python/pyproject.toml"'
 check "unlink repins every pom" 'grep -q "8.0.13" "$poly/ports/java/pom.xml" && grep -q "8.0.13" "$poly/ports/java/module/pom.xml" && [ "$(grep -c "<version>8.0.13</version>" "$poly/ports/kotlin/pom.xml")" = 3 ]'
 check "unlink repins the local tool" 'grep -q "\"metaobjects.cli\": { \"version\": \"1.0.13\"" "$poly/.config/dotnet-tools.json"'

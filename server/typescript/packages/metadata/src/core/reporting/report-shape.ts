@@ -158,34 +158,15 @@ function reportingViaTerminal(
   from: MetaObject,
   root: MetaRoot,
 ): MetaObject | undefined {
-  const walk = walkReportingVia(via, declaring, from, root);
-  return walk !== undefined && "terminal" in walk ? walk.terminal : undefined;
-}
-
-/**
- * {@link reportingViaTerminal}, saying where a walk stopped: `undefined` when the owner does
- * not resolve, else the terminal entity or the hop that failed, the entity it was looked up
- * on and why.
- */
-function walkReportingVia(
-  via: string,
-  declaring: MetaData,
-  from: MetaObject,
-  root: MetaRoot,
-): { terminal: MetaObject } | { hop: string; at: MetaObject; reason: string } | undefined {
   const hops = reportingViaHops(via, declaring, from, root);
   if (hops === undefined) return undefined;
   let current: MetaObject = from;
   for (const hop of hops) {
-    const step = resolveViaHop(current, hop, root);
-    if (step === undefined) return { hop, at: current, reason: "it names no relationship or identity.reference of that entity" };
-    if (step.target === undefined) {
-      const ref = step.hop.attr(step.isReference ? IDENTITY_REFERENCE_ATTR_REFERENCES : RELATIONSHIP_ATTR_OBJECT_REF);
-      return { hop, at: current, reason: `its target '${String(ref ?? "")}' does not resolve to an object` };
-    }
-    current = step.target;
+    const target = resolveViaHop(current, hop, root)?.target;
+    if (target === undefined) return undefined;
+    current = target;
   }
-  return { terminal: current };
+  return current;
 }
 
 /**
@@ -402,15 +383,8 @@ function dimensionField(
   if (dim === undefined) throw unresolved(reportName, `dimension '${item.name}' on '${from.name}'`);
   const via = dim.via();
   // A @via that does not walk is the @via's error, not the @of's (the @of resolves at its end).
-  if (via !== undefined) {
-    const walk = walkReportingVia(via, reportingMemberOwner(dim, from), from, root);
-    if (walk === undefined) throw unresolved(reportName, `dimension '${dim.name}' @via '${via}'`);
-    if (!("terminal" in walk)) {
-      throw new Error(
-        `report '${reportName}': dimension '${dim.name}' @via '${via}' cannot be joined at hop '${walk.hop}' ` +
-          `on '${walk.at.resolutionKey()}': ${walk.reason}.`,
-      );
-    }
+  if (via !== undefined && reportingViaTerminal(via, reportingMemberOwner(dim, from), from, root) === undefined) {
+    throw unresolved(reportName, `dimension '${dim.name}' @via '${via}'`);
   }
   const ref = resolveDimensionOf(dim, from, root);
   if (ref === undefined) throw unresolved(reportName, `dimension '${item.name}' @of`);

@@ -97,14 +97,16 @@ database does not have.
   repins.** A `link` / `unlink` round trip added a final newline to a `pom.xml` that had none,
   so `git status` showed it modified, and both commands said "repinned ... in `app/pom.xml`"
   for a module pinned only through its parent's `${metaobjects.version}`. The rewrites keep a
-  file's final-newline state, and a repin is reported only for a file whose text changed.
+  file's final-newline state (`pom.xml`, and the blocks appended to `pyproject.toml` and
+  `.npmrc`), and a repin is reported only for a file whose text changed.
   Found by an adopter on 1.1.0-rc.4.
 - **`prerelease-link unlink` removes the git exclude lines `link` added.** `link` appended its
   ignore rules as bare lines to the clone's shared `info/exclude`, and `unlink` left them there.
   They now sit in one managed block, which `unlink` removes without touching a line the user
   wrote, and a repeated `link` does not add them twice. The file is shared by every worktree
-  of the clone, so an entry another linked worktree still needs stays until that worktree is
-  unlinked.
+  of the clone, so an entry that another linked worktree, or another project linked in the same
+  worktree, still needs stays until that one is unlinked. A `NuGet.config` that `link` wrote is
+  removed on `unlink` rather than left as a bare XML declaration.
 - `verify --codegen` (Python, C#) says when the committed output was generated with another
   column rule, another table rule, or both, and names the `naming` setting that reproduces it,
   instead of advising a regeneration that would commit the wrong column or table names.
