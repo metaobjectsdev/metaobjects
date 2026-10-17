@@ -68,6 +68,12 @@ function aggregate(a: ReportAggregate, d: ReportDialect): string {
         sql = mysqlTupleCount(refs, c);
         break;
     }
+  } else if (refs.length === 0) {
+    // @agg any / all with no @of (rule M0): the condition IS the quantified predicate, "some row
+    // (every row) passes". A comparison is a boolean on Postgres and 0 / 1 / NULL elsewhere, so
+    // MAX / MIN of it is the OR / AND, and a row whose predicate is NULL is skipped as bool_or skips it.
+    if (c === undefined) throw new Error(`report-ddl-emit: @agg '${a.agg}' has neither @of nor a condition.`);
+    sql = `${fn}(${c})`;
   } else {
     const x = refs[0]!;
     const distinct = a.distinct ? "DISTINCT " : "";

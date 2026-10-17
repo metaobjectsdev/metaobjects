@@ -13,6 +13,7 @@ import {
   TYPE_RELATIONSHIP,
   reportingMemberOwner,
   reportingViaHops,
+  resolveDimensionOf,
   resolveObjectRef,
   resolveReportingFieldRef,
   type MeasureAgg,
@@ -28,17 +29,14 @@ import { andOf, declared, resolveReportFilter, segmentClause } from "./report-sq
 import type { ViewFilterClause } from "./view-spec.js";
 
 /**
- * A dimension's `@of` field. Without `@via` the dimension is about `from`'s own rows, so the
- * field is read from `from` (a field `from` redeclares wins); with `@via` it is read from the
- * entity `@of` names. The entity half resolves in the DECLARING entity's package.
+ * A dimension's `@of` field, by the loader's rule D1 ({@link resolveDimensionOf}). Without
+ * `@via` the dimension is about `from`'s own rows, so the field is read from `from` (a field
+ * `from` redeclares wins) and the entity half resolves in the DECLARING entity's package; with
+ * `@via` it is read from the entity the `@via` reaches, and a bare entity half resolves in that
+ * entity's package.
  */
 export function dimensionOfField(dim: MetaDimension, from: MetaObject, root: MetaRoot): MetaField | undefined {
-  return resolveReportingFieldRef(
-    dim.of() ?? "",
-    reportingMemberOwner(dim, from),
-    root,
-    dim.via() === undefined ? from : undefined,
-  );
+  return resolveDimensionOf(dim, from, root)?.field;
 }
 
 /**

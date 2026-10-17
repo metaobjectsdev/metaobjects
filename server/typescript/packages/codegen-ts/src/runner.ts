@@ -676,7 +676,12 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   // A declared template.prompt with no prompt generator wired emits nothing and, before
   // this, said nothing — while `meta verify` reported the template "clean". See
   // prompt-generator-gate.ts. Self-extinguishing; warning only.
-  warnMissingPromptGenerators(root, config.generators, (m) => warnings.push(m));
+  //
+  // `(g) => targetOf(g).name === DOCS_TARGET_NAME` is the same per-generator signal
+  // targetOf() itself resolves output against — not a name match — so a docs-only run
+  // (every listed generator resolving to the `docs` target) is correctly read as having
+  // emitted no code at all.
+  warnMissingPromptGenerators(root, config.generators, (g) => targetOf(g).name === DOCS_TARGET_NAME, (m) => warnings.push(m));
   warnUnmarkedUiGenerators(config.generators, (m) => warnings.push(m));
 
   // Codegen is opt-in, so `meta gen` is the post-selection audit: the two ways a legal

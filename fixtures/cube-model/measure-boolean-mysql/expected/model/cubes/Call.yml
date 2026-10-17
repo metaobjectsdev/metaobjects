@@ -17,6 +17,9 @@ cubes:
       - name: anySlowFailed
         sql: 'MAX(CASE WHEN {CUBE}.`duration_ms` >= 1000 THEN {CUBE}.`failed` END)'
         type: boolean
+      - name: anyFastCall
+        sql: 'MAX({CUBE}.`duration_ms` < 100)'
+        type: boolean
       - name: anyFailedOrFalseRaw
         sql: 'MAX({CUBE}.`failed`)'
         type: boolean

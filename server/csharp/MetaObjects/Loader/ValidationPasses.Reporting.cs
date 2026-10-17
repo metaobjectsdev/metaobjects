@@ -9,7 +9,7 @@
 // Two design rules hold throughout, so one broken rule yields exactly one error:
 //   - No cascades. A member that fails a structural rule is not checked further
 //     (a dimension whose @via fails D2 skips D1/D3/D4; a measure that fails one
-//     of M1–M4, or whose @default is a fraction, skips M7/M8; a report whose
+//     of M0–M4, or whose @default is a fraction, skips M7/M8; a report whose
 //     @from fails R1 skips R2/R3/R6/R7, R8/R9 and its @filter; a report whose
 //     @spine fails R8 skips R9, and R9 skips a dimension whose @via fails D2; an
 //     invalid @dimensions/@measures item derives no report field for R6).
@@ -331,7 +331,11 @@ public static partial class ValidationPasses
             Err($"@of '{of}' must be Entity.field.");
             return;
         }
-        var named = NamingRefs.ResolveObjectRef(ctx.Root, parts.Value.Owner, NamingRefs.EffectivePackage(ctx.Declaring));
+        // D1 — after @via, a bare Owner resolves in the package of the entity @via reaches:
+        // the path already fixes the entity, so `Realm.name` after a hop onto `world::Realm`
+        // names it. Without @via it resolves in the declaring entity's package.
+        string ownerPkg = via is null ? NamingRefs.EffectivePackage(ctx.Declaring) : NamingRefs.EffectivePackage(ofEntity);
+        var named = NamingRefs.ResolveObjectRef(ctx.Root, parts.Value.Owner, ownerPkg);
         if (!IsSelfOrAncestor(named, ofEntity))
         {
             if (via is null)
@@ -374,7 +378,7 @@ public static partial class ValidationPasses
     /// port copies one explicit rule.
     /// </summary>
     /// <param name="Attr">The attribute holding the path: <c>via</c> (D2) or <c>spine</c> (R8).</param>
-    /// <param name="OwnerPkg">The package Owner resolves in (ADR-0042): the declaring entity's (D2) or the report's (R8).</param>
+    /// <param name="OwnerPkg">The package Owner resolves in (ADR-0042): the declaring entity's (D2) or @from's (R8).</param>
     /// <param name="HostName">The FQN named for the walk's first entity: the declaring entity (D2) or @from (R8).</param>
     /// <param name="Start">What Owner must be: <c>the owning entity '&lt;FQN&gt;'</c> (D2) or <c>@from '&lt;FQN&gt;'</c> (R8).</param>
     /// <param name="StartShort">The same, in the malformed-path message: <c>the owning entity</c> (D2) or <c>@from '&lt;FQN&gt;'</c> (R8).</param>
@@ -397,11 +401,12 @@ public static partial class ValidationPasses
                 "can never multiply the measured rows.");
     }
 
-    /// <summary>R8 — a report's @spine, started at @from (<paramref name="fromKey"/>); Owner resolves in the report's package.</summary>
-    private static ToOneWalk SpineWalk(MetaData report, string fromKey) =>
+    /// <summary>R8 — a report's @spine, started at @from; Owner resolves in @from's package
+    /// (it must be @from or an entity @from extends), whatever package the report is in.</summary>
+    private static ToOneWalk SpineWalk(MetaData from, string fromKey) =>
         new(
             Attr: OBJECT_REPORT_ATTR_SPINE,
-            OwnerPkg: NamingRefs.EffectivePackage(report),
+            OwnerPkg: NamingRefs.EffectivePackage(from),
             HostName: fromKey,
             Start: $"@from '{fromKey}'",
             StartShort: $"@from '{fromKey}'",
@@ -490,7 +495,7 @@ public static partial class ValidationPasses
 
         bool clean = CheckAggregateColumns(ctx, measure, Err, out var ofField);
 
-        // M7 / M8 — where a @default can apply. Only when M1–M4 passed and the @default is
+        // M7 / M8 — where a @default can apply. Only when M0–M4 passed and the @default is
         // not a fraction: one mistake, one error. The presence test reads the raw attribute,
         // so a non-number value on a count still reports M7 beside the attribute type error.
         if (clean && !fractionalDefault && declaredDefault is not null)
@@ -533,15 +538,35 @@ public static partial class ValidationPasses
     }
 
     /// <summary>
-    /// M1–M4, in order; the first failure stops the chain (no M2+M3 double report).
+    /// M0–M4, in order; the first failure stops the chain (no M2+M3 double report).
     /// Returns false when one of them fired; otherwise <paramref name="field"/> is the single
-    /// resolved @of field (null for a tuple), for M7/M8.
+    /// resolved @of field (null for a tuple, or for any/all with no @of), for M7/M8.
     /// </summary>
     private static bool CheckAggregateColumns(MemberCtx ctx, MetaMeasure measure, Action<string> err, out MetaData? field)
     {
         field = null;
         string? agg = measure.Agg();
         var columns = measure.OfColumns();
+
+        // M0 — @of names the column aggregated. Only any / all may omit it: they then
+        // quantify the measure's row condition (@filter AND @segment) over the group, "some
+        // row (every row) passes", so they need a condition to quantify.
+        if (columns.Count == 0 && agg is not null)
+        {
+            if (agg != AGG_ANY && agg != AGG_ALL)
+            {
+                err($"@agg '{agg}' needs @of, the column it aggregates. Only @agg any / all may omit @of, to ask " +
+                    "whether some row (any) or every row (all) passes the measure's @filter or @segment.");
+                return false;
+            }
+            if (measure.Filter() is null && measure.SegmentName() is null)
+            {
+                err($"@agg '{agg}' without @of quantifies the measure's row condition, but it declares neither " +
+                    "@filter nor @segment. Name a field.boolean in @of, or add the condition.");
+                return false;
+            }
+            return true;
+        }
 
         // M1 — every @of item is a field of the owning entity.
         var fields = new List<MetaData>();
@@ -861,7 +886,7 @@ public static partial class ValidationPasses
         string? spine = ReportAccessors.ReportSpine(report);
         if (spine is not null)
         {
-            var terminal = WalkToOneVia(root, from, spine, m => Err($": {m}"), SpineWalk(report, fromKey));
+            var terminal = WalkToOneVia(root, from, spine, m => Err($": {m}"), SpineWalk(from, fromKey));
             // R9 — every listed dimension is reached through the spine. Skipped when R8 failed.
             if (terminal is not null)
             {

@@ -73,7 +73,7 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td></td>
 <td><code>count</code>, <code>sum</code>, <code>avg</code>, <code>min</code>, <code>max</code>, <code>any</code>, <code>all</code></td>
 <td>—</td>
-<td>The aggregate function. sum/avg need a numeric field; min/max refuse boolean, object and map fields; any/all (boolean OR / AND, Postgres bool_or / bool_and) need a field.boolean and type the measure boolean.</td>
+<td>The aggregate function. sum/avg need a numeric field; min/max refuse boolean, object and map fields; any/all (boolean OR / AND, Postgres bool_or / bool_and) type the measure boolean and take either a field.boolean in @of or no @of, when they ask whether some row (any) or every row (all) passes the measure&#39;s @filter / @segment.</td>
 </tr>
 <tr>
 <td><code>@default</code></td>
@@ -105,11 +105,11 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <tr>
 <td><code>@of</code></td>
 <td>string[]</td>
-<td>yes</td>
+<td>no</td>
 <td></td>
 <td></td>
 <td>—</td>
-<td>Dotted Entity.field reference(s) on the declaring entity. A bare string is one column; more than one requires @agg: count and @distinct: true.</td>
+<td>Dotted Entity.field reference(s) on the declaring entity. A bare string is one column; more than one requires @agg: count and @distinct: true. Required for every @agg except any/all, which may omit it to quantify their @filter / @segment over the rows.</td>
 </tr>
 <tr>
 <td><code>@segment</code></td>

@@ -37,6 +37,19 @@ public class ReportShapeTests
     private static ReportShape Shape(MetaRoot root, string report) =>
         ReportShapes.Of(root.Objects().Single(o => o.Name == report), root);
 
+    /// <summary>Loads every <c>input/*.json</c> file of a conformance-corpus fixture (shared
+    /// with <see cref="ConformanceTests"/>, read-only here) as one model.</summary>
+    private static MetaRoot LoadFixture(string name)
+    {
+        string inputDir = Path.Combine(CorpusRoot.Path, name, "input");
+        var sources = Directory.GetFiles(inputDir, "*.json").OrderBy(f => f, StringComparer.Ordinal)
+            .Select(f => (IMetaDataSource)new FileSource(f)).ToList();
+        var result = new MetaDataLoader().Load(sources);
+        Assert.True(result.Errors.Count == 0,
+            $"fixture '{name}' failed to load: " + string.Join("; ", result.Errors.Select(e => e.ToString())));
+        return result.Root;
+    }
+
     [Fact]
     public void Derived_shapes_byte_match_the_committed_artifact()
     {
@@ -623,5 +636,26 @@ public class ReportShapeTests
         // The other entity holds the foreign key: a Snap with no Stamp has no match, so the join is
         // LEFT whatever that key and the target field require.
         Assert.False(related["stampLabel"]);
+    }
+
+    // R5(c) — a via dimension's bare @of owner resolves in the package of the entity @via
+    // reaches, not the declaring entity's. fixtures/conformance/reporting-cross-package-short-names
+    // declares three packages: acme::play (Game, the dimension's declaring entity),
+    // acme::world (Realm, the @via's terminal) and acme::reports (the report). The dimension
+    // `realmName` is `@of: "Realm.name"` `@via: "Game.fkRealm"` — a bare "Realm" that must
+    // resolve in acme::world, not acme::play (where there is no "Realm" at all) or
+    // acme::reports.
+    [Fact]
+    public void A_via_dimensions_bare_of_owner_resolves_in_the_via_terminals_package()
+    {
+        var root = LoadFixture("reporting-cross-package-short-names");
+        var shape = Shape(root, "GamesByRealm");
+        var realmName = shape.Fields.Single(f => f.Name == "realmName");
+        Assert.Equal(ReportFieldRole.Dimension, realmName.Role);
+        Assert.Equal(FIELD_SUBTYPE_STRING, realmName.SubType);
+        Assert.Equal("acme::world::Realm", realmName.TypeSource?.Parent?.ResolutionKey());
+        Assert.Equal("name", realmName.TypeSource?.Name);
+        // Reached through the spine, over a @required field of the spine entity: not null.
+        Assert.True(realmName.Required);
     }
 }

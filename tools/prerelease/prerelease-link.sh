@@ -164,30 +164,95 @@ detected() {
   echo "${d[@]}"
 }
 
+# Does <file> end in a newline? Absent/empty counts as "yes" — there is nothing to preserve,
+# and a freshly written file's own trailing newline is intentional, not a byte this check
+# exists to protect.
+ends_in_newline() {  # ends_in_newline <file>
+  [ -s "$1" ] || return 0
+  [ "$(tail -c1 "$1" | wc -l)" -eq 1 ]
+}
+
+# `ends_in_newline`, captured into a variable BEFORE a rewrite so `finish_rewrite` can restore
+# it afterward (a plain `&&`/`||` can't survive being stored and read back later).
+had_newline() { ends_in_newline "$1" && echo 1 || echo 0; }
+
+# Every in-place rewrite in this script writes to a tmp file and moves it over the original.
+# awk's `print` unconditionally terminates the last line with a newline, even when the file
+# being rewritten had none — so a no-op "link, then unlink" round trip left every pom.xml that
+# lacked a trailing newline with one, which `git status` then reported as modified. sed
+# does not have this problem (verified: `sed -i` preserves a missing trailing newline whether
+# or not anything matched), so only the awk call sites route through this. <had> is
+# `had_newline` captured on <file> immediately before the awk call that produced <tmpfile>; a
+# caller that already knows nothing needs preserving can pass "1", which is a no-op here.
+finish_rewrite() {  # finish_rewrite <file> <tmpfile> <had 0|1>
+  local f="$1" tmp="$2" had="$3"
+  mv "$tmp" "$f"
+  [ "$had" = 1 ] && return 0
+  [ -s "$f" ] || return 0
+  # `&&` as a function's own LAST statement would make a false test here (nothing to trim)
+  # the function's own return status, aborting the caller under `set -e` — the same trap
+  # `repin_pom` hit below. The explicit `if` + trailing `return 0` is this fixup's whole job:
+  # best-effort, never a reason to fail the rewrite it is cleaning up after.
+  if ends_in_newline "$f"; then truncate -s -1 "$f"; fi
+  return 0
+}
+
 # Remove a managed block from a file, leaving the rest byte-identical.
 strip_block() {  # strip_block <file> <begin> <end>
-  local f="$1" b="$2" e="$3"
+  local f="$1" b="$2" e="$3" had
   [ -f "$f" ] || return 0
+  had="$(had_newline "$f")"
   awk -v b="$b" -v e="$e" '
     index($0,b) { skip=1 } !skip { print } index($0,e) { skip=0 }
-  ' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+  ' "$f" > "$f.tmp" && finish_rewrite "$f" "$f.tmp" "$had"
   # a file that is now empty (or only blank lines) was entirely ours
   if [ ! -s "$f" ] || ! grep -q '[^[:space:]]' "$f"; then rm -f "$f"; fi
 }
 
-# Keep an untracked managed file out of commits without touching the shared .gitignore.
-local_exclude() {  # local_exclude <relative-path>
-  local rel="$1" ex prefix
-  # --git-path, not --git-dir: in a linked worktree the git dir is a private directory, and the
-  # exclude file git READS is the shared one in the common dir. The answer is relative to the
-  # directory git ran in, or absolute when the git dir is elsewhere; joining an absolute one onto
-  # $PROJECT is what once wrote a stray `home/.../info/exclude` tree into the work tree.
+# The shared exclude file `local_exclude` writes to — the clone's common-dir info/exclude.
+# --git-path, not --git-dir: in a linked worktree the git dir is a private directory, and the
+# exclude file git READS is the shared one in the common dir, used by every worktree of this
+# clone — git has no per-worktree exclude file, so there is nowhere else for a local-only
+# ignore rule to go. `local_exclude` keeps its footprint exact instead. The answer is relative to the directory git
+# ran in, or absolute when the git dir is elsewhere; joining an absolute one onto $PROJECT is
+# what once wrote a stray `home/.../info/exclude` tree into the work tree.
+exclude_file() {
+  local ex
   ex="$(git -C "$PROJECT" rev-parse --git-path info/exclude 2>/dev/null)" || return 0
-  case "$ex" in /*) ;; *) ex="$PROJECT/$ex" ;; esac
+  case "$ex" in /*) echo "$ex" ;; *) echo "$PROJECT/$ex" ;; esac
+}
+
+# The paths `local_exclude` currently manages, one per line — read back out of its own block
+# so a later call can add to it without re-stating what earlier calls already put there, and
+# so `unlink` can remove the whole block by identity rather than line by line.
+exclude_block_lines() {  # exclude_block_lines <file>
+  awk -v b="$BEGIN" -v e="$END" '
+    index($0,b) { skip=1; next } index($0,e) { skip=0; next } skip { print }
+  ' "$1" 2>/dev/null
+}
+
+# Keep an untracked managed file out of commits without touching the shared .gitignore or any
+# line a user put in info/exclude themselves. Everything this adds lives in one managed block:
+# `unlink` removes exactly that block via `strip_block`, never a line it did not add,
+# and a repeated `link` is idempotent — a path already in the block is left alone no matter
+# how many install roots or `link` runs ask for it.
+local_exclude() {  # local_exclude <relative-path>
+  local rel="$1" ex prefix line linesfile
+  ex="$(exclude_file)"
+  [ -n "$ex" ] || return 0
   # Exclude patterns are relative to the repository root, and $PROJECT may be a subdirectory.
   prefix="$(git -C "$PROJECT" rev-parse --show-prefix 2>/dev/null || true)"
   mkdir -p "$(dirname "$ex")"
-  grep -qxF "$prefix$rel" "$ex" 2>/dev/null || echo "$prefix$rel" >> "$ex"
+  [ -f "$ex" ] || : > "$ex"
+  line="$prefix$rel"
+  exclude_block_lines "$ex" | grep -qxF "$line" && return 0
+  linesfile="$(mktemp)"
+  { exclude_block_lines "$ex"; printf '%s\n' "$line"; } > "$linesfile"
+  strip_block "$ex" "$BEGIN" "$END"
+  { [ -s "$ex" ] && { cat "$ex"; ends_in_newline "$ex" || echo; }
+    echo "$BEGIN"; cat "$linesfile"; echo "$END"
+  } > "$ex.tmp" && mv "$ex.tmp" "$ex"
+  rm -f "$linesfile"
 }
 
 # Refuse to report success while a file this script wrote could still be committed. The managed
@@ -351,8 +416,13 @@ repin_pom() {  # repin_pom <pom.xml> <maven version>
   # rewrite ONLY that: expanding ${metaobjects.version} into a literal would silently
   # destroy the indirection the project chose, and unlink would never put it back.
   if grep -q '<metaobjects\.version>' "$pom"; then
+    local before after
+    before="$(cat "$pom")"
     sed -i -E "s|(<metaobjects\\.version>)[^<]*(</metaobjects\\.version>)|\\1${mv}\\2|g" "$pom"
-    say "repinned $MVN_GROUP dependencies to $mv in $rel (via <metaobjects.version>)"
+    after="$(cat "$pom")"
+    # Only when the property's value actually changed — a second `link` at the same version
+    # (or a pom already pinned to $mv) must not claim a repin that did not happen.
+    [ "$before" != "$after" ] && say "repinned $MVN_GROUP dependencies to $mv in $rel (via <metaobjects.version>)"
     return 0
   fi
   grep -q "$MVN_GROUP" "$pom" || return 0
@@ -361,10 +431,19 @@ repin_pom() {  # repin_pom <pom.xml> <maven version>
   # inside its <configuration>, <executions>, <dependencies> or <exclusions> belongs to something
   # else, and Maven does not fix where among its children an element puts <version>, so the
   # whole element is read before deciding.
-  awk -v grp="$MVN_GROUP" -v ver="$mv" '
+  #
+  # A module pom that only REFERENCES the parent's ${metaobjects.version} (no literal <version>
+  # of its own) matches `grp` above because the groupId appears on some line, but this loop's
+  # own property-reference guard, just below, means it never gsubs anything — `rep` is the
+  # actual substitution count, not "did this pom mention com.metaobjects at all", so "repinned"
+  # is reported only when something really changed (a module pinned entirely through its
+  # parent's property was once reported as repinned with nothing in the file touched).
+  local had rep
+  had="$(had_newline "$pom")"
+  rep="$(awk -v grp="$MVN_GROUP" -v ver="$mv" '
     { L[NR] = $0 }
     END {
-      sp = 0
+      sp = 0; rep = 0
       for (i = 1; i <= NR; i++) {
         s = L[i]
         if (s ~ /<(dependency|plugin)>/) { sp++; ours[sp] = 0; nest[sp] = 0; vline[sp] = 0; continue }
@@ -373,8 +452,9 @@ repin_pom() {  # repin_pom <pom.xml> <maven version>
           # A property reference (${metaobjects.version}, inherited from a parent pom) is the
           # indirection the property branch above preserves: rewriting it to a literal would
           # cut the module off from its parent, and unlink would never put it back.
-          if (ours[sp] && vline[sp] && L[vline[sp]] !~ /<version>[[:space:]]*\$\{/)
-            gsub(/<version>[^<]*<\/version>/, "<version>" ver "</version>", L[vline[sp]])
+          if (ours[sp] && vline[sp] && L[vline[sp]] !~ /<version>[[:space:]]*\$\{/) {
+            if (gsub(/<version>[^<]*<\/version>/, "<version>" ver "</version>", L[vline[sp]])) rep++
+          }
           sp--; continue
         }
         if (nest[sp] == 0) {
@@ -385,9 +465,15 @@ repin_pom() {  # repin_pom <pom.xml> <maven version>
         if (s ~ /<\/(dependencies|configuration|executions|exclusions)>/) nest[sp]--
       }
       for (i = 1; i <= NR; i++) print L[i]
+      print rep > "/dev/stderr"
     }
-  ' "$pom" > "$pom.tmp" && mv "$pom.tmp" "$pom"
-  say "repinned $MVN_GROUP dependencies to $mv in $rel"
+  ' "$pom" 2>&1 1>"$pom.tmp")"
+  finish_rewrite "$pom" "$pom.tmp" "$had"
+  # `&&` as the function's own last statement would make a zero `rep` (nothing changed — the
+  # case this whole fix is about) the function's return status, aborting the caller under
+  # `set -e`.
+  if [ "${rep:-0}" -gt 0 ]; then say "repinned $MVN_GROUP dependencies to $mv in $rel"; fi
+  return 0
 }
 
 # Which package manager owns a root, from the lockfile it keeps. Decides the command we
@@ -550,7 +636,11 @@ link_npm() {
   while IFS= read -r root; do
     f="$root/.npmrc"
     strip_block "$f" "$BEGIN" "$END"
-    { [ -f "$f" ] && cat "$f"; echo "$BEGIN"
+    # A pre-existing .npmrc without its own trailing newline would otherwise run its last
+    # line straight into the BEGIN marker text (`cat` and `echo "$BEGIN"` land on the same
+    # line) — not just a cosmetic newline difference but real content corruption.
+    { if [ -f "$f" ]; then cat "$f"; ends_in_newline "$f" || echo; fi
+      echo "$BEGIN"
       echo "$NPM_SCOPE:registry=$BASE/api/packages/$OWNER/npm/"
       [ -n "$auth" ] && echo "$auth"
       echo "$END"; } > "$f.tmp" && mv "$f.tmp" "$f"
@@ -640,8 +730,9 @@ XML
 }
 
 link_mvn_root() {  # link_mvn_root <dir holding an independent pom.xml>
-  local dir="$1" f="$1/pom.xml"
+  local dir="$1" f="$1/pom.xml" had
   strip_block "$f" "$XBEGIN" "$XEND"
+  had="$(had_newline "$f")"
   awk -v b="$XBEGIN" -v e="$XEND" -v url="$BASE/api/packages/$OWNER/maven" '
     /<\/project>/ && !done {
       print "  " b
@@ -669,7 +760,7 @@ link_mvn_root() {  # link_mvn_root <dir holding an independent pom.xml>
       done=1
     }
     { print }
-  ' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+  ' "$f" > "$f.tmp" && finish_rewrite "$f" "$f.tmp" "$had"
   say "linked ${f#"$PROJECT"/}"
 
   # Maven 3.8.1+ ships a built-in `maven-default-http-blocker` mirror that refuses EVERY
@@ -736,6 +827,10 @@ run_detector() {
 
 # ── unlink ────────────────────────────────────────────────────────────────────────────
 unlink_all() {
+  # The git-exclude block link() wrote — removed by identity, same as every other
+  # managed block, so a line a user added to info/exclude by hand survives untouched.
+  local ex; ex="$(exclude_file)"
+  [ -n "$ex" ] && strip_block "$ex" "$BEGIN" "$END"
   # Every root `link` could have written to, or a sub-project keeps a managed block
   # pointing at a registry that will not serve it once the pre-release is gone.
   local root

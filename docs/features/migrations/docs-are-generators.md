@@ -145,7 +145,7 @@ them only if you ran those flags.
 |---|---|
 | `docs.outDir`, `--out` (default `./docs/generated`) | `targets.docs.outDir` |
 | `docs.layout`, `--layout` | `targets.docs.outputLayout` (falls back to the top-level `outputLayout`, as 1.0 did) |
-| `docs.surfaces`, `--model` / `--api` / `--requirements` / `--agent` | which factories you list: `docsFile()`, `apiDocsFile()`, `requirementsFile()`, `agentDocsFile()` |
+| `docs.surfaces`, `--model` / `--api` / `--requirements` / `--agent` | which factories you list: `docsFile()`, `apiDocsFile()`, `requirementsFile()`, `agentDocsFile()`. `--agent` wrote all three agent pages unconditionally; `agentDocsFile()` writes `agent/ui.md` only when the run also lists a client UI generator (a form, a hook, a grid or its columns) or the config sets `includeUiTier: true` — see "Things that are different in 1.1.0" |
 | `docs.apiSurfaces` | `docsFile({ apiSurfaces })`, same shape. Leave it out when the only api pages are this project's own: the model pages then link to whatever `apiDocsFile()` writes to the same target |
 | the `subDir` of the `ts` entry in `docs.apiSurfaces` (default `api`) | `apiDocsFile({ subDir })`, same default |
 | `docs.baseUrl`, `--base-url` | none: 1.0 read it nowhere. To link each api page to model pages hosted elsewhere, use `apiDocsFile({ modelBaseUrl })` |
@@ -173,6 +173,13 @@ them only if you ran those flags.
   generated pages count as foreign files, so in a shared directory each port's
   `verify --codegen` reports the other ports' pages as drift.
 - The site loads the same metadata `meta gen` loads, from the project's declared sources.
+- `agentDocsFile()` writes `agent/ui.md` only when this run also lists a client UI
+  generator (`formFile()`, a TanStack hook/grid, an Angular form/grid/service), because
+  whether a UI is emitted is a generator fact, not a metadata one. A **docs-only** config
+  — one whose own `generators` lists no UI generator because a separate config generates
+  the UI — never sees that generator, so set `includeUiTier: true` to write the page
+  anyway. When the model has a UI surface but the page is skipped, `meta gen` prints an
+  advisory naming `includeUiTier: true` rather than exiting silently.
 
 **Scripts and CI.** Replace `meta docs` with `meta gen`, and `meta verify --docs` with
 `meta verify --codegen`. To write only the documentation, name the docs entries:

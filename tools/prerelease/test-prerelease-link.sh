@@ -7,7 +7,13 @@
 # D9  the Maven pin is npm major + 7 (1.1.0-rc.N is 8.1.0-rc.N), not a hardcoded 7.
 # D11 in a linked git worktree the exclude file is the shared one in the common dir, nothing
 #     stray is written into the work tree, and `link` refuses to report success while a written
-#     .npmrc (which can hold a registry credential) is not ignored.
+#     .npmrc (which can hold a registry credential) is not ignored. The exclude entries `link`
+#     adds live in one managed block, so `unlink` removes exactly that block (and nothing a
+#     user put in the file by hand), and a repeated `link` does not duplicate it.
+# R3  a link/unlink round trip leaves a pom.xml that lacked a trailing newline byte-identical
+#     (the previous awk-based rewrites unconditionally added one), and `link`/`unlink` report
+#     "repinned ... in <file>" only for a pom whose own text actually changed — not a module
+#     pom that is pinned entirely through its parent's ${metaobjects.version} property.
 # P4  a polyglot repository with one project per port and no root project files: every Maven
 #     and Python project is linked and repinned, and the .NET local tool manifest too.
 set -euo pipefail
@@ -91,6 +97,22 @@ check "the exclude entry is in the shared exclude file" 'grep -qxF .npmrc "$comm
 leading="$(printf '%s' "$WORK" | cut -d/ -f2)"
 check "no stray exclude tree in the work tree" '[ ! -e "$WORK/wt/$leading" ]'
 check "the dependency is pinned to the candidate" 'grep -q "1.1.0-rc.9" "$WORK/wt/package.json"'
+check "the exclude entry is inside a managed block" 'grep -q "metaobjects prerelease (managed)" "$common/info/exclude"'
+
+# D11: a second `link` in the same worktree must not duplicate the entry or the block.
+if link "$WORK/wt"; then pass "a second link in the same worktree succeeds"; else fail "second link failed: $(tail -5 "$WORK/out")"; fi
+check "the exclude entry still appears exactly once" '[ "$(grep -cxF .npmrc "$common/info/exclude")" = 1 ]'
+check "the managed block still appears exactly once (one BEGIN line, one END line)" \
+  '[ "$(grep -c "metaobjects prerelease (managed)" "$common/info/exclude")" = 2 ]'
+
+# D11: `unlink` must remove exactly the block `link` added, and nothing a user put in the
+# shared exclude file by hand.
+printf 'a-users-own-rule\n' >> "$common/info/exclude"
+MO_REGISTRY_BASE="http://127.0.0.1:$PORT" MO_REGISTRY_OWNER=owner MO_REGISTRY_TOKEN="" \
+  bash "$LINK" unlink --project "$WORK/wt" --to 1.0.13 >"$WORK/out" 2>&1 || true
+check "unlink removes the managed block from the shared exclude file" '! grep -q "metaobjects prerelease (managed)" "$common/info/exclude"'
+check "unlink removes the .npmrc entry it added" '! grep -qxF .npmrc "$common/info/exclude"'
+check "unlink leaves a user's own exclude rule alone" 'grep -qxF a-users-own-rule "$common/info/exclude"'
 
 # The assertion: an .npmrc git does not ignore makes link fail.
 git -C "$WORK/main" worktree add -q "$WORK/wt2" -b linked2
@@ -231,6 +253,97 @@ check "unlink repins the nested python project" 'grep -q "metaobjects==1.0.13" "
 check "unlink repins every pom" 'grep -q "8.0.13" "$poly/ports/java/pom.xml" && grep -q "8.0.13" "$poly/ports/java/module/pom.xml" && [ "$(grep -c "<version>8.0.13</version>" "$poly/ports/kotlin/pom.xml")" = 3 ]'
 check "unlink repins the local tool" 'grep -q "\"metaobjects.cli\": { \"version\": \"1.0.13\"" "$poly/.config/dotnet-tools.json"'
 check "unlink removes every .mvn workaround" '[ ! -e "$poly/ports/java/.mvn" ] && [ ! -e "$poly/ports/kotlin/.mvn" ]'
+
+# ── R3: a pom.xml round trip is byte-identical when the pom lacked a trailing newline, and
+# `link`/`unlink` only report "repinned" for a pom whose own text actually changed ─────────
+# The parent declares the <metaobjects.version> property; the module only ever REFERENCES it
+# via ${metaobjects.version} — nothing in the module's own text should ever be rewritten, and
+# neither file ends in a newline (the shape an adopter's six real poms were in).
+mvnproj="$WORK/mvnproj"
+mkdir -p "$mvnproj/app"
+printf '%s' '<project>
+  <packaging>pom</packaging>
+  <modules><module>app</module></modules>
+  <properties><metaobjects.version>8.0.10</metaobjects.version></properties>
+</project>' > "$mvnproj/pom.xml"
+printf '%s' '<project>
+  <dependencies>
+    <dependency>
+      <groupId>com.metaobjects</groupId>
+      <artifactId>metaobjects-om</artifactId>
+      <version>${metaobjects.version}</version>
+    </dependency>
+  </dependencies>
+</project>' > "$mvnproj/app/pom.xml"
+check "the fixture poms have no trailing newline" \
+  '[ "$(tail -c1 "$mvnproj/pom.xml" | wc -l)" = 0 ] && [ "$(tail -c1 "$mvnproj/app/pom.xml" | wc -l)" = 0 ]'
+git init -q "$mvnproj"
+git -C "$mvnproj" add -A && git -C "$mvnproj" commit -q -m init
+cp "$mvnproj/pom.xml" "$WORK/pom.xml.orig"
+cp "$mvnproj/app/pom.xml" "$WORK/app-pom.xml.orig"
+
+if MO_REGISTRY_BASE="http://127.0.0.1:$PORT" MO_REGISTRY_OWNER=owner MO_REGISTRY_TOKEN="" \
+     bash "$LINK" link --project "$mvnproj" --version 1.1.0-rc.4 >"$WORK/out" 2>&1
+then pass "link succeeds on the no-trailing-newline pom fixture"
+else fail "link failed: $(tail -5 "$WORK/out")"
+fi
+check "link reports the root pom (its property changed) as repinned" \
+  'grep -q "repinned com.metaobjects dependencies to 8.1.0-rc.4 in pom.xml (via <metaobjects.version>)" "$WORK/out"'
+check "link does NOT report the module pom as repinned (only its parent's property changed)" \
+  '! grep -q "in app/pom.xml" "$WORK/out"'
+
+MO_REGISTRY_BASE="http://127.0.0.1:$PORT" MO_REGISTRY_OWNER=owner MO_REGISTRY_TOKEN="" \
+  bash "$LINK" unlink --project "$mvnproj" --to 1.0.10 >"$WORK/out" 2>&1 || true
+check "unlink does NOT report the module pom as repinned either" '! grep -q "in app/pom.xml" "$WORK/out"'
+check "the round trip leaves the root pom byte-identical" 'cmp -s "$WORK/pom.xml.orig" "$mvnproj/pom.xml"'
+check "the round trip leaves the module pom byte-identical" 'cmp -s "$WORK/app-pom.xml.orig" "$mvnproj/app/pom.xml"'
+check "git status on the poms is clean after the round trip" \
+  '[ -z "$(git -C "$mvnproj" status --porcelain -- pom.xml app/pom.xml)" ]'
+
+# ── R4: detect-prerelease-pins.sh flags a stale pre-release agent context ──────────────
+# `meta init --refresh-docs` (and `meta init` generally) stamp the running CLI's own
+# version into "generatedBy" in .metaobjects/.agent-context.json, a file meant to be
+# committed and tracked. Run with a pre-release CLI, that stamp is a pre-release
+# version, and before this fix the detector said nothing about it at all: "no
+# private-registry config and no pre-release pin" on a tree that plainly had one.
+DETECT="$WORK/tool/detect-prerelease-pins.sh"
+ctxproj="$WORK/agent-context-proj"
+mkdir -p "$ctxproj/.metaobjects"
+cat > "$ctxproj/.metaobjects/.agent-context.json" <<'JSON'
+{
+  "version": 1,
+  "generatedBy": "1.1.0-rc.4",
+  "servers": ["java"],
+  "clients": [],
+  "files": {}
+}
+JSON
+if bash "$DETECT" "$ctxproj" >"$WORK/ctx-out" 2>&1; then
+  fail "detect-prerelease-pins passes a tree whose agent context was generated by a pre-release CLI"
+else
+  pass "detect-prerelease-pins fails a tree whose agent context was generated by a pre-release CLI"
+fi
+check "it names the pre-release agent-context check" 'grep -q "agent context was generated by a pre-release CLI" "$WORK/ctx-out"'
+check "it names the stamped version" 'grep -q "1.1.0-rc.4" "$WORK/ctx-out"'
+check "it points at the release-CLI refresh command, not the registry unlink command" \
+  'grep -q "meta init --refresh-docs --docs-only" "$WORK/ctx-out" && ! grep -q "prerelease-link.sh unlink" "$WORK/ctx-out"'
+
+# A RELEASED generatedBy must not be flagged — the check is on the pre-release suffix,
+# never on the key's mere presence.
+cat > "$ctxproj/.metaobjects/.agent-context.json" <<'JSON'
+{
+  "version": 1,
+  "generatedBy": "1.1.0",
+  "servers": ["java"],
+  "clients": [],
+  "files": {}
+}
+JSON
+if bash "$DETECT" "$ctxproj" >"$WORK/ctx-out-release" 2>&1; then
+  pass "detect-prerelease-pins passes a tree whose agent context was generated by a RELEASE CLI"
+else
+  fail "detect-prerelease-pins failed a release-generated agent context: $(tail -5 "$WORK/ctx-out-release")"
+fi
 
 [ "$fails" -eq 0 ] || { echo "$fails failure(s)" >&2; exit 1; }
 echo "all prerelease-link tests passed"

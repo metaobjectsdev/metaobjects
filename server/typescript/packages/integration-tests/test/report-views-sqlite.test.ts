@@ -602,4 +602,38 @@ describe("report views — inline model on real SQLite", () => {
       { dayYear: "2027-01-01", stamps: 1 },
     ]);
   });
+
+  /** @agg any / all with no @of (rule M0): the measure's condition is the quantified predicate. */
+  const CALL_MODEL = JSON.stringify({ "metadata.root": { package: "acme", children: [
+    { "object.entity": { name: "Call", children: [
+      { "source.rdb": { "@table": "calls" } },
+      { "field.long": { name: "id" } },
+      { "field.long": { name: "gameId", "@required": true } },
+      { "field.boolean": { name: "success" } },
+      { "identity.primary": { name: "id", "@fields": "id", "@generation": "increment" } },
+      { "dimension.attribute": { name: "game", "@of": "Call.gameId" } },
+      { "measure.aggregate": { name: "hasError", "@agg": "any", "@filter": { success: false } } },
+      { "measure.aggregate": { name: "allSucceeded", "@agg": "all", "@filter": { success: true } } },
+    ] } },
+    { "object.report": { name: "CallsByGame", "@from": "Call", "@dimensions": ["game"],
+      "@measures": ["hasError", "allSucceeded"], children: [
+      { "source.rdb": { "@kind": "view", "@view": "v_calls_by_game" } } ] } },
+  ]}});
+
+  test("@agg any / all without @of: some row / every row passes the condition; a NULL condition is skipped", async () => {
+    const root = await loadInline(CALL_MODEL);
+    expect(viewSql(root, "v_calls_by_game")).toContain(`MAX(c."success" = 0) AS "hasError"`);
+    const { expected } = await migrate(root);
+    await assertConverged(expected);
+    // Game 1 has a failure; game 2 only successes; game 3 a success and an unknown; game 4 only an unknown.
+    await applyRaw(`
+      INSERT INTO "calls" ("gameId","success") VALUES
+        (1, 1), (1, 0), (2, 1), (2, 1), (3, 1), (3, NULL), (4, NULL)`);
+    expect(await select(`SELECT * FROM "v_calls_by_game" ORDER BY "game"`)).toEqual([
+      { game: 1, hasError: 1, allSucceeded: 0 },
+      { game: 2, hasError: 0, allSucceeded: 1 },
+      { game: 3, hasError: 0, allSucceeded: 1 },
+      { game: 4, hasError: null, allSucceeded: null },
+    ]);
+  });
 });

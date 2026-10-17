@@ -45,7 +45,9 @@ public class AggregateMeasure extends MetaMeasure {
                .inheritsFrom(MetaData.TYPE_METADATA, MetaData.SUBTYPE_BASE);
             def.requiredAttributeWithConstraints(ReportingConstants.ATTR_AGG)
                .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
-            def.requiredAttributeWithConstraints(ReportingConstants.ATTR_OF)
+            // R6 — optional: @agg any/all may omit @of to quantify @filter/@segment over the
+            // group (loader rule M0 enforces it for every other @agg).
+            def.optionalAttributeWithConstraints(ReportingConstants.ATTR_OF)
                .ofType(StringAttribute.SUBTYPE_STRING).asArray();
             def.optionalAttributeWithConstraints(ReportingConstants.ATTR_DISTINCT)
                .ofType(BooleanAttribute.SUBTYPE_BOOLEAN).asSingle();

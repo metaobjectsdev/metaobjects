@@ -320,9 +320,22 @@ export const agentDocsFile = function agentDocsFile(opts?: AgentDocsFileOpts): G
       // same value `routes-file.ts` emits as the SERVER mount prefix. Without it the page
       // names an address nothing serves. (The client descriptor no longer carries it: a
       // browser's base URL is supplied at runtime by the provider's `baseUrl`.)
-      if (ctx.config.includeUiTier === true) {
+      {
         const ui = renderAgentUiPage(ctx.loadedRoot, ctx.renderContext?.apiPrefix ?? "");
-        if (ui !== "") files.push({ path: `${dir}/ui.md`, content: ui });
+        if (ui !== "") {
+          if (ctx.config.includeUiTier === true) {
+            files.push({ path: `${dir}/ui.md`, content: ui });
+          } else {
+            // The model HAS a UI surface (renderAgentUiPage returned content) but this
+            // run has no client UI generator and no `includeUiTier: true` override, so the
+            // page is skipped. Before this, that was silent: `meta gen` exited 0 and listed
+            // only the pages it wrote, and a docs-only project (its own config generates no
+            // UI; a SEPARATE config does) lost `agent/ui.md` with no signal at all.
+            ctx.warn(
+              `${dir}/ui.md not written: no client UI generator in this run; set includeUiTier: true if another config generates the UI.`,
+            );
+          }
+        }
       }
 
       // ---- requirements.md

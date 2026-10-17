@@ -95,16 +95,16 @@ export const REPORTING_DEFINITION: ProviderDefinition = {
             "any",
             "all"
           ],
-          "description": "The aggregate function. sum/avg need a numeric field; min/max refuse boolean, object and map fields; any/all (boolean OR / AND, Postgres bool_or / bool_and) need a field.boolean and type the measure boolean."
+          "description": "The aggregate function. sum/avg need a numeric field; min/max refuse boolean, object and map fields; any/all (boolean OR / AND, Postgres bool_or / bool_and) type the measure boolean and take either a field.boolean in @of or no @of, when they ask whether some row (any) or every row (all) passes the measure's @filter / @segment."
         },
         {
           "type": "attr",
           "subType": "string",
           "name": "of",
           "isArray": true,
-          "min": 1,
+          "min": 0,
           "max": 1,
-          "description": "Dotted Entity.field reference(s) on the declaring entity. A bare string is one column; more than one requires @agg: count and @distinct: true."
+          "description": "Dotted Entity.field reference(s) on the declaring entity. A bare string is one column; more than one requires @agg: count and @distinct: true. Required for every @agg except any/all, which may omit it to quantify their @filter / @segment over the rows."
         },
         {
           "type": "attr",

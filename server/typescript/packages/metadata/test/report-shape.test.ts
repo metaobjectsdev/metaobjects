@@ -683,3 +683,39 @@ describe("reportShape required of a dimension reached through @via", () => {
     expect(req["sessionRealmId"]).toBe(true);   // on the spine, a required field
   });
 });
+
+describe("reportShape: bare owners the path already fixes (R5)", () => {
+  const FIXTURE = join(REPO_ROOT, "fixtures", "conformance", "reporting-cross-package-short-names", "input");
+
+  test("a via dimension's bare @of resolves in the reached entity's package; a @spine in @from's", async () => {
+    const result = await loadUris(
+      ["meta.world.json", "meta.play.json", "meta.reports.json"].map((f) => pathToFileURL(join(FIXTURE, f)).href),
+    );
+    expect(result.errors).toEqual([]);
+    const root = result.root;
+    const shape = reportShape(report(root, "GamesByRealm"), root);
+    // realmName is Realm.name (required string): on the spine, over a required field.
+    expect(shape.fields.map((f) => [f.name, f.role, f.subType, f.required])).toEqual([
+      ["realmName", "dimension", "string", true],
+      ["games", "measure", "long", true],
+    ]);
+    expect(reportSpineHops(report(root, "GamesByRealm"), shape.from, root)).toEqual(["fkRealm"]);
+    expect(reportSpineEntity(report(root, "GamesByRealm"), shape.from, root)?.resolutionKey()).toBe("acme::world::Realm");
+  });
+});
+
+describe("reportShape: @agg any / all without @of (R6)", () => {
+  test("is a boolean measure, nullable without @default", async () => {
+    const MODEL_R6 = join(REPO_ROOT, "fixtures", "conformance", "reporting-any-all-predicate", "input", "meta.ops.json");
+    const result = await loadUris([pathToFileURL(MODEL_R6).href]);
+    expect(result.errors).toEqual([]);
+    const shape = reportShape(report(result.root, "CallsByGame"), result.root);
+    expect(shape.fields.map((f) => [f.name, f.subType, f.required])).toEqual([
+      ["game", "long", true],
+      ["calls", "long", true],
+      ["hasError", "boolean", false],
+      ["allSlow", "boolean", true],
+      ["anySlowFailure", "boolean", false],
+    ]);
+  });
+});

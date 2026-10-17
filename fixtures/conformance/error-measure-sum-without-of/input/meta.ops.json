@@ -1,0 +1,81 @@
+{
+  "metadata.root": {
+    "package": "acme::ops",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Call",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "calls"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "gameId",
+                "@required": true
+              }
+            },
+            {
+              "field.boolean": {
+                "name": "success",
+                "@required": true
+              }
+            },
+            {
+              "field.long": {
+                "name": "latencyMs"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "segment.filter": {
+                "name": "slow",
+                "@filter": {
+                  "latencyMs": {
+                    "gt": 1000
+                  }
+                }
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "game",
+                "@of": "Call.gameId"
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "calls",
+                "@agg": "count",
+                "@of": "Call.id"
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "totalLatency",
+                "@agg": "sum",
+                "@filter": {
+                  "success": false
+                }
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

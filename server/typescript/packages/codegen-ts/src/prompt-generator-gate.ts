@@ -40,8 +40,16 @@ const PROMPT_GENERATOR_NAMES: ReadonlySet<string> = new Set([
 export function warnMissingPromptGenerators(
   root: MetaData,
   generators: readonly Generator[],
+  isDocsTarget: (g: Generator) => boolean,
   warn: (msg: string) => void,
 ): void {
+  // A run that lists no generator at all, or where every listed generator writes
+  // documentation (its RESOLVED output target — the same per-generator signal
+  // runner.ts's targetOf() uses to place output, not a name match), emitted no code of
+  // any kind. There is nothing for a prompt generator to be missing FROM: telling such a
+  // run to add promptRender() is wrong advice (it would add TypeScript render code to a
+  // project that only writes documentation), so the gate does not fire.
+  if (generators.length === 0 || generators.every(isDocsTarget)) return;
   if (generators.some((g) => PROMPT_GENERATOR_NAMES.has(g.name))) return;
 
   // ADR-0039: resolving children — a template may arrive through an overlay or extends.
@@ -62,12 +70,20 @@ export function warnMissingPromptGenerators(
         `add outputParser().`
       : "";
 
+  // The claim that the payload value objects "were emitted regardless" is only true when
+  // a generator that actually emits entity/value-object modules ran (`emitsEntityModule`,
+  // e.g. entityFile()) — a run with code generators but none of THOSE emitted nothing
+  // either, so the claim is dropped rather than stated falsely.
+  const emittedValueObjects = generators.some((g) => g.emitsEntityModule === true);
+  const valueObjectsClaim = emittedValueObjects
+    ? ` The payload value objects were emitted regardless — those are object.value nodes, ` +
+      `which is why this looked like it had worked.`
+    : "";
+
   warn(
     `${templates.length} declared template.prompt (${names}) generated no prompt code: ` +
       `no prompt generator is wired, so there is no render function to send one and nothing ` +
       `read a reply. Add promptRender() to \`generators\` in metaobjects.config.ts ` +
-      `(import it from "@metaobjectsdev/codegen-ts/generators").${receiveHalf} ` +
-      `The payload value objects were emitted regardless — those are object.value nodes, ` +
-      `which is why this looked like it had worked.`,
+      `(import it from "@metaobjectsdev/codegen-ts/generators").${receiveHalf}${valueObjectsClaim}`,
   );
 }

@@ -1,0 +1,37 @@
+{
+  "metadata.root": {
+    "package": "acme::ops",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Call",
+          "children": [
+            { "source.rdb": { "@table": "calls" } },
+            { "field.long": { "name": "id" } },
+            { "field.long": { "name": "gameId", "@required": true } },
+            { "field.boolean": { "name": "success", "@required": true } },
+            { "field.long": { "name": "latencyMs" } },
+            { "identity.primary": { "name": "id", "@fields": ["id"] } },
+            { "segment.filter": { "name": "slow", "@filter": { "latencyMs": { "gt": 1000 } } } },
+            { "dimension.attribute": { "name": "game", "@of": "Call.gameId" } },
+            { "measure.aggregate": { "name": "calls", "@agg": "count", "@of": "Call.id" } },
+            { "measure.aggregate": { "name": "hasError", "@agg": "any", "@filter": { "success": false } } },
+            { "measure.aggregate": { "name": "allSlow", "@agg": "all", "@segment": "slow", "@default": 0 } },
+            { "measure.aggregate": { "name": "anySlowFailure", "@agg": "any", "@segment": "slow", "@filter": { "success": false } } }
+          ]
+        }
+      },
+      {
+        "object.report": {
+          "name": "CallsByGame",
+          "@from": "Call",
+          "@dimensions": ["game"],
+          "@measures": ["calls", "hasError", "allSlow", "anySlowFailure"],
+          "children": [
+            { "source.rdb": { "@kind": "view", "@view": "v_calls_by_game" } }
+          ]
+        }
+      }
+    ]
+  }
+}

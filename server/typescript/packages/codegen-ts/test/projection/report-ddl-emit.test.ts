@@ -937,3 +937,72 @@ describe("Table D: the spine chain, end to end", () => {
     expect(v["v_by_tier_plain"]).toContain(`  LEFT OUTER JOIN "profiles" p ON p."accountId" = a."id"`);
   });
 });
+
+// ── @agg any / all with no @of (rule M0): the row condition is the quantified predicate ─────
+
+describe("@agg any / all without @of, end to end", () => {
+  // An adopter's "did any call in this game fail": bool_or(NOT success), with no failure column.
+  const calls = (): Json[] => [
+    ent("Call", [
+      tableSrc("calls"),
+      field("long", "id"),
+      field("long", "gameId", { "@required": true }),
+      field("boolean", "success", { "@required": true }),
+      field("long", "latencyMs"),
+      idPk,
+      { "segment.filter": { name: "slow", "@filter": { latencyMs: { gt: 1000 } } } },
+      { "dimension.attribute": { name: "game", "@of": "Call.gameId" } },
+      { "measure.aggregate": { name: "hasError", "@agg": "any", "@filter": { success: false } } },
+      { "measure.aggregate": { name: "allSlow", "@agg": "all", "@segment": "slow", "@default": 0 } },
+    ]),
+    rpt("CallsByGame", { "@from": "Call", "@dimensions": ["game"], "@measures": ["hasError", "allSlow"] }, "v_calls_by_game"),
+  ];
+
+  test("postgres: bool_or / bool_and of the condition, with no FILTER", async () => {
+    const sql = (await viewsOf(calls(), "postgres"))["v_calls_by_game"];
+    expect(sql).toContain(`    bool_or(c."success" = FALSE) AS "hasError",`);
+    expect(sql).toContain(`    COALESCE(bool_and(c."latencyMs" > 1000), FALSE) AS "allSlow"`);
+    expect(sql).not.toContain("FILTER");
+  });
+
+  test("sqlite, d1 and mysql: MAX / MIN of the condition, which is 0 / 1 / NULL there", async () => {
+    for (const dialect of ["sqlite", "d1"] as const) {
+      const sql = (await viewsOf(calls(), dialect))["v_calls_by_game"];
+      expect(sql).toContain(`MAX(c."success" = 0) AS "hasError"`);
+      expect(sql).toContain(`COALESCE(MIN(c."latencyMs" > 1000), 0) AS "allSlow"`);
+    }
+    const my = (await viewsOf(calls(), "mysql"))["v_calls_by_game"];
+    expect(my).toContain("MAX(c.`success` = FALSE) AS `hasError`");
+    expect(my).toContain("COALESCE(MIN(c.`latencyMs` > 1000), 0) AS `allSlow`");
+  });
+});
+
+// ── A bare @of owner after @via resolves in the package of the entity @via reaches ─────
+
+describe("a via dimension's bare @of owner across packages", () => {
+  test("Realm.name after a hop onto world::Realm groups by realms.name", async () => {
+    const world = { "metadata.root": { package: "world", children: [
+      ent("Realm", [tableSrc("realms"), field("long", "id"), field("string", "name", { "@required": true }), idPk]),
+    ] } };
+    const play = { "metadata.root": { package: "play", children: [
+      ent("Game", [
+        tableSrc("games"),
+        field("long", "id"),
+        field("long", "realmId", { "@required": true }),
+        idPk,
+        { "identity.reference": { name: "fkRealm", "@references": "world::Realm", "@fields": ["realmId"] } },
+        { "dimension.attribute": { name: "realmName", "@of": "Realm.name", "@via": "Game.fkRealm" } },
+        { "measure.aggregate": { name: "games", "@agg": "count", "@of": "Game.id" } },
+      ]),
+      rpt("GamesByRealm", { "@from": "Game", "@dimensions": ["realmName"], "@measures": ["games"] }, "v_games_by_realm"),
+    ] } };
+    const { root, errors } = await new MetaDataLoader().load([
+      new InMemoryStringSource(JSON.stringify(world)),
+      new InMemoryStringSource(JSON.stringify(play)),
+    ]);
+    expect(errors).toEqual([]);
+    const [view] = buildReportViews(literalColumns(root), { dialect: "postgres" });
+    expect(view?.sql).toContain(`"name" AS "realmName"`);
+    expect(view?.sql).toContain(`INNER JOIN "realms"`);
+  });
+});

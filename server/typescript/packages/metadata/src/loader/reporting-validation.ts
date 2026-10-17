@@ -7,7 +7,7 @@
 // Two design rules hold throughout, so one broken rule yields exactly one error:
 //   - No cascades. A member that fails a structural rule is not checked further
 //     (a dimension whose @via fails D2 skips D1/D3/D4; a measure that fails one
-//     of M1–M4, or whose @default is a fraction, skips M7/M8; a report whose
+//     of M0–M4, or whose @default is a fraction, skips M7/M8; a report whose
 //     @from fails R1 skips R2/R3/R6/R7, R8/R9 and its @filter; a report whose
 //     @spine fails R8 skips R9, and R9
 //     skips a dimension whose @via fails D2; an invalid @dimensions/@measures
@@ -375,7 +375,11 @@ function checkDimension(ctx: MemberCtx, dim: MetaDimension): void {
     err(`@of '${of}' must be Entity.field.`);
     return;
   }
-  const named = resolveObjectRef(ctx.root, parts.owner, pkgOf(ctx.declaring)).node;
+  // D1 — after @via, a bare Owner resolves in the package of the entity @via reaches: the path
+  // already fixes the entity, so `Realm.name` after a hop onto `world::Realm` names it. Without
+  // @via it resolves in the declaring entity's package.
+  const ownerPkg = via === undefined ? pkgOf(ctx.declaring) : pkgOf(ofEntity);
+  const named = resolveObjectRef(ctx.root, parts.owner, ownerPkg).node;
   if (!isSelfOrAncestor(named, ofEntity)) {
     if (via === undefined) {
       err(
@@ -417,7 +421,7 @@ function checkDimension(ctx: MemberCtx, dim: MetaDimension): void {
 interface ToOneWalk {
   /** The attribute holding the path: `via` (D2) or `spine` (R8). */
   readonly attr: string;
-  /** The package Owner resolves in (ADR-0042): the declaring entity's (D2) or the report's (R8). */
+  /** The package Owner resolves in (ADR-0042): the declaring entity's (D2) or @from's (R8). */
   readonly ownerPkg: string;
   /** The FQN named for the walk's first entity: the declaring entity (D2) or @from (R8). */
   readonly hostName: string;
@@ -444,11 +448,12 @@ function d2Walk(declaring: MetaData): ToOneWalk {
   };
 }
 
-/** R8 — a report's @spine, started at @from (`fromKey`); Owner resolves in the report's package. */
-function spineWalk(report: MetaData, fromKey: string): ToOneWalk {
+/** R8 — a report's @spine, started at @from; Owner resolves in @from's package (it must be
+ *  @from or an entity @from extends), whatever package the report is in. */
+function spineWalk(from: MetaData, fromKey: string): ToOneWalk {
   return {
     attr: OBJECT_REPORT_ATTR_SPINE,
-    ownerPkg: pkgOf(report),
+    ownerPkg: pkgOf(from),
     hostName: fromKey,
     start: `@from '${fromKey}'`,
     startShort: `@from '${fromKey}'`,
@@ -548,7 +553,7 @@ function checkMeasure(ctx: MemberCtx, measure: MetaMeasure): void {
   const clean = checked !== undefined;
   const ofField = checked?.field;
 
-  // M7 / M8 — where a @default can apply. Only when M1–M4 passed and the @default is
+  // M7 / M8 — where a @default can apply. Only when M0–M4 passed and the @default is
   // not a fraction: one mistake, one error. The presence test reads the raw attribute,
   // so a non-number value on a count still reports M7 beside the attribute type error.
   if (clean && !fractionalDefault && declaredDefault !== undefined) {
@@ -594,7 +599,7 @@ function checkMeasure(ctx: MemberCtx, measure: MetaMeasure): void {
 }
 
 /**
- * M1–M4, in order; the first failure stops the chain (no M2+M3 double report).
+ * M0–M4, in order; the first failure stops the chain (no M2+M3 double report).
  * Returns undefined when one of them fired; otherwise `field` is the single
  * resolved @of field (undefined for a tuple), for M7/M8.
  */
@@ -605,6 +610,27 @@ function checkAggregateColumns(
 ): { readonly field: MetaData | undefined } | undefined {
   const agg = measure.agg();
   const columns = measure.ofColumns();
+
+  // M0 — @of names the column aggregated. Only any / all may omit it: they then quantify the
+  // measure's row condition (@filter AND @segment) over the group, "some row (every row)
+  // passes", so they need a condition to quantify.
+  if (columns.length === 0 && agg !== undefined) {
+    if (agg !== AGG_ANY && agg !== AGG_ALL) {
+      err(
+        `@agg '${agg}' needs @of, the column it aggregates. Only @agg any / all may omit @of, to ask ` +
+          `whether some row (any) or every row (all) passes the measure's @filter or @segment.`,
+      );
+      return undefined;
+    }
+    if (measure.filter() === undefined && measure.segmentName() === undefined) {
+      err(
+        `@agg '${agg}' without @of quantifies the measure's row condition, but it declares neither ` +
+          `@filter nor @segment. Name a field.boolean in @of, or add the condition.`,
+      );
+      return undefined;
+    }
+    return { field: undefined };
+  }
 
   // M1 — every @of item is a field of the owning entity.
   const fields: MetaData[] = [];
@@ -901,7 +927,7 @@ function checkReport(root: MetaData, report: MetaData, sink: ErrorSink): void {
   // R8 — @spine is a to-one path from @from: rule D2's walk, started at @from.
   const spine = reportSpine(report);
   if (spine !== undefined) {
-    const terminal = walkToOneVia(root, from, spine, (message) => err(`: ${message}`), spineWalk(report, fromKey));
+    const terminal = walkToOneVia(root, from, spine, (message) => err(`: ${message}`), spineWalk(from, fromKey));
     // R9 — every listed dimension is reached through the spine. Skipped when R8 failed.
     if (terminal !== undefined) {
       const spineHops = splitDotted(spine)?.path ?? [];

@@ -60,6 +60,17 @@
             },
             {
               "measure.aggregate": {
+                "name": "anyFastCall",
+                "@agg": "any",
+                "@filter": {
+                  "durationMs": {
+                    "lt": 100
+                  }
+                }
+              }
+            },
+            {
+              "measure.aggregate": {
                 "name": "anyFailedOrFalse",
                 "@agg": "any",
                 "@of": "Call.failed",

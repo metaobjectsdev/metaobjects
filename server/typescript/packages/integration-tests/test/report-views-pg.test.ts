@@ -767,4 +767,34 @@ describe("report views — inline models on real Postgres", () => {
     expect(Number(row!.scoreTotal)).toBe(3.75);
     expect(Number(row!.ratioTotal)).toBe(0.75);
   }, 60_000);
+
+  test("@agg any / all without @of: some row / every row passes the condition; a NULL condition is skipped", async () => {
+    const root = await loadInline(JSON.stringify({ "metadata.root": { package: "acme", children: [
+      { "object.entity": { name: "Call", children: [
+        { "source.rdb": { "@table": "calls" } },
+        { "field.long": { name: "id" } },
+        { "field.long": { name: "gameId", "@required": true } },
+        { "field.boolean": { name: "success" } },
+        { "identity.primary": { name: "id", "@fields": "id", "@generation": "increment" } },
+        { "dimension.attribute": { name: "game", "@of": "Call.gameId" } },
+        { "measure.aggregate": { name: "hasError", "@agg": "any", "@filter": { success: false } } },
+        { "measure.aggregate": { name: "allSucceeded", "@agg": "all", "@filter": { success: true } } },
+      ] } },
+      { "object.report": { name: "CallsByGame", "@from": "Call", "@dimensions": ["game"],
+        "@measures": ["hasError", "allSucceeded"], children: [
+        { "source.rdb": { "@kind": "view", "@view": "v_calls_by_game" } } ] } },
+    ]}}));
+    expect(viewSql(root, "v_calls_by_game")).toContain(`bool_or(c."success" = FALSE) AS "hasError"`);
+    const { expected } = await migrate(root);
+    await assertConverged(expected);
+    await applyRaw(`
+      INSERT INTO "calls" ("gameId","success") VALUES
+        (1, TRUE), (1, FALSE), (2, TRUE), (2, TRUE), (3, TRUE), (3, NULL), (4, NULL)`);
+    expect(await select(`SELECT * FROM "v_calls_by_game" ORDER BY "game"`)).toEqual([
+      { game: "1", hasError: "t", allSucceeded: "f" },
+      { game: "2", hasError: "f", allSucceeded: "t" },
+      { game: "3", hasError: "f", allSucceeded: "t" },
+      { game: "4", hasError: null, allSucceeded: null },
+    ]);
+  }, 60_000);
 });

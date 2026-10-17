@@ -234,3 +234,34 @@ def test_the_spine_key_and_a_defaulted_measure_are_not_optional() -> None:
         "revenueCents: int | None = None",
         "revenueOrZero: int",
     ]
+
+
+# ---------------------------------------------------------------------------
+# R6 — @agg any / all without @of: codegen of the derived row. Same model as
+# fixtures/conformance/reporting-any-all-predicate (shared with report-shape's own R6
+# test); here it is the ENTITY-MODEL generator's Pydantic row that is pinned.
+# ---------------------------------------------------------------------------
+
+_ANY_ALL_FIXTURE = (
+    Path(__file__).parents[3].parent / "fixtures" / "conformance" / "reporting-any-all-predicate" / "input" / "meta.ops.json"
+)
+
+
+def test_codegen_of_an_any_measure_without_of_is_a_plain_nullable_bool_row() -> None:
+    """``hasError``/``anySlowFailure`` (``@agg: any``, no ``@of``, no ``@default``) render as
+    a bare, optional ``bool`` field — exactly the shape any other optional boolean measure
+    gets, with no generator change needed for the @of-less case. ``allSlow`` (``@agg: all``,
+    ``@default: 0``) is not optional, per Table C's `@default` rule."""
+    result = MetaDataLoader.from_string(_ANY_ALL_FIXTURE.read_text(encoding="utf-8"), strict=True)
+    assert not result.errors, [e.message for e in result.errors]
+    report = next(c for c in result.root.children() if c.type == TYPE_OBJECT and c.name == "CallsByGame")
+    model = report_read_model(report, result.root)
+    src = render_entity_model(model)
+    body = src.split("class CallsByGame(BaseModel):\n", 1)[1]
+    assert [ln.strip() for ln in body.splitlines() if ln.strip()] == [
+        "game: int",
+        "calls: int",
+        "hasError: bool | None = None",
+        "allSlow: bool",
+        "anySlowFailure: bool | None = None",
+    ]

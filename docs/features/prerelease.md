@@ -167,10 +167,13 @@ Everything it writes is delimited by managed markers, so `unlink` removes exactl
 | Maven | `pom.xml` `<repositories>` | plus `.mvn/settings.xml` when the registry is plain `http` (see below) |
 
 Files that are not normally tracked (`.npmrc`, `NuGet.config`, `.mvn/*`) are also added to
-the project's `.git/info/exclude`, which is local and not committed. Files that *are*
-tracked by definition (`pyproject.toml`, `pom.xml`) get a loud warning instead — there is
-no way to make an edit to a tracked file uncommittable, which is precisely why the detector
-in §5 exists.
+the project's `.git/info/exclude`, which is local and not committed — in a linked git
+worktree this is the *shared* exclude file in the clone's common dir (git has no
+per-worktree exclude), so the paths `link` adds there live inside their own managed block
+too: `unlink` removes exactly that block, never a line a user added to the file by hand,
+and a repeated `link` does not duplicate it. Files that *are* tracked by definition
+(`pyproject.toml`, `pom.xml`) get a loud warning instead — there is no way to make an edit
+to a tracked file uncommittable, which is precisely why the detector in §5 exists.
 
 After `link`:
 
@@ -247,7 +250,7 @@ top of it. Treat a failure as a build break.
    default (§7), since this file ships into adopter repositories. Unset, this one check
    **announces that it did not run** rather than passing in silence, because a guard that
    is quiet when it skips cannot be told apart from a guard that looked and found nothing.
-   `link` passes the address through, so the linked consumer gets it; the other four
+   `link` passes the address through, so the linked consumer gets it; the other five
    checks are host-independent and always run — check 3 in particular catches a
    pre-release pin no matter where it came from;
 2. any private-network or loopback host **declared as a package source** (someone else's
@@ -274,11 +277,15 @@ top of it. Treat a failure as a build break.
    would flag a third-party `rc`/`beta` that merely happens to sit near a vendor entry;
 4. an npm dependency declared as a bare dist-tag, which floats;
 5. a Maven pom pinning a pre-release in a `<dependency>` or `<properties>` block — the
-   project's own `1.0.0-SNAPSHOT` version is normal and is deliberately not flagged.
+   project's own `1.0.0-SNAPSHOT` version is normal and is deliberately not flagged;
+6. a pre-release `generatedBy` in `.metaobjects/.agent-context.json`. `meta init` stamps the
+   running CLI's version there, so agent context refreshed with a release candidate says so
+   in a committed file. Refresh it with the release CLI (`meta init --refresh-docs
+   --docs-only`) and commit the result. `meta init` also warns when it writes one.
 
-It scans **dependency declarations only** — manifests and lockfiles. A source file that
-binds a test server to `127.0.0.1`, or a design doc quoting an old `-SNAPSHOT`, is not a
-dependency on anything, and a check that cries wolf is a check people learn to ignore.
+It scans **dependency declarations only** (manifests and lockfiles), plus that one
+agent-context file. A source file that binds a test server to `127.0.0.1`, or a design doc
+quoting an old `-SNAPSHOT`, is not a dependency on anything, and a check that cries wolf is a check people learn to ignore.
 
 ### In this repo: `scripts/check-no-prerelease-versions.sh`
 

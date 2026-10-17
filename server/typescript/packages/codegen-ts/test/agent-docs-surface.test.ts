@@ -798,3 +798,45 @@ describe("agent/ui.md — gated on the run, not the metadata", () => {
     expect(without.length).toBeGreaterThan(0);
   });
 });
+
+// A docs-only project (its own config generates no UI; a SEPARATE config generates
+// it) lost `agent/ui.md` with no signal at all: `meta gen` exited 0 and listed only the
+// pages it wrote. `agentDocsFile()` now advises through `ctx.warn` whenever the model has
+// a UI surface (renderAgentUiPage would have written something) but the run skips it.
+describe("agent/ui.md not written: advisory through ctx.warn", () => {
+  test("warns once when the model has a UI surface but includeUiTier is off", async () => {
+    const root = await load(MODEL);
+    const warnings: string[] = [];
+    const ctx: GenContext = { ...makeCtx(root, "", false), warn: (m) => warnings.push(m) };
+    const files = await agentDocsFile().generate(ctx);
+    expect(files.some((f) => f.path === "agent/ui.md")).toBe(false);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("agent/ui.md not written");
+    expect(warnings[0]).toContain("includeUiTier: true");
+  });
+
+  test("does not warn when includeUiTier is on — the page is written instead", async () => {
+    const root = await load(MODEL);
+    const warnings: string[] = [];
+    const ctx: GenContext = { ...makeCtx(root, "", true), warn: (m) => warnings.push(m) };
+    const files = await agentDocsFile().generate(ctx);
+    expect(files.some((f) => f.path === "agent/ui.md")).toBe(true);
+    expect(warnings).toEqual([]);
+  });
+
+  test("does not warn when the model has no UI surface at all — nothing was skipped", async () => {
+    const noUiModel = {
+      "metadata.root": {
+        package: "acme::ai",
+        children: [
+          { "object.value": { name: "Payload", children: [{ "field.string": { name: "q" } }] } },
+        ],
+      },
+    };
+    const root = await load(noUiModel);
+    const warnings: string[] = [];
+    const ctx: GenContext = { ...makeCtx(root, "", false), warn: (m) => warnings.push(m) };
+    await agentDocsFile().generate(ctx);
+    expect(warnings).toEqual([]);
+  });
+});

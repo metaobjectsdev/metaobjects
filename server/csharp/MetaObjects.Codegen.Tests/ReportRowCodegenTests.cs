@@ -441,6 +441,63 @@ public class ReportRowCodegenTests
     }
 
     // ---------------------------------------------------------------------
+    // R6 (loader rule M0) — an any/all measure with no @of, quantifying its own @filter or
+    // @segment over the group. The row still carries a plain nullable bool column: M0 only
+    // widens what a measure may omit, DeriveMeasure already typed any/all boolean
+    // unconditionally (it never reads @of for them), so no generator change is needed here —
+    // this test is the regression guard that OfColumns()[0]/ofField reads elsewhere do not
+    // crash when @of is absent.
+    // ---------------------------------------------------------------------
+
+    private const string AnyMeasureModel =
+        """
+        { "metadata.root": { "package": "acme::ops", "children": [
+          { "object.entity": { "name": "Call", "children": [
+            { "source.rdb": { "@table": "calls" } },
+            { "field.long": { "name": "id" } },
+            { "field.boolean": { "name": "success", "@required": true } },
+            { "identity.primary": { "name": "id", "@fields": ["id"] } },
+            { "segment.filter": { "name": "slow", "@filter": { "id": { "gt": 1000 } } } },
+            { "measure.aggregate": { "name": "calls", "@agg": "count", "@of": "Call.id" } },
+            { "measure.aggregate": { "name": "hasError", "@agg": "any",
+                "@filter": { "success": { "eq": false } } } },
+            { "measure.aggregate": { "name": "allSlowOrTrue", "@agg": "all", "@default": 1, "@segment": "slow" } }
+          ] } },
+          { "object.report": { "name": "CallTotals", "@from": "Call",
+              "@measures": ["calls", "hasError", "allSlowOrTrue"],
+              "children": [ { "source.rdb": { "@kind": "view", "@view": "v_call_totals" } } ] } }
+        ] } }
+        """;
+
+    private static MetaRoot LoadAnyMeasureModel()
+    {
+        var result = new MetaDataLoader().Load([new InMemoryStringSource(AnyMeasureModel, id: "meta.ops.json")]);
+        Assert.True(result.Errors.Count == 0,
+            "model did not load:\n" + string.Join("\n", result.Errors.Select(e => $"  {e.Code}: {e.Message}")));
+        return result.Root;
+    }
+
+    [Fact]
+    public void A_report_row_from_an_any_measure_with_no_of_is_a_plain_nullable_bool()
+    {
+        string row = Emit(RunnerContext(LoadAnyMeasureModel()), new EntityGenerator())["CallTotals.g.cs"]
+            .ReplaceLineEndings("\n");
+        Assert.Contains("    public long Calls { get; set; }\n", row);              // count, as elsewhere
+        Assert.Contains("    public bool? HasError { get; set; }\n", row);          // any, no @of, no @default
+        Assert.Contains("    public bool AllSlowOrTrue { get; set; }\n", row);      // all, no @of, @default: 1
+    }
+
+    [Fact]
+    public void An_any_measure_with_no_of_still_compiles_through_the_real_compiler()
+    {
+        var files = EmitAll(RunnerContext(LoadAnyMeasureModel()));
+        Assert.True(files.ContainsKey("CallTotals.g.cs"));
+        var tree = CSharpSyntaxTree.ParseText(files["CallTotals.g.cs"]);
+        var diagnostics = tree.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error).ToList();
+        Assert.Empty(diagnostics);
+    }
+
+    // ---------------------------------------------------------------------
     // Table C / Table F (FR-044 @spine and measure @default): no generator change. The
     // shape marks a spine key and a defaulted measure required, and the row types a
     // required field exactly as it types a count today: `long`, not `long?`.

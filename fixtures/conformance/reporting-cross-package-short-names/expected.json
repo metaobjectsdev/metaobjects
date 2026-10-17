@@ -1,0 +1,115 @@
+{
+  "metadata.root": {
+    "package": "acme::play",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Game",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "games"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "realmId",
+                "@required": true
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "fkRealm",
+                "@fields": [
+                  "realmId"
+                ],
+                "@references": "acme::world::Realm"
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "realmName",
+                "@of": "Realm.name",
+                "@via": "Game.fkRealm"
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "games",
+                "@agg": "count",
+                "@of": [
+                  "Game.id"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.report": {
+          "name": "GamesByRealm",
+          "@dimensions": [
+            "realmName"
+          ],
+          "@from": "acme::play::Game",
+          "@measures": [
+            "games"
+          ],
+          "@spine": "Game.fkRealm",
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_games_by_realm"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Realm",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "realms"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "name",
+                "@required": true
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

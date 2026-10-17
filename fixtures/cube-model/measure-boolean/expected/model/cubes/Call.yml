@@ -17,6 +17,9 @@ cubes:
       - name: anySlowFailed
         sql: 'bool_or({CUBE}."failed") FILTER (WHERE {CUBE}."duration_ms" >= 1000)'
         type: boolean
+      - name: anyFastCall
+        sql: 'bool_or({CUBE}."duration_ms" < 100)'
+        type: boolean
       - name: anyFailedOrFalseRaw
         sql: 'bool_or({CUBE}."failed")'
         type: boolean

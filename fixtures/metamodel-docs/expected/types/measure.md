@@ -20,11 +20,11 @@ A named aggregate over the declaring entity's own rows (FR-044). @agg count with
 
 | Attribute | Type | Required | Default | Allowed values | Provider | Description |
 | --- | --- | --- | --- | --- | --- | --- |
-| `@agg` | string | yes |  | `count`, `sum`, `avg`, `min`, `max`, `any`, `all` | — | The aggregate function. sum/avg need a numeric field; min/max refuse boolean, object and map fields; any/all (boolean OR / AND, Postgres bool_or / bool_and) need a field.boolean and type the measure boolean. |
+| `@agg` | string | yes |  | `count`, `sum`, `avg`, `min`, `max`, `any`, `all` | — | The aggregate function. sum/avg need a numeric field; min/max refuse boolean, object and map fields; any/all (boolean OR / AND, Postgres bool_or / bool_and) type the measure boolean and take either a field.boolean in @of or no @of, when they ask whether some row (any) or every row (all) passes the measure's @filter / @segment. |
 | `@default` | int | no |  |  | — | Optional integer the measure reads when it would otherwise be null: nothing matched, every matched value is null, or (a ratio) the denominator is zero or null. The derived report field is then never null. Refused on @agg: count (a count is never null), on min/max over a field that is not numeric, and on @agg any/all unless it is 0 (false) or 1 (true). A ratio's operand carries its own @default into the ratio. |
 | `@distinct` | boolean | no |  |  | — | Count distinct values. Legal only with @agg: count. |
 | `@filter` | filter | no |  |  | — | Optional row scope (a portable attr.filter over the declaring entity's fields). May use relative-date values ({ now: "-P7D" }). Combines with @segment by AND. |
-| `@of` | string[] | yes |  |  | — | Dotted Entity.field reference(s) on the declaring entity. A bare string is one column; more than one requires @agg: count and @distinct: true. |
+| `@of` | string[] | no |  |  | — | Dotted Entity.field reference(s) on the declaring entity. A bare string is one column; more than one requires @agg: count and @distinct: true. Required for every @agg except any/all, which may omit it to quantify their @filter / @segment over the rows. |
 | `@segment` | string | no |  |  | — | Optional name of a segment declared on the same entity. Combines with @filter by AND. |
 
 **Allowed children**
