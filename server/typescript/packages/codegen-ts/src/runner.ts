@@ -549,11 +549,12 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   const catalog = opts.catalog ?? generatorRegistry;
   const stableNames = stableNameIndex(catalog);
   const targets = config.targets;
+  // A documentation generator is known by its registry layer, so an owned copy that sets
+  // no `target` (a 1.0 copy) writes to the `docs` target as the packaged factory does.
+  const isDocsGenerator = (g: Generator): boolean =>
+    catalog[stableNames.get(g.name) ?? ""]?.layer === "docs";
   const targetOf = (g: Generator): ResolvedTarget => {
-    // A documentation generator is known by its registry layer, so an owned copy that sets
-    // no `target` (a 1.0 copy) writes to the `docs` target as the packaged factory does.
-    const isDocs = catalog[stableNames.get(g.name) ?? ""]?.layer === "docs";
-    const name = g.target ?? (isDocs ? DOCS_TARGET_NAME : DEFAULT_TARGET_NAME);
+    const name = g.target ?? (isDocsGenerator(g) ? DOCS_TARGET_NAME : DEFAULT_TARGET_NAME);
     const t = targets[name];
     if (!t && name === DOCS_TARGET_NAME) {
       // ADR-0034 Amendment 9: documentation is never written into the code's output
@@ -650,6 +651,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   // includeHonoRoutes — the page asks "is this surface in the run?", never "does it
   // land in my target?".
   const includeUiTier = config.includeUiTier ?? runEmitsUiTier(config.generators);
+  const includeUiTierExplicit = config.includeUiTier !== undefined;
 
   // The `expose` option each routes surface was built with, so the api reference lists only
   // the verbs the routes files mount. Run-scoped, read off the whole declared list.
@@ -676,7 +678,16 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   // A declared template.prompt with no prompt generator wired emits nothing and, before
   // this, said nothing — while `meta verify` reported the template "clean". See
   // prompt-generator-gate.ts. Self-extinguishing; warning only.
-  warnMissingPromptGenerators(root, config.generators, (m) => warnings.push(m));
+  //
+  // A generator writes documentation when its registry layer says so, wherever its
+  // `target` points (`docsFile({ target: "site" })` is still documentation), or when it
+  // writes to the `docs` target. A run of only those emitted no code at all.
+  warnMissingPromptGenerators(
+    root,
+    config.generators,
+    (g) => isDocsGenerator(g) || targetOf(g).name === DOCS_TARGET_NAME,
+    (m) => warnings.push(m),
+  );
   warnUnmarkedUiGenerators(config.generators, (m) => warnings.push(m));
 
   // Codegen is opt-in, so `meta gen` is the post-selection audit: the two ways a legal
@@ -817,6 +828,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
         includeHonoRoutes,
         includeNames: namesTargets.has(selfTarget.name),
         includeUiTier,
+        includeUiTierExplicit,
         ...(routesExpose !== undefined && { routesExpose }),
       },
       renderContext,

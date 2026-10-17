@@ -54,7 +54,7 @@ FR-037 R5's arithmetic wave and will need its own agreement):
 |---|---|---|
 | `dimension.attribute` | `object.entity` | `@of` (required), `@via` |
 | `dimension.time` | `object.entity` | `@of` (required), `@via`, `@grains` (required, array) |
-| `measure.aggregate` | `object.entity` | `@agg` (required), `@of` (required, array), `@distinct`, `@filter`, `@segment`, `@default` |
+| `measure.aggregate` | `object.entity` | `@agg` (required), `@of` (required, array, except `any` / `all`), `@distinct`, `@filter`, `@segment`, `@default` |
 | `measure.ratio` | `object.entity` | `@numerator` (required), `@denominator` (required), `@default` |
 | `segment.filter` | `object.entity` | `@filter` (required) |
 | `object.report` | root | `@from` (required), `@dimensions` (array), `@measures` (required, array), `@segment`, `@filter`, `@spine` |
@@ -165,8 +165,10 @@ What each piece means:
   `origin.aggregate`, whose `count` is always distinct as a join-inflation guard: a measure
   aggregates its own entity's rows and a dimension reaches only to-one paths, so no join
   inflates it. `@filter` and `@segment` scope the rows and combine by AND.
-- **`@agg: any` / `all`** are boolean OR and AND over a `field.boolean` `@of`, and the measure
-  is a `boolean`: `hasError` is `any` of `failed`. See [Boolean measures](#boolean-measures-any-and-all).
+- **`@agg: any` / `all`** are boolean OR and AND, and the measure is a `boolean`: over a
+  `field.boolean` `@of` (`hasError` is `any` of `failed`), or with no `@of`, over the measure's
+  own `@filter` / `@segment` (`hasError` is `any` row where `success` is false). See
+  [Boolean measures](#boolean-measures-any-and-all).
 - **`measure.ratio`** is `numerator / NULLIF(denominator, 0)`, typed decimal. A zero
   denominator yields null, unless the ratio declares `@default`. Both operands are
   `measure.aggregate` siblings (a ratio of ratios is not supported), and each must be a
@@ -313,8 +315,8 @@ applied. The aggregates:
   64-bit integer on every engine (Postgres casts it to `BIGINT`, MySQL to `SIGNED`, and SQLite's
   integer `SUM` already is one).
 - **`avg`, `min`, `max`** are the engine's own.
-- **`any`, `all`** are a boolean OR and AND over a boolean column. See
-  [Boolean measures](#boolean-measures-any-and-all).
+- **`any`, `all`** are a boolean OR and AND over a boolean column, or with no `@of` over the
+  measure's row condition. See [Boolean measures](#boolean-measures-any-and-all).
 - **`measure.ratio`** is `numerator / NULLIF(denominator, 0)`: a zero denominator is **null**
   (or the ratio's `@default`), never an error. Each operand is repeated inline with its own
   conditions and its own `@default`, so an operand need not be listed in `@measures`.
@@ -362,8 +364,12 @@ program.
   program was published is legal, the month of a purchase is not.
 - **Package names in a cross-package model.** A bare entity name inside a member resolves in the
   package of the entity that **declares** the member, never in `@from`'s package: that is
-  `@of` and `@via`. The owner of `@spine`, and the qualifier of a dotted `@measures` item,
-  resolve in the **report's** package. When the entity you name lives in another package, write it with its package
+  `@via`, and `@of` without `@via`. Two owners are already fixed by the path, so a bare name
+  resolves in the package of the entity it must be: a dimension's `@of` after `@via` resolves
+  in the package of the entity the `@via` reaches (`"@of": "Realm.name"` after a hop onto
+  `world::Realm` names `world::Realm`), and the owner of `@spine` resolves in `@from`'s package.
+  The qualifier of a dotted `@measures` item resolves in the **report's** package. When the
+  entity you name lives in another package, write it with its package
   (`acme::session::SessionHealthSnapshot.fkSessionId`), or the load fails with `must start at
   <@from>`: the bare name found nothing in that package, or found a different entity of the same
   name.
@@ -461,6 +467,19 @@ and MySQL first.
 true when every row with a value has a true `@of`. They are SQL's `bool_or` and `bool_and`,
 and the measure is a `boolean` in every port: `true` or `false` on the wire, never `0` or `1`.
 
+Without `@of`, `any` and `all` ask the question of the measure's own row condition instead of
+a column: `any` is true when some row in the group passes the `@filter` (and `@segment`), and
+`all` is true when every row does. This states "did any call fail" over a `success` column,
+with no `failed` column to aggregate:
+
+```jsonc
+{ "field.boolean":      { "name": "success", "@required": true } },
+{ "measure.aggregate":  { "name": "hasError", "@agg": "any", "@filter": { "success": false } } }
+```
+
+A measure with no `@of` must declare a `@filter` or a `@segment` (rule M0); every other
+`@agg` needs `@of`.
+
 ```jsonc
 { "field.boolean":      { "name": "failed" } },
 { "field.boolean":      { "name": "succeeded" } },
@@ -468,7 +487,7 @@ and the measure is a `boolean` in every port: `true` or `false` on the wire, nev
 { "measure.aggregate":  { "name": "allSucceeded", "@agg": "all", "@of": "Call.succeeded", "@default": 1 } }
 ```
 
-- **Only over a `field.boolean`.** `@of` names one boolean field; anything else is refused by
+- **Only over a `field.boolean`.** An `@of` names one boolean field; anything else is refused by
   rule M4. `min` and `max` still refuse a boolean, so `any` and `all` are the way to write it.
   `@filter` and `@segment` scope the rows as for any measure, and `@distinct` stays a `count`
   modifier.
@@ -488,7 +507,11 @@ and the measure is a `boolean` in every port: `true` or `false` on the wire, nev
 - **How it lowers.** Postgres writes `bool_or(x)` / `bool_and(x)`, with `FILTER (WHERE …)`
   for a condition. SQLite and MySQL have no boolean aggregate, and a boolean there is `0` or
   `1`, so they write `MAX(x)` for `any` and `MIN(x)` for `all` (`MAX(CASE WHEN … THEN x END)`
-  for a condition). The runtime reads the column as the boolean it is typed as. A default is
+  for a condition). Without `@of` the condition is the aggregated value:
+  `bool_or(COALESCE(<condition>, FALSE))` on Postgres and `MAX(COALESCE(<condition>, 0))`
+  elsewhere, where a comparison is `0`, `1` or null. A row whose condition is null (a null
+  `success`) counts as not passing, as a `WHERE` drops it, so `all` over `true, null` is `false`
+  and only a group with no rows reads null. The runtime reads the column as the boolean it is typed as. A default is
   `COALESCE(<the aggregate>, FALSE)` on Postgres and `COALESCE(<the aggregate>, 0)` elsewhere.
 - **Cube.** The export writes a `type: boolean` measure holding the same aggregate, see
   [cube-export.md](cube-export.md).
@@ -790,7 +813,7 @@ a rule differently fails the corpus.
 
 | Rule | Refused |
 |---|---|
-| **D1** | An `@of` that is not `Entity.field`, that names the wrong entity, or whose field does not exist. Without `@via`, `Entity` is the owning entity; with `@via`, it is the `@via` terminal. |
+| **D1** | An `@of` that is not `Entity.field`, that names the wrong entity, or whose field does not exist. Without `@via`, `Entity` is the owning entity; with `@via`, it is the `@via` terminal, and a bare `Entity` resolves in the terminal's package. |
 | **D2** | An `@via` that is not `Owner.hop[.hop...]` starting at the owning entity, or that crosses a hop which is not a `relationship.*` with `@cardinality: one` or an `identity.reference`, or a hop whose target resolves to no object. |
 | **D3** | A `dimension.time` whose `@of` is not a `field.date` or `field.timestamp`. |
 | **D4** | A `dimension.time` over a `field.date` that declares `hour` (a date has no hour). |
@@ -808,6 +831,7 @@ row, and a `SUM` over the result would double-count. A to-one hop cannot fan out
 
 | Rule | Refused |
 |---|---|
+| **M0** | A `measure.aggregate` with no `@of` whose `@agg` is not `any` or `all`, or an `any` or `all` with no `@of` that declares neither `@filter` nor `@segment`. |
 | **M1** | An `@of` item that is not `Entity.field`, names an entity other than the owning one (or one it extends), or names a field that does not exist. A measure aggregates its own entity's rows. |
 | **M2** | More than one `@of` item without both `@agg: count` and `@distinct: true`. |
 | **M3** | `@distinct: true` with any `@agg` other than `count`. |
@@ -842,7 +866,7 @@ this only. The message and two edge cases differ by port: see [Known limits](#kn
 | **R5** | `ERR_INVALID_REPORT` | A report `source.*` that is writable. A report's source, if present, must have a read-only `@kind` (`view`, `materializedView`, `storedProc`, `tableFunction`); a writable `@kind: table` is refused. |
 | **R6** | `ERR_INVALID_REPORT` | Two derived field names that collide: a dimension `revenue` with a measure `revenue`, or dimension `purchasedAt` at grain `day` with a measure named `purchasedAtDay`. A measure listed twice gets the same code with its own message ("lists 'x' more than once"). A repeated dimension item is reported under R2, not R6. |
 | **R7** | `ERR_INVALID_REPORT` | A report `@segment` that names no segment of `@from`. |
-| **R8** | `ERR_INVALID_REPORT` | A `@spine` that is not `Owner.hop[.hop...]` with `Owner` resolving to `@from` or an entity it extends (in the report's package), or that crosses a hop which is not a `relationship.*` with `@cardinality: one` or an `identity.reference`, or a hop whose target resolves to no object. This is D2's walk, started at `@from`. |
+| **R8** | `ERR_INVALID_REPORT` | A `@spine` that is not `Owner.hop[.hop...]` with `Owner` resolving to `@from` or an entity it extends (a bare `Owner` resolves in `@from`'s package), or that crosses a hop which is not a `relationship.*` with `@cardinality: one` or an `identity.reference`, or a hop whose target resolves to no object. This is D2's walk, started at `@from`. |
 | **R9** | `ERR_INVALID_REPORT` | A `@spine` report with no dimension, or a listed dimension whose `@via` does not begin with the spine's hops (no `@via` at all included). Hop names are compared as written; the owner segment is not. |
 
 `purchasedAt:day` and `purchasedAt:week` together are legal, since they derive different

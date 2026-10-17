@@ -591,7 +591,7 @@ describe("extractReportSpec: refusals that name what is wrong", () => {
       value: () => root.objects().map((c) => (c.resolutionKey() === fromKey ? fromStub : c)),
     });
     expect(() => extractReportSpec(titles, rootStub, CTX)).toThrow(
-      /report 'ProgramTitles': dimension 'programTitle' @via 'Purchase.program.nowhere' cannot be joined at hop 'nowhere' on 'acme::shop::Program': it names no relationship or identity.reference/,
+      "report 'ProgramTitles': dimension 'programTitle' @via 'Purchase.program.nowhere' does not resolve.",
     );
   });
 

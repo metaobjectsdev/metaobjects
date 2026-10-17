@@ -1,0 +1,15 @@
+{
+  "errors": [
+    {
+      "code": "ERR_INVALID_MEASURE",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.ops.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[0]['object.entity'].children[9]['measure.aggregate']"
+      }
+    }
+  ],
+  "warnings": []
+}

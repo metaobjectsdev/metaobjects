@@ -817,3 +817,63 @@ def test_a_to_one_relationship_hop_follows_the_reference_it_crosses() -> None:
     # The other entity holds the foreign key: a Snap with no Stamp has no match, so the join is
     # LEFT whatever that key and the target field require.
     assert req["stampLabel"] is False
+
+
+# ---------------------------------------------------------------------------
+# R5 — bare owners the path already fixes: a via dimension's @of resolves in the
+# TERMINAL's package; a @spine's owner resolves in @from's package. The same models
+# and expectations as the TypeScript report-shape.test.ts "R5" describe block.
+# ---------------------------------------------------------------------------
+
+_CROSS_PACKAGE_FIXTURE = (
+    Path(__file__).parents[3] / "fixtures" / "conformance" / "reporting-cross-package-short-names" / "input"
+)
+
+
+def _load_cross_package_fixture() -> MetaRoot:
+    result = MetaDataLoader().load(
+        [
+            InMemoryStringSource((_CROSS_PACKAGE_FIXTURE / name).read_text(encoding="utf-8"), name)
+            for name in ("meta.world.json", "meta.play.json", "meta.reports.json")
+        ]
+    )
+    assert result.errors == [], [e.message for e in result.errors]
+    return cast(MetaRoot, result.root)
+
+
+def test_a_via_dimensions_bare_of_resolves_in_the_terminal_package() -> None:
+    """``realmName``'s ``@of`` is the bare ``Realm.name``, declared on ``acme::play::Game``
+    (whose own package is NOT ``Realm``'s). The ``@via`` reaches ``acme::world::Realm``
+    first, so the bare owner resolves in THAT package, not the declaring entity's — and the
+    field is read from the reached entity, deriving its type (a required string)."""
+    root = _load_cross_package_fixture()
+    report = _object(root, "GamesByRealm")
+    shape = report_shape(report, root)
+    assert [(f.name, f.role, f.sub_type, f.required) for f in shape.fields] == [
+        ("realmName", "dimension", "string", True),
+        ("games", "measure", "long", True),
+    ]
+    # R5b: the report's own package (acme::reports) is not where @spine's bare owner
+    # ("Game") resolves — it resolves in @from's package (acme::play) instead.
+    assert report_spine_hops(report, shape.from_, root) == ["fkRealm"]
+
+
+# ---------------------------------------------------------------------------
+# R6 — @agg any / all may omit @of to quantify their row condition over the group.
+# The same model and expectations as the TypeScript report-shape.test.ts "R6" block.
+# ---------------------------------------------------------------------------
+
+
+def test_agg_any_all_without_of_derive_nullable_boolean_rows_unless_defaulted() -> None:
+    fixture = Path(__file__).parents[3] / "fixtures" / "conformance" / "reporting-any-all-predicate" / "input" / "meta.ops.json"
+    result = MetaDataLoader().load([InMemoryStringSource(fixture.read_text(encoding="utf-8"), "meta.ops.json")])
+    assert result.errors == [], [e.message for e in result.errors]
+    root = cast(MetaRoot, result.root)
+    shape = report_shape(_object(root, "CallsByGame"), root)
+    assert [(f.name, f.sub_type, f.required) for f in shape.fields] == [
+        ("game", "long", True),
+        ("calls", "long", True),
+        ("hasError", "boolean", False),
+        ("allSlow", "boolean", True),
+        ("anySlowFailure", "boolean", False),
+    ]

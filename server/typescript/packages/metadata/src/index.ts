@@ -64,6 +64,7 @@ export {
   reportingMemberOwner,
   reportingViaHops,
   resolveReportingFieldRef,
+  resolveDimensionOf,
   type ReportField,
   type ReportFieldRole,
   type ReportShape,

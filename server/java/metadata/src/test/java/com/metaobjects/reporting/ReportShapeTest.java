@@ -820,4 +820,59 @@ public class ReportShapeTest extends SharedRegistryTestBase {
         // A Snap with no Stamp has no match, so the join is LEFT whatever that key and the target field require.
         assertFalse("the other entity holds the foreign key", field(related, "stampLabel").required());
     }
+
+    // ---------------------------------------------------------------------------
+    // D1 (ADR-0042 Amendment) — a @via dimension's bare @of Owner resolves in the
+    // package of the entity @via reaches (the terminal), not the declaring entity's.
+    // Mirrors fixtures/conformance/reporting-cross-package-short-names.
+    // ---------------------------------------------------------------------------
+
+    private static final String CROSS_PKG_WORLD = """
+        { "metadata.root": { "package": "acme::world", "children": [
+          { "object.entity": { "name": "Realm", "children": [
+            { "source.rdb": { "@table": "realms" } },
+            { "field.long": { "name": "id" } },
+            { "field.string": { "name": "name", "@required": true } },
+            { "identity.primary": { "name": "id", "@fields": ["id"] } }
+          ] } }
+        ] } }
+        """;
+
+    private static final String CROSS_PKG_PLAY = """
+        { "metadata.root": { "package": "acme::play", "children": [
+          { "object.entity": { "name": "Game", "children": [
+            { "source.rdb": { "@table": "games" } },
+            { "field.long": { "name": "id" } },
+            { "field.long": { "name": "realmId", "@required": true } },
+            { "identity.primary": { "name": "id", "@fields": ["id"] } },
+            { "identity.reference": { "name": "fkRealm", "@references": "acme::world::Realm", "@fields": ["realmId"] } },
+            { "dimension.attribute": { "name": "realmName", "@of": "Realm.name", "@via": "Game.fkRealm" } },
+            { "measure.aggregate": { "name": "games", "@agg": "count", "@of": "Game.id" } }
+          ] } }
+        ] } }
+        """;
+
+    private static final String CROSS_PKG_REPORTS = """
+        { "metadata.root": { "package": "acme::reports", "children": [
+          { "object.report": { "name": "GamesByRealm", "@from": "acme::play::Game", "@spine": "Game.fkRealm",
+              "@dimensions": ["realmName"], "@measures": ["games"],
+              "children": [ { "source.rdb": { "@kind": "view", "@view": "v_games_by_realm" } } ] } }
+        ] } }
+        """;
+
+    @Test
+    public void aViaDimensionsBareCrossPackageOfDerivesTheTerminalsFieldType() {
+        MetaRoot root = loadJson(CROSS_PKG_WORLD, CROSS_PKG_PLAY, CROSS_PKG_REPORTS);
+        ReportShape shape = ReportShape.of(object(root, "GamesByRealm"), root);
+        ReportShape.Field realmName = field(shape, "realmName");
+        // D1: the bare "Realm" in @of "Realm.name" resolves in acme::world (the @via terminal's
+        // package), not acme::play (the declaring Game's package) — there is no "Realm" in
+        // acme::play, so resolving in the declaring package would leave this unresolved.
+        assertEquals("string", realmName.subType());
+        assertEquals("acme::world::Realm.name", realmName.typeSourceKey());
+        assertTrue("Realm.name is @required and the @via equals the report's @spine",
+                realmName.required());
+        assertSame("ofEntity resolves in the terminal's package too",
+                object(root, "Realm"), shape.ofEntity(realmName));
+    }
 }

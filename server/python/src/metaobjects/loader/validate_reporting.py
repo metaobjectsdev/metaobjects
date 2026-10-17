@@ -10,7 +10,7 @@ table WITH THE SAME MESSAGE TEXT; the fixtures are the contract.
 Two design rules hold throughout, so one broken rule yields exactly one error:
 
 - No cascades. A member that fails a structural rule is not checked further (a
-  dimension whose @via fails D2 skips D1/D3/D4; a measure that fails one of M1–M4, or
+  dimension whose @via fails D2 skips D1/D3/D4; a measure that fails one of M0–M4, or
   whose @default is a fraction, skips M7/M8; a report whose @from fails R1 skips
   R2/R3/R6/R7, R8/R9 and its @filter; a report whose @spine fails R8 skips R9, and R9
   skips a dimension whose @via fails D2; an invalid @dimensions/@measures item derives
@@ -450,7 +450,11 @@ def _check_dimension(ctx: _MemberCtx, dim: MetaDimension) -> None:
     if parts is None or len(parts.path) != 1:
         err(f"@of '{of}' must be Entity.field.")
         return
-    named = resolve_object_ref(ctx.root, parts.owner, _pkg_of(ctx.declaring))
+    # D1 — after @via, a bare Owner resolves in the package of the entity @via reaches: the path
+    # already fixes the entity, so `Realm.name` after a hop onto `world::Realm` names it. Without
+    # @via it resolves in the declaring entity's package.
+    owner_pkg = _pkg_of(ctx.declaring) if via is None else _pkg_of(of_entity)
+    named = resolve_object_ref(ctx.root, parts.owner, owner_pkg)
     if not _is_self_or_ancestor(named, of_entity):
         if via is None:
             err(
@@ -489,7 +493,7 @@ class _ToOneWalk:
 
     #: The attribute holding the path: ``via`` (D2) or ``spine`` (R8).
     attr: str
-    #: The package Owner resolves in (ADR-0042): the declaring entity's (D2) or the report's (R8).
+    #: The package Owner resolves in (ADR-0042): the declaring entity's (D2) or @from's (R8).
     owner_pkg: str
     #: The FQN named for the walk's first entity: the declaring entity (D2) or @from (R8).
     host_name: str
@@ -517,11 +521,12 @@ def _d2_walk(declaring: MetaData) -> _ToOneWalk:
     )
 
 
-def _spine_walk(report: MetaData, from_key: str) -> _ToOneWalk:
-    """R8 — a report's @spine, started at @from (``from_key``); Owner resolves in the report's package."""
+def _spine_walk(from_: MetaData, from_key: str) -> _ToOneWalk:
+    """R8 — a report's @spine, started at @from; Owner resolves in @from's package (it must be
+    @from or an entity @from extends), whatever package the report is in."""
     return _ToOneWalk(
         attr=OBJECT_REPORT_ATTR_SPINE,
-        owner_pkg=_pkg_of(report),
+        owner_pkg=_pkg_of(from_),
         host_name=from_key,
         start=f"@from '{from_key}'",
         start_short=f"@from '{from_key}'",
@@ -617,7 +622,7 @@ def _check_measure(ctx: _MemberCtx, measure: MetaMeasure) -> None:
 
     checked = _check_aggregate_columns(ctx, measure, err)
 
-    # M7 / M8 — where a @default can apply. Only when M1–M4 passed and the @default is
+    # M7 / M8 — where a @default can apply. Only when M0–M4 passed and the @default is
     # not a fraction: one mistake, one error. The presence test reads the raw attribute,
     # so a non-number value on a count still reports M7 beside the attribute type error.
     if checked is not None and not fractional_default and declared_default is not None:
@@ -657,7 +662,7 @@ def _check_measure(ctx: _MemberCtx, measure: MetaMeasure) -> None:
 
 @dataclass(frozen=True)
 class _CheckedColumns:
-    """M1–M4 passed. ``field`` is the single resolved @of field (``None`` for a tuple), for M7/M8."""
+    """M0–M4 passed. ``field`` is the single resolved @of field (``None`` for a tuple), for M7/M8."""
 
     field: MetaData | None
 
@@ -665,10 +670,28 @@ class _CheckedColumns:
 def _check_aggregate_columns(
     ctx: _MemberCtx, measure: MetaMeasure, err: Callable[[str], None]
 ) -> _CheckedColumns | None:
-    """M1–M4, in order; the first failure stops the chain (no M2+M3 double report).
+    """M0–M4, in order; the first failure stops the chain (no M2+M3 double report).
     Returns ``None`` when one of them fired."""
     agg = measure.agg()
     columns = measure.of_columns()
+
+    # M0 — @of names the column aggregated. Only any / all may omit it: they then quantify the
+    # measure's row condition (@filter AND @segment) over the group, "some row (every row)
+    # passes", so they need a condition to quantify.
+    if len(columns) == 0 and agg is not None:
+        if agg not in (AGG_ANY, AGG_ALL):
+            err(
+                f"@agg '{agg}' needs @of, the column it aggregates. Only @agg any / all may omit @of, to ask "
+                f"whether some row (any) or every row (all) passes the measure's @filter or @segment."
+            )
+            return None
+        if measure.filter() is None and measure.segment_name() is None:
+            err(
+                f"@agg '{agg}' without @of quantifies the measure's row condition, but it declares neither "
+                f"@filter nor @segment. Name a field.boolean in @of, or add the condition."
+            )
+            return None
+        return _CheckedColumns(field=None)
 
     # M1 — every @of item is a field of the owning entity.
     fields: list[MetaData] = []
@@ -938,7 +961,7 @@ def _check_report(root: MetaData, report: MetaData, sink: _ErrorSink) -> None:
     spine = report_spine(report)
     if spine is not None:
         terminal = _walk_to_one_via(
-            root, from_, spine, lambda message: err(f": {message}"), _spine_walk(report, from_key)
+            root, from_, spine, lambda message: err(f": {message}"), _spine_walk(from_, from_key)
         )
         # R9 — every listed dimension is reached through the spine. Skipped when R8 failed.
         if terminal is not None:

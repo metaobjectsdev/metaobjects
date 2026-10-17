@@ -47,7 +47,7 @@ A report declares no fields. Its columns are one per `@dimensions` item in liste
 | `avg` of `int`, `long`, `currency`, `decimal` | the measure's name | `decimal` | no |
 | `avg` of `double` / `float` | the measure's name | `double` | no |
 | `min` / `max` | the measure's name | the `@of` field's type | no |
-| `any` / `all` (boolean OR / AND, `bool_or` / `bool_and`; `@of` must be a `field.boolean`) | the measure's name | `boolean` | no |
+| `any` / `all` (boolean OR / AND, `bool_or` / `bool_and`; over a `field.boolean` `@of`, or with no `@of` over the measure's `@filter` / `@segment`) | the measure's name | `boolean` | no |
 | `measure.ratio` | the measure's name | `decimal` | no |
 | any measure above except `count`, declaring `@default` | the measure's name | as above | yes: it reads the default instead of null |
 | in a `@spine` report, a dimension over a column of the spine entity | the dimension's name | the `@of` field's type | yes when the field is `@required` or in that entity's `identity.primary`; no for a dimension beyond the spine entity |

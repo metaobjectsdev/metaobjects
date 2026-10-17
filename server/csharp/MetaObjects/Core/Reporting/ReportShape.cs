@@ -77,8 +77,10 @@ public static class ReportShapes
     /// reference is about the <c>@from</c> entity's own rows) the named entity must be
     /// <paramref name="host"/> or an entity it extends, and the field is read from
     /// <paramref name="host"/>, so a field it redeclares wins.</item>
-    /// <item>Without <paramref name="host"/> (a dimension with <c>@via</c>) the field is read
-    /// from the named entity.</item>
+    /// <item>Without <paramref name="host"/> the field is read from the named entity. A
+    /// dimension with <c>@via</c> passes the entity its <c>@via</c> reaches as both
+    /// <paramref name="declaring"/> and <paramref name="host"/> (see
+    /// <see cref="ResolveDimensionOf"/>).</item>
     /// </list>
     /// Null when any step fails.
     /// </summary>
@@ -103,6 +105,60 @@ public static class ReportShapes
         // ADR-0039: resolving, so a field inherited through extends is found.
         var field = (host ?? named).FindField(reference[(dot + CHILD_REF_SEPARATOR.Length)..]);
         return field is null ? null : (named, field);
+    }
+
+    /// <summary>
+    /// A dimension's <c>@of</c> field, read as the loader's rule D1 reads it. Without
+    /// <c>@via</c> it is <see cref="ResolveReportingFieldRef"/> with <paramref name="from"/> as
+    /// the host. With <c>@via</c> the host is the entity the <c>@via</c> reaches, and a bare
+    /// entity name in <c>@of</c> resolves in THAT entity's package: the path already fixes the
+    /// entity, so <c>Realm.name</c> after a hop onto <c>world::Realm</c> names
+    /// <c>world::Realm</c>. The field is read from the reached entity, so a field it redeclares
+    /// wins. Null when the <c>@via</c> or the <c>@of</c> does not resolve.
+    /// </summary>
+    public static (MetaObject Named, MetaField Field)? ResolveDimensionOf(MetaDimension dim, MetaObject from, MetaRoot root)
+    {
+        string of = dim.Of() ?? "";
+        string? via = dim.Via();
+        if (via is null) return ResolveReportingFieldRefNamed(of, ReportingMemberOwner(dim, from), root, from);
+        if (ReportingViaTerminal(via, ReportingMemberOwner(dim, from), from, root) is not MetaObject terminal)
+            return null;
+        return ResolveReportingFieldRefNamed(of, terminal, root, terminal);
+    }
+
+    /// <summary>
+    /// The target entity of one hop of a <c>@via</c>/<c>@spine</c> path, walked as the loader
+    /// walks it: the <c>relationship.*</c> (through its <c>@objectRef</c>) or
+    /// <c>identity.reference</c> (through its <c>@references</c>) of <paramref name="current"/>
+    /// named <paramref name="hopName"/>, resolved in <paramref name="current"/>'s package. Null
+    /// for a hop that is neither, or whose target does not resolve.
+    /// </summary>
+    private static MetaObject? ResolveViaHopTarget(MetaObject current, string hopName, MetaRoot root)
+    {
+        // ADR-0039: resolving Relationships()/ReferenceIdentities(), so an inherited hop is found.
+        var rel = current.Relationships().FirstOrDefault(r => r.Name == hopName);
+        var refNode = rel is null ? current.ReferenceIdentities().FirstOrDefault(r => r.Name == hopName) : null;
+        string? targetRef = rel is not null ? rel.ObjectRef : refNode?.ReferencesRaw;
+        if (string.IsNullOrEmpty(targetRef)) return null;
+        return NamingRefs.ResolveObjectRef(root, targetRef, NamingRefs.EffectivePackage(current)) as MetaObject;
+    }
+
+    /// <summary>
+    /// The entity at the end of a <c>@via</c> walked from <paramref name="from"/> (hops as
+    /// <see cref="ReportingViaHops"/> reads them, each target resolved by
+    /// <see cref="ResolveViaHopTarget"/>). Null when any hop does not resolve.
+    /// </summary>
+    private static MetaObject? ReportingViaTerminal(string via, MetaData declaring, MetaObject from, MetaRoot root)
+    {
+        var hops = ReportingViaHops(via, declaring, from, root);
+        if (hops is null) return null;
+        MetaObject current = from;
+        foreach (string hop in hops)
+        {
+            if (ResolveViaHopTarget(current, hop, root) is not MetaObject target) return null;
+            current = target;
+        }
+        return current;
     }
 
     /// <summary>
@@ -133,18 +189,20 @@ public static class ReportShapes
 
     /// <summary>
     /// The hop names of a report's <c>@spine</c> (<c>Owner.hop[.hop...]</c>), read as
-    /// <see cref="ReportingViaHops"/> reads a <c>@via</c>, the owner resolving in the REPORT's
-    /// package (loader rule R8). Null when the report declares no <c>@spine</c>. Throws
-    /// <see cref="InvalidOperationException"/> naming the report when a declared <c>@spine</c>
-    /// does not resolve (a report that passed <c>ValidateReporting</c> always resolves):
-    /// reading it as "no spine" would claim a column non-null that a spine row with no facts
-    /// leaves null.
+    /// <see cref="ReportingViaHops"/> reads a <c>@via</c>, the owner resolving in
+    /// <paramref name="from"/>'s package (loader rule R8): Owner must be <paramref name="from"/>
+    /// or an entity it extends, so a bare name means <paramref name="from"/>'s package even
+    /// when the report lives in another one. Null when the report declares no <c>@spine</c>.
+    /// Throws <see cref="InvalidOperationException"/> naming the report when a declared
+    /// <c>@spine</c> does not resolve (a report that passed <c>ValidateReporting</c> always
+    /// resolves): reading it as "no spine" would claim a column non-null that a spine row with
+    /// no facts leaves null.
     /// </summary>
     public static string[]? ReportSpineHops(MetaObject report, MetaObject from, MetaRoot root)
     {
         string? spine = ReportAccessors.ReportSpine(report);
         if (spine is null) return null;
-        return ReportingViaHops(spine, report, from, root) ?? throw Unresolved(report.Name, $"@spine '{spine}'");
+        return ReportingViaHops(spine, from, from, root) ?? throw Unresolved(report.Name, $"@spine '{spine}'");
     }
 
     /// <summary>True when <paramref name="field"/> is one of the <c>@fields</c> of <paramref name="entity"/>'s <c>identity.primary</c>.</summary>
@@ -231,8 +289,13 @@ public static class ReportShapes
     {
         var dim = DeclaredMember<MetaDimension>(from, TYPE_DIMENSION, item.Name)
             ?? throw Unresolved(reportName, $"dimension '{item.Name}' on '{from.Name}'");
-        bool vialess = dim.Via() is null;
-        var (named, of) = ResolveReportingFieldRefNamed(dim.Of() ?? "", ReportingMemberOwner(dim, from), root, vialess ? from : null)
+        // A @via that does not walk is the @via's error, not the @of's (the @of resolves at its end).
+        string? via = dim.Via();
+        if (via is not null && ReportingViaTerminal(via, ReportingMemberOwner(dim, from), from, root) is null)
+        {
+            throw Unresolved(reportName, $"dimension '{dim.Name}' @via '{via}'");
+        }
+        var (named, of) = ResolveDimensionOf(dim, from, root)
             ?? throw Unresolved(reportName, $"dimension '{item.Name}' @of");
         string name = ReportAccessors.ReportDerivedFieldName(item);
         bool required = DimensionRequired(dim, named, of, from, root, spine, reportName);

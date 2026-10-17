@@ -421,11 +421,13 @@ core_provider.add(
                 allowed_values=MEASURE_AGGS,
             ),
             # isArray: a bare string coerces to a one-element list (the tuple form
-            # is a distinct count, M2).
+            # is a distinct count, M2). Optional (M0): only @agg any/all may omit
+            # it, to quantify their @filter/@segment over the rows instead of
+            # aggregating a column.
             AttrSchema(
                 name=REPORTING_ATTR_OF,
                 value_type=ATTR_SUBTYPE_STRING,
-                required=True,
+                required=False,
                 is_array=True,
             ),
             AttrSchema(name=REPORTING_ATTR_DISTINCT, value_type=ATTR_SUBTYPE_BOOLEAN, required=False),

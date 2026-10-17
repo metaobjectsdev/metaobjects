@@ -1,0 +1,19 @@
+{
+  "metadata.root": {
+    "package": "acme::reports",
+    "children": [
+      {
+        "object.report": {
+          "name": "GamesByRealm",
+          "@from": "acme::play::Game",
+          "@spine": "Game.fkRealm",
+          "@dimensions": ["realmName"],
+          "@measures": ["games"],
+          "children": [
+            { "source.rdb": { "@kind": "view", "@view": "v_games_by_realm" } }
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -218,8 +218,9 @@ function aggregateSpec(
   // The view's own resolution: @of read from the cube's entity, then its condition.
   const { agg, distinct, fields, condition } = resolveAggregate(m, entity, mc.root, CUBE_SELF, mc.extract, where);
   const cols = fields.map((f) => cubeColumn(sourceColumnNameFor(f, mc.extract), d, renderer));
-  if (cols.length === 0) throw new Error(`${where}: has no @of.`);
   const c = condition === undefined ? undefined : cond(condition, d, renderer);
+  // Only @agg any / all may omit @of (rule M0); they are handled below.
+  if (cols.length === 0 && agg !== AGG_ANY && agg !== AGG_ALL) throw new Error(`${where}: has no @of.`);
   if (cols.length > 1) {
     if (agg !== AGG_COUNT || !distinct) throw new Error(`${where}: a column tuple needs @agg: count with @distinct.`);
     if (d === "mysql") {
@@ -239,12 +240,16 @@ function aggregateSpec(
     // A boolean OR / AND, written as the view writes it (report-ddl-emit.ts) and typed `boolean`.
     // Cube's min/max cannot take a boolean column (Postgres has no MAX(boolean)), and the
     // condition travels in the SQL: the aggregate is Cube's `boolean` type, which takes none.
-    const col = cols[0]!;
+    const col = cols[0];
+    const fn = d === "postgres" ? (agg === AGG_ANY ? "bool_or" : "bool_and") : agg === AGG_ANY ? "MAX" : "MIN";
+    // No @of (rule M0): the condition is the quantified predicate, as in the view.
+    if (col === undefined) {
+      if (c === undefined) throw new Error(`${where}: @agg '${agg}' has neither @of nor a condition.`);
+      return { sql: `${fn}(COALESCE(${c}, ${d === "postgres" ? "FALSE" : "0"}))`, type: "boolean" };
+    }
     if (d === "postgres") {
-      const fn = agg === AGG_ANY ? "bool_or" : "bool_and";
       return { sql: c === undefined ? `${fn}(${col})` : `${fn}(${col}) FILTER (WHERE ${c})`, type: "boolean" };
     }
-    const fn = agg === AGG_ANY ? "MAX" : "MIN";
     return { sql: `${fn}(${c === undefined ? col : `CASE WHEN ${c} THEN ${col} END`})`, type: "boolean" };
   }
   const type: CubeMeasureType = agg === AGG_COUNT ? (distinct ? "count_distinct" : "count") : agg;

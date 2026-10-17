@@ -77,6 +77,11 @@ export interface ResolvedGenConfig {
    *  `agent/ui.md` reads this to decide whether a UI tier exists to describe;
    *  a metadata predicate can only say a UI *could* be generated. Undefined ⇒ false. */
   includeUiTier?: boolean;
+  /** Whether `includeUiTier` came from the config rather than from the marker
+   *  aggregation. An explicit `false` means "no UI anywhere", so `agent/ui.md` skips the
+   *  page without advising; an unset key that resolved to `false` still advises.
+   *  Set by the runner only. Undefined ⇒ false. */
+  includeUiTierExplicit?: boolean;
   /**
    * FR-019 / ADR-0026: the module specifier from which an externally-PROVIDED
    * shared enum (`@provided: true` on an abstract package-level `field.enum`) is
@@ -104,7 +109,7 @@ export const DEFAULT_EXT_STYLE: ExtStyle = "js";
  * fills inert defaults when they are absent AND the model emits no DB artifacts, and
  * throws a clear error when they are absent but the model DOES emit DB code (#194).
  */
-export interface MetaobjectsGenConfig extends Omit<ResolvedGenConfig, "dbImport" | "dialect" | "extStyle" | "routesExpose"> {
+export interface MetaobjectsGenConfig extends Omit<ResolvedGenConfig, "dbImport" | "dialect" | "extStyle" | "routesExpose" | "includeUiTierExplicit"> {
   dbImport?: string;
   dialect?: Dialect;
   /** Import-specifier suffix in generated code. Defaults to `"js"` (`./x.js`), which is

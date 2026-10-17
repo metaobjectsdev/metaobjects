@@ -937,3 +937,107 @@ describe("Table D: the spine chain, end to end", () => {
     expect(v["v_by_tier_plain"]).toContain(`  LEFT OUTER JOIN "profiles" p ON p."accountId" = a."id"`);
   });
 });
+
+// ── @agg any / all with no @of (rule M0): the row condition is the quantified predicate ─────
+
+describe("@agg any / all without @of, end to end", () => {
+  // An adopter's "did any call in this game fail": bool_or(NOT success), with no failure column.
+  const calls = (): Json[] => [
+    ent("Call", [
+      tableSrc("calls"),
+      field("long", "id"),
+      field("long", "gameId", { "@required": true }),
+      field("boolean", "success", { "@required": true }),
+      field("long", "latencyMs"),
+      idPk,
+      { "segment.filter": { name: "slow", "@filter": { latencyMs: { gt: 1000 } } } },
+      { "dimension.attribute": { name: "game", "@of": "Call.gameId" } },
+      { "measure.aggregate": { name: "hasError", "@agg": "any", "@filter": { success: false } } },
+      { "measure.aggregate": { name: "allSlow", "@agg": "all", "@segment": "slow", "@default": 0 } },
+    ]),
+    rpt("CallsByGame", { "@from": "Call", "@dimensions": ["game"], "@measures": ["hasError", "allSlow"] }, "v_calls_by_game"),
+  ];
+
+  test("postgres: bool_or / bool_and of the condition, a NULL condition not passing, with no FILTER", async () => {
+    const sql = (await viewsOf(calls(), "postgres"))["v_calls_by_game"];
+    expect(sql).toContain(`    bool_or(COALESCE(c."success" = FALSE, FALSE)) AS "hasError",`);
+    expect(sql).toContain(`    COALESCE(bool_and(COALESCE(c."latencyMs" > 1000, FALSE)), FALSE) AS "allSlow"`);
+    expect(sql).not.toContain("FILTER");
+  });
+
+  test("sqlite, d1 and mysql: MAX / MIN of the condition, which is 0 / 1 / NULL there", async () => {
+    for (const dialect of ["sqlite", "d1"] as const) {
+      const sql = (await viewsOf(calls(), dialect))["v_calls_by_game"];
+      expect(sql).toContain(`MAX(COALESCE(c."success" = 0, 0)) AS "hasError"`);
+      expect(sql).toContain(`COALESCE(MIN(COALESCE(c."latencyMs" > 1000, 0)), 0) AS "allSlow"`);
+    }
+    const my = (await viewsOf(calls(), "mysql"))["v_calls_by_game"];
+    expect(my).toContain("MAX(COALESCE(c.`success` = FALSE, 0)) AS `hasError`");
+    expect(my).toContain("COALESCE(MIN(COALESCE(c.`latencyMs` > 1000, 0)), 0) AS `allSlow`");
+  });
+});
+
+describe("@agg any / all without @of under @spine", () => {
+  // A program with no weeks gets one padding row whose `label` is null, so `label IS NULL` is
+  // true on it: only fact rows are aggregated, so that program reads null, not true.
+  const unlabelled = (): Json[] => fitness([
+    rpt("AnyUnlabelled", {
+      "@from": "Week", "@spine": "Week.fkProgram", "@dimensions": ["programKey"], "@measures": ["anyUnlabelled", "allUnlabelled"],
+    }, "v_any_unlabelled"),
+  ], [], [
+    { "measure.aggregate": { name: "anyUnlabelled", "@agg": "any", "@filter": { label: { isNull: true } } } },
+    { "measure.aggregate": { name: "allUnlabelled", "@agg": "all", "@filter": { label: { isNull: true } } } },
+  ]);
+
+  test("postgres: the condition is aggregated over the fact rows only", async () => {
+    const sql = (await viewsOf(unlabelled(), "postgres"))["v_any_unlabelled"];
+    expect(sql).toContain(`    bool_or(COALESCE(w."label" IS NULL, FALSE)) FILTER (WHERE w."programId" IS NOT NULL) AS "anyUnlabelled",`);
+    expect(sql).toContain(`    bool_and(COALESCE(w."label" IS NULL, FALSE)) FILTER (WHERE w."programId" IS NOT NULL) AS "allUnlabelled"`);
+  });
+
+  test("sqlite and mysql: the padding row's condition is NULL, which MAX / MIN skip", async () => {
+    const lite = (await viewsOf(unlabelled(), "sqlite"))["v_any_unlabelled"];
+    expect(lite).toContain(`MAX(CASE WHEN w."programId" IS NOT NULL THEN COALESCE(w."label" IS NULL, 0) END) AS "anyUnlabelled"`);
+    expect(lite).toContain(`MIN(CASE WHEN w."programId" IS NOT NULL THEN COALESCE(w."label" IS NULL, 0) END) AS "allUnlabelled"`);
+    const my = (await viewsOf(unlabelled(), "mysql"))["v_any_unlabelled"];
+    expect(my).toContain("MAX(CASE WHEN w.`programId` IS NOT NULL THEN COALESCE(w.`label` IS NULL, 0) END) AS `anyUnlabelled`");
+  });
+
+  test("without @spine there is no fact-row FILTER", async () => {
+    const plain = fitness([
+      rpt("AnyUnlabelledPlain", { "@from": "Week", "@dimensions": ["programKey"], "@measures": ["anyUnlabelled"] }, "v_any_unlabelled_plain"),
+    ], [], [{ "measure.aggregate": { name: "anyUnlabelled", "@agg": "any", "@filter": { label: { isNull: true } } } }]);
+    const sql = (await viewsOf(plain, "postgres"))["v_any_unlabelled_plain"];
+    expect(sql).toContain(`    bool_or(COALESCE(w."label" IS NULL, FALSE)) AS "anyUnlabelled"`);
+  });
+});
+
+// ── A bare @of owner after @via resolves in the package of the entity @via reaches ─────
+
+describe("a via dimension's bare @of owner across packages", () => {
+  test("Realm.name after a hop onto world::Realm groups by realms.name", async () => {
+    const world = { "metadata.root": { package: "world", children: [
+      ent("Realm", [tableSrc("realms"), field("long", "id"), field("string", "name", { "@required": true }), idPk]),
+    ] } };
+    const play = { "metadata.root": { package: "play", children: [
+      ent("Game", [
+        tableSrc("games"),
+        field("long", "id"),
+        field("long", "realmId", { "@required": true }),
+        idPk,
+        { "identity.reference": { name: "fkRealm", "@references": "world::Realm", "@fields": ["realmId"] } },
+        { "dimension.attribute": { name: "realmName", "@of": "Realm.name", "@via": "Game.fkRealm" } },
+        { "measure.aggregate": { name: "games", "@agg": "count", "@of": "Game.id" } },
+      ]),
+      rpt("GamesByRealm", { "@from": "Game", "@dimensions": ["realmName"], "@measures": ["games"] }, "v_games_by_realm"),
+    ] } };
+    const { root, errors } = await new MetaDataLoader().load([
+      new InMemoryStringSource(JSON.stringify(world)),
+      new InMemoryStringSource(JSON.stringify(play)),
+    ]);
+    expect(errors).toEqual([]);
+    const [view] = buildReportViews(literalColumns(root), { dialect: "postgres" });
+    expect(view?.sql).toContain(`"name" AS "realmName"`);
+    expect(view?.sql).toContain(`INNER JOIN "realms"`);
+  });
+});

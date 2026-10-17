@@ -44,13 +44,14 @@ public static class ReportingSchema
             allowedValues: [.. ReportingConstants.TIME_GRAINS]),
     ];
 
-    /// <summary>measure.aggregate — @agg (closed set), @of (isArray; a bare string is one column),
-    /// @distinct, @filter, @segment, @default.</summary>
+    /// <summary>measure.aggregate — @agg (closed set), @of (isArray; a bare string is one
+    /// column; optional — M0 requires it for every @agg except any/all, which may omit it to
+    /// quantify @filter/@segment over the group), @distinct, @filter, @segment, @default.</summary>
     private static readonly IReadOnlyList<AttrSchema> MeasureAggregateAttrs =
     [
         Str(ReportingConstants.REPORTING_ATTR_AGG, required: true,
             allowedValues: [.. ReportingConstants.MEASURE_AGGS]),
-        Str(ReportingConstants.REPORTING_ATTR_OF, required: true, isArray: true),
+        Str(ReportingConstants.REPORTING_ATTR_OF, required: false, isArray: true),
         new(Name: ReportingConstants.REPORTING_ATTR_DISTINCT, ValueType: AttrConstants.ATTR_SUBTYPE_BOOLEAN,
             Required: false),
         Filter(ReportingConstants.REPORTING_ATTR_FILTER, required: false),

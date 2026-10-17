@@ -26,6 +26,17 @@ export function cliVersion(): string {
   return "0.0.0";
 }
 
+/**
+ * True when `version` carries a semver prerelease identifier (`-rc.4`, `-alpha.1`,
+ * `-beta`, `-SNAPSHOT`, …) — the same shape `tools/prerelease/detect-prerelease-pins.sh`'s
+ * `PRERELEASE_RE` matches. Used to warn when a pre-release CLI is about to stamp its own
+ * version into committed state (`.metaobjects/.agent-context.json`'s `generatedBy`),
+ * which that detector now also flags on the tree side.
+ */
+export function isPrereleaseVersion(version: string): boolean {
+  return /^\d+\.\d+\.\d+-[0-9A-Za-z.-]+$/.test(version.trim());
+}
+
 /** The three spellings that print the bare version: `--version`, `-v` and `-V`. */
 const VERSION_FLAGS: readonly string[] = ["--version", "-v", "-V"];
 

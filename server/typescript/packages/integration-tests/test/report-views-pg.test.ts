@@ -450,9 +450,10 @@ const UNLABELLED_MODEL = JSON.stringify({ "metadata.root": { package: "acme", ch
     { "dimension.attribute": { name: "programKey", "@of": "Program.id", "@via": "Week.fkProgram" } },
     { "measure.aggregate": { name: "unlabelled", "@agg": "count", "@of": "Week.id", "@filter": { label: { isNull: true } } } },
     { "measure.aggregate": { name: "unlabelledMinutes", "@agg": "sum", "@of": "Week.durationMinutes", "@filter": { label: { isNull: true } } } },
+    { "measure.aggregate": { name: "anyUnlabelled", "@agg": "any", "@filter": { label: { isNull: true } } } },
   ] } },
   { "object.report": { name: "UnlabelledWeeks", "@from": "Week", "@spine": "Week.fkProgram",
-    "@dimensions": ["programKey"], "@measures": ["unlabelled", "unlabelledMinutes"], children: [
+    "@dimensions": ["programKey"], "@measures": ["unlabelled", "unlabelledMinutes", "anyUnlabelled"], children: [
     { "source.rdb": { "@kind": "view", "@view": "v_unlabelled_weeks" } } ] } },
 ]}});
 
@@ -619,11 +620,12 @@ describe("report views — inline models on real Postgres", () => {
 
     await applyRaw(UNLABELLED_ROWS);
     // Program 3's null-extended row has a null label, and the count still reads 0: it counts
-    // the fact's id, which is null there too. The sum of nothing is null (no @default).
+    // the fact's id, which is null there too. The sum of nothing is null (no @default), and so
+    // is an `any` over no facts, though `label IS NULL` holds on the null-extended row.
     expect(await select(`SELECT * FROM "v_unlabelled_weeks" ORDER BY "programKey"`)).toEqual([
-      { programKey: "1", unlabelled: "1", unlabelledMinutes: "60" },
-      { programKey: "2", unlabelled: "0", unlabelledMinutes: null },
-      { programKey: "3", unlabelled: "0", unlabelledMinutes: null },
+      { programKey: "1", unlabelled: "1", unlabelledMinutes: "60", anyUnlabelled: "t" },
+      { programKey: "2", unlabelled: "0", unlabelledMinutes: null, anyUnlabelled: "f" },
+      { programKey: "3", unlabelled: "0", unlabelledMinutes: null, anyUnlabelled: null },
     ]);
   }, 60_000);
 
@@ -766,5 +768,35 @@ describe("report views — inline models on real Postgres", () => {
     expect(canonicalDecimal(row!.amountTotal)).toBe("10.75");
     expect(Number(row!.scoreTotal)).toBe(3.75);
     expect(Number(row!.ratioTotal)).toBe(0.75);
+  }, 60_000);
+
+  test("@agg any / all without @of: some row / every row passes the condition; a NULL condition does not pass", async () => {
+    const root = await loadInline(JSON.stringify({ "metadata.root": { package: "acme", children: [
+      { "object.entity": { name: "Call", children: [
+        { "source.rdb": { "@table": "calls" } },
+        { "field.long": { name: "id" } },
+        { "field.long": { name: "gameId", "@required": true } },
+        { "field.boolean": { name: "success" } },
+        { "identity.primary": { name: "id", "@fields": "id", "@generation": "increment" } },
+        { "dimension.attribute": { name: "game", "@of": "Call.gameId" } },
+        { "measure.aggregate": { name: "hasError", "@agg": "any", "@filter": { success: false } } },
+        { "measure.aggregate": { name: "allSucceeded", "@agg": "all", "@filter": { success: true } } },
+      ] } },
+      { "object.report": { name: "CallsByGame", "@from": "Call", "@dimensions": ["game"],
+        "@measures": ["hasError", "allSucceeded"], children: [
+        { "source.rdb": { "@kind": "view", "@view": "v_calls_by_game" } } ] } },
+    ]}}));
+    expect(viewSql(root, "v_calls_by_game")).toContain(`bool_or(COALESCE(c."success" = FALSE, FALSE)) AS "hasError"`);
+    const { expected } = await migrate(root);
+    await assertConverged(expected);
+    await applyRaw(`
+      INSERT INTO "calls" ("gameId","success") VALUES
+        (1, TRUE), (1, FALSE), (2, TRUE), (2, TRUE), (3, TRUE), (3, NULL), (4, NULL)`);
+    expect(await select(`SELECT * FROM "v_calls_by_game" ORDER BY "game"`)).toEqual([
+      { game: "1", hasError: "t", allSucceeded: "f" },
+      { game: "2", hasError: "f", allSucceeded: "t" },
+      { game: "3", hasError: "f", allSucceeded: "f" },
+      { game: "4", hasError: "f", allSucceeded: "f" },
+    ]);
   }, 60_000);
 });

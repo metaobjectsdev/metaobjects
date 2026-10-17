@@ -16,6 +16,7 @@ import type { MetaData } from "../../shared/meta-data.js";
 import type { MetaRoot } from "../../shared/meta-root.js";
 import { TYPE_DIMENSION, TYPE_MEASURE, TYPE_SEGMENT } from "../../shared/base-types.js";
 import { SOURCE_KIND_VIEW } from "../../persistence/source/source-constants.js";
+import { AGG_ALL } from "../../persistence/origin/origin-constants.js";
 import type { MetaObject } from "../object/meta-object.js";
 import { OBJECT_REPORT_ATTR_FILTER, OBJECT_REPORT_ATTR_SEGMENT } from "../object/object-constants.js";
 import {
@@ -115,9 +116,14 @@ export function describeMeasure(measure: MetaData): string {
     return fallback !== "" ? `${quotient}${fallback}` : `${quotient}, null when the denominator is 0`;
   }
   const columns = stringList(measure.attr(REPORTING_ATTR_OF)).map(tick);
+  const scope = describeRowScope(measure.attr(REPORTING_ATTR_SEGMENT), measure.attr(REPORTING_ATTR_FILTER));
+  if (columns.length === 0) {
+    // @agg any / all with no @of (loader rule M0): the row condition is the quantified predicate.
+    const quantifier = measure.attr(REPORTING_ATTR_AGG) === AGG_ALL ? "every row" : "some row";
+    return `true when ${quantifier} has ${scope ?? ""}${fallback}`;
+  }
   const of = columns.length === 1 ? columns[0]! : `(${columns.join(", ")})`;
   const distinct = measure.attr(REPORTING_ATTR_DISTINCT) === true ? "distinct " : "";
-  const scope = describeRowScope(measure.attr(REPORTING_ATTR_SEGMENT), measure.attr(REPORTING_ATTR_FILTER));
   return `${String(measure.attr(REPORTING_ATTR_AGG) ?? "")} of ${distinct}${of}${scope !== undefined ? ` where ${scope}` : ""}${fallback}`;
 }
 

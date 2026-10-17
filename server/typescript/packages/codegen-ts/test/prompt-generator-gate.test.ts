@@ -13,10 +13,15 @@
 // Follows the `layout.dataGrid` precedent (#287): tell the adopter at `meta gen` time,
 // warning only, and self-extinguishing so a deliberate choice is never nagged.
 
-import { describe, test, expect } from "bun:test";
+import { describe, test, expect, beforeEach, afterEach } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import type { Generator } from "../src/generator.js";
 import { warnMissingPromptGenerators } from "../src/prompt-generator-gate.js";
+import { runGen } from "../src/runner.js";
+import { docsFile } from "../src/generators/index.js";
 
 const MODEL = {
   "metadata.root": {
@@ -59,11 +64,17 @@ async function loadRoot(doc: unknown = MODEL) {
   return res.root;
 }
 
-const gen = (name: string): Generator => ({ name, generate: () => [] });
+const gen = (name: string, opts?: Partial<Generator>): Generator => ({ name, generate: () => [], ...opts });
 
-function collect(root: Awaited<ReturnType<typeof loadRoot>>, generators: Generator[]): string[] {
+function collect(
+  root: Awaited<ReturnType<typeof loadRoot>>,
+  generators: Generator[],
+  // Defaults to "nothing in this suite writes to the docs target" — the behaviour of
+  // every pre-R1 test, none of which modeled a docs-only run.
+  writesDocs: (g: Generator) => boolean = () => false,
+): string[] {
   const out: string[] = [];
-  warnMissingPromptGenerators(root, generators, (m) => out.push(m));
+  warnMissingPromptGenerators(root, generators, writesDocs, (m) => out.push(m));
   return out;
 }
 
@@ -110,5 +121,79 @@ describe("A3 — declared prompts with no prompt generator wired", () => {
       },
     });
     expect(collect(root, [gen("entity-file")])).toEqual([]);
+  });
+
+  // A docs-only project (its `generators` lists only docs generators, e.g.
+  // `docsFile()`) was told to "Add promptRender()" and that its payload value objects
+  // "were emitted regardless", though the run emitted no code of any kind — only docs.
+  test("silent when the run lists no generator at all", async () => {
+    expect(collect(await loadRoot(), [])).toEqual([]);
+  });
+
+  test("silent when every listed generator resolves to the docs target", async () => {
+    const warnings = collect(
+      await loadRoot(),
+      [gen("docs-file"), gen("agent-docs")],
+      () => true, // every generator in this run is docs-target
+    );
+    expect(warnings).toEqual([]);
+  });
+
+  test("still warns when a docs generator is mixed with a code generator", async () => {
+    const warnings = collect(
+      await loadRoot(),
+      [gen("docs-file"), gen("entity-file")],
+      (g) => g.name === "docs-file",
+    );
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("promptRender()");
+  });
+
+  // The "payload value objects were emitted regardless" claim is only true when a
+  // generator that actually emits entity/value-object modules (`emitsEntityModule`)
+  // ran in this suite.
+  test("drops the value-objects claim when no generator emits entity modules", async () => {
+    const warnings = collect(await loadRoot(), [gen("queries-file")]);
+    expect(warnings[0]).not.toContain("were emitted regardless");
+  });
+
+  test("keeps the value-objects claim when the entity generator is wired", async () => {
+    const warnings = collect(await loadRoot(), [gen("entity-file", { emitsEntityModule: true })]);
+    expect(warnings[0]).toContain("were emitted regardless");
+  });
+});
+
+// The runner decides which generators write documentation. A docs-only config is silent
+// whether its docs generator writes to the default `docs` target or to one the project
+// named itself, because `docsFile()` emits documentation either way.
+describe("A3 — the runner reads a docs-only config as emitting no code", () => {
+  let tmp: string;
+  beforeEach(() => { tmp = mkdtempSync(join(tmpdir(), "prompt-gate-docs-only-")); });
+  afterEach(() => { rmSync(tmp, { recursive: true, force: true }); });
+
+  async function promptWarnings(generators: Generator[], targetName: string): Promise<string[]> {
+    const result = await runGen({
+      config: {
+        outDir: join(tmp, "src"), extStyle: "none", dbImport: "../db", dialect: "sqlite",
+        targets: { [targetName]: { outDir: join(tmp, targetName) } },
+        generators,
+      },
+      metadata: await loadRoot(),
+      projectRoot: tmp,
+    });
+    return result.warnings.filter((w) => w.includes("promptRender()"));
+  }
+
+  test("silent for docsFile() on the default docs target", async () => {
+    expect(await promptWarnings([docsFile()], "docs")).toEqual([]);
+  });
+
+  test("silent for docsFile() on a custom-named target", async () => {
+    expect(await promptWarnings([docsFile({ target: "site" })], "site")).toEqual([]);
+  });
+
+  test("still warns when a code generator writes to the default target beside it", async () => {
+    const warnings = await promptWarnings([docsFile({ target: "site" }), gen("entity-file")], "site");
+    expect(warnings).toHaveLength(1);
   });
 });

@@ -1,0 +1,18 @@
+{
+  "metadata.root": {
+    "package": "acme::world",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Realm",
+          "children": [
+            { "source.rdb": { "@table": "realms" } },
+            { "field.long": { "name": "id" } },
+            { "field.string": { "name": "name", "@required": true } },
+            { "identity.primary": { "name": "id", "@fields": ["id"] } }
+          ]
+        }
+      }
+    ]
+  }
+}

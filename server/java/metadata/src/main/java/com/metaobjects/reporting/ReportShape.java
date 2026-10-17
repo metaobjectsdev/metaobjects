@@ -158,16 +158,19 @@ public final class ReportShape {
      * The entity a derived field's {@code @of} field is READ from, by the rule that derived
      * the field ({@link #resolveFieldRef}): the {@code @from} entity for a measure or a
      * dimension without {@code @via}, and the entity the {@code @of} reference names for a
-     * dimension with {@code @via}. {@code null} when that entity does not resolve, which a
-     * shape derived from a loaded model cannot reach.
+     * dimension with {@code @via} — resolved in the package of the entity the {@code @via}
+     * reaches (the terminal), not the declaring entity's package (D1). {@code null} when that
+     * entity does not resolve, which a shape derived from a loaded model cannot reach.
      *
      * <p>It is the entity whose generated artifacts describe the field (a Kotlin enum class,
      * say), which for an inherited field is not the object that declares it.</p>
      */
     public MetaObject ofEntity(Field field) {
         MetaDimension dim = field.dimension();
-        if (dim == null || dim.getVia() == null) return from;
-        return resolveFieldRefEntity(dim.getOf(), memberOwner(dim, from), root);
+        String via = dim == null ? null : dim.getVia();
+        if (via == null) return from;
+        MetaObject terminal = reportingViaTerminal(via, memberOwner(dim, from), from, root);
+        return terminal == null ? null : resolveFieldRefEntity(dim.getOf(), terminal, root);
     }
 
     /**
@@ -317,8 +320,10 @@ public final class ReportShape {
 
     /**
      * The hop names of a report's {@code @spine} ({@code Owner.hop[.hop...]}), read as
-     * {@link #reportingViaHops} reads a {@code @via}, the owner resolving in the REPORT's
-     * package (loader rule R8). {@code null} when the report declares no {@code @spine}.
+     * {@link #reportingViaHops} reads a {@code @via}, the owner resolving in {@code @from}'s
+     * package (loader rule R8): Owner must be {@code @from} or an entity it extends, so a
+     * bare name means {@code @from}'s package even when the report lives in another one.
+     * {@code null} when the report declares no {@code @spine}.
      *
      * @throws MetaDataException naming the report, when a declared {@code @spine} does not
      *                           resolve (a report that passed the loader's reporting validation
@@ -328,7 +333,7 @@ public final class ReportShape {
     public static List<String> reportSpineHops(MetaObject report, MetaObject from, MetaRoot root) {
         String spine = ReportAccessors.reportSpine(report);
         if (spine == null) return null;
-        List<String> hops = reportingViaHops(spine, report, from, root);
+        List<String> hops = reportingViaHops(spine, from, from, root);
         if (hops == null) throw unresolved(report, "@spine '" + spine + "'");
         return hops;
     }
@@ -418,6 +423,44 @@ public final class ReportShape {
         return hops.equals(spine) && (ofRequired || isPrimaryKeyField(named, of));
     }
 
+    /**
+     * The entity at the end of a dimension's {@code @via}, walked from {@code from} (hop
+     * names as {@link #reportingViaHops} reads them — Owner resolving in the package of
+     * {@code declaring}, the entity that declares the dimension). {@code null} when the
+     * owner or any hop does not resolve: the loader's D2 rule has already validated a model
+     * that reaches {@link #of(MetaObject, MetaRoot)}, so this path is reached only by a tree
+     * built in code. Same hop-resolution rule as {@link #viaJoinsInner} (relationship or
+     * identity.reference, target resolved in the package of the entity declaring the hop),
+     * without the required-ness check that rule also makes.
+     */
+    private static MetaObject reportingViaTerminal(String via, MetaData declaring, MetaObject from, MetaRoot root) {
+        List<String> hops = reportingViaHops(via, declaring, from, root);
+        if (hops == null) return null;
+        MetaObject current = from;
+        for (String hopName : hops) {
+            // ADR-0039: resolving getRelationships()/getIdentities(), so an inherited hop is found.
+            MetaRelationship rel = null;
+            for (MetaRelationship r : current.getRelationships()) {
+                if (hopName.equals(r.getShortName())) { rel = r; break; }
+            }
+            ReferenceIdentity refNode = null;
+            if (rel == null) {
+                for (MetaIdentity id : current.getIdentities()) {
+                    if (id instanceof ReferenceIdentity && hopName.equals(id.getShortName())) {
+                        refNode = (ReferenceIdentity) id;
+                        break;
+                    }
+                }
+            }
+            String targetRef = rel != null ? rel.getObjectRef() : refNode != null ? refNode.getTargetEntity() : null;
+            if (targetRef == null || targetRef.isEmpty()) return null;
+            MetaObject target = ValidationPhase.resolveRootObject(root, targetRef, packageOf(current));
+            if (target == null) return null;
+            current = target;
+        }
+        return current;
+    }
+
     /** True when {@code candidate} is {@code entity} or an entity it extends (the super chain). */
     private static boolean isSelfOrAncestor(MetaData candidate, MetaData entity) {
         Set<MetaData> visited = Collections.newSetFromMap(new IdentityHashMap<>());
@@ -432,14 +475,25 @@ public final class ReportShape {
                                         List<String> spine) {
         MetaDimension dim = declaredMember(from, MetaDimension.class, item.name());
         if (dim == null) throw unresolved(report, "dimension '" + item.name() + "' on '" + from.getShortName() + "'");
-        boolean vialess = dim.getVia() == null;
         MetaData declaring = memberOwner(dim, from);
-        MetaField<?> of = dim.getOf() == null ? null
-                : resolveFieldRef(dim.getOf(), declaring, root, vialess ? from : null);
+        String via = dim.getVia();
+        // D1 — after @via, @of resolves (owner package + host) against the entity the @via
+        // reaches, not the declaring entity. A @via that does not walk is the @via's error,
+        // not the @of's: it is reported as such, instead of falling through to a generic
+        // "@of does not resolve" below.
+        MetaData ofDeclaring = declaring;
+        MetaObject ofHost = from;
+        if (via != null) {
+            MetaObject terminal = reportingViaTerminal(via, declaring, from, root);
+            if (terminal == null) throw unresolved(report, "dimension '" + item.name() + "' @via '" + via + "'");
+            ofDeclaring = terminal;
+            ofHost = terminal;
+        }
+        MetaField<?> of = dim.getOf() == null ? null : resolveFieldRef(dim.getOf(), ofDeclaring, root, ofHost);
         if (of == null) throw unresolved(report, "dimension '" + item.name() + "' @of");
         // The entity @of names (with a host, it may be an ancestor of the entity the field is
         // read from); Table C reads its primary identity. Non-null: resolveFieldRef resolved it.
-        MetaObject named = resolveFieldRefEntity(dim.getOf(), declaring, root);
+        MetaObject named = resolveFieldRefEntity(dim.getOf(), ofDeclaring, root);
 
         String name = ReportAccessors.reportDerivedFieldName(item);
         boolean required = dimensionRequired(dim, named, of, from, root, spine, report);

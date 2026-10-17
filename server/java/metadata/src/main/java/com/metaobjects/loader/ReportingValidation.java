@@ -72,7 +72,7 @@ import java.util.regex.Pattern;
  * <ul>
  *   <li>No cascades. A member that fails a structural rule is not checked further (a
  *       dimension whose {@code @via} fails D2 skips D1/D3/D4; a measure that fails one of
- *       M1–M4, or whose {@code @default} is a fraction, skips M7/M8; a report whose
+ *       M0–M4, or whose {@code @default} is a fraction, skips M7/M8; a report whose
  *       {@code @from} fails R1 skips R2/R3/R6/R7, R8/R9 and its {@code @filter}; a report
  *       whose {@code @spine} fails R8 skips R9, and R9 skips a dimension whose {@code @via}
  *       fails D2; an invalid {@code @dimensions}/{@code @measures} item derives no report
@@ -428,7 +428,11 @@ final class ReportingValidation {
             err.accept("@of '" + of + "' must be Entity.field.");
             return;
         }
-        MetaData named = ValidationPhase.resolveRootObject(ctx.root(), parts.owner(), pkgOf(ctx.declaring()));
+        // D1 — after @via, a bare Owner resolves in the package of the entity @via reaches: the
+        // path already fixes the entity, so `Realm.name` after a hop onto `world::Realm` names
+        // it. Without @via it resolves in the declaring entity's package.
+        String ownerPkg = via == null ? pkgOf(ctx.declaring()) : pkgOf(ofEntity);
+        MetaData named = ValidationPhase.resolveRootObject(ctx.root(), parts.owner(), ownerPkg);
         if (!isSelfOrAncestor(named, ofEntity)) {
             if (via == null) {
                 err.accept("@of '" + of + "' must name a field of the owning entity '" + ctx.declaring().getName()
@@ -468,7 +472,7 @@ final class ReportingValidation {
      *
      * @param attr        the attribute holding the path: {@code via} (D2) or {@code spine} (R8)
      * @param ownerPkg    the package Owner resolves in (ADR-0042): the declaring entity's (D2)
-     *                    or the report's (R8)
+     *                    or @from's (R8)
      * @param hostName    the FQN named for the walk's first entity: the declaring entity (D2)
      *                    or {@code @from} (R8)
      * @param start       what Owner must be: {@code the owning entity '<FQN>'} (D2) or
@@ -495,12 +499,13 @@ final class ReportingValidation {
                         + "can never multiply the measured rows.");
     }
 
-    /** R8 — a report's {@code @spine}, started at {@code @from} ({@code fromKey}); Owner resolves
-     *  in the report's package. */
-    private static ToOneWalk spineWalk(MetaData report, String fromKey) {
+    /** R8 — a report's {@code @spine}, started at {@code @from}; Owner resolves in
+     *  {@code @from}'s package (it must be {@code @from} or an entity {@code @from} extends),
+     *  whatever package the report is in. */
+    private static ToOneWalk spineWalk(MetaData from, String fromKey) {
         return new ToOneWalk(
                 MetaObject.ATTR_REPORT_SPINE,
-                pkgOf(report),
+                pkgOf(from),
                 fromKey,
                 "@from '" + fromKey + "'",
                 "@from '" + fromKey + "'",
@@ -598,7 +603,7 @@ final class ReportingValidation {
 
         AggregateColumns checked = checkAggregateColumns(ctx, measure, err);
 
-        // M7 / M8 — where a @default can apply. Only when M1–M4 passed and the @default is
+        // M7 / M8 — where a @default can apply. Only when M0–M4 passed and the @default is
         // not a fraction: one mistake, one error. The presence test reads the raw attribute,
         // as the reference does (in a lenient load an unparsed value is still a declared one).
         if (checked != null && !fractionalDefault && declaresDefault) {
@@ -639,13 +644,30 @@ final class ReportingValidation {
     }
 
     /**
-     * M1–M4, in order; the first failure stops the chain (no M2+M3 double report). Returns
+     * M0–M4, in order; the first failure stops the chain (no M2+M3 double report). Returns
      * {@code null} when one of them fired; otherwise its {@code field} is the single resolved
-     * {@code @of} field ({@code null} for a tuple), for M7/M8.
+     * {@code @of} field ({@code null} for a tuple or an any/all with no {@code @of}), for M7/M8.
      */
     private static AggregateColumns checkAggregateColumns(MemberCtx ctx, MetaMeasure measure, Consumer<String> err) {
         String agg = measure.getAgg();
         List<String> columns = measure.getOfColumns();
+
+        // M0 — @of names the column aggregated. Only any / all may omit it: they then
+        // quantify the measure's row condition (@filter AND @segment) over the group, "some
+        // row (every row) passes", so they need a condition to quantify.
+        if (columns.isEmpty() && agg != null) {
+            if (!ReportingConstants.AGG_ANY.equals(agg) && !ReportingConstants.AGG_ALL.equals(agg)) {
+                err.accept("@agg '" + agg + "' needs @of, the column it aggregates. Only @agg any / all may omit "
+                        + "@of, to ask whether some row (any) or every row (all) passes the measure's @filter or @segment.");
+                return null;
+            }
+            if (measure.getFilter() == null && measure.getSegmentName() == null) {
+                err.accept("@agg '" + agg + "' without @of quantifies the measure's row condition, but it declares "
+                        + "neither @filter nor @segment. Name a field.boolean in @of, or add the condition.");
+                return null;
+            }
+            return new AggregateColumns(null);
+        }
 
         // M1 — every @of item is a field of the owning entity.
         List<MetaData> fields = new ArrayList<>();
@@ -946,7 +968,7 @@ final class ReportingValidation {
         String fromKey = from.getName();
         Consumer<String> err = message -> sink.push(report, ErrorCode.ERR_INVALID_REPORT, label, message);
         MetaData terminal = walkToOneVia(root, from, spine, message -> err.accept(": " + message),
-                spineWalk(report, fromKey));
+                spineWalk(from, fromKey));
         // R9 — every listed dimension is reached through the spine. Skipped when R8 failed.
         if (terminal == null) return;
         Dotted spineParts = splitDotted(spine);

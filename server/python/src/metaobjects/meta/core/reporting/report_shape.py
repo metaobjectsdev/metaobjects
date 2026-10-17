@@ -14,6 +14,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from ....naming_refs import CHILD_REF_SEP, resolve_object_ref
+from ....shared.base_types import TYPE_IDENTITY, TYPE_RELATIONSHIP
 from ....shared.separators import PACKAGE_SEP
 from ...meta_data import MetaData
 from ...meta_root import MetaRoot
@@ -137,7 +138,9 @@ def resolve_reporting_field_ref(
     2. With ``host`` (a measure, or a dimension without ``@via``: the reference is about
        the ``@from`` entity's own rows) the named entity must be ``host`` or an entity it
        extends, and the field is read from ``host``, so a field ``host`` redeclares wins.
-    3. Without ``host`` (a dimension with ``@via``) the field is read from the named entity.
+    3. Without ``host`` the field is read from the named entity. A dimension with ``@via``
+       passes the entity its ``@via`` reaches as both ``declaring`` and ``host``
+       (:func:`resolve_dimension_of`).
 
     ``None`` when any step fails.
     """
@@ -166,6 +169,68 @@ def _resolve_reporting_field_ref_named(
     return None if field is None else (named, field)
 
 
+def resolve_dimension_of(
+    dim: MetaDimension, from_: MetaObject, root: MetaRoot
+) -> tuple[MetaObject, MetaField] | None:
+    """A dimension's ``@of`` field, read as the loader's rule D1 reads it. Without ``@via``
+    it is :func:`resolve_reporting_field_ref` with ``from_`` as the host. With ``@via`` the
+    host is the entity the ``@via`` reaches, and a bare entity name in ``@of`` resolves in
+    THAT entity's package: the path already fixes the entity, so ``Realm.name`` after a hop
+    onto ``world::Realm`` names ``world::Realm``. The field is read from the reached entity,
+    so a field it redeclares wins. ``None`` when the ``@via`` or the ``@of`` does not resolve."""
+    of = dim.of() or ""
+    via = dim.via()
+    if via is None:
+        return _resolve_reporting_field_ref_named(of, reporting_member_owner(dim, from_), root, from_)
+    terminal = _reporting_via_terminal(via, reporting_member_owner(dim, from_), from_, root)
+    if terminal is None:
+        return None
+    return _resolve_reporting_field_ref_named(of, terminal, root, terminal)
+
+
+def _resolve_via_hop(current: MetaObject, hop_name: str, root: MetaRoot) -> MetaObject | None:
+    """The target of one hop of a ``@via``/``@spine`` path, as the loader's rule R8 walks it:
+    the ``relationship.*`` (through its ``@objectRef``) or ``identity.reference`` (through
+    its ``@references``) of ``current`` named ``hop_name``, with its target resolved in
+    ``current``'s package (ADR-0042). ``None`` for an unresolvable hop or a ref attr that is
+    not a string / does not reach a metadata object (TS ``resolveViaHop``, target only)."""
+    rel = next((c for c in current.children() if c.type == TYPE_RELATIONSHIP and c.name == hop_name), None)
+    is_reference = rel is None
+    hop = rel
+    if hop is None:
+        hop = next(
+            (
+                c
+                for c in current.children()
+                if c.type == TYPE_IDENTITY and c.sub_type == IDENTITY_SUBTYPE_REFERENCE and c.name == hop_name
+            ),
+            None,
+        )
+    if hop is None:
+        return None
+    ref = hop.get_meta_attr(IDENTITY_REFERENCE_ATTR_REFERENCES if is_reference else RELATIONSHIP_ATTR_OBJECT_REF)
+    target = resolve_object_ref(root, ref, _package_of_key(current.resolution_key())) if isinstance(ref, str) else None
+    return target if isinstance(target, MetaObject) else None
+
+
+def _reporting_via_terminal(
+    via: str, declaring: MetaData, from_: MetaObject, root: MetaRoot
+) -> MetaObject | None:
+    """The entity at the end of a ``@via`` walked from ``from_`` (hops as
+    :func:`reporting_via_hops` reads them, each target as :func:`_resolve_via_hop` resolves
+    it). ``None`` when any hop does not resolve."""
+    hops = reporting_via_hops(via, declaring, from_, root)
+    if hops is None:
+        return None
+    current: MetaObject = from_
+    for hop in hops:
+        target = _resolve_via_hop(current, hop, root)
+        if target is None:
+            return None
+        current = target
+    return current
+
+
 def reporting_via_hops(via: str, declaring: MetaData, from_: MetaObject, root: MetaRoot) -> list[str] | None:
     """The hop names of a dimension's ``@via`` (``Owner.hop[.hop...]``), the owner resolving
     in the package of ``declaring`` and required to be ``from_`` or an entity it extends,
@@ -192,15 +257,17 @@ def _unresolved(report_name: str, what: str) -> ValueError:
 
 def report_spine_hops(report: MetaObject, from_: MetaObject, root: MetaRoot) -> list[str] | None:
     """The hop names of a report's ``@spine`` (``Owner.hop[.hop...]``), read as
-    :func:`reporting_via_hops` reads a ``@via``, the owner resolving in the REPORT's package
-    (loader rule R8). ``None`` when the report declares no ``@spine``. Raises a
-    ``ValueError`` naming the report when a declared ``@spine`` does not resolve (a report
-    that passed ``validate_reporting`` always resolves): reading it as "no spine" would
-    claim a column non-null that a spine row with no facts leaves null."""
+    :func:`reporting_via_hops` reads a ``@via``, the owner resolving in ``from_``'s package
+    (loader rule R8): Owner must be ``from_`` or an entity it extends, so a bare name means
+    ``from_``'s package even when the report lives in another one. ``None`` when the report
+    declares no ``@spine``. Raises a ``ValueError`` naming the report when a declared
+    ``@spine`` does not resolve (a report that passed ``validate_reporting`` always
+    resolves): reading it as "no spine" would claim a column non-null that a spine row with
+    no facts leaves null."""
     spine = report_spine(report)
     if spine is None:
         return None
-    hops = reporting_via_hops(spine, report, from_, root)
+    hops = reporting_via_hops(spine, from_, from_, root)
     if hops is None:
         raise _unresolved(report.name, f"@spine '{spine}'")
     return hops
@@ -273,6 +340,7 @@ def _via_joins_inner(hops: list[str], from_: MetaObject, root: MetaRoot) -> bool
             return False
         # The reference the hop crosses, as the lowering resolves it. A has-many hop, whose
         # FK sits on the child, matches none of the current entity's own references.
+        reference: MetaData | None
         if ref_node is not None:
             reference = ref_node
         else:
@@ -339,10 +407,11 @@ def _dimension_field(
     dim = _declared_member(from_, TYPE_DIMENSION, item.name, MetaDimension)
     if not isinstance(dim, MetaDimension):
         raise _unresolved(report_name, f"dimension '{item.name}' on '{from_.name}'")
-    vialess = dim.via() is None
-    ref = _resolve_reporting_field_ref_named(
-        dim.of() or "", reporting_member_owner(dim, from_), root, from_ if vialess else None
-    )
+    via = dim.via()
+    # A @via that does not walk is the @via's error, not the @of's (the @of resolves at its end).
+    if via is not None and _reporting_via_terminal(via, reporting_member_owner(dim, from_), from_, root) is None:
+        raise _unresolved(report_name, f"dimension '{dim.name}' @via '{via}'")
+    ref = resolve_dimension_of(dim, from_, root)
     if ref is None:
         raise _unresolved(report_name, f"dimension '{item.name}' @of")
     named, of = ref

@@ -14,7 +14,10 @@ and an `object.report` combines them by name. Four node kinds:
 - `dimension.attribute` / `dimension.time` — what to group by (`@of: Entity.field`; a time
   dimension lists the `@grains` it supports: `hour`, `day`, `week`, `month`, `quarter`, `year`);
 - `measure.aggregate` (`@agg`: `count`, `sum`, `avg`, `min`, `max`, `any`, `all`) and `measure.ratio`
-  (`@numerator` / `@denominator`, both measures of the entity);
+  (`@numerator` / `@denominator`, both measures of the entity). `any` / `all` take a
+  `field.boolean` `@of`, or no `@of` and a `@filter` or `@segment`: `{ "name": "hasError",
+  "@agg": "any", "@filter": { "success": false } }` is "some row has `success` false" (a row
+  whose condition is null does not pass);
 - `segment.filter` — a named, reusable `@filter` ("active purchase");
 - `object.report` — a top-level object: `@from` an entity, `@dimensions` (`name` or
   `name:grain`), `@measures`.
@@ -63,6 +66,8 @@ Three rules an author trips on:
    a `sum`. The view joins the hop through an `identity.reference` between the two entities
    (`{ "identity.reference": { "name": "fkProgram", "@fields": ["programId"], "@references":
    "Program" } }`); a relationship with none behind it loads and then fails `meta migrate`.
+   After `@via`, a bare entity name in `@of` resolves in the package of the entity the `@via`
+   reaches (`"@of": "Realm.name"` after a hop onto `world::Realm`).
 3. **A report declares no fields.** Its columns are derived: one per dimension, then one per
    measure (a time dimension at a grain is `<name><Grain>`, so `purchasedAt:day` is
    `purchasedAtDay`). A `field.*` or `identity.*` child on a report is an error.

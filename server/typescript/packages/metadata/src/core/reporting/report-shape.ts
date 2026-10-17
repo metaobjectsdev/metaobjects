@@ -111,7 +111,9 @@ export function reportingMemberOwner(member: MetaData, from: MetaObject): MetaDa
  *  2. With `host` (a measure, or a dimension without `@via`: the reference is about the
  *     `@from` entity's own rows) the named entity must be `host` or an entity it extends,
  *     and the field is read from `host`, so a field `host` redeclares wins.
- *  3. Without `host` (a dimension with `@via`) the field is read from the named entity.
+ *  3. Without `host` the field is read from the named entity. A dimension with `@via` passes
+ *     the entity its `@via` reaches as both `declaring` and `host`
+ *     ({@link resolveDimensionOf}).
  *
  * Undefined when any step fails.
  */
@@ -122,6 +124,49 @@ export function resolveReportingFieldRef(
   host?: MetaObject,
 ): MetaField | undefined {
   return resolveReportingFieldRefNamed(ref, declaring, root, host)?.field;
+}
+
+/**
+ * A dimension's `@of` field, read as the loader's rule D1 reads it. Without `@via` it is
+ * {@link resolveReportingFieldRef} with `from` as the host. With `@via` the host is the
+ * entity the `@via` reaches, and a bare entity name in `@of` resolves in THAT entity's
+ * package: the path already fixes the entity, so `Realm.name` after a hop onto
+ * `world::Realm` names `world::Realm`. The field is read from the reached entity, so a field
+ * it redeclares wins. Undefined when the `@via` or the `@of` does not resolve.
+ */
+export function resolveDimensionOf(
+  dim: MetaDimension,
+  from: MetaObject,
+  root: MetaRoot,
+): { readonly named: MetaObject; readonly field: MetaField } | undefined {
+  const of = dim.of() ?? "";
+  const via = dim.via();
+  if (via === undefined) return resolveReportingFieldRefNamed(of, reportingMemberOwner(dim, from), root, from);
+  const terminal = reportingViaTerminal(via, reportingMemberOwner(dim, from), from, root);
+  if (terminal === undefined) return undefined;
+  return resolveReportingFieldRefNamed(of, terminal, root, terminal);
+}
+
+/**
+ * The entity at the end of a `@via` walked from `from` (hops as {@link reportingViaHops}
+ * reads them, each target as {@link resolveViaHop} resolves it). Undefined when any hop does
+ * not resolve.
+ */
+function reportingViaTerminal(
+  via: string,
+  declaring: MetaData,
+  from: MetaObject,
+  root: MetaRoot,
+): MetaObject | undefined {
+  const hops = reportingViaHops(via, declaring, from, root);
+  if (hops === undefined) return undefined;
+  let current: MetaObject = from;
+  for (const hop of hops) {
+    const target = resolveViaHop(current, hop, root)?.target;
+    if (target === undefined) return undefined;
+    current = target;
+  }
+  return current;
 }
 
 /**
@@ -177,8 +222,9 @@ function unresolved(reportName: string, what: string): Error {
 
 /**
  * The hop names of a report's `@spine` (`Owner.hop[.hop...]`), read as
- * {@link reportingViaHops} reads a `@via`, the owner resolving in the REPORT's package
- * (loader rule R8). Undefined when the report declares no `@spine`. Throws a plain Error
+ * {@link reportingViaHops} reads a `@via`, the owner resolving in `from`'s package (loader
+ * rule R8): Owner must be `from` or an entity it extends, so a bare name means `from`'s
+ * package even when the report lives in another one. Undefined when the report declares no `@spine`. Throws a plain Error
  * naming the report when a declared `@spine` does not resolve (a report that passed
  * `validateReporting` always resolves): reading it as "no spine" would claim a column
  * non-null that a spine row with no facts leaves null.
@@ -186,7 +232,7 @@ function unresolved(reportName: string, what: string): Error {
 export function reportSpineHops(report: MetaObject, from: MetaObject, root: MetaRoot): string[] | undefined {
   const spine = reportSpine(report);
   if (spine === undefined) return undefined;
-  const hops = reportingViaHops(spine, report, from, root);
+  const hops = reportingViaHops(spine, from, from, root);
   if (hops === undefined) throw unresolved(report.name, `@spine '${spine}'`);
   return hops;
 }
@@ -335,8 +381,12 @@ function dimensionField(
 ): ReportField {
   const dim = declaredMember(from, TYPE_DIMENSION, item.name, MetaDimension);
   if (dim === undefined) throw unresolved(reportName, `dimension '${item.name}' on '${from.name}'`);
-  const vialess = dim.via() === undefined;
-  const ref = resolveReportingFieldRefNamed(dim.of() ?? "", reportingMemberOwner(dim, from), root, vialess ? from : undefined);
+  const via = dim.via();
+  // A @via that does not walk is the @via's error, not the @of's (the @of resolves at its end).
+  if (via !== undefined && reportingViaTerminal(via, reportingMemberOwner(dim, from), from, root) === undefined) {
+    throw unresolved(reportName, `dimension '${dim.name}' @via '${via}'`);
+  }
+  const ref = resolveDimensionOf(dim, from, root);
   if (ref === undefined) throw unresolved(reportName, `dimension '${item.name}' @of`);
   const of = ref.field;
   const name = reportDerivedFieldName(item);

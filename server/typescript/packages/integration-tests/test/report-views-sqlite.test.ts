@@ -417,9 +417,10 @@ const UNLABELLED_MODEL = JSON.stringify({ "metadata.root": { package: "acme", ch
     { "dimension.attribute": { name: "programKey", "@of": "Program.id", "@via": "Week.fkProgram" } },
     { "measure.aggregate": { name: "unlabelled", "@agg": "count", "@of": "Week.id", "@filter": { label: { isNull: true } } } },
     { "measure.aggregate": { name: "unlabelledMinutes", "@agg": "sum", "@of": "Week.durationMinutes", "@filter": { label: { isNull: true } } } },
+    { "measure.aggregate": { name: "anyUnlabelled", "@agg": "any", "@filter": { label: { isNull: true } } } },
   ] } },
   { "object.report": { name: "UnlabelledWeeks", "@from": "Week", "@spine": "Week.fkProgram",
-    "@dimensions": ["programKey"], "@measures": ["unlabelled", "unlabelledMinutes"], children: [
+    "@dimensions": ["programKey"], "@measures": ["unlabelled", "unlabelledMinutes", "anyUnlabelled"], children: [
     { "source.rdb": { "@kind": "view", "@view": "v_unlabelled_weeks" } } ] } },
 ]}});
 
@@ -544,11 +545,12 @@ describe("report views — inline model on real SQLite", () => {
         (10, 1, 'Week 1', 30), (11, 1, 'Week 2', 60), (12, 1, 'Week 2', 90), (13, 1, NULL, 60),
         (20, 2, 'Solo', 45)`);
     // Program 3's null-extended row has a null label, and the count still reads 0: it counts
-    // the fact's id, which is null there too. The sum of nothing is null (no @default).
+    // the fact's id, which is null there too. The sum of nothing is null (no @default), and so
+    // is an `any` over no facts, though `label IS NULL` holds on the null-extended row.
     expect(await select(`SELECT * FROM "v_unlabelled_weeks" ORDER BY "programKey"`)).toEqual([
-      { programKey: 1, unlabelled: 1, unlabelledMinutes: 60 },
-      { programKey: 2, unlabelled: 0, unlabelledMinutes: null },
-      { programKey: 3, unlabelled: 0, unlabelledMinutes: null },
+      { programKey: 1, unlabelled: 1, unlabelledMinutes: 60, anyUnlabelled: 1 },
+      { programKey: 2, unlabelled: 0, unlabelledMinutes: null, anyUnlabelled: 0 },
+      { programKey: 3, unlabelled: 0, unlabelledMinutes: null, anyUnlabelled: null },
     ]);
   });
 
@@ -600,6 +602,40 @@ describe("report views — inline model on real SQLite", () => {
     expect(await select(`SELECT * FROM "v_stamps_by_year" ORDER BY "dayYear"`)).toEqual([
       { dayYear: "2026-01-01", stamps: 7 },
       { dayYear: "2027-01-01", stamps: 1 },
+    ]);
+  });
+
+  /** @agg any / all with no @of (rule M0): the measure's condition is the quantified predicate. */
+  const CALL_MODEL = JSON.stringify({ "metadata.root": { package: "acme", children: [
+    { "object.entity": { name: "Call", children: [
+      { "source.rdb": { "@table": "calls" } },
+      { "field.long": { name: "id" } },
+      { "field.long": { name: "gameId", "@required": true } },
+      { "field.boolean": { name: "success" } },
+      { "identity.primary": { name: "id", "@fields": "id", "@generation": "increment" } },
+      { "dimension.attribute": { name: "game", "@of": "Call.gameId" } },
+      { "measure.aggregate": { name: "hasError", "@agg": "any", "@filter": { success: false } } },
+      { "measure.aggregate": { name: "allSucceeded", "@agg": "all", "@filter": { success: true } } },
+    ] } },
+    { "object.report": { name: "CallsByGame", "@from": "Call", "@dimensions": ["game"],
+      "@measures": ["hasError", "allSucceeded"], children: [
+      { "source.rdb": { "@kind": "view", "@view": "v_calls_by_game" } } ] } },
+  ]}});
+
+  test("@agg any / all without @of: some row / every row passes the condition; a NULL condition does not pass", async () => {
+    const root = await loadInline(CALL_MODEL);
+    expect(viewSql(root, "v_calls_by_game")).toContain(`MAX(COALESCE(c."success" = 0, 0)) AS "hasError"`);
+    const { expected } = await migrate(root);
+    await assertConverged(expected);
+    // Game 1 has a failure; game 2 only successes; game 3 a success and an unknown; game 4 only an unknown.
+    await applyRaw(`
+      INSERT INTO "calls" ("gameId","success") VALUES
+        (1, 1), (1, 0), (2, 1), (2, 1), (3, 1), (3, NULL), (4, NULL)`);
+    expect(await select(`SELECT * FROM "v_calls_by_game" ORDER BY "game"`)).toEqual([
+      { game: 1, hasError: 1, allSucceeded: 0 },
+      { game: 2, hasError: 0, allSucceeded: 1 },
+      { game: 3, hasError: 0, allSucceeded: 0 },
+      { game: 4, hasError: 0, allSucceeded: 0 },
     ]);
   });
 });
