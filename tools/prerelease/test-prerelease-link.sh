@@ -201,8 +201,14 @@ cat > "$poly/.config/dotnet-tools.json" <<'JSON'
   }
 }
 JSON
+mkdir -p "$poly/ports/csharp/.config"
+cat > "$poly/ports/csharp/.config/dotnet-tools.json" <<'JSON'
+{ "version": 1, "isRoot": true, "tools": { "metaobjects.cli": { "commands": ["dotnet-meta"] } } }
+JSON
 git -C "$poly" add -A && git -C "$poly" commit -q -m init
 if link "$poly"; then pass "link succeeds in a polyglot repository"; else fail "polyglot link failed: $(tail -5 "$WORK/out")"; fi
+check "a manifest with no tool version reports that nothing was pinned" 'grep -q "ports/csharp/.config/dotnet-tools.json names MetaObjects.Cli but no version for it was found: nothing pinned" "$WORK/out" && ! grep -q "repinned MetaObjects.Cli to 1.1.0-rc.9 in ports/csharp/" "$WORK/out"'
+check "a repinned manifest is reported as repinned" 'grep -q "repinned MetaObjects.Cli to 1.1.0-rc.9 in .config/dotnet-tools.json" "$WORK/out"'
 check "the nested python project is linked" 'grep -q "metaobjects-prerelease" "$poly/ports/python/pyproject.toml"'
 check "the nested python project is repinned" 'grep -q "metaobjects==1.1.0rc9" "$poly/ports/python/pyproject.toml"'
 check "each independent pom gets the repositories" 'grep -q "<pluginRepositories>" "$poly/ports/java/pom.xml" && grep -q "<pluginRepositories>" "$poly/ports/kotlin/pom.xml"'

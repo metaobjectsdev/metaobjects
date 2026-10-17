@@ -7,7 +7,8 @@
 //     skips an unpublished CHANGELOG section (release prep bumped package.json to 1.1.0 and the
 //     next rc went out as 1.2.0-rc.3).
 // P2  the iteration counter reads every page of the registry's listing.
-// P3  a SIGTERM restores the version files, as exit and SIGINT already did.
+// P3  a SIGTERM restores the version files, as exit and SIGINT already did, and stops a step that
+//     is still running instead of letting the run publish the remaining registries first.
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -15,7 +16,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
-  changelogVersions, collectPages, decideBase, latestReleaseTag, releasedVersion,
+  changelogVersions, collectPages, decideBase, latestReleaseTag, releasedVersion, run,
 } from "./prerelease-version.mjs";
 
 let fails = 0;
@@ -111,6 +112,42 @@ await test("P3: SIGTERM runs the restore before the process ends", async () => {
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+await test("P3: SIGTERM during a running step stops the step and the run, then restores", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "prerelease-sigterm-step-"));
+  try {
+    const at = (name) => join(dir, name);
+    const child = at("child.mjs");
+    const mod = pathToFileURL(join(import.meta.dirname, "prerelease-version.mjs")).href;
+    // The step backgrounds a subshell, which a kill of the shell alone would leave running.
+    const step = `echo up > '${at("started")}'; (sleep 1; echo leaked > '${at("leaked")}') & wait`;
+    writeFileSync(child, `
+      import { writeFileSync } from "node:fs";
+      import { installRestoreHandlers, run } from ${JSON.stringify(mod)};
+      installRestoreHandlers(() => writeFileSync(${JSON.stringify(at("restored"))}, "yes"));
+      await run(${JSON.stringify(step)});
+      writeFileSync(${JSON.stringify(at("continued"))}, "yes");
+    `);
+    const proc = spawn(process.execPath, [child], { stdio: "inherit" });
+    const exited = new Promise((resolve) => proc.on("exit", (code, signal) => resolve({ code, signal })));
+    for (let i = 0; i < 250 && !existsSync(at("started")); i++) await new Promise((r) => setTimeout(r, 20));
+    assert.ok(existsSync(at("started")), "the step never started");
+    proc.kill("SIGTERM");
+    const { code } = await exited;
+    assert.equal(code, 143);
+    assert.ok(existsSync(at("restored")), "restore did not run on SIGTERM");
+    assert.ok(!existsSync(at("continued")), "the run went on to its next step after SIGTERM");
+    await new Promise((r) => setTimeout(r, 1500));
+    assert.ok(!existsSync(at("leaked")), "the step's own children outlived the SIGTERM");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+await test("a step resolves to its stdout and rejects on a non-zero exit", async () => {
+  assert.equal(await run("printf 'a\\nb'"), "a\nb");
+  await assert.rejects(run("echo boom >&2; exit 3"), /exit 3.*\n.*boom/s);
 });
 
 if (fails) { console.error(`${fails} failure(s)`); process.exit(1); }

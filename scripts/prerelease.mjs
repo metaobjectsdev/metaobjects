@@ -57,12 +57,12 @@
 //      bare `mvn deploy` has no target at all.
 //   6. Version declarations are edited in place and ALWAYS restored on exit; the script
 //      refuses to start if any of them is already dirty.
-import { execSync, execFileSync } from "node:child_process";
+import { execSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { mavenVersion } from "./maven-coordinate.mjs";
 import {
-  changelogVersions, collectPages, decideBase, installRestoreHandlers, releasedVersion,
+  changelogVersions, collectPages, decideBase, installRestoreHandlers, releasedVersion, run as runStep,
 } from "./prerelease-version.mjs";
 
 const argv = process.argv.slice(2);
@@ -77,6 +77,8 @@ const ok = (m) => console.log(`\x1b[32m✓\x1b[0m ${m}`);
 const info = (m) => console.log(`  ${m}`);
 const die = (m) => { console.error(`\x1b[31m✗ ${m}\x1b[0m`); process.exit(1); };
 const sh = (cmd, o = {}) => execSync(cmd, { encoding: "utf8", cwd: ROOT, stdio: "pipe", ...o });
+// Every step after the restore handlers are installed goes through this, so a signal can stop it.
+const run = (cmd, o = {}) => runStep(cmd, { cwd: ROOT, ...o });
 
 // ── registry config: environment first, then the gitignored env file ──────────────────
 const envFile = join(ROOT, "tools/prerelease/registry.env");
@@ -317,13 +319,13 @@ if (wants("npm")) {
   ok(`npm lockstep set: ${set.length} packages → ${V.npm}`);
 
   touch("bun.lock");
-  sh("rm -f bun.lock && bun install");                  // re-pins workspace:* to V.npm
-  sh("bun run clean && bun run build");
+  await run("rm -f bun.lock && bun install");                  // re-pins workspace:* to V.npm
+  await run("bun run clean && bun run build");
   ok("relocked + clean rebuild");
 
   const p = scratch("pack");
-  sh(`cd server/typescript/packages/cli && bun pm pack --destination ${p}`);
-  const pj = JSON.parse(sh(`tar -xzOf ${p}/*.tgz package/package.json`));
+  await run(`cd server/typescript/packages/cli && bun pm pack --destination ${p}`);
+  const pj = JSON.parse(await run(`tar -xzOf ${p}/*.tgz package/package.json`));
   const bad = Object.entries(pj.dependencies || {}).filter(([k, v]) => k.startsWith("@metaobjectsdev/") && v !== V.npm);
   if (bad.length) die(`packed cli pins stale sibling deps: ${JSON.stringify(bad)}`);
   ok(`packed deps pinned to ${V.npm}`);
@@ -337,15 +339,15 @@ if (wants("npm")) {
   const ordered = [...set].sort((a, b) => TIERS.indexOf(a.short) - TIERS.indexOf(b.short));
 
   // GATE 3 — ask bun where it would actually publish, and believe only that.
-  const probe = execFileSync("bun", ["publish", "--dry-run"],
-    { cwd: join(ROOT, ordered[0].dir), env: { ...process.env, HOME: home }, encoding: "utf8" });
+  const probe = await run("bun publish --dry-run",
+    { cwd: join(ROOT, ordered[0].dir), env: { ...process.env, HOME: home } });
   const seen = (probe.match(/^Registry:\s*(\S+)/m) || [])[1];
   if (seen !== NPM_REG) die(`bun would publish to ${seen}, not ${NPM_REG} — aborting`);
   ok(`bun publish target verified by dry-run: ${seen}`);
 
   if (!DRY) for (const pkg of ordered) {
-    execFileSync("bun", ["publish", "--tag", "prerelease"],
-      { cwd: join(ROOT, pkg.dir), env: { ...process.env, HOME: home }, stdio: "pipe" });
+    await run("bun publish --tag prerelease",
+      { cwd: join(ROOT, pkg.dir), env: { ...process.env, HOME: home } });
     info(`published ${pkg.short}@${V.npm}`);
   }
   ok(DRY ? "npm: dry run, nothing published" : `npm: ${ordered.length} packages @ ${V.npm} (dist-tag prerelease)`);
@@ -357,10 +359,10 @@ if (wants("python")) {
   touch(f);
   writeFileSync(join(ROOT, f), readFileSync(join(ROOT, f), "utf8").replace(/^version = ".*"$/m, `version = "${V.pypi}"`));
   const dist = scratch("pydist");
-  sh(`cd server/python && uv build --out-dir ${dist}`);
+  await run(`cd server/python && uv build --out-dir ${dist}`);
   ok(`python built ${V.pypi}`);
   if (!DRY) {
-    sh(`cd server/python && uv publish --publish-url "${PYPI_URL}" --username "${OWNER}" --password "${TOKEN}" ${dist}/*`);
+    await run(`cd server/python && uv publish --publish-url "${PYPI_URL}" --username "${OWNER}" --password "${TOKEN}" ${dist}/*`);
     ok(`python: metaobjects ${V.pypi} → ${expectedHost}`);
   } else ok("python: dry run, nothing published");
 }
@@ -371,10 +373,10 @@ if (wants("csharp")) {
   const out = scratch("nupkg");
   const projs = ["MetaObjects/MetaObjects", "MetaObjects.Render/MetaObjects.Render",
                  "MetaObjects.Codegen/MetaObjects.Codegen", "MetaObjects.Cli/MetaObjects.Cli"];
-  for (const p of projs) sh(`cd server/csharp && dotnet pack ${p}.csproj -c Release -o ${out} -p:Version=${V.nuget} --nologo -v q`);
+  for (const p of projs) await run(`cd server/csharp && dotnet pack ${p}.csproj -c Release -o ${out} -p:Version=${V.nuget} --nologo -v q`);
   ok(`csharp packed ${V.nuget} (4 packages)`);
   if (!DRY) {
-    sh(`dotnet nuget push "${out}/*.nupkg" --source "${NUGET_SRC}" --api-key "${TOKEN}"`);
+    await run(`dotnet nuget push "${out}/*.nupkg" --source "${NUGET_SRC}" --api-key "${TOKEN}"`);
     ok(`csharp: 4 packages @ ${V.nuget} → ${expectedHost}`);
   } else ok("csharp: dry run, nothing published");
 }
@@ -386,12 +388,12 @@ if (wants("java")) {
   // silently skips the two reactor-EXCLUDED integration-test modules, whose parent
   // version then lags (see scripts/check-pom-versions.sh, docs/RELEASING.md).
   const poms = [
-    ...sh(`grep -rl '${javaReleased}' --include=pom.xml server/java`).trim().split("\n").filter(Boolean),
+    ...(await run(`grep -rl '${javaReleased}' --include=pom.xml server/java`)).trim().split("\n").filter(Boolean),
     "examples/showcase/jvm/pom.xml",
   ];
   touch(...poms);
-  sh(`sed -i 's/${javaReleased.replace(/\./g, "\\.")}/${V.maven}/g' ${poms.map((f) => `'${f}'`).join(" ")}`);
-  sh("scripts/check-pom-versions.sh");
+  await run(`sed -i 's/${javaReleased.replace(/\./g, "\\.")}/${V.maven}/g' ${poms.map((f) => `'${f}'`).join(" ")}`);
+  await run("scripts/check-pom-versions.sh");
   ok(`java poms → ${V.maven}`);
   const settings = join(scratch("m2"), "settings.xml");
   writeFileSync(settings,
@@ -401,7 +403,7 @@ if (wants("java")) {
   // `package` for a dry run, not `install`: a dry run must not write artifacts anywhere.
   const goal = DRY ? "package" : "deploy";
   const repo = keptScratch("m2repo");
-  sh(`cd server/java && mvn -B -s ${settings} -Dmaven.repo.local=${repo} ${goal} -DskipTests` +
+  await run(`cd server/java && mvn -B -s ${settings} -Dmaven.repo.local=${repo} ${goal} -DskipTests` +
      ` -DaltDeploymentRepository="mo-prerelease::${MAVEN_URL}"`,
      { stdio: "inherit" });
   ok(DRY ? "java: dry run (install only)" : `java: reactor @ ${V.maven} → ${expectedHost}`);

@@ -324,15 +324,18 @@ repin_nuget() {  # repin_nuget <version|"">
              -not -path '*/obj/*' -not -path '*/bin/*')
   say "repinned ${NUGET_PREFIX}* package references to $v"
   # The tool's version, textually, in its own entry only: the rest of the manifest is untouched.
-  local m
+  local m pinned
   while IFS= read -r m; do
     node -e '
       const fs=require("fs"), f=process.argv[1], v=process.argv[2];
       const raw=fs.readFileSync(f,"utf8");
-      const out=raw.replace(/("metaobjects\.cli"\s*:\s*\{[^{}]*?"version"\s*:\s*")[^"]*(")/gi, (_m,a,b) => a + v + b);
+      const entry=/("metaobjects\.cli"\s*:\s*\{[^{}]*?"version"\s*:\s*")[^"]*(")/gi;
+      if (!entry.test(raw)) process.exit(3);
+      const out=raw.replace(entry, (_m,a,b) => a + v + b);
       if (out !== raw) fs.writeFileSync(f, out);
-    ' "$m" "$v"
-    say "repinned MetaObjects.Cli to $v in ${m#"$PROJECT"/}"
+    ' "$m" "$v" && pinned=1 || pinned=0
+    if [ "$pinned" = 1 ]; then say "repinned MetaObjects.Cli to $v in ${m#"$PROJECT"/}"
+    else warn "${m#"$PROJECT"/} names MetaObjects.Cli but no version for it was found: nothing pinned"; fi
   done < <(dotnet_tool_manifests)
 }
 

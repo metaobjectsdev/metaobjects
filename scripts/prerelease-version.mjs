@@ -1,8 +1,11 @@
 // The decisions scripts/prerelease.mjs makes before it publishes anything, as pure functions so
-// scripts/test-prerelease-version.mjs can hold them to the cases that burned version numbers.
+// scripts/test-prerelease-version.mjs can hold them to the cases that burned version numbers, and
+// the way it runs its steps so that a signal stops the run and restores what it bumped.
 //
 // A version number is spent the moment it is published, so each of these answers "what number
 // does this cut get?" from a source that cannot be wrong in the way the old one was.
+
+import { spawn } from "node:child_process";
 
 /** Compare two plain x.y.z versions: negative, zero or positive. */
 export function cmpVer(a, b) {
@@ -89,15 +92,44 @@ export async function collectPages(fetchPage, limit = 50, maxPages = 1000) {
   throw new Error(`the listing did not end within ${maxPages} pages`);
 }
 
+const active = new Set();
+
+/**
+ * Run a shell command without blocking the event loop, and resolve to its stdout. A synchronous
+ * exec holds the event loop for the whole step, so a SIGTERM listener could not run until the
+ * script ended: a killed run went on publishing every remaining registry. Each child leads its own
+ * process group, so a signal can stop the whole command line, not only the shell running it.
+ */
+export function run(command, { stdio = "pipe", ...opts } = {}) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, { shell: true, detached: true, stdio, ...opts });
+    active.add(child);
+    let out = "";
+    let err = "";
+    child.stdout?.setEncoding("utf8").on("data", (d) => { out += d; });
+    child.stderr?.setEncoding("utf8").on("data", (d) => { err += d; });
+    child.on("error", (e) => { active.delete(child); reject(e); });
+    child.on("close", (code, signal) => {
+      active.delete(child);
+      if (code === 0) resolve(out);
+      else reject(new Error(`Command failed (${signal ?? `exit ${code}`}): ${command}${err ? `\n${err}` : ""}`));
+    });
+  });
+}
+
 /**
  * Run `restore` when the process ends by any route a supervisor or a terminal takes: a normal
  * exit, Ctrl-C, a kill or a timeout (SIGTERM) and a closed terminal (SIGHUP). SIGTERM was missing,
- * so a killed run left every `package.json`, pom and `pyproject.toml` bumped.
+ * so a killed run left every `package.json`, pom and `pyproject.toml` bumped. A signal first stops
+ * every command `run` still has in flight, so nothing publishes or rewrites a file after it.
  */
 export function installRestoreHandlers(restore, proc = process) {
   proc.on("exit", restore);
   for (const [signal, code] of [["SIGINT", 130], ["SIGTERM", 143], ["SIGHUP", 129]]) {
     proc.on(signal, () => {
+      for (const child of active) {
+        try { process.kill(-child.pid, "SIGKILL"); } catch {}
+      }
       restore();
       proc.exit(code);
     });
