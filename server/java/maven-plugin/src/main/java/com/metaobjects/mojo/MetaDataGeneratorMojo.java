@@ -4,6 +4,8 @@ import com.metaobjects.MetaDataException;
 import com.metaobjects.generator.Generator;
 import com.metaobjects.generator.GeneratorBase;
 import com.metaobjects.generator.util.GeneratedFileWriter;
+import com.metaobjects.generator.util.HashManifest;
+import com.metaobjects.generator.util.OrphanSweep;
 import com.metaobjects.generator.util.RouteNaming;
 import com.metaobjects.loader.MetaDataLoader;
 import org.apache.maven.plugins.annotations.LifecyclePhase;
@@ -34,6 +36,9 @@ public class MetaDataGeneratorMojo extends AbstractMetaDataMojo
     @Parameter(property = "metaobjects.allowUnmetRequires", defaultValue = "false")
     boolean allowUnmetRequires;
 
+    /** How this goal is named in a message telling the adopter what to run. */
+    static final String OWNER = "mvn metaobjects:generate";
+
     @Override
     protected void executeGenerators(MetaDataLoader loader, List<Generator> generatorImpls) {
 
@@ -52,20 +57,109 @@ public class MetaDataGeneratorMojo extends AbstractMetaDataMojo
             RouteNaming.assertNoCollectionNameCollisions(loader.getMetaObjects());
         }
 
+        // Where this EXECUTION's codegen hash manifest lives: anchored on the module
+        // basedir, so two executions in one module share it (merged — each run only
+        // touches the keys under its own generators' output dirs) and two modules never
+        // collide (each has its own basedir). `null` in a unit test that sets no project
+        // (e.g. SourceRootRegistrationTest), which keeps every write on the legacy
+        // marker-only rule.
+        Path projectRoot = project != null && project.getBasedir() != null
+                ? project.getBasedir().toPath() : null;
+        Path genStateDir = projectRoot != null
+                ? projectRoot.resolve(".metaobjects").resolve(".gen-state") : null;
+        // Captured BEFORE any write this run — read afterwards (every write that creates
+        // the manifest would make a fresh adoption look like it never happened).
+        boolean hadManifestAtStart = genStateDir != null && HashManifest.exists(genStateDir);
+
         // This loop IS the Java port's runner — the one place that spans generators — so it
         // is the only place that can see two of them claiming one output path. TypeScript's
         // runGen and Python's run_gen both refuse that; until this scope existed, Java could
         // not, and a selection whose output depended on generator order produced a WARN and
         // a green build. Opening the run here is what makes the check reach a real build.
         try (GeneratedFileWriter.Run run = GeneratedFileWriter.beginRun()) {
-            for( Generator gen : generatorImpls ) {
-                getLog().info("MetaData Mojo > Executing Generator: " + gen.getClass().getName() );
-                run.attributeTo( gen.getClass().getSimpleName() );
-                gen.execute( loader );
+            if (genStateDir != null) {
+                run.configureManifest(genStateDir, projectRoot);
             }
+
+            // Every output dir THIS EXECUTION's generators write to, with the handEdits
+            // policy of every generator that writes there — the orphan sweep's jurisdiction
+            // is scoped to these dirs only, so a sibling <execution> writing elsewhere (even
+            // sharing this same manifest file) is never touched.
+            Map<Path, List<String>> handEditsByDir = new LinkedHashMap<>();
+            List<GeneratorParam> params = getGenerators();
+
+            for (int i = 0; i < generatorImpls.size(); i++) {
+                Generator gen = generatorImpls.get(i);
+                getLog().info("MetaData Mojo > Executing Generator: " + gen.getClass().getName() );
+                GeneratorParam param = params != null && i < params.size() ? params.get(i) : null;
+                String handEdits = param != null ? param.validatedHandEdits() : GeneratorParam.HAND_EDITS_KEEP;
+                run.attributeTo( gen.getClass().getSimpleName(), handEdits );
+                gen.execute( loader );
+
+                if (genStateDir != null && param != null) {
+                    String dir = mergeAndOverwriteArgs(param).get(GeneratorBase.ARG_OUTPUTDIR);
+                    if (dir != null) {
+                        Path abs = Path.of(dir).toAbsolutePath().normalize();
+                        handEditsByDir.computeIfAbsent(abs, k -> new ArrayList<>()).add(handEdits);
+                    }
+                }
+            }
+
+            if (genStateDir != null) {
+                sweepOrphans(genStateDir, projectRoot, handEditsByDir, run.emittedPaths());
+            }
+            reportManifestNotices(run, genStateDir, hadManifestAtStart);
         }
 
         registerGeneratedSourceRoots();
+    }
+
+    /**
+     * Delete the files under this execution's output dirs that the manifest records and
+     * this run did not emit — the files no generator produces any more. Scoped to exactly
+     * the dirs {@code handEditsByDir} names, so a sibling {@code <execution>} writing
+     * elsewhere is untouched even though it shares this same manifest file.
+     */
+    private void sweepOrphans(
+            Path genStateDir, Path projectRoot, Map<Path, List<String>> handEditsByDir, Set<Path> emitted) {
+        List<OrphanSweep.Entry> dirs = new ArrayList<>();
+        for (Map.Entry<Path, List<String>> e : handEditsByDir.entrySet()) {
+            boolean allOverwrite = !e.getValue().isEmpty() && e.getValue().stream()
+                    .allMatch(GeneratorParam.HAND_EDITS_OVERWRITE::equals);
+            dirs.add(new OrphanSweep.Entry(e.getKey(), e.getKey() + File.separator, allOverwrite));
+        }
+        OrphanSweep.Result swept = OrphanSweep.sweep(genStateDir, projectRoot, dirs, emitted);
+        for (String path : swept.removed) {
+            getLog().info("MetaData Mojo > Removed orphaned generated file no longer produced: " + path);
+        }
+        for (String path : swept.overwrittenDeleted) {
+            getLog().warn(OrphanSweep.overwrittenOrphanMessage(path));
+        }
+        if (!swept.refused.isEmpty()) {
+            getLog().warn(OrphanSweep.refusedMessage(swept.refused, OWNER));
+        }
+    }
+
+    /** The one-time notices about the manifest itself: first-run adoption, and files this
+     *  run could not record because they landed outside the project root. */
+    private void reportManifestNotices(GeneratedFileWriter.Run run, Path genStateDir, boolean hadManifestAtStart) {
+        if (genStateDir == null) return;
+        if (!run.adoptedPaths().isEmpty()) {
+            String lead = hadManifestAtStart
+                    ? OWNER + ": adopted " + run.adoptedPaths().size()
+                        + " existing generated file(s) into the codegen hash manifest "
+                        + "`.metaobjects/.gen-state/.hashes.json`."
+                    : OWNER + ": created the codegen hash manifest "
+                        + "`.metaobjects/.gen-state/.hashes.json` and adopted " + run.adoptedPaths().size()
+                        + " existing generated file(s) into it.";
+            getLog().warn(lead + " Commit it: it is how the next run tells a file it generated "
+                    + "from one you edited, and how it removes files no generator emits any more.");
+        }
+        if (run.untrackedCount() > 0) {
+            getLog().warn(run.untrackedCount() + " generated file(s) were written outside the project "
+                    + "root and are not recorded in `.metaobjects/.gen-state/.hashes.json`, so "
+                    + "hand-edit protection does not apply to them beyond the GENERATED marker rule.");
+        }
     }
 
     /** Fail the goal, naming each missing companion, when the list does not declare what its

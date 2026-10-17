@@ -90,7 +90,11 @@ from metaobjects.requirement_check import (
     summarise_requirements,
 )
 from metaobjects.codegen.config import GenConfig
-from metaobjects.codegen.overwrite_policy import has_hash_manifest, read_generated_hash
+from metaobjects.codegen.overwrite_policy import (
+    has_hash_manifest,
+    is_pristine_generated,
+    read_generated_hash,
+)
 from metaobjects.codegen.project_config import (
     CONFIG_FILENAME,
     ConfigError,
@@ -121,6 +125,7 @@ from metaobjects.codegen.generator_registry import (
     unsatisfied_requires,
 )
 from metaobjects.codegen.project_import import import_project_symbol
+from metaobjects.codegen.orphan_sweep import refused_orphan_message, sweep_orphans
 from metaobjects.codegen.runner import run_gen
 from metaobjects.codegen import eject as owned
 from metaobjects.codegen.generators.render_helper_generator import (
@@ -866,8 +871,15 @@ def _run_suite(
     baseline: str = "default",
     refused_out: list[str] | None = None,
     select: Callable[[str], bool] | None = None,
+    overwrite_hand_edits: frozenset[str] = frozenset(),
+    overwrite_paths_out: set[str] | None = None,
 ) -> list[str]:
     """Run a generator suite against an ALREADY-LOADED ``root`` into ``out_dir``.
+
+    ``overwrite_hand_edits`` names the generators (by ``.name``) declared
+    ``handEdits: overwrite``: a hand-edited file of theirs is replaced with fresh output
+    instead of refused. ``overwrite_paths_out`` collects every path those generators emitted,
+    which is how ``verify --codegen`` knows that ``gen`` would replace an edit.
 
     Split out from :func:`_generate` so a single gen invocation can load the
     metadata once and run multiple passes against it (the default Python suite +
@@ -910,6 +922,7 @@ def _run_suite(
         # exists for is the pre-manifest one, so it reaches every real gen path and no
         # verify path (those pass gen_state_dir=None and record nothing at all).
         baseline=baseline,
+        overwrite_hand_edits=overwrite_hand_edits,
     )
     # No default suite — see NO_GENERATORS_SELECTED. A caller that names none gets a
     # usage error and an empty out dir, never a shape this CLI picked.
@@ -917,6 +930,10 @@ def _run_suite(
         raise NoGeneratorsSelectedError
     suite = generators
     result = run_gen(config, root, generators=suite, entity_filter=entity_filter, select=select)
+    if overwrite_paths_out is not None:
+        overwrite_paths_out.update(
+            path for path, by in result.generated_by.items() if by in overwrite_hand_edits
+        )
     for warning in result.warnings:
         print(f"warning: {warning}")
     # A refusal is a FAILED gate, and the return value carries only what was WRITTEN — so
@@ -1386,6 +1403,7 @@ def _run_gen_targets(
     column_naming: str = DEFAULT_COLUMN_NAMING,
     selection: list[str] | None = None,
     targeted_out: set[str] | None = None,
+    overwrite_paths_out: set[str] | None = None,
 ) -> tuple[list[str], list[str]]:
     """Run each target's declared generators into its ``outDir``. Returns (all_written, errors).
 
@@ -1413,6 +1431,10 @@ def _run_gen_targets(
 
     ``targeted_out`` collects the ``outDir`` of every target with a declared entry left to
     run after ``selection``: decided from the config, whatever the entries then emit.
+
+    A generator entry written as ``{name: ..., handEdits: overwrite}`` replaces its
+    hand-edited files instead of refusing them; ``overwrite_paths_out`` collects the paths
+    such entries emitted (see :func:`_run_suite`).
     """
     all_written: list[str] = []
     seen: dict[str, str] = {}  # full path -> target name
@@ -1447,7 +1469,7 @@ def _run_gen_targets(
 
     # Resolve every target first, so a bad entry or an undeclared --generators name fails
     # the run before any target writes.
-    plan: list[tuple[TargetConfig, list[Generator], list[Generator]]] = []
+    plan: list[tuple[TargetConfig, list[Generator], list[Generator], frozenset[str]]] = []
     for t in targets:
         gens: list[Generator] = []
         commas = [tok for tok in t.generators or [] if "," in tok]
@@ -1463,7 +1485,12 @@ def _run_gen_targets(
             if gen_errors:
                 errors.extend(f"target '{t.name}': {m}" for m in gen_errors)
                 continue
+            overwrite = frozenset(
+                g.name for g, tok in zip(gens, t.generators) if tok in t.overwrite_hand_edits
+            )
             gens = [g for g, tok in zip(gens, t.generators) if selected(g, tok)]
+        else:
+            overwrite = frozenset()
         spec_gens: list[Generator] = []
         spec_path = config.template_spec_for(t)
         if spec_path is not None:
@@ -1473,7 +1500,7 @@ def _run_gen_targets(
                 errors.append(f"target '{t.name}': {spec_err}")
                 continue
             spec_gens = [g for g in spec_gens if selected(g, g.name)]
-        plan.append((t, gens, spec_gens))
+        plan.append((t, gens, spec_gens, overwrite))
     if selection is not None:
         undeclared = [n for n in selection if n not in matched]
         if undeclared:
@@ -1487,7 +1514,7 @@ def _run_gen_targets(
 
     from metaobjects.render.renderer import RenderError
 
-    for t, gens, spec_gens in plan:
+    for t, gens, spec_gens, overwrite in plan:
         if not gens and not spec_gens:
             print(f"target '{t.name}' declares no generators; nothing written")
             continue
@@ -1501,6 +1528,7 @@ def _run_gen_targets(
                     root, out_dir, gens, t.entities, gen_state_dir=gen_state_dir,
                     column_naming=column_naming, project_root=project_root, baseline=baseline,
                     refused_out=refused_out, select=select,
+                    overwrite_hand_edits=overwrite, overwrite_paths_out=overwrite_paths_out,
                 )
             if spec_gens:
                 written = written + _run_suite(
@@ -1603,16 +1631,21 @@ def _cmd_gen_config(args: argparse.Namespace) -> int:
             return 2
 
     refused: list[str] = []
+    targeted: set[str] = set()
+    baseline = getattr(args, "baseline", None) or "default"
+    gen_state_dir = gen_state_dir_for(config.metadata_dir())
+    project_root = str(project_root_for(config.metadata_dir()))
     written, errors = _run_gen_targets(
         config, targets, root,
-        gen_state_dir=gen_state_dir_for(config.metadata_dir()),
-        project_root=str(project_root_for(config.metadata_dir())),
-        baseline=getattr(args, "baseline", None) or "default",
+        gen_state_dir=gen_state_dir,
+        project_root=project_root,
+        baseline=baseline,
         refused_out=refused,
         select=collection.in_scope,
         build_ctx=GeneratorBuildContext(template_root),
         column_naming=column_naming,
         selection=selection,
+        targeted_out=targeted,
     )
     if errors:
         for msg in errors:
@@ -1620,8 +1653,15 @@ def _cmd_gen_config(args: argparse.Namespace) -> int:
         return 1
     for path in written:
         print(path)
+    removed = _sweep_orphans_after_gen(
+        args, config, targets, targeted, selection, baseline, gen_state_dir, project_root,
+        emitted={*written, *refused},
+    )
+    for path in removed:
+        print(f"removed {path}")
     print(
         f"metaobjects gen: wrote {len(written)} file(s) across {len(targets)} target(s)."
+        + (f" Removed {len(removed)} file(s) no generator emits any more." if removed else "")
     )
     if refused:
         # A refusal is a failed gate, matching TypeScript's `meta gen` (exit 1). Python and
@@ -1635,6 +1675,74 @@ def _cmd_gen_config(args: argparse.Namespace) -> int:
         )
         return 1
     return 0
+
+
+def _sweep_orphans_after_gen(
+    args: argparse.Namespace,
+    config: ProjectConfig,
+    targets: list[TargetConfig],
+    targeted: set[str],
+    selection: list[str] | None,
+    baseline: str,
+    gen_state_dir: str,
+    project_root: str,
+    *,
+    emitted: set[str],
+) -> list[str]:
+    """Delete what this run no longer generates (``codegen/orphan_sweep.py``) and return
+    the paths removed. Only a run of the WHOLE declared output into a directory sweeps it.
+
+    ``--generators`` and ``--entities`` narrow the output by construction, so every file of
+    the part left out would look orphaned: those runs sweep nothing and say so when there
+    was something to sweep. ``--target`` sweeps a directory only when every target writing
+    into it ran. ``--baseline=adopt`` writes nothing, so it deletes nothing either.
+    """
+    if baseline == "adopt":
+        return []
+    ran = {t.name for t in targets}
+    out_dirs = sorted(
+        out for out in targeted
+        if all(t.name in ran for t in config.targets if config.out_dir_for(t) == out)
+    )
+    narrowed = selection is not None or _parse_entities(getattr(args, "entities", None)) is not None
+    if narrowed:
+        pending = sweep_orphans(gen_state_dir, project_root, out_dirs, emitted, dry_run=True)
+        if pending.removed or pending.refused:
+            print(
+                "warning: Skipped orphan cleanup: this run was narrowed by --generators or "
+                "--entities, so it cannot tell a file the rest of the list writes from one no "
+                "generator emits any more. Run `metaobjects gen` without them to delete "
+                "generated files that are no longer generated."
+            )
+        return []
+    result = sweep_orphans(
+        gen_state_dir, project_root, out_dirs, emitted,
+        overwrite_dirs=frozenset(out for out in out_dirs if _overwrites_hand_edits(config, out)),
+    )
+    for key in result.discarded:
+        print(
+            f"warning: deleted hand-edited {key}, which no generator emits any more "
+            "(handEdits: overwrite)"
+        )
+    if result.refused:
+        print(f"warning: {refused_orphan_message(result.refused)}")
+    return result.removed
+
+
+def _overwrites_hand_edits(config: ProjectConfig, out_dir: str) -> bool:
+    """True when every generator writing into ``out_dir`` is declared ``handEdits: overwrite``.
+
+    The manifest does not record which generator wrote a file, so an edited orphan can be
+    deleted only when no generator sharing its directory asked to keep hand edits. A
+    ``templateSpec`` pass has no entry to carry the setting, so it always keeps.
+    """
+    sharing = [t for t in config.targets if config.out_dir_for(t) == out_dir]
+    return bool(sharing) and all(
+        t.generators
+        and config.template_spec_for(t) is None
+        and all(tok in t.overwrite_hand_edits for tok in t.generators)
+        for t in sharing
+    )
 
 
 #: Never compared: interpreter droppings, not generated artifacts. A committed
@@ -1749,6 +1857,20 @@ def _temp_slot_for(temp_root: Path, real_outdir: str, config_dir: Path) -> str:
     return str(temp_root / rel)
 
 
+@dataclasses.dataclass(frozen=True)
+class _DirReport:
+    """One committed outDir diffed against a fresh regen (``verify --codegen`` config mode)."""
+
+    names: str
+    expected_count: int
+    changed: list[str]
+    missing: list[str]
+    extra: list[str]
+    edited_extra: list[str]
+    replaced: list[str]
+    overwrite_dir: bool
+
+
 def _verify_codegen_config(args: argparse.Namespace) -> int:
     """``verify --codegen`` with no positional ``metadata_dir`` → config mode (#267).
 
@@ -1846,9 +1968,16 @@ def _verify_codegen_config(args: argparse.Namespace) -> int:
     # Map each unique real outDir to ONE temp slot name (shared real dir => shared slot).
     real_outdirs = sorted({config.out_dir_for(t) for t in closure})
 
-    def compare(naming: str) -> tuple[list[str], list[tuple[str, int, list[str], list[str], list[str]]]]:
-        """Regenerate the closure with ``naming`` and diff it against every committed outDir:
-        ``(errors, [(target names, expected count, changed, missing, extra)])``."""
+    def compare(naming: str) -> tuple[list[str], list[_DirReport]]:
+        """Regenerate the closure with ``naming`` and diff it against every committed outDir.
+
+        ``edited_extra`` is the subset of ``extra`` edited since ``gen`` wrote it. ``gen``
+        deletes an untouched ``extra`` file and refuses an edited one
+        (``codegen/orphan_sweep.py``), so the two need different remedies, unless every
+        generator writing into the directory is declared ``handEdits: overwrite``
+        (``overwrite_dir``), when ``gen`` deletes the edited one too. ``replaced`` is the
+        subset of ``changed`` that was edited by hand and that ``gen`` replaces anyway,
+        because its generator is declared ``handEdits: overwrite``."""
         with tempfile.TemporaryDirectory() as temp_root, tempfile.TemporaryDirectory() as declared_root:
             temp_for = {
                 real: _temp_slot_for(Path(temp_root), real, config.config_dir) for real in real_outdirs
@@ -1866,6 +1995,7 @@ def _verify_codegen_config(args: argparse.Namespace) -> int:
             # template root differently would regenerate render-helper against another
             # directory and convict the committed output of being stale.
             targeted: set[str] = set()
+            overwrite_paths: set[str] = set()
             regen = dict(
                 select=collection.in_scope,
                 build_ctx=GeneratorBuildContext(template_root),
@@ -1874,7 +2004,8 @@ def _verify_codegen_config(args: argparse.Namespace) -> int:
                 column_naming=naming,
             )
             _written, errors = _run_gen_targets(
-                config, remapped, root, selection=selection, targeted_out=targeted, **regen)
+                config, remapped, root, selection=selection, targeted_out=targeted,
+                overwrite_paths_out=overwrite_paths, **regen)
             # A narrowed run's paths get the content the whole declared list writes, which is
             # what `gen` committed: a second regen of the un-narrowed closure supplies it.
             declared_for: dict[str, str] = {}
@@ -1890,7 +2021,7 @@ def _verify_codegen_config(args: argparse.Namespace) -> int:
             if errors:
                 return errors, []
 
-            reports: list[tuple[str, int, list[str], list[str], list[str]]] = []
+            reports: list[_DirReport] = []
             for real_outdir in real_outdirs:
                 tmp_slot = temp_for[real_outdir]
                 if narrowed and tmp_slot not in targeted:
@@ -1905,6 +2036,8 @@ def _verify_codegen_config(args: argparse.Namespace) -> int:
                     k for k in expected if k in committed and expected[k] != committed[k]
                 )
                 missing = sorted(k for k in expected if k not in committed)
+                project_gen_state = gen_state_dir_for(config.metadata_dir())
+                prefix = _out_prefix(real_outdir, project_root_for(config.metadata_dir()))
                 if narrowed:
                     extra: list[str] = []
                 else:
@@ -1915,16 +2048,32 @@ def _verify_codegen_config(args: argparse.Namespace) -> int:
                     # PER-TARGET prefix, because that is the whole point on this rung: two
                     # targets with different outDirs share one manifest, and the key that tells
                     # their identically-named files apart is the one anchored on the project.
-                    is_ours = _is_ours_for(
-                        gen_state_dir_for(config.metadata_dir()),
-                        _out_prefix(real_outdir, project_root_for(config.metadata_dir())),
-                    )
+                    is_ours = _is_ours_for(project_gen_state, prefix)
                     extra = sorted(k for k in committed if k not in expected and is_ours(k))
+                # The sweep's own test, on the same evidence: with no manifest nothing is
+                # proven untouched, and every extra file reads as edited.
+                edited_extra = [
+                    k for k in extra
+                    if not is_pristine_generated(
+                        project_gen_state, os.path.join(prefix, k), committed[k], legacy_rel_path=k
+                    )
+                ]
+
+                replaced = [
+                    k for k in changed
+                    if os.path.join(tmp_slot, k) in overwrite_paths
+                    and not is_pristine_generated(
+                        project_gen_state, os.path.join(prefix, k), committed[k], legacy_rel_path=k
+                    )
+                ]
 
                 names = "+".join(
                     t.name for t in closure if config.out_dir_for(t) == real_outdir
                 )
-                reports.append((names, len(expected), changed, missing, extra))
+                reports.append(_DirReport(
+                    names, len(expected), changed, missing, extra, edited_extra, replaced,
+                    _overwrites_hand_edits(config, real_outdir),
+                ))
             return [], reports
 
     errors, reports = compare(column_naming)
@@ -1934,21 +2083,39 @@ def _verify_codegen_config(args: argparse.Namespace) -> int:
         return 1
 
     failed = False
-    for names, expected_count, changed, missing, extra in reports:
-        if _report_clean(changed, missing, extra):
-            print(f"metaobjects verify [{names}]: in sync ({expected_count} file(s)).")
+    regenerable = False
+    edited_orphans: list[str] = []
+    for rep in reports:
+        if _report_clean(rep.changed, rep.missing, rep.extra):
+            print(f"metaobjects verify [{rep.names}]: in sync ({rep.expected_count} file(s)).")
             continue
         failed = True
         print(
-            f"error: [{names}] generated code is out of sync with metadata.",
+            f"error: [{rep.names}] generated code is out of sync with metadata.",
             file=sys.stderr,
         )
-        for k in changed:
-            print(f"  drifted: {k}", file=sys.stderr)
-        for k in missing:
+        for k in rep.changed:
+            if k in rep.replaced:
+                print(f"  drifted: {k} (edited by hand; its generator sets handEdits: overwrite, "
+                      "so gen replaces it with fresh output)", file=sys.stderr)
+            else:
+                print(f"  drifted: {k}", file=sys.stderr)
+        for k in rep.missing:
             print(f"  missing: {k}", file=sys.stderr)
-        for k in extra:
-            print(f"  extra:   {k}", file=sys.stderr)
+        kept_orphans = [] if rep.overwrite_dir else rep.edited_extra
+        for k in rep.extra:
+            if k in kept_orphans:
+                print(f"  extra:   {k} (no generator emits it any more, and it was edited by hand)",
+                      file=sys.stderr)
+            elif k in rep.edited_extra:
+                print(f"  extra:   {k} (no generator emits it any more, and it was edited by hand; "
+                      "handEdits is overwrite, so gen deletes it)", file=sys.stderr)
+            else:
+                print(f"  extra:   {k} (no generator emits it any more; gen deletes it)",
+                      file=sys.stderr)
+        edited_orphans.extend(kept_orphans)
+        regenerable = regenerable or bool(
+            rep.changed or rep.missing or len(rep.extra) > len(kept_orphans))
     if not failed:
         return 0
 
@@ -1965,12 +2132,19 @@ def _verify_codegen_config(args: argparse.Namespace) -> int:
         finally:
             root.naming = used
         if not other_errors and all(
-            _report_clean(changed, missing, extra)
-            for _names, _count, changed, missing, extra in other_reports
+            _report_clean(rep.changed, rep.missing, rep.extra) for rep in other_reports
         ):
             print(naming_differs_message(candidate, used), file=sys.stderr)
             return 1
-    print("regenerate (metaobjects gen) and commit the result.", file=sys.stderr)
+    if regenerable:
+        print("regenerate (metaobjects gen) and commit the result.", file=sys.stderr)
+    if edited_orphans:
+        # `gen` refuses to delete these, so "regenerate" alone would loop.
+        print(
+            "For the extra file(s) edited by hand, `metaobjects gen` will NOT delete them: "
+            "delete each one, or move your edits into a file of your own first.",
+            file=sys.stderr,
+        )
     return 1
 
 

@@ -540,7 +540,7 @@ static int RunVerify(string[] rest)
         {
             Console.Error.WriteLine($"dotnet meta verify --codegen: drift ({c.DriftedFiles.Count} file(s) differ from a fresh regen):");
             foreach (var line in c.Lines) Console.Error.WriteLine($"  {line}");
-            Console.Error.WriteLine("Run 'dotnet meta gen' to regenerate, then commit the result.");
+            foreach (var line in MetaObjects.Codegen.CodegenDrift.Remedy(c)) Console.Error.WriteLine(line);
         }
     }
 

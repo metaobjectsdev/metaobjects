@@ -1674,8 +1674,17 @@ export async function verifyCommand(
     // it MERGES the edit and exits 0 — so prescribing it there was the unbreakable loop
     // the hand-edit exemption exists to end, reintroduced for the one file the exemption
     // deliberately excludes. Both lines print when the drift set holds both kinds.
-    if (result.driftedFiles.length > result.handEditedNames.length) {
+    if (result.driftedFiles.length > result.handEditedNames.length + result.editedOrphans.length) {
       log.error("Run 'meta gen' to regenerate, then commit the result.");
+    }
+    // A hand-edited orphan is the other kind `meta gen` cannot fix: it deletes an untouched
+    // file no generator emits any more, and refuses an edited one.
+    if (result.editedOrphans.length > 0) {
+      log.error(
+        "For the file(s) above that no generator emits any more and that were edited by hand, " +
+          "'meta gen' will NOT delete them. Delete each one, or move your edits into a file of " +
+          "your own first.",
+      );
     }
     if (result.handEditedNames.length > 0) {
       log.error(

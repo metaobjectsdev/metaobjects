@@ -37,6 +37,7 @@ import {
   type MergeStrategy,
   type BaselineMode,
   type DecideAndWriteOpts,
+  type HandEdits,
 } from "./overwrite-policy.js";
 import {
   stableNameIndex, warnUnsatisfiedRequires, warnMixedApiFrameworks, warnLibrarySelectionMismatch,
@@ -49,6 +50,10 @@ import type { AgentSchemaInput } from "./generators/agent-schema-input.js";
 /** JS-identifier-shape only. Prevents filesystem traversal when metadata comes
  *  from untrusted sources (e.g. MCP). Mirrors the guard in legacy generate.ts. */
 const VALID_ENTITY_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+/** The owner the run-wide orphan cleanup reports under: it acts for the run, not for one
+ *  generator. */
+const RUN_WIDE_SWEEP = "meta gen";
 
 export interface RunGenOpts {
   config: MetaobjectsGenConfig;
@@ -186,6 +191,13 @@ export interface RunGenResult {
   /** Subset of `files` with status "conflict" — surfaced separately so the
    *  CLI can print the end-of-run summary. */
   conflicts: WriteResult[];
+  /**
+   * Where this run discards hand edits (`Generator.handEdits: "overwrite"`): the absolute
+   * paths emitted by a generator that says so, and the output directories where every
+   * generator writing into them says so (the only places an edited orphan is deleted).
+   * `verify --codegen` reads it to tell a hand edit `meta gen` keeps from one it replaces.
+   */
+  handEditsOverwrite?: { paths: ReadonlySet<string>; outDirs: ReadonlySet<string> };
 }
 
 /**
@@ -343,7 +355,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
     return rel.startsWith("..") || isAbsolute(rel);
   };
   let untrackedCount = 0;
-  const policyFor = (fullPath: string): DecideAndWriteOpts => {
+  const policyFor = (fullPath: string, handEdits?: HandEdits): DecideAndWriteOpts => {
     if (outsideProject(fullPath)) {
       untrackedCount++;
       // With no record to consult, the default baseline REFUSES any existing file that
@@ -353,6 +365,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
       return { strategy, genStateDir: untrackedGenStateDir, baseline: baseline === "adopt" ? "adopt" : "fresh" };
     }
     const o: DecideAndWriteOpts = { strategy, genStateDir, baseline };
+    if (handEdits !== undefined) o.handEdits = handEdits;
     if (projectRoot !== undefined) o.outputRelPath = relative(projectRoot, fullPath);
     return o;
   };
@@ -758,11 +771,25 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   }
 
   // 4. Run each generator with a per-target render context; collect with full path.
-  const emitted: { fullPath: string; content: string; generatedBy: string }[] = [];
+  const emitted: { fullPath: string; content: string; generatedBy: string; handEdits?: HandEdits }[] = [];
   // FR-038 §8 — generators that opted into orphan reconciliation, paired with the
   // directory their policy's relative paths are measured from. Collected here
   // because `writeOutDir` is resolved per generator inside this loop.
   const orphanJobs: OrphanJob[] = [];
+  // Every directory a generator of this run wrote to. The run-wide sweep covers each
+  // one: a file `meta gen` recorded writing there and no generator emits any more is
+  // stale output, whichever generator once produced it. This is the jurisdiction
+  // `meta verify --codegen` already convicts on (codegen-drift.ts, the orphan branch),
+  // so `gen` now removes exactly what the gate reports and the gate's remedy works.
+  const runOutDirs = new Set<string>();
+  // Per directory: whether every generator writing into it sets `handEdits: "overwrite"`.
+  const outDirOverwrites = new Map<string, boolean>();
+  // The generators (and the run-wide job) whose forced deletions are `handEdits` discards.
+  const overwriteOwners = new Set<string>();
+  const handEditsOverwrite = (): NonNullable<RunGenResult["handEditsOverwrite"]> => ({
+    paths: new Set(emitted.filter((f) => f.handEdits === "overwrite").map((f) => f.fullPath)),
+    outDirs: new Set([...outDirOverwrites].filter(([, all]) => all).map(([dir]) => dir)),
+  });
   // Generators that ran and produced no file. See the note at the `files.length === 0`
   // check below. A Set because a generator may run once per target.
   const emptyGenerators = new Set<string>();
@@ -779,11 +806,20 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
     const writeOutDir = projectRoot !== undefined && !isAbsolute(selfTarget.outDir)
       ? resolve(projectRoot, selfTarget.outDir)
       : selfTarget.outDir;
+    runOutDirs.add(writeOutDir);
+    // A directory's run-wide cleanup may discard an edited orphan only when EVERY generator
+    // writing into it says `handEdits: "overwrite"`: the manifest does not record which
+    // generator wrote a file, so one `keep` writer protects the whole directory.
+    const overwrites = generator.handEdits === "overwrite";
+    if (overwrites) overwriteOwners.add(generator.name);
+    outDirOverwrites.set(writeOutDir, (outDirOverwrites.get(writeOutDir) ?? true) && overwrites);
     if (generator.orphanPolicy !== undefined) {
       orphanJobs.push({
         generatorName: generator.name,
         writeOutDir,
-        policy: generator.orphanPolicy,
+        policy: overwrites && generator.orphanPolicy.keep !== true
+          ? { ...generator.orphanPolicy, force: true }
+          : generator.orphanPolicy,
       });
     }
     const renderContext = makeRenderContext({
@@ -906,7 +942,12 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
           `Adjust one generator's filter or output path.`,
         );
       }
-      emitted.push({ fullPath, content: file.content, generatedBy: generator.name });
+      emitted.push({
+        fullPath,
+        content: file.content,
+        generatedBy: generator.name,
+        ...(generator.handEdits !== undefined && { handEdits: generator.handEdits }),
+      });
     }
   }
 
@@ -1030,8 +1071,29 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
     );
   };
 
+  // The run-wide jobs, AFTER every opt-in policy job: the first decision on a path wins,
+  // and a policy that sets `force` must get to decide before this job refuses the path.
+  //
+  // Only a run of the WHOLE declared list sweeps run-wide. `--generators` leaves the other
+  // entries' output unproduced by construction, so all of it would look orphaned. The opt-in
+  // policy jobs are scoped to their own generator's namespace and keep running there.
+  // `--baseline=adopt` writes nothing, so it deletes nothing either.
+  const sweepJobs: OrphanJob[] =
+    opts.generatorNames === undefined && baseline !== "adopt"
+      ? [
+          ...orphanJobs,
+          ...[...runOutDirs].map((writeOutDir) => ({
+            generatorName: RUN_WIDE_SWEEP,
+            writeOutDir,
+            policy: outDirOverwrites.get(writeOutDir) === true
+              ? { owns: () => true, force: true }
+              : { owns: () => true },
+          })),
+        ]
+      : orphanJobs;
+
   const sweep = (dryRun: boolean): void => {
-    if (projectRoot === undefined || orphanJobs.length === 0) return;
+    if (projectRoot === undefined || sweepJobs.length === 0) return;
 
     // NEVER reconcile a PARTIAL run. `meta gen <entity>` narrows the object set, so
     // `emitted` is a subset of the full output BY CONSTRUCTION — every path belonging
@@ -1074,7 +1136,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
       genStateDir,
       projectRoot,
       emittedRelPaths: emitted.map((f) => relative(projectRoot, f.fullPath)),
-      jobs: orphanJobs,
+      jobs: sweepJobs,
       dryRun,
     });
     // Both kinds are the same file outcome — gone. What differs is what it cost,
@@ -1098,10 +1160,23 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
         warnings.push(refusedOrphanMessage(paths, owner));
       }
     }
-    if (result.forced.length > 0) {
+    // `handEdits: "overwrite"` asked for these, so each is named on its own line: a
+    // discarded edit is never silent.
+    const discarded = result.forced.filter((relPath) => {
+      const by = result.forcedBy.get(relPath);
+      return by === RUN_WIDE_SWEEP || (by !== undefined && overwriteOwners.has(by));
+    });
+    for (const relPath of discarded) {
       warnings.push(
-        `Deleted ${result.forced.length} hand-edited generated file(s) because a ` +
-        `generator's orphanPolicy sets force: ${result.forced.join(", ")}. ` +
+        `${dryRun ? "would delete" : "deleted"} hand-edited ${relPath}, which no generator emits any more ` +
+          `(handEdits: "overwrite")`,
+      );
+    }
+    const policyForced = result.forced.filter((relPath) => !discarded.includes(relPath));
+    if (policyForced.length > 0) {
+      warnings.push(
+        `Deleted ${policyForced.length} hand-edited generated file(s) because a ` +
+        `generator's orphanPolicy sets force: ${policyForced.join(", ")}. ` +
         `Hand-written content in them is gone — recover from version control.`,
       );
     }
@@ -1117,7 +1192,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
       // as "overwrite" while the real run refused it — the one case the preview most
       // needs to be right about. A merge outcome is still coarse (see
       // previewWriteStatus), because clean-vs-conflicted is unknowable without merging.
-      const policyOpts = policyFor(file.fullPath);
+      const policyOpts = policyFor(file.fullPath, file.handEdits);
       writes.push({
         path: file.fullPath,
         status: previewWriteStatus(file.fullPath, file.content, policyOpts),
@@ -1129,7 +1204,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
     // A preview that hides a pending deletion is worse than no preview at all, so
     // the sweep still runs — in decide-and-report mode, touching nothing.
     sweep(true);
-    return { files: writes, warnings, conflicts };
+    return { files: writes, warnings, conflicts, handEditsOverwrite: handEditsOverwrite() };
   }
 
   for (const file of emitted) {
@@ -1137,8 +1212,14 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
     // distinct entries (e.g. `database/Post.ts` vs `web/Post.queries.ts`).
     // Without an explicit projectRoot we let decideAndWrite derive a stable
     // hash-of-path key — fine for ephemeral test runs.
-    const result = decideAndWrite(file.fullPath, file.content, policyFor(file.fullPath));
+    const result = decideAndWrite(file.fullPath, file.content, policyFor(file.fullPath, file.handEdits));
     writes.push(result);
+    if (result.discardedEdit === true) {
+      warnings.push(
+        `overwrote hand-edited ${relativeForDisplay(file.fullPath)} with fresh output ` +
+          `(handEdits: "overwrite" on ${file.generatedBy})`,
+      );
+    }
     if (result.status === "conflict") {
       conflicts.push(result);
       warnings.push(
@@ -1165,7 +1246,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   // Amendment 9), tool state included.
   if (installedEngine !== undefined && config.generators.length > 0) saveEngineVersion(genStateDir, installedEngine);
 
-  return { files: writes, warnings, conflicts };
+  return { files: writes, warnings, conflicts, handEditsOverwrite: handEditsOverwrite() };
 }
 
 /**

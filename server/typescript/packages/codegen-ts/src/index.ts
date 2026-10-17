@@ -86,6 +86,7 @@ export type {
   MergeStrategy,
   BaselineMode,
   DecideAndWriteOpts,
+  HandEdits,
 } from "./overwrite-policy.js";
 export { decideAndWrite, GitMissingError, WRITE_STATUSES } from "./overwrite-policy.js";
 // The committed half of `.gen-state`. Exported for `verify --codegen`, which needs

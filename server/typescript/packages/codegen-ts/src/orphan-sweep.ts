@@ -65,6 +65,8 @@ export interface SweepOrphansResult {
   /** Hand-edited orphans deleted because their policy set `force`. Separate from
    *  `removed` so the caller can say the louder thing about them. */
   readonly forced: string[];
+  /** Which job deleted each forced file, so the caller can say why. */
+  readonly forcedBy: ReadonlyMap<string, string>;
 }
 
 /** gen-state keys carry the platform separator; an `owns` predicate is written
@@ -76,12 +78,12 @@ function toPosix(p: string): string {
 
 export function sweepOrphans(args: SweepOrphansArgs): SweepOrphansResult {
   if (args.jobs.length === 0) {
-    return { removed: [], refused: [], forced: [], refusedBy: new Map() };
+    return { removed: [], refused: [], forced: [], refusedBy: new Map(), forcedBy: new Map() };
   }
 
   const previouslyGenerated = listGeneratedPaths(args.genStateDir);
   if (previouslyGenerated.length === 0) {
-    return { removed: [], refused: [], forced: [], refusedBy: new Map() };
+    return { removed: [], refused: [], forced: [], refusedBy: new Map(), forcedBy: new Map() };
   }
 
   // NOT normalized: both sides of this comparison are produced by
@@ -98,21 +100,29 @@ export function sweepOrphans(args: SweepOrphansArgs): SweepOrphansResult {
   const forced = new Set<string>();
   const forget = new Set<string>();
   const refusedBy = new Map<string, string>();
+  const forcedBy = new Map<string, string>();
+
+  const jobOwns = (job: OrphanJob, relPath: string): boolean => {
+    const inTarget = relative(job.writeOutDir, resolve(args.projectRoot, relPath));
+    // "" is the directory itself; a `..` prefix or an absolute result means
+    // the path is outside this generator's output entirely. Neither is
+    // something the predicate should get a say in.
+    if (inTarget === "" || inTarget.startsWith("..") || isAbsolute(inTarget)) {
+      return false;
+    }
+    return job.policy.owns(toPosix(inTarget));
+  };
+  // A `keep` policy decides nothing itself; it takes its namespace out of every other
+  // job's reach, the run-wide jobs included.
+  const keepJobs = args.jobs.filter((job) => job.policy.keep === true);
+  const kept = (relPath: string): boolean => keepJobs.some((job) => jobOwns(job, relPath));
 
   for (const job of args.jobs) {
+    if (job.policy.keep === true) continue;
     const decision = reconcileOrphans({
       previouslyGenerated,
       emitted,
-      owns: (relPath) => {
-        const inTarget = relative(job.writeOutDir, resolve(args.projectRoot, relPath));
-        // "" is the directory itself; a `..` prefix or an absolute result means
-        // the path is outside this generator's output entirely. Neither is
-        // something the predicate should get a say in.
-        if (inTarget === "" || inTarget.startsWith("..") || isAbsolute(inTarget)) {
-          return false;
-        }
-        return job.policy.owns(toPosix(inTarget));
-      },
+      owns: (relPath) => !kept(relPath) && jobOwns(job, relPath),
       exists: (relPath) => existsSync(resolve(args.projectRoot, relPath)),
       // The committed hash manifest, NOT the snapshot body — the bodies are
       // gitignored, so on a fresh clone a body-based check could never prove a
@@ -147,6 +157,7 @@ export function sweepOrphans(args: SweepOrphansArgs): SweepOrphansResult {
       if (removed.has(relPath) || forced.has(relPath) || refused.has(relPath)) continue;
       if (job.policy.force === true) {
         forced.add(relPath);
+        forcedBy.set(relPath, job.generatorName);
         forget.add(relPath);
       } else {
         // Deliberately NOT forgotten: the record is what makes the refusal
@@ -174,5 +185,6 @@ export function sweepOrphans(args: SweepOrphansArgs): SweepOrphansResult {
     refused: [...refused].sort(),
     forced: [...forced].sort(),
     refusedBy,
+    forcedBy,
   };
 }

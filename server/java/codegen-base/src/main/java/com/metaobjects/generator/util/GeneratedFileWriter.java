@@ -8,8 +8,12 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 /**
@@ -21,20 +25,27 @@ import java.util.regex.Pattern;
  * so the backstop was not implemented here at all. A file at a generated output path was
  * overwritten unconditionally, whatever it contained and whoever wrote it.
  *
- * <p><b>What it does, and deliberately does not do.</b> This is the marker floor, not
- * edit detection. A file that carries the {@code GENERATED} marker is this toolchain's
- * output and is overwritten; a file that does not is somebody's own and is refused. That
- * makes taking ownership of a generated file an explicit gesture: <b>delete the marker
- * line</b>, and regeneration will never touch the file again.
+ * <p><b>What it does.</b> The write decision comes from a committed HASH MANIFEST of what
+ * {@code mvn metaobjects:generate} previously wrote — the same rule the TypeScript, Python
+ * and C# ports already share — not from the {@code GENERATED} marker alone. The marker
+ * rule it replaced was wrong in both directions: a hand-EDITED generated file keeps its
+ * marker, so the one case worth protecting was overwritten silently; and a file this
+ * generator wrote whose template later stopped emitting the marker was refused as though
+ * it were somebody's hand-written source. The marker still matters at the ONE moment the
+ * manifest cannot help: an existing file at a generated path that has never been recorded.
+ * There, carrying the marker is what lets a pre-manifest file (adopted from before this
+ * project committed {@code .metaobjects/.gen-state/.hashes.json}) be taken as this
+ * toolchain's own rather than refused as hand-written — see {@link #write} for the full
+ * decision tree. Absent any manifest configuration on the active {@link Run} (an embedder,
+ * or a test driving a generator directly), the marker alone still decides, exactly as
+ * before.
  *
- * <p>It cannot detect an edit to a file that KEEPS its marker — for that you need a
- * record of what was written, which is what the TypeScript port's committed hash manifest
- * provides. That machinery is deliberately not replicated here: these ports' customization
- * model is build-config and template-spec (see {@code docs/features/own-your-codegen.md},
- * "Per port"), not editing emitted files in place, so the accuracy it buys is not worth a
- * committed state file, a migration and a new class of merge conflict on ports whose
- * workflow does not ask for it. The same reasoning ADR-0015 applies to schema migrations:
- * shared where the guarantee is shared, per-port where the workflow differs.
+ * <p>Each {@code <generator>} entry in the pom carries its own {@code handEdits} setting
+ * ({@code keep}, the default, or {@code overwrite}, set via {@link Run#attributeTo(String,
+ * String)}): {@code keep} refuses a hand-edited file by name; {@code overwrite} replaces it
+ * with fresh output and re-baselines its recorded hash, printing one line per file so the
+ * replacement is never silent. {@code overwrite} never applies to a file that was never
+ * recorded as ours (a stranger) — only to a file the manifest shows this toolchain wrote.
  *
  * <p>Refusing is a WARNING, never a build failure. These generators run inside
  * {@code mvn metaobjects:generate}, where failing the reactor over a file the user chose
@@ -120,13 +131,77 @@ public final class GeneratedFileWriter {
         private final Map<Path, String> contentByPath = new HashMap<>();
         private final Map<Path, String> writerByPath = new HashMap<>();
         private String current = "(unattributed generator)";
+        private String currentHandEdits = HAND_EDITS_KEEP;
+
+        // Manifest configuration — unset (null genStateDir/projectRoot) means "no manifest
+        // for this run", which keeps every write on the legacy marker-only rule. Set once,
+        // by the Mojo, right after beginRun().
+        private Path genStateDir;
+        private Path projectRoot;
+
+        // Every path write() was asked to produce this run, whatever the outcome — written,
+        // unchanged, refused or adopted. This is the "emitted" set the caller's orphan sweep
+        // must not touch: a refused or adopted path is still spoken for.
+        private final Set<Path> emittedPaths = new HashSet<>();
+        // Aggregate state for the Mojo's end-of-run notices.
+        private final List<String> adoptedPaths = new ArrayList<>();
+        private final List<String> overwrittenHandEditedPaths = new ArrayList<>();
+        private int untrackedCount = 0;
 
         private Run() {}
 
-        /** Name the generator whose writes follow. Called once per generator by the runner. */
+        /** Name the generator whose writes follow, with {@code handEdits=keep}. Equivalent
+         *  to {@code attributeTo(generatorName, "keep")}. */
         public Run attributeTo(String generatorName) {
+            return attributeTo(generatorName, HAND_EDITS_KEEP);
+        }
+
+        /**
+         * Name the generator whose writes follow and its {@code handEdits} policy
+         * ({@link #HAND_EDITS_KEEP} or {@link #HAND_EDITS_OVERWRITE}). Called once per
+         * generator by the runner, before that generator executes.
+         */
+        public Run attributeTo(String generatorName, String handEdits) {
             this.current = generatorName;
+            this.currentHandEdits = handEdits;
             return this;
+        }
+
+        /**
+         * Turn on manifest-aware writes for this run: {@code genStateDir} is the directory
+         * holding {@code .hashes.json} (typically {@code <basedir>/.metaobjects/.gen-state}),
+         * {@code projectRoot} is what manifest keys are relative to (typically the module
+         * basedir). Called once, by the Mojo, right after {@link #beginRun}. Leaving this
+         * unset keeps every write on the legacy marker-only rule.
+         */
+        public Run configureManifest(Path genStateDir, Path projectRoot) {
+            this.genStateDir = genStateDir;
+            this.projectRoot = projectRoot;
+            return this;
+        }
+
+        /** The files written, left in place, or adopted this run — the orphan sweep's
+         *  "do not touch" set. */
+        public Set<Path> emittedPaths() {
+            return emittedPaths;
+        }
+
+        /** Project-relative paths adopted into a fresh manifest (or a manifest that had no
+         *  record for them yet) this run — for the Mojo's one-time adoption notice. */
+        public List<String> adoptedPaths() {
+            return adoptedPaths;
+        }
+
+        /** Paths overwritten under {@code handEdits=overwrite} despite having been
+         *  hand-edited since this toolchain last wrote them. */
+        public List<String> overwrittenHandEditedPaths() {
+            return overwrittenHandEditedPaths;
+        }
+
+        /** How many writes this run landed outside {@code projectRoot} and so could not be
+         *  recorded in the manifest at all. */
+        public int untrackedCount() {
+            return untrackedCount;
         }
 
         private void claim(Path outFile, String content) {
@@ -173,27 +248,128 @@ public final class GeneratedFileWriter {
         return ACTIVE_RUN.get();
     }
 
+    /** {@link Run#attributeTo(String, String)}'s default: refuse a hand-edited file by name. */
+    public static final String HAND_EDITS_KEEP = "keep";
+    /** {@link Run#attributeTo(String, String)}: replace a hand-edited file with fresh output. */
+    public static final String HAND_EDITS_OVERWRITE = "overwrite";
+
     /** What happened to one file. */
     public enum Outcome {
-        /** Written — the path was new, or held this toolchain's own output. */
+        /** Written — the path was new, held this toolchain's own output, or was adopted
+         *  or overwritten per the active {@code handEdits} policy. */
         WRITTEN,
-        /** Left alone — the existing file carries no generated marker. */
-        REFUSED
+        /** Left alone — hand-written (or hand-edited under {@code handEdits=keep}). */
+        REFUSED,
+        /** Nothing to do — the file already holds exactly this content. */
+        UNCHANGED
     }
 
     /**
      * Write {@code content} to {@code outFile} unless an existing file there is not ours,
      * creating parent directories as needed. Logs its own refusal.
      *
+     * <p><b>No manifest configured on the active {@link Run}</b> (none open, or
+     * {@link Run#configureManifest} was never called — an embedder, or a test driving a
+     * generator directly): the legacy rule stands. A file that carries the
+     * {@code GENERATED} marker is overwritten; one that does not is refused.
+     *
+     * <p><b>With a manifest</b> (the normal {@code mvn metaobjects:generate} path), per
+     * file:
+     * <ol>
+     *   <li>absent → write, record its hash;</li>
+     *   <li>exists, no record for this key yet → carries the marker? <b>adopt</b> it
+     *       (write fresh content, record the hash) — this is how a file generated before
+     *       this project committed a manifest, or by a generator just added to one, is
+     *       taken as ours without a human having to say so. No marker → refused, exactly
+     *       as always (a stranger, never touched regardless of {@code handEdits});</li>
+     *   <li>exists, content already matches the fresh output → re-affirm the record,
+     *       {@link Outcome#UNCHANGED};</li>
+     *   <li>exists, recorded hash matches the current content (pristine) → overwrite,
+     *       record the new hash;</li>
+     *   <li>exists, recorded hash does NOT match (hand-edited since we wrote it) →
+     *       {@code handEdits=keep} (default) refuses by name; {@code handEdits=overwrite}
+     *       replaces it and re-baselines the record, logging the replacement.</li>
+     * </ol>
+     *
+     * <p>A path outside the run's configured project root is never recorded (nothing to
+     * key it by) and falls back to the marker-only rule, same as having no manifest at
+     * all — the Mojo counts these via {@link Run#untrackedCount()}.
+     *
      * <p>Throws {@link IOException} rather than wrapping it: every call site already sits
      * inside a {@code try/catch (IOException)} that raises a {@link GeneratorException}
      * naming the specific artifact. Swallowing it here would make those catches
      * unreachable — a compile error — and would replace each generator's precise message
      * with a generic one.
-     *
-     * @return {@link Outcome#WRITTEN} or {@link Outcome#REFUSED}
      */
     public static Outcome write(Path outFile, String content) throws IOException {
+        Run run = ACTIVE_RUN.get();
+        if (run != null) {
+            run.emittedPaths.add(outFile.toAbsolutePath().normalize());
+        }
+
+        if (run == null || run.genStateDir == null) {
+            return writeMarkerOnly(outFile, content, run);
+        }
+
+        String key = OrphanSweep.keyFor(run.projectRoot, outFile);
+        if (key == null) {
+            run.untrackedCount++;
+            return writeMarkerOnly(outFile, content, run);
+        }
+
+        if (!Files.exists(outFile)) {
+            performWrite(outFile, content, run);
+            HashManifest.record(run.genStateDir, key, content);
+            return Outcome.WRITTEN;
+        }
+
+        String current = Files.readString(outFile, StandardCharsets.UTF_8);
+        String recorded = HashManifest.recordedHash(run.genStateDir, key);
+
+        if (recorded == null) {
+            // Never recorded under this key. Marker present ⇒ this toolchain's own prior
+            // output, from before a manifest existed (or before this generator's entry did)
+            // — adopt it. No marker ⇒ hand-written, refused exactly as always; `handEdits`
+            // never applies here, because a file never recorded as ours is not ours to
+            // replace under any policy.
+            if (looksGenerated(current)) {
+                performWrite(outFile, content, run);
+                HashManifest.record(run.genStateDir, key, content);
+                run.adoptedPaths.add(outFile.toString());
+                return Outcome.WRITTEN;
+            }
+            LOG.warn(refusedMessage(outFile));
+            return Outcome.REFUSED;
+        }
+
+        if (current.equals(content)) {
+            // Nothing to write, but re-affirm the record: a first run over already-correct
+            // output should leave the file recognised as ours next time.
+            HashManifest.record(run.genStateDir, key, content);
+            return Outcome.UNCHANGED;
+        }
+
+        if (recorded.equals(HashManifest.contentHash(current))) {
+            // Pristine: matches what we last wrote, safe to overwrite with fresh content.
+            performWrite(outFile, content, run);
+            HashManifest.record(run.genStateDir, key, content);
+            return Outcome.WRITTEN;
+        }
+
+        // Edited: differs from both the fresh output and the last recorded hash.
+        if (HAND_EDITS_OVERWRITE.equals(run.currentHandEdits)) {
+            performWrite(outFile, content, run);
+            HashManifest.record(run.genStateDir, key, content);
+            run.overwrittenHandEditedPaths.add(outFile.toString());
+            LOG.warn("overwrote hand-edited " + outFile + " (handEdits: overwrite)");
+            return Outcome.WRITTEN;
+        }
+        LOG.warn(refusedHandEditedMessage(outFile));
+        return Outcome.REFUSED;
+    }
+
+    /** The legacy, manifest-less decision: overwrite a marker-bearing file, refuse any other. */
+    private static Outcome writeMarkerOnly(Path outFile, String content, Run run) throws IOException {
         // The marker question comes FIRST, and a refusal returns before anything is
         // claimed. A path the adopter hand-owns is a path NO generator can write, so two
         // generators emitting different content there is not an order-dependent output —
@@ -205,12 +381,16 @@ public final class GeneratedFileWriter {
             LOG.warn(refusedMessage(outFile));
             return Outcome.REFUSED;
         }
-        // Now the ordering question, asked only of writes that will actually land: did a
-        // sibling generator in this run already claim this path with different content?
-        // That is a defect in the generator SELECTION, not in the file on disk, so it is
-        // raised rather than warned — an order-dependent output is not something the user
-        // can act on from a log line.
-        Run run = ACTIVE_RUN.get();
+        performWrite(outFile, content, run);
+        return Outcome.WRITTEN;
+    }
+
+    /**
+     * Claim the path in the active run (the ordering/collision check — raised, never
+     * warned, since an order-dependent output is not something the user can act on from a
+     * log line) and write it to disk, creating parent directories as needed.
+     */
+    private static void performWrite(Path outFile, String content, Run run) throws IOException {
         if (run != null) {
             run.claim(outFile, content);
         }
@@ -218,7 +398,6 @@ public final class GeneratedFileWriter {
             Files.createDirectories(outFile.getParent());
         }
         Files.writeString(outFile, content, StandardCharsets.UTF_8);
-        return Outcome.WRITTEN;
     }
 
     /**
@@ -232,5 +411,17 @@ public final class GeneratedFileWriter {
         return "refusing to overwrite " + outFile + " — it carries no '" + GENERATED_MARKER
             + "' marker, so it is treated as hand-written and was left untouched. "
             + "If you want the generated version, move or delete this file and re-run.";
+    }
+
+    /**
+     * The message shown when a file this toolchain DID previously write is refused because
+     * it was edited since ({@code handEdits=keep}, the default).
+     */
+    public static String refusedHandEditedMessage(Path outFile) {
+        return "refusing to overwrite " + outFile + " — it was edited since metaobjects "
+            + "generated it, so it is treated as hand-edited and was left untouched "
+            + "(handEdits: keep). Move your edits into a file of your own, delete this file and "
+            + "re-run to accept the generated version, or set this generator's <handEdits> to "
+            + "'overwrite' to have it replace hand edits automatically.";
     }
 }

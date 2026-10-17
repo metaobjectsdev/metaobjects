@@ -76,6 +76,12 @@ export interface CodegenDriftResult {
    */
   handEditedNames: string[];
   /**
+   * The subset of `driftedFiles` that no generator emits any more AND that was edited
+   * since `meta gen` wrote it, sorted. `meta gen` deletes an untouched orphan but refuses
+   * one of these, so prescribing it would loop: the remedy is to delete the file.
+   */
+  editedOrphans: string[];
+  /**
    * Project-relative paths of generated files that carry a PRESERVED hand edit, sorted:
    * the generated contribution is current (a fresh regen hashes to what we recorded
    * writing) but the committed file differs from it. Not drift — `meta gen` keeps these
@@ -196,6 +202,7 @@ export async function computeCodegenDrift(
       driftedFiles: [],
       lines: [],
       handEditedNames: [],
+      editedOrphans: [],
       handEdited: [],
       docsIgnored: 0,
       docsIgnoredDirs: [],
@@ -254,7 +261,7 @@ export async function computeCodegenDrift(
     // Generate fresh into the temp tree. "overwrite" + "fresh" + a temp
     // gen-state dir guarantees every file is written (no merge/skip), so the
     // temp tree is the canonical "what gen would produce right now".
-    await runGen({
+    const regen = await runGen({
       config: tempConfig,
       metadata,
       projectRoot: tempRoot,
@@ -272,11 +279,15 @@ export async function computeCodegenDrift(
       ...(run?.agentSchema !== undefined ? { agentSchema: run.agentSchema } : {}),
     });
 
+    // Where gen discards hand edits instead of keeping them (handEdits: "overwrite").
+    const overwrite = regen.handEditsOverwrite;
+
     // Diff each committed outDir against its temp mirror.
     const driftedFiles = new Set<string>();
     const lines: string[] = [];
     const handEditedNames = new Set<string>();
     const handEdited = new Set<string>();
+    const editedOrphans = new Set<string>();
 
     // Whether we have any record of what we wrote here. With records, the orphan
     // branch below can scope itself to our own output; with none, it cannot tell
@@ -334,7 +345,28 @@ export async function computeCodegenDrift(
             continue;
           }
           driftedFiles.add(relKey);
-          lines.push(`- ${relKey} (committed but regen would not emit it)`);
+          // `meta gen` deletes an orphan it can prove untouched and REFUSES one edited
+          // since it was written, so the remedy differs by which this is. Asked of the
+          // same evidence the sweep asks (the recorded hash), so the two cannot disagree.
+          // With no write records at all, neither verdict can be proven, so the line
+          // stays the plain one.
+          if (!haveWriteRecords) {
+            lines.push(`- ${relKey} (committed but regen would not emit it)`);
+          } else if (readGeneratedHash(projectGenStateDir, relKey) === contentHash(readFileSync(join(committed, rel), "utf8"))) {
+            lines.push(`- ${relKey} (committed but regen would not emit it; 'meta gen' deletes it)`);
+          } else if (overwrite?.outDirs.has(fresh) === true) {
+            // Every generator writing here says handEdits: "overwrite", so gen deletes it.
+            lines.push(
+              `- ${relKey} (no generator emits it any more, and it was edited by hand; ` +
+                `handEdits is "overwrite", so 'meta gen' deletes it)`,
+            );
+          } else {
+            editedOrphans.add(relKey);
+            lines.push(
+              `- ${relKey} (no generator emits it any more, and it was edited by hand: ` +
+                `delete it, or move your edits into a file of your own and then delete it)`,
+            );
+          }
         } else if (!inCommitted && inFresh) {
           driftedFiles.add(relKey);
           lines.push(`+ ${relKey} (regen would emit it; not committed — run 'meta gen')`);
@@ -384,6 +416,14 @@ export async function computeCodegenDrift(
               // nothing is proven, so the old byte verdict stands.
               driftedFiles.add(relKey);
               lines.push(`~ ${relKey} (committed content differs from a fresh regen)`);
+            } else if (overwrite?.paths.has(join(fresh, rel)) === true) {
+              // Its generator says handEdits: "overwrite": `meta gen` replaces the edit
+              // with fresh output, so it is drift that gen fixes, not a kept edit.
+              driftedFiles.add(relKey);
+              lines.push(
+                `~ ${relKey} (edited by hand; its generator sets handEdits: "overwrite", so ` +
+                  `'meta gen' replaces it with fresh output)`,
+              );
             } else {
               // The generated contribution is current and the bytes still differ: a
               // hand edit `meta gen` preserved. Not drift, but never silent either.
@@ -400,6 +440,7 @@ export async function computeCodegenDrift(
       driftedFiles: sorted,
       lines,
       handEditedNames: [...handEditedNames].sort(),
+      editedOrphans: [...editedOrphans].sort(),
       handEdited: [...handEdited].sort(),
       docsIgnored,
       docsIgnoredDirs,

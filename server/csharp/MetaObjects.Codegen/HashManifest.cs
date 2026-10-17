@@ -121,4 +121,8 @@ public static class HashManifest
     public static bool IsPristine(
         string genStateDir, string relPath, string current, string? legacyRelPath = null) =>
         Recorded(genStateDir, relPath, legacyRelPath) == ContentHash(current);
+
+    /// <summary>Whether we recorded writing <paramref name="relPath"/> at all, whatever it holds now.</summary>
+    public static bool IsRecorded(string genStateDir, string relPath, string? legacyRelPath = null) =>
+        Recorded(genStateDir, relPath, legacyRelPath) is not null;
 }

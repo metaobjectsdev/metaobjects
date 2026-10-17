@@ -114,7 +114,22 @@ export interface DecideAndWriteOpts {
   outputRelPath?: string;
   /** First-time-existing-file behavior. */
   baseline?: BaselineMode;
+  /**
+   * What a hand edit to a file `gen` recorded writing gets: `"keep"` (the default) merges
+   * it or refuses the file; `"overwrite"` replaces the file with fresh output and
+   * re-baselines its record, reporting `discardedEdit` so the caller can name it. A file
+   * with no record of being generated is never overwritten by this setting.
+   */
+  handEdits?: HandEdits;
 }
+
+/**
+ * The per-generator hand-edit setting (`Generator.handEdits`), the same name and values in
+ * every port. `"keep"`, the default, protects an edit to a generated file (merged, or the
+ * file refused by name); `"overwrite"` discards it: the file is regenerated and its record
+ * re-baselined, and an edited file no generator emits any more is deleted.
+ */
+export type HandEdits = "keep" | "overwrite";
 
 export interface WriteResult {
   path: string;
@@ -123,6 +138,8 @@ export interface WriteResult {
    *  naming what the user must do. A refusal nobody can act on gets the file
    *  deleted by hand, which is the outcome refusing exists to prevent. */
   conflictHint?: string;
+  /** True when a hand edit was replaced with fresh output under `handEdits: "overwrite"`. */
+  discardedEdit?: boolean;
 }
 
 const HASHES_FILE = ".hashes.json";
@@ -483,6 +500,7 @@ type WriteCase =
   | { kind: "skip" }
   | { kind: "no-snapshot-fresh-unchanged" }
   | { kind: "no-snapshot-fresh-overwrite" }
+  | { kind: "hand-edit-overwrite" }
   | { kind: "no-snapshot-unchanged" }
   | { kind: "no-snapshot-pristine-overwrite" }
   | { kind: "no-snapshot-refused"; hasRecord: boolean }
@@ -517,6 +535,18 @@ function classifyWrite(
     readGeneratedHash(genStateDir, relPath) === undefined
       ? undefined
       : storedSnapshot;
+
+  // `handEdits: "overwrite"`: an edit to a file we recorded writing is discarded, not
+  // merged or refused. "Recorded" is the committed hash, or a local snapshot body; a file
+  // with neither is not ours, and the default rules below still refuse it.
+  if (opts.handEdits === "overwrite" && current !== content) {
+    const recorded = readGeneratedHash(genStateDir, relPath);
+    const edited =
+      recorded !== undefined
+        ? recorded !== sha256(current)
+        : snapshot !== undefined && snapshot.text !== current;
+    if (edited) return { kind: "hand-edit-overwrite" };
+  }
 
   // First-time regen on a pre-existing file (no snapshot) — caveat 3. `baseline`
   // only ever applies here: BaselineMode's own doc comment says so ("When
@@ -611,6 +641,7 @@ export function previewWriteStatus(
       return "unchanged";
     case "no-snapshot-fresh-overwrite":
     case "no-snapshot-pristine-overwrite":
+    case "hand-edit-overwrite":
       return "overwrite";
     case "no-snapshot-refused":
       return "refused";
@@ -658,6 +689,11 @@ export function decideAndWrite(
       writeFileSync(path, content);
       advanceSnapshot(genStateDir, relPath, content);
       return { path, status: "overwrite" };
+
+    case "hand-edit-overwrite":
+      writeFileSync(path, content);
+      advanceSnapshot(genStateDir, relPath, content);
+      return { path, status: "overwrite", discardedEdit: true };
 
     case "no-snapshot-refused":
       // Deliberately does NOT advance the snapshot or the hash: a refusal that

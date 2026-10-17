@@ -151,6 +151,10 @@ def _write(path: str, content: str) -> None:
         fh.write(content)
 
 
+#: The status of a hand-edited file replaced under ``handEdits: overwrite``.
+STATUS_OVERWROTE_EDIT = "overwrote-edit"
+
+
 def decide_and_write(
     path: str,
     content: str,
@@ -160,8 +164,14 @@ def decide_and_write(
     rel_path: str | None = None,
     legacy_rel_path: str | None = None,
     baseline: str = "default",
+    hand_edits: str = "keep",
 ) -> str:
     """Decide and perform the write for one generated file.
+
+    ``hand_edits="overwrite"`` (the generator's ``handEdits`` setting) replaces a file we
+    recorded writing that was edited since with fresh output, re-records it, and returns
+    :data:`STATUS_OVERWROTE_EDIT` so the caller names it. A file with no record of being
+    generated is refused under either setting.
 
     ``gen_state_dir`` enables hash-based hand-edit detection; ``rel_path`` is the key
     it is recorded under (defaults to the basename, which is correct for a single
@@ -211,6 +221,12 @@ def decide_and_write(
         _write(path, content)
         _record(gen_state_dir, key, content, legacy_rel_path)
         return "overwrite"
+
+    # Edited since we wrote it, and the generator says to discard hand edits.
+    if hand_edits == "overwrite" and read_generated_hash(gen_state_dir, key, legacy_rel_path) is not None:
+        _write(path, content)
+        _record(gen_state_dir, key, content, legacy_rel_path)
+        return STATUS_OVERWROTE_EDIT
 
     # Edited, or never recorded. Deliberately does NOT record the current content:
     # doing so would make the file look pristine next run and turn this into a silent

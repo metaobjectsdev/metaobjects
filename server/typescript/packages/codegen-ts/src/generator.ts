@@ -5,6 +5,7 @@ import type { RenderContext } from "./render-context.js";
 import type { DocsRunFacts } from "./docs-run.js";
 import type { ResolvedGenConfig } from "./metaobjects-config.js";
 import type { OrphanPolicy } from "./reconcile-orphans.js";
+import type { HandEdits } from "./overwrite-policy.js";
 import { effectivePackage } from "./docs-paths.js";
 
 export interface EmittedFile {
@@ -134,14 +135,24 @@ export interface Generator {
   /** Marks the generator that produces entity modules — the runner uses its
    *  target as the entity-module target for cross-target import resolution. */
   emitsEntityModule?: boolean;
-  /** FR-038 §8 — OPT IN to orphan reconciliation by declaring the output
-   *  namespace this generator exclusively owns. When set, the runner removes
-   *  files inside that namespace which a previous run generated and this run did
-   *  not, REFUSING any that have been edited by hand. Absent (the default for
-   *  every existing generator) means the runner never deletes anything, which is
-   *  why this is additive: output stops being generated and the stale file simply
-   *  stays, exactly as before. */
+  /** FR-038 §8 — declare the output namespace this generator exclusively owns.
+   *  A full `meta gen` run already removes every file it recorded writing in a
+   *  target directory and no generator emits any more, refusing any edited by hand
+   *  (the run-wide sweep, every generator, no opt-in). A policy adds two things on
+   *  top: its namespace is still reconciled on a `--generators` run that names this
+   *  generator, and `force` can delete a hand-edited file in it instead of refusing. */
   orphanPolicy?: OrphanPolicy;
+  /**
+   * What a hand edit to one of this generator's files gets. `"keep"`, the default,
+   * protects it: the edit is merged into fresh output when this machine has a snapshot
+   * body, and the file is refused by name otherwise; an edited file no generator emits
+   * any more is refused, not deleted. `"overwrite"` discards it: the file is replaced
+   * with fresh output and its record re-baselined, and an edited file of this generator's
+   * that no generator emits any more is deleted. Each discarded edit is named in the
+   * run's warnings. A file `gen` has no record of writing is never touched either way.
+   * The same setting, by the same name, exists in every port.
+   */
+  handEdits?: HandEdits;
   /** Marks the OPT-IN Hono routes generator (routesFileHono). The runner
    *  aggregates this across the active suite into `ctx.config.includeHonoRoutes`,
    *  so a generator that documents the API surface (api-docs) can AUTO-DETECT

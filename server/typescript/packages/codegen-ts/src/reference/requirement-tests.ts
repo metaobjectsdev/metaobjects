@@ -229,8 +229,9 @@ export interface RequirementTestsOpts {
   owns?: (relPathInTarget: string) => boolean;
   /** Delete a hand-edited orphan rather than refusing it. Default false. */
   forceOrphanDelete?: boolean;
-  /** Turn orphan reconciliation off entirely. Default true — a stub whose requirement
-   *  is gone is drift, and leaving it is how a deleted claim keeps a green test. */
+  /** `false` keeps every stub in this generator's namespace (`owns`), even an untouched
+   *  one whose requirement is gone. Default true — a stub whose requirement is gone is
+   *  drift, and leaving it is how a deleted claim keeps a green test. */
   reconcileOrphans?: boolean;
 }
 
@@ -280,8 +281,9 @@ export function requirementTests(opts: RequirementTestsOpts = {}): Generator {
   assertRequirementTestGrain(grain);
   const toPath = opts.path ?? (grain === "member" ? defaultMemberPath : defaultPath);
   // A custom `path` with no custom `owns` leaves the default namespace pointing
-  // somewhere the generator no longer writes, so reconciliation matches nothing. That
-  // degrades safely — it can only ever delete less — but silently, hence the warning.
+  // somewhere the generator no longer writes, so the policy claims nothing. The run-wide
+  // sweep still deletes an untouched orphan there; `reconcileOrphans: false` cannot keep
+  // files it cannot name, hence the warning.
   const namespaceUnknown = opts.path !== undefined && opts.owns === undefined;
 
   const generator: Generator = {
@@ -290,11 +292,12 @@ export function requirementTests(opts: RequirementTestsOpts = {}): Generator {
       const files: EmittedFile[] = [];
       const uncovered: string[] = [];
 
-      if (namespaceUnknown && opts.reconcileOrphans !== false) {
+      if (namespaceUnknown && opts.reconcileOrphans === false) {
         ctx.warn(
-          "a custom 'path' was supplied without a matching 'owns', so a stub left " +
-            "behind by a deleted requirement will NOT be cleaned up. Supply 'owns' " +
-            "to describe where 'path' writes, or set reconcileOrphans: false.",
+          "a custom 'path' was supplied without a matching 'owns', so reconcileOrphans: " +
+            "false cannot tell which files are its stubs: a stub left behind by a deleted " +
+            "requirement is deleted like any other generated file no generator emits any " +
+            "more (an edited one is refused). Supply 'owns' to describe where 'path' writes.",
         );
       }
 
@@ -351,16 +354,16 @@ export function requirementTests(opts: RequirementTestsOpts = {}): Generator {
   };
 
   if (opts.target !== undefined) generator.target = opts.target;
-  if (opts.reconcileOrphans !== false) {
-    generator.orphanPolicy = {
-      // With a custom `path` and no `owns`, claim NOTHING rather than guess: the default
-      // namespace would be a claim over a directory this generator does not write to,
-      // and a wrong claim deletes another generator's files.
-      owns:
-        opts.owns ??
-        (namespaceUnknown ? () => false : (relPath) => relPath.startsWith(DEFAULT_STUB_DIR)),
-      ...(opts.forceOrphanDelete === true && { force: true }),
-    };
-  }
+  generator.orphanPolicy = {
+    // With a custom `path` and no `owns`, claim NOTHING rather than guess: the default
+    // namespace would be a claim over a directory this generator does not write to,
+    // and a wrong claim deletes another generator's files.
+    owns:
+      opts.owns ??
+      (namespaceUnknown ? () => false : (relPath) => relPath.startsWith(DEFAULT_STUB_DIR)),
+    ...(opts.reconcileOrphans === false
+      ? { keep: true }
+      : opts.forceOrphanDelete === true && { force: true }),
+  };
   return generator;
 }

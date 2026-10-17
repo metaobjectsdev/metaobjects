@@ -60,6 +60,9 @@ class GenConfig:
     # refusal used to prescribe committing a manifest nothing had yet produced). A value
     # this port does not implement is REFUSED in __post_init__ rather than ignored.
     baseline: str = "default"
+    # The names of the generators declared ``handEdits: overwrite``: a hand edit to one of
+    # their files is replaced with fresh output (and re-baselined) instead of refused.
+    overwrite_hand_edits: frozenset[str] = frozenset()
     provided_enum_namespace: str | None = None
     provided_enum_packages: dict[str, str] = field(default_factory=dict)
 

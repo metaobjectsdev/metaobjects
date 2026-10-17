@@ -103,9 +103,8 @@ generators you author, not as behaviour to expect from `meta gen`.
    Best when edits are small and scattered through otherwise-generated files. The
    baseline lives in `.metaobjects/.gen-state/` and its **bodies are gitignored**, so
    the merge happens on the machine that generated the file and nowhere else; elsewhere
-   an edited file is refused rather than merged. C# and Python refuse rather than merge;
-   Java and Kotlin have neither — they check a marker (see
-   [own-your-codegen.md](own-your-codegen.md)). Say which of those you mean whenever you
+   an edited file is refused rather than merged. C#, Python, Java and Kotlin refuse rather
+   than merge (see [own-your-codegen.md](own-your-codegen.md)). Say which of those you mean whenever you
    say "hand edits survive".
 2. **Generated base class + your extension — a pattern, not a feature.** Generate a base
    and hand-write a subclass that overrides what you need. Nothing ships this: there is
@@ -149,11 +148,11 @@ This cleanly separates *owned + edited* (committed, stable, in review) from
 mechanical half with zero merge noise, and a small hand-owned half that's the only
 thing in git and the only thing anyone reads.
 
-## 7. Safety: never clobbering hand edits — by two different mechanisms
+## 7. Safety: never clobbering hand edits
 
 The backstop under every strategy above is that the generator will not silently eat your
-work. **How it knows is not the same on every port, and the `@generated` header is only
-half the story:**
+work. **Every port decides from the committed hash manifest, and the `@generated` header is
+not the decision:**
 
 - **TypeScript** decides from `.metaobjects/.gen-state/` — the snapshot body if this
   machine has one (three-way merge), otherwise the committed `.hashes.json` (byte-for-byte
@@ -167,13 +166,15 @@ half the story:**
   gen-state directory is in play, which is every CLI run**. One caller can reach the
   exception: an *embedder* driving the C# `CodegenRunner` or Python's `decide_and_write`
   directly and supplying no gen-state directory. With no state to reason from there is no
-  hash to compare, so both fall back to the JVM's rule — overwrite a file carrying the
+  hash to compare, so both fall back to a marker rule — overwrite a file carrying the
   marker, refuse one without it — and in that mode the header IS load-bearing, in both
   directions. Neither `dotnet meta gen` nor `metaobjects gen` can put you there: both
   always supply the directory. If you embed either runner, supply one too.
-- **Java and Kotlin** decide from the header: `GeneratedFileWriter` refuses any existing
-  file whose header carries no `GENERATED` marker, and **deleting that line is exactly
-  how you take ownership**. A refusal there is a warning, not a build failure.
+- **Java and Kotlin** decide from the same committed hash manifest since 8.1.0 (ADR-0059):
+  `GeneratedFileWriter` records what it writes, and an edited file is refused. The
+  `GENERATED` header token decides only for a file the manifest has no record of: one that
+  carries it is adopted as generated output, one that does not is refused. A refusal there
+  is a warning, not a build failure.
 
 Both are stated in full, per port, in
 [own-your-codegen.md](own-your-codegen.md).
