@@ -153,7 +153,7 @@ public class DemoTests
     [Fact]
     public void Build_time__verify_catches_a_drifted_template_variable()
     {
-        var fields = PayloadFieldTree.Build(Load(), "AuthorBrief");
+        var fields = PayloadFieldTree.Build(Load(), "acme::ai::AuthorBrief");
         var drift = Verify.Check("Hi {{displayName}}, you have {{notARealField}} posts.", fields);
         Assert.Contains(Verify.ERR_VAR_NOT_ON_PAYLOAD, drift.Select(e => e.Code));
     }

@@ -325,14 +325,10 @@ public class LlmTraceHelperGenerator extends MultiFileDirectGeneratorBase<MetaOb
     }
 
     /**
-     * Resolve a {@code @responseRef} to its {@code object.value} target under the
-     * ADR-0042 package-local contract (#228). Was a package-BLIND bare-name scan that,
-     * worse, reduced the REF ITSELF to its trailing {@code ::} segment before matching
-     * — the #219/#244 bare-tail-fallback pattern: an FQN {@code @responseRef} that
-     * failed an exact match would still bind ANY same-bare-named {@code object.value}
-     * in a WRONG package (first match, load-order-dependent), not just a genuinely
-     * bare ref. Now delegates to the shared {@link SpringNaming#resolveValueObjectRef}
-     * (FQN matches exactly, never a bare-tail fallback).
+     * Resolve a canonical {@code @responseRef} value to its {@code object.value} target
+     * exactly (ADR-0059 R7), through {@link SpringNaming#resolveValueObjectRef}. Prefer
+     * {@link SpringNaming#payloadTarget} on the template node, which returns the target the
+     * loader bound. {@code referrerPkg} is ignored.
      */
     protected static MetaObject resolveValueObject(MetaDataLoader loader, String ref, String referrerPkg) {
         return SpringNaming.resolveValueObjectRef(loader, ref, referrerPkg);

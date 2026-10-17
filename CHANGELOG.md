@@ -872,6 +872,14 @@ loaded, then rewrites each to its canonical spelling before the tree is frozen. 
   and reads the value object its `@objectRef` is bound to; `fieldDeclaringPackage` is removed. An
   ejected `entity`, `drizzle-schema`, `zod-validators`, `inferred-types` or `projection-decl`
   template needs a resync.
+- The string payload resolvers kept for owned generator copies resolve a canonical value
+  exactly: Java `SpringNaming.resolveObjectRef` / `resolveValueObjectRef` and the generators'
+  `resolveValueObject`, Kotlin `KotlinGenUtil.resolveObjectRef` / `resolveValueObjectRef`, C#
+  `ValueObjectNames.ResolveValueObject` and `PayloadFieldTree.Build(root, name)`, and Python
+  `resolve_payload_vo`. `pkg::Name` is exact, and `::Name` or a bare `Name` is the root-level
+  object. The referrer-package argument is ignored. A bare name no longer binds an object in
+  the referrer's package, and C# no longer falls back to a short-name scan, so pass a qualified
+  value or read the bound target (`payloadTarget`, `PayloadShapeOf`, `bound_payload_vo`).
 - Two conformance gates run in every port: each fixture loads to the same model from JSON and
   from YAML, and each `expected.json` loads and serializes back to itself.
 - TypeScript `referenceCandidatesFor` / `resolveRelationshipReference` and Python

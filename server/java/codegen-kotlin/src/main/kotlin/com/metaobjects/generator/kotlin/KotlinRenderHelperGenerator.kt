@@ -271,17 +271,9 @@ open class KotlinRenderHelperGenerator : MultiFileDirectGeneratorBase<MetaObject
     }
 
     /**
-     * Resolve a `field.object`'s `@objectRef` to its target `object.value` under the
-     * ADR-0042 package-local contract — mirroring the TS render-helper's
-     * `resolveObjectRef(root, ref, declaringFieldPkg)`:
-     *  - an **FQN** `@objectRef` (contains `::`) resolves EXACTLY on the value-object's
-     *    package-qualified name — never a bare-tail fallback binding a same-named
-     *    `object.value` in the WRONG package;
-     *  - a **bare** `@objectRef` resolves in the DECLARING field's package
-     *    (`<fieldPkg>::<ref>` — correct for a `field.object` inherited via extends across
-     *    packages), else a root-level `object.value`. Package-local BEFORE root-level;
-     *    no cross-package short-name fallback.
-     * Returns null when the field has no `@objectRef` or nothing resolves.
+     * The `object.value` a `field.object`'s `@objectRef` is bound to (ADR-0059 R7: the
+     * target the loader recorded, resolved in the package of the node that declared it).
+     * Returns null when the field has no `@objectRef` or it names no `object.value`.
      */
     private fun resolveNestedObjectRef(loader: MetaDataLoader, field: ObjectField): MetaObject? {
         // ADR-0059 R7: read the target the loader bound for the declaring field's @objectRef

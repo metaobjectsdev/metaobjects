@@ -75,15 +75,17 @@ public static class ValueObjectNames
     public static MetaObject? ResolveFieldRef(MetaData field, MetaData root) =>
         global::MetaObjects.NamingRefs.RefTarget(field, MetaObjects.Core.Field.FieldConstants.FIELD_ATTR_OBJECT_REF) as MetaObject;
 
-    /// <summary>The payload shape a <c>@payloadRef</c> names, or null. ADR-0042:
-    /// package-local — an FQN binds the exact package; a bare ref binds
-    /// <paramref name="referrerPkg"/> (the template's package) FIRST, else a root-level object.
+    /// <summary>The payload shape a CANONICAL <c>@payloadRef</c> value names, resolved exactly
+    /// (ADR-0059 R7), or null: <c>pkg::Name</c> binds that package's object, <c>::Name</c> and a
+    /// bare <c>Name</c> bind the root-level object; no short-name scan and no package applied.
+    /// Prefer <see cref="PayloadShapeOf"/> on the template node. <paramref name="referrerPkg"/> is
+    /// ignored: a canonical value is absolute.
     /// #210 — a template-level payload target is an <c>object.value</c> OR a SOURCELESS
     /// <c>object.projection</c> ("sourceless" per the #248 persistability contract: no
     /// declared/inherited <c>source.*</c> child; nested <c>@objectRef</c> targets stay
     /// value-only — <c>RenderHelperGenerator.ResolveNestedObjectRef</c>).</summary>
     public static MetaData? ResolveValueObject(MetaRoot root, string payloadRef, string referrerPkg = "") =>
-        AsPayloadShape(global::MetaObjects.NamingRefs.ResolveObjectRef(root, payloadRef, referrerPkg));
+        AsPayloadShape(global::MetaObjects.NamingRefs.LookupCanonical(root, payloadRef, TYPE_OBJECT));
 
     /// <summary>
     /// The payload shape the reference attribute <paramref name="attr"/> of <paramref name="tmpl"/>

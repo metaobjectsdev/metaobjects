@@ -405,12 +405,11 @@ public class SpringRenderHelperGenerator extends MultiFileDirectGeneratorBase<Me
     }
 
     /**
-     * Resolve {@code @payloadRef} to its {@code object.value} target (rejects entities)
-     * under the ADR-0042 package-local contract (#228) — was a package-BLIND bare-name
-     * scan (first match wins, load-order-dependent); now delegates to the shared
-     * {@link SpringNaming#resolveValueObjectRef}. Distinct from this file's OWN
-     * {@link #resolveNestedObjectRef} (the {@code @objectRef} field-tree walk), which was
-     * ALREADY package-local-correct.
+     * Resolve a canonical {@code @payloadRef} value to its {@code object.value} target
+     * exactly (ADR-0059 R7), through {@link SpringNaming#resolveValueObjectRef}. Prefer
+     * {@link SpringNaming#payloadTarget} on the template node, which returns the target the
+     * loader bound. {@code referrerPkg} is ignored. Distinct from this file's OWN
+     * {@link #resolveNestedObjectRef} (the {@code @objectRef} field-tree walk).
      */
     protected static MetaObject resolveValueObject(MetaDataLoader loader, String ref, String referrerPkg) {
         return SpringNaming.resolveValueObjectRef(loader, ref, referrerPkg);

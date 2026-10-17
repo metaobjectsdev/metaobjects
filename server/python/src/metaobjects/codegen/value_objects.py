@@ -38,7 +38,7 @@ from metaobjects.meta.core.object.object_constants import (
 )
 from metaobjects.meta.meta_data import MetaData
 from metaobjects.naming import package_of_resolution_key
-from metaobjects.naming_refs import ref_target, resolve_object_ref
+from metaobjects.naming_refs import lookup_canonical, ref_target
 from metaobjects.shared.base_types import TYPE_OBJECT, TYPE_SOURCE
 from metaobjects.shared.separators import PACKAGE_SEP
 
@@ -92,17 +92,15 @@ def bound_payload_vo(node: MetaData, attr_name: str) -> MetaObject | None:
 
 
 def resolve_payload_vo(root: MetaData, ref: str, referrer_pkg: str) -> MetaObject | None:
-    """Resolve a ``@payloadRef`` / ``@responseRef`` to its value-object shape, PACKAGE-LOCAL
-    (ADR-0042) — the SAME canonical ``resolve_object_ref`` contract the loader's own
-    ``_validate_templates`` pass uses to validate this exact ref: an FQN resolves exactly; a
-    bare ref resolves in the referrer's own package first, else a root-level object. Rejects
-    entities and sourced projections (#210).
+    """Resolve a CANONICAL ``@payloadRef`` / ``@responseRef`` value to its value-object shape,
+    exactly (ADR-0059 R7): ``pkg::Name`` binds that package's object, ``::Name`` and a bare
+    ``Name`` bind the root-level object. No short-name scan and no package applied; ``None``
+    when nothing matches exactly. Rejects entities and sourced projections (#210).
 
-    *referrer_pkg* is the REFERENCING TEMPLATE's effective package — pass
-    ``pkg_of(template)``, not the template's bare ``.package`` attr: for a loader-parsed tree
-    the two agree, but ``pkg_of`` is ALSO correct for hand-built test trees that set a
-    package only on an ancestor."""
-    obj = resolve_object_ref(root, ref, referrer_pkg)
+    Prefer :func:`bound_payload_vo` on the template node: it returns the target the loader
+    bound. *referrer_pkg* is ignored, because a canonical value is absolute; it is kept so
+    existing callers and owned generator copies keep working."""
+    obj = lookup_canonical(root, ref, TYPE_OBJECT) if ref else None
     if not isinstance(obj, MetaObject) or not is_legal_payload_target(obj):
         return None
     return obj

@@ -189,7 +189,7 @@ public sealed class ValueObjectReuseTests
             { "field.object": { "name": "fromBeta",  "@objectRef": "acme::beta::Note" } } ] } } ] } }
         """);
 
-        var tree = PayloadFieldTree.Build(root, "Digest");
+        var tree = PayloadFieldTree.Build(root, "acme::app::Digest");
 
         // FQN-exact: each ref binds to its OWN package's Note.
         Assert.Equal("alphaText", Assert.Single(Assert.Single(tree, f => f.Name == "fromAlpha").Fields!).Name);
@@ -197,22 +197,46 @@ public sealed class ValueObjectReuseTests
     }
 
     [Fact]
-    public void PayloadFieldTree_bare_ref_binds_the_referrers_own_package()
+    public void PayloadFieldTree_resolves_a_canonical_value_exactly()
     {
-        // #228 — two packages each declare their own `Report`; a bare ref resolved with a
-        // template's package binds THAT package's Report, never whichever loaded first.
+        // ADR-0059 R7 — a canonical value is absolute: `pkg::Name` binds that package's object,
+        // `::Name` and a bare `Name` bind the root-level one, and no referrer package is applied.
+        // Three objects share the short name `Report`, so a short-name scan or a package-local
+        // resolve would bind one of the packaged copies instead.
         var root = Load("""
         { "metadata.root": { "package": "acme::alpha", "children": [
           { "object.value": { "name": "Report", "children": [ { "field.string": { "name": "alphaVal" } } ] } } ] } }
         """, """
         { "metadata.root": { "package": "acme::beta", "children": [
           { "object.value": { "name": "Report", "children": [ { "field.string": { "name": "betaVal" } } ] } } ] } }
+        """, """
+        { "metadata.root": { "children": [
+          { "object.value": { "name": "Report", "children": [ { "field.string": { "name": "rootVal" } } ] } } ] } }
         """);
 
-        Assert.Equal("alphaVal", Assert.Single(PayloadFieldTree.Build(root, "Report", "acme::alpha")).Name);
-        Assert.Equal("betaVal", Assert.Single(PayloadFieldTree.Build(root, "Report", "acme::beta")).Name);
-        // No referrer package keeps the permissive global-scan fallback.
-        Assert.Single(PayloadFieldTree.Build(root, "Report"));
+        Assert.Equal("alphaVal", Assert.Single(PayloadFieldTree.Build(root, "acme::alpha::Report")).Name);
+        Assert.Equal("betaVal", Assert.Single(PayloadFieldTree.Build(root, "acme::beta::Report")).Name);
+        Assert.Equal("rootVal", Assert.Single(PayloadFieldTree.Build(root, "::Report")).Name);
+        Assert.Equal("rootVal", Assert.Single(PayloadFieldTree.Build(root, "Report", "acme::alpha")).Name);
+        Assert.Empty(PayloadFieldTree.Build(root, "acme::gamma::Report"));
+
+        Assert.Equal("rootVal", ValueObjectNames.ResolveValueObject(root, "::Report")!.Children().Single().Name);
+        Assert.Equal("betaVal", ValueObjectNames.ResolveValueObject(root, "acme::beta::Report", "acme::alpha")!.Children().Single().Name);
+    }
+
+    [Fact]
+    public void PayloadFieldTree_bare_canonical_value_does_not_bind_a_packaged_object()
+    {
+        // A bare canonical value names the root-level object; with none there, it names nothing,
+        // even when exactly one packaged object of that short name exists.
+        var root = Load("""
+        { "metadata.root": { "package": "acme::alpha", "children": [
+          { "object.value": { "name": "Report", "children": [ { "field.string": { "name": "alphaVal" } } ] } } ] } }
+        """);
+
+        Assert.Empty(PayloadFieldTree.Build(root, "Report"));
+        Assert.Empty(PayloadFieldTree.Build(root, "Report", "acme::alpha"));
+        Assert.Null(ValueObjectNames.ResolveValueObject(root, "Report", "acme::alpha"));
     }
 
     private static Assembly Compile(IEnumerable<string> sources)

@@ -65,56 +65,29 @@ public final class SpringNaming {
     }
 
     /**
-     * ADR-0042 — resolve a metadata OBJECT reference (bare or FQN) to a {@link MetaObject}
-     * under the package-local contract, or {@code null} when nothing matches:
-     * <ul>
-     *   <li><b>FQN</b> {@code ref} (contains {@code "::"}) → EXACT match on
-     *       {@link MetaData#getName()}. No bare-tail fallback, so an FQN pointing at one
-     *       package never binds a same-named object in another.</li>
-     *   <li><b>bare</b> {@code ref} (no {@code "::"}) → the referrer's OWN package
-     *       ({@code <referrerPkg>::<ref>}) first, else a root-level (unpackaged) object
-     *       whose name IS {@code ref}. Package-local BEFORE root-level; no cross-package
-     *       short-name scan, no bare-tail fallback.</li>
-     * </ul>
-     * Mirrors the loader's own {@code ValidationPhase#resolveRootObject} (the same contract
-     * the TS/Python/C# ports' canonical resolvers implement), so a codegen-time
-     * {@code @payloadRef}/{@code @responseRef} resolution agrees with the loader's own
-     * validation of the same ref under a cross-package short-name collision.
+     * ADR-0059 R7 — resolve a CANONICAL object reference exactly, or {@code null} when
+     * nothing matches: {@code pkg::Name} binds that package's object, {@code ::Name} and a
+     * bare {@code Name} bind the root-level object. No short-name scan and no package is
+     * applied, so a value read from a loaded model means the same thing wherever it is read.
+     * Prefer {@link #payloadTarget} (or {@code References.refTarget}) on the node that
+     * carries the reference: it returns the target the loader bound.
      *
-     * @param referrerPkg the effective package of the node carrying the ref ("" for root-level)
+     * @param referrerPkg ignored; a canonical value is absolute. Kept so existing callers
+     *                    and owned generator copies compile unchanged.
      */
     public static MetaObject resolveObjectRef(MetaDataLoader loader, String ref, String referrerPkg) {
-        if (ref == null) return null;
-        String pkg = referrerPkg == null ? "" : referrerPkg;
-        if (ref.contains("::")) {
-            for (MetaObject obj : loader.getMetaObjects()) {
-                if (ref.equals(obj.getName())) return obj;
-            }
-            return null;
-        }
-        String localKey = pkg.isEmpty() ? ref : pkg + "::" + ref;
-        MetaObject own = null;
-        MetaObject rootLevel = null;
-        for (MetaObject obj : loader.getMetaObjects()) {
-            String key = obj.getName();
-            if (key == null) continue;
-            if (key.equals(localKey)) own = obj;
-            if (key.equals(ref)) rootLevel = obj;
-        }
-        if (own != null) return own;
-        return localKey.equals(ref) ? null : rootLevel;
+        if (ref == null || ref.isEmpty()) return null;
+        return com.metaobjects.loader.References.lookupCanonical(loader.getRoot(), ref);
     }
 
     /**
-     * Resolve {@code ref} to its payload-shape target under the same ADR-0042
-     * package-local contract as {@link #resolveObjectRef}. #210 — a template-level
-     * payload target is an {@code object.value} OR a SOURCELESS
-     * {@code object.projection} (rejects entities and sourced projections; the
-     * loader enforces the same set). The shared home for every
-     * {@code @payloadRef}/{@code @responseRef} resolution in this package — callers
-     * derive {@code referrerPkg} via
-     * {@code MetaDataUtil.findPackageForMetaData(referrerNode)} (walks parents, so it
-     * works for both a root-level template and a nested {@code template.prompt}).
+     * Resolve the canonical {@code ref} to its payload-shape target exactly, as
+     * {@link #resolveObjectRef} does. #210 — a template-level payload target is an
+     * {@code object.value} OR a SOURCELESS {@code object.projection} (rejects entities and
+     * sourced projections; the loader enforces the same set). Prefer {@link #payloadTarget}
+     * on the template node.
+     *
+     * @param referrerPkg ignored; a canonical value is absolute.
      */
     public static MetaObject resolveValueObjectRef(MetaDataLoader loader, String ref, String referrerPkg) {
         MetaObject obj = resolveObjectRef(loader, ref, referrerPkg);

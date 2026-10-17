@@ -32,8 +32,8 @@ that:
 Skips (no helper emitted) when the entity is abstract, does not derive from
 ``LlmCallBase``, has no nested ``template.prompt``, or that prompt carries NEITHER
 ``@responseRef`` NOR ``@payloadRef`` (both gate the helper — matching the TS
-reference). The response VO is resolved via ``resolve_payload_vo`` (short-name OR
-FQN); a non-``object.value`` target is a hard generator error (matching Java).
+reference). The response VO is the target the loader bound (``bound_payload_vo``);
+a non-``object.value`` target is a hard generator error (matching Java).
 
 STI/TPH discriminator handling is DEFERRED (matching the Java port's Slice 2 — a
 plain trace entity is the target).

@@ -419,16 +419,43 @@ def test_snake_case_pascal_to_snake() -> None:
     assert _snake_case("Alpha") == "alpha"
 
 
-def test_resolve_payload_vo_matches_short_and_fully_qualified_ref() -> None:
-    """FR-026 expands @payloadRef to a fully-qualified ``a::b::Name`` while the
-    object.value child still carries the short ``name`` — both forms must resolve.
+def test_resolve_payload_vo_resolves_a_canonical_value_exactly() -> None:
+    """ADR-0059 R7: a canonical value is absolute. ``pkg::Name`` binds that package's
+    object, ``::Name`` and a bare ``Name`` bind the root-level one, and the referrer
+    package is never applied. Three value objects share the short name ``Report``, so a
+    short-name scan or a package-local resolve would bind a packaged copy instead."""
+    import json
 
-    #228 fix round 2: ``resolve_payload_vo`` now requires an explicit
-    ``referrer_pkg`` (package-local, ADR-0042) — a SHORT (bare) ref resolves
-    against the referrer's OWN package (here ``"acme::blog"``, the SAME package
-    ``WelcomePayload`` is declared in — the common same-package case this test
-    exercises); an FQN ref resolves exactly regardless of the referrer package
-    (passed ``""`` below to prove that)."""
+    from metaobjects import InMemoryStringSource, MetaDataFormat, MetaDataLoader
+
+    def doc(pkg: str | None, field: str) -> InMemoryStringSource:
+        body: dict = {"children": [
+            {"object.value": {"name": "Report", "children": [{"field.string": {"name": field}}]}},
+        ]}
+        if pkg is not None:
+            body["package"] = pkg
+        return InMemoryStringSource(
+            json.dumps({"metadata.root": body}), id=f"{field}.json", format=MetaDataFormat.JSON
+        )
+
+    result = MetaDataLoader().load([doc("acme::alpha", "alphaVal"), doc("acme::beta", "betaVal"), doc(None, "rootVal")])
+    assert result.errors == []
+    root = result.root
+
+    def field_of(ref: str, referrer_pkg: str) -> str | None:
+        vo = resolve_payload_vo(root, ref, referrer_pkg)
+        return None if vo is None else vo.children()[0].name
+
+    assert field_of("acme::alpha::Report", "") == "alphaVal"
+    assert field_of("acme::beta::Report", "acme::alpha") == "betaVal"
+    assert field_of("::Report", "acme::alpha") == "rootVal"
+    assert field_of("Report", "acme::alpha") == "rootVal"
+    assert field_of("acme::gamma::Report", "") is None
+
+
+def test_resolve_payload_vo_bare_value_does_not_bind_a_packaged_object() -> None:
+    """A bare canonical value names the root-level object; with none there it names
+    nothing, even when exactly one packaged object of that short name exists."""
     import json
 
     from metaobjects import InMemoryStringSource, MetaDataFormat, MetaDataLoader
@@ -442,6 +469,5 @@ def test_resolve_payload_vo_matches_short_and_fully_qualified_ref() -> None:
             id="m.json", format=MetaDataFormat.JSON,
         )
     ]).root
-    assert resolve_payload_vo(root, "WelcomePayload", "acme::blog") is not None  # short ref, same-package referrer
-    assert resolve_payload_vo(root, "acme::blog::WelcomePayload", "") is not None  # FQN ref
-    assert resolve_payload_vo(root, "acme::blog::Missing", "") is None
+    assert resolve_payload_vo(root, "acme::blog::WelcomePayload", "") is not None
+    assert resolve_payload_vo(root, "WelcomePayload", "acme::blog") is None
