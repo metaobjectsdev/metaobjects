@@ -267,15 +267,16 @@ legacy_exclude_notice() {
   [ -n "$ex" ] && [ -f "$ex" ] || return 0
   stale="$(written_exclude_paths | sort -u | grep -xF -f <(exclude_outside_lines "$ex") || true)"
   [ -n "$stale" ] || return 0
-  warn "$ex holds entries outside the managed block that name files this script writes"
-  warn "(left by an earlier version of it); unlink never removes a line it did not put in its block:"
+  warn "$ex holds entries outside the managed block that name files this script writes."
+  warn "They may have been left by an earlier version of this script; keep any you added yourself."
+  warn "unlink never removes a line it did not put in its block:"
   cmd="grep -vxF"
   while IFS= read -r p; do
     printf '    %s\n' "$p"
     cmd+=" -e $(printf '%q' "$p")"
   done <<< "$stale"
   say "once no work tree of this clone is linked, remove them with:"
-  say "  $cmd $(printf '%q' "$ex") > $(printf '%q' "$ex.tmp") && mv $(printf '%q' "$ex.tmp") $(printf '%q' "$ex")"
+  say "  { $cmd $(printf '%q' "$ex") || [ \$? -eq 1 ]; } > $(printf '%q' "$ex.tmp") && mv $(printf '%q' "$ex.tmp") $(printf '%q' "$ex")"
 }
 
 # Keep an untracked managed file out of commits without touching the shared .gitignore or any

@@ -173,12 +173,31 @@ check "link names the legacy line" 'grep -q "entries outside the managed block" 
 unlink_project "$legacy"
 check "unlink names the legacy line" 'grep -q "entries outside the managed block" "$WORK/out" && grep -qx "    .npmrc" "$WORK/out"'
 check "unlink leaves the legacy line in place" 'grep -qxF .npmrc "$lcommon/info/exclude"'
-cleanup_cmd="$(sed -n 's/^    grep -vxF /grep -vxF /p' "$WORK/out")"
+cleanup_command() { sed -n 's/^    { grep -vxF /{ grep -vxF /p' "$WORK/out"; }
+cleanup_cmd="$(cleanup_command)"
 check "the notice carries one cleanup command" '[ "$(printf "%s\n" "$cleanup_cmd" | grep -c .)" = 1 ]'
 eval "$cleanup_cmd"
 check "the printed cleanup command removes the legacy line" '! grep -qxF .npmrc "$lcommon/info/exclude"'
 unlink_project "$legacy"
 check "with no legacy line left, unlink prints no notice" '! grep -q "entries outside the managed block" "$WORK/out"'
+
+# A clone made without git's templates had its exclude file created by the earlier script, so
+# the legacy line is all it holds. The printed command must still remove it: `grep -v` that
+# selects nothing exits 1, which is not a failure here.
+bare="$WORK/bare-legacy"
+git init -q "$bare"
+cp "$WORK/main/package.json" "$bare/package.json"
+git -C "$bare" add -A && git -C "$bare" commit -q -m init
+bcommon="$(git -C "$bare" rev-parse --git-common-dir)"
+case "$bcommon" in /*) ;; *) bcommon="$bare/$bcommon" ;; esac
+printf '.npmrc\n' > "$bcommon/info/exclude"
+link "$bare" || fail "link over an exclude file holding only the legacy line failed: $(tail -5 "$WORK/out")"
+unlink_project "$bare"
+cleanup_cmd="$(cleanup_command)"
+check "the notice names a cleanup command when the legacy line is the whole file" '[ -n "$cleanup_cmd" ]'
+eval "$cleanup_cmd" || fail "the printed cleanup command failed on an exclude file holding only the legacy line"
+check "the cleanup command removes a legacy line that is the whole file" '! grep -qxF .npmrc "$bcommon/info/exclude"'
+check "the cleanup command leaves no temporary file behind" '[ ! -e "$bcommon/info/exclude.tmp" ]'
 
 # The assertion: an .npmrc git does not ignore makes link fail.
 git -C "$WORK/main" worktree add -q "$WORK/wt2" -b linked2

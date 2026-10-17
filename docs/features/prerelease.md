@@ -177,7 +177,8 @@ unlinked too. A clone linked by an earlier version of the script holds those ent
 lines outside any block, which `unlink` cannot tell from a line a user added. `link` and
 `unlink` name such lines and print the one command that removes them, and leave them in
 place; `link` does not add a second copy inside the block while one is there. Run that
-command once no worktree of the clone is linked. Files that *are* tracked by definition
+command once no worktree of the clone is linked, after taking out of it any line you added
+yourself. Files that *are* tracked by definition
 (`pyproject.toml`, `pom.xml`) get a loud warning instead — there is no way to make an edit
 to a tracked file uncommittable, which is precisely why the detector in §5 exists.
 
