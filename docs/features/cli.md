@@ -232,7 +232,7 @@ one-time fix.
 |---|---|---|
 | `--baseline=default` | all | the above: refuse what cannot be proved to be generated output |
 | `--baseline=adopt` | TS · Python · C# | record the files you HAVE as the merge base and **write nothing** |
-| `--baseline=fresh` | TS only | overwrite the refused files from fresh output and re-baseline (**discards** hand edits) |
+| `--baseline=fresh` | TS only | overwrite the refused files from fresh output and re-baseline (**discards** hand edits). A local snapshot body for a path the manifest has no record of is ignored, not merged against, so stale content from an earlier checkout is not kept as a hand edit |
 
 **`adopt` exists because the refusal's own remedy was unreachable.** It told you to commit
 `.hashes.json` — but nothing writes a manifest until a `gen` succeeds, and a run where
