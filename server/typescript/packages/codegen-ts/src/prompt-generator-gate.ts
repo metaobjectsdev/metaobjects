@@ -40,16 +40,16 @@ const PROMPT_GENERATOR_NAMES: ReadonlySet<string> = new Set([
 export function warnMissingPromptGenerators(
   root: MetaData,
   generators: readonly Generator[],
-  isDocsTarget: (g: Generator) => boolean,
+  writesDocs: (g: Generator) => boolean,
   warn: (msg: string) => void,
 ): void {
   // A run that lists no generator at all, or where every listed generator writes
-  // documentation (its RESOLVED output target — the same per-generator signal
-  // runner.ts's targetOf() uses to place output, not a name match), emitted no code of
-  // any kind. There is nothing for a prompt generator to be missing FROM: telling such a
-  // run to add promptRender() is wrong advice (it would add TypeScript render code to a
-  // project that only writes documentation), so the gate does not fire.
-  if (generators.length === 0 || generators.every(isDocsTarget)) return;
+  // documentation (runner.ts decides that from the generator's registry layer, so a docs
+  // generator on a custom target still counts), emitted no code of any kind. There is
+  // nothing for a prompt generator to be missing FROM: telling such a run to add
+  // promptRender() is wrong advice (it would add TypeScript render code to a project that
+  // only writes documentation), so the gate does not fire.
+  if (generators.length === 0 || generators.every(writesDocs)) return;
   if (generators.some((g) => PROMPT_GENERATOR_NAMES.has(g.name))) return;
 
   // ADR-0039: resolving children — a template may arrive through an overlay or extends.

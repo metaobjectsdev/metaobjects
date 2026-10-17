@@ -129,3 +129,37 @@ describe("documentation generators under meta gen (ADR-0034 Amendment 9)", () =>
     expect(DEFAULT_DOCS_DIR).toBe("./docs/generated");
   });
 });
+
+// R2: `agent/ui.md` is written when the run has a client UI generator or the config sets
+// `includeUiTier: true`. Otherwise it is skipped, and the skip is never silent unless the
+// config says there is no UI anywhere (`includeUiTier: false`), which a server-only
+// project needs so it is not advised on every run.
+describe("agent/ui.md and the includeUiTier key under meta gen", () => {
+  async function agentRun(includeUiTier?: boolean): Promise<{ written: boolean; advised: string[] }> {
+    const result = await runGen({
+      config: { ...base([agentDocsFile()]), ...(includeUiTier !== undefined && { includeUiTier }) },
+      metadata: root,
+      projectRoot: tmp,
+    });
+    return {
+      written: filesUnder(join(tmp, "docs")).includes("agent/ui.md"),
+      advised: result.warnings.filter((w) => w.includes("ui.md not written")),
+    };
+  }
+
+  test("unset with no UI generator: the page is skipped and the run says so", async () => {
+    const { written, advised } = await agentRun();
+    expect(written).toBe(false);
+    expect(advised).toHaveLength(1);
+    expect(advised[0]).toContain("includeUiTier: true");
+    expect(advised[0]).toContain("includeUiTier: false");
+  });
+
+  test("true: the page is written and nothing is advised", async () => {
+    expect(await agentRun(true)).toEqual({ written: true, advised: [] });
+  });
+
+  test("false: no page, and nothing is advised", async () => {
+    expect(await agentRun(false)).toEqual({ written: false, advised: [] });
+  });
+});

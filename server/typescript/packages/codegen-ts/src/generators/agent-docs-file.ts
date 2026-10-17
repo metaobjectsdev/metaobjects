@@ -314,14 +314,16 @@ export const agentDocsFile = function agentDocsFile(opts?: AgentDocsFileOpts): G
         if (ui !== "") {
           if (ctx.config.includeUiTier === true) {
             files.push({ path: `${dir}/ui.md`, content: ui });
-          } else {
+          } else if (ctx.config.includeUiTierExplicit !== true) {
             // The model HAS a UI surface (renderAgentUiPage returned content) but this
-            // run has no client UI generator and no `includeUiTier: true` override, so the
-            // page is skipped. Before this, that was silent: `meta gen` exited 0 and listed
-            // only the pages it wrote, and a docs-only project (its own config generates no
-            // UI; a SEPARATE config does) lost `agent/ui.md` with no signal at all.
+            // run has no client UI generator and the config left `includeUiTier` unset, so
+            // the page is skipped. Before this, that was silent: `meta gen` exited 0 and
+            // listed only the pages it wrote, and a docs-only project (its own config
+            // generates no UI; a SEPARATE config does) lost `agent/ui.md` with no signal at
+            // all. An explicit `includeUiTier: false` says there is no UI anywhere, so a
+            // server-only project has a way to say so and is not advised on every run.
             ctx.warn(
-              `${dir}/ui.md not written: no client UI generator in this run; set includeUiTier: true if another config generates the UI.`,
+              `${dir}/ui.md not written: no client UI generator in this run; set includeUiTier: true if another config generates the UI, or includeUiTier: false if there is no UI.`,
             );
           }
         }

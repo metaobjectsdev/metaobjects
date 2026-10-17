@@ -9,11 +9,13 @@
 #     stray is written into the work tree, and `link` refuses to report success while a written
 #     .npmrc (which can hold a registry credential) is not ignored. The exclude entries `link`
 #     adds live in one managed block, so `unlink` removes exactly that block (and nothing a
-#     user put in the file by hand), and a repeated `link` does not duplicate it.
+#     user put in the file by hand), and a repeated `link` does not duplicate it. Unlinking one
+#     worktree keeps an entry another linked worktree of the same clone still needs.
 # R3  a link/unlink round trip leaves a pom.xml that lacked a trailing newline byte-identical
 #     (the previous awk-based rewrites unconditionally added one), and `link`/`unlink` report
 #     "repinned ... in <file>" only for a pom whose own text actually changed — not a module
-#     pom that is pinned entirely through its parent's ${metaobjects.version} property.
+#     pom that is pinned entirely through its parent's ${metaobjects.version} property, nor for a
+#     literal-pinned pom that a second `link` at the same version leaves unchanged.
 # P4  a polyglot repository with one project per port and no root project files: every Maven
 #     and Python project is linked and repinned, and the .NET local tool manifest too.
 set -euo pipefail
@@ -105,11 +107,28 @@ check "the exclude entry still appears exactly once" '[ "$(grep -cxF .npmrc "$co
 check "the managed block still appears exactly once (one BEGIN line, one END line)" \
   '[ "$(grep -c "metaobjects prerelease (managed)" "$common/info/exclude")" = 2 ]'
 
-# D11: `unlink` must remove exactly the block `link` added, and nothing a user put in the
-# shared exclude file by hand.
+unlink_project() {  # unlink_project <project> -> runs unlink, output in $WORK/out
+  MO_REGISTRY_BASE="http://127.0.0.1:$PORT" MO_REGISTRY_OWNER=owner MO_REGISTRY_TOKEN="" \
+    bash "$LINK" unlink --project "$1" --to 1.0.13 >"$WORK/out" 2>&1 || true
+}
+
+# D11: the exclude file is shared by every work tree of the clone. Unlinking one work tree
+# while another is still linked must keep the entry the other one's .npmrc (which can hold a
+# registry credential) relies on.
+git -C "$WORK/main" worktree add -q "$WORK/wt3" -b linked3
+if link "$WORK/wt3"; then pass "link succeeds in a second linked worktree"; else fail "link in wt3 failed: $(tail -5 "$WORK/out")"; fi
+unlink_project "$WORK/wt"
+check "unlinking one worktree removes its own .npmrc" '[ ! -f "$WORK/wt/.npmrc" ]'
+check "the other worktree's .npmrc is still written" '[ -f "$WORK/wt3/.npmrc" ]'
+check "the other worktree's .npmrc is still ignored by git" 'git -C "$WORK/wt3" check-ignore -q -- .npmrc'
+check "git status in the other worktree shows no .npmrc" '! git -C "$WORK/wt3" status --porcelain | grep -q "\.npmrc"'
+check "the entry stays once, inside the managed block" \
+  '[ "$(grep -cxF .npmrc "$common/info/exclude")" = 1 ] && [ "$(grep -c "metaobjects prerelease (managed)" "$common/info/exclude")" = 2 ]'
+
+# D11: `unlink` of the last linked work tree must remove exactly the block `link` added, and
+# nothing a user put in the shared exclude file by hand.
 printf 'a-users-own-rule\n' >> "$common/info/exclude"
-MO_REGISTRY_BASE="http://127.0.0.1:$PORT" MO_REGISTRY_OWNER=owner MO_REGISTRY_TOKEN="" \
-  bash "$LINK" unlink --project "$WORK/wt" --to 1.0.13 >"$WORK/out" 2>&1 || true
+unlink_project "$WORK/wt3"
 check "unlink removes the managed block from the shared exclude file" '! grep -q "metaobjects prerelease (managed)" "$common/info/exclude"'
 check "unlink removes the .npmrc entry it added" '! grep -qxF .npmrc "$common/info/exclude"'
 check "unlink leaves a user's own exclude rule alone" 'grep -qxF a-users-own-rule "$common/info/exclude"'
@@ -244,6 +263,11 @@ check "every metaobjects version in the pom is repinned, a plugin's after its co
 check "the package reference is repinned" 'grep -q "Version=\"1.1.0-rc.9\"" "$poly/ports/csharp/App.csproj"'
 check "the local tool manifest is repinned" 'grep -q "\"metaobjects.cli\": { \"version\": \"1.1.0-rc.9\"" "$poly/.config/dotnet-tools.json"'
 check "another tool in the manifest is left alone" 'grep -q "\"dotnet-ef\": { \"version\": \"8.0.0\"" "$poly/.config/dotnet-tools.json"'
+# R3: a second `link` at the same version changes no pom, so it reports no repin, a pom pinned
+# by a literal <version> included.
+if link "$poly"; then pass "a second polyglot link at the same version succeeds"; else fail "second polyglot link failed: $(tail -5 "$WORK/out")"; fi
+check "a second link at the same version reports no literal pom as repinned" \
+  '! grep -q "in ports/java/module/pom.xml" "$WORK/out" && ! grep -q "in ports/kotlin/pom.xml" "$WORK/out"'
 
 MO_REGISTRY_BASE="http://127.0.0.1:$PORT" MO_REGISTRY_OWNER=owner MO_REGISTRY_TOKEN="" \
   bash "$LINK" unlink --project "$poly" --to 1.0.13 >"$WORK/out" 2>&1 || true

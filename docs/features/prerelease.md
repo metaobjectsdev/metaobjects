@@ -171,7 +171,9 @@ the project's `.git/info/exclude`, which is local and not committed — in a lin
 worktree this is the *shared* exclude file in the clone's common dir (git has no
 per-worktree exclude), so the paths `link` adds there live inside their own managed block
 too: `unlink` removes exactly that block, never a line a user added to the file by hand,
-and a repeated `link` does not duplicate it. Files that *are* tracked by definition
+and a repeated `link` does not duplicate it. An entry that another worktree of the same
+clone still needs, because its own managed file is still linked, stays until that worktree
+is unlinked too. Files that *are* tracked by definition
 (`pyproject.toml`, `pom.xml`) get a loud warning instead — there is no way to make an edit
 to a tracked file uncommittable, which is precisely why the detector in §5 exists.
 

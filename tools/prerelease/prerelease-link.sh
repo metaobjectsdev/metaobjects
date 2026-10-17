@@ -237,7 +237,7 @@ exclude_block_lines() {  # exclude_block_lines <file>
 # and a repeated `link` is idempotent — a path already in the block is left alone no matter
 # how many install roots or `link` runs ask for it.
 local_exclude() {  # local_exclude <relative-path>
-  local rel="$1" ex prefix line linesfile
+  local rel="$1" ex prefix line
   ex="$(exclude_file)"
   [ -n "$ex" ] || return 0
   # Exclude patterns are relative to the repository root, and $PROJECT may be a subdirectory.
@@ -246,13 +246,34 @@ local_exclude() {  # local_exclude <relative-path>
   [ -f "$ex" ] || : > "$ex"
   line="$prefix$rel"
   exclude_block_lines "$ex" | grep -qxF "$line" && return 0
-  linesfile="$(mktemp)"
-  { exclude_block_lines "$ex"; printf '%s\n' "$line"; } > "$linesfile"
+  set_exclude_block "$ex" "$(exclude_block_lines "$ex"; printf '%s\n' "$line")"
+}
+
+# Replace the managed block in the exclude file with these lines, one per line; with none,
+# the block is removed and nothing is written in its place.
+set_exclude_block() {  # set_exclude_block <exclude-file> <lines>
+  local ex="$1" lines="$2"
   strip_block "$ex" "$BEGIN" "$END"
+  [ -n "$lines" ] || return 0
   { [ -s "$ex" ] && { cat "$ex"; ends_in_newline "$ex" || echo; }
-    echo "$BEGIN"; cat "$linesfile"; echo "$END"
+    echo "$BEGIN"; printf '%s\n' "$lines"; echo "$END"
   } > "$ex.tmp" && mv "$ex.tmp" "$ex"
-  rm -f "$linesfile"
+}
+
+# The OTHER work trees of this clone, one path per line. They read the same exclude file, so
+# an entry one of them still needs must outlive this work tree's `unlink`.
+other_worktrees() {
+  local self
+  self="$(git -C "$PROJECT" rev-parse --show-toplevel 2>/dev/null)" || return 0
+  git -C "$PROJECT" worktree list --porcelain 2>/dev/null | sed -n 's/^worktree //p' | grep -vxF -- "$self" || true
+}
+
+# Whether a file is one `link` wrote and has not removed: it carries a managed marker, or, for
+# .mvn/maven.config, which has no room for one, the settings.xml written beside it does.
+is_managed_file() {  # is_managed_file <path>
+  local f="$1"
+  case "$f" in */.mvn/maven.config) f="${f%maven.config}settings.xml" ;; esac
+  [ -f "$f" ] && grep -qF -e "$BEGIN" -e "$XBEGIN" "$f"
 }
 
 # Refuse to report success while a file this script wrote could still be committed. The managed
@@ -437,7 +458,8 @@ repin_pom() {  # repin_pom <pom.xml> <maven version>
   # own property-reference guard, just below, means it never gsubs anything — `rep` is the
   # actual substitution count, not "did this pom mention com.metaobjects at all", so "repinned"
   # is reported only when something really changed (a module pinned entirely through its
-  # parent's property was once reported as repinned with nothing in the file touched).
+  # parent's property was once reported as repinned with nothing in the file touched). A line
+  # already at $mv is not counted either: the substitution matches it but leaves it unchanged.
   local had rep
   had="$(had_newline "$pom")"
   rep="$(awk -v grp="$MVN_GROUP" -v ver="$mv" '
@@ -453,7 +475,9 @@ repin_pom() {  # repin_pom <pom.xml> <maven version>
           # indirection the property branch above preserves: rewriting it to a literal would
           # cut the module off from its parent, and unlink would never put it back.
           if (ours[sp] && vline[sp] && L[vline[sp]] !~ /<version>[[:space:]]*\$\{/) {
-            if (gsub(/<version>[^<]*<\/version>/, "<version>" ver "</version>", L[vline[sp]])) rep++
+            was = L[vline[sp]]
+            gsub(/<version>[^<]*<\/version>/, "<version>" ver "</version>", L[vline[sp]])
+            if (L[vline[sp]] != was) rep++
           }
           sp--; continue
         }
@@ -828,9 +852,20 @@ run_detector() {
 # ── unlink ────────────────────────────────────────────────────────────────────────────
 unlink_all() {
   # The git-exclude block link() wrote — removed by identity, same as every other
-  # managed block, so a line a user added to info/exclude by hand survives untouched.
-  local ex; ex="$(exclude_file)"
-  [ -n "$ex" ] && strip_block "$ex" "$BEGIN" "$END"
+  # managed block, so a line a user added to info/exclude by hand survives untouched. The
+  # file is shared by every work tree of the clone, so an entry another work tree's managed
+  # file still needs stays: dropping it would let `git add -A` there stage an .npmrc that can
+  # hold a registry credential.
+  local ex line wt keep=""
+  ex="$(exclude_file)"
+  if [ -n "$ex" ]; then
+    while IFS= read -r line; do
+      while IFS= read -r wt; do
+        if is_managed_file "$wt/$line"; then keep+="$line"$'\n'; break; fi
+      done < <(other_worktrees)
+    done < <(exclude_block_lines "$ex")
+    set_exclude_block "$ex" "${keep%$'\n'}"
+  fi
   # Every root `link` could have written to, or a sub-project keeps a managed block
   # pointing at a registry that will not serve it once the pre-release is gone.
   local root
