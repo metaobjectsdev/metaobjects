@@ -126,12 +126,17 @@ export function parseSqliteChecks(createSql: string | null | undefined): CheckDe
   // constraint. Positions are 1:1, so the balanced expression is sliced from the
   // ORIGINAL (with its real quotes intact).
   const masked = maskCommentsAndStrings(createSql);
-  // An optional `CONSTRAINT <name>` prefix then `CHECK (`. Named → group 1/2;
+  // An optional `CONSTRAINT <name>` prefix then `CHECK (`. Named → group 1-4;
   // bare inline `CHECK (` → name defaults to "" (anonymous, expression-matched).
-  const re = /(?:\bCONSTRAINT\s+(?:"((?:[^"]|"")+)"|([A-Za-z_][A-Za-z0-9_$]*))\s+)?\bCHECK\s*\(/gi;
+  // SQLite accepts four identifier quotings: "name", `name` (what Drizzle-written migrations
+  // use), [name] and a bare word. A quoting not read here leaves the name empty, and the
+  // declared check then never matches its own stored twin: a false add/drop pair.
+  const re = /(?:\bCONSTRAINT\s+(?:"((?:[^"]|"")+)"|`((?:[^`]|``)+)`|\[([^\]]+)\]|([A-Za-z_][A-Za-z0-9_$]*))\s+)?\bCHECK\s*\(/gi;
   let m: RegExpExecArray | null;
   while ((m = re.exec(masked)) !== null) {
-    const name = m[1] !== undefined ? m[1].replace(/""/g, '"') : (m[2] ?? "");
+    const name = m[1] !== undefined ? m[1].replace(/""/g, '"')
+      : m[2] !== undefined ? m[2].replace(/``/g, "`")
+      : (m[3] ?? m[4] ?? "");
     const open = re.lastIndex - 1; // position of the "(" the regex just consumed
     let depth = 0;
     let inString = false;

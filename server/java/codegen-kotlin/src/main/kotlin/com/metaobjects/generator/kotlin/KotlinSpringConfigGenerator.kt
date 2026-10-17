@@ -4,6 +4,7 @@ package com.metaobjects.generator.kotlin
 // com.metaobjects.generator.kotlin when this generator is copied out via
 // `mvn metaobjects:eject` and its own package is renamed — an explicit import, not
 // same-package bare-name resolution, is what keeps the ejected copy compiling.
+import com.metaobjects.generator.kotlin.ConfiguredRequires
 import com.metaobjects.generator.kotlin.ExposedApi
 import com.metaobjects.generator.kotlin.KotlinPoetFileWriter
 
@@ -49,7 +50,15 @@ import java.nio.file.Paths
  *       (only emits the {@code Database.connect} wiring)</li>
  * </ul>
  */
-open class KotlinSpringConfigGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
+open class KotlinSpringConfigGenerator : MultiFileDirectGeneratorBase<MetaObject>(), ConfiguredRequires {
+
+    /** `validatorEnabled` (default `true`); the one reading [execute] and [configuredRequires] share. */
+    private fun validatorEnabled(): Boolean =
+        (getArg("validatorEnabled", "true") ?: "true").equals("true", ignoreCase = true)
+
+    /** The generated validator is referenced only when the startup hook is emitted. */
+    override fun configuredRequires(): List<String> =
+        if (validatorEnabled()) listOf("validator") else emptyList()
 
     /** See [KotlinExposedTableGenerator.exposedApi] — same arg, same default (issue #390). */
     protected fun exposedApi(): ExposedApi = ExposedApi.parse(getArg(ExposedApi.ARG_EXPOSED_API))
@@ -60,10 +69,9 @@ open class KotlinSpringConfigGenerator : MultiFileDirectGeneratorBase<MetaObject
         parseArgs()
         val api = exposedApi()
         val pkg = getArg("packageName")
-            ?: throw GeneratorException("packageName is required")
+            ?: throw GeneratorException("KotlinSpringConfigGenerator (\"spring-config\"): packageName is required")
         val className = getArg("className", DEFAULT_CLASS_NAME) ?: DEFAULT_CLASS_NAME
-        val validatorEnabled = (getArg("validatorEnabled", "true") ?: "true")
-            .equals("true", ignoreCase = true)
+        val validatorEnabled = validatorEnabled()
         val resources = (getArg("metadataResource", DEFAULT_METADATA_RESOURCE) ?: DEFAULT_METADATA_RESOURCE)
             .split(",")
             .map { it.trim() }

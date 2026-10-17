@@ -1,6 +1,8 @@
 package com.metaobjects.mojo;
 
+import com.metaobjects.generator.Generator;
 import com.metaobjects.generator.GeneratorRegistry;
+import com.metaobjects.generator.kotlin.ConfiguredRequires;
 import com.metaobjects.generator.kotlin.GeneratorInfo;
 import com.metaobjects.generator.kotlin.GeneratorRegistryKt;
 
@@ -25,6 +27,10 @@ import java.util.Set;
  * copy {@code mvn metaobjects:eject} wrote, by its simple class name. A generator the registries
  * do not know (the adopter's own) has no requirements, and does not satisfy one. Requirements
  * are per port: a Kotlin controller is not satisfied by a Java DTO generator.
+ *
+ * <p>A generator that needs less under some args ({@link ConfiguredRequires}: spring-config with
+ * {@code validatorEnabled=false} references no validator) is asked for its requirements after
+ * its args are set, so the check follows the configuration rather than the default.
  */
 final class RequiresCheck {
 
@@ -64,11 +70,31 @@ final class RequiresCheck {
     /**
      * One line per declared generator whose requirements the same list does not declare, naming
      * everything missing (the requirements of a missing requirement included) and the class to
-     * add; empty when every requirement is met.
+     * add; empty when every requirement is met. Each generator needs what its registry entry
+     * says.
      *
      * @param classnames the {@code <classname>} of each {@code <generator>}, in declared order
      */
     static List<String> unmet(List<String> classnames) {
+        return unmet(classnames, Map.of());
+    }
+
+    /**
+     * As {@link #unmet(List)} for the instances a run is about to execute, args set: a
+     * {@link ConfiguredRequires} generator is asked what its configuration needs.
+     */
+    static List<String> unmetFor(List<Generator> generators) {
+        List<String> classnames = new ArrayList<>();
+        Map<String, List<String>> configured = new LinkedHashMap<>();
+        for (Generator g : generators) {
+            String classname = g.getClass().getName();
+            classnames.add(classname);
+            if (g instanceof ConfiguredRequires c) configured.putIfAbsent(classname, c.configuredRequires());
+        }
+        return unmet(classnames, configured);
+    }
+
+    private static List<String> unmet(List<String> classnames, Map<String, List<String>> configured) {
         List<Known> known = known();
         // One {@code port:stableName} index: membership and the "what class fixes this"
         // lookup read the same structure, so adding a port cannot leave one behind.
@@ -90,7 +116,7 @@ final class RequiresCheck {
             // declared requirement's own requirements are reported on its own line.
             List<String> missing = new ArrayList<>();
             Set<String> seen = new LinkedHashSet<>();
-            List<String> todo = new ArrayList<>(k.requires());
+            List<String> todo = new ArrayList<>(configured.getOrDefault(d.getKey(), k.requires()));
             while (!todo.isEmpty()) {
                 String r = todo.remove(0);
                 String key = k.port() + ":" + r;
