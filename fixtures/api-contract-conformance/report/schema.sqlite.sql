@@ -34,6 +34,12 @@ CREATE TABLE "sales" (
   FOREIGN KEY ("productId") REFERENCES "products" ("id")
 );
 
+CREATE TABLE "tickets" (
+  "id" INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+  "tags" TEXT,
+  "attrs" TEXT
+);
+
 CREATE VIEW "v_invoice_status_totals" AS
   SELECT
     i."status" AS "status",
@@ -117,3 +123,11 @@ CREATE VIEW "v_product_refunds" AS
   FROM "products" p
   LEFT OUTER JOIN "sales" s ON p."id" = s."productId"
   GROUP BY p."id", p."name";
+
+CREATE VIEW "v_tickets_by_tags" AS
+  SELECT
+    t."tags" AS "tags",
+    t."attrs" AS "attrs",
+    COUNT(t."id") AS "tickets"
+  FROM "tickets" t
+  GROUP BY t."tags", t."attrs";

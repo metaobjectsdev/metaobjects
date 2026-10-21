@@ -16,6 +16,7 @@
  * what the conformance runner's wire normalisation does too.
  */
 
+import { splitSqlStatements } from "@metaobjectsdev/migrate-ts";
 import { describe, test, expect, beforeAll, afterAll, beforeEach } from "bun:test";
 import {
   buildExpectedSchema, diff, emit, introspectPostgres, postgresViewReplaceProbe, collectUnmanagedNames,
@@ -63,7 +64,7 @@ beforeEach(async () => {
 });
 
 async function applyRaw(text: string): Promise<void> {
-  for (const stmt of text.split(/;\s*\n/).map((s) => s.trim()).filter(Boolean)) {
+  for (const stmt of splitSqlStatements(text)) {
     await sql.raw(stmt.endsWith(";") ? stmt : `${stmt};`).execute(k);
   }
 }

@@ -126,8 +126,10 @@ is touched, so "what did upstream change?" is a diff of two files whose body is 
 - **`meta eject --list` compares each copy** against what the installed packages would write
   today: `identical`, `same content, your formatting`, `DIFFERS: N line(s) only in the
   package, M only in yours`, or `not in the package`, with the `diff -u` command for each
-  that differs. Take an upgrade by merging the package's change into your copy; the two
-  files differ by their import lines alone.
+  that differs. The comparison covers the companion files a generator copies with it (its
+  template modules, Java's support classes, the Kotlin decimal wire), not only the generator
+  file. Take an upgrade by merging the package's change into your copy; the two files differ
+  by their import lines alone.
 - **A copy from before 1.1 gets no template modules it would never call.** It imports the
   renderers from the package, so copying them beside it would be dead code. `meta eject
   <name> --force` takes the new shape; to keep your changes, merge them into the new file.
@@ -1126,7 +1128,11 @@ Eject never edits an existing pom. It prints the three things to wire: the `<mod
 entry for your parent pom, a plugin `<dependency>` on the codegen module for the module
 that runs `metaobjects:generate`, and the new `<classname>` for each `<generator>`. It
 never overwrites a copy without `-Dforce`, and `-Dlist` marks each owned copy `identical`
-or `DIFFERS: N behind, M of your own`.
+or `DIFFERS: N behind, M of your own`. A copy is `identical` only when every file it owns is:
+the classes copied with it, its templates, the shared support classes it imports and the helper
+runtime its output imports. A differing one is named
+(`[owned — DIFFERS: 0 behind, 1 of your own; differing: api/index.md.mustache]`), so a resync
+that took the generator and left a template behind still shows.
 
 A name that is ejectable on both ports needs `-Dport`, unless your project declares a
 dependency on exactly one of `metaobjects-codegen-spring` and `metaobjects-codegen-kotlin`,
@@ -1345,11 +1351,11 @@ on are yours too. Eject copies two kinds of source with a Java generator:
 
 | Ejecting | Shared emit rules, beside the generator | Helper runtime its output imports |
 |---|---|---|
-| `routes` | `SpringGeneratorSupport` | `ConstraintErrors`, `FilterParseResult`, `FilterParser`, `FilterPredicate`, `PatchValidationException`, `RecordComponentNames` |
-| `dto` | `SpringGeneratorSupport` | `PatchValidationException` |
+| `routes` | `SpringGeneratorSupport` | `CanonicalDecimal`, `ConstraintErrors`, `FilterParseResult`, `FilterParser`, `FilterPredicate`, `PatchValidationException`, `RecordComponentNames`, `UnreadableBody` |
+| `dto` | `SpringGeneratorSupport` | `CanonicalDecimal`, `CanonicalDecimalDeserializer`, `CanonicalDecimalSerializer`, `DeclaredDecimal`, `PatchValidationException` |
 | `repository` | `SpringGeneratorSupport` | `FilterPredicate` |
-| `value-object` | `SpringGeneratorSupport` | nothing |
-| any other Java generator, every Kotlin generator | nothing | nothing: its output imports only core |
+| `value-object` | `SpringGeneratorSupport` | `CanonicalDecimal`, `CanonicalDecimalDeserializer`, `CanonicalDecimalSerializer`, `DeclaredDecimal` |
+| any other Java generator, every Kotlin generator | nothing | nothing: its output imports only core (Kotlin writes its decimal wire into the output as `MetaDecimalWire.kt`) |
 
 **The shared emit rules.** `SpringGeneratorSupport` holds the rules those four generators
 apply together: which fields a DTO and a patch carry, which of them are stamped for

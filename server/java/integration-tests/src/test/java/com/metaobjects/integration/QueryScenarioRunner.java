@@ -161,6 +161,11 @@ public final class QueryScenarioRunner {
             : mc.getPrimaryRdbViewName();
         if (relation == null) relation = mc.getPrimaryRdbTableName();
         if (relation == null) return Map.of();
+        // SQLite has one integer storage class: its catalog calls every integer column INTEGER,
+        // so the probe cannot tell an INT from a BIGINT and would narrow every key to a number.
+        // The declared field subtype (int reads as Integer, long as Long) is the only width
+        // information there, so on SQLite the probe contributes none.
+        if (engine == ScenarioEngine.SQLITE) return Map.of();
         Map<String, Integer> types = new LinkedHashMap<>();
         String q = engine.quote();
         String sql = "SELECT * FROM " + q + relation + q + " WHERE 1=0";
@@ -297,7 +302,7 @@ public final class QueryScenarioRunner {
     }
 
     /** Drop every view and table the split schema artifact creates (views first, tables in reverse order). */
-    private static void dropSchema(Connection c, List<String> statements) throws SQLException {
+    public static void dropSchema(Connection c, List<String> statements) throws SQLException {
         List<String> views = new java.util.ArrayList<>();
         List<String> tables = new java.util.ArrayList<>();
         java.util.regex.Pattern create = java.util.regex.Pattern.compile("^CREATE (VIEW|TABLE) `([^`]+)`");

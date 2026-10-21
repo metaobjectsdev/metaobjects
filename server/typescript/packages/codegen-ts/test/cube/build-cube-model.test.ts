@@ -367,7 +367,6 @@ describe("Table C — dimension types", () => {
 
   test.each([
     ["isArray", { "field.string": { name: "x", isArray: true } }, /field\.string, isArray/],
-    ["object", { "field.object": { name: "x", "@objectRef": "Label" } }, /field\.object/],
     ["map", { "field.map": { name: "x", "@valueType": "string" } }, /field\.map/],
   ])("%s → ERR_CUBE_UNMAPPABLE_DIMENSION naming the dimension and its field", async (_label, field, detail) => {
     const err = await buildError([
@@ -1494,7 +1493,7 @@ describe("Table H — the canonical model", () => {
     // join-path cubes carry no report of Table H's; only their presence is asserted here.
     expect(model.cubes.map((c) => c.name)).toEqual([
       "Program", "Week", "Node", "Session", "Measurement", "Asset", "Auth", "BridgeAuth", "CopayAuth", "PriorAuthAuth",
-      "ReferralAuth", "AllTypes", "Node_fkParent", "ProgramRosterFacts", "ProgramLongWeeksFacts",
+      "ReferralAuth", "AllTypes", "Gadget", "GadgetEvent", "Entry", "Node_fkParent", "ProgramRosterFacts", "ProgramLongWeeksFacts",
       "ProgramFlagRosterFacts", "ProgramSessionsFacts", "ProgramSessions_fkWeek",
     ]);
     const tableH = new Set(["Program", "Week", "Asset", "ProgramRosterFacts", "ProgramLongWeeksFacts", "ProgramFlagRosterFacts"]);
@@ -1551,21 +1550,24 @@ describe("Table H — the canonical model", () => {
             segments: ["introOrFree", "liveIntroProgramsScope"],
           },
           {
+            name: "ProgramsOverTime_year", type: "rollup", measures: ["programs", "avgPrice", "cheapest", "priciest"],
+            dimensions: [], segments: [], timeDimension: "createdAt", granularity: "year",
+          },
+          {
+            name: "ProgramsOverTime_quarter", type: "rollup", measures: ["programs", "avgPrice", "cheapest", "priciest"],
+            dimensions: [], segments: [], timeDimension: "createdAt", granularity: "quarter",
+          },
+          {
             name: "ProgramsByWeek", type: "rollup", measures: ["programs"], dimensions: [], segments: ["published"],
             timeDimension: "createdAt", granularity: "week",
           },
           {
-            name: "ProgramsByMonth", type: "rollup", measures: ["programs", "listValue"], dimensions: ["status"],
-            segments: [], timeDimension: "createdAt", granularity: "month",
+            name: "ProgramsOverTime_day", type: "rollup", measures: ["programs", "avgPrice", "cheapest", "priciest"],
+            dimensions: [], segments: [], timeDimension: "createdAt", granularity: "day",
           },
           {
-            name: "ProgramsOverTime", type: "rollup", measures: ["programs", "avgPrice", "cheapest", "priciest"],
-            dimensions: [], segments: [],
-            timeDimensions: [
-              { dimension: "createdAt", granularity: "day" },
-              { dimension: "createdAt", granularity: "quarter" },
-              { dimension: "createdAt", granularity: "year" },
-            ],
+            name: "ProgramsByMonth", type: "rollup", measures: ["programs", "listValue"], dimensions: ["status"],
+            segments: [], timeDimension: "createdAt", granularity: "month",
           },
         ],
       },

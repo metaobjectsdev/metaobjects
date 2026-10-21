@@ -295,7 +295,7 @@ public class EjectSupportTest {
     public void onlyTheJavaWebTierCarriesRuntime() {
         for (EjectSupport.Entry e : EjectSupport.allEntries()) {
             boolean expected = e.port == EjectSupport.Port.JAVA
-                    && List.of("routes", "dto", "repository").contains(e.stableName);
+                    && List.of("routes", "dto", "repository", "value-object").contains(e.stableName);
             assertEquals(e.port.id + " " + e.stableName, expected, !e.runtime.isEmpty());
         }
     }
@@ -325,7 +325,10 @@ public class EjectSupportTest {
         EjectSupport.Entry entity = EjectSupport.resolve(
                 "entity", EjectSupport.ejectableByStableName(), EjectSupport.Port.KOTLIN, null).entry;
         assertEquals(List.of("com.metaobjects.generator.kotlin.KotlinEntityGenerator",
-                "com.metaobjects.generator.kotlin.KotlinEnumEmitter"), entity.sources());
+                "com.metaobjects.generator.kotlin.KotlinEnumEmitter",
+                "com.metaobjects.generator.kotlin.KotlinDecimalWireEmitter"), entity.sources());
+        assertTrue(entity.resourceOf("com.metaobjects.generator.kotlin.KotlinDecimalWireEmitter")
+                .endsWith("/kotlin/KotlinDecimalWireEmitter.kt"));
         assertTrue(entity.resourceOf("com.metaobjects.generator.kotlin.KotlinEnumEmitter"),
                 entity.resourceOf("com.metaobjects.generator.kotlin.KotlinEnumEmitter")
                         .endsWith("/kotlin/KotlinEnumEmitter.kt"));

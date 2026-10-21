@@ -1,0 +1,27 @@
+{
+ "metadata.root": {
+  "children": [
+   {
+    "requirement.functional": {
+     "name": "R",
+     "package": "acme::shop",
+     "overlay": true,
+     "children": [
+      {
+       "requirement.functional": {
+        "name": "C",
+        "@level": 4,
+        "@status": "live",
+        "@statement": "s",
+        "@counterexample": "c",
+        "@implementedBy": [
+         "Order"
+        ]
+       }
+      }
+     ]
+    }
+   }
+  ]
+ }
+}

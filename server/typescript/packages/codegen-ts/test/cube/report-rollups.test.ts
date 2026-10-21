@@ -182,13 +182,26 @@ describe("Table F — a rollup per served report, on its @from cube", () => {
     expect(Object.keys(c.preAggregations[0]!).sort()).toEqual(["dimensions", "measures", "name", "segments", "timeDimensions", "type"]);
   });
 
-  test("one time dimension at two grains: the list form, one entry per grain", async () => {
+  test("one time dimension at two grains: one single-granularity rollup per grain (a Cube query names a time dimension once)", async () => {
     const c = await programCube(
       report("ProgramGrains", { "@from": "Program", "@dimensions": ["createdAt:week", "createdAt:month"], "@measures": ["programs"] }),
     );
+    // Coarsest first; no rollup repeats the dimension, so each is one a Cube query at that grain matches.
+    expect(c.preAggregations).toEqual([
+      { name: "ProgramGrains_month", type: "rollup", measures: ["programs"], dimensions: [], segments: [], timeDimension: "createdAt", granularity: "month" },
+      { name: "ProgramGrains_week", type: "rollup", measures: ["programs"], dimensions: [], segments: [], timeDimension: "createdAt", granularity: "week" },
+    ]);
+    for (const p of c.preAggregations) expect(Object.keys(p)).not.toContain("timeDimensions");
+  });
+
+  test("two time dimensions, one at two grains: a rollup per grain choice, each naming both dimensions once", async () => {
+    const c = await programCube(
+      report("ProgramMixed", { "@from": "Program", "@dimensions": ["createdAt:week", "createdAt:month", "publishedOn:week"], "@measures": ["programs"] }),
+    );
+    expect(c.preAggregations.map((p) => p.name)).toEqual(["ProgramMixed_month", "ProgramMixed_week"]);
     expect(c.preAggregations[0]!.timeDimensions).toEqual([
-      { dimension: "createdAt", granularity: "week" },
       { dimension: "createdAt", granularity: "month" },
+      { dimension: "publishedOn", granularity: "week" },
     ]);
   });
 
@@ -418,13 +431,12 @@ describe("Table F — no rollup where a relative date would be frozen", () => {
 // Reports that contribute nothing
 // ---------------------------------------------------------------------------
 
+// An abstract report and a non-view source are refused at load (R10, R11), so only a sourceless one remains.
 describe("Table F — a report that is not served contributes nothing", () => {
   const attrs: Json = { "@from": "Program", "@dimensions": ["status"], "@measures": ["programs"], "@filter": { status: "DRAFT" } };
 
   test.each([
     ["a sourceless report", report("Unserved", attrs, null)],
-    ["an abstract report", report("Unserved", attrs, "view", { abstract: true })],
-    ["a materializedView report", report("Unserved", attrs, "materializedView")],
   ])("%s", async (_label, unserved) => {
     const withReport = await build([program(), unserved]);
     expect(withReport).toEqual(await build([program()]));

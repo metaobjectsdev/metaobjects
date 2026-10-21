@@ -40,3 +40,75 @@ The wire canonicalization itself (and `normalization.md`) is **unchanged** by th
 - **Decimal becomes lossless end-to-end:** with `field.decimal` surfacing `BigDecimal`/`Decimal`/`decimal` natively (SP-D field-level fix), the canonical wire string is produced from an exact value rather than a 15-digit-bounded double. The wire bytes are unchanged; the value behind them is now exact.
 - **Serialization layers (generated REST, future MCP) own canonicalization.** A generated API serializing a runtime row to JSON is responsible for the wire form; the runtime hands it native types to serialize. This keeps the runtime usable as a normal data-access layer in an application, not just as a wire producer.
 - **No change** to the wire format, `normalization.md`, or any persistence-corpus `expect:` block.
+
+## Amendment 1 (2026-10-21): the decimal wire form
+
+**Context.** This ADR placed canonicalization at the boundary and said generated REST owns it,
+but never named what a decimal looks like on the HTTP wire. Each port's serializer chose for
+itself. In the 1.1.0 release review the five ports sent five spellings: C#, Java and Kotlin wrote
+JSON numbers carrying the engine's scale (`0.40000000000000000000`, `1E-7`, `0E-18`), Python wrote
+`str(Decimal)` (`"12.50"`, `"1E-7"`), and TypeScript wrote the column's scale on Postgres and MySQL
+and a lossy JS `number` on SQLite and D1 (`12345678901234567.89` read back as
+`12345678901234568`). Nothing failed, because no corpus asserted a decimal value that a double
+cannot hold, and four of the five api-contract assertion engines compared numbers by integer
+truncation.
+
+**Decision.** The in-process type per port is unchanged (the table above: `BigDecimal`, `decimal`,
+`Decimal`, TypeScript `string`). What crosses the HTTP boundary is one rule in every port:
+
+- **W1, emit.** Every `field.decimal` value, and every derived field typed decimal (a report's
+  `avg`, a `measure.ratio`, a `sum`, `min` or `max` of a decimal), is a JSON **string** in
+  canonical form, matching `^-?(0|[1-9][0-9]*)(\.[0-9]*[1-9])?$`: plain notation, no exponent, no
+  leading `+` or zeros, no trailing fractional zeros and no bare point. Zero in any spelling
+  (`-0`, `0E-18`, `0.0000`) is `"0"`. Null is `null`, with the key present. This is the
+  persistence corpus's NUMERIC rule (`fixtures/persistence-conformance/normalization.md`), so the
+  corpus and the HTTP wire say the same thing. A client that wants `12.50` formats with the
+  field's `@scale` from metadata: the server does not format, as with `field.currency`.
+  Display formatting (two digits for money, a locale's separators) is a view concern, never the
+  wire's (ruled 2026-10-21, trailing-zero option A final).
+- **W2, accept.** A request body (POST, PUT, PATCH) takes a decimal as a JSON string in the
+  JSON-number grammar (`^-?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?$`; an exponent is allowed
+  on input only) or as a JSON number. A string is exact; a number is exact to 15 significant
+  digits in every port. Anything else (`""`, surrounding whitespace, `"1,5"`, `"NaN"`,
+  `"Infinity"`, `"0x10"`, a boolean) is `400 {"error": "validation"}` naming the field. A filter
+  operand on a decimal uses the same grammar, is compared exactly (never through a double), and
+  a malformed one is `400 invalid_filter_value`.
+- **W3, range.** Nothing is rounded silently. On input, a value with more fraction digits than the
+  field's `@scale`, or more integer digits than `@precision - @scale`, is `400 validation`
+  (Postgres and MySQL would otherwise round the fraction, or fail with a database error). A value
+  the port's exact type cannot hold is refused the same way. On read, a stored value the port's
+  type cannot hold is a named error, not a rounded number (C#'s `decimal` holds 28 to 29
+  significant digits). The api-contract `decimal/` scenario `decimal-write-exact` asserts the
+  input half.
+- **W4, the SQLite and D1 tier.** These engines have no decimal type: a text value with NUMERIC
+  affinity is stored as an INTEGER or REAL, keeping only its first 15 significant digits. A
+  decimal on them is exact to **15 significant digits**: the read path renders the stored double
+  with 15 significant digits (SQLite's own text precision) and then canonicalizes it, so
+  `sum(0.1, 0.2)` reads `"0.3"`. `meta migrate` warns when a `field.decimal` on these dialects
+  declares `@precision` above 15.
+
+A non-terminating `avg` or ratio (`1/3`) has the engine's precision and differs between engines;
+no corpus asserts one.
+
+**Why a string.** RFC 7493 (I-JSON) §2.2 recommends a string for numbers beyond a double's
+precision, and the protobuf JSON mapping, `google.type.Decimal`, Shopify's `Decimal` and PayPal's
+money values all use one. MetaObjects ships a browser client, and `JSON.parse` turns a number
+into a double before any user code sees it, so a number spelling cannot be read exactly there.
+**Why strip trailing zeros.** Engines disagree on result scale (Postgres `avg` gives 16 to 20
+places, MySQL the column's scale plus 4, Exposed 18, SQLite none), so only the stripped form is
+comparable across ports and engines, and it is the form the persistence corpus already used.
+
+**Consequences.**
+
+- Each port has one production wire helper (format and parse) that its generated routes and DTOs
+  use, tested against the shared vectors in `fixtures/decimal-wire/vectors.json`.
+- The persistence corpus asserts decimals in each port's own type before normalizing (a double in
+  a decimal slot fails), and its `decimal-exact` scenarios use values a double cannot hold.
+  Runners stop re-spelling decimals in their engine mappers, so the gate checks the runtime.
+- The api-contract `decimal/` sub-corpus asserts the bytes of W1 and the refusals of W2 in every
+  port's generated lane, and every assertion engine compares non-integer numbers exactly.
+- TypeScript's runtime returns its declared `string` on SQLite and D1 too.
+- This is a wire change for every port's generated REST surface, listed as breaking in the 1.1.0
+  CHANGELOG. The wire contract is part of `metamodelVersion` (`docs/compatibility-policy.md`),
+  which moves to `1.1` in the same release. An owned (ejected) route or DTO generator keeps the old
+  spelling until it is resynced.

@@ -2,7 +2,7 @@ import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, rmSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ConfigSchema, DEFAULT_CONFIG, loadConfig, saveConfig } from "../src/config.js";
+import { ConfigSchema, DEFAULT_CONFIG, loadConfig, saveConfig, setConfigWarningSink, type Config } from "../src/config.js";
 
 let metaRoot: string;
 beforeEach(() => {
@@ -70,6 +70,45 @@ describe("loadConfig — an invalid config says what is wrong, in words", () => 
     const err = await loadConfig(metaRoot).then(() => undefined, (e: unknown) => e as Error);
     expect(err!.message).toContain("schema_version");
     expect(err!.message).not.toContain('"code"');
+  });
+});
+
+describe("loadConfig — forward-tolerant at the top level (a newer MetaObjects may have written the key)", () => {
+  async function load(doc: unknown): Promise<{ result?: Config; error?: Error; warnings: string[] }> {
+    const warnings: string[] = [];
+    const prev = setConfigWarningSink((m) => warnings.push(m));
+    try {
+      await Bun.write(join(metaRoot, "config.json"), JSON.stringify(doc));
+      return { result: await loadConfig(metaRoot), warnings };
+    } catch (e) {
+      return { error: e as Error, warnings };
+    } finally {
+      setConfigWarningSink(prev);
+    }
+  }
+
+  test("an unknown top-level key warns, naming it and saying a newer MetaObjects may have written it", async () => {
+    const r = await load({ schema_version: 1, fromTheFuture: { x: 1 }, migrate: { dialect: "sqlite" } });
+    expect(r.error).toBeUndefined();
+    expect(r.result!.migrate?.dialect).toBe("sqlite");
+    expect(r.warnings).toHaveLength(1);
+    expect(r.warnings[0]).toContain('"fromTheFuture"');
+    expect(r.warnings[0]).toContain("newer MetaObjects");
+    expect((r.result as Record<string, unknown>).fromTheFuture).toBeUndefined();
+  });
+
+  test("a type error on a KNOWN key stays fatal", async () => {
+    const r = await load({ schema_version: 1, pending_in_git: "yes", fromTheFuture: 1 });
+    expect(r.error?.message).toContain("pending_in_git");
+  });
+
+  test("a typo INSIDE a known block stays fatal", async () => {
+    const r = await load({ schema_version: 1, migrate: { d1: { bindingg: "DB" } } });
+    expect(r.error).toBeDefined();
+  });
+
+  test("the schema itself is still strict, so saveConfig never writes an unknown key", () => {
+    expect(() => ConfigSchema.parse({ schema_version: 1, foo: 1 })).toThrow();
   });
 });
 

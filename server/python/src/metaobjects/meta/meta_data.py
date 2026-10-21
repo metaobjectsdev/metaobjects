@@ -26,6 +26,11 @@ class MetaData:
         # per-file root packages are no longer reachable via the parent chain.
         # Mirrors TS ``MetaData.fileDefaultPackage`` / ``resolutionKey()``.
         self.file_default_package: Optional[str] = None
+        # The package declared by this node or its nearest enclosing node in the SAME
+        # document, captured at parse time (None for a node built in code). Unlike the
+        # parse context, an ``overlay: true`` node's explicit package counts, so the
+        # children it contributes keep it after the merge (requirement package, MINOR 4).
+        self.scope_package: Optional[str] = None
         # ADR-0059 R5 -- ``super_ref`` is canonical after the loader's
         # ``resolve_references`` pass; the ``extends`` value as authored is kept here
         # (set only when the pass rewrote it) for ``meta fmt``.

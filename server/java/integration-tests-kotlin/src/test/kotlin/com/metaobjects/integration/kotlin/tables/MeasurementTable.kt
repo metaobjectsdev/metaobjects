@@ -19,7 +19,7 @@ object MeasurementTable : Table("measurements") {
     val id = long("id").autoIncrement()
     val tempC = float("tempC")
     val massKg = double("massKg")
-    val preciseKg = decimal("preciseKg", 9, 4)
+    val preciseKg = portableDecimal("preciseKg", 9, 4)
 
     override val primaryKey = PrimaryKey(id)
 }

@@ -83,7 +83,7 @@ internal class TphGeneratedApiContractConformanceTest {
     }
 
     companion object {
-        private val MAPPER = ObjectMapper()
+        private val MAPPER = ObjectMapper().enable(com.fasterxml.jackson.databind.DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS)
 
         /** The single TPH table's seed rows (one per subtype), keyed by table name `auths`. */
         @Suppress("UNCHECKED_CAST")

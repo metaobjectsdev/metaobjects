@@ -21,10 +21,13 @@ public class MeasurementStats
     [Column("minTempC")]
     public float? MinTempC { get; set; }
     [Column("totalPreciseKg")]
+    [System.Text.Json.Serialization.JsonConverter(typeof(DecimalWire.NullableDecimalJsonConverter))]
     public decimal? TotalPreciseKg { get; set; }
     [Column("avgPreciseKg")]
+    [System.Text.Json.Serialization.JsonConverter(typeof(DecimalWire.NullableDecimalJsonConverter))]
     public decimal? AvgPreciseKg { get; set; }
     [Column("maxPreciseKg")]
+    [DecimalWire.Declared(9, 4)]
     public decimal? MaxPreciseKg { get; set; }
     [Column("heavyReadings")]
     public long HeavyReadings { get; set; }

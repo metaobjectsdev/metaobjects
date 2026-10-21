@@ -166,28 +166,33 @@ cubes:
         measures: [CUBE.programs, CUBE.notDrafts, CUBE.listValue]
         dimensions: [CUBE.status]
         segments: [CUBE.introOrFree, CUBE.liveIntroProgramsScope]
+      - name: ProgramsOverTime_year
+        type: rollup
+        measures: [CUBE.programs, CUBE.avgPrice, CUBE.cheapest, CUBE.priciest]
+        time_dimension: CUBE.createdAt
+        granularity: year
+      - name: ProgramsOverTime_quarter
+        type: rollup
+        measures: [CUBE.programs, CUBE.avgPrice, CUBE.cheapest, CUBE.priciest]
+        time_dimension: CUBE.createdAt
+        granularity: quarter
       - name: ProgramsByWeek
         type: rollup
         measures: [CUBE.programs]
         segments: [CUBE.published]
         time_dimension: CUBE.createdAt
         granularity: week
+      - name: ProgramsOverTime_day
+        type: rollup
+        measures: [CUBE.programs, CUBE.avgPrice, CUBE.cheapest, CUBE.priciest]
+        time_dimension: CUBE.createdAt
+        granularity: day
       - name: ProgramsByMonth
         type: rollup
         measures: [CUBE.programs, CUBE.listValue]
         dimensions: [CUBE.status]
         time_dimension: CUBE.createdAt
         granularity: month
-      - name: ProgramsOverTime
-        type: rollup
-        measures: [CUBE.programs, CUBE.avgPrice, CUBE.cheapest, CUBE.priciest]
-        time_dimensions:
-          - dimension: CUBE.createdAt
-            granularity: day
-          - dimension: CUBE.createdAt
-            granularity: quarter
-          - dimension: CUBE.createdAt
-            granularity: year
 `;
 
 const WEEK_YML = `${HEADER}
@@ -1150,7 +1155,7 @@ describe("parse oracle", () => {
     const model = await canonicalModel();
     expect(model.cubes.map((c) => c.name)).toEqual([
       "Program", "Week", "Node", "Session", "Measurement", "Asset", "Auth", "BridgeAuth", "CopayAuth", "PriorAuthAuth",
-      "ReferralAuth", "AllTypes", "Node_fkParent", "ProgramRosterFacts", "ProgramLongWeeksFacts",
+      "ReferralAuth", "AllTypes", "Gadget", "GadgetEvent", "Entry", "Node_fkParent", "ProgramRosterFacts", "ProgramLongWeeksFacts",
       "ProgramFlagRosterFacts", "ProgramSessionsFacts", "ProgramSessions_fkWeek",
     ]);
     for (const c of model.cubes) expect(parsed(c)).toEqual({ cubes: [expectedCube(c)] });

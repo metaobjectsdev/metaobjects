@@ -28,6 +28,7 @@ import { readFileSync, writeFileSync, mkdtempSync, mkdirSync, existsSync } from 
 import { join, dirname } from "node:path";
 import { tmpdir, homedir } from "node:os";
 import { fileURLToPath } from "node:url";
+import { promoteChangelog } from "./lib/changelog-promote.mjs";
 import { createInterface } from "node:readline/promises";
 import { publishSet } from "./publish-set.mjs";
 import { mavenVersion } from "./maven-coordinate.mjs";
@@ -205,18 +206,22 @@ const bad = Object.entries(pj.dependencies || {}).filter(([k, v]) => k.startsWit
 if (bad.length) die(`packed cli pins stale/workspace sibling deps: ${JSON.stringify(bad)}`);
 ok(`packed deps verified: all @metaobjectsdev/* pinned to ${VERSION}`);
 
-// --- promote CHANGELOG [Unreleased] → [VERSION] ---------------------------
+// --- promote CHANGELOG [Unreleased] → [VERSION], or date a prepared [VERSION] ----
+// The rule and its cases live in scripts/lib/changelog-promote.mjs (tested by
+// scripts/test-changelog-promote.mjs): a section prepared ahead of the cut carries the date it
+// was started, and is restamped with the release date here rather than by hand.
 const today = out("date +%F");
-let cl = readFileSync("CHANGELOG.md", "utf8");
-if (/## \[Unreleased\]\s*\n\s*\n## /.test(cl)) {
-  console.warn(`\x1b[33m! CHANGELOG [Unreleased] is empty — add an entry before releasing\x1b[0m`);
+const promoted = promoteChangelog(
+  readFileSync("CHANGELOG.md", "utf8"),
+  VERSION,
+  today,
+  `_npm \`${VERSION}\` (full lockstep across all ${set.length} \`@metaobjectsdev/*\` publish candidates)._`,
+);
+if (promoted.action === "nothing") {
+  console.warn(`\x1b[33m! CHANGELOG has no entries and no [${VERSION}] section — add one before releasing\x1b[0m`);
 } else {
-  cl = cl.replace(
-    /## \[Unreleased\]\n/,
-    `## [Unreleased]\n\n## [${VERSION}] — ${today}\n\n_npm \`${VERSION}\` (full lockstep across all ${set.length} \`@metaobjectsdev/*\` publish candidates)._\n`,
-  );
-  writeFileSync("CHANGELOG.md", cl);
-  ok(`CHANGELOG promoted → [${VERSION}]`);
+  writeFileSync("CHANGELOG.md", promoted.text);
+  ok(promoted.action === "promoted" ? `CHANGELOG promoted → [${VERSION}]` : `CHANGELOG [${VERSION}] dated ${today}`);
 }
 
 // --- refresh the site payload, which EMBEDS the versions Phase 1 just changed ------

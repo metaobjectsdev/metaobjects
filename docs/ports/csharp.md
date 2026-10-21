@@ -167,6 +167,21 @@ The codegen emits:
 - `AuthorFilterAllowlist.g.cs` — the server-side filter/sort allowlist feeding the
   generated list handler.
 
+### Decimals on the wire
+
+A `field.decimal` crosses the API as one canonical string (ADR-0019 Amendment 1): `12.50` is
+`"12.5"`, zero is `"0"`, never a JSON number or an exponent. Input may be a string or a number,
+is read exactly, and is `400 validation` when it has more fraction digits than `@scale` or more
+integer digits than `@precision - @scale` (no `@scale` beside `@precision` means 0). A filter
+operand compares exactly; a bad one is `400 invalid_filter_value`. On SQLite a decimal is read at
+15 significant digits. Every port runs the shared vectors in `fixtures/decimal-wire/`.
+
+`dotnet meta gen` writes `DecimalWire.g.cs` once per namespace. A decimal property carries its
+JSON converter and, with `@precision`, `[DecimalWire.Declared(precision, scale)]`; a decimal
+array is an `IList<decimal>` with `DecimalListJsonConverter`. A stored value the CLR `decimal`
+cannot hold answers `500 {"error": "decimal_out_of_range"}` (`DecimalRangeEndpointFilter`).
+An owned `routes` generator copies `DecimalWire.cs` and `DecimalRangeEndpointFilter.cs`.
+
 ### `<Entity>Names` — the physical names, as constants
 
 `names` is opt-in — list `new MetaObjects.Codegen.Generators.NamesGenerator()` in
@@ -538,9 +553,10 @@ qualified, as above: an owned copy and the packaged class share a simple name, s
 | `WarnUncovered` | `true` (default): one warning naming up to five requirements the filter left out. |
 
 The hook types, the identity function and the digest stay in the package when you eject;
-the owned copy uses them from there. A package that loses its last requirement leaves its
-two files behind: `gen` does not remove them, `dotnet meta verify --codegen` reports each as
-`committed but a fresh regen would not emit it`, and you delete them. The model and the
+the owned copy uses them from there. A package that loses its last requirement loses its
+two files: `dotnet meta gen` deletes them through the hash manifest (an edited one is refused by
+name), and until then `dotnet meta verify --codegen` reports each as
+`committed but a fresh regen would not emit it`. The model and the
 other ports' spelling are in
 [Generated requirement tests and witnesses](../features/requirements.md#generated-requirement-tests-and-witnesses).
 

@@ -101,4 +101,11 @@ public class NeutralConfigTest {
         MetaDataException ex = assertThrows(MetaDataException.class, () -> NeutralConfig.read(dir));
         assertEquals(ErrorCode.ERR_BAD_ATTR_VALUE, ex.getCode().orElseThrow());
     }
+
+    @Test
+    public void anUnknownTopLevelKeyIsIgnoredNotRefused() {
+        NeutralConfig cfg = NeutralConfig.parse(
+            "{\"schema_version\":1,\"someFutureKey\":{\"x\":1},\"naming\":{\"columns\":\"literal\"}}", "test");
+        assertEquals("literal", cfg.getPhysicalNaming().columns());
+    }
 }

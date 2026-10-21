@@ -514,8 +514,24 @@ final class ObjectManagerDbAdapter {
      * {@link java.math.BigDecimal} natively and {@link Normalization} canonicalizes
      * it directly (the prior {@code BigDecimal.valueOf(double)} workaround is gone).</p>
      */
+    private static final java.util.regex.Pattern CANONICAL_DECIMAL =
+        java.util.regex.Pattern.compile("^-?(0|[1-9][0-9]*)(\\.[0-9]*[1-9])?$");
+
     private static Object coerceWireType(MetaField<?> mf, Object value, Map<String, Integer> columnSqlTypes) {
         if (value == null) return null;
+        // Typed decimal gate (ADR-0019 Amendment 1): the runtime hands a decimal over as an exact
+        // BigDecimal, and it renders as the canonical string. Checked BEFORE the value is
+        // normalized, so a double (which would canonicalize to a plausible string) fails here.
+        if (mf instanceof com.metaobjects.field.DecimalField) {
+            if (!(value instanceof java.math.BigDecimal bd)) {
+                throw new AssertionError("decimal field '" + mf.getName() + "' must be a BigDecimal from OMDB, got "
+                    + value.getClass().getName() + " (" + value + ")");
+            }
+            Object wire = Normalization.normalizeValue(bd);
+            if (!(wire instanceof String str) || !CANONICAL_DECIMAL.matcher(str).matches()) {
+                throw new AssertionError("decimal field '" + mf.getName() + "' did not render canonically: " + wire);
+            }
+        }
         if (isTimestampTzField(mf) && value instanceof java.util.Date d) {
             return d.toInstant().atOffset(ZoneOffset.UTC);
         }

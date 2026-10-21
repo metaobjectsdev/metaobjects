@@ -470,6 +470,52 @@
         "@dimensions": ["kind"], "@measures": ["auths", "distinctRefs"], "@filter": { "type": { "ne": "PriorAuth" } },
         "children": [ { "source.rdb": { "@kind": "view", "@view": "v_auths_by_kind" } } ] } },
 
+      { "object.entity": {
+        "name": "Labeled", "abstract": true,
+        "children": [
+          { "field.long":   { "name": "id" } },
+          { "field.string": { "name": "label", "@column": "label_text" } },
+          { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } } ] } },
+      { "object.entity": {
+        "name": "Gadget", "extends": "Labeled",
+        "children": [
+          { "source.rdb": { "@table": "gadgets" } },
+          { "field.int": { "name": "label", "@column": "gadget_code", "@required": true } } ] } },
+      { "object.entity": {
+        "name": "GadgetEvent",
+        "children": [
+          { "source.rdb": { "@table": "gadget_events" } },
+          { "field.long": { "name": "id" } },
+          { "field.long": { "name": "gadgetId", "@required": true } },
+          { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } },
+          { "identity.reference": { "name": "fkGadget", "@fields": "gadgetId", "@references": "Gadget" } },
+          { "dimension.attribute": { "name": "gadgetLabel", "@of": "Labeled.label", "@via": "GadgetEvent.fkGadget" } },
+          { "measure.aggregate": { "name": "gadgetEvents", "@agg": "count", "@of": "GadgetEvent.id" } } ] } },
+      { "object.report": { "name": "GadgetEventsByLabel", "@from": "GadgetEvent",
+        "@dimensions": ["gadgetLabel"], "@measures": ["gadgetEvents"],
+        "children": [ { "source.rdb": { "@kind": "view", "@view": "v_gadget_events_by_label" } } ] } },
+
+      { "object.entity": { "name": "Entry", "children": [
+          { "source.rdb":         { "@table": "entries" } },
+          { "field.long":         { "name": "id" } },
+          { "field.string":       { "name": "bucket", "@required": true, "@maxLength": 8 } },
+          { "field.decimal":      { "name": "amount", "@precision": 28, "@scale": 10, "@filterable": true, "@sortable": true } },
+          { "field.boolean":      { "name": "flagged", "@required": true } },
+          { "identity.primary":   { "name": "pk", "@fields": "id", "@generation": "increment" } },
+          { "dimension.attribute": { "name": "bucket", "@of": "Entry.bucket" } },
+          { "measure.aggregate":  { "name": "entries", "@agg": "count", "@of": "Entry.id" } },
+          { "measure.aggregate":  { "name": "flaggedEntries", "@agg": "count", "@of": "Entry.id", "@filter": { "flagged": true } } },
+          { "measure.aggregate":  { "name": "total", "@agg": "sum", "@of": "Entry.amount" } },
+          { "measure.aggregate":  { "name": "totalOrZero", "@agg": "sum", "@of": "Entry.amount", "@default": 0 } },
+          { "measure.aggregate":  { "name": "mean", "@agg": "avg", "@of": "Entry.amount" } },
+          { "measure.aggregate":  { "name": "top", "@agg": "max", "@of": "Entry.amount" } },
+          { "measure.ratio":      { "name": "flaggedShare", "@numerator": "flaggedEntries", "@denominator": "entries" } },
+          { "measure.ratio":      { "name": "perFlagged", "@numerator": "entries", "@denominator": "flaggedEntries" } }
+      ] } },
+      { "object.report": { "name": "EntryTotals", "@from": "Entry", "@dimensions": ["bucket"],
+        "@measures": ["entries", "total", "totalOrZero", "mean", "top", "flaggedShare", "perFlagged"],
+        "children": [ { "source.rdb": { "@kind": "view", "@view": "v_entry_totals" } } ] } },
+
       { "template.prompt": {
         "name": "coachNote",
         "@payloadRef": "ProgramBrief",

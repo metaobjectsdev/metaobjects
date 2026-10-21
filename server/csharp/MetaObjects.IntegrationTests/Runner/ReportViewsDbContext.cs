@@ -26,11 +26,15 @@ public sealed class ReportViewsDbContext : AppDbContext
 {
     public ReportViewsDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
 
+    // The one table the decimal scenarios write (`Entry`): plain scalars every engine maps, so it
+    // stays in the model. The other tables carry Postgres-only columns (jsonb, inet, uuid).
+    private static readonly HashSet<Type> WritableTables = [typeof(Entry)];
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
         var tables = modelBuilder.Model.GetEntityTypes()
-            .Where(e => e.GetViewName() is null)
+            .Where(e => e.GetViewName() is null && !WritableTables.Contains(e.ClrType))
             .Select(e => e.ClrType)
             .ToList();
         foreach (var table in tables) modelBuilder.Ignore(table);

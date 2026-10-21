@@ -271,6 +271,7 @@ def _build(
     result: ParseResult,
     builder: JsonPathBuilder,
     ctx_pkg: str = "",
+    scope_pkg: str = "",
     parent_type: str = "",
     yaml_position: YamlPosition | None = None,
     is_root: bool = False,
@@ -387,6 +388,7 @@ def _build(
     # Recorded even when empty: "" says the file declares no package (ADR-0059 R10),
     # which is not the same as a node built in code with no file at all.
     node.file_default_package = (str(pkg) if pkg else None) or ctx_pkg
+    node.scope_package = (str(pkg) if pkg else None) or scope_pkg or None
 
     if pkg:
         node.package = str(pkg)
@@ -487,7 +489,7 @@ def _build(
             else:
                 child = _build(
                     cw, cbody, registry, source, result, builder,
-                    ctx_pkg=child_ctx_pkg, parent_type=type_,
+                    ctx_pkg=child_ctx_pkg, scope_pkg=node.scope_package or "", parent_type=type_,
                     yaml_position=child_yaml_pos,
                 )
                 if child is not None:

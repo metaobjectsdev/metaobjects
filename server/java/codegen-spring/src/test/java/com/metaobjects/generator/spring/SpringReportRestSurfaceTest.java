@@ -122,7 +122,7 @@ public class SpringReportRestSurfaceTest extends SharedRegistryTestBase {
     }
 
     @Test
-    public void aReportOverAnyOtherReadOnlyKindIsNotServed() throws Exception {
+    public void aReportOverAnyOtherReadOnlyKindIsRefusedAtLoad() throws Exception {
         // Table A: the lowering skips these kinds, so no relation with the derived columns
         // is promised.
         String json = """
@@ -138,12 +138,14 @@ public class SpringReportRestSurfaceTest extends SharedRegistryTestBase {
               ] } }
             ] } }
             """;
-        MetaDataLoader loader = load("mv", json);
-        MetaObject report = loader.getMetaObjectByName(PKG + "Materialized");
-        assertFalse(RestSurfaceGate.isServedReport(report));
-        assertNull(RestSurfaceGate.restShapeOf(report));
-        assertFalse(RestSurfaceGate.emitsRestSurface(report));
-        assertEquals(List.of(), filesNamed(generateAll("mv-gen", json), "Materialized"));
+        // The loader refuses it (R10), so no generator ever sees a report over this kind.
+        try {
+            load("mv", json);
+            fail("a report over a materializedView source must be refused at load");
+        } catch (RuntimeException e) {
+            assertTrue(rootMessage(e), rootMessage(e)
+                .contains("a report is read through a view"));
+        }
     }
 
     @Test
@@ -214,6 +216,11 @@ public class SpringReportRestSurfaceTest extends SharedRegistryTestBase {
      * {@code @spine: "Week.fkProgram"}; {@code totalMinutesOrZero} / {@code longShareOrZero}
      * are {@code totalMinutes} / {@code longShare} with {@code @default: 0}.
      */
+    /** ADR-0019 Amendment 1: a decimal component binds the canonical serializer and strict deserializer. */
+    private static final String DECIMAL_WIRE =
+        "@JsonSerialize(using = CanonicalDecimalSerializer.class) "
+        + "@JsonDeserialize(using = CanonicalDecimalDeserializer.class) ";
+
     @Test
     public void aSpineKeyAndADefaultedMeasureAreNotNullAndTheSameMeasureWithoutADefaultIsNullable() throws Exception {
         String fitness = Files.readString(
@@ -229,12 +236,12 @@ public class SpringReportRestSurfaceTest extends SharedRegistryTestBase {
             src.contains("@NotNull @Size(min = 1, max = 200) String programTitle"));
         assertTrue("a count, as before", src.contains("@NotNull Long weeks"));
         assertTrue("a sum with @default", src.contains("@NotNull Long totalMinutesOrZero"));
-        assertTrue("a ratio with @default", src.contains("@NotNull java.math.BigDecimal longShareOrZero"));
+        assertTrue("a ratio with @default", src.contains("@NotNull " + DECIMAL_WIRE + "java.math.BigDecimal longShareOrZero"));
         assertTrue(src, src.contains("    Long totalMinutes,"));
         assertFalse("the same sum without @default stays nullable", src.contains("@NotNull Long totalMinutes,"));
-        assertTrue(src, src.contains("    java.math.BigDecimal longShare,"));
+        assertTrue(src, src.contains("    " + DECIMAL_WIRE + "java.math.BigDecimal longShare,"));
         assertFalse("the same ratio without @default stays nullable",
-            src.contains("@NotNull java.math.BigDecimal longShare,"));
+            src.contains("@NotNull " + DECIMAL_WIRE + "java.math.BigDecimal longShare,"));
     }
 
     @Test
@@ -279,7 +286,7 @@ public class SpringReportRestSurfaceTest extends SharedRegistryTestBase {
     // === the refusal carried over from Plan 2 ================================
 
     @Test
-    public void aServedReportOverAFieldObjectStopsEveryGeneratorNamingTheReport() throws Exception {
+    public void aDimensionOverAFieldObjectIsRefusedAtLoad() throws Exception {
         String json = """
             { "metadata.root": { "package": "acme::shop", "children": [
               { "object.value": { "name": "Address", "children": [
@@ -299,19 +306,18 @@ public class SpringReportRestSurfaceTest extends SharedRegistryTestBase {
               ] } }
             ] } }
             """;
-        MetaDataLoader loader = load("object-dim", json);
-        Map<String, String> args = new HashMap<>();
-        args.put("outputDir", tmp.newFolder().toString());
-        for (com.metaobjects.generator.direct.MultiFileDirectGeneratorBase<?> g : surface()) {
-            g.setArgs(args);
-            try {
-                g.execute(loader);
-                fail(g.getClass().getSimpleName() + " must refuse a served report over a field.object");
-            } catch (MetaDataException e) {
-                assertTrue(g.getClass().getSimpleName() + ": " + e.getMessage(),
-                    e.getMessage().startsWith("report 'SalesByDestination': dimension 'destination'"));
-            }
+        // The loader refuses it (D5), so no generator ever sees a served report over a field.object.
+        try {
+            load("object-dim", json);
+            fail("a dimension over a field.object must be refused at load");
+        } catch (RuntimeException e) {
+            assertTrue(rootMessage(e), rootMessage(e).contains("@of 'Sale.shipTo' is a field.object"));
         }
+    }
+
+    private static String rootMessage(Throwable t) {
+        while (t.getCause() != null) t = t.getCause();
+        return String.valueOf(t.getMessage());
     }
 
     // === api docs (Table G) ==================================================

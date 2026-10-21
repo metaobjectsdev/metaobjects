@@ -33,13 +33,15 @@ public static class SubscriberRoutes
     /// </remarks>
     public static IEndpointRouteBuilder MapSubscriberRoutes(this IEndpointRouteBuilder app, string prefix = "/api")
     {
+        IEndpointRouteBuilder mount = app;
+        app = app.MapGroup(string.Empty).AddEndpointFilter(new DecimalRangeEndpointFilter());
         app.MapGet(prefix + "/subscribers", async (HttpContext http, AppDbContext db) =>
         {
             var qs = http.Request.Query;
             IQueryable<Subscriber> q = db.Subscribers.AsNoTracking();
 
             // Filter: ?filter[<field>][<op>]=<value> against the per-entity allowlist.
-            var filter = FilterParser.Parse(qs, SubscriberFilterAllowlist.Fields, SubscriberFilterAllowlist.OpsByField);
+            var filter = EfCoreFilterDispatch.Validate<Subscriber>(FilterParser.Parse(qs, SubscriberFilterAllowlist.Fields, SubscriberFilterAllowlist.OpsByField));
             if (filter.ErrorEnvelope is not null)
                 return Results.BadRequest(new { error = filter.ErrorEnvelope, field = filter.Field });
             q = EfCoreFilterDispatch.ApplyFilter(q, filter.Predicates);
@@ -182,7 +184,7 @@ public static class SubscriberRoutes
             return Results.NoContent();
         });
 
-        return app;
+        return mount;
     }
 
     private static IOrderedQueryable<Subscriber> ApplySortSubscriber(IQueryable<Subscriber> q, string field, bool desc)

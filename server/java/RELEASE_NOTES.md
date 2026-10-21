@@ -1,8 +1,13 @@
 # MetaObjects Java — Release Notes
 
-Latest update: 2026-05-28.
+> **This file stops at 7.1.0 and is kept as history.** Since 8.0.0 the Java line is released
+> with the other ports (the Maven major is the npm major + 7, so npm `1.1.0` is Maven `8.1.0`),
+> and every release, Java included, is logged in the root [CHANGELOG.md](../../CHANGELOG.md).
+> Upgrading from 8.0.x (1.0.x) to 8.1.0 (1.1.0):
+> [upgrading-1.0-to-1.1.md](../../docs/features/migrations/upgrading-1.0-to-1.1.md). Release
+> procedure: [docs/RELEASING.md](../../docs/RELEASING.md).
 
-Java release line independent from the TypeScript line. TS is on a separate `0.x` track. Java tags are `vX.Y.Z`. Maven coordinates are `com.metaobjects:*` on Maven Central. Release procedure: [docs/RELEASING-java.md](../../docs/RELEASING-java.md).
+Maven coordinates are `com.metaobjects:*` on Maven Central.
 
 Apache 2.0. See [LICENSE](LICENSE).
 

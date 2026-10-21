@@ -45,6 +45,7 @@ export type {
 import { isTruthyFlag, coerceIdForColumn, firstRow, extractRowCount } from "../drizzle-fastify/util.js";
 import { supportsReturning, type SqlDialect } from "../sql-dialect.js";
 import { timestampWire } from "../timestamp-wire.js";
+import { withDecimals } from "../decimal-wire.js";
 // Every handler below is wrapped in guardRoute (an unexpected error answers
 // `500 { error: "internal" }`, logged server-side) and reads its body through
 // readJsonBody (a malformed body answers `400 { error: "invalid_json" }`).
@@ -53,7 +54,7 @@ import { guardRoute, readJsonBody } from "./route-guard.js";
 // shared (deprecated) helper so the three adapters can't silently diverge.
 export { parseId } from "../drizzle-fastify/util.js";
 export { timestampWire, canonicalTimestamp } from "../timestamp-wire.js";
-export { decimalWire } from "../decimal-wire.js";
+export { decimalWire, withDecimals, canonicalDecimal, parseDecimalInput, parseDecimalOperand } from "../decimal-wire.js";
 
 // ---------------------------------------------------------------------------
 // Loose types — we don't bind to a specific Drizzle backend so the helper
@@ -105,6 +106,13 @@ export interface CrudRoutesOptions {
   updateMethod?: "patch" | "put";
   filterAllowlist?: FilterAllowlist;
   sortAllowlist?:   SortAllowlist;
+  /**
+   * The names of the entity's `field.decimal` fields. A decimal is a canonical string on the
+   * wire on every dialect (ADR-0019 Amendment 1): Postgres and MySQL return the column's scale
+   * (`"100.5000"`) and SQLite hands back a number, so each row the routes send is rewritten
+   * under these keys. The generated route passes them; absent, rows are sent as read.
+   */
+  decimalColumns?: readonly string[];
   /** Dialect — required if filterAllowlist or sortAllowlist is set (for dialect-specific `like` lowering: SQLite lowers to GLOB to stay case-sensitive; ADR-0049). */
   dialect?: SqlDialect;
 }
@@ -151,7 +159,7 @@ function readSource(opts: VerbOptions): AnyTable {
  * non-timestamp of the same name.
  */
 function readWire(opts: VerbOptions): (row: unknown) => unknown {
-  return timestampWire(readSource(opts));
+  return withDecimals(timestampWire(readSource(opts)), opts.decimalColumns);
 }
 
 /**
@@ -160,7 +168,7 @@ function readWire(opts: VerbOptions): (row: unknown) => unknown {
  * against the union of both sources.
  */
 function echoWire(opts: VerbOptions): (row: unknown) => unknown {
-  return timestampWire(opts.table, opts.readView);
+  return withDecimals(timestampWire(opts.table, opts.readView), opts.decimalColumns);
 }
 
 /** Re-read a just-written row through the replica view so the response carries the

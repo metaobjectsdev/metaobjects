@@ -16,14 +16,14 @@ import { ObjectManager, type Filter } from "@metaobjectsdev/runtime-ts";
 import { kyselyDriver } from "@metaobjectsdev/runtime-ts/drivers";
 import {
   type MetaRoot,
-  TYPE_OBJECT, TYPE_IDENTITY,
+  TYPE_OBJECT, TYPE_IDENTITY, TYPE_FIELD, FIELD_SUBTYPE_DECIMAL,
   IDENTITY_SUBTYPE_PRIMARY, IDENTITY_ATTR_FIELDS,
 } from "@metaobjectsdev/metadata";
 import { Kysely, PostgresDialect } from "kysely";
 import { Pool } from "pg";
 
 import { readCanonicalSchemaSql } from "./canonical-schema.ts";
-import { toWireRow, type WireEngine } from "./engine-wire.ts";
+import { reportDecimalFields, toWireRow, type WireEngine } from "./engine-wire.ts";
 import { loadMetadataDir } from "./load-metadata.ts";
 import { canonicalJson, normalizeRow } from "./normalization.ts";
 import { executeSql } from "./postgres-sql.ts";
@@ -105,8 +105,53 @@ export async function runScenarioQueries(
       continue;
     }
     const actual = toEngineWire(engine, spec, await execute(om, root, spec));
+    assertDecimalsTyped(scenario.sourcePath, spec, actual, root, label ?? engine);
     assertResult(scenario.sourcePath, spec, actual, label ?? engine);
   }
+}
+
+/** ADR-0019 Amendment 1, W1 — written out here, not imported, so the gate does not trust the code under test. */
+const DECIMAL_CANONICAL_RE = /^-?(0|[1-9][0-9]*)(\.[0-9]*[1-9])?$/;
+
+/**
+ * The typed decimal gate (ADR-0019 Amendment 1, W1). `normalizeRow` routes by the SHAPE of a
+ * value, so a decimal that arrived as a binary float (or as `"100.50"`) would be rewritten into
+ * the expected string and pass. Before normalizing, every field the MODEL declares `decimal`
+ * (an entity's own, or a report's, from report-shapes.json) must already be null or a string in
+ * the canonical spelling the runtime owes the wire.
+ */
+function assertDecimalsTyped(scenarioPath: string, spec: QuerySpec, actual: unknown, root: MetaRoot, engine: string): void {
+  if (spec.op === "count" || spec.op === "delete" || actual === null || actual === undefined) return;
+  const rows = (Array.isArray(actual) ? actual : [actual]) as Record<string, unknown>[];
+  const names = decimalFieldNames(root, spec.entity);
+  if (names.length === 0) return;
+  for (const row of rows) {
+    for (const name of names) {
+      const v = row[name];
+      if (v === undefined || v === null) continue;
+      if (typeof v !== "string") {
+        throw new Error(
+          `${scenarioPath} / ${spec.name}: decimal ${spec.entity}.${name} arrived as a binary ${typeof v} (${String(v)}) on ${engine}; ` +
+            `a decimal is a canonical string at the runtime boundary`,
+        );
+      }
+      if (!DECIMAL_CANONICAL_RE.test(v)) {
+        throw new Error(
+          `${scenarioPath} / ${spec.name}: decimal ${spec.entity}.${name} is ${JSON.stringify(v)} on ${engine}, not canonical ` +
+            `(plain notation, no trailing fraction zeros)`,
+        );
+      }
+    }
+  }
+}
+
+function decimalFieldNames(root: MetaRoot, entity: string): readonly string[] {
+  const own = root.children().find((c) => c.type === TYPE_OBJECT && c.name === entity);
+  const declared = own === undefined
+    ? []
+    // ADR-0039: resolving. A decimal may be inherited via extends.
+    : own.children().filter((c) => c.type === TYPE_FIELD && c.subType === FIELD_SUBTYPE_DECIMAL).map((c) => c.name);
+  return [...new Set([...declared, ...reportDecimalFields(entity)])];
 }
 
 /** A list result from a non-Postgres engine, mapped from its driver's spelling onto the corpus' wire form. */

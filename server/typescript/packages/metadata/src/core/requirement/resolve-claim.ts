@@ -96,3 +96,23 @@ export function resolveClaim(
   if (owner === undefined || segs.length === 1) return owner;
   return resolveMember(owner, segs.slice(1));
 }
+
+/**
+ * The package a requirement node resolves in (ADR-0059 D3/D10): its own declared
+ * `package`, else the nearest enclosing node that declares one, else the file default
+ * package of the top-level node it sits under, else "". One definition for the gate, the summary and
+ * codegen's requirement-test fan-out, so nesting and overlay contribution cannot
+ * make two call sites disagree.
+ */
+export function effectiveRequirementPackage(node: MetaData): string {
+  let cur: MetaData = node;
+  for (;;) {
+    if (cur.package !== undefined && cur.package !== "") return cur.package;
+    const parent: MetaData | undefined = cur.parent;
+    // The tree root is not an "enclosing node": stop at the top-level node, whose file
+    // default package is the answer (a child contributed by another document inherits
+    // the merge target's, matching the overlay-declared package case).
+    if (parent === undefined || parent.parent === undefined) return cur.fileDefaultPackage ?? "";
+    cur = parent;
+  }
+}

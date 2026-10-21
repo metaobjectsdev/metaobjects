@@ -1,0 +1,272 @@
+// DecimalWire — the wire form of a field.decimal (ADR-0019 Amendment 1, W1-W4).
+//
+// A decimal crosses JSON as a canonical STRING: `^-?(0|[1-9][0-9]*)(\.[0-9]*[1-9])?$`,
+// plain notation, no exponent, no trailing fractional zeros, zero as "0". A JSON number is
+// a double to every JavaScript client, so the string is the only spelling a browser reads
+// exactly. Input takes a string in the JSON-number grammar or a JSON number; anything else
+// is refused. A value `decimal` cannot hold (more than 28-29 significant digits) is an
+// error, never a rounded value (W3).
+//
+// ONE source, two homes. This file is the package's production helper (the filter
+// dispatcher parses its operands through it). The entity generator emits the SAME text,
+// with only the namespace changed, as `DecimalWire.g.cs` into every namespace that has a
+// decimal property, so the `[JsonConverter(typeof(DecimalWire.…))]` on each property
+// resolves inside the generated project and the generated entity code imports nothing
+// from MetaObjects (CLAUDE.md). DecimalWireTests gates the two texts byte-for-byte.
+// Keep this file free of references to anything but the BCL.
+
+#nullable enable
+using System;
+using System.Buffers;
+using System.Collections.Generic;
+using System.Globalization;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
+namespace MetaObjects.IntegrationTests.Generated;
+
+/// <summary>The canonical wire form of a decimal: format, parse, and the System.Text.Json converters.</summary>
+public static class DecimalWire
+{
+    /// <summary>W1. The canonical string of <paramref name="value"/>: plain notation, trailing fractional zeros stripped, zero as "0".</summary>
+    public static string Format(decimal value)
+    {
+        var s = value.ToString(CultureInfo.InvariantCulture);
+        if (s.IndexOf('.') >= 0)
+        {
+            s = s.TrimEnd('0');
+            if (s.EndsWith('.')) s = s.Substring(0, s.Length - 1);
+        }
+        return s == "-0" || s.Length == 0 ? "0" : s;
+    }
+
+    /// <summary>
+    /// W2. Parse text in the JSON-number grammar (<c>-?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?</c>,
+    /// no whitespace, no sign other than <c>-</c>). False for anything else, and for a value
+    /// <c>decimal</c> cannot hold exactly (W3).
+    /// </summary>
+    public static bool TryParse(string? text, out decimal value)
+    {
+        value = 0m;
+        if (text is null) return false;
+        int i = 0, n = text.Length;
+        bool negative = false;
+        if (i < n && text[i] == '-') { negative = true; i++; }
+        if (i >= n) return false;
+        int intStart = i;
+        if (text[i] == '0') i++;
+        else if (text[i] >= '1' && text[i] <= '9') { while (i < n && IsDigit(text[i])) i++; }
+        else return false;
+        int intEnd = i;
+        int fracStart = i, fracEnd = i;
+        if (i < n && text[i] == '.')
+        {
+            i++;
+            fracStart = i;
+            while (i < n && IsDigit(text[i])) i++;
+            if (i == fracStart) return false;
+            fracEnd = i;
+        }
+        long exponent = 0;
+        if (i < n && (text[i] == 'e' || text[i] == 'E'))
+        {
+            i++;
+            bool expNegative = false;
+            if (i < n && (text[i] == '+' || text[i] == '-')) { expNegative = text[i] == '-'; i++; }
+            int expStart = i;
+            while (i < n && IsDigit(text[i]))
+            {
+                if (exponent < 100000) exponent = exponent * 10 + (text[i] - '0');
+                i++;
+            }
+            if (i == expStart) return false;
+            if (expNegative) exponent = -exponent;
+        }
+        if (i != n) return false;
+        var digits = text.Substring(intStart, intEnd - intStart) + text.Substring(fracStart, fracEnd - fracStart);
+        return TryBuild(negative, digits, (intEnd - intStart) + exponent, out value);
+    }
+
+    /// <summary>W2 for an already-parsed JSON value (a PATCH merge reads one property at a time): a string or a number.</summary>
+    public static bool TryParseElement(JsonElement element, out decimal value)
+    {
+        value = 0m;
+        return element.ValueKind switch
+        {
+            JsonValueKind.String => TryParse(element.GetString(), out value),
+            JsonValueKind.Number => TryParse(element.GetRawText(), out value),
+            _ => false,
+        };
+    }
+
+    /// <summary>
+    /// W4. The value of an IEEE double at 15 significant digits (SQLite's own text precision),
+    /// canonicalized. A SQLite or D1 NUMERIC column is a double, so this is the most a read of
+    /// one can promise. Throws <see cref="OverflowException"/> beyond <c>decimal</c>'s range.
+    /// </summary>
+    public static decimal FromDouble15(double value)
+    {
+        if (double.IsNaN(value) || double.IsInfinity(value))
+            throw new OverflowException("a decimal cannot hold " + value.ToString(CultureInfo.InvariantCulture));
+        var e = value.ToString("E14", CultureInfo.InvariantCulture); // d.ddddddddddddddE+ddd
+        bool negative = e[0] == '-';
+        int ePos = e.IndexOf('E');
+        var mantissa = e.Substring(negative ? 1 : 0, ePos - (negative ? 1 : 0)).Replace(".", "");
+        long exponent = long.Parse(e.Substring(ePos + 1), NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture);
+        if (!TryBuild(negative, mantissa, 1 + exponent, out var result))
+            throw new OverflowException("a decimal cannot hold " + e);
+        return result;
+    }
+
+    /// <summary>W4 as text: <see cref="Format"/> of <see cref="FromDouble15"/>.</summary>
+    public static string FormatDouble15(double value) => Format(FromDouble15(value));
+
+    private static bool IsDigit(char c) => c >= '0' && c <= '9';
+
+    // digits is the unsigned digit run; the decimal point sits after pointPos of them.
+    private static bool TryBuild(bool negative, string digits, long pointPos, out decimal value)
+    {
+        value = 0m;
+        int lead = 0;
+        while (lead < digits.Length && digits[lead] == '0') lead++;
+        int end = digits.Length;
+        while (end > lead && digits[end - 1] == '0') end--;
+        if (lead == end) return true; // zero, in any spelling
+        var d = digits.Substring(lead, end - lead);
+        long point = pointPos - lead;
+        // decimal holds at most 29 integer digits and 28 fractional places.
+        if (point > 29 || point < -28) return false;
+        var sb = new StringBuilder();
+        if (negative) sb.Append('-');
+        if (point <= 0) sb.Append("0.").Append('0', (int)-point).Append(d);
+        else if (point >= d.Length) sb.Append(d).Append('0', (int)point - d.Length);
+        else sb.Append(d, 0, (int)point).Append('.').Append(d, (int)point, d.Length - (int)point);
+        var plain = sb.ToString();
+        if (!decimal.TryParse(plain, NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint,
+                CultureInfo.InvariantCulture, out value)) return false;
+        // decimal.Parse ROUNDS an excess digit; a round trip that does not reproduce the
+        // input means it was rounded (W3: an error, never silent rounding).
+        return Format(value) == plain;
+    }
+
+    /// <summary>
+    /// W3 for a declared column: true when <paramref name="value"/> fits <c>@precision</c> and
+    /// <c>@scale</c> without rounding: no more fraction digits than <paramref name="scale"/>, no
+    /// more integer digits than <paramref name="precision"/> minus <paramref name="scale"/>.
+    /// Counted on the canonical form, so trailing zeros never count.
+    /// </summary>
+    public static bool Fits(decimal value, int precision, int scale)
+    {
+        var text = Format(value);
+        if (text.StartsWith('-')) text = text.Substring(1);
+        var dot = text.IndexOf('.');
+        var integerDigits = (dot < 0 ? text : text.Substring(0, dot)).TrimStart('0').Length;
+        var fractionDigits = dot < 0 ? 0 : text.Length - dot - 1;
+        return fractionDigits <= scale && integerDigits <= precision - scale;
+    }
+
+    /// <summary>
+    /// W3 for a declared property: false when <paramref name="property"/> of <paramref name="owner"/>
+    /// carries <see cref="DeclaredAttribute"/> and <paramref name="value"/> does not fit it.
+    /// True for a property with no declared precision (the PATCH merge asks this per key).
+    /// </summary>
+    public static bool FitsDeclared(Type owner, string property, decimal value)
+    {
+        var declared = owner.GetProperty(property)?.GetCustomAttributes(typeof(DeclaredAttribute), true);
+        return declared is not { Length: > 0 } || ((DeclaredAttribute)declared[0]).Accepts(value);
+    }
+
+    private static decimal ReadOne(ref Utf8JsonReader reader, int? precision = null, int? scale = null)
+    {
+        decimal result;
+        switch (reader.TokenType)
+        {
+            case JsonTokenType.String:
+                if (!TryParse(reader.GetString(), out result))
+                    throw new JsonException("expected a decimal as a JSON-number string or a JSON number");
+                break;
+            case JsonTokenType.Number:
+                var raw = Encoding.UTF8.GetString(reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan.ToArray());
+                if (!TryParse(raw, out result)) throw new JsonException("decimal out of range");
+                break;
+            default:
+                throw new JsonException("expected a decimal as a JSON-number string or a JSON number");
+        }
+        if (precision is int p && scale is int sc && !Fits(result, p, sc))
+            throw new JsonException("decimal exceeds the declared precision and scale");
+        return result;
+    }
+
+    /// <summary>
+    /// A decimal property with a declared <c>@precision</c> and <c>@scale</c>: the same wire form
+    /// as the plain converters, and a value the column cannot hold is refused, never rounded (W3).
+    /// </summary>
+    [AttributeUsage(AttributeTargets.Property)]
+    public sealed class DeclaredAttribute(int precision, int scale) : JsonConverterAttribute
+    {
+        public int Precision { get; } = precision;
+        public int Scale { get; } = scale;
+
+        public bool Accepts(decimal value) => Fits(value, Precision, Scale);
+
+        public override JsonConverter? CreateConverter(Type typeToConvert)
+        {
+            if (typeToConvert == typeof(decimal)) return new DecimalJsonConverter(Precision, Scale);
+            if (typeToConvert == typeof(decimal?)) return new NullableDecimalJsonConverter(Precision, Scale);
+            if (typeToConvert == typeof(IList<decimal>)) return new DecimalListJsonConverter(Precision, Scale);
+            return null;
+        }
+    }
+
+    /// <summary>A decimal property: written as the canonical string, read from a string or a number.</summary>
+    public sealed class DecimalJsonConverter(int? precision, int? scale) : JsonConverter<decimal>
+    {
+        public DecimalJsonConverter() : this(null, null) { }
+
+        public override decimal Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+            => ReadOne(ref reader, precision, scale);
+
+        public override void Write(Utf8JsonWriter writer, decimal value, JsonSerializerOptions options)
+            => writer.WriteStringValue(Format(value));
+    }
+
+    /// <summary>A nullable decimal property: null is JSON null, with the key present.</summary>
+    public sealed class NullableDecimalJsonConverter(int? precision, int? scale) : JsonConverter<decimal?>
+    {
+        public NullableDecimalJsonConverter() : this(null, null) { }
+
+        public override bool HandleNull => true;
+
+        public override decimal? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+            => reader.TokenType == JsonTokenType.Null ? null : ReadOne(ref reader, precision, scale);
+
+        public override void Write(Utf8JsonWriter writer, decimal? value, JsonSerializerOptions options)
+        {
+            if (value is null) writer.WriteNullValue();
+            else writer.WriteStringValue(Format(value.Value));
+        }
+    }
+
+    /// <summary>An <c>@isArray</c> decimal property, typed <c>IList&lt;decimal&gt;</c> (the one collection shape EF Core 8 on SQLite can materialize): an array of canonical strings.</summary>
+    public sealed class DecimalListJsonConverter(int? precision, int? scale) : JsonConverter<IList<decimal>>
+    {
+        public DecimalListJsonConverter() : this(null, null) { }
+
+        public override IList<decimal>? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            if (reader.TokenType == JsonTokenType.Null) return null;
+            if (reader.TokenType != JsonTokenType.StartArray) throw new JsonException("expected an array of decimals");
+            var list = new List<decimal>();
+            while (reader.Read() && reader.TokenType != JsonTokenType.EndArray) list.Add(ReadOne(ref reader, precision, scale));
+            return list;
+        }
+
+        public override void Write(Utf8JsonWriter writer, IList<decimal> value, JsonSerializerOptions options)
+        {
+            writer.WriteStartArray();
+            foreach (var d in value) writer.WriteStringValue(Format(d));
+            writer.WriteEndArray();
+        }
+    }
+}

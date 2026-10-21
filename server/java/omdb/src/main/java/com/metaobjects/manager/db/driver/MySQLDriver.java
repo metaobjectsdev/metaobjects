@@ -141,6 +141,16 @@ public class MySQLDriver extends GenericSQLDriver {
     }
 
     /**
+     * A decimal operand is cast: MySQL compares {@code DECIMAL = 'text'} (and a bound parameter
+     * travels as text) as DOUBLES, so {@code 12345678901234567.89} would equal a neighbouring
+     * value. {@code CAST(? AS DECIMAL(65,30))} keeps the comparison exact (ADR-0019 Amendment 1).
+     */
+    @Override
+    protected String comparisonPlaceholder(MetaField f) {
+        return f instanceof com.metaobjects.field.DecimalField ? "CAST(? AS DECIMAL(65,30))" : "?";
+    }
+
+    /**
      * Timestamp and uuid binds that Connector/J accepts. The shared codecs bind a timestamp as
      * {@code TIMESTAMP_WITH_TIMEZONE} and a uuid as {@code Types.OTHER}; Connector/J rejects
      * both ("Unsupported SQL type").

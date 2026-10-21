@@ -11,6 +11,7 @@ import {
   OPS_BY_SUBTYPE,
   opsForSubType,
   FIELD_SUBTYPE_DATE,
+  FIELD_SUBTYPE_DECIMAL,
   FIELD_SUBTYPE_TIME,
   FIELD_SUBTYPE_TIMESTAMP,
   FIELD_SUBTYPE_UUID,
@@ -28,6 +29,7 @@ export type FilterSubType = "string" | "number" | "boolean" | "datetime";
  */
 export const FILTER_VALUE_FORMATS = [
   FIELD_SUBTYPE_DATE,
+  FIELD_SUBTYPE_DECIMAL,
   FIELD_SUBTYPE_TIME,
   FIELD_SUBTYPE_TIMESTAMP,
   FIELD_SUBTYPE_UUID,
@@ -52,7 +54,9 @@ export interface FilterFieldRule {
   readonly dateValues?: boolean;
   /**
    * The field's exact wire format, set by codegen for `field.date` / `field.time` /
-   * `field.timestamp` / `field.uuid`. The filter parser rejects a value that does not
+   * `field.timestamp` / `field.uuid` / `field.decimal`. A `decimal` operand is parsed with the
+   * JSON-number grammar and bound as an exact string, never through a double (ADR-0019
+   * Amendment 1, W2). The filter parser rejects a value that does not
    * match it with `invalid_filter_value` instead of binding it — on SQLite a malformed
    * date compared as text and silently matched nothing; on Postgres it was a driver
    * error. Absent (an allowlist generated before this existed), a `datetime` value is

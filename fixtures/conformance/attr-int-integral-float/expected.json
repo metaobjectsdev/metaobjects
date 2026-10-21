@@ -1,0 +1,53 @@
+{
+  "metadata.root": {
+    "package": "acme::shop",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Item",
+          "children": [
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "sku",
+                "@maxLength": 10
+              }
+            },
+            {
+              "field.decimal": {
+                "name": "price",
+                "@precision": 10,
+                "@scale": 2
+              }
+            },
+            {
+              "field.int": {
+                "name": "qty",
+                "children": [
+                  {
+                    "validator.numeric": {
+                      "@max": 100,
+                      "@min": 0
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

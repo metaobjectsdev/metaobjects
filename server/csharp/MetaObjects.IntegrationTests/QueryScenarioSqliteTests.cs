@@ -16,12 +16,12 @@ public sealed class QueryScenarioSqliteTests
 {
     [Theory]
     [MemberData(nameof(Scenarios))]
-    public async Task Report_scenario_on_sqlite(string scenarioPath)
+    public async Task Scenario_on_sqlite(string scenarioPath)
     {
         var scenario = ScenarioLoader.LoadQuery(scenarioPath);
         using var db = new SqliteTempDatabase("mo-report-");
         await QueryScenarioRunner.RunSqliteAsync(scenario, db.FilePath);
     }
 
-    public static IEnumerable<object[]> Scenarios() => CorpusPaths.ReportQueryScenarios();
+    public static IEnumerable<object[]> Scenarios() => CorpusPaths.ScenariosFor(ScenarioEngine.Sqlite);
 }

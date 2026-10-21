@@ -75,3 +75,23 @@ INSERT INTO "all_types" (
   ('00000000-0000-4000-8000-000000000005','r5',99,1,0.5,0.5,9,true,'2026-05-01','00:00:00',
    '2026-05-01T00:00:00','2026-05-01T00:00:00Z',9999,'HIGH',5,
    'a1111111-1111-4111-8111-111111111111','urn:x:5','10.0.0.5','fe80::5');
+INSERT INTO "gadgets" ("id","gadget_code") VALUES
+  (1, 10),
+  (2, 20),
+  (3, 30);
+INSERT INTO "gadget_events" ("id","gadgetId") VALUES
+  (1, 1),
+  (2, 1),
+  (3, 1),
+  (4, 2),
+  (5, 3),
+  (6, 3);
+INSERT INTO "entries" ("id","bucket","amount","flagged") VALUES
+  (1, 'A', 0.1, true),
+  (2, 'A', 0.2, false),
+  (3, 'B', 1.25, true),
+  (4, 'B', 2.75, true),
+  (5, 'C', NULL, false),
+  (6, 'C', NULL, true),
+  (7, 'D', 100.50, false),
+  (8, 'D', 99.5, false);

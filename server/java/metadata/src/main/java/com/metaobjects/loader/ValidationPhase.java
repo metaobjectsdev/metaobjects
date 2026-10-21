@@ -4223,21 +4223,37 @@ public final class ValidationPhase {
      *  cannot word it differently. It is not the only one: {@code RegisteredValidation} holds
      *  a second, private builder of the same sentence, which does not strip a dotted tail.</p> */
     public static String didYouMeanHint(MetaRoot root, String ref) {
-        if (ref == null) return "";
+        List<String> found = sameNameObjects(root, ref);
+        if (found.isEmpty()) return "";
+        return " An object named \"" + shortNameOf(ref) + "\" exists in: " + String.join(", ", found)
+            + ". Qualify it with its package (FQN).";
+    }
+
+    /** The did-you-mean hint for an unresolved {@code extends}: names the qualified spelling to write. */
+    public static String didYouMeanExtendsHint(MetaRoot root, String ref) {
+        List<String> found = sameNameObjects(root, ref);
+        if (found.isEmpty()) return "";
+        String spelled = new java.util.ArrayList<>(found).stream()
+            .map(f -> "extends: \"" + f + "\"").collect(java.util.stream.Collectors.joining(" or "));
+        return " An object named \"" + shortNameOf(ref) + "\" exists in: " + String.join(", ", found)
+            + ". Qualify it with its package (FQN): write " + spelled + ".";
+    }
+
+    private static String shortNameOf(String ref) {
         int sep = ref.lastIndexOf(MetaData.PKG_SEPARATOR);
         String shortName = (sep >= 0) ? ref.substring(sep + MetaData.PKG_SEPARATOR.length()) : ref;
         int dot = shortName.indexOf('.');
-        if (dot >= 0) shortName = shortName.substring(0, dot);
-        StringBuilder candidates = new StringBuilder();
+        return dot >= 0 ? shortName.substring(0, dot) : shortName;
+    }
+
+    private static List<String> sameNameObjects(MetaRoot root, String ref) {
+        List<String> out = new java.util.ArrayList<>();
+        if (ref == null) return out;
+        String shortName = shortNameOf(ref);
         for (MetaData child : root.getChildren(MetaData.class, false)) {
-            if (!(child instanceof MetaObject)) continue;
-            if (!shortName.equals(child.getShortName())) continue;
-            if (candidates.length() > 0) candidates.append(", ");
-            candidates.append(child.getName());
+            if (child instanceof MetaObject && shortName.equals(child.getShortName())) out.add(child.getName());
         }
-        if (candidates.length() == 0) return "";
-        return " An object named \"" + shortName + "\" exists in: " + candidates
-            + ". Qualify it with its package (FQN).";
+        return out;
     }
 
     /**

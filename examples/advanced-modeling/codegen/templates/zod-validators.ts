@@ -13,7 +13,7 @@ import { code, joinCode, imp, type Code } from "@metaobjectsdev/codegen-ts/engin
 import { MetaObject, MetaField, type MetaRoot, stripPackage } from "@metaobjectsdev/metadata";
 import {
   FIELD_SUBTYPE_STRING, FIELD_SUBTYPE_INT, FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_CURRENCY,
-  FIELD_SUBTYPE_BOOLEAN, FIELD_SUBTYPE_DOUBLE, FIELD_SUBTYPE_FLOAT,
+  FIELD_SUBTYPE_BOOLEAN, FIELD_SUBTYPE_DECIMAL, FIELD_ATTR_PRECISION, FIELD_ATTR_SCALE, FIELD_SUBTYPE_DOUBLE, FIELD_SUBTYPE_FLOAT,
   FIELD_SUBTYPE_DATE, FIELD_SUBTYPE_TIME, FIELD_SUBTYPE_TIMESTAMP,
   FIELD_SUBTYPE_ENUM, FIELD_SUBTYPE_OBJECT, FIELD_SUBTYPE_MAP, FIELD_SUBTYPE_UUID,
   FIELD_SUBTYPE_URI, FIELD_SUBTYPE_INET,
@@ -43,6 +43,7 @@ import {
   ZOD_TIMESTAMP_UTC_EXPR,
 } from "./date-time-regex.js";
 import { renderDocsFor } from "./jsdoc.js";
+import { DECIMAL_WRITE_HELPER_DECL, zodDecimalWriteExpr } from "./decimal-wire-helper.js";
 import { sharedEnumForField } from "@metaobjectsdev/codegen-ts/engine";
 import { sharedEnumImportSpecifier } from "@metaobjectsdev/codegen-ts/engine";
 import { sharedEnumZodConstName } from "./enums-file.js";
@@ -72,6 +73,13 @@ let utcTimestampUses = 0;
 /** The normalizer's declaration when `since` is behind the running count, else nothing. */
 function utcTimestampHelperSince(since: number): string {
   return utcTimestampUses > since ? `${UTC_TIMESTAMP_HELPER_DECL}\n\n` : "";
+}
+
+// The same device for the decimal write rule (decimal-wire-helper.ts).
+let decimalWriteUses = 0;
+
+function decimalHelperSince(since: number): string {
+  return decimalWriteUses > since ? `${DECIMAL_WRITE_HELPER_DECL}\n\n` : "";
 }
 
 
@@ -259,6 +267,7 @@ function isInsertRequiredPk(field: MetaField, assignedPk: Set<string>): boolean 
 export function renderInsertSchemaOnly(obj: MetaObject, ctx?: RenderContext): Code {
   const z = imp("z@zod");
   const utcUsesBefore = utcTimestampUses;
+  const decimalUsesBefore = decimalWriteUses;
   const autoGenPkFields = autoGenPkFieldNames(obj);
   const assignedPkFields = assignedPkFieldNames(obj);
   const tphPin = tphDiscriminatorPin(obj);
@@ -310,7 +319,7 @@ export function renderInsertSchemaOnly(obj: MetaObject, ctx?: RenderContext): Co
   const docsPrefix = docs ? `${docs}\n` : "";
 
   return code`
-${utcTimestampHelperSince(utcUsesBefore)}${docsPrefix}export const ${insertSchemaName} = ${z}.object({
+${utcTimestampHelperSince(utcUsesBefore)}${decimalHelperSince(decimalUsesBefore)}${docsPrefix}export const ${insertSchemaName} = ${z}.object({
 ${joinCode(insertFieldLines, { on: ",\n" })}
 });
 `;
@@ -418,6 +427,7 @@ export function updateSchemaFields(obj: MetaObject): SchemaFieldShape[] {
 export function renderZodValidators(obj: MetaObject, ctx?: RenderContext): Code {
   const z = imp("z@zod");
   const utcUsesBefore = utcTimestampUses;
+  const decimalUsesBefore = decimalWriteUses;
   const autoGenPkFields = autoGenPkFieldNames(obj);
   const pkFields = primaryKeyFieldNames(obj);
   const assignedPkFields = assignedPkFieldNames(obj);
@@ -540,7 +550,7 @@ export type ${objName}CreatePreserving = ${z}.input<typeof ${preservingSchemaNam
     : code``;
 
   return code`
-${utcTimestampHelperSince(utcUsesBefore)}${docsPrefix}export const ${insertSchemaName} = ${z}.object({
+${utcTimestampHelperSince(utcUsesBefore)}${decimalHelperSince(decimalUsesBefore)}${docsPrefix}export const ${insertSchemaName} = ${z}.object({
 ${joinCode(insertFieldLines, { on: ",\n" })}
 });
 
@@ -762,6 +772,24 @@ function zodFieldExpr(
       } else {
         baseStr = "z.string()";
       }
+      break;
+    }
+    case FIELD_SUBTYPE_DECIMAL: {
+      // ADR-0019 Amendment 1 (W2, W3): a WRITE shape takes a decimal as a string in the
+      // JSON-number grammar or a JSON number, stores its canonical string, and refuses what the
+      // column cannot hold. The TPH read shape parses rows the database already holds, and a value
+      // object's member is JSON that stores whatever it is given, so both keep a bare string.
+      if (readShape || owner?.subType === OBJECT_SUBTYPE_VALUE) {
+        baseStr = "z.string()";
+        break;
+      }
+      const precision = field.attr(FIELD_ATTR_PRECISION);
+      const scale = field.attr(FIELD_ATTR_SCALE);
+      baseStr = zodDecimalWriteExpr(
+        typeof precision === "number" ? precision : undefined,
+        typeof scale === "number" ? scale : undefined,
+      );
+      decimalWriteUses++;
       break;
     }
     case FIELD_SUBTYPE_UUID:

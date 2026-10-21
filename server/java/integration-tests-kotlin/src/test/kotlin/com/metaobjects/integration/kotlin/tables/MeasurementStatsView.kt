@@ -21,8 +21,8 @@ object MeasurementStatsView : Table("v_measurement_stats") {
     val avgMassKg = double("avgMassKg").nullable()
     val maxTempC = float("maxTempC").nullable()
     val minTempC = float("minTempC").nullable()
-    val totalPreciseKg = decimal("totalPreciseKg", 38, 18).nullable()
-    val avgPreciseKg = decimal("avgPreciseKg", 38, 18).nullable()
-    val maxPreciseKg = decimal("maxPreciseKg", 38, 18).nullable()
+    val totalPreciseKg = portableDecimal("totalPreciseKg", 38, 18).nullable()
+    val avgPreciseKg = portableDecimal("avgPreciseKg", 38, 18).nullable()
+    val maxPreciseKg = portableDecimal("maxPreciseKg", 38, 18).nullable()
     val heavyReadings = long("heavyReadings")
 }

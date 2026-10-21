@@ -31,6 +31,8 @@ async function loadModel(): Promise<{ root: MetaRoot; agent: MetaObject }> {
                 children: [
                   { "field.string": { name: "model", "@required": true } },
                   { "field.double": { name: "temperature" } },
+                  { "field.decimal": { name: "budget", "@precision": 12, "@scale": 2 } },
+                  { "field.int": { name: "retries" } },
                 ],
               },
             },
@@ -96,6 +98,16 @@ describe("issue #95 — nested value-object sub-forms", () => {
     // Each VO sub-field is bound via a react-hook-form nested path.
     expect(out).toContain('form.register("llmConfig.model")');
     expect(out).toContain('form.register("llmConfig.temperature")');
+  });
+
+  test("fractional sub-fields are submittable: double step=any, decimal text/decimal, int unchanged", async () => {
+    const { root, agent } = await loadModel();
+    const out = renderFormFile(agent, ctxFor(root));
+    const line = (name: string) => out.match(new RegExp(`<input[^>]*register\\("llmConfig\\.${name}"\\)[^>]*>`))?.[0].replace(/\s+/g, " ") ?? "";
+    expect(line("temperature")).toContain('type="number" step="any"');
+    expect(line("budget")).toContain('type="text" inputMode="decimal"');
+    expect(line("retries")).toContain('type="number"');
+    expect(line("retries")).not.toContain("step");
   });
 
   test("an array of value objects renders a useFieldArray repeatable group", async () => {

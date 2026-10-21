@@ -616,4 +616,66 @@ public final class SpringGeneratorSupport {
             ? ", \"" + nav.targetDiscriminatorValue() + "\""
             : "";
     }
+
+    /** The element type string of a decimal component (see {@link #decimalJsonAnnotations}). */
+    private static final String DECIMAL_TYPE = "java.math.BigDecimal";
+    private static final String DECIMAL_LIST_TYPE = "java.util.List<java.math.BigDecimal>";
+
+    /** True iff a record component of Java type {@code type} carries the decimal wire binding. */
+    public static boolean isDecimalComponent(String type) {
+        return DECIMAL_TYPE.equals(type) || DECIMAL_LIST_TYPE.equals(type);
+    }
+
+    /**
+     * ADR-0019 Amendment 1 (W1/W2): the Jackson annotations binding a decimal record component to
+     * the canonical serializer and the strict deserializer shipped in {@code runtimePackage}.
+     * A {@code List<BigDecimal>} binds its elements ({@code contentUsing}). Empty for any other
+     * type. The annotations ride on the component itself, so a host's {@code ObjectMapper}
+     * options cannot change the bytes.
+     */
+    public static String decimalJsonAnnotations(String type, String runtimePackage) {
+        if (!isDecimalComponent(type)) return "";
+        String key = DECIMAL_LIST_TYPE.equals(type) ? "contentUsing" : "using";
+        return "@JsonSerialize(" + key + " = CanonicalDecimalSerializer.class) "
+            + "@JsonDeserialize(" + key + " = CanonicalDecimalDeserializer.class)";
+    }
+
+    /**
+     * {@link #decimalJsonAnnotations(String, String)} plus, for a field that declares
+     * {@code @precision}, the {@code @DeclaredDecimal} the strict deserializer reads to refuse a
+     * value the column cannot hold (W3).
+     */
+    public static String decimalJsonAnnotations(String type, String runtimePackage, MetaField<?> field) {
+        String json = decimalJsonAnnotations(type, runtimePackage);
+        if (json.isEmpty()) return json;
+        int[] bound = declaredDecimalBound(field);
+        return bound == null ? json
+            : "@DeclaredDecimal(precision = " + bound[0] + ", scale = " + bound[1] + ") " + json;
+    }
+
+    /**
+     * The {@code {precision, scale}} a decimal field declares, or {@code null} when it declares no
+     * {@code @precision}. An absent {@code @scale} beside a {@code @precision} is scale 0, as in SQL.
+     */
+    public static int[] declaredDecimalBound(MetaField<?> field) {
+        // ADR-0039: effective properties - the resolving one-arg reads.
+        if (field == null || !field.hasMetaAttr(MetaField.ATTR_PRECISION)) return null;
+        int precision = Integer.parseInt(field.getMetaAttr(MetaField.ATTR_PRECISION).getValueAsString());
+        int scale = field.hasMetaAttr(MetaField.ATTR_SCALE)
+            ? Integer.parseInt(field.getMetaAttr(MetaField.ATTR_SCALE).getValueAsString()) : 0;
+        return new int[] { precision, scale };
+    }
+
+    /**
+     * The imports {@link #decimalJsonAnnotations} needs: the two Jackson annotations and the two
+     * runtime classes they name (imported, so the ejected runtime package is what the output
+     * names).
+     */
+    public static String decimalAnnotationImports(String runtimePackage) {
+        return "import com.fasterxml.jackson.databind.annotation.JsonDeserialize;\n"
+            + "import com.fasterxml.jackson.databind.annotation.JsonSerialize;\n"
+            + "import " + runtimePackage + ".CanonicalDecimalDeserializer;\n"
+            + "import " + runtimePackage + ".CanonicalDecimalSerializer;\n"
+            + "import " + runtimePackage + ".DeclaredDecimal;\n";
+    }
 }

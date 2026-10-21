@@ -25,6 +25,12 @@ export type TreeHandle = unknown;
  */
 export interface ErrorEnvelopeRecord {
   readonly code: string;
+  /**
+   * The error's human-readable message. Optional: only needed when a fixture's
+   * expected entry carries `messageIncludes` (the one case message text is
+   * asserted; see spec/conformance-tests.md).
+   */
+  readonly message?: string;
   readonly source: {
     readonly format: string;
     readonly files: readonly string[];

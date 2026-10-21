@@ -67,10 +67,6 @@ const MODEL = {
         "@dimensions": ["issuedOn:month", "customerJoinedAt:month", "region", "tags"],
         "@measures": ["invoices", "paidShare"], children: [view("v_by_month")] } },
       { "object.report": { name: "Sourceless", "@from": "Invoice", "@measures": ["invoices"] } },
-      { "object.report": { name: "Materialized", "@from": "Invoice", "@measures": ["invoices"],
-        children: [view("mv_invoices", "materializedView")] } },
-      { "object.report": { name: "AbstractReport", abstract: true, "@from": "Invoice", "@measures": ["invoices"],
-        children: [view("v_abstract")] } },
       { "object.report": { name: "PaidTotals", "@from": "Invoice", "@measures": ["invoices"], "@segment": "paid" } },
       { "object.report": { name: "PaidByRegion", "@from": "Invoice", "@spine": "Invoice.customer",
         "@dimensions": ["region"], "@measures": ["invoices", "liveCentsOrZero"], "@segment": "paid" } },
@@ -223,13 +219,9 @@ describe("why a report is not served (Plan 3 Table A)", () => {
     expect(reportNotServedReason(object(root, "ByMonth"))).toBeUndefined();
   });
 
-  test("no source, a source that is not a view, and an abstract report each say why", async () => {
+  test("a report with no source says why (an abstract report and a non-view source never load)", async () => {
     const root = await load();
     expect(reportNotServedReason(object(root, "Sourceless"))).toBe("Not served: declares no view source");
-    expect(reportNotServedReason(object(root, "Materialized")))
-      .toBe("Not served: its source is a materializedView, not a view");
-    // Abstract wins over the source it declares.
-    expect(reportNotServedReason(object(root, "AbstractReport"))).toBe("Not served: the report is abstract");
   });
 });
 

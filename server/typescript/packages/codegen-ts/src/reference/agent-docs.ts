@@ -43,6 +43,7 @@
 // each is built from what the toolchain itself reads rather than from a derivation of its
 // own. An empty page is no file.
 
+import { physicalNamingGuideUrl } from "@metaobjectsdev/metadata/release-docs";
 import {
   CARDINALITY_MANY,
   CARDINALITY_ONE,
@@ -225,7 +226,7 @@ export const agentDocsFile = function agentDocsFile(opts?: AgentDocsFileOpts): G
   // option is refused rather than dropped: its value may be the one matching the database.
   const removedNaming = (opts as { columnNamingStrategy?: unknown } | undefined)?.columnNamingStrategy;
   if (removedNaming !== undefined) {
-    throw new Error(physicalNamingRemovedMessage("the columnNamingStrategy option of agentDocsFile()", String(removedNaming)));
+    throw new Error(physicalNamingRemovedMessage("the columnNamingStrategy option of agentDocsFile()", String(removedNaming), physicalNamingGuideUrl()));
   }
   const dir = (opts?.subDir ?? DEFAULT_AGENT_DIR).replace(/\/$/, "");
 

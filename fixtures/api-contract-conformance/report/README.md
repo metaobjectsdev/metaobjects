@@ -51,11 +51,9 @@ object uses (`InvoicesByMonth` is `/api/invoices_by_months`).
   accepted in every port and orders by the stored value, and `?filter[status][eq]=OPEN` matches
   it. It reaches the wire as its string symbol; in C# that is host configuration (a
   `JsonStringEnumConverter`), as for any enum the routes return.
-- **A decimal's spelling is not asserted.** `paidShare` is a ratio, so it is a decimal,
-  and each port spells a decimal its own way. The scenarios that touch it assert only
-  how many rows match.
-  TypeScript sends a string, on SQLite as well as Postgres, and holds that in its own SQLite lane
-  (`integration-tests/test/api-contract-report-sqlite.test.ts`), outside this cross-port corpus.
+- **A ratio is a decimal**, so `paidShare` reaches the wire as the canonical string
+  (`"0.4"` for 2/5) in every port and on every engine (ADR-0019 Amendment 1). Exactness
+  beyond that is the `decimal/` sub-corpus's job.
 - The default page size stays per port, as documented: TypeScript and C# return every
   row when `limit` is omitted, Java, Kotlin and Python the first 50. The scenarios
   that page pass `limit` explicitly.
@@ -129,22 +127,19 @@ report/
 
 Every top-level key but `reports` is a **base table**, named by its table name and listed
 **parents first** (`products` before `sales`, which references it): a lane inserts the
-keys in file order and every foreign key holds. The full-stack lanes (TypeScript, C#)
-insert them and let the real views derive the report rows. `reports` is what the
-views return for those rows, and it is what the **seam lanes** (Java, Kotlin, Python)
-serve: their in-memory repository or H2 table stands in for the view behind the consumer
-seam. A TypeScript test holds the two halves together, so the seam lanes cannot drift
-from what the SQL returns, and another holds the base tables to the model and to that
-order. `paidShare` is a string in the seed so a seam lane can build its own decimal from
-it without a float in between.
+keys in file order and every foreign key holds. Every lane is full stack: it inserts them
+and lets the real views derive the report rows. `reports` is what the views return for
+those rows, and lanes check their views against it (TypeScript and Python on every engine
+they run), so a view that drifts from the expected rows fails before any scenario does.
+Another test holds the base tables to the model and to that order.
 
 ### Why the view SQL is a committed artifact
 
 **View SQL is produced by TypeScript only** (ADR-0015). No other port emits SQL for a
 report, in product code or in a test harness. `schema.postgres.sql` is what TypeScript
 produces from `meta.json` (literal column naming), committed and drift-checked by
-`test/api-contract-report-corpus.test.ts`, and the C# lane executes that file. Java,
-Kotlin and Python do not run it: they seed `reports` rows behind their seam.
+`test/api-contract-report-corpus.test.ts`, and every non-TypeScript lane executes that
+file (and `schema.sqlite.sql` / `schema.mysql.sql` on those engines).
 Regenerate it with `bun run gen:report-api-schema` in
 `server/typescript/packages/integration-tests`.
 
@@ -158,11 +153,11 @@ hand-rolled reference server would answer every scenario by construction.
 
 | Port | Generated lane | Note |
 |---|---|---|
-| TypeScript | wired | `server/typescript/packages/integration-tests/test/api-contract-report.test.ts` (25 scenarios + a seed-vs-view check). Full stack: generated Fastify routes over the real views on Testcontainers Postgres. `api-contract-report-sqlite.test.ts` runs the same 25 on SQLite, `api-contract-report-mysql.test.ts` on MySQL 8.4, and the SQLite test file also runs them through local D1 (Miniflare) |
+| TypeScript | wired | `server/typescript/packages/integration-tests/test/api-contract-report.test.ts` (27 scenarios + a seed-vs-view check). Full stack: generated Fastify routes over the real views on Testcontainers Postgres. `api-contract-report-sqlite.test.ts` runs the same 27 on SQLite, `api-contract-report-mysql.test.ts` on MySQL 8.4, and the SQLite test file also runs them through local D1 (Miniflare) |
 | C# | wired | `server/csharp/MetaObjects.IntegrationTests/Api/ApiContractReportConformanceTest.cs`. Full stack: generated routes and EF Core over `schema.postgres.sql` on Testcontainers Postgres, over `schema.sqlite.sql` on SQLite, and over `schema.mysql.sql` on MySQL 8.4 |
-| Java | wired | `server/java/integration-tests/src/test/java/com/metaobjects/integration/api/ReportGeneratedApiContractConformanceTest.java` (25 scenarios + a scenario-count check). Generated controllers behind an in-memory repository seeded from `reports` |
-| Kotlin | wired | `server/java/integration-tests-kotlin/src/test/kotlin/com/metaobjects/integration/kotlin/api/report/ReportGeneratedApiContractConformanceTest.kt` (25 scenarios, the count check, and a check that the sourceless report generated nothing). Generated controllers over the generated Exposed table objects, seeded from `reports` |
-| Python | wired | `server/python/tests/integration/test_api_contract_report.py` (25 scenarios, a check that exactly the served reports are generated, and `/api/invoice_days` is `404`). Generated routers behind in-memory repositories seeded from `reports` |
+| Java | wired | `server/java/integration-tests/src/test/java/com/metaobjects/integration/api/ReportOmdb{Postgres,Sqlite,MySql}ApiContractConformanceTest.java` (27 scenarios + a scenario-count check, on each engine). Full stack: generated controllers over OMDB reading the real views |
+| Kotlin | wired | `server/java/integration-tests-kotlin/src/test/kotlin/com/metaobjects/integration/kotlin/api/report/ReportGeneratedApiContractConformanceTest.kt` (27 scenarios, the count check, and a check that the sourceless report generated nothing). Full stack: generated controllers over the generated Exposed table objects, reading the real views on Postgres, SQLite and MySQL |
+| Python | wired | `server/python/tests/integration/test_api_contract_report.py` (27 scenarios, a check that exactly the served reports are generated, a views-vs-seed check, and `/api/invoice_days` is `404`). Full stack: generated FastAPI routers over `ObjectManager`, reading the real views on Postgres, SQLite and MySQL |
 
 The scenarios use only assertion keys every runner already has (`equals`,
 `length`, `envelope`, `error` with `field`, and a status with no `body`).

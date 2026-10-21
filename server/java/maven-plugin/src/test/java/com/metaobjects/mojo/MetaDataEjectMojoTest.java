@@ -295,6 +295,11 @@ public class MetaDataEjectMojoTest {
         Files.writeString(support, Files.readString(support, StandardCharsets.UTF_8) + "// mine\n",
                 StandardCharsets.UTF_8);
         assertTrue(listOutput().contains("  SpringGeneratorSupport  [owned — DIFFERS: 0 behind, 1 of your own]"));
+        // E1: the generator is identical only when every companion it owns is, so the edited
+        // support rule makes the dto DIFFER, and the verdict names the file.
+        String out = listOutput();
+        assertTrue(out, out.contains("Per-entity Spring DTO record.  [owned — DIFFERS: 0 behind, 1 of your own; "
+                + "differing: SpringGeneratorSupport.java]"));
     }
 
     @Test
@@ -354,5 +359,17 @@ public class MetaDataEjectMojoTest {
         assertTrue(provider, provider.contains("BASE_PREFIX = \"com/acme/codegen/apidocs/java/templates/\";"));
         String generator = Files.readString(src.resolve("JavaApiDocsGenerator.java"), StandardCharsets.UTF_8);
         assertTrue(generator, generator.contains("package com.acme.codegen.apidocs.java;"));
+    }
+
+    @Test
+    public void anEditedTemplateMakesItsGeneratorDifferAndIsNamed() throws Exception {
+        mojo("api-docs", false, "java", null).execute();
+        assertTrue(listOutput(), listOutput().contains("[owned — identical]"));
+        Path template = codegenRoot()
+                .resolve("src/main/resources/com/acme/codegen/apidocs/java/templates/api/index.md.mustache");
+        Files.writeString(template, Files.readString(template, StandardCharsets.UTF_8) + "\nmy line\n",
+                StandardCharsets.UTF_8);
+        String out = listOutput();
+        assertTrue(out, out.contains("differing: api/index.md.mustache]"));
     }
 }

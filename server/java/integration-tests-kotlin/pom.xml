@@ -88,6 +88,14 @@
     </dependency>
     <!-- The parser tier's generated code imports com.metaobjects.object.extract, which an adopter
          gets from metaobjects-om. GeneratorRequiresCompileTest compiles that tier's output. -->
+    <!-- B1: the Spring runtime's loader bean (classpath:.metaobjects/config.json naming discovery),
+         which a Kotlin Spring application starts from. -->
+    <dependency>
+      <groupId>com.metaobjects</groupId>
+      <artifactId>metaobjects-core-spring</artifactId>
+      <version>${project.version}</version>
+      <scope>test</scope>
+    </dependency>
     <dependency>
       <groupId>com.metaobjects</groupId>
       <artifactId>metaobjects-om</artifactId>

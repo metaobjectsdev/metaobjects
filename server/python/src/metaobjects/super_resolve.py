@@ -12,7 +12,7 @@ from __future__ import annotations
 from .errors import ErrorCode, MetaError
 from .meta.core.identity.identity_constants import IDENTITY_UNIQUE_KEY_SUBTYPES
 from .meta.meta_data import MetaData
-from .naming_refs import RefOverDropError, owner_candidate_keys
+from .naming_refs import RefOverDropError, did_you_mean_super_hint, owner_candidate_keys
 from .shared.base_types import TYPE_IDENTITY
 from .shared.separators import PACKAGE_SEP
 from .source import resolved_source
@@ -129,7 +129,8 @@ def resolve_supers(root: MetaData, errors: list[MetaError]) -> None:
             # target. Mirrors TS resolveDeferredSupers in meta-data-loader.ts.
             errors.append(MetaError(
                 f"the SuperClass '{node.super_ref}' does not exist "
-                f"(referenced by {node.fqn()})",
+                f"(referenced by {node.fqn()})"
+                f"{did_you_mean_super_hint(root, node.super_ref)}",
                 ErrorCode.ERR_UNRESOLVED_SUPER,
                 path=node.fqn(),
                 envelope=resolved_source(node.source, node.fqn(), node.super_ref),

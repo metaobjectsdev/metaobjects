@@ -210,7 +210,10 @@ internal static class ApiContractAssertions
     {
         if (a is null && b is null) return true;
         if (a is null || b is null) return false;
-        if (IsNumber(a) && IsNumber(b)) return Convert.ToInt64(a) == Convert.ToInt64(b);
+        // Exact compare: integers and decimals meet as decimal (every integer type and
+        // decimal widen losslessly), so 0.4 != 0 and 12345678901234567.89 != 12345678901234568.
+        // A number is never equal to a string, so a wire number where "0.3" is expected fails.
+        if (IsNumber(a) && IsNumber(b)) return Convert.ToDecimal(a) == Convert.ToDecimal(b);
         if (a is List<object?> al && b is List<object?> bl)
         {
             if (al.Count != bl.Count) return false;
@@ -230,7 +233,7 @@ internal static class ApiContractAssertions
     }
 
     private static bool IsNumber(object o) =>
-        o is sbyte or byte or short or ushort or int or uint or long or ulong;
+        o is sbyte or byte or short or ushort or int or uint or long or ulong or decimal;
 
     private static bool IsEmpty(object? body) => body switch
     {

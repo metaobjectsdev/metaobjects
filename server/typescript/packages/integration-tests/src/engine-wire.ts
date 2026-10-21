@@ -6,11 +6,9 @@
 // a time bucket is `YYYY-MM-DD` or a UTC `...Z` instant. node-postgres happens to deliver those
 // spellings. The other engines deliver the same VALUES in their drivers' spellings:
 //
-//   SQLite  one INTEGER storage class, so a count is a JS number; a ratio is a REAL, so a whole
-//           one (`1.0`) is a JS integer and a fractional one a double; an instant is the TEXT the
+//   SQLite  one INTEGER storage class, so a count is a JS number; an instant is the TEXT the
 //           writer stored (`...T03:00:00.000Z`).
-//   MySQL   BIGINT and DECIMAL arrive as strings (the connection asks for `bigNumberStrings`),
-//           but a DECIMAL keeps its scale (`0.7500`, `60.0000`), and a DATETIME is a naive
+//   MySQL   BIGINT arrives as a string (the connection asks for `bigNumberStrings`), and a DATETIME is a naive
 //           `YYYY-MM-DD HH:MM:SS.fff` holding the UTC wall clock.
 //
 // This module applies the declared type to the driver value. It maps spelling only: a wrong
@@ -20,7 +18,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { canonicalDecimal, canonicalFloat, DECIMAL_RE } from "./normalization.ts";
 import { CANONICAL_DIR, REPORT_SHAPES_PATH } from "./paths.ts";
 
 export type WireEngine = "sqlite" | "mysql";
@@ -72,14 +69,29 @@ function reportShapes(): Map<string, Map<string, WireField>> {
   return shapes;
 }
 
-/** Canonical decimal text: no trailing fractional zeros, no bare `.` — the normalization.ts rule. */
-function decimalText(v: unknown): unknown {
-  if (typeof v === "number") return Number.isInteger(v) ? String(v) : canonicalFloat(v);
-  if (typeof v === "bigint") return v.toString();
-  if (typeof v === "string" && DECIMAL_RE.test(v)) {
-    return v.includes(".") ? canonicalDecimal(v) : v;
+/**
+ * `Entity.field` -> subType of every plain entity field of the canonical model, for the rows of
+ * a non-report entity (the W4 decimal scenarios read `Entry`). Only `long` and `currency` are
+ * mapped from it: the corpus' wire form for a BIGINT is a string, which node-postgres delivers
+ * and SQLite (one INTEGER storage class) hands over as a number.
+ */
+let entityLongFields: Map<string, Set<string>> | undefined;
+function entityIntegralFields(entity: string): Set<string> | undefined {
+  if (!entityLongFields) {
+    entityLongFields = new Map();
+    const root = JSON.parse(readFileSync(join(CANONICAL_DIR, "meta.fitness.json"), "utf8")) as { "metadata.root": { children?: unknown[] } };
+    for (const node of root["metadata.root"].children ?? []) {
+      const [type, body] = Object.entries(node as Record<string, { name?: string; children?: unknown[] }>)[0] ?? [];
+      if (type !== "object.entity" || body?.name === undefined) continue;
+      const names = new Set<string>();
+      for (const child of body.children ?? []) {
+        const [ctype, attrs] = Object.entries(child as Record<string, Record<string, unknown>>)[0] ?? [];
+        if ((ctype === "field.long" || ctype === "field.currency") && typeof attrs?.["name"] === "string") names.add(attrs["name"]);
+      }
+      entityLongFields.set(body.name, names);
+    }
   }
-  return v;
+  return entityLongFields.get(entity);
 }
 
 const pad = (n: number): string => n.toString().padStart(2, "0");
@@ -104,10 +116,22 @@ function instantText(engine: WireEngine, v: unknown, localTime: boolean): unknow
   );
 }
 
+/** The decimal-typed field names of report `entity`, from report-shapes.json; empty for any other entity. */
+export function reportDecimalFields(entity: string): readonly string[] {
+  const fields = reportShapes().get(entity);
+  return fields === undefined ? [] : [...fields].filter(([, f]) => f.subType === "decimal").map(([n]) => n);
+}
+
 /** Map one row of report `entity` from `engine`'s driver spelling onto the corpus' wire form. */
 export function toWireRow(engine: WireEngine, entity: string, row: Record<string, unknown>): Record<string, unknown> {
   const fields = reportShapes().get(entity);
-  if (!fields) return row;
+  if (!fields) {
+    const integral = entityIntegralFields(entity);
+    if (integral === undefined) return row;
+    return Object.fromEntries(
+      Object.entries(row).map(([k, v]) => [k, integral.has(k) && (typeof v === "number" || typeof v === "bigint") ? String(v) : v]),
+    );
+  }
   const out: Record<string, unknown> = {};
   for (const [name, value] of Object.entries(row)) {
     if (value === null || value === undefined) { out[name] = value; continue; }
@@ -118,7 +142,10 @@ export function toWireRow(engine: WireEngine, entity: string, row: Record<string
         out[name] = typeof value === "number" || typeof value === "bigint" ? String(value) : value;
         break;
       case "decimal":
-        out[name] = decimalText(value);
+        // ADR-0019 Amendment 1: the runtime hands a decimal back as its canonical string on every
+        // engine, so there is nothing to map. This lane used to canonicalize a double here, which
+        // hid a runtime that returned one; the typed gate in query-scenario.ts now refuses it.
+        out[name] = value;
         break;
       case "timestamp":
         out[name] = instantText(engine, value, field?.localTime === true);

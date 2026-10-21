@@ -10,7 +10,7 @@ import { MetaDataLoader, InMemoryStringSource, loadUris, reportReadModel } from 
 import type { MetaObject, MetaRoot } from "@metaobjectsdev/metadata";
 import { renderRoutesFile } from "../../src/templates/routes-file.js";
 import { renderRoutesFileHono } from "../../src/templates/routes-file-hono.js";
-import { hasGeneratedForm, hasItemRoute, itemRouteField, reportDecimalColumns, servesClientHooks, servesClientTier, servesReadApi } from "../../src/api-surface.js";
+import { hasGeneratedForm, decimalFieldNames, hasItemRoute, itemRouteField, servesClientHooks, servesClientTier, servesReadApi } from "../../src/api-surface.js";
 import { renderQueriesFile } from "../../src/templates/queries-file.js";
 import { servedReport } from "../../src/source-detect.js";
 import { hasUiSurface } from "../../src/generators/agent-ui-page.js";
@@ -698,36 +698,33 @@ describe("renderRoutesFile — a served report (FR-044 Plan 3)", () => {
       pkMap: buildPkMap(root), relationMap: buildRelationMap(root),
     });
 
-    test("every decimal field of the report is named, on both route flavours and on SQLite only", async () => {
+    test("every decimal field of the report is named, on both route flavours and on every dialect", async () => {
       const root = await ratioModel();
       const model = reportReadModel(declared(root, "InvoiceTotals"), root);
       // Not vacuous: the ratio and the average really are decimal fields of the read model.
       expect(model.findField("paidShare")?.subType).toBe("decimal");
       expect(model.findField("avgAmount")?.subType).toBe("decimal");
-      expect(reportDecimalColumns(model, "sqlite")).toEqual(["avgAmount", "paidShare"]);
-      const ctx = sqliteCtx(root);
-      for (const out of [renderRoutesFile(model, ctx), renderRoutesFileHono(model, ctx)]) {
-        expect(out).toContain('decimalColumns: ["avgAmount", "paidShare"],');
-      }
-      for (const dialect of ["postgres", "mysql"] as const) {
-        expect(reportDecimalColumns(model, dialect)).toEqual([]);
-        const other = makeRenderContext({
+      expect(decimalFieldNames(model)).toEqual(["avgAmount", "paidShare"]);
+      // ADR-0019 Amendment 1: a decimal is a canonical string on EVERY dialect (Postgres and
+      // MySQL return the column's scale), so the names are passed whatever the dialect.
+      for (const dialect of ["sqlite", "postgres", "mysql"] as const) {
+        const ctx = makeRenderContext({
           dialect, loadedRoot: root, outDir: "/x", dbImport: "~/db",
           pkMap: buildPkMap(root), relationMap: buildRelationMap(root),
         });
-        expect(renderRoutesFile(model, other)).not.toContain("decimalColumns");
-        expect(renderRoutesFileHono(model, other)).not.toContain("decimalColumns");
+        for (const out of [renderRoutesFile(model, ctx), renderRoutesFileHono(model, ctx)]) {
+          expect(out).toContain('decimalColumns: ["avgAmount", "paidShare"],');
+        }
       }
     });
 
-    test("a report with no decimal field, a projection and an entity pass none", async () => {
+    test("a report with no decimal field passes none; a projection and an entity name their decimals", async () => {
       const root = await loadReportingModel();
       const storeTotals = reportReadModel(declared(root, "StoreTotals"), root);
       // StoreTotals' measures are counts and a currency sum: no decimal.
-      expect(reportDecimalColumns(storeTotals, "sqlite")).toEqual([]);
+      expect(decimalFieldNames(storeTotals)).toEqual([]);
       expect(renderRoutesFile(storeTotals, sqliteCtx(root))).not.toContain("decimalColumns");
-      // A projection on SQLite is released behaviour and is not covered.
-      expect(reportDecimalColumns(declared(root, "Program"), "sqlite")).toEqual([]);
+      expect(decimalFieldNames(declared(root, "Program"))).toEqual([]);
     });
   });
 

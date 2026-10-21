@@ -142,7 +142,7 @@ export { renderAgentApi, renderApiIndex, renderEntityApiPage } from "./generator
 export { isProjection, isWriteThrough } from "./projection/projection-detector.js";
 export { isAbstract, emitsInstanceArtifacts, emitsWriteArtifacts } from "./instance-artifacts.js";
 // The UI tier asks THESE — "is there an endpoint?" — never the storage predicates.
-export { hasGeneratedForm, hasItemRoute, itemRouteField, reportDecimalColumns, restPath, servesClientHooks, servesClientTier, servesReadApi, servesWriteApi } from "./api-surface.js";
+export { hasGeneratedForm, hasItemRoute, decimalColumnsLine, decimalFieldNames, itemRouteField, restPath, servesClientHooks, servesClientTier, servesReadApi, servesWriteApi } from "./api-surface.js";
 // #356 — every emitter selects a field's view by the SURFACE it renders, never by
 // declaration position. An owned generator (FR-040) composing the render layer must
 // use this too, or it reinstates the order-dependence in its own copy.
@@ -151,7 +151,7 @@ export { viewForContext, VIEW_CONTEXT_FORM, VIEW_CONTEXT_GRID } from "./view-con
 // generator and the `agent/ui.md` docs page must both ask — it decides whether a field is
 // rendered as an input at all — and `humanize` is the one body behind every generated
 // label. Both are exported so the react tier reads them rather than keeping a copy.
-export { humanize, inferViewKind, labelFor, currencyMetaFor, valueObjectFor } from "./templates/field-meta.js";
+export { humanize, inferViewKind, labelFor, currencyMetaFor, valueObjectFor, numericInputControl } from "./templates/field-meta.js";
 // The DB-free descriptor module the UI tier imports from (see entity-meta-file.ts).
 export { renderEntityMetaFile, entityMetaFileName, entityMetaSpecifier } from "./templates/entity-meta-file.js";
 // FR-017 TPH helpers — used by the per-framework codegen packages (tanstack,

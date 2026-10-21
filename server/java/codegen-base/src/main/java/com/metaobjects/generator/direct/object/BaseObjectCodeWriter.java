@@ -46,6 +46,8 @@ public abstract class BaseObjectCodeWriter extends FileDirectWriter<BaseObjectCo
     protected String superName = null;
     protected String fullSuperName = null;
     protected MetaObject superObject = null;
+    /** True when the class does not extend its metadata super (an incompatible field redeclaration). */
+    protected boolean standalone = false;
 
     protected Map<MetaField,MetaObject> objectReferenceMap = new HashMap<>();
     protected List<String> importList = new ArrayList<>();
@@ -246,7 +248,7 @@ public abstract class BaseObjectCodeWriter extends FileDirectWriter<BaseObjectCo
     protected void writeObjectMethods(MetaObject mo) {
         inc();
 
-        for (MetaField mf : mo.getMetaFields(false)) {
+        for (MetaField mf : emittedFields(mo)) {
             context.setCurrentField(mf);
             
 
@@ -282,8 +284,28 @@ public abstract class BaseObjectCodeWriter extends FileDirectWriter<BaseObjectCo
     //////////////////////////////////////////////////////////////////////
     // Utility Methods
 
+    /**
+     * The fields this class declares: the object's own, or, for a {@link #standalone} class, every
+     * effective field (ADR-0039: the resolving read, because the super is not extended).
+     */
+    protected Collection<MetaField> emittedFields(MetaObject mo) {
+        return mo.getMetaFields(standalone);
+    }
+
+    /** True iff {@code mo} redeclares a field of {@code sup} (or its ancestors) with another subtype. */
+    private static boolean redeclaresIncompatibly(MetaObject mo, MetaObject sup) {
+        // own fields on purpose: only the layer declared here can redeclare
+        for (MetaField own : mo.getMetaFields(false)) {
+            if (!sup.hasMetaField(own.getName())) continue;
+            MetaField inherited = sup.getMetaField(own.getName());
+            if (!inherited.getSubType().equals(own.getSubType())) return true;
+        }
+        return false;
+    }
+
     protected void initVariables(MetaObject mo) {
         metaObject = mo;
+        standalone = false;
         pkg = getLanguagePackage(mo);
         name = getClassName(mo);
 
@@ -292,7 +314,13 @@ public abstract class BaseObjectCodeWriter extends FileDirectWriter<BaseObjectCo
             superPkg = getLanguagePackage(superObject);
             superName = getClassName(superObject);
 
-            if (!pkg.equals(superPkg)) {
+            if (redeclaresIncompatibly(mo, superObject)) {
+                // A Java subclass cannot narrow a getter to an unrelated return type, so a class
+                // for an object that redeclares an inherited field with another type stands alone
+                // and carries every effective field itself.
+                standalone = true;
+                fullSuperName = null;
+            } else if (!pkg.equals(superPkg)) {
                 fullSuperName = superPkg + "." + superName;
             } else {
                 fullSuperName = superName;
@@ -306,7 +334,7 @@ public abstract class BaseObjectCodeWriter extends FileDirectWriter<BaseObjectCo
     }
     
     protected void initObjectReferenceMap(MetaObject mo) {
-        for (MetaField mf : mo.getMetaFields(false)) {
+        for (MetaField mf : emittedFields(mo)) {
             if (MetaDataUtil.hasObjectRef(mf)) {
                 objectReferenceMap.put(mf, MetaDataUtil.getObjectRef(mf));
             }

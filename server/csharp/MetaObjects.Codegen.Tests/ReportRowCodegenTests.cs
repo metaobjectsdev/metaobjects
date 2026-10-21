@@ -86,6 +86,10 @@ public class ReportRowCodegenTests
             + "\"@dimensions\": [" + dims + "], \"@measures\": [" + measures + "]" + children + " } }";
     }
 
+    private static LoadResult TryLoad(params string[] reports) =>
+        new MetaDataLoader().Load(
+            [new InMemoryStringSource(ModelTemplate.Replace("<<REPORTS>>", string.Concat(reports)), id: "meta.shop.json")]);
+
     private static MetaRoot Load(params string[] reports)
     {
         var json = ModelTemplate.Replace("<<REPORTS>>", string.Concat(reports));
@@ -161,15 +165,11 @@ public class ReportRowCodegenTests
     public static TheoryData<string, string> InertSources => new()
     {
         { "no source", "" },
-        // The lowering skips these kinds, so no relation with the Table B columns is promised.
-        { "a materialized view", "\"@kind\": \"materializedView\", \"@materializedView\": \"mv_sales\"" },
-        { "a stored procedure", "\"@kind\": \"storedProc\", \"@proc\": \"sp_sales\"" },
-        { "a table function", "\"@kind\": \"tableFunction\", \"@function\": \"fn_sales\"" },
     };
 
     [Theory]
     [MemberData(nameof(InertSources))]
-    public void A_report_that_is_not_a_view_generates_nothing(string what, string source)
+    public void A_sourceless_report_generates_nothing(string what, string source)
     {
         var with = EmitAll(RunnerContext(Load(Report("SalesTotal", source))));
         var without = EmitAll(RunnerContext(Load()));
@@ -177,6 +177,19 @@ public class ReportRowCodegenTests
         Assert.True(without.Keys.OrderBy(k => k).SequenceEqual(with.Keys.OrderBy(k => k)), $"{what}: the file set changed");
         foreach (var (path, content) in without)
             Assert.True(content == with[path], $"{what}: {path} changed");
+    }
+
+    [Theory]
+    [InlineData("\"@kind\": \"materializedView\", \"@materializedView\": \"mv_sales\"", "materializedView")]
+    [InlineData("\"@kind\": \"storedProc\", \"@proc\": \"sp_sales\"", "storedProc")]
+    [InlineData("\"@kind\": \"tableFunction\", \"@function\": \"fn_sales\"", "tableFunction")]
+    public void A_report_over_a_source_that_is_not_a_view_is_refused_at_load(string source, string kind)
+    {
+        // R10: a report is read through a view, so the loader refuses the other read-only kinds
+        // before any generator sees them.
+        var error = Assert.Single(TryLoad(Report("SalesTotal", source)).Errors);
+        Assert.Equal(ErrorCode.ERR_INVALID_REPORT, error.Code);
+        Assert.Contains($"has @kind '{kind}'; a report is read through a view", error.Message);
     }
 
     [Fact]
@@ -246,7 +259,7 @@ public class ReportRowCodegenTests
         Assert.DoesNotContain("projection", routes);
         // It reads the report's own DbSet and names the report's own allowlist.
         Assert.Contains("IQueryable<StoreTotals> q = db.StoreTotals.AsNoTracking();", routes);
-        Assert.Contains("FilterParser.Parse(qs, StoreTotalsFilterAllowlist.Fields, StoreTotalsFilterAllowlist.OpsByField);", routes);
+        Assert.Contains("EfCoreFilterDispatch.Validate<StoreTotals>(FilterParser.Parse(qs, StoreTotalsFilterAllowlist.Fields, StoreTotalsFilterAllowlist.OpsByField));", routes);
         // Every derived scalar is sortable.
         foreach (var field in new[] { "Purchases", "Buyers", "Revenue" })
             Assert.Contains($"        \"{field}\",", routes);
@@ -795,54 +808,39 @@ public class ReportRowCodegenTests
         ] } }
         """;
 
-    private static MetaRoot LoadObjectDimension(bool viewBacked)
+    private static LoadResult TryLoadObjectDimension(bool viewBacked)
     {
         string source = viewBacked
             ? ", \"children\": [ { \"source.rdb\": { \"@kind\": \"view\", \"@view\": \"v_by_destination\" } } ]"
             : "";
-        var result = new MetaDataLoader().Load(
+        return new MetaDataLoader().Load(
             [new InMemoryStringSource(ObjectDimensionModel.Replace("<<SOURCE>>", source), id: "meta.shop.json")]);
-        Assert.True(result.Errors.Count == 0,
-            "model did not load:\n" + string.Join("\n", result.Errors.Select(e => $"  {e.Code}: {e.Message}")));
-        return result.Root;
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void A_dimension_over_a_field_object_is_refused_at_load_naming_the_dimension(bool viewBacked)
+    {
+        // D5: left alone, the row class silently had no property for the dimension, so the
+        // report would read without the column it groups by. The loader refuses it, with or
+        // without a source.
+        var error = Assert.Single(TryLoadObjectDimension(viewBacked).Errors);
+        Assert.Equal(ErrorCode.ERR_INVALID_DIMENSION, error.Code);
+        Assert.Contains("dimension 'destination'", error.Message);
+        Assert.Contains("a report cannot group by", error.Message);
     }
 
     [Fact]
-    public void A_dimension_over_a_field_object_is_refused_naming_the_report_and_the_dimension()
+    public void An_abstract_report_is_refused_at_load()
     {
-        // The loader accepts it. Left alone, the row class silently has no property for
-        // the dimension, so the report would read without the column it groups by.
-        var root = LoadObjectDimension(viewBacked: true);
-        foreach (var generator in new IGenerator[] { new EntityGenerator(), new DbContextGenerator() })
-        {
-            var ex = Assert.Throws<InvalidOperationException>(() => generator.Generate(RunnerContext(root)).ToList());
-            Assert.Equal(
-                "report \"SalesByDestination\": its dimension \"destination\" reads \"acme::shop::Sale.shipTo\", " +
-                "a field.object. A report over a field.object is not supported; group by a scalar field.",
-                ex.Message);
-        }
-    }
-
-    [Fact]
-    public void A_sourceless_report_over_a_field_object_generates_nothing_and_is_not_refused()
-    {
-        var files = EmitAll(RunnerContext(LoadObjectDimension(viewBacked: false)));
-        Assert.DoesNotContain(files.Keys, k => k.Contains("SalesByDestination", StringComparison.Ordinal));
-    }
-
-    [Fact]
-    public void An_abstract_view_backed_report_generates_nothing()
-    {
-        // An abstract object gets no class in this port, report or not. The TypeScript,
-        // Java and Python runtimes still read the view (docs/features/reporting.md, Known limits).
+        // R11: an abstract object gets no class in this port, and no port reads or serves an
+        // abstract report, so the loader refuses it.
         string report = Report("SalesTotal", "\"@kind\": \"view\", \"@view\": \"v_sales\"")
             .Replace("\"name\": \"SalesTotal\",", "\"name\": \"SalesTotal\", \"abstract\": true,");
         Assert.Contains("\"abstract\": true", report);
-        var with = EmitAll(RunnerContext(Load(report)));
-        var without = EmitAll(RunnerContext(Load()));
-
-        Assert.Equal(without.Keys.OrderBy(k => k).ToList(), with.Keys.OrderBy(k => k).ToList());
-        foreach (var (path, content) in without)
-            Assert.True(content == with[path], $"{path} changed");
+        var error = Assert.Single(TryLoad(report).Errors);
+        Assert.Equal(ErrorCode.ERR_INVALID_REPORT, error.Code);
+        Assert.Contains("a report cannot be abstract", error.Message);
     }
 }

@@ -25,7 +25,7 @@ requests:
     expect:
       status: 200
       body:
-        row: { id: 2, type: "Copay", reference: "REF-2" }
+        row: { id: 2, type: "Copay", reference: "REF-2", copayAmount: "12.5" }
   - id: r4
     method: GET
     path: /api/auths/3

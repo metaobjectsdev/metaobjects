@@ -10,7 +10,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public class ObjectManagerProperties {
 
     /**
-     * Explicit database dialect: postgres | mysql | mssql | oracle | derby.
+     * Explicit database dialect: postgres | mysql | mssql | oracle | derby | sqlite.
      * When blank, the driver is auto-detected from the DataSource's product name.
      */
     private String dialect;

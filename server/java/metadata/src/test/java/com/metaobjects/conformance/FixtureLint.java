@@ -130,9 +130,15 @@ public final class FixtureLint {
     public static final class ExpectedError {
         public final String code;
         public final ExpectedErrorSource source; // nullable in legacy shape
+        /** Case-sensitive substrings the actual message must contain (spec/conformance-tests.md); empty = none. */
+        public final List<String> messageIncludes;
         public ExpectedError(String code, ExpectedErrorSource source) {
+            this(code, source, List.of());
+        }
+        public ExpectedError(String code, ExpectedErrorSource source, List<String> messageIncludes) {
             this.code = code;
             this.source = source;
+            this.messageIncludes = messageIncludes;
         }
     }
 
@@ -287,7 +293,22 @@ public final class FixtureLint {
                 }
                 source = new ExpectedErrorSource(fmt, files, jsonPath, referrer, target);
             }
-            out.add(new ExpectedError(code.getAsString(), source));
+            List<String> includes = new ArrayList<>();
+            JsonElement incEl = obj.get("messageIncludes");
+            if (incEl != null) {
+                if (!incEl.isJsonArray() || incEl.getAsJsonArray().isEmpty()) {
+                    throw new IllegalArgumentException(
+                        "expected-errors.json " + label + " entry " + idx + " messageIncludes must be a non-empty string[]");
+                }
+                for (JsonElement ie : incEl.getAsJsonArray()) {
+                    if (!ie.isJsonPrimitive() || !ie.getAsJsonPrimitive().isString() || ie.getAsString().isEmpty()) {
+                        throw new IllegalArgumentException(
+                            "expected-errors.json " + label + " entry " + idx + " messageIncludes must hold non-empty strings");
+                    }
+                    includes.add(ie.getAsString());
+                }
+            }
+            out.add(new ExpectedError(code.getAsString(), source, includes));
             idx++;
         }
         return out;

@@ -85,6 +85,7 @@ public static class ScenarioLoader
             SourcePath: yamlPath,
             SeedData: raw.SeedData,
             SeedDataEngine: raw.SeedDataEngine,
+            Engines: ValidEngines(yamlPath, raw.Engines),
             Queries: (raw.Queries ?? []).Select(q => new QuerySpec(
                 Name: q.Name ?? throw new InvalidOperationException($"{yamlPath}: query missing 'name'"),
                 Op: q.Op ?? throw new InvalidOperationException($"{yamlPath}: query missing 'op'"),
@@ -101,6 +102,19 @@ public static class ScenarioLoader
                 Expect: q.Expect)).ToList());
     }
 
+    /// <summary>An unknown engine name, or an empty list, is a runner error (never a silent skip).</summary>
+    private static IReadOnlyList<string>? ValidEngines(string yamlPath, List<string>? engines)
+    {
+        if (engines is null) return null;
+        if (engines.Count == 0)
+            throw new InvalidOperationException($"{yamlPath}: 'engines' is an empty list");
+        foreach (var name in engines)
+            if (!QueryScenario.KnownEngines.Contains(name, StringComparer.Ordinal))
+                throw new InvalidOperationException(
+                    $"{yamlPath}: unknown engine '{name}' in 'engines' (known: {string.Join(", ", QueryScenario.KnownEngines)})");
+        return engines;
+    }
+
     // ---------- YAML wire shapes (lower-cased + hyphenated via the naming convention) ----------
 
     private sealed class QueryYaml
@@ -111,6 +125,8 @@ public static class ScenarioLoader
         // Per-engine seed SQL, keyed by engine name. Only a seed that cannot be one SQL
         // text across engines (a clock-relative expression) carries one.
         public Dictionary<string, string>? SeedDataEngine { get; set; }
+        // `engines:` — exact when present (postgres | mysql | sqlite | d1).
+        public List<string>? Engines { get; set; }
         public List<QuerySpecYaml>? Queries { get; set; }
     }
 

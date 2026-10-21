@@ -440,7 +440,7 @@ public class MetaDataLoader
                     continue;
                 }
                 errors.Add(new MetaError(
-                    $"the SuperClass '{failure.Ref}' does not exist (referenced by {failure.NodeFqn})",
+                    $"the SuperClass '{failure.Ref}' does not exist (referenced by {failure.NodeFqn}){NamingRefs.DidYouMeanSuperHint(root, failure.Ref)}",
                     ErrorCode.ERR_UNRESOLVED_SUPER,
                     Envelope: envelope));
             }

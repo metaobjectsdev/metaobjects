@@ -879,7 +879,12 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
         // redundantly re-authored package (matches the TS / Python oracles).
         // (isRoot here just means "direct child of metadata.root"; the doc
         // root's own package is tracked separately via setDefaultPackageName.)
-        if (pkg != null) {
+        // A merge into a node an earlier document already declared leaves that node's own
+        // authored-package flag alone: the overlay's package places the overlay, it does not
+        // re-author the target (TS, C# and Python never write it onto the merged target).
+        boolean mergesIntoDeclared = md != null && (md.getSource() instanceof JsonSource
+            || md.getSource() instanceof YamlSource || md.getSource() instanceof MergedSource);
+        if (pkg != null && !mergesIntoDeclared) {
             md.setPackageAuthored(true);
         }
 

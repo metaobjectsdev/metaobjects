@@ -47,7 +47,9 @@ api reference, the requirement ledger and the agent pages) into `docs.outDir`, f
 
 ```ts
 import { defineConfig } from "@metaobjectsdev/cli";
-import { entityFile, routesFile } from "@metaobjectsdev/codegen-ts/generators";
+// 1.0.x had no packaged `entity` / `routes` export: they were owned copies from `meta eject`.
+import { entityFile } from "./codegen/generators/entity";
+import { routesFile } from "./codegen/generators/routes";
 
 export default defineConfig({
   outDir: "src/generated",
@@ -83,11 +85,12 @@ import {
   apiDocsFile,
   docsFile,
   docsSiteFile,
-  entityFile,
   metamodelDocsFile,
   requirementsFile,
-  routesFile,
 } from "@metaobjectsdev/codegen-ts/generators";
+// Your owned copies stay as they were.
+import { entityFile } from "./codegen/generators/entity";
+import { routesFile } from "./codegen/generators/routes";
 
 export default defineConfig({
   outDir: "src/generated",

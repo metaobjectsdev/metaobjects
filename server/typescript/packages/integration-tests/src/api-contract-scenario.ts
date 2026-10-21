@@ -56,8 +56,14 @@ export interface ApiRequest {
 
 export interface ApiScenario {
   name: string;
-  description?: string;
-  setup?: { truncate?: boolean };
+  description?: string | undefined;
+  setup?: { truncate?: boolean } | undefined;
+  /**
+   * The engines that run this scenario (`postgres`, `mysql`, `sqlite`, `d1`), or undefined for
+   * every engine the lane has. A scenario whose subject an engine cannot hold (an exact decimal
+   * on SQLite, W4) says so here, once, instead of a runner skipping it by name.
+   */
+  engines?: string[] | undefined;
   requests: ApiRequest[];
   sourcePath: string;
 }
@@ -75,6 +81,7 @@ function parseScenario(file: string): ApiScenario {
     name: String(raw["name"] ?? file),
     description: raw["description"] as string | undefined,
     setup: raw["setup"] as { truncate?: boolean } | undefined,
+    engines: raw["engines"] as string[] | undefined,
     requests: requests.map((r) => ({
       id: String(r["id"]),
       method: String(r["method"]).toUpperCase() as HttpMethod,
@@ -102,10 +109,41 @@ export async function runScenario(scenario: ApiScenario, baseUrl: string): Promi
     const bodyText = await res.text();
     let body: unknown = null;
     if (bodyText.length > 0) {
-      try { body = JSON.parse(bodyText); } catch { body = bodyText; }
+      try { body = parseBodyExact(bodyText); } catch { body = bodyText; }
     }
     assertResponse(scenario.name, req, res.status, body);
   }
+}
+
+/** Stands in for a JSON number whose token a double cannot hold; it equals no expectation. */
+export interface InexactNumber { readonly inexactNumber: string }
+
+/**
+ * Whether `value` (the double a parser made of `source`) is the number `source` spells. A decimal
+ * point and trailing fraction zeros are spelling; a digit the double dropped is not.
+ */
+function isExact(value: number, source: string): boolean {
+  if (Number.isSafeInteger(value) && /^-?\d+$/.test(source)) return true;
+  const plain = String(value);
+  if (/[eE]/.test(plain) || /[eE]/.test(source)) return false;
+  const trimmed = source.includes(".") ? source.replace(/0+$/, "").replace(/\.$/, "") : source;
+  return plain === trimmed;
+}
+
+/**
+ * JSON.parse that does not let a number lose digits unnoticed. The assertion engine compares
+ * parsed values, so `12345678901234567.89` arriving as a JSON number would parse to a double and
+ * equal an expectation written with the same double, however wrong the server's digits were. A
+ * number whose token the double cannot reproduce is returned as an {@link InexactNumber}, which
+ * equals nothing the scenarios can write, so the comparison fails and names the token.
+ */
+export function parseBodyExact(text: string): unknown {
+  return JSON.parse(text, function (this: unknown, _key: string, value: unknown, context?: { source?: string }) {
+    if (typeof value === "number" && context?.source !== undefined && !isExact(value, context.source)) {
+      return { inexactNumber: context.source } satisfies InexactNumber;
+    }
+    return value;
+  } as Parameters<typeof JSON.parse>[1]);
 }
 
 // ---------------------------------------------------------------------------

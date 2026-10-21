@@ -1,7 +1,10 @@
 """Run a QueryScenario end-to-end."""
 from __future__ import annotations
 
+import decimal
+
 import json
+import sqlite3
 from contextlib import closing
 from pathlib import Path
 from typing import Any
@@ -10,8 +13,11 @@ import pg8000.dbapi as pg8000
 
 from metaobjects import load_directory
 from metaobjects.naming import attach_naming
-from metaobjects.runtime import ObjectManager, PostgresDriver
+from metaobjects.runtime import MySqlDriver, ObjectManager, PostgresDriver, SqliteDriver
 
+from .engines import ScenarioEngine, split_statements
+from .mysql_container import MySqlInfo
+from .mysql_container import connect as mysql_connect
 from .normalization import canonical_row_set_json, canonical_rows_json, normalize_row
 from .postgres_container import PostgresContainer
 from .scenarios import QueryScenario, QuerySpec
@@ -43,22 +49,66 @@ def run(scenario: QueryScenario, pg: PostgresContainer, canonical_dir: Path) -> 
     )) as conn:
         driver = PostgresDriver(conn)
         om = ObjectManager(root_for_bootstrap, driver)
-        for spec in scenario.queries:
-            # FR-017 TPH: an op marked `expect-error: true` (a cross-subtype write)
-            # MUST be rejected by the runtime — a raise is the pass (mirrors TS/C#).
-            if spec.expect_error:
-                try:
-                    _execute_spec(om, spec)
-                except Exception:
-                    continue  # rejected as required
-                raise AssertionError(
-                    f"{scenario.source_path} / {spec.name}: expected the {spec.op} to "
-                    f"FAIL (expect-error: true) but it succeeded"
-                )
-            actual = _execute_spec(om, spec)
-            # The OID map from the just-run query supplies the int4-vs-int8
-            # wire discriminator the native row values can't carry (ADR-0019).
-            _assert_result(scenario.source_path, spec, actual, om.last_column_oids)
+        _run_queries(scenario, om)
+
+
+def run_sqlite(scenario: QueryScenario, db_path: Path, canonical_dir: Path) -> None:
+    """Run *scenario* on SQLite (stdlib ``sqlite3``): execute ``canonical/schema.sqlite.sql``
+    verbatim into the empty database file *db_path*, seed it, and run the queries through the
+    ObjectManager with the SQLite driver. The expectations are the Postgres wire ones."""
+    engine = ScenarioEngine.SQLITE
+    with closing(sqlite3.connect(str(db_path))) as conn:
+        _exec_script(conn, (canonical_dir.parent / engine.schema_artifact).read_text())
+        seed = engine.seed(scenario)
+        if seed and seed.strip():
+            _exec_script(conn, seed)
+        om = ObjectManager(_load(canonical_dir), SqliteDriver(conn))
+        _run_queries(scenario, om)
+
+
+def run_mysql(scenario: QueryScenario, info: MySqlInfo, canonical_dir: Path) -> None:
+    """Run *scenario* on MySQL: *info* names an EMPTY database; ``canonical/schema.mysql.sql``
+    is executed verbatim, the seed is re-spelled for MySQL, and the queries run through the
+    ObjectManager with the MySQL driver. The expectations are the Postgres wire ones."""
+    engine = ScenarioEngine.MYSQL
+    with closing(mysql_connect(info)) as conn:
+        _exec_script(conn, (canonical_dir.parent / engine.schema_artifact).read_text())
+        seed = engine.seed(scenario)
+        if seed and seed.strip():
+            _exec_script(conn, seed)
+        om = ObjectManager(_load(canonical_dir), MySqlDriver(conn))
+        _run_queries(scenario, om)
+
+
+def _exec_script(conn: Any, script: str) -> None:
+    """Run a multi-statement script one statement per call (neither driver batches)."""
+    cur = conn.cursor()
+    try:
+        for stmt in split_statements(script):
+            cur.execute(stmt)
+        conn.commit()
+    finally:
+        cur.close()
+
+
+def _run_queries(scenario: QueryScenario, om: ObjectManager) -> None:
+    for spec in scenario.queries:
+        # FR-017 TPH: an op marked `expect-error: true` (a cross-subtype write)
+        # MUST be rejected by the runtime — a raise is the pass (mirrors TS/C#).
+        if spec.expect_error:
+            try:
+                _execute_spec(om, spec)
+            except Exception:
+                continue  # rejected as required
+            raise AssertionError(
+                f"{scenario.source_path} / {spec.name}: expected the {spec.op} to "
+                f"FAIL (expect-error: true) but it succeeded"
+            )
+        actual = _execute_spec(om, spec)
+        # The type-code map from the just-run query supplies the int4-vs-int8
+        # wire discriminator the native row values can't carry (ADR-0019).
+        _assert_typed_decimals(scenario.source_path, spec, actual, om)
+        _assert_result(scenario.source_path, spec, actual, om.last_column_oids)
 
 
 # ----------------------------------------------------------------------------
@@ -194,6 +244,28 @@ def _execute(info: Any, sql: str) -> None:
             cur.close()
 
 
+def _assert_typed_decimals(scenario_path: str, spec: QuerySpec, actual: Any, om: ObjectManager) -> None:
+    """The typed decimal gate (ADR-0019 Amendment 1): BEFORE any normalization, every field the
+    model declares decimal (an entity field, or a report's derived decimal measure) must be
+    ``None`` or a ``Decimal``. A float or a string fails, so the boundary can never launder a
+    runtime that read a decimal as a double or as text."""
+    if spec.op in ("count", "delete") or actual is None or isinstance(actual, bool):
+        return
+    decimal_fields = [
+        f.name for f in om._require_entity(spec.entity).fields() if f.sub_type == "decimal"
+    ]
+    if not decimal_fields:
+        return
+    rows = actual if isinstance(actual, list) else [actual]
+    for row in rows:
+        for name in decimal_fields:
+            if name in row and row[name] is not None and not isinstance(row[name], decimal.Decimal):
+                raise AssertionError(
+                    f"{scenario_path} / {spec.name}: decimal field {spec.entity}.{name} came back "
+                    f"as {type(row[name]).__name__} {row[name]!r}, not a Decimal"
+                )
+
+
 def _assert_result(
     scenario_path: str, spec: QuerySpec, actual: Any, column_oids: dict[str, int]
 ) -> None:
@@ -243,9 +315,9 @@ def _canonicalize_actual(actual: Any, op: str, column_oids: dict[str, int]) -> s
         return "null" if op != "relate" else "[]"
     if op in ("get", "roundtrip", "update", "create"):
         return json.dumps(
-            normalize_row(actual, column_oids), sort_keys=True, separators=(",", ":")
+            normalize_row(actual, column_oids, actual=True), sort_keys=True, separators=(",", ":")
         )
     if op == "relate":
         rows = actual if isinstance(actual, list) else [actual]
-        return canonical_row_set_json(rows, column_oids)
-    return canonical_rows_json(actual, column_oids)
+        return canonical_row_set_json(rows, column_oids, actual=True)
+    return canonical_rows_json(actual, column_oids, actual=True)

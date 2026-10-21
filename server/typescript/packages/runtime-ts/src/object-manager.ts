@@ -1,4 +1,5 @@
 import type { MetaData } from "@metaobjectsdev/metadata";
+import { physicalNamingGuideUrl } from "@metaobjectsdev/metadata/release-docs";
 import {
   TYPE_OBJECT, TYPE_FIELD,
   OBJECT_SUBTYPE_REPORT,
@@ -72,7 +73,7 @@ export class ObjectManager {
     // The 1.0 option is refused rather than dropped: its value may be the one that matches.
     const removedNaming = (opts as { columnNamingStrategy?: unknown }).columnNamingStrategy;
     if (removedNaming !== undefined) {
-      throw new Error(physicalNamingRemovedMessage("the ObjectManager columnNamingStrategy option", String(removedNaming)));
+      throw new Error(physicalNamingRemovedMessage("the ObjectManager columnNamingStrategy option", String(removedNaming), physicalNamingGuideUrl()));
     }
     this.columnNamingStrategy = physicalNamingOf(this.metadata).columns;
   }

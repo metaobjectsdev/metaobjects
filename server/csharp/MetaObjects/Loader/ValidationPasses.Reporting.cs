@@ -169,6 +169,9 @@ public static partial class ValidationPasses
         // (type, name): an entity may carry a same-named dimension and relationship.
         obj.Children().FirstOrDefault(c => c.Type == type && c.Name == name);
 
+    /// <summary>A field's <c>@objectRef</c>, read with the resolving accessor (ADR-0039).</summary>
+    private static object? ReportingObjectRefOf(MetaData field) => field.Attr(FIELD_ATTR_OBJECT_REF);
+
     private static MetaData? ReportingFieldOf(MetaData obj, string name) =>
         ReportingChildOfType(obj, TYPE_FIELD, name);
 
@@ -350,10 +353,27 @@ public static partial class ValidationPasses
             return;
         }
         string fieldName = parts.Value.Path[0];
-        var field = ReportingFieldOf(ofEntity, fieldName);
+        // With @via the field is looked up on the entity @of NAMES (own plus inherited), not on the
+        // @via terminal: a base the terminal extends must itself carry the field, or the dimension
+        // names a column the base table lacks. Without @via the host IS the checked entity.
+        var lookup = via is null ? ofEntity : named!;
+        var field = ReportingFieldOf(lookup, fieldName);
         if (field is null)
         {
-            Err($"@of '{of}' names no field '{fieldName}' on '{Shown(ctx, ofEntity)}'.");
+            bool declaredOnTerminal = !ReferenceEquals(lookup, ofEntity) && ReportingFieldOf(ofEntity, fieldName) is not null;
+            Err(declaredOnTerminal
+                ? $"@of '{of}' names no field '{fieldName}' on '{Shown(ctx, lookup)}': only '{Shown(ctx, ofEntity)}', " +
+                  $"the entity @via reaches, declares it. Name it '{ofEntity.Name}.{fieldName}'."
+                : $"@of '{of}' names no field '{fieldName}' on '{Shown(ctx, lookup)}'.");
+            return;
+        }
+
+        // D5 — a dimension groups by a scalar. A field.object (or a field carrying @objectRef) is a JSON
+        // document: no port serves a report over one, and a document is not a value to group rows by.
+        if (field.SubType == FIELD_SUBTYPE_OBJECT || ReportingObjectRefOf(field) is not null)
+        {
+            Err($"@of '{of}' is a field.{field.SubType}{(ReportingObjectRefOf(field) is not null ? " with an @objectRef" : "")}, " +
+                "which a report cannot group by. Group by a scalar field of it.");
             return;
         }
 
@@ -484,10 +504,12 @@ public static partial class ValidationPasses
 
         // The type rule — a measure's @default is a whole number. ValidateAttrSchema already
         // refuses a fraction (and a non-number) with ERR_BAD_ATTR_VALUE on this node (see the
-        // file header), so nothing is reported here. A fraction only skips M7/M8: one mistake,
+        // file header), so nothing is reported here. A @default that is not an integral number skips M7-M9: one mistake,
         // one error. ADR-0039: resolving — the raw attribute, inherited or not.
         var declaredDefault = measure.Attr(REPORTING_ATTR_DEFAULT);
-        bool fractionalDefault = declaredDefault is double d && double.IsFinite(d) && d != Math.Floor(d);
+        bool invalidDefault = declaredDefault is not null &&
+            !(declaredDefault is int or long or short ||
+              (declaredDefault is double d && double.IsFinite(d) && d == Math.Floor(d)));
 
         if (measure.IsRatio())
         {
@@ -499,9 +521,8 @@ public static partial class ValidationPasses
         bool clean = CheckAggregateColumns(ctx, measure, Err, out var ofField);
 
         // M7 / M8 — where a @default can apply. Only when M0–M4 passed and the @default is
-        // not a fraction: one mistake, one error. The presence test reads the raw attribute,
-        // so a non-number value on a count still reports M7 beside the attribute type error.
-        if (clean && !fractionalDefault && declaredDefault is not null)
+        // an integral number: one mistake, one error (the attribute type error alone).
+        if (clean && !invalidDefault && declaredDefault is not null)
         {
             string? agg = measure.Agg();
             if (agg == AGG_COUNT)
@@ -592,6 +613,14 @@ public static partial class ValidationPasses
             if (ofField is null)
             {
                 err($"@of '{item}' names no field '{parts.Value.Path[0]}' on '{ctx.Declaring.ResolutionKey()}'.");
+                return false;
+            }
+            // M10 — a measure aggregates scalars. A field.object (or a field carrying @objectRef) is a JSON
+            // document, which no port aggregates in a report.
+            if (ofField.SubType == FIELD_SUBTYPE_OBJECT || ReportingObjectRefOf(ofField) is not null)
+            {
+                err($"@of '{item}' is a field.{ofField.SubType}{(ReportingObjectRefOf(ofField) is not null ? " with an @objectRef" : "")}, " +
+                    "which a report cannot aggregate. Aggregate a scalar field of it.");
                 return false;
             }
             fields.Add(ofField);
@@ -792,6 +821,30 @@ public static partial class ValidationPasses
                 Err($": {ReportingChildLabel(source)} is writable; a report is read-only, so its source must " +
                     "declare a read-only @kind (view, materializedView, storedProc or tableFunction).", source);
             }
+        }
+
+        // R10 — a report is read through a view. The other read-only kinds are not read by a plain
+        // SELECT (a stored procedure and a table function are called, not selected from), and no port
+        // lowers or serves them. A view or materialized view the adopter creates is declared
+        // `@kind: view` with `@unmanaged: true`; a SELECT reads either one.
+        // ADR-0039: resolving, as R5 reads it.
+        foreach (var source in report.Children().OfType<MetaSource>().Where(src => src.IsReadOnly()))
+        {
+            if (source.EffectiveKind != SOURCE_KIND_VIEW)
+            {
+                Err($": {ReportingChildLabel(source)} has @kind '{source.EffectiveKind}'; a report is read through a view, so its " +
+                    "source must be @kind: view. For a view or materialized view you create yourself, declare " +
+                    "@kind: view with @unmanaged: true.", source);
+            }
+        }
+
+        // R11 — a report cannot be abstract: its fields are derived from its own @dimensions and
+        // @measures, no port reads or serves an abstract report, and report inheritance is not part of
+        // the vocabulary.
+        if (report.IsAbstract)
+        {
+            Err(": is abstract; a report cannot be abstract, because its fields are derived from its own @dimensions " +
+                "and @measures and no port reads or serves an abstract report. Remove abstract: true.");
         }
 
         // R1 — @from resolves to an object.entity. Without it, R2/R3/R6/R7, R8/R9 and

@@ -48,6 +48,11 @@ const TABLES = [
   \`refunded\` BOOLEAN,
   FOREIGN KEY (\`productId\`) REFERENCES \`products\` (\`id\`)
 )`,
+  `CREATE TABLE \`tickets\` (
+  \`id\` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  \`tags\` JSON,
+  \`attrs\` JSON
+)`,
 ];
 
 

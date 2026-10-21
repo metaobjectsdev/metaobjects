@@ -264,9 +264,13 @@ public static class DataConverter
         {
             if (element.TryGetInt64(out long lng))
                 return lng;
-            // Non-integer JSON number (e.g. 3.7) — pass through as double,
-            // matching TS `toInteger` which returns `raw` (the number) unchanged.
-            return element.GetDouble();
+            // An integral number written with a decimal point or exponent (4.0, 1e2) is the
+            // integer it names; a fractional one (3.7) passes through as a double so the attribute
+            // type check refuses it (ERR_BAD_ATTR_VALUE).
+            double dbl = element.GetDouble();
+            if (double.IsFinite(dbl) && dbl == Math.Floor(dbl) && dbl >= JsSafeIntegerMin && dbl <= JsSafeIntegerMax)
+                return (long)dbl;
+            return dbl;
         }
         if (element.ValueKind == JsonValueKind.String)
         {

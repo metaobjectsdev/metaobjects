@@ -367,12 +367,34 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
            .append(" fromJson(JsonNode body, ObjectMapper mapper) {\n");
         src.append("        if (!body.isObject()) throw new PatchValidationException(\"(request body)\");\n");
         src.append("        Map<String, Object> assigned = new LinkedHashMap<>();\n");
+        boolean usesDecimalPatch = false;
+        boolean usesDecimalListPatch = false;
         for (MetaField field : settable) {
             String name = field.getName();
             String type = patchComponentType(field, entity, dtoName);
             boolean required = SpringGeneratorSupport.isRequired(field);
             // A TypeReference (not a raw Class) so a generic component — e.g. a
             // field.<scalar> @isArray List<Long> — binds with its element type intact.
+            if ("java.math.BigDecimal".equals(type)) {
+                // ADR-0019 Amendment 1 (W2): a decimal binds through the strict rule, not the
+                // mapper's coercion: "" or "NaN" is a 400, a number is read exactly.
+                int[] bound = SpringGeneratorSupport.declaredDecimalBound(field);
+                src.append("        bindDecimal(body, assigned, \"").append(name).append("\", ")
+                   .append(required).append(", ").append(bound == null ? 0 : bound[0])
+                   .append(", ").append(bound == null ? 0 : bound[1]).append(");\n");
+                usesDecimalPatch = true;
+                continue;
+            }
+            if ("java.util.List<java.math.BigDecimal>".equals(type)) {
+                // The same strict rule per element of a decimal array.
+                int[] bound = SpringGeneratorSupport.declaredDecimalBound(field);
+                src.append("        bindDecimalList(body, assigned, \"").append(name).append("\", ")
+                   .append(required).append(", ").append(bound == null ? 0 : bound[0])
+                   .append(", ").append(bound == null ? 0 : bound[1]).append(");\n");
+                usesDecimalPatch = true;
+                usesDecimalListPatch = true;
+                continue;
+            }
             src.append("        bind(body, mapper, assigned, \"").append(name)
                .append("\", new TypeReference<").append(type).append(">() {}, ")
                .append(required).append(");\n");
@@ -396,6 +418,54 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         src.append("            throw new PatchValidationException(field);\n");
         src.append("        }\n");
         src.append("    }\n");
+        if (usesDecimalPatch) {
+            // The import line is written before the body; add the one the body now needs.
+            String pve = "import " + runtimePackage + ".PatchValidationException;\n";
+            int at = src.indexOf(pve);
+            src.insert(at, "import " + runtimePackage + ".CanonicalDecimalDeserializer;\n");
+            // ADR-0019 Amendment 1 (W2): the strict decimal rule over the tree node.
+            src.append("\n    private static void bindDecimal(JsonNode body, Map<String, Object> assigned,\n");
+            src.append("            String field, boolean required, int precision, int scale) {\n");
+            src.append("        if (!body.has(field)) return;                         // absent → untouched\n");
+            src.append("        JsonNode node = body.get(field);\n");
+            src.append("        if (node.isNull()) {\n");
+            src.append("            if (required) throw new PatchValidationException(field);\n");
+            src.append("            assigned.put(field, null);                         // explicit null → clear\n");
+            src.append("            return;\n");
+            src.append("        }\n");
+            src.append("        try {\n");
+            src.append("            // precision 0 declares no @precision: only the engine-wide W3 limits apply\n");
+            src.append("            assigned.put(field, precision == 0 ? CanonicalDecimalDeserializer.fromNode(node)\n");
+            src.append("                : CanonicalDecimalDeserializer.fromNode(node, precision, scale));\n");
+            src.append("        } catch (IllegalArgumentException e) {\n");
+            src.append("            throw new PatchValidationException(field);\n");
+            src.append("        }\n");
+            src.append("    }\n");
+            if (usesDecimalListPatch) {
+                src.append("\n    private static void bindDecimalList(JsonNode body, Map<String, Object> assigned,\n");
+                src.append("            String field, boolean required, int precision, int scale) {\n");
+                src.append("        if (!body.has(field)) return;                         // absent → untouched\n");
+                src.append("        JsonNode node = body.get(field);\n");
+                src.append("        if (node.isNull()) {\n");
+                src.append("            if (required) throw new PatchValidationException(field);\n");
+                src.append("            assigned.put(field, null);                         // explicit null → clear\n");
+                src.append("            return;\n");
+                src.append("        }\n");
+                src.append("        if (!node.isArray()) throw new PatchValidationException(field);\n");
+                src.append("        java.util.List<java.math.BigDecimal> items = new java.util.ArrayList<>();\n");
+                src.append("        for (JsonNode item : node) {\n");
+                src.append("            if (item.isNull()) throw new PatchValidationException(field);\n");
+                src.append("            try {\n");
+                src.append("                items.add(precision == 0 ? CanonicalDecimalDeserializer.fromNode(item)\n");
+                src.append("                    : CanonicalDecimalDeserializer.fromNode(item, precision, scale));\n");
+                src.append("            } catch (IllegalArgumentException e) {\n");
+                src.append("                throw new PatchValidationException(field);\n");
+                src.append("            }\n");
+                src.append("        }\n");
+                src.append("        assigned.put(field, items);\n");
+                src.append("    }\n");
+            }
+        }
         src.append("}\n");
 
         writeJavaFile(entity, outRoot, pkg, patchName, src.toString());
@@ -480,7 +550,13 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         if (!pkg.isEmpty()) {
             src.append("package ").append(pkg).append(";\n\n");
         }
-        if (usesNetDeser) {
+        // ADR-0019 Amendment 1: a decimal component binds the canonical serializer / strict
+        // deserializer (JsonDeserialize is imported once, for either reason).
+        boolean usesDecimal = fields.stream()
+            .anyMatch(f -> SpringGeneratorSupport.isDecimalComponent(componentTypeFr019(f, entity)));
+        if (usesDecimal) {
+            src.append(SpringGeneratorSupport.decimalAnnotationImports(runtimePackage));
+        } else if (usesNetDeser) {
             src.append("import com.fasterxml.jackson.databind.annotation.JsonDeserialize;\n");
         }
         // Wildcard import keeps the emit simple — record components carry a small,
@@ -491,7 +567,7 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         if (usesValidation) {
             src.append("import jakarta.validation.constraints.*;\n");
         }
-        if (usesNetDeser || usesValid || usesValidation) {
+        if (usesDecimal || usesNetDeser || usesValid || usesValidation) {
             src.append('\n');
         }
         src.append("/** GENERATED — wire DTO for ").append(shortName)
@@ -511,6 +587,8 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
             String jsonName = SpringNaming.jsonPropertyAnnotation(field.getName());
             src.append("    ");
             if (!annotations.isEmpty()) src.append(annotations).append(' ');
+            String decimalJson = SpringGeneratorSupport.decimalJsonAnnotations(type, runtimePackage, field);
+            if (!decimalJson.isEmpty()) src.append(decimalJson).append(' ');
             if (!jsonName.isEmpty()) src.append(jsonName).append(' ');
             src.append(type).append(' ').append(component);
             if (i < fields.size() - 1) src.append(',');

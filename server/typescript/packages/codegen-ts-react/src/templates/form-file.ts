@@ -31,12 +31,6 @@ import {
   IDENTITY_ATTR_FIELDS,
   FIELD_ATTR_DEFAULT,
   FIELD_SUBTYPE_OBJECT,
-  FIELD_SUBTYPE_INT,
-  FIELD_SUBTYPE_LONG,
-  FIELD_SUBTYPE_DOUBLE,
-  FIELD_SUBTYPE_FLOAT,
-  FIELD_SUBTYPE_DECIMAL,
-  FIELD_SUBTYPE_CURRENCY,
   FIELD_SUBTYPE_BOOLEAN,
   FIELD_SUBTYPE_DATE,
   FIELD_SUBTYPE_TIME,
@@ -67,7 +61,7 @@ import {
   VIEW_CONTEXT_FORM,
   effectivePackage,
 } from "@metaobjectsdev/codegen-ts/engine";
-import { humanize, valueObjectFor } from "@metaobjectsdev/codegen-ts/templates/field-meta";
+import { humanize, valueObjectFor, numericInputControl } from "@metaobjectsdev/codegen-ts/templates/field-meta";
 import { tphDiscriminatorPin } from "@metaobjectsdev/codegen-ts/engine";
 
 function primaryFieldNames(entity: MetaObject): Set<string> {
@@ -131,13 +125,6 @@ function resolveValueObject(field: MetaField, ctx: RenderContext): MetaObject | 
 /** A real HTML <input type=...> for a scalar field subtype, or undefined (text). */
 function htmlTypeForSubType(subType: string): string | undefined {
   switch (subType) {
-    case FIELD_SUBTYPE_INT:
-    case FIELD_SUBTYPE_LONG:
-    case FIELD_SUBTYPE_DOUBLE:
-    case FIELD_SUBTYPE_FLOAT:
-    case FIELD_SUBTYPE_DECIMAL:
-    case FIELD_SUBTYPE_CURRENCY:
-      return "number";
     case FIELD_SUBTYPE_BOOLEAN:
       return "checkbox";
     case FIELD_SUBTYPE_DATE:
@@ -189,8 +176,12 @@ function renderNestedField(
   const vo = resolveValueObject(field, ctx);
   if (vo === undefined) {
     // Scalar / enum / unresolved object → a single bound input.
-    const htmlType = htmlTypeForSubType(field.subType);
-    const typeAttr = htmlType !== undefined ? ` type=${JSON.stringify(htmlType)}` : "";
+    const numeric = numericInputControl(field.subType);
+    const htmlType = numeric?.htmlType ?? htmlTypeForSubType(field.subType);
+    const typeAttr =
+      (htmlType !== undefined ? ` type=${JSON.stringify(htmlType)}` : "") +
+      (numeric?.step !== undefined ? ` step=${JSON.stringify(numeric.step)}` : "") +
+      (numeric?.inputMode !== undefined ? ` inputMode=${JSON.stringify(numeric.inputMode)}` : "");
     return {
       jsx: `<div className="metaobjects-field" key=${JSON.stringify(path)}>
   <label className="metaobjects-field-label">${humanize(field.name)}</label>

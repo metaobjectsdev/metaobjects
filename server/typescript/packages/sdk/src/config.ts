@@ -217,12 +217,61 @@ export const DEFAULT_CONFIG: Config = ConfigSchema.parse({ schema_version: 1 });
  *  declarations of the same string). */
 export const CONFIG_FILE = "config.json";
 
+/** Where an unknown-key warning goes. Replaceable so a host can route or capture it. */
+let configWarningSink: (message: string) => void = (m) => { process.stderr.write(`${m}\n`); };
+const warnedKeys = new Set<string>();
+
+/** Route unknown-key warnings elsewhere (tests, a host with its own logger). Returns the previous sink. */
+export function setConfigWarningSink(sink: (message: string) => void): (message: string) => void {
+  const previous = configWarningSink;
+  configWarningSink = sink;
+  return previous;
+}
+
+/**
+ * Read `.metaobjects/config.json`.
+ *
+ * FORWARD-TOLERANT at the top level: a key this version does not know is a WARNING, and the
+ * key is ignored. The file is shared by every port and by every version in a mixed estate, so
+ * a newer MetaObjects adds keys (1.1 added `naming`) that an older reader must not refuse —
+ * a 1.0 reader's `.strict()` did exactly that, and the whole load failed on a key that was
+ * perfectly valid. A key this version DOES know is still validated strictly, as is everything
+ * nested inside it: a typo in `migrate.d1.bindingg` stays an error. The trade is that a
+ * misspelled TOP-LEVEL key (`scopes` for `scope`) now warns rather than fails; the warning
+ * names it. {@link ConfigSchema} itself stays strict, so `saveConfig` never writes an unknown key.
+ */
 export async function loadConfig(metaRoot: string): Promise<Config> {
   const path = join(metaRoot, CONFIG_FILE);
   const raw = await readFile(path, "utf8");
-  const result = ConfigSchema.safeParse(JSON.parse(raw));
-  if (result.success) return result.data;
-  throw new Error(describeConfigError(path, result.error));
+  const doc: unknown = JSON.parse(raw);
+  const { known, unknownKeys } = splitUnknownTopLevelKeys(doc);
+  const result = ConfigSchema.safeParse(known);
+  if (!result.success) throw new Error(describeConfigError(path, result.error));
+  for (const key of unknownKeys) {
+    const id = `${path}\u0000${key}`;
+    if (warnedKeys.has(id)) continue;
+    warnedKeys.add(id);
+    configWarningSink(
+      `warning: ${path}: unknown top-level key "${key}" ignored. A newer MetaObjects may have written it; ` +
+        `upgrade this tool, or remove the key if it is a misspelling. Known keys: ${CONFIG_TOP_LEVEL_KEYS.join(", ")}.`,
+    );
+  }
+  return result.data;
+}
+
+/** The top-level keys this version reads. */
+export const CONFIG_TOP_LEVEL_KEYS: readonly string[] = Object.keys(ConfigSchema.shape);
+
+/** Split a parsed config document into the part this version validates and the keys it does not know. */
+export function splitUnknownTopLevelKeys(doc: unknown): { known: unknown; unknownKeys: string[] } {
+  if (typeof doc !== "object" || doc === null || Array.isArray(doc)) return { known: doc, unknownKeys: [] };
+  const known: Record<string, unknown> = {};
+  const unknownKeys: string[] = [];
+  for (const [k, v] of Object.entries(doc)) {
+    if (CONFIG_TOP_LEVEL_KEYS.includes(k)) known[k] = v;
+    else unknownKeys.push(k);
+  }
+  return { known, unknownKeys };
 }
 
 /**

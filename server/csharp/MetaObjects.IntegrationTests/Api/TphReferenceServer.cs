@@ -20,6 +20,7 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using MetaObjects.Codegen.Runtime;
 using MetaObjects.IntegrationTests.Runner;
 using Npgsql;
 
@@ -120,7 +121,7 @@ internal sealed class TphReferenceServer : IAsyncDisposable
         // the base allowlist includes the discriminator).
         if (method == "GET" && segs.Length == 2)
         {
-            var (filters, error, field) = ParseBaseFilters(query);
+            var (filters, error, field) = ParseFilters(query, BaseFilterOps);
             if (error is not null)
             {
                 await SendJsonAsync(ctx, 400, new Dictionary<string, object?> { ["error"] = error, ["field"] = field });
@@ -138,12 +139,25 @@ internal sealed class TphReferenceServer : IAsyncDisposable
             {
                 if (method == "GET")
                 {
-                    await SendJsonAsync(ctx, 200, await ListAsync(disc, query));
+                    var (subFilters, subError, subField) = ParseFilters(query, SubtypeFilterOps(disc));
+                    if (subError is not null)
+                    {
+                        await SendJsonAsync(ctx, 400, new Dictionary<string, object?> { ["error"] = subError, ["field"] = subField });
+                        return;
+                    }
+                    await SendJsonAsync(ctx, 200, await ListAsync(disc, query, subFilters));
                     return;
                 }
                 if (method == "POST")
                 {
                     var body = await ReadBodyAsync(ctx);
+                    // ADR-0019 Amendment 1 (W3): copayAmount is decimal(10,2); a value it would
+                    // round or overflow is a 400 validation, never stored rounded.
+                    if (!CopayAmountFits(body))
+                    {
+                        await SendJsonAsync(ctx, 400, new Dictionary<string, object?> { ["error"] = "validation" });
+                        return;
+                    }
                     // FR-036 — the per-subtype CREATE validates the present-value field
                     // constraints, matching the generated controller's <Sub>Dto DataAnnotations
                     // (and the vanilla POST + the per-subtype PATCH). `reference` is the base
@@ -186,7 +200,7 @@ internal sealed class TphReferenceServer : IAsyncDisposable
                     }
                     // FR-036 — a present value exceeding @maxLength:80 (reference/approver) is a
                     // 400, matching the generated controller's per-present-value PATCH validation.
-                    if (ExceedsMaxLength(body))
+                    if (ExceedsMaxLength(body) || !CopayAmountFits(body))
                     {
                         await SendJsonAsync(ctx, 400, new Dictionary<string, object?> { ["error"] = "validation" });
                         return;
@@ -226,10 +240,22 @@ internal sealed class TphReferenceServer : IAsyncDisposable
         ["reference"] = new[] { "eq", "ne", "in" },
     };
 
+    // A per-subtype collection filters by the base's columns plus that subtype's own. Only
+    // CopayAuth.copayAmount is filterable among the subtype columns the corpus exercises; a
+    // decimal operand is compared exactly (ADR-0019 Amendment 1, W2).
+    private static IReadOnlyDictionary<string, string[]> SubtypeFilterOps(string discriminator)
+    {
+        var ops = new Dictionary<string, string[]>(BaseFilterOps, StringComparer.Ordinal);
+        ops.Remove("type");
+        if (discriminator == "Copay") ops["copayAmount"] = new[] { "eq", "ne", "gt", "gte", "lt", "lte", "in" };
+        return ops;
+    }
+
     private sealed record BaseFilter(string Field, string Op, string[] Values);
 
-    private static (List<BaseFilter> Filters, string? Error, string? Field) ParseBaseFilters(
-        System.Collections.Specialized.NameValueCollection query)
+    private static (List<BaseFilter> Filters, string? Error, string? Field) ParseFilters(
+        System.Collections.Specialized.NameValueCollection query,
+        IReadOnlyDictionary<string, string[]> filterOps)
     {
         var filters = new List<BaseFilter>();
         foreach (string? key in query.AllKeys)
@@ -239,11 +265,12 @@ internal sealed class TphReferenceServer : IAsyncDisposable
             if (!m.Success) continue;
             string field = m.Groups[1].Value;
             string op = m.Groups[2].Success ? m.Groups[2].Value : "eq";
-            if (!BaseFilterOps.TryGetValue(field, out var ops)) return (filters, "invalid_filter_field", field);
+            if (!filterOps.TryGetValue(field, out var ops)) return (filters, "invalid_filter_field", field);
             if (!ops.Contains(op)) return (filters, "invalid_filter_op", field);
             string raw = query[key] ?? "";
             string[] values = op == "in" ? raw.Split(',') : new[] { raw };
             if (field == "id" && values.Any(v => !long.TryParse(v, out _))) return (filters, "invalid_filter_value", field);
+            if (field == "copayAmount" && values.Any(v => !DecimalWire.TryParse(v, out _))) return (filters, "invalid_filter_value", field);
             filters.Add(new BaseFilter(field, op, values));
         }
         return (filters, null, null);
@@ -260,7 +287,12 @@ internal sealed class TphReferenceServer : IAsyncDisposable
         if (discriminator is not null) { where.Add("\"type\" = @disc"); binds.Add(("@disc", discriminator)); }
         foreach (var f in filters ?? Array.Empty<BaseFilter>())
         {
-            object Bind(string v) => f.Field == "id" ? long.Parse(v) : v;
+            object Bind(string v) => f.Field switch
+            {
+                "id" => long.Parse(v),
+                "copayAmount" => DecimalWire.TryParse(v, out var d) ? d : throw new FormatException(v),
+                _ => v,
+            };
             var names = new List<string>();
             foreach (var v in f.Values)
             {
@@ -269,9 +301,10 @@ internal sealed class TphReferenceServer : IAsyncDisposable
                 names.Add(name);
             }
             string sqlOp = f.Op switch { "eq" => "=", "ne" => "<>", "gt" => ">", "gte" => ">=", "lt" => "<", "lte" => "<=", _ => "IN" };
+            string column = f.Field;
             where.Add(f.Op == "in"
-                ? $"\"{f.Field}\" IN ({string.Join(", ", names)})"
-                : $"\"{f.Field}\" {sqlOp} {names[0]}");
+                ? $"\"{column}\" IN ({string.Join(", ", names)})"
+                : $"\"{column}\" {sqlOp} {names[0]}");
         }
         if (where.Count > 0) sql.Append(" WHERE ").Append(string.Join(" AND ", where));
         // ?sort=field:dir — only the corpus's `id` sort is exercised; gate to known columns.
@@ -415,22 +448,39 @@ internal sealed class TphReferenceServer : IAsyncDisposable
     private static object CoerceColumn(string col, JsonNode v) => col switch
     {
         "quantity" => v.GetValue<long>(),
-        "copayAmount" => v.GetValueKind() == JsonValueKind.String
-            ? decimal.Parse(v.GetValue<string>(), CultureInfo.InvariantCulture)
-            : v.GetValue<decimal>(),
+        "copayAmount" => ReadDecimal(v) ?? throw new FormatException("copayAmount"),
         _ => v.GetValue<string>(),
     };
 
+    // A decimal arrives as a string or a JSON number, read exactly (ADR-0019 Amendment 1, W2).
+    private static decimal? ReadDecimal(JsonNode v) =>
+        v is JsonValue jv && (jv.TryGetValue<string>(out var text)
+            ? DecimalWire.TryParse(text, out var d)
+            : DecimalWire.TryParse(jv.ToJsonString(), out d))
+            ? d
+            : null;
+
+    // W3: copayAmount is decimal(10,2); a value the column would round or overflow is refused
+    // rather than stored rounded. Absent or null is the caller's business, not this check's.
+    private static bool CopayAmountFits(JsonObject body)
+    {
+        if (!body.TryGetPropertyValue("copayAmount", out var node) || node is null
+            || node.GetValueKind() == JsonValueKind.Null) return true;
+        return ReadDecimal(node) is { } d && DecimalWire.Fits(d, 10, 2);
+    }
+
     // Map a DB row into the wire dictionary. `type` is the discriminator value (text);
-    // integer/string columns pass through; copayAmount surfaces as a number for the
-    // wire (the corpus does NOT assert decimals over HTTP).
+    // integer/string columns pass through; a decimal is its canonical string (W1), as the
+    // generated controller sends it.
     private static Dictionary<string, object?> RowFrom(NpgsqlDataReader rdr)
     {
         var d = new Dictionary<string, object?>(StringComparer.Ordinal);
         for (int i = 0; i < rdr.FieldCount; i++)
         {
             var name = rdr.GetName(i);
-            d[name] = rdr.IsDBNull(i) ? null : rdr.GetValue(i);
+            d[name] = rdr.IsDBNull(i) ? null
+                : rdr.GetValue(i) is decimal dec ? DecimalWire.Format(dec)
+                : rdr.GetValue(i);
         }
         return d;
     }

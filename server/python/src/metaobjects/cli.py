@@ -466,9 +466,10 @@ def _load_root(
                 providers=[*core_providers, *providers],
                 strict=strict_load,
                 libraries=all_libraries,
+                discover_naming=False,
             )
         return MetaDataLoader.from_directory(
-            metadata_dir, strict=strict_load, libraries=all_libraries
+            metadata_dir, strict=strict_load, libraries=all_libraries, discover_naming=False
         )
 
     try:
@@ -1106,9 +1107,12 @@ def _cmd_list(_args: argparse.Namespace) -> int:
     root = Path.cwd()
     for entry in list_generators():
         requires = f" (requires: {', '.join(entry.requires)})" if entry.requires else ""
-        status = owned.owned_status(root, entry)
-        mark = f" [owned — {status}]" if status is not None else ""
+        verdict = owned.owned_verdict(root, entry)
+        mark = f" [owned — {verdict[0]}]" if verdict is not None else ""
         print(f"{entry.name} — {entry.description}{requires}{mark}")
+        if verdict is not None:
+            for path, status in verdict[1]:
+                print(f"    runtime {path.as_posix()}  [{status}]")
     for path, status in owned.runtime_status(root):
         print(f"runtime {path.as_posix()} [owned — {status}]")
     return 0
@@ -2723,11 +2727,9 @@ def _build_parser() -> argparse.ArgumentParser:
         dest="column_naming",
         choices=COLUMN_NAMING_STRATEGIES,
         default=None,
-        help=(
-            "removed in 1.1.0 (ADR-0058): naming is one project setting now, `naming` in "
-            ".metaobjects/config.json, read by every port from the loaded root. Passing "
-            "this flag at all is refused."
-        ),
+        # Still PARSED so passing it gets the refusal message, but hidden from --help: a
+        # removed flag advertised in the usage text reads as a supported one.
+        help=argparse.SUPPRESS,
     )
     gen.add_argument(
         "--generators",
@@ -2841,11 +2843,9 @@ def _build_parser() -> argparse.ArgumentParser:
         dest="column_naming",
         choices=COLUMN_NAMING_STRATEGIES,
         default=None,
-        help=(
-            "removed in 1.1.0 (ADR-0058): naming is one project setting now, `naming` in "
-            ".metaobjects/config.json, read by every port from the loaded root. Passing "
-            "this flag at all is refused."
-        ),
+        # Still PARSED so passing it gets the refusal message, but hidden from --help: a
+        # removed flag advertised in the usage text reads as a supported one.
+        help=argparse.SUPPRESS,
     )
     verify.add_argument(
         "--templates",

@@ -665,6 +665,14 @@ public class ConformanceTest {
                     + "', got '" + g.code + "'");
                 continue;
             }
+            for (String needle : w.messageIncludes) {
+                if (g.message == null) {
+                    failures.add(label + "[" + i + "].messageIncludes: this adapter exposes no message");
+                } else if (!g.message.contains(needle)) {
+                    failures.add(label + "[" + i + "].messageIncludes: message lacks '" + needle
+                        + "': " + g.message);
+                }
+            }
             if (w.source == null) continue;
             if (!w.source.format.equals(g.format)) {
                 failures.add(label + "[" + i + "].source.format: expected '"
@@ -800,6 +808,8 @@ public class ConformanceTest {
         // FR5d — populated for format=resolved envelopes; null otherwise.
         final String referrer;
         final String target;
+        /** The actual error message; null when the record is not built from an exception. */
+        String message;
         EnvelopeRecord(String code, String format, List<String> files, String jsonPath,
                        String referrer, String target) {
             this.code = code;
@@ -820,7 +830,9 @@ public class ConformanceTest {
      * cross-port harness has a portable file token.
      */
     private static EnvelopeRecord buildEnvelope(MetaDataException ex, Path inputDir) {
-        return buildEnvelope(extractErrorCode(ex), ex.getEnvelope().orElse(null), inputDir);
+        EnvelopeRecord rec = buildEnvelope(extractErrorCode(ex), ex.getEnvelope().orElse(null), inputDir);
+        rec.message = ex.getMessage();
+        return rec;
     }
 
     /**

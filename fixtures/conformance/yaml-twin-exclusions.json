@@ -3,6 +3,7 @@
   "notes": "Gate 1 (YAML twin, ADR-0059): fixtures whose input is deliberately format-native, so reading the same text as YAML is expected to report a different error. Each entry names why. Every port also skips the provider-extension-* fixtures whose test-only providers it cannot compose.",
   "exclusions": {
     "error-attr-child-not-object": "Asserts a JSON-shaped body error; the YAML desugar reads a scalar body as { name: <scalar> } (ADR-0006 rule 2).",
+    "error-measure-default-on-count-non-numeric": "Asserts a JSON value-type error on the quoted \"zero\"; the YAML coercion guard (ADR-0006 D2) reports ERR_YAML_COERCION under its own code.",
     "error-attr-wrong-type": "Asserts a JSON value-type error that the YAML coercion guard (ADR-0006 D2) reports under its own code.",
     "error-bare-key-no-concrete-default": "A bare type key is YAML sugar for the default subtype (ADR-0006 rule 1); in canonical JSON it is an error.",
     "error-bare-key-type-without-base": "A bare type key is YAML sugar for the default subtype (ADR-0006 rule 1); in canonical JSON it is an error.",

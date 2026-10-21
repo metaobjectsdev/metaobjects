@@ -142,6 +142,11 @@ public class SpringFilterAllowlistGenerator extends MultiFileDirectGeneratorBase
         return Boolean.parseBoolean(String.valueOf(raw));
     }
 
+    /** True for a scalar (non-array) {@code field.decimal}: the DTO declares it {@code java.math.BigDecimal}. */
+    private static boolean isDecimalTyped(MetaField<?> field) {
+        return !field.isArrayType() && field instanceof com.metaobjects.field.DecimalField;
+    }
+
     private static Set<String> opsForField(MetaField field) {
         // Single source of truth — com.metaobjects.query.FilterOps (the same
         // band the loader's validation path reads). Returns a canonical-ordered
@@ -161,11 +166,9 @@ public class SpringFilterAllowlistGenerator extends MultiFileDirectGeneratorBase
 
         // FR-017 TPH: a discriminator base's allowlist unions its subtype-only filterable columns
         // and keeps the discriminator, so `GET /<base>?filter[<disc>][in]=A,B` narrows the
-        // polymorphic list (FR-017 "Filter allowlists"; TS, C# and Python admit it too). It
-        // EXCLUDES decimal columns, which are outside the cross-port HTTP filter/value contract
-        // (decimal wire formatting differs per port, so a portable operand can't be guaranteed).
-        // Keeps the Java + Kotlin filter surface identical. Other columns
-        // (id/string/int/bool/date/...) filter via the FR-009 pipeline.
+        // polymorphic list (FR-017 "Filter allowlists"; TS, C# and Python admit it too). Decimal
+        // columns are admitted like any other: since ADR-0019 Amendment 1 an operand parses
+        // exactly (FilterParser, DECIMAL_FIELDS), so the old reason to exclude them is gone.
         //
         // The per-subtype routes share this one allowlist, so /<base>/<seg> also accepts the
         // discriminator (AND'd with the route's own: a no-op or an empty list) and another
@@ -178,10 +181,21 @@ public class SpringFilterAllowlistGenerator extends MultiFileDirectGeneratorBase
             java.util.List<MetaField> union = new java.util.ArrayList<>();
             entity.getMetaFields().forEach(union::add);
             union.addAll(TphPlan.collectSubtypeFields(entity, loader));
-            union.removeIf(f -> f instanceof com.metaobjects.field.DecimalField);
             opsByField = computeFilterableOps(union);
         } else {
             opsByField = computeFilterableOps(entity);
+        }
+
+        // The decimal-typed fields among the filterable ones, by the type the DTO declares.
+        java.util.List<String> decimalFields = new java.util.ArrayList<>();
+        for (MetaField f : entity.getMetaFields()) {
+            if (opsByField.containsKey(f.getName()) && isDecimalTyped(f)) decimalFields.add(f.getName());
+        }
+        if (TphPlan.isTphBase(entity, loader)) {
+            for (MetaField f : TphPlan.collectSubtypeFields(entity, loader)) {
+                if (opsByField.containsKey(f.getName()) && isDecimalTyped(f)
+                        && !decimalFields.contains(f.getName())) decimalFields.add(f.getName());
+            }
         }
 
         StringBuilder src = new StringBuilder();
@@ -235,6 +249,19 @@ public class SpringFilterAllowlistGenerator extends MultiFileDirectGeneratorBase
             }
             src.append("    );\n");
         }
+
+        // DECIMAL_FIELDS — the filterable fields whose operand is a decimal. FilterParser parses
+        // each such operand with the W2 grammar and compares it exactly (ADR-0019 Amendment 1);
+        // a malformed one is 400 invalid_filter_value.
+        src.append("\n    /** Filterable fields typed decimal: their operands parse exactly (W2), never through a double. */\n");
+        src.append("    public static final Set<String> DECIMAL_FIELDS = Set.of(");
+        boolean firstDecimal = true;
+        for (String f : decimalFields) {
+            if (!firstDecimal) src.append(", ");
+            firstDecimal = false;
+            src.append('"').append(f).append('"');
+        }
+        src.append(");\n");
 
         // No instances — pure constants holder.
         src.append("\n    private ").append(className).append("() {}\n");

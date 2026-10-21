@@ -934,6 +934,15 @@ public class GenericSQLDriver implements DatabaseDriver {
     /**
      * Gets the SQL WHERE clause for the fields of a class
      */
+    /**
+     * The SQL for a filter operand compared to {@code f}'s column: a bare {@code ?} by default.
+     * A dialect whose comparison semantics depend on the operand's bind type overrides it
+     * (MySQL casts a decimal operand, see {@code MySQLDriver}).
+     */
+    protected String comparisonPlaceholder(MetaField f) {
+        return "?";
+    }
+
     protected String getExpressionString(MetaObject mc, ObjectMappingDB omdb, Expression exp,
             ArrayList<SQLArg> args, String prefix) throws MetaDataException {
         StringBuilder set = new StringBuilder();
@@ -1032,7 +1041,7 @@ public class GenericSQLDriver implements DatabaseDriver {
                     } else {
                         set.append(",");
                     }
-                    set.append("?");
+                    set.append(comparisonPlaceholder(f));
                     args.add(new SQLArg(f, o));
                 }
 
@@ -1041,22 +1050,22 @@ public class GenericSQLDriver implements DatabaseDriver {
                 // Add these on as arguments
                 switch (c) {
                     case Expression.EQUAL:
-                        set.append("= ?");
+                        set.append("= " + comparisonPlaceholder(f));
                         break;
                     case Expression.NOT_EQUAL:
-                        set.append("<> ?");
+                        set.append("<> " + comparisonPlaceholder(f));
                         break;
                     case Expression.GREATER:
-                        set.append("> ?");
+                        set.append("> " + comparisonPlaceholder(f));
                         break;
                     case Expression.LESSER:
-                        set.append("< ?");
+                        set.append("< " + comparisonPlaceholder(f));
                         break;
                     case Expression.EQUAL_GREATER:
-                        set.append(">= ?");
+                        set.append(">= " + comparisonPlaceholder(f));
                         break;
                     case Expression.EQUAL_LESSER:
-                        set.append("<= ?");
+                        set.append("<= " + comparisonPlaceholder(f));
                         break;
 
                     // Case-sensitive, verbatim pattern — the column is NOT UPPER-wrapped

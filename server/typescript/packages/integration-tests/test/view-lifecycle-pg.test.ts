@@ -20,6 +20,7 @@
  * see the round trip cannot see this class of bug.
  */
 
+import { splitSqlStatements } from "@metaobjectsdev/migrate-ts";
 import { describe, test, expect, beforeAll, afterAll, beforeEach } from "bun:test";
 import {
   buildExpectedSchema, diff, emit, introspectPostgres, postgresViewReplaceProbe, collectUnmanagedNames,
@@ -193,7 +194,7 @@ async function createDownstreamDependent(): Promise<void> {
 async function applyRaw(text: string): Promise<void> {
   // Statement-split must not shred the CASCADE warning banner or a view body — split on
   // ";\n" boundaries the emitter actually produces, then drop empties.
-  for (const stmt of text.split(/;\s*\n/).map((s) => s.trim()).filter(Boolean)) {
+  for (const stmt of splitSqlStatements(text)) {
     await sql.raw(stmt.endsWith(";") ? stmt : `${stmt};`).execute(k);
   }
 }

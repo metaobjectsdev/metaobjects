@@ -1,0 +1,29 @@
+name: report-filter-array-and-map-dimension
+description: >
+  Filtering on an array dimension (`tags`) or a map dimension (`attrs`) is rejected with the
+  `invalid_filter_field` envelope naming the field: neither carries a filter band, so neither
+  is in the generated allowlist.
+requests:
+  - id: r1
+    method: GET
+    path: /api/tickets_by_tags?filter[tags][eq]=urgent
+    expect:
+      status: 400
+      body:
+        error: "invalid_filter_field"
+        field: "tags"
+  - id: r2
+    method: GET
+    path: /api/tickets_by_tags?filter[attrs][eq]=x
+    expect:
+      status: 400
+      body:
+        error: "invalid_filter_field"
+        field: "attrs"
+  - id: r3
+    method: GET
+    path: /api/tickets_by_tags?filter[tickets][gte]=0
+    expect:
+      status: 200
+      body:
+        equals: []

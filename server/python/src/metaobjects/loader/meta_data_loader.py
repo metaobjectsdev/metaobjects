@@ -15,6 +15,7 @@ them with Pythonic ergonomics.
 from __future__ import annotations
 
 import json
+import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -39,6 +40,39 @@ from .sources import (
     UriSource,
 )
 from .validation_passes import run_validations
+
+
+def _first_file_location(uris: list[str]) -> Path | None:
+    from urllib.parse import unquote, urlparse
+
+    for uri in uris:
+        parsed = urlparse(uri)
+        if parsed.scheme == "file":
+            return Path(unquote(parsed.path))
+        if parsed.scheme in ("", ) or (len(parsed.scheme) == 1):  # plain / drive-letter path
+            return Path(uri)
+    return None
+
+
+def _apply_discovered_naming(result: "LoadResult", start: Path) -> None:
+    """Attach the project's ``naming`` (nearest ``.metaobjects/config.json`` at or above
+    *start*) to the loaded root; warn once when there is none and the default applies."""
+    from ..config.neutral_config import find_project_dir
+    from ..naming import attach_naming
+
+    project = find_project_dir(start if start.is_dir() else start.parent)
+    if project is not None:
+        attach_naming(result.root, project)
+        return
+    warnings.warn(
+        f"no .metaobjects/config.json found at or above {start}: physical names use the "
+        "snake_case default. A database whose columns are named exactly like the fields "
+        'needs "naming": {"columns": "literal"} in that file, or '
+        "metaobjects.naming.attach_naming(root, project_dir) after the load "
+        "(see docs/features/migrations/physical-naming.md).",
+        UserWarning,
+        stacklevel=4,
+    )
 
 
 @dataclass
@@ -159,8 +193,16 @@ class MetaDataLoader:
         recurse: bool = True,
         strict: bool = False,
         libraries: list[str] | None = None,
+        discover_naming: bool = True,
     ) -> LoadResult:
         """Load every JSON/YAML file under ``directory`` (recursive by default).
+
+        ``discover_naming`` (ADR-0058) — the loaded root's ``naming`` is read from the
+        nearest ``.metaobjects/config.json`` at or above ``directory``, the setting
+        ``gen`` and ``verify`` read, so the ObjectManager queries the columns the code
+        was generated for. With no such file the ``snake_case`` default applies and a
+        ``UserWarning`` says so. :func:`metaobjects.naming.attach_naming` afterwards
+        still wins. The CLI passes ``False``: it attaches its own.
 
         ``strict`` (ADR-0023) — when True, an undeclared own ``@-attr`` →
         ``ERR_UNKNOWN_ATTR``. Defaults False (downstream-friendly open policy).
@@ -186,7 +228,10 @@ class MetaDataLoader:
         sources.extend(
             DirectorySource(directory, exclude=exclude, recurse=recurse).expand()
         )
-        return loader.load(sources)
+        result = loader.load(sources)
+        if discover_naming:
+            _apply_discovered_naming(result, Path(directory))
+        return result
 
     @classmethod
     def from_uris(
@@ -195,8 +240,13 @@ class MetaDataLoader:
         providers: list[Provider] | None = None,
         strict: bool = False,
         libraries: list[str] | None = None,
+        discover_naming: bool = True,
     ) -> LoadResult:
         """Load metadata from a list of URIs (file:// or http(s)://).
+
+        ``discover_naming`` — see :meth:`from_directory`; the search starts at the
+        first ``file://`` URI (or plain path). A load with no file URI has no project
+        to find and keeps the default silently.
 
         ``strict`` (ADR-0023) — see :meth:`from_directory`.
 
@@ -212,7 +262,12 @@ class MetaDataLoader:
 
             sources.extend(library_sources(libraries))
         sources.extend(UriSource(u) for u in uris)
-        return loader.load(sources)
+        result = loader.load(sources)
+        if discover_naming:
+            start = _first_file_location(uris)
+            if start is not None:
+                _apply_discovered_naming(result, start)
+        return result
 
     @classmethod
     def from_string(
@@ -221,13 +276,21 @@ class MetaDataLoader:
         format: MetaDataFormat = MetaDataFormat.JSON,
         providers: list[Provider] | None = None,
         strict: bool = False,
+        project_dir: Path | str | None = None,
     ) -> LoadResult:
         """Load metadata from an in-memory string (defaults to JSON).
 
         ``strict`` (ADR-0023) — see :meth:`from_directory`.
+
+        ``project_dir`` — the project whose ``.metaobjects/config.json`` supplies
+        ``naming`` (searched upward from it). Omitted, a string has no project and
+        keeps the ``snake_case`` default without a warning.
         """
         loader = cls(providers=providers, strict=strict)
-        return loader.load([InMemoryStringSource(content, format=format)])
+        result = loader.load([InMemoryStringSource(content, format=format)])
+        if project_dir is not None:
+            _apply_discovered_naming(result, Path(project_dir))
+        return result
 
     # --- internals -----------------------------------------------------
 

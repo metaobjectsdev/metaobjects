@@ -25,7 +25,7 @@ object AllTypesBreakdownView : Table("v_all_types_breakdown") {
     val uuidKey = uuid("uuidKey")
     val allRows = long("allRows")
     val totalInts = long("totalInts").nullable()
-    val avgDec = decimal("avgDec", 38, 18).nullable()
+    val avgDec = portableDecimal("avgDec", 38, 18).nullable()
     val maxMoney = long("maxMoney").nullable()
     val minLong = long("minLong").nullable()
     val highRows = long("highRows")

@@ -4,12 +4,15 @@ The C# port of the cross-language MetaObjects metadata standard. Targets .NET 8 
 
 ## What it covers
 
-- **Loader** (`MetaObjects`) — multi-file JSON / YAML loader with overlay merge and cross-file `extends:` resolution.
+- **Loader** (`MetaObjects`) — multi-file JSON / YAML loader with overlay merge and cross-file `extends:` resolution. A bare `extends: Base` binds the declaring file's own package, then the root; name a base in another package by its FQN (`extends: acme::common::Base`, ADR-0042).
 - **Canonical serializer** — byte-identical output to the TypeScript reference (the cross-language wire format).
 - **YAML authoring front-end** — sigil-free attrs + `[]`-array suffix + fused-key default subtype + the D2 type-coercion guard (ADR-0006), via [YamlDotNet](https://github.com/aaubry/YamlDotNet). The cross-language interchange remains canonical JSON; YAML lowers to it.
 - **Codegen** (`MetaObjects.Codegen`) *(reference generators you own: `dotnet meta eject` copies one into your repo — see [Own your codegen → C#](../../docs/features/own-your-codegen.md#c-dotnet-meta-eject))* — idiomatic .NET emit: EF Core entities, an `AppDbContext`, ASP.NET minimal-API CRUD routes, filter allowlists, payload records, output parsers/prompts, TPH per-subtype surfaces and M:N navigation.
 - **Render + verify** (`MetaObjects.Render`) — Mustache render, payload value-object codegen and the `verify` drift gates, byte-identical with the other four ports against the shared render corpus.
-- **CLI** (`MetaObjects.Cli`) — packaged as a .NET tool invoked **`dotnet meta`**, with `gen` and `verify` verbs.
+- **CLI** (`MetaObjects.Cli`) — packaged as a .NET tool invoked **`dotnet meta`**, with `init`, `gen`, `eject`, `verify` and `fmt` verbs. `init` writes the generator list (`codegen/Generators.cs`); `gen` runs that list, documentation generators included (`dotnet meta docs` was removed in 1.1.0, see [docs-are-generators.md](../../docs/features/migrations/docs-are-generators.md#c)).
+- **Physical names** — column and table names the metadata does not give come from `naming` in `.metaobjects/config.json` (default `snake_case`; `"naming": { "columns": "literal" }` for a database whose columns are named like the fields), read by `gen` and `verify`. See [physical-naming.md](../../docs/features/migrations/physical-naming.md).
+
+Upgrading from 1.0.x: [upgrading-1.0-to-1.1.md](../../docs/features/migrations/upgrading-1.0-to-1.1.md). Release notes for every port: [CHANGELOG.md](../../CHANGELOG.md).
 - **Conformance runners** — auto-discover the shared corpora under `fixtures/` (metamodel, yaml, render, verify, validation, api-contract, persistence, registry manifest). The corpora are the **oracles** — when a fixture goes red the port is wrong, never the fixture.
 
 ## What it does NOT cover (out of scope)
@@ -54,6 +57,6 @@ The test suite includes per-fixture `Lint` and `Conformance` theories over the s
   - Per-pipeline-stage unit tests (`ErrorsTests`, `RegistryTests`, `TreeTests`, `ParserTests`, `SerializerTests`, `LoaderTests`, `SuperResolveTests`, `ValidationTests`, …)
 - `MetaObjects.Codegen/` — the .NET emit pipeline (`Generators/` holds entity, db-context, routes, payload, filter-allowlist, output-parser/prompt, extractor, template) + `CodegenRunner`, `GeneratorRegistry`, `CodegenDrift`
 - `MetaObjects.Render/` — Mustache render, payload value objects, `verify`
-- `MetaObjects.Cli/` — the `dotnet meta` tool (`gen`, `verify`)
+- `MetaObjects.Cli/` — the `dotnet meta` tool (`init`, `gen`, `eject`, `verify`, `fmt`)
 - `MetaObjects.Codegen.Tests/`, `MetaObjects.Render.Tests/`, `MetaObjects.Cli.Tests/` — per-project unit + golden tests
 - `MetaObjects.IntegrationTests/` — the generated ASP.NET stack booted over HTTP against Testcontainers Postgres (api-contract + persistence corpora)

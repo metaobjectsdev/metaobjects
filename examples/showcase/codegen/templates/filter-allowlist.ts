@@ -69,6 +69,7 @@ const VALUE_FORMAT_SUBTYPES = new Set<string>([
   FIELD_SUBTYPE_TIME,
   FIELD_SUBTYPE_TIMESTAMP,
   FIELD_SUBTYPE_UUID,
+  FIELD_SUBTYPE_DECIMAL,
 ]);
 
 /** Subtypes whose values are whole numbers — `field.currency` is integer minor units. */

@@ -17,6 +17,6 @@ import org.jetbrains.exposed.sql.Table
  */
 object MeasurementStatsFilledView : Table("v_measurement_stats_filled") {
     val readings = long("readings")
-    val avgPreciseKgOrMinusOne = decimal("avgPreciseKgOrMinusOne", 38, 18)
-    val maxPreciseKgOrZero = decimal("maxPreciseKgOrZero", 38, 18)
+    val avgPreciseKgOrMinusOne = portableDecimal("avgPreciseKgOrMinusOne", 38, 18)
+    val maxPreciseKgOrZero = portableDecimal("maxPreciseKgOrZero", 38, 18)
 }

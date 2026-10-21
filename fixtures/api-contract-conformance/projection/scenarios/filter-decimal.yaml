@@ -2,9 +2,9 @@ name: projection-filter-decimal
 description: >
   The FR-009 filter grammar applies to a `field.decimal` of a projection, in every
   port. The operand is parsed as a decimal and compared as one (Kotlin answered a
-  500 on this before the decimal and float coercers were split). Only how many rows
-  match is asserted, because each port spells a decimal its own way on the wire.
-  Seed discounts: 7.25, 12.5, 3.0, 1.0.
+  500 on this before the decimal and float coercers were split). A decimal reaches the
+  wire as the canonical string of ADR-0019 Amendment 1: the seed's 3.0 is "3", 12.5 is
+  "12.5". Seed discounts: 7.25, 12.5, 3.0, 1.0.
 requests:
   - id: gt
     method: GET
@@ -12,9 +12,19 @@ requests:
     expect: { status: 200, body: { length: 1 } }
   - id: lte
     method: GET
-    path: "/api/invoice_ledgers?filter[discount][lte]=7.25"
-    expect: { status: 200, body: { length: 3 } }
+    path: "/api/invoice_ledgers?filter[discount][lte]=7.25&sort=number:asc"
+    expect:
+      status: 200
+      body:
+        equals:
+          - { number: 1, reference: "INV-1001", discount: "7.25", weight: 0.5 }
+          - { number: 3, reference: "INV-1003", discount: "3", weight: 2.5 }
+          - { number: 4, reference: "INV-1004", discount: "1", weight: 0.25 }
   - id: eq
     method: GET
-    path: "/api/invoice_ledgers?filter[discount][eq]=12.5"
-    expect: { status: 200, body: { length: 1 } }
+    path: "/api/invoice_ledgers?filter[discount][eq]=12.50"
+    expect:
+      status: 200
+      body:
+        equals:
+          - { number: 2, reference: "INV-1002", discount: "12.5", weight: 1.5 }

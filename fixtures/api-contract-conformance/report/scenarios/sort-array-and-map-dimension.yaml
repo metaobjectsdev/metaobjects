@@ -1,0 +1,31 @@
+name: report-sort-array-and-map-dimension
+description: >
+  A dimension over an array field (`tags`, field.string isArray) or a map field (`attrs`,
+  field.map) is a derived field of the report, but it is neither sortable nor filterable: an
+  array or a map has no ordering and no scalar operator. Sorting on either is rejected with
+  the `invalid_sort` envelope naming the field, exactly as for a field the report does not
+  derive. The `tickets` count measure stays sortable.
+requests:
+  - id: r1
+    method: GET
+    path: /api/tickets_by_tags?sort=tags:asc
+    expect:
+      status: 400
+      body:
+        error: "invalid_sort"
+        field: "tags"
+  - id: r2
+    method: GET
+    path: /api/tickets_by_tags?sort=attrs:desc
+    expect:
+      status: 400
+      body:
+        error: "invalid_sort"
+        field: "attrs"
+  - id: r3
+    method: GET
+    path: /api/tickets_by_tags?sort=tickets:asc
+    expect:
+      status: 200
+      body:
+        equals: []

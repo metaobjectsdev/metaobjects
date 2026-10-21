@@ -92,7 +92,11 @@ function controlCell(f: UiFieldDescriptor): string {
 /** The HTML type cell — empty for a nested sub-form, which is not an input at all. */
 function htmlTypeCell(f: UiFieldDescriptor): string {
   if (f.nested !== undefined || f.htmlType === undefined) return "";
-  return `\`${f.htmlType}\``;
+  const extras = [
+    ...(f.step !== undefined ? [`step \`${f.step}\``] : []),
+    ...(f.inputMode !== undefined ? [`inputMode \`${f.inputMode}\``] : []),
+  ];
+  return extras.length === 0 ? `\`${f.htmlType}\`` : `\`${f.htmlType}\` (${extras.join(", ")})`;
 }
 
 /** `yes` / `` — an empty cell reads better than a column of "no". */

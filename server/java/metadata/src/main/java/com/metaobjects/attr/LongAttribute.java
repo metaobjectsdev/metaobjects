@@ -48,6 +48,23 @@ public class LongAttribute extends MetaAttribute<Long> {
     }
 
     /**
+     * Rule A (cross-port): any number whose value is integral loads ({@code 4}, {@code 4.0},
+     * {@code 1e2}); a fraction is refused with the generic invalid-value error.
+     */
+    @Override
+    public void setValueAsString(String value) {
+        if (value == null || isArrayType()) {
+            super.setValueAsString(value);
+            return;
+        }
+        try {
+            setValueAsObject(new java.math.BigDecimal(value.trim()).longValueExact());
+        } catch (ArithmeticException | NumberFormatException e) {
+            throw new IllegalArgumentException("Invalid long value: " + value, e);
+        }
+    }
+
+    /**
      * Manually create an Integer MetaAttribute with a value
      */
     public static LongAttribute create(String name, Long value ) {

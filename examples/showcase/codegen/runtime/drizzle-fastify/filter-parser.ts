@@ -15,7 +15,8 @@ import {
   ANY_TEMPORAL_EXPECTED, FORMAT_EXPECTED, PLUS_OFFSET_HINT,
   looksLikeUnencodedPlusOffset, matchesAnyTemporal, matchesFormat, utcIsoIfZoned, utcIsoInstant,
 } from "./filter-value-format.js";
-import { FIELD_SUBTYPE_TIMESTAMP } from "@metaobjectsdev/metadata";
+import { FIELD_SUBTYPE_DECIMAL, FIELD_SUBTYPE_TIMESTAMP } from "@metaobjectsdev/metadata";
+import { canonicalDecimal } from "../decimal-wire.js";
 
 // biome-ignore lint/suspicious/noExplicitAny: dynamic dispatch over user's Drizzle table
 type AnyTable = any;
@@ -215,14 +216,14 @@ function compileOp(
     throw new FilterParseError("filter.unsupported_op", `Op "${op}" not supported for field "${field}".`, { field, op, allowed: rule.ops });
   }
   switch (op as FilterOp) {
-    case "eq":  return eq(col as any, coerce(value, rule, col, field, op));
-    case "ne":  return ne(col as any, coerce(value, rule, col, field, op));
-    case "gt":  return gt(col as any, coerce(value, rule, col, field, op));
-    case "gte": return gte(col as any, coerce(value, rule, col, field, op));
-    case "lt":  return lt(col as any, coerce(value, rule, col, field, op));
-    case "lte": return lte(col as any, coerce(value, rule, col, field, op));
+    case "eq":  return eq(col as any, coerce(value, rule, col, field, op, dialect));
+    case "ne":  return ne(col as any, coerce(value, rule, col, field, op, dialect));
+    case "gt":  return gt(col as any, coerce(value, rule, col, field, op, dialect));
+    case "gte": return gte(col as any, coerce(value, rule, col, field, op, dialect));
+    case "lt":  return lt(col as any, coerce(value, rule, col, field, op, dialect));
+    case "lte": return lte(col as any, coerce(value, rule, col, field, op, dialect));
     case "in": {
-      const list = String(value).split(",").map((v) => coerce(v.trim(), rule, col, field, op));
+      const list = String(value).split(",").map((v) => coerce(v.trim(), rule, col, field, op, dialect));
       if (list.length > maxInList) {
         throw new FilterParseError("filter.in_too_large", `In-list size ${list.length} exceeds limit ${maxInList}.`, { field, limit: maxInList });
       }
@@ -327,10 +328,22 @@ function assertWellFormed(s: string, rule: FilterFieldRule, col: unknown, field:
 }
 
 /** Check a comparison value against the field's rule, then coerce it for binding. */
-function coerce(value: unknown, rule: FilterFieldRule, col: unknown, field: string, op: string): unknown {
+function coerce(value: unknown, rule: FilterFieldRule, col: unknown, field: string, op: string, dialect: SqlDialect): unknown {
   if (value === null || value === undefined) return null;
   const s = typeof value === "string" ? value : String(value);
   assertWellFormed(s, rule, col, field, op);
+  // A decimal operand is exact text, never a number (ADR-0019 Amendment 1, W2): parsed with
+  // the JSON-number grammar and bound as its canonical string. MySQL compares a DECIMAL column
+  // with a string operand as DOUBLES, so there the operand is cast to a wide DECIMAL first.
+  // SQLite and D1 hold a decimal as a double (W4) and order every number before any text, so a
+  // text operand against a computed column (a view's sum or average has no NUMERIC affinity)
+  // would compare false in the wrong direction: the operand is bound as the number it is, exact
+  // to the 15 digits W4 promises.
+  if (rule.format === FIELD_SUBTYPE_DECIMAL) {
+    const canonical = canonicalDecimal(s) as string;
+    if (dialect === "mysql") return sql`CAST(${canonical} AS DECIMAL(65,30))`;
+    return dialect === "sqlite" ? Number(canonical) : canonical;
+  }
   // A timestamp bound is compared in the same UTC spelling the generated schemas store:
   // on SQLite/D1 the column is TEXT and compares as text. An instant field (`instant`, i.e.
   // not @localTime) reads a zoneless or date-only bound as UTC, as its write schema does —

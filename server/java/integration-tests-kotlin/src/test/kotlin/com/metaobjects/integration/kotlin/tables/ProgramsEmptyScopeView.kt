@@ -17,5 +17,5 @@ import org.jetbrains.exposed.sql.Table
  */
 object ProgramsEmptyScopeView : Table("v_programs_empty_scope") {
     val programs = long("programs")
-    val avgPriceOrMinusOne = decimal("avgPriceOrMinusOne", 38, 18)
+    val avgPriceOrMinusOne = portableDecimal("avgPriceOrMinusOne", 38, 18)
 }

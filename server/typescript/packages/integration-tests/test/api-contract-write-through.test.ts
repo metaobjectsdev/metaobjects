@@ -18,7 +18,7 @@ import {
   API_CONTRACT_WRITE_THROUGH_DIR,
   API_CONTRACT_WRITE_THROUGH_SCENARIOS_DIR,
 } from "../src/paths.ts";
-import { loadScenarios, assertResponse, type ApiScenario } from "../src/api-contract-scenario.ts";
+import { loadScenarios, assertResponse, type ApiScenario, parseBodyExact } from "../src/api-contract-scenario.ts";
 import { startPostgres } from "../src/postgres-container.ts";
 import {
   startGeneratedWriteThroughServer,
@@ -62,7 +62,7 @@ async function runScenario(
     const bodyText = await res.text();
     let body: unknown = null;
     if (bodyText.length > 0) {
-      try { body = JSON.parse(bodyText); } catch { body = bodyText; }
+      try { body = parseBodyExact(bodyText); } catch { body = bodyText; }
     }
     assertResponse(scenario.name, req, res.status, body);
   }

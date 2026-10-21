@@ -318,12 +318,7 @@ def referrer_package_for(node: "MetaData", attr_name: str) -> str:
     return referrer_package_of(declarer if declarer is not None else node)
 
 
-def did_you_mean_hint(root: "MetaData", ref: str) -> str:
-    """ADR-0042 section 5 -- a did-you-mean suffix for an UNRESOLVED object reference: the
-    FQNs of same-short-name objects that DO exist (typically in other packages), so
-    the author can qualify a bare ref they meant to point across a package boundary.
-    Returns ``""`` when no same-short-name object exists. Mirrors the TS ``didYouMeanHint``.
-    """
+def _same_named_objects(root: "MetaData", ref: str) -> tuple[str, list[str]] | None:
     owner, _tail = split_child_tail(ref)
     sep = owner.rfind(PACKAGE_SEP)
     short_name = owner if sep == -1 else owner[sep + len(PACKAGE_SEP):]
@@ -332,11 +327,36 @@ def did_you_mean_hint(root: "MetaData", ref: str) -> str:
         for c in root.children()
         if c.type == TYPE_OBJECT and c.name == short_name
     ]
-    if not candidates:
+    return (short_name, candidates) if candidates else None
+
+
+def did_you_mean_hint(root: "MetaData", ref: str) -> str:
+    """ADR-0042 section 5 -- a did-you-mean suffix for an UNRESOLVED object reference: the
+    FQNs of same-short-name objects that DO exist (typically in other packages), so
+    the author can qualify a bare ref they meant to point across a package boundary.
+    Returns ``""`` when no same-short-name object exists. Mirrors the TS ``didYouMeanHint``.
+    """
+    found = _same_named_objects(root, ref)
+    if found is None:
         return ""
+    short_name, candidates = found
     return (
         f' An object named "{short_name}" exists in: {", ".join(candidates)}. '
         "Qualify it with its package (FQN)."
+    )
+
+
+def did_you_mean_super_hint(root: "MetaData", ref: str) -> str:
+    """The did-you-mean suffix for an UNRESOLVED ``extends`` ref: the same candidates as
+    :func:`did_you_mean_hint`, plus the exact spelling to write (a bare ``extends`` resolves
+    in the referrer's own package). Mirrors the TS ``didYouMeanSuperHint``."""
+    found = _same_named_objects(root, ref)
+    if found is None:
+        return ""
+    short_name, candidates = found
+    return (
+        f' An object named "{short_name}" exists in: {", ".join(candidates)}. '
+        f'Qualify it with its package (FQN): write extends: "{candidates[0]}".'
     )
 
 

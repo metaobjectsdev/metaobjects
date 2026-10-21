@@ -28,6 +28,7 @@ import shutil
 import sys
 import tempfile
 import uuid
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -161,6 +162,8 @@ def filter_rows(rows: list[dict[str, Any]], filters: list[FilterPredicate]) -> l
             return int(raw)
         if t is float:
             return float(raw)
+        if t is Decimal:
+            return Decimal(raw)
         return raw
 
     def matches(row: dict[str, Any], p: FilterPredicate) -> bool:

@@ -73,11 +73,14 @@ Plus modify `SpringControllerGenerator.list()` to call a shared `FilterParser` r
 ```java
 @GetMapping
 public ResponseEntity<?> list(/* ... existing params, plus: */
-    @RequestParam Map<String, String> allParams
+    HttpServletRequest request
 ) {
     // ...
-    FilterParseResult filter = FilterParser.parse(allParams, AuthorFilterAllowlist.FIELDS, AuthorFilterAllowlist.OPS_BY_FIELD);
-    if (filter.error() != null) return ResponseEntity.badRequest().body(Map.of("error", filter.error()));
+    // The raw query string (since 1.0: a servlet container drops a parameter with a malformed
+    // escape), plus the allowlist's decimal fields (1.1.0, ADR-0019 Amendment 1).
+    FilterParseResult filter = FilterParser.parse(request.getQueryString(), AuthorFilterAllowlist.FIELDS,
+        AuthorFilterAllowlist.OPS_BY_FIELD, AuthorFilterAllowlist.DECIMAL_FIELDS);
+    if (filter.error() != null) return ResponseEntity.badRequest().body(Map.of("error", filter.error(), "field", filter.field()));
     List<AuthorDto> rows = repository.list(actualLimit, actualOffset, sortClause, filter.predicates());
     // ...
 }

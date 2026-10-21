@@ -4,6 +4,7 @@ import com.metaobjects.integration.Scenarios.QueryScenario;
 import com.metaobjects.manager.db.DatabaseDriver;
 import com.metaobjects.manager.db.driver.MySQLDriver;
 import com.metaobjects.manager.db.driver.PostgresDriver;
+import com.metaobjects.manager.db.driver.SQLiteDriver;
 
 import java.util.Map;
 import java.util.regex.Pattern;
@@ -27,12 +28,33 @@ public enum ScenarioEngine {
             if (own != null && own.get("mysql") != null) return own.get("mysql");
             return s.seedData() == null ? null : toMysqlSeed(s.seedData());
         }
+    },
+    SQLITE("sqlite", "\"") {
+        @Override public DatabaseDriver newDriver() { return new SQLiteDriver(); }
+        // SQLite takes the Postgres seed as written (double-quoted identifiers, ISO instants as text).
+        @Override public String seed(QueryScenario s) {
+            Map<String, String> own = s.seedDataEngine();
+            if (own != null && own.get("sqlite") != null) return own.get("sqlite");
+            return s.seedData();
+        }
     };
 
     private final String id;
     private final String quote;
 
     ScenarioEngine(String id, String quote) { this.id = id; this.quote = quote; }
+
+    /** The name a scenario's {@code engines:} list uses for this engine. */
+    public String id() { return id; }
+
+    /**
+     * Whether this engine runs {@code scenario}. An {@code engines:} list is EXACT; without one,
+     * Postgres runs everything and the other engines run the {@code report-*} scenarios.
+     */
+    public boolean runs(QueryScenario scenario) {
+        if (scenario.engines() != null) return scenario.engines().contains(id);
+        return this == POSTGRES || scenario.name().startsWith("report-");
+    }
 
     /** The schema artifact name under the corpus' {@code canonical/}. */
     public String schemaArtifact() { return "canonical/schema." + id + ".sql"; }
@@ -78,7 +100,7 @@ public enum ScenarioEngine {
     }
 
     /** The statements of a script: split on a {@code ;} at the end of a line (no body carries one mid-line). */
-    static java.util.List<String> splitStatements(String script) {
+    public static java.util.List<String> splitStatements(String script) {
         StringBuilder sb = new StringBuilder();
         for (String line : script.split("\n", -1)) {
             if (!line.trim().startsWith("--")) sb.append(line).append('\n');

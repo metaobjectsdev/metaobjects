@@ -141,8 +141,7 @@ The full hunt for each axis of Phase 1b (Partial / Deep path). Each axis runs in
   taxonomy impurity (entity over read-only primary source; read model that should be
   `object.projection`; `value` carrying identity/source, ADR-0028); copy-pasted base-field
   blocks — or the same-named field re-declared across objects (drift signature 10) — instead of
-  abstract + `extends`; `@`-prefixed YAML keys (ADR-0006); relative refs
-  in committed canonical JSON (ADR-0032); DB-type-as-logical-subtype (ADR-0013); per-port
+  abstract + `extends`; `@`-prefixed YAML keys (ADR-0006); DB-type-as-logical-subtype (ADR-0013); per-port
   migration engine where schema is Node-`meta`-owned (ADR-0015).
 
 - [ ] **H2. Wrong native type — `field.<x>` + `@dbColumnType` that hides the real type

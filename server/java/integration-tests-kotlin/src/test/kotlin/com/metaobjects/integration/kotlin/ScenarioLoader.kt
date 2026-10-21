@@ -80,7 +80,21 @@ object ScenarioLoader {
             seedDataEngine = (root["seed-data-engine"] as? Map<*, *>)
                 ?.entries?.associate { it.key.toString() to it.value.toString() },
             queries = queries,
+            engines = parseEngines(file, root["engines"]),
         )
+    }
+
+    /** The engine names a scenario may list; `d1` is a TS-only engine, valid to name, never run here. */
+    private val KNOWN_ENGINES = setOf("postgres", "mysql", "sqlite", "d1")
+
+    /** `engines:` is exact when present; an unknown name or an empty list is a runner error. */
+    private fun parseEngines(file: Path, raw: Any?): Set<String>? {
+        if (raw == null) return null
+        require(raw is List<*> && raw.isNotEmpty()) { "$file: 'engines' must be a non-empty list" }
+        val names = raw.map { it.toString() }.toSet()
+        val unknown = names - KNOWN_ENGINES
+        require(unknown.isEmpty()) { "$file: unknown engine(s) $unknown; expected one of $KNOWN_ENGINES" }
+        return names
     }
 
     @Suppress("UNCHECKED_CAST")

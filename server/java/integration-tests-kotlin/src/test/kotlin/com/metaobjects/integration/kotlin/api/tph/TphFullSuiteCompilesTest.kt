@@ -140,7 +140,7 @@ class TphFullSuiteCompilesTest {
             val emitted = Files.walk(outDir).filter { it.isRegularFile() }.sorted().toList()
             val authTable = emitted.first { it.fileName.toString() == "AuthTable.kt" }.readText()
             assertTrue("integer(BridgeAuthNames.QUANTITY_COLUMN).nullable()" in authTable, authTable)
-            assertTrue("decimal(CopayAuthNames.COPAY_AMOUNT_COLUMN, 10, 2).nullable()" in authTable, authTable)
+            assertTrue("portableDecimal(CopayAuthNames.COPAY_AMOUNT_COLUMN, 10, 2).nullable()" in authTable, authTable)
             assertTrue("varchar(PriorAuthAuthNames.PRIOR_AUTH_NUMBER_COLUMN, 80).nullable()" in authTable, authTable)
             assertTrue("enumerationByName(CopayAuthNames.TIER_COLUMN, 64, AuthTier::class).nullable()" in authTable, authTable)
 

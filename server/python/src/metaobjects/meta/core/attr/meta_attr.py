@@ -70,6 +70,14 @@ class MetaAttr(MetaData):
             if isinstance(raw, (int, float)):
                 return str(raw)
             return raw
+        if (
+            self.sub_type in (ATTR_SUBTYPE_INT, ATTR_SUBTYPE_LONG)
+            and isinstance(raw, float)
+            and raw.is_integer()
+        ):
+            # MINOR 4 Rule A: an int/long attr accepts any integral JSON number (4, 4.0, 1e2)
+            # and stores the integer; a fractional one stays a float and is ERR_BAD_ATTR_VALUE.
+            return int(raw)
         return raw
 
     def desugar(self, value: object) -> object:

@@ -247,6 +247,7 @@
                     <!-- The emitters a generator above writes through, handed over with it
                          (GeneratorInfo.ejectWith). -->
                     <include>KotlinEnumEmitter.kt</include>
+                    <include>KotlinDecimalWireEmitter.kt</include>
                     <include>KotlinExtractSchemaEmitter.kt</include>
                     <include>KotlinOutputFormatSpecEmitter.kt</include>
                   </includes>

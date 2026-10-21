@@ -1,9 +1,9 @@
 name: report-filter-on-measure
 description: >
   The FR-009 filter grammar applies to a report's derived fields, measures included.
-  r1 filters on a count, r2 on a null sum, r3 and r4 on a ratio. A ratio is a decimal:
-  its spelling is the port's own and is not asserted, so r3 and r4 assert only how many
-  rows match (the ratio is 2/5).
+  r1 filters on a count, r2 on a null sum, r3 and r4 on a ratio. A ratio is a decimal, so
+  it reaches the wire as the canonical string ("0.4" for 2/5) and its operand is compared
+  exactly.
 requests:
   - id: r1
     method: GET
@@ -29,7 +29,8 @@ requests:
     expect:
       status: 200
       body:
-        length: 1
+        equals:
+          - { invoices: 5, totalCents: 315500, paidShare: "0.4" }
   - id: r4
     method: GET
     path: /api/invoice_totals?filter[paidShare][gt]=0.5

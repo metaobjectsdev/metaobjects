@@ -9,6 +9,8 @@ import com.metaobjects.relationship.MetaRelationship
 import com.metaobjects.integration.kotlin.Scenarios.QueryScenario
 import com.metaobjects.integration.kotlin.Scenarios.QuerySpec
 import com.metaobjects.integration.kotlin.tables.AssetTable
+import com.metaobjects.integration.kotlin.tables.EntryTable
+import com.metaobjects.integration.kotlin.tables.ReferenceDecimal
 import com.metaobjects.integration.kotlin.tables.AuthTable
 import com.metaobjects.integration.kotlin.tables.MeasurementTable
 import com.metaobjects.integration.kotlin.tables.NodeTable
@@ -485,7 +487,7 @@ object QueryScenarioRunner {
         return when {
             type == "uuid" -> if (raw is UUID) raw else UUID.fromString(raw.toString().lowercase())
             // NUMERIC/DECIMAL: exact BigDecimal from the quoted-string authoring form.
-            type.contains("numeric") || type.contains("decimal") -> BigDecimal(raw.toString())
+            type.contains("numeric") || type.contains("decimal") -> ReferenceDecimal.parse(raw.toString())
             type.contains("bigint") || type.contains("int8") -> (raw as? Number)?.toLong() ?: raw.toString().toLong()
             // REAL / float4 → Float; DOUBLE PRECISION / float8 → Double. Check the float types
             // before the generic `int` substring guard (neither contains "int", but order-safe).
@@ -537,6 +539,8 @@ object QueryScenarioRunner {
             "Session" -> SessionTable
             "Asset" -> AssetTable
             "AllTypes" -> AllTypesTable
+            // ADR-0019 Amendment 1: the decimal subject table.
+            "Entry" -> EntryTable
             // FR-017 TPH: the discriminator base + all its subtypes share the single `auths` table.
             "Auth", "BridgeAuth", "CopayAuth", "PriorAuthAuth" -> AuthTable
             else -> error("No Exposed Table registered for entity '$entity' — extend QueryScenarioRunner.tableFor or tables/ReportViews")
@@ -685,6 +689,9 @@ object QueryScenarioRunner {
             // literal (e.g. an `ownerId eq` filter), parse it. Lower-cased first so an
             // upper-case literal still matches the lowercase-canonical stored value.
             type == "uuid" -> if (raw is UUID) raw else UUID.fromString(raw.toString().lowercase())
+            // A decimal operand is parsed EXACTLY (plain or exponent form), never through a double
+            // (W2); the column type binds it as an exact decimal, or on SQLite as a number (W4).
+            type.contains("numeric") || type.contains("decimal") -> ReferenceDecimal.parse(raw.toString())
             type.contains("bigint") || type.contains("int8") -> (raw as? Number)?.toLong() ?: raw.toString().toLong()
             type.contains("int") -> (raw as? Number)?.toInt() ?: raw.toString().toInt()
             // A filter on a DATE column (a report's date dimension) supplies the day as text.
@@ -745,6 +752,10 @@ object QueryScenarioRunner {
             // LocalDateTime so it lands on the no-`Z` branch. Instant (the TZ-aware shape) is left
             // as-is for Normalization's Instant branch.
             if (v is Timestamp) v = v.toLocalDateTime()
+            // A decimal reads as a canonical STRING (W1): plain notation, no trailing fraction zeros,
+            // zero as "0". The typed gate then requires exactly that, so a binary float anywhere on
+            // the read path (a SQLite double that skipped the 15-digit read) fails here, not later.
+            if (isDecimalColumn(col)) v = decimalWire(table, col, v)
             // `@dbColumnType:jsonb` open-JSON column (#98) reads back as a parsed kotlinx
             // JsonElement (or, for an object/map jsonb column, a raw JSON String). Convert
             // whatever it is to a plain JSON value (via its JSON text — JsonElement.toString() is
@@ -758,6 +769,26 @@ object QueryScenarioRunner {
             out[fieldName] = v
         }
         return out
+    }
+
+    private fun isDecimalColumn(col: Column<*>): Boolean =
+        col.columnType is org.jetbrains.exposed.sql.DecimalColumnType ||
+            col.columnType is com.metaobjects.integration.kotlin.tables.PortableDecimalColumnType
+
+    /** A decimal wire value: null, or plain notation with no trailing fraction zeros (zero is "0"). */
+    private val DECIMAL_WIRE = Regex("^-?(0|[1-9][0-9]*)(\\.[0-9]*[1-9])?$")
+
+    private fun decimalWire(table: Table, col: Column<*>, v: Any?): Any? {
+        val text = when (v) {
+            null -> null
+            is BigDecimal -> ReferenceDecimal.format(v)
+            else -> throw AssertionError(
+                "${table.tableName}.${col.name}: decimal arrived as a binary float or other non-decimal " +
+                    "(${v::class.simpleName} $v); the read must yield an exact decimal")
+        }
+        if (text != null && !DECIMAL_WIRE.matches(text)) throw AssertionError(
+            "${table.tableName}.${col.name}: decimal '$text' is not canonical plain notation")
+        return text
     }
 
     /** Jackson mapper for parsing the `@dbColumnType:jsonb` open-JSON String back to a Map. */

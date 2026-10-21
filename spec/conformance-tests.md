@@ -55,7 +55,9 @@ Every fixture is a directory under `metaobjects/fixtures/conformance/`. Each fix
   }
   ```
 
-  Per ADR-0009, every port's harness asserts (in declaration order, per error): `code`, `source.format`, `source.files`, and `source.jsonPath`. Error *message text* is NOT compared — only the stable `ErrorCode`; message wording is Tier-2 (idiomatic per language). Other envelope fields (`suggestions`, `fixture`, `node`, `yamlPosition`) are RECOMMENDED-only and are not asserted by the cross-port harness.
+  Per ADR-0009, every port's harness asserts (in declaration order, per error): `code`, `source.format`, `source.files`, and `source.jsonPath`. Error *message text* is NOT compared — only the stable `ErrorCode`; message wording is Tier-2 (idiomatic per language).
+
+  **`messageIncludes` (optional, per error).** An error entry may carry `"messageIncludes": ["...", "..."]`, a non-empty array of non-empty strings. Every listed substring MUST appear, case-sensitive and verbatim, in the `message` of the actual error at the same position (declaration order, as for the other fields). It is the single exception to "message text is not compared", reserved for messages that carry a *fix the author must be able to act on* (for example the qualified spelling an `ERR_UNRESOLVED_SUPER` suggests), and the listed substrings must be limited to identifiers and spellings (`other::Base`, `extends: "other::Base"`), never prose, so each port can keep its own wording. An entry with no `messageIncludes` asserts nothing about the message. A port whose adapter exposes no message for a listed error fails the fixture. Currently used by `error-extends-bare-cross-package`. Other envelope fields (`suggestions`, `fixture`, `node`, `yamlPosition`) are RECOMMENDED-only and are not asserted by the cross-port harness.
 
   The legacy `[{ "code": "ERR_*" }]` array shape remains accepted by every port's parser for backward compat (the envelope assertion is skipped, only the code-set is compared) — pre-FR5a fixtures continue to work without rewrite. The cross-port migration of the corpus to the envelope shape lands in the FR5a coordinated work.
 

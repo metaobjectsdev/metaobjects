@@ -419,7 +419,7 @@ class KotlinTypeMapperTest {
         // @precision/@scale flow through (the corpus declares 9,4). Column name
         // snake_case-d for Postgres convention (mirrors the other arms).
         val f = DecimalField.create("preciseKg", 9, 4)
-        assertEquals("decimal(\"precise_kg\", 9, 4)", KotlinTypeMapper.exposedColumnSpec(f))
+        assertEquals("portableDecimal(\"precise_kg\", 9, 4)", KotlinTypeMapper.exposedColumnSpec(f))
         // `decimal(...)` is a member of Table — no extra import line.
         assertNull(KotlinTypeMapper.exposedColumnImport(f))
     }
@@ -432,7 +432,7 @@ class KotlinTypeMapperTest {
         assertEquals("java.util", tn.packageName)
         assertEquals("UUID", tn.simpleName)
         // Column name snake_case-d for Postgres convention.
-        assertEquals("uuid(\"external_id\")", KotlinTypeMapper.exposedColumnSpec(f))
+        assertEquals("portableUuid(\"external_id\")", KotlinTypeMapper.exposedColumnSpec(f))
         // `uuid(...)` is a Table member — no extra import line needed.
         assertNull(KotlinTypeMapper.exposedColumnImport(f))
     }

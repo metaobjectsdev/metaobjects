@@ -265,3 +265,32 @@ def test_codegen_of_an_any_measure_without_of_is_a_plain_nullable_bool_row() -> 
         "allSlow: bool",
         "anySlowFailure: bool | None = None",
     ]
+
+
+def test_a_derived_report_field_over_an_array_or_a_map_is_neither_filterable_nor_sortable() -> None:
+    """A jsonb-backed derived field has no meaningful order and no operator band, so the
+    served report's sort and filter allowlists leave it out (cross-port with Java)."""
+    from metaobjects.codegen.generators.filter_allowlist_generator import _compute_filterable_ops
+    from metaobjects.codegen.generators.router_generator import _scalar_fields
+    from metaobjects.meta.core.field.field_constants import FIELD_ATTR_FILTERABLE
+    from metaobjects.meta.core.field.meta_field import MetaField
+    from metaobjects.shared.base_types import TYPE_FIELD
+
+    for sub_type, expect_kept in (("report", False), ("entity", True)):
+        obj = MetaObject(TYPE_OBJECT, sub_type, "Shape")
+        obj.package = "acme::test"
+        plain = MetaField(TYPE_FIELD, "string", "label")
+        arr = MetaField(TYPE_FIELD, "string", "tags")
+        arr.set_attr("isArray", True, sub_type="boolean")
+        mapped = MetaField(TYPE_FIELD, "map", "extras")
+        for f in (plain, arr, mapped):
+            f.set_attr(FIELD_ATTR_FILTERABLE, True, sub_type="boolean")
+            obj.add_child(f)
+        sortable = [f.name for f in _scalar_fields(obj)]
+        filterable = list(_compute_filterable_ops(obj))
+        assert "label" in sortable and "label" in filterable
+        if not expect_kept:
+            assert "tags" not in sortable and "extras" not in sortable
+            assert "tags" not in filterable and "extras" not in filterable
+        else:
+            assert "tags" in sortable  # an entity's behavior is unchanged

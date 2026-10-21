@@ -129,7 +129,11 @@ def effective_package(req: MetaRequirement) -> str:
     file's default, else ``""``. Public because the requirement-test identity function must
     use this ONE answer, not a second copy of it: it is also the referrer package every
     ``@implementedBy`` reference binds in."""
-    return req.package or req.file_default_package or ""
+    # MINOR 4 item 4: own package, else the nearest enclosing node WITHIN THE SAME DOCUMENT that
+    # declares one (recorded at parse time as ``scope_package`` -- an overlay's explicit package
+    # reaches the children it contributes, though the merge leaves the target's alone), else the
+    # file's default.
+    return req.package or req.scope_package or req.file_default_package or ""
 
 
 def collect_addressed_requirements(root: MetaData) -> list[AddressedRequirement]:

@@ -16,6 +16,7 @@
  * cannot tell apart: json and jsonb, smallint and integer, text and character varying.
  */
 
+import { splitSqlStatements } from "@metaobjectsdev/migrate-ts";
 import { describe, test, expect, beforeAll, afterAll, beforeEach } from "bun:test";
 import { randomUUID } from "node:crypto";
 import {
@@ -237,7 +238,7 @@ async function load(host: unknown, programFields: unknown[] = [], others: unknow
 }
 
 async function applyRaw(text: string, db: Db = k): Promise<void> {
-  for (const stmt of text.split(/;\s*\n/).map((s) => s.trim()).filter(Boolean)) {
+  for (const stmt of splitSqlStatements(text)) {
     await sql.raw(stmt.endsWith(";") ? stmt : `${stmt};`).execute(db);
   }
 }

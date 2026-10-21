@@ -28,11 +28,13 @@ public class ProgramMinutes
     [Column("totalMinutes")]
     public long? TotalMinutes { get; set; }
     [Column("avgMinutes")]
+    [System.Text.Json.Serialization.JsonConverter(typeof(DecimalWire.NullableDecimalJsonConverter))]
     public decimal? AvgMinutes { get; set; }
     [Column("minMinutes")]
     public int? MinMinutes { get; set; }
     [Column("maxMinutes")]
     public int? MaxMinutes { get; set; }
     [Column("longShare")]
+    [System.Text.Json.Serialization.JsonConverter(typeof(DecimalWire.NullableDecimalJsonConverter))]
     public decimal? LongShare { get; set; }
 }

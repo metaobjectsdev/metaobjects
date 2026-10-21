@@ -3,7 +3,7 @@
 // install line asks for. The mechanism is template-eject.test.ts; what it achieves for every
 // generator is eject-templates-contract.test.ts.
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ejectCommand, ejectGenerator } from "../src/commands/eject.js";
@@ -131,8 +131,46 @@ describe("meta eject --list reports the copies a project owns", () => {
     expect(text).toContain("codegen/templates/names-decl.ts  [DIFFERS:");
     expect(text).toContain("codegen/templates/extra.ts  [not in the package — yours, or removed upstream]");
     expect(text).toContain("diff -u node_modules/@metaobjectsdev/codegen-ts/src/templates/names-decl.ts codegen/templates/names-decl.ts");
-    // The generator copy is compared too, against the owned form of the reference.
-    expect(text).toContain("names  [owned — identical to the reference]");
+    // The generator file itself is untouched, but the generator is not "identical": one of
+    // the renderers it owns differs, and the row says which.
+    expect(text).not.toContain("names  [owned — identical to the reference]");
+    expect(text).toContain("names  [owned — DIFFERS: generator identical, 1 renderer(s) differ]");
+    expect(text).toContain("renderer codegen/templates/names-decl.ts  [DIFFERS:");
+  });
+
+  test("a generator is identical only when its file AND every renderer it owns are (text and JSON)", async () => {
+    await ejectCommand(["names"], cwd, "text");
+    logged = [];
+    await ejectCommand(["--list"], cwd, "text");
+    expect(logged.join("\n")).toContain("names  [owned — identical to the reference]");
+
+    // A stale renderer, the generator file untouched: the E1 repro.
+    appendFileSync(join(cwd, "codegen/templates/names-decl.ts"), "\n// stale line from an older release\n");
+    logged = [];
+    await ejectCommand(["--list"], cwd, "text");
+    const text = logged.join("\n");
+    expect(text).not.toContain("names  [owned — identical to the reference]");
+    expect(text).toContain("names  [owned — DIFFERS: generator identical, 1 renderer(s) differ]");
+    expect(text).toContain("renderer codegen/templates/names-decl.ts  [DIFFERS: 0 line(s) behind, 1 line(s) of your own]");
+
+    logged = [];
+    await ejectCommand(["--list"], cwd, "json");
+    const doc = JSON.parse(logged.join("\n")) as {
+      generators: { name: string; status: string; templates?: { path: string; status: string; own: number }[] }[];
+    };
+    const row = doc.generators.find((g) => g.name === "names")!;
+    expect(row.status).toBe("differs");
+    expect(row.templates!.find((t) => t.path === "codegen/templates/names-decl.ts")).toMatchObject({ status: "differs", own: 1 });
+  });
+
+  test("a renderer another generator owns does not flag this one", async () => {
+    await ejectCommand(["names"], cwd, "text");
+    await ejectCommand(["barrel"], cwd, "text");
+    appendFileSync(join(cwd, "codegen/templates/names-decl.ts"), "\n// mine\n");
+    logged = [];
+    await ejectCommand(["--list"], cwd, "text");
+    const text = logged.join("\n");
+    expect(text).toContain("barrel  [owned — identical to the reference]");
   });
 
   test("a project with no template copy prints no section for them", async () => {

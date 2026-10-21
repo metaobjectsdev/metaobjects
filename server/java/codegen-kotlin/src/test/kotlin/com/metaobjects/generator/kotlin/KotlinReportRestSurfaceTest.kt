@@ -149,6 +149,10 @@ class KotlinReportRestSurfaceTest {
         }"""
     }
 
+    /** The loader's refusal text: the exception's own message and every cause's. */
+    private fun loadMessage(e: Throwable): String =
+        generateSequence(e) { it.cause }.mapNotNull { it.message }.joinToString(" | ")
+
     private fun saleTotalsFiles(json: String): Map<String, String> =
         emit(loadString("report-rest-model", json)).filterKeys { "SaleTotals" in it }
 
@@ -156,13 +160,59 @@ class KotlinReportRestSurfaceTest {
     fun `only a concrete report over a view is served`() {
         assertEquals(4, saleTotalsFiles(saleTotals()).size)
         assertEquals(emptyMap(), saleTotalsFiles(saleTotals(source = null)), "sourceless")
-        assertEquals(emptyMap(), saleTotalsFiles(saleTotals(reportAttrs = """"abstract": true,""")), "abstract")
+    }
+
+    // R10 and R11 are refused when the model loads, so no generator is ever handed an abstract
+    // report or one over a kind the lowering skips. The loader's own tests pin the refusals; these
+    // pin that the Kotlin port sees them as load errors rather than as "generates nothing".
+    @Test
+    fun `an abstract report is refused at load, not generated as nothing`() {
+        val e = assertFailsWith<MetaDataException> {
+            saleTotalsFiles(saleTotals(reportAttrs = """"abstract": true,"""))
+        }
+        assertTrue("a report cannot be abstract" in loadMessage(e), loadMessage(e))
+    }
+
+    @Test
+    fun `a report over a source kind that is not a view is refused at load`() {
         for (kind in listOf(
             """"@kind": "materializedView", "@materializedView": "mv_sale_totals"""",
             """"@kind": "storedProc", "@procedure": "sale_totals"""",
             """"@kind": "tableFunction", "@function": "sale_totals"""",
         )) {
-            assertEquals(emptyMap(), saleTotalsFiles(saleTotals(source = """{ "source.rdb": { $kind } }""")), kind)
+            val e = assertFailsWith<MetaDataException>(kind) {
+                saleTotalsFiles(saleTotals(source = """{ "source.rdb": { $kind } }"""))
+            }
+            assertTrue("a report is read through a view" in loadMessage(e), "$kind: ${loadMessage(e)}")
+        }
+    }
+
+    // A derived field whose value is a list or a map has no scalar column to compare or order by,
+    // so it is neither filterable nor sortable whatever the entity field it reads says.
+    @Test
+    fun `a derived field over an array or a map is neither filterable nor sortable`() {
+        for ((shape, field) in listOf(
+            "array" to """{ "field.string": { "name": "tags", "isArray": true, "@storage": "jsonb" } }""",
+            "map" to """{ "field.map": { "name": "attrs", "@valueType": "string", "@storage": "jsonb" } }""",
+        )) {
+            val name = if (shape == "array") "tags" else "attrs"
+            val json = saleTotals().replace(
+                """{ "field.float": { "name": "score" } },""",
+                """{ "field.float": { "name": "score" } }, $field,""",
+            ).replace(
+                """{ "dimension.attribute": { "name": "source", "@of": "Sale.channel" } },""",
+                """{ "dimension.attribute": { "name": "source", "@of": "Sale.channel" } },
+                   { "dimension.attribute": { "name": "$name", "@of": "Sale.$name" } },""",
+            ).replace(""""@dimensions": ["source"]""", """"@dimensions": ["source", "$name"]""")
+            val files = saleTotalsFiles(json)
+            val allowlist = files.getValue("acme/shop/SaleTotalsFilterAllowlist.kt")
+            val controller = files.getValue("acme/shop/SaleTotalsController.kt")
+            assertFalse("\"$name\"" in allowlist, "$shape in allowlist:\n$allowlist")
+            // The row is still read from the table; only the filter and sort surface must not name it.
+            assertFalse("\"$name\" ->" in controller, "$shape has a filter arm:\n$controller")
+            assertFalse("SaleTotalsTable.$name greater" in controller || "SaleTotalsTable.$name eq" in controller, controller)
+            assertFalse("SaleTotalsTable.$name to dir" in controller, "$shape is orderable:\n$controller")
+            assertFalse("\"$name\"" in controller.substringAfter("SortAllowlist").substringBefore(")"), "$shape sortable")
         }
     }
 
@@ -217,12 +267,9 @@ class KotlinReportRestSurfaceTest {
                 "@measures": ["sales"], "children": [ $VIEW ] } }
           ] }
         }"""
-        for (gen in listOf(KotlinEntityGenerator(), KotlinFilterAllowlistGenerator(), KotlinSpringControllerGenerator())) {
-            val e = assertFailsWith<MetaDataException>(gen.javaClass.simpleName) {
-                emit(loadString("report-rest-object", json), listOf(gen))
-            }
-            assertTrue("report 'SaleTotals'" in e.message.orEmpty() && "field.object" in e.message.orEmpty(), e.message)
-        }
+        // D5: the loader refuses a dimension over a field.object before any generator runs.
+        val e = assertFailsWith<MetaDataException> { emit(loadString("report-rest-object", json)) }
+        assertTrue("@of 'Sale.shipTo' is a field.object" in loadMessage(e), loadMessage(e))
     }
 
     // --- The allowlist (Table C) --------------------------------------------------------
@@ -329,7 +376,7 @@ class KotlinReportRestSurfaceTest {
         assertTrue("        \"heaviest\" -> coerceSaleTotalsDecimal(op, raw)\n" in src, src)
         assertTrue("        \"avgWeight\" -> coerceSaleTotalsDecimal(op, raw)\n" in src, src)
         assertTrue("        \"topScore\" -> coerceSaleTotalsFloat(op, raw)\n" in src, src)
-        assertTrue("runCatching { java.math.BigDecimal(s) }" in src, src)
+        assertTrue("runCatching { MetaDecimalWire.parseFilterOperand(s) }" in src, src)
         assertTrue("runCatching { java.lang.Float.parseFloat(s) }" in src, src)
         assertTrue("\"gt\" -> SaleTotalsTable.avgWeight greater (p.value as BigDecimal)" in src, src)
     }

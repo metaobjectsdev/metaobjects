@@ -46,6 +46,7 @@ from typing import Callable, TypeGuard
 from ..errors import ErrorCode, MetaError
 from ..meta.core.attr.attr_constants import ATTR_SUBTYPE_FILTER
 from ..meta.core.field.field_constants import (
+    FIELD_ATTR_OBJECT_REF,
     FIELD_SUBTYPE_BOOLEAN,
     FIELD_SUBTYPE_CURRENCY,
     FIELD_SUBTYPE_DATE,
@@ -105,6 +106,7 @@ from ..meta.core.reporting.reporting_constants import (
     REPORTING_ATTR_VIA,
 )
 from ..meta.meta_data import MetaData
+from ..meta.persistence.source.source_constants import SOURCE_KIND_VIEW
 from ..meta.meta_root import MetaRoot
 from ..meta.persistence.source.meta_source import MetaSource
 from ..naming_refs import CHILD_REF_SEP, ref_target, resolve_object_ref
@@ -293,6 +295,19 @@ def _field_of(obj: MetaData, name: str) -> MetaData | None:
     return _child_of_type(obj, TYPE_FIELD, name)
 
 
+def _object_ref_of(field: MetaData) -> str | None:
+    """A field's resolving ``@objectRef`` (ADR-0039), or ``None``."""
+    v = field.get_meta_attr(FIELD_ATTR_OBJECT_REF)
+    return v if isinstance(v, str) and v else None
+
+
+def _is_document_field(field: MetaData) -> bool:
+    """D5 / M10 -- a ``field.object``, or any field carrying an ``@objectRef``, is a JSON
+    document: no port groups or aggregates a report over one. (A ``field.map`` with a
+    ``@valueType`` is legal.)"""
+    return field.sub_type == FIELD_SUBTYPE_OBJECT or _object_ref_of(field) is not None
+
+
 def _is_relative_value(v: object) -> TypeGuard[dict[str, object]]:
     """An object operand carrying a ``now`` key — a relative-date value, well-formed
     (exactly ``{ now }``) or not. A malformed one is refused, never read as data."""
@@ -465,9 +480,27 @@ def _check_dimension(ctx: _MemberCtx, dim: MetaDimension) -> None:
             err(f"@of '{of}' must name a field of '{_shown(ctx, of_entity)}', the entity @via '{via}' reaches.")
         return
     field_name = parts.path[0]
-    field = _field_of(of_entity, field_name)
+    # With @via the field is looked up on the entity @of NAMES (own plus inherited), not on the
+    # @via terminal: a base the terminal extends must itself carry the field, or the dimension
+    # names a column the base table lacks. Without @via the host IS the checked entity.
+    lookup = of_entity if via is None else named
+    field = _field_of(lookup, field_name) if lookup is not None else None
     if field is None:
-        err(f"@of '{of}' names no field '{field_name}' on '{_shown(ctx, of_entity)}'.")
+        assert lookup is not None
+        if lookup is not of_entity and _field_of(of_entity, field_name) is not None:
+            err(
+                f"@of '{of}' names no field '{field_name}' on '{_shown(ctx, lookup)}': only "
+                f"'{_shown(ctx, of_entity)}', the entity @via reaches, declares it. "
+                f"Name it '{of_entity.name}.{field_name}'."
+            )
+        else:
+            err(f"@of '{of}' names no field '{field_name}' on '{_shown(ctx, lookup)}'.")
+        return
+
+    # D5 -- a dimension groups by a scalar.
+    if _is_document_field(field):
+        with_ref = " with an @objectRef" if _object_ref_of(field) is not None else ""
+        err(f"@of '{of}' is a field.{field.sub_type}{with_ref}, which a report cannot group by. Group by a scalar field of it.")
         return
 
     if not dim.is_time():
@@ -608,7 +641,11 @@ def _check_measure(ctx: _MemberCtx, measure: MetaMeasure) -> None:
     # type error, and M7/M8 still read the attribute as present).
     # ADR-0039: resolving (get_meta_attr) — the raw attribute, inherited or not.
     declared_default = measure.get_meta_attr(REPORTING_ATTR_DEFAULT)
-    fractional_default = isinstance(declared_default, float) and not declared_default.is_integer()
+    # MINOR 4 Rule B: M7-M9 run only for a valid (integral, non-bool) number; anything else is
+    # reported once, as ERR_BAD_ATTR_VALUE, by the attr-schema pass.
+    fractional_default = declared_default is not None and not (
+        isinstance(declared_default, int) and not isinstance(declared_default, bool)
+    )
 
     if measure.is_ratio():
         _check_ratio_operands(ctx, measure, err)
@@ -706,6 +743,11 @@ def _check_aggregate_columns(
         field = _field_of(ctx.host, parts.path[0])
         if field is None:
             err(f"@of '{item}' names no field '{parts.path[0]}' on '{ctx.declaring.resolution_key()}'.")
+            return None
+        # M10 -- a measure aggregates scalars.
+        if _is_document_field(field):
+            with_ref = " with an @objectRef" if _object_ref_of(field) is not None else ""
+            err(f"@of '{item}' is a field.{field.sub_type}{with_ref}, which a report cannot aggregate. Aggregate a scalar field of it.")
             return None
         fields.append(field)
 
@@ -875,6 +917,23 @@ def _check_report(root: MetaData, report: MetaData, sink: _ErrorSink) -> None:
                 f"declare a read-only @kind (view, materializedView, storedProc or tableFunction).",
                 source,
             )
+
+    # R10 -- a report is read through a view; no port lowers or serves the other read-only kinds.
+    for source in (c for c in report.children() if c.type == TYPE_SOURCE):
+        if isinstance(source, MetaSource) and source.is_read_only() and source.effective_kind() != SOURCE_KIND_VIEW:
+            err(
+                f": {_child_label(source)} has @kind '{source.effective_kind()}'; a report is read through a view, "
+                f"so its source must be @kind: view. For a view or materialized view you create yourself, declare "
+                f"@kind: view with @unmanaged: true.",
+                source,
+            )
+
+    # R11 -- a report cannot be abstract.
+    if report.is_abstract:
+        err(
+            ": is abstract; a report cannot be abstract, because its fields are derived from its own @dimensions "
+            "and @measures and no port reads or serves an abstract report. Remove abstract: true."
+        )
 
     # R1 — @from resolves to an object.entity. Without it, R2/R3/R6/R7, R8/R9 and
     # the @filter have nothing to resolve against, so they are skipped.

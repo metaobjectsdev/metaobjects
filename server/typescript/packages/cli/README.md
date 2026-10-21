@@ -312,7 +312,7 @@ Precedence for `meta migrate`: CLI flag > env var (`DATABASE_URL` only) > `.meta
 ### Metadata sources (`sources`)
 
 `sources` is the single authority on **where metadata lives**. Every read command
-(`gen`, `migrate`, `verify`, `docs`, `export`) resolves it. When the key is absent or
+(`gen`, `migrate`, `verify`, `export`) resolves it. When the key is absent or
 empty — which is what `meta init` scaffolds — it takes its default value, the
 `metaobjects/` directory beside the config, so existing projects are unaffected.
 
@@ -357,7 +357,7 @@ means everything; `exclude` applies after `include`; matching is case-sensitive.
 applies to `meta gen` and to `meta verify --codegen` (which regenerates under the
 same scope, so a scoped `gen` is not reported as drift). The documentation generators are
 not scoped: the model pages, the api reference, the agent pages and the site document the
-whole loaded collection, as `meta docs` did. `meta export` is deliberately **not** scoped — it
+whole loaded collection, whatever `scope` says. `meta export` is deliberately **not** scoped — it
 inspects the loaded collection. `meta gen
 <Entity>` arguments intersect with `scope`; both must pass.
 

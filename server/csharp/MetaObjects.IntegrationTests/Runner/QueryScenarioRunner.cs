@@ -88,6 +88,7 @@ public static class QueryScenarioRunner
                 if (engine != ScenarioEngine.Postgres)
                     throw new InvalidOperationException($"{scenario.SourcePath}: op:relate runs on Postgres only");
                 var actual = await ResolveRelateAsync(connectionString, metaRoot, spec);
+                DecimalGate.Check(scenario.SourcePath, spec, actual);
                 AssertResult(scenario.SourcePath, spec, actual);
                 continue;
             }
@@ -120,11 +121,13 @@ public static class QueryScenarioRunner
                 // write codec + read path together (the structural complement to the
                 // read-only scenarios). See RoundtripWriter.
                 var written = await RoundtripWriter.ExecuteAsync(db, spec);
+                DecimalGate.Check(scenario.SourcePath, spec, written);
                 AssertResult(scenario.SourcePath, spec, written);
                 continue;
             }
 
             var efActual = await DbContextAdapter.ExecuteAsync(db, spec);
+            DecimalGate.Check(scenario.SourcePath, spec, efActual);
             AssertResult(scenario.SourcePath, spec, efActual);
         }
     }

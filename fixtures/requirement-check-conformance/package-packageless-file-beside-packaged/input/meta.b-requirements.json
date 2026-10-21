@@ -1,0 +1,18 @@
+{
+  "metadata.root": {
+    "children": [
+      {
+        "requirement.functional": {
+          "name": "Orders",
+          "@level": 4,
+          "@status": "live",
+          "@statement": "An order is recorded when it is placed.",
+          "@counterexample": "A placed order has no row.",
+          "@implementedBy": [
+            "Order"
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -76,6 +76,16 @@ internal static class ApiContractCorpusPaths
     public static readonly string ReportSchemaSqliteSql = Path.Combine(ReportDir, "schema.sqlite.sql");
     public static readonly string ReportSchemaMysqlSql = Path.Combine(ReportDir, "schema.mysql.sql");
 
+    // ADR-0019 Amendment 1 decimal subcorpus — a writable Entry (a decimal(28,10) amount) plus a
+    // served EntryTotals report over it. Generated lane only; `engines:` is exact per scenario.
+    public static readonly string DecimalDir = Path.Combine(Corpus, "decimal");
+    public static readonly string DecimalScenariosDir = Path.Combine(DecimalDir, "scenarios");
+    public static readonly string DecimalSeedFile = Path.Combine(DecimalDir, "seed.json");
+    public static readonly string DecimalMetaJson = Path.Combine(DecimalDir, "meta.json");
+    public static readonly string DecimalSchemaSql = Path.Combine(DecimalDir, "schema.postgres.sql");
+    public static readonly string DecimalSchemaSqliteSql = Path.Combine(DecimalDir, "schema.sqlite.sql");
+    public static readonly string DecimalSchemaMysqlSql = Path.Combine(DecimalDir, "schema.mysql.sql");
+
     // #214 write-through read-your-writes subcorpus.
     public static readonly string WriteThroughDir = Path.Combine(Corpus, "write-through");
     public static readonly string WriteThroughScenariosDir = Path.Combine(WriteThroughDir, "scenarios");

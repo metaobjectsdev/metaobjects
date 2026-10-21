@@ -18,12 +18,12 @@ public sealed class QueryScenarioMySqlTests(MySqlServer server)
 {
     [Theory]
     [MemberData(nameof(Scenarios))]
-    public async Task Report_scenario_on_mysql(string scenarioPath)
+    public async Task Scenario_on_mysql(string scenarioPath)
     {
         var scenario = ScenarioLoader.LoadQuery(scenarioPath);
         await using var mysql = await server.CreateDatabaseAsync();
         await QueryScenarioRunner.RunMySqlAsync(scenario, mysql.ConnectionString);
     }
 
-    public static IEnumerable<object[]> Scenarios() => CorpusPaths.ReportQueryScenarios();
+    public static IEnumerable<object[]> Scenarios() => CorpusPaths.ScenariosFor(ScenarioEngine.MySql);
 }

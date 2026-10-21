@@ -33,8 +33,8 @@ object ProgramMinutesView : Table("v_program_minutes") {
     val labels = long("labels")
     val slots = long("slots")
     val totalMinutes = long("totalMinutes").nullable()
-    val avgMinutes = decimal("avgMinutes", 38, 18).nullable()
+    val avgMinutes = portableDecimal("avgMinutes", 38, 18).nullable()
     val minMinutes = integer("minMinutes").nullable()
     val maxMinutes = integer("maxMinutes").nullable()
-    val longShare = decimal("longShare", 38, 18).nullable()
+    val longShare = portableDecimal("longShare", 38, 18).nullable()
 }

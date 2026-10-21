@@ -112,7 +112,11 @@ class TomcatHost private constructor(
         fun parseBody(mapper: ObjectMapper, body: String?): Any? {
             if (body.isNullOrEmpty()) return null
             return try {
-                mapper.readValue(body, Any::class.java)
+                // Numbers are read exactly (BigDecimal), never through a double, so the corpus can
+                // compare a decimal wire value digit for digit (ADR-0019 Amendment 1, W1).
+                mapper.readerFor(Any::class.java)
+                    .with(com.fasterxml.jackson.databind.DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS)
+                    .readValue<Any?>(body)
             } catch (notJson: com.fasterxml.jackson.core.JsonProcessingException) {
                 body
             }

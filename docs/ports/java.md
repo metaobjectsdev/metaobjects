@@ -397,6 +397,22 @@ derived field reads a `field.object`. A report with no view source, or an abstra
 generates nothing. The contract is in
 [reporting](../features/reporting.md#how-a-report-is-served).
 
+### Decimals on the wire
+
+A `field.decimal` crosses the API as one canonical string (ADR-0019 Amendment 1): `12.50` is
+`"12.5"`, zero is `"0"`, never a JSON number or an exponent. Input may be a string or a number,
+is read exactly, and is `400 validation` when it has more fraction digits than `@scale` or more
+integer digits than `@precision - @scale` (no `@scale` beside `@precision` means 0). A filter
+operand compares exactly; a bad one is `400 invalid_filter_value`. On SQLite a decimal is read at
+15 significant digits. Every port runs the shared vectors in `fixtures/decimal-wire/`.
+
+The generated DTO, Patch and value-object records write a `BigDecimal` through
+`CanonicalDecimalSerializer` and read it through `CanonicalDecimalDeserializer`, which checks
+the field's `@DeclaredDecimal(precision, scale)`. A filter allowlist lists its decimal fields in
+`DECIMAL_FIELDS`, and `FilterParser.parse(rawQuery, FIELDS, OPS_BY_FIELD, DECIMAL_FIELDS)`
+hands the repository `BigDecimal` operands. These classes live in
+`com.metaobjects.generator.spring.runtime`.
+
 ### `<Entity>Names` — the physical names, as constants
 
 `SpringNamesGenerator` is opt-in, like every Java generator — there is no
@@ -558,8 +574,9 @@ compiling. That signal depends on the annotation: without `@Override` a stale wi
 ordinary method, compiles, and goes stale silently, so annotate every witness. A planned or
 retired requirement is `@Disabled` and has no member. The generated files are rewritten whole,
 so do not edit them; `mvn metaobjects:verify` reports them stale when a claim changes, and a
-package that loses its last requirement leaves its two files behind, which `verify` reports as
-`[stale-in-repo]` (delete them: `gen` never removes a file).
+package that loses its last requirement loses its two files: the full `gen` deletes them,
+because the hash manifest recorded them and they are untouched (an edited one is refused by
+name), and until then `verify` reports them as `[stale-in-repo]`.
 
 | Arg | Meaning |
 |---|---|

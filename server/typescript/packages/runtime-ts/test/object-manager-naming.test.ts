@@ -2,6 +2,9 @@
 // the loaded root, so they are the names codegen and `meta migrate` used. The 1.0 option that
 // set them separately is refused rather than dropped.
 
+import { guideUrl } from "@metaobjectsdev/metadata/release-docs";
+// The guide links name the tag of the running release (a prerelease keeps main).
+const BLOB = guideUrl("");
 import { describe, expect, test } from "bun:test";
 import { InMemoryStringSource, MetaDataLoader, type MetaRoot } from "@metaobjectsdev/metadata";
 import { ObjectManager } from "../src/object-manager.js";
@@ -35,7 +38,7 @@ describe("ObjectManager column naming (ADR-0058)", () => {
     const root = await load();
     const opts = { metadata: root, driver: inMemoryDriver(), columnNamingStrategy: "literal" };
     expect(() => new ObjectManager(opts as ConstructorParameters<typeof ObjectManager>[0])).toThrow(
-      'the ObjectManager columnNamingStrategy option was removed in 1.1.0. Column and table naming is one project setting now, read by every port: "naming" in .metaobjects/config.json, for example "naming": { "columns": "literal" }. Move it there and delete the ObjectManager columnNamingStrategy option. See https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/physical-naming.md',
+      'the ObjectManager columnNamingStrategy option was removed in 1.1.0. Column and table naming is one project setting now, read by every port: "naming" in .metaobjects/config.json, for example "naming": { "columns": "literal" }. Move it there and delete the ObjectManager columnNamingStrategy option. See ' + BLOB + 'docs/features/migrations/physical-naming.md',
     );
   });
 

@@ -13,7 +13,18 @@ import {
   type MetaObject,
   type MetaRoot,
 } from "@metaobjectsdev/metadata";
-import type { CubeStack } from "../src/cube-container.ts";
+
+/**
+ * Where a Cube API answers: a development stack (no auth) or a production one (a JWT in
+ * `headers`). `CubeStack` (src/cube-container.ts) is one; cube-prod-stack.ts's `ProdCube` is the other.
+ */
+export interface CubeEndpoint {
+  /** `http://127.0.0.1:<port>/cubejs-api/v1`. */
+  readonly apiBase: string;
+  /** Request headers the API requires; absent in development mode. */
+  readonly headers?: Readonly<Record<string, string>>;
+  cubeLogs(lines?: number): string;
+}
 
 /** One HTTP request to Cube; a stalled socket is aborted and counts as a transport error. */
 export const REQUEST_TIMEOUT_MS = 60_000;
@@ -42,6 +53,8 @@ export interface CubeQuery {
   readonly dimensions: readonly string[];
   readonly timeDimensions: readonly CubeTimeDimension[];
   readonly segments: readonly string[];
+  /** Cube query filters (the MySQL cases pick rows with them). */
+  readonly filters?: readonly { readonly member: string; readonly operator: string; readonly values: readonly string[] }[];
   /** Table I fixes the query time zone at UTC (Table J: another zone re-buckets). */
   readonly timezone: "UTC";
 }
@@ -280,16 +293,29 @@ export interface MetaResponse {
 export interface LoadResponse {
   readonly data: Array<Record<string, unknown>>;
   readonly usedPreAggregations?: Record<string, unknown>;
+  /** True when Cube answered from Cube Store (a rollup built there) rather than from the data source. */
+  readonly external?: boolean;
+  /** The external store that answered: `cubestore` in production mode. */
+  readonly extDbType?: string;
 }
 
 /** A request that never produced a JSON answer: refused, reset, aborted, or a body that is not JSON. */
 export class TransportError extends Error {}
 
-export async function getJson(url: string, timeoutMs = REQUEST_TIMEOUT_MS): Promise<{ status: number; body: unknown }> {
+export async function getJson(
+  url: string,
+  timeoutMs = REQUEST_TIMEOUT_MS,
+  headers: Readonly<Record<string, string>> = {},
+  post?: unknown,
+): Promise<{ status: number; body: unknown }> {
   let res: Response;
   let text: string;
   try {
-    res = await fetch(url, { signal: AbortSignal.timeout(Math.max(1000, timeoutMs)) });
+    res = await fetch(url, {
+      headers: post === undefined ? { ...headers } : { ...headers, "Content-Type": "application/json" },
+      ...(post === undefined ? {} : { method: "POST", body: JSON.stringify(post) }),
+      signal: AbortSignal.timeout(Math.max(1000, timeoutMs)),
+    });
     text = await res.text();
   } catch (e) {
     throw new TransportError(`${url.split("?")[0]}: ${e instanceof Error ? `${e.name}: ${e.message}` : String(e)}`, { cause: e });
@@ -307,8 +333,8 @@ export function errorOf(body: unknown): string | undefined {
   return e === undefined ? undefined : String(e);
 }
 
-export async function getMeta(s: CubeStack, timeoutMs = REQUEST_TIMEOUT_MS): Promise<MetaResponse> {
-  const { body } = await getJson(`${s.apiBase}/meta`, timeoutMs);
+export async function getMeta(s: CubeEndpoint, timeoutMs = REQUEST_TIMEOUT_MS): Promise<MetaResponse> {
+  const { body } = await getJson(`${s.apiBase}/meta`, timeoutMs, s.headers);
   const error = errorOf(body);
   if (error !== undefined) return { error, cubes: [] };
   const cubes = (body as { cubes?: unknown }).cubes;
@@ -316,7 +342,7 @@ export async function getMeta(s: CubeStack, timeoutMs = REQUEST_TIMEOUT_MS): Pro
   return { cubes: cubes as MetaCube[] };
 }
 
-export function queryUrl(s: CubeStack, path: "load" | "sql", query: CubeQuery): string {
+export function queryUrl(s: CubeEndpoint, path: "load" | "sql", query: CubeQuery): string {
   return `${s.apiBase}/${path}?query=${encodeURIComponent(JSON.stringify(query))}`;
 }
 
@@ -325,13 +351,13 @@ export function queryUrl(s: CubeStack, path: "load" | "sql", query: CubeQuery): 
  * with backoff after a transport error (at most LOAD_TRANSPORT_RETRIES in a row), all within
  * LOAD_DEADLINE_MS.
  */
-export async function load(s: CubeStack, query: CubeQuery): Promise<LoadResponse> {
+export async function load(s: CubeEndpoint, query: CubeQuery): Promise<LoadResponse> {
   const deadline = Date.now() + LOAD_DEADLINE_MS;
   let transportErrors = 0;
   for (;;) {
     let answer: { status: number; body: unknown };
     try {
-      answer = await getJson(queryUrl(s, "load", query));
+      answer = await getJson(queryUrl(s, "load", query), REQUEST_TIMEOUT_MS, s.headers);
       transportErrors = 0;
     } catch (e) {
       if (!(e instanceof TransportError)) throw e;
@@ -359,8 +385,8 @@ export async function load(s: CubeStack, query: CubeQuery): Promise<LoadResponse
 }
 
 /** The SQL Cube generates for a query (`/v1/sql`); throws when Cube answers without it. */
-export async function generatedSql(s: CubeStack, query: CubeQuery): Promise<string> {
-  const { status, body } = await getJson(queryUrl(s, "sql", query));
+export async function generatedSql(s: CubeEndpoint, query: CubeQuery): Promise<string> {
+  const { status, body } = await getJson(queryUrl(s, "sql", query), REQUEST_TIMEOUT_MS, s.headers);
   const sql = (body as { sql?: { sql?: unknown } }).sql?.sql;
   if (!Array.isArray(sql) || typeof sql[0] !== "string") {
     throw new Error(`/v1/sql answered HTTP ${status} without SQL: ${JSON.stringify(body).slice(0, 2000)}`);
@@ -369,7 +395,7 @@ export async function generatedSql(s: CubeStack, query: CubeQuery): Promise<stri
 }
 
 /** The SQL Cube generates for a query, for a failure message. */
-export async function cubeSql(s: CubeStack, query: CubeQuery): Promise<string> {
+export async function cubeSql(s: CubeEndpoint, query: CubeQuery): Promise<string> {
   try {
     return await generatedSql(s, query);
   } catch (e) {
@@ -397,11 +423,144 @@ export interface ExpectedReport {
    * and the view NOT to, so the difference stays an executed check rather than a skipped one.
    */
   readonly cubeRows?: readonly Record<string, string | null>[];
-  /**
-   * The model declares a rollup for this report and Cube never matches it, so it answers from the
-   * source table (`preAggregation` is then undefined). Today that is a report listing ONE time
-   * dimension at several grains: the `time_dimensions` entry repeats the dimension and Cube 1.7.43
-   * matches no query to it (a query names a time dimension once, at one granularity).
-   */
-  readonly unusedRollup?: true;
+}
+
+/**
+ * Every served canonical report, its view, the rollup Cube answers it from (undefined = the
+ * source tables) and its row count on the seed. Postgres and MySQL agree on all three, so both
+ * lanes, in both Cube modes, read this one table. `preAggregation` is written for development
+ * mode; {@link productionPreAggregation} names the same rollup in production mode.
+ */
+export const CANONICAL_REPORTS: readonly ExpectedReport[] = [
+  { report: "ProgramMinutes", view: "v_program_minutes", preAggregation: "dev_pre_aggregations.week__program_minutes", rows: 3 },
+  { report: "FitnessTotals", view: "v_fitness_totals", preAggregation: "dev_pre_aggregations.week__fitness_totals", rows: 1 },
+  { report: "ProgramsByMonth", view: "v_programs_by_month", preAggregation: "dev_pre_aggregations.program__programs_by_month", rows: 5 },
+  { report: "ProgramsByWeek", view: "v_programs_by_week", preAggregation: "dev_pre_aggregations.program__programs_by_week", rows: 5 },
+  { report: "RecentPrograms", view: "v_recent_programs", preAggregation: undefined, rows: 1 },
+  { report: "AssetActivity", view: "v_asset_activity", preAggregation: "dev_pre_aggregations.asset__asset_activity", rows: 2 },
+  { report: "ProgramRoster", view: "v_program_roster", preAggregation: undefined, rows: 11 },
+  { report: "ProgramLongWeeks", view: "v_program_long_weeks", preAggregation: undefined, rows: 11 },
+  { report: "ProgramFlags", view: "v_program_flags", preAggregation: "dev_pre_aggregations.week__program_flags", rows: 3 },
+  { report: "ProgramFlagRoster", view: "v_program_flag_roster", preAggregation: undefined, rows: 11 },
+  { report: "FitnessTotalsFilled", view: "v_fitness_totals_filled", preAggregation: "dev_pre_aggregations.week__fitness_totals_filled", rows: 1 },
+  { report: "MeasurementStats", view: "v_measurement_stats", preAggregation: "dev_pre_aggregations.measurement__measurement_stats", rows: 1 },
+  { report: "MeasurementStatsFilled", view: "v_measurement_stats_filled", preAggregation: "dev_pre_aggregations.measurement__measurement_stats_filled", rows: 1 },
+  { report: "AssetDays", view: "v_asset_days", preAggregation: "dev_pre_aggregations.asset__asset_days", rows: 1 },
+  { report: "AllTypesBreakdown", view: "v_all_types_breakdown", preAggregation: undefined, rows: 2 },
+  // A report listing createdAt at day, quarter and year has one rollup per grain; the Table F query
+  // asks the finest (day), so it is answered from the day rollup. The other two are proven by the
+  // production-mode lane's per-grain queries.
+  { report: "ProgramsOverTime", view: "v_programs_over_time", preAggregation: "dev_pre_aggregations.program__programs_over_time_day", rows: 7 },
+  { report: "LiveIntroPrograms", view: "v_live_intro_programs", preAggregation: "dev_pre_aggregations.program__live_intro_programs", rows: 2 },
+  // No dimension, no row in scope: the view reads one row with the count 0 and the default; Cube
+  // sums the (empty) rollup, which is null for every measure, the count and the default included.
+  { report: "ProgramsEmptyScope", view: "v_programs_empty_scope", preAggregation: "dev_pre_aggregations.program__programs_empty_scope", rows: 1, cubeRows: [{ avgPriceOrMinusOne: null, programs: null }] },
+  { report: "WeekShapes", view: "v_week_shapes", preAggregation: "dev_pre_aggregations.week__week_shapes", rows: 3 },
+  { report: "SessionsByProgram", view: "v_sessions_by_program", preAggregation: "dev_pre_aggregations.session__sessions_by_program", rows: 3 },
+  { report: "ProgramSessions", view: "v_program_sessions", preAggregation: undefined, rows: 11 },
+  { report: "NodesByParent", view: "v_nodes_by_parent", preAggregation: "dev_pre_aggregations.node__nodes_by_parent", rows: 3 },
+  { report: "AuthsByKind", view: "v_auths_by_kind", preAggregation: "dev_pre_aggregations.auth__auths_by_kind", rows: 3 },
+  // A dimension reached through an abstract parent's redeclared field (Gadget.label, column gadget_code): 3 gadgets with events.
+  { report: "GadgetEventsByLabel", view: "v_gadget_events_by_label", preAggregation: "dev_pre_aggregations.gadget_event__gadget_events_by_label", rows: 3 },
+  // Exact-decimal measures over four buckets (A, B, C with all-null amounts, D).
+  { report: "EntryTotals", view: "v_entry_totals", preAggregation: "dev_pre_aggregations.entry__entry_totals", rows: 4 },
+];
+
+/** The rollup table Cube's production mode names for a development-mode name: `prod_pre_aggregations.<same table>`. */
+export function productionPreAggregation(dev: string): string {
+  return dev.replace(/^dev_pre_aggregations\./, "prod_pre_aggregations.");
+}
+
+/**
+ * `SELECT * FROM <view>` through psql, every value as the TEXT Postgres prints for it (a numeric
+ * keeps its scale, a timestamptz its offset), in a UTC session.
+ */
+export function selectViewPg(s: { psql(sqlText: string): string }, view: string): Array<Record<string, string | null>> {
+  return selectSqlPg(s, `SELECT * FROM "${view}"`);
+}
+
+/** The rows of any `SELECT` through psql, as {@link selectViewPg} prints them. */
+export function selectSqlPg(s: { psql(sqlText: string): string }, select: string): Array<Record<string, string | null>> {
+  const out = s.psql(
+    `SET TIME ZONE 'UTC';\n` +
+      `SELECT coalesce(json_agg(t.o), '[]'::json)::text FROM (\n` +
+      `  SELECT (SELECT json_object_agg(e.key, e.value) FROM json_each_text(row_to_json(v)) e) AS o\n` +
+      `  FROM (${select}) v\n` +
+      `) t;\n`,
+  );
+  const line = out.trim().split("\n").filter((l) => l.trim() !== "").pop() ?? "";
+  const parsed: unknown = JSON.parse(line);
+  if (!Array.isArray(parsed)) throw new Error(`psql did not print a JSON array: ${line.slice(0, 200)}`);
+  return parsed as Array<Record<string, string | null>>;
+}
+
+/**
+ * `SELECT * FROM <view>` through the mysql client, every value as the text MySQL prints for it. A
+ * DATETIME prints `2026-05-04 03:30:00.000`; the space becomes `T` so the shared normalization
+ * reads it as a UTC instant, as it does Cube's `2026-05-04T03:30:00.000`.
+ */
+export function selectViewMysql(s: { mysql(sqlText: string): string }, view: string): Array<Record<string, string | null>> {
+  const columns = s.mysql(`SHOW COLUMNS FROM \`${view}\`;`).trim().split("\n").map((l) => l.split("\t")[0] ?? "");
+  return selectSqlMysql(s, `SELECT ${columns.map((c) => `\`${c}\``).join(", ")} FROM \`${view}\``, columns);
+}
+
+/** The rows of any `SELECT` through the mysql client, named `columns` in order. */
+export function selectSqlMysql(s: { mysql(sqlText: string): string }, select: string, columns: readonly string[]): Array<Record<string, string | null>> {
+  const out = s.mysql(`SET time_zone = '+00:00'; ${select};`);
+  return out
+    .split("\n")
+    .filter((l) => l !== "")
+    .map((line) => {
+      const cells = line.split("\t");
+      const row: Record<string, string | null> = {};
+      columns.forEach((c, i) => {
+        const v = cells[i] ?? "NULL";
+        row[c] = v === "NULL" ? null : /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/.test(v) ? v.replace(" ", "T") : v;
+      });
+      return row;
+    });
+}
+
+// ---------------------------------------------------------------------------------------------
+// Production mode: building rollups.
+// ---------------------------------------------------------------------------------------------
+
+/** One pre-aggregation build job as the jobs API reports it. */
+interface BuildJob {
+  readonly table?: string;
+  readonly status?: string;
+}
+
+/**
+ * Build every pre-aggregation of the model into Cube Store through the pre-aggregations jobs API
+ * (`POST /v1/pre-aggregations/jobs`, `action: post`, then `action: get` until each job is `done`).
+ * Production mode answers from a rollup only once it is built; this makes "built" a fact the test
+ * waits for rather than a race it hopes to win. Returns the tables built (`schema.table`).
+ */
+export async function buildAllPreAggregations(s: CubeEndpoint, timeoutMs = 600_000): Promise<string[]> {
+  const url = `${s.apiBase}/pre-aggregations/jobs`;
+  const started = await getJson(
+    url,
+    REQUEST_TIMEOUT_MS,
+    s.headers,
+    { action: "post", selector: { contexts: [{ securityContext: {} }], timezones: ["UTC"] } },
+  );
+  const tokens = started.body;
+  if (!Array.isArray(tokens) || tokens.length === 0 || tokens.some((t) => typeof t !== "string")) {
+    throw new Error(`the jobs API did not hand back job tokens (HTTP ${started.status}): ${JSON.stringify(started.body).slice(0, 500)}\n${s.cubeLogs(40)}`);
+  }
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const { body } = await getJson(url, REQUEST_TIMEOUT_MS, s.headers, { action: "get", resType: "object", tokens });
+    const jobs = Object.values((body ?? {}) as Record<string, BuildJob>);
+    const failed = jobs.filter((j) => typeof j.status === "string" && j.status.startsWith("failure"));
+    if (failed.length > 0) {
+      throw new Error(`pre-aggregation build failed: ${failed.map((j) => `${j.table}: ${j.status}`).join("; ")}\n${s.cubeLogs(60)}`);
+    }
+    if (jobs.length === tokens.length && jobs.every((j) => j.status === "done")) return jobs.map((j) => String(j.table)).sort();
+    if (Date.now() > deadline) {
+      throw new Error(`pre-aggregations were not built within ${timeoutMs / 1000}s: ${JSON.stringify(body).slice(0, 800)}\n${s.cubeLogs(60)}`);
+    }
+    await Bun.sleep(2000);
+  }
 }

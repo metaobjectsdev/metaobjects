@@ -14,6 +14,7 @@ import { pgTable, bigserial, text, varchar, integer, numeric, timestamp, check }
 import { z } from "zod";
 import {
   mountCrudRoutes,
+  parseDecimalInput,
   type FilterAllowlist,
   type SortAllowlist,
 } from "@metaobjectsdev/runtime-ts/drizzle-fastify";
@@ -89,9 +90,27 @@ const writeOnceInsertShape = {
   issuedCurrency: z.string().max(3).nullable().optional(),
 };
 
+// CopayAuth.copayAmount is decimal(10,2): a string or a JSON number in, its canonical string
+// stored, and a value the column would round or overflow refused (ADR-0019 Amendment 1, W2/W3),
+// as the generated write schema does it.
+const copayAmount = z
+  .union([z.string(), z.number()])
+  .transform((v, ctx) => {
+    const c = parseDecimalInput(v);
+    const m = c === undefined ? null : /^-?(0|[1-9][0-9]{0,7})(?:\.([0-9]{1,2}))?$/.exec(c);
+    if (c === undefined || m === null) {
+      ctx.addIssue({ code: "custom", message: "Not a decimal(10,2) value" });
+      return z.NEVER;
+    }
+    return c;
+  })
+  .nullable()
+  .optional();
+const DECIMAL_COLUMNS = ["copayAmount"] as const;
+
 // Per-subtype insert schemas (discriminator pinned, omitted at the route boundary).
 const BridgeInsert = z.object({ reference: z.string().min(1).max(80), quantity: z.number().int(), ...writeOnceInsertShape, ...autoSetInsertShape });
-const CopayInsert = z.object({ reference: z.string().min(1).max(80), copayAmount: z.string().nullable().optional(), ...writeOnceInsertShape, ...autoSetInsertShape });
+const CopayInsert = z.object({ reference: z.string().min(1).max(80), copayAmount, ...writeOnceInsertShape, ...autoSetInsertShape });
 const PriorAuthInsert = z.object({ reference: z.string().min(1).max(80), approver: z.string().max(80).nullable().optional(), ...writeOnceInsertShape, ...autoSetInsertShape });
 
 // Per-subtype update schemas — NOT derived via `<Insert>.partial()` (that would
@@ -99,7 +118,7 @@ const PriorAuthInsert = z.object({ reference: z.string().min(1).max(80), approve
 // creation timestamp on every update — the exact lost-update bug this gate
 // exists to catch). Declared explicitly instead, omitting autoCreatedAt.
 const BridgeUpdate = z.object({ reference: z.string().min(1).max(80).optional(), quantity: z.number().int().optional(), ...autoSetUpdateShape });
-const CopayUpdate = z.object({ reference: z.string().min(1).max(80).optional(), copayAmount: z.string().nullable().optional(), ...autoSetUpdateShape });
+const CopayUpdate = z.object({ reference: z.string().min(1).max(80).optional(), copayAmount, ...autoSetUpdateShape });
 const PriorAuthUpdate = z.object({ reference: z.string().min(1).max(80).optional(), approver: z.string().max(80).nullable().optional(), ...autoSetUpdateShape });
 
 const numberOps = ["eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull"] as const;
@@ -112,7 +131,7 @@ const BridgeFilterAllowlist = {
 const CopayFilterAllowlist = {
   id: { ops: numberOps, subType: "number" as const, leadingWildcard: false },
   reference: { ops: stringOps, subType: "string" as const, leadingWildcard: false },
-  copayAmount: { ops: numberOps, subType: "number" as const, leadingWildcard: false },
+  copayAmount: { ops: numberOps, subType: "number" as const, leadingWildcard: false, format: "decimal" as const },
 } as const satisfies FilterAllowlist;
 const PriorAuthFilterAllowlist = {
   id: { ops: numberOps, subType: "number" as const, leadingWildcard: false },
@@ -147,7 +166,7 @@ export async function startTphServer(connectionUri: string): Promise<TphServerHa
         fastify: instance, path: "/auths", db, table: auths,
         insertSchema: AuthInsertSchema, updateSchema: AuthUpdateSchema,
         filterAllowlist: AuthFilterAllowlist, sortAllowlist: AuthSortAllowlist,
-        dialect: "postgres", expose: ["list", "get"],
+        dialect: "postgres", expose: ["list", "get"], decimalColumns: DECIMAL_COLUMNS,
       });
       mountCrudRoutes({
         fastify: instance, path: "/auths/bridge", db, table: auths,
@@ -159,7 +178,7 @@ export async function startTphServer(connectionUri: string): Promise<TphServerHa
         fastify: instance, path: "/auths/copay", db, table: auths,
         insertSchema: CopayInsert, updateSchema: CopayUpdate,
         filterAllowlist: CopayFilterAllowlist, sortAllowlist: CopaySortAllowlist,
-        dialect: "postgres", discriminator: { column: "type", value: "Copay" },
+        dialect: "postgres", discriminator: { column: "type", value: "Copay" }, decimalColumns: DECIMAL_COLUMNS,
       });
       mountCrudRoutes({
         fastify: instance, path: "/auths/priorauth", db, table: auths,

@@ -374,6 +374,20 @@ export default defineConfig({
 The mapping, the refusals, the Cube query that reproduces a report and the `cube` lane that
 checks the output against a real Cube are in [cube-export](../features/cube-export.md).
 
+### Decimals on the wire
+
+A `field.decimal` crosses the API as one canonical string (ADR-0019 Amendment 1): `12.50` is
+`"12.5"`, zero is `"0"`, never a JSON number or an exponent. Input may be a string or a number,
+is read exactly, and is `400 validation` when it has more fraction digits than `@scale` or more
+integer digits than `@precision - @scale` (no `@scale` beside `@precision` means 0). A filter
+operand compares exactly; a bad one is `400 invalid_filter_value`. On SQLite a decimal is read at
+15 significant digits. Every port runs the shared vectors in `fixtures/decimal-wire/`.
+
+A generated model module's write schema carries a local `decimalWrite` function, so generated
+code imports nothing from MetaObjects; the route mounts in `@metaobjectsdev/runtime-ts` write
+decimals and read filter operands by the same rule. `meta migrate` warns for a decimal declared
+with `@precision` above 15 on SQLite or D1.
+
 ### `<Entity>Names` — the physical names, as constants
 
 `meta init` scaffolds a `names` generator, so a new project gets `<Entity>.names.ts`

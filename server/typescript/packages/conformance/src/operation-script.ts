@@ -24,6 +24,11 @@ export interface ExpectedError {
   readonly code: string;
   /** Present in the FR5a envelope shape; absent in legacy `[{code}]` form. */
   readonly source?: ExpectedErrorSource;
+  /**
+   * Optional. Every listed substring MUST appear (case-sensitive) in the
+   * matching error's message. The only place message text is asserted.
+   */
+  readonly messageIncludes?: readonly string[];
 }
 
 export interface ExpectedErrorsEnvelope {
@@ -84,6 +89,14 @@ function parseSource(raw: unknown, i: number): ExpectedErrorSource | undefined {
   return out;
 }
 
+function parseMessageIncludes(raw: unknown, i: number): readonly string[] | undefined {
+  if (raw === undefined) return undefined;
+  if (!Array.isArray(raw) || raw.length === 0 || !raw.every((x) => typeof x === "string" && x !== "")) {
+    throw new Error(`expected-errors.json entry ${i}: 'messageIncludes' must be a non-empty string[] of non-empty strings`);
+  }
+  return raw as string[];
+}
+
 /**
  * Parse + validate a parsed expected-errors.json value.
  *
@@ -128,7 +141,12 @@ export function parseExpectedErrors(raw: unknown): ExpectedErrorsEnvelope {
       throw new Error(`expected-errors.json entry ${i} missing string 'code' field`);
     }
     const source = parseSource(r.source, i);
-    return source !== undefined ? { code: r.code, source } : { code: r.code };
+    const messageIncludes = parseMessageIncludes(r.messageIncludes, i);
+    return {
+      code: r.code,
+      ...(source !== undefined ? { source } : {}),
+      ...(messageIncludes !== undefined ? { messageIncludes } : {}),
+    };
   });
   const rawWarnings = Array.isArray(env.warnings) ? env.warnings : [];
   const warnings = rawWarnings.map((item, i): ExpectedError => {

@@ -298,3 +298,26 @@ def test_a_namespace_layout_in_the_project_loses_to_a_regular_package_earlier_lo
     (b / "codegen" / "generators" / "thing.py").write_text("WHO = 'B'\n")
     assert _who(a) == "A"
     assert _who(b) == "A"
+
+
+def test_build_owned_instantiates_a_generator_class(tmp_path: Path) -> None:
+    """MINOR 2: `module:symbol` naming a generator CLASS yields an instance, not the class."""
+    from metaobjects.codegen.eject import build_owned
+
+    pkg = tmp_path / "owned_gen_pkg"
+    pkg.mkdir()
+    (pkg / "__init__.py").write_text("")
+    (pkg / "mine.py").write_text(
+        "class Mine:\n"
+        "    name = 'mine'\n"
+        "    def generate(self, ctx):\n"
+        "        return []\n"
+    )
+    try:
+        gen, err = build_owned("owned_gen_pkg.mine:Mine", tmp_path, None)  # type: ignore[arg-type]
+        assert err is None
+        assert not isinstance(gen, type) and gen is not None and gen.name == "mine"
+        assert gen.generate(None) == []  # type: ignore[arg-type]
+    finally:
+        for k in [k for k in sys.modules if k.startswith("owned_gen_pkg")]:
+            del sys.modules[k]

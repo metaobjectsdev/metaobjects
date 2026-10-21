@@ -358,17 +358,6 @@ describe("buildReportViews — view-backed reports (FR-044 Plan 2, Table A)", ()
     expect(buildReportViews(root, PG)).toEqual([]);
   });
 
-  test("a non-view report source kind yields nothing", async () => {
-    const root = await loadModel(
-      shop("with", (children) => {
-        const r = children.find((c) => (c["object.report"] as Json | undefined)?.name === "StoreTotals");
-        const kids = (r!["object.report"] as { children: Json[] }).children;
-        (kids[0]!["source.rdb"] as Json)["@kind"] = "materializedView";
-      }),
-    );
-    expect(buildReportViews(root, PG)).toEqual([]);
-  });
-
   test("an @sql report source keeps the author's body and depends on the @from table", async () => {
     const body = "SELECT COUNT(*) AS purchases FROM purchases";
     const root = await loadModel(

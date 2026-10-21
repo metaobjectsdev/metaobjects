@@ -14,14 +14,18 @@ here.**
 
 _npm `1.1.0` (all 14 `@metaobjectsdev/*` packages in lockstep), PyPI `1.1.0`, NuGet `1.1.0` and
 Maven Central `8.1.0`. **`metamodelVersion` moves `1.0` to `1.1`.** The vocabulary is additive:
-a model that uses none of the new names loads as it did under 1.0, and what loads changes only
-where the Java and Python parser fixes under **Fixed** bring those ports into line with
-TypeScript. What it generates is NOT unchanged in every port: in C#, Java, Kotlin's runtime and
+a model that uses none of the new names loads as it did under 1.0, with two exceptions: a bare
+`extends` naming an object in another package is refused in TypeScript, Python and C# (see
+**Breaking** below), and the Java and Python parser fixes under **Fixed** bring those ports into
+line with TypeScript. What it generates is NOT unchanged in every port: in C#, Java, Kotlin's runtime and
 Python the default for column and table names flips from the field name to `snake_case`, so a
 1.0 estate whose columns are named like its fields must add
 `"naming": { "columns": "literal" }` (see **Breaking** below). Each entry says which models it
 affects. This is a MINOR because the
-metamodel moved and reporting is a new feature, not because the package surface broke._
+metamodel moved and reporting is a new feature. It also removes commands and exports (the docs
+commands and the types behind them, under **Removed**): that break rides this MINOR by the
+maintainer's ruling in ADR-0034 Amendment 9. One page walks a 1.0.x project through every step:
+[upgrading-1.0-to-1.1.md](docs/features/migrations/upgrading-1.0-to-1.1.md)._
 
 **Breaking, C#, Java, Kotlin's runtime and Python: the default physical names are `snake_case`.**
 Column and table names the metadata does not give now come from one `naming` setting in
@@ -73,7 +77,35 @@ package.** It now fails with `ERR_UNRESOLVED_SUPER`, as Java already did and ADR
 bare name binds the declaring file's own package, then the root. Qualify the reference:
 `extends: other::Base`. The entry is under **Changed** (ADR-0059).
 
-**Five diffs to expect when you upgrade.**
+**Breaking, in every port: a `field.decimal` crosses the API as one canonical string
+(ADR-0019 Amendment 1).** Every decimal a generated route sends, on an entity, a projection or a
+report row (an `avg`, a ratio, a `sum` of a decimal), is a JSON string in plain notation with no
+exponent and no trailing fraction zeros: `12.50` is sent `"12.5"`, zero is `"0"`. Before 1.1.0
+each port sent its own form (TypeScript a string, the others a number), so a client that read a
+number from C#, Java, Kotlin or Python now reads a string. Display formatting, such as two digits
+for an amount of money, is a view's job, never the wire's. On input a route takes a string in
+JSON-number grammar or a JSON number, read exactly; anything else is `400 validation`, and so is
+a value with more fraction digits than `@scale` or more integer digits than
+`@precision - @scale` (nothing is rounded). A decimal filter operand uses the same grammar, is
+compared exactly, and a bad one is `400 invalid_filter_value`. Postgres and MySQL keep the
+declared precision; SQLite and D1, which have no decimal type, keep 15 significant digits, and
+`meta migrate` warns for a decimal there declared with `@precision` above 15. An ejected routes
+generator keeps its old decimal handling until you resync it. The per-port entries are under
+**Changed**.
+
+**Nine diffs to expect when you upgrade.**
+
+- **Generated files no generator emits any more are deleted.** The first full `gen` after the
+  upgrade, in every port, deletes a file the committed hash manifest records writing, that no
+  generator emitted in that run and that still hashes to what was recorded (a renamed value
+  object's old file, an api-docs page that moved). An edited such file is refused by name and
+  kept. Review the deletions in the diff. The entry is under **Fixed**.
+- **An inherited reference means what it meant where it was written (ADR-0059 Decisions 3
+  and 7).** A reference an object inherits through `extends` resolves in the package of the
+  node that declares it, not the inheriting object's package. A model whose base and subtype
+  live in different packages and that relied on a bare name meaning the subtype package's
+  object now binds the one in the base's package (or the root-level one). Qualify the
+  reference if you meant the other.
 
 - **References are written fully qualified (ADR-0059).** `meta export` and canonical
   serialization write every reference as `pkg::Name`, a root-level target referenced from a
@@ -101,6 +133,13 @@ bare name binds the declaring file's own package, then the root. Qualify the ref
   `SpringRepositoryGenerator`, or subclasses one of them, still compiles too: the 1.0.x helpers
   are still there, marked `@Deprecated`, and forward to `SpringGeneratorSupport`. A generator you
   never ejected needs nothing.
+- **Decimal handling is generated.** Every port's generated routes gain their decimal
+  wire code (the canonical writer, the strict reader and the exact filter operand), and the
+  allowlists gain the decimal field set. An ejected routes or allowlist generator needs a
+  resync to get it; the **Changed** entries name the files per port.
+- **C# array properties are `IList<T>`.** A generated scalar or enum array property was
+  `ICollection<T>`, which EF Core 8 cannot read on SQLite; code that assigns a `HashSet<T>` to
+  one assigns a `List<T>`. The entry is under **Changed**.
 - **A keyless projection regenerates differently (G12).** `meta gen` rewrites the read-only
   surface of a keyless projection (no `/:id` route, no by-id function, and no write verbs in the
   API docs), and `meta verify --codegen` reports the affected pages as stale until they are
@@ -117,7 +156,8 @@ bare name binds the declaring file's own package, then the root. Qualify the ref
   Every other inline enum, in every port, keeps its previous name and bytes. Two build
   settings follow from it. Java: `SpringDtoGenerator` owns the shared enum files, so a pom
   that runs the value-object or output-parser generator WITHOUT it, on a model where one of
-  their objects reaches a shared enum, must set `emitSharedEnums=true` on one of them. Kotlin:
+  their objects reaches a shared enum, must set `emitSharedEnums=true` (an `<args>` entry on the
+  `SpringValueObjectGenerator` or `SpringOutputParserGenerator` `<generator>`) on one of them. Kotlin:
   every generator that types an enum now needs `providedEnumNamespace` /
   `providedEnumPackages` for a model with a `@provided` enum; set them in the plugin's
   `<globals>`. An owned (ejected) Kotlin generator keeps compiling and keeps its previous
@@ -819,12 +859,13 @@ generator catalog and the Atlas evaluation are 1.2 work.
   that is not numeric, is `ERR_INVALID_MEASURE`. A fractional `@default` (`0.5`) is
   `ERR_BAD_ATTR_VALUE` on the measure in every port: TypeScript says "@default '0.5' is not an
   integer. A measure's @default is a whole number (for example 0).", while C#, Java and Python
-  refuse it through their existing integer-attribute check with that check's message. No port
-  changed its general `attr.int` check, so a fraction in a validator's `@min` or `@max` loads
-  where it did. Two edge cases have no fixture: `@default: 0.0` (or `1.0`) is read as an integer
-  by TypeScript and refused by C#, Java and Python, and `@default: "zero"` on a `count` gives two
-  errors in TypeScript, C# and Python and one in Java. Write a whole number with no decimal
-  point. TypeScript lowers it: the view selects `FROM` the spine entity's table with `LEFT OUTER
+  refuse it through their integer-attribute check with that check's message. That check now
+  refuses a fraction in every `attr.int` and `attr.long` in TypeScript, C# and Python, as Java
+  already did, so a fractional `validator.numeric` `@min` or `@max` (`0.5`) is
+  `ERR_BAD_ATTR_VALUE` too (see the upgrade guide). `@default: 0.0` (or `1.0`) loads as that
+  integer in every port, and a non-number `@default` reports that one error (both under
+  **Fixed**, with fixtures).
+  TypeScript lowers it: the view selects `FROM` the spine entity's table with `LEFT OUTER
   JOIN`s back to `@from`, and a defaulted measure is `COALESCE(…, n)` (SQLite writes `n.0` for a
   `decimal`, `double` or `float` measure and for a ratio, so the column keeps one storage class;
   MySQL reads a defaulted ratio of zero as `0.0000`). `meta migrate` refuses a derived `@spine`
@@ -872,6 +913,24 @@ generator catalog and the Atlas evaluation are 1.2 work.
   against it. Read files through `ctx.inputRoot`; `runGen` takes it as `inputRoot`. The
   docs generators read a project's template overrides and owned site theme through it.
 
+- **Python: SQLite and MySQL runtime drivers.** `metaobjects.runtime` exports `SqliteDriver`
+  (the standard library's `sqlite3`) and `MySqlDriver` (PyMySQL, through the new `mysql` extra:
+  `pip install "metaobjects[mysql]"`) beside the Postgres one, so `ObjectManager` reads and writes
+  those engines, report views included. The persistence and api-contract corpora run on both.
+- **Java: an OMDB SQLite driver.** OMDB gains a `SQLiteDriver`, and `core-spring` resolves the
+  dialect `sqlite` to it. The persistence corpus, report views included, and the generated
+  report and decimal controllers run on Postgres, SQLite and MySQL.
+- **A `decimal-wire` corpus.** `fixtures/decimal-wire/vectors.json` holds the shared vectors of
+  ADR-0019 Amendment 1 (the canonical format, the input grammar, filter operands and the
+  15-digit read), and every port's decimal wire runs them. The api-contract corpus gains a
+  `decimal/` sub-corpus (8 scenarios, generated lane, Postgres, SQLite and MySQL, and D1 in
+  TypeScript), and the persistence corpus `decimal-exact` and its 15-digit twin. A scenario's
+  new `engines:` key names exactly the engines that run it.
+- **The Cube lane queries every exporter shape.** A fifth live file queries the alias cubes, a
+  TPH subtype's `sql`, a one-to-one join from both ends, the int-backed enum's `CASE` and a
+  two-hop `@spine` report, and compares each with plain SQL on the same database. These were
+  compile-checked only before.
+
 ### Changed
 
 **References mean the same thing in YAML and JSON, in every port (ADR-0059).** Every source now
@@ -884,9 +943,13 @@ loaded, then rewrites each to its canonical spelling before the tree is frozen. 
   object in another package (TypeScript, Python, C#; Java already refused it): qualify it.
 - A loaded model's reference values are canonical (`pkg::Name`, or `::Name` for a root-level
   target from a package). Code that reads a reference attribute and compares it to an object's
-  short name must compare the target instead: `refTarget(node, attr)` (TypeScript) returns the
-  object the loader bound, and `lookupCanonical(root, value)` resolves a canonical value exactly
-  (a bare canonical `Name` is the root-level object). `MetaRoot.findObject` binds a qualified
+  short name must compare the target instead: `refTarget(node, attr)` returns the object the
+  loader bound, and `lookupCanonical(root, value)` resolves a canonical value exactly (a bare
+  canonical `Name` is the root-level object). The same two exist in every port: TypeScript
+  `refTarget` / `lookupCanonical`, Java `com.metaobjects.loader.References.refTarget` /
+  `.lookupCanonical`, C# `MetaObjects.NamingRefs.RefTarget` / `.LookupCanonical`, Python
+  `metaobjects.naming_refs.ref_target` / `.lookup_canonical` (Kotlin generators call
+  `KotlinGenUtil.lookupCanonicalObject`). `MetaRoot.findObject` binds a qualified
   value exactly, but a bare name still matches the first object of that short name in any
   package, so do not pass it a reference value.
 - TypeScript `RenderContext.resolveValueObjectName` takes the field (`resolveValueObjectName(field)`)
@@ -998,6 +1061,51 @@ until you regenerate.
   field. The value Drizzle reads from a `numeric` view column was always a string, so the old
   schema disagreed with the row it parsed. Code that treated the parsed field as a `number`
   stops typechecking.
+- **Every port: generated routes carry the canonical decimal wire (ADR-0019 Amendment 1).**
+  The rule is under **Breaking** at the top; this is what each port generates for it. Every
+  port also rejects an input with more digits than the field's `@precision` and `@scale` as
+  `400 validation`, and reads a decimal on SQLite and D1 at 15 significant digits.
+  - TypeScript: a generated model module's write schema carries a local `decimalWrite`
+    function (generated code still imports nothing from MetaObjects), and the mounts in
+    `@metaobjectsdev/runtime-ts` write a decimal and read its filter operand by the same rule
+    (`runtime-ts/src/decimal-wire.ts`). An owned `entity` generator needs the new
+    `codegen/templates/decimal-wire-helper.ts` renderer, which `meta eject --list` reports as
+    differing, and owned runtime copies need a re-sync. `meta migrate` warns for a decimal with
+    `@precision` above 15 on SQLite or D1. A single-table base's polymorphic list and get
+    send a decimal that only a subtype declares as its canonical string too (it came back
+    `"12.50"`); an owned `routes` generator needs the resync to pick that up.
+  - C#: each namespace gets a generated `DecimalWire.g.cs`; a decimal property carries its
+    converter and, with `@precision`, `[DecimalWire.Declared(precision, scale)]`. A filter
+    operand that cannot be the field's type (decimal, int, date, Guid, enum) answers
+    `400 invalid_filter_value` instead of throwing, and a stored value the CLR `decimal` cannot
+    hold is `500 decimal_out_of_range`. An owned `routes` generator copies `DecimalWire.cs` and
+    `DecimalRangeEndpointFilter.cs`. On SQLite a decimal list sorts by its double, the engine
+    having no decimal type.
+  - Java: the Spring DTOs, Patch and value-object records serialize through
+    `CanonicalDecimalSerializer` and read through a contextual `CanonicalDecimalDeserializer`
+    that checks `@DeclaredDecimal(precision, scale)`; allowlists gain `DECIMAL_FIELDS`, and
+    `FilterParser.parse(rawQuery, fields, opsByField, decimalFields)` hands a repository
+    `BigDecimal` operands. An unreadable body is `400 validation`. Re-eject owned `routes`,
+    `dto`, `value-object` and `filter-allowlist` generators. OMDB binds a MySQL decimal operand
+    as `CAST(? AS DECIMAL(65,30))`.
+  - Kotlin: each package that needs it gets a generated `MetaDecimalWire.kt` (the writer, the
+    strict reader, the declared-digit check and the unreadable-body envelope), so generated
+    Kotlin imports nothing from MetaObjects. Entities serialize decimals through it, TPH
+    controllers filter decimals, and the controller checks the declared digits on create and
+    PATCH. The Exposed tables use a portable decimal and uuid column type
+    (`MetaPortableColumnTypes.kt`, per package): a uuid binds as text off Postgres, which fixes
+    a MySQL `500` and a SQLite no-match, and a decimal binds as `REAL` on SQLite, which fixes its
+    filters. `@precision` without `@scale` is scale 0, as in Java.
+  - Python: the routers use `metaobjects.codegen.runtime.decimal_wire` and emit the declared
+    limits of each decimal field; re-eject an owned `routes` generator to get them. A malformed
+    or non-object JSON body is `400 validation` (FastAPI answered `422`).
+- **Breaking, C#: generated scalar and enum array properties are `IList<T>`.** They were
+  `ICollection<T>`, which EF Core 8 cannot materialize on SQLite, so an entity, TPH subtype,
+  value object or report row with an array field answered `500` there. Code that assigns a
+  `HashSet<T>` (or another non-list collection) to one of these properties assigns a `List<T>`
+  instead. `DecimalWire.DecimalCollectionJsonConverter` is replaced by
+  `DecimalListJsonConverter`; re-eject owned `entity` and `routes` generators. Arrays of value
+  objects and navigation collections stay `ICollection<T>`.
 - **TypeScript API docs: a read-only object's page documents only what is generated.** In
   the `apiDocsFile()` pages, a read-only projection's page no longer lists `create`, `update` or
   `delete` functions, write REST verbs or Insert/Update schemas, none of which were ever
@@ -1030,14 +1138,12 @@ until you regenerate.
   `coerce<Entity>Double`. Before, a list filter on such a column threw `ClassCastException`,
   a `500` on a request the allowlist had admitted, because the handler cast the coerced
   `Double` to the column's `BigDecimal` or `Float`. A single-table-inheritance (TPH) controller
-  changes for a float field only (on the base or a subtype); its filter pipeline already left
-  decimals out. `field.double` is unchanged, so a model with no decimal and no float field
+  changes for a float field only (on the base or a subtype); its decimals become filterable too
+  (see the decimal entry below). `field.double` is unchanged, so a model with no decimal and no float field
   keeps its bytes.
   Separately, a read-only controller or row mapper over a field named after a member of
   Exposed's `Table` (such as `source`) now reads the suffixed column property
   (`sourceColumn`) and compiles; every other field name keeps its bytes.
-
-### Changed
 
 - **TypeScript: every page of documentation is a generator in `generators` (ADR-0034
   Amendment 9).** `meta gen` writes it and `meta verify --codegen` checks it, with the code.
@@ -1194,6 +1300,23 @@ until you regenerate.
   prompt, apart from one dropped phrase ("in this file"). Its maintainer notes moved to
   `docs/superpowers/specs/2026-07-12-metaobjects-fit-assessment-maintainer-notes.md`, and the
   skill's `scaffold: false` marker is now `metadata: { scaffold: false }` (no code reads it).
+- **Smaller public API changes in C#, Java and Python.** These touch an owned generator or a
+  library caller, not a project that only runs the CLI or the plugin. Each followed from
+  references resolving once (ADR-0059) or the one naming setting (ADR-0058).
+  - C#: removed `YamlDesugar.ExpandRef` (the YAML source no longer rewrites references),
+    `M2MDerivation.ResolveEntity` and `ExtractDelegateEmitter.FindObject` (read the bound target
+    with `NamingRefs.RefTarget`). The `ColumnNamingStrategy` enum moved from `MetaObjects.Codegen`
+    to `MetaObjects.Meta`, and the default of `CSharpNaming.Column`, `ResolveObjectNames` and
+    `GenConfig.ColumnNamingStrategy` is `SnakeCase`. `ResolvedMetadata` and `PayloadField` take
+    extra positional parameters.
+  - Java: removed `BaseMetaDataParser.getFullyQualifiedSuperMetaDataName`.
+    `ColumnNaming.DEFAULT` is now `snake_case` (it was `literal`). `PayloadField` gained
+    `isArray`; the two-argument constructor is kept. The HTML doc writer base classes changed.
+  - Python: removed `naming_refs.is_relative_ref`. `find_inbound.response_shape` takes only the
+    template (it was `(root, template, referrer_pkg)`), and `MetaSource.physical_name` takes an
+    optional `table_naming`. `router_generator.emits_router` and
+    `entity_model.has_literal_default` are no longer imported by the modules that used to
+    import them from there.
 
 ### Deprecated
 
@@ -1358,6 +1481,66 @@ until you regenerate.
   - A project that never wired it sees no change.
 
 ### Fixed
+
+- **Found by the 1.1.0 release review, in every port unless named.**
+  - **The loader refuses four more report shapes**, with the cross-port code and a message
+    naming the fix: a dimension or measure over a `field.object` or `@objectRef` field
+    (D5, M10: `ERR_INVALID_DIMENSION` / `ERR_INVALID_MEASURE`; a `field.map` with `@valueType`
+    stays legal), a report whose read-only source is not `@kind: view` (R10), and an abstract
+    report (R11, both `ERR_INVALID_REPORT`). Each used to load and fail later, in
+    `meta migrate` or at the first request. A `@via` dimension's `@of` must name a field the
+    owner itself has: one only a subtype declares is `ERR_INVALID_DIMENSION`, naming the
+    subtype to write. When the entity the `@via` reaches redeclares that field (another
+    subtype or column), the report groups by the redeclared field, in every port.
+  - **A report dimension over an array or a map is neither filterable nor sortable**: a filter
+    on one is `400 invalid_filter_field` and a sort `400 invalid_sort`. A Java report map
+    dimension keeps its `@valueType`.
+  - **An integer attribute written `4.0` loads as `4`**, and a fraction is
+    `ERR_BAD_ATTR_VALUE`, in every port (a requirement's `level`, a measure's `@default`, a
+    `validator.numeric` `@min` or `@max`). A
+    bad `@default` reports that one error, not a second rule error beside it.
+  - **A requirement's package is its own, else the nearest enclosing declaration, else the
+    file's**, and an overlay that declares a package gives it to the children it adds. Coverage
+    counts every non-abstract project entity except one imported from a dependency; the
+    project's `scope` filters generated output, not coverage.
+  - **`ERR_UNRESOLVED_SUPER` names the fix**: the same-named objects in other packages and the
+    qualified `extends` to write.
+  - **The JVM runtimes read the `naming` setting.** Java and Kotlin outside Spring:
+    `MetaDataLoader.fromUris` and `fromDirectory` read the `.metaobjects/config.json` above the
+    metadata. Spring: `classpath:.metaobjects/config.json`, or the location
+    `metaobjects.physical-naming-config` names (a `classpath:` location or a file path; a named
+    location that is missing fails startup). Each logs once when it falls back to the
+    `snake_case` default. Before, a runtime that was not handed the rules used the default
+    while codegen used the project's, and queried columns that did not exist.
+  - **`eject --list` compares what an owned generator owns, not just its own file.** TypeScript
+    compares each renderer under `codegen/templates/` it imports (text:
+    `[owned — DIFFERS: generator identical, N renderer(s) differ]` and a line per renderer;
+    JSON: `templates`), Python each ejected runtime module, and `dotnet meta gen --list` and
+    `mvn metaobjects:eject -Dlist=true` fold the companions into the verdict. A generator
+    reported identical while its renderers lagged kept 1.0 logic silently.
+  - **TypeScript: generated forms submit fractional numbers.** A `field.double` or
+    `field.float` input carries `step="any"` (the browser's default step of 1 refused `12.5`),
+    and a `field.decimal` is a `type="text" inputMode="decimal"` input, since a number input
+    validates through a double. Both the `<Entity>.meta.ts` descriptor (new `step` and
+    `inputMode` keys, which `useEntityForm` spreads) and the nested sub-forms; `agent/ui.md`
+    prints them.
+  - **TypeScript: an unknown top-level key in `.metaobjects/config.json` is a warning**, as it
+    is ignored in the other ports, so a key a later release adds does not fail an older CLI.
+  - **TypeScript: `meta migrate --dry-run` needs no `--slug`**, and the staleness nudge links
+    the guide for the minor you are on, pinned to the release tag (the links come from the new
+    `@metaobjectsdev/metadata/release-docs` entry).
+  - **Python: the loaders read `naming` from the project.** `from_directory`, `from_uris` and
+    `from_string(project_dir=...)` find `.metaobjects/config.json`; pass
+    `discover_naming=False` to skip it. With no config they warn once (`UserWarning`) that
+    `snake_case` is the default.
+  - **TypeScript: the agent-context files carry a content hash**, so a refresh tells an edited
+    file from a stale one by its bytes, not its version line.
+  - **Java: an object that redeclares an inherited field with another subtype gets a POJO that
+    compiles.** The class is generated standalone (every effective field, extending
+    `PojoObject`) instead of `extends` the super, so `instanceof` against the super no longer
+    holds for that class only.
+  - **Cube: a report served at several grains gets one rollup per grain**
+    (`<Report>_<grain>`), so each grain is answered from its own rollup.
 
 - **References resolve the same way from every source (ADR-0059).**
   - YAML `::Name` reaches the root-level object even when the package declares the same name. It
@@ -1784,15 +1967,15 @@ until you regenerate.
   `"paidShare": 0.4` where Postgres answers `"paidShare": "0.4"`, and the row type said
   `string` for both, so `.toFixed(1)` compiled on neither and ran on one. The route is now
   corrected, not the type. **Behaviour note:** on SQLite a report's `avg`, ratio and
-  `sum` of a decimal field arrive as strings (`"0.4"`, `"1.6666666666666667"`, null stays
+  `sum` of a decimal field arrive as strings (`"0.4"`, `"1.66666666666667"`, null stays
   null); convert with `Number(x)` where you did arithmetic or formatting on the number. The
   generated report route passes the decimal field names to the mount as `decimalColumns`
   (`mountReadOnlyCrudRoutes` in the Fastify and Hono adapters, new optional option), which sends
   a number under one of them as its string. Filtering and sorting on the column are unchanged
-  and stay numeric, because the view column is still a REAL. The digits are JavaScript's
-  shortest spelling of the double, not Postgres' fixed scale, and a decimal's digits stay
-  outside the cross-port contract. Postgres and MySQL are untouched, and so is a projection on
-  SQLite (released behaviour; its decimals still arrive as numbers). **Upgrading an owned
+  and stay numeric, because the view column is still a REAL. The digits are the double read at
+  15 significant digits in the canonical form of ADR-0019 Amendment 1, the same in every port,
+  and a projection's or entity's decimal on SQLite is a string by the same rule (see the decimal
+  entry under **Breaking**). **Upgrading an owned
   `routes` or `routes-hono` generator:** a copy ejected before this release passes no
   `decimalColumns`, so a SQLite report keeps answering a number until you resync it
   (`meta eject routes --force`, `meta eject routes-hono --force`, which also refreshes the
@@ -1950,13 +2133,15 @@ until you regenerate.
     its model lists. It now is for every table the definition in the database names as well:
     one the new definition no longer reads, and one an `@sql` body joins. The D1 foreign-key
     cascade does the same for every table it rebuilds, including a view the migration drops.
-  - **A drop and a create discards the privileges granted on the view.** `DROP VIEW` removes the
-    view's grants with it, and `meta migrate` writes no `GRANT`, so a role that had `SELECT` on a
-    projection's view loses it, with nothing reported. It needs no `--allow` and applies cleanly.
-    In an offline plan every changed Postgres view takes this path, including an appended field
-    that was a `CREATE OR REPLACE VIEW` before. A `DROP VIEW` also fails at apply if another
-    object depends on the view, and says which. To keep grants and dependents across the change,
-    plan with `--from-db`; otherwise grant the privileges again after applying.
+  - **A Postgres drop and create keeps the privileges granted on the view.** `DROP VIEW` removes
+    the view's grants with it, so the migration copies them into a temporary table before the
+    drop and grants each one again after the create (`WITH GRANT OPTION` where it was
+    grantable), and `meta migrate` names each view it recreated: "view <schema>.<name>: dropped
+    and recreated; its grants are carried over." In an offline plan every changed Postgres view
+    takes this path, including an appended field that was a `CREATE OR REPLACE VIEW` before.
+    The down migration's recreate does the same, and column-level grants are carried for the
+    columns the new view still has. A `DROP VIEW` also fails at apply if another object depends on the view, and says which; plan
+    with `--from-db` to keep dependents.
   - **Adopting a view (`--allow adopt-view`) follows the same rule**, for a derived view and for
     an `@sql` one. A hand-written or pre-fingerprint view with the same columns is still replaced
     in place when the probe proves it. It becomes a drop and a create when the columns differ, or

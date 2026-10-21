@@ -86,7 +86,10 @@ public static class WriteCoercion
         if (underlying == typeof(long))    return long.Parse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture);
         if (underlying == typeof(double))  return double.Parse(raw, NumberStyles.Float, CultureInfo.InvariantCulture);
         if (underlying == typeof(float))   return float.Parse(raw, NumberStyles.Float, CultureInfo.InvariantCulture);
-        if (underlying == typeof(decimal)) return decimal.Parse(raw, NumberStyles.Float, CultureInfo.InvariantCulture);
+        if (underlying == typeof(decimal))
+            return MetaObjects.Codegen.Runtime.DecimalWire.TryParse(raw, out var exact)
+                ? exact
+                : throw new FormatException($"not a decimal: {raw}");
         if (underlying == typeof(DateOnly)) return ParseDate(raw);
         if (underlying == typeof(TimeOnly)) return ParseTime(raw);
         if (underlying == typeof(DateTime)) return ParseDateTime(raw);

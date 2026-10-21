@@ -1,0 +1,53 @@
+name: decimal-report-exact
+description: >
+  A report over a decimal is exact on the wire: a sum of 12345678901234567.89 and 0.01 is
+  "12345678901234567.9", an average keeps its digits, an empty sum is null (the key is present) unless
+  the measure declares @default (then "0"), and a ratio with a zero denominator is null. A decimal
+  measure filters exactly (W2). The count `entries` is a JSON number. Postgres and MySQL only (W4).
+engines: [postgres, mysql]
+requests:
+  - id: r1
+    method: GET
+    path: /api/entry_totals?sort=bucket:asc
+    expect:
+      status: 200
+      body:
+        equals:
+          - { bucket: "A", entries: 2, total: "0.3", totalOrZero: "0.3", mean: "0.15", top: "0.2", flaggedShare: "0.5", perFlagged: "2" }
+          - { bucket: "B", entries: 2, total: "12345678901234567.9", totalOrZero: "12345678901234567.9", mean: "6172839450617283.95", top: "12345678901234567.89", flaggedShare: "0.5", perFlagged: "2" }
+          - { bucket: "C", entries: 2, total: "-12345678.9876543211", totalOrZero: "-12345678.9876543211", mean: "-6172839.49382716055", top: "-0.0000000001", flaggedShare: "0", perFlagged: null }
+          - { bucket: "D", entries: 2, total: "200", totalOrZero: "200", mean: "100", top: "100.5", flaggedShare: "0", perFlagged: null }
+          - { bucket: "E", entries: 2, total: "0", totalOrZero: "0", mean: "0", top: "0", flaggedShare: "0", perFlagged: null }
+          - { bucket: "F", entries: 1, total: null, totalOrZero: "0", mean: null, top: null, flaggedShare: "0", perFlagged: null }
+  - id: r2
+    method: GET
+    path: /api/entry_totals?filter[total][eq]=12345678901234567.9
+    expect:
+      status: 200
+      body:
+        equals:
+          - { bucket: "B", entries: 2, total: "12345678901234567.9", totalOrZero: "12345678901234567.9", mean: "6172839450617283.95", top: "12345678901234567.89", flaggedShare: "0.5", perFlagged: "2" }
+  - id: r3
+    method: GET
+    path: /api/entry_totals?filter[top][gt]=12345678901234567.8
+    expect:
+      status: 200
+      body:
+        equals:
+          - { bucket: "B", entries: 2, total: "12345678901234567.9", totalOrZero: "12345678901234567.9", mean: "6172839450617283.95", top: "12345678901234567.89", flaggedShare: "0.5", perFlagged: "2" }
+  - id: r4
+    method: GET
+    path: /api/entry_totals?filter[mean][gt]=100&sort=bucket:asc
+    expect:
+      status: 200
+      body:
+        equals:
+          - { bucket: "B", entries: 2, total: "12345678901234567.9", totalOrZero: "12345678901234567.9", mean: "6172839450617283.95", top: "12345678901234567.89", flaggedShare: "0.5", perFlagged: "2" }
+  - id: r5
+    method: GET
+    path: /api/entry_totals?filter[total][isNull]=true
+    expect:
+      status: 200
+      body:
+        equals:
+          - { bucket: "F", entries: 1, total: null, totalOrZero: "0", mean: null, top: null, flaggedShare: "0", perFlagged: null }

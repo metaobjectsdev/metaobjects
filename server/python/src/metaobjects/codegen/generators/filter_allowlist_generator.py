@@ -40,7 +40,9 @@ from metaobjects.codegen.generators.tph_plan import tph_plan_for
 from metaobjects.codegen.instance_artifacts import is_sourceless_entity
 from metaobjects.meta.core.field import field_constants as fc
 from metaobjects.meta.core.field.meta_field import MetaField
+from metaobjects.codegen.type_map import field_is_array
 from metaobjects.meta.core.object.meta_object import MetaObject
+from metaobjects.meta.core.object.object_constants import OBJECT_SUBTYPE_REPORT
 
 from ..runtime.m2m_codegen import build_object_index
 from ..runtime.shared_predicates import emits_router
@@ -210,6 +212,11 @@ class FilterAllowlistGenerator:
 
         def add(f: MetaField) -> None:
             if f.sub_type == fc.FIELD_SUBTYPE_OBJECT or f.name in out or not _is_filterable(f):
+                return
+            # A derived report field over an array or a map is not filterable.
+            if entity.sub_type == OBJECT_SUBTYPE_REPORT and (
+                f.sub_type == fc.FIELD_SUBTYPE_MAP or field_is_array(f)
+            ):
                 return
             ops = self._ops_for_field(f)
             if ops:

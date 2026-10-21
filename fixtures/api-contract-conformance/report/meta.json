@@ -138,6 +138,26 @@
         "@dimensions": ["productId", "productName"],
         "@measures": ["sales", "hasRefund", "hasRefundOrFalse"],
         "children": [ { "source.rdb": { "@kind": "view", "@view": "v_product_refunds" } } ]
+      }},
+      { "object.entity": {
+        "name": "Ticket",
+        "children": [
+          { "source.rdb":       { "@table": "tickets" } },
+          { "field.long":       { "name": "id" } },
+          { "field.string":     { "name": "tags", "isArray": true } },
+          { "field.map":        { "name": "attrs", "@valueType": "string" } },
+          { "identity.primary": { "name": "pk", "@fields": "id", "@generation": "increment" } },
+          { "dimension.attribute": { "name": "tags", "@of": "Ticket.tags" } },
+          { "dimension.attribute": { "name": "attrs", "@of": "Ticket.attrs" } },
+          { "measure.aggregate":   { "name": "tickets", "@agg": "count", "@of": "Ticket.id" } }
+        ]
+      }},
+      { "object.report": {
+        "name": "TicketsByTags",
+        "@from": "Ticket",
+        "@dimensions": ["tags", "attrs"],
+        "@measures": ["tickets"],
+        "children": [ { "source.rdb": { "@kind": "view", "@view": "v_tickets_by_tags" } } ]
       }}
     ]
   }

@@ -101,6 +101,15 @@ describe("FR-017 Tier 2 — TPH routes file", () => {
     expect(out).toContain("BridgeAuthInsertSchema.omit({ type: true })");
   });
 
+  test("the polymorphic mount sends a decimal only a subtype declares as its canonical string", async () => {
+    const { root, base } = await loadTph();
+    const out = renderRoutesFile(base, ctxFor(root));
+    // The base declares no decimal, but its list/get serve CopayAuth rows, so the polymorphic
+    // mount must rewrite `copayAmount` too (ADR-0019 Amendment 1; Postgres returns "12.50").
+    const polymorphic = out.slice(out.indexOf("path: Auth.$path,"), out.indexOf('Auth.$path + "/'));
+    expect(polymorphic).toContain('decimalColumns: ["copayAmount"]');
+  });
+
   test("routesFile generator skips TPH subtypes", async () => {
     const { bridge, base } = await loadTph();
     const gen = routesFile();

@@ -71,9 +71,9 @@ Identical to the parent `api-contract-conformance` corpus
 `ids` / `length` / `row` (subset key-match) / `error` / `empty` / `fieldsNotEqual`
 cover TPH (the last pins the `@autoSet` leg: `autoCreatedAt` preserved vs
 `autoUpdatedAt` bumped).
-Decimal subtype values are **not** asserted over the API wire (cross-port numeric
-formatting differs); the runtime-layer decimal contract is pinned by
-`persistence-conformance` instead. The `row` assertions pin the discriminator
+A subtype's decimal is asserted over the wire as the canonical string (`copayAmount` `"12.50"`
+is `"12.5"`, ADR-0019 Amendment 1), filters exactly on its subtype segment, and refuses a value
+with more digits than its `@scale` with `400 validation`. The `row` assertions pin the discriminator
 value (`type`) and the integer/string subtype-only columns.
 
 ## Both lanes (the cross-port gate)

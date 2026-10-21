@@ -76,6 +76,18 @@ class NeutralConfig:
     naming: NamingRules
 
 
+def find_project_dir(start: Path) -> Path | None:
+    """The nearest directory at or above *start* that holds ``.metaobjects/config.json``,
+    or ``None``. THE project-config finder for a load that is handed a metadata
+    location rather than a project (``load_directory`` / ``load_uris``): the project
+    is wherever the setting is, however deep the metadata directory sits."""
+    here = start.resolve()
+    for candidate in (here, *here.parents):
+        if (candidate / _METAOBJECTS_DIR / _CONFIG_FILE).is_file():
+            return candidate
+    return None
+
+
 def read_neutral_config(config_dir: Path) -> NeutralConfig | None:
     """Read the neutral subset from ``config_dir/.metaobjects/config.json``.
 

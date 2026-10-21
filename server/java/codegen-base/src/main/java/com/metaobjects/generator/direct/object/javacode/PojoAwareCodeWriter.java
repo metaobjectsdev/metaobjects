@@ -72,7 +72,7 @@ public class PojoAwareCodeWriter extends JavaCodeWriter {
      */
     protected void writeFields(MetaObject mo) {
         writeNewLine();
-        for (MetaField mf : mo.getMetaFields(false)) {
+        for (MetaField mf : emittedFields(mo)) {
             String typeName = getLanguageType(mf);
             String fieldName = getParameterName(mf);
             println(true, "private " + typeName + " " + fieldName + ";");

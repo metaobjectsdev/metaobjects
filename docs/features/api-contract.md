@@ -322,7 +322,7 @@ for the one-line change.
 | `field.int`, `field.long`, `field.double` | number | `long` MAY be string on overflow; defer to per-port docs. |
 | `field.boolean` | boolean | – |
 | `field.date` | string | ISO 8601 calendar date (`YYYY-MM-DD`). Asserted literally by the `report/` sub-corpus (a time dimension's bucket), the first corpus to do so. |
-| `field.decimal` | **per port** | Not pinned. Each port sends its own decimal form (TypeScript a string, since the driver reads `numeric` as one), and no scenario asserts a decimal's spelling: precision is the engine's. A client reading decimals from more than one backend must accept a string or a number. |
+| `field.decimal` | string, canonical | ADR-0019 Amendment 1. **Out:** plain notation, no exponent, no trailing fraction zeros, zero as `"0"`, matching `^-?(0\|[1-9][0-9]*)(\.[0-9]*[1-9])?$` (`12.50` is sent `"12.5"`). **In:** a string in JSON-number grammar or a JSON number, read exactly; anything else is `400 validation`, and so is a value with more fraction digits than `@scale` or more integer digits than `@precision - @scale` (nothing is rounded). A filter operand uses the same grammar, is compared exactly, and a bad one is `400 invalid_filter_value`. Postgres and MySQL are exact to the declared precision; SQLite and D1 to 15 significant digits. Every decimal (entity, projection, report row) in every port; the `decimal/` sub-corpus asserts it. The wire carries the value, not a presentation: showing `12.5` as `12.50`, or with two digits for money, is a view's job, not the API's. |
 | `field.time` | string | `HH:MM:SS[.fff]`. |
 | `field.timestamp` | string | Instant, tz-aware by default (ADR-0036 Wave 2) — `YYYY-MM-DDTHH:MM:SS[.fff]Z`, **always UTC**. |
 | `field.timestamp` (`@localTime: true`) | string | Naive wall clock — `YYYY-MM-DDTHH:MM:SS[.fff]`, **no `Z`**. |
@@ -437,7 +437,7 @@ The surface:
   mount item routes only for a **single-column** identity, while TypeScript and Python
   bind a composite one to its first field.
 - Filters apply to a projection's `field.decimal` and `field.float` fields as they do to
-  an entity's. A decimal's wire spelling is port-specific and is not asserted.
+  an entity's. A decimal is the canonical string of "Type encodings".
 - **The api docs list the same routes.** A projection's api page documents `GET <path>`,
   and `GET <path>/{id}` only when the item route exists. The `405` refusals are not
   operations a caller can use, so no write verb is documented. Pinned in every port by
@@ -480,7 +480,7 @@ the empty rows, `isNull=true` matches nothing, and a sort on it orders the same 
 engine.
 
 Gated by [`fixtures/api-contract-conformance/report/`](../../fixtures/api-contract-conformance/report/)
-(25 scenarios), **generated lane only, on all five ports**, for the reason `projection/`
+(27 scenarios), **generated lane only, on all five ports**, for the reason `projection/`
 gives. The columns, their types and the per-port generated files are in
 [reporting.md](reporting.md#how-a-report-is-served).
 
@@ -499,9 +499,10 @@ above.
 
 ```java
 // AuthorController.java
+import com.metaobjects.generator.spring.runtime.FilterParser;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -512,11 +513,17 @@ public class AuthorController {
   public AuthorController(AuthorRepository repo) { this.repo = repo; }
 
   @GetMapping
-  public Object list(@RequestParam Map<String, String> qs) {
-    var page = repo.find(FilterParser.parse(qs, AuthorFilterAllowlist.INSTANCE));
-    return qs.containsKey("withCount")
+  public ResponseEntity<?> list(HttpServletRequest request) {
+    // The RAW query string: a servlet container drops a parameter with a malformed escape.
+    var filter = FilterParser.parse(request.getQueryString(), AuthorFilterAllowlist.FIELDS,
+        AuthorFilterAllowlist.OPS_BY_FIELD, AuthorFilterAllowlist.DECIMAL_FIELDS);
+    if (filter.error() != null) {
+      return ResponseEntity.badRequest().body(Map.of("error", filter.error(), "field", filter.field()));
+    }
+    var page = repo.find(filter.predicates());
+    return ResponseEntity.ok(request.getParameter("withCount") != null
       ? Map.of("rows", page.rows(), "total", page.total())
-      : page.rows();
+      : page.rows());
   }
 
   @GetMapping("/{id}")           public Author get(@PathVariable long id)              { return repo.findById(id).orElseThrow(() -> new NotFound()); }
@@ -530,6 +537,7 @@ public class AuthorController {
 
 ```kotlin
 // AuthorController.kt
+import jakarta.servlet.http.HttpServletRequest
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
 
@@ -538,9 +546,14 @@ import org.springframework.web.bind.annotation.*
 class AuthorController(private val repo: AuthorRepository) {
 
   @GetMapping
-  fun list(@RequestParam qs: Map<String, String>): Any {
-    val page = repo.find(FilterParser.parse(qs, AuthorFilterAllowlist))
-    return if ("withCount" in qs) mapOf("rows" to page.rows, "total" to page.total) else page.rows
+  fun list(request: HttpServletRequest): ResponseEntity<*> {
+    // Parse the RAW query string, as the generated controller's parseAuthorFilter does.
+    val filter = parseAuthorFilter(request.queryString)
+    filter.error?.let { return ResponseEntity.badRequest().body(mapOf("error" to it, "field" to filter.field)) }
+    val page = repo.find(filter.predicates)
+    return ResponseEntity.ok(
+      if (request.getParameter("withCount") != null) mapOf("rows" to page.rows, "total" to page.total) else page.rows,
+    )
   }
 
   @GetMapping("/{id}")           fun get(@PathVariable id: Long): Author          = repo.findById(id) ?: throw NotFound()

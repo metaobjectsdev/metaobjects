@@ -47,7 +47,7 @@ internal class JsonbGeneratedApiContractConformanceTest {
     }
 
     companion object {
-        private val MAPPER = ObjectMapper()
+        private val MAPPER = ObjectMapper().enable(com.fasterxml.jackson.databind.DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS)
 
         /** The `jsonb/` sub-corpus root (sibling of the base single-entity corpus). */
         private val CORPUS = ApiContractScenarioLoader.findCorpusRoot().resolve("jsonb")

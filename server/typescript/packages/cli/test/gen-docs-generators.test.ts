@@ -5,6 +5,9 @@
 //
 // Driven through the real CLI entry (`run`), against small projects written into the
 // workspace so a config resolves `@metaobjectsdev/*` the way a project's does.
+import { guideUrl } from "@metaobjectsdev/metadata/release-docs";
+// The guide links name the tag of the running release (a prerelease keeps main).
+const BLOB = guideUrl("");
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
@@ -122,7 +125,7 @@ describe("the removed docs commands say where they went (ADR-0034 Amendment 9)",
     expect(stderr()).toContain(REMOVED_DOCS_COMMAND);
     expect(REMOVED_DOCS_COMMAND).toBe(
       "`meta docs` was removed in 1.1.0. `meta gen` writes documentation now: declare each docs generator " +
-        "in `generators` in metaobjects.config.ts. See https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md, " +
+        "in `generators` in metaobjects.config.ts. See " + BLOB + "docs/features/migrations/docs-are-generators.md, " +
         'section "TypeScript".',
     );
     expect(existsSync(join(root, "docs"))).toBe(false);
@@ -134,7 +137,7 @@ describe("the removed docs commands say where they went (ADR-0034 Amendment 9)",
     expect(stderr()).toContain(REMOVED_VERIFY_DOCS);
     expect(REMOVED_VERIFY_DOCS).toBe(
       "`meta verify --docs` was removed in 1.1.0. `meta verify --codegen` checks documentation now, " +
-        "with everything else `generators` declares. See https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md, " +
+        "with everything else `generators` declares. See " + BLOB + "docs/features/migrations/docs-are-generators.md, " +
         'section "TypeScript".',
     );
   });
@@ -158,7 +161,7 @@ describe("meta gen refuses a config it cannot read the list from", () => {
     const before = filesUnder(root);
     expect(await run(["gen", "--cwd", root])).toBe(2);
     expect(stderr()).toContain(NO_CONFIG_MESSAGE);
-    expect(NO_CONFIG_MESSAGE).toContain('A 1.0 project that ran `meta docs` with no config: see https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md, section "TypeScript".');
+    expect(NO_CONFIG_MESSAGE).toContain('A 1.0 project that ran `meta docs` with no config: see ' + BLOB + 'docs/features/migrations/docs-are-generators.md, section "TypeScript".');
     expect(filesUnder(root)).toEqual(before);
   });
 
@@ -170,7 +173,7 @@ describe("meta gen refuses a config it cannot read the list from", () => {
     expect(legacyDocsConfigMessage("meta gen")).toBe(
       "meta gen: found 1.0 docs configuration (the docs block in metaobjects.config.ts). Nothing reads it any " +
         "more, so this run would write no documentation. Declare each docs generator in `generators` in " +
-        'metaobjects.config.ts. See https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md, section "TypeScript".',
+        'metaobjects.config.ts. See ' + BLOB + 'docs/features/migrations/docs-are-generators.md, section "TypeScript".',
     );
     expect(filesUnder(root)).toEqual(before);
   });

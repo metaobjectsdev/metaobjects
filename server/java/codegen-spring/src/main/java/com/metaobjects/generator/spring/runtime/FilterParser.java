@@ -64,6 +64,23 @@ public final class FilterParser {
             String rawQuery,
             Set<String> allowedFields,
             Map<String, Set<String>> opsByField) {
+        return parse(rawQuery, allowedFields, opsByField, Set.of());
+    }
+
+    /**
+     * {@link #parse(String, Set, Map)} with the allowlist's decimal-typed fields. An operand on
+     * one of them is parsed with the W2 grammar of ADR-0019 Amendment 1 ({@link CanonicalDecimal})
+     * into a {@link java.math.BigDecimal} and compared exactly, never through a double or as a raw
+     * string; a malformed or out-of-range one is {@code invalid_filter_value}. For the scalar ops
+     * the predicate value is then a {@code BigDecimal}, for {@code in} a {@code List<BigDecimal>}.
+     *
+     * @param decimalFields typically {@code <Entity>FilterAllowlist.DECIMAL_FIELDS}
+     */
+    public static FilterParseResult parse(
+            String rawQuery,
+            Set<String> allowedFields,
+            Map<String, Set<String>> opsByField,
+            Set<String> decimalFields) {
 
         if (rawQuery == null || rawQuery.isEmpty()) return FilterParseResult.ok(List.of());
 
@@ -95,7 +112,7 @@ public final class FilterParser {
             if (!allowedFields.contains(field)) return FilterParseResult.err("invalid_filter_field", field);
             Set<String> ops = opsByField.get(field);
             if (ops == null || !ops.contains(op)) return FilterParseResult.err("invalid_filter_op", field);
-            Object coerced = coerceValue(value, op);
+            Object coerced = decimalFields.contains(field) ? coerceDecimal(value, op) : coerceValue(value, op);
             if (coerced == INVALID_VALUE) return FilterParseResult.err("invalid_filter_value", field);
             if (op.equals("in") && coerced instanceof List<?> list && list.size() > MAX_IN_LIST) {
                 return FilterParseResult.err("filter.in_too_large", field);
@@ -148,6 +165,21 @@ public final class FilterParser {
      * shape: a list for {@code in}, a boolean for {@code isNull}, and a
      * raw string for the scalar comparison ops.
      */
+    private static Object coerceDecimal(String raw, String op) {
+        if (op.equals("isNull")) return coerceValue(raw, op);
+        try {
+            if (op.equals("in")) {
+                String[] parts = raw.split(",");
+                List<java.math.BigDecimal> list = new ArrayList<>(parts.length);
+                for (String p : parts) list.add(CanonicalDecimal.parseFilterOperand(p.trim()));
+                return list;
+            }
+            return CanonicalDecimal.parseFilterOperand(raw);
+        } catch (CanonicalDecimal.InvalidDecimalException e) {
+            return INVALID_VALUE;
+        }
+    }
+
     private static Object coerceValue(String raw, String op) {
         if (op.equals("isNull")) {
             if (raw.equals("true")) return Boolean.TRUE;

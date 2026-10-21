@@ -40,6 +40,8 @@ export interface EntityFieldMeta {
   readonly label: string;
   readonly view: string;
   readonly htmlType?: string;
+  readonly step?: string;
+  readonly inputMode?: string;
   readonly placeholder?: string;
   readonly helpText?: string;
   readonly rules?: RegisterOptions;
@@ -126,6 +128,8 @@ export function useEntityForm<TEntity extends EntityMeta, T extends FieldValues 
       const registered = form.register(field.name as Path<T>, (field.rules ?? {}) as any);
       const props: BoundInputProps = { ...registered, "aria-label": field.label };
       if (field.htmlType !== undefined) props.type = field.htmlType;
+      if (field.step !== undefined) props.step = field.step;
+      if (field.inputMode !== undefined) props.inputMode = field.inputMode;
       if (field.placeholder !== undefined) props.placeholder = field.placeholder;
       acc[key] = props;
     }

@@ -138,6 +138,14 @@ public class ConformanceTests
                                     $"envelope[{i}].code: expected '{w.Code}', got '{g.Code}'");
                                 continue;
                             }
+                            foreach (var needle in w.MessageIncludes ?? [])
+                            {
+                                if (g.Message is null)
+                                    failures.Add($"envelope[{i}].messageIncludes: the adapter exposes no message");
+                                else if (!g.Message.Contains(needle, StringComparison.Ordinal))
+                                    failures.Add(
+                                        $"envelope[{i}].messageIncludes: '{needle}' is not in message '{g.Message}'");
+                            }
                             if (w.Source is null) continue;
                             if (w.Source.Format != g.Format)
                                 failures.Add(

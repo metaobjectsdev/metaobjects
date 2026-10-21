@@ -1,0 +1,44 @@
+name: decimal-filter-sort-exact-15
+description: >
+  The decimal-filter-sort-exact cases whose values fit 15 significant digits, run on every
+  engine. SQLite and D1 compare a double, exactly to 15 digits (W4).
+requests:
+  - id: r1
+    method: GET
+    path: /api/entries?filter[amount][eq]=0.1
+    expect:
+      status: 200
+      body:
+        equals:
+          - { id: 1, bucket: A, amount: "0.1", flagged: true }
+  - id: r2
+    method: GET
+    path: /api/entries?filter[amount][gt]=99.5&filter[bucket][in]=A,D,E,F
+    expect:
+      status: 200
+      body:
+        equals:
+          - { id: 7, bucket: D, amount: "100.5", flagged: false }
+  - id: r3
+    method: GET
+    path: /api/entries?filter[amount][eq]=1.005e2
+    expect:
+      status: 200
+      body:
+        equals:
+          - { id: 7, bucket: D, amount: "100.5", flagged: false }
+  - id: r4
+    method: GET
+    path: /api/entries?filter[bucket][in]=A,D&sort=amount:desc
+    expect:
+      status: 200
+      body:
+        ids: [7, 8, 2, 1]
+  - id: r5
+    method: GET
+    path: /api/entries?filter[amount][eq]=abc
+    expect:
+      status: 400
+      body:
+        error: invalid_filter_value
+        field: amount

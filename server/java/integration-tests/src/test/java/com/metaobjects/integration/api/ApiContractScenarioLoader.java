@@ -79,7 +79,31 @@ final class ApiContractScenarioLoader {
             asString(root.get("description"), ""),
             file.toString(),
             truncate,
+            parseEngines(file, root),
             requests);
+    }
+
+    private static final List<String> KNOWN_ENGINES = List.of("postgres", "mysql", "sqlite", "d1");
+
+    /** The scenario's {@code engines:} list, exact when present; {@code null} when absent. */
+    private static List<String> parseEngines(Path file, Map<String, Object> root) {
+        if (!root.containsKey("engines")) return null;
+        if (!(root.get("engines") instanceof List<?> list) || list.isEmpty()) {
+            throw new IllegalStateException(file + ": `engines` must be a non-empty list");
+        }
+        List<String> out = new ArrayList<>();
+        for (Object o : list) {
+            if (!(o instanceof String name) || !KNOWN_ENGINES.contains(name)) {
+                throw new IllegalStateException(file + ": unknown engine " + o + " in `engines` (one of " + KNOWN_ENGINES + ")");
+            }
+            out.add(name);
+        }
+        return List.copyOf(out);
+    }
+
+    /** Whether a scenario runs on {@code engineId}: an {@code engines:} list is exact, absent means every engine. */
+    static boolean runsOn(ApiScenario scenario, String engineId) {
+        return scenario.engines() == null || scenario.engines().contains(engineId);
     }
 
     @SuppressWarnings("unchecked")

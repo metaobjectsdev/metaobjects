@@ -1,6 +1,6 @@
 # MetaObjects — Java
 
-The Java port of the cross-language MetaObjects metadata standard. Published to Maven Central at `8.0.0` under `com.metaobjects:*` across 14 modules. Apache 2.0.
+The Java port of the cross-language MetaObjects metadata standard. Published to Maven Central under `com.metaobjects:*` across 14 modules, at `8.1.0` for the 1.1.0 release (the Maven major is the npm major + 7). Apache 2.0.
 
 For the standard itself (metamodel, conformance corpora, ADRs) see the [repository-level docs](../../spec/) and the parent [README](../../README.md). This document is scoped to the Java implementation.
 
@@ -25,7 +25,7 @@ so they are maintained in one place rather than restated per port.
 
 ## Modules
 
-All published to Maven Central under `com.metaobjects:*` at `8.0.0`:
+All published to Maven Central under `com.metaobjects:*` (`8.1.0` for the 1.1.0 release):
 
 | Module | Purpose |
 |---|---|
@@ -52,7 +52,7 @@ The `archetype` and `examples` directories were removed in 7.1.0 (they had been 
 <dependency>
     <groupId>com.metaobjects</groupId>
     <artifactId>metaobjects-metadata</artifactId>
-    <version>8.0.0</version>
+    <version>8.1.0</version>
 </dependency>
 ```
 
@@ -62,12 +62,12 @@ Spring REST stack (repository interface is consumer-implemented):
 <dependency>
     <groupId>com.metaobjects</groupId>
     <artifactId>metaobjects-codegen-spring</artifactId>
-    <version>8.0.0</version>
+    <version>8.1.0</version>
 </dependency>
 <dependency>
     <groupId>com.metaobjects</groupId>
     <artifactId>metaobjects-core-spring</artifactId>
-    <version>8.0.0</version>
+    <version>8.1.0</version>
 </dependency>
 ```
 
@@ -77,7 +77,7 @@ Maven plugin for `metaobjects:generate` / `metaobjects:verify` / `metaobjects:ed
 <plugin>
     <groupId>com.metaobjects</groupId>
     <artifactId>metaobjects-maven-plugin</artifactId>
-    <version>8.0.0</version>
+    <version>8.1.0</version>
     <executions>
         <execution>
             <goals><goal>generate</goal></goals>
@@ -86,7 +86,14 @@ Maven plugin for `metaobjects:generate` / `metaobjects:verify` / `metaobjects:ed
 </plugin>
 ```
 
-The `generate`, `verify`, and `docs` goals are declared `threadSafe` and support parallel multi-module reactor builds (`mvn -T`) (#233).
+The `generate`, `verify`, `eject` and `fmt` goals are declared `threadSafe` and support parallel multi-module reactor builds (`mvn -T`) (#233). The `docs` goal was removed in 8.1.0: documentation generators are `<generator>` entries that `generate` runs ([docs-are-generators.md](../../docs/features/migrations/docs-are-generators.md#java-and-kotlin)). Upgrading from 8.0.x: [upgrading-1.0-to-1.1.md](../../docs/features/migrations/upgrading-1.0-to-1.1.md).
+
+Column and table names the metadata does not give come from the `naming` setting in
+`.metaobjects/config.json` (default `snake_case`), which the runtime reads too: under Spring from
+`classpath:.metaobjects/config.json`, or the location the `metaobjects.physical-naming-config`
+property names (a `classpath:` location or a file path); outside Spring, `MetaDataLoader.fromUris`
+and `fromDirectory` read the file above the metadata. A database whose columns are named like the
+fields sets `"naming": { "columns": "literal" }` ([physical-naming.md](../../docs/features/migrations/physical-naming.md)).
 
 Kotlin entry point — adds the Kotlin facade and the KotlinPoet codegen pipeline:
 
@@ -94,12 +101,12 @@ Kotlin entry point — adds the Kotlin facade and the KotlinPoet codegen pipelin
 <dependency>
     <groupId>com.metaobjects</groupId>
     <artifactId>metaobjects-metadata-ktx</artifactId>
-    <version>8.0.0</version>
+    <version>8.1.0</version>
 </dependency>
 <dependency>
     <groupId>com.metaobjects</groupId>
     <artifactId>metaobjects-codegen-kotlin</artifactId>
-    <version>8.0.0</version>
+    <version>8.1.0</version>
 </dependency>
 ```
 

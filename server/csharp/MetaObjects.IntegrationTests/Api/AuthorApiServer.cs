@@ -736,7 +736,7 @@ internal sealed class AuthorApiServer : IAsyncDisposable
         {
             if (jv.TryGetValue<bool>(out var b)) return b;
             if (jv.TryGetValue<long>(out var lv)) return lv;
-            if (jv.TryGetValue<double>(out var dv)) return dv;
+            if (jv.TryGetValue<decimal>(out var dv)) return dv; // exact: never a double (ADR-0019 Amendment 1)
             if (jv.TryGetValue<string>(out var sv)) return sv;
             return jv.ToString();
         }

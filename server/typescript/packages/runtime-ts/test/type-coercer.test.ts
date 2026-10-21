@@ -2,7 +2,7 @@ import { describe, test, expect } from "bun:test";
 import type { MetaData } from "@metaobjectsdev/metadata";
 import { TypeId, TYPE_OBJECT, TYPE_FIELD,
          FIELD_SUBTYPE_BOOLEAN, FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_STRING,
-         OBJECT_SUBTYPE_ENTITY } from "@metaobjectsdev/metadata";
+         OBJECT_SUBTYPE_ENTITY, MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { meta } from "./_meta-build.js";
 import { coerceRowOnRead, coerceRowOnWrite } from "../src/type-coercer.js";
 
@@ -76,5 +76,55 @@ describe("non-boolean fields untouched", () => {
     const row = { title: "x", id: 42, extra: "ignored" };
     expect(coerceRowOnRead(e, row, "sqlite")).toEqual(row);
     expect(coerceRowOnWrite(e, row, "sqlite")).toEqual(row);
+  });
+});
+
+// ADR-0019 Amendment 1 for a `field.decimal` declared `isArray` (a Postgres `numeric[]`): every
+// element is a canonical string on read and on write, and an element the column cannot hold is
+// refused (W3), as C#'s DecimalListJsonConverter, Python's to_wire and Java's contentUsing do.
+describe("field.decimal isArray", () => {
+  async function ledger(): Promise<MetaData> {
+    const model = { "metadata.root": { package: "ledger", children: [
+      { "object.entity": { name: "Entry", children: [
+        { "source.rdb": { "@table": "entries" } },
+        { "field.long": { name: "id" } },
+        { "field.decimal": { name: "readings", isArray: true, "@precision": 9, "@scale": 4 } },
+        { "field.decimal": { name: "amount", "@precision": 9, "@scale": 4 } },
+        { "identity.primary": { name: "pk", "@fields": "id" } },
+      ]}},
+    ]}};
+    const { root, errors } = await new MetaDataLoader({ strict: true }).load([
+      new InMemoryStringSource(JSON.stringify(model), { id: "ledger.json" }),
+    ]);
+    expect(errors).toEqual([]);
+    return root.objects().find((o) => o.name === "Entry") as MetaData;
+  }
+
+  test("read: the column's scale is stripped from each element (100.5000 -> 100.5)", async () => {
+    const e = await ledger();
+    expect(coerceRowOnRead(e, { readings: ["100.5000", "0.0000", "-2.2500", null] }, "postgres").readings)
+      .toEqual(["100.5", "0", "-2.25", null]);
+    expect(coerceRowOnRead(e, { readings: "[0.30000000000000004, 12]" }, "sqlite").readings).toEqual(["0.3", "12"]);
+  });
+
+  test("write: each element is bound as its canonical string", async () => {
+    const e = await ledger();
+    expect(coerceRowOnWrite(e, { readings: ["100.5000", 2.5, "1.5e1", null] }, "postgres").readings)
+      .toEqual(["100.5", "2.5", "15", null]);
+    expect(coerceRowOnWrite(e, { readings: [] }, "postgres").readings).toEqual([]);
+  });
+
+  test("write: an element that is not a number, or that the column cannot hold, is refused", async () => {
+    const e = await ledger();
+    expect(() => coerceRowOnWrite(e, { readings: ["1", "12abc"] }, "postgres")).toThrow("is not a decimal number");
+    expect(() => coerceRowOnWrite(e, { readings: ["0.12345"] }, "postgres")).toThrow("does not fit");
+    expect(() => coerceRowOnWrite(e, { readings: ["100000"] }, "postgres")).toThrow("does not fit");
+    expect(() => coerceRowOnWrite(e, { readings: "100.5" }, "postgres")).toThrow("is not an array");
+  });
+
+  test("write: a scalar decimal the column cannot hold is refused too", async () => {
+    const e = await ledger();
+    expect(coerceRowOnWrite(e, { amount: "12345.1000" }, "postgres").amount).toBe("12345.1");
+    expect(() => coerceRowOnWrite(e, { amount: "0.12345" }, "postgres")).toThrow("does not fit");
   });
 });

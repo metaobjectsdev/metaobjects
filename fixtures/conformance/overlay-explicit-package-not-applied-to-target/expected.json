@@ -1,0 +1,50 @@
+{
+  "metadata.root": {
+    "package": "acme::shop",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Order",
+          "children": [
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "requirement.functional": {
+          "name": "R",
+          "@counterexample": "c",
+          "@level": 3,
+          "@statement": "s",
+          "@status": "live",
+          "children": [
+            {
+              "requirement.functional": {
+                "name": "C",
+                "@counterexample": "c",
+                "@implementedBy": [
+                  "Order"
+                ],
+                "@level": 4,
+                "@statement": "s",
+                "@status": "live"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

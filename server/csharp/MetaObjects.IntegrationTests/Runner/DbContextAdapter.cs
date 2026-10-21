@@ -366,6 +366,12 @@ public static class DbContextAdapter
         // date string; DateOnly is not IConvertible either. Same parse the write codec uses.
         if (underlying == typeof(DateOnly))
             return WriteCoercion.ParseDate(raw.ToString()!);
+        // A decimal operand is exact: the string form (plain or exponent notation) parses through the
+        // shipped wire rule, never through a double.
+        if (underlying == typeof(decimal))
+            return MetaObjects.Codegen.Runtime.DecimalWire.TryParse(raw.ToString(), out var exact)
+                ? exact
+                : throw new FormatException($"not a decimal: {raw}");
         return Convert.ChangeType(raw, underlying, System.Globalization.CultureInfo.InvariantCulture);
     }
 

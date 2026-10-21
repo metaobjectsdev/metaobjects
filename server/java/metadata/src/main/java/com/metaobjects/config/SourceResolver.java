@@ -170,4 +170,29 @@ public final class SourceResolver {
                 .map(NeutralConfig::getPhysicalNaming)
                 .orElse(PhysicalNaming.DEFAULT);
     }
+
+    /**
+     * ADR-0058 — the physical-naming rules of the {@code .metaobjects/config.json} found by
+     * walking up from the first {@code file:} URI (stopping after a directory holding
+     * {@code .git}), or empty when there is no {@code file:} URI or no config on the walk.
+     * The same walk the Maven plugin does for its source location.
+     */
+    public static java.util.Optional<PhysicalNaming> discoverPhysicalNaming(List<java.net.URI> uris) {
+        for (java.net.URI uri : uris) {
+            if (!"file".equalsIgnoreCase(uri.getScheme())) continue;
+            Path location;
+            try {
+                location = Path.of(uri).toAbsolutePath().normalize();
+            } catch (RuntimeException e) {
+                return java.util.Optional.empty();
+            }
+            for (Path dir = location; dir != null; dir = dir.getParent()) {
+                java.util.Optional<NeutralConfig> cfg = NeutralConfig.read(dir);
+                if (cfg.isPresent()) return java.util.Optional.of(cfg.get().getPhysicalNaming());
+                if (Files.exists(dir.resolve(".git"))) break;
+            }
+            return java.util.Optional.empty();
+        }
+        return java.util.Optional.empty();
+    }
 }

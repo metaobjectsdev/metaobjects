@@ -39,7 +39,7 @@ import {
 import { loadMetadataFile } from "../src/load-metadata.ts";
 import { CANONICAL_DIR } from "../src/paths.ts";
 import { readCanonicalMysqlSchemaSql } from "../src/canonical-schema-mysql.ts";
-import { cubeQueryFor, type ExpectedReport, fromCubeRow, fromViewRow, getMeta, load, sortRows } from "./cube-live-support.ts";
+import { cubeQueryFor, CANONICAL_REPORTS, selectViewMysql, fromCubeRow, fromViewRow, getMeta, load, sortRows } from "./cube-live-support.ts";
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", "..");
 const CANONICAL_MODEL = join(CANONICAL_DIR, "meta.fitness.json");
@@ -48,35 +48,8 @@ const CANONICAL_SEED = join(REPO_ROOT, "fixtures", "cube-model", "canonical", "s
 const GEN_CONFIG = { dialect: "mysql" } as const;
 const TEST_TIMEOUT_MS = 600_000;
 
-/**
- * Each served canonical report, its view, the rollup Cube answers from (the same table Table I
- * names on Postgres; undefined = the source tables) and its row count on seed.mysql.sql.
- */
-const REPORTS: readonly ExpectedReport[] = [
-  { report: "ProgramMinutes", view: "v_program_minutes", preAggregation: "dev_pre_aggregations.week__program_minutes", rows: 3 },
-  { report: "FitnessTotals", view: "v_fitness_totals", preAggregation: "dev_pre_aggregations.week__fitness_totals", rows: 1 },
-  { report: "ProgramsByMonth", view: "v_programs_by_month", preAggregation: "dev_pre_aggregations.program__programs_by_month", rows: 5 },
-  { report: "ProgramsByWeek", view: "v_programs_by_week", preAggregation: "dev_pre_aggregations.program__programs_by_week", rows: 5 },
-  { report: "RecentPrograms", view: "v_recent_programs", preAggregation: undefined, rows: 1 },
-  { report: "AssetActivity", view: "v_asset_activity", preAggregation: "dev_pre_aggregations.asset__asset_activity", rows: 2 },
-  { report: "ProgramRoster", view: "v_program_roster", preAggregation: undefined, rows: 11 },
-  { report: "ProgramLongWeeks", view: "v_program_long_weeks", preAggregation: undefined, rows: 11 },
-  { report: "ProgramFlags", view: "v_program_flags", preAggregation: "dev_pre_aggregations.week__program_flags", rows: 3 },
-  { report: "ProgramFlagRoster", view: "v_program_flag_roster", preAggregation: undefined, rows: 11 },
-  { report: "FitnessTotalsFilled", view: "v_fitness_totals_filled", preAggregation: "dev_pre_aggregations.week__fitness_totals_filled", rows: 1 },
-  { report: "MeasurementStats", view: "v_measurement_stats", preAggregation: "dev_pre_aggregations.measurement__measurement_stats", rows: 1 },
-  { report: "MeasurementStatsFilled", view: "v_measurement_stats_filled", preAggregation: "dev_pre_aggregations.measurement__measurement_stats_filled", rows: 1 },
-  { report: "AssetDays", view: "v_asset_days", preAggregation: "dev_pre_aggregations.asset__asset_days", rows: 1 },
-  { report: "AllTypesBreakdown", view: "v_all_types_breakdown", preAggregation: undefined, rows: 2 },
-  { report: "ProgramsOverTime", view: "v_programs_over_time", preAggregation: undefined, rows: 7 },
-  { report: "LiveIntroPrograms", view: "v_live_intro_programs", preAggregation: "dev_pre_aggregations.program__live_intro_programs", rows: 2 },
-  { report: "ProgramsEmptyScope", view: "v_programs_empty_scope", preAggregation: "dev_pre_aggregations.program__programs_empty_scope", rows: 1, cubeRows: [{ avgPriceOrMinusOne: null, programs: null }] },
-  { report: "WeekShapes", view: "v_week_shapes", preAggregation: "dev_pre_aggregations.week__week_shapes", rows: 3 },
-  { report: "SessionsByProgram", view: "v_sessions_by_program", preAggregation: "dev_pre_aggregations.session__sessions_by_program", rows: 3 },
-  { report: "ProgramSessions", view: "v_program_sessions", preAggregation: undefined, rows: 11 },
-  { report: "NodesByParent", view: "v_nodes_by_parent", preAggregation: "dev_pre_aggregations.node__nodes_by_parent", rows: 3 },
-  { report: "AuthsByKind", view: "v_auths_by_kind", preAggregation: "dev_pre_aggregations.auth__auths_by_kind", rows: 3 },
-];
+/** Each served canonical report, its view, the rollup Cube answers from and its row count: one table for both lanes. */
+const REPORTS = CANONICAL_REPORTS;
 
 const unavailable = dockerUnavailableReason();
 if (unavailable !== undefined) {
@@ -147,28 +120,6 @@ function findReport(name: string): MetaObject {
   return report;
 }
 
-/**
- * `SELECT * FROM <view>` through the mysql client, every value as the text MySQL prints for it. A
- * DATETIME prints `2026-05-04 03:30:00.000`; the space becomes `T` so the shared normalization
- * reads it as a UTC instant, as it does Cube's `2026-05-04T03:30:00.000`.
- */
-function selectView(s: CubeStack, view: string): Array<Record<string, string | null>> {
-  const columns = s.mysql(`SHOW COLUMNS FROM \`${view}\`;`).trim().split("\n").map((l) => l.split("\t")[0] ?? "");
-  const out = s.mysql(`SET time_zone = '+00:00'; SELECT ${columns.map((c) => `\`${c}\``).join(", ")} FROM \`${view}\`;`);
-  return out
-    .split("\n")
-    .filter((l) => l !== "")
-    .map((line) => {
-      const cells = line.split("\t");
-      const row: Record<string, string | null> = {};
-      columns.forEach((c, i) => {
-        const v = cells[i] ?? "NULL";
-        row[c] = v === "NULL" ? null : /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/.test(v) ? v.replace(" ", "T") : v;
-      });
-      return row;
-    });
-}
-
 describe(`cube-model MySQL live check (${CUBE_IMAGE} over ${CUBE_MYSQL_IMAGE}, development mode)`, () => {
   test.skipIf(skip)("Table coverage: the reports below are exactly the canonical model's served reports", () => {
     const served = requireCanonical().objects().filter(servedReport).map((r) => r.name).sort();
@@ -191,7 +142,7 @@ describe(`cube-model MySQL live check (${CUBE_IMAGE} over ${CUBE_MYSQL_IMAGE}, d
       const result = await load(s, plan.query);
       const used = Object.keys(result.usedPreAggregations ?? {}).sort();
       const cubeRows = sortRows(result.data.map((row) => fromCubeRow(row, plan, GEN_CONFIG.dialect)), plan);
-      const viewRows = sortRows(selectView(s, want.view).map((row) => fromViewRow(row, plan, want.view)), plan);
+      const viewRows = sortRows(selectViewMysql(s, want.view).map((row) => fromViewRow(row, plan, want.view)), plan);
       timings.push(`${want.report}: ${cubeRows.length} row(s) compared, served from ${used[0] ?? "the source table"}, load ${Date.now() - t0} ms`);
       expect(viewRows.length).toBe(want.rows);
       if (want.cubeRows !== undefined) {

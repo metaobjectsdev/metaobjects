@@ -372,7 +372,7 @@ public class EntityExtractorEjectRoundTripTest {
                 " * GENERATED — extractor for {@code ", " * GENERATED (mine) — extractor for {@code ");
         String edited = list(projectDir);
         assertTrue(row(edited, "extractor"),
-                row(edited, "extractor").endsWith("[owned — DIFFERS: 1 behind, 1 of your own]"));
+                row(edited, "extractor").contains("[owned — DIFFERS: 1 behind, 1 of your own; differing: "));
         // entity copies no extractor, so its row does not move.
         assertTrue(row(edited, "entity"), row(edited, "entity").endsWith("[owned — identical]"));
 
@@ -382,9 +382,9 @@ public class EntityExtractorEjectRoundTripTest {
                 "println(true, \"super(mo);\");", "println(true, \"super(mo); // mine\");");
         String writerEdited = list(projectDir);
         assertTrue(row(writerEdited, "entity"),
-                row(writerEdited, "entity").endsWith("[owned — DIFFERS: 1 behind, 1 of your own]"));
+                row(writerEdited, "entity").contains("[owned — DIFFERS: 1 behind, 1 of your own; differing: "));
         assertTrue(row(writerEdited, "extractor"),
-                row(writerEdited, "extractor").endsWith("[owned — DIFFERS: 1 behind, 1 of your own]"));
+                row(writerEdited, "extractor").contains("[owned — DIFFERS: 1 behind, 1 of your own; differing: "));
     }
 
     @Test

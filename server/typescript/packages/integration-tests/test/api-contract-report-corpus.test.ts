@@ -26,20 +26,20 @@ describe("api-contract report corpus", () => {
     const reports = root.objects().filter((o) => o.subType === OBJECT_SUBTYPE_REPORT);
     expect(reports.map((r) => r.name)).toEqual(
       ["InvoiceStatusTotals", "InvoicesByMonth", "InvoiceTotals", "InvoiceCalendar", "InvoiceDisputes", "InvoiceDays",
-        "ProductRevenue", "SalesByCategory", "SalesBySku", "ProductRefunds"]);
+        "ProductRevenue", "SalesByCategory", "SalesBySku", "ProductRefunds", "TicketsByTags"]);
     expect(reports.filter((r) => reportReadSource(r) !== undefined).map((r) => r.name)).toEqual(
       ["InvoiceStatusTotals", "InvoicesByMonth", "InvoiceTotals", "InvoiceCalendar", "InvoiceDisputes",
-        "ProductRevenue", "SalesByCategory", "SalesBySku", "ProductRefunds"]);
+        "ProductRevenue", "SalesByCategory", "SalesBySku", "ProductRefunds", "TicketsByTags"]);
   });
 
   test("the route segments are the ones the scenarios call", async () => {
     const root = await loadMetadataFile(join(API_CONTRACT_REPORT_DIR, "meta.json"));
     const segment = (name: string): string => pluralize(toSnakeCase(name));
     expect(["InvoiceStatusTotals", "InvoicesByMonth", "InvoiceTotals", "InvoiceCalendar", "InvoiceDisputes",
-      "ProductRevenue", "SalesByCategory", "SalesBySku", "ProductRefunds"].map(segment)).toEqual(
+      "ProductRevenue", "SalesByCategory", "SalesBySku", "ProductRefunds", "TicketsByTags"].map(segment)).toEqual(
       ["invoice_status_totals", "invoices_by_months", "invoice_totals", "invoice_calendars", "invoice_disputes",
-        "product_revenues", "sales_by_categories", "sales_by_skus", "product_refunds"]);
-    expect(root.objects().length).toBe(14);
+        "product_revenues", "sales_by_categories", "sales_by_skus", "product_refunds", "tickets_by_tags"]);
+    expect(root.objects().length).toBe(16);
   });
 
   test("each seeded report row has exactly the report's derived fields", async () => {
@@ -77,9 +77,9 @@ describe("api-contract report corpus", () => {
     }
   });
 
-  test("every scenario parses, and there are twenty-five", () => {
+  test("every scenario parses, and there are twenty-seven", () => {
     const scenarios = loadScenarios(API_CONTRACT_REPORT_SCENARIOS_DIR);
-    expect(scenarios.length).toBe(25);
+    expect(scenarios.length).toBe(27);
     for (const s of scenarios) expect(s.requests.length).toBeGreaterThan(0);
   });
 

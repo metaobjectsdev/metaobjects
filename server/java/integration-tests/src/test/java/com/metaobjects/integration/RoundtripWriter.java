@@ -74,6 +74,10 @@ final class RoundtripWriter {
 
         // 2. INSERT via the OMDB runtime write path (the write codecs run here). The PK is left
         //    unset: identity.primary @generation:uuid → OMDB mints the uuid app-side on insert.
+        //    A row that NAMES its generated key (a scenario asserting ids 7, 8, 9...) is written under
+        //    that key: OMDB leaves an identity column to the engine, so the harness positions the
+        //    engine's counter instead of changing the runtime's insert rule.
+        positionIdentityCounter(conn, mc, spec);
         omdb.createObject(conn, vo);
 
         // 3. Capture the PK OMDB populated, then read the row back BY PK (a fresh DB SELECT, so
@@ -90,6 +94,27 @@ final class RoundtripWriter {
         Map<String, Object> row = ObjectManagerDbAdapter.toRowMapForRoundtrip(mc, readBack, columnSqlTypes);
         row.remove(pkField.getName());
         return row;
+    }
+
+    /** Make the engine's next generated key the one the {@code insert:} block names, when it names one. */
+    private static void positionIdentityCounter(ObjectConnection conn, MetaObject mc, QuerySpec spec) throws Exception {
+        MetaField<?> pk = primaryKeyField(mc);
+        Object named = spec.insert().get(pk.getName());
+        if (!(named instanceof Number n) || !(conn.getDatastoreConnection() instanceof java.sql.Connection jdbc)) return;
+        if (!"increment".equals(mc.getPrimaryIdentity().getGeneration())) return;
+        String table = mc.getPrimaryRdbTableName();
+        long next = n.longValue();
+        String product = jdbc.getMetaData().getDatabaseProductName().toLowerCase(java.util.Locale.ROOT);
+        try (java.sql.Statement st = jdbc.createStatement()) {
+            if (product.contains("postgres")) {
+                st.execute("ALTER TABLE \"" + table + "\" ALTER COLUMN \"" + pk.getName() + "\" RESTART WITH " + next);
+            } else if (product.contains("mysql")) {
+                st.execute("ALTER TABLE `" + table + "` AUTO_INCREMENT = " + next);
+            } else if (product.contains("sqlite")) {
+                st.execute("DELETE FROM sqlite_sequence WHERE name = '" + table + "'");
+                st.execute("INSERT INTO sqlite_sequence (name, seq) VALUES ('" + table + "', " + (next - 1) + ")");
+            }
+        }
     }
 
     // -----------------------------------------------------------------------

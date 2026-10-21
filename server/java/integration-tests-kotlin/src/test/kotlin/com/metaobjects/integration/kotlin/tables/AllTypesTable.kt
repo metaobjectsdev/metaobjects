@@ -54,7 +54,7 @@ object AllTypesTable : Table("all_types") {
     val lVal = long("lVal")
     val dVal = double("dVal")
     val fVal = float("fVal")
-    val decVal = decimal("decVal", 18, 6)
+    val decVal = portableDecimal("decVal", 18, 6)
     val bVal = bool("bVal")
     val dateVal = date("dateVal")
     // Millisecond-preserving TIME (see PreciseLocalTimeColumnType) — stock `time` truncates sub-seconds.

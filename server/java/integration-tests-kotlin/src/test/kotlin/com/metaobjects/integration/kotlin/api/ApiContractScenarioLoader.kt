@@ -58,7 +58,20 @@ object ApiContractScenarioLoader {
             sourcePath = file.toString(),
             truncate = truncate,
             requests = rawRequests.map { parseRequest(it) },
+            engines = parseEngines(file, root["engines"]),
         )
+    }
+
+    private val KNOWN_ENGINES = setOf("postgres", "mysql", "sqlite", "d1")
+
+    /** `engines:` is exact when present; a name the corpus does not know is a runner error. */
+    private fun parseEngines(file: Path, raw: Any?): Set<String>? {
+        if (raw == null) return null
+        require(raw is List<*>) { "$file: 'engines' must be a list" }
+        val names = raw.map { it.toString() }.toSet()
+        val unknown = names - KNOWN_ENGINES
+        require(unknown.isEmpty()) { "$file: unknown engine(s) $unknown; expected one of $KNOWN_ENGINES" }
+        return names
     }
 
     @Suppress("UNCHECKED_CAST")

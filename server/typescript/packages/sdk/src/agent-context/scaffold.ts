@@ -1,5 +1,8 @@
 import { createHash } from "node:crypto";
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { join, relative, sep } from "node:path";
 import type { AssembledFile, Stack } from "./types.js";
+import { docsBlobUrl, docsRefForVersion } from "@metaobjectsdev/metadata";
 
 /** Consumer-relative path of the sidecar manifest that tracks scaffolded files. */
 export const AGENT_CONTEXT_MANIFEST_PATH = ".metaobjects/.agent-context.json";
@@ -13,6 +16,14 @@ export interface Manifest {
    * back-compat with manifests written before version tracking existed.
    */
   generatedBy?: string;
+  /**
+   * Hash of the agent-context content the scaffolding CLI shipped (see
+   * {@link hashAgentContextRoot}). The staleness check compares THIS, so a content change
+   * shipped without a version change is noticed, and a version change that changed no
+   * content is not a reason to nudge. Optional: manifests written before it fall back to
+   * comparing `generatedBy`.
+   */
+  contentHash?: string;
   servers: string[];
   clients: string[];
   /** consumer-relative path → sha256 of the contents as last scaffolded. */
@@ -21,6 +32,24 @@ export interface Manifest {
 
 export function hashContents(s: string): string {
   return createHash("sha256").update(s, "utf8").digest("hex");
+}
+
+/**
+ * A stable hash of the agent-context content tree a release ships, plus the docs ref its
+ * links are pinned to (the scaffolded text embeds it, so a different ref is different
+ * content). Independent of the project's stack and of directory order.
+ */
+export function hashAgentContextRoot(root: string, docsRef: string): string {
+  const entries: string[] = [];
+  const walk = (dir: string): void => {
+    for (const name of readdirSync(dir).sort()) {
+      const abs = join(dir, name);
+      if (statSync(abs).isDirectory()) walk(abs);
+      else entries.push(`${relative(root, abs).split(sep).join("/")}\0${hashContents(readFileSync(abs, "utf8"))}`);
+    }
+  };
+  walk(root);
+  return hashContents(`${docsRef}\n${entries.sort().join("\n")}`);
 }
 
 export interface ScaffoldDecision {
@@ -62,8 +91,10 @@ export function planScaffold(opts: {
   readCurrent: (path: string) => string | undefined;
   /** The MetaObjects version doing the scaffold — stamped into the manifest. */
   generatedBy: string;
+  /** {@link hashAgentContextRoot} of the content being scaffolded — stamped into the manifest. */
+  contentHash?: string;
 }): ScaffoldDecision {
-  const { stack, assembled, prior, readCurrent, generatedBy } = opts;
+  const { stack, assembled, prior, readCurrent, generatedBy, contentHash } = opts;
   const writes: ScaffoldDecision["writes"] = [];
   const conflicts: ScaffoldDecision["conflicts"] = [];
   const files: Record<string, string> = {};
@@ -119,7 +150,7 @@ export function planScaffold(opts: {
     conflicts,
     // `files` holds only what this run assembled, so a pruned orphan does not survive into
     // the new manifest — otherwise it would be re-reported as an orphan on every run.
-    manifest: { version: 1, generatedBy, servers: stack.servers, clients: stack.clients, files },
+    manifest: { version: 1, generatedBy, ...(contentHash !== undefined && { contentHash }), servers: stack.servers, clients: stack.clients, files },
     prunes,
     removed,
   };
@@ -180,6 +211,46 @@ function contextIsAheadOfInstall(generatedBy: string | undefined, currentVersion
 }
 
 /**
+ * One row per minor (or major) step that has an upgrade guide. `from` and `to` are
+ * `major.minor` lines; `path` is repo-relative. Adding the next step's guide is one row
+ * here, nothing else. A patch-level step needs no row: its guide is the within-line one
+ * the always-on context already names.
+ */
+export const MINOR_STEP_GUIDES: readonly { from: string; to: string; path: string }[] = [
+  { from: "1.0", to: "1.1", path: "docs/features/migrations/upgrading-1.0-to-1.1.md" },
+];
+
+function releaseLine(version: string | undefined): [number, number] | null {
+  if (version === undefined) return null;
+  const m = /^(\d+)\.(\d+)\./.exec(version.trim());
+  return m === null ? null : [Number(m[1]), Number(m[2])];
+}
+
+function lineAtMost(a: [number, number], b: [number, number]): boolean {
+  return a[0] < b[0] || (a[0] === b[0] && a[1] <= b[1]);
+}
+
+/**
+ * The guides for every minor/major step between the stamped version and the installed
+ * one: a step counts when it starts at or after the stamped line and ends at or before the
+ * installed line. Empty for a patch-level difference or a version that cannot be read.
+ */
+function minorStepGuides(generatedBy: string | undefined, currentVersion: string): string[] {
+  const stamped = releaseLine(generatedBy);
+  const installed = releaseLine(currentVersion);
+  if (stamped === null || installed === null) return [];
+  const ref = docsRefForVersion(currentVersion);
+  const out: string[] = [];
+  for (const g of MINOR_STEP_GUIDES) {
+    const from = releaseLine(`${g.from}.`);
+    const to = releaseLine(`${g.to}.`);
+    if (from === null || to === null) continue;
+    if (lineAtMost(stamped, from) && lineAtMost(to, installed)) out.push(`${g.from} to ${g.to}: ${docsBlobUrl(g.path, ref)}`);
+  }
+  return out;
+}
+
+/**
  * A one-line nudge if the scaffolded agent context predates the installed MetaObjects
  * (so `gen`/`verify` can remind the user to refresh the skills after an upgrade), or
  * `null` when there is nothing to say — no agent context scaffolded, or it is in sync.
@@ -188,17 +259,27 @@ function contextIsAheadOfInstall(generatedBy: string | undefined, currentVersion
 export function agentContextStaleness(opts: {
   manifest: Manifest | undefined;
   currentVersion: string;
+  /** {@link hashAgentContextRoot} of the installed content; when given and the manifest
+   *  carries one, the two hashes decide instead of the versions. */
+  currentContentHash?: string;
 }): string | null {
-  const { manifest, currentVersion } = opts;
+  const { manifest, currentVersion, currentContentHash } = opts;
   if (manifest === undefined) return null; // no agent context here → nothing to nudge
   // Exact-equality FIRST: ANY drift nudges (a re-scaffold is cheap + idempotent). A
   // prerelease/build-metadata difference is still a reason to refresh, so this is not a
   // semver compare — see releaseSeries() for the ONE case that is exempt.
-  if (manifest.generatedBy === currentVersion) return null; // in sync
+  const hashed = manifest.contentHash !== undefined && currentContentHash !== undefined;
+  // The shipped content decides when both sides recorded it: equal content has nothing to
+  // refresh whatever the versions say (and a content change that rode on an unchanged version
+  // is no longer missed).
+  if (hashed && manifest.contentHash === currentContentHash) return null;
+  if (!hashed && manifest.generatedBy === currentVersion) return null; // in sync
   if (contextIsAheadOfInstall(manifest.generatedBy, currentVersion)) return null;
   const from = manifest.generatedBy ?? "an older MetaObjects";
+  const guides = minorStepGuides(manifest.generatedBy, currentVersion);
   return (
     `MetaObjects agent context was generated by ${from}; you're on ${currentVersion}. ` +
-    `Re-run 'meta init --docs-only --refresh-docs' to refresh the .claude/skills docs.`
+    `Re-run 'meta init --docs-only --refresh-docs' to refresh the .claude/skills docs.` +
+    (guides.length > 0 ? ` This is a minor upgrade: read the upgrade guide first (${guides.join("; ")}).` : "")
   );
 }

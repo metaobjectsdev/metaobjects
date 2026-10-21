@@ -95,9 +95,9 @@ open class KotlinFilterAllowlistGenerator : MultiFileDirectGeneratorBase<MetaObj
 
         // FR-017 TPH: a discriminator base's allowlist unions its subtype-only filterable columns
         // and keeps the discriminator, so `GET /<base>?filter[<disc>][in]=A,B` narrows the
-        // polymorphic list (FR-017 "Filter allowlists"; TS, C# and Python admit it too). It
-        // EXCLUDES decimal columns — outside the cross-port HTTP filter/value contract. Keeps the
-        // Java + Kotlin filter surface identical (see the Java SpringFilterAllowlistGenerator).
+        // polymorphic list (FR-017 "Filter allowlists"; TS, C# and Python admit it too). Decimal
+        // columns are admitted like any other: their wire form is one rule in every port (ADR-0019
+        // Amendment 1), so the old exclusion no longer has a reason.
         //
         // The per-subtype routes share this one allowlist, so `/<base>/<seg>` also accepts the
         // discriminator (AND'd with the route's own, a no-op or an empty list) and another
@@ -106,9 +106,7 @@ open class KotlinFilterAllowlistGenerator : MultiFileDirectGeneratorBase<MetaObj
         // left to an adopter who wants the 400 to own this generator: subclass it and name the
         // subclass in the Maven plugin's `<generator><classname>`.
         val opsByField = if (KotlinTphPlan.isTphBase(entity, loader)) {
-            val union = (entity.metaFields + KotlinTphPlan.collectSubtypeFields(entity, loader))
-                .filter { it !is com.metaobjects.field.DecimalField }
-            computeFilterableOps(union)
+            computeFilterableOps(entity.metaFields + KotlinTphPlan.collectSubtypeFields(entity, loader))
         } else {
             computeFilterableOps(entity)
         }

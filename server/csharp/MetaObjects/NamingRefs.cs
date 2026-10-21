@@ -266,6 +266,27 @@ public static class NamingRefs
     /// </summary>
     public static string DidYouMeanHint(MetaData root, string reference)
     {
+        var found = SameNamedObjects(root, reference);
+        if (found is null) return "";
+        return $" An object named \"{found.Value.ShortName}\" exists in: {string.Join(", ", found.Value.Candidates)}. " +
+               "Qualify it with its package (FQN).";
+    }
+
+    /// <summary>
+    /// The did-you-mean suffix for an UNRESOLVED <c>extends</c> ref: the same candidates as
+    /// <see cref="DidYouMeanHint"/> plus the exact spelling to write, because a bare <c>extends</c>
+    /// resolves in the referrer's own package. Mirrors TS <c>didYouMeanSuperHint</c>.
+    /// </summary>
+    public static string DidYouMeanSuperHint(MetaData root, string reference)
+    {
+        var found = SameNamedObjects(root, reference);
+        if (found is null) return "";
+        return $" An object named \"{found.Value.ShortName}\" exists in: {string.Join(", ", found.Value.Candidates)}. " +
+               $"Qualify it with its package (FQN): write extends: \"{found.Value.Candidates[0]}\".";
+    }
+
+    private static (string ShortName, List<string> Candidates)? SameNamedObjects(MetaData root, string reference)
+    {
         // Owner = everything before a dotted child tail (FR-024 `Owner.child`).
         int dot = reference.IndexOf(CHILD_REF_SEPARATOR, StringComparison.Ordinal);
         string owner = dot == -1 ? reference : reference[..dot];
@@ -275,8 +296,6 @@ public static class NamingRefs
             .Where(c => c.Type == TYPE_OBJECT && c.Name == shortName)
             .Select(c => c.ResolutionKey())
             .ToList();
-        if (candidates.Count == 0) return "";
-        return $" An object named \"{shortName}\" exists in: {string.Join(", ", candidates)}. " +
-               "Qualify it with its package (FQN).";
+        return candidates.Count == 0 ? null : (shortName, candidates);
     }
 }

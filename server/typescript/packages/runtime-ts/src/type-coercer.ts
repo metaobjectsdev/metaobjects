@@ -3,6 +3,10 @@
 //  - SQLite has no native boolean: booleans are stored as 0/1 ints, so we map
 //    boolean↔int on the way in/out. MySQL's BOOLEAN is TINYINT(1) and mysql2 reads it
 //    back as 0/1, so it takes the same mapping.
+//  - field.decimal is the canonical decimal STRING on every dialect (ADR-0019 Amendment 1): a
+//    string Postgres/MySQL hand back loses its scale (`100.5000` -> `100.5`), a number SQLite/D1
+//    hand back is rendered at 15 significant digits, and a value written as a number or in
+//    exponent form is bound as its exact canonical string.
 //  - JSONB-backed object/map fields: the driver (node-postgres) does NOT
 //    serialize a plain JS object to a jsonb column — it must arrive as a JSON
 //    string, or the write fails / writes "[object Object]". A `field.object`
@@ -18,21 +22,25 @@ import type { MetaData } from "@metaobjectsdev/metadata";
 import {
   TYPE_FIELD,
   FIELD_SUBTYPE_BOOLEAN,
+  FIELD_SUBTYPE_DECIMAL,
   FIELD_SUBTYPE_ENUM,
   FIELD_SUBTYPE_OBJECT,
   FIELD_SUBTYPE_TIMESTAMP,
   FIELD_ATTR_STORAGE,
   FIELD_ATTR_DB_COLUMN_TYPE,
   FIELD_ATTR_INT_VALUE_MAP,
+  FIELD_ATTR_PRECISION,
+  FIELD_ATTR_SCALE,
   STORAGE_JSONB,
   STORAGE_FLATTENED,
   DB_COLUMN_TYPE_JSONB,
 } from "@metaobjectsdev/metadata";
 import type { Dialect, Row } from "./persistence-driver.js";
+import { decimalFits, decimalToWire, parseDecimalInput } from "./decimal-wire.js";
 
 export function coerceRowOnRead(entity: MetaData, row: Row, dialect: Dialect): Row {
   const hydrated = parseJsonTextArrays(entity, deserializeJsonbObjectFields(entity, row));
-  const decoded = decodeIntBackedEnums(entity, hydrated);
+  const decoded = canonicalizeDecimals(entity, decodeIntBackedEnums(entity, hydrated));
   if (dialect !== "sqlite" && dialect !== "mysql") return decoded;
   return mapBooleansFromInt(entity, decoded);
 }
@@ -130,7 +138,7 @@ function encodeIntBackedEnums(entity: MetaData, row: Row): Row {
 }
 
 export function coerceRowOnWrite(entity: MetaData, row: Row, dialect: Dialect): Row {
-  const jsonbColumned = serializeJsonbColumns(entity, row);
+  const jsonbColumned = serializeJsonbColumns(entity, bindDecimals(entity, row));
   // Dialect-independent: an int-backed enum's column is INTEGER on every dialect
   // (SQLite has one integer storage class), so the symbol→int encode is not gated
   // on the dialect the way the boolean mapping below is.
@@ -278,6 +286,67 @@ function parseJsonTextArrays(entity: MetaData, row: Row): Row {
     } catch {
       // Not JSON: leave the stored text as it is.
     }
+  }
+  return out ?? row;
+}
+
+/** Read side: every `field.decimal` the row carries becomes its canonical string. */
+function canonicalizeDecimals(entity: MetaData, row: Row): Row {
+  let out: Row | null = null;
+  // Effective children (ADR-0039): a decimal may be inherited via extends, and a report's
+  // derived ratio / average / sum is a decimal field of the report itself.
+  for (const child of entity.children()) {
+    if (child.type !== TYPE_FIELD || child.subType !== FIELD_SUBTYPE_DECIMAL) continue;
+    if (!(child.name in row)) continue;
+    const v = row[child.name];
+    if (v === null || v === undefined) continue;
+    const wire = decimalToWire(v);
+    if (wire === v) continue;
+    out ??= { ...row };
+    out[child.name] = wire;
+  }
+  return out ?? row;
+}
+
+/**
+ * Write side: a `field.decimal` value is bound as its exact canonical string, and a decimal
+ * declared `isArray` as an array of them. A string in the JSON-number grammar or a number is
+ * accepted; anything else, or a value the declared `@precision` / `@scale` cannot hold (W3), is
+ * refused here rather than reaching a column that would round it, reject it with a driver error,
+ * or store garbage.
+ */
+function bindDecimals(entity: MetaData, row: Row): Row {
+  let out: Row | null = null;
+  // ADR-0039: resolving — a decimal, its isArray and its @precision / @scale may be inherited.
+  for (const child of entity.children()) {
+    if (child.type !== TYPE_FIELD || child.subType !== FIELD_SUBTYPE_DECIMAL) continue;
+    if (!(child.name in row)) continue;
+    const v = row[child.name];
+    if (v === null || v === undefined) continue;
+    const precision = child.attr(FIELD_ATTR_PRECISION);
+    const scale = child.attr(FIELD_ATTR_SCALE);
+    const bind = (value: unknown): string => {
+      const canonical = parseDecimalInput(value);
+      if (canonical === undefined) {
+        throw new Error(`field.decimal '${child.name}' cannot be written: ${JSON.stringify(value)} is not a decimal number (a string in the JSON-number grammar, or a number)`);
+      }
+      if (!decimalFits(canonical, typeof precision === "number" ? precision : undefined, typeof scale === "number" ? scale : undefined)) {
+        throw new Error(`field.decimal '${child.name}' cannot be written: ${canonical} does not fit @precision ${String(precision)} / @scale ${String(scale ?? 0)}`);
+      }
+      return canonical;
+    };
+    if (child.resolvedIsArray()) {
+      if (!Array.isArray(v)) {
+        throw new Error(`field.decimal '${child.name}' cannot be written: ${JSON.stringify(v)} is not an array of decimal numbers`);
+      }
+      out ??= { ...row };
+      out[child.name] = v.map((element) => (element === null ? null : bind(element)));
+      continue;
+    }
+    const canonical = bind(v);
+    if (canonical === v) continue;
+    out ??= { ...row };
+    out[child.name] = canonical;
   }
   return out ?? row;
 }

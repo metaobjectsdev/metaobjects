@@ -113,21 +113,31 @@ export function servesClientTier(entity: MetaObject): boolean {
 }
 
 /**
- * The decimal fields a report's read-only mount must send as strings: a report on SQLite.
+ * The names of an object's `field.decimal` fields, which its generated routes send as canonical
+ * strings (ADR-0019 Amendment 1, W1 and W4).
  *
- * A decimal is a string on the wire. SQLite has no decimal, so the REAL a report's view
- * computes (a ratio, an average, a sum of a decimal field) reaches the route as a JS number
- * where Postgres and MySQL return a string, and the read schema says string for all of them.
- * The generated route passes these names to the mount as `decimalColumns` and the mount sends
- * a number under one of them as its string. Empty for every other object and dialect, which
- * keeps their routes byte-identical. A projection on SQLite is not covered: it is released
- * behaviour and its decimals keep reaching the wire as numbers.
+ * A decimal is a canonical string on the wire on EVERY dialect and for every kind of object (an
+ * entity, a projection, a report): Postgres `numeric` and MySQL `DECIMAL` hand back the column's
+ * scale (`"100.5000"`), and SQLite hands back a JS number (the REAL a report's view computes, or
+ * the number a NUMERIC-affinity column stores). The generated route passes these names to the
+ * mount as `decimalColumns` and the mount rewrites each row under them. Which keys are decimals
+ * comes from the model, never from the shape of a value. Empty for an object with no decimal,
+ * which keeps its route byte-identical. A decimal declared `isArray` is listed too: the mount
+ * rewrites each element of its array.
  */
-export function reportDecimalColumns(entity: MetaObject, dialect: string): readonly string[] {
-  if (dialect !== "sqlite" || !isReport(entity)) return [];
-  // ADR-0039: resolving. A report read model's fields are its own, but the resolving call is
-  // the rule everywhere a field set is read.
+export function decimalFieldNames(entity: MetaObject): readonly string[] {
+  // ADR-0039: resolving. A decimal may be inherited via extends, and a report read model's
+  // derived ratio, average or sum is a field of the report itself.
   return entity.fields().filter((f) => f.subType === FIELD_SUBTYPE_DECIMAL).map((f) => f.name);
+}
+
+/** `\n<indent>decimalColumns: [...],` for a mount option list, or "" when the object has no decimal.
+ *  Several objects share one mount when a single-table (TPH) base's polymorphic route serves its
+ *  subtypes' rows too: pass them all, so a decimal only a subtype declares is still a decimal. */
+export function decimalColumnsLine(entity: MetaObject | readonly MetaObject[], indent: string): string {
+  const objects: readonly MetaObject[] = Array.isArray(entity) ? entity : [entity as MetaObject];
+  const names = [...new Set(objects.flatMap((o) => decimalFieldNames(o)))];
+  return names.length > 0 ? `\n${indent}decimalColumns: ${JSON.stringify(names)},` : "";
 }
 
 /**

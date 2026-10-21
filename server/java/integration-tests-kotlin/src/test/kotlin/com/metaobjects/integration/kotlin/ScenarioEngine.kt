@@ -10,7 +10,7 @@ import com.metaobjects.integration.kotlin.Scenarios.QueryScenario
  * wire form. Spelling only: a wrong VALUE still
  * fails the comparison, and no `expect` is loosened.
  */
-enum class ScenarioEngine(private val id: String) {
+enum class ScenarioEngine(internal val id: String) {
     POSTGRES("postgres") {
         override fun seed(scenario: QueryScenario): String? = scenario.seedData
     },

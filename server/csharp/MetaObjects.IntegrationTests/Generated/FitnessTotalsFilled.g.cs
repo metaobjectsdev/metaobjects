@@ -15,5 +15,6 @@ public class FitnessTotalsFilled
     [Column("totalMinutesOrZero")]
     public long TotalMinutesOrZero { get; set; }
     [Column("longShareOrZero")]
+    [System.Text.Json.Serialization.JsonConverter(typeof(DecimalWire.DecimalJsonConverter))]
     public decimal LongShareOrZero { get; set; }
 }

@@ -19,5 +19,6 @@ public class Measurement
     [Column(MeasurementNames.MassKgColumn)]
     public double MassKg { get; set; }
     [Column(MeasurementNames.PreciseKgColumn)]
+    [DecimalWire.Declared(9, 4)]
     public decimal PreciseKg { get; set; }
 }

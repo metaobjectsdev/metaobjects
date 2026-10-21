@@ -21,6 +21,12 @@ from fastapi.responses import JSONResponse
 from metaobjects.codegen.runtime.constraint_errors import (
     classify_constraint_error,
 )
+from metaobjects.codegen.runtime.decimal_wire import (
+    coerce_decimal_fields,
+    coerce_decimal_predicates,
+    parse_json_object,
+    to_wire,
+)
 from metaobjects.codegen.runtime.filter_parser import (
     FilterPredicate,
     parse_filter,
@@ -61,6 +67,20 @@ _REQUIRED_FIELDS: frozenset[str] = frozenset(
         "status",
     }
 )
+
+
+_DECIMAL_FIELDS: frozenset[str] = frozenset()
+
+
+_DECIMAL_LIMITS: dict[str, tuple[int, int]] = {}
+
+
+async def _json_body(request: Request) -> dict[str, Any] | None:
+    """GENERATED — the request body as a JSON object (non-integer numbers are exact `Decimal`s), or None."""
+    try:
+        return parse_json_object(await request.body())
+    except ValueError:
+        return None
 
 
 _FROZEN_FIELDS: frozenset[str] = frozenset()
@@ -129,12 +149,16 @@ def list_subscribers(
     )
     if filter_result.error_envelope is not None:
         return JSONResponse(status_code=400, content=filter_result.error_envelope)
-    predicates = filter_result.predicates
+    predicates, decimal_error = coerce_decimal_predicates(
+        filter_result.predicates, _DECIMAL_FIELDS
+    )
+    if decimal_error is not None:
+        return JSONResponse(status_code=400, content=decimal_error)
     rows = repo.list(actual_limit, actual_offset, sort_clause, predicates)
     if with_count == 1:
         total = repo.count(predicates)
-        return {"rows": rows, "total": total}
-    return rows
+        return {"rows": to_wire(rows), "total": total}
+    return to_wire(rows)
 
 
 @router.get("/{subscriber_id}")
@@ -145,14 +169,22 @@ def get_subscriber(
     row = repo.find_by_id(subscriber_id)
     if row is None:
         return JSONResponse(status_code=404, content={"error": "not_found"})
-    return row
+    return to_wire(row)
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
 def create_subscriber(
-    dto: dict[str, Any],
+    dto: Annotated[dict[str, Any] | None, Depends(_json_body)],
     repo: Annotated[SubscriberRepository, Depends(get_repository)],
 ) -> Any:
+    if (
+        dto is None
+    ):  # the body was not a JSON object: the cross-port 400, not FastAPI's 422
+        return JSONResponse(status_code=400, content={"error": "validation"})
+    try:
+        dto = coerce_decimal_fields(dto, _DECIMAL_FIELDS, _DECIMAL_LIMITS)
+    except ValueError:
+        return JSONResponse(status_code=400, content={"error": "validation"})
     # FR-036: run the generated field constraints (length / pattern /
     # numeric bounds) before persisting; a violation is the cross-port 400.
     try:
@@ -163,7 +195,7 @@ def create_subscriber(
     _asnow = _dt.datetime.now(_dt.timezone.utc)
     dto["createdAt"] = _asnow
     try:
-        return repo.create(dto)
+        return to_wire(repo.create(dto))
     except Exception as exc:
         failure = classify_constraint_error(exc)
         if failure is None:
@@ -175,9 +207,17 @@ def create_subscriber(
 @router.put("/{subscriber_id}")
 def update_subscriber(
     subscriber_id: int,
-    dto: dict[str, Any],
+    dto: Annotated[dict[str, Any] | None, Depends(_json_body)],
     repo: Annotated[SubscriberRepository, Depends(get_repository)],
 ) -> Any:
+    if (
+        dto is None
+    ):  # the body was not a JSON object: the cross-port 400, not FastAPI's 422
+        return JSONResponse(status_code=400, content={"error": "validation"})
+    try:
+        dto = coerce_decimal_fields(dto, _DECIMAL_FIELDS, _DECIMAL_LIMITS)
+    except ValueError:
+        return JSONResponse(status_code=400, content={"error": "validation"})
     # FR-035 PATCH-2: an explicit null on a @required field is a 400 —
     # a present null on a NON-required field falls through and clears it,
     # and an OMITTED required field is untouched (never a 400).
@@ -200,7 +240,7 @@ def update_subscriber(
         return JSONResponse(status_code=failure.status, content=failure.body())
     if saved is None:
         return JSONResponse(status_code=404, content={"error": "not_found"})
-    return saved
+    return to_wire(saved)
 
 
 @router.delete("/{subscriber_id}", status_code=status.HTTP_204_NO_CONTENT)

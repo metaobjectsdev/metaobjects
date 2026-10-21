@@ -1,0 +1,97 @@
+name: decimal-filter-sort-exact
+description: >
+  A decimal filter operand is text in the JSON-number grammar and is compared EXACTLY (W2):
+  `12345678901234567.89` and `12345678901234567.8` are different numbers though they are the same
+  double. Trailing zeros and an exponent do not change the number. A bad operand is
+  400 invalid_filter_value naming the field. Sorting is numeric, not textual. Postgres and MySQL only (W4).
+engines: [postgres, mysql]
+requests:
+  - id: r1
+    method: GET
+    path: /api/entries?filter[amount][eq]=12345678901234567.89
+    expect:
+      status: 200
+      body:
+        equals:
+          - { id: 3, bucket: B, amount: "12345678901234567.89", flagged: false }
+  - id: r2
+    method: GET
+    path: /api/entries?filter[amount][gt]=12345678901234567.8
+    expect:
+      status: 200
+      body:
+        equals:
+          - { id: 3, bucket: B, amount: "12345678901234567.89", flagged: false }
+  - id: r3
+    method: GET
+    path: /api/entries?filter[amount][gt]=12345678901234567.89
+    expect:
+      status: 200
+      body:
+        length: 0
+  - id: r4
+    method: GET
+    path: /api/entries?filter[amount][eq]=100.500
+    expect:
+      status: 200
+      body:
+        equals:
+          - { id: 7, bucket: D, amount: "100.5", flagged: false }
+  - id: r5
+    method: GET
+    path: /api/entries?filter[amount][eq]=1.005e2
+    expect:
+      status: 200
+      body:
+        equals:
+          - { id: 7, bucket: D, amount: "100.5", flagged: false }
+  - id: r6
+    method: GET
+    path: /api/entries?filter[amount][lt]=0.01&sort=id:asc
+    expect:
+      status: 200
+      body:
+        equals:
+          - { id: 5, bucket: C, amount: "-0.0000000001", flagged: false }
+          - { id: 6, bucket: C, amount: "-12345678.987654321", flagged: false }
+          - { id: 9, bucket: E, amount: "0", flagged: false }
+  - id: r7
+    method: GET
+    path: /api/entries?filter[amount][in]=0.1,0.2&sort=id:asc
+    expect:
+      status: 200
+      body:
+        equals:
+          - { id: 1, bucket: A, amount: "0.1", flagged: true }
+          - { id: 2, bucket: A, amount: "0.2", flagged: false }
+  - id: r8
+    method: GET
+    path: /api/entries?filter[bucket][in]=A,B,C,D&sort=amount:desc
+    expect:
+      status: 200
+      body:
+        ids: [3, 7, 8, 2, 1, 4, 5, 6]
+  - id: r9
+    method: GET
+    path: /api/entries?filter[amount][eq]=abc
+    expect:
+      status: 400
+      body:
+        error: invalid_filter_value
+        field: amount
+  - id: r10
+    method: GET
+    path: /api/entries?filter[amount][gt]=1e
+    expect:
+      status: 400
+      body:
+        error: invalid_filter_value
+        field: amount
+  - id: r11
+    method: GET
+    path: /api/entries?filter[amount][eq]=0x10
+    expect:
+      status: 400
+      body:
+        error: invalid_filter_value
+        field: amount

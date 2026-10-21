@@ -1,0 +1,53 @@
+name: decimal-read-exact
+description: >
+  A field.decimal is a canonical JSON string on the wire (ADR-0019 Amendment 1, W1): plain
+  notation, no trailing fraction zeros, zero as "0", never a JSON number. The seed stores
+  `100.50` and `0.0000000000`; the wire says "100.5" and "0". `12345678901234567.89` has 19
+  significant digits, more than a double holds, so a route that converts a decimal to a number
+  anywhere answers the wrong text. Postgres and MySQL only (W4): decimal-read-exact-15 is the
+  subset every engine runs.
+engines: [postgres, mysql]
+requests:
+  - id: r1
+    method: GET
+    path: /api/entries?sort=id:asc
+    expect:
+      status: 200
+      body:
+        equals:
+          - { id: 1, bucket: A, amount: "0.1", flagged: true }
+          - { id: 2, bucket: A, amount: "0.2", flagged: false }
+          - { id: 3, bucket: B, amount: "12345678901234567.89", flagged: false }
+          - { id: 4, bucket: B, amount: "0.01", flagged: true }
+          - { id: 5, bucket: C, amount: "-0.0000000001", flagged: false }
+          - { id: 6, bucket: C, amount: "-12345678.987654321", flagged: false }
+          - { id: 7, bucket: D, amount: "100.5", flagged: false }
+          - { id: 8, bucket: D, amount: "99.5", flagged: false }
+          - { id: 9, bucket: E, amount: "0", flagged: false }
+          - { id: 10, bucket: E, amount: null, flagged: false }
+          - { id: 11, bucket: F, amount: null, flagged: false }
+  - id: r2
+    method: GET
+    path: /api/entries/3
+    expect:
+      status: 200
+      body:
+        row:
+          id: 3
+          amount: "12345678901234567.89"
+  - id: r3
+    method: GET
+    path: /api/entries/7
+    expect:
+      status: 200
+      body:
+        row:
+          amount: "100.5"
+  - id: r4
+    method: GET
+    path: /api/entries/9
+    expect:
+      status: 200
+      body:
+        row:
+          amount: "0"

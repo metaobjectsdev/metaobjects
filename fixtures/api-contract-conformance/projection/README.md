@@ -43,8 +43,9 @@ the cross-port contract would drop a capability two ports already shipped.
   inherited `@fields` (`id`) instead of the computed key broke here: TypeScript mounted no item
   route, Kotlin emitted a table and controller that did not compile, and C# built a model with
   no key for the projection, so every request answered `500`.
-- **Filters apply to `field.decimal` and `field.float`.** `InvoiceLedger` carries one of each;
-  the scenarios assert only how many rows match, because each port spells a decimal its own way.
+- **Filters apply to `field.decimal` and `field.float`.** `InvoiceLedger` carries one of each.
+  A decimal is asserted as its canonical string (`3.0` is `"3"`, ADR-0019 Amendment 1), and its
+  operand compares exactly (`eq=12.50` matches `12.5`).
 - **The api docs list the same routes** (`docs-routes.json`, see below).
 - **A filter error names the field**, exactly as on a writable route
   (see `docs/features/api-contract.md` → "Error response").

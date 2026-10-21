@@ -83,6 +83,21 @@ const TABLES = [
   \`approver\` VARCHAR(80),
   \`urgency\` VARCHAR(16)
 )`,
+  `CREATE TABLE \`gadgets\` (
+  \`id\` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  \`gadget_code\` INT NOT NULL
+)`,
+  `CREATE TABLE \`gadget_events\` (
+  \`id\` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  \`gadgetId\` BIGINT NOT NULL,
+  FOREIGN KEY (\`gadgetId\`) REFERENCES \`gadgets\` (\`id\`)
+)`,
+  `CREATE TABLE \`entries\` (
+  \`id\` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  \`bucket\` VARCHAR(8) NOT NULL,
+  \`amount\` DECIMAL(28,10),
+  \`flagged\` BOOLEAN NOT NULL
+)`,
   `CREATE TABLE \`all_types\` (
   \`id\` VARCHAR(36) NOT NULL DEFAULT (UUID()) PRIMARY KEY,
   \`sVal\` VARCHAR(200) NOT NULL,

@@ -50,7 +50,7 @@ internal class M2mApiContractConformanceTest {
     }
 
     companion object {
-        private val MAPPER = ObjectMapper()
+        private val MAPPER = ObjectMapper().enable(com.fasterxml.jackson.databind.DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS)
         private val CORPUS = M2mScenarios.findM2mCorpus()
         private val SEED = M2mSeed.load(CORPUS)
 

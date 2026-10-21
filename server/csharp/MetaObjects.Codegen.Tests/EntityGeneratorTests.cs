@@ -109,6 +109,10 @@ public class EntityGeneratorTests
 
         Assert.Contains("public static class SubscriberRoutes", src);
         Assert.Contains("public static IEndpointRouteBuilder MapSubscriberRoutes(this IEndpointRouteBuilder app, string prefix = \"/api\")", src);
+        // ADR-0019 Amendment 1 (W3): the routes mount on a group carrying the decimal-range filter.
+        Assert.Contains("IEndpointRouteBuilder mount = app;", src);
+        Assert.Contains("app = app.MapGroup(string.Empty).AddEndpointFilter(new DecimalRangeEndpointFilter());", src);
+        Assert.Contains("return mount;", src);
         // GET list now takes HttpContext (for qs parsing: limit/offset/sort/withCount).
         Assert.Contains("app.MapGet(prefix + \"/subscribers\", async (HttpContext http, AppDbContext db) =>", src);
         Assert.Contains("app.MapGet(prefix + \"/subscribers/{id}\", async (long id, AppDbContext db) =>", src);

@@ -147,6 +147,8 @@
     "scripts/site-inject-ci.mjs",
     "scripts/check-migration-guides-vs-registry.mjs",
     "scripts/maven-coordinate.mjs",
-    "scripts/eject-release-gate.mjs"
+    "scripts/eject-release-gate.mjs",
+    "scripts/lib/changelog-promote.mjs",
+    "scripts/check-release-tag.mjs"
   ]
 }

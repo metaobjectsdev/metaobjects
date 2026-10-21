@@ -36,7 +36,7 @@ object ProgramStatView : Table("v_program_stat") {
     // never call SchemaUtils.create), so they don't emit DDL — Exposed just reads the column
     // value back as a BigDecimal, which Normalization renders with the no-trailing-zeros rule.
     val totalMinutes = long("totalMinutes").nullable()
-    val avgMinutes = decimal("avgMinutes", 38, 18).nullable()
+    val avgMinutes = portableDecimal("avgMinutes", 38, 18).nullable()
     val minMinutes = integer("minMinutes").nullable()
     val maxMinutes = integer("maxMinutes").nullable()
 

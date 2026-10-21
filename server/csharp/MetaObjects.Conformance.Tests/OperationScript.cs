@@ -53,7 +53,8 @@ public static class OperationScriptParser
     /// One expected error in the parsed expected-errors.json. <c>Source</c>
     /// is non-null iff the file used the FR5a envelope shape.
     /// </summary>
-    public sealed record ExpectedError(string Code, ExpectedErrorSource? Source);
+    public sealed record ExpectedError(
+        string Code, ExpectedErrorSource? Source, IReadOnlyList<string>? MessageIncludes = null);
 
     /// <summary>
     /// Result of parsing expected-errors.json.
@@ -195,7 +196,16 @@ public static class OperationScriptParser
                 }
                 source = new ExpectedErrorSource(fmt, files, jsonPath, referrer, target);
             }
-            entries.Add(new ExpectedError(codeProp.GetString()!, source));
+            IReadOnlyList<string>? messageIncludes = null;
+            if (item.TryGetProperty("messageIncludes", out var miEl))
+            {
+                if (miEl.ValueKind != JsonValueKind.Array || miEl.GetArrayLength() == 0 ||
+                    miEl.EnumerateArray().Any(e => e.ValueKind != JsonValueKind.String || e.GetString()!.Length == 0))
+                    throw new InvalidOperationException(
+                        $"expected-errors.json {fieldName}[{idx}]: 'messageIncludes' must be a non-empty array of non-empty strings");
+                messageIncludes = miEl.EnumerateArray().Select(e => e.GetString()!).ToList();
+            }
+            entries.Add(new ExpectedError(codeProp.GetString()!, source, messageIncludes));
             idx++;
         }
         return entries;

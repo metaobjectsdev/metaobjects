@@ -62,7 +62,7 @@ internal class KotlinCodegenMatchesReferenceTest {
                 ExpectedColumn("id", families = setOf("long")),
                 ExpectedColumn("tempC", families = setOf("float")),
                 ExpectedColumn("massKg", families = setOf("double")),
-                ExpectedColumn("preciseKg", families = setOf("decimal")),
+                ExpectedColumn("preciseKg", families = setOf("decimal", "portableDecimal")),
             ),
         ),
         "ProgramView" to EntityExpectation(
@@ -99,8 +99,8 @@ internal class KotlinCodegenMatchesReferenceTest {
         // through a generated String-typed entity, so there is no mismatch for it to hold).
         "Asset" to EntityExpectation(
             columns = listOf(
-                ExpectedColumn("id", families = setOf("uuid")),
-                ExpectedColumn("ownerId", families = setOf("uuid")),
+                ExpectedColumn("id", families = setOf("uuid", "portableUuid")),
+                ExpectedColumn("ownerId", families = setOf("uuid", "portableUuid")),
                 ExpectedColumn("externalId", families = setOf("uuidString")),
                 ExpectedColumn("payload", families = setOf("jsonb")),
                 ExpectedColumn("recordedAt", families = setOf("instantWithTimeZone")),
@@ -119,10 +119,10 @@ internal class KotlinCodegenMatchesReferenceTest {
                 ExpectedColumn("labels", families = setOf("long"), nullable = false),
                 ExpectedColumn("slots", families = setOf("long"), nullable = false),
                 ExpectedColumn("totalMinutes", families = setOf("long"), nullable = true),
-                ExpectedColumn("avgMinutes", families = setOf("decimal"), nullable = true),
+                ExpectedColumn("avgMinutes", families = setOf("decimal", "portableDecimal"), nullable = true),
                 ExpectedColumn("minMinutes", families = setOf("integer"), nullable = true),
                 ExpectedColumn("maxMinutes", families = setOf("integer"), nullable = true),
-                ExpectedColumn("longShare", families = setOf("decimal"), nullable = true),
+                ExpectedColumn("longShare", families = setOf("decimal", "portableDecimal"), nullable = true),
             ),
             report = "v_program_minutes",
         ),
@@ -130,7 +130,7 @@ internal class KotlinCodegenMatchesReferenceTest {
             columns = listOf(
                 ExpectedColumn("weeks", families = setOf("long"), nullable = false),
                 ExpectedColumn("totalMinutes", families = setOf("long"), nullable = true),
-                ExpectedColumn("longShare", families = setOf("decimal"), nullable = true),
+                ExpectedColumn("longShare", families = setOf("decimal", "portableDecimal"), nullable = true),
             ),
             report = "v_fitness_totals",
         ),
@@ -172,8 +172,8 @@ internal class KotlinCodegenMatchesReferenceTest {
                 ExpectedColumn("weeks", families = setOf("long"), nullable = false),
                 ExpectedColumn("totalMinutes", families = setOf("long"), nullable = true),
                 ExpectedColumn("totalMinutesOrZero", families = setOf("long"), nullable = false),
-                ExpectedColumn("longShare", families = setOf("decimal"), nullable = true),
-                ExpectedColumn("longShareOrZero", families = setOf("decimal"), nullable = false),
+                ExpectedColumn("longShare", families = setOf("decimal", "portableDecimal"), nullable = true),
+                ExpectedColumn("longShareOrZero", families = setOf("decimal", "portableDecimal"), nullable = false),
             ),
             report = "v_program_roster",
         ),
@@ -210,7 +210,7 @@ internal class KotlinCodegenMatchesReferenceTest {
             columns = listOf(
                 ExpectedColumn("weeks", families = setOf("long"), nullable = false),
                 ExpectedColumn("totalMinutesOrZero", families = setOf("long"), nullable = false),
-                ExpectedColumn("longShareOrZero", families = setOf("decimal"), nullable = false),
+                ExpectedColumn("longShareOrZero", families = setOf("decimal", "portableDecimal"), nullable = false),
             ),
             report = "v_fitness_totals_filled",
         ),
@@ -223,9 +223,9 @@ internal class KotlinCodegenMatchesReferenceTest {
                 ExpectedColumn("avgMassKg", families = setOf("double"), nullable = true),
                 ExpectedColumn("maxTempC", families = setOf("float"), nullable = true),
                 ExpectedColumn("minTempC", families = setOf("float"), nullable = true),
-                ExpectedColumn("totalPreciseKg", families = setOf("decimal"), nullable = true),
-                ExpectedColumn("avgPreciseKg", families = setOf("decimal"), nullable = true),
-                ExpectedColumn("maxPreciseKg", families = setOf("decimal"), nullable = true),
+                ExpectedColumn("totalPreciseKg", families = setOf("decimal", "portableDecimal"), nullable = true),
+                ExpectedColumn("avgPreciseKg", families = setOf("decimal", "portableDecimal"), nullable = true),
+                ExpectedColumn("maxPreciseKg", families = setOf("decimal", "portableDecimal"), nullable = true),
                 ExpectedColumn("heavyReadings", families = setOf("long"), nullable = false),
             ),
             report = "v_measurement_stats",
@@ -233,8 +233,8 @@ internal class KotlinCodegenMatchesReferenceTest {
         "MeasurementStatsFilled" to EntityExpectation(
             columns = listOf(
                 ExpectedColumn("readings", families = setOf("long"), nullable = false),
-                ExpectedColumn("avgPreciseKgOrMinusOne", families = setOf("decimal"), nullable = false),
-                ExpectedColumn("maxPreciseKgOrZero", families = setOf("decimal"), nullable = false),
+                ExpectedColumn("avgPreciseKgOrMinusOne", families = setOf("decimal", "portableDecimal"), nullable = false),
+                ExpectedColumn("maxPreciseKgOrZero", families = setOf("decimal", "portableDecimal"), nullable = false),
             ),
             report = "v_measurement_stats_filled",
         ),
@@ -256,10 +256,10 @@ internal class KotlinCodegenMatchesReferenceTest {
                 ExpectedColumn("level", families = setOf("varchar", "enumerationByName"), nullable = false),
                 ExpectedColumn("legacyStatus", families = setOf("customEnumeration"), nullable = true),
                 ExpectedColumn("dateKey", families = setOf("date"), nullable = false),
-                ExpectedColumn("uuidKey", families = setOf("uuid"), nullable = false),
+                ExpectedColumn("uuidKey", families = setOf("uuid", "portableUuid"), nullable = false),
                 ExpectedColumn("allRows", families = setOf("long"), nullable = false),
                 ExpectedColumn("totalInts", families = setOf("long"), nullable = true),
-                ExpectedColumn("avgDec", families = setOf("decimal"), nullable = true),
+                ExpectedColumn("avgDec", families = setOf("decimal", "portableDecimal"), nullable = true),
                 ExpectedColumn("maxMoney", families = setOf("long"), nullable = true),
                 ExpectedColumn("minLong", families = setOf("long"), nullable = true),
                 ExpectedColumn("highRows", families = setOf("long"), nullable = false),
@@ -272,7 +272,7 @@ internal class KotlinCodegenMatchesReferenceTest {
                 ExpectedColumn("createdAtQuarter", families = setOf("date"), nullable = false),
                 ExpectedColumn("createdAtYear", families = setOf("date"), nullable = false),
                 ExpectedColumn("programs", families = setOf("long"), nullable = false),
-                ExpectedColumn("avgPrice", families = setOf("decimal"), nullable = true),
+                ExpectedColumn("avgPrice", families = setOf("decimal", "portableDecimal"), nullable = true),
                 ExpectedColumn("cheapest", families = setOf("long"), nullable = true),
                 ExpectedColumn("priciest", families = setOf("long"), nullable = true),
             ),
@@ -290,7 +290,7 @@ internal class KotlinCodegenMatchesReferenceTest {
         "ProgramsEmptyScope" to EntityExpectation(
             columns = listOf(
                 ExpectedColumn("programs", families = setOf("long"), nullable = false),
-                ExpectedColumn("avgPriceOrMinusOne", families = setOf("decimal"), nullable = false),
+                ExpectedColumn("avgPriceOrMinusOne", families = setOf("decimal", "portableDecimal"), nullable = false),
             ),
             report = "v_programs_empty_scope",
         ),
@@ -339,6 +339,26 @@ internal class KotlinCodegenMatchesReferenceTest {
                 ExpectedColumn("distinctRefs", families = setOf("long"), nullable = false),
             ),
             report = "v_auths_by_kind",
+        ),
+        "EntryTotals" to EntityExpectation(
+            columns = listOf(
+                ExpectedColumn("bucket", families = setOf("varchar"), nullable = false),
+                ExpectedColumn("entries", families = setOf("long"), nullable = false),
+                ExpectedColumn("total", families = setOf("decimal", "portableDecimal"), nullable = true),
+                ExpectedColumn("totalOrZero", families = setOf("decimal", "portableDecimal"), nullable = false),
+                ExpectedColumn("mean", families = setOf("decimal", "portableDecimal"), nullable = true),
+                ExpectedColumn("top", families = setOf("decimal", "portableDecimal"), nullable = true),
+                ExpectedColumn("flaggedShare", families = setOf("decimal", "portableDecimal"), nullable = true),
+                ExpectedColumn("perFlagged", families = setOf("decimal", "portableDecimal"), nullable = true),
+            ),
+            report = "v_entry_totals",
+        ),
+        "GadgetEventsByLabel" to EntityExpectation(
+            columns = listOf(
+                ExpectedColumn("gadgetLabel", families = setOf("integer"), nullable = false),
+                ExpectedColumn("gadgetEvents", families = setOf("long"), nullable = false),
+            ),
+            report = "v_gadget_events_by_label",
         ),
     )
 

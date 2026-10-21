@@ -74,6 +74,8 @@ function renderFieldEntry(f: UiFieldDescriptor): string {
     `view: ${JSON.stringify(f.view)}`,
   ];
   if (f.htmlType !== undefined) entries.push(`htmlType: ${JSON.stringify(f.htmlType)}`);
+  if (f.step !== undefined) entries.push(`step: ${JSON.stringify(f.step)}`);
+  if (f.inputMode !== undefined) entries.push(`inputMode: ${JSON.stringify(f.inputMode)}`);
   if (f.rules.length > 0) entries.push(`rules: { ${f.rules.map(renderRule).join(", ")} }`);
 
   // A `field.enum`'s member symbols. Emitted whenever the field has them, because the

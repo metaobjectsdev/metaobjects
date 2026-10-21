@@ -50,7 +50,7 @@ from metaobjects.codegen.generator import EmittedFile, GenContext, Generator, pe
 from metaobjects.codegen.generators.tph_plan import TphPlan, is_tph_subtype, tph_plan_for
 from metaobjects.codegen.instance_artifacts import has_item_route
 from metaobjects.source_resolution import primary_rdb_source
-from metaobjects.codegen.type_map import PyType, py_type_for
+from metaobjects.codegen.type_map import PyType, field_is_array, py_type_for
 from metaobjects.meta.core.field import field_constants as fc
 from metaobjects.loader.validate_field_mutability import (
     is_read_only_mutability,
@@ -93,7 +93,7 @@ OWNED_RUNTIME = False
 
 #: The helper runtime modules the emitted router imports (ADR-0034 Amendment 3: helper
 #: tier, not core). Listed on the registry entry too, which is what ``eject`` copies.
-RUNTIME_MODULES: tuple[str, ...] = ("constraint_errors", "filter_parser")
+RUNTIME_MODULES: tuple[str, ...] = ("constraint_errors", "decimal_wire", "filter_parser")
 
 #: The generated subpackage an owned router emits the runtime into.
 RUNTIME_SUBPACKAGE = "_runtime"
@@ -148,7 +148,71 @@ def _scalar_fields(entity: MetaObject) -> list[MetaField]:
     """All effective fields minus ObjectField — same gate the Java/Kotlin
     controllers use for the sort allowlist (object fields have no plain
     column to sort on)."""
-    return [f for f in entity.fields() if f.sub_type != fc.FIELD_SUBTYPE_OBJECT]
+    fields = [f for f in entity.fields() if f.sub_type != fc.FIELD_SUBTYPE_OBJECT]
+    if entity.sub_type == OBJECT_SUBTYPE_REPORT:
+        # A derived report field over an array or a map is one jsonb value: ordering by it is
+        # meaningless, so it is not sortable (nor filterable, see the filter allowlist).
+        fields = [f for f in fields if f.sub_type != fc.FIELD_SUBTYPE_MAP and not field_is_array(f)]
+    return fields
+
+
+#: ADR-0019 Amendment 1 (W2): a request body's decimal fields are parsed exactly (no float
+#: detour) before validation; a malformed one is the cross-port 400.
+_DECIMAL_COERCE: list[str] = [
+    "    if dto is None:  # the body was not a JSON object: the cross-port 400, not FastAPI's 422",
+    '        return JSONResponse(status_code=400, content={"error": "validation"})',
+    "    try:",
+    "        dto = coerce_decimal_fields(dto, _DECIMAL_FIELDS, _DECIMAL_LIMITS)",
+    "    except ValueError:",
+    '        return JSONResponse(status_code=400, content={"error": "validation"})',
+]
+
+#: The request-body dependency of every write route: the body is read with
+#: ``parse_float=Decimal`` so a JSON number never passes through a ``float`` (W2). A body that
+#: is not a JSON object yields ``None`` and the route answers the cross-port
+#: ``400 {"error": "validation"}`` (Java and Kotlin do; FastAPI's own 422 is not that contract).
+_JSON_BODY_LINES: list[str] = [
+    "async def _json_body(request: Request) -> dict[str, Any] | None:",
+    '    """GENERATED — the request body as a JSON object (non-integer numbers are exact `Decimal`s), or None."""',
+    "    try:",
+    "        return parse_json_object(await request.body())",
+    "    except ValueError:",
+    "        return None",
+]
+
+
+def _decimal_field_names(entities: list[MetaObject]) -> list[str]:
+    """Names of the ``field.decimal`` fields across *entities* (ADR-0039 resolving), in
+    declaration order, de-duplicated."""
+    seen: dict[str, None] = {}
+    for entity in entities:
+        for f in entity.fields():
+            if f.sub_type == fc.FIELD_SUBTYPE_DECIMAL:
+                seen.setdefault(f.name, None)
+    return list(seen)
+
+
+def _decimal_limits(entities: list[MetaObject]) -> dict[str, tuple[int, int]]:
+    """``{name: (precision, scale)}`` for each decimal field declaring ``@precision``
+    (ADR-0039 resolving; the first declaration of a name wins). The column's range (W3):
+    a value with more fraction digits than the scale, or more integer digits than
+    ``precision - scale``, is refused on input."""
+    out: dict[str, tuple[int, int]] = {}
+    for entity in entities:
+        for f in entity.fields():
+            if f.sub_type != fc.FIELD_SUBTYPE_DECIMAL or f.name in out:
+                continue
+            precision = f.attrs().get(fc.FIELD_ATTR_PRECISION)
+            scale = f.attrs().get(fc.FIELD_ATTR_SCALE, 0)
+            if isinstance(precision, int) and not isinstance(precision, bool) and isinstance(scale, int):
+                out[f.name] = (precision, scale)
+    return out
+
+
+def _decimal_limits_lines(entities: list[MetaObject]) -> list[str]:
+    limits = _decimal_limits(entities)
+    body = "{" + ", ".join(f'"{n}": ({p}, {sc})' for n, (p, sc) in limits.items()) + "}"
+    return ["", "", f"_DECIMAL_LIMITS: dict[str, tuple[int, int]] = {body}"]
 
 
 def _required_field_names(entity: MetaObject) -> list[str]:
@@ -185,7 +249,7 @@ def _frozen_names(entity: MetaObject) -> list[str]:
 
     ADR-0045: the OUTERMOST generated write artifact enforces the mode, and for
     FastAPI that is the ROUTER, not the ``<Entity>Patch`` model — the handler binds
-    ``dto: dict[str, Any]`` (the raw body) and passes THAT to the repository, so a
+    ``dto`` (the raw body as a dict) and passes THAT to the repository, so a
     field merely absent from the patch model still reaches the row. @autoSet gets
     away with it because the router OVERWRITES its key server-side; a writeOnce
     field has no server value to overwrite, so it must be popped explicitly."""
@@ -603,12 +667,16 @@ class RouterGenerator:
                 f"    filter_result = parse_filter(request.query_params, {fields_const}, {ops_const})",
                 "    if filter_result.error_envelope is not None:",
                 "        return JSONResponse(status_code=400, content=filter_result.error_envelope)",
-                "    predicates = filter_result.predicates",
+                "    predicates, decimal_error = coerce_decimal_predicates(",
+                "        filter_result.predicates, _DECIMAL_FIELDS",
+                "    )",
+                "    if decimal_error is not None:",
+                "        return JSONResponse(status_code=400, content=decimal_error)",
                 "    rows = repo.list(actual_limit, actual_offset, sort_clause, predicates)",
                 "    if with_count == 1:",
                 "        total = repo.count(predicates)",
-                '        return {"rows": rows, "total": total}',
-                "    return rows",
+                '        return {"rows": to_wire(rows), "total": total}',
+                "    return to_wire(rows)",
             ]
         if name == "get":
             return [
@@ -620,15 +688,16 @@ class RouterGenerator:
                 f"    row = repo.find_by_id({pk_param})",
                 "    if row is None:",
                 '        return JSONResponse(status_code=404, content={"error": "not_found"})',
-                "    return row",
+                "    return to_wire(row)",
             ]
         if name == "create":
             return [
                 '@router.post("", status_code=status.HTTP_201_CREATED)',
                 f"def create_{snake}(",
-                "    dto: dict[str, Any],",
+                "    dto: Annotated[dict[str, Any] | None, Depends(_json_body)],",
                 f"    repo: Annotated[{repo_class}, Depends(get_repository)],",
                 ") -> Any:",
+                *_DECIMAL_COERCE,
                 "    # FR-036: run the generated field constraints (length / pattern /",
                 "    # numeric bounds) before persisting; a violation is the cross-port 400.",
                 "    try:",
@@ -640,7 +709,7 @@ class RouterGenerator:
                 # (a fresh row's createdAt == updatedAt), ignoring any caller-supplied value.
                 *create_autoset,
                 "    try:",
-                "        return repo.create(dto)",
+                "        return to_wire(repo.create(dto))",
                 *_CONSTRAINT_EXCEPT,
             ]
         if name == "update":
@@ -649,9 +718,10 @@ class RouterGenerator:
                 f'@router.put("/{{{pk_param}}}")',
                 f"def update_{snake}(",
                 f"    {pk_param}: {pk_type},",
-                "    dto: dict[str, Any],",
+                "    dto: Annotated[dict[str, Any] | None, Depends(_json_body)],",
                 f"    repo: Annotated[{repo_class}, Depends(get_repository)],",
                 ") -> Any:",
+                *_DECIMAL_COERCE,
                 "    # FR-035 PATCH-2: an explicit null on a @required field is a 400 —",
                 "    # a present null on a NON-required field falls through and clears it,",
                 "    # and an OMITTED required field is untouched (never a 400).",
@@ -674,7 +744,7 @@ class RouterGenerator:
                 *_CONSTRAINT_EXCEPT,
                 "    if saved is None:",
                 '        return JSONResponse(status_code=404, content={"error": "not_found"})',
-                "    return saved",
+                "    return to_wire(saved)",
             ]
         if name == "delete":
             return [
@@ -707,8 +777,8 @@ class RouterGenerator:
             f"    {pk_param}: {pk_type},",
             f"    repo: Annotated[{repo_class}, Depends(get_repository)],",
             ") -> list[Any]:",
-            f"    return repo.find_related_{d.relation_name}"
-            f"({pk_param}{_target_subtype_arg(d, {d.target_discriminator})})",
+            f"    return to_wire(repo.find_related_{d.relation_name}"
+            f"({pk_param}{_target_subtype_arg(d, {d.target_discriminator})}))",
         ]
 
     def _emit_tph_m2m_route(
@@ -764,8 +834,8 @@ class RouterGenerator:
                 "        return []",
             ]
         lines.append(
-            f"    return repo.find_related_{d.relation_name}"
-            f"({subtype_expr}, {pk_param}{_target_subtype_arg(d, target_discs)})"
+            f"    return to_wire(repo.find_related_{d.relation_name}"
+            f"({subtype_expr}, {pk_param}{_target_subtype_arg(d, target_discs)}))"
         )
         return lines
 
@@ -786,12 +856,16 @@ class RouterGenerator:
             f"    filter_result = parse_filter(request.query_params, {fields_const}, {ops_const})",
             "    if filter_result.error_envelope is not None:",
             "        return JSONResponse(status_code=400, content=filter_result.error_envelope)",
-            "    predicates = filter_result.predicates",
+            "    predicates, decimal_error = coerce_decimal_predicates(",
+            "        filter_result.predicates, _DECIMAL_FIELDS",
+            "    )",
+            "    if decimal_error is not None:",
+            "        return JSONResponse(status_code=400, content=decimal_error)",
             f"    rows = {repo_var}.list({subtype_expr}, actual_limit, actual_offset, sort_clause, predicates)",
             "    if with_count == 1:",
             f"        total = {repo_var}.count({subtype_expr}, predicates)",
-            '        return {"rows": rows, "total": total}',
-            "    return rows",
+            '        return {"rows": to_wire(rows), "total": total}',
+            "    return to_wire(rows)",
         ]
 
     def _render_tph_router(
@@ -866,6 +940,9 @@ class RouterGenerator:
                     req_seen.add(name)
                     required_names.append(name)
         required_set_body = _py_set_literal(required_names, frozen=True)
+        decimal_set_body = _py_set_literal(
+            _decimal_field_names([entity, *(st.entity for st in plan.subtypes)]), frozen=True
+        )
         # FR-037 R1 — non-readWrite @mutability across the base AND every subtype.
         # Union, stable order: ADR-0045 says the OUTERMOST artifact enforces the mode,
         # and a TPH per-subtype handler is a SEPARATE code path (the 0.19.4 lesson).
@@ -950,6 +1027,12 @@ class RouterGenerator:
         parts.append(f"from {_runtime_module('constraint_errors')} import (")
         parts.append("    classify_constraint_error,")
         parts.append(")")
+        parts.append(f"from {_runtime_module('decimal_wire')} import (")
+        parts.append("    coerce_decimal_fields,")
+        parts.append("    coerce_decimal_predicates,")
+        parts.append("    parse_json_object,")
+        parts.append("    to_wire,")
+        parts.append(")")
         parts.append(f"from {_runtime_module('filter_parser')} import (")
         parts.append("    FilterPredicate,")
         parts.append("    parse_filter,")
@@ -970,6 +1053,13 @@ class RouterGenerator:
         parts.append("")
         parts.append("")
         parts.append(f"_REQUIRED_FIELDS: frozenset[str] = {required_set_body}")
+        parts.append("")
+        parts.append("")
+        parts.append(f"_DECIMAL_FIELDS: frozenset[str] = {decimal_set_body}")
+        parts.extend(_decimal_limits_lines([entity, *(st.entity for st in plan.subtypes)]))
+        parts.append("")
+        parts.append("")
+        parts.extend(_JSON_BODY_LINES)
         parts.append("")
         parts.append("")
         # FR-037 R1 — the names a PATCH must never write. Emitted even when EMPTY so
@@ -1045,9 +1135,10 @@ class RouterGenerator:
             parts.append("")
             parts.append(f'@router.post("/{seg}", status_code=status.HTTP_201_CREATED)')
             parts.append(f"def create_{plural}_{sfx}(")
-            parts.append("    dto: dict[str, Any],")
+            parts.append("    dto: Annotated[dict[str, Any] | None, Depends(_json_body)],")
             parts.append(f"    repo: Annotated[{repo_class}, Depends(get_repository)],")
             parts.append(") -> Any:")
+            parts.extend(_DECIMAL_COERCE)
             parts.append("    # FR-036: run the subtype's field constraints before persisting.")
             parts.append("    try:")
             parts.append(f"        {sub}Create(**dto)")
@@ -1057,7 +1148,7 @@ class RouterGenerator:
             # non-@autoSet hierarchy — byte-identical output).
             parts.extend(create_autoset)
             parts.append("    try:")
-            parts.append(f'        return repo.create("{val}", dto)')
+            parts.append(f'        return to_wire(repo.create("{val}", dto))')
             parts.extend(_CONSTRAINT_EXCEPT)
             parts.append("")
             parts.append("")
@@ -1069,16 +1160,17 @@ class RouterGenerator:
             parts.append(f'    row = repo.find_by_id("{val}", {pk_param})')
             parts.append("    if row is None:")
             parts.append('        return JSONResponse(status_code=404, content={"error": "not_found"})')
-            parts.append("    return row")
+            parts.append("    return to_wire(row)")
             parts.append("")
             parts.append("")
             parts.append(f'@router.patch("/{seg}/{{{pk_param}}}")')
             parts.append(f'@router.put("/{seg}/{{{pk_param}}}")')
             parts.append(f"def update_{plural}_{sfx}(")
             parts.append(f"    {pk_param}: {pk_type},")
-            parts.append("    dto: dict[str, Any],")
+            parts.append("    dto: Annotated[dict[str, Any] | None, Depends(_json_body)],")
             parts.append(f"    repo: Annotated[{repo_class}, Depends(get_repository)],")
             parts.append(") -> Any:")
+            parts.extend(_DECIMAL_COERCE)
             parts.append("    # FR-035 PATCH-2: an explicit null on a @required field is a 400.")
             parts.append("    for _k in _REQUIRED_FIELDS:")
             parts.append("        if _k in dto and dto[_k] is None:")
@@ -1097,7 +1189,7 @@ class RouterGenerator:
             parts.extend(_CONSTRAINT_EXCEPT)
             parts.append("    if saved is None:")
             parts.append('        return JSONResponse(status_code=404, content={"error": "not_found"})')
-            parts.append("    return saved")
+            parts.append("    return to_wire(saved)")
             parts.append("")
             parts.append("")
             parts.append(f'@router.delete("/{seg}/{{{pk_param}}}", status_code=status.HTTP_204_NO_CONTENT)')
@@ -1147,7 +1239,7 @@ class RouterGenerator:
         parts.append(f"    row = repo.find_by_id(None, {pk_param})")
         parts.append("    if row is None:")
         parts.append('        return JSONResponse(status_code=404, content={"error": "not_found"})')
-        parts.append("    return row")
+        parts.append("    return to_wire(row)")
         parts.append("")
 
         # FW-8 rule (a): every relationship the BASE resolves — every row of the
@@ -1252,6 +1344,7 @@ class RouterGenerator:
         # FR-035 PATCH-2: an explicit null on a @required field (scalar or jsonb)
         # is a 400 — the update handler guards these before the repo call.
         required_set_body = _py_set_literal(_required_field_names(entity), frozen=True)
+        decimal_set_body = _py_set_literal(_decimal_field_names([entity]), frozen=True)
         # FR-037 R1 — the names a PATCH must never write (readOnly / writeOnce).
         frozen_set_body = _py_set_literal(_frozen_names(entity), frozen=True)
 
@@ -1302,6 +1395,12 @@ class RouterGenerator:
         parts.append(f"from {_runtime_module('constraint_errors')} import (")
         parts.append("    classify_constraint_error,")
         parts.append(")")
+        parts.append(f"from {_runtime_module('decimal_wire')} import (")
+        parts.append("    coerce_decimal_fields,")
+        parts.append("    coerce_decimal_predicates,")
+        parts.append("    parse_json_object,")
+        parts.append("    to_wire,")
+        parts.append(")")
         parts.append(f"from {_runtime_module('filter_parser')} import (")
         parts.append("    FilterPredicate,")
         parts.append("    parse_filter,")
@@ -1323,6 +1422,13 @@ class RouterGenerator:
         parts.append("")
         parts.append("")
         parts.append(f"_REQUIRED_FIELDS: frozenset[str] = {required_set_body}")
+        parts.append("")
+        parts.append("")
+        parts.append(f"_DECIMAL_FIELDS: frozenset[str] = {decimal_set_body}")
+        parts.extend(_decimal_limits_lines([entity]))
+        parts.append("")
+        parts.append("")
+        parts.extend(_JSON_BODY_LINES)
         parts.append("")
         parts.append("")
         # FR-037 R1 — the names a PATCH must never write. Emitted even when EMPTY so
@@ -1496,6 +1602,10 @@ class RouterGenerator:
         parts.append("from fastapi.responses import JSONResponse")
         parts.append("from pydantic import BaseModel")
         parts.append("")
+        parts.append(f"from {_runtime_module('decimal_wire')} import (")
+        parts.append("    coerce_decimal_predicates,")
+        parts.append("    to_wire,")
+        parts.append(")")
         parts.append(f"from {_runtime_module('filter_parser')} import (")
         parts.append("    FilterPredicate,")
         parts.append("    parse_filter,")
@@ -1507,6 +1617,12 @@ class RouterGenerator:
         parts.append("")
         parts.append("")
         parts.extend(_sort_type_and_tables_lines(sort_field_nodes))
+        parts.append("")
+        parts.append("")
+        parts.append(
+            "_DECIMAL_FIELDS: frozenset[str] = "
+            + _py_set_literal(_decimal_field_names([entity]), frozen=True)
+        )
         parts.append("")
         parts.append("")
         parts.extend(_sort_parse_fn_lines())

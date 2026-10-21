@@ -182,7 +182,7 @@ def test_an_ejected_generator_writes_what_the_packaged_one_writes(name: str, tmp
         # An owned router emits its runtime into the generated package and imports it there.
         runtime_files = {k for k in mine if k.startswith("_runtime/")}
         assert runtime_files and runtime_files == {
-            f"_runtime/{m}.py" for m in ("__init__", "constraint_errors", "filter_parser")
+            f"_runtime/{m}.py" for m in ("__init__", "constraint_errors", "decimal_wire", "filter_parser")
         }
         mine = {k: v for k, v in mine.items() if k not in runtime_files}
         packaged = {k: v.replace("metaobjects.codegen.runtime.", "._runtime.")

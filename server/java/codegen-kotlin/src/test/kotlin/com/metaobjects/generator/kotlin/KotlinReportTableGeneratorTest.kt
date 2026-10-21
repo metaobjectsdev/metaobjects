@@ -1,6 +1,7 @@
 package com.metaobjects.generator.kotlin
 
 import com.metaobjects.generator.Generator
+import com.metaobjects.MetaDataException
 import com.metaobjects.generator.GeneratorException
 import com.metaobjects.loader.MetaDataLoader
 import com.metaobjects.metadata.ktx.loadDirectory
@@ -117,10 +118,10 @@ class KotlinReportTableGeneratorTest {
             |    val labels = long("labels")
             |    val slots = long("slots")
             |    val totalMinutes = long("totalMinutes").nullable()
-            |    val avgMinutes = decimal("avgMinutes", 38, 18).nullable()
+            |    val avgMinutes = portableDecimal("avgMinutes", 38, 18).nullable()
             |    val minMinutes = integer("minMinutes").nullable()
             |    val maxMinutes = integer("maxMinutes").nullable()
-            |    val longShare = decimal("longShare", 38, 18).nullable()
+            |    val longShare = portableDecimal("longShare", 38, 18).nullable()
             |}
             |""".trimMargin(),
             canonical().getValue("fitness/ProgramMinutesTable.kt"),
@@ -175,12 +176,13 @@ class KotlinReportTableGeneratorTest {
 
     @Test
     fun `the naming strategy applies to the derived field name`() {
-        // The project DEFAULT (snake_case, ADR-0058) -- not this corpus's committed
-        // naming.columns: literal, which canonical()/canonicalLoader() apply; a plain
-        // loadDirectory() here keeps the root at PhysicalNaming.DEFAULT.
-        val src = emit(loadDirectory("report-table-default-naming", canonicalDir()))
-            .getValue("fitness/ProgramMinutesTable.kt")
-        assertTrue("    val avgMinutes = decimal(\"avg_minutes\", 38, 18).nullable()\n" in src, src)
+        // The project DEFAULT (snake_case, ADR-0058), set explicitly: a directory loader now finds
+        // this corpus's committed naming.columns: literal config by itself (B1), so the root is
+        // put back to PhysicalNaming.DEFAULT to pin the strategy rather than the discovery.
+        val loader = loadDirectory("report-table-default-naming", canonicalDir())
+        loader.root.physicalNaming = com.metaobjects.database.PhysicalNaming.DEFAULT
+        val src = emit(loader).getValue("fitness/ProgramMinutesTable.kt")
+        assertTrue("    val avgMinutes = portableDecimal(\"avg_minutes\", 38, 18).nullable()\n" in src, src)
         assertTrue("    val programTitle = varchar(\"program_title\", 200)\n" in src, src)
     }
 
@@ -193,7 +195,7 @@ class KotlinReportTableGeneratorTest {
         assertFalse("org.jetbrains.exposed.sql" in byMonth, byMonth)
         assertTrue("    val createdAtMonth = date(\"createdAtMonth\")\n" in byMonth, byMonth)
         val minutes = files.getValue("fitness/ProgramMinutesTable.kt")
-        assertTrue("    val avgMinutes = decimal(\"avgMinutes\", 38, 18).nullable()\n" in minutes, minutes)
+        assertTrue("    val avgMinutes = portableDecimal(\"avgMinutes\", 38, 18).nullable()\n" in minutes, minutes)
     }
 
     @Test
@@ -237,8 +239,8 @@ class KotlinReportTableGeneratorTest {
             |    val weeks = long("weeks")
             |    val totalMinutes = long("totalMinutes").nullable()
             |    val totalMinutesOrZero = long("totalMinutesOrZero")
-            |    val longShare = decimal("longShare", 38, 18).nullable()
-            |    val longShareOrZero = decimal("longShareOrZero", 38, 18)
+            |    val longShare = portableDecimal("longShare", 38, 18).nullable()
+            |    val longShareOrZero = portableDecimal("longShareOrZero", 38, 18)
             |}
             |""".trimMargin(),
             canonical().getValue("fitness/ProgramRosterTable.kt"),
@@ -253,7 +255,7 @@ class KotlinReportTableGeneratorTest {
         // With no dimensions and no @spine, a defaulted sum and ratio are still non-null.
         val filled = canonical().getValue("fitness/FitnessTotalsFilledTable.kt")
         assertTrue("    val totalMinutesOrZero = long(\"totalMinutesOrZero\")\n" in filled, filled)
-        assertTrue("    val longShareOrZero = decimal(\"longShareOrZero\", 38, 18)\n" in filled, filled)
+        assertTrue("    val longShareOrZero = portableDecimal(\"longShareOrZero\", 38, 18)\n" in filled, filled)
         assertFalse(".nullable()" in filled, filled)
     }
 
@@ -324,9 +326,9 @@ class KotlinReportTableGeneratorTest {
         // The Exposed columns.
         assertTrue("    val revenueOrZero = long(\"revenueOrZero\")\n" in table, table)
         assertTrue("    val smallestOrZero = long(\"smallestOrZero\")\n" in table, table)
-        assertTrue("    val perSaleOrZero = decimal(\"perSaleOrZero\", 38, 18)\n" in table, table)
+        assertTrue("    val perSaleOrZero = portableDecimal(\"perSaleOrZero\", 38, 18)\n" in table, table)
         assertTrue("    val revenue = long(\"revenue\").nullable()\n" in table, table)
-        assertTrue("    val perSale = decimal(\"perSale\", 38, 18).nullable()\n" in table, table)
+        assertTrue("    val perSale = portableDecimal(\"perSale\", 38, 18).nullable()\n" in table, table)
         // The row data class: a non-null property has no `?` and no `= null` default.
         assertTrue("  public val revenueOrZero: Long,\n" in row, row)
         assertTrue("  public val smallestOrZero: Long,\n" in row, row)
@@ -425,13 +427,17 @@ class KotlinReportTableGeneratorTest {
     }
 
     @Test
-    fun `a report over a kind the lowering skips generates nothing`() {
+    fun `a report over a kind the lowering skips is refused at load`() {
+        // R10: the loader refuses it, so no generator is handed a report it would skip.
         for (kind in listOf(
             """"@kind": "materializedView", "@materializedView": "mv_sale_totals"""",
             """"@kind": "storedProc", "@procedure": "sale_totals"""",
             """"@kind": "tableFunction", "@function": "sale_totals"""",
         )) {
-            assertEquals(emptyMap(), reportFiles(model(reportSource = """{ "source.rdb": { $kind } }""")), kind)
+            val e = assertFailsWith<MetaDataException>(kind) {
+                reportFiles(model(reportSource = """{ "source.rdb": { $kind } }"""))
+            }
+            assertTrue("a report is read through a view" in loadMessage(e), "$kind: ${loadMessage(e)}")
         }
     }
 
@@ -651,16 +657,16 @@ class KotlinReportTableGeneratorTest {
     // --- What generates nothing, and what is refused ---------------------------------------
 
     @Test
-    fun `an abstract view-backed report generates nothing`() {
-        // An abstract object gets no table object in this port, report or not. The
-        // TypeScript, Java and Python runtimes still read the view (docs: Known limits).
+    fun `an abstract report is refused at load`() {
+        // R11: a report cannot be abstract, so the generators never see one.
         val json = model().replace(""""name": "SaleTotals",""", """"name": "SaleTotals", "abstract": true,""")
         assertTrue("\"abstract\": true" in json)
-        assertEquals(emptyMap(), reportFiles(json))
+        val e = assertFailsWith<MetaDataException> { reportFiles(json) }
+        assertTrue("a report cannot be abstract" in loadMessage(e), loadMessage(e))
     }
 
     @Test
-    fun `a dimension over a field object is refused, naming the report and the dimension`() {
+    fun `a dimension over a field object is refused at load, naming the dimension's field`() {
         val json = """{
           "metadata.root": { "package": "acme::shop", "children": [
             { "object.value": { "name": "Address", "children": [ { "field.string": { "name": "city" } } ] } },
@@ -677,16 +683,14 @@ class KotlinReportTableGeneratorTest {
                 "children": [ { "source.rdb": { "@kind": "view", "@view": "v_sale_totals" } } ] } }
           ] }
         }"""
-        val e = assertFailsWith<GeneratorException> { reportFiles(json) }
-        assertEquals(
-            "report \"SaleTotals\": its dimension \"destination\" reads \"acme::shop::Sale.shipTo\", a " +
-                "field.object. A report over a field.object is not supported; group by a scalar field.",
-            e.message,
-        )
-        // The same report with no view generates nothing and is not refused.
-        assertEquals(emptyMap(), reportFiles(json.replace(
-            """"children": [ { "source.rdb": { "@kind": "view", "@view": "v_sale_totals" } } ]""", """"children": []""")))
+        // D5: refused by the loader, before the table generator's own backstop could run.
+        val e = assertFailsWith<MetaDataException> { reportFiles(json) }
+        assertTrue("@of 'Sale.shipTo' is a field.object" in loadMessage(e), loadMessage(e))
     }
+
+    /** The loader's refusal text: the exception's own message and every cause's. */
+    private fun loadMessage(e: Throwable): String =
+        generateSequence(e) { it.cause }.mapNotNull { it.message }.joinToString(" | ")
 
     // --- The emitted reports build ------------------------------------------------------
 

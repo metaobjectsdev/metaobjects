@@ -159,6 +159,11 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         // package sharing rationale as the other helpers.
         val packagesNeedingUuidStringHelper = sortedSetOf<String>()
 
+        // Packages that emit at least one table carrying a `field.uuid` or `field.decimal` column.
+        // Each gets ONE shared `MetaPortableColumnTypes.kt` (the engine-aware `Column<UUID>` and
+        // `Column<BigDecimal>` builders), emitted in pass 3e.
+        val packagesNeedingPortableHelper = sortedSetOf<String>()
+
         // Pass 2: emit one Table per entity using its own metadata + the
         // inbound FKs accumulated in Pass 1.
         // FR-024 (ADR-0028): object.projection is emitted too — a projection with
@@ -172,7 +177,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                 emitReport(
                     entity, outRoot, loader,
                     packagesNeedingInstantTzHelper, packagesNeedingInetUriHelper, packagesNeedingJacksonMapper,
-                    packagesNeedingUuidStringHelper,
+                    packagesNeedingUuidStringHelper, packagesNeedingPortableHelper,
                 )
                 continue
             }
@@ -196,7 +201,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                 emitWriteThrough(
                     entity, outRoot, loader, fkMap, refDecorationMap,
                     packagesNeedingInstantTzHelper, packagesNeedingInetUriHelper, packagesNeedingJacksonMapper,
-                    packagesNeedingUuidStringHelper,
+                    packagesNeedingUuidStringHelper, packagesNeedingPortableHelper,
                 )
                 continue
             }
@@ -253,6 +258,9 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             if (entityNeedsUuidStringHelper(entity, loader)) {
                 packagesNeedingUuidStringHelper += PackageMapping.splitFqn(entity.name).first
             }
+            if (entityNeedsPortableHelper(entity, loader)) {
+                packagesNeedingPortableHelper += PackageMapping.splitFqn(entity.name).first
+            }
         }
 
         // Pass 3: emit ONE shared `MetaInstantWithTimeZoneColumnType.kt` per package
@@ -284,6 +292,12 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         for (pkg in packagesNeedingUuidStringHelper) {
             emitUuidStringSupportFile(pkg, outRoot)
         }
+
+        // Pass 3e: ONE shared `MetaPortableColumnTypes.kt` per package that has a `field.uuid` or
+        // `field.decimal` column.
+        for (pkg in packagesNeedingPortableHelper) {
+            emitPortableSupportFile(pkg, outRoot)
+        }
     }
 
     /**
@@ -312,6 +326,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         packagesNeedingInetUriHelper: MutableSet<String>,
         packagesNeedingJacksonMapper: MutableSet<String>,
         packagesNeedingUuidStringHelper: MutableSet<String>,
+        packagesNeedingPortableHelper: MutableSet<String>,
     ) {
         val (pkg, shortName) = PackageMapping.splitFqn(entity.name)
         val writeSource = KotlinGenUtil.writableRdbSource(entity)
@@ -344,6 +359,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         if (entityNeedsInetUriHelper(entity, loader)) packagesNeedingInetUriHelper += pkg
         if (entityNeedsJacksonMapper(entity, loader)) packagesNeedingJacksonMapper += pkg
         if (entityNeedsUuidStringHelper(entity, loader)) packagesNeedingUuidStringHelper += pkg
+        if (entityNeedsPortableHelper(entity, loader)) packagesNeedingPortableHelper += pkg
     }
 
     /**
@@ -386,6 +402,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         packagesNeedingInetUriHelper: MutableSet<String>,
         packagesNeedingJacksonMapper: MutableSet<String>,
         packagesNeedingUuidStringHelper: MutableSet<String>,
+        packagesNeedingPortableHelper: MutableSet<String>,
     ) {
         // Table A, from the one JVM predicate every REST-surface generator asks: a report
         // is served only when it is concrete and its read source is `@kind: view`.
@@ -413,6 +430,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         if (entityNeedsInetUriHelper(model, loader)) packagesNeedingInetUriHelper += pkg
         if (entityNeedsJacksonMapper(model, loader)) packagesNeedingJacksonMapper += pkg
         if (entityNeedsUuidStringHelper(model, loader)) packagesNeedingUuidStringHelper += pkg
+        if (entityNeedsPortableHelper(model, loader)) packagesNeedingPortableHelper += pkg
     }
 
     /**
@@ -522,7 +540,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
      */
     private fun scalarColumnSpec(entity: MetaObject, field: MetaField<*>, colExpr: String, api: ExposedApi): String {
         if (reportPlans[entity]?.unsizedDecimals?.contains(field.name) == true) {
-            return "decimal($colExpr, $REPORT_DECIMAL_PRECISION, $REPORT_DECIMAL_SCALE)"
+            return "${KotlinTypeMapper.EXPOSED_PORTABLE_DECIMAL_FN}($colExpr, $REPORT_DECIMAL_PRECISION, $REPORT_DECIMAL_SCALE)"
         }
         return KotlinTypeMapper.exposedColumnSpec(field, colExpr, api)
     }
@@ -575,6 +593,20 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
      * nested sub-field the same way, so there is no flattened surface to walk here). Mirrors
      * [entityNeedsInetUriHelper]'s direct-field walk.
      */
+    private fun entityNeedsPortableHelper(entity: MetaObject, loader: MetaDataLoader): Boolean {
+        if (entity.metaFields.any { it !is ObjectField && KotlinTypeMapper.usesPortableHelper(it) }) return true
+        // A TPH base's table also carries every subtype's columns.
+        if (KotlinTphPlan.collectSubtypeFields(entity, loader).any { it !is ObjectField && KotlinTypeMapper.usesPortableHelper(it) }) return true
+        for (field in entity.metaFields) {
+            if (field !is ObjectField) continue
+            if (readStorage(field) != STORAGE_FLATTENED) continue
+            val ref = readObjectRef(field) ?: continue
+            val target = KotlinGenUtil.lookupCanonicalObject(loader, ref) ?: continue
+            if (target.metaFields.any { KotlinTypeMapper.usesPortableHelper(it) }) return true
+        }
+        return false
+    }
+
     private fun entityNeedsUuidStringHelper(entity: MetaObject, loader: MetaDataLoader): Boolean =
         entity.metaFields.any { it !is ObjectField && KotlinTypeMapper.usesUuidStringHelper(it) }
 
@@ -616,6 +648,13 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
      * column-builder extension the generated tables call. `internal` keeps it package+module-
      * private while every `*Table.kt` in the package shares the one declaration.
      */
+    private fun emitPortableSupportFile(pkg: String, outRoot: Path) {
+        // The decimal column type reads a SQLite double through the package's generated decimal wire.
+        KotlinDecimalWireEmitter.write(pkg, outRoot)
+        val api = exposedApi()
+        emitSupportFile(pkg, outRoot, PORTABLE_SUPPORT_FILE_NAME, portableSupportFileImports(api), portableSupportBlock())
+    }
+
     private fun emitUuidStringSupportFile(pkg: String, outRoot: Path) {
         val api = exposedApi()
         emitSupportFile(
@@ -1642,6 +1681,79 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             |    registerColumn(name, MetaInetColumnType())
             |""".trimMargin()
         }
+
+        /** File name (sans `.kt`) of the per-package support file for `field.uuid` and `field.decimal` columns. */
+        const val PORTABLE_SUPPORT_FILE_NAME = "MetaPortableColumnTypes"
+
+        /**
+         * Imports for [portableSupportBlock]. 1.x's bare `UUIDColumnType` binds `kotlin.uuid.Uuid`, so
+         * the `java.util.UUID`-backed one comes from `core.java` (the substitution [uuidStringSupportFileImports] makes).
+         */
+        fun portableSupportFileImports(api: ExposedApi): String {
+            val uuidColumnTypeImport =
+                if (api == ExposedApi.V1) ExposedImports.javaUuid("UUIDColumnType")
+                else ExposedImports.core(api, "UUIDColumnType")
+            return """
+            |import java.math.BigDecimal
+            |import java.util.UUID
+            |import ${ExposedImports.core(api, "Column")}
+            |import ${ExposedImports.core(api, "ColumnType")}
+            |import ${ExposedImports.core(api, "DecimalColumnType")}
+            |import ${ExposedImports.core(api, "Table")}
+            |import $uuidColumnTypeImport
+            |import ${ExposedImports.vendors(api, "currentDialect")}
+            |""".trimMargin()
+        }
+
+        /**
+         * Shared support body for [PORTABLE_SUPPORT_FILE_NAME].kt. Exposed binds its `uuid()` as
+         * 16 raw bytes on MySQL and SQLite, whose schemas (and the other ports) store a uuid as
+         * 36-character text, so a filter on the column never matches; and it binds a decimal as a
+         * string on SQLite, which compares that text with a REAL as text. Each type delegates
+         * everything to Exposed's own column type and changes only the value it hands the driver,
+         * and only on the engine that needs it. Postgres is untouched.
+         */
+        fun portableSupportBlock(): String = """
+            |private fun isPostgres(): Boolean = currentDialect.name.equals("postgresql", ignoreCase = true)
+            |
+            |private fun isSqlite(): Boolean = currentDialect.name.equals("sqlite", ignoreCase = true)
+            |
+            |/** GENERATED — do not hand-edit. A `java.util.UUID` column: native `uuid` on Postgres, text elsewhere. */
+            |internal class MetaPortableUuidColumnType : ColumnType<UUID>() {
+            |    private val delegate = UUIDColumnType()
+            |    override fun sqlType(): String = delegate.sqlType()
+            |    override fun valueFromDB(value: Any): UUID = requireNotNull(delegate.valueFromDB(value)) { "null uuid column value" }
+            |    override fun notNullValueToDB(value: UUID): Any =
+            |        if (isPostgres()) delegate.notNullValueToDB(value) else value.toString()
+            |    override fun nonNullValueToString(value: UUID): String =
+            |        if (isPostgres()) delegate.nonNullValueToString(value) else "'${'$'}value'"
+            |}
+            |
+            |/** Column builder for `field.uuid`: a `Column<java.util.UUID>`. */
+            |internal fun Table.portableUuid(name: String): Column<UUID> =
+            |    registerColumn(name, MetaPortableUuidColumnType())
+            |
+            |/** GENERATED — do not hand-edit. A decimal column: the exact decimal everywhere but SQLite, which gets a REAL. */
+            |internal class MetaPortableDecimalColumnType(precision: Int, scale: Int) : ColumnType<BigDecimal>() {
+            |    private val delegate = DecimalColumnType(precision, scale)
+            |    override fun sqlType(): String = delegate.sqlType()
+            |    // ADR-0019 Amendment 1 (W4): SQLite stores a REAL, so a value is read at 15 significant
+            |    // digits, which turns `sum(0.1, 0.2)` (0.30000000000000004) back into 0.3.
+            |    override fun valueFromDB(value: Any): BigDecimal =
+            |        if (isSqlite() && value is Number && value !is BigDecimal) {
+            |            MetaDecimalWire.fromDouble15(value.toDouble())
+            |        } else {
+            |            delegate.valueFromDB(value)
+            |        }
+            |    override fun notNullValueToDB(value: BigDecimal): Any =
+            |        if (isSqlite()) value.toDouble() else delegate.notNullValueToDB(value)
+            |    override fun nonNullValueToString(value: BigDecimal): String = delegate.nonNullValueToString(value)
+            |}
+            |
+            |/** Column builder for `field.decimal`: a `Column<java.math.BigDecimal>`. */
+            |internal fun Table.portableDecimal(name: String, precision: Int, scale: Int): Column<BigDecimal> =
+            |    registerColumn(name, MetaPortableDecimalColumnType(precision, scale))
+            |""".trimMargin()
 
         /**
          * File name (sans `.kt`) of the per-package support file emitted for a `field.string

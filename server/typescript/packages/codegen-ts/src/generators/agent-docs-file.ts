@@ -36,6 +36,7 @@
 // These files are READ, never imported. There is no three-way merge and no hand-edit
 // preservation to think about: regenerate and the page is current.
 
+import { physicalNamingGuideUrl } from "@metaobjectsdev/metadata/release-docs";
 import {
   CARDINALITY_MANY,
   CARDINALITY_ONE,
@@ -214,7 +215,7 @@ export const agentDocsFile = function agentDocsFile(opts?: AgentDocsFileOpts): G
   // option is refused rather than dropped: its value may be the one matching the database.
   const removedNaming = (opts as { columnNamingStrategy?: unknown } | undefined)?.columnNamingStrategy;
   if (removedNaming !== undefined) {
-    throw new Error(physicalNamingRemovedMessage("the columnNamingStrategy option of agentDocsFile()", String(removedNaming)));
+    throw new Error(physicalNamingRemovedMessage("the columnNamingStrategy option of agentDocsFile()", String(removedNaming), physicalNamingGuideUrl()));
   }
   const dir = (opts?.subDir ?? DEFAULT_AGENT_DIR).replace(/\/$/, "");
 

@@ -1,0 +1,39 @@
+{
+  "metadata.root": {
+    "package": "acme::shop",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Item",
+          "children": [
+            { "source.rdb": { "@table": "items" } },
+            { "field.long": { "name": "id" } },
+            { "identity.primary": { "name": "id", "@fields": ["id"] } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Special",
+          "extends": "Item",
+          "children": [
+            { "field.string": { "name": "tag" } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Order",
+          "children": [
+            { "source.rdb": { "@table": "orders" } },
+            { "field.long": { "name": "id" } },
+            { "field.long": { "name": "itemId" } },
+            { "identity.primary": { "name": "id", "@fields": ["id"] } },
+            { "relationship.association": { "name": "item", "@objectRef": "Special", "@cardinality": "one" } },
+            { "dimension.attribute": { "name": "itemTag", "@of": "Item.tag", "@via": "Order.item" } }
+          ]
+        }
+      }
+    ]
+  }
+}

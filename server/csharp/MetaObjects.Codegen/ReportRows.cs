@@ -177,7 +177,11 @@ public static class ReportRows
         // last, of the finished field, because an int-backed enum's band depends on a
         // carried attr. A report author cannot narrow this set: there is no node to put
         // `@filterable` on.
-        if (QueryConstants.OpsForField(field).Length > 0) field.SetAttr(FIELD_ATTR_FILTERABLE, true);
+        // An array or a map has no scalar operator and no ordering, so a dimension over one is
+        // neither filterable nor (see RoutesGenerator's sort list) sortable.
+        if (!field.ResolvedIsArray() && field.SubType != FIELD_SUBTYPE_MAP
+            && QueryConstants.OpsForField(field).Length > 0)
+            field.SetAttr(FIELD_ATTR_FILTERABLE, true);
         return field;
     }
 

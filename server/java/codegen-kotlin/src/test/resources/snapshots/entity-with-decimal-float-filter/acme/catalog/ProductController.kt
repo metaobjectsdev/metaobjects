@@ -200,7 +200,7 @@ private fun coerceProductFloat(op: String, raw: String): ProductCoercedValue? {
 }
 
 private fun coerceProductDecimal(op: String, raw: String): ProductCoercedValue? {
-    val parse: (String) -> Any? = { s -> runCatching { java.math.BigDecimal(s) }.getOrNull() }
+    val parse: (String) -> Any? = { s -> runCatching { MetaDecimalWire.parseFilterOperand(s) }.getOrNull() }
     if (op == "in") {
         val parts = raw.split(",").map { it.trim() }
         val list = parts.map { parse(it) ?: return null }
@@ -378,6 +378,7 @@ class ProductController(private val objectMapper: ObjectMapper, private val vali
     @PostMapping
     fun create(@RequestBody dto: Product): ResponseEntity<Any> = transaction {
         if (validator.validate(dto).isNotEmpty()) return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation") as Any)
+        if (!MetaDecimalWire.fits(dto.price, 10, 2)) return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation", "field" to "price") as Any)
         val newId = ProductTable.insert {
             it[name] = dto.name
             it[price] = dto.price
@@ -398,8 +399,9 @@ class ProductController(private val objectMapper: ObjectMapper, private val vali
                 if (hasName && validator.validateValue(Product::class.java, "name", vName).isNotEmpty()) return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation") as Any)
                 val hasPrice = body.has("price")
                 val nullPrice = hasPrice && body.get("price").isNull
-                val vPrice: java.math.BigDecimal? = if (hasPrice && !nullPrice) objectMapper.treeToValue(body.get("price"), object : TypeReference<java.math.BigDecimal>() {}) else null
+                val vPrice: java.math.BigDecimal? = if (hasPrice && !nullPrice) runCatching { MetaDecimalWire.fromNode(body.get("price")) }.getOrElse { return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation", "field" to "price") as Any) } else null
                 if (hasPrice && !nullPrice && validator.validateValue(Product::class.java, "price", vPrice).isNotEmpty()) return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation") as Any)
+                if (!MetaDecimalWire.fits(vPrice, 10, 2)) return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation", "field" to "price") as Any)
                 val hasRating = body.has("rating")
                 val nullRating = hasRating && body.get("rating").isNull
                 val vRating: kotlin.Float? = if (hasRating && !nullRating) objectMapper.treeToValue(body.get("rating"), object : TypeReference<kotlin.Float>() {}) else null
@@ -424,6 +426,11 @@ class ProductController(private val objectMapper: ObjectMapper, private val vali
         if (deleted == 0) ResponseEntity.status(HttpStatus.NOT_FOUND).body(mapOf("error" to "not_found") as Any)
         else ResponseEntity.noContent().build<Any>()
     }
+
+    /** A request body that cannot be read is a client error naming the field, not a 500. */
+    @ExceptionHandler(org.springframework.http.converter.HttpMessageNotReadableException::class)
+    fun handleUnreadableBody(e: org.springframework.http.converter.HttpMessageNotReadableException): ResponseEntity<Any> =
+        ResponseEntity.badRequest().body(MetaDecimalWire.unreadableBody(e) as Any)
 
     /**
      * A database constraint violation is a CLIENT error, not a 500: the

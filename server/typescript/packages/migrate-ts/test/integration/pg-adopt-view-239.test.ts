@@ -20,13 +20,14 @@ import { Kysely, PostgresDialect, sql } from "kysely";
 import { introspectPostgres } from "../../src/introspect/postgres.js";
 import { diff } from "../../src/diff/index.js";
 import { emit } from "../../src/emit/index.js";
+import { splitSqlStatements } from "../../src/sql/split-statements.js";
 import { viewFingerprint } from "../../src/view-fingerprint.js";
 import type { SchemaSnapshot } from "../../src/types.js";
 
 const PG_URL = process.env["MIGRATE_TS_PG_URL"];
 
 async function applyRaw(k: Kysely<Record<string, unknown>>, sqlText: string): Promise<void> {
-  for (const stmt of sqlText.split(";").map((s) => s.trim()).filter((s) => s.length > 0)) {
+  for (const stmt of splitSqlStatements(sqlText)) {
     await sql.raw(stmt).execute(k);
   }
 }

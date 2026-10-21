@@ -167,10 +167,10 @@ public sealed class ExtractorCodegenTests
         var tags = ((IEnumerable)order.GetType().GetProperty("Tags")!.GetValue(order)!).Cast<object>().ToList();
         Assert.Equal(new object[] { "x", "y" }, tags.ToArray());
 
-        // required NON-STRING scalar-array (int[]) populates as ICollection<int> — proves the
+        // required NON-STRING scalar-array (int[]) populates as IList<int> — proves the
         // kind-typed mirror element (IReadOnlyList<int?>?) narrows to the strict int element.
         var scoresProp = order.GetType().GetProperty("Scores")!;
-        Assert.Equal(typeof(ICollection<int>), scoresProp.PropertyType);
+        Assert.Equal(typeof(IList<int>), scoresProp.PropertyType);
         var scores = ((IEnumerable)scoresProp.GetValue(order)!).Cast<object>().ToList();
         Assert.Equal(new object[] { 3, 7 }, scores.ToArray());
 
@@ -178,21 +178,21 @@ public sealed class ExtractorCodegenTests
         // narrows the kind-typed mirror (IReadOnlyList<long?>?) to the strict long element. The
         // CS8619-as-error compile gate would have failed had the element type mismatched.
         var quantitiesProp = order.GetType().GetProperty("Quantities")!;
-        Assert.Equal(typeof(ICollection<long>), quantitiesProp.PropertyType);
+        Assert.Equal(typeof(IList<long>), quantitiesProp.PropertyType);
         var quantities = ((IEnumerable)quantitiesProp.GetValue(order)!).Cast<object>().ToList();
         Assert.Equal(new object[] { 10L, 9000000000L }, quantities.ToArray());
         Assert.IsType<long>(quantities[0]);
 
         // required NON-STRING scalar-array (double[]) — proves the double `x!.Value` unwrap.
         var weightsProp = order.GetType().GetProperty("Weights")!;
-        Assert.Equal(typeof(ICollection<double>), weightsProp.PropertyType);
+        Assert.Equal(typeof(IList<double>), weightsProp.PropertyType);
         var weights = ((IEnumerable)weightsProp.GetValue(order)!).Cast<object>().ToList();
         Assert.Equal(new object[] { 1.5d, 2.25d }, weights.ToArray());
         Assert.IsType<double>(weights[0]);
 
         // required NON-STRING scalar-array (bool[]) — proves the bool `x!.Value` unwrap.
         var flagsProp = order.GetType().GetProperty("FlagsArr")!;
-        Assert.Equal(typeof(ICollection<bool>), flagsProp.PropertyType);
+        Assert.Equal(typeof(IList<bool>), flagsProp.PropertyType);
         var flags = ((IEnumerable)flagsProp.GetValue(order)!).Cast<object>().ToList();
         Assert.Equal(new object[] { true, false, true }, flags.ToArray());
         Assert.IsType<bool>(flags[0]);
@@ -369,7 +369,7 @@ public sealed class ExtractorCodegenTests
         Assert.Contains("public enum OrderPriority { LOW, HIGH }", poco);
         Assert.Contains("public enum OrderLabels { A, B }", poco);
         Assert.Contains("public OrderPriority Priority { get; set; }", poco);
-        Assert.Contains("public ICollection<OrderLabels> Labels { get; set; } = new List<OrderLabels>();", poco);
+        Assert.Contains("public IList<OrderLabels> Labels { get; set; } = new List<OrderLabels>();", poco);
 
         // The extract mapper coerces the string mirror via System.Enum.Parse<NestedEnum>.
         var extractorSrc = Assert.Single(new ExtractorGenerator().Generate(Ctx(root))).Content;

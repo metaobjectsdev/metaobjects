@@ -267,6 +267,19 @@ The generated `get_repository` raises until you override it. Any object with the
 `AuthorRepository` methods above works, including an in-memory dict while you try it
 out. Serve the app with `uvicorn my_app.main:app --reload` (`pip install uvicorn`).
 
+### Decimals on the wire
+
+A `field.decimal` crosses the API as one canonical string (ADR-0019 Amendment 1): `12.50` is
+`"12.5"`, zero is `"0"`, never a JSON number or an exponent. Input may be a string or a number,
+is read exactly, and is `400 validation` when it has more fraction digits than `@scale` or more
+integer digits than `@precision - @scale` (no `@scale` beside `@precision` means 0). A filter
+operand compares exactly; a bad one is `400 invalid_filter_value`. On SQLite a decimal is read at
+15 significant digits. Every port runs the shared vectors in `fixtures/decimal-wire/`.
+
+Generated routers import `metaobjects.codegen.runtime.decimal_wire` (`format_decimal`,
+`parse_decimal`, `parse_decimal_operand`, `check_decimal_range`) and pass each decimal field's
+declared limits. A malformed or non-object JSON body is `400 validation`.
+
 ### `<entity>_names.py` — the physical names, as constants
 
 The `names` generator is opt-in — list `names` in a target's `generators` in
@@ -467,8 +480,8 @@ an owned generator is imported with, which loads the project's own copy of a mod
 another copy is already cached and refuses a project package or module whose top-level name
 is a standard-library module name (`types`, `json`): rename it. `metaobjects verify` goes
 out of sync when a claim changes, because each test carries a digest of its requirement. A
-package that loses its last requirement leaves its file behind: `gen` does not remove it,
-`verify` lists it as `extra:`, and you delete it. The model and the other ports' spelling are in
+package that loses its last requirement loses its file: `verify` lists it as `extra:`, and a
+full `gen` deletes it (an edited one is refused by name), as for any generated file. The model and the other ports' spelling are in
 [Generated requirement tests and witnesses](../features/requirements.md#generated-requirement-tests-and-witnesses).
 
 ### Declarative template-codegen (`templateSpec`)
@@ -830,7 +843,7 @@ import lines are stable.
 | Drift verify | Yes — template / payload drift (`metaobjects.render.verify`); `verify --codegen` regenerates the config's list and diffs each target's `outDir` |
 | API reference docs | Yes — `api-docs` in a target's `generators`, options in the top-level `apiDocs` block (`apiSubDir`, `projectName`, `modelBaseUrl`); `metaobjects docs` was removed in 1.1.0 ([migration](../features/migrations/docs-are-generators.md#python)) |
 | Requirement gate + requirement tests | Yes (`metaobjects verify`, on every run; `requirement-tests` emits pytest and is ejectable) |
-| Runtime metadata | Yes (`metaobjects.runtime.ObjectManager` — DB-API 2 driver, pg8000/psycopg) + loader API + render engine |
+| Runtime metadata | Yes (`metaobjects.runtime.ObjectManager` — DB-API 2 drivers: Postgres via pg8000/psycopg, `SqliteDriver` over the standard library's `sqlite3`, `MySqlDriver` over PyMySQL with the `mysql` extra) + loader API + render engine |
 
 ## Conformance status (as of 2026-05-27)
 
