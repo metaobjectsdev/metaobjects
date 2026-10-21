@@ -523,9 +523,9 @@ The named generators run after the target's `generators`, into the same `outDir`
 are gated byte-identical against the shared `fixtures/template-codegen-conformance/`
 corpus. Output is format-agnostic (text/markdown/csv/json/xml/html), so the template-spec
 pass emits no `__init__.py` into its tree. A `target` field inside the spec is rejected (the
-spec's target is the one that declares it); for output to be regenerable, the **template**
-must emit the `@generated` header itself (the write path refuses to overwrite files lacking
-it).
+spec's target is the one that declares it). The write path decides from the committed hash
+manifest, not the `@generated` header, so the template need not emit one (see
+[codegen-concepts](../features/codegen-concepts.md#7-safety-never-clobbering-hand-edits)).
 
 ### Universal browser-client hookup (React / Angular 18)
 

@@ -282,11 +282,10 @@ Python, `TemplateRoot` in C#; default `prompts/` when it exists, else `templates
 `perEntity`/`perPackage`/`perModel` and `format` (when present) one of the
 registered escaper formats; a `target` field is **rejected** (the CLI ports have no
 output-target concept). The same neutral data dict, output-pattern grammar, and
-conformance corpus apply, so a spec renders byte-identically across ports. (Because
-a template's output flows through the standard write path — which refuses to
-overwrite a file lacking the `@generated` marker — a regenerable template must emit
-that header in its own body. The JVM's `TemplateScopeGenerator` writes directly and
-carries no such obligation.)
+conformance corpus apply, so a spec renders byte-identically across ports. The standard
+write path decides from the hash manifest, not the header (section 7), so a template need
+not emit the `@generated` marker. The JVM's `TemplateScopeGenerator` writes directly and
+keeps no manifest record.)
 
 **The spec is declared, never discovered.** Through 1.0 both CLI ports also read a
 `--template-spec` flag or a project-root `template-spec.json` on their own. Since 1.1.0 a spec
