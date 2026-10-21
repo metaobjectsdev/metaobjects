@@ -13,5 +13,6 @@ public class ProgramsEmptyScope
     [Column("programs")]
     public long Programs { get; set; }
     [Column("avgPriceOrMinusOne")]
+    [System.Text.Json.Serialization.JsonConverter(typeof(DecimalWire.DecimalJsonConverter))]
     public decimal AvgPriceOrMinusOne { get; set; }
 }

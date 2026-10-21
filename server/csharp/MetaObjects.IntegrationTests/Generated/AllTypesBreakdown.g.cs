@@ -27,6 +27,7 @@ public class AllTypesBreakdown
     [Column("totalInts")]
     public long? TotalInts { get; set; }
     [Column("avgDec")]
+    [System.Text.Json.Serialization.JsonConverter(typeof(DecimalWire.NullableDecimalJsonConverter))]
     public decimal? AvgDec { get; set; }
     [Column("maxMoney")]
     public long? MaxMoney { get; set; }

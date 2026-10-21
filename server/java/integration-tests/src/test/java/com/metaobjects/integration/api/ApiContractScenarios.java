@@ -32,6 +32,7 @@ final class ApiContractScenarios {
         String description,
         String sourcePath,
         boolean truncate,               // true when setup.truncate is set
+        List<String> engines,           // exact engine list when present; null = every engine the lane has
         List<ApiRequest> requests
     ) {}
 }

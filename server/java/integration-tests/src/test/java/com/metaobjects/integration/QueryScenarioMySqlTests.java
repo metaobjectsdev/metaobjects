@@ -33,7 +33,7 @@ final class QueryScenarioMySqlTests {
     private static final Path CORPUS = ScenarioLoader.findCorpusRoot();
     private static final List<QueryScenario> SCENARIOS =
         ScenarioLoader.loadQueries(CORPUS.resolve("queries")).stream()
-            .filter(s -> s.name().startsWith("report-")).toList();
+            .filter(ScenarioEngine.MYSQL::runs).toList();
 
     private static MySqlContainer mysql;
 
@@ -42,7 +42,7 @@ final class QueryScenarioMySqlTests {
         ObjectClassRegistry reg = new ObjectClassRegistry();
         Map<String, Class<?>> bindings = new HashMap<>();
         // The entities the report views read; a report itself is served by its read model.
-        for (String entity : List.of("Program", "Week", "Asset")) {
+        for (String entity : List.of("Program", "Week", "Asset", "Entry", "Gadget", "GadgetEvent")) {
             bindings.put("fitness::" + entity, ValueObject.class);
         }
         reg.register(() -> bindings);

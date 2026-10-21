@@ -362,6 +362,11 @@ class AuthLineController(private val objectMapper: ObjectMapper, private val val
         else ResponseEntity.noContent().build<Any>()
     }
 
+    /** A request body that cannot be read is a client error naming the field, not a 500. */
+    @ExceptionHandler(org.springframework.http.converter.HttpMessageNotReadableException::class)
+    fun handleUnreadableBody(e: org.springframework.http.converter.HttpMessageNotReadableException): ResponseEntity<Any> =
+        ResponseEntity.badRequest().body(MetaDecimalWire.unreadableBody(e) as Any)
+
     /**
      * A database constraint violation is a CLIENT error, not a 500: the
      * identity.reference / identity.secondary that declare these constraints are the

@@ -23,6 +23,7 @@ import shutil
 import sys
 import tempfile
 import uuid
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -36,6 +37,7 @@ from metaobjects.codegen.generators.router_generator import render_router
 from metaobjects.codegen.generators.tph_plan import tph_plan_for
 from metaobjects.meta.core.object.meta_object import MetaObject
 from metaobjects.shared.base_types import TYPE_OBJECT
+from metaobjects.meta.core.field.field_constants import FIELD_SUBTYPE_DECIMAL
 
 from .generated_router_app import filter_rows
 
@@ -78,7 +80,7 @@ def build_generated_tph_app(tph_dir: Path) -> tuple[FastAPI, "InMemoryTphReposit
         raise RuntimeError("no TPH discriminator base found in tph meta.json")
     plan = tph_plan_for(base, index)
     assert plan is not None
-    repo = InMemoryTphRepository(plan.discriminator_field)
+    repo = InMemoryTphRepository(plan.discriminator_field, _decimal_fields(list(entities.values())))
 
     snake = _snake(base.name)
     pkg_name = f"gentph_{uuid.uuid4().hex[:8]}"
@@ -126,6 +128,20 @@ def build_generated_tph_app(tph_dir: Path) -> tuple[FastAPI, "InMemoryTphReposit
     return app, repo
 
 
+def _decimal_fields(objects: list[MetaObject]) -> frozenset[str]:
+    """The ``field.decimal`` names across *objects*: a real driver hands those back as
+    ``Decimal``, so the in-memory repo holds them that way rather than as JSON floats."""
+    return frozenset(
+        f.name for o in objects for f in o.fields() if f.sub_type == FIELD_SUBTYPE_DECIMAL
+    )
+
+
+def _as_driver_row(row: dict[str, Any], decimal_fields: frozenset[str]) -> dict[str, Any]:
+    return {
+        k: (Decimal(str(v)) if k in decimal_fields and v is not None else v) for k, v in row.items()
+    }
+
+
 # ---------------------------------------------------------------------------
 # In-memory single-table repo behind the GENERATED subtype-keyed seam. Replays
 # the TPH discriminator scope: inject-on-create / scope-on-read / strip-on-update.
@@ -134,8 +150,9 @@ def build_generated_tph_app(tph_dir: Path) -> tuple[FastAPI, "InMemoryTphReposit
 
 
 class InMemoryTphRepository:
-    def __init__(self, discriminator_field: str) -> None:
+    def __init__(self, discriminator_field: str, decimal_fields: frozenset[str] = frozenset()) -> None:
         self._disc = discriminator_field
+        self._decimal_fields = decimal_fields
         self._rows: list[dict[str, Any]] = []
         self._next_id = 1
 
@@ -145,7 +162,7 @@ class InMemoryTphRepository:
         self._next_id = 1
 
     def seed(self, rows: list[dict[str, Any]]) -> None:
-        self._rows = [dict(r) for r in rows]
+        self._rows = [_as_driver_row(r, self._decimal_fields) for r in rows]
         self._next_id = max((int(r["id"]) for r in self._rows), default=0) + 1
 
     # --- generated subtype-keyed Protocol surface ---

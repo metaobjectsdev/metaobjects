@@ -87,6 +87,7 @@ public final class ReportReadModel extends ReportMetaObject
             MetaField.ATTR_SCALE,
             CoreDBMetaDataProvider.LOCAL_TIME,
             MetaField.ATTR_OBJECT_REF,
+            MetaField.ATTR_VALUE_TYPE,   // a field.map dimension's scalar value type
             MetaField.ATTR_STORAGE);
 
     /** The declared report this model was built from; {@code null} only on a bare instance. */
@@ -225,7 +226,9 @@ public final class ReportReadModel extends ReportMetaObject
         // a dimension). Set on this detached model only: no vocabulary is added and the
         // declared tree is not touched. Read after the type shape is carried, because the
         // band is field-level (an int-backed enum drops `like`), and resolving (ADR-0039).
-        if (!FilterOps.opsForField(field).isEmpty()) {
+        // A derived field over an array (isArray) or a map is neither filterable nor sortable,
+        // in every port: an array column has no scalar to compare, a map no order.
+        if (!field.isArrayType() && !(field instanceof com.metaobjects.field.MapField) && !FilterOps.opsForField(field).isEmpty()) {
             field.addMetaAttr(BooleanAttribute.create(MetaField.ATTR_FILTERABLE, true));
         }
         return field;

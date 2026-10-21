@@ -120,9 +120,9 @@ def test_per_entity_sort_allowlist_constant_emitted() -> None:
 def test_with_count_returns_envelope_bare_list_otherwise() -> None:
     out = _require(_author())
     # withCount=1 → {"rows": ..., "total": N}
-    assert 'return {"rows": rows, "total": total}' in out
+    assert 'return {"rows": to_wire(rows), "total": total}' in out
     # default → bare list
-    assert "return rows" in out
+    assert "return to_wire(rows)" in out
     # The 404 envelope and 400 invalid_sort envelope are part of the contract.
     assert '"error": "not_found"' in out
     # invalid_sort NAMES the rejected field — required cross-port on every
@@ -237,7 +237,8 @@ def test_router_list_handler_calls_parse_filter() -> None:
     assert "filter_result.error_envelope" in out
     assert "return JSONResponse(status_code=400, content=filter_result.error_envelope)" in out
     # Predicates thread through to the repository's list + count.
-    assert "predicates = filter_result.predicates" in out
+    # (decimal operands are parsed exactly first, ADR-0019 Amendment 1 W2)
+    assert "filter_result.predicates, _DECIMAL_FIELDS" in out
     assert "repo.list(actual_limit, actual_offset, sort_clause, predicates)" in out
     assert "repo.count(predicates)" in out
     # Repository protocol gains the filters parameter on list + count.

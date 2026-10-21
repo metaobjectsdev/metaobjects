@@ -167,6 +167,45 @@ queries:
       - { programId: "1", weekCount: 3 }
 ```
 
+### Which engines run a scenario (`engines:`)
+
+A scenario file may carry a top-level `engines:` list drawn from `postgres`, `mysql`, `sqlite`
+and `d1`. **When the key is present it is exact**: only the listed engines run the file, and a
+runner never skips one by name. When it is absent the historical rule holds: Postgres runs every
+scenario and the other engines run the `report-*` ones. An unknown name, or an empty list, is a
+runner error. The key is how a scenario says what an engine can hold (a decimal of 19 significant
+digits on SQLite, which keeps it as a double) once, in the file.
+
+```yaml
+name: decimal-exact
+engines: [postgres, mysql]
+```
+
+### Decimal scenarios (ADR-0019 Amendment 1)
+
+`field.decimal` is a **canonical JSON string** on every engine and every port: plain notation, no
+trailing fraction zeros, zero as `"0"` (`^-?(0|[1-9][0-9]*)(\.[0-9]*[1-9])?$`). The seed table is
+`Entry` (`id`, `bucket`, `amount` `decimal(28,10)`, `flagged`) and the served report is
+`EntryTotals` (`bucket`, `entries`, `total`, `totalOrZero`, `mean`, `top`, `flaggedShare`,
+`perFlagged`), over eleven rows chosen to break a binary float: `0.1` and `0.2`,
+`12345678901234567.89` (19 significant digits), `-0.0000000001`, `100.50` stored with a scale,
+`0.0000000000`, and rows with a null amount.
+
+| Scenario | Engines | What it pins |
+|---|---|---|
+| `decimal-exact` | postgres, mysql | eleven `op: roundtrip` inserts through the write codec; a list of canonical strings; `amount eq` and `gt` against `12345678901234567.89` and `12345678901234567.8` each answer only id 3; a trailing-zero and an exponent operand; `op: create` of `"12abc"` fails |
+| `decimal-exact-15` | all four | the same through the write codec for the rows of at most 15 significant digits (buckets A, D, E, F) |
+| `report-decimal-exact` | postgres, mysql | the `EntryTotals` view over the seed: a sum is `"12345678901234567.9"`, an empty sum is `null`, a `@default: 0` sum is `"0"`, a zero-denominator ratio is `null` |
+| `report-decimal-exact-15` | all four | the A, D, E, F buckets of the same report, run on SQLite and D1 as well |
+
+A runner holds a decimal to **the type, not the value's shape**: before comparing it, every field
+the model declares `decimal` (an entity field, or a report field from `report-shapes.json`) must be
+`null` or a string in the canonical spelling, or the scenario fails with "decimal arrived as a
+binary float". A runner must NOT canonicalize a decimal on the actual side before that check (the
+earlier runner did, which hid a port that returned `100.50` or a double). The MySQL operand
+comparison is the usual trap: `DECIMAL = 'string'` compares as doubles, so the operand is cast to a
+wide `DECIMAL` first.
+
 ## Query DSL (v2-day-one)
 
 The DSL is intentionally small. Each port translates it to the most idiomatic
@@ -332,8 +371,9 @@ spelling on the actual side (a SQLite ratio is a REAL, a MySQL `DECIMAL` keeps i
 MySQL `DATETIME` is the UTC wall clock). A scenario whose seed cannot be shared (an instant
 relative to the database clock) adds a `seed-data-engine:` map keyed by `sqlite` / `mysql`,
 which wins over `seed-data` for that engine; the rest keep one Postgres-spelled `seed-data`,
-which the MySQL runners translate mechanically (`"id"` to `` `id` ``, a UTC `Z` dropped). Java has
-no SQLite driver and Python has only a Postgres one, so they do not run those engines.
+which the MySQL runners translate mechanically (`"id"` to `` `id` ``, a UTC `Z` dropped). Every port
+runs them on SQLite and MySQL (Java through OMDB's `SQLiteDriver`, Python through `SqliteDriver`
+and `MySqlDriver`). A scenario with an `engines:` list runs on exactly those engines.
 Rows are keyed by the report's **derived field names** (dimensions in `@dimensions` order,
 then measures in `@measures` order; a time dimension is named `<name><Grain>`, for example
 `createdAtMonth`).

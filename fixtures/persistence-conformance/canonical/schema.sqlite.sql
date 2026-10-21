@@ -139,6 +139,24 @@ CREATE TABLE "all_types" (
   CONSTRAINT "all_types_intEnumVal_chk" CHECK ("intEnumVal" IN (0, 5, 9))
 );
 
+CREATE TABLE "gadgets" (
+  "id" INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+  "gadget_code" INTEGER NOT NULL
+);
+
+CREATE TABLE "gadget_events" (
+  "id" INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+  "gadgetId" INTEGER NOT NULL,
+  FOREIGN KEY ("gadgetId") REFERENCES "gadgets" ("id")
+);
+
+CREATE TABLE "entries" (
+  "id" INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+  "bucket" VARCHAR(8) NOT NULL,
+  "amount" NUMERIC(28,10),
+  "flagged" INTEGER NOT NULL
+);
+
 CREATE UNIQUE INDEX "byTitle" ON "programs" ("title");
 
 CREATE INDEX "idx_programs_title_status" ON "programs" ("title", "status");
@@ -397,3 +415,24 @@ CREATE VIEW "v_auths_by_kind" AS
   FROM "auths" a
   WHERE a."type" <> 'PriorAuth'
   GROUP BY a."type";
+
+CREATE VIEW "v_gadget_events_by_label" AS
+  SELECT
+    g0."gadget_code" AS "gadgetLabel",
+    COUNT(g."id") AS "gadgetEvents"
+  FROM "gadget_events" g
+  INNER JOIN "gadgets" g0 ON g0."id" = g."gadgetId"
+  GROUP BY g0."gadget_code";
+
+CREATE VIEW "v_entry_totals" AS
+  SELECT
+    e."bucket" AS "bucket",
+    COUNT(e."id") AS "entries",
+    SUM(e."amount") AS "total",
+    COALESCE(SUM(e."amount"), 0.0) AS "totalOrZero",
+    AVG(e."amount") AS "mean",
+    MAX(e."amount") AS "top",
+    CAST(COUNT(CASE WHEN e."flagged" = 1 THEN e."id" END) AS REAL) / NULLIF(COUNT(e."id"), 0) AS "flaggedShare",
+    CAST(COUNT(e."id") AS REAL) / NULLIF(COUNT(CASE WHEN e."flagged" = 1 THEN e."id" END), 0) AS "perFlagged"
+  FROM "entries" e
+  GROUP BY e."bucket";

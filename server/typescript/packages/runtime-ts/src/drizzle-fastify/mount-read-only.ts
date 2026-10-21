@@ -6,7 +6,7 @@ import { parseFilterParams, parsePageBound, RAW_VIEW_MAX_LIMIT, FilterParseError
 import type { FilterAllowlist, SortAllowlist } from "./filter-allowlist.js";
 import { isTruthyFlag, contractErrorCode, coerceIdForColumn, rawIdLiteral, viewBaseConfig } from "./util.js";
 import { timestampWire } from "../timestamp-wire.js";
-import { decimalWire } from "../decimal-wire.js";
+import { withDecimals } from "../decimal-wire.js";
 import { withContractErrorHandler } from "./route-error-handler.js";
 
 // biome-ignore lint/suspicious/noExplicitAny: dynamic dispatch over user-supplied views
@@ -51,11 +51,11 @@ export interface MountReadOnlyOptions {
   /** The noun in the 405 message, which is free prose. Default "projection". */
   readonly resource?: "projection" | "report";
   /**
-   * The names of the view's decimal fields, for a dialect that has no decimal. SQLite hands
-   * a computed decimal (a report's ratio, average or sum) back as a REAL, a JS number, where
-   * Postgres and MySQL return the string the read schema types it as. A number under one of
-   * these keys is sent as its string, so the route answers the same on every engine. The
-   * generated route passes it for a report on SQLite and omits it otherwise. Default none.
+   * The names of the view's `field.decimal` fields. A decimal is a canonical string on the wire
+   * on every dialect (ADR-0019 Amendment 1): Postgres and MySQL return the column's scale
+   * (`"100.5000"`), and SQLite hands back a number, a REAL for a computed one (a report's ratio,
+   * average or sum). Each row is rewritten under these keys. The generated route passes them;
+   * absent, rows are sent as read. Default none.
    */
   readonly decimalColumns?: readonly string[];
 }
@@ -160,8 +160,7 @@ export function mountReadOnlyCrudRoutes(opts: MountReadOnlyOptions): void {
   const useRawSql = isEmptyColumnView(view) && !!viewName;
   // The raw-SQL branch has no declared columns, so nothing names a timestamp there.
   const timestamps = timestampWire(view);
-  const decimals = decimalWire(opts.decimalColumns);
-  const toWire = decimals === undefined ? timestamps : (row: unknown) => decimals(timestamps(row));
+  const toWire = withDecimals(timestamps, opts.decimalColumns);
 
   // ── List ──────────────────────────────────────────────────────────────────
   fastify.get(path, ro, async (req, reply) => {

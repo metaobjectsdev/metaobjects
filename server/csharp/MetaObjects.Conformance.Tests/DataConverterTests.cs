@@ -6,6 +6,22 @@ namespace MetaObjects.Conformance.Tests;
 
 public class DataConverterTests
 {
+    [Theory]
+    [InlineData("4.0", 4L)]
+    [InlineData("1e2", 100L)]
+    [InlineData("-3.0", -3L)]
+    public void An_integral_json_number_written_with_a_point_converts_to_the_integer(string json, long expected)
+    {
+        Assert.Equal(expected, DataConverter.ConvertToDataType(DataType.Int, JsonDocument.Parse(json).RootElement));
+        Assert.Equal(expected, DataConverter.ConvertToDataType(DataType.Long, JsonDocument.Parse(json).RootElement));
+    }
+
+    [Fact]
+    public void A_fractional_json_number_stays_a_double_for_the_type_check_to_refuse()
+    {
+        Assert.IsType<double>(DataConverter.ConvertToDataType(DataType.Int, JsonDocument.Parse("10.5").RootElement));
+    }
+
     // --- ToAttrValue -----------------------------------------------------------
 
     [Fact]

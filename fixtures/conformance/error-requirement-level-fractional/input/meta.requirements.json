@@ -1,0 +1,16 @@
+{
+  "metadata.root": {
+    "package": "acme::caps",
+    "children": [
+      {
+        "requirement.functional": {
+          "name": "OrderRecord",
+          "@level": 4.5,
+          "@status": "live",
+          "@statement": "An order records what was bought",
+          "@counterexample": "An order row that cannot say what it holds"
+        }
+      }
+    ]
+  }
+}

@@ -31,7 +31,7 @@ from metaobjects.codegen.generator_registry import GENERATOR_REGISTRY
 REPO = Path(__file__).parents[4]
 FITNESS = REPO / "fixtures" / "persistence-conformance" / "canonical" / "meta.fitness.json"
 API_CONTRACT = REPO / "fixtures" / "api-contract-conformance" / "meta.json"
-RUNTIME_MODULES = ("constraint_errors", "filter_parser")
+RUNTIME_MODULES = ("constraint_errors", "decimal_wire", "filter_parser")
 INSTALLED_RUNTIME = "metaobjects.codegen.runtime"
 
 
@@ -148,8 +148,14 @@ def test_eject_never_overwrites_an_owned_runtime_copy(tmp_path, monkeypatch, cap
     assert "filter_parser.py: kept your copy — DIFFERS: 0 behind, 1 of your own" in kept
     assert "may need the newer copy" not in kept
     assert main(["gen", "--list"]) == 0
-    assert ("runtime codegen/runtime/filter_parser.py [owned — DIFFERS: 0 behind, 1 of your own]"
-            in capsys.readouterr().out)
+    listing = capsys.readouterr().out
+    assert "runtime codegen/runtime/filter_parser.py [owned — DIFFERS: 0 behind, 1 of your own]" in listing
+    # E1: the generator is identical only if every owned companion is too; the verdict folds
+    # the difference in and names each differing file.
+    lines = listing.splitlines()
+    at = next(i for i, ln in enumerate(lines) if ln.startswith("routes — "))
+    assert "[owned — DIFFERS: generator identical, 1 runtime module(s) differ]" in lines[at]
+    assert lines[at + 1] == "    runtime codegen/runtime/filter_parser.py  [DIFFERS: 0 behind, 1 of your own]"
 
 
 def test_eject_of_a_generator_without_runtime_writes_no_runtime(tmp_path, monkeypatch) -> None:

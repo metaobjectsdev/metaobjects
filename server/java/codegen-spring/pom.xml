@@ -98,11 +98,13 @@
             <scope>test</scope>
         </dependency>
 
-        <!-- compile-and-run test: generated parser imports Jackson ObjectMapper -->
+        <!-- compile-and-run test: generated parser imports Jackson ObjectMapper.
+             provided: the shipped runtime classes CanonicalDecimalSerializer / Deserializer
+             extend Jackson types; every consumer of the generated REST surface has Jackson. -->
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
-            <scope>test</scope>
+            <scope>provided</scope>
         </dependency>
 
         <!-- validation-conformance runner: validate the generated DTO via a jakarta Validator.
@@ -271,12 +273,17 @@
                                 <resource>
                                     <directory>src/main/java/com/metaobjects/generator/spring/runtime</directory>
                                     <includes>
+                                        <include>CanonicalDecimal.java</include>
+                                        <include>CanonicalDecimalDeserializer.java</include>
+                                        <include>CanonicalDecimalSerializer.java</include>
+                                        <include>DeclaredDecimal.java</include>
                                         <include>ConstraintErrors.java</include>
                                         <include>FilterParseResult.java</include>
                                         <include>FilterParser.java</include>
                                         <include>FilterPredicate.java</include>
                                         <include>PatchValidationException.java</include>
                                         <include>RecordComponentNames.java</include>
+                                        <include>UnreadableBody.java</include>
                                     </includes>
                                 </resource>
                             </resources>

@@ -80,6 +80,15 @@ const BASE_TABLES: ReadonlyArray<{ name: string; ddl: string }> = [
       "refunded" INTEGER
     )`,
   },
+  {
+    name: "tickets",
+    ddl: `
+    CREATE TABLE "tickets" (
+      "id" INTEGER PRIMARY KEY AUTOINCREMENT,
+      "tags" TEXT,
+      "attrs" TEXT
+    )`,
+  },
 ];
 
 export async function startSqliteReportServer(

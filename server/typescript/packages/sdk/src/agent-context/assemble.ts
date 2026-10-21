@@ -1,5 +1,6 @@
 import { readFileSync, readdirSync, existsSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { pinDocsRefs } from "@metaobjectsdev/metadata";
 import {
   SKILL_NAMES, SERVER_LANGS, CLIENT_FRAMEWORKS, CONCERN_TOKENS, type AssembledFile, type Stack,
 } from "./types.js";
@@ -153,9 +154,17 @@ function applyTemplate(
   });
 }
 
-/** Assemble the consumer files for a resolved stack. Pure given the content tree. */
-export function assemble(opts: { contentRoot: string; stack: Stack }): AssembledFile[] {
+/**
+ * Assemble the consumer files for a resolved stack. Pure given the content tree.
+ *
+ * `docsRef` is the git ref every guide link in the shipped prose points at (default
+ * `main`, which is what the content tree is authored with). The scaffolder passes the tag
+ * of the running release (`docsRefForVersion`), so the links an agent follows are the
+ * guides of the version that wrote them and do not move after the cut.
+ */
+export function assemble(opts: { contentRoot: string; stack: Stack; docsRef?: string }): AssembledFile[] {
   const { contentRoot, stack } = opts;
+  const docsRef = opts.docsRef ?? "main";
   const out: AssembledFile[] = [];
 
   // 1. Always-on (AGENTS.md + CLAUDE.md, identical contents).
@@ -204,5 +213,5 @@ export function assemble(opts: { contentRoot: string; stack: Stack }): Assembled
 
   // Stable order: by path.
   out.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
-  return out;
+  return out.map((f) => ({ ...f, contents: pinDocsRefs(f.contents, docsRef) }));
 }

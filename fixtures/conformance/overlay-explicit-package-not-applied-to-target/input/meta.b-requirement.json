@@ -1,0 +1,16 @@
+{
+ "metadata.root": {
+  "package": "acme::shop",
+  "children": [
+   {
+    "requirement.functional": {
+     "name": "R",
+     "@level": 3,
+     "@status": "live",
+     "@statement": "s",
+     "@counterexample": "c"
+    }
+   }
+  ]
+ }
+}

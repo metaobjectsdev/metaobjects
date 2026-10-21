@@ -178,14 +178,14 @@ final class ApiContractAssertions {
     }
 
     /**
-     * Structural equality that normalizes Number subtypes
-     * (Integer/Long/etc are equal if their long value matches) and
-     * recurses into Maps/Lists.
+     * Structural equality that compares Numbers exactly (ADR-0019 Amendment 1: never through a
+     * double or a truncated long — {@code 0.3} must not equal {@code 0}) and recurses into
+     * Maps/Lists. Response bodies are parsed with {@code USE_BIG_DECIMAL_FOR_FLOATS}.
      */
     private static boolean structuralEquals(Object a, Object b) {
         if (a == b) return true;
         if (a == null || b == null) return false;
-        if (a instanceof Number an && b instanceof Number bn) return an.longValue() == bn.longValue();
+        if (a instanceof Number an && b instanceof Number bn) return toBigDecimal(an).compareTo(toBigDecimal(bn)) == 0;
         if (a instanceof List<?> al && b instanceof List<?> bl) {
             if (al.size() != bl.size()) return false;
             for (int i = 0; i < al.size(); i++)
@@ -199,6 +199,12 @@ final class ApiContractAssertions {
             return true;
         }
         return a.equals(b);
+    }
+
+    private static java.math.BigDecimal toBigDecimal(Number n) {
+        if (n instanceof java.math.BigDecimal d) return d;
+        if (n instanceof java.math.BigInteger i) return new java.math.BigDecimal(i);
+        return new java.math.BigDecimal(n.toString());
     }
 
     private static boolean isEmpty(Object body) {

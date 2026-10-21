@@ -174,7 +174,7 @@ class Witnesses : Requirements_acme_shop_Witnesses {
 }
 ```
 
-A requirement that becomes live adds a failing member (a red test, no compile break); one that is retired or deleted removes its member, so a stale override stops compiling (always, in Kotlin: `override` is mandatory). A planned or retired requirement is `@Disabled` and has no member. Write the witness class in Kotlin. The interface's members have default bodies, and a witness class written in **Java** against it is untested: unless your Kotlin compiler is set to emit JVM default methods for interface members (a compiler setting of your build, which this generator does not control), Java sees every member as abstract and has to implement all of them, which turns each new live requirement into a compile break instead of a red test. The args are `grain` (`concern`, the default, or `member`), `filter` and `renderer` (class names on your project's classpath implementing `RequirementTestFilter` and `RequirementTestRenderer`; a renderer's `source` is Kotlin and its `imports` are Kotlin import names) and `warnUncovered` (`true` by default). The generated files are rewritten whole and import only `org.junit.jupiter.api`, so the test classpath needs `org.junit.jupiter:junit-jupiter-api`. A package that loses its last requirement leaves its two files behind (`gen` never removes a file), and `mvn metaobjects:verify` reports them stale. `mvn metaobjects:eject -Dnames=requirement-tests -Dport=kotlin` copies `KotlinRequirementTestsGenerator.kt`, with its default rendering, into a `codegen/` module under your package; `-Dport` is needed because the name is ejectable on both JVM ports, and the goal infers it only when your project declares a dependency on exactly one of `metaobjects-codegen-kotlin` and `metaobjects-codegen-spring`. The identity function, the digest and the hook types stay in the package. The Java page, [Requirement tests](java.md#requirement-tests--junitrequirementtestsgenerator), has the full arg table.
+A requirement that becomes live adds a failing member (a red test, no compile break); one that is retired or deleted removes its member, so a stale override stops compiling (always, in Kotlin: `override` is mandatory). A planned or retired requirement is `@Disabled` and has no member. Write the witness class in Kotlin. The interface's members have default bodies, and a witness class written in **Java** against it is untested: unless your Kotlin compiler is set to emit JVM default methods for interface members (a compiler setting of your build, which this generator does not control), Java sees every member as abstract and has to implement all of them, which turns each new live requirement into a compile break instead of a red test. The args are `grain` (`concern`, the default, or `member`), `filter` and `renderer` (class names on your project's classpath implementing `RequirementTestFilter` and `RequirementTestRenderer`; a renderer's `source` is Kotlin and its `imports` are Kotlin import names) and `warnUncovered` (`true` by default). The generated files are rewritten whole and import only `org.junit.jupiter.api`, so the test classpath needs `org.junit.jupiter:junit-jupiter-api`. A package that loses its last requirement loses its two files: the full `mvn metaobjects:generate` deletes them through the hash manifest (an edited one is refused by name), and until then `mvn metaobjects:verify` reports them stale. `mvn metaobjects:eject -Dnames=requirement-tests -Dport=kotlin` copies `KotlinRequirementTestsGenerator.kt`, with its default rendering, into a `codegen/` module under your package; `-Dport` is needed because the name is ejectable on both JVM ports, and the goal infers it only when your project declares a dependency on exactly one of `metaobjects-codegen-kotlin` and `metaobjects-codegen-spring`. The identity function, the digest and the hook types stay in the package. The Java page, [Requirement tests](java.md#requirement-tests--junitrequirementtestsgenerator), has the full arg table.
 
 **Own a generator.** `mvn metaobjects:eject -Dnames=<name,...>` copies a reference generator into a `codegen/` Maven module under your own package, and prints the module, dependency and `<classname>` to wire. See [Own your codegen → Java and Kotlin](../features/own-your-codegen.md#java-and-kotlin-mvn-metaobjectseject).
 
@@ -471,6 +471,22 @@ A column property whose name is a member of Exposed's `Table` gets a `Column` su
 (`source` becomes `sourceColumn`); the physical column name does not change. The reserved set
 follows the output mode: `options` and `storageParameters` are `Table` members only in Exposed
 1.x, so they are suffixed only with `exposedApi=1`.
+
+### Decimals on the wire
+
+A `field.decimal` crosses the API as one canonical string (ADR-0019 Amendment 1): `12.50` is
+`"12.5"`, zero is `"0"`, never a JSON number or an exponent. Input may be a string or a number,
+is read exactly, and is `400 validation` when it has more fraction digits than `@scale` or more
+integer digits than `@precision - @scale` (no `@scale` beside `@precision` means 0). A filter
+operand compares exactly; a bad one is `400 invalid_filter_value`. On SQLite a decimal is read at
+15 significant digits. Every port runs the shared vectors in `fixtures/decimal-wire/`.
+
+Generated Kotlin imports nothing from MetaObjects, so codegen writes `MetaDecimalWire.kt` into
+each package that has a decimal: the canonical writer, the strict reader, the declared-digit
+check and the `400 validation` envelope for an unreadable body. The Exposed tables of a package
+that has a decimal or uuid column also get `MetaPortableColumnTypes.kt`, which binds them on
+SQLite and MySQL as well as Postgres; the exposed-table generator writes it. Ejecting `entity`,
+`routes` or `exposed-table` copies `KotlinDecimalWireEmitter.kt` with the generator.
 
 ### `<Entity>Names` — the physical names, as constants
 

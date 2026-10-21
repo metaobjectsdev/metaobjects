@@ -69,7 +69,7 @@ public class ReportShapeTests
             ["ProgramMinutes", "FitnessTotals", "ProgramsByMonth", "ProgramsByWeek", "RecentPrograms", "AssetActivity",
              "ProgramRoster", "ProgramLongWeeks", "ProgramFlags", "ProgramFlagRoster", "FitnessTotalsFilled",
              "MeasurementStats", "MeasurementStatsFilled", "AssetDays", "AllTypesBreakdown", "ProgramsOverTime", "LiveIntroPrograms",
-             "ProgramsEmptyScope", "WeekShapes", "SessionsByProgram", "ProgramSessions", "NodesByParent", "AuthsByKind"],
+             "ProgramsEmptyScope", "WeekShapes", "SessionsByProgram", "ProgramSessions", "NodesByParent", "AuthsByKind", "GadgetEventsByLabel", "EntryTotals"],
             reports);
     }
 

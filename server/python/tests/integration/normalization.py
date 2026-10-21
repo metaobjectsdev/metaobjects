@@ -36,19 +36,24 @@ _PG_OID_INT8 = 20  # BIGINT / BIGSERIAL
 
 
 def normalize_row(
-    row: Mapping[str, Any], column_oids: Mapping[str, int] | None = None
+    row: Mapping[str, Any], column_oids: Mapping[str, int] | None = None, *, actual: bool = False
 ) -> dict[str, Any]:
     """Canonicalize a native-typed row to its wire form.
 
     *column_oids* (field-name → Postgres type OID) supplies the int4-vs-int8
     discriminator the value alone can't carry; when absent (top-level scalar /
     expected-block normalization) the value-only path applies.
+
+    *actual* marks the runtime's own output. A decimal column must come back as a
+    ``Decimal``, so on the actual side a decimal-looking STRING is not canonicalized (it
+    stays a string and fails the comparison); only the expected literals, which the
+    scenario files write as strings, are canonicalized.
     """
     oids = column_oids or {}
-    return {k: normalize_value(v, oids.get(k)) for k, v in row.items()}
+    return {k: normalize_value(v, oids.get(k), actual=actual) for k, v in row.items()}
 
 
-def normalize_value(v: Any, column_oid: int | None = None) -> Any:
+def normalize_value(v: Any, column_oid: int | None = None, *, actual: bool = False) -> Any:
     if v is None:
         return None
     if isinstance(v, bool):
@@ -89,31 +94,31 @@ def normalize_value(v: Any, column_oid: int | None = None) -> Any:
     if isinstance(v, datetime.time):
         return v.strftime("%H:%M:%S") + _ms_suffix(v.microsecond)
     if isinstance(v, str):
-        if _DECIMAL_RE.match(v) and "." in v:
+        if not actual and _DECIMAL_RE.match(v) and "." in v:
             return _canonical_decimal(decimal.Decimal(v))
         if _UUID_RE.match(v):
             return v.lower()
         return v
     if isinstance(v, Mapping):
-        return {k: normalize_value(val) for k, val in sorted(v.items())}
+        return {k: normalize_value(val, actual=actual) for k, val in sorted(v.items())}
     if isinstance(v, (list, tuple)):
-        return [normalize_value(x) for x in v]
+        return [normalize_value(x, actual=actual) for x in v]
     return str(v)
 
 
 def canonical_rows_json(
-    rows: list[Mapping[str, Any]], column_oids: Mapping[str, int] | None = None
+    rows: list[Mapping[str, Any]], column_oids: Mapping[str, int] | None = None, *, actual: bool = False
 ) -> str:
     """Stable JSON: sort object keys, no whitespace, normalize each row first."""
     return json.dumps(
-        [normalize_row(r, column_oids) for r in rows],
+        [normalize_row(r, column_oids, actual=actual) for r in rows],
         sort_keys=True,
         separators=(",", ":"),
     )
 
 
 def canonical_row_set_json(
-    rows: list[Mapping[str, Any]], column_oids: Mapping[str, int] | None = None
+    rows: list[Mapping[str, Any]], column_oids: Mapping[str, int] | None = None, *, actual: bool = False
 ) -> str:
     """Order-independent canonical JSON for a row *set* (M:N `relate` results).
 
@@ -122,7 +127,7 @@ def canonical_row_set_json(
     navigation contract. Mirrors the TS runner's ``canonicalRowSet``.
     """
     each = sorted(
-        json.dumps(normalize_row(r, column_oids), sort_keys=True, separators=(",", ":"))
+        json.dumps(normalize_row(r, column_oids, actual=actual), sort_keys=True, separators=(",", ":"))
         for r in rows
     )
     return "[" + ",".join(each) + "]"

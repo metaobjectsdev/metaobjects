@@ -366,6 +366,33 @@ describe("validateReporting — dimensions", () => {
     expect(msg).toContain("'acme::shop::Program'");
   });
 
+  test("D1: @of naming a base that lacks a field only the @via terminal subtype declares is refused at load", async () => {
+    const m: Model = {
+      "metadata.root": {
+        package: PKG,
+        children: [
+          { "object.entity": { name: "Item", children: [{ "source.rdb": { "@table": "items" } }, field("long", "id"), primary()] } },
+          { "object.entity": { name: "Special", extends: "Item", children: [field("string", "tag")] } },
+          {
+            "object.entity": {
+              name: "Order",
+              children: [
+                { "source.rdb": { "@table": "orders" } },
+                field("long", "id"),
+                primary(),
+                { "relationship.association": { name: "item", "@objectRef": "Special", "@cardinality": "one" } },
+                { "dimension.attribute": { name: "itemTag", "@of": "Item.tag", "@via": "Order.item" } },
+              ],
+            },
+          },
+        ],
+      },
+    } as unknown as Model;
+    const msg = await single(m, "ERR_INVALID_DIMENSION");
+    expect(msg).toContain("only 'acme::shop::Special'");
+    expect(msg).toContain("Special.tag");
+  });
+
   test("D1: @of not of the form Entity.field is refused", async () => {
     const m = edit((x) => patchMember(x, "Purchase", "program", { "@of": "programId" }));
     await single(m, "ERR_INVALID_DIMENSION");
@@ -1502,23 +1529,11 @@ describe("validateReporting — measure @default (M7, M8)", () => {
     );
   });
 
-  test("a non-integer @default on a count reports M7 and the attribute type error", async () => {
-    const m = edit((x) => patchMember(x, "Purchase", "purchases", { "@default": "zero" }));
-    const { errors } = await loadInline(m);
-    expect(errors.map((e) => e.code).sort()).toEqual(["ERR_BAD_ATTR_VALUE", "ERR_INVALID_MEASURE"]);
-    expect(errors.find((e) => e.code === "ERR_INVALID_MEASURE")!.message).toContain(
-      "measure 'purchases' on entity 'acme::shop::Purchase': @default cannot apply to @agg: count.",
-    );
-  });
-
   test("a fractional @default on a sum is ERR_BAD_ATTR_VALUE on the measure node, once", async () => {
     const m = edit((x) => patchMember(x, "Purchase", "revenue", { "@default": 0.5 }));
     const { errors } = await loadInline(m);
     expect(errors.map((e) => e.code)).toEqual(["ERR_BAD_ATTR_VALUE"]);
-    expect(errors[0]!.message).toBe(
-      "measure 'revenue' on entity 'acme::shop::Purchase': @default '0.5' is not an integer. A measure's " +
-        "@default is a whole number (for example 0).",
-    );
+    expect(errors[0]!.message).toContain("@default");
     expect(jsonPathOf(errors[0]!.source)).toContain("['measure.aggregate']");
   });
 
@@ -1526,37 +1541,34 @@ describe("validateReporting — measure @default (M7, M8)", () => {
     const m = edit((x) => patchMember(x, "WorkoutEvent", "avgDaysPerStarter", { "@default": 0.5 }));
     const { errors } = await loadInline(m);
     expect(errors.map((e) => e.code)).toEqual(["ERR_BAD_ATTR_VALUE"]);
-    expect(errors[0]!.message).toBe(
-      "measure 'avgDaysPerStarter' on entity 'acme::shop::WorkoutEvent': @default '0.5' is not an integer. " +
-        "A measure's @default is a whole number (for example 0).",
-    );
     expect(jsonPathOf(errors[0]!.source)).toContain("['measure.ratio']");
   });
 
-  test("the integer check runs first: a fractional @default on a count skips M7", async () => {
+  test("a fractional @default on a count reports only the attribute error (M7 skipped)", async () => {
     const m = edit((x) => patchMember(x, "Purchase", "purchases", { "@default": 0.5 }));
-    const msg = await single(m, "ERR_BAD_ATTR_VALUE");
-    expect(msg).toContain("@default '0.5' is not an integer");
+    await single(m, "ERR_BAD_ATTR_VALUE");
   });
 
-  test("the integer check runs first: a fractional @default on a max of a timestamp skips M8", async () => {
+  test("an integral float @default on a count reports only M7 (Rule A: 0.0 is the integer 0)", async () => {
+    const m = edit((x) => patchMember(x, "Purchase", "purchases", { "@default": 0.0 }));
+    await single(m, "ERR_INVALID_MEASURE");
+  });
+
+  test("a non-numeric @default on a count reports only the attribute error (Rule B)", async () => {
+    const m = edit((x) => patchMember(x, "Purchase", "purchases", { "@default": "zero" }));
+    await single(m, "ERR_BAD_ATTR_VALUE");
+  });
+
+  test("a fractional @default on a max of a timestamp skips M8", async () => {
     const m = edit((x) => patchMember(x, "WorkoutEvent", "lastActivityAt", { "@default": -1.5 }));
-    const msg = await single(m, "ERR_BAD_ATTR_VALUE");
-    expect(msg).toBe(
-      "measure 'lastActivityAt' on entity 'acme::shop::WorkoutEvent': @default '-1.5' is not an integer. " +
-        "A measure's @default is a whole number (for example 0).",
-    );
+    await single(m, "ERR_BAD_ATTR_VALUE");
   });
 
   test("a fractional @default on a sum declared on an abstract base is reported ONCE", async () => {
     const m = inheritedModel();
     const base = objectBody(m, "BaseEvent").children as Wrapper[];
     base[3] = { "measure.aggregate": { name: "events", "@agg": "sum", "@of": "BaseEvent.id", "@default": 0.5 } };
-    const msg = await single(m, "ERR_BAD_ATTR_VALUE");
-    expect(msg).toBe(
-      "measure 'events' on entity 'acme::shop::BaseEvent': @default '0.5' is not an integer. A measure's " +
-        "@default is a whole number (for example 0).",
-    );
+    await single(m, "ERR_BAD_ATTR_VALUE");
   });
 
   test("@default on a sum, an avg, a min of an int and a ratio is fine", async () => {

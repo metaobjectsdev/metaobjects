@@ -10,6 +10,8 @@ Mirrors ``ApiContractAssertions.java`` and ``ApiContractAssertions.kt``.
 """
 from __future__ import annotations
 
+import json
+from decimal import Decimal
 from typing import Any
 
 
@@ -212,16 +214,30 @@ def assert_response(
             )
 
 
+def parse_body(text: str) -> Any:
+    """A response body as JSON, every non-integer number as an exact `Decimal`."""
+    return json.loads(text, parse_float=Decimal)
+
+
+def _is_number(v: Any) -> bool:
+    return isinstance(v, (int, float, Decimal)) and not isinstance(v, bool)
+
+
+def _exact(v: Any) -> Decimal:
+    return Decimal(repr(v)) if isinstance(v, float) else Decimal(v)
+
+
 def _structural_equals(a: Any, b: Any) -> bool:
-    """Recursively compare; ints and floats with equal long value match."""
+    """Recursively compare; numbers exactly."""
     if a is b:
         return True
     if a is None or b is None:
         return a is None and b is None
-    # Numbers: compare as int when both are numeric (mirror Java's longValue compare).
-    if isinstance(a, (int, float)) and not isinstance(a, bool) \
-            and isinstance(b, (int, float)) and not isinstance(b, bool):
-        return int(a) == int(b)
+    # Numbers compare EXACTLY (ADR-0019 Amendment 1): a body is parsed with
+    # `parse_float=Decimal` (see `parse_body`), and a float from a scenario file is read as
+    # the decimal it was written as. Truncating to int would pass `0.4` against `0.9`.
+    if _is_number(a) and _is_number(b):
+        return _exact(a) == _exact(b)
     if isinstance(a, list) and isinstance(b, list):
         if len(a) != len(b):
             return False

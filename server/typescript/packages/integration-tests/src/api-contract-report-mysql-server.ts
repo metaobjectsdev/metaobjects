@@ -64,6 +64,14 @@ const BASE_TABLES: ReadonlyArray<{ name: string; ddl: string }> = [
       FOREIGN KEY (\`product_id\`) REFERENCES \`products\` (\`id\`)
     )`,
   },
+  {
+    name: "tickets",
+    ddl: `CREATE TABLE \`tickets\` (
+      \`id\` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+      \`tags\` JSON,
+      \`attrs\` JSON
+    )`,
+  },
 ];
 
 export async function startMysqlReportServer(mysqlUrl: string, metaPath: string): Promise<MysqlReportServerHandle> {

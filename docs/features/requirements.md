@@ -405,14 +405,18 @@ gate prints them itself. Its load is strict unless `--lax`, as the drift gates' 
 
 ### Known differences between ports
 
-- The package a requirement is taken to be in can differ between ports for two multi-file
-  shapes: a root document with no package loaded beside packaged ones, and a child merged
-  from a package-less document into a requirement that declares its own package.
-- Python applies only the dependency-import rule to decide which of a project's own
-  entities are counted; TypeScript also applies the project's `scope` patterns.
-- A `level` that is not an integer (`4.5`) is refused at load by the Python, Java and C#
-  loaders (`ERR_BAD_ATTR_VALUE`). The TypeScript loader lets it through, and the gate reports
-  it as `ERR_REQUIREMENT_BAD_LEVEL`.
+None. Three that 1.1.0 release candidates had are settled, each by a shared fixture:
+
+- **The package a requirement is in** is its own declared package, else the nearest
+  enclosing node that declares one, else its file's default package. A child merged through
+  an overlay that declares a package takes that package (`requirement-check-conformance`,
+  the `package-*` cases).
+- **Which entities coverage counts**: every non-abstract entity of the project, except one
+  imported from a dependency. The project's `scope` patterns filter generated output, not
+  coverage.
+- **A `level` written `4.0`** loads as `4`; a fraction (`4.5`) is refused at load with
+  `ERR_BAD_ATTR_VALUE`, as on any integer attribute. `ERR_REQUIREMENT_BAD_LEVEL` is for a
+  whole number outside 1 to 5, or a missing level.
 
 ## Requiring implementers
 
@@ -687,11 +691,10 @@ longer matches a fresh run, so the port's codegen drift gate (`metaobjects verif
 `mvn metaobjects:verify`, `dotnet meta verify --codegen`) fails until you regenerate. That
 is the prompt to re-read the witness against the new claim.
 
-**A known limit.** In Python, Java, Kotlin and C#, a package that loses its last
-requirement leaves its generated test file behind. `gen` does not remove it. The port's
-codegen drift gate reports it, and you delete it by hand. TypeScript's generator reconciles
-these itself: it removes the stub of a requirement that is gone, and refuses, by name, one
-that carries a hand edit.
+A package that loses its last requirement loses its generated test file too, in every
+port: `gen` deletes a file it recorded and no longer emits, using the committed hash
+manifest, and refuses, by name, to delete one that carries a hand edit. TypeScript reconciles
+per requirement in the same way, removing the stub of a requirement that is gone.
 
 ### Owning the generator
 

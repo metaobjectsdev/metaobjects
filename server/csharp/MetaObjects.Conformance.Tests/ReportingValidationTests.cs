@@ -492,17 +492,12 @@ public class ReportingValidationTests
     }
 
     [Fact]
-    public void A_non_integer_default_on_a_count_reports_M7_and_the_attribute_type_error()
+    public void A_non_numeric_default_on_a_count_reports_only_the_attribute_type_error()
     {
         var m = Positive();
         PatchMember(m, "Purchase", "purchases", ("@default", "zero"));
         var errors = Load(m).Errors;
-        Assert.Equal(
-            [ErrorCode.ERR_BAD_ATTR_VALUE, ErrorCode.ERR_INVALID_MEASURE],
-            errors.Select(e => e.Code).OrderBy(c => c.ToString(), System.StringComparer.Ordinal));
-        Assert.Contains(
-            "measure 'purchases' on entity 'acme::shop::Purchase': @default cannot apply to @agg: count.",
-            errors.Single(e => e.Code == ErrorCode.ERR_INVALID_MEASURE).Message);
+        Assert.Equal([ErrorCode.ERR_BAD_ATTR_VALUE], errors.Select(e => e.Code));
     }
 
     [Theory]

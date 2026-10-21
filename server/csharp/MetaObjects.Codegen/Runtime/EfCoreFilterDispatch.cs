@@ -50,6 +50,40 @@ public static class EfCoreFilterDispatch
     }
 
     /// <summary>
+    /// Check every operand of a successfully parsed filter against the CLR type of its
+    /// property, so a malformed operand is the contract's <c>400 invalid_filter_value</c>
+    /// (naming the field) instead of an exception out of <see cref="ApplyFilter{T}"/>.
+    /// <see cref="FilterParser"/> is substrate-agnostic and cannot know a column's type; this
+    /// is the first place that does. A decimal operand is parsed with the wire grammar
+    /// (<see cref="DecimalWire.TryParse"/>) and compared exactly, never through a double.
+    /// A failed parse result is returned unchanged.
+    /// </summary>
+    public static FilterParseResult Validate<T>(FilterParseResult parsed)
+    {
+        if (parsed.ErrorEnvelope is not null) return parsed;
+        foreach (var p in parsed.Predicates)
+        {
+            if (p.Op is "isNull" or "like") continue;
+            var prop = ResolveProperty(typeof(T), p.Field);
+            if (prop is null) continue; // the allowlist gate upstream guarantees a match; BuildLambda reports a miss
+            var memberType = prop.PropertyType;
+            var underlying = Nullable.GetUnderlyingType(memberType) ?? memberType;
+            try
+            {
+                if (p.Op == "in")
+                    foreach (var item in (IReadOnlyList<string>)p.Value!) CoerceTo(item, memberType, underlying);
+                else
+                    CoerceTo((string)(p.Value ?? ""), memberType, underlying);
+            }
+            catch (Exception ex) when (ex is FormatException or InvalidCastException or OverflowException or ArgumentException)
+            {
+                return FilterParseResult.Err("invalid_filter_value", p.Field);
+            }
+        }
+        return parsed;
+    }
+
+    /// <summary>
     /// Build an <c>Expression&lt;Func&lt;T, bool&gt;&gt;</c> for a single predicate
     /// against the resolved CLR property of <typeparamref name="T"/>.
     /// </summary>
@@ -164,6 +198,13 @@ public static class EfCoreFilterDispatch
             return TimeOnly.Parse(raw, CultureInfo.InvariantCulture);
         if (underlying.IsEnum) return Enum.Parse(underlying, raw, ignoreCase: false);
         if (underlying == typeof(bool)) return bool.Parse(raw);
+        // ADR-0019 Amendment 1 (W2): a decimal operand is the JSON-number grammar, parsed
+        // exactly. Convert.ChangeType accepted surrounding whitespace, thousands separators
+        // and a leading '+', and rounded past 28-29 digits.
+        if (underlying == typeof(decimal))
+            return DecimalWire.TryParse(raw, out var exact)
+                ? exact
+                : throw new FormatException("not a decimal: " + raw);
         return Convert.ChangeType(raw, underlying, CultureInfo.InvariantCulture);
     }
 }

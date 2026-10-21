@@ -9,18 +9,18 @@ import { toMysqlSeed } from "../src/query-scenario-mysql.ts";
 import { splitStatements } from "../src/sql-script.ts";
 
 describe("toWireRow", () => {
-  test("SQLite: a count and a currency are strings, a ratio is a canonical decimal string, min/max stay numbers", () => {
+  test("SQLite: a count and a currency are strings; a decimal, min and max pass through untouched", () => {
     expect(toWireRow("sqlite", "ProgramMinutes", {
-      program: 1, weeks: 4, avgMinutes: 60, longShare: 0.75, minMinutes: 30, programTitle: "7",
+      program: 1, weeks: 4, avgMinutes: "60", longShare: "0.75", minMinutes: 30, programTitle: "7",
     })).toEqual({
       program: "1", weeks: "4", avgMinutes: "60", longShare: "0.75", minMinutes: 30, programTitle: "7",
     });
   });
 
-  test("MySQL: a DECIMAL keeps its value and loses its scale; a BIGINT string is untouched", () => {
+  test("a decimal is never rewritten here: the runtime owes the canonical string, the typed gate checks it", () => {
     expect(toWireRow("mysql", "ProgramMinutes", { weeks: "4", avgMinutes: "60.0000", longShare: "0.6667" }))
-      .toEqual({ weeks: "4", avgMinutes: "60", longShare: "0.6667" });
-    expect(toWireRow("mysql", "ProgramMinutes", { longShare: "0.0000" })).toEqual({ longShare: "0" });
+      .toEqual({ weeks: "4", avgMinutes: "60.0000", longShare: "0.6667" });
+    expect(toWireRow("sqlite", "ProgramMinutes", { longShare: 0.75 })).toEqual({ longShare: 0.75 });
   });
 
   test("an instant becomes a UTC ...Z string: SQLite's stored text and MySQL's naive wall clock", () => {
@@ -33,7 +33,9 @@ describe("toWireRow", () => {
   test("null, a date bucket and an unknown entity pass through", () => {
     expect(toWireRow("sqlite", "ProgramMinutes", { totalMinutes: null })).toEqual({ totalMinutes: null });
     expect(toWireRow("sqlite", "AssetActivity", { asOfDateWeek: "2026-04-27" })).toEqual({ asOfDateWeek: "2026-04-27" });
-    expect(toWireRow("mysql", "Program", { id: 1 })).toEqual({ id: 1 });
+    expect(toWireRow("mysql", "NoSuchEntity", { id: 1 })).toEqual({ id: 1 });
+    // A known entity's long is a string on the wire, whatever number the driver read.
+    expect(toWireRow("mysql", "Program", { id: 1 })).toEqual({ id: "1" });
   });
 
   test("a wrong value is still wrong: only the spelling is mapped", () => {

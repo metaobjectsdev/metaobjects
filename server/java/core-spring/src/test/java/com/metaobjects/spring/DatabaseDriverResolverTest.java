@@ -5,6 +5,7 @@ import com.metaobjects.manager.db.driver.MySQLDriver;
 import com.metaobjects.manager.db.driver.OracleDriver;
 import com.metaobjects.manager.db.driver.PostgresDriver;
 import com.metaobjects.manager.db.driver.MSSQLDriver;
+import com.metaobjects.manager.db.driver.SQLiteDriver;
 import org.junit.Test;
 
 import static org.junit.Assert.assertThrows;
@@ -19,6 +20,7 @@ public class DatabaseDriverResolverTest {
         assertTrue(DatabaseDriverResolver.forDialect("mssql") instanceof MSSQLDriver);
         assertTrue(DatabaseDriverResolver.forDialect("oracle") instanceof OracleDriver);
         assertTrue(DatabaseDriverResolver.forDialect("derby") instanceof DerbyDriver);
+        assertTrue(DatabaseDriverResolver.forDialect("sqlite") instanceof SQLiteDriver);
     }
 
     @Test
@@ -29,7 +31,7 @@ public class DatabaseDriverResolverTest {
 
     @Test
     public void forDialect_unknownThrows() {
-        assertThrows(IllegalArgumentException.class, () -> DatabaseDriverResolver.forDialect("sqlite"));
+        assertThrows(IllegalArgumentException.class, () -> DatabaseDriverResolver.forDialect("h2"));
     }
 
     @Test
@@ -39,6 +41,7 @@ public class DatabaseDriverResolverTest {
         assertTrue(DatabaseDriverResolver.forProduct("Microsoft SQL Server") instanceof MSSQLDriver);
         assertTrue(DatabaseDriverResolver.forProduct("Oracle") instanceof OracleDriver);
         assertTrue(DatabaseDriverResolver.forProduct("Apache Derby") instanceof DerbyDriver);
+        assertTrue(DatabaseDriverResolver.forProduct("SQLite") instanceof SQLiteDriver);
     }
 
     @Test

@@ -122,7 +122,7 @@ def test_base_router_polymorphic_plus_per_subtype(entities, index) -> None:
         assert f'@router.post("/{seg}", status_code=status.HTTP_201_CREATED)' in src
         assert f'@router.get("/{seg}/{{auth_id}}")' in src
         assert f'@router.delete("/{seg}/{{auth_id}}"' in src
-        assert f'return repo.create("{val}", dto)' in src
+        assert f'return to_wire(repo.create("{val}", dto))' in src
     # the per-subtype literal routes are emitted before the polymorphic /{id}
     assert src.index('@router.get("/bridge")') < src.index('@router.get("/{auth_id}")')
 

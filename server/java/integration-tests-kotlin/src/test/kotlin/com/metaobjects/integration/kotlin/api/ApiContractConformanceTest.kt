@@ -68,7 +68,7 @@ internal class ApiContractConformanceTest {
     }
 
     companion object {
-        private val MAPPER = ObjectMapper()
+        private val MAPPER = ObjectMapper().enable(com.fasterxml.jackson.databind.DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS)
 
         // Loaded once per test class. Each scenario re-applies via applySeed/truncate
         // so the per-scenario isolation contract holds.

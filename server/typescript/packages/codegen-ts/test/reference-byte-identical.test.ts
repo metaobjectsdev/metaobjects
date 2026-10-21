@@ -780,7 +780,10 @@ describe("ADR-0034 — the cube-model reference is byte-identical to the built-i
     // facts cube; ProgramSessions reaches its facts through the Session -> Week reference.
     expect("tree" in a ? a.tree.map(([p]) => p) : a).toEqual([
       "model/cubes/AllTypes.yml", "model/cubes/Asset.yml", "model/cubes/Auth.yml", "model/cubes/BridgeAuth.yml",
-      "model/cubes/CopayAuth.yml", "model/cubes/Measurement.yml", "model/cubes/Node.yml", "model/cubes/Node_fkParent.yml",
+      "model/cubes/CopayAuth.yml",
+      "model/cubes/Entry.yml",
+      "model/cubes/Gadget.yml",
+      "model/cubes/GadgetEvent.yml", "model/cubes/Measurement.yml", "model/cubes/Node.yml", "model/cubes/Node_fkParent.yml",
       "model/cubes/PriorAuthAuth.yml", "model/cubes/Program.yml", "model/cubes/ProgramFlagRosterFacts.yml",
       "model/cubes/ProgramLongWeeksFacts.yml", "model/cubes/ProgramRosterFacts.yml", "model/cubes/ProgramSessionsFacts.yml",
       "model/cubes/ProgramSessions_fkWeek.yml", "model/cubes/ReferralAuth.yml", "model/cubes/Session.yml",

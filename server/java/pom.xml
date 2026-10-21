@@ -23,9 +23,9 @@
     </developer>
   </developers>
   <scm>
-    <connection>scm:git:git://github.com/metaobjectsdev/metaobjects-core.git</connection>
-    <developerConnection>scm:git:git@github.com:metaobjectsdev/metaobjects-core.git</developerConnection>
-    <url>https://github.com/metaobjectsdev/metaobjects-core</url>
+    <connection>scm:git:git://github.com/metaobjectsdev/metaobjects.git</connection>
+    <developerConnection>scm:git:git@github.com:metaobjectsdev/metaobjects.git</developerConnection>
+    <url>https://github.com/metaobjectsdev/metaobjects</url>
     <tag>HEAD</tag>
   </scm>
   <organization>

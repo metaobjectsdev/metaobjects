@@ -9,24 +9,23 @@ import com.metaobjects.generator.kotlin.KotlinExposedTableGenerator
 import com.metaobjects.generator.kotlin.KotlinFilterAllowlistGenerator
 import com.metaobjects.generator.kotlin.KotlinNamesGenerator
 import com.metaobjects.generator.kotlin.KotlinSpringControllerGenerator
+import com.metaobjects.integration.kotlin.ScenarioEngine
+import com.metaobjects.integration.kotlin.ScenarioLoader
 import com.metaobjects.integration.kotlin.api.TomcatHost
 import com.metaobjects.loader.uri.URIHelper
 import com.metaobjects.metadata.ktx.loadUris
 import com.tschuchort.compiletesting.KotlinCompilation
 import com.tschuchort.compiletesting.SourceFile
 import org.jetbrains.exposed.sql.Database
-import org.jetbrains.exposed.sql.SchemaUtils
-import org.jetbrains.exposed.sql.Table
-import org.jetbrains.exposed.sql.transactions.transaction
 import java.net.URI
 import java.nio.file.Files
 import java.nio.file.Path
-import java.util.concurrent.atomic.AtomicInteger
+import java.sql.DriverManager
 import kotlin.io.path.isRegularFile
 import kotlin.io.path.readText
 
 /**
- * FR-044 Plan 3: host the GENERATED Kotlin Spring controllers of the nine served reports
+ * FR-044 Plan 3: host the GENERATED Kotlin Spring controllers of the ten served reports
  * of the `report/` corpus over real HTTP (an embedded Tomcat). Mirrors
  * [com.metaobjects.integration.kotlin.api.projection.generated.GeneratedProjectionControllerHarness].
  *
@@ -37,22 +36,24 @@ import kotlin.io.path.readText
  *  3. Compile every emitted `.kt` together. This is the only thing that proves the emitted
  *     report controller COMPILES against its row, table and allowlist: the codegen-compile
  *     gate excludes the framework-bound route tier in every port by design.
- *  4. Per scenario: a fresh in-memory H2 (PostgreSQL mode), `SchemaUtils.create(...)` on the
- *     four generated report table objects, then the `reports` half of `seed.json`.
- *  5. Serve the four controllers from one embedded Tomcat ([TomcatHost]).
+ *  4. Per scenario ([reset]): execute the committed TypeScript-produced `report/schema.<engine>.sql`
+ *     verbatim (the base tables AND the real views) on a real database, then seed the base
+ *     tables of `seed.json` (every top-level key but `reports`), parents first.
+ *  5. Serve the controllers from one embedded Tomcat ([TomcatHost]).
  *
- * No view SQL is written here (ADR-0015: TypeScript owns it). H2 creates each generated
- * `<R>Table` as a plain table that STANDS IN for the view, and the seed's `reports` half is
- * what the four views return for the seeded base tables. The base-table keys (`invoices`,
- * `products`, `sales`) are the full-stack lanes' input; this seam lane does not read them.
- * What this lane proves is the generated route over the generated binding, not the lowering.
+ * No view SQL is written here (ADR-0015: TypeScript owns it). The generated `<R>Table`
+ * objects read the REAL views, so this is a full-stack lane on Postgres, SQLite and MySQL,
+ * like the TypeScript and C# lanes. The seed's `reports` half (what the views return) is
+ * not used: the views derive it from the base tables.
  */
 @OptIn(org.jetbrains.kotlin.compiler.plugin.ExperimentalCompilerApi::class)
 class GeneratedReportControllerHarness(
-    corpusRoot: Path,
+    private val corpusRoot: Path,
     genDir: Path,
-    /** `seed.json`'s `reports`: report name to the rows its view returns. */
-    private val reportRows: Map<String, List<Map<String, Any?>>>,
+    /** The sub-corpus directory under the api-contract corpus: `report`, or `decimal` (same mechanics). */
+    private val lane: String = "report",
+    private val entityPkg: String = ENTITY_PKG,
+    private val served: List<String> = SERVED,
 ) : AutoCloseable {
 
     private val mapper: ObjectMapper = ObjectMapper()
@@ -62,17 +63,13 @@ class GeneratedReportControllerHarness(
         .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
 
     private val controllerClasses: List<Class<*>>
-    private val tables: Map<String, Table>
-    private val dbSeq = AtomicInteger(0)
     private var host: TomcatHost? = null
-    /** ADR-0058 — the project's naming.columns rule, read from this corpus's config. */
-    private val columnsRule: String
 
     /** Every generated file, by path relative to the output root. */
     val emittedFiles: Set<String>
 
     init {
-        val metaJson = corpusRoot.resolve("report/meta.json")
+        val metaJson = corpusRoot.resolve("$lane/meta.json")
         val uri: URI = URIHelper.toURI("model:file:" + metaJson.toAbsolutePath().toString().replace('\\', '/'))
         val loader = loadUris("api-contract-report-generated", listOf(uri))
         // ADR-0058 — this corpus's committed .metaobjects/config.json (at corpusRoot,
@@ -81,7 +78,6 @@ class GeneratedReportControllerHarness(
         // depend on this. Read with the SAME NeutralConfig reader every port uses.
         loader.root.physicalNaming =
             com.metaobjects.config.SourceResolver.resolvePhysicalNaming(corpusRoot)
-        columnsRule = loader.root.physicalNaming.columns()
 
         val srcDir = genDir.resolve("src")
         Files.createDirectories(srcDir)
@@ -103,8 +99,8 @@ class GeneratedReportControllerHarness(
 
         // A served report's controller must have been emitted at all; otherwise this fails
         // downstream as a ClassNotFoundException with no hint that the emit gate was the cause.
-        for (report in SERVED) {
-            check("acme/sales/${report}Controller.kt" in emittedFiles) {
+        for (report in served) {
+            check("${entityPkg.replace('.', '/')}/${report}Controller.kt" in emittedFiles) {
                 "no controller was generated for the $report report; emitted=$emittedFiles"
             }
         }
@@ -118,42 +114,82 @@ class GeneratedReportControllerHarness(
             "generated Kotlin failed to compile:\n${result.messages}"
         }
 
-        controllerClasses = SERVED.map { result.classLoader.loadClass("$ENTITY_PKG.${it}Controller") }
-        tables = SERVED.associateWith {
-            result.classLoader.loadClass("$ENTITY_PKG.${it}Table").getDeclaredField("INSTANCE").get(null) as Table
-        }
-    }
-
-    /** Rebuild a fresh in-memory H2, the nine stand-in tables, the seed, and Tomcat. */
-    fun reset() {
-        val dbName = "report_invoice_${dbSeq.incrementAndGet()}"
-        val db = Database.connect("jdbc:h2:mem:$dbName;DB_CLOSE_DELAY=-1;MODE=PostgreSQL", driver = "org.h2.Driver")
-        transaction(db) {
-            for ((report, table) in tables) {
-                SchemaUtils.create(table)
-                val rows = reportRows[report] ?: error("report/seed.json: no 'reports.$report' rows")
-                for (row in rows) {
-                    val fields = row.keys.toList()
-                    val colList = fields.joinToString(", ") { identity(column(table, it)) }
-                    val values = fields.joinToString(", ") { literal(row[it]) }
-                    exec("INSERT INTO ${identity(table)} ($colList) VALUES ($values)")
-                }
-            }
-        }
-
-        host?.close()
-        host = TomcatHost.start(mapper, *controllerClasses.map { it.getDeclaredConstructor().newInstance() }.toTypedArray())
+        controllerClasses = served.map { result.classLoader.loadClass("$entityPkg.${it}Controller") }
     }
 
     /**
-     * The generated Exposed column for a derived field name. Looked up by the PHYSICAL name
-     * the generator chose — this corpus's naming.columns rule (ADR-0058), read from the
-     * SAME loaded root the generators resolved it from — so the seed follows whatever the
-     * generator emitted rather than a spelling hardcoded here that could drift from it.
+     * Rebuild the schema (real tables and views), the base-table seed, and Tomcat on [target].
+     * The target must be empty or hold only a previous run's schema (Postgres and MySQL are
+     * cleared here; a SQLite target is a fresh file per scenario).
      */
-    private fun column(table: Table, field: String) =
-        table.columns.firstOrNull { it.name == com.metaobjects.database.ColumnNaming.apply(field, columnsRule) }
-            ?: error("no column for derived field '$field' on ${table.tableName}; columns=${table.columns.map { it.name }}")
+    fun reset(target: ReportDb) {
+        val engine = target.engine
+        val url = engine.jdbcUrl(target.baseUrl)
+        val schema = ScenarioLoader.readCanonicalSchema(corpusRoot, "$lane/schema.${engine.name.lowercase()}.sql")
+        DriverManager.getConnection(url, target.username, target.password).use { c ->
+            c.createStatement().use { st ->
+                when (engine) {
+                    ScenarioEngine.POSTGRES -> {
+                        st.execute("DROP SCHEMA public CASCADE")
+                        st.execute("CREATE SCHEMA public")
+                        st.execute(schema)
+                    }
+                    ScenarioEngine.MYSQL -> {
+                        dropMysql(st, schema)
+                        ScenarioEngine.splitStatements(schema).forEach { st.execute(it) }
+                    }
+                    ScenarioEngine.SQLITE -> ScenarioEngine.splitStatements(schema).forEach { st.execute(it) }
+                }
+                seedBaseTables(st, engine)
+            }
+        }
+        // The generated controllers open their transactions on Exposed's default database.
+        Database.connect(url, user = target.username, password = target.password)
+
+        host?.close()
+        host = TomcatHost.start(mapper, *controllerClasses.map(::instantiate).toTypedArray())
+    }
+
+    /**
+     * A read-only report controller takes no arguments; a writable entity's takes the ObjectMapper
+     * (the per-field PATCH bind) and a jakarta Validator (create and present-value validation).
+     */
+    private fun instantiate(c: Class<*>): Any {
+        val ctor = c.declaredConstructors.minByOrNull { it.parameterCount }!!
+        return if (ctor.parameterCount == 0) ctor.newInstance()
+        else ctor.newInstance(mapper, jakarta.validation.Validation.buildDefaultValidatorFactory().validator)
+    }
+
+    /** Every top-level key of `seed.json` but `reports` is a base table, parents first, in file order. */
+    @Suppress("UNCHECKED_CAST")
+    private fun seedBaseTables(st: java.sql.Statement, engine: ScenarioEngine) {
+        val seed = ObjectMapper().readValue(
+            Files.readString(corpusRoot.resolve("$lane/seed.json")), Map::class.java,
+        ) as Map<String, Any?>
+        val q = if (engine == ScenarioEngine.MYSQL) "`" else "\""
+        val tables = seed.filterKeys { it != SEED_REPORTS_KEY }
+        check(tables.isNotEmpty()) { "$lane/seed.json: no base-table rows to seed" }
+        for ((table, rows) in tables) {
+            for (row in rows as List<Map<String, Any?>>) {
+                val cols = row.keys.joinToString(", ") { "$q$it$q" }
+                val vals = row.values.joinToString(", ") { literal(it) }
+                st.execute("INSERT INTO $q$table$q ($cols) VALUES ($vals)")
+            }
+            // The seed writes explicit ids; move the identity past them (MySQL and SQLite continue from MAX).
+            if (engine == ScenarioEngine.POSTGRES && rows.any { it.containsKey("id") }) {
+                st.execute("SELECT setval(pg_get_serial_sequence('$table', 'id'), COALESCE((SELECT MAX(id) FROM \"$table\"), 1))")
+            }
+        }
+    }
+
+    /** MySQL keeps one database across scenarios: drop the artifact's views, then its tables. */
+    private fun dropMysql(st: java.sql.Statement, schema: String) {
+        val created = ScenarioEngine.splitStatements(schema).mapNotNull { MYSQL_CREATE.find(it)?.groupValues }
+        created.filter { it[1] == "VIEW" }.forEach { st.execute("DROP VIEW IF EXISTS `${it[2]}`") }
+        st.execute("SET FOREIGN_KEY_CHECKS = 0")
+        created.filter { it[1] == "TABLE" }.forEach { st.execute("DROP TABLE IF EXISTS `${it[2]}`") }
+        st.execute("SET FOREIGN_KEY_CHECKS = 1")
+    }
 
     fun exchange(method: String, path: String, jsonBody: Any?): Response {
         val server = host ?: error("reset() must be called before exchange(...)")
@@ -164,28 +200,38 @@ class GeneratedReportControllerHarness(
     fun parseBody(body: String?): Any? = TomcatHost.parseBody(mapper, body)
 
     override fun close() {
-        host?.close() // H2 in-mem is reclaimed at JVM exit (DB_CLOSE_DELAY=-1).
+        host?.close()
     }
 
     data class Response(val status: Int, val body: String)
 
+    /** A database the lane runs on: [baseUrl] is the engine's JDBC URL before [ScenarioEngine.jdbcUrl] adds its session policy. */
+    data class ReportDb(val engine: ScenarioEngine, val baseUrl: String, val username: String, val password: String)
+
     companion object {
         const val ENTITY_PKG = "acme.sales"
+
+        /** The one top-level key of seed.json that is not a base table. */
+        private const val SEED_REPORTS_KEY = "reports"
+
+        private val MYSQL_CREATE = Regex("^CREATE (VIEW|TABLE) `([^`]+)`")
 
         /**
          * The reports of the corpus that declare a view. `InvoiceDays` declares none.
          * `ProductRevenue` declares `@spine` and a measure with `@default`; `InvoiceCalendar` lists
          * one time dimension at two grains; `SalesByCategory` reaches a dimension through two references.
          */
+        /** The `decimal/` sub-corpus: one writable entity and the report read from it. */
+        val DECIMAL_SERVED = listOf("Entry", "EntryTotals")
+
         val SERVED = listOf(
             "InvoiceStatusTotals", "InvoicesByMonth", "InvoiceTotals", "InvoiceCalendar", "InvoiceDisputes",
-            "ProductRevenue", "SalesByCategory", "SalesBySku", "ProductRefunds",
+            "ProductRevenue", "SalesByCategory", "SalesBySku", "ProductRefunds", "TicketsByTags",
         )
 
         /**
-         * A seed value as a SQL literal. A date (`"2026-04-01"`) and the ratio (`"0.4"`, a
-         * string in the seed so no float sits between it and the column's decimal) are quoted
-         * strings that H2 converts to the column's own type on insert.
+         * A seed value as a SQL literal. A date (`"2026-04-30"`) is a quoted string the engine
+         * converts to the column's own type on insert.
          */
         private fun literal(v: Any?): String = when (v) {
             null -> "NULL"

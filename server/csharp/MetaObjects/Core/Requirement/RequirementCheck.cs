@@ -125,18 +125,18 @@ public static class RequirementCheck
     /// else <c>""</c>.
     /// </summary>
     /// <remarks>
-    /// Read through <see cref="NamingRefs.EffectivePackage"/>, which cuts the node's
-    /// <see cref="MetaData.ResolutionKey"/>: its own package, else its file-default package, else the
-    /// package of the nearest ancestor that declares one. That is Table A's wording, and it is what
-    /// the Java port does. It agrees with TypeScript on every shape the corpus pins (a nested
-    /// requirement takes its parent's package, not the file's, because the C# parser hands each
-    /// child the nearest declaring node's package as its file-default) and on a package-less
-    /// document loaded after a packaged one (both parsers fall back to the accumulating root's
-    /// package). It differs in one known shape: a child merged into a package-declaring node from a
-    /// package-less document. C# takes the declaring ancestor's package; TypeScript takes none.
-    /// That is a loader-level difference outside the gate, recorded for the owner.
+    /// Walks the parent chain to the nearest node that declares a <c>package</c>; with none, takes the
+    /// file-default package of the top-level node the requirement hangs under, else <c>""</c>
+    /// (ADR-0059 D3/D10). A child contributed by a different document than its merge target thereby
+    /// resolves like the node it hangs under, never like the document that contributed it. Applies to
+    /// requirements only: <c>extends</c> resolution is unchanged.
     /// </remarks>
-    public static string EffectivePackage(MetaData node) => NamingRefs.EffectivePackage(node);
+    public static string EffectivePackage(MetaData node)
+    {
+        MetaData cur = node;
+        while (string.IsNullOrEmpty(cur.Package) && cur.Parent is { Parent: not null } up) cur = up;
+        return !string.IsNullOrEmpty(cur.Package) ? cur.Package : cur.FileDefaultPackage ?? "";
+    }
 
     // -- the scan ---------------------------------------------------------------------------
 

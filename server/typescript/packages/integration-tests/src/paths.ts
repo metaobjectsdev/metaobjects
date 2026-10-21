@@ -8,7 +8,9 @@ const here = dirname(fileURLToPath(import.meta.url));
 // src → integration-tests → packages → typescript → server → repo-root
 const repoRoot = resolve(here, "..", "..", "..", "..", "..");
 
-export const CORPUS_DIR = resolve(repoRoot, "fixtures", "persistence-conformance");
+// MO_CORPUS_DIR / MO_API_CONTRACT_DIR point the artifact generators at a working copy of a corpus,
+// so a proposed corpus change can be regenerated and diffed without touching the committed one.
+export const CORPUS_DIR = process.env["MO_CORPUS_DIR"] ?? resolve(repoRoot, "fixtures", "persistence-conformance");
 export const CANONICAL_DIR = resolve(CORPUS_DIR, "canonical");
 export const MIGRATIONS_DIR = resolve(CORPUS_DIR, "migrations");
 export const QUERIES_DIR = resolve(CORPUS_DIR, "queries");
@@ -17,7 +19,7 @@ export const QUERIES_DIR = resolve(CORPUS_DIR, "queries");
 export const REPORT_SHAPES_PATH = resolve(CORPUS_DIR, "report-shapes.json");
 
 // fixtures/api-contract-conformance/ — cross-port REST API contract corpus.
-export const API_CONTRACT_DIR = resolve(repoRoot, "fixtures", "api-contract-conformance");
+export const API_CONTRACT_DIR = process.env["MO_API_CONTRACT_DIR"] ?? resolve(repoRoot, "fixtures", "api-contract-conformance");
 export const API_CONTRACT_SCENARIOS_DIR = resolve(API_CONTRACT_DIR, "scenarios");
 
 // fixtures/api-contract-conformance/m2m/ — FR-018 many-to-many traversal corpus
@@ -52,3 +54,11 @@ export const API_CONTRACT_REPORT_MYSQL_SCHEMA_SQL_PATH = resolve(API_CONTRACT_RE
 
 // fixtures/validation-conformance/ — cross-port generated input-validation corpus.
 export const VALIDATION_DIR = resolve(repoRoot, "fixtures", "validation-conformance");
+
+// fixtures/api-contract-conformance/decimal/ — ADR-0019 Amendment 1: a decimal is exact on the wire
+// (read, filter, sort, write, report) over HTTP, generated lane only.
+export const API_CONTRACT_DECIMAL_DIR = resolve(API_CONTRACT_DIR, "decimal");
+export const API_CONTRACT_DECIMAL_SCENARIOS_DIR = resolve(API_CONTRACT_DECIMAL_DIR, "scenarios");
+export const API_CONTRACT_DECIMAL_SCHEMA_SQL_PATH = resolve(API_CONTRACT_DECIMAL_DIR, "schema.postgres.sql");
+export const API_CONTRACT_DECIMAL_SQLITE_SCHEMA_SQL_PATH = resolve(API_CONTRACT_DECIMAL_DIR, "schema.sqlite.sql");
+export const API_CONTRACT_DECIMAL_MYSQL_SCHEMA_SQL_PATH = resolve(API_CONTRACT_DECIMAL_DIR, "schema.mysql.sql");

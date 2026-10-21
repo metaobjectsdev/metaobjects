@@ -120,7 +120,10 @@ __FIND_BY_ID__
             }
 
             /** A raw query operand as the column's own type, so the comparison is typed. */
-            private static Comparable<Object> operand(String field, String raw) {
+            private static Comparable<Object> operand(String field, Object given) {
+                // ADR-0019 Amendment 1: FilterParser hands a decimal field's operand over as a BigDecimal.
+                if (given instanceof BigDecimal exact) return comparable(exact);
+                String raw = (String) given;
                 Class<?> type = component(field).getType();
                 Object value;
                 if (type == Long.class) value = Long.valueOf(raw);
@@ -158,7 +161,7 @@ __FIND_BY_ID__
                     }
                     case "in": {
                         if (col == null) return false;
-                        for (String item : (List<String>) p.value()) {
+                        for (Object item : (List<Object>) p.value()) {
                             if (comparable(col).compareTo(operand(p.field(), item)) == 0) return true;
                         }
                         return false;
@@ -170,7 +173,7 @@ __FIND_BY_ID__
                     default: {
                         if (col == null) return false;
                         // compareTo, never equals: BigDecimal.equals is scale-sensitive.
-                        int cmp = comparable(col).compareTo(operand(p.field(), (String) p.value()));
+                        int cmp = comparable(col).compareTo(operand(p.field(), p.value()));
                         return switch (p.op()) {
                             case "eq"  -> cmp == 0;
                             case "ne"  -> cmp != 0;

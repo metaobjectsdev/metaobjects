@@ -26,5 +26,10 @@ object ApiContractScenarios {
         val sourcePath: String,
         val truncate: Boolean,        // true when setup.truncate is set
         val requests: List<ApiRequest>,
-    )
+        /** The top-level `engines:` key, matched EXACTLY; null = every engine the lane has. */
+        val engines: Set<String>? = null,
+    ) {
+        /** True when the scenario runs on [engine] (`postgres`, `mysql`, `sqlite`, `d1`). */
+        fun runsOn(engine: String): Boolean = engines == null || engine.lowercase() in engines
+    }
 }

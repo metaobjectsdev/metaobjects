@@ -369,13 +369,17 @@ SQL is exact.
 ### Reports: rollups and scope segments
 
 A served report writes into the cube of its `@from` entity, a TPH subtype's cube included. The
-rollup is named after the report.
+rollup is named after the report. A report that lists one time dimension at several grains gets
+one rollup per grain instead, each at a single granularity and named `<Report>_<grain>`
+(`ProgramsOverTime_year`, `_quarter`, `_day`, written coarsest first); with several such
+dimensions, one rollup per combination of grains. A Cube query names a time dimension once, at
+one granularity, so this is the form Cube can match.
 
 | Report part | In the cube |
 |---|---|
 | attribute dimensions | `dimensions: [CUBE.d, …]` in listed order. A `@via` dimension is a member of the `@from` cube, so it is listed the same way. |
 | one time dimension | `time_dimension: CUBE.d` and `granularity: <grain>` |
-| two or more time dimensions, including one dimension at two grains | `time_dimensions:`, a block list with one `{ dimension, granularity }` entry for each, in listed order |
+| two or more different time dimensions | `time_dimensions:`, a block list with one `{ dimension, granularity }` entry for each, in listed order |
 | measures | `measures: [CUBE.m, …]` in listed order |
 | `@segment` | `segments: [CUBE.<segment>]` |
 | `@filter` | a public segment `<report>Scope` on the cube, where `<report>` is the report's name with a lower-case first letter (`RecentRevenue` gives `recentRevenueScope`), whose `sql` is the filter. It is listed after `@segment` in the rollup's `segments`. |
@@ -567,7 +571,7 @@ there.
 | Ad-hoc queries | Cube lets a caller pick any members. | Nothing here checks the numbers for a combination no report declares. |
 | Rollup freshness | Cube refreshes a rollup on its refresh key, and the exporter writes none, so Cube's default applies. | A rollup can trail the table until it refreshes. The view is never stale. A report with a relative date gets no rollup for this reason. |
 | Empty scope | A report with no dimension whose scope reads no rows returns one row from the view: the count `0` and each measure's `@default`. Cube answers from the rollup, which is empty, and sums it to null for every measure, the count and the default included. | `ProgramsEmptyScope` is the one canonical report where the rows differ; the live check requires both answers, so the difference stays an executed check. |
-| Several grains | A report that lists one time dimension at several grains gets a rollup naming that dimension once per grain. A Cube query names a time dimension once, at one granularity, so Cube 1.7.43 matches no query to that rollup. | The rollup is declared and never used; Cube answers from the source table and the rows equal the view's. `ProgramsOverTime` is the canonical case. |
+| Cube Store precision | Cube Store keeps a rolled-up average to 5 decimal places (`2322.11111`); the source database gives up to 16. | An average answered from a rollup in production mode differs from the view's after the fifth place. |
 | Encodings | Cube's REST API sends numbers as strings and time buckets as `YYYY-MM-DDTHH:MM:SS.sss`. Where a rollup sends `60`, the view sends `60.0000000000000000`, and where Cube sends `2026-05-01T00:00:00.000`, the view sends `2026-05-01`. | Clients normalize them. The live check does, before it compares rows. |
 
 ## Checking it
@@ -623,6 +627,27 @@ Cube over a private MySQL 8.4 holding the report views `buildReportViews` lowers
 the Cube query returns the rows of `SELECT * FROM <view>`, from the rollup when the model has one.
 Checks 4, 5 and 6 are Postgres only.
 
+The three MySQL mapping cases are executed by a third file (`cube-model-mysql-cases.live.ts`):
+their generated trees are loaded into Cube over MySQL 8.4 with seeded `events`, `weeks` and
+`calls` tables, and 14 queries (date and timestamp buckets, a tuple distinct count with and
+without a condition, a ratio over an empty scope, the boolean measures and their defaults) are
+compared with rows worked out by hand from the seed.
+
+Production mode is a fourth file (`cube-model-production.live.ts`), run on Postgres and on
+MySQL: `CUBEJS_DEV_MODE=false`, a signed JWT (a request without one gets `403`), and a separate
+`cubejs/cubestore:v1.7.43` container. It builds every rollup through the pre-aggregations jobs
+API (`CUBEJS_DEFAULT_API_SCOPES=meta,data,jobs`, since that API is off by default) and waits for
+each job. Each served report with a rollup must be answered from Cube Store
+(`usedPreAggregations` names `prod_pre_aggregations.<table>`, `external: true`) with the view's
+rows, each report without one from the source, `ProgramsOverTime` at day, quarter and year from
+its own rollup, and every rollup the model declares must answer at least one query.
+
+A fifth file (`cube-model-shapes.live.ts`) queries the shapes the canonical model does not
+carry, each from its `fixtures/cube-model/` tree on Postgres: the alias cubes (each alias and
+both together), the TPH subtype's `sql`, a one-to-one join from both ends, the int-backed enum's
+`CASE`, and a two-hop `@spine` report, whose rows, the spine rows with no facts included, must
+equal the lowered view's. Each query's rows are compared with plain SQL on the same database.
+
 Run it with `scripts/ci-local.sh --only cube`. The full `scripts/ci-local.sh` runs it after the
 integration suite, and `--quick` and `--no-integration` drop it. The first run pulls the Cube
 image, which is about 1 GB. With Docker down, the lane records a SKIP behind a banner, never a
@@ -631,11 +656,12 @@ pass; under `--strict-toolchains` it is a failure. In CI it is a `cube` entry in
 
 ## Rollups in production
 
-A rollup needs Cube Store. Cube's development mode embeds one, and the live check runs in that
-mode only. A production deployment runs Cube Store as a separate service you set up and size;
-the exporter does not deploy one. It writes no refresh key and no partition, so those follow
-Cube's defaults until you set them. The live check has not run in Cube's production mode, so
-the table names above are the development-mode form.
+A rollup needs Cube Store. Cube's development mode embeds one; a production deployment runs Cube
+Store as a separate service you set up and size, and the exporter does not deploy one. It writes
+no refresh key and no partition, so those follow Cube's defaults until you set them. The live
+check runs both modes (see [Checking it](#checking-it)); in production mode the rollup tables
+are `prod_pre_aggregations.<table>`, and they must be built (by Cube's refresh worker or the
+jobs API) before a query can use them.
 
 ## Known limits
 
@@ -645,21 +671,12 @@ the table names above are the development-mode form.
   refuses the model with `ERR_CUBE_AMBIGUOUS_PATH`, naming both. The lossless form needs a
   nested alias for each path. That is more machinery than a rare model is worth yet, so the
   exporter errors rather than guess.
-- **The three MySQL mapping cases are compiled, never executed.** The corpus pins their SQL byte
-  for byte and Cube compiles them, but no MySQL database runs them. The MySQL path runs only the
-  served reports. The tuple distinct count's MySQL form was compared with the view's on mysql:8.4
-  by hand when it was built.
-- **Some shapes are compile-checked, not query-checked.** Cube accepts the alias cubes, the TPH
-  subtype's `sql`, one-to-one joins, the int-backed enum's `CASE` and a two-hop `@spine` chain
-  (the corpus pass), but no live query of the lane crosses them. The two-hop chain's rows were
-  compared with the view lowering's by hand on 1.7.43 when it was built.
 - **A `@spine` report has no rollup.** Its view is answered from the tables. A rollup on the spine
   cube would lose the zero rows (see [Reports with `@spine`](#reports-with-spine-a-cube-view)).
 - **No `sqlite` or `d1`.** See [Dialects](#wiring-it).
 - **No `extends`, no `refresh_key`, no partitions, no `format`.** The exporter writes cubes, and
   a Cube view only for a served `@spine` report.
 - **No derived measure.** `measure.derived` is not registered, so there is nothing to map.
-- **Rollups in production mode are unverified** (see above).
 
 ## Compatibility
 

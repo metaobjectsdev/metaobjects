@@ -15,7 +15,6 @@
 import type { MetaData } from "../../shared/meta-data.js";
 import type { MetaRoot } from "../../shared/meta-root.js";
 import { TYPE_DIMENSION, TYPE_MEASURE, TYPE_SEGMENT } from "../../shared/base-types.js";
-import { SOURCE_KIND_VIEW } from "../../persistence/source/source-constants.js";
 import { AGG_ALL } from "../../persistence/origin/origin-constants.js";
 import type { MetaObject } from "../object/meta-object.js";
 import { OBJECT_REPORT_ATTR_FILTER, OBJECT_REPORT_ATTR_SEGMENT, OBJECT_REPORT_ATTR_SPINE } from "../object/object-constants.js";
@@ -177,17 +176,12 @@ export function reportFieldTypeName(field: ReportField): string {
 }
 
 /**
- * Why a report is not served, or undefined when it is (Plan 3 Table A: served means not
- * abstract, with a read source of `@kind: view`).
+ * Why a report is not served, or undefined when it is. The loader refuses an abstract
+ * report (R11) and a read source whose `@kind` is not `view` (R10), so the one way a loaded
+ * report goes unserved is declaring no read source at all (Plan 3 Table A).
  */
 export function reportNotServedReason(report: MetaObject): string | undefined {
-  if (report.isAbstract === true) return "Not served: the report is abstract";
-  const source = reportReadSource(report);
-  if (source === undefined) return "Not served: declares no view source";
-  if (source.effectiveKind !== SOURCE_KIND_VIEW) {
-    return `Not served: its source is a ${source.effectiveKind}, not a view`;
-  }
-  return undefined;
+  return reportReadSource(report) === undefined ? "Not served: declares no view source" : undefined;
 }
 
 const DIMENSION_ATTRS = [REPORTING_ATTR_OF, REPORTING_ATTR_VIA] as const;

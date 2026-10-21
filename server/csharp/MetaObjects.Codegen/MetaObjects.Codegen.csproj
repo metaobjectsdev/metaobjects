@@ -85,5 +85,7 @@
     <EmbeddedResource Include="Runtime/ValueObjectValidator.cs" />
     <EmbeddedResource Include="Runtime/ConstraintErrors.cs" />
     <EmbeddedResource Include="Runtime/Iso8601TimestampConverter.cs" />
+    <EmbeddedResource Include="Runtime/DecimalWire.cs" />
+    <EmbeddedResource Include="Runtime/DecimalRangeEndpointFilter.cs" />
   </ItemGroup>
 </Project>

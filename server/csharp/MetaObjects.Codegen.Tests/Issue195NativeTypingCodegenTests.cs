@@ -78,7 +78,7 @@ public class Issue195NativeTypingCodegenTests
     {
         var cls = ProjectionClass();
         // collect → COALESCE([]) → non-null List (never a nullable collection).
-        Assert.Contains("public ICollection<string> Labels { get; set; } = new List<string>();", cls);
+        Assert.Contains("public IList<string> Labels { get; set; } = new List<string>();", cls);
     }
 
     [Fact]

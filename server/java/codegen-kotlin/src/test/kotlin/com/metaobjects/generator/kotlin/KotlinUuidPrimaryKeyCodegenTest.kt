@@ -141,8 +141,8 @@ class KotlinUuidPrimaryKeyCodegenTest {
             "acme/demo/PostTable.kt")
         // Exposed's typed references() requires the FK column's SQL type to match the
         // referenced PK's — long("author_id").references(Column<UUID>) does not compile.
-        assertTrue("val authorId = uuid(\"author_id\").references(AuthorTable.id)" in src,
-            "expected uuid(\"author_id\").references(AuthorTable.id); saw:\n$src")
+        assertTrue("val authorId = portableUuid(\"author_id\").references(AuthorTable.id)" in src,
+            "expected portableUuid(\"author_id\").references(AuthorTable.id); saw:\n$src")
         assertTrue("long(\"author_id\")" !in src,
             "FK to a uuid PK must not be a long column; saw:\n$src")
     }
@@ -150,8 +150,8 @@ class KotlinUuidPrimaryKeyCodegenTest {
     @Test fun `inferred inverse FK column from a uuid-PK owner is a uuid column`() {
         val src = generate(KotlinExposedTableGenerator(), "kuuid-fk-inv", uuidFkFixture,
             "acme/demo/CommentTable.kt")
-        assertTrue("val authorId = uuid(\"author_id\").references(AuthorTable.id)" in src,
-            "expected inferred uuid(\"author_id\") FK on CommentTable; saw:\n$src")
+        assertTrue("val authorId = portableUuid(\"author_id\").references(AuthorTable.id)" in src,
+            "expected inferred portableUuid(\"author_id\") FK on CommentTable; saw:\n$src")
         assertTrue("long(\"author_id\")" !in src,
             "inverse FK to a uuid-PK owner must not be a long column; saw:\n$src")
     }

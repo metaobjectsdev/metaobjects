@@ -84,15 +84,16 @@ regenerate.
 | 1.0 | 1.1.0 |
 |---|---|
 | the `columnNaming` generator arg in `pom.xml` | `"naming": { "columns": "<value>" }` in `.metaobjects/config.json`. `mvn metaobjects:generate` fails while any generator still passes it |
-| `SimpleMappingHandlerDB.setColumnNaming(...)` | the rule comes from the loaded metadata; the setter throws. A Spring application loading metadata from the classpath points `metaobjects.physical-naming-config` at the project's `.metaobjects/config.json` packaged as a resource (for example `classpath:.metaobjects/config.json`); the loader sets the rules from that file |
-| no arg: Java codegen and the JVM runtime used the field names (`literal`) | no setting: snake_case in Java codegen, Kotlin codegen and the runtime alike. Add `"naming": { "columns": "literal" }` to keep 1.0's column names |
+| `SimpleMappingHandlerDB.setColumnNaming(...)` | the rule comes from the loaded metadata; the setter throws. A Spring application reads `classpath:.metaobjects/config.json` when the project packages that file as a resource, or the location `metaobjects.physical-naming-config` names (a `classpath:` location or a file path; a named location that does not exist fails startup). `MetaDataLoader.fromUris` and `fromDirectory` find the `.metaobjects/config.json` above the metadata. With no file found, the loader logs one WARN and uses snake_case |
+| no arg, Java codegen and the JVM runtime (OMDB, Java and Kotlin alike): the field names (`literal`) | no setting: snake_case. Add `"naming": { "columns": "literal" }` to keep 1.0's column names |
+| no arg, Kotlin codegen (the Exposed tables): already snake_case in 1.0 | no setting: snake_case, unchanged. A Kotlin/Exposed project whose tables came from 1.0 Kotlin codegen adds nothing: adding `literal` would rename its columns |
 
 ## Python
 
 | 1.0 | 1.1.0 |
 |---|---|
 | `metaobjects gen --column-naming <strategy>`, `metaobjects verify --codegen --column-naming <strategy>` | `"naming": { "columns": "<strategy>" }` in `.metaobjects/config.json`. The flag is refused (exit 2) |
-| `ObjectManager(..., column_naming="<strategy>")` | `ObjectManager(...)`. The manager reads the rule from the loaded root; the argument raises. A model loaded outside the project directory gets the project's rules with `attach_naming(root, project_dir)` from `metaobjects.naming`, which reads that project's `.metaobjects/config.json` and returns the root, so `root = attach_naming(root, project_dir)` |
+| `ObjectManager(..., column_naming="<strategy>")` | `ObjectManager(...)`. The manager reads the rule from the loaded root; the argument raises. `MetaDataLoader.from_directory(...)` and `from_uris(...)` find the `.metaobjects/config.json` above the metadata, and warn once and use snake_case when there is none. `from_string(..., project_dir=...)` takes the project explicitly. A model loaded any other way gets the project's rules with `attach_naming(root, project_dir)` from `metaobjects.naming`, which reads that project's `.metaobjects/config.json` and returns the root, so `root = attach_naming(root, project_dir)` |
 | no flag: `*_names.py` and the `ObjectManager` used the field names (`literal`) | no setting: snake_case. Add `"naming": { "columns": "literal" }` to keep 1.0's column names |
 
 `metaobjects verify --codegen` reports drift that another column rule, another table rule, or

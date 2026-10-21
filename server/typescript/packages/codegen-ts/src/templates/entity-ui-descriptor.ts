@@ -52,7 +52,7 @@ import {
   pluralize,
   toSnakeCase,
 } from "@metaobjectsdev/metadata";
-import { inferViewKind, currencyMetaFor, labelFor, humanize, valueObjectFor } from "./field-meta.js";
+import { inferViewKind, currencyMetaFor, labelFor, humanize, valueObjectFor, numericInputControl } from "./field-meta.js";
 import { VIEW_CONTEXT_FORM } from "../view-context.js";
 import { enumValues } from "../enum-meta.js";
 // `restPath` lives HERE rather than in api-surface.ts, which is where it used to sit and
@@ -79,6 +79,10 @@ export interface UiFieldDescriptor {
   /** Present only when the view maps to a real HTML `<input type=…>`. Derived from the
    *  view subtype — there is no authored override (see `htmlTypeFromView`). */
   readonly htmlType?: string | undefined;
+  /** `"any"` on a double/float number input so `12.5` passes native validation. */
+  readonly step?: string | undefined;
+  /** `"decimal"` on a decimal's text input (see `numericInputControl`). */
+  readonly inputMode?: string | undefined;
   /** Empty when the field declares nothing to validate. */
   readonly rules: readonly UiRule[];
   /** Present only for a `field.currency`. */
@@ -180,7 +184,7 @@ function htmlTypeFromView(view: string, fieldSubType: string): string | undefine
     case VIEW_SUBTYPE_TEXT:
       return "text";
     case VIEW_SUBTYPE_NUMBER:
-      return "number";
+      return numericInputControl(fieldSubType)?.htmlType ?? "number";
     case VIEW_SUBTYPE_DATE:
       // The `date` VIEW is the default for all three calendar/clock subtypes, but only a
       // calendar date fits `<input type="date">`: a timestamp needs a time as well and a
@@ -207,6 +211,14 @@ function htmlTypeFromView(view: string, fieldSubType: string): string | undefine
     default:
       return undefined;
   }
+}
+
+function stepAttrs(subType: string): { step?: string; inputMode?: string } {
+  const c = numericInputControl(subType);
+  return {
+    ...(c?.step !== undefined ? { step: c.step } : {}),
+    ...(c?.inputMode !== undefined ? { inputMode: c.inputMode } : {}),
+  };
 }
 
 /**
@@ -293,6 +305,8 @@ export function buildUiFieldDescriptor(field: MetaField, root?: MetaRoot): UiFie
     label: labelFor(field, VIEW_CONTEXT_FORM),
     view,
     htmlType: htmlTypeFromView(view, field.subType),
+    // Only the number view carries them: a field authored with another view has its own control.
+    ...(view === VIEW_SUBTYPE_NUMBER ? stepAttrs(field.subType) : {}),
     rules: buildFieldRules(field),
     currency: currencyMeta === null
       ? undefined

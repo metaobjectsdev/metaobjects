@@ -348,7 +348,7 @@ public class ReportReadModelTest extends SharedRegistryTestBase {
         for (MetaObject o : canonical.getChildren(MetaObject.class, false)) {
             if (ReportReadModel.isReport(o)) models.add(ReportReadModel.of(o, canonical));
         }
-        assertEquals(23, models.size());
+        assertEquals(25, models.size());
 
         for (ReportReadModel model : models) {
             assertNull("never attached", model.getParent());
@@ -396,18 +396,15 @@ public class ReportReadModelTest extends SharedRegistryTestBase {
         """;
 
     @Test
-    public void aDimensionOverAFieldObjectIsRefusedByName() {
-        MetaRoot root = loadJson(OBJECT_DIMENSION_MODEL);
-        MetaObject report = object(root, "SalesByDestination");
-        // The shape still derives (the loader accepts the model); the read model refuses.
-        assertEquals("object", ReportShape.of(report, root).fields().get(0).subType());
+    public void aDimensionOverAFieldObjectIsRefusedAtLoadByName() {
+        // D5: the loader refuses it before any read model is built (the read model's own
+        // refusal stays as the backstop for a tree built in code).
         try {
-            ReportReadModel.of(report, root);
+            loadJson(OBJECT_DIMENSION_MODEL);
             fail("a report over a field.object must be refused");
         } catch (MetaDataException e) {
-            assertEquals("report 'SalesByDestination': dimension 'destination' reads 'shop::Sale.shipTo',"
-                    + " a field.object. A report over a field.object is not supported; group by a scalar field.",
-                    e.getMessage());
+            assertEquals(com.metaobjects.ErrorCode.ERR_INVALID_DIMENSION, e.getCode().orElseThrow());
+            assertTrue(e.getMessage(), e.getMessage().contains("@of 'Sale.shipTo' is a field.object"));
         }
     }
 }

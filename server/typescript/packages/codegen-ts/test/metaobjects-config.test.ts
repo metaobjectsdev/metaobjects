@@ -1,4 +1,7 @@
 import { describe, test, expect, expectTypeOf } from "bun:test";
+import { guideUrl } from "@metaobjectsdev/metadata/release-docs";
+// The guide links name the tag of the running release (a prerelease keeps main).
+const BLOB = guideUrl("");
 import { defineConfig, normalizeConfig, resolveTargets, DEFAULT_TARGET_NAME, type MetaobjectsGenConfig, type ResolvedGenConfig, type Dialect, type ExtStyle } from "../src/metaobjects-config.js";
 import type { Generator } from "../src/generator.js";
 
@@ -122,7 +125,7 @@ describe("columnNamingStrategy is refused (ADR-0058)", () => {
   test("a config still carrying it is refused, naming the value and the new setting", () => {
     const cfg = { outDir: "out", dbImport: "../db", dialect: "sqlite", generators: [], columnNamingStrategy: "literal" } as unknown as MetaobjectsGenConfig;
     expect(() => normalizeConfig(cfg)).toThrow(
-      'columnNamingStrategy in metaobjects.config.ts was removed in 1.1.0. Column and table naming is one project setting now, read by every port: "naming" in .metaobjects/config.json, for example "naming": { "columns": "literal" }. Move it there and delete columnNamingStrategy in metaobjects.config.ts. See https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/physical-naming.md',
+      'columnNamingStrategy in metaobjects.config.ts was removed in 1.1.0. Column and table naming is one project setting now, read by every port: "naming" in .metaobjects/config.json, for example "naming": { "columns": "literal" }. Move it there and delete columnNamingStrategy in metaobjects.config.ts. See ' + BLOB + 'docs/features/migrations/physical-naming.md',
     );
   });
   test("a config without it normalizes as before", () => {

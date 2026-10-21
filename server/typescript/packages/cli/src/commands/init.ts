@@ -12,10 +12,12 @@ import { reportIgnoredScaffold } from "../lib/ignored-scaffold-check.js";
 import { parseInitArgs } from "../lib/args.js";
 import { log } from "../lib/log.js";
 import { cliVersion, isPrereleaseVersion } from "../lib/version.js";
+import { currentContentHash } from "../lib/agent-context-staleness.js";
 import { findWranglerConfig, parseWranglerConfig } from "@metaobjectsdev/migrate-ts";
 import { DEFAULT_DOCS_DIR } from "@metaobjectsdev/codegen-ts";
 import { describeError } from "../lib/error-text.js";
 import { SUBTYPE_ROOT, TYPE_METADATA, TYPE_SUBTYPE_SEPARATOR } from "@metaobjectsdev/metadata/constants";
+import { docsRefForVersion } from "@metaobjectsdev/metadata";
 
 // ADR-0034 scaffold-and-own — where `meta eject` and `meta generator new` put a generator
 // the consumer OWNS. `meta init` scaffolds it empty; metaobjects.config.ts imports from it
@@ -311,10 +313,11 @@ async function writeAgentContext(opts: InitOptions, result: InitResult): Promise
   warnIfMonorepoSubdir(opts, result);
   const prior = await readManifest(opts.cwd);
   const stack = await stackForAgentContext(opts, prior);
-  let assembled = assemble({ contentRoot: resolveAgentContextRoot(), stack });
+  let assembled = assemble({ contentRoot: resolveAgentContextRoot(), stack, docsRef: docsRefForVersion(cliVersion()) });
   if (opts.noSkills) assembled = assembled.filter((f) => !f.path.startsWith(".claude/skills/"));
 
   const generatedBy = cliVersion();
+  const contentHash = currentContentHash().currentContentHash;
   const decision = planScaffold({
     stack, assembled, prior,
     readCurrent: (rel) => {
@@ -322,6 +325,7 @@ async function writeAgentContext(opts: InitOptions, result: InitResult): Promise
       return existsSyncWrap(abs) ? readFileSyncWrap(abs, "utf8") : undefined;
     },
     generatedBy,
+    ...(contentHash !== undefined && { contentHash }),
   });
   // A pre-release CLI stamps its own pre-release version into the committed
   // .metaobjects/.agent-context.json ("generatedBy") and the skills/docs it scaffolds may

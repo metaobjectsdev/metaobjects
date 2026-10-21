@@ -67,7 +67,7 @@ public class IntAttribute extends MetaAttribute<Integer> {
                     String trimmed = item.trim();
                     if (!trimmed.isEmpty()) {
                         try {
-                            list.add(Integer.parseInt(trimmed));
+                            list.add(parseIntegral(trimmed));
                         } catch (NumberFormatException e) {
                             throw new IllegalArgumentException("Invalid integer value in array: " + trimmed, e);
                         }
@@ -77,7 +77,7 @@ public class IntAttribute extends MetaAttribute<Integer> {
             } else {
                 // Single value
                 try {
-                    Integer intValue = Integer.parseInt(value.trim());
+                    Integer intValue = parseIntegral(value.trim());
                     setValueAsObject(Arrays.asList(intValue));
                 } catch (NumberFormatException e) {
                     throw new IllegalArgumentException("Invalid integer value: " + value, e);
@@ -89,11 +89,24 @@ public class IntAttribute extends MetaAttribute<Integer> {
                 setValueAsObject(null);
             } else {
                 try {
-                    setValueAsObject(Integer.parseInt(value.trim()));
+                    setValueAsObject(parseIntegral(value.trim()));
                 } catch (NumberFormatException e) {
                     throw new IllegalArgumentException("Invalid integer value: " + value, e);
                 }
             }
+        }
+    }
+
+    /**
+     * Rule A (cross-port): an int attribute accepts any number whose value is integral, so
+     * {@code 4}, {@code 4.0} and {@code 1e2} load as an integer, and a fraction is refused.
+     * The refusal is a {@link NumberFormatException} the callers turn into the load error.
+     */
+    static int parseIntegral(String text) {
+        try {
+            return new java.math.BigDecimal(text).intValueExact();
+        } catch (ArithmeticException notIntegral) {
+            throw new NumberFormatException("not an integral int: " + text);
         }
     }
 

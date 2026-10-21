@@ -55,7 +55,8 @@ public static class HelperRuntime
     /// The helper files, in the order eject reports them. Each is referenced by generated
     /// routes except <c>Iso8601TimestampConverter.cs</c>, which the host registers to give
     /// those routes the api contract's timestamp spelling — it serves the same wire, so
-    /// the adopter owns it with them.
+    /// the adopter owns it with them. <c>DecimalWire.cs</c> is the decimal wire form
+    /// (ADR-0019 Amendment 1): the filter dispatcher parses decimal operands through it.
     /// </summary>
     public static readonly IReadOnlyList<string> Files =
     [
@@ -66,6 +67,8 @@ public static class HelperRuntime
         "ValueObjectValidator.cs",
         "ConstraintErrors.cs",
         "Iso8601TimestampConverter.cs",
+        "DecimalWire.cs",
+        "DecimalRangeEndpointFilter.cs",
     ];
 
     /// <summary>Runtime/ files that are CORE and never copied (see the header).</summary>

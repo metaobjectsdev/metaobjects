@@ -11,6 +11,7 @@ object AuthFilterAllowlist {
         "type",
         "reference",
         "quantity",
+        "copayAmount",
         "priorAuthNumber",
     )
 
@@ -19,6 +20,7 @@ object AuthFilterAllowlist {
         "type" to setOf("eq", "ne", "in", "like", "isNull"),
         "reference" to setOf("eq", "ne", "in", "like", "isNull"),
         "quantity" to setOf("eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull"),
+        "copayAmount" to setOf("eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull"),
         "priorAuthNumber" to setOf("eq", "ne", "in", "like", "isNull")
     )
 }

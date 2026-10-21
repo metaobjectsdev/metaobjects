@@ -32,5 +32,14 @@ object Scenarios {
         val seedData: String? = null,
         val seedDataEngine: Map<String, String>? = null,  // `seed-data-engine`: seed SQL for an engine whose spelling differs
         val queries: List<QuerySpec>,
-    )
+        /**
+         * `engines:` (ADR-0019 Amendment 1) — EXACT when present: only the named engines run the file.
+         * Absent keeps the old rule: Postgres runs every scenario, the other engines run `report-*`.
+         */
+        val engines: Set<String>? = null,
+    ) {
+        fun runsOn(engine: ScenarioEngine): Boolean =
+            engines?.let { engine.id in it }
+                ?: (engine == ScenarioEngine.POSTGRES || name.startsWith("report-"))
+    }
 }

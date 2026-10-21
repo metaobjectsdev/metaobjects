@@ -937,6 +937,90 @@
           "typeSource": null
         }
       ]
+    },
+    {
+      "report": "fitness::GadgetEventsByLabel",
+      "from": "fitness::GadgetEvent",
+      "view": "v_gadget_events_by_label",
+      "fields": [
+        {
+          "name": "gadgetLabel",
+          "role": "dimension",
+          "subType": "int",
+          "required": true,
+          "typeSource": "fitness::Gadget.label"
+        },
+        {
+          "name": "gadgetEvents",
+          "role": "measure",
+          "subType": "long",
+          "required": true,
+          "typeSource": null
+        }
+      ]
+    },
+    {
+      "report": "fitness::EntryTotals",
+      "from": "fitness::Entry",
+      "view": "v_entry_totals",
+      "fields": [
+        {
+          "name": "bucket",
+          "role": "dimension",
+          "subType": "string",
+          "required": true,
+          "typeSource": "fitness::Entry.bucket"
+        },
+        {
+          "name": "entries",
+          "role": "measure",
+          "subType": "long",
+          "required": true,
+          "typeSource": null
+        },
+        {
+          "name": "total",
+          "role": "measure",
+          "subType": "decimal",
+          "required": false,
+          "typeSource": null
+        },
+        {
+          "name": "totalOrZero",
+          "role": "measure",
+          "subType": "decimal",
+          "required": true,
+          "typeSource": null
+        },
+        {
+          "name": "mean",
+          "role": "measure",
+          "subType": "decimal",
+          "required": false,
+          "typeSource": null
+        },
+        {
+          "name": "top",
+          "role": "measure",
+          "subType": "decimal",
+          "required": false,
+          "typeSource": "fitness::Entry.amount"
+        },
+        {
+          "name": "flaggedShare",
+          "role": "measure",
+          "subType": "decimal",
+          "required": false,
+          "typeSource": null
+        },
+        {
+          "name": "perFlagged",
+          "role": "measure",
+          "subType": "decimal",
+          "required": false,
+          "typeSource": null
+        }
+      ]
     }
   ]
 }

@@ -2,12 +2,12 @@
 
 import { describe, test } from "bun:test";
 import { CANONICAL_DIR, QUERIES_DIR } from "../src/paths.ts";
-import { loadQueries } from "../src/scenario.ts";
+import { loadQueriesFor } from "../src/scenario.ts";
 import { runQueryScenario } from "../src/query-scenario.ts";
 import { startPostgres } from "../src/postgres-container.ts";
 
 describe("persistence conformance — query scenarios", () => {
-  for (const scenario of loadQueries(QUERIES_DIR)) {
+  for (const scenario of loadQueriesFor(QUERIES_DIR, "postgres")) {
     test(scenario.name, async () => {
       const pg = await startPostgres();
       try {

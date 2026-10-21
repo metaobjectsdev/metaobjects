@@ -65,7 +65,7 @@ final class M2mApiContractConformanceTest {
                         HttpResponse.BodyHandlers.ofString());
                     Object parsed = (res.body() == null || res.body().isEmpty())
                         ? null
-                        : MAPPER.readValue(res.body(), Object.class);
+                        : MAPPER.copy().enable(com.fasterxml.jackson.databind.DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS).readValue(res.body(), Object.class);
                     M2mScenarios.assertResponse(scenario.name(), req, res.statusCode(), parsed);
                 }
             }

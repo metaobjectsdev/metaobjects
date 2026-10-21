@@ -147,7 +147,7 @@ describe("generated TypeScript tier on MySQL", () => {
     expect(body.rank).toBe(10);
     expect(body.active).toBe(true);
     expect(body.tags).toEqual(["poetry", "essays"]);
-    expect(body.score).toBe("12.50");
+    expect(body.score).toBe("12.5"); // canonical (ADR-0019 Amendment 1): no trailing fraction zero
     expect(body.externalId).toBe("0f8fad5b-d9cb-469f-a165-70867728950e");
     expect(body.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
 

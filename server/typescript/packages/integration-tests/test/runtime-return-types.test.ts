@@ -16,7 +16,7 @@
 //
 //   * Measurement.id (BIGINT)         → string  ("1") — node-postgres' int8 default;
 //                                       JS has no safe 64-bit int, so bigint→string.
-//   * Measurement.preciseKg (NUMERIC) → string  ("12.5000") — TS has no native exact
+//   * Measurement.preciseKg (NUMERIC) → string  ("12.5", canonical) — TS has no native exact
 //                                       decimal type; string preserves precision (ADR-0019).
 //   * Asset.recordedAt (TIMESTAMPTZ)  → Date    — a native JS temporal, NOT a re-canonicalized
 //                                       string. runtime-ts hands back the driver's Date; the
@@ -98,11 +98,10 @@ describe("SP-D Unit 4 — runtime returns native types, not wire-strings", () =>
         expect(measurement.id).toBe("1");
 
         // preciseKg is NUMERIC → string (ADR-0019: TS has no native exact-decimal type;
-        // string preserves full precision). Crucially it is NOT pre-canonicalized: the
-        // raw scale-preserving DB text "12.5000" comes through, NOT the wire form "12.5"
-        // (which is produced only by the boundary normalizer).
+        // string preserves full precision). Amendment 1 (W1): the runtime reads a decimal in its
+        // canonical spelling, so the column's scale ("12.5000") is not carried to the caller.
         expect(typeof measurement.preciseKg).toBe("string");
-        expect(measurement.preciseKg).toBe("12.5000");
+        expect(measurement.preciseKg).toBe("12.5");
 
         // --- Asset: native temporal (Date) + native jsonb (object) ----------------
         const a = await om.findById("Asset", "11111111-1111-4111-8111-111111111111");

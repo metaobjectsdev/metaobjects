@@ -19,13 +19,14 @@ internal static class CorpusPaths
     public static readonly string QueriesDir = Path.Combine(Corpus, "queries");
 
     /// <summary>
-    /// The <c>report-*</c> query scenarios as xUnit member data — the only corpus subset whose
-    /// tables exist in the SQLite and MySQL schema artifacts. One home for the name predicate,
-    /// so a dialect-gated scenario cannot be silently skipped by one lane's enumeration.
+    /// The query scenarios <paramref name="engine"/> runs, as xUnit member data: one home for the
+    /// <c>engines:</c> rule (see <see cref="QueryScenario.RunsOn"/>), so a dialect-gated scenario
+    /// cannot be silently skipped by one lane's enumeration.
     /// </summary>
-    public static IEnumerable<object[]> ReportQueryScenarios() =>
-        Directory.EnumerateFiles(QueriesDir, "report-*.yaml", SearchOption.TopDirectoryOnly)
+    public static IEnumerable<object[]> ScenariosFor(ScenarioEngine engine) =>
+        Directory.EnumerateFiles(QueriesDir, "*.yaml", SearchOption.TopDirectoryOnly)
             .OrderBy(p => p, StringComparer.Ordinal)
+            .Where(p => ScenarioLoader.LoadQuery(p).RunsOn(engine))
             .Select(p => new object[] { p });
 
     /// <summary>

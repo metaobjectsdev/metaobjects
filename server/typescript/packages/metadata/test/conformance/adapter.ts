@@ -205,9 +205,9 @@ export const tsAdapter: ConformanceAdapter = {
             ...(referrer !== undefined ? { referrer } : {}),
             ...(target !== undefined ? { target } : {}),
           };
-          return { code: err.code, source };
+          return { code: err.code, message: err.message, source };
         }
-        return { code: err.code, source: { format: src.format, files: [] } };
+        return { code: err.code, message: err.message, source: { format: src.format, files: [] } };
       }
       const code = (err as { code?: unknown }).code;
       return {

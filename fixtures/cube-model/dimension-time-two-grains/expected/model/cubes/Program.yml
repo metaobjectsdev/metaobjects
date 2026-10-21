@@ -17,11 +17,13 @@ cubes:
         sql: '{CUBE}."id"'
         type: count
     pre_aggregations:
-      - name: ProgramGrains
+      - name: ProgramGrains_month
         type: rollup
         measures: [CUBE.programs]
-        time_dimensions:
-          - dimension: CUBE.createdAt
-            granularity: week
-          - dimension: CUBE.createdAt
-            granularity: month
+        time_dimension: CUBE.createdAt
+        granularity: month
+      - name: ProgramGrains_week
+        type: rollup
+        measures: [CUBE.programs]
+        time_dimension: CUBE.createdAt
+        granularity: week

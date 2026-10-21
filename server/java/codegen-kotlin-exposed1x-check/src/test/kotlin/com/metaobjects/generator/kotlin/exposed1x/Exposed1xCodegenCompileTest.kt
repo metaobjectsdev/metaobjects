@@ -99,17 +99,19 @@ class Exposed1xCodegenCompileTest {
                 "exposedApi=1 output still referenced the 0.x org.jetbrains.exposed.sql.* " +
                     "package — exposedApi did not fully flip every emission site")
             // The acceptance-critical trap the issue calls out BY NAME: a java.util.UUID column
-            // must use javaUUID(...), never bare uuid(...) (which binds kotlin.uuid.Uuid under
-            // 1.x — "the one silent trap: emitting uuid() still compiles, but it changes the
-            // Kotlin type"). The Asset entity's `id`/`ownerId` (native field.uuid) route through
-            // this. `externalId` (field.string @dbColumnType=uuid) does NOT — it now emits the
-            // package-shared `uuidString(...)` extension (ADR-0037: the escape hatch is
-            // physical-only, so the property stays String; see
-            // KotlinExposedTableGenerator.uuidStringSupportBlock) — but id/ownerId alone still
-            // exercise the javaUUID(...) trap this assertion exists to catch.
-            assertTrue(Regex("""\bjavaUUID\(""").containsMatchIn(combined),
-                "expected at least one javaUUID(...) column — the fixture declares field.uuid " +
+            // must never be a bare uuid(...) (which binds kotlin.uuid.Uuid under 1.x — "the one
+            // silent trap: emitting uuid() still compiles, but it changes the Kotlin type"). The
+            // Asset entity's `id`/`ownerId` (native field.uuid) are `portableUuid(...)` columns
+            // (text off Postgres, MetaPortableColumnTypes.kt), whose type delegates to the
+            // java.util.UUID-backed `v1.core.java.UUIDColumnType`. `externalId` (field.string
+            // @dbColumnType=uuid) emits the package-shared `uuidString(...)` extension instead
+            // (ADR-0037: the escape hatch is physical-only, so the property stays String).
+            assertTrue(Regex("""\bportableUuid\(""").containsMatchIn(combined),
+                "expected at least one portableUuid(...) column — the fixture declares field.uuid " +
                     "columns (Asset.id/ownerId); none were found in:\n${emittedPaths.map { it.fileName }}")
+            assertTrue("import org.jetbrains.exposed.v1.core.java.UUIDColumnType" in combined,
+                "the portable uuid column must delegate to the java.util.UUID-backed " +
+                    "org.jetbrains.exposed.v1.core.java.UUIDColumnType under exposedApi=1")
             assertFalse(Regex("""(?<!java)\buuid\(""").containsMatchIn(combined),
                 "expected NO bare uuid(...) column under exposedApi=1 (it would bind " +
                     "kotlin.uuid.Uuid, not java.util.UUID — issue #390's named silent trap)")

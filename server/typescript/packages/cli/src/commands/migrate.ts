@@ -65,6 +65,7 @@ import {
 import { buildProjectionViews } from "@metaobjectsdev/codegen-ts";
 import { tokensToAllowOptions, blockedEntriesFor, blockedHintLines, viewRecreateNote } from "../lib/allow.js";
 import { reportLoadError } from "../lib/load-error.js";
+import { decimalPrecisionWarnings } from "../lib/decimal-precision-advisory.js";
 import { scanForReferentialActionConflicts } from "../lib/referential-action-advisory.js";
 import type { MetaData } from "@metaobjectsdev/metadata";
 import { describeError } from "../lib/error-text.js";
@@ -106,7 +107,7 @@ MIGRATE FLAGS:
                        .metaobjects/config.json.
   --out-dir <path>     Migration directory (default: ./.metaobjects/migrations;
                        flyway: src/main/resources/db/migration)
-  --slug <name>        Required when changes are present (e.g., --slug add-user-shipping)
+  --slug <name>        Required to WRITE a migration (not for --dry-run) (e.g., --slug add-user-shipping)
   --allow <csv>        Comma-separated destructive-change permissions:
                        drop-column,drop-table,type-change,drop-index,drop-fk,
                        drop-check,drop-view,drop-view-cascade,
@@ -285,6 +286,13 @@ function warnReferentialActionConflicts(metadata: MetaData, collection: Collecti
     return;
   }
   for (const f of findings) log.warn(`migrate: ${f.message}`);
+}
+
+/** W4 (ADR-0019 Amendment 1): warn once per wide decimal on a dialect that keeps 15 digits. */
+function warnDecimalPrecision(metadata: MetaData, collection: Collection, dialect: string): void {
+  for (const w of decimalPrecisionWarnings(metadata, dialect, { skip: collection.imported })) {
+    log.warn(`migrate: ${w}`);
+  }
 }
 
 function emitStructuredError(error: string, hint: string, fmt: OutputFormat): void {
@@ -753,6 +761,7 @@ export async function migrateCommand(
     log.error(`migrate: ${describeError(err)}`);
     return 2;
   }
+  warnDecimalPrecision(metadata, collection, kysely.dialect);
 
   let exitCode = 0;
   let writtenPaths: string[] = [];
@@ -933,29 +942,30 @@ export async function migrateCommand(
       }
 
       if (exitCode === 0 && emitted) {
-        if (config.slug === undefined) {
-          log.error(`migrate: --slug <name> required when there are changes (e.g., --slug add-user-shipping)`);
-          emitStructuredError(
-            "migrate: --slug <name> required when there are changes",
-            "re-run with --slug <name>; for a new database whose migrations are already committed, run `meta migrate apply-pending --db <url>`",
-            fmt,
-          );
-          // The common way to land here is a NEW database (a fresh clone, CI, another
-          // environment) whose migrations are already committed: the diff against an empty
-          // database is every table, so it asks to author a new migration. That database
-          // needs the committed chain replayed, not a new migration.
-          log.error(
-            `  New database, migrations already committed? Apply them instead: ` +
-            `meta migrate apply-pending --db <url>`,
-          );
-          await kysely.close();
-          return 2;
-        }
-
+        notes.push(...(emitted.notices ?? []));
         if (config.dryRun) {
           dryRunSql = { up: emitted.up, down: emitted.down };
           if (fmt === "text") log.info(sqlPreview(dryRunSql));
         } else {
+          // A preview names no migration; only a write needs the slug.
+          if (config.slug === undefined) {
+            log.error(`migrate: --slug <name> required when there are changes (e.g., --slug add-user-shipping)`);
+            emitStructuredError(
+              "migrate: --slug <name> required when there are changes",
+              "re-run with --slug <name>; for a new database whose migrations are already committed, run `meta migrate apply-pending --db <url>`",
+              fmt,
+            );
+            // The common way to land here is a NEW database (a fresh clone, CI, another
+            // environment) whose migrations are already committed: the diff against an empty
+            // database is every table, so it asks to author a new migration. That database
+            // needs the committed chain replayed, not a new migration.
+            log.error(
+              `  New database, migrations already committed? Apply them instead: ` +
+              `meta migrate apply-pending --db <url>`,
+            );
+            await kysely.close();
+            return 2;
+          }
           const outDir = resolveFormatOutDir(config, metaRoot);
           await mkdir(outDir, { recursive: true });
           // #192 — only the envelope differs; the emitted SQL is identical.
@@ -1369,6 +1379,7 @@ export async function runOfflineGenerate(
     return 1;
   }
   warnReferentialActionConflicts(metadata, collection);
+  warnDecimalPrecision(metadata, collection, config.dialect);
 
   const offlineDialect = config.dialect;
   const offlineViews = buildProjectionViews(metadata, { dialect: offlineDialect });
@@ -1469,11 +1480,6 @@ export async function runOfflineGenerate(
     finishMigrate(fmt, [`migrate: no changes`], migrateResultToData(offlineResult({})));
     return 0;
   }
-  if (config.slug === undefined) {
-    log.error(`migrate: --slug <name> required when there are changes (e.g., --slug add-user-shipping)`);
-    emitStructuredError("migrate: --slug <name> required when there are changes", "re-run with --slug <name>", fmt);
-    return 2;
-  }
   const offlineWarnings = warnDataHazards(diffResult.hazards);
 
   const emitResult = emit(diffResult.changes, {
@@ -1483,6 +1489,9 @@ export async function runOfflineGenerate(
     ...(snapshot.meta ? { actualMeta: snapshot.meta } : {}),
   });
 
+  // The emitter's own notices (e.g. a view dropped and recreated, its grants carried over).
+  offlineNotes.push(...(emitResult.notices ?? []));
+
   if (config.dryRun) {
     const sql = { up: emitResult.up, down: emitResult.down };
     finishMigrate(
@@ -1491,6 +1500,13 @@ export async function runOfflineGenerate(
       migrateResultToData(offlineResult({ sql, warnings: offlineWarnings })),
     );
     return 0;
+  }
+
+  // A preview (above) names no migration; only a write needs the slug.
+  if (config.slug === undefined) {
+    log.error(`migrate: --slug <name> required when there are changes (e.g., --slug add-user-shipping)`);
+    emitStructuredError("migrate: --slug <name> required when there are changes", "re-run with --slug <name>", fmt);
+    return 2;
   }
 
   // #192 — the MIGRATION FILES follow the active format's layout, while the
@@ -1663,6 +1679,7 @@ async function runD1Migrate(
     return 1;
   }
   warnReferentialActionConflicts(metadata, collection);
+  warnDecimalPrecision(metadata, collection, "d1");
 
   // 4. Build expected schema + introspect actual.
   const expectedViews = buildProjectionViews(metadata, { dialect: "d1" });
@@ -1749,12 +1766,6 @@ async function runD1Migrate(
     return 0;
   }
 
-  if (config.slug === undefined) {
-    log.error(`migrate: --slug <name> required when there are changes`);
-    emitStructuredError("migrate: --slug <name> required when there are changes", "re-run with --slug <name>", fmt);
-    return 2;
-  }
-
   // 6. Emit (with D1 safety pass) + write Wrangler migration files.
   let emitResult;
   try {
@@ -1767,6 +1778,7 @@ async function runD1Migrate(
     throw err;
   }
 
+  d1Notes.push(...(emitResult.notices ?? []));
   const combinedUp = emitResult.up;
   const combinedDown = emitResult.down;
 
@@ -1778,6 +1790,13 @@ async function runD1Migrate(
     const sql = { up: combinedUp, down: combinedDown };
     finishMigrate(fmt, [...narratedNotes(d1Notes), sqlPreview(sql)], migrateResultToData(d1Result({ sql, notes: d1Notes })));
     return 0;
+  }
+
+  // A preview (above) names no migration; only a write needs the slug.
+  if (config.slug === undefined) {
+    log.error(`migrate: --slug <name> required when there are changes`);
+    emitStructuredError("migrate: --slug <name> required when there are changes", "re-run with --slug <name>", fmt);
+    return 2;
   }
 
   const writeResult = await writeMigrationD1(

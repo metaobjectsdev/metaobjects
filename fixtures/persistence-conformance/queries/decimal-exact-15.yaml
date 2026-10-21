@@ -1,0 +1,55 @@
+name: decimal-exact-15
+description: |
+  The subset of decimal-exact every engine holds (W4): values of at most 15 significant digits.
+  SQLite and D1 keep a decimal in a NUMERIC column as a double, so 0.1 comes back as the
+  canonical "0.1" only because the read renders the double at 15 significant digits. A runtime that
+  hands the raw double to a caller, or "100.50" with its scale, fails the typed decimal gate.
+engines: [postgres, mysql, sqlite, d1]
+queries:
+  - name: insert-1
+    op: roundtrip
+    entity: Entry
+    insert: { id: 1, bucket: A, amount: "0.1", flagged: true }
+    expect: { bucket: A, amount: "0.1", flagged: true }
+  - name: insert-2
+    op: roundtrip
+    entity: Entry
+    insert: { id: 2, bucket: A, amount: "0.2", flagged: false }
+    expect: { bucket: A, amount: "0.2", flagged: false }
+  - name: insert-7
+    op: roundtrip
+    entity: Entry
+    insert: { id: 7, bucket: D, amount: "100.50", flagged: false }
+    expect: { bucket: D, amount: "100.5", flagged: false }
+  - name: insert-8
+    op: roundtrip
+    entity: Entry
+    insert: { id: 8, bucket: D, amount: "99.5", flagged: false }
+    expect: { bucket: D, amount: "99.5", flagged: false }
+  - name: insert-9
+    op: roundtrip
+    entity: Entry
+    insert: { id: 9, bucket: E, amount: "0.0000000000", flagged: false }
+    expect: { bucket: E, amount: "0", flagged: false }
+  - name: insert-10
+    op: roundtrip
+    entity: Entry
+    insert: { id: 10, bucket: E, amount: null, flagged: false }
+    expect: { bucket: E, amount: null, flagged: false }
+  - name: insert-11
+    op: roundtrip
+    entity: Entry
+    insert: { id: 11, bucket: F, amount: null, flagged: false }
+    expect: { bucket: F, amount: null, flagged: false }
+  - name: list-reads-canonical-strings
+    op: list
+    entity: Entry
+    sort: [{ field: id, dir: asc }]
+    expect:
+      - { id: "1", bucket: A, amount: "0.1", flagged: true }
+      - { id: "2", bucket: A, amount: "0.2", flagged: false }
+      - { id: "7", bucket: D, amount: "100.5", flagged: false }
+      - { id: "8", bucket: D, amount: "99.5", flagged: false }
+      - { id: "9", bucket: E, amount: "0", flagged: false }
+      - { id: "10", bucket: E, amount: null, flagged: false }
+      - { id: "11", bucket: F, amount: null, flagged: false }

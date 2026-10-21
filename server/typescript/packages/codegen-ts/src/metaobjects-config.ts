@@ -1,4 +1,5 @@
 import { physicalNamingRemovedMessage, type MetaDataTypeProvider } from "@metaobjectsdev/metadata";
+import { physicalNamingGuideUrl } from "@metaobjectsdev/metadata/release-docs";
 import type { RoutesExpose } from "./routes-expose.js";
 import type { Generator } from "./generator.js";
 import type { ExtStyle } from "./render-context.js";
@@ -371,7 +372,7 @@ export function normalizeConfig(config: MetaobjectsGenConfig): NormalizedMetaobj
   // because the value it held may be the one that matches this project's database.
   const removedNaming = (config as { columnNamingStrategy?: unknown }).columnNamingStrategy;
   if (removedNaming !== undefined) {
-    throw new Error(physicalNamingRemovedMessage("columnNamingStrategy in metaobjects.config.ts", String(removedNaming)));
+    throw new Error(physicalNamingRemovedMessage("columnNamingStrategy in metaobjects.config.ts", String(removedNaming), physicalNamingGuideUrl()));
   }
   const dialect = config.dialect ?? DEFAULT_DIALECT;
   return {

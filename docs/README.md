@@ -10,6 +10,10 @@ files under [`features/`](features/) are the source of truth — each file is
 self-contained and shows the same `Author` entity across all five ports so you can
 copy-paste cross-port without context-switching.
 
+**Upgrading from 1.0.x to 1.1?** Start at
+[`features/migrations/upgrading-1.0-to-1.1.md`](features/migrations/upgrading-1.0-to-1.1.md):
+the steps in order and every change that needs action, per port.
+
 ## Layout
 
 ```
@@ -26,7 +30,7 @@ docs/
 │   ├── templates-and-payloads.md
 │   ├── loaders.md
 │   ├── migrations-and-drift.md
-│   ├── migrations/                  # per-version migration guides (e.g. 0.x → 1.0)
+│   ├── migrations/                  # per-version migration guides (start at upgrading-1.0-to-1.1.md for 1.0.x → 1.1)
 │   ├── api-contract.md          # cross-port REST contract (the universal browser client speaks it)
 │   ├── abstracts-and-inheritance.md # abstract: true + extends: — author-side shape reuse
 │   ├── extending-with-providers.md  # custom metamodel subtypes/attrs via MetaDataTypeProvider

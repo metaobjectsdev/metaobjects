@@ -1,0 +1,26 @@
+name: report-via-redeclared-field
+description: |
+  A @via dimension whose @of names the base entity (`Labeled.label`, a string in column
+  `label_text`) while the entity the @via reaches (`Gadget`) redeclares the field as an int in
+  column `gadget_code`. The rule: the field is the effective field of the entity the @via
+  reaches, so the report groups by `gadgets.gadget_code` and `gadgetLabel` is an int (it is
+  `typeSource` `fitness::Gadget.label` in report-shapes.json), never the base's string column.
+
+    gadget 1 has code 7 and two events; gadget 2 has code 7 and one; gadget 3 has code 9 and one
+seed-data: |
+  INSERT INTO "gadgets" ("id","gadget_code") VALUES (1, 7), (2, 7), (3, 9);
+  INSERT INTO "gadget_events" ("id","gadgetId") VALUES (10, 1), (11, 1), (12, 2), (13, 3);
+queries:
+  - name: grouped-by-the-redeclared-column
+    op: list
+    entity: GadgetEventsByLabel
+    sort: [{ field: gadgetLabel, dir: asc }]
+    expect:
+      - { gadgetLabel: 7, gadgetEvents: "3" }
+      - { gadgetLabel: 9, gadgetEvents: "1" }
+  - name: filter-on-the-redeclared-int
+    op: list
+    entity: GadgetEventsByLabel
+    filter: { gadgetLabel: { gt: 7 } }
+    expect:
+      - { gadgetLabel: 9, gadgetEvents: "1" }

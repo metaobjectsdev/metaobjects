@@ -51,6 +51,7 @@ def _parse_expected_errors(raw: object) -> tuple[list[dict], list[dict], bool]:
             errors.append({
                 "code": e["code"],
                 "source": src if isinstance(src, dict) else None,
+                "messageIncludes": e.get("messageIncludes") or [],
             })
         raw_warnings = raw.get("warnings", [])
         warnings: list[dict] = []
@@ -128,6 +129,11 @@ def _run_checks(fix: Fixture) -> tuple[bool, str]:
                         failures.append(
                             f"envelope[{i}].code: expected '{w['code']}', got '{g.code}'")
                         continue
+                    for needle in w.get("messageIncludes", []):
+                        if needle not in g.message:
+                            failures.append(
+                                f"envelope[{i}].message: expected to include {needle!r}, "
+                                f"got {g.message!r}")
                     src = w["source"]
                     if src is None:
                         continue

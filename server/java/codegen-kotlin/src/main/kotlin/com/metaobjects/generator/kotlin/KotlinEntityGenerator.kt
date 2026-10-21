@@ -14,6 +14,7 @@ import com.metaobjects.generator.kotlin.KotlinTypeMapper
 import com.metaobjects.generator.kotlin.PackageMapping
 
 import com.metaobjects.MetaData
+import com.metaobjects.field.DecimalField
 import com.metaobjects.field.EnumField
 import com.metaobjects.field.InetField
 import com.metaobjects.field.MetaField
@@ -87,6 +88,7 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
     override fun execute(loader: MetaDataLoader) {
         parseArgs()
         val outRoot = Paths.get(outDir.absolutePath)
+        decimalWirePackages.clear()
         fr019Config = Fr019SharedEnum.ProvidedEnumConfig.fromArgs(args)
         // emitAbstractShapes (default OFF): when ON, an abstract entity is emitted as a Kotlin
         // `interface` shape (read-only properties) instead of being suppressed. It is NEVER
@@ -123,7 +125,12 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         // #234: emit the strict field.uri / field.inet Jackson deserializers ONCE per package that
         // has such a field (a same-package MetaNetJson the data-class properties bind through).
         emitNetJsonSupport(loader, outRoot)
+        // ADR-0019 Amendment 1: the decimal wire rule, once per package that wrote a decimal property.
+        for (pkg in decimalWirePackages) KotlinDecimalWireEmitter.write(pkg, outRoot)
     }
+
+    /** Packages whose emitted data classes carry a decimal property: each gets one `MetaDecimalWire.kt`. */
+    private val decimalWirePackages = linkedSetOf<String>()
 
     /**
      * #234: emit the per-package `MetaNetJson.kt` support object (the strict field.uri / field.inet
@@ -283,6 +290,7 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
                     propBuilder.addAnnotation(constraint(VALID))
                 }
             }
+            decimalWireAnnotations(field, pkg).forEach { propBuilder.addAnnotation(it) }
             typeBuilder.addProperty(propBuilder.build())
         }
 
@@ -293,7 +301,11 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             val propType = resolvePropertyType(field, obj, loader).copy(nullable = true)
             val propName = field.name
             ctorBuilder.addParameter(ParameterSpec.builder(propName, propType).defaultValue("null").build())
-            typeBuilder.addProperty(PropertySpec.builder(propName, propType).initializer(propName).build())
+            typeBuilder.addProperty(
+                PropertySpec.builder(propName, propType).initializer(propName)
+                    .apply { decimalWireAnnotations(field, pkg).forEach { addAnnotation(it) } }
+                    .build(),
+            )
         }
 
         val primaryCtor = ctorBuilder.build()
@@ -604,6 +616,27 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
      * A `@lenient` uri/inet degrades to a plain String ([KotlinTypeMapper.kotlinTypeName]) with NO
      * deserializer, so it is NOT strict.
      */
+    /**
+     * ADR-0019 Amendment 1 (W1/W2): a `field.decimal` property is written as a canonical JSON string
+     * and read from a string or number in the JSON-number grammar, through the generated same-package
+     * `MetaDecimalWire` (no MetaObjects import). The serializer sits on the getter and the deserializer on the
+     * constructor parameter, the two places Jackson's Kotlin module looks. `contentUsing` for an
+     * `@isArray` property (the elements are the decimals).
+     */
+    private fun decimalWireAnnotations(field: MetaField<*>, pkg: String): List<AnnotationSpec> {
+        if (field !is DecimalField) return emptyList()
+        decimalWirePackages.add(pkg)
+        val serializer = ClassName(pkg, KotlinDecimalWireEmitter.FILE_NAME, "Serializer")
+        val deserializer = ClassName(pkg, KotlinDecimalWireEmitter.FILE_NAME, "Deserializer")
+        val member = if (field.isArrayType) "contentUsing" else "using"
+        return listOf(
+            AnnotationSpec.builder(JSON_SERIALIZE).useSiteTarget(AnnotationSpec.UseSiteTarget.GET)
+                .addMember("$member = %T::class", serializer).build(),
+            AnnotationSpec.builder(JSON_DESERIALIZE).useSiteTarget(AnnotationSpec.UseSiteTarget.PARAM)
+                .addMember("$member = %T::class", deserializer).build(),
+        )
+    }
+
     private fun isStrictNetField(field: MetaField<*>): Boolean =
         (field is UriField || field is InetField) && !KotlinTypeMapper.lenientNetField(field)
 
@@ -690,6 +723,7 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         /** #234: `@field:JsonDeserialize(using = …)` binds a STRICT field.uri / field.inet property
          *  to the same-package [NET_JSON_SUPPORT] literal deserializer. */
         val JSON_DESERIALIZE = ClassName("com.fasterxml.jackson.databind.annotation", "JsonDeserialize")
+        val JSON_SERIALIZE = ClassName("com.fasterxml.jackson.databind.annotation", "JsonSerialize")
         /** The per-package generated support object holding the #234 strict Jackson deserializers. */
         const val NET_JSON_SUPPORT = "MetaNetJson"
 

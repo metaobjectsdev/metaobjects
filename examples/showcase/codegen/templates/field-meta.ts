@@ -283,3 +283,39 @@ export function humanize(s: string): string {
     .replace(/\b\w/g, (c) => c.toUpperCase())
     .trim();
 }
+
+/** The `<input>` attributes a numeric field subtype needs. */
+export interface NumericInputControl {
+  readonly htmlType: "number" | "text";
+  /** `"any"` for a binary float: the browser's implicit step of 1 refuses `12.5`. */
+  readonly step?: "any";
+  /** `"decimal"` for an exact decimal rendered as a text input. */
+  readonly inputMode?: "decimal";
+}
+
+/**
+ * The one answer both form tiers give for a numeric field subtype (the `<Entity>` meta that
+ * `useEntityForm` spreads, and the nested sub-form in codegen-ts-react), or undefined for a
+ * non-numeric subtype.
+ *
+ * `<input type="number">` has an implicit step of 1, so native validation blocks `12.5`.
+ * double/float therefore get `step="any"`. A decimal is an exact value that travels as a
+ * string: a number input would parse it to a double for validation and min/max (wrong past
+ * 15 digits), so it is `type="text" inputmode="decimal"` and RHF/Zod own the validation.
+ * int, long and currency keep step 1.
+ */
+export function numericInputControl(subType: string): NumericInputControl | undefined {
+  switch (subType) {
+    case FIELD_SUBTYPE_INT:
+    case FIELD_SUBTYPE_LONG:
+    case FIELD_SUBTYPE_CURRENCY:
+      return { htmlType: "number" };
+    case FIELD_SUBTYPE_DOUBLE:
+    case FIELD_SUBTYPE_FLOAT:
+      return { htmlType: "number", step: "any" };
+    case FIELD_SUBTYPE_DECIMAL:
+      return { htmlType: "text", inputMode: "decimal" };
+    default:
+      return undefined;
+  }
+}

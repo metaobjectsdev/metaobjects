@@ -784,19 +784,17 @@ def test_m8_default_on_a_max_of_a_timestamp_is_refused() -> None:
     )
 
 
-def test_a_non_integer_default_on_a_count_reports_m7_and_the_attribute_type_error() -> None:
+def test_a_non_numeric_default_on_a_count_reports_only_the_attribute_type_error() -> None:
+    """MINOR 4 Rule B: one mistake, one error. M7 runs only for a valid integral number."""
     errors = _errors(_edit(lambda x: _patch_member(x, "Purchase", "purchases", {"@default": "zero"})))
-    assert sorted(e.code.value for e in errors) == ["ERR_BAD_ATTR_VALUE", "ERR_INVALID_MEASURE"]
-    m7 = next(e for e in errors if e.code.value == "ERR_INVALID_MEASURE")
-    assert "measure 'purchases' on entity 'acme::shop::Purchase': @default cannot apply to @agg: count." in m7.message
+    assert [e.code.value for e in errors] == ["ERR_BAD_ATTR_VALUE"]
 
 
-def test_a_boolean_default_on_a_count_reports_m7_and_the_attribute_type_error() -> None:
+def test_a_boolean_default_on_a_count_reports_only_the_attribute_type_error() -> None:
     """``bool`` is a subclass of ``int`` in Python, so ``true`` must not pass for the
-    integer 1: it is the attribute type error, not a fraction, so M7 still reads the
-    attribute as present (the "zero" case above, for this port's bool trap)."""
+    integer 1: it is the attribute type error and M7 does not also report."""
     errors = _errors(_edit(lambda x: _patch_member(x, "Purchase", "purchases", {"@default": True})))
-    assert sorted(e.code.value for e in errors) == ["ERR_BAD_ATTR_VALUE", "ERR_INVALID_MEASURE"]
+    assert [e.code.value for e in errors] == ["ERR_BAD_ATTR_VALUE"]
 
 
 def _fractional(entity: str, measure: str, value: float) -> MetaError:

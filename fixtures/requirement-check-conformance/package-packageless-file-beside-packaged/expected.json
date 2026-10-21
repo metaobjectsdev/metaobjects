@@ -1,0 +1,27 @@
+{
+  "diagnostics": [
+    {
+      "severity": "error",
+      "code": "ERR_REQUIREMENT_DANGLING_REF",
+      "path": "Orders",
+      "message": "'Order' does not resolve in the loaded model (status 'live' — the model moved and the requirement is stale). An object named \"Order\" exists in: acme::shop::Order. Qualify it with its package (FQN)."
+    },
+    {
+      "severity": "warn",
+      "code": "WARN_REQUIREMENT_OBJECT_UNCLAIMED",
+      "message": "no requirement claims 'acme::shop::Order'. Add it to an L4 requirement's 'implementedBy'."
+    }
+  ],
+  "summary": {
+    "total": 1,
+    "functional": 1,
+    "architectural": 0,
+    "byStatus": {
+      "live": 1
+    },
+    "undecided": 0,
+    "deferredUntracked": 0,
+    "entitiesTotal": 1,
+    "entitiesClaimed": 0
+  }
+}

@@ -153,7 +153,10 @@ object ApiContractAssertions {
     private fun structuralEquals(a: Any?, b: Any?): Boolean {
         if (a === b) return true
         if (a == null || b == null) return a == null && b == null
-        if (a is Number && b is Number) return a.toLong() == b.toLong()
+        // Exact: BigDecimal.compareTo, never a long or a double, so 0.1 does not equal 0 and a
+        // 20-digit decimal is compared digit for digit. An integer and a decimal of the same
+        // value are equal (1 and 1.0), which is what the JSON number grammar says.
+        if (a is Number && b is Number) return exactDecimal(a).compareTo(exactDecimal(b)) == 0
         if (a is List<*> && b is List<*>) {
             if (a.size != b.size) return false
             return a.indices.all { structuralEquals(a[it], b[it]) }
@@ -163,6 +166,13 @@ object ApiContractAssertions {
             return a.keys.all { structuralEquals(a[it], b[it]) }
         }
         return a == b
+    }
+
+    private fun exactDecimal(n: Number): java.math.BigDecimal = when (n) {
+        is java.math.BigDecimal -> n
+        is java.math.BigInteger -> java.math.BigDecimal(n)
+        is Double, is Float -> java.math.BigDecimal(n.toString())
+        else -> java.math.BigDecimal(n.toLong())
     }
 
     private fun isEmpty(body: Any?): Boolean = when (body) {

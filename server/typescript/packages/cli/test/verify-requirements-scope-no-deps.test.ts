@@ -1,12 +1,10 @@
-// FR-023 §11.1 item 2 (2026-09-11 qualification) — `Collection.inScope` is
-// `matchesScope(fqn, scope) && (...)`, so declaring `scope.include` narrows
-// the requirements ledger's denominator even for a project with ZERO
-// dependencies — a real behaviour change the CHANGELOG records ("A project
-// that declares scope.include now sees its requirements-ledger denominator
-// narrow to that scope — even with zero dependencies"), and nothing exercised
-// it: `verify-requirements-imported.test.ts` only covers the WITH-a-
-// dependency case (the import-exclusion half of the predicate); this covers
-// the other half — `matchesScope` alone, no dependency involved at all.
+// Requirement coverage and `scope.include` (1.1.0 release review): coverage
+// counts every non-abstract project entity except one imported from a
+// dependency, and `scope` filters generated output only — it does not narrow
+// the ledger's denominator. FR-023 §11.1 item 2 once narrowed it by scope even
+// with zero dependencies; this pins the ruling that it does not, the half of
+// the predicate `verify-requirements-imported.test.ts` (the dependency-import
+// exclusion) does not reach.
 import { describe, test, expect, beforeEach, afterEach, afterAll } from "bun:test";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -108,7 +106,7 @@ afterEach(() => {
   console.error = origErr;
 });
 
-describe("meta verify — scope.include narrows the ledger denominator with ZERO dependencies (FR-023)", () => {
+describe("meta verify — scope.include does not narrow the ledger denominator (scope is an output filter)", () => {
   test("no scope declared: both entities are coverable, only one is claimed", async () => {
     const root = project();
     const exit = await run(["verify", "--format", "text", "--cwd", root]);
@@ -119,16 +117,15 @@ describe("meta verify — scope.include narrows the ledger denominator with ZERO
     expect(all).toContain("other::Thing");
   });
 
-  test("scope.include naming only app:: narrows the denominator to 1/1 — other::Thing drops out entirely", async () => {
+  test("scope.include does NOT narrow coverage: scope is an output filter, only the dependency-import rule applies", async () => {
     const root = project({ scopeInclude: ["app::**"] });
     const exit = await run(["verify", "--format", "text", "--cwd", root]);
     expect(exit).toBe(0);
 
     const all = [...out, ...err].join("\n");
-    // Denominator narrows to the declared scope alone — other::Thing is
-    // excluded from the COUNT, not merely reported as unclaimed.
-    expect(all).toContain("1/1 entities claimed");
-    expect(all).not.toContain("other::Thing");
-    expect(all).not.toContain("WARN_REQUIREMENT_OBJECT_UNCLAIMED");
+    // Coverage counts every own entity regardless of the project's `scope`
+    // patterns (T18 ruling, matches the Python port).
+    expect(all).toContain("1/2 entities claimed");
+    expect(all).toContain("other::Thing");
   });
 });

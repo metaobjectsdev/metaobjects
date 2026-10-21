@@ -59,9 +59,10 @@ field names; a database whose columns are named exactly like the fields declares
 There is no per-generator or runtime naming: the `columnNaming` generator arg fails
 `mvn metaobjects:generate`, and `SimpleMappingHandlerDB.setColumnNaming` throws (the Exposed
 tables and the names generator already read the setting). A Spring
-application that loads its metadata from the classpath points `metaobjects.physical-naming-config`
-at the project's `.metaobjects/config.json` packaged as a resource (for example
-`classpath:.metaobjects/config.json`). Details and the 1.0 to 1.1 steps:
+application reads `classpath:.metaobjects/config.json` when the project packages that file as a
+resource; `metaobjects.physical-naming-config` points elsewhere (a `classpath:` location or a file
+path). `MetaDataLoader.fromUris` and `fromDirectory` find the file above the metadata. With no file
+found, the loader logs one WARN and uses snake_case. Details and the 1.0 to 1.1 steps:
 <https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/physical-naming.md>.
 
 ## Plugin config in `pom.xml`

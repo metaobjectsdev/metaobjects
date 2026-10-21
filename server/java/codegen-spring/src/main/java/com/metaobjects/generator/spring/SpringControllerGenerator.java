@@ -222,6 +222,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("import com.fasterxml.jackson.databind.ObjectMapper;\n");
         src.append("import ").append(runtimePackage).append(".ConstraintErrors;\n");
         src.append("import ").append(runtimePackage).append(".PatchValidationException;\n");
+        src.append("import ").append(runtimePackage).append(".UnreadableBody;\n");
         // The escape the PATCH loop applies to each assigned key before naming a Bean
         // Validation property — see RecordComponentNames for why it is needed at run time.
         src.append("import ").append(runtimePackage).append(".RecordComponentNames;\n");
@@ -281,6 +282,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("        this.objectMapper = objectMapper;\n");
         src.append("        this.validator = validator;\n");
         src.append("    }\n\n");
+        appendUnreadableBodyHandler(src);
 
         // GET (list) — pagination + sort + withCount + FR-009 filter operators.
         // HttpServletRequest carries the raw query string so the bracketed
@@ -688,6 +690,8 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         List<String> sortFields = new ArrayList<>();
         for (MetaField field : entity.getMetaFields()) {
             if (!FilterOps.supportsFiltering(field.getSubType())) continue;
+            // A derived report field over an array is not sortable (a map has no band above).
+            if (com.metaobjects.generator.util.GeneratorUtil.isReport(entity) && (field.isArrayType() || field instanceof com.metaobjects.field.MapField)) continue;
             sortFields.add(field.getName());
         }
         return sortFields;
@@ -706,6 +710,20 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         }
         src.append(");\n\n");
         appendSortDefaultOrders(src, entity, sortFields);
+    }
+
+    /**
+     * ADR-0019 Amendment 1 (W2/W3): a body Jackson cannot bind (a malformed or out-of-range
+     * decimal, a wrong JSON type) answers {@code 400 {"error":"validation","field":...}}, the
+     * cross-port validation envelope, rather than Spring's default body.
+     */
+    private static void appendUnreadableBodyHandler(StringBuilder src) {
+        src.append("    @org.springframework.web.bind.annotation.ExceptionHandler(")
+           .append("org.springframework.http.converter.HttpMessageNotReadableException.class)\n");
+        src.append("    public ResponseEntity<?> onUnreadableBody(")
+           .append("org.springframework.http.converter.HttpMessageNotReadableException e) {\n");
+        src.append("        return ResponseEntity.badRequest().body(UnreadableBody.envelope(e));\n");
+        src.append("    }\n\n");
     }
 
     /**
@@ -737,7 +755,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("        }\n");
         src.append("        FilterParseResult filter = FilterParser.parse(\n");
         src.append("                request.getQueryString(), ").append(allowlistName).append(".FIELDS, ")
-           .append(allowlistName).append(".OPS_BY_FIELD);\n");
+           .append(allowlistName).append(".OPS_BY_FIELD, ").append(allowlistName).append(".DECIMAL_FIELDS);\n");
         src.append("        if (filter.error() != null) {\n");
         src.append("            return ResponseEntity.badRequest().body(Map.of(\"error\", filter.error(), \"field\", filter.field()));\n");
         src.append("        }\n");
@@ -833,6 +851,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("import com.fasterxml.jackson.databind.ObjectMapper;\n");
         src.append("import ").append(runtimePackage).append(".ConstraintErrors;\n");
         src.append("import ").append(runtimePackage).append(".PatchValidationException;\n");
+        src.append("import ").append(runtimePackage).append(".UnreadableBody;\n");
         // The escape the PATCH loop applies to each assigned key before naming a Bean
         // Validation property — see RecordComponentNames for why it is needed at run time.
         src.append("import ").append(runtimePackage).append(".RecordComponentNames;\n");
@@ -895,6 +914,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("        this.objectMapper = objectMapper;\n");
         src.append("        this.validator = validator;\n");
         src.append("    }\n\n");
+        appendUnreadableBodyHandler(src);
 
         // --- polymorphic collection ---
         src.append("    // Polymorphic list — the union across all subtypes, each row tagged by its discriminator.\n");
@@ -913,7 +933,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("            if (sortClause == null) return ResponseEntity.badRequest().body(Map.of(\"error\", \"invalid_sort\", \"field\", sort.split(\":\", 2)[0]));\n");
         src.append("        }\n");
         src.append("        FilterParseResult filter = FilterParser.parse(request.getQueryString(), ")
-           .append(allowlistName).append(".FIELDS, ").append(allowlistName).append(".OPS_BY_FIELD);\n");
+           .append(allowlistName).append(".FIELDS, ").append(allowlistName).append(".OPS_BY_FIELD, ").append(allowlistName).append(".DECIMAL_FIELDS);\n");
         src.append("        if (filter.error() != null) return ResponseEntity.badRequest().body(Map.of(\"error\", filter.error(), \"field\", filter.field()));\n");
         src.append("        List<FilterPredicate> filters = filter.predicates();\n");
         src.append("        List<").append(dtoName).append("> rows = repository.list(actualLimit, actualOffset, sortClause, filters);\n");
@@ -978,7 +998,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
             src.append("            if (sortClause == null) return ResponseEntity.badRequest().body(Map.of(\"error\", \"invalid_sort\", \"field\", sort.split(\":\", 2)[0]));\n");
             src.append("        }\n");
             src.append("        FilterParseResult filter = FilterParser.parse(request.getQueryString(), ")
-               .append(allowlistName).append(".FIELDS, ").append(allowlistName).append(".OPS_BY_FIELD);\n");
+               .append(allowlistName).append(".FIELDS, ").append(allowlistName).append(".OPS_BY_FIELD, ").append(allowlistName).append(".DECIMAL_FIELDS);\n");
             src.append("        if (filter.error() != null) return ResponseEntity.badRequest().body(Map.of(\"error\", filter.error(), \"field\", filter.field()));\n");
             src.append("        return ResponseEntity.ok(repository.listByType(\"").append(disc)
                .append("\", actualLimit, actualOffset, sortClause, filter.predicates()));\n");

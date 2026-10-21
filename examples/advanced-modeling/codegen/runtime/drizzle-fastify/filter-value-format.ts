@@ -13,11 +13,13 @@
 
 import {
   FIELD_SUBTYPE_DATE,
+  FIELD_SUBTYPE_DECIMAL,
   FIELD_SUBTYPE_TIME,
   FIELD_SUBTYPE_TIMESTAMP,
   FIELD_SUBTYPE_UUID,
 } from "@metaobjectsdev/metadata";
 import type { FilterValueFormat } from "./filter-allowlist.js";
+import { canonicalDecimal } from "../decimal-wire.js";
 
 const DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
 const TIME_RE = /^(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d{1,9})?)?$/;
@@ -45,6 +47,7 @@ const CHECKS: Readonly<Record<FilterValueFormat, (s: string) => boolean>> = {
   [FIELD_SUBTYPE_TIME]: (s) => TIME_RE.test(s),
   [FIELD_SUBTYPE_TIMESTAMP]: isTimestamp,
   [FIELD_SUBTYPE_UUID]: (s) => UUID_RE.test(s),
+  [FIELD_SUBTYPE_DECIMAL]: (s) => canonicalDecimal(s) !== undefined,
 };
 
 /** The `expected` member of the `invalid_filter_value` envelope, per format. */
@@ -53,6 +56,7 @@ export const FORMAT_EXPECTED: Readonly<Record<FilterValueFormat, string>> = {
   [FIELD_SUBTYPE_TIME]: "time (HH:MM[:SS[.fff]])",
   [FIELD_SUBTYPE_TIMESTAMP]: "timestamp (YYYY-MM-DD[THH:MM[:SS[.fff]]][Z|±HH:MM])",
   [FIELD_SUBTYPE_UUID]: "uuid (8-4-4-4-12 hex)",
+  [FIELD_SUBTYPE_DECIMAL]: "decimal number (digits, optional fraction, optional exponent)",
 };
 
 /** `expected` for a temporal rule that does not say WHICH temporal format it is. */

@@ -72,7 +72,7 @@ class KotlinAbstractFieldExtendsInheritanceTest {
                 "tags must NOT fall back to a scalar column when array-ness is inherited; saw:\n$table")
 
             // (2b) `balance` extends the abstract decimal field → decimal(col, 12, 2) (inherited p/s).
-            assertTrue("val balance = decimal(\"balance\", 12, 2)" in table,
+            assertTrue("val balance = portableDecimal(\"balance\", 12, 2)" in table,
                 "balance must inherit @precision=12/@scale=2 from the abstract Money field; saw:\n$table")
             assertFalse("decimal(\"balance\", 19, 4)" in table,
                 "balance must NOT fall back to the default NUMERIC(19,4) — precision/scale are inherited; saw:\n$table")

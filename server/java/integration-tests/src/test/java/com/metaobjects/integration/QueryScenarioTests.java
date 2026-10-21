@@ -39,7 +39,8 @@ final class QueryScenarioTests {
 
     private static final Path CORPUS = ScenarioLoader.findCorpusRoot();
     private static final List<QueryScenario> SCENARIOS =
-        ScenarioLoader.loadQueries(CORPUS.resolve("queries"));
+        ScenarioLoader.loadQueries(CORPUS.resolve("queries")).stream()
+            .filter(ScenarioEngine.POSTGRES::runs).toList();
 
     /**
      * Scenarios deferred until the underlying Java port gap is closed.
@@ -99,6 +100,10 @@ final class QueryScenarioTests {
         bindings.put("fitness::BridgeAuth",   ValueObject.class);
         bindings.put("fitness::CopayAuth",    ValueObject.class);
         bindings.put("fitness::PriorAuthAuth", ValueObject.class);
+        // ADR-0019 Amendment 1 decimal corpus + the redeclared-field report's tables.
+        bindings.put("fitness::Entry",       ValueObject.class);
+        bindings.put("fitness::Gadget",      ValueObject.class);
+        bindings.put("fitness::GadgetEvent", ValueObject.class);
         reg.register(() -> bindings);
         ObjectClassRegistry.setGlobal(reg);
     }

@@ -25,6 +25,7 @@ import shutil
 import sys
 import tempfile
 import uuid
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -36,6 +37,7 @@ from metaobjects.codegen.generators.router_generator import render_router
 from metaobjects.codegen.runtime.filter_parser import FilterPredicate
 from metaobjects.meta.core.object.meta_object import MetaObject
 from metaobjects.shared.base_types import TYPE_OBJECT
+from metaobjects.meta.core.field.field_constants import FIELD_SUBTYPE_DECIMAL
 
 # Each corpus projection: the columns its view returns (view column -> `invoices` column),
 # and the view column its generated seam addresses a row by (None: no declared identity,
@@ -140,7 +142,7 @@ def build_generated_projection_app(
         sys.modules[f"{pkg_name}.{snake}_router"] = router_mod
         spec.loader.exec_module(router_mod)
 
-        repo = InMemoryProjectionRepository(columns, key)
+        repo = InMemoryProjectionRepository(columns, key, _decimal_fields([projections[name]]))
         # The generated Protocol is the contract: a keyless projection must not have
         # grown a `find_by_id`, and a keyed one must have kept it.
         has_find = "find_by_id" in inspect.getsource(router_mod.__dict__[f"{name}Repository"])
@@ -156,6 +158,20 @@ def build_generated_projection_app(
     return app, repos
 
 
+def _decimal_fields(objects: list[MetaObject]) -> frozenset[str]:
+    """The ``field.decimal`` names across *objects*: a real driver hands those back as
+    ``Decimal``, so the in-memory repo holds them that way rather than as JSON floats."""
+    return frozenset(
+        f.name for o in objects for f in o.fields() if f.sub_type == FIELD_SUBTYPE_DECIMAL
+    )
+
+
+def _as_driver_row(row: dict[str, Any], decimal_fields: frozenset[str]) -> dict[str, Any]:
+    return {
+        k: (Decimal(str(v)) if k in decimal_fields and v is not None else v) for k, v in row.items()
+    }
+
+
 class InMemoryProjectionRepository:
     """In-memory impl of a GENERATED read-only ``<Projection>Repository``.
 
@@ -165,16 +181,22 @@ class InMemoryProjectionRepository:
     generated Protocol.
     """
 
-    def __init__(self, columns: dict[str, str], key: str | None) -> None:
+    def __init__(
+        self, columns: dict[str, str], key: str | None, decimal_fields: frozenset[str] = frozenset()
+    ) -> None:
         self._columns = columns
         self._key = key
+        self._decimal_fields = decimal_fields
         self._rows: list[dict[str, Any]] = []
 
     def reset(self) -> None:
         self._rows = []
 
     def seed(self, rows: list[dict[str, Any]]) -> None:
-        self._rows = [{col: r[src] for col, src in self._columns.items()} for r in rows]
+        self._rows = [
+            _as_driver_row({col: r[src] for col, src in self._columns.items()}, self._decimal_fields)
+            for r in rows
+        ]
 
     def _coerce(self, field: str, raw: str) -> Any:
         for r in self._rows:
@@ -186,6 +208,8 @@ class InMemoryProjectionRepository:
                     return int(raw)
                 if isinstance(v, float):
                     return float(raw)
+                if isinstance(v, Decimal):
+                    return Decimal(raw)
                 break
         return raw
 

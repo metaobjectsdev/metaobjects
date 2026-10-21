@@ -36,6 +36,7 @@ import {
   // One shared resolver (FR-038): codegen's requirement-test fan-out needs the same
   // ADR-0042 package-local binding, so these moved to @metaobjectsdev/metadata rather
   // than being reimplemented there.
+  effectiveRequirementPackage,
   resolveClaimTarget,
   resolveMember,
   didYouMeanHint,
@@ -233,7 +234,7 @@ export function resolveRequirementRef(
 ): MetaRequirement | undefined {
   const keyed = new Map<string, MetaRequirement>();
   for (const { node, path } of addressed) {
-    const pkg = node.package ?? node.fileDefaultPackage ?? "";
+    const pkg = effectiveRequirementPackage(node);
     if (pkg !== "") keyed.set(`${pkg}::${path}`, node);
     // Bare path is registered too, so a single-package ledger can reference
     // without repeating its own package on every line.
@@ -311,7 +312,7 @@ export interface RequirementScan {
 function projectAuthoredRequirements(addressed: readonly AddressedRequirement[]): boolean {
   const libPkgs = libraryPackages();
   return addressed.some((r) => {
-    const pkg = r.node.package ?? r.node.fileDefaultPackage ?? "";
+    const pkg = effectiveRequirementPackage(r.node);
     return !libPkgs.has(pkg);
   });
 }
@@ -361,7 +362,7 @@ function claimedObjectKeys(root: MetaData, reqs: MetaRequirement[]): Set<string>
     // referrerPkg is the requirement's own effective package, so a bare ref
     // binds package-locally under the ADR-0042 contract — the loader's own
     // resolver, never a parallel name scan (#228).
-    const referrerPkg = req.package ?? req.fileDefaultPackage ?? "";
+    const referrerPkg = effectiveRequirementPackage(req);
     for (const ref of req.implementedBy()) {
       const { owner, path } = splitMemberRef(ref);
       const node = resolveClaimTarget(root, owner, referrerPkg);
@@ -479,7 +480,7 @@ export function checkRequirements(root: MetaData, scan: RequirementScan = scanRe
       // referrerPkg is the requirement's own effective package, so a bare ref
       // binds package-locally under the ADR-0042 contract — the loader's own
       // resolver, never a parallel name scan (#228).
-      const referrerPkg = req.package ?? req.fileDefaultPackage ?? "";
+      const referrerPkg = effectiveRequirementPackage(req);
       const node = resolveClaimTarget(root, owner, referrerPkg);
       const isObjectRef = path.length === 0;
 
@@ -544,7 +545,7 @@ export function checkRequirements(root: MetaData, scan: RequirementScan = scanRe
     // requirement's own effective package, exactly as @implementedBy does.
     const superseded = req.supersededBy();
     if (superseded !== undefined) {
-      const referrerPkg = req.package ?? req.fileDefaultPackage ?? "";
+      const referrerPkg = effectiveRequirementPackage(req);
       if (resolveRequirementRef(addressed, superseded, referrerPkg) === undefined) {
         out.push({
           severity: "error", code: ERR_REQUIREMENT_DANGLING_REF, path: reqPath,

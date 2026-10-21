@@ -310,6 +310,27 @@ export function referrerPackageFor(node: MetaData, attrName: string): string {
  * suggest). Appended to the per-attr unresolved-ref error message.
  */
 export function didYouMeanHint(root: MetaData, ref: string): string {
+  const found = sameNamedObjects(root, ref);
+  if (found === undefined) return "";
+  return ` An object named "${found.shortName}" exists in: ${found.candidates.join(", ")}. Qualify it with its package (FQN).`;
+}
+
+/**
+ * The did-you-mean suffix for an UNRESOLVED `extends` ref: the same candidate list
+ * as {@link didYouMeanHint}, plus the exact spelling to write. A bare `extends`
+ * resolves in the referrer's own package (ADR-0042/0059), so a base declared in
+ * another package must be named by its FQN. Returns "" when nothing is named alike.
+ */
+export function didYouMeanSuperHint(root: MetaData, ref: string): string {
+  const found = sameNamedObjects(root, ref);
+  if (found === undefined) return "";
+  return ` An object named "${found.shortName}" exists in: ${found.candidates.join(", ")}. Qualify it with its package (FQN): write extends: "${found.candidates[0]}".`;
+}
+
+function sameNamedObjects(
+  root: MetaData,
+  ref: string,
+): { shortName: string; candidates: string[] } | undefined {
   const { owner } = splitChildTail(ref);
   const sep = owner.lastIndexOf(PACKAGE_SEPARATOR);
   const shortName = sep === -1 ? owner : owner.slice(sep + PACKAGE_SEPARATOR.length);
@@ -317,8 +338,7 @@ export function didYouMeanHint(root: MetaData, ref: string): string {
     .children()
     .filter((c) => c.type === TYPE_OBJECT && c.name === shortName)
     .map((c) => c.resolutionKey());
-  if (candidates.length === 0) return "";
-  return ` An object named "${shortName}" exists in: ${candidates.join(", ")}. Qualify it with its package (FQN).`;
+  return candidates.length === 0 ? undefined : { shortName, candidates };
 }
 
 /**

@@ -30,6 +30,7 @@ import jakarta.servlet.http.HttpServletRequest
 import java.io.ByteArrayOutputStream
 import java.nio.charset.StandardCharsets
 import java.sql.Timestamp
+import java.math.BigDecimal
 import org.jetbrains.exposed.sql.TextColumnType
 import org.jetbrains.exposed.sql.castTo
 import java.time.LocalDate
@@ -155,6 +156,7 @@ private fun coerceAuthValue(field: String, op: String, raw: String): AuthCoerced
         "type" -> if (op == "in") AuthCoercedValue(raw.split(",").map { it.trim() }) else AuthCoercedValue(raw)
         "reference" -> if (op == "in") AuthCoercedValue(raw.split(",").map { it.trim() }) else AuthCoercedValue(raw)
         "quantity" -> coerceAuthInt(op, raw)
+        "copayAmount" -> coerceAuthDecimal(op, raw)
         "priorAuthNumber" -> if (op == "in") AuthCoercedValue(raw.split(",").map { it.trim() }) else AuthCoercedValue(raw)
         else -> null
     }
@@ -182,6 +184,16 @@ private fun coerceAuthInt(op: String, raw: String): AuthCoercedValue? {
 
 private fun coerceAuthDouble(op: String, raw: String): AuthCoercedValue? {
     val parse: (String) -> Any? = { s -> runCatching { java.lang.Double.parseDouble(s) }.getOrNull() }
+    if (op == "in") {
+        val parts = raw.split(",").map { it.trim() }
+        val list = parts.map { parse(it) ?: return null }
+        return AuthCoercedValue(list)
+    }
+    return AuthCoercedValue(parse(raw) ?: return null)
+}
+
+private fun coerceAuthDecimal(op: String, raw: String): AuthCoercedValue? {
+    val parse: (String) -> Any? = { s -> runCatching { MetaDecimalWire.parseFilterOperand(s) }.getOrNull() }
     if (op == "in") {
         val parts = raw.split(",").map { it.trim() }
         val list = parts.map { parse(it) ?: return null }
@@ -282,6 +294,17 @@ private fun AuthWhereOp(predicates: List<AuthFilterPredicate>): Op<Boolean>? {
                     "in" -> AuthTable.quantity inList (p.value as List<Int>)
                     "isNull" -> if (p.value as Boolean) AuthTable.quantity.isNull() else AuthTable.quantity.isNotNull()
                     else -> throw IllegalStateException("unsupported op for quantity: " + p.op)
+                }
+                "copayAmount" -> when (p.op) {
+                    "eq" -> AuthTable.copayAmount eq (p.value as BigDecimal)
+                    "ne" -> AuthTable.copayAmount neq (p.value as BigDecimal)
+                    "gt" -> AuthTable.copayAmount greater (p.value as BigDecimal)
+                    "gte" -> AuthTable.copayAmount greaterEq (p.value as BigDecimal)
+                    "lt" -> AuthTable.copayAmount less (p.value as BigDecimal)
+                    "lte" -> AuthTable.copayAmount lessEq (p.value as BigDecimal)
+                    "in" -> AuthTable.copayAmount inList (p.value as List<BigDecimal>)
+                    "isNull" -> if (p.value as Boolean) AuthTable.copayAmount.isNull() else AuthTable.copayAmount.isNotNull()
+                    else -> throw IllegalStateException("unsupported op for copayAmount: " + p.op)
                 }
                 "priorAuthNumber" -> when (p.op) {
                     "eq" -> AuthTable.priorAuthNumber eq (p.value as String)
@@ -482,6 +505,7 @@ class AuthController(private val objectMapper: ObjectMapper, private val validat
     @PostMapping("/copay")
     fun createCopay(@RequestBody dto: Auth): ResponseEntity<Any> = transaction {
         if (validator.validateValue(CopayAuthValidation::class.java, "copayAmount", dto.copayAmount).isNotEmpty()) return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation") as Any)
+        if (!MetaDecimalWire.fits(dto.copayAmount, 10, 2)) return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation", "field" to "copayAmount") as Any)
         if (validator.validateValue(CopayAuthValidation::class.java, "reference", dto.reference).isNotEmpty()) return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation") as Any)
         val newId = AuthTable.insert {
             it[type] = AuthType.Copay
@@ -502,8 +526,9 @@ class AuthController(private val objectMapper: ObjectMapper, private val validat
             try {
                 val hasCopayAmount = body.has("copayAmount")
                 val nullCopayAmount = hasCopayAmount && body.get("copayAmount").isNull
-                val vCopayAmount: java.math.BigDecimal? = if (hasCopayAmount && !nullCopayAmount) objectMapper.treeToValue(body.get("copayAmount"), object : TypeReference<java.math.BigDecimal>() {}) else null
+                val vCopayAmount: java.math.BigDecimal? = if (hasCopayAmount && !nullCopayAmount) runCatching { MetaDecimalWire.fromNode(body.get("copayAmount")) }.getOrElse { return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation", "field" to "copayAmount") as Any) } else null
                 if (hasCopayAmount && !nullCopayAmount && validator.validateValue(CopayAuthValidation::class.java, "copayAmount", vCopayAmount).isNotEmpty()) return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation") as Any)
+                if (!MetaDecimalWire.fits(vCopayAmount, 10, 2)) return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation", "field" to "copayAmount") as Any)
                 val hasReference = body.has("reference")
                 val vReference: kotlin.String? = if (hasReference) objectMapper.treeToValue(body.get("reference"), object : TypeReference<kotlin.String>() {}) else null
                 if (hasReference && validator.validateValue(CopayAuthValidation::class.java, "reference", vReference).isNotEmpty()) return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation") as Any)
@@ -612,6 +637,11 @@ class AuthController(private val objectMapper: ObjectMapper, private val validat
         else ResponseEntity.noContent().build<Any>()
     }
 
+
+    /** A request body that cannot be read is a client error naming the field, not a 500. */
+    @ExceptionHandler(org.springframework.http.converter.HttpMessageNotReadableException::class)
+    fun handleUnreadableBody(e: org.springframework.http.converter.HttpMessageNotReadableException): ResponseEntity<Any> =
+        ResponseEntity.badRequest().body(MetaDecimalWire.unreadableBody(e) as Any)
 
     /**
      * A database constraint violation is a CLIENT error, not a 500: the

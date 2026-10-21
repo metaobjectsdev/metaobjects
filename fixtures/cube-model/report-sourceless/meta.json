@@ -49,47 +49,6 @@
           },
           "children": []
         }
-      },
-      {
-        "object.report": {
-          "name": "AbstractTotals",
-          "abstract": true,
-          "@from": "Program",
-          "@measures": [
-            "programs"
-          ],
-          "@filter": {
-            "title": "x"
-          },
-          "children": [
-            {
-              "source.rdb": {
-                "@kind": "view",
-                "@view": "v_abstracttotals"
-              }
-            }
-          ]
-        }
-      },
-      {
-        "object.report": {
-          "name": "Materialized",
-          "@from": "Program",
-          "@measures": [
-            "programs"
-          ],
-          "@filter": {
-            "title": "x"
-          },
-          "children": [
-            {
-              "source.rdb": {
-                "@kind": "materializedView",
-                "@materializedView": "v_materialized"
-              }
-            }
-          ]
-        }
       }
     ]
   }

@@ -149,7 +149,7 @@ public class CodegenCompileConformanceTests
         var files = generators.SelectMany(g => g.Generate(ctx)).ToList();
         Assert.True(files.Count > 0, $"selection '{selection}' generated no files at all");
 
-        // FR-044 — every view-backed report of the corpus (twenty-three today) generates a keyless
+        // FR-044 — every view-backed report of the corpus (twenty-five today) generates a keyless
         // row class and a filter allowlist (their routes file is in the excluded framework tier),
         // and no names artifact. Named, because a compile gate passes trivially over a file that
         // was never emitted. ProgramRoster, ProgramLongWeeks and FitnessTotalsFilled carry

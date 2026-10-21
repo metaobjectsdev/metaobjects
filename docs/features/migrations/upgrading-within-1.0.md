@@ -1,5 +1,9 @@
 # Upgrading within 1.0 (1.0.x → a later 1.0.x)
 
+> **Moving to 1.1?** This page covers 1.0.x patches only. From any 1.0.x to 1.1.0 (Maven
+> 8.1.0), follow [upgrading-1.0-to-1.1.md](upgrading-1.0-to-1.1.md), which lists every change
+> that needs action, per port.
+
 A 1.0 patch never asks you to change metadata that worked, and `metamodelVersion` has stayed
 `1.0` since the 1.0 cut. It can still change the code `meta gen` writes, and some of those
 changes reach your app. This page lists what came up when nine adopter projects moved from

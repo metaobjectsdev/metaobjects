@@ -417,6 +417,21 @@ interface GeneratorListRow {
   package: string;
   /** `available` = not ejected; `owned` = ejected but the reference could not be read. */
   status: "available" | "owned" | "identical" | "reformatted" | "differs";
+  /** Lines behind / of your own in the GENERATOR file alone. */
+  behind: number;
+  own: number;
+  /**
+   * The renderers this generator owns under `codegen/templates/` (those it imports that
+   * exist in the project), each against the installed package. A generator is `identical`
+   * only when its file AND every one of these is; `status` is `differs` when any differs.
+   * Absent when the project owns none of its renderers.
+   */
+  templates?: GeneratorTemplateRow[];
+}
+
+interface GeneratorTemplateRow {
+  path: string;
+  status: "identical" | "reformatted" | "differs";
   behind: number;
   own: number;
 }
@@ -429,6 +444,9 @@ interface GeneratorListGroup {
 
 async function generatorListGroups(cwd: string): Promise<GeneratorListGroup[]> {
   const groups: GeneratorListGroup[] = [];
+  // Every renderer the project holds, against the package: attributed to a generator by what
+  // that generator imports, so a renderer another generator owns never flags this one.
+  const templateStatus = await templateCopyStatus(cwd, packagedTemplates());
   for (const source of SOURCES) {
     const rows: GeneratorListRow[] = [];
     groups.push({ packageName: source.packageName, rows });
@@ -452,6 +470,19 @@ async function generatorListGroups(cwd: string): Promise<GeneratorListGroup[]> {
         row.behind = cmp.referenceOnly;
         row.own = cmp.localOnly;
       }
+      const reached = new Set(closureOf(name).templates.map((f) => f.path));
+      const renderers: GeneratorTemplateRow[] = [];
+      for (const t of templateStatus) {
+        if (!reached.has(t.path) || t.verdict === "not-in-package") continue;
+        renderers.push({
+          path: t.path,
+          status: t.verdict === "identical" || t.verdict === "reformatted" ? t.verdict : "differs",
+          behind: t.referenceOnly,
+          own: t.localOnly,
+        });
+      }
+      if (renderers.length > 0) row.templates = renderers;
+      if (renderers.some((r) => r.status === "differs")) row.status = "differs";
     }
   }
   return groups;
@@ -476,6 +507,7 @@ async function listOutput(cwd: string): Promise<string> {
   lines.push("");
   const groups = await generatorListGroups(cwd);
   const anyStale = groups.some((g) => g.rows.some((r) => r.status === "differs"));
+  const generatorFileDiffers = (r: GeneratorListRow): boolean => r.behind > 0 || r.own > 0;
   for (const group of groups) {
     lines.push(`${group.packageName}:`);
     for (const r of group.rows) {
@@ -484,10 +516,15 @@ async function listOutput(cwd: string): Promise<string> {
       else if (r.status === "identical") lines.push(`  ${r.name}  [owned — identical to the reference]`);
       else if (r.status === "reformatted") lines.push(`  ${r.name}  [owned — same content as the reference, your formatting]`);
       else {
+        const differing = (r.templates ?? []).filter((t) => t.status === "differs");
         lines.push(
-          `  ${r.name}  [owned — DIFFERS: ${r.behind} line(s) behind, ` +
-            `${r.own} line(s) of your own]`,
+          generatorFileDiffers(r)
+            ? `  ${r.name}  [owned — DIFFERS: ${r.behind} line(s) behind, ${r.own} line(s) of your own]`
+            : `  ${r.name}  [owned — DIFFERS: generator identical, ${differing.length} renderer(s) differ]`,
         );
+        for (const t of differing) {
+          lines.push(`    renderer ${t.path}  [DIFFERS: ${t.behind} line(s) behind, ${t.own} line(s) of your own]`);
+        }
       }
     }
     lines.push("");

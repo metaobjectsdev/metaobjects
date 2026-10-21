@@ -150,4 +150,41 @@ public class SpringFilterAllowlistGeneratorTest extends SharedRegistryTestBase {
         assertTrue("expected price → numeric ops; saw:\n" + src,
             src.contains("\"price\", Set.of(\"eq\", \"ne\", \"gt\", \"gte\", \"lt\", \"lte\", \"in\", \"isNull\")"));
     }
+
+    /** A TPH subtype's filterable decimal is admitted, as in the TS, C# and Python ports. */
+    private static final String TPH_DECIMAL_FIXTURE = """
+        {
+          "metadata.root": { "package": "acme::auth", "children": [
+            { "object.entity": { "name": "Auth", "@discriminator": "type", "children": [
+                { "source.rdb":   { "@table": "auths" } },
+                { "field.long":   { "name": "id" } },
+                { "field.enum":   { "name": "type", "@values": ["Bridge", "Copay"], "@filterable": true } },
+                { "identity.primary": { "@fields": "id", "@generation": "increment" } }
+            ] } },
+            { "object.entity": { "name": "BridgeAuth", "extends": "Auth", "@discriminatorValue": "Bridge", "children": [
+                { "field.int": { "name": "quantity", "@filterable": true } }
+            ] } },
+            { "object.entity": { "name": "CopayAuth", "extends": "Auth", "@discriminatorValue": "Copay", "children": [
+                { "field.decimal": { "name": "copayAmount", "@precision": 10, "@scale": 2, "@filterable": true } }
+            ] } }
+          ] }
+        }
+        """;
+
+    @Test
+    public void aTphSubtypeDecimalIsFilterableAndParsedExactly() throws Exception {
+        Path outDir = tempFolder.newFolder("fa-tph-dec").toPath();
+        Path workspace = tempFolder.newFolder("fa-tph-dec-fx").toPath();
+        MetaDataLoader loader = SpringTestFixtures.loadFixture(workspace, "fa-tph-dec", TPH_DECIMAL_FIXTURE);
+        SpringFilterAllowlistGenerator gen = new SpringFilterAllowlistGenerator();
+        Map<String, String> args = new HashMap<>();
+        args.put("outputDir", outDir.toString());
+        gen.setArgs(args);
+        gen.execute(loader);
+
+        String src = Files.readString(outDir.resolve("acme/auth/AuthFilterAllowlist.java"));
+        assertTrue(src, src.contains("\"copayAmount\""));
+        assertTrue(src, src.contains("DECIMAL_FIELDS = Set.of(\"copayAmount\")"));
+        assertTrue(src, src.contains("\"quantity\""));
+    }
 }

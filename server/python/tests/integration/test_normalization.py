@@ -25,3 +25,15 @@ def test_out_of_band_float_raises():
         _canonical_float(1.0e-10)
     with pytest.raises(ValueError):
         normalize_value(1.0e-10)
+
+
+def test_an_actual_decimal_slot_holding_a_string_is_not_canonicalized() -> None:
+    """A decimal column must come back as a Decimal: on the actual side a decimal-looking
+    string stays a string, so it cannot match the expected literal's canonical form."""
+    from decimal import Decimal
+
+    from .normalization import normalize_row
+
+    assert normalize_row({"amount": Decimal("12.50")}, actual=True) == {"amount": "12.5"}
+    assert normalize_row({"amount": "12.50"}, actual=True) == {"amount": "12.50"}
+    assert normalize_row({"amount": "12.50"}) == {"amount": "12.5"}  # an expected literal

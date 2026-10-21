@@ -31,6 +31,6 @@ object ProgramRosterView : Table("v_program_roster") {
     val weeks = long("weeks")
     val totalMinutes = long("totalMinutes").nullable()
     val totalMinutesOrZero = long("totalMinutesOrZero")
-    val longShare = decimal("longShare", 38, 18).nullable()
-    val longShareOrZero = decimal("longShareOrZero", 38, 18)
+    val longShare = portableDecimal("longShare", 38, 18).nullable()
+    val longShareOrZero = portableDecimal("longShareOrZero", 38, 18)
 }

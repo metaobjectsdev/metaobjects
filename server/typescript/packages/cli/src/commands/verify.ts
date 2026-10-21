@@ -711,7 +711,7 @@ export async function verifyCommand(
     // --no-requirement-lint has below, so a CI job can turn it on without editing a
     // command line it shares with local runs.
     const scan = scanRequirements(root, {
-      coverable: collection.inScope,
+      coverable: collection.inCoverage,
       requireImplementers: flags.requireImplementers || process.env.META_REQUIRE_IMPLEMENTERS === "1",
     });
     const diags = [...checkRequirements(root, scan)];

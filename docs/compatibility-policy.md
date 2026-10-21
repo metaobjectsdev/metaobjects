@@ -31,7 +31,7 @@ different parts of your project, and each has its own number
 | Number | Promises | A break moves |
 |---|---|---|
 | **Package version** (npm/PyPI/NuGet `1.x`, Maven `8.x`) | the SOFTWARE surface — your **build** depends on it | the package major (`2.0.0` / `9.0.0`) |
-| **`metamodelVersion`** (`"1.0"` at the cut) | the METADATA contract — your **model** depends on it | the metamodel major (Metamodel 2.0) |
+| **`metamodelVersion`** (`"1.0"` at the cut, `"1.1"` from 1.1.0) | the METADATA contract — your **model** depends on it | the metamodel major (Metamodel 2.0) |
 
 Reading it the other way round: a package major means *your imports, CLI invocations or
 generated-code shape may need work*. A metamodel major means *your metadata may need
@@ -177,6 +177,36 @@ offer the first two is not eligible for this exception.
 > version gate as a finding that nothing broke.
 
 
+## What a metamodel MINOR may refuse
+
+The section above is about a PATCH. A metamodel MINOR (`1.0` → `1.1`) adds vocabulary, and
+it may also do one thing a PATCH may not: **refuse input that the written grammar never
+allowed, even where some port accepted it**, provided three things hold:
+
+1. **The grammar is written down and the input contradicts it.** For references that is
+   [ADR-0042](../spec/decisions/ADR-0042-bare-references-are-package-local.md): the rule a port
+   departed from, not a rule written to justify the refusal.
+2. **The error names the fix.** The message gives the exact edit: the candidates found and
+   the qualified spelling to write. A conformance fixture asserts those strings in every port
+   (`messageIncludes`, `spec/conformance-tests.md`).
+3. **The changelog lists it under Breaking**, with the ports that used to accept it.
+
+The difference from the PATCH exception is its second test. A MINOR may refuse a form that
+did what its author meant in some port, because the release is where adopters are told to
+read the Breaking list and regenerate. A refusal that fails the first test is a break and
+waits for Metamodel 2.0, however small.
+
+**Worked example: a bare cross-package `extends` (1.1.0).** ADR-0042 says a bare name binds
+the declaring file's own package, then the root. Java followed it; TypeScript, Python and C#
+also searched every other package, so `extends: Base` with `Base` in another package loaded
+in three ports and failed in one. 1.1.0 (ADR-0059) makes all five follow the ADR. The PATCH
+bar does not admit it (it worked in three ports), and the MINOR bar does: the grammar was
+written, `ERR_UNRESOLVED_SUPER` now names the object found in the other package and the
+qualified spelling to write (`write extends: "other::Base"`) in all five ports, and the 1.1.0
+changelog lists it under Breaking. `meta upgrade` does not make the edit: it works on one file's
+text at a time, and choosing the package needs the whole project's model, where a wrong guess
+would load and mean something else.
+
 ## Spec-version support across ports
 
 All ports that ship a given release implement the **same** Metamodel spec version,
@@ -185,11 +215,10 @@ api-contract, registry). A port's package version tells you its own fix/feature 
 its declared `metamodelVersion` tells you the contract it honors. When they differ,
 the spec version is authoritative for cross-language interop.
 
-## Pre-1.0 (today)
+## Before 1.0
 
-Until the 1.0 cut, the project is in `0.x` (npm/PyPI/NuGet) / `7.x` (Maven) and the
-public API is not yet frozen — breaking changes may ship in a minor, as they did
-through the `0.14`–`0.15` vocabulary-finalization window. The
-[1.0 readiness checklist](1.0-readiness.md) tracks the remaining path; the
-[0.x → 1.0 migration guide](features/migrations/0.x-to-1.0.md) consolidates the
-breaking changes adopters absorb at the cut.
+Before the 1.0 cut the project was in `0.x` (npm/PyPI/NuGet) / `7.x` (Maven) and the public
+API was not frozen: breaking changes shipped in a minor, as they did through the
+`0.14`–`0.15` vocabulary-finalization window. The
+[0.x → 1.0 migration guide](features/migrations/0.x-to-1.0.md) consolidates the breaking
+changes adopters absorbed at the cut.

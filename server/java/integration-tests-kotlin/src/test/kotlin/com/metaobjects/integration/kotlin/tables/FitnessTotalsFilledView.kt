@@ -24,5 +24,5 @@ import org.jetbrains.exposed.sql.Table
 object FitnessTotalsFilledView : Table("v_fitness_totals_filled") {
     val weeks = long("weeks")
     val totalMinutesOrZero = long("totalMinutesOrZero")
-    val longShareOrZero = decimal("longShareOrZero", 38, 18)
+    val longShareOrZero = portableDecimal("longShareOrZero", 38, 18)
 }

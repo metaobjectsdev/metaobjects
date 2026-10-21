@@ -39,6 +39,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The tag must name the version the manifest commits: these workflows publish the
+      # manifest's version whatever tag started them (scripts/check-release-tag.mjs).
+      - name: Tag matches the manifest version
+        run: node scripts/check-release-tag.mjs npm
+
       # A final version is not published while the eject pending list has entries
       # (ADR-0034 Amendment 8). A release candidate passes.
       - name: Eject release gate

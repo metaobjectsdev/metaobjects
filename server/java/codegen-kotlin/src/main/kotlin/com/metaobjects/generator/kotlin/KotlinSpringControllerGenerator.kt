@@ -119,6 +119,9 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
     override fun execute(loader: MetaDataLoader) {
         parseArgs()
         val outRoot = Paths.get(outDir.absolutePath)
+        // ADR-0019 Amendment 1: every controller reads a decimal filter operand, a decimal PATCH value
+        // and an unreadable body through its package's generated MetaDecimalWire (no MetaObjects import).
+        val decimalWirePackages = linkedSetOf<String>()
 
         for (declared in loader.metaObjects) {
             // FR-044: a served report is emitted from its read model, the same object the
@@ -168,6 +171,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             }
             // F22 — a view-only projection gets a READ-ONLY controller: reads served, every
             // write verb answering the cross-port 405 envelope.
+            decimalWirePackages.add(PackageMapping.splitFqn(entity.name).first)
             if (RestSurfaceGate.isReadOnly(entity)) {
                 emitReadOnly(entity, outRoot, loader)
                 continue
@@ -177,6 +181,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             val tph = KotlinTphPlan.planFor(entity, loader)
             if (tph != null) emitTph(entity, tph, outRoot, loader) else emit(entity, outRoot, loader)
         }
+        for (pkg in decimalWirePackages) KotlinDecimalWireEmitter.write(pkg, outRoot)
     }
 
     protected open fun emit(entity: MetaObject, outRoot: Path, loader: MetaDataLoader) {
@@ -263,7 +268,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         // `field.string @dbColumnType=jsonb` open bag — a JSONB value is not a scalar sort
         // target (its in-process type is a kotlinx JsonElement, not a comparable scalar).
         val sortFields = entity.metaFields
-            .filterNot { it is ObjectField || it is MapField || KotlinTypeMapper.isJsonbOpenBag(it) }
+            .filterNot { isNonScalarSurface(it) }
             .map { it.name }
 
         // Per-field dispatch map (filter dispatch); only used inside the generated
@@ -276,7 +281,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         // JsonElement — emitting a filter-dispatch arm (`p.value as JsonElement`) would
         // reference an un-imported type and produce a controller that does not compile.
         val scalarFields: List<ScalarFieldSpec> = entity.metaFields
-            .filterNot { it is ObjectField || it is MapField || KotlinTypeMapper.isJsonbOpenBag(it) }
+            .filterNot { isNonScalarSurface(it) }
             .map { ScalarFieldSpec(it.name, it.subType, columnElementType(it), intBackedEnumType(it, entity)) }
 
         val allowlistName = "${shortName}FilterAllowlist"
@@ -435,6 +440,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             append("    @PostMapping\n")
             append("    fun create(@RequestBody dto: ${shortName}): ResponseEntity<Any> = transaction {\n")
             append("        if (validator.validate(dto).isNotEmpty()) return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"validation\") as Any)\n")
+            for (field in entity.metaFields) appendDecimalRangeCheck("        ", field, "dto.${field.name}")
             // #203/ADR-0045: capture one now() per temporal type so createdAt == updatedAt exactly.
             for ((expr, valName) in insertNowVal) append("        val $valName = $expr\n")
             append("        val newId = ${tableObjectName}.insert {\n")
@@ -534,13 +540,14 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                     append("                val has$cap = body.has(\"$fn\")\n")
                     if (KotlinGenUtil.isRequiredField(field)) {
                         // required: present ⇒ non-null (present-null was 400'd above).
-                        append("                val v$cap: $ktType? = if (has$cap) objectMapper.treeToValue(body.get(\"$fn\"), object : TypeReference<$ktType>() {}) else null\n")
+                        append("                val v$cap: $ktType? = if (has$cap) ${patchBindExpr(field, fn, ktType)} else null\n")
                         append("                if (has$cap && validator.validateValue(${shortName}::class.java, \"$fn\", v$cap).isNotEmpty()) return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"validation\") as Any)\n")
                     } else {
                         append("                val null$cap = has$cap && body.get(\"$fn\").isNull\n")
-                        append("                val v$cap: $ktType? = if (has$cap && !null$cap) objectMapper.treeToValue(body.get(\"$fn\"), object : TypeReference<$ktType>() {}) else null\n")
+                        append("                val v$cap: $ktType? = if (has$cap && !null$cap) ${patchBindExpr(field, fn, ktType)} else null\n")
                         append("                if (has$cap && !null$cap && validator.validateValue(${shortName}::class.java, \"$fn\", v$cap).isNotEmpty()) return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"validation\") as Any)\n")
                     }
+                    appendDecimalRangeCheck("                ", field, "v$cap")
                     // Program D (spec §0): jakarta validateValue does NOT cascade @Valid into a nested
                     // value-object's constraints, so a present VO is validated EXPLICITLY —
                     // validator.validate(voElement) per element (single VO whole; array VO per element),
@@ -681,20 +688,19 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         val scalarFields = (base.metaFields.filterNot { it is ObjectField || it is MapField } +
             KotlinTphPlan.collectSubtypeFields(base, plan).filterNot { it is ObjectField || it is MapField })
         val sortFields = base.metaFields
-            .filterNot { it is ObjectField || it is MapField || KotlinTypeMapper.isJsonbOpenBag(it) }
+            .filterNot { isNonScalarSurface(it) }
             .map { it.name }
         val baseFieldNames = base.metaFields.map { it.name }.toSet()
         val allowlistName = "${shortName}FilterAllowlist"
         // Union filter-dispatch specs (base + subtype columns) for the FR-009 pipeline — EXCLUDING the
-        // discriminator (route-addressable; enum column), decimal columns (outside the cross-port
-        // HTTP filter contract) and the `field.string @dbColumnType=jsonb` open bag (a JSONB value is
+        // discriminator (route-addressable; enum column) and the `field.string @dbColumnType=jsonb` open bag (a JSONB value is
         // not a scalar filter target; its element type is an un-imported kotlinx JsonElement). Mirrors
         // the allowlist's exclusions, so the dispatch never references a cast the generic pipeline
         // can't coerce. (scalarFields itself is left intact — rowTo<Base> reuses it to map every column.)
         // The discriminator stays IN: the base allowlist admits it (FR-017), so it needs a
         // coercion + WHERE arm like any filterable enum column.
         val filterSpecs = scalarFields
-            .filter { it !is com.metaobjects.field.DecimalField && !KotlinTypeMapper.isJsonbOpenBag(it) }
+            .filter { !KotlinTypeMapper.isJsonbOpenBag(it) }
             .map { ScalarFieldSpec(it.name, it.subType, columnElementType(it), intBackedEnumType(it, base)) }
         // #203/ADR-0045: @autoSet columns on the union table are stamped by the controller, never bound
         // from the per-subtype create body. Same computation as the vanilla emit() (lines ~195-207); the
@@ -810,9 +816,11 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             if (pkParamType == "UUID" || filterSpecs.any { it.elementType == "UUID" }) {
                 append("import java.util.UUID\n")
             }
-            // Pre-existing gap — see emit()'s identical BigDecimal/URI/InetAddress comments
-            // above; filterSpecs excludes DecimalField (see its own filter above) but not
-            // UriField/InetField, so this hierarchy needs the URI/InetAddress half of the fix.
+            // See emit()'s identical BigDecimal/URI/InetAddress comments above: a filterable decimal
+            // column casts `p.value as BigDecimal`, so the import is needed here too.
+            if (filterSpecs.any { it.elementType == "BigDecimal" }) {
+                append("import java.math.BigDecimal\n")
+            }
             if (filterSpecs.any { it.elementType == "URI" }) {
                 append("import java.net.URI\n")
             }
@@ -1002,6 +1010,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                 append("    fun create$sfx(@RequestBody dto: $shortName): ResponseEntity<Any> = transaction {\n")
                 for (field in stPatch) {
                     append("        if (validator.validateValue($validationRef::class.java, \"${field.name}\", dto.${field.name}).isNotEmpty()) return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"validation\") as Any)\n")
+                    appendDecimalRangeCheck("        ", field, "dto.${field.name}")
                 }
                 // #203/ADR-0045: capture one now() per temporal type so createdAt == updatedAt exactly.
                 for ((expr, valName) in insertNowVal) append("        val $valName = $expr\n")
@@ -1069,13 +1078,14 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                         append("                val has$cap = body.has(\"$fn\")\n")
                         if (KotlinGenUtil.isRequiredField(field)) {
                             // required: present ⇒ non-null (present-null was 400'd above).
-                            append("                val v$cap: $ktType? = if (has$cap) objectMapper.treeToValue(body.get(\"$fn\"), object : TypeReference<$ktType>() {}) else null\n")
+                            append("                val v$cap: $ktType? = if (has$cap) ${patchBindExpr(field, fn, ktType)} else null\n")
                             append("                if (has$cap && validator.validateValue($validationRef::class.java, \"$fn\", v$cap).isNotEmpty()) return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"validation\") as Any)\n")
                         } else {
                             append("                val null$cap = has$cap && body.get(\"$fn\").isNull\n")
-                            append("                val v$cap: $ktType? = if (has$cap && !null$cap) objectMapper.treeToValue(body.get(\"$fn\"), object : TypeReference<$ktType>() {}) else null\n")
+                            append("                val v$cap: $ktType? = if (has$cap && !null$cap) ${patchBindExpr(field, fn, ktType)} else null\n")
                             append("                if (has$cap && !null$cap && validator.validateValue($validationRef::class.java, \"$fn\", v$cap).isNotEmpty()) return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"validation\") as Any)\n")
                         }
+                        appendDecimalRangeCheck("                ", field, "v$cap")
                     }
                     // Apply the already-bound + validated values, scoped to (pk eq id) and (disc eq value).
                     // Columns are qualified ($table.col) so a field named like the body/id params can't shadow.
@@ -1172,6 +1182,13 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
      */
     private fun StringBuilder.appendConstraintHandler() {
         append("\n")
+        // ADR-0019 Amendment 1 (W2): a create body Jackson cannot read (a decimal that is not in the
+        // JSON-number grammar, a wrong-typed value, malformed JSON) is a 400 in the validation
+        // envelope naming the field, the same envelope the Java port answers.
+        append("    /** A request body that cannot be read is a client error naming the field, not a 500. */\n")
+        append("    @ExceptionHandler(org.springframework.http.converter.HttpMessageNotReadableException::class)\n")
+        append("    fun handleUnreadableBody(e: org.springframework.http.converter.HttpMessageNotReadableException): ResponseEntity<Any> =\n")
+        append("        ResponseEntity.badRequest().body(MetaDecimalWire.unreadableBody(e) as Any)\n\n")
         append("    /**\n")
         append("     * A database constraint violation is a CLIENT error, not a 500: the\n")
         append("     * identity.reference / identity.secondary that declare these constraints are the\n")
@@ -1203,6 +1220,51 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         append("        return ResponseEntity.status(status).body(mapOf(\"error\" to \"constraint_violation\", \"constraint\" to kind) as Any)\n")
         append("    }\n\n")
     }
+
+    /**
+     * W3 (ADR-0019 Amendment 1): the Kotlin expression that is true when [value] (a nullable
+     * BigDecimal expression) fits the column the field declares: no more fraction digits than
+     * `@scale`, no more integer digits than `@precision - @scale`. Trailing zeros do not count and nothing
+     * is rounded to fit. The generated `MetaDecimalWire.fits` holds the check; the deserializer knows only
+     * the engine-wide limits, so the controller enforces the declared ones.
+     */
+    private fun decimalFitsExpr(field: DecimalField, value: String): String {
+        val precision = KotlinTypeMapper.decimalPrecision(field)
+        val scale = KotlinTypeMapper.decimalScale(field)
+        return "MetaDecimalWire.fits($value, $precision, $scale)"
+    }
+
+    /** `if (!fits) return 400` for a decimal [field] whose bound value is the expression [value]. */
+    private fun StringBuilder.appendDecimalRangeCheck(indent: String, field: MetaField<*>, value: String) {
+        if (field !is DecimalField || field.isArrayType) return
+        append(indent)
+        append("if (!${decimalFitsExpr(field, value)}) return@transaction ")
+        append("ResponseEntity.badRequest().body(mapOf(\"error\" to \"validation\", \"field\" to \"${field.name}\") as Any)\n")
+    }
+
+    /**
+     * True for a field that has no scalar column to compare or order by: a value object, a map, the
+     * `field.string @dbColumnType=jsonb` open bag, and any array (a list column has no comparison
+     * operator and no order). Such a field is in neither the filter dispatch nor the sort
+     * allowlist, whatever the entity field it is derived from says.
+     */
+    private fun isNonScalarSurface(field: MetaField<*>): Boolean =
+        field is ObjectField || field is MapField || field.isArrayType || KotlinTypeMapper.isJsonbOpenBag(field)
+
+    /**
+     * The expression binding a PRESENT PATCH value of [field] to [ktType]. A scalar `field.decimal`
+     * binds through the same canonical reader as a create body (ADR-0019 Amendment 1, W2/W3): a
+     * string in the JSON-number grammar or a JSON number, anything else (or a value past the
+     * exact range) answers `400 {"error":"validation","field":...}`. Everything else binds through
+     * the configured ObjectMapper.
+     */
+    private fun patchBindExpr(field: MetaField<*>, fn: String, ktType: String): String =
+        if (field is DecimalField && !field.isArrayType) {
+            "runCatching { MetaDecimalWire.fromNode(body.get(\"$fn\")) }" +
+                ".getOrElse { return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"validation\", \"field\" to \"$fn\") as Any) }"
+        } else {
+            "objectMapper.treeToValue(body.get(\"$fn\"), object : TypeReference<$ktType>() {})"
+        }
 
     /** Capitalize the first char (method-name suffix from a discriminator value). */
     private fun capitalizeFirst(s: String): String =
@@ -1455,7 +1517,9 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             emitTypedCoercer(out, shortName, "Float", "java.lang.Float.parseFloat")
         }
         if (scalarFields.any { it.subType == DecimalField.SUBTYPE_DECIMAL }) {
-            emitTypedCoercer(out, shortName, "Decimal", "java.math.BigDecimal")
+            // W2: the operand is parsed by the shared canonical grammar and compared exactly (never
+            // through a double); a malformed or out-of-range one is null, so `invalid_filter_value`.
+            emitTypedCoercer(out, shortName, "Decimal", "MetaDecimalWire.parseFilterOperand")
         }
         emitTypedCoercer(out, shortName, "Date", "LocalDate.parse")
         emitTypedCoercer(out, shortName, "Time", "LocalTime.parse")
@@ -1896,14 +1960,14 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         val pkParamType = primaryKeyParamType(entity, pkFieldName)
 
         val sortFields = entity.metaFields
-            .filterNot { it is ObjectField || it is MapField || KotlinTypeMapper.isJsonbOpenBag(it) }
+            .filterNot { isNonScalarSurface(it) }
             .map { it.name }
         // FR-044: a report's int-backed enum column is typed by the enum of the entity it
         // reads (the class its table and data class use), so its filter arm compares through
         // that class. Empty for a projection, whose arms are unchanged.
         val reportEnums = KotlinGenUtil.reportEnumClasses(entity, loader, providedEnums)
         val scalarFields: List<ScalarFieldSpec> = entity.metaFields
-            .filterNot { it is ObjectField || it is MapField || KotlinTypeMapper.isJsonbOpenBag(it) }
+            .filterNot { isNonScalarSurface(it) }
             .map {
                 ScalarFieldSpec(
                     it.name, it.subType, columnElementType(it),

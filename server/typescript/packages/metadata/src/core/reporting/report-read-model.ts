@@ -36,12 +36,12 @@ import {
   FIELD_ATTR_FILTERABLE,
   FIELD_ATTR_INT_VALUE_MAP,
   FIELD_ATTR_MAX_LENGTH,
-  FIELD_ATTR_OBJECT_REF,
   FIELD_ATTR_PRECISION,
   FIELD_ATTR_REQUIRED,
   FIELD_ATTR_SCALE,
   FIELD_ATTR_STORAGE,
   FIELD_ATTR_VALUES,
+  FIELD_SUBTYPE_MAP,
 } from "../field/field-constants.js";
 import { opsForField } from "../query/query-constants.js";
 import { reportShape, type ReportField } from "./report-shape.js";
@@ -61,9 +61,13 @@ const CARRIED_ATTRS = [
   FIELD_ATTR_PRECISION,
   FIELD_ATTR_SCALE,
   FIELD_ATTR_LOCAL_TIME,
-  FIELD_ATTR_OBJECT_REF,
   FIELD_ATTR_STORAGE,
 ] as const;
+
+/** True for a derived field whose source field is an array or a `field.map`. */
+function isArrayOrMap(field: MetaField): boolean {
+  return field.resolvedIsArray() || field.subType === FIELD_SUBTYPE_MAP;
+}
 
 function derivedField(f: ReportField): MetaField {
   const field = new MetaField(new TypeId(TYPE_FIELD, f.subType), f.name);
@@ -89,9 +93,13 @@ function derivedField(f: ReportField): MetaField {
     if (src.resolvedIsArray()) field.setIsArray(true);
   }
   // Table C (Plan 3): a report author has no node to put @filterable on, so every
-  // derived field that has a filter band is filterable. Set on this detached model
-  // only; no vocabulary is added and the declared tree is not touched.
-  if (opsForField(field).length > 0) field.setAttr(FIELD_ATTR_FILTERABLE, true);
+  // derived field that has a filter band is filterable, and (the sort allowlist follows
+  // `@filterable`) sortable. Set on this detached model only; no vocabulary is added and the
+  // declared tree is not touched. EXCEPT an array or a map: an array column cannot be compared
+  // with a scalar (`text[] = text` is a Postgres error), and the entity rule already refuses
+  // `@filterable` on an array field, so a derived field whose source is either is neither
+  // filterable nor sortable, in every port.
+  if (!isArrayOrMap(field) && opsForField(field).length > 0) field.setAttr(FIELD_ATTR_FILTERABLE, true);
   return field;
 }
 

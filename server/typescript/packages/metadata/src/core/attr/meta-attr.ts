@@ -111,7 +111,14 @@ export class MetaAttr extends MetaData implements DataTypeAware {
     if (dt === DATA_TYPE_STRING) {
       return typeof value === "string" ? [] : [this._typeError("string", value)];
     }
-    if (dt === DATA_TYPE_INT || dt === DATA_TYPE_LONG || dt === DATA_TYPE_DOUBLE) {
+    if (dt === DATA_TYPE_INT || dt === DATA_TYPE_LONG) {
+      if (typeof value !== "number") return [this._typeError("number", value)];
+      // Rule A: an integral number (4, 4.0, 1e2) is an int; a fraction is not.
+      return Number.isInteger(value)
+        ? []
+        : [{ message: `attribute '@${this.name}' must be of type '${this.subType}' but got the fraction ${value}` }];
+    }
+    if (dt === DATA_TYPE_DOUBLE) {
       return typeof value === "number" ? [] : [this._typeError("number", value)];
     }
     if (dt === DATA_TYPE_BOOLEAN) {

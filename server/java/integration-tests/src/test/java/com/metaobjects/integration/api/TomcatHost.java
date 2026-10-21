@@ -109,7 +109,11 @@ public final class TomcatHost implements AutoCloseable {
     public static Object parseBody(ObjectMapper mapper, String body) {
         if (body == null || body.isEmpty()) return null;
         try {
-            return mapper.readValue(body, Object.class);
+            // A response body is read with exact decimals: a JSON number such as 0.3 must not
+            // become a double before the assertion engine sees it (ADR-0019 Amendment 1).
+            return mapper.copy()
+                .enable(com.fasterxml.jackson.databind.DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS)
+                .readValue(body, Object.class);
         } catch (com.fasterxml.jackson.core.JsonProcessingException notJson) {
             return body;
         }

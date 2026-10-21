@@ -380,3 +380,53 @@ test("expected-errors warnings: count mismatch → fail with warnings count deta
   const detail = report.checks.filter((c) => !c.passed).map((c) => c.detail).join("; ");
   expect(detail).toMatch(/warnings count: expected 2, got 1/);
 });
+
+// ── messageIncludes — optional per-error message-substring assertion ────────
+
+function messageAdapter(message: string | undefined): ConformanceAdapter {
+  return {
+    ...fake,
+    async loadFixture() {
+      return {
+        errorCodes: ["ERR_UNRESOLVED_SUPER"],
+        warnings: [],
+        errors: [{
+          code: "ERR_UNRESOLVED_SUPER",
+          ...(message !== undefined ? { message } : {}),
+          source: { format: "resolved", files: ["meta.a.json"], referrer: "W", target: "B" },
+        }],
+      };
+    },
+  };
+}
+
+async function messageFixture() {
+  const root = await fixture({
+    "input/m.json": "{}",
+    "expected-errors.json": JSON.stringify({
+      errors: [{
+        code: "ERR_UNRESOLVED_SUPER",
+        messageIncludes: ["app::a::B", "extends"],
+        source: { format: "resolved", files: ["meta.a.json"], referrer: "W", target: "B" },
+      }],
+      warnings: [],
+    }),
+  });
+  return (await discoverFixtures(root))[0]!;
+}
+
+test("messageIncludes: every substring present → pass", async () => {
+  const report = await runFixture(await messageFixture(), messageAdapter('exists in: app::a::B. write extends: "app::a::B"'));
+  expect(report.status).toBe("pass");
+});
+
+test("messageIncludes: a missing substring → fail naming it", async () => {
+  const report = await runFixture(await messageFixture(), messageAdapter("the SuperClass 'B' does not exist"));
+  expect(report.status).toBe("fail");
+  expect(report.checks.find((c) => !c.passed)!.detail).toContain("app::a::B");
+});
+
+test("messageIncludes: adapter reporting no message → fail", async () => {
+  const report = await runFixture(await messageFixture(), messageAdapter(undefined));
+  expect(report.status).toBe("fail");
+});

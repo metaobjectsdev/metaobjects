@@ -174,6 +174,22 @@ object KotlinTypeMapper {
     const val EXPOSED_UUID_STRING_FN = "uuidString"
 
     /**
+     * Builder extension for a native `field.uuid` column: a `Column<java.util.UUID>` that binds
+     * through Postgres' native `uuid` type and as its 36-character text everywhere else (MySQL and
+     * SQLite store a uuid as text, where Exposed's own `uuid()` binds 16 raw bytes and a filter
+     * on the column never matches). Lives in the package-shared `MetaPortableColumnTypes` support file.
+     */
+    const val EXPOSED_PORTABLE_UUID_FN = "portableUuid"
+
+    /**
+     * Builder extension for a `field.decimal` column: a `Column<BigDecimal>` that binds a value as
+     * the exact decimal on every engine but SQLite, which has no decimal and compares a bound
+     * decimal string with a REAL as text (so `x > 0` is never true). Same support file as
+     * [EXPOSED_PORTABLE_UUID_FN].
+     */
+    const val EXPOSED_PORTABLE_DECIMAL_FN = "portableDecimal"
+
+    /**
      * Compute the generated Kotlin enum-class name for an [EnumField] hung off [entity].
      *
      * Returns {@code null} when [field] is not an {@link EnumField} (the caller should
@@ -421,9 +437,7 @@ object KotlinTypeMapper {
         // (`array<E>("col", columnType)`) under both — only the explicit element
         // `UUIDColumnType()` instance it's handed changes, inline-qualified in
         // [exposedColumnSpec] rather than imported, so it needs no import here.
-        is UuidField      ->
-            if (exposedApi == ExposedApi.V1 && !isArrayResolved(field)) ExposedImports.javaUuid("javaUUID")
-            else null
+        is UuidField      -> null
         // IntegerField, LongField, DoubleField, FloatField, BooleanField, CurrencyField, and
         // EnumField all map to member functions on Table. No additional import required.
         else -> null
@@ -500,7 +514,7 @@ object KotlinTypeMapper {
         // field.decimal → Exposed `decimal(name, precision, scale)` (Postgres NUMERIC(p,s)).
         // Exposed requires both precision and scale; read the declared @precision/@scale,
         // falling back to 19,4 (matching the TS column-mapper default) when absent.
-        is DecimalField   -> "decimal($colExpr, ${decimalPrecision(field)}, ${decimalScale(field)})"
+        is DecimalField   -> "$EXPOSED_PORTABLE_DECIMAL_FN($colExpr, ${decimalPrecision(field)}, ${decimalScale(field)})"
         is BooleanField   -> "bool($colExpr)"
         is DateField      -> "date($colExpr)"
         // field.time → Exposed `time(name)` (Postgres TIME, java.time.LocalTime).
@@ -536,8 +550,7 @@ object KotlinTypeMapper {
                     if (exposedApi == ExposedApi.V1) ExposedImports.javaUuid("UUIDColumnType")
                     else ExposedImports.core(exposedApi, "UUIDColumnType")
                 "array<java.util.UUID>($colExpr, $uuidColumnTypeFqn())"
-            } else if (exposedApi == ExposedApi.V1) "javaUUID($colExpr)"
-            else "uuid($colExpr)"
+            } else "$EXPOSED_PORTABLE_UUID_FN($colExpr)"
         // field.uri → file-local `uriColumn(...)` extension: a `Column<java.net.URI>` whose
         // DDL is plain `text` (Postgres has no uri type). The helper lives in the package-shared
         // MetaInetUriColumnType.kt support file (emitted once per package).
@@ -649,6 +662,14 @@ object KotlinTypeMapper {
      * whether a package needs the support file (one `uuidString(...)` extension declaration
      * shared across its tables).
      */
+    /**
+     * True iff [field] needs the package-shared `MetaPortableColumnTypes.kt` support file: a
+     * non-array `field.uuid` ([EXPOSED_PORTABLE_UUID_FN]) or `field.decimal`
+     * ([EXPOSED_PORTABLE_DECIMAL_FN]). Mirrors [exposedColumnSpec]'s two branches.
+     */
+    fun usesPortableHelper(field: MetaField<*>): Boolean =
+        (field is UuidField || field is DecimalField) && !isArrayResolved(field)
+
     fun usesUuidStringHelper(field: MetaField<*>): Boolean =
         field is StringField && !isArrayResolved(field) && dbColumnType(field) == DB_COLUMN_TYPE_UUID
 
@@ -690,12 +711,16 @@ object KotlinTypeMapper {
     private const val DECIMAL_DEFAULT_SCALE = 4
 
     /** Resolve @precision on a DecimalField; default [DECIMAL_DEFAULT_PRECISION]. */
-    private fun decimalPrecision(field: DecimalField): Int =
+    fun decimalPrecision(field: DecimalField): Int =
         intAttr(field, DecimalField.ATTR_PRECISION) ?: DECIMAL_DEFAULT_PRECISION
 
-    /** Resolve @scale on a DecimalField; default [DECIMAL_DEFAULT_SCALE]. */
-    private fun decimalScale(field: DecimalField): Int =
-        intAttr(field, DecimalField.ATTR_SCALE) ?: DECIMAL_DEFAULT_SCALE
+    /**
+     * Resolve @scale on a DecimalField. A declared @precision with no @scale means scale 0 (the
+     * column is `decimal(p)`), as the Java port reads it; with neither, [DECIMAL_DEFAULT_SCALE].
+     */
+    fun decimalScale(field: DecimalField): Int =
+        intAttr(field, DecimalField.ATTR_SCALE)
+            ?: if (intAttr(field, DecimalField.ATTR_PRECISION) != null) 0 else DECIMAL_DEFAULT_SCALE
 
     /**
      * Best-effort read of a named int-valued attribute on [field], resolved THROUGH the

@@ -4,6 +4,7 @@
 // is the cross-port contract documented at
 // fixtures/api-contract-conformance/README.md.
 
+using MetaObjects.IntegrationTests.Runner;
 using YamlDotNet.RepresentationModel;
 
 namespace MetaObjects.IntegrationTests.Api;
@@ -23,7 +24,16 @@ public sealed record ApiScenario(
     string Description,
     string SourcePath,
     bool Truncate,                                  // true when setup.truncate is set
-    IReadOnlyList<ApiRequest> Requests);
+    IReadOnlyList<ApiRequest> Requests,
+    IReadOnlyList<string>? Engines = null)          // `engines:` — EXACT when present; null = every engine the lane has
+{
+    /// <summary>The engine names a scenario file may list.</summary>
+    public static readonly IReadOnlyList<string> KnownEngines = ["postgres", "mysql", "sqlite", "d1"];
+
+    /// <summary>Whether <paramref name="engine"/> runs this scenario: the <c>engines:</c> list is exact; absent means all.</summary>
+    public bool RunsOn(MetaObjects.IntegrationTests.Runner.ScenarioEngine engine) =>
+        Engines is null || Engines.Contains(engine.Name(), StringComparer.Ordinal);
+}
 
 /// <summary>
 /// Builds the request URI for a scenario path so the path reaches the server EXACTLY as the
@@ -80,12 +90,27 @@ public static class ApiContractScenarioLoader
             }
         }
 
+        IReadOnlyList<string>? engines = null;
+        if (root.TryGetValue("engines", out var enginesObj))
+        {
+            var names = (enginesObj as List<object?>)?.Select(e => e as string).ToList()
+                ?? throw new InvalidOperationException($"{yamlPath}: 'engines' must be a list of engine names");
+            if (names.Count == 0)
+                throw new InvalidOperationException($"{yamlPath}: 'engines' is an empty list");
+            foreach (var name in names)
+                if (name is null || !ApiScenario.KnownEngines.Contains(name, StringComparer.Ordinal))
+                    throw new InvalidOperationException(
+                        $"{yamlPath}: unknown engine '{name}' in 'engines' (known: {string.Join(", ", ApiScenario.KnownEngines)})");
+            engines = names!;
+        }
+
         return new ApiScenario(
             Name: AsString(root, "name", Path.GetFileName(yamlPath)),
             Description: AsString(root, "description", ""),
             SourcePath: yamlPath,
             Truncate: truncate,
-            Requests: requests);
+            Requests: requests,
+            Engines: engines);
     }
 
     private static ApiRequest ParseRequest(Dictionary<string, object?> r, string yamlPath)
@@ -165,7 +190,9 @@ public static class ApiContractScenarioLoader
         if (s == "false" || s == "False" || s == "FALSE") return false;
         if (long.TryParse(s, System.Globalization.NumberStyles.Integer,
                 System.Globalization.CultureInfo.InvariantCulture, out var lv)) return lv;
-        if (double.TryParse(s, System.Globalization.NumberStyles.Float,
+        // Exact, never a double: 0.4 and 0 must differ, and so must 0.4 and "0.4" (ADR-0019
+        // Amendment 1). A number outside decimal's range stays a string-typed token.
+        if (decimal.TryParse(s, System.Globalization.NumberStyles.Float,
                 System.Globalization.CultureInfo.InvariantCulture, out var dv)) return dv;
         return s;
     }

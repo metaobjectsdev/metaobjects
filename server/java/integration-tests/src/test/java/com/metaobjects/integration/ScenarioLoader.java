@@ -77,7 +77,28 @@ public final class ScenarioLoader {
             file.toString(),
             (String) root.get("seed-data"),
             (Map<String, String>) root.get("seed-data-engine"),
+            parseEngines(file, root),
             Collections.unmodifiableList(queries));
+    }
+
+    /** Engine names a scenario may list (README, "Which engines run a scenario"). */
+    private static final List<String> KNOWN_ENGINES = List.of("postgres", "mysql", "sqlite", "d1");
+
+    /** The scenario's {@code engines:} list, exact when present; {@code null} when absent. */
+    private static List<String> parseEngines(Path file, Map<String, Object> root) {
+        if (!root.containsKey("engines")) return null;
+        Object raw = root.get("engines");
+        if (!(raw instanceof List<?> list) || list.isEmpty()) {
+            throw new IllegalStateException(file + ": `engines` must be a non-empty list");
+        }
+        List<String> out = new ArrayList<>();
+        for (Object o : list) {
+            if (!(o instanceof String name) || !KNOWN_ENGINES.contains(name)) {
+                throw new IllegalStateException(file + ": unknown engine " + o + " in `engines` (one of " + KNOWN_ENGINES + ")");
+            }
+            out.add(name);
+        }
+        return List.copyOf(out);
     }
 
     @SuppressWarnings("unchecked")

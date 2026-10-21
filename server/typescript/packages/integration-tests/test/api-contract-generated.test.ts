@@ -15,7 +15,7 @@ import { describe, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { API_CONTRACT_DIR, API_CONTRACT_SCENARIOS_DIR } from "../src/paths.ts";
-import { loadScenarios, assertResponse, type ApiScenario } from "../src/api-contract-scenario.ts";
+import { loadScenarios, assertResponse, type ApiScenario, parseBodyExact } from "../src/api-contract-scenario.ts";
 import {
   startGeneratedServer,
   type GeneratedServerHandle,
@@ -56,7 +56,7 @@ async function executeRequests(scenario: ApiScenario, server: GeneratedServerHan
     const bodyText = await res.text();
     let body: unknown = null;
     if (bodyText.length > 0) {
-      try { body = JSON.parse(bodyText); } catch { body = bodyText; }
+      try { body = parseBodyExact(bodyText); } catch { body = bodyText; }
     }
     assertResponse(scenario.name, req, res.status, body);
   }

@@ -15,7 +15,7 @@ import { describe, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { API_CONTRACT_JSONB_DIR, API_CONTRACT_JSONB_SCENARIOS_DIR } from "../src/paths.ts";
-import { loadScenarios, assertResponse, type ApiScenario } from "../src/api-contract-scenario.ts";
+import { loadScenarios, assertResponse, type ApiScenario, parseBodyExact } from "../src/api-contract-scenario.ts";
 import { startPostgres } from "../src/postgres-container.ts";
 import { loadMetadataFile } from "../src/load-metadata.ts";
 import { startJsonbServer, type JsonbServerHandle, type DocumentRow } from "../src/api-contract-jsonb-server.ts";
@@ -75,7 +75,7 @@ async function runScenario(scenario: ApiScenario, server: Lane): Promise<void> {
     const bodyText = await res.text();
     let body: unknown = null;
     if (bodyText.length > 0) {
-      try { body = JSON.parse(bodyText); } catch { body = bodyText; }
+      try { body = parseBodyExact(bodyText); } catch { body = bodyText; }
     }
     assertResponse(scenario.name, req, res.status, body);
   }

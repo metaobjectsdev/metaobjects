@@ -1,9 +1,10 @@
-"""ObjectManager + PostgresDriver — minimal query runtime.
+"""ObjectManager + the DB-API drivers — minimal query runtime.
 
-Compiles a Filter dict to parameterized SQL and runs it via a pg-style
-driver. Identifiers are double-quoted throughout (mixed-case columns like
-`programId` round-trip through PG); placeholders are pg8000 / psycopg-style
-``%s``.
+Compiles a Filter dict to parameterized SQL and runs it via a DB-API 2 driver. The SQL is
+spelled by the driver's :class:`~metaobjects.runtime.dialect.Dialect`: Postgres (here:
+``PostgresDriver``, pg8000 / psycopg) double-quotes identifiers and uses ``%s``
+placeholders (mixed-case columns like `programId` round-trip through PG); SQLite and MySQL
+drivers live in :mod:`metaobjects.runtime.drivers`.
 
 Per ADR-0019 (runtime return-type contract) the query path returns **native,
 in-process Python types** — pg8000's own `int` / `Decimal` / `datetime` /
@@ -28,6 +29,7 @@ from __future__ import annotations
 import datetime as _dt
 import decimal as _decimal
 import json as _json
+import re as _re
 import uuid as _uuid
 from collections.abc import Iterable, Mapping
 from typing import Any, Protocol
@@ -54,6 +56,7 @@ from .n2m_resolver import (
     collect_symmetric_target_ids,
     resolve_n2m_descriptor,
 )
+from .dialect import MYSQL, POSTGRES, Dialect
 from .tph import TphSubtype, tph_subtype_of
 from .validator_runner import ValidationResult, run_validators
 
@@ -70,6 +73,8 @@ class Cursor(Protocol):
     def fetchall(self) -> list[Any]: ...
     @property
     def description(self) -> Any: ...
+    @property
+    def rowcount(self) -> int: ...
     def close(self) -> None: ...
 
 
@@ -96,24 +101,40 @@ class SelectResult:
         self.column_oids = column_oids
 
 
-class PostgresDriver:
-    """Wrap a DB-API 2 connection (pg8000 / psycopg). Owns no state itself."""
+class DbApiDriver:
+    """Wrap a DB-API 2 connection. Owns no state beyond the connection and its
+    :class:`~metaobjects.runtime.dialect.Dialect`.
+
+    Subclasses pick the dialect and the per-column type metadata; everything else (the
+    cursor handling, commit-per-write, parameter encoding) is shared. Statements arrive
+    already spelled for the dialect (quoting, placeholders), and every bound parameter is
+    run through :meth:`Dialect.encode_param` here, so no caller binds an engine-specific
+    spelling by hand."""
+
+    dialect: Dialect = POSTGRES
 
     def __init__(self, conn: Connection) -> None:
         self._conn = conn
 
+    def _bind(self, params: tuple[Any, ...]) -> tuple[Any, ...]:
+        return tuple(self.dialect.encode_param(p) for p in params)
+
+    @staticmethod
+    def _type_codes(description: Any) -> list[Any]:
+        """Per-column SQL type codes beside the names (Postgres: the type OID)."""
+        return [d[1] for d in description]
+
+    def _result(self, description: Any, rows: list[Any]) -> SelectResult:
+        cols = [d[0] for d in description]
+        codes = self._type_codes(description)
+        column_oids = {c: codes[i] for i, c in enumerate(cols) if codes[i] is not None}
+        return SelectResult([{c: row[i] for i, c in enumerate(cols)} for row in rows], column_oids)
+
     def select(self, sql: str, params: tuple[Any, ...] = ()) -> SelectResult:
         cur = self._conn.cursor()
         try:
-            cur.execute(sql, params)
-            cols = [d[0] for d in cur.description]
-            oids = [d[1] for d in cur.description]
-            column_oids = {c: oids[i] for i, c in enumerate(cols)}
-            rows = [
-                {c: v for c, v in zip(cols, row)}
-                for row in cur.fetchall()
-            ]
-            return SelectResult(rows, column_oids)
+            cur.execute(sql, self._bind(params))
+            return self._result(cur.description, list(cur.fetchall()))
         finally:
             cur.close()
 
@@ -136,13 +157,11 @@ class PostgresDriver:
         """
         cur = self._conn.cursor()
         try:
-            cur.execute(sql, params)
-            cols = [d[0] for d in cur.description]
-            oids = [d[1] for d in cur.description]
-            row = cur.fetchone()
+            cur.execute(sql, self._bind(params))
+            description = cur.description
+            rows = list(cur.fetchall())[:1]
             self._conn.commit()
-            column_oids = {c: oids[i] for i, c in enumerate(cols)}
-            return SelectResult([{c: row[i] for i, c in enumerate(cols)}], column_oids)
+            return self._result(description, rows)
         finally:
             cur.close()
 
@@ -157,15 +176,26 @@ class PostgresDriver:
         path — so a BIGINT/currency column updates back as a numeric string."""
         cur = self._conn.cursor()
         try:
-            cur.execute(sql, params)
-            cols = [d[0] for d in cur.description]
-            oids = [d[1] for d in cur.description]
-            row = cur.fetchone()
+            cur.execute(sql, self._bind(params))
+            description = cur.description
+            rows = list(cur.fetchall())[:1]
             self._conn.commit()
-            if row is None:
+            if not rows:
                 return None
-            column_oids = {c: oids[i] for i, c in enumerate(cols)}
-            return SelectResult([{c: row[i] for i, c in enumerate(cols)}], column_oids)
+            return self._result(description, rows)
+        finally:
+            cur.close()
+
+    def insert_last_id(self, sql: str, params: tuple[Any, ...] = ()) -> Any:
+        """Run an INSERT on an engine with no ``RETURNING`` and answer the key the
+        engine generated (``lastrowid``; ``0`` / ``None`` when the caller supplied the key).
+        Commits on success."""
+        cur = self._conn.cursor()
+        try:
+            cur.execute(sql, self._bind(params))
+            last = getattr(cur, "lastrowid", None)
+            self._conn.commit()
+            return last
         finally:
             cur.close()
 
@@ -174,12 +204,18 @@ class PostgresDriver:
         count. Commits on success."""
         cur = self._conn.cursor()
         try:
-            cur.execute(sql, params)
+            cur.execute(sql, self._bind(params))
             count = cur.rowcount
             self._conn.commit()
             return int(count) if count is not None else 0
         finally:
             cur.close()
+
+
+class PostgresDriver(DbApiDriver):
+    """Wrap a pg8000 / psycopg connection (the Postgres dialect)."""
+
+    dialect = POSTGRES
 
 
 class ObjectManager:
@@ -188,7 +224,7 @@ class ObjectManager:
     def __init__(
         self,
         root: MetaRoot,
-        driver: PostgresDriver,
+        driver: DbApiDriver,
         column_naming: str | None = None,
     ) -> None:
         if column_naming is not None:
@@ -201,6 +237,9 @@ class ObjectManager:
             )
         self._root = root
         self._driver = driver
+        #: The SQL dialect of the driver's engine; a driver that declares none (a test
+        #: double) is Postgres, the corpus' own engine.
+        self._d: Dialect = getattr(driver, "dialect", POSTGRES)
         # How a field with no explicit `@column` becomes a physical column name —
         # ADR-0058: THE one project setting, read from the loaded root
         # (`naming_rules_of`), so codegen's `names` generator and this runtime cannot
@@ -328,28 +367,42 @@ class ObjectManager:
         col_to_field = {_column_of(f, self._column_naming): f.name for f in returning_fields}
 
         if insert_cols:
-            col_list = ", ".join(_q(c) for c in insert_cols)
-            placeholders = ", ".join("%s" for _ in insert_cols)
-            sql = (
-                f"INSERT INTO {_q(table)} ({col_list}) VALUES ({placeholders}) "
-                f"RETURNING {', '.join(_q(c) for c in all_cols)}"
-            )
+            col_list = ", ".join(self._d.quote(c) for c in insert_cols)
+            placeholders = ", ".join(self._d.placeholder for _ in insert_cols)
+            sql = f"INSERT INTO {self._d.quote(table)} ({col_list}) VALUES ({placeholders})"
         else:
-            sql = (
-                f"INSERT INTO {_q(table)} DEFAULT VALUES "
-                f"RETURNING {', '.join(_q(c) for c in all_cols)}"
-            )
-        result = self._driver.insert_returning(sql, tuple(params))
+            sql = f"INSERT INTO {self._d.quote(table)} {self._d.default_values}"
+        if self._d.supports_returning:
+            sql += f" RETURNING {', '.join(self._d.quote(c) for c in all_cols)}"
+            result = self._driver.insert_returning(sql, tuple(params))
+        else:
+            # No RETURNING (MySQL): insert, then re-read the row by its key -- the key the
+            # caller supplied, else the one the engine generated (AUTO_INCREMENT).
+            generated = self._driver.insert_last_id(sql, tuple(params))
+            pk_field = self._primary_pk_field(entity)
+            supplied = data.get(pk_field)
+            pk_value = supplied if supplied is not None else generated
+            if pk_value is None or (supplied is None and pk_value == 0):
+                raise ValueError(
+                    f"create('{entity_name}'): the {self._d.name} engine cannot return a "
+                    f"generated key other than an AUTO_INCREMENT one, so supply a value for "
+                    f"'{pk_field}'"
+                )
+            written = self._select_by_key(entity, returning_fields, pk_field, pk_value, tph)
+            if written is None:
+                raise RuntimeError(
+                    f"create('{entity_name}'): the inserted row {pk_field}={pk_value!r} "
+                    f"could not be read back"
+                )
+            result = written
         # Surface the RETURNING column OIDs (mapped to metadata field names) so the
         # serialization boundary applies the same SQL-type wire rules as a read — a
         # BIGINT / currency column comes back as a numeric string. Mirrors update().
-        self.last_column_oids = {
-            col_to_field.get(c, c): oid for c, oid in result.column_oids.items()
-        }
+        self.last_column_oids = self._type_codes(result, col_to_field, returning_fields)
         row = result.rows[0]
         mapped = {col_to_field.get(k, k): v for k, v in row.items()}
         # int-backed enums come back as integers; hand the caller the symbol.
-        mapped = _decode_read_row({f.name: f for f in returning_fields}, mapped)
+        mapped = _decode_read_row({f.name: f for f in returning_fields}, mapped, self._d)
         # #214: a write-through entity's INSERT RETURNING covers only the table (non-derived)
         # columns; re-read the persisted row through the replica VIEW by PK so the returned row
         # carries the derived origin.* fields (read-your-writes). find_by_id routes to the view.
@@ -440,17 +493,22 @@ class ObjectManager:
         returning_fields = [f for f in entity.fields() if not f.is_derived()]
         all_cols = [_column_of(f, self._column_naming) for f in returning_fields]
         col_to_field = {_column_of(f, self._column_naming): f.name for f in returning_fields}
-        assignments = ", ".join(f"{_q(c)} = %s" for c in set_cols)
+        assignments = ", ".join(f"{self._d.quote(c)} = {self._d.placeholder}" for c in set_cols)
         params.append(_coerce_write_value(entity.find_field(pk_field), id_value))
-        where = f"{_q(pk_col)} = %s"
+        where = f"{self._d.quote(pk_col)} = {self._d.placeholder}"
         if tph is not None:
-            where += f" AND {_q(_column_of(entity.find_field(tph.field), self._column_naming))} = %s"
+            where += f" AND {self._d.quote(_column_of(entity.find_field(tph.field), self._column_naming))} = {self._d.placeholder}"
             params.append(tph.value)
-        sql = (
-            f"UPDATE {_q(table)} SET {assignments} WHERE {where} "
-            f"RETURNING {', '.join(_q(c) for c in all_cols)}"
-        )
-        result = self._driver.update_returning(sql, tuple(params))
+        sql = f"UPDATE {self._d.quote(table)} SET {assignments} WHERE {where}"
+        if self._d.supports_returning:
+            sql += f" RETURNING {', '.join(self._d.quote(c) for c in all_cols)}"
+            result = self._driver.update_returning(sql, tuple(params))
+        else:
+            # No RETURNING (MySQL): update, then re-read the (TPH-scoped) row by its key. A
+            # row that matched but changed nothing still reads back, which a rowcount would
+            # report as no match.
+            self._driver.execute_rowcount(sql, tuple(params))
+            result = self._select_by_key(entity, returning_fields, pk_field, id_value, tph)
         if result is None:
             self.last_column_oids = {}
             return self._on_missing_update(entity_name, pk_field, id_value, if_missing)
@@ -458,13 +516,11 @@ class ObjectManager:
         # serialization boundary applies the same SQL-type wire rules as a read —
         # a BIGINT / currency column comes back as a numeric string. Mirrors the
         # find_many bookkeeping.
-        self.last_column_oids = {
-            col_to_field.get(c, c): oid for c, oid in result.column_oids.items()
-        }
+        self.last_column_oids = self._type_codes(result, col_to_field, returning_fields)
         row = result.rows[0]
         mapped = {col_to_field.get(k, k): v for k, v in row.items()}
         # int-backed enums come back as integers; hand the caller the symbol.
-        mapped = _decode_read_row({f.name: f for f in returning_fields}, mapped)
+        mapped = _decode_read_row({f.name: f for f in returning_fields}, mapped, self._d)
         # #214: re-read the updated row through the replica VIEW by PK so the returned row
         # carries the derived origin.* fields (write targeted the table, which lacks them).
         if entity.is_write_through():
@@ -472,6 +528,47 @@ class ObjectManager:
             if reread is not None:
                 return reread
         return mapped
+
+    def _type_codes(
+        self, result: SelectResult, col_to_field: dict[str, str], fields: Iterable[MetaField]
+    ) -> dict[str, int]:
+        """The per-field SQL type metadata for the serialization boundary. A driver with
+        column OIDs (Postgres) supplies them; an engine with none (SQLite, MySQL) reports
+        the equivalent for each field's declared subtype."""
+        if self._d.synthesizes_type_codes:
+            codes = ((f.name, self._d.type_code(f)) for f in fields)
+            return {name: code for name, code in codes if code is not None}
+        return {col_to_field.get(c, c): oid for c, oid in result.column_oids.items()}
+
+    def _select_by_key(
+        self,
+        entity: MetaObject,
+        fields: list[MetaField],
+        pk_field: str,
+        key: Any,
+        tph: TphSubtype | None,
+    ) -> SelectResult | None:
+        """Read one row of the WRITE table by its key (TPH-scoped), or ``None``: how an
+        engine with no ``RETURNING`` hands back what it just wrote."""
+        ph = self._d.placeholder
+        cols = [_column_of(f, self._column_naming) for f in fields]
+        pk = entity.find_field(pk_field)
+        if pk is None:
+            raise ValueError(f"Entity '{entity.name}' has no primary key field '{pk_field}'")
+        pk_col = _column_of(pk, self._column_naming)
+        params: list[Any] = [_coerce_write_value(pk, key)]
+        where = f"{self._d.quote(pk_col)} = {ph}"
+        if tph is not None:
+            where += f" AND {self._d.quote(_column_of(entity.find_field(tph.field), self._column_naming))} = {ph}"
+            params.append(tph.value)
+        sql = (
+            f"SELECT {', '.join(self._d.quote(c) for c in cols)} "
+            f"FROM {self._d.quote(self._table_name(entity))} WHERE {where}"
+        )
+        result = self._driver.select(sql, tuple(params))
+        if not result.rows:
+            return None
+        return SelectResult(result.rows[:1], result.column_oids)
 
     @staticmethod
     def _on_missing_update(
@@ -497,14 +594,14 @@ class ObjectManager:
         pk_field = self._primary_pk_field(entity)
         pk_col = _column_of(entity.find_field(pk_field), self._column_naming)
         params: list[Any] = [_coerce_write_value(entity.find_field(pk_field), id_value)]
-        where = f"{_q(pk_col)} = %s"
+        where = f"{self._d.quote(pk_col)} = {self._d.placeholder}"
         # FR-017 TPH: a subtype delete is scoped to its discriminator (cross-subtype
         # delete matches no row → False, mirroring the per-subtype route's 404).
         tph = tph_subtype_of(entity)
         if tph is not None:
-            where += f" AND {_q(_column_of(entity.find_field(tph.field), self._column_naming))} = %s"
+            where += f" AND {self._d.quote(_column_of(entity.find_field(tph.field), self._column_naming))} = {self._d.placeholder}"
             params.append(tph.value)
-        sql = f"DELETE FROM {_q(table)} WHERE {where}"
+        sql = f"DELETE FROM {self._d.quote(table)} WHERE {where}"
         return self._driver.execute_rowcount(sql, tuple(params)) > 0
 
     def find_many(
@@ -522,13 +619,13 @@ class ObjectManager:
         # fields (incl. derived) are selected — the view exposes them.
         table = self._read_source_name(entity)
         cols = [_column_of(f, self._column_naming) for f in entity.fields()]
-        sql = f'SELECT {", ".join(_q(c) for c in cols)} FROM {_q(table)}'
+        sql = f'SELECT {", ".join(self._d.quote(c) for c in cols)} FROM {self._d.quote(table)}'
         params: list[Any] = []
         # FR-017 TPH: a subtype read is scoped to its discriminator value (a row of
         # a different subtype is invisible); the base entity (no @discriminatorValue)
         # reads polymorphically across the single table.
         filter = self._scope_filter(filter, tph_subtype_of(entity))
-        where = _compile_filter(filter, entity, self._column_naming) if filter else None
+        where = _compile_filter(filter, entity, self._column_naming, self._d) if filter else None
         if where is not None:
             sql += " WHERE " + where[0]
             params.extend(where[1])
@@ -538,24 +635,24 @@ class ObjectManager:
                 f = entity.find_field(field_name)
                 col = _column_of(f, self._column_naming) if f is not None else field_name
                 d = "DESC" if direction.lower() == "desc" else "ASC"
-                order_parts.append(f"{_q(col)} {d}")
+                order_parts.append(f"{self._d.quote(col)} {d}")
             if order_parts:
                 sql += " ORDER BY " + ", ".join(order_parts)
         if limit is not None:
             sql += f" LIMIT {int(limit)}"
+        elif offset is not None and self._d.unbounded_limit:
+            sql += f" LIMIT {self._d.unbounded_limit}"  # OFFSET needs a LIMIT on this engine
         if offset is not None:
             sql += f" OFFSET {int(offset)}"
         result = self._driver.select(sql, tuple(params))
         # Map raw column → metadata field name for cross-port row-shape parity.
         # Values stay native (ADR-0019); the boundary canonicalizes them.
         col_to_field = {_column_of(f, self._column_naming): f.name for f in entity.fields()}
-        self.last_column_oids = {
-            col_to_field.get(c, c): oid for c, oid in result.column_oids.items()
-        }
+        self.last_column_oids = self._type_codes(result, col_to_field, entity.fields())
         # int-backed enums come back as integers; hand the caller the symbol.
         fields_by_name = {f.name: f for f in entity.fields()}
         return [
-            _decode_read_row(fields_by_name, {col_to_field.get(k, k): v for k, v in row.items()})
+            _decode_read_row(fields_by_name, {col_to_field.get(k, k): v for k, v in row.items()}, self._d)
             for row in result.rows
         ]
 
@@ -564,10 +661,10 @@ class ObjectManager:
         # #214: count reads through the same source as find_many (the replica view for a
         # write-through entity — a 1:1 replica, so the count is unchanged).
         table = self._read_source_name(entity)
-        sql = f"SELECT COUNT(*) FROM {_q(table)}"
+        sql = f"SELECT COUNT(*) FROM {self._d.quote(table)}"
         params: list[Any] = []
         filter = self._scope_filter(filter, tph_subtype_of(entity))  # FR-017 TPH subtype scope
-        where = _compile_filter(filter, entity, self._column_naming) if filter else None
+        where = _compile_filter(filter, entity, self._column_naming, self._d) if filter else None
         if where is not None:
             sql += " WHERE " + where[0]
             params.extend(where[1])
@@ -616,17 +713,17 @@ class ObjectManager:
         # Query the junction. Symmetric unions both FK columns; directed/hetero
         # filter only the source side.
         join_table = self._table_name(junction)
-        select_cols = f"{_q(source_col)}, {_q(target_col)}"
+        select_cols = f"{self._d.quote(source_col)}, {self._d.quote(target_col)}"
         if desc.symmetric:
             sql = (
-                f"SELECT {select_cols} FROM {_q(join_table)} "
-                f"WHERE {_q(source_col)} = %s OR {_q(target_col)} = %s"
+                f"SELECT {select_cols} FROM {self._d.quote(join_table)} "
+                f"WHERE {self._d.quote(source_col)} = {self._d.placeholder} OR {self._d.quote(target_col)} = {self._d.placeholder}"
             )
             params: tuple[Any, ...] = (source_id, source_id)
         else:
             sql = (
-                f"SELECT {select_cols} FROM {_q(join_table)} "
-                f"WHERE {_q(source_col)} = %s"
+                f"SELECT {select_cols} FROM {self._d.quote(join_table)} "
+                f"WHERE {self._d.quote(source_col)} = {self._d.placeholder}"
             )
             params = (source_id,)
         join_rows = self._driver.select(sql, params).rows
@@ -785,7 +882,10 @@ class ObjectManager:
 
 
 def _compile_filter(
-    f: Filter | None, entity: MetaObject, column_naming: str = DEFAULT_COLUMN_NAMING
+    f: Filter | None,
+    entity: MetaObject,
+    column_naming: str = DEFAULT_COLUMN_NAMING,
+    dialect: Dialect = POSTGRES,
 ) -> tuple[str, list[Any]] | None:
     if not f:
         return None
@@ -794,7 +894,7 @@ def _compile_filter(
         parts: list[str] = []
         params: list[Any] = []
         for child in f["and"]:
-            compiled = _compile_filter(child, entity, column_naming)
+            compiled = _compile_filter(child, entity, column_naming, dialect)
             if compiled is None:
                 continue
             parts.append("(" + compiled[0] + ")")
@@ -811,11 +911,11 @@ def _compile_filter(
         if not isinstance(ops, dict):
             # Shortcut: {field: value} → equality. Encoded like any other bound
             # value (see _op_clause) so an int-backed enum reaches SQL as its int.
-            parts.append(f"{_q(col)} = %s")
-            params.append(_coerce_write_value(mf, ops) if mf is not None else ops)
+            parts.append(f"{dialect.quote(col)} = {dialect.placeholder}")
+            params.append(_coerce_filter_value(mf, ops) if mf is not None else ops)
             continue
         for op, value in ops.items():
-            sql, p = _op_clause(col, op, value, mf)
+            sql, p = _op_clause(col, op, value, mf, dialect)
             parts.append(sql)
             params.extend(p)
     if not parts:
@@ -823,7 +923,9 @@ def _compile_filter(
     return " AND ".join(parts), params
 
 
-def _op_clause(col: str, op: str, value: Any, field: MetaField | None = None) -> tuple[str, list[Any]]:
+def _op_clause(
+    col: str, op: str, value: Any, field: MetaField | None = None, dialect: Dialect = POSTGRES
+) -> tuple[str, list[Any]]:
     """Translate one operator → SQL + params. Mirrors TS/C#/Java semantics.
 
     Bound values go through the WRITE codec, exactly as an INSERT's do: the four
@@ -834,27 +936,33 @@ def _op_clause(col: str, op: str, value: Any, field: MetaField | None = None) ->
     keeps eq/ne/in for int-backed enums precisely BECAUSE the symbol is supposed
     to encode to its integer before reaching SQL.
     """
-    qc = _q(col)
+    qc = dialect.quote(col)
+    ph = dialect.placeholder
+    if dialect is MYSQL and field is not None and field.sub_type == "decimal" and op not in ("isNull", "like"):
+        # ADR-0019 W2: MySQL compares DECIMAL = 'text' as doubles; a cast operand compares as a
+        # decimal, so a 19-digit operand is exact.
+        ph = f"CAST({ph} AS DECIMAL(65,30))"
     if field is not None and op != "isNull":
-        value = ([_coerce_write_value(field, v) for v in value]
-                 if op == "in" and value else _coerce_write_value(field, value))
-    if op == "eq":     return f"{qc} = %s", [value]
-    if op == "ne":     return f"{qc} <> %s", [value]
-    if op == "gt":     return f"{qc} > %s", [value]
-    if op == "gte":    return f"{qc} >= %s", [value]
-    if op == "lt":     return f"{qc} < %s", [value]
-    if op == "lte":    return f"{qc} <= %s", [value]
+        value = ([_coerce_filter_value(field, v) for v in value]
+                 if op == "in" and value else _coerce_filter_value(field, value))
+    if op == "eq":     return f"{qc} = {ph}", [value]
+    if op == "ne":     return f"{qc} <> {ph}", [value]
+    if op == "gt":     return f"{qc} > {ph}", [value]
+    if op == "gte":    return f"{qc} >= {ph}", [value]
+    if op == "lt":     return f"{qc} < {ph}", [value]
+    if op == "lte":    return f"{qc} <= {ph}", [value]
     # `like` is case-SENSITIVE SQL LIKE — verbatim pattern, %/_ wildcards
-    # (ADR-0049; the de-blinded filter-like-and-ne fixture gates this).
-    if op == "like":   return f"{qc} LIKE %s", [value]
+    # (ADR-0049; the de-blinded filter-like-and-ne fixture gates this). The dialect
+    # spells it where the engine's own LIKE is not case-sensitive.
+    if op == "like":   return dialect.like_clause(qc, value)
     if op == "isNull":
         wants_null = bool(value) if not isinstance(value, str) else value.lower() == "true"
         return (f"{qc} IS NULL" if wants_null else f"{qc} IS NOT NULL"), []
     if op == "in":
         if not value:
             # Empty IN list — match nothing.
-            return "FALSE", []
-        placeholders = ", ".join("%s" for _ in value)
+            return dialect.false_predicate(), []
+        placeholders = ", ".join(ph for _ in value)
         return f"{qc} IN ({placeholders})", list(value)
     raise ValueError(f"Unsupported filter op '{op}' on column '{col}'")
 
@@ -874,6 +982,39 @@ def _field_is_array(field: MetaField) -> bool:
     the ``@isArray`` attr, resolved through the ``extends`` super chain so a concrete
     field inheriting array-ness from an abstract parent is honored at write time."""
     return field.resolved_is_array()
+
+
+_FILTER_INT_SUBTYPES = (fc.FIELD_SUBTYPE_INT, fc.FIELD_SUBTYPE_LONG, fc.FIELD_SUBTYPE_CURRENCY)
+_FILTER_FLOAT_SUBTYPES = (fc.FIELD_SUBTYPE_FLOAT, fc.FIELD_SUBTYPE_DOUBLE)
+
+
+def _coerce_filter_value(field: MetaField, value: Any) -> Any:
+    """A filter operand as the native type the column compares against.
+
+    A filter value usually arrives as TEXT (the REST grammar ``filter[f][op]=v`` hands the
+    repository the raw URL text). Postgres lets the driver pick the column type for a
+    bound string; SQLite and MySQL compare a bound string against a number as TEXT, so
+    ``count > '0'`` is wrong there. Numeric and boolean operands are parsed from text by
+    the field's declared subtype, then the write codec applies as for any bound value."""
+    if isinstance(value, str):
+        sub = field.sub_type
+        if sub in _FILTER_INT_SUBTYPES:
+            value = int(value) if _INT_TEXT.match(value) else value
+        elif sub in _FILTER_FLOAT_SUBTYPES:
+            try:
+                value = float(value)
+            except ValueError:
+                pass
+        elif sub == fc.FIELD_SUBTYPE_BOOLEAN:
+            lowered = value.strip().lower()
+            if lowered in ("true", "1"):
+                value = True
+            elif lowered in ("false", "0"):
+                value = False
+    return _coerce_write_value(field, value)
+
+
+_INT_TEXT = _re.compile(r"^\s*-?\d+\s*$")
 
 
 def _coerce_write_value(field: MetaField, value: Any) -> Any:
@@ -1008,10 +1149,17 @@ def _decode_read_value(field: MetaField, value: Any) -> Any:
     )
 
 
-def _decode_read_row(fields_by_name: dict[str, MetaField], row: dict[str, Any]) -> dict[str, Any]:
-    """Apply :func:`_decode_read_value` to every field-keyed value in a mapped row."""
+def _decode_read_row(
+    fields_by_name: dict[str, MetaField], row: dict[str, Any], dialect: Dialect = POSTGRES
+) -> dict[str, Any]:
+    """Apply the engine's storage decode, then :func:`_decode_read_value`, to every
+    field-keyed value in a mapped row."""
     return {
-        k: (_decode_read_value(fields_by_name[k], v) if k in fields_by_name else v)
+        k: (
+            _decode_read_value(fields_by_name[k], dialect.decode_value(fields_by_name[k], v))
+            if k in fields_by_name
+            else v
+        )
         for k, v in row.items()
     }
 
@@ -1099,10 +1247,3 @@ def _column_of(field: MetaField | None, strategy: str = DEFAULT_COLUMN_NAMING) -
     if field is None:
         return ""
     return resolve_column_name(field, strategy)
-
-
-def _q(ident: str) -> str:
-    if '"' in ident:
-        raise ValueError(f"unsafe identifier: {ident}")
-    return f'"{ident}"'
-

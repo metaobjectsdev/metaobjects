@@ -44,7 +44,7 @@ internal sealed class ReportGeneratedServerFactory : IAsyncDisposable
     // Ordinal order. InvoiceDays is in the model and declares no source.
     private static readonly string[] ExpectedRoutedNames =
         ["Category", "Invoice", "InvoiceCalendar", "InvoiceDisputes", "InvoiceStatusTotals", "InvoiceTotals",
-         "InvoicesByMonth", "Product", "ProductRefunds", "ProductRevenue", "Sale", "SalesByCategory", "SalesBySku"];
+         "InvoicesByMonth", "Product", "ProductRefunds", "ProductRevenue", "Sale", "SalesByCategory", "SalesBySku", "Ticket", "TicketsByTags"];
     private const string SourcelessReport = "InvoiceDays";
 
     private readonly ScenarioEngine _engine;

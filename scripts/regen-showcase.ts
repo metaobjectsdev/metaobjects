@@ -45,16 +45,20 @@
  * Java and Kotlin arrive together because they have no standalone codegen CLI: on
  * the JVM, codegen runs in the build tool (docs/features/cli.md), so one
  * `mvn metaobjects:generate` over `examples/showcase/jvm/pom.xml` drives both. That
- * pom names the plugin by VERSION rather than building it, so the JVM port needs the
- * artifacts resolvable — from Maven Central at a released version, or from
- * `cd server/java && mvn install` while the reactor sits on a -SNAPSHOT.
+ * pom names the plugin by VERSION rather than building it, so whatever Maven resolves
+ * at that version is what gets checked. At a release cut that version is not on Maven
+ * Central yet (npm publishes first), and `~/.m2` may hold a local install of the same
+ * version made from an older commit: the gate would then check stale plugin code. So
+ * the JVM leg first installs THIS tree's reactor into a throwaway local repository and
+ * resolves the plugin from there (`jvmRepository`); third-party artifacts still come
+ * from your usual local repository, read-only, as its tail.
  */
 import { spawnSync } from "node:child_process";
 import {
   cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync,
   rmSync, statSync, writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join, relative, resolve } from "node:path";
 
 const REPO = resolve(import.meta.dirname, "..");
@@ -92,9 +96,10 @@ interface Port {
   generate(project: string): void;
 }
 
-function run(argv: string[], opts: { cwd?: string } = {}): void {
+function run(argv: string[], opts: { cwd?: string; env?: NodeJS.ProcessEnv } = {}): void {
   const r = spawnSync(argv[0]!, argv.slice(1), {
     cwd: opts.cwd ?? REPO,
+    env: opts.env ?? process.env,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -211,10 +216,43 @@ const PORTS: Port[] = [
     name: "jvm",
     dirs: ["java", "kotlin"],
     tool: "mvn",
-    generate: (project) =>
-      run(["mvn", "-q", "metaobjects:generate"], { cwd: join(project, "jvm") }),
+    generate: (project) => {
+      const repo = jvmRepository();
+      try {
+        run(["mvn", "-q", "-B", "metaobjects:generate", ...repo.args], { cwd: join(project, "jvm"), env: repo.env });
+      } finally {
+        repo.cleanup();
+      }
+    },
   },
 ];
+
+/** The `-Dmaven.repo.local=` token in a `MAVEN_ARGS` value, if any. */
+const REPO_LOCAL_ARG = /(?:^|\s)-Dmaven\.repo\.local=(\S+)/;
+
+/**
+ * A throwaway local Maven repository holding this tree's reactor, freshly installed.
+ *
+ * The head repository is empty apart from that install, so the plugin version the showcase
+ * pom names resolves to the code in this checkout and nothing else. Its tail is the
+ * repository you normally use (the one `MAVEN_ARGS` names, else `~/.m2/repository`), read
+ * only, so third-party artifacts are not downloaded again. `MAVEN_ARGS` is passed on without
+ * its own `-Dmaven.repo.local`, which would otherwise compete with ours.
+ */
+function jvmRepository(): { args: string[]; env: NodeJS.ProcessEnv; cleanup(): void } {
+  const mavenArgs = process.env.MAVEN_ARGS ?? "";
+  const tail = REPO_LOCAL_ARG.exec(mavenArgs)?.[1] ?? join(homedir(), ".m2", "repository");
+  const head = mkdtempSync(join(tmpdir(), "showcase-m2-"));
+  const args = [`-Dmaven.repo.local=${head}`, `-Dmaven.repo.local.tail=${tail}`];
+  const env = { ...process.env, MAVEN_ARGS: mavenArgs.replace(REPO_LOCAL_ARG, " ").trim() };
+  try {
+    run(["mvn", "-q", "-B", "-DskipTests", "install", ...args], { cwd: join(REPO, "server", "java"), env });
+  } catch (e) {
+    rmSync(head, { recursive: true, force: true });
+    throw e;
+  }
+  return { args, env, cleanup: () => rmSync(head, { recursive: true, force: true }) };
+}
 
 /**
  * The generators whose output is COMMITTED under `examples/showcase/generated/<port>/`.

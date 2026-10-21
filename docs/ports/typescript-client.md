@@ -473,7 +473,7 @@ the one **named for it**:
 
 | `name` on the view | who reads it |
 |---|---|
-| `form` | `<Entity>.form.tsx`, and the `<Entity>` descriptor (`label` / `view` / `htmlType` / `placeholder` / `rules`) |
+| `form` | `<Entity>.form.tsx`, and the `<Entity>` descriptor (`label` / `view` / `htmlType` / `step` / `inputMode` / `placeholder` / `rules`) |
 | `grid` | `<Entity>.columns.tsx` and the Angular grid — the column's `header` and `meta.view` |
 
 ```jsonc

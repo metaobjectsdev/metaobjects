@@ -1,0 +1,36 @@
+{
+  "metadata.root": {
+    "package": "acme::shop",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Order",
+          "children": [
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "requirement.functional": {
+          "name": "Orders",
+          "@level": 3,
+          "@status": "live",
+          "@statement": "An order is recorded when it is placed.",
+          "@counterexample": "A placed order has no row."
+        }
+      }
+    ]
+  }
+}

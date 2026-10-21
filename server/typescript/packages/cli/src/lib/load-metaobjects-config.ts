@@ -1,4 +1,5 @@
 import { existsSync, readFileSync, readdirSync, unlinkSync } from "node:fs";
+import { physicalNamingGuideUrl } from "@metaobjectsdev/metadata/release-docs";
 import { readFile, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
@@ -506,7 +507,7 @@ export async function loadMetaobjectsConfig(projectRoot: string): Promise<Metaob
     if (removedNaming !== undefined) {
       throw new RemovedNamingConfigError(
         `metaobjects.config.ts at ${fullPath}: ` +
-          physicalNamingRemovedMessage("columnNamingStrategy in metaobjects.config.ts", String(removedNaming)),
+          physicalNamingRemovedMessage("columnNamingStrategy in metaobjects.config.ts", String(removedNaming), physicalNamingGuideUrl()),
       );
     }
     return cfg;

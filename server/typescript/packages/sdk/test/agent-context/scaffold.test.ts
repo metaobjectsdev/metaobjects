@@ -1,5 +1,8 @@
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test, expect, describe } from "bun:test";
-import { hashContents, planScaffold, agentContextStaleness, AGENT_CONTEXT_MANIFEST_PATH, type Manifest } from "../../src/agent-context/scaffold.js";
+import { hashContents, hashAgentContextRoot, planScaffold, agentContextStaleness, AGENT_CONTEXT_MANIFEST_PATH, type Manifest } from "../../src/agent-context/scaffold.js";
 import { makeStack } from "../../src/agent-context/resolve.js";
 import type { AssembledFile } from "../../src/agent-context/types.js";
 
@@ -129,6 +132,19 @@ describe("agentContextStaleness", () => {
     expect(w).toContain("0.9.0");
     expect(w).toContain("refresh-docs");
   });
+  test("a MINOR step names its upgrade guide, pinned to the installed release's tag", () => {
+    const w = agentContextStaleness({ manifest: m("1.0.13"), currentVersion: "1.1.0" })!;
+    expect(w).toContain("refresh-docs");
+    expect(w).toContain("https://github.com/metaobjectsdev/metaobjects/blob/v1.1.0/docs/features/migrations/upgrading-1.0-to-1.1.md");
+  });
+  test("a prerelease install links the guide on main (no tag exists)", () => {
+    const w = agentContextStaleness({ manifest: m("1.0.13"), currentVersion: "1.1.0-rc.7" })!;
+    expect(w).toContain("/blob/main/docs/features/migrations/upgrading-1.0-to-1.1.md");
+  });
+  test("a PATCH step names no minor guide", () => {
+    expect(agentContextStaleness({ manifest: m("1.0.12"), currentVersion: "1.0.13" })!).not.toContain("upgrading-1.0-to-1.1");
+    expect(agentContextStaleness({ manifest: m("1.1.0"), currentVersion: "1.1.1" })!).not.toContain("upgrading-1.0-to-1.1");
+  });
   test("legacy manifest without generatedBy → warning (treated as older)", () => {
     const w = agentContextStaleness({ manifest: m(undefined), currentVersion: "0.9.0" });
     expect(w).toContain("0.9.0");
@@ -223,5 +239,53 @@ describe("planScaffold — the manifest never records content it declined to wri
     });
     expect(d.writes).toHaveLength(1);
     expect(d.manifest.files[".metaobjects/AGENTS.md"]).toBe(hashContents("fresh v3"));
+  });
+});
+
+// ── content hash (release review MINOR 8): the shipped content decides, not the stamped version ──
+describe("agentContextStaleness by content hash", () => {
+  const mh = (generatedBy: string, contentHash?: string): Manifest => ({
+    version: 1, generatedBy, ...(contentHash !== undefined && { contentHash }), servers: ["typescript"], clients: [], files: {},
+  });
+
+  test("same version, changed shipped content → nudges (a content change shipped without a version bump)", () => {
+    const w = agentContextStaleness({ manifest: mh("1.1.0", "aaa"), currentVersion: "1.1.0", currentContentHash: "bbb" });
+    expect(w).toContain("refresh-docs");
+  });
+  test("different version, identical shipped content → silent (nothing to refresh)", () => {
+    expect(agentContextStaleness({ manifest: mh("1.1.0", "aaa"), currentVersion: "1.1.1", currentContentHash: "aaa" })).toBeNull();
+  });
+  test("a minor step with changed content still names the upgrade guide", () => {
+    const w = agentContextStaleness({ manifest: mh("1.0.13", "aaa"), currentVersion: "1.1.0", currentContentHash: "bbb" })!;
+    expect(w).toContain("upgrading-1.0-to-1.1");
+  });
+  test("a context from a NEWER release stays silent despite a different hash (#347)", () => {
+    expect(agentContextStaleness({ manifest: mh("0.24.7", "aaa"), currentVersion: "0.24.4", currentContentHash: "bbb" })).toBeNull();
+  });
+  test("a legacy manifest without a hash falls back to comparing versions", () => {
+    expect(agentContextStaleness({ manifest: mh("1.1.0"), currentVersion: "1.1.0", currentContentHash: "bbb" })).toBeNull();
+    expect(agentContextStaleness({ manifest: mh("1.0.9"), currentVersion: "1.1.0", currentContentHash: "bbb" })).not.toBeNull();
+  });
+  test("planScaffold stamps the content hash it is given", () => {
+    const d = planScaffold({
+      stack: { servers: [], clients: [], concerns: [], tokens: new Set() }, assembled: [], prior: undefined,
+      readCurrent: () => undefined, generatedBy: "1.1.0", contentHash: "abc",
+    });
+    expect(d.manifest.contentHash).toBe("abc");
+  });
+});
+
+describe("hashAgentContextRoot", () => {
+  test("changes with a file's content and with the docs ref, not with directory order", () => {
+    const root = mkdtempSync(join(tmpdir(), "ac-hash-"));
+    mkdirSync(join(root, "skills"), { recursive: true });
+    writeFileSync(join(root, "skills", "a.md"), "one");
+    writeFileSync(join(root, "b.md"), "two");
+    const h1 = hashAgentContextRoot(root, "v1.1.0");
+    expect(hashAgentContextRoot(root, "v1.1.0")).toBe(h1);
+    expect(hashAgentContextRoot(root, "main")).not.toBe(h1);
+    writeFileSync(join(root, "b.md"), "three");
+    expect(hashAgentContextRoot(root, "v1.1.0")).not.toBe(h1);
+    rmSync(root, { recursive: true, force: true });
   });
 });

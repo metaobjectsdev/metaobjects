@@ -8,7 +8,7 @@ import { beforeAll, describe, test } from "bun:test";
 import { CANONICAL_DIR, QUERIES_DIR } from "../src/paths.ts";
 import { generateCanonicalSchemaSql } from "../src/canonical-schema.ts";
 import { loadMetadataDir } from "../src/load-metadata.ts";
-import { loadReportQueries } from "../src/scenario.ts";
+import { loadQueriesFor } from "../src/scenario.ts";
 import { runQueryScenarioD1, startLocalD1 } from "../src/query-scenario-d1.ts";
 
 // The D1 schema has no committed artifact (see query-scenario-d1.ts), but it depends only on the
@@ -19,7 +19,7 @@ beforeAll(async () => {
 }, 120_000);
 
 describe("persistence conformance — report query scenarios on Cloudflare D1 (local runtime)", () => {
-  for (const scenario of loadReportQueries(QUERIES_DIR)) {
+  for (const scenario of loadQueriesFor(QUERIES_DIR, "d1")) {
     test(scenario.name, async () => {
       const local = await startLocalD1();
       try {

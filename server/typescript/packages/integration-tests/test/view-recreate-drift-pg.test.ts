@@ -6,6 +6,7 @@
  * the fingerprint in the view's COMMENT, not from the text. The pair stays in the migration
  * SQL; it says the view is unchanged, a drift report leaves it out, and it converges.
  */
+import { splitSqlStatements } from "@metaobjectsdev/migrate-ts";
 import { describe, test, expect, beforeAll, afterAll, beforeEach } from "bun:test";
 import {
   buildExpectedSchema, collectUnmanagedNames, computeDriftFromActual, diff, emit, introspectPostgres, postgresViewReplaceProbe,
@@ -68,7 +69,7 @@ const expectedForRun = (): SchemaSnapshot => {
 };
 
 async function applyRaw(text: string): Promise<void> {
-  for (const stmt of text.split(/;\s*\n/).map((s) => s.trim()).filter(Boolean)) {
+  for (const stmt of splitSqlStatements(text)) {
     await sql.raw(stmt.endsWith(";") ? stmt : `${stmt};`).execute(k);
   }
 }

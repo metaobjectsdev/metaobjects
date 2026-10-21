@@ -737,12 +737,12 @@ class CubeModelBuilder {
     const draft = this.reportCube(report, shape, "rollup");
     if (draft === undefined) return;
     const key = report.resolutionKey();
-    const { scope, rollup } = reportContribution(shape, draft.name, this.mc);
+    const { scope, rollups } = reportContribution(shape, draft.name, this.mc);
     if (scope !== undefined) {
       draft.namespace.add(scope.name, `the segment '${scope.name}' the exporter adds for the @filter of report '${key}'`);
       draft.segments.push(scope);
     }
-    if (rollup !== undefined) {
+    for (const rollup of rollups ?? []) {
       // Cube reports a pre-aggregation named like a member as "defined more than once".
       draft.namespace.add(rollup.name, `the rollup '${rollup.name}' of report '${key}'`);
       draft.preAggregations.push(rollup);

@@ -60,7 +60,7 @@ import static org.junit.Assert.fail;
  *   <li><b>The declared runtime sets are exact.</b> Every ejectable generator in both ports is
  *       run against the shared fitness corpus; the helper classes its output imports must be
  *       precisely what its registry entry declares (so eject copies neither too little nor
- *       too much), each set must compile on the JDK alone (closed, no MetaObjects on the
+ *       too much), each set must compile with Jackson alone (closed, no MetaObjects on the
  *       classpath), and no Kotlin output imports helper runtime at all.</li>
  *   <li><b>The round trip.</b> Eject the whole Spring web tier into a temp project, compile
  *       and run the owned generators, and compile their output together with the owned
@@ -145,7 +145,10 @@ public class EjectRuntimeRoundTripTest {
             if (!(gen instanceof com.metaobjects.generator.direct.MultiFileDirectGeneratorBase)) {
                 a.put("outputFilename", e.stableName + ".out");
             }
-            gen.setArgs(a).execute(loader);
+            // The shared fitness corpus declares no decimal value-object member, and a value object
+            // names the decimal wire classes only for one: that generator runs over a small
+            // dedicated model that has one, so its declared set can be held exact too.
+            gen.setArgs(a).execute("value-object".equals(e.stableName) ? decimalValueObjectLoader() : loader);
 
             Set<String> all = imports(out);
             for (String imp : all) {
@@ -163,7 +166,24 @@ public class EjectRuntimeRoundTripTest {
                     declared, closure(used));
             if (!declared.isEmpty()) withRuntime++;
         }
-        assertEquals("routes, dto and repository carry runtime", 3, withRuntime);
+        assertEquals("routes, dto, repository and value-object carry runtime", 4, withRuntime);
+    }
+
+    private static final String DECIMAL_VALUE_OBJECT_MODEL = """
+        {"metadata.root":{"package":"acme","children":[
+          {"object.value":{"name":"Price","children":[
+            {"field.decimal":{"name":"net","@precision":12,"@scale":2}}
+          ]}}
+        ]}}""";
+
+    private MetaDataLoader decimalValueObjectLoader() throws IOException {
+        Path file = tempFolder.newFolder("decimal-vo").toPath().resolve("meta.price.json");
+        Files.writeString(file, DECIMAL_VALUE_OBJECT_MODEL, StandardCharsets.UTF_8);
+        MetaDataLoader l = new MetaDataLoader(LoaderOptions.create(false, false, true),
+                MetaDataLoader.SUBTYPE_MANUAL, "eject-decimal-vo");
+        l.setSourceURIs(List.of(file.toUri()));
+        l.init();
+        return l;
     }
 
     /** {@code names} plus every runtime class their sources mention by simple name. */
@@ -199,7 +219,7 @@ public class EjectRuntimeRoundTripTest {
     }
 
     @Test
-    public void eachDeclaredRuntimeSetCompilesOnTheJdkAlone() throws Exception {
+    public void eachDeclaredRuntimeSetCompilesWithJacksonAlone() throws Exception {
         for (EjectSupport.Entry e : EjectSupport.allEntries()) {
             if (e.runtime.isEmpty()) continue;
             Path dir = tempFolder.newFolder("closed-" + e.stableName).toPath().resolve("acme/rt");
@@ -209,7 +229,7 @@ public class EjectRuntimeRoundTripTest {
                         EjectSupport.ownedRuntimeSource(readRuntimeResource(n), n, "acme.rt"),
                         StandardCharsets.UTF_8);
             }
-            compile(List.of(dir), "", tempFolder.newFolder("closed-classes-" + e.stableName).toPath());
+            compile(List.of(dir), jacksonOnly(), tempFolder.newFolder("closed-classes-" + e.stableName).toPath());
         }
     }
 
@@ -260,7 +280,10 @@ public class EjectRuntimeRoundTripTest {
 
         // The runtime landed where the generated code compiles, package-renamed and marked.
         Path runtimeDir = projectDir.resolve("src/main/java/com/acme/runtime");
-        Set<String> expected = new TreeSet<>(GeneratorRegistry.get("routes").ejectRuntime());
+        // The union of what the owned web tier declares: routes, dto and value-object each
+        // name the runtime classes their output imports (the decimal wire ones ride on dto).
+        Set<String> expected = new TreeSet<>();
+        for (String tier : WEB_TIER) expected.addAll(GeneratorRegistry.get(tier).ejectRuntime());
         Set<String> written;
         try (Stream<Path> s = Files.list(runtimeDir)) {
             written = s.map(p -> p.getFileName().toString().replace(".java", ""))
@@ -392,6 +415,17 @@ public class EjectRuntimeRoundTripTest {
 
     /** The test classpath with every MetaObjects artifact removed (reactor module output or
      *  a {@code com/metaobjects} jar). */
+    /**
+     * The Jackson jars alone: the owned runtime closes over no MetaObjects artifact, but the
+     * decimal wire classes and {@code UnreadableBody} are Jackson types, as is every generated
+     * DTO's own imports.
+     */
+    private static String jacksonOnly() {
+        return Stream.of(System.getProperty("java.class.path").split(File.pathSeparator))
+                .filter(e -> e.replace('\\', '/').contains("/com/fasterxml/jackson/"))
+                .collect(Collectors.joining(File.pathSeparator));
+    }
+
     private static String withoutMetaObjects() {
         return Stream.of(System.getProperty("java.class.path").split(File.pathSeparator))
                 .filter(e -> {

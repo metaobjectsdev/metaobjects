@@ -47,6 +47,7 @@ Homepage = "https://metaobjects.dev"
 Repository = "https://github.com/metaobjectsdev/metaobjects"
 Documentation = "https://github.com/metaobjectsdev/metaobjects/tree/main/docs"
 Issues = "https://github.com/metaobjectsdev/metaobjects/issues"
+Changelog = "https://github.com/metaobjectsdev/metaobjects/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "mypy>=1.10", "ruff>=0.6", "pydantic>=2"]
@@ -56,7 +57,16 @@ dev = ["pytest>=8", "mypy>=1.10", "ruff>=0.6", "pydantic>=2"]
 # TS/Java pattern of bypassing testcontainers wrappers entirely); the
 # api-contract harness drives a FastAPI Author API in-process via the
 # starlette TestClient (httpx).
-integration = ["pg8000>=1.31", "fastapi>=0.110", "httpx>=0.27"]
+integration = ["pg8000>=1.31", "PyMySQL>=1.1", "fastapi>=0.110", "httpx>=0.27"]
+# MySQL for the ObjectManager (`metaobjects.runtime.MySqlDriver`). PyMySQL is pure Python,
+# so like pg8000 it installs without native build dependencies. SQLite needs nothing: the
+# driver wraps the standard library's `sqlite3`.
+mysql = ["PyMySQL>=1.1"]
+
+[[tool.mypy.overrides]]
+# PyMySQL ships no type information.
+module = ["pymysql", "pymysql.*"]
+ignore_missing_imports = true
 
 [build-system]
 requires = ["hatchling"]

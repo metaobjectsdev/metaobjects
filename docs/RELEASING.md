@@ -279,7 +279,7 @@ contracts on two numbers:
 - **Package version** (npm/PyPI/NuGet `1.x`, Maven `8.x`) promises the SOFTWARE surface —
   exports, CLI flags, generated-code shape, runtime helpers. A break here is `2.0.0` /
   `9.0.0`.
-- **`metamodelVersion`** (`"1.0"` at the cut; the current value is the first key of the
+- **`metamodelVersion`** (`"1.0"` at the cut, `"1.1"` from 1.1.0; the current value is the first key of the
   byte-gated `expected-registry.json`) promises the METADATA contract — registered
   vocabulary, canonical/interchange format, wire contract. A break here moves ITS major,
   and **does not force a package major.**
@@ -620,7 +620,8 @@ How to publish the `MetaObjects*` C# packages to nuget.org. We use **Trusted Pub
 
 ## What gets published
 
-Four packages, version-locked at the C# port version (currently `1.0.13`):
+Four packages, version-locked at the C# port version (the `<Version>` in
+[`server/csharp/Directory.Build.props`](../server/csharp/Directory.Build.props)):
 
 | Package | Contents |
 |---|---|
@@ -720,8 +721,8 @@ a pre-release you have not committed.
 
 ## What gets published
 
-One package, `metaobjects` (version in [`server/python/pyproject.toml`](../server/python/pyproject.toml),
-currently `1.0.13`), as an **sdist + a universal `py3-none-any` wheel** (pure Python).
+One package, `metaobjects` (version in [`server/python/pyproject.toml`](../server/python/pyproject.toml)),
+as an **sdist + a universal `py3-none-any` wheel** (pure Python).
 
 ## How we publish: a tag-triggered workflow (API token)
 
@@ -782,7 +783,7 @@ Project `metaobjects` → **Settings → Publishing → Add a new GitHub publish
 
 The 14 `com.metaobjects:*` modules (15 artifacts, counting the parent POM) ship to **Maven Central via the Sonatype Central Portal**,
 versioned on its own major line — npm major + 7, so `7.x` while npm was `0.x` and `8.x` from the
-1.0 cut (currently `8.0.13`) — in the parent + module poms. Signed with the maintainer's GPG key.
+1.0 cut (the reactor version in [`server/java/pom.xml`](../server/java/pom.xml)) — in the parent + module poms. Signed with the maintainer's GPG key.
 
 ## Procedure
 
@@ -868,11 +869,14 @@ four ports at once. A context stamped by a **strictly newer** release is no long
 Anything not orderable as a plain `N.N.N` still nudges — prereleases, build metadata, and the
 `0.0.0` unresolved-install sentinel — so the "any drift nudges" property is intact.
 
-The opposite failure is **narrowed, not closed**: equal coordinates still assert in-sync, so a port
-parked at `24.4` across several npm releases will not be told its context has moved. Settling that
-needs the shipped context hashed rather than its version compared, and the JVM ships no
-agent-context content — only the manifest reader. Live limitation, recorded here rather than in an
-issue nobody reads.
+**Content, not version, decides in TypeScript (1.1.0).** `meta init` stamps a `contentHash` of the
+shipped agent-context tree (and the docs ref its links are pinned to) into the manifest, and the
+TypeScript check compares that hash: a context whose content differs from what this CLI ships
+nudges even at an equal version, and one whose content is identical is silent at any version. A
+manifest written before 1.1.0 has no hash and falls back to the version rule above. The C#,
+Python and JVM checks keep the version rule, because they ship no agent-context content to hash:
+`meta agent-docs` (npm) is the one scaffolder. A context stamped at that port's own version is
+the context that release documents, so the version rule is the right answer there.
 
 ## Public-repo hygiene
 

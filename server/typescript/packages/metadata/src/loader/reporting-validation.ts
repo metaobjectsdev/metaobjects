@@ -56,6 +56,7 @@ import {
   FIELD_SUBTYPE_MAP,
   FIELD_SUBTYPE_DATE,
   FIELD_SUBTYPE_TIMESTAMP,
+  FIELD_ATTR_OBJECT_REF,
 } from "../core/field/field-constants.js";
 import {
   IDENTITY_SUBTYPE_REFERENCE,
@@ -76,7 +77,8 @@ import {
   opsForField,
 } from "../core/query/query-constants.js";
 import { ATTR_SUBTYPE_FILTER } from "../core/attr/attr-constants.js";
-import { isMetaObject, isMetaRoot, isWritableSource } from "../shared/node-guards.js";
+import { isMetaObject, isMetaRoot, isReadOnlySource, isWritableSource } from "../shared/node-guards.js";
+import { SOURCE_KIND_VIEW } from "../persistence/source/source-constants.js";
 import { AGG_ALL, AGG_ANY } from "../persistence/origin/origin-constants.js";
 import {
   FILTER_RELATIVE_NOW,
@@ -137,7 +139,6 @@ const ERR_INVALID_MEASURE: ErrorCode = "ERR_INVALID_MEASURE";
 const ERR_INVALID_REPORT: ErrorCode = "ERR_INVALID_REPORT";
 const ERR_REPORT_FOREIGN_MEASURE: ErrorCode = "ERR_REPORT_FOREIGN_MEASURE";
 const ERR_BAD_ATTR_FILTER: ErrorCode = "ERR_BAD_ATTR_FILTER";
-const ERR_BAD_ATTR_VALUE: ErrorCode = "ERR_BAD_ATTR_VALUE";
 
 // ---------------------------------------------------------------------------
 // Entry point
@@ -229,6 +230,11 @@ function isSelfOrAncestor(candidate: MetaData | undefined, entity: MetaData): bo
 function childOfType(obj: MetaData, type: string, name: string): MetaData | undefined {
   // ADR-0039: resolving — inherited members (via extends) are visible.
   return obj.children().find((c) => c.type === type && c.name === name);
+}
+
+/** A field's `@objectRef`, read with the resolving accessor (ADR-0039). */
+function objectRefOf(field: MetaData): unknown {
+  return field.attr(FIELD_ATTR_OBJECT_REF);
 }
 
 function fieldOf(obj: MetaData, name: string): MetaData | undefined {
@@ -392,9 +398,31 @@ function checkDimension(ctx: MemberCtx, dim: MetaDimension): void {
     return;
   }
   const fieldName = parts.path[0]!;
-  const field = fieldOf(ofEntity, fieldName);
+  // With @via the field is looked up on the entity @of NAMES (resolving: its own plus
+  // inherited), not on the @via terminal: a base the terminal extends must itself carry the field, or the
+  // dimension names a column the base table lacks and `meta migrate` fails on it. Without @via
+  // the host IS the checked entity: a dimension inherited from a base is checked against the
+  // inheritor's own (possibly overriding) field.
+  const lookup = via === undefined ? ofEntity : named!;
+  const field = fieldOf(lookup, fieldName);
   if (field === undefined) {
-    err(`@of '${of}' names no field '${fieldName}' on '${shown(ctx, ofEntity)}'.`);
+    const declaredOnTerminal = lookup !== ofEntity && fieldOf(ofEntity, fieldName) !== undefined;
+    err(
+      declaredOnTerminal
+        ? `@of '${of}' names no field '${fieldName}' on '${shown(ctx, lookup)}': only '${shown(ctx, ofEntity)}', ` +
+            `the entity @via reaches, declares it. Name it '${ofEntity.name}.${fieldName}'.`
+        : `@of '${of}' names no field '${fieldName}' on '${shown(ctx, lookup)}'.`,
+    );
+    return;
+  }
+
+  // D5 — a dimension groups by a scalar. A field.object (or a field carrying @objectRef) is a JSON
+  // document: no port serves a report over one, and a document is not a value to group rows by.
+  if (field.subType === FIELD_SUBTYPE_OBJECT || objectRefOf(field) !== undefined) {
+    err(
+      `@of '${of}' is a field.${field.subType}${objectRefOf(field) !== undefined ? " with an @objectRef" : ""}, ` +
+        `which a report cannot group by. Group by a scalar field of it.`,
+    );
     return;
   }
 
@@ -536,21 +564,12 @@ function checkMeasure(ctx: MemberCtx, measure: MetaMeasure): void {
   const err = (message: string): void =>
     ctx.sink.push(measure, ERR_INVALID_MEASURE, ctx.label, `: ${message}`, ctx.suffix);
 
-  // The type rule — a measure's @default is a whole number. Checked here, not by
-  // tightening attr.int, whose other users (validator @min/@max) take a fraction.
-  // A non-number is the attribute type check's error and is not repeated. It runs
-  // first; when it fires, M7/M8 are skipped (one mistake, one error).
+  // A measure's @default is a whole number: attr.int refuses a fraction (Rule A) and a
+  // non-number, so that is the one error. M7-M9 run only when @default is an integral
+  // number (Rule B: one mistake, one error).
   const declaredDefault = measure.attr(REPORTING_ATTR_DEFAULT);
-  const fractionalDefault = typeof declaredDefault === "number" && !Number.isInteger(declaredDefault);
-  if (fractionalDefault) {
-    ctx.sink.push(
-      measure,
-      ERR_BAD_ATTR_VALUE,
-      ctx.label,
-      `: @default '${declaredDefault}' is not an integer. A measure's @default is a whole number (for example 0).`,
-      ctx.suffix,
-    );
-  }
+  const invalidDefault =
+    declaredDefault !== undefined && !(typeof declaredDefault === "number" && Number.isInteger(declaredDefault));
 
   if (measure.isRatio()) {
     checkRatioOperands(ctx, measure, err);
@@ -563,9 +582,8 @@ function checkMeasure(ctx: MemberCtx, measure: MetaMeasure): void {
   const ofField = checked?.field;
 
   // M7 / M8 — where a @default can apply. Only when M0–M4 passed and the @default is
-  // not a fraction: one mistake, one error. The presence test reads the raw attribute,
-  // so a non-number value on a count still reports M7 beside the attribute type error.
-  if (clean && !fractionalDefault && declaredDefault !== undefined) {
+  // an integral number: one mistake, one error (the attribute type check reports a bad value).
+  if (clean && !invalidDefault && declaredDefault !== undefined) {
     const agg = measure.agg();
     if (agg === AGG_COUNT) {
       err(
@@ -660,6 +678,15 @@ function checkAggregateColumns(
     const field = fieldOf(ctx.host, parts.path[0]!);
     if (field === undefined) {
       err(`@of '${item}' names no field '${parts.path[0]!}' on '${ctx.declaring.resolutionKey()}'.`);
+      return undefined;
+    }
+    // M10 — a measure aggregates scalars. A field.object (or a field carrying @objectRef) is a JSON
+    // document, which no port aggregates in a report.
+    if (field.subType === FIELD_SUBTYPE_OBJECT || objectRefOf(field) !== undefined) {
+      err(
+        `@of '${item}' is a field.${field.subType}${objectRefOf(field) !== undefined ? " with an @objectRef" : ""}, ` +
+          `which a report cannot aggregate. Aggregate a scalar field of it.`,
+      );
       return undefined;
     }
     fields.push(field);
@@ -845,6 +872,32 @@ function checkReport(root: MetaData, report: MetaData, sink: ErrorSink): void {
         source,
       );
     }
+  }
+
+  // R10 — a report is read through a view. The other read-only kinds are not read by a plain
+  // SELECT (a stored procedure and a table function are called, not selected from), and no port
+  // lowers or serves them. A view or materialized view the adopter creates is declared
+  // `@kind: view` with `@unmanaged: true`; a SELECT reads either one.
+  // ADR-0039: resolving, as R5 reads it.
+  for (const source of report.children().filter(isReadOnlySource)) {
+    if (source.effectiveKind !== SOURCE_KIND_VIEW) {
+      err(
+        `: ${childLabel(source)} has @kind '${source.effectiveKind}'; a report is read through a view, so its ` +
+          `source must be @kind: view. For a view or materialized view you create yourself, declare ` +
+          `@kind: view with @unmanaged: true.`,
+        source,
+      );
+    }
+  }
+
+  // R11 — a report cannot be abstract: its fields are derived from its own @dimensions and
+  // @measures, no port reads or serves an abstract report, and report inheritance is not part of
+  // the vocabulary.
+  if (report.isAbstract) {
+    err(
+      `: is abstract; a report cannot be abstract, because its fields are derived from its own @dimensions ` +
+        `and @measures and no port reads or serves an abstract report. Remove abstract: true.`,
+    );
   }
 
   // R1 — @from resolves to an object.entity. Without it, R2/R3/R6/R7, R8/R9 and

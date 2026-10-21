@@ -64,6 +64,13 @@ import com.metaobjects.generator.util.GeneratedFileWriter;
  */
 public class SpringValueObjectGenerator extends MultiFileDirectGeneratorBase<MetaObject> {
 
+    /** Optional arg: the package the output imports the decimal wire classes from. */
+    public static final String ARG_RUNTIME_PACKAGE = "runtimePackage";
+    /** The default package of the shipped helper runtime ({@code CanonicalDecimal*}). */
+    public static final String RUNTIME_PACKAGE = "com.metaobjects.generator.spring.runtime";
+
+    private String runtimePackage = RUNTIME_PACKAGE;
+
     /**
      * FR-019 per-port config for resolving {@code @provided} enum namespaces, parsed from the
      * same {@code providedEnumNamespace} / {@code providedEnumPackages} generator args
@@ -83,6 +90,7 @@ public class SpringValueObjectGenerator extends MultiFileDirectGeneratorBase<Met
     @Override
     public void execute(MetaDataLoader loader) {
         parseArgs();
+        runtimePackage = getArg(ARG_RUNTIME_PACKAGE, RUNTIME_PACKAGE);
         Path outRoot = Paths.get(outDir.getAbsolutePath());
         fr019Config = Fr019SharedEnum.ProvidedEnumConfig.of(
             getArg("providedEnumNamespace"), getArg("providedEnumPackages"));
@@ -140,13 +148,20 @@ public class SpringValueObjectGenerator extends MultiFileDirectGeneratorBase<Met
         if (!pkg.isEmpty()) {
             src.append("package ").append(pkg).append(";\n\n");
         }
+        // ADR-0019 Amendment 1: a decimal component binds the canonical serializer / strict
+        // deserializer, so a value object nested in a DTO's jsonb column writes the W1 string too.
+        boolean usesDecimal = fields.stream()
+            .anyMatch(f -> SpringGeneratorSupport.isDecimalComponent(componentTypeFr019(f, vo)));
+        if (usesDecimal) {
+            src.append(SpringGeneratorSupport.decimalAnnotationImports(runtimePackage));
+        }
         if (usesValid) {
             src.append("import jakarta.validation.Valid;\n");
         }
         if (usesValidation) {
             src.append("import jakarta.validation.constraints.*;\n");
         }
-        if (usesValid || usesValidation) {
+        if (usesDecimal || usesValid || usesValidation) {
             src.append('\n');
         }
         src.append("/** GENERATED — value object ").append(recordName)
@@ -163,6 +178,8 @@ public class SpringValueObjectGenerator extends MultiFileDirectGeneratorBase<Met
             String jsonName = SpringNaming.jsonPropertyAnnotation(field.getName());
             src.append("    ");
             if (!a.isEmpty()) src.append(a).append(' ');
+            String decimalJson = SpringGeneratorSupport.decimalJsonAnnotations(type, runtimePackage, field);
+            if (!decimalJson.isEmpty()) src.append(decimalJson).append(' ');
             if (!jsonName.isEmpty()) src.append(jsonName).append(' ');
             src.append(type).append(' ').append(component);
             if (i < fields.size() - 1) src.append(',');

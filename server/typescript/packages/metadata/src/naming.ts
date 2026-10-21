@@ -1,3 +1,4 @@
+import { docsBlobUrl } from "./docs-ref.js";
 import type { MetaData } from "./shared/meta-data.js";
 import { TYPE_FIELD } from "./shared/base-types.js";
 import { PACKAGE_SEPARATOR } from "./shared/structural.js";
@@ -101,19 +102,25 @@ export function physicalNamingOf(node: MetaData): PhysicalNaming {
 }
 
 /** The migration guide every refusal of a former naming source names (ADR-0058). */
-export const PHYSICAL_NAMING_MIGRATION_GUIDE =
-  "https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/physical-naming.md";
+export const PHYSICAL_NAMING_MIGRATION_GUIDE_PATH = "docs/features/migrations/physical-naming.md";
+
+/** The guide on `main`: the default when a caller has no release to pin to. */
+export const PHYSICAL_NAMING_MIGRATION_GUIDE = docsBlobUrl(PHYSICAL_NAMING_MIGRATION_GUIDE_PATH);
 
 /**
  * What a former column-naming source prints when it is still used (ADR-0058): the one
  * setting, where it goes, and the guide. Same words in every port. `what` names the source
  * exactly; `value` is the rule it gave, carried into the example so the move is mechanical.
  */
-export function physicalNamingRemovedMessage(what: string, value: string = "literal"): string {
+export function physicalNamingRemovedMessage(
+  what: string,
+  value: string = "literal",
+  guide: string = PHYSICAL_NAMING_MIGRATION_GUIDE,
+): string {
   return (
     `${what} was removed in 1.1.0. Column and table naming is one project setting now, read by ` +
     `every port: "naming" in .metaobjects/config.json, for example "naming": { "columns": "${value}" }. ` +
-    `Move it there and delete ${what}. See ${PHYSICAL_NAMING_MIGRATION_GUIDE}`
+    `Move it there and delete ${what}. See ${guide}`
   );
 }
 

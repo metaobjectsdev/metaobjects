@@ -18,6 +18,8 @@
     <PackageProjectUrl>https://github.com/metaobjectsdev/metaobjects</PackageProjectUrl>
     <RepositoryUrl>https://github.com/metaobjectsdev/metaobjects</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
+    <!-- One changelog for every port; the tag pins the notes to the release that shipped them. -->
+    <PackageReleaseNotes>Release notes: https://github.com/metaobjectsdev/metaobjects/blob/v$(Version)/CHANGELOG.md. Upgrading from 1.0.x: https://github.com/metaobjectsdev/metaobjects/blob/v$(Version)/docs/features/migrations/upgrading-1.0-to-1.1.md</PackageReleaseNotes>
     <PackageTags>metaobjects;metadata;codegen;model-driven;cross-language</PackageTags>
 
     <!-- Source Link + deterministic, reproducible builds for published packages. -->

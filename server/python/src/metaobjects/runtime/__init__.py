@@ -6,7 +6,9 @@ into parameterized SQL via a pluggable driver. The corpus query scenarios
 exercise eq/ne/gt/gte/lt/lte/in/like/isNull operators + the top-level `and:`
 combinator + asc/desc sort + limit/offset.
 """
-from .object_manager import Filter, ObjectManager, PostgresDriver
+from .dialect import MYSQL, POSTGRES, SQLITE, Dialect
+from .drivers import MySqlDriver, SqliteDriver
+from .object_manager import DbApiDriver, Filter, ObjectManager, PostgresDriver
 from .validator_runner import ValidationFailure, ValidationResult, run_validators
 from .llm_recorder import (
     STATUS_ERROR,
@@ -23,7 +25,14 @@ from .llm_recorder import (
 )
 
 __all__ = [
+    "DbApiDriver",
+    "Dialect",
     "Filter",
+    "MYSQL",
+    "MySqlDriver",
+    "POSTGRES",
+    "SQLITE",
+    "SqliteDriver",
     "ObjectManager",
     "PostgresDriver",
     "ValidationFailure",

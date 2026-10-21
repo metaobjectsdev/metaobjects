@@ -1,0 +1,28 @@
+name: decimal-read-exact-15
+description: >
+  The subset of decimal-read-exact whose values fit 15 significant digits (buckets A, D, E, F),
+  which every engine runs (W4). SQLite and D1 keep a decimal as a double, so `0.1` is the
+  canonical "0.1" only because the read renders the double at 15 significant digits.
+requests:
+  - id: r1
+    method: GET
+    path: /api/entries?filter[bucket][in]=A,D,E,F&sort=id:asc
+    expect:
+      status: 200
+      body:
+        equals:
+          - { id: 1, bucket: A, amount: "0.1", flagged: true }
+          - { id: 2, bucket: A, amount: "0.2", flagged: false }
+          - { id: 7, bucket: D, amount: "100.5", flagged: false }
+          - { id: 8, bucket: D, amount: "99.5", flagged: false }
+          - { id: 9, bucket: E, amount: "0", flagged: false }
+          - { id: 10, bucket: E, amount: null, flagged: false }
+          - { id: 11, bucket: F, amount: null, flagged: false }
+  - id: r2
+    method: GET
+    path: /api/entries/7
+    expect:
+      status: 200
+      body:
+        row:
+          amount: "100.5"

@@ -59,7 +59,7 @@ internal class QueryScenarioConformanceTest {
                 "No query scenarios found under fixtures/persistence-conformance/queries — corpus missing?"
             )
             return all
-                .filter { it.name !in DEFERRED_SCENARIOS.keys }
+                .filter { it.name !in DEFERRED_SCENARIOS.keys && it.runsOn(ScenarioEngine.POSTGRES) }
                 .stream()
                 .map { Arguments.of(it.name, it) }
         }

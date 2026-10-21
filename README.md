@@ -127,6 +127,7 @@ first-week wedge plan — and `meta init` picks up from there.
 - Want a worked, non-toy model? → [`examples/advanced-modeling/`](examples/advanced-modeling/)
   (projections, value objects, TPH, prompt payloads on one runnable spine).
 - Want the cross-language contract? → [`fixtures/`](fixtures/) (the conformance corpora are the oracle).
+- Upgrading from 1.0.x to 1.1? → [`docs/features/migrations/upgrading-1.0-to-1.1.md`](docs/features/migrations/upgrading-1.0-to-1.1.md).
 
 ## Languages
 
@@ -263,7 +264,7 @@ metaobjects/
 ├── CLAUDE.md                       # project instructions for Claude
 ├── spec/                           # canonical metamodel docs, ADRs, roadmap
 ├── fixtures/                       # 25 cross-language conformance corpora — the oracle
-│   ├── conformance/                # metamodel (loader + serializer + navigation), 395 fixtures
+│   ├── conformance/                # metamodel (loader + serializer + navigation), 410 fixtures
 │   ├── yaml-conformance/           # YAML authoring desugar
 │   ├── render-conformance/         # FR-004 byte-identical render oracle
 │   ├── verify-conformance/         # FR-004 template-drift gate

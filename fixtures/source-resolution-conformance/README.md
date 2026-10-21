@@ -154,40 +154,26 @@ README.md
   affect resolution AND happened to also validate it" — the two are
   indistinguishable from the outside, and only the first is what every other
   port's "ignore the rest" behavior demonstrates.
-  **A genuinely unrecognized key (e.g. `"foo": 1`, unknown to all four ports)
-  is a real, confirmed, cross-port DIVERGENCE, not covered by this corpus.**
-  Verified empirically: `resolveCollection` (`collection.ts`) calls
-  `loadConfig`, which parses the WHOLE file through `ConfigSchema.parse` —
-  `.strict()` at the top level (`config.ts`) — so a key no version of
-  TypeScript has ever declared throws a `ZodError` and resolution never
-  reaches the source-listing step at all, while Java/C#/Python all resolve
-  successfully, silently ignoring it.
+  **A genuinely unrecognized top-level key (e.g. `"foo": 1`, unknown to all four
+  ports) is ignored by every port since 1.1.0, and TypeScript also says so.**
+  `loadConfig` (`sdk/src/config.ts`) prints one warning per file and key to stderr,
+  naming the key and saying a newer MetaObjects may have written it, and resolves
+  normally. Before 1.1.0 TypeScript refused it (`ConfigSchema` is `.strict()` at the
+  top level), so a config a newer release wrote with a new key (1.1.0's `naming`)
+  failed every 1.0.x TypeScript tool in the estate. A tool a release behind must keep
+  working, so an unknown top-level key cannot be fatal.
 
-  **RULED: the asymmetry is INTENDED, and neither side moves.** It is not a
-  defect that leaked; it falls out of who owns the file. `.metaobjects/config.json`
-  is TypeScript's, and TypeScript is the only port that models its whole
-  vocabulary — so it is the only port that CAN tell a typo from a key a sibling
-  owns. `.strict()` is what converts that knowledge into a diagnostic, and the
-  hazard is specific and proven: a stripped `scopes` (for `scope`) silently means
-  "everything in scope", and a stripped `migrate.scopee` silently governs the whole
-  database. Java, C# and Python know only `schema_version` + `sources`; for them
-  every other key is indistinguishable from a TS-owned one, so strictness there
-  could only be imitated by embedding TypeScript's key list and keeping it in
-  lockstep forever — at which point any port a release behind would REJECT a
-  config a newer `meta` had just written. Tolerance is the only coherent behaviour
-  for a partial reader, and strictness the only coherent behaviour for the owner.
+  What stays fatal in TypeScript is what TypeScript can tell is a mistake: a wrong
+  type on a key it knows, and an unknown key inside a block it owns (the stripped
+  `scopes` for `scope`, `migrate.scopee`), because those silently change what a known
+  setting means. Java, C# and Python read only `schema_version`, `sources` and
+  `naming` and ignore the rest, as before.
 
-  So this stays OFF the shared corpus permanently — not deferred. A shared case
-  asserts ONE outcome, and the correct outcome here differs by port BY DESIGN;
-  adding one could only be done by making some port wrong. Each half is pinned in
-  the port that owns it instead: TypeScript's in `sdk/test/config.test.ts`
-  (unknown top-level key ⇒ throws, alongside the nested `scopes`/`scopee` cases),
-  and the tolerant half in `SourceResolverTests.cs`,
-  `tests/config/test_source_resolver.py` and `SourceResolverTest.java`
-  (unknown top-level key ⇒ resolves normally). The
-  forward-compatibility cost is real and accepted: a config written by a NEWER
-  `meta` hard-fails an OLDER one. That is what `schema_version` is for, and a loud
-  failure beats a `scope` that silently matched everything.
+  This stays off the shared corpus: the observable outcome (resolution succeeds) is
+  the same everywhere, and the warning is TypeScript's own output. Each port pins its
+  half: `sdk/test/config.test.ts` (unknown top-level key warns and resolves; nested
+  typo throws), `SourceResolverTests.cs`, `tests/config/test_source_resolver.py` and
+  `SourceResolverTest.java` (unknown top-level key resolves normally).
 
 ## Order is deliberately NOT pinned
 

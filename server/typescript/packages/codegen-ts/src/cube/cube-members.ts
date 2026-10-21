@@ -22,7 +22,6 @@ import {
   FIELD_SUBTYPE_INT,
   FIELD_SUBTYPE_LONG,
   FIELD_SUBTYPE_MAP,
-  FIELD_SUBTYPE_OBJECT,
   FIELD_SUBTYPE_STRING,
   FIELD_SUBTYPE_TIME,
   FIELD_SUBTYPE_TIMESTAMP,
@@ -115,11 +114,9 @@ export function dimensionColumn(
     );
   // ADR-0039: resolving isArray and @objectRef, so an inherited one is seen.
   if (field.resolvedIsArray()) throw unmappable(`field.${field.subType}, isArray`);
-  const objectRef = field.objectRef;
-  if (objectRef !== undefined) throw unmappable(`field.${field.subType} @objectRef '${objectRef}'`);
-  if (field.subType === FIELD_SUBTYPE_OBJECT || field.subType === FIELD_SUBTYPE_MAP) {
-    throw unmappable(`field.${field.subType}`);
-  }
+  // A field.object, or a field with an @objectRef, never reaches here: the loader refuses it as a
+  // report dimension (D5). A field.map is a valid dimension that Cube cannot hold.
+  if (field.subType === FIELD_SUBTYPE_MAP) throw unmappable(`field.${field.subType}`);
   const d = mc.dialect;
   const col = cubeColumn(sourceColumnNameFor(field, mc.extract), d, renderer);
   if (field.subType === FIELD_SUBTYPE_ENUM) {

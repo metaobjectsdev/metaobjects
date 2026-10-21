@@ -71,6 +71,15 @@ export async function runFixture(
               });
               continue;
             }
+            for (const needle of w.messageIncludes ?? []) {
+              if (!(g.message ?? "").includes(needle)) {
+                checks.push({
+                  kind: "expected-errors",
+                  passed: false,
+                  detail: `envelope[${i}].messageIncludes: message does not contain '${needle}' (got '${g.message ?? ""}')`,
+                });
+              }
+            }
             if (w.source === undefined) continue;
             if (w.source.format !== g.source.format) {
               checks.push({

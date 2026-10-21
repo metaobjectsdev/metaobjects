@@ -95,6 +95,6 @@ def _parse_response_body(text: str | None) -> Any:
     if text is None or text == "":
         return None
     try:
-        return json.loads(text)
+        return api_contract_assertions.parse_body(text)
     except json.JSONDecodeError:
         return text

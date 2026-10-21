@@ -12,6 +12,20 @@ function paths(files: { path: string }[]): string[] {
   return files.map((f) => f.path).sort();
 }
 
+describe("assemble pins guide links", () => {
+  const stack = makeStack(["typescript"], ["react"]);
+  test("by default the links keep the authored ref (main)", () => {
+    const all = assemble({ contentRoot: CONTENT_ROOT, stack }).map((f) => f.contents).join("\n");
+    expect(all).toContain("metaobjects/blob/main/docs/");
+  });
+  test("with docsRef every repository blob link names that ref and none is left on main", () => {
+    const files = assemble({ contentRoot: CONTENT_ROOT, stack, docsRef: "v1.1.0" });
+    const all = files.map((f) => f.contents).join("\n");
+    expect(all).toContain("metaobjects/blob/v1.1.0/docs/features/migrations/");
+    expect(all).not.toContain("metaobjects/blob/main/");
+  });
+});
+
 describe("assemble", () => {
   test("emits AGENTS.md + CLAUDE.md with the stack line + codegen command substituted", () => {
     const stack = makeStack(["typescript"], ["react"]);

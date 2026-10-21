@@ -191,6 +191,35 @@ def owned_status(root: Path, entry: GeneratorEntry) -> str | None:
     return _compare(path.read_text(encoding="utf-8"), ejected_source(entry))
 
 
+def owned_companions(root: Path, entry: GeneratorEntry) -> list[tuple[Path, str]]:
+    """``(relative path, status)`` of each owned runtime module *entry* ejects, against the
+    installed copy. A generator and the runtime its output imports are one owned unit: the
+    generator is ``identical`` only when every companion is too."""
+    rows: list[tuple[Path, str]] = []
+    for module in entry.runtime:
+        path = runtime_path(root, module)
+        if path.exists():
+            rows.append((path.relative_to(root), _compare(
+                path.read_text(encoding="utf-8"),
+                packaged_runtime_path(module).read_text(encoding="utf-8"),
+            )))
+    return rows
+
+
+def owned_verdict(root: Path, entry: GeneratorEntry) -> tuple[str, list[tuple[Path, str]]] | None:
+    """The verdict ``--list`` prints for an owned generator plus its differing companions, or
+    ``None`` if not owned. The generator file's own counts win when it differs; when it is
+    identical but a companion differs, the verdict says so (TS: ``generator identical, N
+    renderer(s) differ``) and the caller names each differing file."""
+    own = owned_status(root, entry)
+    if own is None:
+        return None
+    differing = [(p, st) for p, st in owned_companions(root, entry) if st != "identical"]
+    if own == "identical" and differing:
+        own = f"DIFFERS: generator identical, {len(differing)} runtime module(s) differ"
+    return own, differing
+
+
 def _line_diff(mine_text: str, ref_text: str) -> tuple[int, int]:
     """``(behind, of your own)``: reference lines the copy lacks, copy lines the reference lacks."""
     mine = _normalised(mine_text)
@@ -228,7 +257,7 @@ def runtime_status(root: Path) -> list[tuple[Path, str]]:
 def build_owned(spec: str, root: Path, ctx: GeneratorBuildContext) -> tuple[Generator | None, str | None]:
     """Resolve a ``module:symbol`` generator entry against the project at *root*.
 
-    The symbol may be a Generator, or a factory: one taking ``template_root`` (the
+    The symbol may be a Generator instance, a Generator class (instantiated), or a factory: one taking ``template_root`` (the
     render-helper shape) gets the build context's template root; one taking a single
     positional argument gets the build context; otherwise it is called with none.
     """
@@ -239,7 +268,9 @@ def build_owned(spec: str, root: Path, ctx: GeneratorBuildContext) -> tuple[Gene
     obj, err = import_project_symbol(module_name, symbol, root)
     if err is not None:
         return None, f"generator {spec!r}: {err}"
-    if not hasattr(obj, "generate") and callable(obj):
+    # A generator CLASS has `generate` too (unbound), so test for the class first: it must be
+    # instantiated, not used as the generator.
+    if inspect.isclass(obj) or (not hasattr(obj, "generate") and callable(obj)):
         params = inspect.signature(obj).parameters
         required = [p for p in params.values()
                     if p.default is inspect.Parameter.empty

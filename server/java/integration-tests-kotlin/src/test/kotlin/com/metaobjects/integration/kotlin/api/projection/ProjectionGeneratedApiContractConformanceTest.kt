@@ -45,7 +45,7 @@ internal class ProjectionGeneratedApiContractConformanceTest {
     }
 
     companion object {
-        private val MAPPER = ObjectMapper()
+        private val MAPPER = ObjectMapper().enable(com.fasterxml.jackson.databind.DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS)
 
         /**
          * The seed is keyed by the base TABLE (`invoices`) and never by the view: the view

@@ -125,6 +125,98 @@ public class RequirementTestsGeneratorMojoTest {
         assertTrue(e.toString(), e.toString().contains("com.acme.ProjectOnlyFilter"));
     }
 
+    /**
+     * The same removal in a real build, where the module has a base directory and so a
+     * manifest: the full run deletes the files the manifest recorded and the hash still
+     * matches, and verify is clean. This is the Python 1.1 behaviour.
+     */
+    @Test
+    public void aPackageThatLostItsLastRequirementHasItsRecordedUntouchedFilesDeletedByTheFullRun() throws Exception {
+        Path out = tmp.newFolder().toPath();
+        MetaDataGeneratorMojo gen = genMojoWithBaseDir();
+        configure(gen, model(ORDER_ENTITY, L3_PARENT, L4_ORDER), out);
+        gen.execute();
+        Path testFile = out.resolve("com/acme/requirements/Requirements_acme_shop_Test.java");
+        Path witnessFile = out.resolve("com/acme/requirements/Requirements_acme_shop_Witnesses.java");
+        assertTrue(Files.exists(testFile));
+        assertTrue(Files.exists(witnessFile));
+
+        Path dropped = model(ORDER_ENTITY);
+        MetaDataGeneratorMojo regen = genMojoWithBaseDir();
+        configure(regen, dropped, out);
+        regen.execute();
+        assertTrue("the recorded, untouched test file is deleted", !Files.exists(testFile));
+        assertTrue("the recorded, untouched witness file is deleted", !Files.exists(witnessFile));
+
+        MetaDataVerifyMojo verify = new MetaDataVerifyMojo();
+        configure(verify, dropped, out);
+        verify.setMode("codegen");
+        verify.execute();
+    }
+
+    /**
+     * The same deletion for the Kotlin generator (named by its class, as a POM would): its two
+     * {@code .kt} files are recorded in the manifest and swept by the full run once the package
+     * has no requirement left.
+     */
+    @Test
+    public void aKotlinPackageThatLostItsLastRequirementHasItsRecordedUntouchedFilesDeleted() throws Exception {
+        String kotlinGenerator = "com.metaobjects.generator.kotlin.KotlinRequirementTestsGenerator";
+        Path out = tmp.newFolder().toPath();
+        MetaDataGeneratorMojo gen = genMojoWithBaseDir();
+        configure(gen, model(ORDER_ENTITY, L3_PARENT, L4_ORDER), out);
+        gen.setGenerators(new ArrayList<>(List.of(GeneratorParam.builder(kotlinGenerator)
+            .withArg("outputDir", out.toString())
+            .withArg("testPackage", "com.acme.requirements")
+            .withArg("witnessClass", "com.acme.Witnesses")
+            .withArg("warnUncovered", "false").build())));
+        gen.execute();
+        Path testFile = out.resolve("com/acme/requirements/Requirements_acme_shop_Test.kt");
+        Path witnessFile = out.resolve("com/acme/requirements/Requirements_acme_shop_Witnesses.kt");
+        assertTrue(Files.exists(testFile));
+        assertTrue(Files.exists(witnessFile));
+
+        MetaDataGeneratorMojo regen = genMojoWithBaseDir();
+        configure(regen, model(ORDER_ENTITY), out);
+        regen.setGenerators(new ArrayList<>(List.of(GeneratorParam.builder(kotlinGenerator)
+            .withArg("outputDir", out.toString())
+            .withArg("testPackage", "com.acme.requirements")
+            .withArg("witnessClass", "com.acme.Witnesses")
+            .withArg("warnUncovered", "false").build())));
+        regen.execute();
+        assertTrue("the recorded, untouched Kotlin test file is deleted", !Files.exists(testFile));
+        assertTrue("the recorded, untouched Kotlin witness file is deleted", !Files.exists(witnessFile));
+    }
+
+    @Test
+    public void anEditedFileOfAPackageThatLostItsLastRequirementIsKeptAndRefused() throws Exception {
+        Path out = tmp.newFolder().toPath();
+        MetaDataGeneratorMojo gen = genMojoWithBaseDir();
+        configure(gen, model(ORDER_ENTITY, L3_PARENT, L4_ORDER), out);
+        gen.execute();
+        Path testFile = out.resolve("com/acme/requirements/Requirements_acme_shop_Test.java");
+        Files.writeString(testFile, Files.readString(testFile, StandardCharsets.UTF_8) + "\n// my edit\n", StandardCharsets.UTF_8);
+
+        MetaDataGeneratorMojo regen = genMojoWithBaseDir();
+        configure(regen, model(ORDER_ENTITY), out);
+        regen.execute();
+        assertTrue("an edited candidate stays on disk", Files.exists(testFile));
+    }
+
+    private MetaDataGeneratorMojo genMojoWithBaseDir() throws Exception {
+        MavenProject project = Mockito.mock(MavenProject.class);
+        Mockito.when(project.getBasedir()).thenReturn(tmp.getRoot());
+        Mockito.when(project.getRuntimeClasspathElements()).thenReturn(List.of());
+        Mockito.when(project.getCompileClasspathElements()).thenReturn(List.of());
+        Mockito.when(project.getTestClasspathElements()).thenReturn(List.of());
+        MojoExecution execution = Mockito.mock(MojoExecution.class);
+        Mockito.when(execution.getLifecyclePhase()).thenReturn(AbstractMetaDataMojo.PHASE_GENERATE_SOURCES);
+        MetaDataGeneratorMojo mojo = new MetaDataGeneratorMojo();
+        mojo.project = project;
+        mojo.execution = execution;
+        return mojo;
+    }
+
     @Test
     public void verifyReportsTheFilesOfAPackageThatLostItsLastRequirementAsStaleInRepo() throws Exception {
         Path out = tmp.newFolder().toPath();
@@ -137,7 +229,10 @@ public class RequirementTestsGeneratorMojoTest {
         inSync.setMode("codegen");
         inSync.execute();
 
-        // The requirement is removed. gen never deletes a file, so the two are still there...
+        // The requirement is removed. This mojo has no project base directory, so there is no
+        // `.metaobjects/.gen-state` manifest and gen deletes nothing: the files are not recorded
+        // as generated, so they are not candidates for the orphan sweep (own-your-codegen.md,
+        // "Files that are no longer generated"). The two are still there...
         Path dropped = model(ORDER_ENTITY);
         MetaDataGeneratorMojo regen = new MetaDataGeneratorMojo();
         configure(regen, dropped, out);

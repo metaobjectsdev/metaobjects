@@ -9,6 +9,7 @@
 // touched; a run narrowed by --generators sweeps nothing.
 
 using System.Text.Json;
+using MetaObjects.Codegen.Generators;
 using MetaObjects.Meta;
 using Xunit;
 
@@ -103,6 +104,84 @@ public sealed class OrphanSweepTests : IDisposable
         Assert.True(File.Exists(Path.Combine(Out, "TelemetryReading.g.cs")));
 
         Assert.Equal(0, Verify().Code);
+    }
+
+    /// <summary>One package, one entity and (optionally) one live L4 requirement over it.</summary>
+    private void RequirementModel(bool withRequirement)
+    {
+        var children = new List<object>
+        {
+            new Dictionary<string, object>
+            {
+                ["object.entity"] = new Dictionary<string, object>
+                {
+                    ["name"] = "Order",
+                    ["children"] = new object[]
+                    {
+                        new Dictionary<string, object> { ["field.uuid"] = new Dictionary<string, object> { ["name"] = "id" } },
+                        new Dictionary<string, object>
+                        {
+                            ["identity.primary"] = new Dictionary<string, object>
+                            {
+                                ["name"] = "pk", ["@fields"] = new[] { "id" },
+                            },
+                        },
+                    },
+                },
+            },
+        };
+        if (withRequirement)
+            children.Add(new Dictionary<string, object>
+            {
+                ["requirement.functional"] = new Dictionary<string, object>
+                {
+                    ["name"] = "Orders",
+                    ["@level"] = 4,
+                    ["@status"] = "live",
+                    ["@statement"] = "An order is recorded when it is placed.",
+                    ["@counterexample"] = "A placed order has no row.",
+                    ["@implementedBy"] = new[] { "Order" },
+                },
+            });
+        File.WriteAllText(Path.Combine(Meta, "meta.acme.json"), JsonSerializer.Serialize(new Dictionary<string, object>
+        {
+            ["metadata.root"] = new Dictionary<string, object> { ["package"] = "acme", ["children"] = children },
+        }));
+    }
+
+    [Fact]
+    public void Requirement_tests_are_deleted_once_their_package_has_no_requirements_left()
+    {
+        var testsDir = Path.Combine(_root, "tests");
+        _suite = [new RequirementTestsGenerator { OutDir = testsDir, WarnUncovered = false }];
+        RequirementModel(withRequirement: true);
+        Assert.Equal(0, Gen().Code);
+        var files = Directory.GetFiles(testsDir, "*.g.cs").Select(Path.GetFileName).Order(StringComparer.Ordinal).ToList();
+        Assert.Equal(["Requirements_acme_Tests.g.cs", "Requirements_acme_Witnesses.g.cs"], files);
+
+        RequirementModel(withRequirement: false);
+        var gen = Gen();
+        Assert.Equal(0, gen.Code);
+        Assert.Empty(Directory.GetFiles(testsDir, "*.g.cs"));
+        Assert.Contains("removed: ", gen.Out);
+        Assert.DoesNotContain(Manifest().Keys, k => k.Contains("Requirements_acme_", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void An_edited_requirement_test_file_is_refused_when_its_package_has_no_requirements_left()
+    {
+        var testsDir = Path.Combine(_root, "tests");
+        _suite = [new RequirementTestsGenerator { OutDir = testsDir, WarnUncovered = false }];
+        RequirementModel(withRequirement: true);
+        Assert.Equal(0, Gen().Code);
+        var tests = Path.Combine(testsDir, "Requirements_acme_Tests.g.cs");
+        File.AppendAllText(tests, "// mine\n");
+
+        RequirementModel(withRequirement: false);
+        var gen = Gen();
+        Assert.True(File.Exists(tests));
+        Assert.False(File.Exists(Path.Combine(testsDir, "Requirements_acme_Witnesses.g.cs")));
+        Assert.Contains("Requirements_acme_Tests.g.cs", gen.Err + gen.Out);
     }
 
     [Fact]

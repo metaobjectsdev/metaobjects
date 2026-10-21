@@ -23,8 +23,8 @@ need), a rollup pre-aggregation for each served report, and a Cube view for a se
 with `@spine`. See [Exporting to Cube](#exporting-to-cube) and [cube-export.md](cube-export.md).
 
 **What does not exist yet.** No grid, form or other UI-tier output is generated for a report
-in any port; TypeScript's list hook is the one client piece (a later plan of FR-044 adds the
-rest). There is no dbt MetricFlow exporter (it is built when an adopter asks), no `measure.derived`,
+in any port; TypeScript's list hook is the one client piece (the 1.2 `reporting` library
+adds the rest). There is no dbt MetricFlow exporter (it is built when an adopter asks), no `measure.derived`,
 no query-time choice of dimensions or measures (a report is a fixed combination, compiled
 once), and no time-zone vocabulary: time grains and relative dates are UTC.
 
@@ -231,7 +231,7 @@ and the one every runtime reads.
 | `source.rdb` with `@kind: view` | A derived view. `meta migrate` creates `CREATE VIEW <name>`, where the name is the source's `@view` (or the legacy `@table`). |
 | the same, plus `@sql` | Your SQL is the body, exactly as for a projection. The column shape below still defines what the runtime reads. |
 | the same, plus `@unmanaged: true` | `meta migrate` never creates or drops it (you or a migration tool own the DDL), but the runtime still reads it through the shape below. |
-| `@kind: materializedView`, `storedProc` or `tableFunction` | `meta migrate` skips it, as for a projection. |
+| `@kind: materializedView`, `storedProc` or `tableFunction` | Refused at load (R10). Declare a view you create yourself as `@kind: view` with `@unmanaged: true`. |
 
 A report whose view body is your own SQL (`@sql`) or that you manage yourself (`@unmanaged`)
 still gets the derived read shape below, so a defaulted measure and a `@spine` key column are
@@ -440,8 +440,9 @@ database and in every port's row type.
 Declare it only where zero is true. A program with no purchases has revenue `0`. An average
 rating with no ratings is not `0`; null is the honest answer there.
 
-- **It is an integer.** Every case found is zero; a sentinel such as `-1` is legal too. Write
-  a whole number with no decimal point (see [Known limits](#known-limits)).
+- **It is an integer.** Every case found is zero; a sentinel such as `-1` is legal too. A
+  number with an integral value (`0`, `0.0`, `-1.0`) loads as that integer in every port; a
+  fraction (`0.5`) is `ERR_BAD_ATTR_VALUE`, as on any integer attribute.
 - **Where it is legal.** A `sum`, an `avg`, a `min` or `max` over a numeric field, an `any` or
   `all` (as `0` or `1`, see [Boolean measures](#boolean-measures-any-and-all)), and a ratio.
   It is refused on a `count`, which is never null, and on a `min` or `max` over a field that is
@@ -538,11 +539,11 @@ with an error naming the report and the dimension or measure.
 
 ### How a report is served
 
-**Which reports.** One rule in five ports: a report is served when it is not abstract and its
-read source has `@kind: view` (with or without `@sql`, with or without `@unmanaged`; the view
-is assumed to exist). A report with no `source.*`, an abstract report, and a report whose
-read source is a `materializedView`, `storedProc` or `tableFunction` are not served: nothing
-is generated for them and nothing is mounted.
+**Which reports.** One rule in five ports: a report is served when it has a `source.rdb` with
+`@kind: view` (with or without `@sql`, with or without `@unmanaged`; the view is assumed to
+exist). A report with no `source.*` is not served: nothing is generated for it and nothing is
+mounted. An abstract report and a report source of any other read-only `@kind` do not load
+(R10, R11).
 
 **The surface.** `<segment>` is the report's name, `snake_case`d and then pluralized, the
 rule every object uses ([api-contract.md](api-contract.md)).
@@ -561,8 +562,9 @@ return every row when `limit` is omitted, Java, Kotlin and Python the first 50.
 **What a caller may filter and sort on.** Every derived field whose type has filter operators
 (string, enum, uuid, int, long, double, float, decimal, currency, date, time, timestamp,
 boolean), dimension and measure alike, with exactly the operators that type has on any other
-object, and each such field sorts (default direction `asc`). A derived field typed `object`
-or `map` is neither filterable nor sortable. The allowlists are the report's **own** derived
+object, and each such field sorts (default direction `asc`). A derived field over an array
+(`isArray`) or a `map` is neither filterable nor sortable, in every port: filtering or sorting
+on one is `400 invalid_filter_field` or `400 invalid_sort`, and the `report/` corpus asserts both. The allowlists are the report's **own** derived
 fields: a field of the `@from` entity that the report does not expose is refused with
 `400 invalid_filter_field` or `400 invalid_sort`. No vocabulary was added for this; the
 generators mark each derived field filterable on the detached read model, and nothing is
@@ -578,7 +580,7 @@ encodings"), applied to the column types above:
 | `currency` | integer minor units |
 | `date` (a time dimension at `day`, `week`, `month`, `quarter` or `year`) | `YYYY-MM-DD`, the first day of the bucket |
 | `timestamp` (a time dimension at `hour`) | an instant with `Z`, or naive without for a `@localTime` field |
-| `decimal` (`avg`, a ratio, a `sum` of a decimal) | **the port's own decimal spelling.** Not part of the contract: precision is the engine's, and the ports do not agree on one JSON form (TypeScript sends a string, on SQLite as on Postgres: SQLite computes the value as a REAL and the generated route sends it as its string) |
+| `decimal` (`avg`, a ratio, a `sum` of a decimal) | a canonical string, as for every decimal ([api-contract.md](api-contract.md), ADR-0019 Amendment 1): `"12.5"`, zero as `"0"`, no exponent. The digits are the engine's: Postgres and MySQL are exact, SQLite and D1 exact to 15 significant digits. |
 | a null value | `null`, with the key present |
 
 **What each port generates for a served report.** `<R>` is the report's name.
@@ -648,47 +650,16 @@ emitted.
 
 - **A derived report from a TPH subtype is refused.** Declare it from the base with an `@filter`
   on the discriminator field (see "Which reports lower").
-- **An abstract view-backed report is not served, and gets no C# row class and no Kotlin table
-  object.** No port generates a route for it. The TypeScript, Java and Python runtimes still
-  read it. The same holds for a report whose source `@kind` is `materializedView`, `storedProc`
-  or `tableFunction`: no port's generators emit anything for it, `meta migrate` skips it, and
-  the three runtimes issue a `SELECT` against whatever relation the source names. That works
-  for a materialized view you created and is a database error for a stored procedure or a
-  table function.
-- **A report over a `field.object` is not supported across ports.** A dimension whose `@of` is a
-  `field.object` (or a field carrying `@objectRef`) loads in every port. Java OMDB then refuses
-  the read, and Java, Kotlin and C# `gen` refuse to generate anything for the served report,
-  each with an error naming the report and the dimension (the same refusal covers a measure
-  whose column is typed by such a field). TypeScript and Python read it, serve it and return
-  the parsed JSON; the field is neither filterable nor sortable. Group by a scalar field.
 - **A report cannot narrow what is filterable.** Every derived field with filter operators is
   filterable and sortable. A report declares no fields, so there is nowhere to write
   `@filterable`, and registering it on a dimension or measure would be new vocabulary.
 - **The route segment follows the object rule, with no report spelling.** `InvoicesByMonth` is
   served at `/invoices_by_months`, not `/invoices_by_month`; `StoreTotals` at `/store_totals`.
-- **A decimal's JSON spelling differs by port.** An `avg`, a ratio and a `sum` of a decimal
-  are decimals. Each port sends its own form and the corpus asserts none of them, so a client
-  that reads one from two backends must parse both a string and a number.
-- **An array- or map-valued derived field is not gated, and the ports' sort allowlists differ
-  for one.** A dimension over an `isArray` field takes its element subtype's filter operators
-  in every port. For sorting, C# leaves an array out of its sort allowlist; TypeScript, Java,
-  Kotlin and Python decide by subtype alone and so list it. A `map`-typed field has no filter
-  operators and is left out of the sort allowlist by TypeScript, C#, Java and Kotlin; Python's
-  router drops only `object` fields, so it would list a `map` one. The corpus has no array or
-  map dimension, so none of this is asserted: do not rely on filtering or sorting one across
-  ports.
 - **A list hook and nothing else of a client.** A served report has a route, a row type and,
   in TypeScript, the list hook. A grid, a form or a dashboard over reports is yours to write
   until the `reporting` library covers it.
-- **With `@via`, `@of` must name an entity that has the field** (declared on it or inherited by
-  it); naming a base of the reached entity for a field only the subtype declares loads and then
-  fails `meta migrate`. The quiet form of the same rule: a `@via` dimension reads its field from
-  the entity `@of` names, so when the reached subtype **redeclares** that field and `@of` names
-  the base, the view selects the base's column and type with no error. Qualify `@of` with the
-  subtype that declares the field you mean. Without `@via` the field is read from the `@from`
-  entity itself.
 
-Each of the next five is refused at load today, so admitting it later is additive:
+Each of the next four is refused at load today, so admitting it later is additive:
 
 - **One spine per report.** Two independent spines (every program against every customer)
   would be a cross join the size of both tables multiplied. Entities to-one beyond the spine
@@ -701,14 +672,6 @@ Each of the next five is refused at load today, so admitting it later is additiv
 - **No dimension over the reference column itself** (`Purchase.programId`) in a `@spine`
   report. Declare the dimension over the spine entity's key (`Program.id` via
   `Purchase.program`) instead.
-- **`@default` is an integer, and a whole number is the only portable spelling.** A
-  fractional `@default` (`0.5`) is refused with `ERR_BAD_ATTR_VALUE` on the measure in every
-  port. TypeScript says "@default '0.5' is not an integer. A measure's @default is a whole
-  number (for example 0)."; C#, Java and Python refuse it through their existing integer
-  attribute check, with that check's own message. Two edge cases have no fixture and differ
-  by port: `@default: 0.0` (or `1.0`) loads as an integer in TypeScript and is refused by C#,
-  Java and Python; and `@default: "zero"` on a `count` gives two errors in TypeScript, C# and
-  Python (the attribute type error and the count rule) and one in Java. Write `0`, not `0.0`.
 
 A `@spine` row's facts are reached through a declared reference only. A join on a natural key
 (events matched to a schedule on several columns), an anti-join ("bought, never started") and
@@ -717,11 +680,11 @@ the anti-join by hand, and make two reports.
 
 ### What the corpus gates
 
-Twenty-one shared scenarios under `fixtures/persistence-conformance/queries/report-*.yaml` read the
+Twenty-four shared scenarios under `fixtures/persistence-conformance/queries/report-*.yaml` read the
 canonical reports through every port's runtime (list and count, filter, sort, an empty table,
 the Monday boundary, an hour bucket, a relative window, a `@spine` report with a program that
 has no weeks, a `@spine` report whose segment leaves a program no facts, and defaulted measures
-over an empty table; and, beyond those, every `@agg` kind over int, long, float, double, decimal, currency, date and instant columns, a nullable int-backed enum, a boolean and a uuid as dimensions, `day`, `quarter` and `year` grains together, every filter operator on a measure, a report `@segment` and `@filter` together, a two-hop `@via`, a self-referencing dimension, a report declared from a TPH base, and a negative `@default`). The derived columns are pinned by
+over an empty table; and, beyond those, every `@agg` kind over int, long, float, double, decimal, currency, date and instant columns, a nullable int-backed enum, a boolean and a uuid as dimensions, `day`, `quarter` and `year` grains together, every filter operator on a measure, a report `@segment` and `@filter` together, a two-hop `@via`, a self-referencing dimension, a report declared from a TPH base, a negative `@default`, `any` and `all` over a boolean (also on a `@spine` report), exact decimal aggregates, and a `@via` dimension over a field a subtype redeclares). The derived columns are pinned by
 `fixtures/persistence-conformance/report-shapes.json`, produced by TypeScript and byte-matched
 by every port. The SQL is produced by TypeScript only, so the other ports read the view the
 TypeScript migrate engine produced and never lower a report themselves. TypeScript's own value
@@ -729,15 +692,17 @@ tests read the `@spine` and `@default` views and their column types on Postgres,
 MySQL, and on Postgres and SQLite also a fact whose reference is null, an `isNull` condition
 and a two-hop spine.
 
-The twenty-one report scenarios run on more than Postgres, wherever a port's runtime has the engine:
+The twenty-four report scenarios run on every engine a port's runtime has, and so do the
+scenarios whose `engines:` key lists more than Postgres (the decimal ones: `decimal-exact` on
+Postgres and MySQL, which hold the declared precision, and its `-15` twin everywhere):
 
 | | Postgres | SQLite | MySQL 8.4 | D1 (local runtime) |
 |---|---|---|---|---|
 | TypeScript | ✓ | ✓ | ✓ | ✓ |
 | C# (EF Core) | ✓ | ✓ | ✓ (Pomelo) | n/a |
 | Kotlin (Exposed) | ✓ | ✓ | ✓ | n/a |
-| Java (OMDB) | ✓ | not run: OMDB has no SQLite driver | ✓ | n/a |
-| Python | ✓ | not run: the runtime ships a Postgres driver only (pg8000) | not run: same | n/a |
+| Java (OMDB) | ✓ | ✓ | ✓ | n/a |
+| Python (`ObjectManager`) | ✓ (pg8000) | ✓ (`sqlite3`) | ✓ (PyMySQL) | n/a |
 
 Each engine reads the artifact TypeScript produced for it: `canonical/schema.sqlite.sql` is
 the output of `meta migrate --dialect sqlite`, and `canonical/schema.mysql.sql` is the
@@ -745,16 +710,13 @@ adopter-written tables plus a `CREATE VIEW` per report from `buildReportViews`. 
 writes view SQL, and a test holds each artifact equal to its generator. The expectations
 stay the Postgres wire ones, never loosened: the engine's own spelling (a REAL ratio on SQLite,
 a scale-keeping `DECIMAL` and a zoneless `DATETIME` on MySQL) is mapped on the actual side by
-each runner, and `report-relative-date` spells its seed per engine (`seed-data-engine`). D1
-has no separate corpus: it is SQLite behind Cloudflare's binding, so TypeScript runs the same
-scenarios and the same twenty-five REST scenarios through Miniflare's local D1 (`meta migrate
---dialect d1`), with no cloud account.
+each runner, and `report-relative-date` spells its seed per engine (`seed-data-engine`). A
+decimal is exempt from that mapping: every runner requires its port's exact decimal type and
+compares the canonical string. D1 has no separate corpus: it is SQLite behind Cloudflare's
+binding, so TypeScript runs the same scenarios and the same REST scenarios through Miniflare's
+local D1 (`meta migrate --dialect d1`), with no cloud account.
 
-A port without the engine is a stated limitation, not a gap to fill by building a driver:
-Java's OMDB and Python's `ObjectManager` ship the drivers they ship, and a view-reading test
-does not justify a new one.
-
-The REST surface is gated by twenty-five scenarios under
+The REST surface is gated by twenty-seven scenarios under
 [`fixtures/api-contract-conformance/report/`](../../fixtures/api-contract-conformance/report/),
 run in the **generated lane on all five ports**: list (a dimension with a segment-scoped sum
 that is null for one group), a time dimension at a grain (`YYYY-MM-DD`), a no-dimension
@@ -763,15 +725,13 @@ on a measure and an enum dimension, paging over groups, the three field-naming `
 `405` on `POST`, `404` on every verb at `/{id}`, and a `@spine` report whose product with no
 sale keeps its row, with a filter and a sort on its defaulted measure, a dimension reached through
 two references, one time dimension listed at two grains, a filter on a string (`like`), a boolean and a
-uuid dimension, and a filter on a measure that carries its own `@filter`. The corpus model
-carries one sourceless report, so a port that serves every report it finds fails. No scenario asserts a decimal's
-spelling or a timestamp literal. TypeScript and C# run the scenarios against the real views on
-Postgres, SQLite and MySQL (`report/schema.sqlite.sql`, `report/schema.mysql.sql`), and
-TypeScript also through local D1; TypeScript also holds that a ratio reaches the wire as a
-string on SQLite, as it does on Postgres. Java, Kotlin and Python serve seeded rows behind
-their repository seam, so they read no view and no engine reaches them: running that lane on
-SQLite or MySQL would test nothing the seam does not already, and a TypeScript test holds
-those rows equal to what the views return.
+uuid dimension, a filter on a measure that carries its own `@filter`, and a dimension over an
+array and one over a map, which refuse a filter (`invalid_filter_field`) and a sort
+(`invalid_sort`). The corpus model carries one sourceless report, so a port that serves every
+report it finds fails. Every port runs the scenarios through its generated routes against the
+real views on Postgres, SQLite and MySQL (`report/schema.sqlite.sql`, `report/schema.mysql.sql`),
+and TypeScript also through local D1. A report's decimal columns are asserted as canonical
+strings by the `decimal/` sub-corpus, on the same engines.
 
 ## Exporting to Cube
 
@@ -813,10 +773,11 @@ a rule differently fails the corpus.
 
 | Rule | Refused |
 |---|---|
-| **D1** | An `@of` that is not `Entity.field`, that names the wrong entity, or whose field does not exist. Without `@via`, `Entity` is the owning entity; with `@via`, it is the `@via` terminal, and a bare `Entity` resolves in the terminal's package. |
+| **D1** | An `@of` that is not `Entity.field`, that names the wrong entity, or whose field does not exist. Without `@via`, `Entity` is the owning entity; with `@via`, it is the `@via` terminal, and a bare `Entity` resolves in the terminal's package. With `@via`, the field must be declared on, or inherited by, the entity `@of` names: naming a base for a field only the reached subtype declares is refused, and the message names the subtype to write. When the reached subtype redeclares a field the base has, the subtype's declaration (its column and type) is what the view selects. |
 | **D2** | An `@via` that is not `Owner.hop[.hop...]` starting at the owning entity, or that crosses a hop which is not a `relationship.*` with `@cardinality: one` or an `identity.reference`, or a hop whose target resolves to no object. |
 | **D3** | A `dimension.time` whose `@of` is not a `field.date` or `field.timestamp`. |
 | **D4** | A `dimension.time` over a `field.date` that declares `hour` (a date has no hour). |
+| **D5** | An `@of` naming a `field.object`, or any field carrying `@objectRef`. A report groups by a scalar: group by a scalar field of the value instead. A `field.map` with `@valueType` is legal. D3, M2, M3 and M4 do not run on a dimension D5 refused. |
 
 For D1, D2 and M1, the `Entity` part may name the owning entity **or an entity it extends**,
 so a member declared on an abstract base and written `BaseEvent.occurredAt` validates under
@@ -841,13 +802,15 @@ row, and a `SUM` over the result would double-count. A to-one hop cannot fan out
 | **M7** | A `@default` on an `@agg: count`. A count is never null, so the default could never apply. |
 | **M8** | A `@default` on an `@agg: min` or `max` over a field that is not numeric (not one of `int, long, double, float, decimal, currency`). |
 | **M9** | A `@default` on an `@agg: any` or `all` other than `0` (false) or `1` (true). |
+| **M10** | An `@of` naming a `field.object`, or any field carrying `@objectRef`, for any `@agg`. A measure aggregates scalars: aggregate a scalar field of the value instead. |
 
 A measure that breaks several of M1 to M4 reports only the first, in that order, so one
 mistake gives one error. M7, M8 and M9 run only when none of M1 to M4 fired.
 
-**A `@default` must be a whole number** (`ERR_BAD_ATTR_VALUE`, on the measure). A fraction is
-refused in every port, and then M7, M8 and M9 are not checked. A ratio's `@default` is checked for
-this only. The message and two edge cases differ by port: see [Known limits](#known-limits).
+**A `@default` must be a whole number** (`ERR_BAD_ATTR_VALUE`, on the measure), the check
+every integer attribute gets. `0.0` loads as `0`; a fraction (`0.5`) or a non-number (`"zero"`)
+is refused, and then M7, M8 and M9 are not checked, so the mistake gives one error in every
+port. A ratio's `@default` is checked for this only.
 
 ### Segments and filters (`ERR_BAD_ATTR_FILTER`)
 
@@ -868,6 +831,8 @@ this only. The message and two edge cases differ by port: see [Known limits](#kn
 | **R7** | `ERR_INVALID_REPORT` | A report `@segment` that names no segment of `@from`. |
 | **R8** | `ERR_INVALID_REPORT` | A `@spine` that is not `Owner.hop[.hop...]` with `Owner` resolving to `@from` or an entity it extends (a bare `Owner` resolves in `@from`'s package), or that crosses a hop which is not a `relationship.*` with `@cardinality: one` or an `identity.reference`, or a hop whose target resolves to no object. This is D2's walk, started at `@from`. |
 | **R9** | `ERR_INVALID_REPORT` | A `@spine` report with no dimension, or a listed dimension whose `@via` does not begin with the spine's hops (no `@via` at all included). Hop names are compared as written; the owner segment is not. |
+| **R10** | `ERR_INVALID_REPORT` | A read-only report source whose effective `@kind` is not `view` (`materializedView`, `storedProc`, `tableFunction`), on the `source.rdb`. A report is read through a view; for a view or materialized view you create yourself, declare `@kind: view` with `@unmanaged: true`. |
+| **R11** | `ERR_INVALID_REPORT` | A report declared `abstract: true`. Its fields are derived from its own `@dimensions` and `@measures`, so there is nothing for a subtype to add, and no port reads or serves an abstract report. |
 
 `purchasedAt:day` and `purchasedAt:week` together are legal, since they derive different
 fields (`purchasedAtDay`, `purchasedAtWeek`).
@@ -914,9 +879,11 @@ load, and a passing load says nothing about a query against it: there is none.
 
 All additions are additive. `metamodelVersion` moved `1.0` to `1.1`, a MINOR on the
 metamodel axis and on every registry ([compatibility-policy.md](../compatibility-policy.md)).
-A model that does not use the new names generates exactly as before. What loads changes only
-where the same change fixed Java and Python parsing bugs, each toward what TypeScript already
-did; the [CHANGELOG](../../CHANGELOG.md) lists them and the models they affect. Until 1.1
+A model that declares no reporting vocabulary gets nothing new from it. Outside reporting, what
+loads changes in two places: a bare `extends` naming an object in another package is refused in
+TypeScript, Python and C#, and fixes to Java and Python parsing bugs move those ports toward what
+TypeScript already did. The [CHANGELOG](../../CHANGELOG.md) lists them and the models they affect,
+and [upgrading-1.0-to-1.1.md](migrations/upgrading-1.0-to-1.1.md) the upgrade steps. Until 1.1
 ships, `main` carries `metamodelVersion` 1.1, so no 1.0.x PATCH is cut from it.
 
 `@spine` and a measure's `@default` joined the same 1.1 change before it shipped, so

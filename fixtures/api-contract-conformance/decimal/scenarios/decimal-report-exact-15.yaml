@@ -1,0 +1,34 @@
+name: decimal-report-exact-15
+description: >
+  The decimal-report-exact buckets whose values fit 15 significant digits (A, D, E, F), run on
+  every engine. SQLite and D1 compute the sum of 0.1 and 0.2 as the double 0.30000000000000004; the
+  wire says "0.3" (W4). The filter is a range because equality on a computed double is
+  not promised: 0.30000000000000004 is not the number 0.3, and W4 makes SQLite exact to 15 digits only for what it stores.
+requests:
+  - id: r1
+    method: GET
+    path: /api/entry_totals?filter[bucket][in]=A,D,E,F&sort=bucket:asc
+    expect:
+      status: 200
+      body:
+        equals:
+          - { bucket: "A", entries: 2, total: "0.3", totalOrZero: "0.3", mean: "0.15", top: "0.2", flaggedShare: "0.5", perFlagged: "2" }
+          - { bucket: "D", entries: 2, total: "200", totalOrZero: "200", mean: "100", top: "100.5", flaggedShare: "0", perFlagged: null }
+          - { bucket: "E", entries: 2, total: "0", totalOrZero: "0", mean: "0", top: "0", flaggedShare: "0", perFlagged: null }
+          - { bucket: "F", entries: 1, total: null, totalOrZero: "0", mean: null, top: null, flaggedShare: "0", perFlagged: null }
+  - id: r2
+    method: GET
+    path: /api/entry_totals?filter[bucket][in]=A,D,E,F&filter[total][gt]=0.25&filter[total][lt]=1
+    expect:
+      status: 200
+      body:
+        equals:
+          - { bucket: "A", entries: 2, total: "0.3", totalOrZero: "0.3", mean: "0.15", top: "0.2", flaggedShare: "0.5", perFlagged: "2" }
+  - id: r3
+    method: GET
+    path: /api/entry_totals?filter[bucket][in]=A,D,E,F&filter[total][isNull]=true
+    expect:
+      status: 200
+      body:
+        equals:
+          - { bucket: "F", entries: 1, total: null, totalOrZero: "0", mean: null, top: null, flaggedShare: "0", perFlagged: null }

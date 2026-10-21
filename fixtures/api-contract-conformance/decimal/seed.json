@@ -1,0 +1,25 @@
+{
+  "entries": [
+    { "id": 1, "bucket": "A", "amount": "0.1", "flagged": true },
+    { "id": 2, "bucket": "A", "amount": "0.2", "flagged": false },
+    { "id": 3, "bucket": "B", "amount": "12345678901234567.89", "flagged": false },
+    { "id": 4, "bucket": "B", "amount": "0.01", "flagged": true },
+    { "id": 5, "bucket": "C", "amount": "-0.0000000001", "flagged": false },
+    { "id": 6, "bucket": "C", "amount": "-12345678.987654321", "flagged": false },
+    { "id": 7, "bucket": "D", "amount": "100.50", "flagged": false },
+    { "id": 8, "bucket": "D", "amount": "99.5", "flagged": false },
+    { "id": 9, "bucket": "E", "amount": "0.0000000000", "flagged": false },
+    { "id": 10, "bucket": "E", "amount": null, "flagged": false },
+    { "id": 11, "bucket": "F", "amount": null, "flagged": false }
+  ],
+  "reports": {
+    "EntryTotals": [
+      { "bucket": "A", "entries": 2, "total": "0.3", "totalOrZero": "0.3", "mean": "0.15", "top": "0.2", "flaggedShare": "0.5", "perFlagged": "2" },
+      { "bucket": "B", "entries": 2, "total": "12345678901234567.9", "totalOrZero": "12345678901234567.9", "mean": "6172839450617283.95", "top": "12345678901234567.89", "flaggedShare": "0.5", "perFlagged": "2" },
+      { "bucket": "C", "entries": 2, "total": "-12345678.9876543211", "totalOrZero": "-12345678.9876543211", "mean": "-6172839.49382716055", "top": "-0.0000000001", "flaggedShare": "0", "perFlagged": null },
+      { "bucket": "D", "entries": 2, "total": "200", "totalOrZero": "200", "mean": "100", "top": "100.5", "flaggedShare": "0", "perFlagged": null },
+      { "bucket": "E", "entries": 2, "total": "0", "totalOrZero": "0", "mean": "0", "top": "0", "flaggedShare": "0", "perFlagged": null },
+      { "bucket": "F", "entries": 1, "total": null, "totalOrZero": "0", "mean": null, "top": null, "flaggedShare": "0", "perFlagged": null }
+    ]
+  }
+}

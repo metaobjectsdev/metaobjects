@@ -134,7 +134,7 @@ describe("ObjectManager reads a view-backed report (FR-044)", () => {
     expect(rows).toHaveLength(3);
     expect(rows[0]).toEqual({
       program: 1, programTitle: "Alpha", weeks: 3, longWeeks: 1, labels: 3, slots: 3,
-      totalMinutes: 150, avgMinutes: "50.0000", minMinutes: 30, maxMinutes: 75, longShare: "0.3333",
+      totalMinutes: 150, avgMinutes: "50", minMinutes: 30, maxMinutes: 75, longShare: "0.3333",
     });
   });
 
@@ -179,7 +179,7 @@ describe("ObjectManager reads a view-backed report (FR-044)", () => {
     });
     root.physicalNaming = { columns: "literal", tables: "snake_case" };
     const om = new ObjectManager({ metadata: root, driver });
-    expect(await om.findMany("FitnessTotals")).toEqual([{ weeks: 6, totalMinutes: 310, longShare: "0.5000" }]);
+    expect(await om.findMany("FitnessTotals")).toEqual([{ weeks: 6, totalMinutes: 310, longShare: "0.5" }]);
   });
 
   test("rows are coerced by derived subtype: an int-backed enum dimension reads and filters as its symbol", async () => {

@@ -11,5 +11,6 @@ namespace MetaObjects.IntegrationTests.Generated;
 public class CopayAuth : Auth
 {
     [Column(CopayAuthNames.CopayAmountColumn)]
+    [DecimalWire.Declared(10, 2)]
     public decimal? CopayAmount { get; set; }
 }

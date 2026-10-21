@@ -42,5 +42,8 @@ internal object ReportViews {
         "ProgramSessions" to ProgramSessionsView,
         "NodesByParent" to NodesByParentView,
         "AuthsByKind" to AuthsByKindView,
+        // ADR-0019 Amendment 1: decimal measures; and a @via dimension whose target redeclares the field.
+        "EntryTotals" to EntryTotalsView,
+        "GadgetEventsByLabel" to GadgetEventsByLabelView,
     )
 }

@@ -24,6 +24,9 @@ export interface MigrationExpect {
   readonly applyUpThenQuery: { sql: string; rows: ReadonlyArray<Record<string, unknown>> } | null;
 }
 
+export const QUERY_ENGINES = ["postgres", "mysql", "sqlite", "d1"] as const;
+export type QueryEngine = (typeof QUERY_ENGINES)[number];
+
 export interface QueryScenario {
   readonly kind: "query";
   readonly name: string;
@@ -37,6 +40,14 @@ export interface QueryScenario {
    * calls the database clock, and every engine spells that differently).
    */
   readonly seedDataEngine: Readonly<Record<string, string>> | null;
+  /**
+   * The engines that run this scenario (`postgres`, `mysql`, `sqlite`, `d1`), or null when the
+   * file does not say. Absent keeps the historical rule: Postgres runs every scenario and the
+   * other engines run the `report-*` ones. Present is EXACT: only the engines listed run it, so
+   * a scenario whose subject an engine cannot hold (an exact decimal on SQLite, a double) is
+   * declared once, in the file, instead of skipped by a runner.
+   */
+  readonly engines: ReadonlyArray<QueryEngine> | null;
   readonly queries: ReadonlyArray<QuerySpec>;
 }
 
@@ -97,12 +108,12 @@ export function loadQueries(dir: string): QueryScenario[] {
 }
 
 /**
- * The `report-*` query scenarios — the only corpus subset the non-Postgres schema artifacts
- * provision (their tables exist for what the reports read). One home for the predicate so a
- * renamed or added dialect-gated scenario cannot be silently skipped by some lanes.
+ * The query scenarios `engine` runs: exactly the ones whose `engines:` lists it, and for a file
+ * with no `engines:` key, everything on Postgres and the `report-*` scenarios elsewhere.
  */
-export function loadReportQueries(dir: string): QueryScenario[] {
-  return loadQueries(dir).filter((s) => s.name.startsWith("report-"));
+export function loadQueriesFor(dir: string, engine: QueryEngine): QueryScenario[] {
+  return loadQueries(dir).filter((s) =>
+    s.engines !== null ? s.engines.includes(engine) : engine === "postgres" || s.name.startsWith("report-"));
 }
 
 export function loadMigration(yamlPath: string): MigrationScenario {
@@ -142,6 +153,7 @@ export function loadQuery(yamlPath: string): QueryScenario {
     description: raw.description ?? "",
     sourcePath: yamlPath,
     seedData: raw["seed-data"] ?? null,
+    engines: parseEngines(raw.engines, yamlPath),
     seedDataEngine: (raw["seed-data-engine"] as Record<string, string> | undefined) ?? null,
     queries: (raw.queries ?? []).map((q) => ({
       name: required(q.name, yamlPath, "query.name"),
@@ -203,6 +215,7 @@ interface QueryYaml {
   description?: string;
   "seed-data"?: string;
   "seed-data-engine"?: unknown;
+  engines?: unknown;
   queries?: {
     name?: string;
     op?: string;
@@ -218,4 +231,12 @@ interface QueryYaml {
     offset?: number;
     expect?: unknown;
   }[];
+}
+
+function parseEngines(raw: unknown, yamlPath: string): QueryEngine[] | null {
+  if (raw === undefined || raw === null) return null;
+  if (!Array.isArray(raw) || raw.length === 0 || !raw.every((e) => (QUERY_ENGINES as readonly unknown[]).includes(e))) {
+    throw new Error(`${yamlPath}: 'engines' must be a non-empty list drawn from ${QUERY_ENGINES.join(", ")}`);
+  }
+  return raw as QueryEngine[];
 }

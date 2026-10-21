@@ -18,9 +18,23 @@ public sealed record QueryScenario(
     string SourcePath,
     string? SeedData,
     IReadOnlyList<QuerySpec> Queries,
-    IReadOnlyDictionary<string, string>? SeedDataEngine = null)   // per-engine seed SQL (`seed-data-engine:`), keyed by engine name
+    IReadOnlyDictionary<string, string>? SeedDataEngine = null,   // per-engine seed SQL (`seed-data-engine:`), keyed by engine name
+    IReadOnlyList<string>? Engines = null)                        // `engines:` — EXACT when present; null keeps the historical rule
     : Scenario(Name, Description, SourcePath)
 {
+    /// <summary>The engine names a scenario file may list.</summary>
+    public static readonly IReadOnlyList<string> KnownEngines = ["postgres", "mysql", "sqlite", "d1"];
+
+    /// <summary>
+    /// Whether <paramref name="engine"/> runs this scenario. With <c>engines:</c> the list is exact
+    /// and a runner never skips an engine by name. Without it the historical rule holds: Postgres
+    /// runs every scenario and the other engines run the <c>report-*</c> ones.
+    /// </summary>
+    public bool RunsOn(ScenarioEngine engine) =>
+        Engines is not null
+            ? Engines.Contains(engine.Name(), StringComparer.Ordinal)
+            : engine == ScenarioEngine.Postgres || Name.StartsWith("report-", StringComparison.Ordinal);
+
     /// <summary>The seed SQL for <paramref name="engine"/>: its <c>seed-data-engine</c> entry, else the Postgres <c>seed-data</c>.</summary>
     public string? SeedFor(string engine) =>
         SeedDataEngine is not null && SeedDataEngine.TryGetValue(engine, out var own) ? own : SeedData;

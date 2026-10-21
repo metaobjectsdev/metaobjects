@@ -61,6 +61,8 @@ describe("canonical report-shapes artifact (report-shapes.json)", () => {
       ["fitness::ProgramSessions", "v_program_sessions"],
       ["fitness::NodesByParent", "v_nodes_by_parent"],
       ["fitness::AuthsByKind", "v_auths_by_kind"],
+      ["fitness::GadgetEventsByLabel", "v_gadget_events_by_label"],
+      ["fitness::EntryTotals", "v_entry_totals"],
     ]);
   });
 
@@ -96,6 +98,18 @@ describe("canonical report-shapes artifact (report-shapes.json)", () => {
       ["weeks", "measure", "long", true],
       ["totalMinutesOrZero", "measure", "long", true],
       ["longShareOrZero", "measure", "decimal", true],
+    ]);
+    // The decimal wire reports (ADR-0019 Amendment 1): every decimal measure is typed, so a runner
+    // knows to hold it to the canonical string.
+    expect(fields("fitness::EntryTotals")).toEqual([
+      ["bucket", "dimension", "string", true],
+      ["entries", "measure", "long", true],
+      ["total", "measure", "decimal", false],
+      ["totalOrZero", "measure", "decimal", true],
+      ["mean", "measure", "decimal", false],
+      ["top", "measure", "decimal", false],
+      ["flaggedShare", "measure", "decimal", false],
+      ["perFlagged", "measure", "decimal", false],
     ]);
   });
 

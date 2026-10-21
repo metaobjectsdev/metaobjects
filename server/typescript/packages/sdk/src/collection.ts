@@ -113,6 +113,13 @@ export interface Collection {
    * `compileScope`/`matchesScope` stay exported for the conformance corpus.
    */
   readonly inScope: (fqn: string) => boolean;
+  /**
+   * Requirement-coverage filter: only the dependency-import rule of `inScope`.
+   * An entity from a dependency's snapshot is not this project's to claim unless
+   * `scope.include` names its package; the project's own `scope` patterns narrow
+   * codegen output and never the coverage denominator (T18 ruling, all ports).
+   */
+  readonly inCoverage: (fqn: string) => boolean;
   /** Output filter for migrate/verify --db (`migrate.scope`). Undefined => the
    *  command governs everything loaded, and that undefined is load-bearing: it
    *  is what leaves the expected schema untouched (migrate-ts `scope.ts`). */
@@ -369,6 +376,10 @@ export async function resolveCollection(
   const ownFiles = ownSources.map((s) => s.file);
 
   const scope = compileScope(toScope(scopeSpec));
+  const inCoverage = (fqn: string): boolean => {
+    const pkg = packageOfResolutionKey(fqn);
+    return !importedPackages.has(pkg) || explicitlyIncludes(scopeSpec?.include, pkg);
+  };
   const migrateScope =
     migrateSpec === undefined ? undefined : compileScope({ include: migrateSpec });
   const declaredMigrateScope =
@@ -400,11 +411,8 @@ export async function resolveCollection(
     // (DESIGN §11.1 item 2): a dependency's node survives only when the
     // project's own `scope.include` NAMES its package. A wildcard reaches it
     // and does not name it — see `explicitlyIncludes`.
-    inScope: (fqn: string): boolean => {
-      if (!matchesScope(fqn, scope)) return false;
-      const pkg = packageOfResolutionKey(fqn);
-      return !importedPackages.has(pkg) || explicitlyIncludes(scopeSpec?.include, pkg);
-    },
+    inScope: (fqn: string): boolean => matchesScope(fqn, scope) && inCoverage(fqn),
+    inCoverage,
     // Undefined ONLY when the project declares no `migrate.scope` AND imports
     // nothing — migrate-ts reads that undefined as "govern everything loaded",
     // and it is what leaves the expected schema untouched. With a dependency

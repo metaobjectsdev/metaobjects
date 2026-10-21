@@ -300,6 +300,7 @@ public sealed class CSharpApiModelBuilder
         {
             string? note = null;
             string type;
+            bool nestedRef = false;
             if (CSharpNaming.ScalarForField(f) is { } scalar)
                 type = scalar;
             else if (f.SubType == MetaObjects.Core.Field.FieldConstants.FIELD_SUBTYPE_ENUM && vo is MetaObject owner)
@@ -309,10 +310,14 @@ public sealed class CSharpApiModelBuilder
                     note = "allowed: " + string.Join(" | ", values);
             }
             else if (ValueObjectNames.ResolveFieldRef(f, root) is { } nested)
+            {
                 type = ValueObjectNames.TypeName(nested, root);
+                nestedRef = true;
+            }
             else
                 type = f.SubType;
-            if (f.ResolvedIsArray()) type = $"ICollection<{type}>";
+            // A scalar or enum array is an IList<T> (the shape EF Core 8 on SQLite materializes); an array of value objects stays ICollection<T>.
+            if (f.ResolvedIsArray()) type = nestedRef ? $"ICollection<{type}>" : $"IList<{type}>";
             rows.Add(new FieldShape(f.Name, type, !Fr010FieldMapping.IsRequired(f), note));
         }
         return rows;

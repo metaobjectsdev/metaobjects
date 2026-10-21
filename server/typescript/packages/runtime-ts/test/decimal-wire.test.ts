@@ -1,6 +1,6 @@
-// `decimalColumns` on the read-only mounts: a SQLite REAL under a declared decimal key is
-// sent as its string, exactly the spelling Postgres `numeric` and MySQL `DECIMAL` already
-// give. Both adapters (Fastify and Hono), plus the pure function they share.
+// `decimalColumns` on the read-only mounts: a decimal under a declared key is sent as its
+// canonical string on every dialect (ADR-0019 Amendment 1): a SQLite REAL at 15 significant
+// digits, a Postgres/MySQL string without its trailing zeros. Both adapters (Fastify and Hono), plus the pure function they share.
 
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import Fastify, { type FastifyInstance } from "fastify";
@@ -21,9 +21,10 @@ describe("decimalWire", () => {
   test("a number under a named key becomes its string; everything else passes through", () => {
     const wire = decimalWire(["share", "avg"])!;
     expect(wire({ share: 0.4, avg: 1.6666666666666667, n: 5, label: "a" })).toEqual({
-      share: "0.4", avg: "1.6666666666666667", n: 5, label: "a",
+      share: "0.4", avg: "1.66666666666667", n: 5, label: "a",
     });
-    expect(wire({ share: null, avg: "2.50", n: 5 })).toEqual({ share: null, avg: "2.50", n: 5 });
+    // a string is canonicalized too: Postgres and MySQL hand back the column's scale
+    expect(wire({ share: null, avg: "2.50", n: 5 })).toEqual({ share: null, avg: "2.5", n: 5 });
     expect(wire({ n: 5 })).toEqual({ n: 5 });
     expect(wire(null)).toBeNull();
   });

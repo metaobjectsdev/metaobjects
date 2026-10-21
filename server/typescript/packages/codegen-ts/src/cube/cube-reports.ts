@@ -29,8 +29,14 @@ export interface ReportContribution {
    * The rollup. Absent when the report's `@filter`, its `@segment`, or the condition of any
    * measure it lists holds a relative date: a rollup is built at refresh time, so it would
    * answer with the "now" of its build, where the view answers with the query's.
+   *
+   * One rollup, named after the report, unless the report lists a time dimension at SEVERAL
+   * grains: a Cube query names a time dimension once, at one granularity, so a rollup repeating
+   * the dimension would match no query. Then there is one rollup per choice of grain for each
+   * such dimension, named `<report>_<grain>[_<grain>]`, each a single-granularity rollup a Cube
+   * query at that grain can match.
    */
-  readonly rollup?: CubeRollupSpec;
+  readonly rollups?: readonly CubeRollupSpec[];
 }
 
 /** How many grouping columns a rollup has: its attribute dimensions plus its time dimensions. */
@@ -150,13 +156,27 @@ export function reportContribution(shape: ReportShape, cube: string, mc: MemberC
   if (conditions.some(hasRelativeDate)) return scope === undefined ? {} : { scope };
 
   const segments = [...(segmentName === undefined ? [] : [segmentName]), ...(scope === undefined ? [] : [scope.name])];
-  const base = { name: report.name, type: "rollup" as const, measures, dimensions, segments };
-  // One time dimension takes Cube's documented form; two or more, the list form (Table F).
-  const rollup: CubeRollupSpec =
-    times.length === 0
-      ? base
-      : times.length === 1
-        ? { ...base, timeDimension: times[0]!.dimension, granularity: times[0]!.granularity }
-        : { ...base, timeDimensions: times };
-  return { ...(scope === undefined ? {} : { scope }), rollup };
+  const base = { type: "rollup" as const, measures, dimensions, segments };
+  // The time dimensions in first-listed order, each with the grains the report lists for it.
+  const grainsOf = new Map<string, TimeGrain[]>();
+  for (const t of times) grainsOf.set(t.dimension, [...(grainsOf.get(t.dimension) ?? []), t.granularity]);
+  // One choice of grain per time dimension: the cartesian product of the grains, a dimension
+  // listed at one grain contributing that grain alone.
+  let choices: TimeGrain[][] = [[]];
+  for (const grains of grainsOf.values()) choices = choices.flatMap((c) => grains.map((g) => [...c, g]));
+  const several = [...grainsOf.values()].some((g) => g.length > 1);
+  const dims = [...grainsOf.keys()];
+  const rollups = choices.map((choice): CubeRollupSpec => {
+    // The grains of the dimensions that have several, in listed order, name the rollup.
+    const suffix = dims.flatMap((d, i) => ((grainsOf.get(d) ?? []).length > 1 ? [choice[i] as string] : []));
+    const name = several ? `${report.name}_${suffix.join("_")}` : report.name;
+    const entries: CubeRollupTimeDimension[] = dims.map((d, i) => ({ dimension: d, granularity: choice[i] as TimeGrain }));
+    // One time dimension takes Cube's documented form; two or more, the list form (Table F).
+    return entries.length === 0
+      ? { ...base, name }
+      : entries.length === 1
+        ? { ...base, name, timeDimension: entries[0]!.dimension, granularity: entries[0]!.granularity }
+        : { ...base, name, timeDimensions: entries };
+  });
+  return { ...(scope === undefined ? {} : { scope }), rollups };
 }

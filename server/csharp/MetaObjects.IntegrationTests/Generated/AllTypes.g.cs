@@ -32,6 +32,7 @@ public class AllTypes
     [Column(AllTypesNames.FValColumn)]
     public float FVal { get; set; }
     [Column(AllTypesNames.DecValColumn)]
+    [DecimalWire.Declared(18, 6)]
     public decimal DecVal { get; set; }
     [Column(AllTypesNames.BValColumn)]
     public bool BVal { get; set; }

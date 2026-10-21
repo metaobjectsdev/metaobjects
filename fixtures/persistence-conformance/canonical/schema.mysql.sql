@@ -64,6 +64,24 @@ CREATE TABLE `auths` (
   `urgency` VARCHAR(16)
 );
 
+CREATE TABLE `gadgets` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `gadget_code` INT NOT NULL
+);
+
+CREATE TABLE `gadget_events` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `gadgetId` BIGINT NOT NULL,
+  FOREIGN KEY (`gadgetId`) REFERENCES `gadgets` (`id`)
+);
+
+CREATE TABLE `entries` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `bucket` VARCHAR(8) NOT NULL,
+  `amount` DECIMAL(28,10),
+  `flagged` BOOLEAN NOT NULL
+);
+
 CREATE TABLE `all_types` (
   `id` VARCHAR(36) NOT NULL DEFAULT (UUID()) PRIMARY KEY,
   `sVal` VARCHAR(200) NOT NULL,
@@ -323,3 +341,24 @@ CREATE VIEW `v_auths_by_kind` AS
   FROM `auths` a
   WHERE a.`type` <> 'PriorAuth'
   GROUP BY a.`type`;
+
+CREATE VIEW `v_gadget_events_by_label` AS
+  SELECT
+    g0.`gadget_code` AS `gadgetLabel`,
+    COUNT(g.`id`) AS `gadgetEvents`
+  FROM `gadget_events` g
+  INNER JOIN `gadgets` g0 ON g0.`id` = g.`gadgetId`
+  GROUP BY g0.`gadget_code`;
+
+CREATE VIEW `v_entry_totals` AS
+  SELECT
+    e.`bucket` AS `bucket`,
+    COUNT(e.`id`) AS `entries`,
+    SUM(e.`amount`) AS `total`,
+    COALESCE(SUM(e.`amount`), 0) AS `totalOrZero`,
+    AVG(e.`amount`) AS `mean`,
+    MAX(e.`amount`) AS `top`,
+    COUNT(CASE WHEN e.`flagged` = TRUE THEN e.`id` END) / NULLIF(COUNT(e.`id`), 0) AS `flaggedShare`,
+    COUNT(e.`id`) / NULLIF(COUNT(CASE WHEN e.`flagged` = TRUE THEN e.`id` END), 0) AS `perFlagged`
+  FROM `entries` e
+  GROUP BY e.`bucket`;

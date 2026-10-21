@@ -26,7 +26,7 @@ object AuthTable : Table("auths") {
     val type = varchar("type", 64)
     val reference = varchar("reference", 80)
     val quantity = integer("quantity").nullable()
-    val copayAmount = decimal("copayAmount", 10, 2).nullable()
+    val copayAmount = portableDecimal("copayAmount", 10, 2).nullable()
     val approver = varchar("approver", 80).nullable()
 
     override val primaryKey = PrimaryKey(id)

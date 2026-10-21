@@ -1,5 +1,11 @@
 # Migration Guide
 
+> **This file covers 7.x and earlier and is kept as history.** Since 8.0.0 the Java line moves
+> with the other ports and its upgrade guides live with theirs, in
+> [docs/features/migrations/](../../docs/features/migrations/): from 8.0.x (1.0.x) to 8.1.0
+> (1.1.0), read [upgrading-1.0-to-1.1.md](../../docs/features/migrations/upgrading-1.0-to-1.1.md);
+> within 8.0.x, [upgrading-within-1.0.md](../../docs/features/migrations/upgrading-within-1.0.md).
+
 ## Migrating from 7.0.0 to 7.1.0
 
 7.1.0 is a cleanup release with three **breaking** packaging changes for consumers already on 7.0.0, plus additive features (full list in [RELEASE_NOTES.md](RELEASE_NOTES.md#version-710-2026-05-28)).

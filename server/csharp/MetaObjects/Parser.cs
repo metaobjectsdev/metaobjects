@@ -735,7 +735,7 @@ public static class Parser
                 // referrer = the declaring node's FQN (already built above);
                 // target = the unresolved supertype ref string.
                 throw new ParseException(
-                    $"the SuperClass '{model.SuperRef}' does not exist in file '{st.Source ?? "<unknown>"}'",
+                    $"the SuperClass '{model.SuperRef}' does not exist in file '{st.Source ?? "<unknown>"}'{NamingRefs.DidYouMeanSuperHint(accumRoot, model.SuperRef)}",
                     ErrorCode.ERR_UNRESOLVED_SUPER, st.Source, st.Builder.ToString(),
                     ResolvedSource.From(st.CurrentSource(), model.Fqn(), model.SuperRef));
             }

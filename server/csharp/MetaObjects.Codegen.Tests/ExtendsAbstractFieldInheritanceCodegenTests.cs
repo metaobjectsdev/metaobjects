@@ -64,7 +64,7 @@ public class ExtendsAbstractFieldInheritanceCodegenTests
 
         // `tags` extends the abstract array field.string(isArray:true, @maxLength:40):
         // array-ness (ICollection, NOT a scalar string) must be inherited.
-        Assert.Contains("ICollection<string> Tags", contact);
+        Assert.Contains("IList<string> Tags", contact);
         Assert.DoesNotContain("public string Tags ", contact);
 
         // `addresses` extends field.object(isArray:true, @objectRef:Address, @storage:jsonb):

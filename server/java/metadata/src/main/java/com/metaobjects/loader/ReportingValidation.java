@@ -454,9 +454,29 @@ final class ReportingValidation {
             return;
         }
         String fieldName = parts.path().get(0);
-        MetaData field = fieldOf(ofEntity, fieldName);
+        // With @via the field is looked up on the entity @of NAMES (resolving: its own plus
+        // inherited), not on the @via terminal: a base the terminal extends must itself carry the
+        // field, or the dimension names a column the base table lacks. Without @via the host IS
+        // the checked entity.
+        MetaData lookup = via == null ? ofEntity : named;
+        MetaData field = fieldOf(lookup, fieldName);
         if (field == null) {
-            err.accept("@of '" + of + "' names no field '" + fieldName + "' on '" + shown(ctx, ofEntity) + "'.");
+            boolean declaredOnTerminal = lookup != ofEntity && fieldOf(ofEntity, fieldName) != null;
+            err.accept(declaredOnTerminal
+                    ? "@of '" + of + "' names no field '" + fieldName + "' on '" + shown(ctx, lookup) + "': only '"
+                        + shown(ctx, ofEntity) + "', the entity @via reaches, declares it. Name it '"
+                        + ofEntity.getShortName() + "." + fieldName + "'."
+                    : "@of '" + of + "' names no field '" + fieldName + "' on '" + shown(ctx, lookup) + "'.");
+            return;
+        }
+
+        // D5 — a dimension groups by a scalar. A field.object (or a field carrying @objectRef) is
+        // a JSON document: no port serves a report over one, and a document is not a value to
+        // group rows by.
+        if (isDocumentField(field)) {
+            err.accept("@of '" + of + "' is a field." + field.getSubType()
+                    + (field.hasMetaAttr(MetaObject.ATTR_OBJECT_REF) ? " with an @objectRef" : "")
+                    + ", which a report cannot group by. Group by a scalar field of it.");
             return;
         }
 
@@ -590,6 +610,21 @@ final class ReportingValidation {
         return v instanceof String ? (String) v : null;
     }
 
+    /** A field.object, or any field carrying an {@code @objectRef}: a JSON document, not a scalar. */
+    private static boolean isDocumentField(MetaData field) {
+        return com.metaobjects.field.ObjectField.SUBTYPE_OBJECT.equals(field.getSubType())
+                || field.hasMetaAttr(MetaObject.ATTR_OBJECT_REF);
+    }
+
+    private static boolean isIntegralNumber(Object v) {
+        if (v instanceof Integer || v instanceof Long || v instanceof Short || v instanceof Byte) return true;
+        if (v instanceof Number n) {
+            double d = n.doubleValue();
+            return !Double.isNaN(d) && !Double.isInfinite(d) && d == Math.rint(d);
+        }
+        return false;
+    }
+
     private static void checkMeasure(MemberCtx ctx, MetaMeasure measure) {
         Consumer<String> err = message ->
                 ctx.sink().push(measure, ErrorCode.ERR_INVALID_MEASURE, ctx.label(), ": " + message, ctx.suffix());
@@ -603,8 +638,9 @@ final class ReportingValidation {
         boolean declaresDefault = measure.hasMetaAttr(ReportingConstants.ATTR_DEFAULT);
         Object declaredDefault = declaresDefault
                 ? measure.getMetaAttr(ReportingConstants.ATTR_DEFAULT).getValue() : null;
-        boolean fractionalDefault = declaredDefault instanceof Number
-                && measure.getDefaultValue() == null;
+        // Rule B (cross-port): M7-M9 run only for a valid integral number; anything else is
+        // already (or will be) the attribute error alone.
+        boolean fractionalDefault = declaresDefault && !isIntegralNumber(declaredDefault);
 
         if (measure.isRatio()) {
             checkRatioOperands(ctx, measure, err);
@@ -698,6 +734,14 @@ final class ReportingValidation {
             if (field == null) {
                 err.accept("@of '" + item + "' names no field '" + parts.path().get(0) + "' on '"
                         + ctx.declaring().getName() + "'.");
+                return null;
+            }
+            // M10 — a measure aggregates scalars. A field.object (or a field carrying @objectRef)
+            // is a JSON document, which no port aggregates in a report.
+            if (isDocumentField(field)) {
+                err.accept("@of '" + item + "' is a field." + field.getSubType()
+                        + (field.hasMetaAttr(MetaObject.ATTR_OBJECT_REF) ? " with an @objectRef" : "")
+                        + ", which a report cannot aggregate. Aggregate a scalar field of it.");
                 return null;
             }
             fields.add(field);
@@ -870,6 +914,31 @@ final class ReportingValidation {
                         ": " + childLabel(child) + " is writable; a report is read-only, so its source must "
                                 + "declare a read-only @kind (view, materializedView, storedProc or tableFunction).");
             }
+        }
+
+        // R10 — a report is read through a view. The other read-only kinds are not read by a
+        // plain SELECT, and no port lowers or serves them. A view or materialized view the adopter
+        // creates is declared `@kind: view` with `@unmanaged: true`.
+        // ADR-0039: resolving, as R5 reads it.
+        for (MetaData child : report.getChildren(MetaData.class, true)) {
+            if (child instanceof MetaSource src && src.isReadOnly()
+                    && !MetaSource.KIND_VIEW.equals(src.getEffectiveKind())) {
+                sink.push(child, ErrorCode.ERR_INVALID_REPORT, label,
+                        ": " + childLabel(child) + " has @kind '" + src.getEffectiveKind()
+                                + "'; a report is read through a view, so its source must be @kind: view. "
+                                + "For a view or materialized view you create yourself, declare @kind: view "
+                                + "with @unmanaged: true.");
+            }
+        }
+
+        // R11 — a report cannot be abstract: its fields are derived from its own @dimensions and
+        // @measures, no port reads or serves an abstract report, and report inheritance is not
+        // part of the vocabulary.
+        if (com.metaobjects.io.util.IOUtil.isAbstract(report)) {
+            sink.push(report, ErrorCode.ERR_INVALID_REPORT, label,
+                    ": is abstract; a report cannot be abstract, because its fields are derived from its "
+                            + "own @dimensions and @measures and no port reads or serves an abstract report. "
+                            + "Remove abstract: true.");
         }
 
         // R1 — @from resolves to an object.entity. Without it, R2/R3/R6/R7, R8/R9 and

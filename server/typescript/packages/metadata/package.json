@@ -26,6 +26,11 @@
       "types": "./dist/constants.d.ts",
       "default": "./dist/constants.js"
     },
+    "./release-docs": {
+      "bun": "./src/release-docs.ts",
+      "types": "./dist/release-docs.d.ts",
+      "default": "./dist/release-docs.js"
+    },
     "./vocabulary-rewrite-yaml": {
       "bun": "./src/vocabulary-rewrite-yaml.ts",
       "types": "./dist/vocabulary-rewrite-yaml.d.ts",

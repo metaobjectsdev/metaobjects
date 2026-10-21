@@ -1126,7 +1126,11 @@ Eject never edits an existing pom. It prints the three things to wire: the `<mod
 entry for your parent pom, a plugin `<dependency>` on the codegen module for the module
 that runs `metaobjects:generate`, and the new `<classname>` for each `<generator>`. It
 never overwrites a copy without `-Dforce`, and `-Dlist` marks each owned copy `identical`
-or `DIFFERS: N behind, M of your own`.
+or `DIFFERS: N behind, M of your own`. A copy is `identical` only when every file it owns is:
+the classes copied with it, its templates, the shared support classes it imports and the helper
+runtime its output imports. A differing one is named
+(`[owned — DIFFERS: 0 behind, 1 of your own; differing: api/index.md.mustache]`), so a resync
+that took the generator and left a template behind still shows.
 
 A name that is ejectable on both ports needs `-Dport`, unless your project declares a
 dependency on exactly one of `metaobjects-codegen-spring` and `metaobjects-codegen-kotlin`,
@@ -1345,11 +1349,11 @@ on are yours too. Eject copies two kinds of source with a Java generator:
 
 | Ejecting | Shared emit rules, beside the generator | Helper runtime its output imports |
 |---|---|---|
-| `routes` | `SpringGeneratorSupport` | `ConstraintErrors`, `FilterParseResult`, `FilterParser`, `FilterPredicate`, `PatchValidationException`, `RecordComponentNames` |
-| `dto` | `SpringGeneratorSupport` | `PatchValidationException` |
+| `routes` | `SpringGeneratorSupport` | `CanonicalDecimal`, `ConstraintErrors`, `FilterParseResult`, `FilterParser`, `FilterPredicate`, `PatchValidationException`, `RecordComponentNames`, `UnreadableBody` |
+| `dto` | `SpringGeneratorSupport` | `CanonicalDecimal`, `CanonicalDecimalDeserializer`, `CanonicalDecimalSerializer`, `DeclaredDecimal`, `PatchValidationException` |
 | `repository` | `SpringGeneratorSupport` | `FilterPredicate` |
-| `value-object` | `SpringGeneratorSupport` | nothing |
-| any other Java generator, every Kotlin generator | nothing | nothing: its output imports only core |
+| `value-object` | `SpringGeneratorSupport` | `CanonicalDecimal`, `CanonicalDecimalDeserializer`, `CanonicalDecimalSerializer`, `DeclaredDecimal` |
+| any other Java generator, every Kotlin generator | nothing | nothing: its output imports only core (Kotlin writes its decimal wire into the output as `MetaDecimalWire.kt`) |
 
 **The shared emit rules.** `SpringGeneratorSupport` holds the rules those four generators
 apply together: which fields a DTO and a patch carry, which of them are stamped for

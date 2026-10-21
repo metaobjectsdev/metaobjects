@@ -462,7 +462,8 @@ public class MetaDataLoader implements LoaderConfigurable {
         throw new com.metaobjects.MetaDataException(
             "Invalid MetaData [" + p.typeName + "][" + p.child.getShortName()
                 + "], the SuperClass [" + p.superName + "] does not exist (deferred resolution)"
-                + " in file [" + p.filename + "]",
+                + " in file [" + p.filename + "]"
+                + ValidationPhase.didYouMeanExtendsHint(root, p.superName),
             com.metaobjects.ErrorCode.ERR_UNRESOLVED_SUPER,
             envelope);
     }
@@ -720,6 +721,9 @@ public class MetaDataLoader implements LoaderConfigurable {
             sources.addAll(new DirectorySource(directory, opts).expandToList());
             loader.load(sources);
             loader.register();
+            // ADR-0058: the same naming discovery fromUris does, walking up from the directory.
+            loader.getRoot().setPhysicalNaming(
+                discoverNamingOrWarn(name, List.of(directory.toAbsolutePath().toUri())));
         } catch (MetaDataLoadingException e) {
             throw e;
         } catch (Exception e) {
@@ -760,6 +764,38 @@ public class MetaDataLoader implements LoaderConfigurable {
      * @return a fully-initialized loader with all URIs loaded
      */
     public static MetaDataLoader fromUris(String name, List<URI> uris, LoaderOptions opts) {
+        return fromUris(name, uris, opts, null);
+    }
+
+    /**
+     * The naming of the {@code .metaobjects/config.json} found above {@code locations}, else ONE
+     * WARN and the default (ADR-0058). Shared by {@code fromUris} and {@code fromDirectory}.
+     */
+    private static com.metaobjects.database.PhysicalNaming discoverNamingOrWarn(String name, List<URI> locations) {
+        return com.metaobjects.config.SourceResolver.discoverPhysicalNaming(locations).orElseGet(() -> {
+            log.warn("No .metaobjects/config.json found above the metadata sources of loader '{}': "
+                + "using the default physical naming (columns snake_case, tables snake_case). "
+                + "If your database columns are named like the fields, set "
+                + "\"naming\": { \"columns\": \"literal\" } in the project's .metaobjects/config.json "
+                + "and, for a classpath runtime, point the Spring property "
+                + "metaobjects.physical-naming-config at it.", name);
+            return com.metaobjects.database.PhysicalNaming.DEFAULT;
+        });
+    }
+
+    /**
+     * Like {@link #fromUris(String, List, LoaderOptions)}, with the project's physical-naming
+     * rules supplied by the caller (ADR-0058).
+     *
+     * <p>When {@code physicalNaming} is non-null it is set on the loaded root and nothing is
+     * discovered. When it is {@code null} the loader reads the {@code naming} block of the
+     * {@code .metaobjects/config.json} it finds by walking up from the first {@code file:} URI
+     * (the walk the Maven plugin does), and logs ONE WARN when it finds none and falls back to
+     * the {@code snake_case} default. An explicit {@code root.setPhysicalNaming(...)} made by
+     * the caller after this returns always wins.</p>
+     */
+    public static MetaDataLoader fromUris(String name, List<URI> uris, LoaderOptions opts,
+                                          com.metaobjects.database.PhysicalNaming physicalNaming) {
         MetaDataLoader loader = (opts == null)
             ? createManual(false, name)
             : new MetaDataLoader(opts, SUBTYPE_MANUAL, name);
@@ -769,6 +805,9 @@ public class MetaDataLoader implements LoaderConfigurable {
             for (URI uri : uris) sources.add(new UriSource(uri));
             loader.load(sources);
             loader.register();
+            com.metaobjects.database.PhysicalNaming naming = physicalNaming != null
+                ? physicalNaming : discoverNamingOrWarn(name, uris);
+            loader.getRoot().setPhysicalNaming(naming);
         } catch (MetaDataLoadingException e) {
             throw e;
         } catch (Exception e) {

@@ -11,6 +11,8 @@ import com.metaobjects.integration.api.TomcatHost;
 import com.metaobjects.loader.LoaderOptions;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.loader.uri.URIHelper;
+import com.metaobjects.manager.db.ObjectManagerDB;
+import com.metaobjects.object.MetaObject;
 
 import javax.tools.DiagnosticCollector;
 import javax.tools.JavaCompiler;
@@ -42,9 +44,9 @@ import java.util.stream.Stream;
  * <p>The artifacts under test are the GENERATED {@code <Report>Controller} (the list route
  * and a 405 on the collection {@code POST}, no item route), the {@code <Report>Dto} row,
  * the {@code <Report>FilterAllowlist} and the read-only {@code <Report>Repository}
- * interface. The only hand-written piece is {@link InMemoryReportRepositorySource}, the
- * consumer seam, which stands in for the report's view and is seeded with what that view
- * returns. No SQL for a report is produced or run here (ADR-0015).</p>
+ * interface. The only hand-written piece is {@link OmdbReportRepositorySource}, the consumer
+ * seam: an OMDB-backed repository over the real database the caller provisioned from the
+ * TypeScript-produced schema artifact. No SQL for a report is produced here (ADR-0015).</p>
  *
  * <p>The WHOLE model is generated and compiled, the writable {@code Invoice} entity
  * included, because the interesting failure is a gate that admits one shape and breaks
@@ -55,8 +57,7 @@ public final class GeneratedReportControllerHarness implements AutoCloseable {
     private static final String ENTITY_PKG = "acme.sales";
 
     /** A served report's generated row type and the constructors a scenario rebuilds it with. */
-    private record Mount(Class<?> dtoClass, Constructor<?> repoCtor, Constructor<?> controllerCtor,
-                         List<Map<String, Object>> seedRows) {}
+    private record Mount(String report, Constructor<?> repoCtor, Constructor<?> controllerCtor) {}
 
     /**
      * {@code JavaTimeModule}, with dates as ISO strings: a time dimension at a grain is a
@@ -68,36 +69,32 @@ public final class GeneratedReportControllerHarness implements AutoCloseable {
         .registerModule(new JavaTimeModule())
         .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
 
+    private final MetaDataLoader loader;
     private final URLClassLoader classLoader;
     private final Map<String, Mount> mounts = new LinkedHashMap<>();
 
     private TomcatHost host;
 
     /**
-     * @param seedByReport the rows each served report's view returns, keyed by report name
-     * @param sourceless   a report in the model that declares no view and must generate nothing
+     * @param served     the served reports (each must have been generated), by report name
+     * @param sourceless a report in the model that declares no view and must generate nothing
      */
-    public GeneratedReportControllerHarness(Path corpusRoot, Path genDir,
-                                            Map<String, List<Map<String, Object>>> seedByReport,
+    public GeneratedReportControllerHarness(Path corpusRoot, Path genDir, List<String> served,
                                             String sourceless) throws Exception {
         Path srcDir = genDir.resolve("src");
         Path classesDir = genDir.resolve("classes");
         Files.createDirectories(srcDir);
         Files.createDirectories(classesDir);
 
-        MetaDataLoader loader = loadCorpus(corpusRoot.resolve("meta.json"));
+        this.loader = loadCorpus(corpusRoot.resolve("meta.json"));
 
-        // ADR-0058 — this corpus's committed .metaobjects/config.json (at corpusRoot,
-
-        // fixtures/api-contract-conformance/) declares naming.columns: literal; every field
-
-        // here declares no @column, so the generated columns and the runtime's reads of them
-
-        // depend on this. Read with the SAME NeutralConfig reader every port uses.
-
+        // ADR-0058 - this corpus's committed .metaobjects/config.json sits at the api-contract
+        // corpus root (corpusRoot's parent, not under report/) and declares naming.columns:
+        // literal; the committed schema was created under it, and every field here declares no
+        // @column, so the generated columns and OMDB's reads of them depend on this. Read with
+        // the SAME NeutralConfig reader every port uses.
         loader.getRoot().setPhysicalNaming(
-
-                com.metaobjects.config.SourceResolver.resolvePhysicalNaming(corpusRoot));
+                com.metaobjects.config.SourceResolver.resolvePhysicalNaming(corpusRoot.getParent()));
 
         runGenerator(new SpringControllerGenerator(), loader, srcDir);
         runGenerator(new SpringDtoGenerator(), loader, srcDir);
@@ -109,7 +106,7 @@ public final class GeneratedReportControllerHarness implements AutoCloseable {
         // Every served report's controller must have been emitted at all: a silently
         // skipped generator would otherwise surface as a ClassNotFoundException with no
         // hint that codegen, not the harness, was the cause.
-        for (String report : seedByReport.keySet()) {
+        for (String report : served) {
             Path emitted = pkgDir.resolve(report + "Controller.java");
             if (!Files.exists(emitted)) {
                 throw new IllegalStateException(
@@ -130,37 +127,42 @@ public final class GeneratedReportControllerHarness implements AutoCloseable {
             }
         }
 
-        for (String report : seedByReport.keySet()) {
-            Files.writeString(pkgDir.resolve(InMemoryReportRepositorySource.simpleName(report) + ".java"),
-                InMemoryReportRepositorySource.source(report));
+        for (String report : served) {
+            Files.writeString(pkgDir.resolve(OmdbReportRepositorySource.simpleName(report) + ".java"),
+                OmdbReportRepositorySource.source(report));
         }
 
         compile(srcDir, classesDir);
 
         this.classLoader = new URLClassLoader(
             new URL[]{ classesDir.toUri().toURL() }, getClass().getClassLoader());
-        for (Map.Entry<String, List<Map<String, Object>>> e : seedByReport.entrySet()) {
-            String report = e.getKey();
-            Class<?> dtoClass = classLoader.loadClass(ENTITY_PKG + "." + report + "Dto");
+        for (String report : served) {
             Class<?> repoInterface = classLoader.loadClass(ENTITY_PKG + "." + report + "Repository");
             // (<Report>Repository) — no ObjectMapper, no Validator: nothing here binds a body.
             Constructor<?> controllerCtor =
                 classLoader.loadClass(ENTITY_PKG + "." + report + "Controller").getDeclaredConstructor(repoInterface);
-            Constructor<?> repoCtor =
-                classLoader.loadClass(InMemoryReportRepositorySource.fqcn(report)).getDeclaredConstructor(List.class);
-            mounts.put(report, new Mount(dtoClass, repoCtor, controllerCtor, e.getValue()));
+            Constructor<?> repoCtor = classLoader.loadClass(OmdbReportRepositorySource.fqcn(report))
+                .getDeclaredConstructor(ObjectManagerDB.class, MetaObject.class);
+            mounts.put(report, new Mount(report, repoCtor, controllerCtor));
         }
     }
 
-    /** Re-seed for a scenario: fresh repositories and controllers, all on one Tomcat. */
-    public void reset() throws Exception {
+    /** The loaded model, so the caller can read the same physical naming the generated code was built under. */
+    public MetaDataLoader loader() {
+        return loader;
+    }
+
+    /**
+     * Mount every served report's generated controller, each over an OMDB-backed repository on
+     * {@code omdb}, on one Tomcat. Replaces a previous mount.
+     */
+    public void start(ObjectManagerDB omdb) throws Exception {
         List<Object> controllers = new ArrayList<>();
         for (Mount m : mounts.values()) {
-            List<Object> dtos = new ArrayList<>();
-            // The seed row becomes the generated row type: "2026-04-01" a LocalDate, "0.4"
-            // a BigDecimal (from the string, no double in between), null a null component.
-            for (Map<String, Object> row : m.seedRows()) dtos.add(mapper.convertValue(row, m.dtoClass()));
-            controllers.add(m.controllerCtor().newInstance(m.repoCtor().newInstance(dtos)));
+            MetaObject report = loader.getMetaObjects().stream()
+                .filter(o -> o.getShortName().equals(m.report())).findFirst()
+                .orElseThrow(() -> new IllegalStateException("no report " + m.report() + " in the model"));
+            controllers.add(m.controllerCtor().newInstance(m.repoCtor().newInstance(omdb, report)));
         }
         if (host != null) host.close();
         this.host = TomcatHost.start(mapper, controllers.toArray());

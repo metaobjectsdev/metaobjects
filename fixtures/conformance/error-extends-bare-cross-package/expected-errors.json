@@ -2,6 +2,10 @@
   "errors": [
     {
       "code": "ERR_UNRESOLVED_SUPER",
+      "messageIncludes": [
+        "other::Base",
+        "extends: \"other::Base\""
+      ],
       "source": {
         "format": "resolved",
         "files": [

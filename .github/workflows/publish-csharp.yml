@@ -41,6 +41,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The tag must name the version the manifest commits: these workflows publish the
+      # manifest's version whatever tag started them (scripts/check-release-tag.mjs).
+      - name: Tag matches the manifest version
+        env:
+          VERSION_INPUT: ${{ github.event.inputs.version }}
+        run: node scripts/check-release-tag.mjs csharp "$VERSION_INPUT"
+
       # A final version is not published while the eject pending list has entries
       # (ADR-0034 Amendment 8). A release candidate passes, which is why the `version`
       # input is read first.
@@ -75,9 +82,17 @@ jobs:
         with:
           user: ${{ secrets.NUGET_USER }}
 
+      # --skip-duplicate lets a re-run finish a push that failed part way. A run that pushed
+      # NOTHING, because every package was already on nuget.org, is a re-run of a published
+      # version and fails rather than reporting green.
       - name: NuGet push
         run: |
+          set -o pipefail
           dotnet nuget push "artifacts/*.nupkg" \
             --api-key ${{ steps.login.outputs.NUGET_API_KEY }} \
             --source https://api.nuget.org/v3/index.json \
-            --skip-duplicate
+            --skip-duplicate | tee push.log
+          if ! grep -q "Your package was pushed" push.log; then
+            echo "::error::nothing was pushed: every package is already on nuget.org at this version"
+            exit 1
+          fi

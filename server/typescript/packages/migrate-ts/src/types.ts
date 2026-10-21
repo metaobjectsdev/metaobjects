@@ -562,6 +562,12 @@ export interface EmitResult {
    * mid-recreate source table.
    */
   recreatedTables: ReadonlySet<string>;
+  /**
+   * One line per notable thing the emitted SQL does that a reader of the plan should hear
+   * about (postgres: each view dropped and recreated, whose grants are carried over). The CLI
+   * prints them; absent or empty when there is nothing to say.
+   */
+  notices?: readonly string[];
 }
 
 export type Dialect = "postgres" | "sqlite" | "d1";

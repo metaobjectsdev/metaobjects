@@ -6,6 +6,7 @@ import com.metaobjects.manager.db.driver.MSSQLDriver;
 import com.metaobjects.manager.db.driver.MySQLDriver;
 import com.metaobjects.manager.db.driver.OracleDriver;
 import com.metaobjects.manager.db.driver.PostgresDriver;
+import com.metaobjects.manager.db.driver.SQLiteDriver;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
@@ -41,10 +42,12 @@ final class DatabaseDriverResolver {
                 return new OracleDriver();
             case "derby":
                 return new DerbyDriver();
+            case "sqlite":
+                return new SQLiteDriver();
             default:
                 throw new IllegalArgumentException(
                     "Unknown metaobjects.omdb.dialect '" + dialect +
-                    "'. Use one of: postgres, mysql, mssql, oracle, derby.");
+                    "'. Use one of: postgres, mysql, mssql, oracle, derby, sqlite.");
         }
     }
 
@@ -55,9 +58,10 @@ final class DatabaseDriverResolver {
         if (p.contains("sql server")) return new MSSQLDriver();
         if (p.contains("oracle")) return new OracleDriver();
         if (p.contains("derby")) return new DerbyDriver();
+        if (p.contains("sqlite")) return new SQLiteDriver();
         throw new IllegalStateException(
             "Could not auto-detect an OMDB driver for database product '" + product +
-            "'. Set metaobjects.omdb.dialect explicitly (postgres|mysql|mssql|oracle|derby).");
+            "'. Set metaobjects.omdb.dialect explicitly (postgres|mysql|mssql|oracle|derby|sqlite).");
     }
 
     private static String detectProduct(DataSource dataSource) {

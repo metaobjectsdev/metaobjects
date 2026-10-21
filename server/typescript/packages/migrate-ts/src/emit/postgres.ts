@@ -54,10 +54,12 @@ export function renderPostgres(changes: Change[]): EmitResult {
   const sorted = [...changes].sort((a, b) => STAGE_ORDER[a.kind] - STAGE_ORDER[b.kind]);
   const upStmts: string[] = [];
   const downStmts: string[] = [];
+  const recreated = recreatedViews(sorted);
+  const recreatedDown = recreatedViewsOnDown(sorted);
   for (const c of sorted) {
     const hazard = dataHazardOf(c);
-    upStmts.push(hazard === undefined ? renderUp(c) : `${hazardComment(hazard)}\n${renderUp(c)}`);
-    downStmts.push(renderDown(c));
+    upStmts.push(hazard === undefined ? renderUp(c, recreated) : `${hazardComment(hazard)}\n${renderUp(c, recreated)}`);
+    downStmts.push(renderDown(c, recreatedDown));
   }
   // Down runs in reverse order (so creates undo correctly w.r.t. FKs).
   const upHelpers = conversionHelpers(sorted, "up");
@@ -72,9 +74,118 @@ export function renderPostgres(changes: Change[]): EmitResult {
       ...[...downStmts].reverse(), ...downHelpers.map(dropHelper),
     ].join("\n\n"),
     recreatedTables: new Set(), // postgres alters in place; no recreate-and-copy
+    notices: [...recreated].sort().map((k) => `view ${k}: dropped and recreated; its grants are carried over.`),
   };
 }
 
+/** The key a recreated view is tracked by: `<schema>.<name>`, the default schema spelled out. */
+function viewKey(name: string, schema: string | undefined): string {
+  return `${schema ?? DEFAULT_DB_SCHEMA_POSTGRES}.${name}`;
+}
+
+/**
+ * The views this migration DROPS and creates again: a `drop-view` that a `create-view` or
+ * `replace-view` of the same view follows, and a `replace-view` the planner could not prove
+ * legal for `CREATE OR REPLACE` (written as DROP + CREATE). A DROP discards the privileges
+ * granted on the view, so each of these captures them before the drop and grants them again
+ * after the create (see {@link renderCaptureViewGrants}). A proven `CREATE OR REPLACE VIEW`
+ * keeps the view's privileges by itself and is not listed.
+ */
+function recreatedViews(changes: readonly Change[]): Set<string> {
+  const dropped = new Set<string>();
+  const created = new Set<string>();
+  const out = new Set<string>();
+  for (const c of changes) {
+    if (c.kind === "drop-view") dropped.add(viewKey(c.view, c.schema));
+    else if (c.kind === "create-view") created.add(viewKey(c.view.name, c.schema ?? c.view.schema));
+    else if (c.kind === "replace-view") {
+      const key = viewKey(c.view.name, c.schema);
+      created.add(key);
+      if (c.proven === undefined) out.add(key);
+    }
+  }
+  for (const k of dropped) if (created.has(k)) out.add(k);
+  return out;
+}
+
+/**
+ * The views the DOWN migration drops and creates again. The paired drop-view + create-view
+ * is the same set as UP (down drops the view UP created, then builds the one UP dropped). A
+ * `replace-view` is different: UP may be a proven CREATE OR REPLACE (grants kept) while its
+ * down cannot be (`proven.restorable` false), so down is DROP + CREATE and needs the
+ * capture and re-grant too. A replace whose down is an in-place replace, or has no body
+ * to restore, is not listed.
+ */
+function recreatedViewsOnDown(changes: readonly Change[]): Set<string> {
+  const out = recreatedViews(changes.filter((c) => c.kind !== "replace-view"));
+  for (const c of changes) {
+    if (c.kind !== "replace-view") continue;
+    const hasBody = c.restore?.sql !== undefined && c.restore.sql.trim().length > 0;
+    if (hasBody && c.proven?.restorable !== true) out.add(viewKey(c.view.name, c.schema));
+  }
+  return out;
+}
+
+/** Session-scoped holding table for the grants of a view that is dropped and created again. */
+const GRANTS_TABLE = "_mo_view_grants";
+
+/**
+ * Remember the privileges granted on a view the migration is about to drop. Reads `relacl`
+ * through `aclexplode`, skipping the owner's own implicit privileges (the recreated view's
+ * owner is whoever applies the migration). The holding table is a session temp table, so
+ * nothing outlives the migration's connection, and the capture needs no privilege beyond
+ * reading `pg_class`.
+ */
+function renderCaptureViewGrants(name: string, schema: string | undefined): string {
+  const qualified = quoteQualifiedView(name, schema).replace(/'/g, "''");
+  const key = viewKey(name, schema).replace(/'/g, "''");
+  const grantee = (col: string): string =>
+    `CASE WHEN ${col} = 0 THEN 'PUBLIC' ELSE quote_ident(pg_get_userbyid(${col})) END`;
+  return [
+    `CREATE TEMP TABLE IF NOT EXISTS ${GRANTS_TABLE} (view_key text, grantee text, privilege text, grantable boolean, column_name text);`,
+    // The view's own privileges (relacl), then the column-level ones (pg_attribute.attacl).
+    `INSERT INTO ${GRANTS_TABLE} (view_key, grantee, privilege, grantable, column_name)\n` +
+      `SELECT '${key}', ${grantee("a.grantee")}, a.privilege_type, a.is_grantable, NULL\n` +
+      `FROM pg_class c, aclexplode(c.relacl) a\n` +
+      `WHERE c.oid = to_regclass('${qualified}') AND c.relacl IS NOT NULL AND a.grantee <> c.relowner;`,
+    `INSERT INTO ${GRANTS_TABLE} (view_key, grantee, privilege, grantable, column_name)\n` +
+      `SELECT '${key}', ${grantee("x.grantee")}, x.privilege_type, x.is_grantable, t.attname\n` +
+      `FROM pg_class c JOIN pg_attribute t ON t.attrelid = c.oid, aclexplode(t.attacl) x\n` +
+      `WHERE c.oid = to_regclass('${qualified}') AND t.attacl IS NOT NULL AND NOT t.attisdropped AND x.grantee <> c.relowner;`,
+  ].join("\n");
+}
+
+/**
+ * Grant again, after the CREATE, what {@link renderCaptureViewGrants} captured: to the same
+ * grantees, WITH GRANT OPTION where it was held. The applier owns the new view, so this needs
+ * no superuser. Raises a NOTICE so the apply log shows it happened.
+ */
+function renderRestoreViewGrants(name: string, schema: string | undefined): string {
+  const qualified = quoteQualifiedView(name, schema).replace(/'/g, "''");
+  const key = viewKey(name, schema).replace(/'/g, "''");
+  return (
+    `-- grants on ${quoteQualifiedView(name, schema)} are carried over from before the drop\n` +
+    `DO $mo_grants$\nDECLARE r record; n integer := 0;\nBEGIN\n` +
+    `  IF to_regclass('pg_temp.${GRANTS_TABLE}') IS NOT NULL THEN\n` +
+    `    FOR r IN SELECT grantee, privilege, grantable, column_name FROM ${GRANTS_TABLE} WHERE view_key = '${key}' LOOP\n` +
+    `      IF r.column_name IS NULL THEN\n` +
+    `        EXECUTE format('GRANT %s ON %s TO %s%s', r.privilege, '${qualified}', r.grantee,\n` +
+    `          CASE WHEN r.grantable THEN ' WITH GRANT OPTION' ELSE '' END);\n` +
+    `        n := n + 1;\n` +
+    // A column grant is carried over only to a column the new view still has.
+    `      ELSIF EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid = to_regclass('${qualified}')\n` +
+    `                    AND attname = r.column_name AND attnum > 0 AND NOT attisdropped) THEN\n` +
+    `        EXECUTE format('GRANT %s (%I) ON %s TO %s%s', r.privilege, r.column_name, '${qualified}', r.grantee,\n` +
+    `          CASE WHEN r.grantable THEN ' WITH GRANT OPTION' ELSE '' END);\n` +
+    `        n := n + 1;\n` +
+    `      END IF;\n` +
+    `    END LOOP;\n` +
+    `    DELETE FROM ${GRANTS_TABLE} WHERE view_key = '${key}';\n` +
+    `  END IF;\n` +
+    `  RAISE NOTICE 'view ${qualified}: % privilege(s) carried over', n;\n` +
+    `END\n$mo_grants$;`
+  );
+}
 /**
  * `CREATE SCHEMA IF NOT EXISTS` for every non-default schema this migration creates
  * an object in, ahead of everything else it emits.
@@ -105,7 +216,7 @@ function createSchemaStmts(sorted: readonly Change[]): string[] {
   return [...schemas].sort().map((s) => `CREATE SCHEMA IF NOT EXISTS ${quote(s)};`);
 }
 
-function renderUp(c: Change): string {
+function renderUp(c: Change, recreated: ReadonlySet<string> = new Set()): string {
   switch (c.kind) {
     case "create-table":           return renderCreateTable(c.table);
     // #313 — every FORWARD drop is `IF EXISTS`. A committed chain must apply to a
@@ -173,9 +284,16 @@ function renderUp(c: Change): string {
     case "add-check":              return `ALTER TABLE ${quoteQualified(c.table, c.schema)} ADD CONSTRAINT ${quote(c.check.name)} CHECK (${c.check.expression});`;
     // Same `ALTER TABLE IF EXISTS` gap as `drop-fk` above.
     case "drop-check":             return `ALTER TABLE IF EXISTS ${quoteQualified(c.table, c.schema)} DROP CONSTRAINT IF EXISTS ${quote(c.check)};`;
-    case "create-view":            return renderCreateView(c.view, c.schema, /* orReplace */ false);
-    case "drop-view":              return renderDropView(c);
-    case "replace-view":           return renderReplaceView(c);
+    case "create-view": {
+      const key = viewKey(c.view.name, c.schema ?? c.view.schema);
+      const create = renderCreateView(c.view, c.schema, /* orReplace */ false);
+      return recreated.has(key) ? `${create}\n${renderRestoreViewGrants(c.view.name, c.schema ?? c.view.schema)}` : create;
+    }
+    case "drop-view": {
+      const drop = renderDropView(c);
+      return recreated.has(viewKey(c.view, c.schema)) ? `${renderCaptureViewGrants(c.view, c.schema)}\n${drop}` : drop;
+    }
+    case "replace-view":           return renderReplaceView(c, recreated);
   }
 }
 
@@ -217,7 +335,7 @@ function renderRenameTable(c: Extract<Change, { kind: "rename-table" }>, dir: "u
   return (up ? lines : [...lines].reverse()).join("\n\n");
 }
 
-function renderDown(c: Change): string {
+function renderDown(c: Change, recreated: ReadonlySet<string> = new Set()): string {
   switch (c.kind) {
     case "create-table":           return `DROP TABLE ${quoteQualified(c.table.name, c.table.schema)};`;
     case "drop-table": {
@@ -282,11 +400,26 @@ function renderDown(c: Change): string {
       return c.restore
         ? `ALTER TABLE ${quoteQualified(c.table, c.schema)} ADD CONSTRAINT ${quote(c.restore.name)} CHECK (${c.restore.expression});`
         : `-- WARNING: down migration cannot restore the original CHECK definition`;
-    case "create-view":            return `DROP VIEW ${quoteQualifiedView(c.view.name, c.schema)};`;
+    case "create-view": {
+      const name = c.view.name;
+      const schema = c.schema ?? c.view.schema;
+      const drop = `DROP VIEW ${quoteQualifiedView(name, c.schema)};`;
+      // Down drops the view UP created, then builds the one UP dropped: keep the grants across it.
+      return recreated.has(viewKey(name, schema)) ? `${renderCaptureViewGrants(name, c.schema)}\n${drop}` : drop;
+    }
     // The deparsed body introspection captured IS a valid restore payload.
-    case "drop-view":              return renderRestoreView(c.restore, c.view, c.schema, "create");
-    case "replace-view":
-      return renderRestoreView(c.restore, c.view.name, c.schema, c.proven?.restorable === true ? "replace" : "drop-and-create");
+    case "drop-view": {
+      const restore = renderRestoreView(c.restore, c.view, c.schema, "create");
+      return recreated.has(viewKey(c.view, c.schema)) && c.restore?.sql !== undefined
+        ? `${restore}\n${renderRestoreViewGrants(c.view, c.schema)}`
+        : restore;
+    }
+    case "replace-view": {
+      const restore = renderRestoreView(c.restore, c.view.name, c.schema, c.proven?.restorable === true ? "replace" : "drop-and-create");
+      return recreated.has(viewKey(c.view.name, c.schema))
+        ? `${renderCaptureViewGrants(c.view.name, c.schema)}\n${restore}\n${renderRestoreViewGrants(c.view.name, c.schema)}`
+        : restore;
+    }
   }
 }
 
@@ -633,10 +766,16 @@ function renderCreateView(v: ViewDescriptor, schema: string | undefined, orRepla
  * DROP is not `CASCADE`: if something depends on the view, Postgres says so instead of
  * destroying it.
  */
-function renderReplaceView(c: Extract<Change, { kind: "replace-view" }>): string {
+function renderReplaceView(c: Extract<Change, { kind: "replace-view" }>, recreated: ReadonlySet<string>): string {
   if (c.proven !== undefined) return renderCreateView(c.view, c.schema, /* orReplace */ true);
   const qualified = quoteQualifiedView(c.view.name, c.schema);
-  return `DROP VIEW IF EXISTS ${qualified};\n${renderCreateView(c.view, c.schema, /* orReplace */ false)}`;
+  const create = renderCreateView(c.view, c.schema, /* orReplace */ false);
+  // A DROP discards the view's privileges: capture them first, grant them again after the CREATE.
+  if (!recreated.has(viewKey(c.view.name, c.schema))) return `DROP VIEW IF EXISTS ${qualified};\n${create}`;
+  return (
+    `${renderCaptureViewGrants(c.view.name, c.schema)}\nDROP VIEW IF EXISTS ${qualified};\n${create}\n` +
+    renderRestoreViewGrants(c.view.name, c.schema)
+  );
 }
 
 function renderViewComment(qualifiedView: string, comment: string | null): string {

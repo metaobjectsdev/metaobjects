@@ -21,7 +21,7 @@ object ProgramsOverTimeView : Table("v_programs_over_time") {
     val createdAtQuarter = date("createdAtQuarter")
     val createdAtYear = date("createdAtYear")
     val programs = long("programs")
-    val avgPrice = decimal("avgPrice", 38, 18).nullable()
+    val avgPrice = portableDecimal("avgPrice", 38, 18).nullable()
     val cheapest = long("cheapest").nullable()
     val priciest = long("priciest").nullable()
 }

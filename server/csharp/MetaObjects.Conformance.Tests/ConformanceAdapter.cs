@@ -75,7 +75,8 @@ public sealed record ErrorEnvelopeRecord(
     IReadOnlyList<string> Files,
     string? JsonPath,
     string? Referrer = null,
-    string? Target = null);
+    string? Target = null,
+    string? Message = null);
 
 /// <summary>
 /// Result of loading a fixture's input directory.
@@ -219,7 +220,7 @@ public static class ConformanceAdapter
     }
 
     private static ErrorEnvelopeRecord BuildEnvelope(MetaError err, string inputDir) =>
-        BuildEnvelopeFromSource(err.Code.ToString(), err.Envelope, inputDir);
+        BuildEnvelopeFromSource(err.Code.ToString(), err.Envelope, inputDir) with { Message = err.Message };
 
     private static ErrorEnvelopeRecord BuildWarningEnvelope(LoaderWarning w, string inputDir) =>
         BuildEnvelopeFromSource(w.Code, w.Source, inputDir);

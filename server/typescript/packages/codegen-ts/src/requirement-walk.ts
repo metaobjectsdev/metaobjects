@@ -22,6 +22,7 @@ import {
   REQUIREMENT_ATTR_COUNTEREXAMPLE,
   REQUIREMENT_STATUSES_REQUIRING_LIVE_NODES,
   resolveClaim,
+  effectiveRequirementPackage,
 } from "@metaobjectsdev/metadata";
 import type { MetaData, MetaRequirement } from "@metaobjectsdev/metadata";
 
@@ -84,7 +85,7 @@ export function walkRequirements(root: MetaData): WalkedRequirement[] {
     const req = node as MetaRequirement;
     // Same referrer-package basis the CLI's checks use, so a bare reference binds
     // package-locally under the ADR-0042 contract.
-    const referrerPkg = node.package ?? node.fileDefaultPackage ?? "";
+    const referrerPkg = effectiveRequirementPackage(node);
 
     const targets: ResolvedClaim[] = [];
     for (const ref of req.implementedBy()) {

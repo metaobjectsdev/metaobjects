@@ -1523,20 +1523,74 @@ class KotlinExposedTableGeneratorTest {
             val src = table.readText()
             // PK is a native uuid column with the gen_random_uuid() server default.
             assertTrue(
-                "val id = uuid(\"id\").defaultExpression(CustomFunction(\"gen_random_uuid\", UUIDColumnType()))" in src,
+                "val id = portableUuid(\"id\").defaultExpression(CustomFunction(\"gen_random_uuid\", UUIDColumnType()))" in src,
                 "expected uuid PK with gen_random_uuid() default; saw:\n$src",
             )
             // The default-expression machinery is imported.
             assertTrue("import org.jetbrains.exposed.sql.CustomFunction" in src, src)
             assertTrue("import org.jetbrains.exposed.sql.UUIDColumnType" in src, src)
             // Non-key uuid stays a plain uuid column (no default), and required → not nullable.
-            assertTrue("val ownerId = uuid(\"owner_id\")\n" in src,
+            assertTrue("val ownerId = portableUuid(\"owner_id\")\n" in src,
                 "expected plain non-null uuid ownerId column; saw:\n$src")
             assertTrue("override val primaryKey = PrimaryKey(id)" in src, src)
             // gen_random_uuid() is NOT .autoIncrement() — they are distinct generation arms.
             assertTrue(".autoIncrement()" !in src, "uuid PK must not autoIncrement; saw:\n$src")
         } finally {
             outDir.toFile().deleteRecursively()
+        }
+    }
+
+    // === engine-portable uuid and decimal columns ============================
+
+    /**
+     * A `field.uuid` and a `field.decimal` column go through the package-shared
+     * `MetaPortableColumnTypes.kt` builders, which bind the uuid as text everywhere but Postgres and
+     * the decimal as a REAL on SQLite. A package with neither gets no such file. Exposed's own
+     * `uuid()` binds 16 bytes on MySQL and SQLite, so a filter on a text uuid column never matched there.
+     */
+    @Test fun `uuid and decimal columns use the engine portable column types and their support file`() {
+        fun emit(fields: String, api: String): java.io.File {
+            val fx = """{
+              "metadata.root": { "package": "acme::demo", "children": [
+                { "object.entity": { "name": "Asset", "children": [
+                    { "field.long": { "name": "id" } },
+                    $fields
+                    { "source.rdb": { "@table": "assets" } },
+                    { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } }
+                ] } }
+              ] }
+            }""".trimIndent()
+            val outDir = Files.createTempDirectory("ktbl-portable-")
+            val gen = KotlinExposedTableGenerator()
+            gen.setArgs(mapOf("outputDir" to outDir.toString(), "exposedApi" to api))
+            gen.execute(loadString("portable", fx))
+            return outDir.resolve("acme/demo").toFile()
+        }
+        for (api in listOf("0", "1")) {
+            val dir = emit(
+                """{ "field.uuid": { "name": "sku" } }, { "field.decimal": { "name": "price", "@precision": 10, "@scale": 2 } },""",
+                api,
+            )
+            try {
+                val table = dir.resolve("AssetTable.kt").readText()
+                assertTrue("val sku = portableUuid(\"sku\").nullable()" in table, table)
+                assertTrue("val price = portableDecimal(\"price\", 10, 2).nullable()" in table, table)
+                val support = dir.resolve("MetaPortableColumnTypes.kt").readText()
+                assertTrue("internal fun Table.portableUuid(name: String)" in support, support)
+                assertTrue("internal fun Table.portableDecimal(name: String, precision: Int, scale: Int)" in support, support)
+                assertTrue("if (isPostgres()) delegate.notNullValueToDB(value) else value.toString()" in support, support)
+                assertTrue("if (isSqlite()) value.toDouble() else delegate.notNullValueToDB(value)" in support, support)
+                val uuidImport = if (api == "1") "org.jetbrains.exposed.v1.core.java.UUIDColumnType" else "org.jetbrains.exposed.sql.UUIDColumnType"
+                assertTrue("import $uuidImport" in support, support)
+            } finally {
+                dir.parentFile.parentFile.deleteRecursively()
+            }
+        }
+        val none = emit("""{ "field.string": { "name": "label", "@maxLength": 20 } },""", "0")
+        try {
+            assertTrue(!none.resolve("MetaPortableColumnTypes.kt").exists(), "no uuid or decimal column, no portable support file")
+        } finally {
+            none.parentFile.parentFile.deleteRecursively()
         }
     }
 

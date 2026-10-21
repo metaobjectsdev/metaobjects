@@ -19,6 +19,7 @@ public class ProgramsOverTime
     [Column("programs")]
     public long Programs { get; set; }
     [Column("avgPrice")]
+    [System.Text.Json.Serialization.JsonConverter(typeof(DecimalWire.NullableDecimalJsonConverter))]
     public decimal? AvgPrice { get; set; }
     [Column("cheapest")]
     public long? Cheapest { get; set; }

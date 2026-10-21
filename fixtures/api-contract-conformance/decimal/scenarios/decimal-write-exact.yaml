@@ -1,0 +1,91 @@
+name: decimal-write-exact
+description: >
+  A decimal comes in as a string in the JSON-number grammar or as a JSON number (W2), and is
+  stored and answered as its canonical string. A value the column cannot hold (more fraction digits
+  than @scale, more integer digits than @precision - @scale) or a string that is not a number is
+  400 validation (W3); nothing is rounded. @precision 28 and @scale 10 here. Postgres and MySQL only (W4).
+engines: [postgres, mysql]
+requests:
+  - id: r1
+    method: POST
+    path: /api/entries
+    body: { bucket: W, amount: "12345678901234567.8901234567", flagged: false }
+    expect:
+      status: 201
+      body:
+        row:
+          amount: "12345678901234567.8901234567"
+        hasId: true
+  - id: r2
+    method: GET
+    path: /api/entries?filter[amount][eq]=12345678901234567.8901234567
+    expect:
+      status: 200
+      body:
+        length: 1
+  - id: r3
+    method: POST
+    path: /api/entries
+    body: { bucket: X, amount: 0.3, flagged: false }
+    expect:
+      status: 201
+      body:
+        row:
+          amount: "0.3"
+  - id: r4
+    method: POST
+    path: /api/entries
+    body: { bucket: X, amount: "1.5e1", flagged: false }
+    expect:
+      status: 201
+      body:
+        row:
+          amount: "15"
+  - id: r5
+    method: POST
+    path: /api/entries
+    body: { bucket: X, amount: "100.2500", flagged: false }
+    expect:
+      status: 201
+      body:
+        row:
+          amount: "100.25"
+  - id: r6
+    method: POST
+    path: /api/entries
+    body: { bucket: Y, amount: "12abc", flagged: false }
+    expect:
+      status: 400
+      body:
+        error: validation
+  - id: r7
+    method: POST
+    path: /api/entries
+    body: { bucket: Y, amount: "0.12345678901", flagged: false }
+    expect:
+      status: 400
+      body:
+        error: validation
+  - id: r8
+    method: POST
+    path: /api/entries
+    body: { bucket: Y, amount: "1234567890123456789", flagged: false }
+    expect:
+      status: 400
+      body:
+        error: validation
+  - id: r9
+    method: POST
+    path: /api/entries
+    body: { bucket: Y, amount: true, flagged: false }
+    expect:
+      status: 400
+      body:
+        error: validation
+  - id: r10
+    method: GET
+    path: /api/entries?filter[bucket][eq]=Y
+    expect:
+      status: 200
+      body:
+        length: 0

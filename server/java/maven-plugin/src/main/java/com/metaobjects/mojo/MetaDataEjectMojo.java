@@ -798,8 +798,13 @@ public class MetaDataEjectMojo extends AbstractMojo {
         }
     }
 
-    /** The staleness of the owned copy of {@code e}, over every class copied with it;
-     *  {@code null} when there is no such copy. */
+    /**
+     * The staleness of the owned copy of {@code e}: the generator is {@code identical} only when
+     * its file AND every companion it owns are. The companions are the classes copied with it,
+     * the page templates it reads (under the owned resources), the shared support rules it
+     * imports and the helper runtime its output imports. Each companion that differs is named,
+     * so the verdict says WHICH file to look at; {@code null} when there is no owned copy.
+     */
     private String ownedStaleness(Path codegenRoot, EjectSupport.Entry e) {
         String langDir = e.port == EjectSupport.Port.KOTLIN ? "kotlin" : "java";
         try {
@@ -811,24 +816,85 @@ public class MetaDataEjectMojo extends AbstractMojo {
             Path srcRoot = codegenRoot.resolve("src/main/" + langDir);
             String ownedPackage = srcRoot.relativize(found.getParent()).toString()
                     .replace(found.getFileSystem().getSeparator(), ".");
-            int behind = 0;
-            int ownedOnly = 0;
+            int[] totals = new int[2];
+            List<String> differing = new ArrayList<>();
             for (String source : e.sources()) {
                 Path file = found.resolveSibling(
                         EjectSupport.simpleNameOf(source) + "." + e.port.extension);
                 String owned = Files.exists(file) ? Files.readString(file, StandardCharsets.UTF_8) : "";
                 String reference = EjectSupport.rewriteCopiedImports(
                         readResource(e.resourceOf(source)), e.sources(), ownedPackage);
-                EjectSupport.Comparison cmp = EjectSupport.compare(owned, reference);
-                behind += cmp.behind;
-                ownedOnly += cmp.ownedOnly;
+                fold(totals, differing, EjectSupport.simpleNameOf(source) + "." + e.port.extension,
+                        EjectSupport.compare(owned, reference));
             }
-            return behind == 0 && ownedOnly == 0
+            if (e.port == EjectSupport.Port.JAVA) {
+                // The page templates the owned generator reads: a template missing from the owned
+                // resources counts as wholly behind.
+                Path resourceRoot = codegenRoot.resolve("src/main/resources")
+                        .resolve(EjectSupport.ownedTemplatePrefix(ownedPackage));
+                for (String ref : e.resources) {
+                    Path file = resourceRoot.resolve(ref + EjectSupport.TEMPLATE_EXTENSION);
+                    String owned = Files.exists(file) ? Files.readString(file, StandardCharsets.UTF_8) : "";
+                    String reference = readResource(GeneratorRegistry.EJECT_TEMPLATE_RESOURCE_ROOT
+                            + ref + EjectSupport.TEMPLATE_EXTENSION);
+                    fold(totals, differing, ref + EjectSupport.TEMPLATE_EXTENSION,
+                            EjectSupport.compare(owned, reference));
+                }
+                // The shared support rules the generator imports, found wherever the adopter put
+                // them (absent: not ejected, so nothing of the adopter's to be behind).
+                Set<String> support = new java.util.LinkedHashSet<>();
+                for (String source : e.sources()) {
+                    support.addAll(EjectSupport.supportFor(readResource(e.resourceOf(source))));
+                }
+                for (String simple : support) {
+                    Path owned = findOwned(codegenRoot, "java", simple + ".java");
+                    if (owned == null) continue;
+                    fold(totals, differing, simple + ".java", EjectSupport.compare(
+                            Files.readString(owned, StandardCharsets.UTF_8), readSupport(simple)));
+                }
+                // The helper runtime its output imports, where this module (or a child) owns it.
+                for (String simple : e.runtime) {
+                    Path owned = findOwnedRuntime(simple);
+                    if (owned == null) continue;
+                    fold(totals, differing, simple + ".java", EjectSupport.compare(
+                            Files.readString(owned, StandardCharsets.UTF_8),
+                            readResource(GeneratorRegistry.EJECT_RUNTIME_RESOURCE_ROOT + simple + ".java")));
+                }
+            }
+            return differing.isEmpty()
                     ? "[owned — identical]"
-                    : "[owned — DIFFERS: " + behind + " behind, " + ownedOnly + " of your own]";
-        } catch (IOException ex) {
+                    : "[owned — DIFFERS: " + totals[0] + " behind, " + totals[1] + " of your own; differing: "
+                        + String.join(", ", differing) + "]";
+        } catch (IOException | MojoExecutionException ex) {
             return "[owned — could not compare: " + ex.getMessage() + "]";
         }
+    }
+
+    /** Add one file's comparison to the running totals, naming it when it differs. */
+    private static void fold(int[] totals, List<String> differing, String name, EjectSupport.Comparison cmp) {
+        totals[0] += cmp.behind;
+        totals[1] += cmp.ownedOnly;
+        if (cmp.verdict != EjectSupport.Verdict.IDENTICAL) differing.add(name);
+    }
+
+    /** The owned runtime copy of {@code simple} in this module or one of its children, or {@code null}. */
+    private Path findOwnedRuntime(String simple) throws IOException {
+        if (project == null || project.getBasedir() == null) return null;
+        Path base = project.getBasedir().toPath();
+        List<Path> roots = new ArrayList<>();
+        roots.add(base.resolve("src/main/java"));
+        if (project.getModules() != null) {
+            for (String module : project.getModules()) roots.add(base.resolve(module).resolve("src/main/java"));
+        }
+        for (Path root : roots) {
+            if (!Files.isDirectory(root)) continue;
+            try (var walk = Files.walk(root)) {
+                for (Path p : (Iterable<Path>) walk.filter(f -> f.getFileName().toString().equals(simple + ".java"))::iterator) {
+                    if (EjectSupport.isOwnedRuntime(Files.readString(p, StandardCharsets.UTF_8))) return p;
+                }
+            }
+        }
+        return null;
     }
 
     // ------------------------------------------------------------------------------------

@@ -108,6 +108,9 @@ it is wrong, unless the reference is shown to be wrong first.
 | `l5-names-object` | `ERR_REQUIREMENT_L5_NOT_MEMBER` on a functional L5, for an object that exists and for one that does not. |
 | `l5-member-resolves-clean` | A functional L5 naming a field, an identity, and a view under a field: no diagnostics. |
 | `bad-level-out-of-range` | `ERR_REQUIREMENT_BAD_LEVEL` for levels 0 and 6 on functional requirements. The message has no architectural suffix. |
+| `package-packageless-file-beside-packaged` | A package-less requirements document beside packaged ones: the requirement's package is "", so a bare reference to an entity that lives only in `acme::shop` is `ERR_REQUIREMENT_DANGLING_REF`. A regression pin; every port agrees. |
+| `package-overlay-child-from-packageless-file` | A child contributed through an `overlay: true` requirement that declares its own package, from a package-less file: the child resolves in the nearest declaring ancestor's package (`acme::shop`), so the reference is clean. |
+| `package-overlay-child-from-other-package-file` | The same overlay shape from a file of a different package: the child still resolves in the declaring ancestor's package, so the reference is clean. |
 | `level-nesting` | `ERR_REQUIREMENT_LEVEL_NESTING` for a child at its parent's level and for a child above it. |
 | `arch-live-no-implementers` | `ERR_REQUIREMENT_ARCH_NO_IMPLEMENTERS` on a flat policy that is `live`, on one that is `partial`, and on a levelled L4 that is `live`: the rule is "may name the model and names nothing", not "has no level". |
 | `arch-planned-clean` | A `planned` flat policy with no implementer reports nothing. |

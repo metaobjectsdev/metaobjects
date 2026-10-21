@@ -17,8 +17,5 @@ public sealed class QueryScenarioTests
         await QueryScenarioRunner.RunAsync(scenario, pg);
     }
 
-    public static IEnumerable<object[]> Scenarios() =>
-        Directory.EnumerateFiles(CorpusPaths.QueriesDir, "*.yaml", SearchOption.TopDirectoryOnly)
-            .OrderBy(p => p, StringComparer.Ordinal)
-            .Select(p => new object[] { p });
+    public static IEnumerable<object[]> Scenarios() => CorpusPaths.ScenariosFor(ScenarioEngine.Postgres);
 }

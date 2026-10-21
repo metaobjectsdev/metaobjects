@@ -10,9 +10,7 @@
 //
 // The seed is `report/seed.json`. Every top-level key but `reports` is a base table, listed
 // parents first (`products` before `sales`, which references it), and is inserted in file
-// order so every foreign key holds: the views derive the report rows from them. `reports`
-// is what the seam lanes (Java, Kotlin, Python) serve in place of the views, and is not
-// used here.
+// order so every foreign key holds: the views derive the report rows from them.
 
 using System.Text.Json;        // JsonValueKind
 using System.Text.Json.Nodes;  // JsonNode / JsonObject / JsonArray
@@ -26,13 +24,19 @@ internal static class ReportFixture
     private const string SeedReportsKey = "reports";
 
     /// <summary>Execute the committed TypeScript-produced schema for this engine's artifact.</summary>
-    public static async Task ProvisionSchemaAsync(string connString, ScenarioEngine engine = ScenarioEngine.Postgres)
+    public static Task ProvisionSchemaAsync(string connString, ScenarioEngine engine = ScenarioEngine.Postgres) =>
+        ProvisionSchemaAsync(connString, engine,
+            ApiContractCorpusPaths.ReportSchemaSql, ApiContractCorpusPaths.ReportSchemaSqliteSql, ApiContractCorpusPaths.ReportSchemaMysqlSql);
+
+    /// <summary>Execute the committed schema artifact of <paramref name="engine"/> from the given per-engine paths.</summary>
+    public static async Task ProvisionSchemaAsync(
+        string connString, ScenarioEngine engine, string postgresSql, string sqliteSql, string mysqlSql)
     {
         var path = engine switch
         {
-            ScenarioEngine.Sqlite => ApiContractCorpusPaths.ReportSchemaSqliteSql,
-            ScenarioEngine.MySql => ApiContractCorpusPaths.ReportSchemaMysqlSql,
-            _ => ApiContractCorpusPaths.ReportSchemaSql,
+            ScenarioEngine.Sqlite => sqliteSql,
+            ScenarioEngine.MySql => mysqlSql,
+            _ => postgresSql,
         };
         await engine.ExecuteScriptAsync(connString, await File.ReadAllTextAsync(path));
     }

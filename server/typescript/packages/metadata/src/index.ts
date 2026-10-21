@@ -87,6 +87,7 @@ export {
 // Shared `@implementedBy` resolution — one resolver for the CLI's requirement
 // checks and codegen's requirement-test fan-out (FR-038).
 export {
+  effectiveRequirementPackage,
   resolveClaim,
   resolveClaimTarget,
   resolveMember,
@@ -308,6 +309,7 @@ export {
   splitChildTail,
   RefOverDropError,
   didYouMeanHint,
+  didYouMeanSuperHint,
   REF_BEARING_ATTR_NAMES,
 } from "./naming-refs.js";
 export { resolveReferences } from "./loader/resolve-references.js";
@@ -358,13 +360,18 @@ export type { Scope, CompiledScope } from "./scope.js";
 export { validateAttrSchema } from "./attr-schema-validate.js";
 export type { AttrSchemaValidationResult } from "./attr-schema-validate.js";
 
+// Guide URLs pinned to the running release's tag (prerelease → main).
+export {
+  DOCS_REPO_URL, DOCS_DEFAULT_REF, docsRefForVersion, docsBlobUrl, pinDocsRefs,
+} from "./docs-ref.js";
+
 // Naming — hoisted from runtime-ts in v0.2.3 so multiple consumers (runtime-ts, migrate-ts, codegen-ts)
 // share identical name resolution. See spec §4.1.
 export {
   toSnakeCase, toKebabCase, pluralize, pluralizeTableNameLegacy,
   applyColumnNamingStrategy, DEFAULT_COLUMN_NAMING_STRATEGY, COLUMN_NAMING_STRATEGIES,
   TABLE_NAMING_RULES, DEFAULT_PHYSICAL_NAMING, physicalNamingOf, applyTableNamingRule,
-  PHYSICAL_NAMING_MIGRATION_GUIDE, physicalNamingRemovedMessage,
+  PHYSICAL_NAMING_MIGRATION_GUIDE, PHYSICAL_NAMING_MIGRATION_GUIDE_PATH, physicalNamingRemovedMessage,
   resolveTableName, resolveColumnName, resolveTableSchema, resolveIndexName,
   primaryRdbSource, sourceAddressKey,
   buildNameMap,

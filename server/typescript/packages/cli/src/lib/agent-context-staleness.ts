@@ -6,9 +6,19 @@ import { join } from "node:path";
 // star one, so the root barrel now hands out the dependency manifest under this
 // name. `init.ts` already imports these from the subpath; this was the last site
 // reading them from the root.
-import { AGENT_CONTEXT_MANIFEST_PATH, agentContextStaleness, type Manifest } from "@metaobjectsdev/sdk/agent-context";
+import { AGENT_CONTEXT_MANIFEST_PATH, agentContextStaleness, hashAgentContextRoot, resolveAgentContextRoot, type Manifest } from "@metaobjectsdev/sdk/agent-context";
+import { docsRefForVersion } from "@metaobjectsdev/metadata";
 import { cliVersion } from "./version.js";
 import { log } from "./log.js";
+
+/** The installed content's hash, or nothing when the content tree cannot be found (version compare then). */
+export function currentContentHash(): { currentContentHash?: string } {
+  try {
+    return { currentContentHash: hashAgentContextRoot(resolveAgentContextRoot(), docsRefForVersion(cliVersion())) };
+  } catch {
+    return {};
+  }
+}
 
 /**
  * Advisory: if a scaffolded MetaObjects agent context predates this CLI version,
@@ -28,7 +38,7 @@ export function warnIfAgentContextStale(cwd: string): string | undefined {
       return undefined; // unreadable/corrupt — say nothing
     }
   }
-  const msg = agentContextStaleness({ manifest, currentVersion: cliVersion() });
+  const msg = agentContextStaleness({ manifest, currentVersion: cliVersion(), ...currentContentHash() });
   if (msg === null) return undefined;
   log.warn(msg);
   return msg;

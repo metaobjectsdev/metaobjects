@@ -1,6 +1,8 @@
 """Bridge the corpus to the Python loader."""
 from __future__ import annotations
 
+import dataclasses
+
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Optional
@@ -136,6 +138,8 @@ class ErrorEnvelopeRecord:
     json_path: Optional[str]
     referrer: Optional[str] = None
     target: Optional[str] = None
+    #: The error's message text; asserted only through ``messageIncludes``.
+    message: str = ""
 
 
 def _relativize(file_path: str, input_dir: Path) -> str:
@@ -268,7 +272,10 @@ def load_fixture_with_envelopes(
         return [compose_code], [compose_env], [], [], ""
     assert result is not None
     codes = [e.code.name for e in result.errors]
-    envelopes = [_build_envelope(e, input_dir) for e in result.errors]
+    envelopes = [
+        dataclasses.replace(_build_envelope(e, input_dir), message=str(e.message))
+        for e in result.errors
+    ]
     warning_envelopes = [
         _build_warning_envelope(w, input_dir) for w in result.get_envelope_warnings()
     ]

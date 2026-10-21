@@ -45,6 +45,7 @@ import type { MetaDataFormat, MetaDataSource } from "./meta-data-source.js";
 import { InMemoryStringSource } from "./meta-data-source.js";
 import type { ParseOptions, ParseResult, PendingOverlay } from "../parser-core.js";
 import { expandPackageForPath, applyPendingOverlays } from "../parser-core.js";
+import { didYouMeanSuperHint } from "../naming-refs.js";
 
 // Local mirror of DirectorySource's options shape. Deliberately inlined here
 // (instead of `import type`'d from ./sources/directory-source.js) so the
@@ -606,7 +607,7 @@ export class MetaDataLoader {
         }
         errors.push(
           new ParseError(
-            `the SuperClass '${failure.ref}' does not exist (referenced by ${failure.nodeFqn})`,
+            `the SuperClass '${failure.ref}' does not exist (referenced by ${failure.nodeFqn})${didYouMeanSuperHint(root, failure.ref)}`,
             {
               code: "ERR_UNRESOLVED_SUPER",
               source: resolvedSource(failure.source, failure.nodeFqn, failure.ref),

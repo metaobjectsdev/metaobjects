@@ -138,6 +138,15 @@ const BASE_TABLES: ReadonlyArray<{ name: string; ddl: string }> = [
       "refunded" boolean
     );`,
   },
+  {
+    name: "tickets",
+    ddl: `
+    CREATE TABLE IF NOT EXISTS "tickets" (
+      "id" bigserial PRIMARY KEY,
+      "tags" text[],
+      "attrs" jsonb
+    );`,
+  },
 ];
 
 export interface GeneratedReportServerHandle {
@@ -158,6 +167,7 @@ export const SERVED_REPORTS = [
   { name: "SalesByCategory", registrar: "salesByCategoryRoutes" },
   { name: "SalesBySku", registrar: "salesBySkuRoutes" },
   { name: "ProductRefunds", registrar: "productRefundsRoutes" },
+  { name: "TicketsByTags", registrar: "ticketsByTagsRoutes" },
 ] as const;
 
 export async function startGeneratedReportServer(

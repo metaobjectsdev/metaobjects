@@ -13,7 +13,9 @@ public class MeasurementStatsFilled
     [Column("readings")]
     public long Readings { get; set; }
     [Column("avgPreciseKgOrMinusOne")]
+    [System.Text.Json.Serialization.JsonConverter(typeof(DecimalWire.DecimalJsonConverter))]
     public decimal AvgPreciseKgOrMinusOne { get; set; }
     [Column("maxPreciseKgOrZero")]
+    [DecimalWire.Declared(9, 4)]
     public decimal MaxPreciseKgOrZero { get; set; }
 }

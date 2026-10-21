@@ -59,6 +59,31 @@ class QueryScenario:
     source_path: str
     seed_data: str | None
     queries: list[QuerySpec]
+    #: ``seed-data-engine:`` -- a seed spelled for one engine (keyed ``sqlite`` / ``mysql``),
+    #: which wins over ``seed-data`` for that engine. Only a seed that cannot be shared
+    #: (an instant relative to the database clock) carries one.
+    seed_data_engine: dict[str, str] | None = None
+    #: ``engines:`` -- EXACT when present: only the listed engines run the file. Absent keeps
+    #: the historical rule (Postgres runs every scenario, the others the ``report-*`` ones).
+    engines: tuple[str, ...] | None = None
+
+    def runs_on(self, engine: str) -> bool:
+        if self.engines is not None:
+            return engine in self.engines
+        return engine == "postgres" or self.name.startswith("report-")
+
+KNOWN_ENGINES = frozenset({"postgres", "mysql", "sqlite", "d1"})
+
+
+def _parse_engines(raw: object, path: Path) -> tuple[str, ...] | None:
+    if raw is None:
+        return None
+    if not isinstance(raw, list) or not raw or not all(isinstance(e, str) for e in raw):
+        raise ValueError(f"{path.name}: engines must be a non-empty list of engine names, got {raw!r}")
+    unknown = [e for e in raw if e not in KNOWN_ENGINES]
+    if unknown:
+        raise ValueError(f"{path.name}: unknown engine(s) {unknown}; known: {sorted(KNOWN_ENGINES)}")
+    return tuple(raw)
 
 
 # ----------------------------------------------------------------------------
@@ -107,4 +132,6 @@ def _parse_query(path: Path) -> QueryScenario:
         source_path=str(path),
         seed_data=raw.get("seed-data"),
         queries=queries,
+        seed_data_engine=raw.get("seed-data-engine"),
+        engines=_parse_engines(raw.get("engines"), path),
     )

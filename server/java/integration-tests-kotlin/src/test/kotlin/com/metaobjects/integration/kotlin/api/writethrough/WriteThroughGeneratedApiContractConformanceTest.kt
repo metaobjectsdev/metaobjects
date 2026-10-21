@@ -43,7 +43,7 @@ internal class WriteThroughGeneratedApiContractConformanceTest {
     }
 
     companion object {
-        private val MAPPER = ObjectMapper()
+        private val MAPPER = ObjectMapper().enable(com.fasterxml.jackson.databind.DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS)
 
         @Suppress("UNCHECKED_CAST")
         private val SEED: Pair<List<Map<String, Any?>>, List<Map<String, Any?>>> by lazy {

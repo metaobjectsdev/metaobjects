@@ -92,7 +92,7 @@ public class ScalarArrayCodegenTests
     };
 
     // -------------------------------------------------------------------------
-    // EntityGenerator — scalar array → ICollection<T>
+    // EntityGenerator — scalar array → IList<T>
     // -------------------------------------------------------------------------
 
     [Fact]
@@ -101,10 +101,10 @@ public class ScalarArrayCodegenTests
         var ctx = Ctx(Load(ScalarArrayModel));
         var src = Assert.Single(new EntityGenerator().Generate(ctx)).Content;
 
-        // ICollection<string> with an explicit List<string> initializer (uniform with
+        // IList<string> with an explicit List<string> initializer (uniform with
         // the M:N-nav and object-isArray emission paths; the property type is the
         // wider interface so adopters can assign string[]/HashSet/etc.).
-        Assert.Contains("public ICollection<string> Tags { get; set; } = new List<string>();", src);
+        Assert.Contains("public IList<string> Tags { get; set; } = new List<string>();", src);
         // Guard: the scalar form must NOT appear.
         Assert.DoesNotContain("public string? Tags", src);
         Assert.DoesNotContain("public string Tags", src);
@@ -121,7 +121,7 @@ public class ScalarArrayCodegenTests
     }
 
     // -------------------------------------------------------------------------
-    // EntityGenerator — enum array → ICollection<EnumType>
+    // EntityGenerator — enum array → IList<EnumType>
     // -------------------------------------------------------------------------
 
     [Fact]
@@ -130,8 +130,8 @@ public class ScalarArrayCodegenTests
         var ctx = Ctx(Load(EnumArrayModel));
         var src = Assert.Single(new EntityGenerator().Generate(ctx)).Content;
 
-        // ICollection<OrderStatuses> with an explicit List<OrderStatuses> initializer.
-        Assert.Contains("public ICollection<OrderStatuses> Statuses { get; set; } = new List<OrderStatuses>();", src);
+        // IList<OrderStatuses> with an explicit List<OrderStatuses> initializer.
+        Assert.Contains("public IList<OrderStatuses> Statuses { get; set; } = new List<OrderStatuses>();", src);
         // Guard: the scalar form must NOT appear.
         Assert.DoesNotContain("public OrderStatuses? Statuses", src);
     }
@@ -216,8 +216,8 @@ public class ScalarArrayCodegenTests
         var ctx = Ctx(Load(UuidArrayModel));
         var src = Assert.Single(new EntityGenerator().Generate(ctx)).Content;
 
-        // field.uuid isArray:true → ICollection<Guid> with List<Guid> initializer.
-        Assert.Contains("public ICollection<Guid> Refs { get; set; } = new List<Guid>();", src);
+        // field.uuid isArray:true → IList<Guid> with List<Guid> initializer.
+        Assert.Contains("public IList<Guid> Refs { get; set; } = new List<Guid>();", src);
         // Guard: the scalar form must NOT appear.
         Assert.DoesNotContain("public Guid? Refs", src);
         Assert.DoesNotContain("public Guid Refs", src);

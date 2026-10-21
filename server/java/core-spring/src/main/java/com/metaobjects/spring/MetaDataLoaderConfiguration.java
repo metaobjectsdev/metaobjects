@@ -1,6 +1,7 @@
 package com.metaobjects.spring;
 
 import com.metaobjects.config.NeutralConfig;
+import com.metaobjects.database.PhysicalNaming;
 import com.metaobjects.loader.LoaderOptions;
 import com.metaobjects.loader.MetaDataLoader;
 
@@ -8,6 +9,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.DefaultResourceLoader;
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
@@ -73,8 +75,10 @@ public class MetaDataLoaderConfiguration {
      * (never a directory) — e.g. {@code classpath:.metaobjects/config.json} or
      * {@code file:/opt/app/.metaobjects/config.json}. Parsed with {@link NeutralConfig};
      * never a bare rule value ({@code naming.columns}/{@code naming.tables}) configured
-     * here directly — ADR-0058 removed every such setter. Absent means the default
-     * ({@code snake_case}/{@code snake_case}), same as a project with no config file.
+     * here directly — ADR-0058 removed every such setter. Accepts a Spring location
+     * ({@code classpath:}, {@code file:}) or a plain file path. Absent means
+     * {@code classpath:.metaobjects/config.json} when that resource exists, else the
+     * default ({@code snake_case}/{@code snake_case}) with one WARN.
      */
     private String physicalNamingConfig;
 
@@ -107,29 +111,50 @@ public class MetaDataLoaderConfiguration {
         // Preserve the pre-unification strict=true default (the no-options
         // fromUris overload routes through createManual which uses strict=false).
         LoaderOptions opts = LoaderOptions.create(false, false, true);
-        MetaDataLoader loader = MetaDataLoader.fromUris("applicationLoader", sourceURIs, opts);
-        applyPhysicalNaming(loader);
-        return loader;
+        // ADR-0058: the naming is resolved BEFORE the load call so the loader's own
+        // "no config found" WARN fires only when neither this property, the default
+        // classpath:.metaobjects/config.json, nor the file: walk found a project config.
+        return MetaDataLoader.fromUris("applicationLoader", sourceURIs, opts, resolvePhysicalNaming());
     }
 
+    /** The default location read when {@code metaobjects.physical-naming-config} is unset. */
+    static final String DEFAULT_PHYSICAL_NAMING_CONFIG = "classpath:.metaobjects/config.json";
+
     /**
-     * ADR-0058 — reads {@link #physicalNamingConfig} (when set) and sets the project's
-     * physical-naming rules on the loaded root, so this classpath-runtime loader resolves
-     * the SAME rule codegen resolved against the project directory. A caller that never
-     * sets {@code metaobjects.physical-naming-config} gets the default, exactly like a
-     * project directory with no {@code .metaobjects/config.json}.
+     * ADR-0058 — the project's physical-naming rules from {@link #physicalNamingConfig}
+     * (a {@code classpath:}/{@code file:}/URL location, or a plain file path), else from
+     * {@value #DEFAULT_PHYSICAL_NAMING_CONFIG} when that resource exists, else {@code null}
+     * (the loader then walks up from a {@code file:} source and warns once if it finds
+     * nothing). A configured location that does not exist is an error, never a silent default.
      */
-    private void applyPhysicalNaming(MetaDataLoader loader) throws IOException {
-        if (physicalNamingConfig == null || physicalNamingConfig.isBlank()) return;
-        Resource resource = new DefaultResourceLoader().getResource(physicalNamingConfig);
+    private PhysicalNaming resolvePhysicalNaming() throws IOException {
+        String location = physicalNamingConfig;
+        boolean explicit = location != null && !location.isBlank();
+        if (!explicit) location = DEFAULT_PHYSICAL_NAMING_CONFIG;
+        Resource resource = locate(location.trim());
+        if (!resource.exists()) {
+            if (explicit) {
+                throw new IllegalStateException("metaobjects.physical-naming-config points at "
+                    + location + ", which does not exist");
+            }
+            return null;
+        }
         String content;
         try (InputStream in = resource.getInputStream()) {
             content = new String(in.readAllBytes(), StandardCharsets.UTF_8);
         }
-        NeutralConfig cfg = NeutralConfig.parse(content, physicalNamingConfig);
-        loader.getRoot().setPhysicalNaming(cfg.getPhysicalNaming());
+        return NeutralConfig.parse(content, location).getPhysicalNaming();
     }
-    
+
+    /** A Spring location when it has a scheme, otherwise a file-system path. */
+    private static Resource locate(String location) {
+        DefaultResourceLoader loader = new DefaultResourceLoader();
+        if (location.startsWith("classpath:") || location.matches("^[A-Za-z][A-Za-z0-9+.-]+:.*")) {
+            return loader.getResource(location);
+        }
+        return new FileSystemResource(location);
+    }
+
     /**
      * Example: Database metadata loader bean
      * 

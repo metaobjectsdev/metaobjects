@@ -14,10 +14,10 @@
  *      `SELECT * FROM <view>` under Table I's normalization. A report with `@spine` is a Cube
  *      view, queried by its own name, and its rows include the spine rows with no facts;
  *   4. loads every case of the mapping corpus that has an expected tree into the same Cube and
- *      requires each to compile, which turns the shapes no live query reaches (alias cubes, a TPH
- *      subtype's `sql`, one-to-one joins, Jinja-escaped text) into executed checks. The MySQL
+ *      requires each to compile (alias cubes, a TPH subtype's `sql`, one-to-one joins and the int-backed
+ *      enum's `CASE` are then EXECUTED by cube-model-shapes.live.ts; Jinja-escaped text is read back here). The MySQL
  *      cases are loaded too: Cube's `/v1/meta` compile runs no SQL, so the Postgres data source
- *      does not stop a MySQL model from compiling;
+ *      does not stop a MySQL model from compiling (cube-model-mysql-cases.live.ts then EXECUTES them on MySQL);
  *   5. reads the `escaping` case's SQL back through `/v1/sql` and requires each of its literals,
  *      and its braced column, to reach the SQL exactly as the report view writes them (Cube
  *      compiles every `sql` as a template literal, so a missed escape changes the value);
@@ -25,7 +25,8 @@
  *      operand that declares `@default` to divide that operand's COALESCE, as the view does.
  *
  * It is `*.live.ts`, so no directory-walking `bun test` picks it up: it runs only by its path,
- * from `bun run test:cube` (the `cube` lane of scripts/ci-local.sh). Without docker every test is
+ * from `bun run test:cube` (the `cube` lane of scripts/ci-local.sh), as do the MySQL, MySQL-cases and
+ * production-mode files beside it. Without docker every test is
  * SKIPPED behind a banner; nothing here ever passes without having run.
  */
 
@@ -75,7 +76,8 @@ import {
   generatedSql,
   fromCubeRow,
   fromViewRow,
-  type ExpectedReport,
+  CANONICAL_REPORTS,
+  selectViewPg,
   getJson,
   getMeta,
   load,
@@ -109,33 +111,7 @@ const CORPUS_CASES = corpusCasesWithTree();
 const CORPUS_BUDGET_MS = CORPUS_CASES.length * CASE_BUDGET_MS;
 
 
-const TABLE_I: readonly ExpectedReport[] = [
-  { report: "ProgramMinutes", view: "v_program_minutes", preAggregation: "dev_pre_aggregations.week__program_minutes", rows: 3 },
-  { report: "FitnessTotals", view: "v_fitness_totals", preAggregation: "dev_pre_aggregations.week__fitness_totals", rows: 1 },
-  { report: "ProgramsByMonth", view: "v_programs_by_month", preAggregation: "dev_pre_aggregations.program__programs_by_month", rows: 5 },
-  { report: "ProgramsByWeek", view: "v_programs_by_week", preAggregation: "dev_pre_aggregations.program__programs_by_week", rows: 5 },
-  { report: "RecentPrograms", view: "v_recent_programs", preAggregation: undefined, rows: 1 },
-  { report: "AssetActivity", view: "v_asset_activity", preAggregation: "dev_pre_aggregations.asset__asset_activity", rows: 2 },
-  { report: "ProgramRoster", view: "v_program_roster", preAggregation: undefined, rows: 11 },
-  { report: "ProgramLongWeeks", view: "v_program_long_weeks", preAggregation: undefined, rows: 11 },
-  { report: "ProgramFlags", view: "v_program_flags", preAggregation: "dev_pre_aggregations.week__program_flags", rows: 3 },
-  { report: "ProgramFlagRoster", view: "v_program_flag_roster", preAggregation: undefined, rows: 11 },
-  { report: "FitnessTotalsFilled", view: "v_fitness_totals_filled", preAggregation: "dev_pre_aggregations.week__fitness_totals_filled", rows: 1 },
-  { report: "MeasurementStats", view: "v_measurement_stats", preAggregation: "dev_pre_aggregations.measurement__measurement_stats", rows: 1 },
-  { report: "MeasurementStatsFilled", view: "v_measurement_stats_filled", preAggregation: "dev_pre_aggregations.measurement__measurement_stats_filled", rows: 1 },
-  { report: "AssetDays", view: "v_asset_days", preAggregation: "dev_pre_aggregations.asset__asset_days", rows: 1 },
-  { report: "AllTypesBreakdown", view: "v_all_types_breakdown", preAggregation: undefined, rows: 2 },
-  { report: "ProgramsOverTime", view: "v_programs_over_time", preAggregation: undefined, rows: 7, unusedRollup: true },
-  { report: "LiveIntroPrograms", view: "v_live_intro_programs", preAggregation: "dev_pre_aggregations.program__live_intro_programs", rows: 2 },
-  // No dimension, no row in scope: the view reads one row with the count 0 and the default; Cube
-  // sums the (empty) rollup, which is null for every measure, the count and the default included.
-  { report: "ProgramsEmptyScope", view: "v_programs_empty_scope", preAggregation: "dev_pre_aggregations.program__programs_empty_scope", rows: 1, cubeRows: [{ avgPriceOrMinusOne: null, programs: null }] },
-  { report: "WeekShapes", view: "v_week_shapes", preAggregation: "dev_pre_aggregations.week__week_shapes", rows: 3 },
-  { report: "SessionsByProgram", view: "v_sessions_by_program", preAggregation: "dev_pre_aggregations.session__sessions_by_program", rows: 3 },
-  { report: "ProgramSessions", view: "v_program_sessions", preAggregation: undefined, rows: 11 },
-  { report: "NodesByParent", view: "v_nodes_by_parent", preAggregation: "dev_pre_aggregations.node__nodes_by_parent", rows: 3 },
-  { report: "AuthsByKind", view: "v_auths_by_kind", preAggregation: "dev_pre_aggregations.auth__auths_by_kind", rows: 3 },
-];
+const TABLE_I = CANONICAL_REPORTS;
 
 // ---------------------------------------------------------------------------------------------
 // Skip semantics: never a silent pass.
@@ -269,7 +245,9 @@ describe(`cube-model live check (${CUBE_IMAGE}, development mode)`, () => {
       // Table I's rollup column agrees with the golden: a rollup named after the report on its
       // `@from` cube exactly when Table I expects Cube to answer from one.
       const cube = reportShape(report, requireCanonical()).from.name;
-      expect(declaredRollups(golden, cube).includes(want.report)).toBe(want.preAggregation !== undefined || want.unusedRollup === true);
+      // (A report listing one time dimension at several grains has one rollup per grain: `<report>_<grain>`.)
+      const hasRollup = declaredRollups(golden, cube).some((n) => n === want.report || n.startsWith(`${want.report}_`));
+      expect(hasRollup).toBe(want.preAggregation !== undefined);
       // And a Cube view named after the report exactly when it declares @spine.
       expect(views.includes(want.report)).toBe(reportSpine(report) !== undefined);
     }
@@ -286,7 +264,7 @@ describe(`cube-model live check (${CUBE_IMAGE}, development mode)`, () => {
 
       // Rows first, so a rollup mismatch can say whether the numbers were right anyway.
       const cubeRows = sortRows(result.data.map((row) => fromCubeRow(row, plan, GEN_CONFIG.dialect)), plan);
-      const viewRows = sortRows(selectView(s, want.view).map((row) => fromViewRow(row, plan, want.view)), plan);
+      const viewRows = sortRows(selectViewPg(s, want.view).map((row) => fromViewRow(row, plan, want.view)), plan);
       const rowsMatch = Bun.deepEquals(cubeRows, viewRows);
       const used = Object.keys(result.usedPreAggregations ?? {}).sort();
       const wantUsed = want.preAggregation === undefined ? [] : [want.preAggregation];
@@ -422,24 +400,6 @@ function findReport(name: string): MetaObject {
   const report = requireCanonical().objects().find((o) => servedReport(o) && o.name === name);
   if (report === undefined) throw new Error(`the canonical model serves no report '${name}'`);
   return report;
-}
-
-/**
- * `SELECT * FROM <view>` through psql, every value as the TEXT Postgres prints for it (a numeric
- * keeps its scale, a timestamptz its offset), in a UTC session.
- */
-function selectView(s: CubeStack, view: string): Array<Record<string, string | null>> {
-  const out = s.psql(
-    `SET TIME ZONE 'UTC';\n` +
-      `SELECT coalesce(json_agg(t.o), '[]'::json)::text FROM (\n` +
-      `  SELECT (SELECT json_object_agg(e.key, e.value) FROM json_each_text(row_to_json(v)) e) AS o\n` +
-      `  FROM "${view}" v\n` +
-      `) t;\n`,
-  );
-  const line = out.trim().split("\n").filter((l) => l.trim() !== "").pop() ?? "";
-  const parsed: unknown = JSON.parse(line);
-  if (!Array.isArray(parsed)) throw new Error(`${view}: psql did not print a JSON array: ${line.slice(0, 200)}`);
-  return parsed as Array<Record<string, string | null>>;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -590,7 +550,7 @@ function declaredRollups(tree: ReadonlyMap<string, string>, cube: string): strin
 /**
  * Mapping-corpus cases with an `expected/` tree, of either dialect. Compiling a model runs no SQL
  * (`/v1/meta` neither queries the data source nor builds a rollup), so a MySQL case compiles
- * against the Postgres data source as well. Its SQL is held by the golden, not executed.
+ * against the Postgres data source as well. Its SQL is executed by cube-model-mysql-cases.live.ts.
  */
 function corpusCasesWithTree(): string[] {
   return readdirSync(CUBE_CORPUS_DIR)
