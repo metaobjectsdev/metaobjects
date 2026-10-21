@@ -85,8 +85,25 @@
           },
           "generators": {
             "type": "array",
-            "items": { "type": "string" },
-            "description": "Stable generator names (see `metaobjects gen --list`). Required: there is no default suite, so a target that names none generates nothing and `verify --codegen` checks nothing."
+            "items": {
+              "oneOf": [
+                { "type": "string" },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["name"],
+                  "properties": {
+                    "name": { "type": "string", "minLength": 1, "description": "A stable generator name, or an owned copy as \"module:symbol\"." },
+                    "handEdits": {
+                      "enum": ["keep", "overwrite"],
+                      "default": "keep",
+                      "description": "What a hand edit to this generator's output gets. keep (the default) refuses the edited file, and an edited file no generator emits any more. overwrite regenerates over the edit and deletes such an orphan, naming each one."
+                    }
+                  }
+                }
+              ]
+            },
+            "description": "Generators to run: stable names (see `metaobjects gen --list`), or {name, handEdits} mappings. Required: there is no default suite, so a target that names none generates nothing and `verify --codegen` checks nothing."
           },
           "entities": {
             "type": "array",

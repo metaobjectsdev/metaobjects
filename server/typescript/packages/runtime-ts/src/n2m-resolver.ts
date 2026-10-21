@@ -22,6 +22,7 @@ import type { ColumnNamingStrategy, MetaData, MetaObject, MetaRoot } from "@meta
 import {
   TYPE_OBJECT, TYPE_FIELD, TYPE_RELATIONSHIP,
   RELATIONSHIP_ATTR_CARDINALITY, RELATIONSHIP_ATTR_OBJECT_REF, RELATIONSHIP_ATTR_THROUGH,
+  refTarget,
   CARDINALITY_MANY,
   DEFAULT_COLUMN_NAMING_STRATEGY,
   resolveColumnName,
@@ -68,8 +69,9 @@ export function resolveN2mDescriptor(
     if (child.attr(RELATIONSHIP_ATTR_THROUGH) === undefined) continue; // 1:N many — not M:N.
 
     const rel = child as MetaRelationship;
-    const targetEntityName = rel.attr(RELATIONSHIP_ATTR_OBJECT_REF) as string | undefined;
-    const joinEntityName = rel.attr(RELATIONSHIP_ATTR_THROUGH) as string | undefined;
+    // ADR-0059 R7: the loader bound @objectRef/@through once; read those targets.
+    const targetEntityName = refTarget(rel, RELATIONSHIP_ATTR_OBJECT_REF)?.name;
+    const joinEntityName = refTarget(rel, RELATIONSHIP_ATTR_THROUGH)?.name;
     if (!targetEntityName || !joinEntityName) {
       throw new MetadataError(
         `M:N relationship '${relationName}' on '${sourceEntity.name}' requires @objectRef + @through`,

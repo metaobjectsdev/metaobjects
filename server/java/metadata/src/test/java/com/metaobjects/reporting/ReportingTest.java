@@ -117,13 +117,13 @@ public class ReportingTest extends SharedRegistryTestBase {
 
         MetaDimension program = member(purchase, MetaDimension.class, "program");
         assertFalse(program.isTime());
-        assertEquals("Purchase.programId", program.getOf());
+        assertEquals("acme::shop::Purchase.programId", program.getOf());
         assertNull(program.getVia());
         assertEquals(List.of(), program.getGrains());
 
         MetaDimension title = member(purchase, MetaDimension.class, "programTitle");
-        assertEquals("Program.title", title.getOf());
-        assertEquals("Purchase.program", title.getVia());
+        assertEquals("acme::shop::Program.title", title.getOf());
+        assertEquals("acme::shop::Purchase.program", title.getVia());
 
         MetaDimension purchasedAt = member(purchase, MetaDimension.class, "purchasedAt");
         assertTrue(purchasedAt.isTime());
@@ -138,7 +138,7 @@ public class ReportingTest extends SharedRegistryTestBase {
     public void aBareStringOfIsAOneColumnList() throws IOException {
         MetaObject purchase = object(loadFixture("reporting-vocabulary"), "Purchase");
         MetaMeasure purchases = member(purchase, MetaMeasure.class, "purchases");
-        assertEquals(List.of("Purchase.id"), purchases.getOfColumns());
+        assertEquals(List.of("acme::shop::Purchase.id"), purchases.getOfColumns());
         assertEquals(ReportingConstants.AGG_COUNT, purchases.getAgg());
         assertFalse(purchases.isDistinct());
         assertEquals("active", purchases.getSegmentName());
@@ -172,8 +172,8 @@ public class ReportingTest extends SharedRegistryTestBase {
     public void aListOfIsTheTupleForm() throws IOException {
         MetaObject workout = object(loadFixture("reporting-vocabulary"), "WorkoutEvent");
         MetaMeasure days = member(workout, MetaMeasure.class, "daysEngaged");
-        assertEquals(List.of("WorkoutEvent.programId", "WorkoutEvent.customerEmail", "WorkoutEvent.weekNumber",
-                        "WorkoutEvent.dayNumber"),
+        assertEquals(List.of("acme::shop::WorkoutEvent.programId", "acme::shop::WorkoutEvent.customerEmail", "acme::shop::WorkoutEvent.weekNumber",
+                        "acme::shop::WorkoutEvent.dayNumber"),
                 days.getOfColumns());
         assertTrue(days.isDistinct());
         assertFalse(days.isRatio());
@@ -204,7 +204,7 @@ public class ReportingTest extends SharedRegistryTestBase {
         MetaRoot root = loadFixture("reporting-inherited-members");
         MetaObject workout = object(root, "WorkoutEvent");
         MetaDimension occurredAt = member(workout, MetaDimension.class, "occurredAt");
-        assertEquals("BaseEvent.occurredAt", occurredAt.getOf());
+        assertEquals("acme::shop::BaseEvent.occurredAt", occurredAt.getOf());
         assertEquals(List.of("day", "week"), occurredAt.getGrains());
         assertNotNull(member(workout, MetaMeasure.class, "events"));
         // Same-named field and dimension coexist on the base: children are keyed by type + name.
@@ -220,7 +220,7 @@ public class ReportingTest extends SharedRegistryTestBase {
     public void reportAccessors() throws IOException {
         MetaRoot root = loadFixture("reporting-vocabulary");
         MetaObject daily = object(root, "DailyRevenue");
-        assertEquals("Purchase", ReportAccessors.reportFrom(daily));
+        assertEquals("acme::shop::Purchase", ReportAccessors.reportFrom(daily));
         assertEquals(List.of(new ReportDimensionItem("purchasedAt", "day")), ReportAccessors.reportDimensionItems(daily));
         assertEquals(List.of("purchases", "revenue"), ReportAccessors.reportMeasureNames(daily));
 
@@ -233,8 +233,8 @@ public class ReportingTest extends SharedRegistryTestBase {
     @Test
     public void reportSpineIsTheDeclaredPathAndNullWhenNoneIsDeclared() throws IOException {
         MetaRoot root = loadFixture("reporting-spine-and-default");
-        assertEquals("Purchase.program", ReportAccessors.reportSpine(object(root, "ProgramSales")));
-        assertEquals("Purchase.program.catalog", ReportAccessors.reportSpine(object(root, "CatalogSales")));
+        assertEquals("acme::shop::Purchase.program", ReportAccessors.reportSpine(object(root, "ProgramSales")));
+        assertEquals("acme::shop::Purchase.program.catalog", ReportAccessors.reportSpine(object(root, "CatalogSales")));
         assertNull(ReportAccessors.reportSpine(object(root, "SalesByDay")));
     }
 

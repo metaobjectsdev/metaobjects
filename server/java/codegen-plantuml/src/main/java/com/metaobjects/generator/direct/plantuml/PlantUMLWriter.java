@@ -369,18 +369,7 @@ public class PlantUMLWriter extends FileDirectWriter<PlantUMLWriter> {
     }
 
     protected MetaObject getTargetObject(AssociationRelationship relationship) {
-        // Get the target object name from the relationship
-        if (relationship.hasMetaAttr(MetaRelationship.ATTR_OBJECT_REF)) {
-            String targetObjectName = relationship.getMetaAttr(MetaRelationship.ATTR_OBJECT_REF).getValueAsString();
-            if (targetObjectName != null) {
-                try {
-                    return MetaDataUtil.findMetaObjectByName(targetObjectName, this);
-                } catch (Exception e) {
-                    if (debug) log.warn("Could not find target object: " + targetObjectName, e);
-                }
-            }
-        }
-        return null;
+        return com.metaobjects.loader.References.refTarget(relationship, MetaRelationship.ATTR_OBJECT_REF);
     }
 
     protected void writeObjectKeyRelationships(MetaObject mo ) throws IOException {
@@ -605,7 +594,8 @@ public class PlantUMLWriter extends FileDirectWriter<PlantUMLWriter> {
         }
         // TODO:  This should be handled differently
         else if (attr.getName().equals(ObjectField.ATTR_OBJECTREF)) {
-            return "\""+MetaDataUtil.expandPackageForPath(MetaDataUtil.findPackageForMetaData( attr ), attr.getValueAsString() )+"\"";
+            // ADR-0059: the value is already canonical (pkg::Name); never re-expand it.
+            return "\""+attr.getValueAsString()+"\"";
         }
         else if ( attr.getDataType() == DataTypes.STRING_ARRAY ) {
             return "\""+val.toString()+"\"";

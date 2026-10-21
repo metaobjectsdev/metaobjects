@@ -95,8 +95,9 @@ export interface AgentDocsFileOpts {
 function lineageOf(field: MetaField): string | undefined {
   const origin = field.ownChildren().find((c) => c.type === TYPE_ORIGIN);
   if (origin === undefined) return undefined;
+  // Human-facing text: references print as the author wrote them (ADR-0059).
   const str = (name: string): string | undefined => {
-    const v = origin.attr(name);
+    const v = origin.authoredAttr(name);
     return typeof v === "string" && v !== "" ? v : undefined;
   };
   switch (origin.subType) {
@@ -154,8 +155,9 @@ function relationshipLines(objects: readonly MetaObject[]): string[] {
   for (const obj of objects) {
     for (const rel of obj.relationships()) {
       const cardinality = rel.attr(RELATIONSHIP_ATTR_CARDINALITY);
-      const target = rel.attr(RELATIONSHIP_ATTR_OBJECT_REF);
-      const through = rel.attr(RELATIONSHIP_ATTR_THROUGH);
+      // References print as the author wrote them (ADR-0059); the loaded value is canonical.
+      const target = rel.authoredAttr(RELATIONSHIP_ATTR_OBJECT_REF);
+      const through = rel.authoredAttr(RELATIONSHIP_ATTR_THROUGH);
       const onDelete = rel.attr(RELATIONSHIP_ATTR_ON_DELETE);
       // The FQN, not the short name: this line is an ADDRESS a reader searches for.
       const parts = [`\`${obj.resolutionKey()}.${rel.name}\``, `\`${rel.subType}\``];

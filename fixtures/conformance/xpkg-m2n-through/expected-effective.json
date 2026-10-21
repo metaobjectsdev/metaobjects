@@ -1,10 +1,10 @@
 {
   "metadata.root": {
-    "package": "xpkg::blog",
     "children": [
       {
         "object.entity": {
           "name": "Post",
+          "package": "xpkg::blog",
           "children": [
             {
               "source.rdb": {
@@ -38,6 +38,7 @@
       {
         "object.entity": {
           "name": "Tag",
+          "package": "xpkg::blog",
           "children": [
             {
               "source.rdb": {
@@ -63,6 +64,7 @@
       {
         "object.entity": {
           "name": "PostTag",
+          "package": "xpkg::join",
           "children": [
             {
               "source.rdb": {
@@ -116,4 +118,3 @@
     ]
   }
 }
-

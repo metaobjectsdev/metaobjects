@@ -93,7 +93,7 @@ interface FieldTemplateData {
   enumValues?: string[];   // present only for field.enum
 }
 interface IdentityTemplateData { kind: string; fields: string[]; }
-interface RelationshipTemplateData { name: string; cardinality: string; targetRef: string; }
+interface RelationshipTemplateData { name: string; cardinality: string; targetRef: string; }  // targetRef: canonical `pkg::Name` (ADR-0059)
 interface EntityTemplateData {
   name: string;
   package: string;         // effective package (`::`-separated), "" when none

@@ -32,7 +32,7 @@ import {
   TEMPLATE_ATTR_PAYLOAD_REF,
   TEMPLATE_ATTR_TEXT_REF,
   TEMPLATE_ATTR_FORMAT,
-  resolveObjectRef,
+  refTarget,
   type MetaData,
 } from "@metaobjectsdev/metadata";
 import {
@@ -83,8 +83,8 @@ export const promptRender = function promptRender(opts?: PromptRenderOpts): Gene
       for (const t of prompts) {
         const ref = t.attr(TEMPLATE_ATTR_PAYLOAD_REF);
         if (typeof ref !== "string" || ref === "") continue;
-        // A bare ref resolves in the template's own package first (ADR-0042).
-        const vo = resolveObjectRef(ctx.loadedRoot, ref, t.package ?? t.fileDefaultPackage ?? "").node;
+        // ADR-0059 R7: the value object the loader bound for @payloadRef.
+        const vo = refTarget(t, TEMPLATE_ATTR_PAYLOAD_REF);
         if (vo === undefined) continue;
         const imp = valueObjectImport(ctx.renderContext, vo, outFile, ctx.config.extStyle ?? "js");
         imports.push(imp);

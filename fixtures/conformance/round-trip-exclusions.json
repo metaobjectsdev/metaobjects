@@ -1,0 +1,5 @@
+{
+  "version": 1,
+  "notes": "Gate 2 (round trip, ADR-0059): fixtures whose expected.json is not a loadable model on its own, so loading it and serializing it again cannot reproduce it. Each entry names why.",
+  "exclusions": {}
+}

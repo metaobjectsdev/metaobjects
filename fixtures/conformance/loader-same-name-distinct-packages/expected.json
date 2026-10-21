@@ -1,10 +1,10 @@
 {
   "metadata.root": {
-    "package": "acme::alpha",
     "children": [
       {
         "object.value": {
           "name": "ItemView",
+          "package": "acme::alpha",
           "children": [
             {
               "field.string": {
@@ -17,6 +17,7 @@
       {
         "object.value": {
           "name": "SituationView",
+          "package": "acme::alpha",
           "children": [
             {
               "field.object": {
@@ -36,6 +37,7 @@
       {
         "object.value": {
           "name": "ItemView",
+          "package": "acme::beta",
           "children": [
             {
               "field.string": {
@@ -48,6 +50,7 @@
       {
         "object.value": {
           "name": "SituationView",
+          "package": "acme::beta",
           "children": [
             {
               "field.object": {

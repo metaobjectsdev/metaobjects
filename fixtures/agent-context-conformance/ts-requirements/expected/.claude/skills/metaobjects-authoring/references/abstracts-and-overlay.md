@@ -35,7 +35,11 @@ Resolution facts:
   extends Auditable`) — each `extends` is a super-*reference*, so resolution walks the
   full chain (it does not flatten inherited members onto the child; see ADR-0039).
 - **Cross-package** refs use the fully-qualified name (`extends: "shared::auditable"`);
-  same-package refs use the bare name.
+  same-package refs use the bare name. A bare name looks in the declaring file's own
+  package, then at the root, and never binds an object in another package. `::Name`
+  names a root-level object even when the package has one of the same name; `..::Name`
+  names one in the parent package. The forms mean the same in YAML and JSON (ADR-0059),
+  and a loaded or exported model carries every reference fully qualified.
 - An unresolved reference fails with `ERR_UNRESOLVED_SUPER`.
 
 `abstract` and `extends` are **structural keys** (bare, no `@`).

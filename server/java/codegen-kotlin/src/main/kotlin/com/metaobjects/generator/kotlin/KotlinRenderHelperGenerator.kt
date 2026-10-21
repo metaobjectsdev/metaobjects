@@ -113,8 +113,7 @@ open class KotlinRenderHelperGenerator : MultiFileDirectGeneratorBase<MetaObject
         if (payloadRef.isNullOrEmpty()) {
             return // loader validation normally catches this first
         }
-        // ADR-0042 — resolve @payloadRef under the loader's package-local contract (#228).
-        val payloadVo = KotlinGenUtil.resolveValueObjectRef(loader, payloadRef, template.getPackage())
+        val payloadVo = KotlinGenUtil.payloadTarget(template, "payloadRef")
             ?: return // not a VO
 
         val (templatePkg, templateShort) = PackageMapping.splitFqn(template.name)
@@ -272,38 +271,15 @@ open class KotlinRenderHelperGenerator : MultiFileDirectGeneratorBase<MetaObject
     }
 
     /**
-     * Resolve a `field.object`'s `@objectRef` to its target `object.value` under the
-     * ADR-0042 package-local contract — mirroring the TS render-helper's
-     * `resolveObjectRef(root, ref, declaringFieldPkg)`:
-     *  - an **FQN** `@objectRef` (contains `::`) resolves EXACTLY on the value-object's
-     *    package-qualified name — never a bare-tail fallback binding a same-named
-     *    `object.value` in the WRONG package;
-     *  - a **bare** `@objectRef` resolves in the DECLARING field's package
-     *    (`<fieldPkg>::<ref>` — correct for a `field.object` inherited via extends across
-     *    packages), else a root-level `object.value`. Package-local BEFORE root-level;
-     *    no cross-package short-name fallback.
-     * Returns null when the field has no `@objectRef` or nothing resolves.
+     * The `object.value` a `field.object`'s `@objectRef` is bound to (ADR-0059 R7: the
+     * target the loader recorded, resolved in the package of the node that declared it).
+     * Returns null when the field has no `@objectRef` or it names no `object.value`.
      */
     private fun resolveNestedObjectRef(loader: MetaDataLoader, field: ObjectField): MetaObject? {
-        // ADR-0039: @objectRef is an inheritable effective field property — RESOLVE
-        // (includeParentData=true) so a field.object inheriting @objectRef via extends
-        // still resolves its target VO.
-        if (!field.hasMetaAttr(MetaObject.ATTR_OBJECT_REF, true)) return null
-        val ref = field.getMetaAttr(MetaObject.ATTR_OBJECT_REF, true).valueAsString
-        if (ref.isNullOrEmpty()) return null
-        val fqn = ref.contains("::")
-        // The DECLARING field's package (walks parents; for an inherited field.object it is
-        // the package where the field is DECLARED, not where it is used).
-        val referrerPkg = com.metaobjects.util.MetaDataUtil.findPackageForMetaData(field) ?: ""
-        val localKey = if (fqn || referrerPkg.isEmpty()) ref else "$referrerPkg::$ref"
-        var own: MetaObject? = null
-        var rootLevel: MetaObject? = null
-        for (obj in loader.metaObjects) {
-            if (MetaObject.SUBTYPE_VALUE != obj.subType) continue
-            if (obj.name == localKey) own = obj
-            if (!fqn && obj.name == ref) rootLevel = obj
-        }
-        return if (fqn) own else own ?: rootLevel
+        // ADR-0059 R7: read the target the loader bound for the declaring field's @objectRef
+        // (resolved where it was written, so an inherited field.object binds its own package).
+        val target = com.metaobjects.loader.References.refTarget(field, MetaObject.ATTR_OBJECT_REF)
+        return if (target != null && MetaObject.SUBTYPE_VALUE == target.subType) target else null
     }
 
     /**

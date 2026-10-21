@@ -74,7 +74,7 @@ def has_hash_manifest(gen_state_dir: str) -> bool:
     return os.path.exists(_manifest_path(gen_state_dir))
 
 
-def _load_hashes(gen_state_dir: str) -> dict[str, str]:
+def _read_raw(gen_state_dir: str) -> dict[str, object]:
     path = _manifest_path(gen_state_dir)
     if not os.path.exists(path):
         return {}
@@ -87,15 +87,39 @@ def _load_hashes(gen_state_dir: str) -> dict[str, str]:
         return {}
     if not isinstance(parsed, dict):
         return {}
-    return {k: v for k, v in parsed.items() if isinstance(k, str) and isinstance(v, str)}
+    return parsed
+
+
+def _entry_hash(value: object) -> str | None:
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict) and isinstance(value.get("hash"), str):
+        return value["hash"]
+    return None
+
+
+def _load_hashes(gen_state_dir: str) -> dict[str, str]:
+    hashes: dict[str, str] = {}
+    for key, value in _read_raw(gen_state_dir).items():
+        recorded = _entry_hash(value)
+        if isinstance(key, str) and recorded is not None:
+            hashes[key] = recorded
+    return hashes
 
 
 def _save_hashes(gen_state_dir: str, hashes: dict[str, str]) -> None:
     os.makedirs(gen_state_dir, exist_ok=True)
+    raw = _read_raw(gen_state_dir)
     # Keys SORTED, because this file is committed. Insertion order would make the
     # diff — and any merge conflict between two people who both regenerated — depend
     # on which entity happened to generate first.
-    ordered = {k: hashes[k] for k in sorted(hashes)}
+    ordered: dict[str, object] = {}
+    for k in sorted(hashes):
+        existing = raw.get(k)
+        if isinstance(existing, dict):
+            ordered[k] = {**existing, "hash": hashes[k]}
+        else:
+            ordered[k] = hashes[k]
     with open(_manifest_path(gen_state_dir), "w", encoding="utf-8") as fh:
         json.dump(ordered, fh, indent=2)
         fh.write("\n")
@@ -151,6 +175,10 @@ def _write(path: str, content: str) -> None:
         fh.write(content)
 
 
+#: The status of a hand-edited file replaced under ``handEdits: overwrite``.
+STATUS_OVERWROTE_EDIT = "overwrote-edit"
+
+
 def decide_and_write(
     path: str,
     content: str,
@@ -160,8 +188,14 @@ def decide_and_write(
     rel_path: str | None = None,
     legacy_rel_path: str | None = None,
     baseline: str = "default",
+    hand_edits: str = "keep",
 ) -> str:
     """Decide and perform the write for one generated file.
+
+    ``hand_edits="overwrite"`` (the generator's ``handEdits`` setting) replaces a file we
+    recorded writing that was edited since with fresh output, re-records it, and returns
+    :data:`STATUS_OVERWROTE_EDIT` so the caller names it. A file with no record of being
+    generated is refused under either setting.
 
     ``gen_state_dir`` enables hash-based hand-edit detection; ``rel_path`` is the key
     it is recorded under (defaults to the basename, which is correct for a single
@@ -211,6 +245,12 @@ def decide_and_write(
         _write(path, content)
         _record(gen_state_dir, key, content, legacy_rel_path)
         return "overwrite"
+
+    # Edited since we wrote it, and the generator says to discard hand edits.
+    if hand_edits == "overwrite" and read_generated_hash(gen_state_dir, key, legacy_rel_path) is not None:
+        _write(path, content)
+        _record(gen_state_dir, key, content, legacy_rel_path)
+        return STATUS_OVERWROTE_EDIT
 
     # Edited, or never recorded. Deliberately does NOT record the current content:
     # doing so would make the file look pristine next run and turn this into a silent

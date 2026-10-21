@@ -10,7 +10,9 @@
 
 import type { MetaObject } from "../object/meta-object.js";
 import type { MetaReferenceIdentity } from "../identity/meta-identity.js";
-import { stripPackage } from "../../naming.js";
+import type { MetaData } from "../../shared/meta-data.js";
+import { refTarget } from "../../naming-refs.js";
+import { IDENTITY_REFERENCE_ATTR_REFERENCES } from "../identity/identity-constants.js";
 
 /**
  * Trailing suffixes stripped from a CANDIDATE's name/FK field when building its
@@ -51,20 +53,20 @@ export function referencePairingKeys(ref: MetaReferenceIdentity): Set<string> {
 }
 
 /**
- * Every identity.reference on `holder` whose @references targets `targetEntity`.
- * Package-insensitive on both sides: @references and @objectRef may each be bare
- * or fully qualified.
+ * Every identity.reference on `holder` whose @references targets `targetEntity`: a
+ * reference matches when its @references is bound to that node (ADR-0059 R7: identity,
+ * never a short name). An unresolved target (undefined) matches nothing.
  */
 export function referenceCandidatesFor(
   holder: MetaObject,
-  targetEntity: string,
+  targetEntity: MetaData | undefined,
 ): MetaReferenceIdentity[] {
-  const target = stripPackage(targetEntity);
+  if (targetEntity === undefined) return [];
   // ADR-0039: resolving — referenceIdentities() honors references inherited via extends.
   return holder
     .referenceIdentities()
-    .filter((ref) => stripPackage(ref.targetEntity ?? "") === target)
-    .filter((ref) => refFkField(ref) !== undefined);
+    .filter((ref) => refFkField(ref) !== undefined)
+    .filter((ref) => refTarget(ref, IDENTITY_REFERENCE_ATTR_REFERENCES) === targetEntity);
 }
 
 /**
@@ -82,7 +84,7 @@ export function referenceCandidatesFor(
 export function resolveRelationshipReference(
   holder: MetaObject,
   relationshipName: string,
-  targetEntity: string,
+  targetEntity: MetaData | undefined,
   sourceRefField?: string,
 ): MetaReferenceIdentity | undefined {
   const candidates = referenceCandidatesFor(holder, targetEntity);

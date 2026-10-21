@@ -237,7 +237,9 @@ public class MetaRoot extends MetaData implements com.metaobjects.database.Physi
                 // ADR-0039: root is never extended — own child lookup is complete.
                 return getChild(n, MetaObject.class, false);
             } catch (MetaDataNotFoundException e) {
-                return null;
+                // ADR-0059 R7: a canonical value (pkg::Name, ::Name) matches by exact
+                // resolution key; a bare name keeps its old meaning above.
+                return com.metaobjects.loader.References.lookupCanonical(this, n);
             }
         });
     }

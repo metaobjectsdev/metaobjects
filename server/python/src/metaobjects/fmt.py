@@ -99,7 +99,7 @@ def format_file(content: str, registry: TypeRegistry, source_id: str) -> FormatF
             message="this file declares an overlay fmt cannot resolve standalone",
         )
 
-    return FormatFileResult(ok=True, text=canonical_serialize(result.root))
+    return FormatFileResult(ok=True, text=canonical_serialize(result.root, refs="authored"))
 
 
 @dataclass

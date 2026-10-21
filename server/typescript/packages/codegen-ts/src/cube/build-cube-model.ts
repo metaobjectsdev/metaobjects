@@ -36,11 +36,13 @@ import {
   reportShape,
   reportSpine,
   reportSpineHops,
-  resolveObjectRef,
+  refTarget,
   resolveTableName,
   resolveTableSchema,
   stripPackage,
   type MetaData,
+  REPORTING_ATTR_VIA,
+  OBJECT_REPORT_ATTR_SPINE,
   type MetaDimension,
   type MetaField,
   type MetaMeasure,
@@ -65,7 +67,7 @@ import {
   type Path,
   type PathStep,
 } from "../projection/extract-view-spec.js";
-import { dimensionOfField, ratioOperand, resolveDimensionViaPath } from "../projection/report-resolve.js";
+import { authoredText, dimensionOfField, ratioOperand, resolveDimensionViaPath } from "../projection/report-resolve.js";
 import { andOf, cond, reportScope } from "../projection/report-sql.js";
 import type { ViewFilterClause } from "../projection/view-spec.js";
 import {
@@ -403,7 +405,8 @@ class CubeModelBuilder {
    */
   private viaPath(dim: MetaDimension, from: MetaObject): Path {
     const where = `cube '${from.name}': dimension '${memberKey(dim)}'`;
-    const via = dim.via() ?? "";
+    // Refusals quote @via as the author wrote it (ADR-0059).
+    const via = authoredText(dim, REPORTING_ATTR_VIA) ?? dim.via() ?? "";
     const path = resolveDimensionViaPath(dim, from, this.root, this.mc.extract, where);
     const onPath = new Set([from.resolutionKey()]);
     for (const step of path) {
@@ -535,8 +538,7 @@ class CubeModelBuilder {
         relationship = "many_to_one";
       } else if (child.type === TYPE_RELATIONSHIP && child.attr(RELATIONSHIP_ATTR_CARDINALITY) === CARDINALITY_ONE) {
         // Resolved first, so a relationship onto an entity that is no cube is never walked.
-        const targetRef = child.attr(RELATIONSHIP_ATTR_OBJECT_REF);
-        const target = typeof targetRef === "string" ? resolveObjectRef(this.root, targetRef, packageOf(entity)).node : undefined;
+        const target = refTarget(child, RELATIONSHIP_ATTR_OBJECT_REF);
         if (!isMetaObject(target) || !this.drafts.has(target.resolutionKey())) continue;
         relationship = "one_to_one";
       } else {
@@ -636,7 +638,7 @@ class CubeModelBuilder {
       if (cubes.includes(hop.joined)) {
         throw new CubeModelError(
           ERR_CUBE_UNMAPPABLE_DIMENSION,
-          `${where} @via '${dim.via() ?? ""}' passes through one cube twice ` +
+          `${where} @via '${authoredText(dim, REPORTING_ATTR_VIA) ?? dim.via() ?? ""}' passes through one cube twice ` +
             `(${[...cubes, hop.joined].map((c) => c.name).join(" -> ")}), so the member it reads would belong ` +
             `to the earlier hop's row. Remove the dimension, or reach the value through distinct cubes.`,
         );
@@ -669,7 +671,7 @@ class CubeModelBuilder {
         const two = paths.length === 2;
         throw new CubeModelError(
           ERR_CUBE_AMBIGUOUS_PATH,
-          `${where} reads '${joined.name}' through @via '${dim.via() ?? ""}', and the cube graph reaches ` +
+          `${where} reads '${joined.name}' through @via '${authoredText(dim, REPORTING_ATTR_VIA) ?? dim.via() ?? ""}', and the cube graph reaches ` +
             `'${joined.name}' from '${draft.name}' by more than one path ` +
             `(${listed.join("; ")}${more}), so Cube could join it by ${two ? "either" : "any of them"}. Remove ` +
             `the identity.reference that makes the other ${two ? "path" : "paths"}, or read the value through a ` +
@@ -775,7 +777,8 @@ class CubeModelBuilder {
     const from = this.reportCube(report, shape, "facts");
     if (from === undefined) return undefined;
     const where = `report '${report.resolutionKey()}'`;
-    const spine = reportSpine(report) ?? "";
+    // Messages quote @spine as the author wrote it (ADR-0059).
+    const spine = authoredText(report, OBJECT_REPORT_ATTR_SPINE) ?? reportSpine(report) ?? "";
 
     // The spine cube, and the spine's own steps, from the listed dimensions' resolved paths.
     let spineCube: CubeDraft | undefined;

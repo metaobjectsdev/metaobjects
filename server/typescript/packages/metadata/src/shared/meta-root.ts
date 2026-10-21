@@ -8,6 +8,8 @@ import { TYPE_OBJECT, TYPE_FIELD } from "./base-types.js";
 import type { MetaObject } from "../core/object/meta-object.js";
 import type { MetaField } from "../core/field/meta-field.js";
 import { DEFAULT_PHYSICAL_NAMING, type PhysicalNaming } from "../naming.js";
+import { PACKAGE_SEPARATOR } from "./structural.js";
+import { lookupCanonical } from "../naming-refs.js";
 
 export class MetaRoot extends MetaData {
   /**
@@ -34,9 +36,18 @@ export class MetaRoot extends MetaData {
     );
   }
 
-  /** Find an object by name. */
+  /**
+   * Find an object by name, or by a canonical reference (ADR-0059): a value with a
+   * package separator (`acme::Program`, `::Program`) binds the object whose resolution
+   * key matches exactly, so a reference the loader rewrote to canonical form still finds
+   * its target. A bare name matches a root-level child by name, as before.
+   */
   findObject(name: string): MetaObject | undefined {
     return this.cached(`findObject:${name}`, () => {
+      if (name.includes(PACKAGE_SEPARATOR)) {
+        const node = lookupCanonical(this, name, { ownerType: TYPE_OBJECT });
+        return node !== undefined && node.type === TYPE_OBJECT ? (node as MetaObject) : undefined;
+      }
       // ADR-0039: own — the metadata root has no super chain (it never `extends`).
       const child = this.ownChildByTypeAndName(TYPE_OBJECT, name);
       return child !== undefined ? (child as MetaObject) : undefined;

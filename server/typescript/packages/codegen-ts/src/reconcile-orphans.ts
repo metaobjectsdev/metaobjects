@@ -44,6 +44,13 @@ export interface OrphanPolicy {
    * automatic one.
    */
   readonly force?: boolean;
+  /**
+   * Exempt this namespace from every sweep, the run-wide one included: a file in it
+   * is never deleted, untouched or not. Default false. `requirementTests({
+   * reconcileOrphans: false })` sets it, so turning reconciliation off still means
+   * what it meant before the run-wide sweep existed.
+   */
+  readonly keep?: boolean;
 }
 
 export interface OrphanDecision {
@@ -127,10 +134,9 @@ export function refusedOrphanMessage(
   generatorName = "orphan cleanup",
 ): string {
   return (
-    `${generatorName}: ${paths.length} generated file(s) are no longer produced by ` +
-    `this generator but have been edited by hand, so they were NOT deleted: ` +
-    `${paths.join(", ")}. Either what produced them was removed (delete these files ` +
-    `yourself if the edits are no longer wanted) or it was renamed (move the edits ` +
-    `into the newly generated file first — regeneration cannot follow a rename).`
+    `${generatorName}: ${paths.length} generated file(s) are no longer generated but ` +
+    `have been edited by hand, so they were NOT deleted: ${paths.join(", ")}. ` +
+    `Delete each one, or, if what produced it was renamed, move your edits into the ` +
+    `newly generated file first and then delete it (regeneration cannot follow a rename).`
   );
 }

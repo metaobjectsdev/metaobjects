@@ -71,10 +71,7 @@ object FindInbound {
     @JvmStatic
     fun responseShape(loader: MetaDataLoader, tmpl: MetaTemplate): InboundShape? {
         val ref = responseRefOf(tmpl) ?: return null
-        // ADR-0042/#228: resolve package-aware through the SAME value-object resolver
-        // @payloadRef obeys, so the parser can never bind a record the payload tier refused to
-        // emit (the C# defect this port is written to avoid).
-        val vo = KotlinGenUtil.resolveValueObjectRef(loader, ref, tmpl.getPackage()) ?: return null
+        val vo = KotlinGenUtil.payloadTarget(tmpl, "responseRef") ?: return null
         return InboundShape(vo, ref, responseFormatOf(tmpl))
     }
 

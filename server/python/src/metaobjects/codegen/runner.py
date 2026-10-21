@@ -17,7 +17,7 @@ from .config import GenConfig
 from .constants import generated_package_init
 from .generator import GenContext, Generator
 from .instance_artifacts import is_served_report
-from .overwrite_policy import decide_and_write, has_hash_manifest
+from .overwrite_policy import STATUS_OVERWROTE_EDIT, decide_and_write, has_hash_manifest
 
 _VALID_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
@@ -31,6 +31,9 @@ _MAX_NAMED_REFUSALS = 5
 class RunGenResult:
     files: list[tuple[str, str]] = field(default_factory=list)  # (path, status)
     warnings: list[str] = field(default_factory=list)
+    #: Which generator emitted each path (``verify --codegen`` reads it to apply a
+    #: generator's ``handEdits`` to the file).
+    generated_by: dict[str, str] = field(default_factory=dict)
 
 
 def _objects(root: MetaData) -> list[MetaObject]:
@@ -185,7 +188,8 @@ def run_gen(
     refused: list[str] = []
     adopted: list[str] = []
     untracked = 0
-    for full, (content, _by) in emitted.items():
+    for full, (content, by) in emitted.items():
+        result.generated_by[full] = by
         # The out-dir-relative name: what the manifest used to be keyed by, and still
         # what a refusal is REPORTED as (it is the name the reader sees in `--out`).
         rel = os.path.relpath(full, config.out_dir)
@@ -221,8 +225,13 @@ def run_gen(
             rel_path=key,
             legacy_rel_path=rel if key != rel else None,
             baseline=config.baseline,
+            hand_edits="overwrite" if by in config.overwrite_hand_edits else "keep",
         )
         result.files.append((full, status))
+        if status == STATUS_OVERWROTE_EDIT:
+            result.warnings.append(
+                f"overwrote hand-edited {rel} with fresh output (handEdits: overwrite on {by})"
+            )
         if status == "refused":
             refused.append(rel)
         elif status == "adopted":

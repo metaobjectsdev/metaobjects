@@ -26,8 +26,17 @@ from .shared.structural import (
 _SOURCE_RDB_FUSED_KEY = f"{TYPE_SOURCE}{FUSED_KEY_SEP}{SOURCE_SUBTYPE_RDB}"
 
 
-def canonical_serialize(node: MetaData) -> str:
-    return _serialize(node, effective=False)
+#: How references are written (ADR-0059 R8). ``"canonical"`` (default): each reference
+#: as the loader resolved it -- ``pkg::Name``, ``::Name`` for a root-level target from a
+#: packaged referrer -- and the document package rule. ``"authored"``: each reference,
+#: ``extends`` included, exactly as written, and every ``package`` where it was written.
+#: Only ``meta fmt`` uses it, so formatting never rewrites what an author wrote.
+REFS_CANONICAL = "canonical"
+REFS_AUTHORED = "authored"
+
+
+def canonical_serialize(node: MetaData, refs: str = REFS_CANONICAL) -> str:
+    return _serialize(node, effective=False, refs=refs)
 
 
 def canonical_serialize_effective(node: MetaData) -> str:
@@ -40,7 +49,7 @@ def canonical_serialize_effective(node: MetaData) -> str:
     still emitted on every node (the ref stays in the body), but inherited
     members are inlined rather than referenced.
     """
-    return _serialize(node, effective=True)
+    return _serialize(node, effective=True, refs=REFS_CANONICAL)
 
 
 def serialize_shared_document(nodes: list[MetaData]) -> str:
@@ -76,8 +85,8 @@ def serialize_shared_document(nodes: list[MetaData]) -> str:
     return json.dumps(doc, indent=2, ensure_ascii=False) + "\n"
 
 
-def _serialize(node: MetaData, effective: bool) -> str:
-    parsed = _to_canonical(node, effective)
+def _serialize(node: MetaData, effective: bool, refs: str = REFS_CANONICAL) -> str:
+    parsed = _to_canonical(node, effective, refs)
     # FR-016 / ADR-0018 — rewrite legacy @table → kind-matching alias on
     # source.rdb wrappers; run before serialization so the rewritten key sorts
     # naturally with the rest of the body (alphabetical at our depth).
@@ -86,18 +95,72 @@ def _serialize(node: MetaData, effective: bool) -> str:
     return text + "\n"
 
 
-def _to_canonical(node: MetaData, effective: bool = False) -> dict[str, object]:
-    return {f"{node.type}{FUSED_KEY_SEP}{node.sub_type}": _body(node, effective)}
+def _to_canonical(
+    node: MetaData,
+    effective: bool = False,
+    refs: str = REFS_CANONICAL,
+    pkg_slot: str | None = None,
+) -> dict[str, object]:
+    return {f"{node.type}{FUSED_KEY_SEP}{node.sub_type}": _body(node, effective, refs, pkg_slot)}
 
 
-def _body(node: MetaData, effective: bool = False) -> dict[str, object]:
+def _top_level_package(node: MetaData, root: MetaData) -> str:
+    """Effective package of a top-level node (ADR-0059 R10): own, else its file's. A node
+    built in code has no file, so it takes the root's package, as re-loading the output
+    would give it."""
+    if node.package is not None:
+        return node.package
+    if node.file_default_package is not None:
+        return node.file_default_package
+    return root.package or ""
+
+
+def _document_packages(root: MetaData) -> tuple[str | None, bool]:
+    """ADR-0059 R8 document package rule, for a ``metadata.root`` in canonical mode.
+    Returns ``(root_pkg, per_node)``.
+
+    Every named top-level node in one non-empty package P: the root carries P (a node
+    keeps a package it carries itself, as before), unless the root names none and every
+    node already names P itself. Otherwise the root carries none and each named top-level
+    node carries its effective package (omitted when empty). A root with no named
+    top-level node keeps its own package."""
+    # ADR-0039 sanctioned own: the serializer writes the declared layer; the root has no super.
+    named = [c for c in root.own_children() if c.name != ""]
+    if not named:
+        return root.package, False
+    pkgs = {_top_level_package(c, root) for c in named}
+    if len(pkgs) == 1:
+        only = next(iter(pkgs))
+        if only != "":
+            self_named = root.package is None and all(c.package == only for c in named)
+            return (None if self_named else only), False
+    return None, True
+
+
+def _body(
+    node: MetaData,
+    effective: bool = False,
+    refs: str = REFS_CANONICAL,
+    pkg_slot: str | None = None,
+) -> dict[str, object]:
     body: dict[str, object] = {}
     if node.name:
         body[KEY_NAME] = node.name
-    if node.package:
-        body[KEY_PACKAGE] = node.package
-    if node.super_ref:
-        body[KEY_EXTENDS] = node.super_ref
+    is_doc_root = node.type == TYPE_METADATA and node.sub_type == SUBTYPE_ROOT
+    doc = _document_packages(node) if is_doc_root and refs == REFS_CANONICAL else None
+    if doc is not None:
+        pkg = doc[0]
+    elif pkg_slot is not None:
+        pkg = pkg_slot
+    else:
+        pkg = node.package
+    if pkg:
+        body[KEY_PACKAGE] = pkg
+    # After the loader's resolve_references pass ``super_ref`` is canonical (ADR-0059
+    # R5); the authored spelling is kept beside it for ``meta fmt``.
+    super_ref = (node.authored_super_ref or node.super_ref) if refs == REFS_AUTHORED else node.super_ref
+    if super_ref:
+        body[KEY_EXTENDS] = super_ref
     if node.is_abstract:
         body[KEY_ABSTRACT] = True
     # ADR-0039 — isArray is a native property; in EFFECTIVE mode it must resolve
@@ -116,11 +179,22 @@ def _body(node: MetaData, effective: bool = False) -> dict[str, object]:
             body[f"{ATTR_PREFIX}{name}"] = _normalize(node.attrs()[name])
     else:
         for attr in sorted(node.own_meta_attrs(), key=lambda a: a.name):
-            body[f"{ATTR_PREFIX}{attr.name}"] = _normalize(getattr(attr, "value", None))
+            authored = getattr(attr, "authored_value", None) if refs == REFS_AUTHORED else None
+            value = authored if authored is not None else getattr(attr, "value", None)
+            body[f"{ATTR_PREFIX}{attr.name}"] = _normalize(value)
 
     children = node.children() if effective else node.own_children()
     if children:
-        body[KEY_CHILDREN] = [_to_canonical(c, effective) for c in children]
+        # A top-level node's package follows the document rule; deeper nodes keep their
+        # own. In a one-package document a node keeps any package it carries itself.
+        per_node = doc is not None and doc[1]
+        body[KEY_CHILDREN] = [
+            _to_canonical(
+                c, effective, refs,
+                (_top_level_package(c, node) if c.name else "") if per_node else None,
+            )
+            for c in children
+        ]
     return body
 
 

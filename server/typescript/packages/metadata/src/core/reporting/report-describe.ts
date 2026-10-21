@@ -18,7 +18,7 @@ import { TYPE_DIMENSION, TYPE_MEASURE, TYPE_SEGMENT } from "../../shared/base-ty
 import { SOURCE_KIND_VIEW } from "../../persistence/source/source-constants.js";
 import { AGG_ALL } from "../../persistence/origin/origin-constants.js";
 import type { MetaObject } from "../object/meta-object.js";
-import { OBJECT_REPORT_ATTR_FILTER, OBJECT_REPORT_ATTR_SEGMENT } from "../object/object-constants.js";
+import { OBJECT_REPORT_ATTR_FILTER, OBJECT_REPORT_ATTR_SEGMENT, OBJECT_REPORT_ATTR_SPINE } from "../object/object-constants.js";
 import {
   DIMENSION_SUBTYPE_TIME,
   MEASURE_SUBTYPE_RATIO,
@@ -66,9 +66,10 @@ export function describeRowScope(segment: unknown, filter: unknown): string | un
 /** "`Program.title` via `Purchase.program`": the column a dimension groups by. */
 function dimensionColumn(dim: MetaData): string {
   // ADR-0039: resolving reads, here and in every describer below, so a node that
-  // `extends` another is described by its effective attributes.
-  const of = dim.attr(REPORTING_ATTR_OF);
-  const via = dim.attr(REPORTING_ATTR_VIA);
+  // `extends` another is described by its effective attributes. References are
+  // printed as the author wrote them (ADR-0059), not as the loader resolved them.
+  const of = dim.authoredAttr(REPORTING_ATTR_OF);
+  const via = dim.authoredAttr(REPORTING_ATTR_VIA);
   const column = tick(typeof of === "string" ? of : "");
   return typeof via === "string" && via !== "" ? `${column} via ${tick(via)}` : column;
 }
@@ -115,7 +116,7 @@ export function describeMeasure(measure: MetaData): string {
     const quotient = `${tick(String(numerator ?? ""))} / ${tick(String(denominator ?? ""))}`;
     return fallback !== "" ? `${quotient}${fallback}` : `${quotient}, null when the denominator is 0`;
   }
-  const columns = stringList(measure.attr(REPORTING_ATTR_OF)).map(tick);
+  const columns = stringList(measure.authoredAttr(REPORTING_ATTR_OF)).map(tick);
   const scope = describeRowScope(measure.attr(REPORTING_ATTR_SEGMENT), measure.attr(REPORTING_ATTR_FILTER));
   if (columns.length === 0) {
     // @agg any / all with no @of (loader rule M0): the row condition is the quantified predicate.
@@ -145,8 +146,10 @@ export function describeReportField(field: ReportField): string {
  * `@from` rows and need no sentence. The spine is printed as declared.
  */
 export function describeReportRows(shape: ReportShape, root: MetaRoot): string | undefined {
-  const spine = reportSpine(shape.report);
   const entity = reportSpineEntity(shape.report, shape.from, root);
+  // Printed as the author wrote it (ADR-0059).
+  const authored = reportSpine(shape.report) !== undefined ? shape.report.authoredAttr(OBJECT_REPORT_ATTR_SPINE) : undefined;
+  const spine = typeof authored === "string" ? authored : undefined;
   if (spine === undefined || entity === undefined) return undefined;
   return (
     `one row per distinct dimension tuple among the rows of ${tick(entity.name)}, reached by ${tick(spine)}, ` +

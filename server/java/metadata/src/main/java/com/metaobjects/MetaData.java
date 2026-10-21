@@ -929,6 +929,40 @@ public class MetaData implements Cloneable, Serializable {
         this.authoredSuperRef = authoredSuperRef;
     }
 
+    // ADR-0059 R5 — the canonical spelling of `extends`, set once by the loader's
+    // resolveReferences pass (null until then, and when the super never resolved).
+    /**
+     * ADR-0059 R10 — the default package of the FILE that declared this node, recorded at
+     * parse time ({@code ""} when that file declares none; {@code null} for a node built by
+     * hand). Resolution-only: it is the referrer package of a nested node's {@code extends}.
+     */
+    private String fileDefaultPackage = null;
+
+    public String getFileDefaultPackage() {
+        return fileDefaultPackage;
+    }
+
+    public void setFileDefaultPackage(String fileDefaultPackage) {
+        this.fileDefaultPackage = fileDefaultPackage;
+    }
+
+    private String canonicalSuperRef = null;
+
+    /** The canonical spelling of this node's {@code extends}, or {@code null} when none was recorded. */
+    public String getCanonicalSuperRef() {
+        return canonicalSuperRef;
+    }
+
+    /** Records the canonical {@code extends} spelling (ADR-0059 R5). */
+    public void setCanonicalSuperRef(String canonicalSuperRef) {
+        this.canonicalSuperRef = canonicalSuperRef;
+    }
+
+    /** Drops every cached derivation on this node (ADR-0059: reference values change once, after validation). */
+    public void invalidateCaches() {
+        cache.clear();
+    }
+
     /**
      * Retrieve the MetaObject short name
      * @return the short name of this metadata without package prefix

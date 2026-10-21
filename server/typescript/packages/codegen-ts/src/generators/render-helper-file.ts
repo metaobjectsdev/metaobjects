@@ -22,7 +22,7 @@ import {
   TYPE_TEMPLATE,
   TEMPLATE_SUBTYPE_OUTPUT,
   TEMPLATE_ATTR_PAYLOAD_REF,
-  resolveObjectRef,
+  refTarget,
 } from "@metaobjectsdev/metadata";
 import {
   type EmittedFile,
@@ -60,8 +60,8 @@ export const renderHelper = function renderHelper(opts?: RenderHelperOpts): Gene
         // ADR-0039: resolving — a template may inherit its @* refs/format/kind via extends.
         const payloadRef = t.attr(TEMPLATE_ATTR_PAYLOAD_REF);
         if (typeof payloadRef !== "string") continue;
-        // ADR-0042: a bare @payloadRef resolves in the template's package.
-        const vo = resolveObjectRef(root, payloadRef, t.package ?? t.fileDefaultPackage ?? "").node;
+        // ADR-0059 R7: the value object the loader bound for @payloadRef.
+        const vo = refTarget(t, TEMPLATE_ATTR_PAYLOAD_REF);
         if (!vo) continue;
         const path = `${dirPrefix}${t.name}.render.ts`;
         files.push({

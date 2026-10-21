@@ -8,9 +8,13 @@
 
 import type { MetaData } from "../shared/meta-data.js";
 import { ParseError } from "../errors.js";
-import { didYouMeanHint } from "../naming-refs.js";
+import {
+  didYouMeanHint,
+  ownerCandidateKeys,
+  referrerPackageFor,
+  RefOverDropError,
+} from "../naming-refs.js";
 import { TYPE_OBJECT } from "../shared/base-types.js";
-import { PACKAGE_SEPARATOR } from "../shared/structural.js";
 import type { TypeRegistry } from "../registry.js";
 import type { LoaderCode, SymbolTable, ValidationContext } from "../validation-types.js";
 
@@ -38,15 +42,25 @@ class SymbolTableImpl implements SymbolTable {
     return t;
   }
 
-  /** ADR-0042 package-local resolution within the `type` bucket: FQN → exact
-   *  resolution-key match; bare → the referrer's own package (`<referrerPkg>::<ref>`),
-   *  else a root-level node of that type. */
+  /** ADR-0059 R2 resolution within the `type` bucket: `::Rest` root-absolute,
+   *  `..::Rest` parent-relative, `pkg::Name` exact, bare `Name` in the referrer's own
+   *  package then root-level. Exact keys only. An over-dropping `..::` resolves to
+   *  nothing here; the walk reports it as ERR_BAD_ATTR_VALUE. */
   resolve(type: string, ref: string, referrerPkg: string): MetaData | undefined {
     const bucket = this.byType.get(type);
     if (bucket === undefined) return undefined;
-    if (ref.includes(PACKAGE_SEPARATOR)) return bucket.get(ref);
-    const localKey = referrerPkg !== "" ? `${referrerPkg}${PACKAGE_SEPARATOR}${ref}` : ref;
-    return bucket.get(localKey) ?? bucket.get(ref);
+    let keys: readonly string[];
+    try {
+      keys = ownerCandidateKeys(ref, referrerPkg);
+    } catch (e) {
+      if (e instanceof RefOverDropError) return undefined;
+      throw e;
+    }
+    for (const key of keys) {
+      const hit = bucket.get(key);
+      if (hit !== undefined) return hit;
+    }
+    return undefined;
   }
 
   resolveObject(ref: string, referrerPkg: string): MetaData | undefined {
@@ -94,7 +108,21 @@ export function runRegisteredValidation(root: MetaData, registry: TypeRegistry):
         const raw = node.attr(desc.attr);
         if (typeof raw !== "string" || raw === "") continue; // absence is the required-attr pass's job
         const entityRef = desc.dottedFieldPath ? (raw.split(".")[0] ?? raw) : raw;
-        const target = ctx.symbols.resolve(desc.targetType, entityRef, pkg);
+        // ADR-0059 R3: an inherited reference resolves in the package of the
+        // top-level node that physically declares it, not the inheritor's.
+        const refPkg = referrerPackageFor(node, desc.attr);
+        try {
+          ownerCandidateKeys(entityRef, refPkg);
+        } catch (e) {
+          if (!(e instanceof RefOverDropError)) throw e;
+          ctx.error(
+            "ERR_BAD_ATTR_VALUE",
+            node,
+            `${node.type}.${node.subType} "${node.name}" @${desc.attr} "${raw}" climbs above the root package — each '..::' drops one segment of the declaring package.`,
+          );
+          continue;
+        }
+        const target = ctx.symbols.resolve(desc.targetType, entityRef, refPkg);
         // Qualify the node name with its owning entity (e.g. "Order.items") so the error is
         // locatable from the message alone, not just the source envelope.
         const qname = node.parent?.name ? `${node.parent.name}.${node.name}` : node.name;

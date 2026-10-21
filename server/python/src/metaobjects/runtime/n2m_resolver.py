@@ -22,7 +22,7 @@ Resolution has three modes (mirrors the TS reference ``n2m-resolver.ts``):
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from ..meta.core.object.meta_object import MetaObject
 from ..meta.core.relationship.derive_m2m_fields import (
@@ -30,10 +30,13 @@ from ..meta.core.relationship.derive_m2m_fields import (
     derive_m2m_fields,
 )
 from ..meta.core.relationship.meta_relationship import MetaRelationship
-from ..meta.core.relationship.relationship_constants import CARDINALITY_MANY
+from ..meta.core.relationship.relationship_constants import (
+    CARDINALITY_MANY,
+    RELATIONSHIP_ATTR_OBJECT_REF,
+    RELATIONSHIP_ATTR_THROUGH,
+)
+from ..naming_refs import ref_target
 
-if TYPE_CHECKING:  # pragma: no cover
-    from ..meta.meta_root import MetaRoot
 
 
 @dataclass(frozen=True)
@@ -70,7 +73,7 @@ def resolve_n2m_descriptor(
     the caller should fall through to its 1:1 / 1:N relation path. Raises
     :class:`N2mResolutionError` when the relationship IS M:N but malformed.
 
-    *object_index* is a bare-name → object map of the loaded model's top-level
+    *object_index* is a resolution-key → object map of the loaded model's top-level
     objects (mirrors the TS ``root.findObject`` resolution surface).
     """
     # ADR-0039: effective children — a M:N relationship may be inherited via
@@ -103,10 +106,18 @@ def resolve_n2m_descriptor(
                 f"M:N relationship '{relation_name}' on '{source_entity.name}': {e}"
             ) from e
 
+        # ADR-0059 R7: names come from the BOUND targets, never from stripping the ref.
+        target_node = ref_target(child, RELATIONSHIP_ATTR_OBJECT_REF)
+        junction_node = ref_target(child, RELATIONSHIP_ATTR_THROUGH)
+        if target_node is None or junction_node is None:
+            raise N2mResolutionError(
+                f"M:N relationship '{relation_name}' on '{source_entity.name}': "
+                f"@objectRef '{target_name}' / @through '{junction_name}' must resolve to loaded entities"
+            )
         return N2mDescriptor(
             source_entity_name=source_entity.name,
-            target_entity_name=_strip_package(target_name),
-            junction_entity_name=_strip_package(junction_name),
+            target_entity_name=target_node.name,
+            junction_entity_name=junction_node.name,
             source_field=fields.source_field,
             target_field=fields.target_field,
             symmetric=child.symmetric(),
@@ -154,6 +165,3 @@ def collect_column_ids(join_rows: list[dict[str, Any]], col: str) -> list[Any]:
     return list(seen.values())
 
 
-def _strip_package(name: str) -> str:
-    idx = name.rfind("::")
-    return name[idx + 2:] if idx >= 0 else name

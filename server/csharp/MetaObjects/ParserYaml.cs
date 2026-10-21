@@ -84,6 +84,9 @@ public static class ParserYaml
             SourceName = opts.SourceName,
             IntoRoot = opts.IntoRoot,
             DeferSuperResolution = opts.DeferSuperResolution,
+            // ADR-0055 — forward the loader's overlay deferral so YAML overlays merge after
+            // every file loads, exactly as JSON ones do.
+            DeferOverlays = opts.DeferOverlays,
             SourceFormat = MetaDataFormat.Yaml,
             YamlPositionsByPath = collected.PositionsByPath,
         };

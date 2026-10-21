@@ -59,28 +59,28 @@
                 "@fields": [
                   "programId"
                 ],
-                "@references": "Program"
+                "@references": "acme::shop::Program"
               }
             },
             {
               "relationship.association": {
                 "name": "program",
                 "@cardinality": "one",
-                "@objectRef": "Program"
+                "@objectRef": "acme::shop::Program"
               }
             },
             {
               "dimension.attribute": {
                 "name": "programId",
-                "@of": "Program.id",
-                "@via": "BaseEvent.program"
+                "@of": "acme::shop::Program.id",
+                "@via": "acme::shop::BaseEvent.program"
               }
             },
             {
               "dimension.attribute": {
                 "name": "programTitle",
-                "@of": "Program.title",
-                "@via": "BaseEvent.program"
+                "@of": "acme::shop::Program.title",
+                "@via": "acme::shop::BaseEvent.program"
               }
             },
             {
@@ -89,7 +89,7 @@
                 "@agg": "sum",
                 "@default": 0,
                 "@of": [
-                  "BaseEvent.minutes"
+                  "acme::shop::BaseEvent.minutes"
                 ]
               }
             }
@@ -99,7 +99,7 @@
       {
         "object.entity": {
           "name": "WorkoutEvent",
-          "extends": "BaseEvent",
+          "extends": "acme::shop::BaseEvent",
           "children": [
             {
               "source.rdb": {
@@ -129,11 +129,11 @@
             "programId",
             "programTitle"
           ],
-          "@from": "WorkoutEvent",
+          "@from": "acme::shop::WorkoutEvent",
           "@measures": [
             "totalMinutes"
           ],
-          "@spine": "BaseEvent.program"
+          "@spine": "acme::shop::BaseEvent.program"
         }
       }
     ]

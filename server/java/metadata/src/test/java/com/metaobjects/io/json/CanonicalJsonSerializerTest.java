@@ -324,17 +324,20 @@ public class CanonicalJsonSerializerTest extends SharedRegistryTestBase {
     // -----------------------------------------------------------------------
     @Test
     public void testChildInDifferentPackageDoesNotEmitPackageKeyUnlessAuthored() {
-        // Root is "acme::core"; child object lives in "acme::commerce" (different package).
+        // Root is "acme::core"; the only named top-level node lives in "acme::commerce".
         MetaRoot root = new MetaRoot("acme::core");
 
         ValueMetaObject product = ValueMetaObject.create("acme::commerce::Product");
         root.addChild(product);
 
+        // ADR-0059 document package rule: every named top-level node shares one package,
+        // so the root carries it and the node (unauthored) emits no redundant key.
         String json = CanonicalJsonSerializer.canonicalSerialize(root);
-
-        // Effective-package difference alone must NOT emit a `package` key.
-        assertFalse("unauthored child must NOT emit a redundant 'package' key, got: " + json,
-                json.contains("\"package\": \"acme::commerce\""));
+        assertTrue("root must carry the shared package, got: " + json,
+                json.startsWith("{\n  \"package\": \"acme::commerce\"")
+                        || json.contains("\"package\": \"acme::commerce\""));
+        assertEquals("unauthored child must NOT repeat the package key, got: " + json,
+                1, json.split("\"package\": \"acme::commerce\"", -1).length - 1);
 
         // When the author explicitly wrote the package (parser sets this flag),
         // it round-trips on the way out.

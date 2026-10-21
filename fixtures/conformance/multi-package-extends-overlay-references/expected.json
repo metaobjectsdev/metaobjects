@@ -1,10 +1,10 @@
 {
   "metadata.root": {
-    "package": "acme::common",
     "children": [
       {
         "object.entity": {
           "name": "BaseEntity",
+          "package": "acme::common",
           "abstract": true,
           "children": [
             {
@@ -31,6 +31,7 @@
       {
         "object.entity": {
           "name": "Order",
+          "package": "acme::orders",
           "extends": "acme::common::BaseEntity",
           "children": [
             {
@@ -64,6 +65,7 @@
       {
         "object.entity": {
           "name": "Customer",
+          "package": "acme::sales",
           "extends": "acme::common::BaseEntity",
           "children": [
             {
@@ -78,4 +80,3 @@
     ]
   }
 }
-

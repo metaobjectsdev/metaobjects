@@ -5,8 +5,9 @@ import {
   IDENTITY_ATTR_FIELDS,
   TYPE_VALIDATOR,
   VALIDATOR_SUBTYPE_REQUIRED,
-  refMatchesObject,
-  resolveObjectRef,
+  IDENTITY_REFERENCE_ATTR_REFERENCES,
+  RELATIONSHIP_ATTR_OBJECT_REF,
+  refTarget,
   resolveRelationshipReference,
   type MetaObject,
   type MetaRelationship,
@@ -53,8 +54,8 @@ export function isRequired(field: MetaData): boolean {
  *   1. @onDelete / @onUpdate declared DIRECTLY on the identity.reference — the
  *      reference IS the FK, so the action may be declared right where the FK is.
  *   2. A correlated sibling relationship on the same entity — matched
- *      package-aware against the resolved @references target (refMatchesObject
- *      / ADR-0042, so bare and FQN forms pair correctly); an M:N relationship
+ *      by bound target against the resolved @references target (refTarget
+ *      / ADR-0059, so bare and FQN forms pair correctly); an M:N relationship
  *      (@through) never correlates with a direct FK. Its explicit @onDelete,
  *      else its subtype default (composition→cascade, aggregation→set-null,
  *      association→restrict); onUpdate defaults to "cascade".
@@ -102,13 +103,13 @@ export function resolveReferentialActions(
   const refOnDelete = ref.onDelete;
   const refOnUpdate = ref.onUpdate;
 
-  // Resolve the reference's target ONCE, package-aware (ADR-0042: a bare
-  // @references resolves in the DECLARING owner's package). Both relationship
-  // tiers then correlate against the resolved node with refMatchesObject, so a
+  // Resolve the reference's target ONCE, as bound (ADR-0059: a bare @references
+  // resolves in the DECLARING node's package). Both relationship tiers then
+  // correlate against the resolved node by identity, so a
   // bare @references pairs correctly with an FQN @objectRef (and vice versa) —
   // an exact-string tier 2 used to miss the FQN form, letting the parent-side
   // tier override a child-side declaration.
-  const targetObj = resolveReferenceTarget(entity, ref, target);
+  const targetObj = resolveReferenceTarget(ref);
 
   // (2) Otherwise correlate with a sibling relationship and use its action /
   //     subtype default. onUpdate's "cascade" default only applies when a
@@ -178,19 +179,11 @@ export function resolveReferentialActions(
 }
 
 /**
- * The reference's target entity, resolved package-aware (ADR-0042: a bare @references
- * resolves in the DECLARING owner's package). Undefined for a dangling @references.
+ * The reference's target entity: the object its @references is bound to (ADR-0059 R7),
+ * resolved in the package of the node that declared it. Undefined for a dangling @references.
  */
-function resolveReferenceTarget(
-  entity: MetaObject,
-  ref: MetaReferenceIdentity,
-  target: string,
-): MetaObject | undefined {
-  const root = entity.parent;
-  if (root === undefined) return undefined;
-  const refOwner = ref.parent ?? entity;
-  const refOwnerPkg = refOwner.package ?? refOwner.fileDefaultPackage ?? "";
-  return resolveObjectRef(root, target, refOwnerPkg).node as MetaObject | undefined;
+function resolveReferenceTarget(ref: MetaReferenceIdentity): MetaObject | undefined {
+  return refTarget(ref, IDENTITY_REFERENCE_ATTR_REFERENCES) as MetaObject | undefined;
 }
 
 /**
@@ -208,10 +201,8 @@ function findSiblingRelationship(
     const objectRef = r.objectRef;
     if (objectRef === undefined) return false;
     if (targetObj === undefined) return objectRef === target;
-    const relOwner = r.parent ?? entity;
-    const relOwnerPkg = relOwner.package ?? relOwner.fileDefaultPackage ?? "";
-    if (!refMatchesObject(targetObj, objectRef, relOwnerPkg)) return false;
-    return resolveRelationshipReference(entity, r.name, objectRef, r.sourceRefField) === ref;
+    if (refTarget(r, RELATIONSHIP_ATTR_OBJECT_REF) !== targetObj) return false;
+    return resolveRelationshipReference(entity, r.name, targetObj, r.sourceRefField) === ref;
   });
 }
 
@@ -253,7 +244,7 @@ export function findReferentialActionConflict(
 ): ReferentialActionConflict | undefined {
   const target = ref.targetEntity;
   if (target === undefined) return undefined;
-  const targetObj = resolveReferenceTarget(entity, ref, target);
+  const targetObj = resolveReferenceTarget(ref);
   if (targetObj === undefined) return undefined;
   const governing = findSiblingRelationship(entity, ref, target, targetObj);
   if (governing === undefined) return undefined;
@@ -331,18 +322,11 @@ function findReverseRelationship(
   ref: MetaReferenceIdentity,
   targetObj: MetaObject,
 ): MetaRelationship | undefined {
-  const root = entity.parent;
-  if (root === undefined) return undefined;
-
   // Ambiguity guard: exactly one enforced reference from `entity` to this
   // target, and it must be `ref` itself.
   const refsToTarget = entity.referenceIdentities().filter((r) => {
     if (!r.enforce) return false;
-    const t = r.targetEntity;
-    if (t === undefined) return false;
-    const owner = r.parent ?? entity;
-    const ownerPkg = owner.package ?? owner.fileDefaultPackage ?? "";
-    return resolveObjectRef(root, t, ownerPkg).node === targetObj;
+    return refTarget(r, IDENTITY_REFERENCE_ATTR_REFERENCES) === targetObj;
   });
   if (refsToTarget.length !== 1 || refsToTarget[0] !== ref) return undefined;
 
@@ -354,11 +338,7 @@ function findReverseRelationship(
   // none of them is preferred (see the class doc above).
   const reverseCandidates = targetObj.relationships().filter((r) => {
     if (r.through !== undefined) return false; // M:N — junction path, not this FK
-    const objectRef = r.objectRef;
-    if (objectRef === undefined) return false;
-    const relOwner = r.parent ?? targetObj;
-    const relOwnerPkg = relOwner.package ?? relOwner.fileDefaultPackage ?? "";
-    return refMatchesObject(entity, objectRef, relOwnerPkg);
+    return refTarget(r, RELATIONSHIP_ATTR_OBJECT_REF) === entity;
   });
   return reverseCandidates.length === 1 ? reverseCandidates[0] : undefined;
 }

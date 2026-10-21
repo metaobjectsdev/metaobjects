@@ -7,8 +7,10 @@ import org.junit.rules.TemporaryFolder;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
@@ -242,5 +244,231 @@ public class GeneratedFileWriterTest {
         assertNull("a closed run must not leak onto the next one", GeneratedFileWriter.currentRun());
         // The same path, different content, is now free again — a new build, not a collision.
         GeneratedFileWriter.write(out, "/** GENERATED */\nclass Scoped { int b; }\n");
+    }
+
+    // === manifest-aware writes ================================================
+
+    @Test
+    public void absentFile_writesAndRecords() throws Exception {
+        Path project = tmp.newFolder().toPath();
+        Path genState = project.resolve(".metaobjects/.gen-state");
+        Path out = project.resolve("gen/X.java");
+
+        try (GeneratedFileWriter.Run run = GeneratedFileWriter.beginRun()) {
+            run.configureManifest(genState, project);
+            assertEquals(GeneratedFileWriter.Outcome.WRITTEN, GeneratedFileWriter.write(out, GENERATED_BODY));
+        }
+        assertEquals(GENERATED_BODY, Files.readString(out));
+        assertEquals(HashManifest.contentHash(GENERATED_BODY), HashManifest.recordedHash(genState, "gen/X.java"));
+    }
+
+    @Test
+    public void manifestIsWrittenOncePerRun_onFlushNotOnEachWrite() throws Exception {
+        Path project = tmp.newFolder().toPath();
+        Path genState = project.resolve(".metaobjects/.gen-state");
+
+        try (GeneratedFileWriter.Run run = GeneratedFileWriter.beginRun()) {
+            run.configureManifest(genState, project);
+            GeneratedFileWriter.write(project.resolve("gen/A.java"), GENERATED_BODY);
+            GeneratedFileWriter.write(project.resolve("gen/B.java"), GENERATED_BODY);
+            assertFalse(HashManifest.exists(genState));
+            run.flush();
+            assertEquals(HashManifest.contentHash(GENERATED_BODY), HashManifest.recordedHash(genState, "gen/A.java"));
+            assertEquals(HashManifest.contentHash(GENERATED_BODY), HashManifest.recordedHash(genState, "gen/B.java"));
+        }
+    }
+
+    @Test
+    public void runThatChangesNothing_leavesTheManifestFileAlone() throws Exception {
+        Path project = tmp.newFolder().toPath();
+        Path genState = project.resolve(".metaobjects/.gen-state");
+        Path out = project.resolve("gen/X.java");
+        Files.createDirectories(out.getParent());
+        Files.writeString(out, GENERATED_BODY);
+        Files.createDirectories(genState);
+        String manifest = "{\"gen/X.java\": \"" + HashManifest.contentHash(GENERATED_BODY) + "\"}";
+        Files.writeString(genState.resolve(".hashes.json"), manifest);
+
+        try (GeneratedFileWriter.Run run = GeneratedFileWriter.beginRun()) {
+            run.configureManifest(genState, project);
+            assertEquals(GeneratedFileWriter.Outcome.UNCHANGED, GeneratedFileWriter.write(out, GENERATED_BODY));
+        }
+        assertEquals("not rewritten (a rewrite would pretty-print it)", manifest,
+                Files.readString(genState.resolve(".hashes.json")));
+    }
+
+    @Test
+    public void firstRunAdoption_markerFilePresentNoManifest_isAdoptedNotRefused() throws Exception {
+        Path project = tmp.newFolder().toPath();
+        Path genState = project.resolve(".metaobjects/.gen-state");
+        Path out = project.resolve("gen/X.java");
+        Files.createDirectories(out.getParent());
+        Files.writeString(out, GENERATED_BODY); // pre-existing, never recorded
+
+        try (GeneratedFileWriter.Run run = GeneratedFileWriter.beginRun()) {
+            run.configureManifest(genState, project);
+            assertEquals(GeneratedFileWriter.Outcome.WRITTEN, GeneratedFileWriter.write(out, GENERATED_BODY));
+            assertEquals(List.of(out.toString()), run.adoptedPaths());
+        }
+        assertEquals(HashManifest.contentHash(GENERATED_BODY), HashManifest.recordedHash(genState, "gen/X.java"));
+    }
+
+    @Test
+    public void firstRunAdoption_noMarkerNoManifest_isRefusedNotAdopted() throws Exception {
+        Path project = tmp.newFolder().toPath();
+        Path genState = project.resolve(".metaobjects/.gen-state");
+        Path out = project.resolve("gen/X.java");
+        Files.createDirectories(out.getParent());
+        String mine = "// hand-written, no marker\npublic class X {}\n";
+        Files.writeString(out, mine);
+
+        try (GeneratedFileWriter.Run run = GeneratedFileWriter.beginRun()) {
+            run.configureManifest(genState, project);
+            assertEquals(GeneratedFileWriter.Outcome.REFUSED, GeneratedFileWriter.write(out, GENERATED_BODY));
+            assertTrue(run.adoptedPaths().isEmpty());
+        }
+        assertEquals(mine, Files.readString(out));
+        assertNull(HashManifest.recordedHash(genState, "gen/X.java"));
+    }
+
+    @Test
+    public void pristineRecordedFile_isOverwrittenAndReRecorded() throws Exception {
+        Path project = tmp.newFolder().toPath();
+        Path genState = project.resolve(".metaobjects/.gen-state");
+        Path out = project.resolve("gen/X.java");
+
+        try (GeneratedFileWriter.Run run = GeneratedFileWriter.beginRun()) {
+            run.configureManifest(genState, project);
+            GeneratedFileWriter.write(out, GENERATED_BODY);
+        }
+        String fresh = "/** GENERATED — REST controller for Council. */\npublic class X { int y; }\n";
+        try (GeneratedFileWriter.Run run = GeneratedFileWriter.beginRun()) {
+            run.configureManifest(genState, project);
+            assertEquals(GeneratedFileWriter.Outcome.WRITTEN, GeneratedFileWriter.write(out, fresh));
+        }
+        assertEquals(fresh, Files.readString(out));
+        assertEquals(HashManifest.contentHash(fresh), HashManifest.recordedHash(genState, "gen/X.java"));
+    }
+
+    @Test
+    public void unchangedContent_isReaffirmedNotRewritten() throws Exception {
+        Path project = tmp.newFolder().toPath();
+        Path genState = project.resolve(".metaobjects/.gen-state");
+        Path out = project.resolve("gen/X.java");
+
+        try (GeneratedFileWriter.Run run = GeneratedFileWriter.beginRun()) {
+            run.configureManifest(genState, project);
+            GeneratedFileWriter.write(out, GENERATED_BODY);
+        }
+        try (GeneratedFileWriter.Run run = GeneratedFileWriter.beginRun()) {
+            run.configureManifest(genState, project);
+            assertEquals(GeneratedFileWriter.Outcome.UNCHANGED, GeneratedFileWriter.write(out, GENERATED_BODY));
+        }
+    }
+
+    @Test
+    public void unchangedWriteStillClaimsThePath_soADifferingSecondEmitterCollides() throws Exception {
+        Path project = tmp.newFolder().toPath();
+        Path genState = project.resolve(".metaobjects/.gen-state");
+        Path out = project.resolve("gen/X.java");
+
+        try (GeneratedFileWriter.Run run = GeneratedFileWriter.beginRun()) {
+            run.configureManifest(genState, project);
+            GeneratedFileWriter.write(out, GENERATED_BODY);
+        }
+        try (GeneratedFileWriter.Run run = GeneratedFileWriter.beginRun()) {
+            run.configureManifest(genState, project);
+            run.attributeTo("GeneratorA");
+            assertEquals(GeneratedFileWriter.Outcome.UNCHANGED, GeneratedFileWriter.write(out, GENERATED_BODY));
+            run.attributeTo("GeneratorB");
+            try {
+                GeneratedFileWriter.write(out, "/** GENERATED */\npublic class X { int other; }\n");
+                fail("expected an output path collision");
+            } catch (GeneratorException e) {
+                assertTrue(e.getMessage(), e.getMessage().contains("Output path collision")
+                    && e.getMessage().contains("GeneratorA") && e.getMessage().contains("GeneratorB"));
+            }
+        }
+        assertEquals(GENERATED_BODY, Files.readString(out));
+    }
+
+    @Test
+    public void editedRecordedFile_handEditsKeep_isRefusedByNameAndStaysRecorded() throws Exception {
+        Path project = tmp.newFolder().toPath();
+        Path genState = project.resolve(".metaobjects/.gen-state");
+        Path out = project.resolve("gen/X.java");
+
+        try (GeneratedFileWriter.Run run = GeneratedFileWriter.beginRun()) {
+            run.configureManifest(genState, project);
+            GeneratedFileWriter.write(out, GENERATED_BODY);
+        }
+        String edited = GENERATED_BODY + "// mine\n";
+        Files.writeString(out, edited);
+
+        String fresh = "/** GENERATED — REST controller for Council. */\npublic class X { int z; }\n";
+        try (GeneratedFileWriter.Run run = GeneratedFileWriter.beginRun()) {
+            run.configureManifest(genState, project);
+            run.attributeTo("SomeGenerator", GeneratedFileWriter.HAND_EDITS_KEEP, null);
+            assertEquals(GeneratedFileWriter.Outcome.REFUSED, GeneratedFileWriter.write(out, fresh));
+        }
+        assertEquals(edited, Files.readString(out));
+        // Still recorded under its ORIGINAL hash — the refusal must repeat next run.
+        assertEquals(HashManifest.contentHash(GENERATED_BODY), HashManifest.recordedHash(genState, "gen/X.java"));
+    }
+
+    @Test
+    public void editedRecordedFile_handEditsOverwrite_isReplacedAndReBaselined() throws Exception {
+        Path project = tmp.newFolder().toPath();
+        Path genState = project.resolve(".metaobjects/.gen-state");
+        Path out = project.resolve("gen/X.java");
+
+        try (GeneratedFileWriter.Run run = GeneratedFileWriter.beginRun()) {
+            run.configureManifest(genState, project);
+            GeneratedFileWriter.write(out, GENERATED_BODY);
+        }
+        Files.writeString(out, GENERATED_BODY + "// mine\n");
+
+        String fresh = "/** GENERATED — REST controller for Council. */\npublic class X { int z; }\n";
+        try (GeneratedFileWriter.Run run = GeneratedFileWriter.beginRun()) {
+            run.configureManifest(genState, project);
+            run.attributeTo("SomeGenerator", GeneratedFileWriter.HAND_EDITS_OVERWRITE, null);
+            assertEquals(GeneratedFileWriter.Outcome.WRITTEN, GeneratedFileWriter.write(out, fresh));
+            assertEquals(List.of(out.toString()), run.overwrittenHandEditedPaths());
+        }
+        assertEquals(fresh, Files.readString(out));
+        assertEquals(HashManifest.contentHash(fresh), HashManifest.recordedHash(genState, "gen/X.java"));
+    }
+
+    @Test
+    public void strangerFile_isNeverTouchedByOverwritePolicy() throws Exception {
+        // A file never recorded as ours stays refused even when the generator's policy is
+        // `overwrite` — `overwrite` only ever replaces what the manifest shows we wrote.
+        Path project = tmp.newFolder().toPath();
+        Path genState = project.resolve(".metaobjects/.gen-state");
+        Path out = project.resolve("gen/X.java");
+        Files.createDirectories(out.getParent());
+        String mine = "// never ours\npublic class X {}\n";
+        Files.writeString(out, mine);
+
+        try (GeneratedFileWriter.Run run = GeneratedFileWriter.beginRun()) {
+            run.configureManifest(genState, project);
+            run.attributeTo("SomeGenerator", GeneratedFileWriter.HAND_EDITS_OVERWRITE, null);
+            assertEquals(GeneratedFileWriter.Outcome.REFUSED, GeneratedFileWriter.write(out, GENERATED_BODY));
+        }
+        assertEquals(mine, Files.readString(out));
+    }
+
+    @Test
+    public void untrackedPathOutsideProjectRoot_fallsBackToMarkerOnlyRule() throws Exception {
+        Path project = tmp.newFolder().toPath();
+        Path genState = project.resolve(".metaobjects/.gen-state");
+        Path outside = tmp.newFolder().toPath().resolve("X.java"); // sibling, not under project
+
+        try (GeneratedFileWriter.Run run = GeneratedFileWriter.beginRun()) {
+            run.configureManifest(genState, project);
+            assertEquals(GeneratedFileWriter.Outcome.WRITTEN, GeneratedFileWriter.write(outside, GENERATED_BODY));
+            assertEquals(1, run.untrackedCount());
+        }
+        assertEquals(GENERATED_BODY, Files.readString(outside));
     }
 }

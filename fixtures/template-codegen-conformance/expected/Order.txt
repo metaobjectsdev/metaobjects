@@ -1,4 +1,4 @@
 // Order (shop)
 - id: long
 - productId: long
-rel product -> Product (one)
+rel product -> shop::Product (one)

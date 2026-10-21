@@ -16,7 +16,7 @@ describe("template.prompt @responseRef", () => {
     const r = await MetaDataLoader.fromString(meta("ResVO"), "json");
     expect(r.errors).toEqual([]);
     const prompt = r.root.ownChildren().find((c: { name: string }) => c.name === "P")!;
-    expect(prompt.ownAttr("responseRef")).toBe("ResVO");
+    expect(prompt.ownAttr("responseRef")).toBe("t::ai::ResVO");
   });
   test("unresolved @responseRef is a loader error", async () => {
     const r = await MetaDataLoader.fromString(meta("NoSuchVO"), "json");

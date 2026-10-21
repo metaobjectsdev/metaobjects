@@ -42,7 +42,7 @@ import {
   TEMPLATE_ATTR_HTML_BODY_REF,
   TEMPLATE_ATTR_TEXT_BODY_REF,
   isMetaField,
-  resolveObjectRef,
+  refTarget,
 } from "@metaobjectsdev/metadata";
 import {
   verify,
@@ -56,12 +56,6 @@ import { GENERATED_HEADER, GENERATED_EDIT_NOTE } from "../constants.js";
 import type { ExtStyle } from "../metaobjects-config.js";
 import type { RenderContext } from "../render-context.js";
 import { valueObjectImport } from "./value-object-import.js";
-
-// ADR-0039: resolving — root has no super (children()==ownChildren()); a top-level object/template may itself extend, so resolve rather than work-by-accident.
-// ADR-0042: package-local — resolveObjectRef binds a bare @objectRef in `referrerPkg` first (else root-level), an FQN exactly.
-function findObject(root: MetaData, name: string, referrerPkg: string): MetaData | undefined {
-  return resolveObjectRef(root, name, referrerPkg).node;
-}
 
 // ADR-0039: resolving — root has no super (children()==ownChildren()); a top-level object/template may itself extend, so resolve rather than work-by-accident.
 function findTemplate(root: MetaData, name: string): MetaData | undefined {
@@ -87,38 +81,26 @@ import type { ${payloadTypeName} } from ${JSON.stringify(payloadSpecifier)};`;
 
 /**
  * Walk an `object.value` view-object into a render `PayloadField[]`. Object-ref
- * fields recurse into their referenced view-object; a `seen` set guards a
- * (pathological) reference cycle. Replicates cli's `derivePayloadFieldTree` —
+ * fields recurse into the view-object the loader bound for their `@objectRef`
+ * (ADR-0059 R7); a `seen` set guards a (pathological) reference cycle. Replicates cli's `derivePayloadFieldTree` —
  * codegen-ts must not depend on the cli package (wrong layer / would cycle), so
  * the same small walk lives here against the metadata constants codegen-ts
  * already imports.
  */
 function derivePayloadFieldTree(
-  root: MetaData,
-  voName: string,
-  referrerPkg: string,
-  seen: ReadonlySet<string> = new Set(),
+  vo: MetaData | undefined,
+  seen: ReadonlySet<MetaData> = new Set(),
 ): PayloadField[] {
-  if (seen.has(voName)) return [];
-  const vo = findObject(root, voName, referrerPkg);
-  if (!vo) return [];
-  // ADR-0042: a nested @objectRef resolves in the FIELD's own declaring package
-  // (fallback below), which differs from this VO's when the field is inherited via
-  // extends from an abstract VO elsewhere.
-  const voPkg = vo.package ?? vo.fileDefaultPackage ?? "";
-  const nextSeen = new Set(seen).add(voName);
+  if (vo === undefined || seen.has(vo)) return [];
+  const nextSeen = new Set(seen).add(vo);
   const fields: PayloadField[] = [];
   for (const f of vo.children().filter(isMetaField)) {
     // ADR-0039: effective array-ness — `isArray` may be inherited via extends. Carried only
     // when true, so a helper for a payload with no list field is byte-identical.
     const arrayness = f.resolvedIsArray() ? { isArray: true } : {};
-    if (f.subType === FIELD_SUBTYPE_OBJECT) {
-      const ref = f.attr(FIELD_ATTR_OBJECT_REF);
-      if (typeof ref === "string") {
-        const fieldPkg = f.parent?.package ?? f.parent?.fileDefaultPackage ?? voPkg;
-        fields.push({ name: f.name, fields: derivePayloadFieldTree(root, ref, fieldPkg, nextSeen), ...arrayness });
-        continue;
-      }
+    if (f.subType === FIELD_SUBTYPE_OBJECT && typeof f.attr(FIELD_ATTR_OBJECT_REF) === "string") {
+      fields.push({ name: f.name, fields: derivePayloadFieldTree(refTarget(f, FIELD_ATTR_OBJECT_REF), nextSeen), ...arrayness });
+      continue;
     }
     fields.push({ name: f.name, ...arrayness });
   }
@@ -205,22 +187,20 @@ export function renderRenderHelper(
   if (typeof payloadRef !== "string") {
     throw new Error(`template "${templateName}" missing @payloadRef`);
   }
-  // ADR-0042: a bare @payloadRef resolves in the template's package.
-  const tmplPkg = tmpl.package ?? tmpl.fileDefaultPackage ?? "";
-  const vo = findObject(root, payloadRef, tmplPkg);
+  // ADR-0059 R7: the value object the loader bound for @payloadRef.
+  const vo = refTarget(tmpl, TEMPLATE_ATTR_PAYLOAD_REF);
   if (!vo) {
     throw new Error(
       `template "${templateName}" @payloadRef "${payloadRef}" not found in metadata root`,
     );
   }
 
-  const fields = derivePayloadFieldTree(root, payloadRef, tmplPkg);
+  const fields = derivePayloadFieldTree(vo);
   const ft = fieldTreeLiteral(fields);
   // Same base as promptRender()'s handle and outputParser()'s symbols (naming.ts).
   const fnName = `render${templateSymbolBase(templateName)}`;
   // ADR-0056 — the payload is the value object's own interface: its emitted name and module
-  // come from the one helper every template-tier file uses. Package-scoped resolution above
-  // (findObject/derivePayloadFieldTree) intentionally keeps using the raw `payloadRef`.
+  // come from the one helper every template-tier file uses.
   const { name: payloadTypeName, specifier: payloadSpecifier } =
     valueObjectImport(ctx, vo, outPath, extStyle);
 

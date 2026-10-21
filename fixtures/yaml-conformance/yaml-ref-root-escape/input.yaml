@@ -1,0 +1,24 @@
+# A root-level Apple shadowed by acme::Apple. `::Apple` from package acme must
+# reach the root-level object, never the local one (ADR-0059 R2).
+metadata:
+  children:
+    - object.value:
+        name: Apple
+        children:
+          - field.string: rootOnly
+    - object.value:
+        name: Apple
+        package: acme
+        children:
+          - field.string: localOnly
+    - object.value:
+        name: RootApple
+        package: acme
+        extends: ::Apple
+    - object.value:
+        name: Basket
+        package: acme
+        children:
+          - field.object:
+              name: fruit
+              objectRef: ::Apple

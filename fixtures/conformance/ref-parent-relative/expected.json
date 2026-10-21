@@ -1,0 +1,47 @@
+{
+  "metadata.root": {
+    "children": [
+      {
+        "object.value": {
+          "name": "Base",
+          "package": "acme",
+          "children": [
+            {
+              "field.string": {
+                "name": "baseOnly"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.value": {
+          "name": "Thing",
+          "package": "acme",
+          "children": [
+            {
+              "field.string": {
+                "name": "label"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.value": {
+          "name": "X",
+          "package": "acme::sub",
+          "extends": "acme::Base",
+          "children": [
+            {
+              "field.object": {
+                "name": "thing",
+                "@objectRef": "acme::Thing"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -2,6 +2,7 @@ package com.metaobjects.generator.spring;
 
 import com.metaobjects.MetaRoot;
 import com.metaobjects.loader.MetaDataLoader;
+import com.metaobjects.loader.References;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.relationship.M2MFields;
 import com.metaobjects.relationship.MetaRelationship;
@@ -90,8 +91,8 @@ public final class SpringM2mSupport {
 
             M2MFields fields = M2MFields.derive(rel, entity, root);
 
-            MetaObject target = findEntity(root, rel.getObjectRef());
-            MetaObject junction = findEntity(root, through);
+            MetaObject target = References.refTarget(rel, MetaRelationship.ATTR_OBJECT_REF);
+            MetaObject junction = References.refTarget(rel, MetaRelationship.ATTR_THROUGH);
             if (target == null || junction == null) continue;
 
             String[] targetSplit = SpringNaming.splitFqn(target.getName());
@@ -127,22 +128,5 @@ public final class SpringM2mSupport {
                 targetDiscriminatorValue));
         }
         return out;
-    }
-
-    private static MetaObject findEntity(MetaRoot root, String name) {
-        if (name == null) return null;
-        // ADR-0041: a FULLY-QUALIFIED ref (contains "::") resolves EXACTLY on the
-        // object's package-qualified name — it never falls back to a bare-tail match
-        // (the closed bug: an FQN @objectRef / @through binding a same-named object
-        // in the WRONG package). A bare ref matches the object's short name (first
-        // match wins; cross-package same-package-preference is the deferred codegen
-        // follow-up, mirroring the TS residual note).
-        boolean fqn = name.indexOf("::") >= 0;
-        // ADR-0039: root-level entity scan — root is never extended, so own children
-        // is correct (entities are declared directly under root, not inherited into it).
-        for (MetaObject mo : root.getChildren(MetaObject.class, false)) {
-            if (fqn ? name.equals(mo.getName()) : name.equals(mo.getShortName())) return mo;
-        }
-        return null;
     }
 }

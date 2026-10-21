@@ -49,6 +49,22 @@ const BASE_ATTR_DATA_TYPE: Readonly<Record<string, DataType>> = {
 };
 
 export class MetaAttr extends MetaData implements DataTypeAware {
+  /**
+   * ADR-0059 R5 — for a reference attribute, the top-level object each reference
+   * names, set once by the loader's `resolveReferences` pass. A scalar value holds
+   * one node; a list value holds one entry per element (`undefined` where that
+   * element did not resolve). Unset when the attr is not a reference or did not
+   * resolve.
+   */
+  resolvedTarget?: MetaData | readonly (MetaData | undefined)[];
+
+  /**
+   * ADR-0059 R5 — the value exactly as authored, kept when `resolveReferences`
+   * rewrites `value` to its canonical spelling. `meta fmt` writes this back
+   * (`refs: "authored"`). Unset when the value was never rewritten.
+   */
+  authoredValue?: AttrValue;
+
   /** This attribute's coerced value (stored on the instance under RESERVED_KEY_VALUE). */
   get value(): AttrValue | undefined {
     // ADR-0039: own — an attr node's own scalar payload (the RESERVED_KEY_VALUE

@@ -48,11 +48,17 @@ public class MetaRoot(TypeId typeId, string name) : MetaData(typeId, name)
                 .ToArray());
     }
 
-    /// <summary>Find an object by name.</summary>
+    /// <summary>
+    /// Find an object by name, or by a canonical reference (ADR-0059): a value with a package
+    /// separator (<c>acme::Program</c>, <c>::Program</c>) binds the object whose resolution key
+    /// matches exactly. A bare name matches a root-level child by name, as before.
+    /// </summary>
     public MetaObject? FindObject(string name)
     {
         return Cached($"findObject:{name}", () =>
         {
+            if (name.Contains(PACKAGE_SEPARATOR, StringComparison.Ordinal))
+                return NamingRefs.LookupCanonical(this, name, TYPE_OBJECT) as MetaObject;
             var child = OwnChildByTypeAndName(TYPE_OBJECT, name);
             return child as MetaObject;
         });

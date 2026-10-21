@@ -41,7 +41,7 @@
                 "@fields": [
                   "productId"
                 ],
-                "@references": "Product"
+                "@references": "acme::shop::Product"
               }
             }
           ]
@@ -74,7 +74,7 @@
               "relationship.association": {
                 "name": "suppliers",
                 "@cardinality": "many",
-                "@objectRef": "Supplier"
+                "@objectRef": "acme::shop::Supplier"
               }
             }
           ]
@@ -110,25 +110,25 @@
             {
               "field.long": {
                 "name": "productId",
-                "extends": "Product.id"
+                "extends": "acme::shop::Product.id"
               }
             },
             {
               "identity.primary": {
                 "name": "id",
-                "extends": "Product.id"
+                "extends": "acme::shop::Product.id"
               }
             },
             {
               "field.object": {
                 "name": "supplierBriefs",
                 "isArray": true,
-                "@objectRef": "SupplierBrief",
+                "@objectRef": "acme::shop::SupplierBrief",
                 "children": [
                   {
                     "origin.aggregate": {
                       "@agg": "collect",
-                      "@via": "Product.suppliers"
+                      "@via": "acme::shop::Product.suppliers"
                     }
                   }
                 ]

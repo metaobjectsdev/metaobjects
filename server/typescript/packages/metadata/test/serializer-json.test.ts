@@ -89,6 +89,19 @@ function makeModel(type: string, subType: string, name: string): MetaData {
 }
 
 /**
+ * ADR-0059 R8: the serializer may move a package between the root and its top-level
+ * nodes (one root package, or one per node), so the root's own package and a
+ * top-level node's own package are not round-trip invariants. What a package decides
+ * is: each top-level node's effective package. Deeper nodes keep their own.
+ */
+function sameEffectivePackage(a: MetaData, b: MetaData, path: string): boolean {
+  if (path === "root") return true;
+  if (!/^root\.children\[\d+\]$/.test(path)) return a.package === b.package;
+  const eff = (n: MetaData): string => n.package ?? n.fileDefaultPackage ?? n.parent?.package ?? "";
+  return eff(a) === eff(b);
+}
+
+/**
  * Recursively assert two MetaData trees are structurally equivalent.
  * Compares: typeId, name, package, superRef, isAbstract, isArray, attrs, children (recursive).
  * Does NOT compare frozen state or superResolved (runtime, not wire-format).
@@ -97,7 +110,7 @@ function assertModelsEqual(a: MetaData, b: MetaData, path = "root"): void {
   expect(a.type).toBe(b.type);
   expect(a.subType).toBe(b.subType);
   expect(a.name).toBe(b.name);
-  expect(a.package).toBe(b.package);
+  expect(sameEffectivePackage(a, b, path)).toBe(true);
   expect(a.superRef).toBe(b.superRef);
   expect(a.isAbstract).toBe(b.isAbstract);
   expect(a.isArray).toBe(b.isArray);

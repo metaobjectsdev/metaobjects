@@ -1,0 +1,19 @@
+{
+  "metadata.root": {
+    "package": "shop::people",
+    "children": [
+      {
+        "object.value": {
+          "name": "Customer",
+          "children": [
+            {
+              "field.string": {
+                "name": "email"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

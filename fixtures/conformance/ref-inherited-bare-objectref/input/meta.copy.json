@@ -1,0 +1,32 @@
+{
+  "metadata.root": {
+    "package": "app",
+    "children": [
+      {
+        "object.value": {
+          "name": "Thing",
+          "children": [
+            {
+              "field.string": {
+                "name": "appOnly"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.value": {
+          "name": "Copy",
+          "children": [
+            {
+              "field.object": {
+                "name": "thing",
+                "extends": "base::Holder.thing"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -360,10 +360,7 @@ public final class JavaApiModelBuilder {
 
     /** The template's resolvable {@code @payloadRef} value object, or {@code null}. */
     private static MetaObject payloadValueObject(MetaTemplate tmpl, MetaDataLoader loader) {
-        String ref = tmpl.getPayloadRef();
-        if (ref == null || ref.isEmpty()) return null;
-        return SpringNaming.resolveValueObjectRef(
-            loader, ref, com.metaobjects.util.MetaDataUtil.findPackageForMetaData(tmpl));
+        return SpringNaming.payloadTarget(tmpl, TemplateConstants.ATTR_PAYLOAD_REF);
     }
 
     /**

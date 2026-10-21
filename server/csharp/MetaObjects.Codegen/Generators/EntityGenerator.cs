@@ -19,6 +19,7 @@ using MetaObjects.Persistence.Origin;
 using static MetaObjects.Core.Field.FieldConstants;
 using static MetaObjects.Core.Validator.ValidatorConstants;
 using static MetaObjects.Persistence.Origin.OriginConstants;
+using static MetaObjects.Persistence.Source.SourceConstants;
 
 namespace MetaObjects.Codegen.Generators;
 
@@ -1485,7 +1486,7 @@ public class EntityGenerator : IGenerator
         if (agg.Of is not { } of) return null;
         var dot = of.LastIndexOf('.');
         if (dot <= 0 || dot == of.Length - 1) return null;
-        var sourceObj = ctx.Root.FindObject(CSharpNaming.StripPkg(of[..dot]));
+        var sourceObj = global::MetaObjects.NamingRefs.RefTarget(agg, ORIGIN_AGGREGATE_ATTR_OF) as MetaObject;
         var sourceField = sourceObj?.FindField(of[(dot + 1)..]);
         return sourceField is null ? null : CSharpNaming.ScalarForField(sourceField);
     }
@@ -1530,9 +1531,8 @@ public class EntityGenerator : IGenerator
         // compile. All mapped objects are eligible — a callable entity is in `mapped`.
         foreach (var e in mapped)
             foreach (var src in e.Sources())
-                if (src.ParameterRef is { } pref)
-                    Enqueue(global::MetaObjects.NamingRefs.ResolveObjectRef(
-                        ctx.Root, pref, global::MetaObjects.NamingRefs.EffectivePackage(e)) as MetaObject);
+                if (src.ParameterRef is not null)
+                    Enqueue(global::MetaObjects.NamingRefs.RefTarget(src, SOURCE_ATTR_PARAMETER_REF) as MetaObject);
 
         while (queue.Count > 0)
         {

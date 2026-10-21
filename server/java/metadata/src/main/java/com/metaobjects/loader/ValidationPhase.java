@@ -312,6 +312,11 @@ public final class ValidationPhase {
             }
             throw findings.get(findings.size() - 1);
         }
+
+        // ADR-0059 R5 — after the last validation pass, resolve every reference once: record the
+        // bound target and rewrite the value to its canonical spelling. The passes above resolved
+        // the AUTHORED strings, so their codes and order are unchanged.
+        References.resolveReferences(root);
     }
 
     /** Run one validation pass, catching its finding (if any) into {@code collected} so the
@@ -1898,7 +1903,7 @@ public final class ValidationPhase {
         // package is self, but an FQN "other::Widget" (a different same-short-name entity) is
         // NOT (comparing stripped short names would misclassify it).
         boolean isSelfJoin = objectRef != null
-            && resolveRootObject(root, objectRef, referrerPkg) == declaringEntity;
+            && resolveRootObject(root, objectRef, References.referrerPackageFor(rel, MetaRelationship.ATTR_OBJECT_REF)) == declaringEntity;
         if (symmetric && !isSelfJoin) {
             errors.add(new MetaDataException(
                 ErrorMessageConstants.ERR_BAD_ATTR_VALUE
@@ -1913,7 +1918,8 @@ public final class ValidationPhase {
         // Rule (c): @through must name an entity declaring exactly two identity.reference children.
         // ADR-0042: @through resolves package-locally when bare, exactly when FQN — a bare
         // cross-package @through no longer binds a junction in another package.
-        MetaObject junction = resolveRootObject(root, through, referrerPkg);
+        MetaObject junction = resolveRootObject(root, through,
+            References.referrerPackageFor(rel, MetaRelationship.ATTR_THROUGH));
         if (junction == null) {
             errors.add(new MetaDataException(
                 ErrorMessageConstants.ERR_INVALID_RELATIONSHIP
@@ -2012,8 +2018,10 @@ public final class ValidationPhase {
                 String objectRef = rel.getObjectRef();
                 if (objectRef == null || objectRef.isEmpty()) continue;
 
+                MetaObject objectRefNode = References.refTarget(rel, MetaRelationship.ATTR_OBJECT_REF);
+                if (objectRefNode == null) continue;
                 List<ReferenceIdentity> candidates =
-                    RelationshipReferences.referenceCandidatesFor(obj, objectRef);
+                    RelationshipReferences.referenceCandidatesFor(obj, objectRefNode);
 
                 String sourceRefField = rel.getSourceRefField();
                 String declared = (sourceRefField != null && !sourceRefField.isEmpty())
@@ -2047,7 +2055,7 @@ public final class ValidationPhase {
                 // (ladder step 3) decides.
                 if (candidates.size() <= 1) continue;
                 ReferenceIdentity resolved = RelationshipReferences.resolveRelationshipReference(
-                    obj, rel.getShortName(), objectRef);
+                    obj, rel.getShortName(), objectRefNode, null);
                 if (resolved != null) continue;
 
                 errors.add(new MetaDataException(
@@ -2184,7 +2192,8 @@ public final class ValidationPhase {
         MetaObject declaring = (relParent instanceof MetaObject) ? (MetaObject) relParent : null;
         String referrerPkg = (declaring != null && declaring.getPackage() != null)
             ? declaring.getPackage() : "";
-        MetaObject junction = resolveRootObject(root, through, referrerPkg);
+        MetaObject junction = resolveRootObject(root, through,
+            References.referrerPackageFor(rel, MetaRelationship.ATTR_THROUGH));
         if (junction == null) return true;
         if (!MetaObject.SUBTYPE_ENTITY.equals(junction.getSubType())) return true;
         if (countJunctionReferences(junction) != 2) return true;
@@ -2683,7 +2692,7 @@ public final class ValidationPhase {
                 // field, so this branch enforces it itself. Without it an @objectRef to an entity
                 // silently rolls up the FULL entity — the #270 shape, this time baked into DDL.
                 // ADR-0042 — a bare @objectRef resolves in the DECLARING owner's package.
-                String refPkg = obj.getPackage() == null ? "" : obj.getPackage();
+                String refPkg = References.referrerPackageFor(field, "objectRef");
                 MetaObject refTarget = resolveRootObject(root, objectRef, refPkg);
                 if (refTarget != null && !MetaObject.SUBTYPE_VALUE.equals(refTarget.getSubType())) {
                     throw new MetaDataException(
@@ -3834,8 +3843,8 @@ public final class ValidationPhase {
         // an FQN resolves exactly. No bare-tail cross-package fallback.
         // #210 — a template-level payload target widened to object.value OR a
         // sourceless object.projection (a SOURCED projection stays illegal).
-        String referrerPkg = template.getPackage() == null ? "" : template.getPackage();
-        MetaObject payloadVo = resolveRootObject(root, payloadRef, referrerPkg);
+        MetaObject payloadVo = resolveRootObject(root, payloadRef,
+            References.referrerPackageFor(template, "payloadRef"));
         if (payloadVo == null || !isLegalPayloadTarget(payloadVo)) {
             // FR5d — @payloadRef is a reference; emit format=resolved with
             // referrer=template bare (short) name to match TS/C#/Python (the
@@ -3862,7 +3871,8 @@ public final class ValidationPhase {
         if (template instanceof PromptTemplate promptTmpl) {
             String responseRef = promptTmpl.getResponseRef();
             if (responseRef != null && !responseRef.isEmpty()) {
-                MetaObject responseVo = resolveRootObject(root, responseRef, referrerPkg);
+                MetaObject responseVo = resolveRootObject(root, responseRef,
+                    References.referrerPackageFor(template, "responseRef"));
                 if (responseVo == null || !isLegalPayloadTarget(responseVo)) {
                     throw new MetaDataException(
                         ErrorMessageConstants.ERR_INVALID_TEMPLATE
@@ -4147,7 +4157,8 @@ public final class ValidationPhase {
             }
             // ADR-0042 — the hop target (@objectRef/@references) resolves in the package of the
             // entity that DECLARES the relationship/reference, i.e. currentObj (NOT the projection).
-            String hopPkg = currentObj.getPackage() == null ? "" : currentObj.getPackage();
+            String hopPkg = References.referrerPackageFor(hop,
+                isReferenceHop(hop) ? MetaIdentity.ATTR_REFERENCES : MetaRelationship.ATTR_OBJECT_REF);
             MetaObject nextObj = resolveRootObject(root, refTarget, hopPkg);
             if (nextObj == null) {
                 // FR5d — the hop's target points at a missing entity. This is the
@@ -4197,27 +4208,10 @@ public final class ValidationPhase {
      */
     public static MetaObject resolveRootObject(MetaRoot root, String ref, String referrerPkg) {
         if (ref == null) return null;
-        String pkg = (referrerPkg == null) ? "" : referrerPkg;
-        if (ref.indexOf(MetaData.PKG_SEPARATOR) >= 0) {
-            for (MetaData child : root.getChildren(MetaData.class, false)) {
-                if (child instanceof MetaObject && ref.equals(child.getName())) {
-                    return (MetaObject) child;
-                }
-            }
-            return null;
-        }
-        String localKey = pkg.isEmpty() ? ref : pkg + MetaData.PKG_SEPARATOR + ref;
-        MetaObject own = null;
-        MetaObject rootLevel = null;
-        for (MetaData child : root.getChildren(MetaData.class, false)) {
-            if (!(child instanceof MetaObject)) continue;
-            String key = child.getName();
-            if (key == null) continue;
-            if (key.equals(localKey)) own = (MetaObject) child;
-            if (key.equals(ref)) rootLevel = (MetaObject) child;
-        }
-        if (own != null) return own;
-        return localKey.equals(ref) ? null : rootLevel;
+        // ADR-0059 R2 — the one resolver: ::Rest, ..::Rest, pkg::Name, bare Name. An over-dropping
+        // ..:: resolves to nothing here; the walk that owns the ref reports ERR_BAD_ATTR_VALUE.
+        MetaData node = References.resolveObjectRef(root, ref, referrerPkg).node();
+        return node instanceof MetaObject ? (MetaObject) node : null;
     }
 
     /** ADR-0042 §5 — a did-you-mean suffix for an UNRESOLVED object reference: the FQNs of
@@ -5204,7 +5198,8 @@ public final class ValidationPhase {
                         ErrorCode.ERR_PARAMETER_REF_ON_NON_CALLABLE_KIND, source.getSource());
                 }
 
-                MetaObject target = resolveRootObject(root, ref, referrerPkg);
+                MetaObject target = resolveRootObject(root, ref,
+                    References.referrerPackageFor(source, RdbSource.ATTR_PARAMETER_REF));
                 if (target == null) {
                     throw new MetaDataException(
                         "ERR_PARAMETER_REF_UNRESOLVED"

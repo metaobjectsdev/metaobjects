@@ -17,6 +17,7 @@ package com.metaobjects.relationship;
 
 import com.metaobjects.identity.MetaIdentity;
 import com.metaobjects.identity.ReferenceIdentity;
+import com.metaobjects.loader.References;
 import com.metaobjects.object.MetaObject;
 
 import java.util.ArrayList;
@@ -100,15 +101,14 @@ public final class RelationshipReferences {
      * <p>ADR-0039: resolving — {@code holder.getIdentities()} (no-arg, includeParentData
      * defaulting true) honors references inherited via extends.</p>
      */
-    public static List<ReferenceIdentity> referenceCandidatesFor(MetaObject holder, String targetEntity) {
-        String target = ReferenceFkUtil.stripPackage(targetEntity);
+    public static List<ReferenceIdentity> referenceCandidatesFor(MetaObject holder, MetaObject targetNode) {
         List<ReferenceIdentity> out = new ArrayList<>();
+        if (targetNode == null) return out;
         for (MetaIdentity id : holder.getIdentities()) {
             if (!(id instanceof ReferenceIdentity)) continue;
             ReferenceIdentity ref = (ReferenceIdentity) id;
-            if (!target.equals(ReferenceFkUtil.stripPackage(ref.getTargetEntity()))) continue;
             if (ReferenceFkUtil.refFkField(ref) == null) continue;
-            out.add(ref);
+            if (References.refTarget(ref, MetaIdentity.ATTR_REFERENCES) == targetNode) out.add(ref);
         }
         return out;
     }
@@ -124,17 +124,64 @@ public final class RelationshipReferences {
      *   <li>otherwise -&gt; {@code null} (caller reports the ambiguity)</li>
      * </ol>
      * Returns {@code null} for "no candidate" and "cannot choose" alike; callers that need
-     * to tell them apart use {@link #referenceCandidatesFor}.
+     * to tell them apart use {@link #referenceCandidatesFor}. A reference matches when its {@code @references}
+     * is bound to the target node, never by short name.
      *
      * @param holder the entity whose effective reference set is searched
      * @param relationshipName the relationship's own (short) name, used for name-pairing
-     * @param targetEntity the relationship's {@code @objectRef}
+     * @param targetNode the node the relationship's {@code @objectRef} is bound to
      * @param sourceRefField the relationship's declared {@code @sourceRefField}, or
      *                        {@code null}/empty when absent
      */
     public static ReferenceIdentity resolveRelationshipReference(
+            MetaObject holder, String relationshipName, MetaObject targetNode, String sourceRefField) {
+        return pick(referenceCandidatesFor(holder, targetNode), relationshipName, sourceRefField);
+    }
+
+    /**
+     * The earlier signature, kept so a generator ejected before 1.1.0 still compiles unchanged.
+     * {@code targetEntity} is read as a CANONICAL reference value and looked up exactly
+     * (ADR-0059 R7); it is never matched by short name.
+     *
+     * @deprecated pass the bound target node, e.g. {@code References.refTarget(rel, "objectRef")}
+     */
+    @Deprecated
+    public static ReferenceIdentity resolveRelationshipReference(
             MetaObject holder, String relationshipName, String targetEntity, String sourceRefField) {
-        List<ReferenceIdentity> candidates = referenceCandidatesFor(holder, targetEntity);
+        return resolveRelationshipReference(holder, relationshipName, canonicalTarget(holder, targetEntity),
+                sourceRefField);
+    }
+
+    /**
+     * The earlier no-{@code @sourceRefField} overload, kept for generators ejected before 1.1.0.
+     *
+     * @deprecated pass the bound target node
+     */
+    @Deprecated
+    public static ReferenceIdentity resolveRelationshipReference(
+            MetaObject holder, String relationshipName, String targetEntity) {
+        return resolveRelationshipReference(holder, relationshipName, targetEntity, null);
+    }
+
+    /**
+     * The earlier signature, kept for generators ejected before 1.1.0: {@code targetEntity} is
+     * looked up as an exact canonical value.
+     *
+     * @deprecated pass the bound target node
+     */
+    @Deprecated
+    public static List<ReferenceIdentity> referenceCandidatesFor(MetaObject holder, String targetEntity) {
+        return referenceCandidatesFor(holder, canonicalTarget(holder, targetEntity));
+    }
+
+    private static MetaObject canonicalTarget(MetaObject holder, String value) {
+        if (holder == null) return null;
+        com.metaobjects.MetaData root = References.topLevelRoot(holder);
+        return root == null ? null : References.lookupCanonical(root, value);
+    }
+
+    private static ReferenceIdentity pick(List<ReferenceIdentity> candidates, String relationshipName,
+                                          String sourceRefField) {
         if (candidates.isEmpty()) return null;
         if (candidates.size() == 1) return candidates.get(0);
 
@@ -151,11 +198,5 @@ public final class RelationshipReferences {
             if (referencePairingKeys(ref).contains(wanted)) paired.add(ref);
         }
         return paired.size() == 1 ? paired.get(0) : null;
-    }
-
-    /** Overload for the common case with no declared {@code @sourceRefField}. */
-    public static ReferenceIdentity resolveRelationshipReference(
-            MetaObject holder, String relationshipName, String targetEntity) {
-        return resolveRelationshipReference(holder, relationshipName, targetEntity, null);
     }
 }

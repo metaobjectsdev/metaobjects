@@ -1,0 +1,17 @@
+{
+  "errors": [
+    {
+      "code": "ERR_UNRESOLVED_SUPER",
+      "source": {
+        "format": "resolved",
+        "files": [
+          "meta.b.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[1]['object.value'].children[0]['field.long']",
+        "referrer": "x",
+        "target": "Base.id"
+      }
+    }
+  ],
+  "warnings": []
+}

@@ -418,6 +418,15 @@ public class MetaDataLoader
                         Files: Array.Empty<string>(),
                         Referrer: failure.NodeFqn,
                         Target: failure.Ref);
+                if (failure.Kind == SuperResolve.SuperFailureKind.OverDrop)
+                {
+                    // ADR-0059 R2 — `..::` dropped more segments than the package has.
+                    errors.Add(new MetaError(
+                        $"the extends ref '{failure.Ref}' on {failure.NodeFqn} climbs above the root package — each '..::' drops one segment of the declaring package",
+                        ErrorCode.ERR_BAD_ATTR_VALUE,
+                        Envelope: envelope));
+                    continue;
+                }
                 if (failure.Kind == SuperResolve.SuperFailureKind.TargetMismatch)
                 {
                     // FR-024 — a dotted child-targeting ref resolved, but the target's
@@ -612,6 +621,10 @@ public class MetaDataLoader
             // @references for core; a downstream provider's type carries its own) + validator,
             // run as one recursive walk over a built-once symbol table.
             errors.AddRange(MetaObjects.Validation.RegisteredValidation.Run(root, _registry));
+
+            // ADR-0059 R5 — after the last validation pass, before freeze: resolve every
+            // reference once, record its target and rewrite it to its canonical spelling.
+            ResolveReferences.Run(root);
         }
 
         // If nothing parsed successfully, synthesize an empty root so callers

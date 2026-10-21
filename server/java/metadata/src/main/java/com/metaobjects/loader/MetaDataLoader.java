@@ -381,6 +381,15 @@ public class MetaDataLoader implements LoaderConfigurable {
         // SuperResolve.cs. The parser's getSuperMetaData never resolves dotted refs
         // (no top-level node has a dotted name), so every dotted ref arrives here
         // via the pending queue — single resolution site.
+        if (overDrops(p)) {
+            throw new com.metaobjects.MetaDataException(
+                "the extends ref [" + p.superName + "] on [" + p.child.getShortName()
+                    + "] climbs above the root package — each '..::' drops one segment of the declaring package"
+                    + " in file [" + p.filename + "]",
+                com.metaobjects.ErrorCode.ERR_BAD_ATTR_VALUE,
+                com.metaobjects.source.ResolvedSource.from(
+                    p.child.getSource(), p.child.getShortName(), p.superName));
+        }
         if (isChildTargetingRef(p.superName)) {
             // #188: wire the owner's OWN chain first so its effective children
             // include inherited members before resolveChildTargetingRef reads them.
@@ -418,25 +427,22 @@ public class MetaDataLoader implements LoaderConfigurable {
      * (the caller throws {@code ERR_UNRESOLVED_SUPER}). Extracted verbatim from the
      * former inline {@link #resolvePendingExtends} loop body.
      */
-    private MetaData resolveTopLevelSuper(PendingExtends p) {
-        MetaData superData = null;
+    /** ADR-0059 R2: a {@code ..::} dropping more package segments than the declaring node has. */
+    private boolean overDrops(PendingExtends p) {
         try {
-            String sn = p.superName;
-            String pkg = p.packageName == null ? "" : p.packageName;
-            if (sn.indexOf(PKG_SEPARATOR) < 0 && !pkg.isEmpty()) {
-                superData = getChildOfType(p.typeName, pkg + PKG_SEPARATOR + sn);
-            }
-        } catch (com.metaobjects.MetaDataNotFoundException ignore) {
-            // fall through to FQN lookup
+            References.ownerCandidateKeys(References.splitChildTail(p.superName).owner(),
+                References.extendsPackageOf(p.child));
+            return false;
+        } catch (References.OverDropException e) {
+            return true;
         }
-        if (superData == null) {
-            try {
-                superData = getChildOfType(p.typeName, p.superName);
-            } catch (com.metaobjects.MetaDataNotFoundException ignore) {
-                // still unresolved
-            }
-        }
-        return superData;
+    }
+
+    private MetaData resolveTopLevelSuper(PendingExtends p) {
+        // ADR-0059 R2/R3 — the same candidate keys every reference uses, matched EXACTLY against
+        // top-level nodes of the referrer's type; a bare ref never binds another package.
+        return References.resolveOwner(root, p.superName, References.extendsPackageOf(p.child),
+            p.typeName).node();
     }
 
     /**
@@ -496,44 +502,10 @@ public class MetaDataLoader implements LoaderConfigurable {
             }
         }
         String ownerRef = p.superName.substring(0, segStart) + parts[0];
-
-        MetaData owner = null;
-        String pkg = p.packageName == null ? "" : p.packageName;
-        if (ownerRef.indexOf(PKG_SEPARATOR) < 0 && !pkg.isEmpty()) {
-            try {
-                owner = getChildOfType(com.metaobjects.object.MetaObject.TYPE_OBJECT,
-                    pkg + PKG_SEPARATOR + ownerRef);
-            } catch (com.metaobjects.MetaDataNotFoundException ignore) {
-                // fall through
-            }
-        }
-        if (owner == null && ownerRef.indexOf(PKG_SEPARATOR) < 0) {
-            // NESTED referrers (a field/identity inside an object) are queued with an
-            // EMPTY packageName (the parser does not fold the object's package onto
-            // nested children) — derive the context package from the referrer's
-            // ancestry instead: the enclosing object's registered name carries the
-            // parse-time-folded package (e.g. "fitness::ProgramView" → "fitness").
-            // Mirrors TS resolveDeferredSupers' node.fileDefaultPackage fallback.
-            for (MetaData ancestor = p.child.getParent(); ancestor != null; ancestor = ancestor.getParent()) {
-                String ancestorPkg = ancestor.getPackage();
-                if (ancestorPkg == null || ancestorPkg.isEmpty()) continue;
-                try {
-                    owner = getChildOfType(com.metaobjects.object.MetaObject.TYPE_OBJECT,
-                        ancestorPkg + PKG_SEPARATOR + ownerRef);
-                    break;
-                } catch (com.metaobjects.MetaDataNotFoundException ignore) {
-                    // keep walking up
-                }
-            }
-        }
-        if (owner == null) {
-            try {
-                owner = getChildOfType(com.metaobjects.object.MetaObject.TYPE_OBJECT, ownerRef);
-            } catch (com.metaobjects.MetaDataNotFoundException ignore) {
-                return null;
-            }
-        }
-        return owner;
+        // ADR-0059 R2/R3 — the owner resolves by the one resolver, in the declaring node's
+        // package (a nested referrer takes its enclosing top-level node's).
+        return References.resolveOwner(root, ownerRef, References.extendsPackageOf(p.child),
+            com.metaobjects.object.MetaObject.TYPE_OBJECT).node();
     }
 
     /**

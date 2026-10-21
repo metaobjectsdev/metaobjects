@@ -53,6 +53,6 @@ class MetaObjectsTest {
     @Test fun `promptTemplateOrNull returns typed when present`() {
         val p = loader().promptTemplateOrNull("acme::ai::MyPrompt")
         assertNotNull(p)
-        assertEquals("Payload", p.payloadRef)
+        assertEquals("acme::ai::Payload", p.payloadRef)
     }
 }

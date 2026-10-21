@@ -1,26 +1,20 @@
-// super reference resolution — pure FQN match (FR-032 / ADR-0032)
+// super reference resolution (ADR-0059)
 //
-// FR-032 made canonical refs fully-qualified: the YAML desugar expands every
-// authored relative/bare-current ref to its FQN (`expandRef`, naming-refs.ts),
-// and the canonical-JSON guard rejects any surviving `::`/`..::` form. So the
-// refs that reach this resolver are already FQN, and resolution is a pure tree
-// match:
-//   Qualified  "pkg::Name"            → findInTree(fqn)
-//   Bare       "Name" (rare in-tree)  → current package only (`<ctx>::Name`),
-//                                        then literal (root-level). NO root
-//                                        fallback for a packaged bare ref.
-// The old `::`-strip (absolute), `..::`-reduce (relative) and
-// bare-current-then-root-fallback branches were DELETED — that fallback was the
-// silent-shadowing footgun ADR-0032 removes.
+// An `extends` ref resolves through the same rules as every other reference
+// (`ownerCandidateKeys`, naming-refs.ts): `::Rest` root-absolute, `..::Rest`
+// parent-relative, `pkg::Name` exact, bare `Name` in the declaring node's own
+// file package, then root-level — never another package. The package context is
+// the declaring node's effective package (`package ?? fileDefaultPackage`).
 //
 // FR-024: a ref whose final `::`-segment is dotted (`pkg::Customer.id`) targets
 // a child nested in the owner object — resolved type-scoped to the referrer.
 //
-// Super resolution is IMMEDIATE during parse (Java behavior). This module
-// provides only the lookup helper; the parser calls it inline.
+// Super resolution is deferred by the loader (`resolveDeferredSupers`); the parser
+// calls `resolveSuperRef` inline only when deferral is off.
 
 import type { MetaData } from "./shared/meta-data.js";
 import { PACKAGE_SEPARATOR, CHILD_REF_SEPARATOR } from "./shared/structural.js";
+import { ownerCandidateKeys, RefOverDropError } from "./naming-refs.js";
 import { TYPE_IDENTITY } from "./shared/base-types.js";
 import { IDENTITY_UNIQUE_KEY_SUBTYPES } from "./core/identity/identity-constants.js";
 
@@ -29,35 +23,16 @@ import { IDENTITY_UNIQUE_KEY_SUBTYPES } from "./core/identity/identity-constants
 // ---------------------------------------------------------------------------
 
 /**
- * Recursively searches the tree for a node whose qualified name matches `fqn`.
- *
- * A node is matched by its own `fqn()` (covers the explicit-package and
- * no-package-at-all cases) OR by its EFFECTIVE qualified key
- * `<fileDefaultPackage>::<name>` (`MetaData.resolutionKey()`) — the
- * file-default package captured at PARSE time. This mirrors Java, where
- * `BaseMetaDataParser` folds the file-default package into the registered name
- * at parse time (so an object `BaseEntity` declared under `package: acme` is
- * registered as `acme::BaseEntity` and a fully-qualified `extends:
- * acme::BaseEntity` resolves) — even though TS keeps object `fqn()` bare for
- * the FR5d referrer-envelope cross-port contract.
- *
- * Because the resolution key is captured at parse time (not derived from the
- * post-merge tree), this is independent of load order AND of whether the base
- * node's file-default package differs from the referrer's — the cross-PACKAGE
- * cross-file case. No package is threaded down the walk anymore.
+ * The top-level node (a direct child of `root`) whose resolution key is exactly
+ * `key` — `<package | fileDefaultPackage>::<name>`, or the bare name for a
+ * root-level node. The key is captured at parse time, so the match does not depend
+ * on load order or on post-merge tree shape. Exact only: a bare key never matches a
+ * packaged node (ADR-0059 R2).
  */
-function findInTree(root: MetaData, fqn: string): MetaData | undefined {
-  if (root.fqn() === fqn) return root;
-  if (root.package === undefined && root.name !== "" && root.resolutionKey() === fqn) {
-    return root;
-  }
-  // ADR-0039: own — super-resolution walk over the PHYSICAL declaration tree;
-  // resolving accessors would be circular while the super chain is being wired.
-  for (const child of root.ownChildren()) {
-    const found = findInTree(child, fqn);
-    if (found !== undefined) return found;
-  }
-  return undefined;
+function findTopLevel(root: MetaData, key: string): MetaData | undefined {
+  // ADR-0039: own — super-resolution reads the PHYSICAL declaration layer; the root
+  // has no super, so its own children are its children.
+  return root.ownChildren().find((c) => c.name !== "" && c.resolutionKey() === key);
 }
 
 // ---------------------------------------------------------------------------
@@ -170,6 +145,7 @@ function parseChildTargetingRef(
  * bare lookup; a dotted ref with no `referrerScope` is unresolvable.
  *
  * @param ref - The raw super reference (e.g., "Fruit", "::pkg::Name", "..::common::id", "Customer.id")
+ * @throws RefOverDropError when a `..::` ref drops more segments than the package has
  * @param contextPackage - The package of the model whose super is being resolved
  * @param root - The root MetaData of the accumulating tree to search within
  * @param referrerScope - FR-024: the extending node's type — required to resolve dotted refs
@@ -211,24 +187,14 @@ export function resolveSuperRef(
       .find((c) => c.name === last && c.type === referrerScope.type);
   }
   // -------------------------------------------------------------------------
-  // 1. FR-032 (ADR-0032): refs in the loaded tree are already fully-qualified.
-  //    The YAML desugar expanded every relative/bare-current ref to FQN
-  //    (`expandRef`), and the canonical-JSON guard rejects any surviving
-  //    `::`/`..::` form (ERR_RELATIVE_REF_IN_CANONICAL). So resolution is a
-  //    pure FQN match — the old `::`-strip (absolute), `..::`-reduce (relative)
-  //    and bare-current-then-ROOT-FALLBACK branches are deleted (the footgun).
-  //
-  //    A qualified ref (`pkg::Name`) matches its node directly. A bare ref
-  //    (no `::`) is the rare in-tree case: a root-level/empty-package type, or
-  //    a bare ref constructed during dotted-owner recursion — resolve it in the
-  //    current package ONLY (try `<ctx>::ref`), then bare (root-level) as the
-  //    literal name. NO root fallback for a packaged bare ref.
+  // 1. A plain ref binds one top-level node by its form (ADR-0059 R2). An
+  //    over-dropping `..::` throws RefOverDropError; the deferred pass reports it.
   // -------------------------------------------------------------------------
-  if (!ref.includes(PACKAGE_SEPARATOR) && contextPackage !== "") {
-    const inPackage = findInTree(root, `${contextPackage}${PACKAGE_SEPARATOR}${ref}`);
-    if (inPackage !== undefined) return inPackage;
+  for (const key of ownerCandidateKeys(ref, contextPackage)) {
+    const found = findTopLevel(root, key);
+    if (found !== undefined) return found;
   }
-  return findInTree(root, ref);
+  return undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -249,8 +215,10 @@ export interface DeferredSuperFailure {
    *   target's type/subtype differs from the extending node's (loader emits
    *   ERR_EXTENDS_TARGET_MISMATCH). Applies ONLY to dotted refs — top-level
    *   extends behavior is unchanged.
+   * - "over-drop" — a `..::` ref drops more package segments than the declaring
+   *   node's package has (ADR-0059 R2; loader emits ERR_BAD_ATTR_VALUE).
    */
-  kind: "unresolved" | "target-mismatch";
+  kind: "unresolved" | "target-mismatch" | "over-drop";
   /** target-mismatch only: the resolved target's identity, for the message. */
   target?: { type: string; subType: string };
   /** target-mismatch only: the extending node's type/subtype, for the message. */
@@ -298,6 +266,20 @@ export function resolveDeferredSupers(root: MetaData): DeferredSuperFailure[] {
     if (n.superRef !== undefined) pending.push(n);
   });
 
+  // ADR-0059 R2: an over-dropping `..::` is a bad value, not a missing target.
+  const tryResolve = (
+    ref: string,
+    pkg: string,
+    scope?: ReferrerScope,
+  ): MetaData | undefined | "over-drop" => {
+    try {
+      return resolveSuperRef(ref, pkg, root, scope);
+    } catch (e) {
+      if (e instanceof RefOverDropError) return "over-drop";
+      throw e;
+    }
+  };
+
   const resolveNode = (node: MetaData): void => {
     if (node.superRef === undefined || node.superResolved !== undefined) return;
     if (attempted.has(node)) return; // already resolved-or-failed this pass — never re-report
@@ -311,15 +293,19 @@ export function resolveDeferredSupers(root: MetaData): DeferredSuperFailure[] {
     if (isChildTargetingRef(node.superRef)) {
       const parsed = parseChildTargetingRef(node.superRef);
       if (parsed !== undefined) {
-        const ownerNode = resolveSuperRef(parsed.ownerRef, effectivePkg, root);
-        if (ownerNode !== undefined) resolveNode(ownerNode);
+        const ownerNode = tryResolve(parsed.ownerRef, effectivePkg);
+        if (ownerNode !== undefined && ownerNode !== "over-drop") resolveNode(ownerNode);
       }
     }
 
     // FR-024: thread the referrer's type so dotted `Entity.child` refs resolve
     // type-scoped (a field ref selects fields; an identity ref identities).
-    const target = resolveSuperRef(node.superRef, effectivePkg, root, { type: node.type });
+    const target = tryResolve(node.superRef, effectivePkg, { type: node.type });
 
+    if (target === "over-drop") {
+      failures.push({ nodeFqn: node.fqn(), ref: node.superRef, source: node.source, kind: "over-drop" });
+      return;
+    }
     if (target !== undefined) {
       // FR-024: a dotted ref must target a node of the SAME type and subtype
       // as the extending node. Dotted-only — top-level extends is unchanged.

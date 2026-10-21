@@ -112,13 +112,14 @@ import {
   TEMPLATE_SUBTYPE_OUTPUT,
   TEMPLATE_SUBTYPE_PROMPT,
   TEMPLATE_ATTR_PAYLOAD_REF,
+  TEMPLATE_ATTR_RESPONSE_REF,
   TEMPLATE_ATTR_FORMAT,
   TEMPLATE_ATTR_KIND,
   TEMPLATE_KIND_EMAIL,
   TEMPLATE_KIND_DEFAULT,
   TYPE_SOURCE,
   SOURCE_ATTR_PARAMETER_REF,
-  resolveObjectRef,
+  refTarget,
   stripPackage,
 } from "@metaobjectsdev/metadata";
 import {
@@ -896,9 +897,8 @@ function callableArgsRef(obj: MetaObject, root: MetaRoot): string | undefined {
     if (typeof ref === "string" && ref !== "") {
       // Only count it when it resolves to a value object (the template's guard).
       // ADR-0039: resolving — root has no super (children()==ownChildren()).
-      // ADR-0042: a bare @parameterRef resolves in the callable entity's package.
-      const referrerPkg = obj.package ?? obj.fileDefaultPackage ?? "";
-      const vo = resolveObjectRef(root, ref, referrerPkg).node;
+      // ADR-0059 R7: the bound target, resolved where @parameterRef was declared.
+      const vo = refTarget(child, SOURCE_ATTR_PARAMETER_REF);
       if (vo?.subType === OBJECT_SUBTYPE_VALUE) return ref;
     }
   }
@@ -977,7 +977,7 @@ function buildTemplateUnit(tmpl: MetaData, root: MetaRoot, _layout: OutputLayout
   // ADR-0039: resolving — a template may inherit @payloadRef/@kind via extends.
   const payloadRef = tmpl.attr(TEMPLATE_ATTR_PAYLOAD_REF);
   const payload = typeof payloadRef === "string" ? payloadRef : undefined;
-  const payloadType = payload !== undefined ? valueObjectTypeName(root, tmpl, payload) : undefined;
+  const payloadType = payload !== undefined ? valueObjectTypeName(tmpl, payload) : undefined;
   const kind = ((tmpl.attr(TEMPLATE_ATTR_KIND) as string | undefined) ?? TEMPLATE_KIND_DEFAULT).toLowerCase();
 
   // ADR-0052: a template.output documents its RENDER and nothing else. The
@@ -1009,7 +1009,7 @@ function buildTemplateUnit(tmpl: MetaData, root: MetaRoot, _layout: OutputLayout
     // ADR-0052 moved that away, which left the render example with no field shape
     // to build from — it degraded to `render<Name>({}, provider)`. Attach it here,
     // where it always belonged: this is the payload the render handle takes.
-    const renderShape = payloadFieldShapes(root, payload);
+    const renderShape = payloadFieldShapes(tmpl, TEMPLATE_ATTR_PAYLOAD_REF);
     if (renderShape !== undefined) renderSym.fields = renderShape;
     symbols.push(renderSym);
   }
@@ -1041,12 +1041,12 @@ function templatePrompts(root: MetaRoot): MetaData[] {
 }
 
 /**
- * The TS type name a template's payload/response is documented under — the resolved value
- * object's own name (ADR-0056: it IS the type), falling back to the ref's short name when the
- * ref does not resolve. ADR-0042: a bare ref resolves in the template's package first.
+ * The TS type name a template's payload is documented under — the bound value object's own
+ * name (ADR-0056: it IS the type, ADR-0059 R7), falling back to the ref's short name when the
+ * ref does not resolve.
  */
-function valueObjectTypeName(root: MetaRoot, tmpl: MetaData, ref: string): string {
-  const vo = resolveObjectRef(root, ref, tmpl.package ?? tmpl.fileDefaultPackage ?? "").node;
+function valueObjectTypeName(tmpl: MetaData, ref: string): string {
+  const vo = refTarget(tmpl, TEMPLATE_ATTR_PAYLOAD_REF);
   return vo !== undefined ? vo.name : stripPackage(ref);
 }
 
@@ -1071,7 +1071,7 @@ function buildPromptUnit(tmpl: MetaData, root: MetaRoot): ApiUnitDoc {
 
   if (payload) {
     const render = `render${symbolBase}`;
-    const payloadType = valueObjectTypeName(root, tmpl, payload);
+    const payloadType = valueObjectTypeName(tmpl, payload);
     const sym: ApiSymbol = {
       name: render,
       kind: "prompt",
@@ -1081,7 +1081,7 @@ function buildPromptUnit(tmpl: MetaData, root: MetaRoot): ApiUnitDoc {
       returns: "string",
       usage: `Render the ${name} prompt text from a typed ${payloadType} payload (ready to send to an LLM).`,
     };
-    const payloadShape = payloadFieldShapes(root, payload);
+    const payloadShape = payloadFieldShapes(tmpl, TEMPLATE_ATTR_PAYLOAD_REF);
     if (payloadShape !== undefined) sym.fields = payloadShape;
     symbols.push(sym);
   }
@@ -1092,7 +1092,7 @@ function buildPromptUnit(tmpl: MetaData, root: MetaRoot): ApiUnitDoc {
   //     a format value, and never on @payloadRef, which types the REQUEST. ---
   const shape = responseShape(root, tmpl);
   if (shape) {
-    const { vo, ref: responseRef, format } = shape;
+    const { vo, format } = shape;
     // The extractor generator emits a FLAT `<Name>.extractor.ts`.
     const extractorMod = templateModulePath(`${name}.extractor`);
     const extract = `extract${symbolBase}`;
@@ -1101,7 +1101,7 @@ function buildPromptUnit(tmpl: MetaData, root: MetaRoot): ApiUnitDoc {
     // document its field shape so an agent sees what `extract<Name>` yields, not just a
     // type name. `vo` is the resolved node; `responseRef` is the authored ref.
     const responseType = vo.name;
-    const responseFieldShape = payloadFieldShapes(root, responseRef);
+    const responseFieldShape = payloadFieldShapes(tmpl, TEMPLATE_ATTR_RESPONSE_REF);
     const extractSym: ApiSymbol = {
       name: extract,
       kind: "extractor",

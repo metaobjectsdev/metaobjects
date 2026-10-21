@@ -25,25 +25,17 @@ import {
   FIELD_SUBTYPE_OBJECT,
   FIELD_SUBTYPE_ENUM,
   FIELD_ATTR_OBJECT_REF,
-  resolveObjectRef,
+  refTarget,
 } from "@metaobjectsdev/metadata";
 import { fields, isArray, scalarKind, jsonStringLiteral } from "./fr010-field-mapping.js";
 import { emittedVoName } from "./value-object-import.js";
 import type { RenderContext } from "../render-context.js";
 
-// ADR-0039: resolving — root has no super (children()==ownChildren()); a top-level object/template may itself extend, so resolve rather than work-by-accident.
-// ADR-0042: resolveObjectRef gives package-local-before-root-level precedence for a bare ref, FQN-exact otherwise.
-function findObject(root: MetaData, name: string, referrerPkg = ""): MetaData | undefined {
-  return resolveObjectRef(root, name, referrerPkg).node;
-}
-
-/** The @objectRef target VO for a nested-object field, or undefined when unresolvable. */
-function refVo(field: MetaData, root: MetaData): MetaData | undefined {
-  const ref = field.attr(FIELD_ATTR_OBJECT_REF);
-  if (typeof ref !== "string") return undefined;
-  // ADR-0042: resolve as authored — a bare ref binds the declaring VO's package,
-  // an FQN exactly; NO bare-tail fallback (never bind a same-named VO elsewhere).
-  return findObject(root, ref, field.parent?.package ?? field.parent?.fileDefaultPackage ?? "");
+/** The @objectRef target VO for a nested-object field (ADR-0059 R7: the target the
+ *  loader bound, resolved where the attribute was declared), or undefined when
+ *  unresolvable. */
+function refVo(field: MetaData): MetaData | undefined {
+  return refTarget(field, FIELD_ATTR_OBJECT_REF);
 }
 
 /** True iff the field is a nested object reference (field.object — distinct from the
@@ -75,7 +67,7 @@ export function mapperName(vo: MetaData, ctx?: RenderContext): string {
 /** The nullable mirror TS type for one field — nested-aware (recurses into nested mirror names). */
 function nestedMirrorType(field: MetaData, root: MetaData, ctx?: RenderContext): string {
   if (isObjectField(field)) {
-    const target = refVo(field, root);
+    const target = refVo(field);
     const base = target !== undefined ? mirrorName(target, ctx) : "unknown";
     const elem = `${base} | null`;
     return isArray(field) ? `(${elem})[] | null` : elem;
@@ -143,7 +135,7 @@ function emitMirror(
   // Recurse into nested VOs (post-order via the shared seen set → dedupe + cycle guard).
   for (const f of fields(vo)) {
     if (isObjectField(f)) {
-      const target = refVo(f, root);
+      const target = refVo(f);
       if (target !== undefined) emitMirror(target, root, mirrorName(target, ctx), seen, out, ctx);
     }
   }
@@ -195,7 +187,7 @@ function emitMapper(
 
   for (const f of fields(vo)) {
     if (isObjectField(f)) {
-      const target = refVo(f, root);
+      const target = refVo(f);
       if (target !== undefined) emitMapper(target, root, seen, out, ctx);
     }
   }
@@ -206,7 +198,7 @@ function mapperArg(field: MetaData, root: MetaData, ctx?: RenderContext): string
   const key = jsonStringLiteral(field.name);
 
   if (isObjectField(field)) {
-    const target = refVo(field, root);
+    const target = refVo(field);
     if (target === undefined) return "null /* unresolved @objectRef */";
     const fn = mapperName(target, ctx);
     if (isArray(field)) {
@@ -256,7 +248,7 @@ export function usedHelpers(vo: MetaData, root: MetaData): Set<string> {
     seen.add(cur.resolutionKey());
     for (const f of fields(cur)) {
       if (isObjectField(f)) {
-        const target = refVo(f, root);
+        const target = refVo(f);
         if (target === undefined) continue;
         stack.push(target);
         if (isArray(f)) used.add("mapObjectList");
@@ -300,7 +292,7 @@ export function hasNested(vo: MetaData, root: MetaData): boolean {
     seen.add(cur.resolutionKey());
     for (const f of cur.children().filter((c) => c.type === TYPE_FIELD)) {
       if (isObjectField(f)) {
-        const target = refVo(f, root);
+        const target = refVo(f);
         if (target !== undefined) {
           stack.push(target);
         }

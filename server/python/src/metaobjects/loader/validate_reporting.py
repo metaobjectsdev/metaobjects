@@ -107,7 +107,7 @@ from ..meta.core.reporting.reporting_constants import (
 from ..meta.meta_data import MetaData
 from ..meta.meta_root import MetaRoot
 from ..meta.persistence.source.meta_source import MetaSource
-from ..naming_refs import CHILD_REF_SEP, resolve_object_ref
+from ..naming_refs import CHILD_REF_SEP, ref_target, resolve_object_ref
 from ..shared.base_types import (
     TYPE_DIMENSION,
     TYPE_FIELD,
@@ -588,12 +588,8 @@ def _walk_to_one_via(
                 f"{walk.to_one_reason}"
             )
             return None
-        # ADR-0039: resolving.
-        target_ref = hop.get_meta_attr(
-            IDENTITY_REFERENCE_ATTR_REFERENCES if is_reference else RELATIONSHIP_ATTR_OBJECT_REF
-        )
-        # ADR-0042 — a hop target resolves in the package of the entity declaring the hop.
-        target = resolve_object_ref(root, target_ref, _pkg_of(current)) if isinstance(target_ref, str) else None
+        # ADR-0059 R3 — a hop target resolves in the package of the node declaring the hop's reference.
+        target = ref_target(hop, IDENTITY_REFERENCE_ATTR_REFERENCES if is_reference else RELATIONSHIP_ATTR_OBJECT_REF)
         if target is None:
             err(f"{named} hop '{hop_name}' on '{name_of(current)}' targets no object.")
             return None
@@ -1127,3 +1123,11 @@ def _check_no_relative_dates(node: MetaData, sink: _ErrorSink) -> None:
     # ADR-0039: own — a tree walk; each declared node is visited once, at its declaration.
     for child in node.own_children():
         _check_no_relative_dates(child, sink)
+
+
+def dimension_via_terminal(root: MetaData, declaring: MetaData, via: str) -> MetaData | None:
+    """The entity a dimension's ``@via`` reaches, walked from ``declaring`` with D2's rules,
+    or ``None`` when the walk fails (D2 reports why). ADR-0059 R3: a dimension's ``@of``
+    resolves in this entity's package, so the loader's ``resolve_references`` pass reuses
+    the walk rather than restating it."""
+    return _walk_to_one_via(root, declaring, via, lambda _message: None, _d2_walk(declaring))

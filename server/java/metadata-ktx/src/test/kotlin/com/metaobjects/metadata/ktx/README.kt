@@ -22,7 +22,7 @@ class ReadmeSamplesTest {
         val loader = loadResources("demo", listOf("meta.demo.json"))
         val prompt = loader.promptTemplateOrNull("acme::demo::WelcomePrompt")
         assertNotNull(prompt)
-        assertEquals("Author", prompt.payloadRef)
+        assertEquals("acme::demo::Author", prompt.payloadRef)
     }
 
     @Test fun `render a prompt via the builder`() {

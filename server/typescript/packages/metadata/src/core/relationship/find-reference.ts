@@ -8,7 +8,8 @@
 
 import type { MetaObject } from "../object/meta-object.js";
 import type { MetaReferenceIdentity } from "../identity/meta-identity.js";
-import { stripPackage } from "../../naming.js";
+import { refTarget } from "../../naming-refs.js";
+import { IDENTITY_REFERENCE_ATTR_REFERENCES } from "../identity/identity-constants.js";
 
 export interface ReferenceLookup {
   /** The entity whose identity.reference points at `other`. */
@@ -39,7 +40,8 @@ export function findReferencesBetween(
   const found: ReferenceLookup[] = [];
   for (const [holder, other] of [[a, b], [b, a]] as const) {
     for (const ref of holder.referenceIdentities()) {
-      if (stripPackage(ref.targetEntity) === other.name) {
+      // ADR-0059 R7: compare the bound target, never a short name.
+      if (refTarget(ref, IDENTITY_REFERENCE_ATTR_REFERENCES) === other) {
         found.push({ holder, other, referenceIdentity: ref });
       }
     }

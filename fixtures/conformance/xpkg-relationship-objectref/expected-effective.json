@@ -1,10 +1,10 @@
 {
   "metadata.root": {
-    "package": "xpkg::crm",
     "children": [
       {
         "object.entity": {
           "name": "Customer",
+          "package": "xpkg::crm",
           "children": [
             {
               "source.rdb": {
@@ -35,6 +35,7 @@
       {
         "object.entity": {
           "name": "Order",
+          "package": "xpkg::sales",
           "children": [
             {
               "source.rdb": {
@@ -81,4 +82,3 @@
     ]
   }
 }
-

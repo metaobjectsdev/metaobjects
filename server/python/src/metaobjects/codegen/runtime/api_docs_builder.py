@@ -44,7 +44,7 @@ from .m2m_codegen import (
     resolve_m2m_descriptors,
 )
 from metaobjects.codegen.generators.find_inbound import is_xml, response_shape
-from metaobjects.codegen.value_objects import is_field_required, pkg_of, resolve_payload_vo
+from metaobjects.codegen.value_objects import bound_payload_vo, is_field_required, pkg_of
 from metaobjects.codegen.instance_artifacts import (
     has_item_route,
     is_abstract,
@@ -78,9 +78,7 @@ def _payload_resolves(tmpl: MetaData, root: MetaData) -> MetaObject | None:
     payload_ref = tmpl.get_meta_attr(tc.TEMPLATE_ATTR_PAYLOAD_REF)  # ADR-0039: template attr resolves via extends (not origin; templates CAN extend)
     if not isinstance(payload_ref, str) or not payload_ref:
         return None
-    # ADR-0042 (#228): the referrer is THIS template — a bare @payloadRef resolves
-    # in ITS OWN package first.
-    return resolve_payload_vo(root, payload_ref, pkg_of(tmpl))
+    return bound_payload_vo(tmpl, tc.TEMPLATE_ATTR_PAYLOAD_REF)
 
 
 def _is_email_kind(tmpl: MetaData) -> bool:
@@ -326,8 +324,7 @@ class PythonApiModelBuilder:
         # strategy through would mean inventing a config seam this command doesn't
         # have, for a value nothing here would read.
         for d in resolve_m2m_descriptors(entity, object_index):
-            target = object_index.get(d.target_entity)
-            target_name = target.name if target is not None else d.target_entity
+            target_name = d.target_entity
             add(
                 "GET " + base_path + "/{" + pk + "}/" + d.relation_name,
                 f"M:N traversal — the related {target_name} rows",
@@ -376,7 +373,7 @@ class PythonApiModelBuilder:
         # to an output, and the gate is @responseRef PRESENCE rather than a format
         # value. Shares `response_shape` with the generators, so the docs can never
         # claim a symbol codegen suppressed.
-        inbound = response_shape(root, tmpl, pkg_of(tmpl))
+        inbound = response_shape(tmpl)
         if inbound is not None:
             # The RESPONSE shape the parser actually returns — the @responseRef value
             # object's own model (ADR-0056). Documented once: when the prompt renders and

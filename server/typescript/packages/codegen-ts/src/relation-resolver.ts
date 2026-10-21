@@ -9,11 +9,14 @@ import type { MetaRoot, MetaObject, MetaRelationship } from "@metaobjectsdev/met
 import {
   RELATIONSHIP_ATTR_CARDINALITY,
   RELATIONSHIP_ATTR_OBJECT_REF,
+  refTarget,
   RELATIONSHIP_ATTR_THROUGH,
   RELATIONSHIP_ATTR_SOURCE_REF_FIELD,
+  IDENTITY_REFERENCE_ATTR_REFERENCES,
   CARDINALITY_ONE,
   CARDINALITY_MANY,
   deriveM2MFields,
+  isMetaObject,
   resolveRelationshipReference,
   stripPackage,
 } from "@metaobjectsdev/metadata";
@@ -27,8 +30,10 @@ export interface RelationEntry {
   name: string;
   /** Cardinality: 'one' | 'many' */
   cardinality: "one" | "many";
-  /** The other entity's name (e.g., "User") */
+  /** The other entity's name (e.g., "User"). An identifier, never a lookup key: bind through `target`. */
   targetEntity: string;
+  /** The entity the relationship's reference binds to (ADR-0059 R7). */
+  target: MetaObject;
   /** For cardinality 'one': the field on THIS entity that holds the FK (e.g., "authorId") */
   fkField?: string;
   /** For cardinality 'one': the target entity's PK field (e.g., "id") */
@@ -43,6 +48,8 @@ export interface RelationEntry {
    */
   /** The junction/through entity name (e.g., "PostTag"). M:N entries only. */
   junctionEntity?: string;
+  /** The junction/through entity `@through` binds to. M:N entries only. */
+  junction?: MetaObject;
   /** Junction FK field holding the source-side key (logical field name, e.g. "postId"). M:N only. */
   sourceJoinField?: string;
   /** Junction FK field holding the target-side key (logical field name, e.g. "tagId"). M:N only. */
@@ -107,7 +114,7 @@ export function buildRelationMap(
     if (clash !== undefined) {
       const same =
         clash.cardinality === entry.cardinality &&
-        clash.targetEntity === entry.targetEntity &&
+        clash.target === entry.target &&
         clash.fkField === entry.fkField;
       if (!same) {
         onWarn?.(
@@ -160,10 +167,10 @@ export function buildRelationMap(
 
       if (cardinality !== CARDINALITY_ONE) continue;
 
-      // ADR-0039: resolving — @objectRef may be inherited via extends.
-      const targetEntityRaw = child.attr(RELATIONSHIP_ATTR_OBJECT_REF) as string | undefined;
-      if (!targetEntityRaw) continue;
-      const targetEntity = stripPackage(targetEntityRaw);
+      // ADR-0039: resolving — @objectRef may be inherited via extends. ADR-0059 R7:
+      // read the bound target, never a short-name match.
+      const target = refTarget(child, RELATIONSHIP_ATTR_OBJECT_REF);
+      if (!isMetaObject(target)) continue;
 
       // #368: an entity may hold more than one identity.reference onto the same
       // target, so the target alone does not identify the FK. Resolve through the
@@ -172,9 +179,7 @@ export function buildRelationMap(
       // means an unloadable model reached codegen — skip rather than guess.
       // ADR-0039: resolving — @sourceRefField may be inherited via extends.
       const declaredRefField = child.attr(RELATIONSHIP_ATTR_SOURCE_REF_FIELD) as string | undefined;
-      const matching = resolveRelationshipReference(
-        obj, child.name, targetEntity, declaredRefField,
-      );
+      const matching = resolveRelationshipReference(obj, child.name, target, declaredRefField);
       if (!matching) continue;
 
       const fkField = matching.fields[0];
@@ -183,7 +188,8 @@ export function buildRelationMap(
       push(obj, {
         name: child.name,
         cardinality: "one",
-        targetEntity,
+        targetEntity: target.name,
+        target,
         fkField,
         targetPkField: "id",
       });
@@ -202,24 +208,22 @@ export function buildRelationMap(
   // one() sides so the through-table is navigable in the Drizzle relational
   // query API (db.query.posts.findMany({ with: { tags: { with: { tag: true }}}})).
   // A junction is any entity named by some M:N relationship's @through.
-  for (const junctionName of collectJunctionNames(root)) {
-    const junction = root.findObject(junctionName);
-    if (!junction) continue;
+  for (const junction of collectJunctions(root)) {
     for (const ref of junction.referenceIdentities()) {
-      const targetRaw = ref.targetEntity;
+      const target = refTarget(ref, IDENTITY_REFERENCE_ATTR_REFERENCES);
       const fkField = ref.fields[0];
-      if (!targetRaw || !fkField) continue;
-      const targetEntity = stripPackage(targetRaw);
+      if (!isMetaObject(target) || !fkField) continue;
       // The relation member is named after the target entity (camel singular);
       // multiple references to the same entity (self-join junction) are
       // disambiguated by the FK field name.
       const refName = ref.name && ref.name.length > 0
         ? ref.name
-        : variableNameFromEntity(targetEntity);
+        : variableNameFromEntity(target.name);
       push(junction, {
         name: refName,
         cardinality: "one",
-        targetEntity,
+        targetEntity: target.name,
+        target,
         fkField,
         targetPkField: "id",
       });
@@ -229,18 +233,18 @@ export function buildRelationMap(
   return result;
 }
 
-/** Names of all entities that are the `@through` junction of some M:N relationship. */
-function collectJunctionNames(root: MetaRoot): Set<string> {
-  const names = new Set<string>();
+/** Every entity that is the `@through` junction of some M:N relationship, as bound. */
+function collectJunctions(root: MetaRoot): Set<MetaObject> {
+  const junctions = new Set<MetaObject>();
   for (const obj of root.objects()) {
     for (const rel of obj.relationships()) {
       // ADR-0039: resolving — @cardinality/@through may be inherited via extends.
       if (rel.attr(RELATIONSHIP_ATTR_CARDINALITY) !== CARDINALITY_MANY) continue;
-      const through = rel.attr(RELATIONSHIP_ATTR_THROUGH) as string | undefined;
-      if (through) names.add(stripPackage(through));
+      const junction = refTarget(rel, RELATIONSHIP_ATTR_THROUGH);
+      if (isMetaObject(junction)) junctions.add(junction);
     }
   }
-  return names;
+  return junctions;
 }
 
 /**
@@ -259,9 +263,9 @@ function buildM2mEntry(
   onWarn?: (msg: string) => void,
 ): RelationEntry | null {
   // ADR-0039: resolving — @objectRef/@through may be inherited via extends.
-  const targetRaw = rel.attr(RELATIONSHIP_ATTR_OBJECT_REF) as string | undefined;
+  const target = refTarget(rel, RELATIONSHIP_ATTR_OBJECT_REF);
   const throughRaw = rel.attr(RELATIONSHIP_ATTR_THROUGH) as string | undefined;
-  if (!targetRaw || !throughRaw) return null;
+  if (!isMetaObject(target) || !throughRaw) return null;
   let fields;
   try {
     fields = deriveM2MFields(rel, source, root);
@@ -274,11 +278,15 @@ function buildM2mEntry(
     );
     return null;
   }
+  const junction = refTarget(rel, RELATIONSHIP_ATTR_THROUGH);
+  if (!isMetaObject(junction)) return null;
   return {
     name: rel.name,
     cardinality: "many",
-    targetEntity: stripPackage(targetRaw),
-    junctionEntity: stripPackage(throughRaw),
+    targetEntity: target.name,
+    target,
+    junctionEntity: junction.name,
+    junction,
     sourceJoinField: fields.sourceField,
     targetJoinField: fields.targetField,
     symmetric: rel.symmetric,

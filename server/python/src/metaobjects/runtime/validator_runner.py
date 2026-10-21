@@ -30,7 +30,7 @@ from ..meta.core.object.object_constants import OBJECT_SUBTYPE_VALUE
 from ..meta.core.validator import validator_constants as vc
 from ..meta.meta_data import MetaData
 from ..meta.persistence.db import db_constants as dbc
-from ..naming_refs import resolve_object_ref
+from ..naming_refs import ref_target
 from ..shared.base_types import TYPE_FIELD, TYPE_VALIDATOR
 
 
@@ -205,22 +205,9 @@ def _value_object_errors(
 
 def _resolve_vo_ref(field: MetaData) -> MetaObject | None:
     """The ``object.value`` a ``field.object``'s ``@objectRef`` names, found by walking to
-    the tree root. ``None`` when unresolvable or when the target is not a value object —
+    its bound target (ADR-0059). ``None`` when unresolvable or when the target is not a value object —
     then there is no recursion, on every port."""
-    # ADR-0039: resolving — @objectRef may be inherited via extends.
-    ref = field.get_meta_attr(fc.FIELD_ATTR_OBJECT_REF)
-    if not isinstance(ref, str) or not ref:
-        return None
-    root: MetaData = field
-    while root.parent is not None:
-        root = root.parent
-    # ADR-0042 — the SINGLE object-ref resolver every ref site shares: an FQN matches
-    # its resolution key exactly; a bare ref resolves in the DECLARING owner's package
-    # (an inherited field resolves in the package that declared it), then a root-level
-    # object — never a same-named object in some other package.
-    owner = field.parent if field.parent is not None else root
-    referrer_pkg = owner.package or owner.file_default_package or ""
-    target = resolve_object_ref(root, ref, referrer_pkg)
+    target = ref_target(field, fc.FIELD_ATTR_OBJECT_REF)
     return target if isinstance(target, MetaObject) and target.sub_type == OBJECT_SUBTYPE_VALUE else None
 
 

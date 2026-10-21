@@ -21,7 +21,7 @@
                 "name": "tags",
                 "@cardinality": "many",
                 "@objectRef": "acme::commerce::Tag",
-                "@through": "PostTag"
+                "@through": "acme::commerce::PostTag"
               }
             },
             {

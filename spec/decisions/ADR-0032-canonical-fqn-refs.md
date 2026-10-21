@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted (2026-06-13). Pre-1.0 blocker. Defined by FR-032
+Accepted (2026-06-13). **Partly superseded by [ADR-0059](ADR-0059-references-resolve-once-after-the-tree.md) (§3, §4)**: canonical JSON now accepts every reference form and the YAML desugar no longer expands references; §2's grammar stands and applies to every source. Pre-1.0 blocker. Defined by FR-032
 (`docs/superpowers/specs/2026-06-13-fr-026-canonical-fqn-refs-design.md`).
 
 ## Context

@@ -38,7 +38,7 @@
               "relationship.association": {
                 "name": "purchases",
                 "@cardinality": "many",
-                "@objectRef": "Purchase"
+                "@objectRef": "acme::shop::Purchase"
               }
             }
           ]
@@ -107,27 +107,27 @@
                 "@fields": [
                   "programId"
                 ],
-                "@references": "Program"
+                "@references": "acme::shop::Program"
               }
             },
             {
               "relationship.association": {
                 "name": "program",
                 "@cardinality": "one",
-                "@objectRef": "Program"
+                "@objectRef": "acme::shop::Program"
               }
             },
             {
               "dimension.attribute": {
                 "name": "program",
-                "@of": "Purchase.programId"
+                "@of": "acme::shop::Purchase.programId"
               }
             },
             {
               "dimension.attribute": {
                 "name": "programTitle",
-                "@of": "Program.title",
-                "@via": "Purchase.program"
+                "@of": "acme::shop::Program.title",
+                "@via": "acme::shop::Purchase.program"
               }
             },
             {
@@ -140,7 +140,7 @@
                   "quarter",
                   "year"
                 ],
-                "@of": "Purchase.purchasedAt"
+                "@of": "acme::shop::Purchase.purchasedAt"
               }
             },
             {
@@ -150,8 +150,8 @@
                   "month",
                   "year"
                 ],
-                "@of": "Program.createdAt",
-                "@via": "Purchase.program"
+                "@of": "acme::shop::Program.createdAt",
+                "@via": "acme::shop::Purchase.program"
               }
             },
             {
@@ -164,7 +164,7 @@
                   }
                 },
                 "@of": [
-                  "Purchase.id"
+                  "acme::shop::Purchase.id"
                 ]
               }
             },
@@ -173,7 +173,7 @@
                 "name": "purchases",
                 "@agg": "count",
                 "@of": [
-                  "Purchase.id"
+                  "acme::shop::Purchase.id"
                 ],
                 "@segment": "active"
               }
@@ -184,7 +184,7 @@
                 "@agg": "count",
                 "@distinct": true,
                 "@of": [
-                  "Purchase.customerEmail"
+                  "acme::shop::Purchase.customerEmail"
                 ],
                 "@segment": "active"
               }
@@ -194,7 +194,7 @@
                 "name": "revenue",
                 "@agg": "sum",
                 "@of": [
-                  "Purchase.amountCents"
+                  "acme::shop::Purchase.amountCents"
                 ],
                 "@segment": "active"
               }
@@ -267,7 +267,7 @@
             {
               "dimension.attribute": {
                 "name": "program",
-                "@of": "WorkoutEvent.programId"
+                "@of": "acme::shop::WorkoutEvent.programId"
               }
             },
             {
@@ -276,7 +276,7 @@
                 "@agg": "count",
                 "@distinct": true,
                 "@of": [
-                  "WorkoutEvent.customerEmail"
+                  "acme::shop::WorkoutEvent.customerEmail"
                 ]
               }
             },
@@ -286,10 +286,10 @@
                 "@agg": "count",
                 "@distinct": true,
                 "@of": [
-                  "WorkoutEvent.programId",
-                  "WorkoutEvent.customerEmail",
-                  "WorkoutEvent.weekNumber",
-                  "WorkoutEvent.dayNumber"
+                  "acme::shop::WorkoutEvent.programId",
+                  "acme::shop::WorkoutEvent.customerEmail",
+                  "acme::shop::WorkoutEvent.weekNumber",
+                  "acme::shop::WorkoutEvent.dayNumber"
                 ]
               }
             },
@@ -298,7 +298,7 @@
                 "name": "lastActivityAt",
                 "@agg": "max",
                 "@of": [
-                  "WorkoutEvent.occurredAt"
+                  "acme::shop::WorkoutEvent.occurredAt"
                 ]
               }
             },
@@ -328,7 +328,7 @@
           "@dimensions": [
             "program"
           ],
-          "@from": "WorkoutEvent",
+          "@from": "acme::shop::WorkoutEvent",
           "@measures": [
             "starters",
             "daysEngaged",
@@ -351,7 +351,7 @@
               }
             }
           },
-          "@from": "Purchase",
+          "@from": "acme::shop::Purchase",
           "@measures": [
             "purchases",
             "revenue"
@@ -361,7 +361,7 @@
       {
         "object.report": {
           "name": "StoreTotals",
-          "@from": "Purchase",
+          "@from": "acme::shop::Purchase",
           "@measures": [
             "purchases",
             "buyers",

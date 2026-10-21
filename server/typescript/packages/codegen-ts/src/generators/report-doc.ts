@@ -25,14 +25,14 @@ import {
   describeSegment,
   isMetaObject,
   reportFieldTypeName,
-  reportFrom,
+  OBJECT_REPORT_ATTR_FROM,
   reportNotServedReason,
   reportReadSource,
   reportShape,
-  resolveObjectRef,
+  refTarget,
 } from "@metaobjectsdev/metadata";
 import type { OutputLayout } from "../import-path.js";
-import { docPageHref, docPageNode, effectivePackage } from "../docs-paths.js";
+import { docPageHref, docPageNode } from "../docs-paths.js";
 import { isReport } from "../source-detect.js";
 
 /** Inline code for a name this module prints itself (the describers return theirs ready). */
@@ -80,10 +80,8 @@ export function buildReportBlock(report: MetaObject, root: MetaRoot, layout: Out
 function reportsFrom(entity: MetaObject, root: MetaRoot): MetaObject[] {
   return root.objects().filter((o) => {
     if (!isReport(o)) return false;
-    const from = reportFrom(o);
-    if (from === undefined) return false;
-    // A bare @from resolves in the REPORT's package, as `reportShape` resolves it.
-    const target = resolveObjectRef(root, from, effectivePackage(o) ?? "").node;
+    // ADR-0059 R7 — the entity the loader bound for @from.
+    const target = refTarget(o, OBJECT_REPORT_ATTR_FROM);
     return isMetaObject(target) && target === entity;
   });
 }

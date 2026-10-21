@@ -17,7 +17,7 @@ import {
   TEMPLATE_ATTR_PAYLOAD_REF,
   TEMPLATE_ATTR_TEXT_REF,
   TEMPLATE_ATTR_FORMAT,
-  resolveObjectRef,
+  refTarget,
   type MetaData,
 } from "@metaobjectsdev/metadata";
 import { findTemplates } from "../templates/find-templates.js";
@@ -65,9 +65,9 @@ export const promptRender = function promptRender(opts?: PromptRenderOpts): Gene
         // ADR-0039: resolving — a template may inherit @payloadRef via extends.
         const ref = t.attr(TEMPLATE_ATTR_PAYLOAD_REF);
         if (typeof ref !== "string" || ref === "") continue;
-        // ADR-0042: a bare ref resolves in the template's package first. The loader has
+        // ADR-0059 R7: the value object the loader bound for @payloadRef. The loader has
         // already enforced the legal target set (object.value / sourceless projection, #210).
-        const vo = resolveObjectRef(ctx.loadedRoot, ref, t.package ?? t.fileDefaultPackage ?? "").node;
+        const vo = refTarget(t, TEMPLATE_ATTR_PAYLOAD_REF);
         if (vo === undefined) continue;
         const imp = valueObjectImport(ctx.renderContext, vo, outFile, ctx.config.extStyle ?? "js");
         imports.push(imp);

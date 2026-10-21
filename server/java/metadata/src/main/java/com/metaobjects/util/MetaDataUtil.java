@@ -15,6 +15,7 @@
  */
 package com.metaobjects.util;
 
+import com.metaobjects.loader.References;
 import com.metaobjects.MetaData;
 import com.metaobjects.MetaDataNotFoundException;
 import com.metaobjects.field.MetaField;
@@ -82,33 +83,9 @@ public class MetaDataUtil {
 
           String objectRef = d.getMetaAttr(ATTR_OBJECT_REF).getValueAsString();
           if (objectRef != null) {
-
-            String basePkg = findPackageForMetaData(d);
-            String name = expandPackageForMetaDataRef(basePkg, objectRef);
-
-            try {
-              o = d.getLoader().getMetaObjectByName(name);
-            } catch (MetaDataNotFoundException e) {
-              // A bare (non-`::`-prefixed) ref names a SAME-PACKAGE sibling: the cross-port
-              // canonical form writes `@objectRef: "Settings"` for a sibling object in the same
-              // package (see fixtures/persistence-conformance — AllTypes → Settings). The
-              // relative-path expander above only prepends a package for a `::`-/`..::`-prefixed
-              // ref, leaving a bare name as-is, which misses the package-qualified registration
-              // (`fitness::Settings`). Retry with the declaring node's package prefixed before
-              // surfacing the not-found.
-              MetaObject resolved = null;
-              if (basePkg != null && !basePkg.isEmpty()
-                  && !objectRef.contains(SEP)) {
-                String qualified = basePkg + SEP + objectRef;
-                try {
-                  resolved = d.getLoader().getMetaObjectByName(qualified);
-                } catch (MetaDataNotFoundException ignored) {
-                  // fall through to the original not-found below
-                }
-              }
-              if (resolved == null) throw MetaDataNotFoundException.forObject(name, d);
-              o = resolved;
-            }
+            // ADR-0059 R7: read the target the loader bound once; never re-resolve by name.
+            o = References.refTarget(d, ATTR_OBJECT_REF);
+            if (o == null) throw MetaDataNotFoundException.forObject(objectRef, d);
           }
 
         d.setCacheValue(KEY, o);

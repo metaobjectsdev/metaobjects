@@ -42,13 +42,13 @@ public class IdentityReferenceTests
         Assert.Equal(2, refs.Count);
 
         var bare = refs.Single(r => r.Name == "refBare");
-        Assert.Equal("Org", bare.TargetEntity);
+        Assert.Equal("t::Org", bare.TargetEntity);
         Assert.Empty(bare.TargetFields);                 // bare -> target's primary identity
         Assert.True(bare.Enforce);                       // default true
         Assert.Equal(["authorId"], bare.Fields);         // local FK column
 
         var dotted = refs.Single(r => r.Name == "refDotted");
-        Assert.Equal("Org", dotted.TargetEntity);
+        Assert.Equal("t::Org", dotted.TargetEntity);
         Assert.Equal(["id"], dotted.TargetFields);       // explicit target field
         Assert.False(dotted.Enforce);                    // @enforce: false -> logical-only
     }

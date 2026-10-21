@@ -30,25 +30,32 @@ export interface PkInfo {
 export function buildPkMap(root: MetaRoot): Map<string, PkInfo> {
   const result = new Map<string, PkInfo>();
   for (const obj of root.objects()) {
-    // primaryIdentity() resolves the primary identity across the super-chain.
-    const primary = obj.primaryIdentity();
-    if (!primary) continue;
-    // attr() (effective) not ownAttr() — @fields/@generation can be inherited when the
-    // identity node-level `extends` a base identity without restating them (#56).
-    const fields = primary.attr(IDENTITY_ATTR_FIELDS);
-    if (!Array.isArray(fields) && typeof fields !== "string") continue;
-    const fieldsList = Array.isArray(fields) ? fields : [fields];
-    if (fieldsList.length === 0) continue;
-    const pkFieldName = String(fieldsList[0]);
-    // findField() resolves the field across the super-chain (handles extends:).
-    const pkField = obj.findField(pkFieldName);
-    const fieldSubType = pkField?.subType ?? FIELD_SUBTYPE_LONG; // sane default
-    const generation = primary.attr(IDENTITY_ATTR_GENERATION);
-    const info: PkInfo = { fieldName: pkFieldName, fieldSubType };
-    if (typeof generation === "string") info.generation = generation;
-    result.set(obj.name, info);
+    const info = pkInfoOf(obj);
+    if (info !== undefined) result.set(obj.name, info);
   }
   return result;
+}
+
+/** One object's PK info, read from the object itself. A reference consumer that holds the
+ *  bound target (ADR-0059 R7) reads this rather than looking a name up in the map. */
+export function pkInfoOf(obj: MetaObject): PkInfo | undefined {
+  // primaryIdentity() resolves the primary identity across the super-chain.
+  const primary = obj.primaryIdentity();
+  if (!primary) return undefined;
+  // attr() (effective) not ownAttr() — @fields/@generation can be inherited when the
+  // identity node-level `extends` a base identity without restating them (#56).
+  const fields = primary.attr(IDENTITY_ATTR_FIELDS);
+  if (!Array.isArray(fields) && typeof fields !== "string") return undefined;
+  const fieldsList = Array.isArray(fields) ? fields : [fields];
+  if (fieldsList.length === 0) return undefined;
+  const pkFieldName = String(fieldsList[0]);
+  // findField() resolves the field across the super-chain (handles extends:).
+  const pkField = obj.findField(pkFieldName);
+  const fieldSubType = pkField?.subType ?? FIELD_SUBTYPE_LONG; // sane default
+  const generation = primary.attr(IDENTITY_ATTR_GENERATION);
+  const info: PkInfo = { fieldName: pkFieldName, fieldSubType };
+  if (typeof generation === "string") info.generation = generation;
+  return info;
 }
 
 /** Map a field subType to the generated TS scalar type for keys/values. */

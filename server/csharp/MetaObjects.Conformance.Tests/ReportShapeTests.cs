@@ -504,7 +504,7 @@ public class ReportShapeTests
             AcmeFile(Catalog, Program, Purchase(subtitleVia: "Program.catalog"), SpineSales), id: "meta.inline.json")]);
         Assert.Single(result.Errors);
         var ex = Assert.Throws<InvalidOperationException>(() => Shape(result.Root, "SpineSales"));
-        Assert.Equal("report 'SpineSales': dimension 'programSubtitle' @via 'Program.catalog' does not resolve.", ex.Message);
+        Assert.Equal("report 'SpineSales': dimension 'programSubtitle' @via 'acme::Program.catalog' does not resolve.", ex.Message);
     }
 
     [Fact]

@@ -1,10 +1,10 @@
 {
   "metadata.root": {
-    "package": "acme::shop",
     "children": [
       {
         "object.projection": {
           "name": "CustomerView",
+          "package": "acme::shop",
           "children": [
             {
               "source.rdb": {
@@ -52,6 +52,7 @@
       {
         "object.entity": {
           "name": "Customer",
+          "package": "acme::shop",
           "extends": "acme::common::BaseEntity",
           "children": [
             {
@@ -71,6 +72,7 @@
       {
         "object.entity": {
           "name": "BaseEntity",
+          "package": "acme::common",
           "abstract": true,
           "children": [
             {

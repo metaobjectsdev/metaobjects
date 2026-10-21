@@ -8,7 +8,6 @@ from .errors import ErrorCode, MetaError
 from .meta.core.attr.attr_constants import ATTR_SUBTYPE_PROPERTIES, ATTR_SUBTYPE_STRINGARRAY
 from .meta.meta_data import MetaData
 from .meta.meta_root import MetaRoot
-from .naming_refs import REF_BEARING_ATTR_NAMES, is_relative_ref
 from .registry import TypeRegistry
 from .shared.base_types import (
     SUBTYPE_BASE,
@@ -52,38 +51,6 @@ _RESERVED_STRUCTURAL_KEYS: frozenset[str] = frozenset({
     KEY_CHILDREN,
     KEY_VALUE,
 })
-
-
-# FR-032 (ADR-0032) — canonical-JSON ref guard. Canonical JSON is the
-# self-contained interchange form: every ref-bearing attr MUST be fully-qualified.
-# A relative authoring form (leading ``::`` or ``..::``) surviving into canonical
-# JSON is ``ERR_RELATIVE_REF_IN_CANONICAL`` — relative forms are YAML-authoring
-# sugar the desugar expands before canonical JSON. This parser only handles
-# canonical JSON (the desugar runs upstream for YAML), so no format check is
-# needed. Like ERR_RESERVED_ATTR, this is a hard error; we append it and halt the
-# node build so exactly one error is produced. Mirrors the TS/Java/C# guard.
-def _guard_relative_ref_in_canonical(
-    ref_label: str,
-    raw_value: object,
-    wrapper: str,
-    source: str,
-    result: "ParseResult",
-    envelope: ErrorSource,
-) -> bool:
-    """Append ``ERR_RELATIVE_REF_IN_CANONICAL`` when *raw_value* is a relative
-    reference string. Returns True when the guard fired (caller halts).
-    """
-    if not isinstance(raw_value, str) or not is_relative_ref(raw_value):
-        return False
-    result.errors.append(MetaError(
-        f"node '{wrapper}' has relative reference '{raw_value}' on {ref_label}; "
-        f"canonical JSON must be fully-qualified — relative forms (leading '::' "
-        f"or '..::') are YAML-authoring sugar the desugar expands",
-        ErrorCode.ERR_RELATIVE_REF_IN_CANONICAL,
-        source,
-        envelope=envelope,
-    ))
-    return True
 
 
 @dataclass
@@ -417,7 +384,9 @@ def _build(
     # root packages are no longer reachable via the parent chain). The node's
     # own ``package`` if declared, else the inherited context package (the
     # file's root package). Mirrors TS ``MetaData.fileDefaultPackage``.
-    node.file_default_package = (str(pkg) if pkg else None) or (ctx_pkg or None)
+    # Recorded even when empty: "" says the file declares no package (ADR-0059 R10),
+    # which is not the same as a node built in code with no file at all.
+    node.file_default_package = (str(pkg) if pkg else None) or ctx_pkg
 
     if pkg:
         node.package = str(pkg)
@@ -430,12 +399,6 @@ def _build(
         node.package = None
 
     if body_dict.get(KEY_EXTENDS):
-        # FR-032 — a relative ``extends`` in canonical JSON is illegal.
-        if _guard_relative_ref_in_canonical(
-            KEY_EXTENDS, body_dict[KEY_EXTENDS], wrapper, source, result,
-            _current_envelope(source, builder, yaml_position),
-        ):
-            return None
         node.super_ref = str(body_dict[KEY_EXTENDS])
     node.is_abstract = bool(body_dict.get(KEY_ABSTRACT, False))
     node.is_overlay = bool(body_dict.get(KEY_OVERLAY, False))
@@ -461,12 +424,6 @@ def _build(
                     )
                 )
                 continue
-            # FR-032 — a relative inline ref-attr value in canonical JSON is illegal.
-            if attr_name in REF_BEARING_ATTR_NAMES and _guard_relative_ref_in_canonical(
-                key, value, wrapper, source, result,
-                _current_envelope(source, builder, yaml_position),
-            ):
-                return None
             schema = registry.attr_schema(type_, sub_type, attr_name)
             # Array-valued attrs (the `string` + is_array model that replaced the
             # `stringarray` subtype) coerce through the array string-attr class
@@ -504,7 +461,10 @@ def _build(
                 builder.pop()
 
     # The context package for children: use this node's own package if set, else inherit.
-    child_ctx_pkg = node.package or ctx_pkg
+    # An `overlay: true` node amends an existing node (possibly in another package), so
+    # its children keep the FILE's context package, not the amended node's own: a nested
+    # node resolves in its own file's default package (ADR-0059 R3/R10).
+    child_ctx_pkg = ctx_pkg if (node.is_overlay and not is_root) else (node.package or ctx_pkg)
 
     # Descend into children: push `children` key, then `[i]` index for each entry,
     # then the child wrapper key, so JsonPath segments stack correctly.

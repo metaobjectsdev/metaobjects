@@ -407,6 +407,16 @@ final class ReportingValidation {
         }
     }
 
+    /**
+     * ADR-0059 R3 — the entity a dimension's {@code @via} reaches, walked from {@code declaring}
+     * with D2's rules, or {@code null} when the walk fails (D2 reports why). A dimension's
+     * {@code @of} resolves in this entity's package, so the loader's {@code resolveReferences}
+     * pass reuses the walk rather than restating it.
+     */
+    static MetaData dimensionViaTerminal(MetaRoot root, MetaData declaring, String via) {
+        return walkToOneVia(root, declaring, via, m -> { }, d2Walk(declaring));
+    }
+
     private static void checkDimension(MemberCtx ctx, MetaDimension dim) {
         Consumer<String> err = message ->
                 ctx.sink().push(dim, ErrorCode.ERR_INVALID_DIMENSION, ctx.label(), ": " + message, ctx.suffix());
@@ -559,10 +569,11 @@ final class ReportingValidation {
                         + "', which is not to-one. " + walk.toOneReason());
                 return null;
             }
-            String targetRef = stringAttr(hop, isReference ? MetaIdentity.ATTR_REFERENCES : MetaRelationship.ATTR_OBJECT_REF);
-            // ADR-0042 — a hop target resolves in the package of the entity declaring the hop.
+            String hopAttr = isReference ? MetaIdentity.ATTR_REFERENCES : MetaRelationship.ATTR_OBJECT_REF;
+            String targetRef = stringAttr(hop, hopAttr);
+            // ADR-0059 R3 — a hop target resolves in the package of the node that declares the hop's attribute.
             MetaData target = targetRef == null ? null
-                    : ValidationPhase.resolveRootObject(root, targetRef, pkgOf(current));
+                    : ValidationPhase.resolveRootObject(root, targetRef, References.referrerPackageFor(hop, hopAttr));
             if (target == null) {
                 err.accept(named + " hop '" + hopName + "' on '" + nameOf.apply(current) + "' targets no object.");
                 return null;

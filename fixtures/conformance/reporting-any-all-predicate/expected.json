@@ -54,7 +54,7 @@
             {
               "dimension.attribute": {
                 "name": "game",
-                "@of": "Call.gameId"
+                "@of": "acme::ops::Call.gameId"
               }
             },
             {
@@ -62,7 +62,7 @@
                 "name": "calls",
                 "@agg": "count",
                 "@of": [
-                  "Call.id"
+                  "acme::ops::Call.id"
                 ]
               }
             },
@@ -106,7 +106,7 @@
           "@dimensions": [
             "game"
           ],
-          "@from": "Call",
+          "@from": "acme::ops::Call",
           "@measures": [
             "calls",
             "hasError",

@@ -79,8 +79,8 @@ public final class M2MResolver {
 
         M2MFields fields = M2MFields.derive(rel, sourceMeta, root);
 
-        MetaObject junction = mustGetEntity(root, rel.getThrough());
-        MetaObject target = mustGetEntity(root, rel.getObjectRef());
+        MetaObject junction = mustGetEntity(rel, MetaRelationship.ATTR_THROUGH, rel.getThrough());
+        MetaObject target = mustGetEntity(rel, MetaRelationship.ATTR_OBJECT_REF, rel.getObjectRef());
 
         String sourcePkField = primaryKeyField(sourceMeta);
         Object sourceId = readField(sourceMeta, source, sourcePkField);
@@ -159,25 +159,9 @@ public final class M2MResolver {
         return String.valueOf(a).equals(String.valueOf(b));
     }
 
-    private static MetaObject mustGetEntity(MetaRoot root, String name) {
-        // ADR-0041: a FULLY-QUALIFIED ref (contains "::") resolves EXACTLY on the
-        // object's package-qualified name — never a bare-tail fallback (the closed
-        // bug: an FQN @objectRef / @through binding a same-named entity in the WRONG
-        // package). A bare ref matches the entity's short name.
-        boolean fqn = name != null && name.contains(com.metaobjects.MetaData.PKG_SEPARATOR);
-        // ADR-0039: root-level entity scan — root is never extended, so own children
-        // is correct (entities are declared directly under root, not inherited into it).
-        for (var child : root.getChildren(MetaObject.class, false)) {
-            if (fqn ? name.equals(child.getName()) : stripPackage(name).equals(child.getShortName())) {
-                return child;
-            }
-        }
-        throw new IllegalStateException("Entity '" + name + "' not found in model root");
-    }
-
-    private static String stripPackage(String name) {
-        if (name == null) return null;
-        int idx = name.lastIndexOf(com.metaobjects.MetaData.PKG_SEPARATOR);
-        return (idx >= 0) ? name.substring(idx + com.metaobjects.MetaData.PKG_SEPARATOR.length()) : name;
+    private static MetaObject mustGetEntity(MetaRelationship rel, String attr, String name) {
+        MetaObject found = com.metaobjects.loader.References.refTarget(rel, attr);
+        if (found == null) throw new IllegalStateException("Entity '" + name + "' not found in model root");
+        return found;
     }
 }

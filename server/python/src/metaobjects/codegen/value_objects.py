@@ -38,7 +38,7 @@ from metaobjects.meta.core.object.object_constants import (
 )
 from metaobjects.meta.meta_data import MetaData
 from metaobjects.naming import package_of_resolution_key
-from metaobjects.naming_refs import resolve_object_ref
+from metaobjects.naming_refs import lookup_canonical, ref_target
 from metaobjects.shared.base_types import TYPE_OBJECT, TYPE_SOURCE
 from metaobjects.shared.separators import PACKAGE_SEP
 
@@ -81,18 +81,26 @@ def is_legal_payload_target(obj: MetaData) -> bool:
     return not any(c.type == TYPE_SOURCE for c in obj.children())
 
 
-def resolve_payload_vo(root: MetaData, ref: str, referrer_pkg: str) -> MetaObject | None:
-    """Resolve a ``@payloadRef`` / ``@responseRef`` to its value-object shape, PACKAGE-LOCAL
-    (ADR-0042) — the SAME canonical ``resolve_object_ref`` contract the loader's own
-    ``_validate_templates`` pass uses to validate this exact ref: an FQN resolves exactly; a
-    bare ref resolves in the referrer's own package first, else a root-level object. Rejects
-    entities and sourced projections (#210).
+def bound_payload_vo(node: MetaData, attr_name: str) -> MetaObject | None:
+    """The value-object shape *node*'s ``@payloadRef`` / ``@responseRef`` is bound to
+    (ADR-0059 R7): the target the loader recorded once, never a re-resolution in the
+    template's package. Rejects entities and sourced projections (#210)."""
+    obj = ref_target(node, attr_name)
+    if not isinstance(obj, MetaObject) or not is_legal_payload_target(obj):
+        return None
+    return obj
 
-    *referrer_pkg* is the REFERENCING TEMPLATE's effective package — pass
-    ``pkg_of(template)``, not the template's bare ``.package`` attr: for a loader-parsed tree
-    the two agree, but ``pkg_of`` is ALSO correct for hand-built test trees that set a
-    package only on an ancestor."""
-    obj = resolve_object_ref(root, ref, referrer_pkg)
+
+def resolve_payload_vo(root: MetaData, ref: str, referrer_pkg: str) -> MetaObject | None:
+    """Resolve a CANONICAL ``@payloadRef`` / ``@responseRef`` value to its value-object shape,
+    exactly (ADR-0059 R7): ``pkg::Name`` binds that package's object, ``::Name`` and a bare
+    ``Name`` bind the root-level object. No short-name scan and no package applied; ``None``
+    when nothing matches exactly. Rejects entities and sourced projections (#210).
+
+    Prefer :func:`bound_payload_vo` on the template node: it returns the target the loader
+    bound. *referrer_pkg* is ignored, because a canonical value is absolute; it is kept so
+    existing callers and owned generator copies keep working."""
+    obj = lookup_canonical(root, ref, TYPE_OBJECT) if ref else None
     if not isinstance(obj, MetaObject) or not is_legal_payload_target(obj):
         return None
     return obj
@@ -192,18 +200,13 @@ _REF_TARGET: "weakref.WeakKeyDictionary[MetaData, MetaObject | None]" = (
 
 
 def object_ref_target(field: MetaData) -> MetaObject | None:
-    """The object a field's ``@objectRef`` names, resolved FQN-exact / package-local
-    (ADR-0042) in the FIELD's declaring package — which differs from the owner's when the
-    field is inherited through ``extends``. Never a bare short-name scan: that binds whichever
-    same-named object loaded first."""
-    ref = field.attrs().get(fc.FIELD_ATTR_OBJECT_REF)
-    if not isinstance(ref, str) or not ref:
-        return None
+    """The object a field's ``@objectRef`` is bound to (ADR-0059 R7), which for an
+    inherited field is the object it named in the package that declared it. Never a bare
+    short-name scan: that binds whichever same-named object loaded first."""
     hit = _REF_TARGET.get(field, _MISSING)
     if hit is not _MISSING:
         return hit
-    referrer_pkg = pkg_of(field.parent) if field.parent is not None else ""
-    target = resolve_object_ref(root_of(field), ref, referrer_pkg)
+    target = ref_target(field, fc.FIELD_ATTR_OBJECT_REF)
     result = target if isinstance(target, MetaObject) else None
     _REF_TARGET[field] = result
     return result

@@ -296,7 +296,21 @@ export type { FormatFileOptions, FormatFileResult } from "./fmt.js";
 export { resolveSuperRef } from "./super-resolve.js";
 
 // FR-032 (ADR-0032) — canonical reference expansion + FQN object matching.
-export { expandRef, isRelativeRef, refMatchesObject, resolveObjectRef, didYouMeanHint, REF_BEARING_ATTR_NAMES } from "./naming-refs.js";
+export {
+  expandRef,
+  isRelativeRef,
+  refMatchesObject,
+  resolveObjectRef,
+  resolveRef,
+  lookupCanonical,
+  refTarget,
+  spellRef,
+  splitChildTail,
+  RefOverDropError,
+  didYouMeanHint,
+  REF_BEARING_ATTR_NAMES,
+} from "./naming-refs.js";
+export { resolveReferences } from "./loader/resolve-references.js";
 
 // Loader hierarchy
 export { MetaDataLoader, declaredTopLevelKeys } from "./loader/meta-data-loader.js";

@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ....naming_refs import CHILD_REF_SEP, resolve_object_ref
+from ....naming_refs import CHILD_REF_SEP, ref_target, resolve_object_ref
 from ....shared.base_types import TYPE_IDENTITY, TYPE_RELATIONSHIP
 from ....shared.separators import PACKAGE_SEP
 from ...meta_data import MetaData
@@ -208,8 +208,7 @@ def _resolve_via_hop(current: MetaObject, hop_name: str, root: MetaRoot) -> Meta
         )
     if hop is None:
         return None
-    ref = hop.get_meta_attr(IDENTITY_REFERENCE_ATTR_REFERENCES if is_reference else RELATIONSHIP_ATTR_OBJECT_REF)
-    target = resolve_object_ref(root, ref, _package_of_key(current.resolution_key())) if isinstance(ref, str) else None
+    target = ref_target(hop, IDENTITY_REFERENCE_ATTR_REFERENCES if is_reference else RELATIONSHIP_ATTR_OBJECT_REF)
     return target if isinstance(target, MetaObject) else None
 
 
@@ -269,7 +268,7 @@ def report_spine_hops(report: MetaObject, from_: MetaObject, root: MetaRoot) -> 
         return None
     hops = reporting_via_hops(spine, from_, from_, root)
     if hops is None:
-        raise _unresolved(report.name, f"@spine '{spine}'")
+        raise _unresolved(report.name, f"@spine '{report.authored_attr('spine')}'")
     return hops
 
 
@@ -330,12 +329,9 @@ def _via_joins_inner(hops: list[str], from_: MetaObject, root: MetaRoot) -> bool
         hop = rel if rel is not None else ref_node
         if hop is None:
             return False
-        target_ref = hop.get_meta_attr(
-            RELATIONSHIP_ATTR_OBJECT_REF if rel is not None else IDENTITY_REFERENCE_ATTR_REFERENCES
+        target = ref_target(
+            hop, RELATIONSHIP_ATTR_OBJECT_REF if rel is not None else IDENTITY_REFERENCE_ATTR_REFERENCES
         )
-        if not isinstance(target_ref, str):
-            return False
-        target = resolve_object_ref(root, target_ref, _package_of_key(current.resolution_key()))
         if not isinstance(target, MetaObject):
             return False
         # The reference the hop crosses, as the lowering resolves it. A has-many hop, whose
@@ -348,7 +344,7 @@ def _via_joins_inner(hops: list[str], from_: MetaObject, root: MetaRoot) -> bool
             reference = resolve_relationship_reference(
                 current,
                 hop_name,
-                target.name,
+                target,
                 source_ref_field if isinstance(source_ref_field, str) else None,
             )
         if reference is None:
@@ -387,13 +383,13 @@ def _dimension_required(
             return False
         hops = reporting_via_hops(via, reporting_member_owner(dim, from_), from_, root)
         if hops is None:
-            raise _unresolved(report_name, f"dimension '{dim.name}' @via '{via}'")
+            raise _unresolved(report_name, f"dimension '{dim.name}' @via '{dim.authored_attr('via')}'")
         return _via_joins_inner(hops, from_, root)
     if via is None:
         return False  # a column of @from: null in a spine row with no facts
     hops = reporting_via_hops(via, reporting_member_owner(dim, from_), from_, root)
     if hops is None:
-        raise _unresolved(report_name, f"dimension '{dim.name}' @via '{via}'")
+        raise _unresolved(report_name, f"dimension '{dim.name}' @via '{dim.authored_attr('via')}'")
     return hops == spine and (of_required or _is_primary_key_field(named, of))
 
 
@@ -410,7 +406,7 @@ def _dimension_field(
     via = dim.via()
     # A @via that does not walk is the @via's error, not the @of's (the @of resolves at its end).
     if via is not None and _reporting_via_terminal(via, reporting_member_owner(dim, from_), from_, root) is None:
-        raise _unresolved(report_name, f"dimension '{dim.name}' @via '{via}'")
+        raise _unresolved(report_name, f"dimension '{dim.name}' @via '{dim.authored_attr('via')}'")
     ref = resolve_dimension_of(dim, from_, root)
     if ref is None:
         raise _unresolved(report_name, f"dimension '{item.name}' @of")

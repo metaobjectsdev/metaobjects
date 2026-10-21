@@ -24,7 +24,6 @@ import com.metaobjects.reporting.ReportShape
 import com.metaobjects.source.MetaSource
 import com.metaobjects.source.RdbSource
 import com.metaobjects.source.SourceResolution
-import com.metaobjects.validation.SymbolTable
 
 /**
  * Helpers shared by the codegen-kotlin generators. Extracted to keep
@@ -49,44 +48,46 @@ public object KotlinGenUtil {
     const val AUTO_SET_ON_UPDATE = "onUpdate"
 
     /**
-     * Resolve a MetaObject (entity OR value) by exact FQN match or by short-name match
-     * (the trailing segment after the last `::`). Returns null when neither matches.
+     * Resolve a MetaObject (entity OR value) from a CANONICAL reference value (ADR-0059 R7):
+     * an exact resolution-key match (`pkg::Name`, `::Name`, or a root-level `Name`), with any
+     * dotted child tail ignored. Never matches on a short name. Returns null when nothing matches.
      */
-    fun resolveObjectByShortOrFqn(loader: MetaDataLoader, ref: String): MetaObject? {
-        for (child in loader.metaObjects) {
-            if (child.name == ref || child.name.substringAfterLast("::") == ref) return child
-        }
-        return null
-    }
-
-    // =========================================================================
-    // ADR-0042 — canonical package-local object-ref resolution (@payloadRef).
-    //
-    // The loader validates a template's @payloadRef via the SAME package-local
-    // contract (ValidationPhase.resolveRootObject, backed by SymbolTable): an FQN ref
-    // binds EXACTLY; a bare ref binds the referrer's own package, else a root-level
-    // object; NO cross-package bare-name / bare-tail fallback. Reusing the loader's own
-    // public [SymbolTable] (rather than a divergent codegen copy) keeps codegen's
-    // @payloadRef resolution identical to the loader's, so under a cross-package
-    // short-name collision codegen binds the SAME value-object the loader validated —
-    // never a load-order-dependent decoy (the #244 class). The bare-tail/first-match
-    // [resolveObjectByShortOrFqn] above is deliberately left as-is: it backs the
-    // @from/@of/@via dotted-ref navigation (a different ref kind, #244's own domain).
-    // =========================================================================
+    fun lookupCanonicalObject(loader: MetaDataLoader, ref: String): MetaObject? =
+        com.metaobjects.loader.References.lookupCanonical(loader.root, ref)
 
     /**
-     * Resolve a metadata OBJECT reference (bare or FQN) under the loader's ADR-0042
-     * package-local contract, or null. [referrerPkg] is the effective package of the node
-     * carrying the ref (a template's own `getPackage()` for a @payloadRef); "" for root-level.
+     * The earlier name of [lookupCanonicalObject], kept so a generator ejected before 1.1.0
+     * still compiles unchanged. It now does the same exact canonical lookup; it no longer
+     * matches a short name, whatever its name says.
      */
-    fun resolveObjectRef(loader: MetaDataLoader, ref: String?, referrerPkg: String?): MetaObject? {
-        if (ref == null) return null
-        return SymbolTable.build(loader.root).resolveObject(ref, referrerPkg ?: "")
-    }
+    @Deprecated("Use lookupCanonicalObject", ReplaceWith("lookupCanonicalObject(loader, ref)"))
+    fun resolveObjectByShortOrFqn(loader: MetaDataLoader, ref: String): MetaObject? =
+        lookupCanonicalObject(loader, ref)
 
     /**
-     * Resolve [ref] to its payload-shape target under the same ADR-0042 package-local
-     * contract as [resolveObjectRef]. #210 — a template-level payload target is an
+     * Resolve a CANONICAL object reference exactly (ADR-0059 R7), or null: `pkg::Name` binds
+     * that package's object, `::Name` and a bare `Name` bind the root-level object. The same
+     * lookup as [lookupCanonicalObject]; no short-name match and no package applied. Prefer
+     * [payloadTarget] on the node that carries the reference.
+     *
+     * [referrerPkg] is ignored: a canonical value is absolute. It is kept so existing callers
+     * and owned generator copies compile unchanged.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    fun resolveObjectRef(loader: MetaDataLoader, ref: String?, referrerPkg: String?): MetaObject? =
+        if (ref.isNullOrEmpty()) null else lookupCanonicalObject(loader, ref)
+
+    /**
+     * The payload-shape target a reference attribute on [node] (`payloadRef` or `responseRef`) is
+     * bound to, as the loader recorded it, or null when it does not resolve or is not a legal
+     * payload target.
+     */
+    fun payloadTarget(node: com.metaobjects.MetaData, attr: String): MetaObject? =
+        com.metaobjects.loader.References.refTarget(node, attr)?.takeIf { isLegalPayloadTarget(it) }
+
+    /**
+     * Resolve the canonical [ref] to its payload-shape target exactly, as [resolveObjectRef]
+     * does ([referrerPkg] is ignored). Prefer [payloadTarget] on the template node. #210 — a template-level payload target is an
      * `object.value` OR a SOURCELESS `object.projection` (rejects entities and sourced
      * projections; the loader enforces the same set). Nested `field.object @objectRef`
      * targets stay value-only ([KotlinExtractSchemaEmitter.objectRefValueObject]).

@@ -1,0 +1,61 @@
+{
+  "metadata.root": {
+    "children": [
+      {
+        "object.value": {
+          "name": "Thing",
+          "package": "base",
+          "children": [
+            {
+              "field.string": {
+                "name": "label"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.value": {
+          "name": "Holder",
+          "package": "base",
+          "children": [
+            {
+              "field.object": {
+                "name": "thing",
+                "@objectRef": "base::Thing"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.value": {
+          "name": "Thing",
+          "package": "app",
+          "children": [
+            {
+              "field.string": {
+                "name": "appOnly"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.value": {
+          "name": "Copy",
+          "package": "app",
+          "children": [
+            {
+              "field.object": {
+                "name": "thing",
+                "extends": "base::Holder.thing",
+                "@objectRef": "base::Thing"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

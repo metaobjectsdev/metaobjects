@@ -137,7 +137,8 @@ from ..meta.persistence.db.db_constants import (
     IDENTITY_SECONDARY_ATTR_EXPR as IDENTITY_ATTR_EXPR,
 )
 from ..source import resolved_source
-from ..naming_refs import did_you_mean_hint, resolve_object_ref
+from ..naming_refs import did_you_mean_hint, resolve_object_ref, referrer_package_of
+from ..naming_refs import ref_target as bound_ref_target
 from ..meta.core.relationship.relationship_references import (
     reference_candidates_for,
     reference_fields,
@@ -1715,8 +1716,10 @@ def _validate_via_path(
 
         # ADR-0042 — the hop target (@objectRef/@references) resolves in the package
         # of the entity that DECLARES the relationship/reference, i.e. current_entity.
-        hop_pkg = current_entity.package or current_entity.file_default_package or ""
-        next_entity = resolve_object_ref(root, obj_ref, hop_pkg)
+        next_entity = bound_ref_target(
+            rel_node,
+            IDENTITY_REFERENCE_ATTR_REFERENCES if _is_reference_hop(rel_node) else RELATIONSHIP_ATTR_OBJECT_REF,
+        )
         if next_entity is None:
             # FR5d — the hop's target points at a missing entity.
             kind = "reference" if _is_reference_hop(rel_node) else "relationship"
@@ -1893,7 +1896,7 @@ def _infer_via_single_hop(
         for rel in base.children()
         if rel.type == TYPE_RELATIONSHIP
         and isinstance(rel.get_meta_attr(RELATIONSHIP_ATTR_OBJECT_REF), str)
-        and _strip_package(rel.get_meta_attr(RELATIONSHIP_ATTR_OBJECT_REF)) == target_entity.name
+        and bound_ref_target(rel, RELATIONSHIP_ATTR_OBJECT_REF) is target_entity
     ]
     if len(candidates) == 1:
         return [candidates[0]]
@@ -2170,7 +2173,7 @@ def _validate_origin_paths(
             continue
         # ADR-0042 — a bare origin head (@from/@of/@via) resolves in the host/
         # projection's package.
-        host_pkg = obj.package or obj.file_default_package or ""
+        host_pkg = referrer_package_of(obj)
         # FR-024 B5: object.value hosts are EXEMPT from @via inference and
         # cardinality checks — a value's origin.passthrough is FR-015 parameter
         # lineage (constructed, not assembled). @from is still resolution-checked.
@@ -2377,7 +2380,7 @@ def _validate_origin_paths(
                     # ADR-0042 — a bare @objectRef resolves in the DECLARING owner's
                     # package (an inherited field resolves in the package that declared it).
                     ref_owner = node.parent or obj
-                    ref_pkg = ref_owner.package or ref_owner.file_default_package or ""
+                    ref_pkg = referrer_package_of(ref_owner)
                     ref_target = resolve_object_ref(root, object_ref, ref_pkg)
                     if ref_target is not None and ref_target.sub_type != OBJECT_SUBTYPE_VALUE:
                         errors.append(MetaError(
@@ -2598,11 +2601,6 @@ def _validate_origin_paths(
 # reference (validation-passes.ts validateRelationships).
 
 
-def _strip_package(name: str) -> str:
-    idx = name.rfind(PACKAGE_SEP)
-    return name[idx + len(PACKAGE_SEP):] if idx >= 0 else name
-
-
 def _junction_reference_fk_fields(junction: MetaData) -> list[str]:
     """FK field names declared by an entity's effective identity.reference children.
 
@@ -2670,7 +2668,7 @@ def _validate_relationships(root: MetaData, errors: list[MetaError]) -> None:
             # makes checking each node exactly once correct.
             declaring_entity = rel.parent if rel.parent is not None else obj
             referrer_pkg = (
-                declaring_entity.package or declaring_entity.file_default_package or ""
+                referrer_package_of(declaring_entity)
             )
 
             # ADR-0039: resolving — a relationship may inherit its M:N attrs via extends.
@@ -2862,7 +2860,10 @@ def _validate_one_side_reference_resolution(
             if not isinstance(object_ref, str) or object_ref == "":
                 continue
 
-            candidates = reference_candidates_for(obj, object_ref)
+            bound_target = bound_ref_target(rel, RELATIONSHIP_ATTR_OBJECT_REF)
+            if bound_target is None:
+                continue
+            candidates = reference_candidates_for(obj, bound_target)
 
             source_ref_field = rel.get_meta_attr(RELATIONSHIP_ATTR_SOURCE_REF_FIELD)
             declared = (
@@ -2899,7 +2900,7 @@ def _validate_one_side_reference_resolution(
             # (ladder step 3) decides.
             if len(candidates) <= 1:
                 continue
-            resolved = resolve_relationship_reference(obj, rel.name, object_ref)
+            resolved = resolve_relationship_reference(obj, rel.name, bound_target)
             if resolved is not None:
                 continue
 
@@ -3042,7 +3043,7 @@ def _is_junction_shape_error_owned_by_rule_d(rel: MetaData, root: MetaData) -> b
     # with the derivation and emit rule (d)'s finding a second time.
     declaring = rel.parent
     referrer_pkg = (
-        (declaring.package or declaring.file_default_package or "")
+        referrer_package_of(declaring)
         if declaring is not None
         else ""
     )
@@ -3862,7 +3863,7 @@ def _check_nested_payload_refs_value_only(
         # ADR-0042: a bare ref resolves in the DECLARING owner's package (an
         # inherited field resolves in the package that declared it).
         owner = getattr(field, "parent", None) or payload
-        owner_pkg = owner.package or owner.file_default_package or ""
+        owner_pkg = referrer_package_of(owner)
         target = resolve_object_ref(root, ref, owner_pkg)
         if target is None:
             continue  # dangling — reported by the @objectRef resolution check
@@ -3902,7 +3903,7 @@ def _validate_templates(root: MetaData, errors: list[MetaError]) -> None:
     for tpl in root.children():
         if tpl.type != TYPE_TEMPLATE:
             continue
-        referrer_pkg = tpl.package or tpl.file_default_package or ""
+        referrer_pkg = referrer_package_of(tpl)
         is_prompt = tpl.sub_type == tc.TEMPLATE_SUBTYPE_PROMPT
         # ADR-0039: resolving — a template may inherit @payloadRef via extends.
         payload_ref = tpl.get_meta_attr(tc.TEMPLATE_ATTR_PAYLOAD_REF)

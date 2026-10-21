@@ -45,7 +45,7 @@ describe("findReferenceBetween", () => {
     expect(lookup!.holder.name).toBe("Purchase");
     expect(lookup!.other.name).toBe("Program");
     expect(lookup!.referenceIdentity.fields).toEqual(["programId"]);
-    expect(lookup!.referenceIdentity.targetEntity).toBe("Program");
+    expect(lookup!.referenceIdentity.targetEntity).toBe("test::Program");
   });
 
   test("has-many: reference on child side (Program -> Week)", async () => {

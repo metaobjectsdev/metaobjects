@@ -1,10 +1,10 @@
 {
   "metadata.root": {
-    "package": "metaobjects::ai",
     "children": [
       {
         "object.entity": {
           "name": "LlmCallBase",
+          "package": "metaobjects::ai",
           "abstract": true,
           "children": [
             {
@@ -51,6 +51,7 @@
       {
         "object.entity": {
           "name": "LlmCall",
+          "package": "metaobjects::ai",
           "extends": "metaobjects::ai::LlmCallBase",
           "children": [
             {
@@ -73,6 +74,7 @@
       {
         "object.entity": {
           "name": "ApiCall",
+          "package": "app::ops",
           "extends": "metaobjects::ai::LlmCallBase",
           "children": [
             {

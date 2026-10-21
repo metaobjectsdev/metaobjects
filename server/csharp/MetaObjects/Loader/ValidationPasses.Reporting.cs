@@ -401,6 +401,14 @@ public static partial class ValidationPasses
                 "can never multiply the measured rows.");
     }
 
+    /// <summary>
+    /// The entity a dimension's <c>@via</c> reaches, walked from <paramref name="declaring"/> with D2's
+    /// rules, or null when the walk fails (D2 reports why). ADR-0059 R3: a dimension's <c>@of</c>
+    /// resolves in this entity's package, so the loader's reference pass reuses the walk.
+    /// </summary>
+    internal static MetaData? DimensionViaTerminal(MetaData root, MetaData declaring, string via) =>
+        WalkToOneVia(root, declaring, via, _ => { }, D2Walk(declaring));
+
     /// <summary>R8 — a report's @spine, started at @from; Owner resolves in @from's package
     /// (it must be @from or an entity @from extends), whatever package the report is in.</summary>
     private static ToOneWalk SpineWalk(MetaData from, string fromKey) =>
@@ -458,12 +466,7 @@ public static partial class ValidationPasses
                     walk.ToOneReason);
                 return null;
             }
-            // ADR-0039: resolving — the hop target attr may be inherited via extends.
-            var targetRef = hop.Attr(isReference ? IDENTITY_REFERENCE_ATTR_REFERENCES : RELATIONSHIP_ATTR_OBJECT_REF);
-            // ADR-0042 — a hop target resolves in the package of the entity declaring the hop.
-            var target = targetRef is string tr
-                ? NamingRefs.ResolveObjectRef(root, tr, NamingRefs.EffectivePackage(current))
-                : null;
+            var target = NamingRefs.RefTarget(hop, isReference ? IDENTITY_REFERENCE_ATTR_REFERENCES : RELATIONSHIP_ATTR_OBJECT_REF);
             if (target is null)
             {
                 err($"{named} hop '{hopName}' on '{NameOf(current)}' targets no object.");
@@ -795,7 +798,7 @@ public static partial class ValidationPasses
         // the @filter have nothing to resolve against, so they are skipped.
         string? fromRef = ReportAccessors.ReportFrom(report);
         if (fromRef is null) return; // missing @from is ERR_MISSING_REQUIRED_ATTR
-        var from = NamingRefs.ResolveObjectRef(root, fromRef, NamingRefs.EffectivePackage(report));
+        var from = NamingRefs.ResolveObjectRef(root, fromRef, NamingRefs.ReferrerPackageFor(report, OBJECT_REPORT_ATTR_FROM));
         if (from is null)
         {
             Err($": @from '{fromRef}' does not resolve to an object.");

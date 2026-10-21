@@ -1,0 +1,126 @@
+{
+  "metadata.root": {
+    "package": "a",
+    "children": [
+      {
+        "object.value": {
+          "name": "Tag",
+          "children": [
+            {
+              "field.string": {
+                "name": "code",
+                "@required": true,
+                "@maxLength": 40
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Post",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "posts"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "title",
+                "@required": true,
+                "@maxLength": 200
+              }
+            },
+            {
+              "field.long": {
+                "name": "featuredTagId"
+              }
+            },
+            {
+              "relationship.association": {
+                "name": "tags",
+                "@cardinality": "many",
+                "@objectRef": "b::Tag",
+                "@through": "PostTag"
+              }
+            },
+            {
+              "relationship.association": {
+                "name": "featuredTag",
+                "@cardinality": "one",
+                "@objectRef": "b::Tag"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id",
+                "@generation": "increment"
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "featuredTagRef",
+                "@fields": "featuredTagId",
+                "@references": "b::Tag"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "PostTag",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "post_tags"
+              }
+            },
+            {
+              "field.long": {
+                "name": "postId",
+                "@required": true
+              }
+            },
+            {
+              "field.long": {
+                "name": "tagId",
+                "@required": true
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "postId",
+                  "tagId"
+                ]
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "postRef",
+                "@fields": "postId",
+                "@references": "Post"
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "tagRef",
+                "@fields": "tagId",
+                "@references": "b::Tag"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

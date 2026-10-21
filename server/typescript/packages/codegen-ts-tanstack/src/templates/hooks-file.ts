@@ -125,7 +125,7 @@ function renderM2mHooks(
     const mod = entityModuleSpecifier(
       ctx.selfTarget,
       ctx.entityModuleTarget,
-      ctx.packageOf.get(e.targetEntity),
+      effectivePackage(e.target),
       e.targetEntity,
       ctx.extStyle,
     );

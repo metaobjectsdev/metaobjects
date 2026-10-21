@@ -42,7 +42,7 @@ describe("identity.reference subtype", () => {
     const ref = refs[0]!;
     expect(ref).toBeInstanceOf(MetaReferenceIdentity);
     expect(ref.fields).toEqual(["programId"]);
-    expect(ref.targetEntity).toBe("Program");
+    expect(ref.targetEntity).toBe("test::Program");
     expect(ref.targetFields).toEqual([]);
   });
 
@@ -74,7 +74,7 @@ describe("identity.reference subtype", () => {
 
     const purchase = root.objects().find((o) => o.name === "Purchase")!;
     const ref = purchase.referenceIdentities()[0]!;
-    expect(ref.targetEntity).toBe("Subscriber");
+    expect(ref.targetEntity).toBe("test::Subscriber");
     expect(ref.targetFields).toEqual(["email"]);
   });
 
@@ -107,7 +107,7 @@ describe("identity.reference subtype", () => {
     const thing = root.objects().find((o) => o.name === "Thing")!;
     const ref = thing.referenceIdentities()[0]!;
     expect(ref.fields).toEqual(["fa", "fb"]);
-    expect(ref.targetEntity).toBe("Other");
+    expect(ref.targetEntity).toBe("test::Other");
     expect(ref.targetFields).toEqual(["a", "b"]);
   });
 

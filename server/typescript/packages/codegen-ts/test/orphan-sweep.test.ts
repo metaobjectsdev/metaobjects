@@ -236,7 +236,7 @@ describe("sweepOrphans", () => {
       dryRun: false,
     });
 
-    expect(result).toEqual({ removed: [], refused: [], forced: [], refusedBy: new Map() });
+    expect(result).toEqual({ removed: [], refused: [], forced: [], refusedBy: new Map(), forcedBy: new Map() });
     expect(existsSync(join(root, STUB_A))).toBe(true);
   });
 

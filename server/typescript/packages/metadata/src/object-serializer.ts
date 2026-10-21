@@ -20,6 +20,7 @@ import {
   DATA_TYPE_OBJECT,
 } from "./data-type.js";
 import { TYPE_OBJECT } from "./shared/base-types.js";
+import { lookupCanonical } from "./naming-refs.js";
 
 const TYPE_DISCRIMINATOR = "@type";
 
@@ -142,16 +143,13 @@ function coerceNumeric(raw: unknown): unknown {
   return raw;
 }
 
-/** Resolve an object-typed field's `@objectRef` to its target MetaObject by
- *  walking to the tree root and looking up the named object child. Returns
- *  undefined when there is no ref or it does not resolve (caller passes the
- *  raw value through — best-effort). */
+/** Resolve an object-typed field's `@objectRef` to its target MetaObject. The loader
+ *  has already rewritten the ref to its canonical spelling (ADR-0059 R5), so it is
+ *  looked up exactly, with no referrer (R7). Returns undefined when there is no ref
+ *  or it does not resolve (caller passes the raw value through — best-effort). */
 function resolveObjectRef(field: MetaField, mo: MetaObject): MetaObject | undefined {
   const ref = field.objectRef;
   if (ref === undefined) return undefined;
-  // ADR-0039: own — lookup is on the tree ROOT, which has no super chain
-  // (it never `extends`), so its own children ARE its effective children.
-  const found: MetaData | undefined = mo.root().ownChildByTypeAndName(TYPE_OBJECT, ref);
-  if (found === undefined) return undefined;
-  return found as MetaObject;
+  const found: MetaData | undefined = lookupCanonical(mo.root(), ref, { ownerType: TYPE_OBJECT });
+  return found as MetaObject | undefined;
 }

@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from metaobjects.codegen.value_objects import resolve_payload_vo
+from metaobjects.codegen.value_objects import bound_payload_vo
 from metaobjects.meta.meta_data import MetaData
 from metaobjects.meta.template import template_constants as tc
 from metaobjects.shared.base_types import TYPE_TEMPLATE
@@ -68,14 +68,14 @@ def inbound_templates(root: MetaData) -> list[MetaData]:
     )
 
 
-def response_shape(root: MetaData, template: MetaData, referrer_pkg: str) -> InboundShape | None:
+def response_shape(template: MetaData) -> InboundShape | None:
     """Resolve a prompt's response value-object and reply syntax, or ``None``.
 
     ``None`` when the template declares no ``@responseRef`` or the ref does not resolve —
     callers skip rather than raise, matching the pre-ADR-0052 contract for an unresolvable
     payload ref.
 
-    Resolution goes through ``resolve_payload_vo``, the SAME target rule ``@payloadRef``
+    Resolution goes through ``bound_payload_vo``, the SAME target rule ``@payloadRef``
     obeys, so a parser can never bind a shape that has no generated model. (C# used the
     any-object resolver here and shipped exactly that defect: a ``@responseRef`` naming an
     ``object.entity`` produced a parser returning a type nobody declared.)
@@ -83,7 +83,7 @@ def response_shape(root: MetaData, template: MetaData, referrer_pkg: str) -> Inb
     ref = response_ref_of(template)
     if ref is None:
         return None
-    vo = resolve_payload_vo(root, ref, referrer_pkg)
+    vo = bound_payload_vo(template, tc.TEMPLATE_ATTR_RESPONSE_REF)
     if vo is None:
         return None
     return InboundShape(vo=vo, ref=ref, format=response_format_of(template))

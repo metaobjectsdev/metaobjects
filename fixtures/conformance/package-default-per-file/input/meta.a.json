@@ -1,0 +1,19 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      {
+        "object.value": {
+          "name": "Apple",
+          "children": [
+            {
+              "field.string": {
+                "name": "localOnly"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

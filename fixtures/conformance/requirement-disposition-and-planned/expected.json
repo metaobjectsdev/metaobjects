@@ -1,10 +1,10 @@
 {
   "metadata.root": {
-    "package": "acme::caps",
     "children": [
       {
         "requirement.architectural": {
           "name": "MoneyIsExactMinorUnits",
+          "package": "acme::caps",
           "@counterexample": "A cent that disappears when a total is split three ways",
           "@implementedBy": [
             "acme::shop::Invoice"
@@ -16,6 +16,7 @@
       {
         "requirement.architectural": {
           "name": "Security",
+          "package": "acme::caps",
           "@counterexample": "A record readable by someone with no claim to it",
           "@level": 1,
           "@statement": "The system protects the data it holds and the actions it permits",
@@ -54,6 +55,7 @@
       {
         "requirement.functional": {
           "name": "Billing",
+          "package": "acme::caps",
           "@counterexample": "A charge nobody can explain",
           "@level": 1,
           "@statement": "A customer is billed for what they bought and can see why",
@@ -108,6 +110,7 @@
       {
         "object.entity": {
           "name": "Invoice",
+          "package": "acme::shop",
           "children": [
             {
               "source.rdb": {

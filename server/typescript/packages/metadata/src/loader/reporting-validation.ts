@@ -25,7 +25,7 @@
 
 import type { MetaData } from "../shared/meta-data.js";
 import { ParseError, type ErrorCode } from "../errors.js";
-import { resolveObjectRef } from "../naming-refs.js";
+import { refTarget, resolveObjectRef } from "../naming-refs.js";
 import { PACKAGE_SEPARATOR, CHILD_REF_SEPARATOR } from "../shared/structural.js";
 import {
   TYPE_OBJECT,
@@ -510,10 +510,9 @@ function walkToOneVia(
       );
       return undefined;
     }
-    const targetRef = hop.attr(isReference ? IDENTITY_REFERENCE_ATTR_REFERENCES : RELATIONSHIP_ATTR_OBJECT_REF);
-    // ADR-0042 — a hop target resolves in the package of the entity declaring the hop.
-    const target =
-      typeof targetRef === "string" ? resolveObjectRef(root, targetRef, pkgOf(current)).node : undefined;
+    // ADR-0059 R3 — a hop target resolves in the package of the node that declares the
+    // hop's reference attribute, so an inherited hop means what it meant where it was written.
+    const target = refTarget(hop, isReference ? IDENTITY_REFERENCE_ATTR_REFERENCES : RELATIONSHIP_ATTR_OBJECT_REF);
     if (target === undefined) {
       err(`${named} hop '${hopName}' on '${nameOf(current)}' targets no object.`);
       return undefined;
@@ -521,6 +520,16 @@ function walkToOneVia(
     current = target;
   }
   return current;
+}
+
+/**
+ * The entity a dimension's `@via` reaches, walked from `declaring` with D2's rules,
+ * or undefined when the walk fails (D2 reports why). ADR-0059 R3: a dimension's `@of`
+ * resolves in this entity's package, so the loader's `resolveReferences` pass reuses
+ * the walk rather than restating it.
+ */
+export function dimensionViaTerminal(root: MetaData, declaring: MetaData, via: string): MetaData | undefined {
+  return walkToOneVia(root, declaring, via, () => {}, d2Walk(declaring));
 }
 
 function checkMeasure(ctx: MemberCtx, measure: MetaMeasure): void {

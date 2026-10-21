@@ -146,8 +146,7 @@ public class SpringRenderHelperGenerator extends MultiFileDirectGeneratorBase<Me
         if (!isRenderable(template)) return false;
         String payloadRef = template.getPayloadRef();
         if (payloadRef == null || payloadRef.isEmpty()) return false;
-        return resolveValueObject(loader, payloadRef,
-            com.metaobjects.util.MetaDataUtil.findPackageForMetaData(template)) != null;
+        return SpringNaming.payloadTarget(template, TemplateConstants.ATTR_PAYLOAD_REF) != null;
     }
 
     /**
@@ -172,8 +171,7 @@ public class SpringRenderHelperGenerator extends MultiFileDirectGeneratorBase<Me
         if (!appliesTo(template, loader)) {
             return; // missing @payloadRef, or not a value shape
         }
-        MetaObject payloadVo = resolveValueObject(loader, template.getPayloadRef(),
-            com.metaobjects.util.MetaDataUtil.findPackageForMetaData(template));
+        MetaObject payloadVo = SpringNaming.payloadTarget(template, TemplateConstants.ATTR_PAYLOAD_REF);
 
         String[] split = SpringNaming.splitFqn(template.getName());
         String templatePkg = split[0];
@@ -330,14 +328,6 @@ public class SpringRenderHelperGenerator extends MultiFileDirectGeneratorBase<Me
             // own-only isArray() flag would read false for a field that inherits @isArray.
             boolean isArray = field.isArrayType();
             if (field instanceof ObjectField of) {
-                // Resolve the nested @objectRef by BARE short-name — the cross-port
-                // render-helper consensus (TS findObject: c.type === OBJECT &&
-                // c.name === ref). Do NOT use of.getObjectRef() here: that runs the
-                // JVM package-FOLDING resolver, which expands a bare ref relative to
-                // the FIELD's package and diverges from TS/C#/Python/Kotlin for a
-                // PACKAGED payload VO. The render-helper field-tree must resolve
-                // identically across all five ports; only this walk changes —
-                // MetaDataUtil.getObjectRef and other generators are untouched.
                 MetaObject target = resolveNestedObjectRef(loader, of);
                 if (target != null && MetaObject.SUBTYPE_VALUE.equals(target.getSubType())) {
                     List<PayloadField> children =
@@ -352,42 +342,13 @@ public class SpringRenderHelperGenerator extends MultiFileDirectGeneratorBase<Me
     }
 
     /**
-     * Resolve a {@code field.object}'s {@code @objectRef} to its target
-     * {@code object.value} under the ADR-0042 package-local contract — mirroring the
-     * TS render-helper's {@code resolveObjectRef(root, ref, declaringFieldPkg)}:
-     * <ul>
-     *   <li>an <b>FQN</b> {@code @objectRef} (contains {@code ::}) resolves EXACTLY on
-     *       the object's package-qualified name — never a bare-tail fallback that would
-     *       bind a same-named {@code object.value} in the WRONG package;</li>
-     *   <li>a <b>bare</b> {@code @objectRef} resolves in the DECLARING field's package
-     *       ({@code <fieldPkg>::<ref>} — correct for a {@code field.object} inherited via
-     *       extends across packages), else a root-level {@code object.value}. Package-local
-     *       BEFORE root-level; no cross-package short-name fallback.</li>
-     * </ul>
-     * Returns {@code null} if the field has no {@code @objectRef} or nothing resolves.
+     * The {@code object.value} a {@code field.object}'s {@code @objectRef} is bound to (the
+     * target the loader recorded, read resolving so an inherited ref works), or {@code null}
+     * when the field has no ref, nothing resolves, or the target is not an {@code object.value}.
      */
     protected static MetaObject resolveNestedObjectRef(MetaDataLoader loader, ObjectField field) {
-        // ADR-0039: @objectRef is an inheritable effective field property — a concrete
-        // field.object may inherit it from an abstract parent via extends. RESOLVE
-        // (default includeParentData=true); own-only would miss the inherited ref.
-        if (!field.hasMetaAttr(MetaObject.ATTR_OBJECT_REF)) return null;
-        String ref = field.getMetaAttr(MetaObject.ATTR_OBJECT_REF).getValueAsString();
-        if (ref == null || ref.isEmpty()) return null;
-        boolean fqn = ref.contains("::");
-        // The DECLARING field's package (walks parents; for an inherited field.object it is
-        // the package where the field is DECLARED, not where it is used).
-        String referrerPkg = com.metaobjects.util.MetaDataUtil.findPackageForMetaData(field);
-        if (referrerPkg == null) referrerPkg = "";
-        String localKey = (fqn || referrerPkg.isEmpty()) ? ref : referrerPkg + "::" + ref;
-        MetaObject own = null;
-        MetaObject rootLevel = null;
-        for (MetaObject obj : loader.getMetaObjects()) {
-            if (!MetaObject.SUBTYPE_VALUE.equals(obj.getSubType())) continue;
-            if (obj.getName().equals(localKey)) own = obj;
-            if (!fqn && obj.getName().equals(ref)) rootLevel = obj;
-        }
-        if (fqn) return own;
-        return own != null ? own : rootLevel;
+        MetaObject target = com.metaobjects.loader.References.refTarget(field, MetaObject.ATTR_OBJECT_REF);
+        return target != null && MetaObject.SUBTYPE_VALUE.equals(target.getSubType()) ? target : null;
     }
 
     /**
@@ -444,12 +405,11 @@ public class SpringRenderHelperGenerator extends MultiFileDirectGeneratorBase<Me
     }
 
     /**
-     * Resolve {@code @payloadRef} to its {@code object.value} target (rejects entities)
-     * under the ADR-0042 package-local contract (#228) — was a package-BLIND bare-name
-     * scan (first match wins, load-order-dependent); now delegates to the shared
-     * {@link SpringNaming#resolveValueObjectRef}. Distinct from this file's OWN
-     * {@link #resolveNestedObjectRef} (the {@code @objectRef} field-tree walk), which was
-     * ALREADY package-local-correct.
+     * Resolve a canonical {@code @payloadRef} value to its {@code object.value} target
+     * exactly (ADR-0059 R7), through {@link SpringNaming#resolveValueObjectRef}. Prefer
+     * {@link SpringNaming#payloadTarget} on the template node, which returns the target the
+     * loader bound. {@code referrerPkg} is ignored. Distinct from this file's OWN
+     * {@link #resolveNestedObjectRef} (the {@code @objectRef} field-tree walk).
      */
     protected static MetaObject resolveValueObject(MetaDataLoader loader, String ref, String referrerPkg) {
         return SpringNaming.resolveValueObjectRef(loader, ref, referrerPkg);

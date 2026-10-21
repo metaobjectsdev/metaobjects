@@ -16,6 +16,9 @@ import {
   IDENTITY_REFERENCE_ATTR_ON_UPDATE,
 } from "./identity-constants.js";
 import type { MetaRoot } from "../../shared/meta-root.js";
+import type { MetaObject } from "../object/meta-object.js";
+import { TYPE_OBJECT } from "../../shared/base-types.js";
+import { refTarget } from "../../naming-refs.js";
 
 /** Strongly-typed identity generation strategies. */
 export type IdentityGeneration = "increment" | "uuid" | "assigned";
@@ -144,7 +147,7 @@ export class MetaReferenceIdentity extends MetaIdentity {
    * points at. Priority: explicit dotted-form `@references: "Entity.field"`
    * override → target entity's primary identity field → "id" fallback.
    *
-   * Returns undefined only if the target entity cannot be found in `root`.
+   * Returns undefined only if the target entity does not resolve.
    * Centralizes the FK-target resolution rule used by projection view DDL,
    * Drizzle schema emit, and migration schema comparison.
    */
@@ -152,17 +155,11 @@ export class MetaReferenceIdentity extends MetaIdentity {
     const explicit = this.targetFields[0];
     if (explicit !== undefined) return explicit;
 
-    const targetName = this.targetEntity;
-    if (targetName === undefined) return undefined;
-    // targetEntity may be package-qualified (FQN); findObject is keyed by bare
-    // name, so fall back to the bare suffix after the last "::". Mirrors the
-    // resolveTargetTable fix; without it a cross-package reference resolves no
-    // target and the PK column wrongly defaults to "id".
-    const targetObj = root.findObject(targetName)
-      ?? (targetName.includes("::")
-        ? root.findObject(targetName.slice(targetName.lastIndexOf("::") + 2))
-        : undefined);
-    if (!targetObj) return undefined;
+    // ADR-0059 R7: the target the loader bound for @references, else (a tree built
+    // without the loader) the value resolved from this reference's package.
+    const bound = refTarget(this, IDENTITY_REFERENCE_ATTR_REFERENCES);
+    if (bound === undefined || bound.type !== TYPE_OBJECT) return undefined;
+    const targetObj = bound as MetaObject;
 
     const primary = targetObj.primaryIdentity();
     // ADR-0039: resolving — the target's @fields may be inherited via extends.

@@ -52,6 +52,9 @@ public class EjectContractTests
         // (ADR-0034 Amendment 9). It writes nothing of its own: it runs the spec's `template`
         // generators, which the registry's `template` entry builds.
         registered.Add(typeof(MetaObjects.Codegen.TemplateCodegen.TemplateSpecGenerator));
+        // WithHandEdits wraps an entry to carry its handEdits setting. It emits nothing of its own:
+        // every file comes from the entry it wraps.
+        registered.Add(typeof(IGenerator).Assembly.GetType("MetaObjects.Codegen.HandEditsGenerator", throwOnError: true)!);
         var shipped = ShippedGeneratorTypes();
         Assert.NotEmpty(shipped);
         var unregistered = shipped.Where(t => !registered.Contains(t)).Select(t => t.FullName).OrderBy(n => n).ToList();

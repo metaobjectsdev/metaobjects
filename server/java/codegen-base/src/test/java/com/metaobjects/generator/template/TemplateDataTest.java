@@ -61,7 +61,7 @@ public class TemplateDataTest extends MetaDataLoaderTestBase {
         assertEquals(1, rels.size());
         assertEquals("product", rels.get(0).get("name"));
         assertEquals("one", rels.get(0).get("cardinality"));
-        assertEquals("Product", rels.get(0).get("targetRef"));
+        assertEquals("shop::Product", rels.get(0).get("targetRef"));
     }
 
     /**

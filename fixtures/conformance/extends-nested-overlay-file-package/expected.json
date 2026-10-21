@@ -1,0 +1,51 @@
+{
+  "metadata.root": {
+    "children": [
+      {
+        "object.value": {
+          "name": "Order",
+          "package": "a",
+          "children": [
+            {
+              "field.string": {
+                "name": "code"
+              }
+            },
+            {
+              "field.long": {
+                "name": "x",
+                "extends": "b::Base.bid"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.value": {
+          "name": "Base",
+          "package": "a",
+          "children": [
+            {
+              "field.long": {
+                "name": "id"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.value": {
+          "name": "Base",
+          "package": "b",
+          "children": [
+            {
+              "field.long": {
+                "name": "bid"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

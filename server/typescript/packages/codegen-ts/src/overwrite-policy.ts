@@ -114,7 +114,22 @@ export interface DecideAndWriteOpts {
   outputRelPath?: string;
   /** First-time-existing-file behavior. */
   baseline?: BaselineMode;
+  /**
+   * What a hand edit to a file `gen` recorded writing gets: `"keep"` (the default) merges
+   * it or refuses the file; `"overwrite"` replaces the file with fresh output and
+   * re-baselines its record, reporting `discardedEdit` so the caller can name it. A file
+   * with no record of being generated is never overwritten by this setting.
+   */
+  handEdits?: HandEdits;
 }
+
+/**
+ * The per-generator hand-edit setting (`Generator.handEdits`), the same name and values in
+ * every port. `"keep"`, the default, protects an edit to a generated file (merged, or the
+ * file refused by name); `"overwrite"` discards it: the file is regenerated and its record
+ * re-baselined, and an edited file no generator emits any more is deleted.
+ */
+export type HandEdits = "keep" | "overwrite";
 
 export interface WriteResult {
   path: string;
@@ -123,6 +138,8 @@ export interface WriteResult {
    *  naming what the user must do. A refusal nobody can act on gets the file
    *  deleted by hand, which is the outcome refusing exists to prevent. */
   conflictHint?: string;
+  /** True when a hand edit was replaced with fresh output under `handEdits: "overwrite"`. */
+  discardedEdit?: boolean;
 }
 
 const HASHES_FILE = ".hashes.json";
@@ -133,14 +150,13 @@ function sha256(content: string | Buffer): string {
   return createHash("sha256").update(content).digest("hex");
 }
 
-function loadHashes(genStateDir: string): HashesFile {
+function readRawManifest(genStateDir: string): Record<string, unknown> {
   const f = join(genStateDir, HASHES_FILE);
   if (!existsSync(f)) return {};
   try {
-    const txt = readFileSync(f, "utf-8");
-    const parsed: unknown = JSON.parse(txt);
+    const parsed: unknown = JSON.parse(readFileSync(f, "utf-8"));
     if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      return parsed as HashesFile;
+      return parsed as Record<string, unknown>;
     }
     return {};
   } catch {
@@ -148,14 +164,37 @@ function loadHashes(genStateDir: string): HashesFile {
   }
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function entryHash(value: unknown): string | undefined {
+  if (typeof value === "string") return value;
+  if (isRecord(value) && typeof value.hash === "string") return value.hash;
+  return undefined;
+}
+
+function loadHashes(genStateDir: string): HashesFile {
+  const hashes: HashesFile = {};
+  for (const [key, value] of Object.entries(readRawManifest(genStateDir))) {
+    const hash = entryHash(value);
+    if (hash !== undefined) hashes[key] = hash;
+  }
+  return hashes;
+}
+
 function saveHashes(genStateDir: string, hashes: HashesFile): void {
   mkdirSync(genStateDir, { recursive: true });
+  const raw = readRawManifest(genStateDir);
   // Keys SORTED, because this file is committed. Insertion order would make the
   // diff — and any merge conflict between two people who both regenerated —
   // depend on which entity happened to generate first, which is noise nobody can
   // review.
-  const sorted: HashesFile = {};
-  for (const key of Object.keys(hashes).sort()) sorted[key] = hashes[key]!;
+  const sorted: Record<string, unknown> = {};
+  for (const key of Object.keys(hashes).sort()) {
+    const existing = raw[key];
+    sorted[key] = isRecord(existing) ? { ...existing, hash: hashes[key] } : hashes[key];
+  }
   writeFileSync(join(genStateDir, HASHES_FILE), JSON.stringify(sorted, null, 2) + "\n");
 }
 
@@ -483,6 +522,7 @@ type WriteCase =
   | { kind: "skip" }
   | { kind: "no-snapshot-fresh-unchanged" }
   | { kind: "no-snapshot-fresh-overwrite" }
+  | { kind: "hand-edit-overwrite" }
   | { kind: "no-snapshot-unchanged" }
   | { kind: "no-snapshot-pristine-overwrite" }
   | { kind: "no-snapshot-refused"; hasRecord: boolean }
@@ -517,6 +557,18 @@ function classifyWrite(
     readGeneratedHash(genStateDir, relPath) === undefined
       ? undefined
       : storedSnapshot;
+
+  // `handEdits: "overwrite"`: an edit to a file we recorded writing is discarded, not
+  // merged or refused. "Recorded" is the committed hash, or a local snapshot body; a file
+  // with neither is not ours, and the default rules below still refuse it.
+  if (opts.handEdits === "overwrite" && current !== content) {
+    const recorded = readGeneratedHash(genStateDir, relPath);
+    const edited =
+      recorded !== undefined
+        ? recorded !== sha256(current)
+        : snapshot !== undefined && snapshot.text !== current;
+    if (edited) return { kind: "hand-edit-overwrite" };
+  }
 
   // First-time regen on a pre-existing file (no snapshot) — caveat 3. `baseline`
   // only ever applies here: BaselineMode's own doc comment says so ("When
@@ -611,6 +663,7 @@ export function previewWriteStatus(
       return "unchanged";
     case "no-snapshot-fresh-overwrite":
     case "no-snapshot-pristine-overwrite":
+    case "hand-edit-overwrite":
       return "overwrite";
     case "no-snapshot-refused":
       return "refused";
@@ -658,6 +711,11 @@ export function decideAndWrite(
       writeFileSync(path, content);
       advanceSnapshot(genStateDir, relPath, content);
       return { path, status: "overwrite" };
+
+    case "hand-edit-overwrite":
+      writeFileSync(path, content);
+      advanceSnapshot(genStateDir, relPath, content);
+      return { path, status: "overwrite", discardedEdit: true };
 
     case "no-snapshot-refused":
       // Deliberately does NOT advance the snapshot or the hash: a refusal that

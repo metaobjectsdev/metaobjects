@@ -1,0 +1,18 @@
+{
+  "metadata.root": {
+    "package": "demo",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Match",
+          "children": [
+            { "field.long": { "name": "id" } },
+            { "field.long": { "name": "homeTeamId" } },
+            { "identity.primary": { "name": "pk", "@fields": ["id"] } },
+            { "relationship.association": { "name": "homeTeam", "@cardinality": "one", "@objectRef": "Teem", "@sourceRefField": "homeTeamId" } }
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -130,7 +130,7 @@ public static class ReportShapes
     /// The target entity of one hop of a <c>@via</c>/<c>@spine</c> path, walked as the loader
     /// walks it: the <c>relationship.*</c> (through its <c>@objectRef</c>) or
     /// <c>identity.reference</c> (through its <c>@references</c>) of <paramref name="current"/>
-    /// named <paramref name="hopName"/>, resolved in <paramref name="current"/>'s package. Null
+    /// named <paramref name="hopName"/>, resolved in the package of the node that declares the hop's reference attribute (ADR-0059 R3). Null
     /// for a hop that is neither, or whose target does not resolve.
     /// </summary>
     private static MetaObject? ResolveViaHopTarget(MetaObject current, string hopName, MetaRoot root)
@@ -138,9 +138,9 @@ public static class ReportShapes
         // ADR-0039: resolving Relationships()/ReferenceIdentities(), so an inherited hop is found.
         var rel = current.Relationships().FirstOrDefault(r => r.Name == hopName);
         var refNode = rel is null ? current.ReferenceIdentities().FirstOrDefault(r => r.Name == hopName) : null;
-        string? targetRef = rel is not null ? rel.ObjectRef : refNode?.ReferencesRaw;
-        if (string.IsNullOrEmpty(targetRef)) return null;
-        return NamingRefs.ResolveObjectRef(root, targetRef, NamingRefs.EffectivePackage(current)) as MetaObject;
+        MetaData? hop = rel ?? (MetaData?)refNode;
+        if (hop is null) return null;
+        return NamingRefs.RefTarget(hop, rel is not null ? RELATIONSHIP_ATTR_OBJECT_REF : IDENTITY_REFERENCE_ATTR_REFERENCES) as MetaObject;
     }
 
     /// <summary>
@@ -230,15 +230,15 @@ public static class ReportShapes
             // ADR-0039: resolving Relationships()/ReferenceIdentities(), so an inherited hop is found.
             var rel = current.Relationships().FirstOrDefault(r => r.Name == hopName);
             var refNode = rel is null ? current.ReferenceIdentities().FirstOrDefault(r => r.Name == hopName) : null;
-            string? targetRef = rel is not null ? rel.ObjectRef : refNode?.ReferencesRaw;
-            if (string.IsNullOrEmpty(targetRef)) return false;
-            if (NamingRefs.ResolveObjectRef(root, targetRef, NamingRefs.EffectivePackage(current)) is not MetaObject target)
+            MetaData? hop = rel ?? (MetaData?)refNode;
+            if (hop is null) return false;
+            if (NamingRefs.RefTarget(hop, rel is not null ? RELATIONSHIP_ATTR_OBJECT_REF : IDENTITY_REFERENCE_ATTR_REFERENCES) is not MetaObject target)
                 return false;
 
             // The reference the hop crosses, as the lowering resolves it. A has-many hop, whose FK
             // sits on the child, matches none of the current entity's own references.
             var reference = refNode
-                ?? RelationshipReferences.ResolveRelationshipReference(current, hopName, target.Name, rel!.SourceRefField);
+                ?? RelationshipReferences.ResolveRelationshipReference(current, hopName, target, rel!.SourceRefField);
             if (reference is null) return false;
             string? fkName = RelationshipReferences.RefFkField(reference);
             var fk = fkName is null ? null : current.FindField(fkName);
@@ -381,7 +381,8 @@ public static class ReportShapes
     public static ReportShape Of(MetaObject report, MetaRoot root)
     {
         string fromName = ReportAccessors.ReportFrom(report) ?? throw Unresolved(report.Name, "@from");
-        var from = NamingRefs.ResolveObjectRef(root, fromName, NamingRefs.EffectivePackage(report)) as MetaObject
+        var from = (NamingRefs.RefTarget(report, OBJECT_REPORT_ATTR_FROM)
+                ?? NamingRefs.ResolveObjectRef(root, fromName, NamingRefs.ReferrerPackageFor(report, OBJECT_REPORT_ATTR_FROM))) as MetaObject
             ?? throw Unresolved(report.Name, $"@from '{fromName}'");
         string[]? spine = ReportSpineHops(report, from, root);
         var fields = new List<ReportField>();

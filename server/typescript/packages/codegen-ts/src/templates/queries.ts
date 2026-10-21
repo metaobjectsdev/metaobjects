@@ -4,10 +4,13 @@
 import { code, imp, type Code } from "ts-poet";
 import {
   type MetaObject,
+  IDENTITY_REFERENCE_ATTR_REFERENCES,
+  isMetaObject,
+  refTarget,
   stripPackage,
 } from "@metaobjectsdev/metadata";
 import type { RenderContext } from "../render-context.js";
-import { getPkInfo, subTypeToTsType } from "../pk-resolver.js";
+import { getPkInfo, pkInfoOf, subTypeToTsType } from "../pk-resolver.js";
 import { supportsReturning } from "../dialect-module.js";
 import {
   findByIdFnName,
@@ -218,8 +221,10 @@ export async function ${fnName}(db: Db, ${pkField}: ${pkType}): Promise<boolean>
 interface ReverseFk {
   /** FK FIELD name on this entity (logical), e.g. `currentSceneId`. */
   fkField: string;
-  /** Target entity (the `T` referenced), e.g. `Scene`. Drives the value TS type. */
+  /** Target entity name (the `T` referenced), e.g. `Scene`. An identifier, never a lookup key. */
   targetEntity: string;
+  /** The entity `@references` binds to (ADR-0059 R7). Its PK type drives the value TS type. */
+  target?: MetaObject | undefined;
 }
 
 /** Collect this entity's OWN reverse FK targets, in declaration order. */
@@ -227,9 +232,11 @@ export function reverseFksFor(entity: MetaObject): ReverseFk[] {
   const out: ReverseFk[] = [];
   for (const ref of entity.referenceIdentities()) {
     const fkField = ref.fields[0];
-    const target = ref.targetEntity;
-    if (!fkField || !target) continue;
-    out.push({ fkField, targetEntity: stripPackage(target) });
+    const targetRef = ref.targetEntity;
+    if (!fkField || !targetRef) continue;
+    const bound = refTarget(ref, IDENTITY_REFERENCE_ATTR_REFERENCES);
+    const target = isMetaObject(bound) ? bound : undefined;
+    out.push({ fkField, targetEntity: target?.name ?? stripPackage(targetRef), target });
   }
   return out;
 }
@@ -244,7 +251,7 @@ export function renderReverseFinderFns(entity: MetaObject, fk: ReverseFk, ctx: R
   // name is the argument to integer()/text()), so column access uses fk.fkField.
   // The FK value type is the target entity's PK type (the FK references it). Fall
   // back to the FK field's own subType, then to number (long-shaped key default).
-  const targetPk = ctx.pkMap.get(fk.targetEntity);
+  const targetPk = fk.target === undefined ? undefined : pkInfoOf(fk.target);
   const ownField = entity.findField(fk.fkField);
   const valueType = subTypeToTsType(targetPk?.fieldSubType ?? ownField?.subType ?? "long");
 

@@ -114,7 +114,7 @@ public class TemplateToolcallTests
             .Single(c => c.Type == TYPE_TEMPLATE && c.SubType == TEMPLATE_SUBTYPE_TOOLCALL);
         Assert.Equal("lookupWeather", toolcall.Name);
         Assert.Equal("lookup_weather", toolcall.OwnAttr(TEMPLATE_ATTR_TOOL_NAME));
-        Assert.Equal("WeatherToolOutput", toolcall.OwnAttr(TEMPLATE_ATTR_PAYLOAD_REF));
+        Assert.Equal("acme::tools::WeatherToolOutput", toolcall.OwnAttr(TEMPLATE_ATTR_PAYLOAD_REF));
     }
 
     [Fact]

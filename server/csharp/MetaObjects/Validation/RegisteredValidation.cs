@@ -24,18 +24,12 @@ public static class RegisteredValidation
     public static IReadOnlyList<MetaError> Run(MetaData root, TypeRegistry registry)
     {
         var ctx = new ValidationContext(SymbolTable.Build(root));
-        Walk(root, "", registry, ctx);
+        Walk(root, registry, ctx);
         return ctx.Errors;
     }
 
-    private static void Walk(MetaData node, string referrerPkg, TypeRegistry registry, ValidationContext ctx)
+    private static void Walk(MetaData node, TypeRegistry registry, ValidationContext ctx)
     {
-        // ADR-0042: a top-level object establishes the package context for its subtree; nested
-        // ref-bearing nodes (relationship / field.object / identity.reference) resolve BARE
-        // refs against it. Nested nodes carry no `package`, so they inherit the enclosing
-        // object's effective package (via file-default, else the threaded context).
-        string pkg = node.Type == TYPE_OBJECT ? NamingRefs.EffectivePackage(node) : referrerPkg;
-
         var def = registry.Find(node.Type, node.SubType);
         if (def is not null)
         {
@@ -46,6 +40,16 @@ public static class RegisteredValidation
                 if (node.Attr(desc.Attr) is not string raw || raw.Length == 0) continue;
                 int dot = raw.IndexOf('.');
                 var entityRef = (desc.DottedFieldPath && dot >= 0) ? raw[..dot] : raw;
+                // ADR-0059 R3: an inherited reference resolves in the package of the top-level
+                // node that physically declares it, not the inheritor's.
+                string pkg = NamingRefs.ReferrerPackageFor(node, desc.Attr);
+                try { NamingRefs.OwnerCandidateKeys(entityRef, pkg); }
+                catch (RefOverDropException)
+                {
+                    ctx.Error("ERR_BAD_ATTR_VALUE", node,
+                        $"{node.Type}.{node.SubType} \"{node.Name}\" @{desc.Attr} \"{raw}\" climbs above the root package — each '..::' drops one segment of the declaring package.");
+                    continue;
+                }
                 var target = ctx.Symbols.ResolveObject(entityRef, pkg);
                 // Qualify the node name with its owning entity (e.g. "Order.items") so the
                 // error is locatable from the message alone, not just the source envelope.
@@ -68,7 +72,7 @@ public static class RegisteredValidation
             }
             def.Validate?.Invoke(node, ctx);
         }
-        foreach (var child in node.OwnChildren()) Walk(child, pkg, registry, ctx);
+        foreach (var child in node.OwnChildren()) Walk(child, registry, ctx);
     }
 
     private sealed class SymbolTable : ISymbolTable
@@ -88,14 +92,17 @@ public static class RegisteredValidation
             return t;
         }
 
-        /// <summary>ADR-0042 package-local resolution: FQN → exact resolution-key match; bare →
-        /// the referrer's own package (<c>&lt;referrerPkg&gt;::&lt;ref&gt;</c>), else a root-level object.</summary>
+        /// <summary>ADR-0059 R2 resolution: <c>::Rest</c> root-absolute, <c>..::Rest</c> parent-relative,
+        /// <c>pkg::Name</c> exact, bare <c>Name</c> in the referrer's own package then root-level. Exact keys
+        /// only. An over-dropping <c>..::</c> resolves to nothing here; the walk reports it.</summary>
         public MetaData? ResolveObject(string reference, string referrerPkg)
         {
-            if (reference.Contains(PACKAGE_SEPARATOR, StringComparison.Ordinal))
-                return _byKey.GetValueOrDefault(reference);
-            string localKey = referrerPkg.Length > 0 ? $"{referrerPkg}{PACKAGE_SEPARATOR}{reference}" : reference;
-            return _byKey.GetValueOrDefault(localKey) ?? _byKey.GetValueOrDefault(reference);
+            IReadOnlyList<string> keys;
+            try { keys = NamingRefs.OwnerCandidateKeys(reference, referrerPkg); }
+            catch (RefOverDropException) { return null; }
+            foreach (string key in keys)
+                if (_byKey.TryGetValue(key, out var hit)) return hit;
+            return null;
         }
     }
 

@@ -56,7 +56,7 @@ val maxLen: String? = field.attrStringOrNull("maxLength")
 import com.metaobjects.render.InMemoryProvider
 
 val prompt = loader.promptTemplateOrNull("acme::demo::WelcomePrompt")
-println(prompt?.payloadRef)   // "Author"
+println(prompt?.payloadRef)   // "acme::demo::Author"
 
 // Render via the Kotlin builder
 val out = render {

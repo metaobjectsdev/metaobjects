@@ -114,7 +114,7 @@ public final class DirectorySource {
 
     /**
      * Expands this directory into a sorted stream of {@link FileSource}.
-     * Sorted by full path (ordinal) for deterministic ordering across runs.
+     * Sorted by file name (basename) for deterministic ordering across runs, as the TypeScript and Python ports do.
      *
      * <p>Follows symlinked directories — including when {@code directory} itself
      * is a symlink — matching TypeScript ({@code stat}, not {@code lstat}) and C#

@@ -13,14 +13,7 @@
 // means knowing a rule the engine already owns. Each is exported from the package root.
 
 import type { MetaField, MetaObject } from "@metaobjectsdev/metadata";
-import { isMetaObject, resolveObjectRef } from "@metaobjectsdev/metadata";
-import { effectivePackage } from "./docs-paths.js";
-
-/** The object that declares `field` — its parent node, when that is an object. */
-function owningObject(field: MetaField): MetaObject | undefined {
-  const parent = field.parent;
-  return parent !== undefined && isMetaObject(parent) ? parent : undefined;
-}
+import { FIELD_ATTR_OBJECT_REF, isMetaObject, refTarget } from "@metaobjectsdev/metadata";
 
 /**
  * The object a `field.object`'s `@objectRef` points at, resolved the way the loader resolves
@@ -35,10 +28,6 @@ function owningObject(field: MetaField): MetaObject | undefined {
  * an inherited field is the base, where the bare ref was written.
  */
 export function objectRefTarget(field: MetaField): MetaObject | undefined {
-  const ref = field.objectRef;
-  if (ref === undefined || ref.length === 0) return undefined;
-  const owner = owningObject(field);
-  const referrerPkg = (owner !== undefined ? effectivePackage(owner) : undefined) ?? "";
-  const node = resolveObjectRef(field.root(), ref, referrerPkg).node;
+  const node = refTarget(field, FIELD_ATTR_OBJECT_REF);
   return node !== undefined && isMetaObject(node) ? node : undefined;
 }

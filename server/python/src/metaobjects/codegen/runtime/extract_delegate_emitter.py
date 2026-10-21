@@ -40,31 +40,19 @@ their own copy without clashing.
 from __future__ import annotations
 
 from . import fr010_field_mapping as fm
-from metaobjects.codegen.value_objects import model_class_name, pkg_of
+from metaobjects.codegen.value_objects import model_class_name
 from metaobjects.meta.core.field import field_constants as fc
 from metaobjects.meta.meta_data import MetaData
-from metaobjects.naming_refs import resolve_object_ref
+from metaobjects.naming_refs import ref_target
 
 
 def ref_vo(field: MetaData, root: MetaData) -> MetaData | None:
     """The ``@objectRef`` target VO for a nested-object field, or ``None`` when
     unresolvable.
 
-    ADR-0042 (#228) — resolves via the canonical `resolve_object_ref` package-local
-    contract: an FQN ref resolves EXACTLY; a bare ref resolves in the DECLARING
-    field's own package first, else a root-level object. NO bare-tail short-name
-    fallback — that pattern (matching an FQN ref by its trailing simple-name segment
-    against ANY same-named object root-wide) is the #219/ADR-0042-banned "wrong
-    node" bug: under a cross-package short-name collision it silently binds
-    whichever same-named object happens to load first, regardless of which package
-    the ref actually pointed at. *referrer_pkg* is the field's OWN declaring
-    package (which differs from the VO's when the field is inherited via `extends`
-    from an abstract VO in another package)."""
-    ref = field.attrs().get(fc.FIELD_ATTR_OBJECT_REF)
-    if not isinstance(ref, str) or not ref:
-        return None
-    referrer_pkg = pkg_of(field.parent) if field.parent is not None else ""
-    return resolve_object_ref(root, ref, referrer_pkg)
+    ADR-0059 R7 — the target the loader bound once, read through ``ref_target``: never
+    re-resolved in some package, never a short-name match."""
+    return ref_target(field, fc.FIELD_ATTR_OBJECT_REF)
 
 
 def _is_object_field(field: MetaData) -> bool:

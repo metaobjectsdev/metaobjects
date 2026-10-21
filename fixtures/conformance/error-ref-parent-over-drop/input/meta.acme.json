@@ -1,0 +1,25 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      {
+        "object.value": {
+          "name": "Base",
+          "children": [
+            {
+              "field.string": {
+                "name": "baseOnly"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.value": {
+          "name": "X",
+          "extends": "..::..::Base"
+        }
+      }
+    ]
+  }
+}

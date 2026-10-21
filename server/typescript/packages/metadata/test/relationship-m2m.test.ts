@@ -46,7 +46,7 @@ describe("FR-017 M:N slim vocabulary", () => {
     ] } });
     expect(errors).toHaveLength(0);
     const out = canonicalSerialize(root);
-    expect(out).toContain('"@through": "PostTag"');
+    expect(out).toContain('"@through": "acme::PostTag"');
   });
 
   test("@joinEntity / @joinFields are no longer schema-known attrs (no through getter)", async () => {

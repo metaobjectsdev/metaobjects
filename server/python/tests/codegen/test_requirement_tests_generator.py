@@ -507,30 +507,30 @@ def _two_package_documents(second_has_requirement: bool) -> tuple[str, str]:
     return first, second
 
 
-def test_stale_file_gen_leaves_the_file_of_a_package_that_lost_its_requirements_and_verify_codegen_names_it_extra(
+def test_stale_file_gen_deletes_the_file_of_a_package_that_lost_its_requirements(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """The port's existing behaviour for ANY generator: `gen` never deletes a file it no longer
-    emits, and `verify --codegen` reports it as `extra:` (stale) when the manifest records that
-    this tool wrote it. Nothing about the requirement tests is special-cased."""
+    """The rule for ANY generator (codegen/orphan_sweep.py): `verify --codegen` reports a file
+    no generator emits any more as `extra:` with "gen deletes it", and a full `gen` deletes it
+    because it is untouched. Nothing about the requirement tests is special-cased."""
     config = _project(tmp_path, "requirementTests:\n  warnUncovered: false\n", *_two_package_documents(True))
     monkeypatch.chdir(tmp_path)
     assert main(["gen", "--config", str(config)]) == 0
     stale = tmp_path / "gen" / "requirements" / "test_acme_two_requirements.py"
     assert stale.exists()
-    before = stale.read_text(encoding="utf-8")
-    assert "Gone" in before
+    assert "Gone" in stale.read_text(encoding="utf-8")
     assert main(["verify", "--codegen", "--config", str(config)]) == 0
 
     first, second = _two_package_documents(False)
     (tmp_path / "metaobjects" / "meta.0.yaml").write_text(first, encoding="utf-8")
     (tmp_path / "metaobjects" / "meta.1.yaml").write_text(second, encoding="utf-8")
     capsys.readouterr()
-    assert main(["gen", "--config", str(config)]) == 0
-    assert stale.read_text(encoding="utf-8") == before, "gen does not remove a file it no longer emits"
-
     assert main(["verify", "--codegen", "--config", str(config)]) == 1
-    assert "  extra:   requirements/test_acme_two_requirements.py" in capsys.readouterr().err
+    assert "  extra:   requirements/test_acme_two_requirements.py (no generator emits it any more; gen deletes it)" in capsys.readouterr().err
+
+    assert main(["gen", "--config", str(config)]) == 0
+    assert not stale.exists(), "gen deletes an untouched file it no longer emits"
+    assert main(["verify", "--codegen", "--config", str(config)]) == 0
 
 
 def test_tests_are_emitted_sorted_by_id_whatever_order_the_model_declares_them_in(tmp_path: Path) -> None:

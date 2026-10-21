@@ -8,7 +8,12 @@
 
 import {
   type MetaData,
+  type MetaObject,
   type MetaRoot,
+  TYPE_OBJECT,
+  isMetaObject,
+  lookupCanonical,
+  refTarget,
   TEMPLATE_ATTR_PAYLOAD_REF,
   TEMPLATE_ATTR_TEXT_REF,
   TEMPLATE_ATTR_FORMAT,
@@ -90,13 +95,11 @@ function templateDescription(t: MetaData): string | undefined {
   return typeof v === "string" && v.length > 0 ? v : undefined;
 }
 
-/** Page-placement node for a metadata object resolved by short name, with the
- *  SAME package-less fallback the Payload cross-link and field hrefs share: when
- *  the object can't be resolved off the root, fall back to a root-level node so a
- *  link is still emitted. Keeps every inbound href routing through the one
- *  `docPageHref(layout, …)` placement. */
-function pageNodeByName(root: MetaRoot | undefined, name: string): DocPageNode {
-  const obj = root?.findObject(name);
+/** Page-placement node for a metadata object, with the SAME package-less fallback
+ *  the Payload cross-link and field hrefs share: when the object did not resolve,
+ *  fall back to a root-level node named `name` so a link is still emitted. Keeps
+ *  every inbound href routing through the one `docPageHref(layout, …)` placement. */
+function pageNodeOf(obj: MetaData | undefined, name: string): DocPageNode {
   return obj !== undefined ? docPageNode(obj) : { name };
 }
 
@@ -114,12 +117,11 @@ export function buildTemplateDocData(
   const kind: "document" | "email" = isEmail ? TEMPLATE_KIND_EMAIL : TEMPLATE_KIND_DOCUMENT;
 
   const payloadRefRaw = template.attr(TEMPLATE_ATTR_PAYLOAD_REF);
-  // ADR-0042: keep the FULL ref for RESOLUTION (an FQN @payloadRef to another
-  // package must resolve exactly — the old bare-tail fallback that used to find
-  // it is gone); strip to the bare name only for DISPLAY labels.
-  const payloadRefFull =
-    typeof payloadRefRaw === "string" && payloadRefRaw.length > 0 ? payloadRefRaw : "unknown";
-  const payloadName = payloadRefFull !== "unknown" ? stripPackage(payloadRefFull) : "unknown";
+  // ADR-0059 R7: the payload VO is the target the loader bound for @payloadRef; the
+  // ref is stripped to its bare name only for DISPLAY labels.
+  const payloadVo = refTarget(template, TEMPLATE_ATTR_PAYLOAD_REF);
+  const payloadName =
+    typeof payloadRefRaw === "string" && payloadRefRaw.length > 0 ? stripPackage(payloadRefRaw) : "unknown";
 
   const requiredTags = attrStringList(template.attr(TEMPLATE_ATTR_REQUIRED_TAGS));
   const maxChars = readMaxChars(template.attr(TEMPLATE_ATTR_MAX_CHARS));
@@ -157,7 +159,7 @@ export function buildTemplateDocData(
   const payloadLink = docPageHref(
     layout,
     docPageNode(template),
-    pageNodeByName(root, payloadName),
+    pageNodeOf(payloadVo, payloadName),
   );
 
   const data: TemplateDocData = {
@@ -190,7 +192,7 @@ export function buildTemplateDocData(
       layout,
       template,
       payloadName,
-      payloadRefFull,
+      payloadVo: payloadVo !== undefined && isMetaObject(payloadVo) ? payloadVo : undefined,
       // Document: the single @textRef (unlabeled). Email: one labeled part each.
       refs:
         parts !== undefined
@@ -226,9 +228,9 @@ interface BuildSectionArgs {
   template: MetaData;
   /** Bare payload name — DISPLAY only (labels, owner names). */
   payloadName: string;
-  /** Full @payloadRef (FQN for a cross-package payload, bare for same-package) —
-   *  used for RESOLUTION so a cross-package payload tree still resolves (ADR-0042). */
-  payloadRefFull: string;
+  /** The payload VO the loader bound for @payloadRef (ADR-0059 R7), or undefined
+   *  when it did not resolve. */
+  payloadVo: MetaObject | undefined;
   refs: SourceRefSpec[];
 }
 
@@ -243,22 +245,17 @@ interface BuildSectionArgs {
  * resolved, so the caller omits the section entirely.
  */
 function buildTemplateSourceSection(args: BuildSectionArgs): string | undefined {
-  const { provider, root, layout, template, payloadName, payloadRefFull, refs } = args;
-  // ADR-0042: resolve the payload tree from the FULL ref — an FQN cross-package
-  // @payloadRef resolves exactly; a bare same-package ref resolves in the
-  // template's package.
-  const tree: AnnotatePayloadField[] = buildEnrichedPayloadTree(
-    root,
-    payloadRefFull,
-    template.package ?? template.fileDefaultPackage ?? "",
-  );
+  const { provider, root, layout, template, payloadName, payloadVo, refs } = args;
+  const tree: AnnotatePayloadField[] = buildEnrichedPayloadTree(payloadVo);
   const fromNode = docPageNode(template);
 
   // Layout-aware field href: route through the SAME docPageHref the Payload
   // cross-link uses, so the link lands on the owner VO's REAL page in BOTH
   // layouts (flat → `./Owner.md`, package → `../<pkg>/Owner.md`).
-  const fieldHref = (owner: string, name: string): string =>
-    `${docPageHref(layout, fromNode, pageNodeByName(root, owner))}#${fieldAnchorSlug(name)}`;
+  const fieldHref = (owner: string, name: string, ownerKey?: string): string => {
+    const ownerObj = ownerKey !== undefined ? lookupCanonical(root, ownerKey, { ownerType: TYPE_OBJECT }) : undefined;
+    return `${docPageHref(layout, fromNode, pageNodeOf(ownerObj, owner))}#${fieldAnchorSlug(name)}`;
+  };
 
   const resolvePartialHref = makePartialHrefResolver(root, layout, fromNode);
   const isMultipart = refs.length > 1 || refs.some((r) => r.label !== undefined);

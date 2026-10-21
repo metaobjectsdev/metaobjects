@@ -107,8 +107,7 @@ public class OutputParserGenerator : IGenerator
         // cross-package collision (the #219/#244 "wrong node" class). The loader validates
         // @payloadRef through this SAME canonical resolver; codegen must never silently walk
         // a DIFFERENT node than what was validated.
-        var referrerPkg = global::MetaObjects.NamingRefs.EffectivePackage(tmpl);
-        var vo = global::MetaObjects.NamingRefs.ResolveObjectRef(ctx.Root, payloadRef, referrerPkg);
+        var vo = global::MetaObjects.NamingRefs.RefTarget(tmpl, TEMPLATE_ATTR_RESPONSE_REF);
         // ADR-0056: the parsed type IS the value object's own POCO, named the way every generator
         // names it (never the raw ref string, which may be an FQN).
         var ns = ctx.Config.Namespace;

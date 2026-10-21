@@ -59,6 +59,13 @@ final class RequiresCheck {
         return out;
     }
 
+    /** The registry id of {@code classname} ({@code <port>:<stable name>}, so an ejected copy
+     *  keeps its generator's id), or {@code classname} itself for a generator of your own. */
+    static String registryId(String classname) {
+        Known k = resolve(known(), classname);
+        return k != null ? k.port() + ":" + k.stableName() : classname;
+    }
+
     /** The registry entry {@code classname} is, or {@code null}: by class name, then by simple name. */
     private static Known resolve(List<Known> known, String classname) {
         for (Known k : known) if (k.classname().equals(classname)) return k;

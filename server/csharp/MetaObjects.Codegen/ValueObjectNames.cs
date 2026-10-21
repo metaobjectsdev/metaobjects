@@ -68,27 +68,35 @@ public static class ValueObjectNames
     }
 
     /// <summary>
-    /// The object a field's <c>@objectRef</c> names, resolved FQN-exact / package-local (ADR-0042)
-    /// in the FIELD's declaring package — which differs from the owner's when the field is
-    /// inherited through <c>extends</c>. Never a bare short-name scan: that binds whichever
-    /// same-named object loaded first.
+    /// The object a field's <c>@objectRef</c> names (ADR-0059 R7): the target the loader bound,
+    /// resolved in the package of the node that declared the attribute even when the field is
+    /// inherited through <c>extends</c>. Never a bare short-name scan.
     /// </summary>
     public static MetaObject? ResolveFieldRef(MetaData field, MetaData root) =>
-        field.Attr(MetaObjects.Core.Field.FieldConstants.FIELD_ATTR_OBJECT_REF) is string oref && oref.Length > 0
-            ? global::MetaObjects.NamingRefs.ResolveObjectRef(
-                root, oref, field.Parent is { } p ? global::MetaObjects.NamingRefs.EffectivePackage(p) : "") as MetaObject
-            : null;
+        global::MetaObjects.NamingRefs.RefTarget(field, MetaObjects.Core.Field.FieldConstants.FIELD_ATTR_OBJECT_REF) as MetaObject;
 
-    /// <summary>The payload shape a <c>@payloadRef</c> names, or null. ADR-0042:
-    /// package-local — an FQN binds the exact package; a bare ref binds
-    /// <paramref name="referrerPkg"/> (the template's package) FIRST, else a root-level object.
+    /// <summary>The payload shape a CANONICAL <c>@payloadRef</c> value names, resolved exactly
+    /// (ADR-0059 R7), or null: <c>pkg::Name</c> binds that package's object, <c>::Name</c> and a
+    /// bare <c>Name</c> bind the root-level object; no short-name scan and no package applied.
+    /// Prefer <see cref="PayloadShapeOf"/> on the template node. <paramref name="referrerPkg"/> is
+    /// ignored: a canonical value is absolute.
     /// #210 — a template-level payload target is an <c>object.value</c> OR a SOURCELESS
     /// <c>object.projection</c> ("sourceless" per the #248 persistability contract: no
     /// declared/inherited <c>source.*</c> child; nested <c>@objectRef</c> targets stay
     /// value-only — <c>RenderHelperGenerator.ResolveNestedObjectRef</c>).</summary>
-    public static MetaData? ResolveValueObject(MetaRoot root, string payloadRef, string referrerPkg = "")
+    public static MetaData? ResolveValueObject(MetaRoot root, string payloadRef, string referrerPkg = "") =>
+        AsPayloadShape(global::MetaObjects.NamingRefs.LookupCanonical(root, payloadRef, TYPE_OBJECT));
+
+    /// <summary>
+    /// The payload shape the reference attribute <paramref name="attr"/> of <paramref name="tmpl"/>
+    /// (<c>@payloadRef</c> / <c>@responseRef</c>) is bound to, or null when it is unbound or not
+    /// a payload shape (ADR-0059 R7).
+    /// </summary>
+    public static MetaData? PayloadShapeOf(MetaData tmpl, string attr) =>
+        AsPayloadShape(global::MetaObjects.NamingRefs.RefTarget(tmpl, attr));
+
+    private static MetaData? AsPayloadShape(MetaData? obj)
     {
-        var obj = global::MetaObjects.NamingRefs.ResolveObjectRef(root, payloadRef, referrerPkg);
         if (obj is null) return null;
         if (obj.SubType == OBJECT_SUBTYPE_VALUE) return obj;
         if (obj.SubType != OBJECT_SUBTYPE_PROJECTION) return null;

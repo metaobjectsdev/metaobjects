@@ -100,7 +100,7 @@ public class TemplateLoaderTest extends SharedRegistryTestBase {
         assertTrue("expected PromptTemplate instance", node instanceof PromptTemplate);
 
         PromptTemplate p = (PromptTemplate) node;
-        assertEquals("PromptVo", p.getPayloadRef());
+        assertEquals("acme::ai::PromptVo", p.getPayloadRef());
         assertEquals("ai/prompt", p.getTextRef());
         // @format is not set in PROMPT_FIXTURE → the default ("text") applies.
         assertEquals(TemplateConstants.FORMAT_DEFAULT, p.getFormat());

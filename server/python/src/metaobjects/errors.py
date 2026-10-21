@@ -242,11 +242,6 @@ class ErrorCode(str, Enum):
     # ADR-0023 — a registration was attempted against a registry sealed after its
     # agreed metamodel-provider bootstrap. Codegen cannot invent metamodel attrs.
     ERR_REGISTRY_SEALED = "ERR_REGISTRY_SEALED"
-    # FR-032 (ADR-0032) — a relative (``::``/``..::``) reference survived into
-    # canonical JSON (canonical JSON must be FQN-only). The Python loader does not
-    # emit this yet (the T6 guard is deferred — like TS, it belongs in the parser);
-    # the enum tracks the shared corpus code so resolution/desugar stay aligned.
-    ERR_RELATIVE_REF_IN_CANONICAL = "ERR_RELATIVE_REF_IN_CANONICAL"
     # ADR-0042 — a field.object / field.map @objectRef does not resolve to any
     # object in the loaded tree (a dangling target). Bare refs resolve
     # package-locally (referrer's package, else root-level); FQN refs resolve

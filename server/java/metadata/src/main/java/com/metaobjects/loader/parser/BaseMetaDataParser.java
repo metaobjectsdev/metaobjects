@@ -389,6 +389,10 @@ public abstract class BaseMetaDataParser {
             // Create the new MetaData using registry
             md = createNewMetaData(isRoot, parent, typeName, subTypeName, name, packageName, superData);
 
+            // ADR-0059 R10: this node's own file's default package, nested nodes included.
+            String filePkg = getDefaultPackageName();
+            md.setFileDefaultPackage(filePkg == null ? "" : filePkg);
+
             // Add to the parent metadata
             parent.addChild(md);
 
@@ -455,85 +459,12 @@ public abstract class BaseMetaDataParser {
 
     /** Get the Super MetaData if it exists - v6.0.0: Updated to use registry */
     protected MetaData getSuperMetaData(MetaData parent, String typeName, String name, String packageName, String superName ) {
-
-        MetaData superData = null;
-
-        // If a super class was specified
-        if (superName != null && !superName.isEmpty()) {
-
-            // Try to find it with the name prepended if not fully qualified
-            try {
-                if (superName.indexOf(MetaDataLoader.PKG_SEPARATOR) < 0 && packageName.length() > 0) {
-                    // v6.0.0: Search by type and name instead of class constraint
-                    superData = getLoader().getChildOfType(typeName, packageName + MetaDataLoader.PKG_SEPARATOR + superName );
-                }
-            } catch (MetaDataNotFoundException e) {
-                // This is expected behavior - try fallback to fully qualified name resolution
-                log.debug("Could not find MetaData [" + packageName + MetaDataLoader.PKG_SEPARATOR + superName + "], assuming fully qualified");
-            }
-
-            // Try to find it by the provided name in the 'super' attribute
-            if (superData == null) {
-                String fullyQualifiedSuperName = getFullyQualifiedSuperMetaDataName(parent, packageName, superName);
-                try {
-                    // v6.0.0: Search by type and name instead of class constraint
-                    superData = getLoader().getChildOfType(typeName, fullyQualifiedSuperName);
-                }
-                catch (MetaDataNotFoundException e) {
-
-                    //log.info( "packageName="+packageName+", parentPkg="+(parent==null?null:parent.getPackage())
-                    //        +", pkg="+pkg+", superName="+superName+", sn="+sn);
-                    //log.error("Invalid MetaData [" +typeName+ "][" +name+ "] on parent ["+parent+"], the SuperClass [" + superName + "] does not exist in file ["+getFilename()+"]");
-                    // Defer cross-file forward references — the loader
-                    // resolves the queue after all sources are parsed and
-                    // throws ERR_UNRESOLVED_SUPER if any are still unbound.
-                    // We return null here; caller proceeds to attach the child
-                    // without a super, and resolvePendingExtends() sets it.
-                    return null;
-                }
-            }
-        }
-        // Check to make sure people arent' defining attributes when it shouldn't
-        else {
-            if (superName != null && !superName.isEmpty()) {
-                logErrorOnce( parent, "getSuperMetaData("+typeName+","+name+")",
-                        "Attribute 'super' defined on MetaData [" +typeName+ "][" +name+ "] under parent [" +parent
-                                + "], but should not be as metadata with that name already existed: file ["+getFilename()+"]");
-            }
-        }
-
-        return superData;
-    }
-
-    /** Get the fully qualified metadata name for the Super MetaData */
-    protected String getFullyQualifiedSuperMetaDataName(MetaData parent, String packageName, String superName) {
-
-        // For super references, we need the appropriate package context:
-        // - For nested elements (validators, views inside fields), use the containing hierarchy's package
-        // - For top-level objects, use the object's own package
-        // The MetaDataUtil.findPackageForMetaData traverses up the hierarchy to find the right context
-        String basePackage = MetaDataUtil.findPackageForMetaData(parent);
-        if (basePackage == null || basePackage.isEmpty()) {
-            // Fallback to the packageName if parent hierarchy doesn't provide context
-            basePackage = packageName;
-        }
-
-        String expandedName = MetaDataUtil.expandPackageForMetaDataRef(basePackage, superName);
-
-        // When superName is a simple unqualified name (no package separator) and we have a
-        // base package context, prepend the package.  This handles the common case of a field
-        // inside an object extending a root-level abstract field in the same package — e.g.
-        // "extends": "Status" resolving to "acme::Status".  The expandPackageForMetaDataRef
-        // utility only transforms relative (:: or ..::) paths; a bare simple name is left as-is,
-        // which breaks cross-type extends where the element's own packageName is "" (fields
-        // inside objects carry no package) but the super lives at the package root.
-        if (!basePackage.isEmpty()
-                && superName.indexOf(MetaDataLoader.PKG_SEPARATOR) < 0
-                && !expandedName.contains(MetaDataLoader.PKG_SEPARATOR)) {
-            expandedName = basePackage + MetaDataLoader.PKG_SEPARATOR + superName;
-        }
-
-        return expandedName;
+        // ADR-0059 R1/R2: a source does not interpret a reference, and a reference resolves once
+        // the whole tree is built. Binding an `extends` here would depend on which files had been
+        // parsed so far (a root-level `Apple` seen before `acme::Apple` arrives would win); the
+        // loader's deferred pass (MetaDataLoader.resolvePendingExtends) binds every one, in
+        // every source, by the same rule.
+        return null;
     }
 
     /** Determine if the packageName should change based on the parent metadata */

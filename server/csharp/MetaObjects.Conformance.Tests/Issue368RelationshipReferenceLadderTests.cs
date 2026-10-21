@@ -47,10 +47,13 @@ public class Issue368RelationshipReferenceLadderTests
         return result.Root.FindObject("Match")!;
     }
 
+    private static MetaObject TeamOf(MetaObject holder) => ((MetaRoot)holder.Root()).FindObject("Team")!;
+
     [Fact]
     public void Enumerates_every_candidate_reference_for_the_target()
     {
-        var candidates = RelationshipReferences.ReferenceCandidatesFor(LoadMatch(), "Team");
+        var match = LoadMatch();
+        var candidates = RelationshipReferences.ReferenceCandidatesFor(match, TeamOf(match));
         Assert.Equal(["homeTeamRef", "awayTeamRef"], candidates.Select(c => c.Name));
     }
 
@@ -58,8 +61,8 @@ public class Issue368RelationshipReferenceLadderTests
     public void Name_pairing_resolves_each_association_to_its_own_reference()
     {
         var match = LoadMatch();
-        Assert.Equal("homeTeamRef", RelationshipReferences.ResolveRelationshipReference(match, "homeTeam", "Team")?.Name);
-        Assert.Equal("awayTeamRef", RelationshipReferences.ResolveRelationshipReference(match, "awayTeam", "Team")?.Name);
+        Assert.Equal("homeTeamRef", RelationshipReferences.ResolveRelationshipReference(match, "homeTeam", TeamOf(match))?.Name);
+        Assert.Equal("awayTeamRef", RelationshipReferences.ResolveRelationshipReference(match, "awayTeam", TeamOf(match))?.Name);
     }
 
     [Fact]
@@ -68,7 +71,7 @@ public class Issue368RelationshipReferenceLadderTests
         var match = LoadMatch();
         Assert.Equal(
             "awayTeamRef",
-            RelationshipReferences.ResolveRelationshipReference(match, "homeTeam", "Team", "awayTeamId")?.Name);
+            RelationshipReferences.ResolveRelationshipReference(match, "homeTeam", TeamOf(match), "awayTeamId")?.Name);
     }
 
     [Fact]
@@ -92,7 +95,7 @@ public class Issue368RelationshipReferenceLadderTests
         var result = LoadInline(doc);
         Assert.Empty(result.Errors);
         var match = result.Root.FindObject("Match")!;
-        Assert.Equal("anythingAtAll", RelationshipReferences.ResolveRelationshipReference(match, "champion", "Team")?.Name);
+        Assert.Equal("anythingAtAll", RelationshipReferences.ResolveRelationshipReference(match, "champion", TeamOf(match))?.Name);
     }
 
     [Fact]
@@ -122,7 +125,7 @@ public class Issue368RelationshipReferenceLadderTests
         var result = LoadInline(doc);
         Assert.Equal([ErrorCode.ERR_INVALID_RELATIONSHIP], result.Errors.Select(e => e.Code));
         var match = result.Root.FindObject("Match")!;
-        Assert.Null(RelationshipReferences.ResolveRelationshipReference(match, "winner", "Team"));
+        Assert.Null(RelationshipReferences.ResolveRelationshipReference(match, "winner", TeamOf(match)));
     }
 
     [Fact]
@@ -149,6 +152,6 @@ public class Issue368RelationshipReferenceLadderTests
         var result = LoadInline(doc);
         Assert.Equal([ErrorCode.ERR_INVALID_RELATIONSHIP], result.Errors.Select(e => e.Code));
         var match = result.Root.FindObject("Match")!;
-        Assert.Null(RelationshipReferences.ResolveRelationshipReference(match, "valid", "Team"));
+        Assert.Null(RelationshipReferences.ResolveRelationshipReference(match, "valid", TeamOf(match)));
     }
 }

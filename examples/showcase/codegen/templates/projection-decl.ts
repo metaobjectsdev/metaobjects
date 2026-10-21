@@ -18,7 +18,7 @@ import {
 import { projectionViewName } from "@metaobjectsdev/codegen-ts/engine";
 import { GENERATED_HEADER, GENERATED_EDIT_NOTE } from "@metaobjectsdev/codegen-ts/engine";
 import type { ColumnNamingStrategy } from "@metaobjectsdev/codegen-ts/engine";
-import { fieldDeclaringPackage, type RenderContext } from "@metaobjectsdev/codegen-ts/engine";
+import type { RenderContext } from "@metaobjectsdev/codegen-ts/engine";
 import { valueObjectModuleSpecifier } from "@metaobjectsdev/codegen-ts/engine";
 import type { Dialect } from "@metaobjectsdev/codegen-ts/engine";
 import { physicalNameExpr, sourceSchemaExpr, type ObjectNames } from "@metaobjectsdev/codegen-ts/engine";
@@ -113,7 +113,7 @@ export function renderProjectionDecl(
     const ref = field.attr(FIELD_ATTR_OBJECT_REF);
     const rawRef = typeof ref === "string" ? ref : "";
     const name = ctx
-      ? ctx.resolveValueObjectName(rawRef, fieldDeclaringPackage(field, projectionPkg))
+      ? ctx.resolveValueObjectName(field)
       : stripPackage(rawRef);
     const module = ctx
       ? valueObjectModuleSpecifier(name, ctx.packageOf, projectionPkg, ctx.outputLayout, ctx.extStyle)

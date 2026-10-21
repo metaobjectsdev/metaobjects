@@ -537,10 +537,7 @@ class KotlinApiModelBuilder(
 
     /** The `@payloadRef` value object a template resolves to (rejects entities), or null. */
     private fun payloadValueObject(tmpl: MetaTemplate, loader: MetaDataLoader): MetaObject? {
-        val ref = tmpl.payloadRef
-        if (ref.isNullOrEmpty()) return null
-        // ADR-0042 — resolve @payloadRef under the loader's package-local contract (#228).
-        return KotlinGenUtil.resolveValueObjectRef(loader, ref, tmpl.getPackage())
+        return KotlinGenUtil.payloadTarget(tmpl, "payloadRef")
     }
 
     private fun isEmailKind(tmpl: MetaTemplate): Boolean {

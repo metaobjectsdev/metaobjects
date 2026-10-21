@@ -442,6 +442,9 @@ public static class VerifyCommand
             // --out reading the SAME root's naming.columns, so this regen agrees with it
             // by construction rather than needing a flag told to match.
             ColumnNamingStrategy = load.Root.PhysicalNaming.Columns,
+            // The manifest gen keeps: an extra file is classified by what gen recorded writing.
+            GenStateDir = Path.Combine(GenCommand.ProjectRootFor(opts.MetadataDir), ".metaobjects", ".gen-state"),
+            ProjectRoot = GenCommand.ProjectRootFor(opts.MetadataDir),
         };
         return Codegen.CodegenDrift.Compute(config, load.Root, generators);
     }
@@ -493,8 +496,8 @@ public static class VerifyCommand
             // ADR-0042/#228: a bare @payloadRef resolves in the template's OWN package FIRST —
             // never whichever same-short-named object.value another package happens to declare
             // (the loader validates @payloadRef package-locally too; verify must agree).
-            var referrerPkg = global::MetaObjects.NamingRefs.EffectivePackage(tmpl);
-            var fields = PayloadFieldTree.Build(load.Root, payloadRef, referrerPkg);
+            var payloadShape = global::MetaObjects.NamingRefs.RefTarget(tmpl, TEMPLATE_ATTR_PAYLOAD_REF);
+            var fields = payloadShape is null ? [] : PayloadFieldTree.Build(payloadShape);
             if (fields.Count == 0)
             {
                 errors.Add(new Drift(tmpl.Name, kind, ERR_PAYLOAD_REF_UNRESOLVED, payloadRef));

@@ -139,6 +139,21 @@ public sealed record GenConfig
     public bool EmitAbstractShapes { get; init; } = false;
 
     /// <summary>
+    /// Delete, after the writes, each file under this run's output directories that the hash
+    /// manifest records writing and that no generator emitted this run, when it is still
+    /// byte-for-byte what was recorded; an edited one is refused by name
+    /// (<see cref="OrphanSweep"/>). Needs <see cref="GenStateDir"/> and <see cref="ProjectRoot"/>,
+    /// and never runs under <c>Baseline = "adopt"</c>.
+    /// <para>
+    /// Only a run of the WHOLE generator list may sweep: a subset leaves out the files of the
+    /// generators it did not run, and they would all look orphaned. <c>dotnet meta gen</c> sets
+    /// it on a run with no <c>--generators</c> narrowing. Defaults to <c>false</c>, so a
+    /// programmatic caller, which may be running any subset, deletes nothing it did not ask to.
+    /// </para>
+    /// </summary>
+    public bool SweepOrphans { get; init; } = false;
+
+    /// <summary>
     /// The C# type name of the EF Core DbContext that callable (stored-proc / table-function)
     /// wrappers take as their first parameter. Defaults to <c>AppDbContext</c> (the name the
     /// upstream DbContextGenerator emits). A downstream consumer that renames its context
@@ -296,6 +311,49 @@ public interface IGenerator
     /// under <c>--out</c>.
     /// </summary>
     string? OutDir => null;
+
+    /// <summary>
+    /// What a run does with a file of this entry's that was edited by hand since it was
+    /// generated. <see cref="Codegen.HandEdits.Keep"/>, the default, refuses to replace it (and
+    /// refuses to delete it once no generator emits it). <see cref="Codegen.HandEdits.Overwrite"/>
+    /// replaces it with fresh output and records the new content, and lets the orphan sweep
+    /// delete it, naming each file it discards. Set it on an entry in
+    /// <c>codegen/Generators.cs</c> with <see cref="GeneratorExtensions.WithHandEdits"/>.
+    /// </summary>
+    HandEdits HandEdits => HandEdits.Keep;
+}
+
+/// <summary>A generator entry's <c>handEdits</c> setting: what a run does with a hand-edited file.</summary>
+public enum HandEdits
+{
+    /// <summary>Refuse to replace or delete a hand-edited file (the default).</summary>
+    Keep,
+    /// <summary>Replace a hand-edited file with fresh output, and delete a hand-edited orphan.</summary>
+    Overwrite,
+}
+
+/// <summary>Per-entry settings for any <see cref="IGenerator"/>.</summary>
+public static class GeneratorExtensions
+{
+    /// <summary>The same entry with its <see cref="IGenerator.HandEdits"/> setting replaced:
+    /// <c>new EntityGenerator().WithHandEdits(HandEdits.Overwrite)</c>.</summary>
+    public static IGenerator WithHandEdits(this IGenerator generator, HandEdits handEdits) =>
+        new HandEditsGenerator(generator is HandEditsGenerator h ? h.Inner : generator, handEdits);
+}
+
+/// <summary>An entry with its <c>handEdits</c> setting; everything else is the wrapped entry's.</summary>
+internal sealed class HandEditsGenerator(IGenerator inner, HandEdits handEdits) : IGenerator
+{
+    /// <summary>The wrapped entry.</summary>
+    public IGenerator Inner { get; } = inner;
+    /// <inheritdoc/>
+    public string Name => Inner.Name;
+    /// <inheritdoc/>
+    public string? OutDir => Inner.OutDir;
+    /// <inheritdoc/>
+    public HandEdits HandEdits { get; } = handEdits;
+    /// <inheritdoc/>
+    public IEnumerable<EmittedFile> Generate(GenContext ctx) => Inner.Generate(ctx);
 }
 
 /// <summary>One-file-per-entity convenience base (entity / queries / routes generators).</summary>

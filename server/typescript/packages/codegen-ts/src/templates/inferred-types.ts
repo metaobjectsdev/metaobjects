@@ -42,7 +42,7 @@ import { renderDocsFor } from "./jsdoc.js";
 import { isTphReadNullTolerant } from "./zod-validators.js";
 import { sharedEnumForField } from "../enum-shared.js";
 import { sharedEnumImportSpecifier, providedEnumImportSpecifier } from "../enum-import.js";
-import { fieldDeclaringPackage, type RenderContext } from "../render-context.js";
+import type { RenderContext } from "../render-context.js";
 import { effectivePackage } from "../docs-paths.js";
 
 /**
@@ -311,7 +311,7 @@ function valueObjectFieldType(entity: MetaObject, field: MetaField, ctx?: Render
       // Drizzle .$type<> use) so all three agree. Without a ctx (bare unit-test
       // calls) fall back to the bare name + flat same-dir specifier.
       const entityPkg = effectivePackage(entity);
-      const refName = ctx ? ctx.resolveValueObjectName(ref, fieldDeclaringPackage(field, entityPkg)) : stripPackage(ref);
+      const refName = ctx ? ctx.resolveValueObjectName(field) : stripPackage(ref);
       const moduleSpec = ctx
         ? valueObjectModuleSpecifier(refName, ctx.packageOf, entityPkg, ctx.outputLayout, ctx.extStyle)
         : `./${refName}.js`;
@@ -330,7 +330,7 @@ function valueObjectFieldType(entity: MetaObject, field: MetaField, ctx?: Render
     const ref = field.attr(FIELD_ATTR_OBJECT_REF);
     if (typeof ref === "string" && ref.length > 0) {
       const entityPkg = effectivePackage(entity);
-      const refName = ctx ? ctx.resolveValueObjectName(ref, fieldDeclaringPackage(field, entityPkg)) : stripPackage(ref);
+      const refName = ctx ? ctx.resolveValueObjectName(field) : stripPackage(ref);
       const moduleSpec = ctx
         ? valueObjectModuleSpecifier(refName, ctx.packageOf, entityPkg, ctx.outputLayout, ctx.extStyle)
         : `./${refName}.js`;

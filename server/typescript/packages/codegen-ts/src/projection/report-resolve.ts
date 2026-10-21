@@ -14,10 +14,11 @@ import {
   reportingMemberOwner,
   reportingViaHops,
   resolveDimensionOf,
-  resolveObjectRef,
+  refTarget,
   resolveReportingFieldRef,
   type MeasureAgg,
   type MetaData,
+  REPORTING_ATTR_VIA,
   type MetaDimension,
   type MetaField,
   type MetaMeasure,
@@ -27,6 +28,12 @@ import {
 import { packageOf, walkViaPath, type ExtractContext, type Path } from "./extract-view-spec.js";
 import { andOf, declared, resolveReportFilter, segmentClause } from "./report-sql.js";
 import type { ViewFilterClause } from "./view-spec.js";
+
+/** A string attribute as the author wrote it, for refusal text (ADR-0059); the loaded value is canonical. */
+export function authoredText(node: MetaData, attr: string): string | undefined {
+  const v = node.authoredAttr(attr);
+  return typeof v === "string" && v !== "" ? v : undefined;
+}
 
 /**
  * A dimension's `@of` field, by the loader's rule D1 ({@link resolveDimensionOf}). Without
@@ -58,10 +65,9 @@ export function viaHopError(where: string, attr: string, via: string, hop: strin
   if (node === undefined) {
     return new Error(`${head}: it names no relationship or identity.reference of that entity.`);
   }
-  const targetRef = node.attr(
-    node.type === TYPE_IDENTITY ? IDENTITY_REFERENCE_ATTR_REFERENCES : RELATIONSHIP_ATTR_OBJECT_REF,
-  );
-  const target = typeof targetRef === "string" ? resolveObjectRef(root, targetRef, packageOf(at)).node : undefined;
+  const refAttr = node.type === TYPE_IDENTITY ? IDENTITY_REFERENCE_ATTR_REFERENCES : RELATIONSHIP_ATTR_OBJECT_REF;
+  const targetRef = node.attr(refAttr);
+  const target = refTarget(node, refAttr);
   if (target === undefined) {
     return new Error(`${head}: its target '${String(targetRef ?? "")}' does not resolve to an object.`);
   }
@@ -90,10 +96,12 @@ export function resolveDimensionViaPath(
   checkHops?: (hops: readonly string[]) => void,
 ): Path {
   const via = dim.via() ?? "";
+  // Refusals quote the reference as the author wrote it (ADR-0059); the walk uses the canonical value.
+  const viaText = authoredText(dim, REPORTING_ATTR_VIA) ?? via;
   const hops = reportingViaHops(via, reportingMemberOwner(dim, from), from, root);
   if (hops === undefined) {
     throw new Error(
-      `${where} @via '${via}' must be Owner.hop[.hop...], starting at @from '${from.name}' or an entity it extends.`,
+      `${where} @via '${viaText}' must be Owner.hop[.hop...], starting at @from '${from.name}' or an entity it extends.`,
     );
   }
   checkHops?.(hops);
@@ -107,7 +115,7 @@ export function resolveDimensionViaPath(
   if (path.length !== hops.length) {
     const last = path[path.length - 1];
     const at = last === undefined ? from : root.objects().find((o) => o.resolutionKey() === last.targetEntity);
-    throw viaHopError(where, "@via", via, hops[path.length]!, at ?? from, root);
+    throw viaHopError(where, "@via", viaText, hops[path.length]!, at ?? from, root);
   }
   return path;
 }

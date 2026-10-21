@@ -43,6 +43,7 @@ using System.Threading.Tasks;
 using MetaObjects.Core.Field;
 using MetaObjects.Core.Relationship;
 using MetaObjects.Meta;
+using static MetaObjects.Core.Relationship.RelationshipConstants;
 
 namespace MetaObjects.Codegen.Runtime;
 
@@ -82,9 +83,9 @@ public static class M2MResolver
         // junction's two identity.reference children (hetero / directed / symmetric).
         var fields = M2MDerivation.DeriveM2MFields(rel, source, root);
 
-        var junction = root.FindObject(rel.Through!)
+        var junction = NamingRefs.RefTarget(rel, RELATIONSHIP_ATTR_THROUGH) as MetaObject
             ?? throw new InvalidOperationException($"relate: junction '{rel.Through}' not found");
-        var target = root.FindObject(rel.ObjectRef!)
+        var target = NamingRefs.RefTarget(rel, RELATIONSHIP_ATTR_OBJECT_REF) as MetaObject
             ?? throw new InvalidOperationException($"relate: target '{rel.ObjectRef}' not found");
 
         var junctionTable = TableOf(junction);

@@ -243,11 +243,9 @@ public sealed class CSharpApiModelBuilder
         return new ApiUnit(name, PackageOf(tmpl), "template", symbols);
     }
 
-    /// <summary>The value object a template's <c>@payloadRef</c> resolves to (ADR-0042 package-local), or null.</summary>
+    /// <summary>The value object a template's <c>@payloadRef</c> resolves to (bound by the loader), or null.</summary>
     private static MetaData? PayloadShape(MetaData tmpl, MetaRoot root) =>
-        tmpl.Attr(TEMPLATE_ATTR_PAYLOAD_REF) is string payloadRef
-            ? ValueObjectNames.ResolveValueObject(root, payloadRef, global::MetaObjects.NamingRefs.EffectivePackage(tmpl))
-            : null;
+        ValueObjectNames.PayloadShapeOf(tmpl, TEMPLATE_ATTR_PAYLOAD_REF);
 
     /// <summary>A PAYLOAD symbol for a value object's POCO: its emitted name, in its own namespace.</summary>
     private ApiSymbol PayloadSymbol(MetaData vo, MetaRoot root, string usage)

@@ -81,7 +81,7 @@ public static class FmtCommand
             return new FormatFileResult(false, overlay, null, string.Join("; ", result.Errors.Select(e => e.Message)));
         }
 
-        return new FormatFileResult(true, false, SerializerJson.CanonicalSerialize(result.Root), null);
+        return new FormatFileResult(true, false, SerializerJson.CanonicalSerialize(result.Root, RefSpelling.Authored), null);
     }
 
     /// <summary>

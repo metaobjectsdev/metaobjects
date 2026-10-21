@@ -22,7 +22,7 @@
                 "@cardinality": "many",
                 "@objectRef": "acme::social::User",
                 "@symmetric": true,
-                "@through": "Friendship"
+                "@through": "acme::social::Friendship"
               }
             },
             {

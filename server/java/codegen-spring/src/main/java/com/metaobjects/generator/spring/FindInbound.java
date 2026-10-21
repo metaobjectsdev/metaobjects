@@ -87,12 +87,7 @@ public final class FindInbound {
     public static InboundShape responseShape(MetaDataLoader loader, MetaTemplate tmpl) {
         String ref = responseRefOf(tmpl);
         if (ref == null) return null;
-        // ADR-0042/#228: resolve package-aware — a bare ref binds the template's OWN
-        // package first, never a bare-tail/global scan that could bind the WRONG package's
-        // same-short-named object. Enforces the SAME "must be an object.value" target rule
-        // @payloadRef obeys, so the two refs cannot diverge on what counts as a legal target.
-        MetaObject vo = SpringNaming.resolveValueObjectRef(
-            loader, ref, MetaDataUtil.findPackageForMetaData(tmpl));
+        MetaObject vo = SpringNaming.payloadTarget(tmpl, "responseRef");
         if (vo == null) return null;
         return new InboundShape(vo, ref, responseFormatOf(tmpl));
     }

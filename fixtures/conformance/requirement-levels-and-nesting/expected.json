@@ -1,10 +1,10 @@
 {
   "metadata.root": {
-    "package": "acme::caps",
     "children": [
       {
         "requirement.functional": {
           "name": "Storefront",
+          "package": "acme::caps",
           "@counterexample": "Nothing can be sold",
           "@level": 1,
           "@statement": "The storefront solution",
@@ -68,6 +68,7 @@
       {
         "requirement.architectural": {
           "name": "UuidPrimaryKeys",
+          "package": "acme::caps",
           "@counterexample": "An entity keyed by a composite string",
           "@implementedBy": [
             "acme::shop::Order"
@@ -79,6 +80,7 @@
       {
         "requirement.architectural": {
           "name": "SoftDeleteEverywhere",
+          "package": "acme::caps",
           "@counterexample": "A hard delete on a table that promised its rows were recoverable",
           "@statement": "Every table carries a soft-delete flag rather than deleting rows",
           "@status": "planned"
@@ -87,6 +89,7 @@
       {
         "object.entity": {
           "name": "Order",
+          "package": "acme::shop",
           "children": [
             {
               "source.rdb": {

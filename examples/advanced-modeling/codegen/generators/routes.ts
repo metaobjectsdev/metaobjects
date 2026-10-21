@@ -85,6 +85,7 @@ import {
   GENERATED_EDIT_NOTE,
   sidecarLine,
   DEFAULT_ID_FIELD,
+  pkInfoOf,
   isTphSubtype,
   tphDiscriminatorPin,
   tphStorageObject,
@@ -338,9 +339,10 @@ ${m2mMountsFlat}}
 function m2mEntriesOf(
   ctx: RenderContext,
   name: string,
-): Array<RelationEntry & { junctionEntity: string }> {
+): Array<RelationEntry & { junctionEntity: string; junction: MetaObject }> {
   return (ctx.relationMap.get(name) ?? []).filter(
-    (e): e is RelationEntry & { junctionEntity: string } => e.junctionEntity !== undefined,
+    (e): e is RelationEntry & { junctionEntity: string; junction: MetaObject } =>
+      e.junctionEntity !== undefined && e.junction !== undefined,
   );
 }
 
@@ -353,7 +355,7 @@ function m2mEntriesOf(
  * has no M:N relationships — CRUD-only output stays byte-identical to before.
  */
 function renderM2mMounts(
-  entries: ReadonlyArray<RelationEntry & { junctionEntity: string }>,
+  entries: ReadonlyArray<RelationEntry & { junctionEntity: string; junction: MetaObject }>,
   source: MetaObject,
   ctx: RenderContext,
   fastifyVar: string,
@@ -397,7 +399,7 @@ interface TphM2mSource {
  * column). mountM2mRoute appends `/:id/<relationName>` to the source $path.
  */
 function renderM2mMount(
-  entry: RelationEntry & { junctionEntity: string },
+  entry: RelationEntry & { junctionEntity: string; junction: MetaObject },
   source: MetaObject,
   ctx: RenderContext,
   fastifyVar: string,
@@ -412,7 +414,7 @@ function renderM2mMount(
     `${ctx.collectionName(entry.junctionEntity)}@${crossEntitySpecifier(
       ctx.outputLayout,
       sourcePkg,
-      ctx.packageOf.get(entry.junctionEntity),
+      effectivePackage(entry.junction),
       entry.junctionEntity,
       ctx.extStyle,
     )}`,
@@ -421,26 +423,25 @@ function renderM2mMount(
   // subtype has no table const, and the junction FK can only point at the base table —
   // and filters the rows to the subtype, because a Broker id in that FK column is not a
   // Carrier. Every other target binds to itself, and emits no filter.
-  const declaredTarget = ctx.loadedRoot.findObject(entry.targetEntity);
-  const target = declaredTarget === undefined ? undefined : tphStorageObject(declaredTarget);
-  const targetTableEntity = target?.name ?? entry.targetEntity;
-  const pin = declaredTarget === undefined ? undefined : tphDiscriminatorPin(declaredTarget);
+  const target = tphStorageObject(entry.target);
+  const targetTableEntity = target.name;
+  const pin = tphDiscriminatorPin(entry.target);
   // A self-join's target table IS the source table, which this file already imports from
   // the entity module; a second import of the same binding is TS2300, and a SyntaxError
   // when Node loads the module.
-  const targetVarSym = targetTableEntity === source.name
+  const targetVarSym = target === source
     ? ctx.collectionName(source.name)
     : imp(
       `${ctx.collectionName(targetTableEntity)}@${crossEntitySpecifier(
         ctx.outputLayout,
         sourcePkg,
-        ctx.packageOf.get(targetTableEntity),
+        effectivePackage(target),
         targetTableEntity,
         ctx.extStyle,
       )}`,
     );
   const mountM2mRouteSym = imp(`mountM2mRoute@${httpRuntimeSpecifier("drizzle-fastify", ctx, sourcePkg)}`);
-  const junction = ctx.loadedRoot.findObject(entry.junctionEntity);
+  const junction = entry.junction;
   // fromPackage = source.package: this routes file is SOURCE's own module, never the
   // junction's or the target's — see resolveJunctionColumn's doc comment (B1).
   // The relation-resolver pre-pass derives both join fields for every M:N entry.
@@ -448,16 +449,10 @@ function renderM2mMount(
   if (sourceJoinField === undefined || targetJoinField === undefined) {
     throw new Error(`routes-file: M:N "${entry.name}" on ${source.name} has no derived join fields`);
   }
-  const sourceColumn: Code = junction
-    ? resolveJunctionColumn(junction, sourceJoinField, ctx, sourcePkg)
-    : code`${JSON.stringify(sourceJoinField)}`;
-  const targetColumn: Code = junction
-    ? resolveJunctionColumn(junction, targetJoinField, ctx, sourcePkg)
-    : code`${JSON.stringify(targetJoinField)}`;
-  const targetPkColumn: Code = target
-    ? resolveJunctionColumn(target, ctx.pkMap.get(targetTableEntity)?.fieldName ?? "id", ctx, sourcePkg)
-    : code`${JSON.stringify("id")}`;
-  const discriminatorLine: Code | string = pin !== undefined && target !== undefined
+  const sourceColumn: Code = resolveJunctionColumn(junction, sourceJoinField, ctx, sourcePkg);
+  const targetColumn: Code = resolveJunctionColumn(junction, targetJoinField, ctx, sourcePkg);
+  const targetPkColumn: Code = resolveJunctionColumn(target, pkInfoOf(target)?.fieldName ?? "id", ctx, sourcePkg);
+  const discriminatorLine: Code | string = pin !== undefined
     ? code`
     targetDiscriminator: { column: ${resolveJunctionColumn(target, pin.fieldName, ctx, sourcePkg)}, value: ${JSON.stringify(pin.value)} },`
     : "";
@@ -595,7 +590,7 @@ function renderTphRoutes(
   // compile gate stayed green while the endpoint 404'd.
   //
   // The physical columns stage 0 needs, resolved once against the base's own table.
-  const basePkField = ctx.pkMap.get(baseName)?.fieldName ?? "id";
+  const basePkField = pkInfoOf(base)?.fieldName ?? "id";
   const basePkColumn = resolveJunctionColumn(base, basePkField, ctx, basePkg);
   const baseDiscColumn = resolveJunctionColumn(base, discField, ctx, basePkg);
   const baseM2mMounts = renderM2mMounts(m2mEntriesOf(ctx, baseName), base, ctx, fastifyRef);

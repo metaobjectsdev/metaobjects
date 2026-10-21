@@ -50,23 +50,40 @@ public static class HashManifest
     /// </summary>
     public static bool Exists(string genStateDir) => File.Exists(PathFor(genStateDir));
 
-    /// <summary>Load the manifest; an absent or corrupt one reads as EMPTY, which fails
-    /// closed (every file then refuses rather than being assumed ours).</summary>
-    public static Dictionary<string, string> Load(string genStateDir)
+    private static Dictionary<string, JsonElement> ReadRaw(string genStateDir)
     {
         var path = PathFor(genStateDir);
-        if (!File.Exists(path)) return new Dictionary<string, string>(StringComparer.Ordinal);
+        if (!File.Exists(path)) return new Dictionary<string, JsonElement>(StringComparer.Ordinal);
         try
         {
-            var parsed = JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(path));
+            var parsed = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(File.ReadAllText(path));
             return parsed is null
-                ? new Dictionary<string, string>(StringComparer.Ordinal)
-                : new Dictionary<string, string>(parsed, StringComparer.Ordinal);
+                ? new Dictionary<string, JsonElement>(StringComparer.Ordinal)
+                : new Dictionary<string, JsonElement>(parsed, StringComparer.Ordinal);
         }
         catch (Exception e) when (e is JsonException or IOException or UnauthorizedAccessException)
         {
-            return new Dictionary<string, string>(StringComparer.Ordinal);
+            return new Dictionary<string, JsonElement>(StringComparer.Ordinal);
         }
+    }
+
+    private static string? EntryHash(JsonElement value) => value.ValueKind switch
+    {
+        JsonValueKind.String => value.GetString(),
+        JsonValueKind.Object when value.TryGetProperty("hash", out var h) && h.ValueKind == JsonValueKind.String
+            => h.GetString(),
+        _ => null,
+    };
+
+    /// <summary>Load the manifest; an absent or corrupt one reads as EMPTY, which fails
+    /// closed (every file then refuses rather than being assumed ours). An object-valued
+    /// entry written by another port reads as its <c>hash</c> field.</summary>
+    public static Dictionary<string, string> Load(string genStateDir)
+    {
+        var hashes = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var (key, value) in ReadRaw(genStateDir))
+            if (EntryHash(value) is { } hash) hashes[key] = hash;
+        return hashes;
     }
 
     /// <summary>Persist the manifest with SORTED keys.
@@ -74,11 +91,27 @@ public static class HashManifest
     /// Sorted because the file is committed: insertion order would make the diff — and
     /// any merge conflict between two people who both regenerated — depend on which
     /// generator happened to run first.
+    /// </para>
+    /// <para>
+    /// An entry that is currently an object keeps its other fields; only its
+    /// <c>hash</c> is replaced.
     /// </para></summary>
     public static void Save(string genStateDir, Dictionary<string, string> hashes)
     {
         Directory.CreateDirectory(genStateDir);
-        var ordered = new SortedDictionary<string, string>(hashes, StringComparer.Ordinal);
+        var raw = ReadRaw(genStateDir);
+        var ordered = new SortedDictionary<string, object>(StringComparer.Ordinal);
+        foreach (var (key, hash) in hashes)
+        {
+            if (raw.TryGetValue(key, out var existing) && existing.ValueKind == JsonValueKind.Object)
+            {
+                var entry = new Dictionary<string, object?>(StringComparer.Ordinal);
+                foreach (var prop in existing.EnumerateObject()) entry[prop.Name] = prop.Value;
+                entry["hash"] = hash;
+                ordered[key] = entry;
+            }
+            else ordered[key] = hash;
+        }
         var json = JsonSerializer.Serialize(ordered, new JsonSerializerOptions { WriteIndented = true });
         File.WriteAllText(PathFor(genStateDir), json + "\n");
     }
@@ -121,4 +154,8 @@ public static class HashManifest
     public static bool IsPristine(
         string genStateDir, string relPath, string current, string? legacyRelPath = null) =>
         Recorded(genStateDir, relPath, legacyRelPath) == ContentHash(current);
+
+    /// <summary>Whether we recorded writing <paramref name="relPath"/> at all, whatever it holds now.</summary>
+    public static bool IsRecorded(string genStateDir, string relPath, string? legacyRelPath = null) =>
+        Recorded(genStateDir, relPath, legacyRelPath) is not null;
 }

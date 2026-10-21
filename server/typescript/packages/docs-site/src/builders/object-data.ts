@@ -131,7 +131,9 @@ function fieldRow(f: MetaData, ownerHref: string, g: LinkGraph, cov: CoverageTra
   let refHref: string | undefined, refName: string | undefined;
   const oref = a("objectRef");
   if (typeof oref === "string") {
-    const t = g.byFqn(oref.includes("::") ? oref : `${ctxPkg}::${oref}`) ?? g.byFqn(oref);
+    // `::Name` is root-absolute (ADR-0059): the loader writes it for a root-level target.
+    const t = oref.startsWith("::") ? g.byFqn(oref.slice(2))
+      : g.byFqn(oref.includes("::") ? oref : `${ctxPkg}::${oref}`) ?? g.byFqn(oref);
     if (t) {
       refHref = g.relHref(ownerHref, t.href); refName = t.name;
       const contains = f.subType === "object";
@@ -224,7 +226,9 @@ export function buildObjectPage(fqn: string, g: LinkGraph, cov: CoverageTracker)
     } else if (id.subType === "reference") {
       const ref = id.attr("references"); if (ref !== undefined) cov.consumeAttr(id, "references");
       const enf = id.attr("enforce"); if (enf !== undefined) cov.consumeAttr(id, "enforce");
-      indexes.push({ name: id.name, kind: "fk", fields, extra: [ref ? `→ ${esc(String(ref))}` : "", enf === false || enf === "false" ? "logical" : "", idExtra].filter(Boolean).join(" · "), unique: false });
+      // The page quotes the reference as the author wrote it (ADR-0059); the loaded value is canonical.
+      const shown = id.authoredAttr("references") ?? ref;
+      indexes.push({ name: id.name, kind: "fk", fields, extra: [shown ? `→ ${esc(String(shown))}` : "", enf === false || enf === "false" ? "logical" : "", idExtra].filter(Boolean).join(" · "), unique: false });
     }
   }
   for (const ix of o.childrenOfType("index")) {

@@ -8,8 +8,8 @@
 
 import { code, imp, joinCode, type Code } from "@metaobjectsdev/codegen-ts/engine";
 import type { MetaObject, MetaField } from "@metaobjectsdev/metadata";
-import { FIELD_ATTR_OBJECT_REF, SOURCE_ROLE_REPLICA } from "@metaobjectsdev/metadata";
-import { fieldDeclaringPackage, type RenderContext } from "@metaobjectsdev/codegen-ts/engine";
+import { SOURCE_ROLE_REPLICA } from "@metaobjectsdev/metadata";
+import type { RenderContext } from "@metaobjectsdev/codegen-ts/engine";
 import { renderDrizzleSchema } from "./drizzle-schema.js";
 import { renderInferredTypes, renderEnumTypeAliases } from "./inferred-types.js";
 import { renderZodValidators, primaryIdentityFieldNames } from "./zod-validators.js";
@@ -153,8 +153,7 @@ export function renderEntityFile(
     // `AcmeAlphaNote` from `./AcmeAlphaNote.js` (not a bare `Note` → `./Note.js`)
     // under a cross-package short-name collision.
     const voRef = (field: MetaField): { name: string; module: string } => {
-      const ref = field.attr(FIELD_ATTR_OBJECT_REF);
-      const name = ctx.resolveValueObjectName(typeof ref === "string" ? ref : "", fieldDeclaringPackage(field, entityPkg));
+      const name = ctx.resolveValueObjectName(field);
       const module = valueObjectModuleSpecifier(name, ctx.packageOf, entityPkg, ctx.outputLayout, ctx.extStyle);
       return { name, module };
     };

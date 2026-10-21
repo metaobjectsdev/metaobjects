@@ -47,6 +47,15 @@ has a section per port, written for a coding agent to apply to the config by han
 ADR-0034 Amendment 9, which numbers the release 1.1.0 (Maven 8.1.0) by the maintainer's
 explicit decision. The entries are under **Removed** and **Changed**.
 
+**Breaking, Java and Kotlin: commit `.metaobjects/.gen-state/.hashes.json`.** `mvn
+metaobjects:generate` now records what it writes in the same committed hash manifest the other
+ports use, and decides overwrites from it instead of from the `GENERATED` header token alone.
+An edited generated file is refused by name (it was overwritten), and a file no generator emits
+any more is deleted. The first run adopts your existing generated files and tells you to commit
+the manifest; commit it in every module. Migration:
+[jvm-codegen-hash-manifest.md](docs/features/migrations/jvm-codegen-hash-manifest.md). The
+entry is under **Changed**.
+
 **What 1.1.0 is.** The reporting release (FR-044): declare dimensions, measures, segments and an
 `object.report`, and get a SQL view, a served read-only list route in every port, a generated
 TanStack list hook, and a Cube data model, with `@spine` for rows that have no facts and
@@ -59,7 +68,20 @@ number. The first landed on 1.0.x: 439 lines of handler code retired. The second
 and it is a SQL reduction only: in an adopter, hand-written SQL went from 75 lines to 15 (-80%).
 Total hand-written lines did not fall, so do not read it as a total line reduction.
 
-**Four diffs to expect when you upgrade.**
+**Breaking, TypeScript, Python and C#: a bare `extends` no longer binds an object in another
+package.** It now fails with `ERR_UNRESOLVED_SUPER`, as Java already did and ADR-0042 requires. A
+bare name binds the declaring file's own package, then the root. Qualify the reference:
+`extends: other::Base`. The entry is under **Changed** (ADR-0059).
+
+**Five diffs to expect when you upgrade.**
+
+- **References are written fully qualified (ADR-0059).** `meta export` and canonical
+  serialization write every reference as `pkg::Name`, a root-level target referenced from a
+  package as `::Name`, and a model that spans packages with a `package` on each top-level object.
+  Exported JSON now loads back to the same model. The neutral template data's `targetRef` carries
+  the same canonical value (`rel product -> shop::Product`), so a Mustache template that prints it
+  changes. Documentation pages and error messages still quote a reference as you wrote it. `meta
+  fmt` still writes references as you wrote them. Regenerate, then review the diff.
 
 - **An ejected generator needs a resync (G11).** An owned copy keeps the gate and the options it
   was copied with, so it does not receive the new report behaviour until you resync it. The
@@ -111,6 +133,18 @@ generator catalog and the Atlas evaluation are 1.2 work.
 
 ### Added
 
+- **`handEdits: keep | overwrite` on every generator entry, in every port.** `keep`, the
+  default, is the behaviour so far: an edited generated file is refused, and so is an edited
+  file no generator emits any more. `overwrite` replaces that generator's edited files with
+  fresh output and re-baselines their manifest records, and the orphan sweep deletes an
+  edited file no generator emits any more when every generator writing into its directory
+  overwrites. Each discarded file is named on its own line, and a file the manifest has no
+  record of is still refused. `verify --codegen` follows the setting: under `overwrite` an edit
+  is drift that `gen` fixes, and the remedy says so. Set it with `{ ...entityFile(), handEdits:
+  "overwrite" }` (TypeScript), a `{ name: entity, handEdits: overwrite }` entry in
+  `metaobjects.config.yaml` (Python), `new EntityGenerator().WithHandEdits(HandEdits.Overwrite)`
+  (C#) or `<handEdits>overwrite</handEdits>` on a `<generator>` (Java, Kotlin).
+  `--baseline=fresh` stays as the one-run form; `docs/features/cli.md` sets the two side by side.
 - **Python: `templates` in `metaobjects.config.yaml`.** The template directory was a flag
   only; `gen`, `verify --codegen` and `verify --templates` read the key, and a `--templates`
   that contradicts it is refused.
@@ -840,6 +874,61 @@ generator catalog and the Atlas evaluation are 1.2 work.
 
 ### Changed
 
+**References mean the same thing in YAML and JSON, in every port (ADR-0059).** Every source now
+keeps references as written, and one resolver per port binds them after the whole model has
+loaded, then rewrites each to its canonical spelling before the tree is frozen. So:
+
+- `::Name` and `..::Name` work in canonical JSON as well as YAML. `ERR_RELATIVE_REF_IN_CANONICAL`
+  is retired, and the conformance fixture that asserted it is removed.
+- A bare `extends` resolves in its own file's package, then at the root. It no longer binds an
+  object in another package (TypeScript, Python, C#; Java already refused it): qualify it.
+- A loaded model's reference values are canonical (`pkg::Name`, or `::Name` for a root-level
+  target from a package). Code that reads a reference attribute and compares it to an object's
+  short name must compare the target instead: `refTarget(node, attr)` (TypeScript) returns the
+  object the loader bound, and `lookupCanonical(root, value)` resolves a canonical value exactly
+  (a bare canonical `Name` is the root-level object). `MetaRoot.findObject` binds a qualified
+  value exactly, but a bare name still matches the first object of that short name in any
+  package, so do not pass it a reference value.
+- TypeScript `RenderContext.resolveValueObjectName` takes the field (`resolveValueObjectName(field)`)
+  and reads the value object its `@objectRef` is bound to; `fieldDeclaringPackage` is removed. An
+  ejected `entity`, `drizzle-schema`, `zod-validators`, `inferred-types` or `projection-decl`
+  template needs a resync.
+- The string payload resolvers kept for owned generator copies resolve a canonical value
+  exactly: Java `SpringNaming.resolveObjectRef` / `resolveValueObjectRef` and the generators'
+  `resolveValueObject`, Kotlin `KotlinGenUtil.resolveObjectRef` / `resolveValueObjectRef`, C#
+  `ValueObjectNames.ResolveValueObject` and `PayloadFieldTree.Build(root, name)`, and Python
+  `resolve_payload_vo`. `pkg::Name` is exact, and `::Name` or a bare `Name` is the root-level
+  object. The referrer-package argument is ignored. A bare name no longer binds an object in
+  the referrer's package, and C# no longer falls back to a short-name scan, so pass a qualified
+  value or read the bound target (`payloadTarget`, `PayloadShapeOf`, `bound_payload_vo`).
+- Two conformance gates run in every port: each fixture loads to the same model from JSON and
+  from YAML, and each `expected.json` loads and serializes back to itself.
+- TypeScript `referenceCandidatesFor` / `resolveRelationshipReference` and Python
+  `reference_candidates_for` / `resolve_relationship_reference` take the target object, not a
+  name: pass `refTarget(rel, "objectRef")` (`ref_target` in Python). The name form matched by
+  short name.
+
+**Java and Kotlin: codegen decides overwrites from the committed hash manifest (ADR-0060).**
+**Commit `.metaobjects/.gen-state/.hashes.json` in every module that runs the plugin.**
+`GeneratedFileWriter` records each file it writes (module-relative path to SHA-256), the same
+file as TypeScript, Python and C#. A file that still matches its record is
+overwritten; an edited one is refused by name with a warning, where 8.0.x overwrote it; a file
+with no record is adopted when it carries the `GENERATED` token and refused when it does not.
+The first run on an 8.0.x project adopts every generated file, deletes nothing and prints one
+notice. After a full run, a recorded file no generator emitted is deleted when untouched and
+refused when edited, and `mvn metaobjects:verify` reports it with the matching remedy. Two
+executions in one module share the manifest without touching each other's files: each entry
+names its owner (the generator's registry id and its output directory, not the Maven
+execution), a run deletes only its own generators' orphans and those of generators the module
+no longer configures, even in a shared output directory, and one file two generators
+emit with different content fails the goal; two modules have two. **New build-time check:**
+two executions that configure the same generator into the same `<outputDir>` (in the main
+build or any profile) now fail `generate` and `verify` before anything is written, naming
+both executions; give each its own `<outputDir>` or merge them into one execution. User templates, api-docs pages and the `META-INF/services` registration are not
+recorded, so they are never deleted. A refusal stays a warning on the JVM. To keep the 8.0.x
+outcome for output nobody edits, set `<handEdits>overwrite</handEdits>` on that `<generator>`.
+Migration: [jvm-codegen-hash-manifest.md](docs/features/migrations/jvm-codegen-hash-manifest.md).
+
 **One physical-naming setting, read by every port (ADR-0058).** **This changes generated column names in C#, Java, Kotlin's runtime and Python unless you add
 one line.** Column and table names that the metadata does not give (`@column`, `@table`,
 `@view`, a source's `name`) now come from one project setting, `naming` in
@@ -1270,6 +1359,99 @@ until you regenerate.
 
 ### Fixed
 
+- **References resolve the same way from every source (ADR-0059).**
+  - YAML `::Name` reaches the root-level object even when the package declares the same name. It
+    used to bind the local object silently.
+  - A bare `@of` after `@via` resolves in the package the `@via` reaches, from YAML too.
+  - In JSON, an inherited bare reference resolves in the package that declared it. It used to
+    fail with `ERR_UNRESOLVED_OBJECT_REF`.
+  - A file without `package` declares root-level objects whatever order the files load in.
+  - Canonical serialization of a model that spans packages loads back to the same model.
+  - C#: `extends` resolves in its own file's package, not the first file's.
+  - Java: `@through` follows the same reference rules as the other ports.
+- **YAML metadata loads to the same model as its JSON twin in three more cases.** The new YAML
+  twin check found three defects:
+  - C#: a YAML overlay was merged into its base as soon as the overlay's file was parsed,
+    because the YAML parser dropped the loader's "defer overlays" setting. Fields could land in a
+    different order from the JSON load, and an overlay parsed before its base failed with
+    `ERR_OVERLAY_NO_TARGET`. Overlays in YAML now merge after every file loads, as in JSON
+    (ADR-0055).
+  - Java: a non-string `default:` on a field (`default: false` on a `field.boolean`) failed with
+    `ERR_YAML_COERCION`.
+  - Java: a documentation attribute that takes a list (`aliases`, `seeAlso`) with more than one
+    entry failed with `ERR_YAML_COERCION`.
+- **TypeScript: generated code reads the target a reference names, never the reference
+  string.** A stored procedure whose `@parameterRef` was written fully qualified (`pkg::Args`)
+  got a wrapper with no `args` parameter, because the generator looked the value object up by
+  short name. An output-format spec's `rootName` (used as an XML element name) was the
+  `@responseRef` string; it is now the value object's name, as `extract()` already used. The
+  Mermaid entity diagram names a reference target by its entity name.
+- **C#, Java, Kotlin and Python: codegen and the runtime find a reference's target by the object
+  the loader bound, not by its short name.** Two objects with the same name in different packages
+  could bind the wrong one in M:N navigation (Spring repositories, OMDB, Exposed, the Python
+  runtime and route codegen), in the PlantUML diagram and in extract and render helpers. Java: a
+  field that an overlay adds from another file resolves a bare `extends` in that file's own
+  package, as the other ports do.
+- **A `@via` or `@spine` hop inherited from another package reaches the object its reference
+  names, in every port (ADR-0059).** The loader and the report shape resolved an inherited
+  hop's `@objectRef` or `@references` in the package of the entity being walked. A hop that
+  `base::Order` declares onto a bare `Customer` bound `app::Customer` when walked from
+  `app::BigOrder`, so the dimension was refused or its `@of` read the wrong entity. It now
+  resolves in the package of the node that declares the hop. TypeScript's view lowering and
+  Cube export walk hops the same way.
+- **Codegen and the runtime never bind a reference by short name, and never resolve an
+  inherited reference again in the inheritor's package (ADR-0059 Decision 7).** A root-level
+  declarer writes a root target bare. Inherited into package `acme` while `acme::Name` exists,
+  a consumer that resolved it again from `acme` bound `acme::Name`, and a consumer that matched
+  by short name bound whichever same-named object loaded first. Every consumer now reads the
+  target the loader bound:
+  - TypeScript: the M:N traversal route, the Drizzle `relations()` block and FK
+    `.references()`, reverse finders, the TanStack M:N hook, the M:N derivation, `meta
+    migrate`'s referential actions, the docs-site link graph, and the runtime's extract and
+    validators. A relation-map entry carries the bound `target` (and `junction`).
+  - Python: to-one relationship checks and `@via` inference compare bound targets, and the
+    M:N derivation and router codegen read them.
+  - C#: the M:N derivation and navigation, reverse finders, referential actions, the
+    validation passes and the payload lookups of the template generators.
+  - Java and Kotlin: the M:N derivation, Spring M:N support and repositories, OMDB's M:N
+    resolver, PlantUML, the template generators and the validation passes. Kotlin's generated
+    code also imports a cross-package or root-level M:N table and FK target; it used to
+    resolve to a same-named type in its own package.
+  - TypeScript, also: `meta migrate`'s flattened `@storage` columns and FK target table and
+    column, the template payload, response and trace-helper types, the render-helper and
+    `meta verify` payload field trees, the template docs page's payload and field links, the
+    API reference's payload shapes, a report's `@from` in the report docs and view lowering, a
+    collect-whole-object origin's value object and `@via` terminal in the view lowering, the
+    extractor and output-parser value objects, and the CLI deprecation lint's `@objectRef`,
+    `@references` and `@via` hops.
+  A new shared input, `fixtures/codegen-conformance/cross-package-binding/`, carries a decision
+  table every port's codegen test answers.
+- **A to-one relationship whose `@objectRef` does not resolve reports only the unresolved
+  reference, in every port.** Python, Java and C# also reported `ERR_INVALID_RELATIONSHIP` when
+  the relationship declared `@sourceRefField`, and C# matched the candidate references by short
+  name. Gated by `fixtures/conformance/error-relationship-one-unresolved-objectref-sourceref/`.
+  C# `ReferenceCandidatesFor` / `ResolveRelationshipReference` lose their name overloads; pass
+  the target object. Java `referenceCandidatesFor` / `resolveRelationshipReference` and Kotlin
+  `KotlinGenUtil.resolveObjectByShortOrFqn` keep their string forms, deprecated, so a generator
+  ejected before 1.1.0 still compiles. They now look the value up as an exact canonical
+  reference: a short name no longer matches an object in a package. Pass the target object, or
+  call `KotlinGenUtil.lookupCanonicalObject`.
+- **Python: the YAML twin gate fails on a JSON load that crashes.** It used to skip the fixture
+  as if its providers did not compose.
+- **`gen` deletes a file it wrote earlier and no longer generates, in every port.** Renaming a
+  value object (`Telemetry` to `TelemetryReading`), deleting an entity, or a release moving
+  api-docs pages to another package left the old files on disk. `verify --codegen` then
+  reported them as extra and said to regenerate, and regenerating removed nothing, so an agent
+  following the remedy looped. Now a full `gen` run deletes a file the committed manifest
+  records writing, that no generator emitted this run and that still hashes to what was
+  recorded, and drops its record. An edited such file is refused by name and stays recorded;
+  `verify --codegen` reports it as edited by hand and says to delete it rather than to
+  regenerate. A file the manifest does not record is never touched and is not drift. A run
+  narrowed by `--generators`, an entity filter or a partial `--target`, and
+  `--baseline=adopt`, delete nothing. The rule, written once for every port, is in
+  `docs/features/own-your-codegen.md` ("Files that are no longer generated"). TypeScript's
+  `orphanPolicy: { keep: true }` opts a generator's namespace out; the `requirement-tests`
+  generator's `reconcileOrphans: false` now does exactly that.
 - **SQLite and D1: a backtick-quoted CHECK constraint name is read.** Introspection read
   `CONSTRAINT "name"` and a bare name but not `` CONSTRAINT `name` `` (the quoting Drizzle-written
   migrations use) or `[name]`, so the stored check had an empty name, and `meta verify --db` and

@@ -21,6 +21,8 @@ import {
   type MetaObject,
   type MetaRoot,
   type ReportField,
+  REPORTING_ATTR_VIA,
+  OBJECT_REPORT_ATTR_SPINE,
 } from "@metaobjectsdev/metadata";
 import { columnNameFromField } from "../naming.js";
 import { hasWritableRdbSource } from "../source-detect.js";
@@ -36,6 +38,7 @@ import {
   type Path,
 } from "./extract-view-spec.js";
 import {
+  authoredText,
   dimensionOfField,
   ratioOperand,
   resolveAggregate,
@@ -124,7 +127,8 @@ function spinePathOf(
   root: MetaRoot,
   ctx: ExtractContext,
 ): Path {
-  const spine = reportSpine(report) ?? "";
+  // Refusals quote @spine as the author wrote it (ADR-0059).
+  const spine = authoredText(report, OBJECT_REPORT_ATTR_SPINE) ?? reportSpine(report) ?? "";
   const where = `report '${report.name}':`;
   const path = walkViaPath([from.name, ...hops].join("."), root, packageOf(from), ctx);
   if (path.length !== hops.length) {
@@ -200,7 +204,7 @@ export function extractReportSpec(report: MetaObject, root: MetaRoot, ctx: Extra
   // Rule R9, which the loader enforces: under @spine every listed dimension is reached through it.
   // A tree built past the loader is refused here rather than given a join the view cannot place.
   const notThroughSpine = (where: string, why: string): Error =>
-    new Error(`${where} is not reached through @spine '${reportSpine(report) ?? ""}': ${why}.`);
+    new Error(`${where} is not reached through @spine '${authoredText(report, OBJECT_REPORT_ATTR_SPINE) ?? reportSpine(report) ?? ""}': ${why}.`);
 
   // One path per LISTED dimension that has @via (Table F); an unlisted dimension adds no join.
   const pathOf = new Map<ReportField, Path>();
@@ -216,7 +220,7 @@ export function extractReportSpec(report: MetaObject, root: MetaRoot, ctx: Extra
       if (spineHops !== undefined && !spineHops.every((h, i) => hops[i] === h)) {
         throw notThroughSpine(
           where,
-          `its @via '${via}' does not begin with the spine's hops, so the view has no join to place it on`,
+          `its @via '${authoredText(dim, REPORTING_ATTR_VIA) ?? via}' does not begin with the spine's hops, so the view has no join to place it on`,
         );
       }
     };

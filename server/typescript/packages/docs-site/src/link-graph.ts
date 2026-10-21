@@ -1,7 +1,10 @@
 import type { MetaData, MetaObject, MetaRelationship, MetaRoot } from "@metaobjectsdev/metadata";
 import {
-  deriveM2MFields, reportFrom, resolveRelationshipReference, stripPackage,
+  deriveM2MFields, resolveRelationshipReference,
   OBJECT_REPORT_ATTR_FROM, OBJECT_SUBTYPE_REPORT, TYPE_OBJECT,
+  RELATIONSHIP_ATTR_OBJECT_REF, RELATIONSHIP_ATTR_THROUGH, IDENTITY_REFERENCE_ATTR_REFERENCES,
+  FIELD_ATTR_OBJECT_REF, ORIGIN_PASSTHROUGH_ATTR_FROM, TEMPLATE_ATTR_PAYLOAD_REF, TEMPLATE_ATTR_RESPONSE_REF,
+  refTarget,
 } from "@metaobjectsdev/metadata";
 import { type LoadedModel, treeOf } from "./load.js";
 
@@ -54,16 +57,20 @@ export class LinkGraph {
       (this._from.get(r.from) ?? this._from.set(r.from, []).get(r.from)!).push(r);
       (this._to.get(r.to) ?? this._to.set(r.to, []).get(r.to)!).push(r);
     };
-    const resolveRef = (raw: string, ctxPkg: string): string | undefined => {
-      const cand = raw.includes("::") ? raw : `${ctxPkg}::${raw}`;
-      return this._nodes.has(cand) ? cand : (this._nodes.has(raw) ? raw : undefined);
+    // ADR-0059 R7 — an edge points at the object the reference attribute is bound to,
+    // resolved where the attribute was declared, never re-resolved in an inheritor's package.
+    const bound = (node: MetaData, attr: string): string | undefined => {
+      const target = refTarget(node, attr);
+      if (target === undefined) return undefined;
+      const key = fqnOf(target);
+      return this._nodes.has(key) ? key : undefined;
     };
     // M:N through-junction edge. Derives the junction FK fields via the metadata
     // SSOT (deriveM2MFields) — hetero, directed (@sourceRefField), or symmetric
     // (@symmetric). On a derivation failure (ambiguous self-join) the edge is
     // SKIPPED — generation never fails.
-    const addM2mEdge = (from: string, to: string, rel: MetaRelationship, obj: MetaObject, ctxPkg: string, onDelete: string | undefined, subtype: string | undefined): void => {
-      const through = rel.through ? (resolveRef(rel.through, ctxPkg) ?? rel.through) : undefined;
+    const addM2mEdge = (from: string, to: string, rel: MetaRelationship, obj: MetaObject, onDelete: string | undefined, subtype: string | undefined): void => {
+      const through = rel.through ? (bound(rel, RELATIONSHIP_ATTR_THROUGH) ?? rel.through) : undefined;
       let sourceJoinField: string | undefined, targetJoinField: string | undefined;
       try {
         const f = deriveM2MFields(rel, obj, model.root);
@@ -78,11 +85,8 @@ export class LinkGraph {
       const fqn = fqnOf(dn.node);
       if (dn.kind === "object") {
         for (const f of dn.node.childrenOfType("field")) {
-          const ref = f.attr("objectRef");
-          if (typeof ref === "string") {
-            const to = resolveRef(ref, dn.pkg);
-            if (to) addRef({ from: fqn, to, via: f.name, kind: "field" });
-          }
+          const to = bound(f, FIELD_ATTR_OBJECT_REF);
+          if (to) addRef({ from: fqn, to, via: f.name, kind: "field" });
         }
         // dn.node is typed MetaData; the enclosing dn.kind === "object" guard
         // guarantees it is a MetaObject at runtime. The `unknown` bridge is needed
@@ -94,15 +98,13 @@ export class LinkGraph {
         // reference whose (target, first-field) a belongs-to relationship covered.
         const coveredFk = new Set<string>();
         for (const rel of obj.relationships()) {
-          const objectRef = rel.objectRef;
-          if (typeof objectRef !== "string") continue;
-          const to = resolveRef(objectRef, dn.pkg);
+          const to = bound(rel, RELATIONSHIP_ATTR_OBJECT_REF);
           if (!to) continue;
           const cardinality = rel.cardinality === "many" ? "many" : rel.cardinality === "one" ? "one" : undefined;
           const onDelete = rel.onDelete;
           const subtype = rel.subType;
           if (cardinality === "many" && rel.through !== undefined) {
-            addM2mEdge(fqn, to, rel, obj, dn.pkg, onDelete, subtype);   // Task 3 helper
+            addM2mEdge(fqn, to, rel, obj, onDelete, subtype);   // Task 3 helper
             continue;
           }
           // belongs-to (1:N, one) — resolve the identity.reference this relationship
@@ -115,43 +117,37 @@ export class LinkGraph {
           // uses; ambiguous cases resolve to undefined and simply leave every candidate
           // reference to draw its own "fk" edge, which is the safe (extra-info, not
           // missing-edge) outcome for a docs graph.
-          const target = stripPackage(objectRef);
-          const match = resolveRelationshipReference(obj, rel.name, target, rel.sourceRefField);
+          const match = resolveRelationshipReference(
+            obj, rel.name, refTarget(rel, RELATIONSHIP_ATTR_OBJECT_REF), rel.sourceRefField,
+          );
           const fkField = match?.fields?.[0];
           if (fkField) coveredFk.add(`${to}::${fkField}`);
           addRef({ from: fqn, to, via: rel.name, kind: "relationship", cardinality, onDelete, subtype });
         }
         for (const id of dn.node.childrenOfType("identity")) {
           if (id.subType !== "reference") continue;
-          const ref = id.attr("references");
-          if (typeof ref === "string") {
-            const to = resolveRef(ref, dn.pkg);
-            if (to) {
-              const fieldsValue = id.attr("fields") ?? id.name;
-              const firstField = Array.isArray(fieldsValue) ? String(fieldsValue[0] ?? "") : String(fieldsValue);
-              if (coveredFk.has(`${to}::${firstField}`)) continue;   // superseded by a relationship edge
-              const via = Array.isArray(fieldsValue) ? fieldsValue.join(", ") : String(fieldsValue);
-              addRef({ from: fqn, to, via, kind: "fk" });
-            }
-          }
+          const to = bound(id, IDENTITY_REFERENCE_ATTR_REFERENCES);
+          if (!to) continue;
+          const fieldsValue = id.attr("fields") ?? id.name;
+          const firstField = Array.isArray(fieldsValue) ? String(fieldsValue[0] ?? "") : String(fieldsValue);
+          if (coveredFk.has(`${to}::${firstField}`)) continue;   // superseded by a relationship edge
+          const via = Array.isArray(fieldsValue) ? fieldsValue.join(", ") : String(fieldsValue);
+          addRef({ from: fqn, to, via, kind: "fk" });
         }
         for (const f of dn.node.childrenOfType("field")) {
           for (const org of f.childrenOfType("origin")) {
             const from = String(org.attr("from") ?? ""), via = String(org.attr("via") ?? "");
             (this._origins.get(fqn) ?? this._origins.set(fqn, []).get(fqn)!).push({ field: f.name, from, via });
             // connect a projection to its source object so it is not orphaned on diagrams:
-            // `from` is "pkg::Entity.field" — strip the trailing ".field" to get the source object ref.
-            const dot = from.lastIndexOf(".");
-            const srcRef = dot > 0 ? from.slice(0, dot) : "";
-            const to = srcRef ? resolveRef(srcRef, dn.pkg) : undefined;
+            // `from` is "pkg::Entity.field"; its bound target is the source object.
+            const to = bound(org, ORIGIN_PASSTHROUGH_ATTR_FROM);
             if (to && to !== fqn) addRef({ from: fqn, to, via: `${f.name} (origin)`, kind: "origin" });
           }
         }
         // FR-044: a report reads from its @from entity. The edge is what puts the report on
         // that entity's page and diagrams, and keeps a report from reading as an orphan.
         if (dn.node.type === TYPE_OBJECT && dn.node.subType === OBJECT_SUBTYPE_REPORT) {
-          const from = reportFrom(dn.node);
-          const to = from !== undefined ? resolveRef(from, dn.pkg) : undefined;
+          const to = bound(dn.node, OBJECT_REPORT_ATTR_FROM);
           if (to) addRef({ from: fqn, to, via: OBJECT_REPORT_ATTR_FROM, kind: "report" });
         }
         const sup = dn.node.superResolved;
@@ -161,18 +157,12 @@ export class LinkGraph {
           (this._extBy.get(supFqn) ?? this._extBy.set(supFqn, []).get(supFqn)!).push(dn);
         }
       } else {
-        const p = dn.node.attr("payloadRef");
-        if (typeof p === "string") {
-          const to = resolveRef(p, dn.pkg);
-          if (to) addRef({ from: fqn, to, via: "payloadRef", kind: "payload" });
-        }
+        const toPayload = bound(dn.node, TEMPLATE_ATTR_PAYLOAD_REF);
+        if (toPayload) addRef({ from: fqn, to: toPayload, via: "payloadRef", kind: "payload" });
         // A prompt's @responseRef is the response value-object it PRODUCES — the
         // missing hop of the data-flow pipeline (prompt → response VO → entity).
-        const r = dn.node.attr("responseRef");
-        if (typeof r === "string") {
-          const to = resolveRef(r, dn.pkg);
-          if (to) addRef({ from: fqn, to, via: "responseRef", kind: "response" });
-        }
+        const toResponse = bound(dn.node, TEMPLATE_ATTR_RESPONSE_REF);
+        if (toResponse) addRef({ from: fqn, to: toResponse, via: "responseRef", kind: "response" });
       }
     }
   }

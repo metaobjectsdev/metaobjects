@@ -65,6 +65,27 @@ public static class CodegenDrift
         public IReadOnlyList<string> Lines { get; init; } = [];
         /// <summary>Set when the gate could not run (e.g. the regen failed).</summary>
         public string? Error { get; init; }
+        /// <summary>The subset of <see cref="DriftedFiles"/> that no generator emits any more AND that
+        /// was edited since gen wrote it, sorted. <c>dotnet meta gen</c> deletes an untouched orphan but
+        /// refuses one of these, so "regenerate" would loop: the remedy is to delete the file.</summary>
+        public IReadOnlyList<string> EditedOrphans { get; init; } = [];
+    }
+
+    /// <summary>
+    /// What to do about a drifted <paramref name="result"/>: "regenerate" when regenerating fixes
+    /// at least one file, and, for orphans edited by hand, that gen will not delete them. Every
+    /// drift report prints these, so the advice cannot loop: gen deletes an untouched orphan and
+    /// refuses an edited one.
+    /// </summary>
+    public static IReadOnlyList<string> Remedy(Result result)
+    {
+        var lines = new List<string>();
+        if (result.DriftedFiles.Count > result.EditedOrphans.Count)
+            lines.Add("Run 'dotnet meta gen' to regenerate, then commit the result.");
+        if (result.EditedOrphans.Count > 0)
+            lines.Add("For the file(s) above that no generator emits any more and that were edited by hand, " +
+                "'dotnet meta gen' will NOT delete them. Delete each one, or move your edits into a file of your own first.");
+        return lines;
     }
 
     /// <summary>
@@ -104,18 +125,31 @@ public static class CodegenDrift
             // @generated-marker skip), so the temp tree is the canonical "what gen would
             // produce right now".
             var temps = roots.Select((_, i) => Path.Combine(tempRoot, i.ToString())).ToList();
-            var tempConfig = config with { OutDir = temps[0] };
-            CodegenRunner.Run(tempConfig, root, generators,
+            // No manifest and no sweep for the throwaway regen: it records nothing and deletes
+            // nothing, and a fresh temp tree writes every file either way.
+            var tempConfig = config with { OutDir = temps[0], GenStateDir = null, ProjectRoot = null, SweepOrphans = false };
+            var regen = CodegenRunner.Run(tempConfig, root, generators,
                 g => temps[roots.FindIndex(r => r.Committed == Path.GetFullPath(realRootFor(g)))]);
+            var overwriteDirs = CodegenRunner.OverwriteDirs(generators, realRootFor, config.OutDir);
 
             var drifted = new SortedSet<string>(StringComparer.Ordinal);
             var lines = new List<string>();
+            var editedOrphans = new SortedSet<string>(StringComparer.Ordinal);
+            // The manifest gen wrote, when the caller names the project. With write records, an
+            // extra file is convicted only when gen recorded writing it, the jurisdiction gen's
+            // orphan sweep deletes in; with none, a stale file cannot be told from a stranger's,
+            // and every extra file is reported as before.
+            var manifest = config.GenStateDir is { } gs && config.ProjectRoot is not null
+                ? HashManifest.Load(gs) : null;
+            var orphans = manifest is { Count: > 0 } ? new OrphanContext(manifest, config.ProjectRoot!) : null;
+            var handEdits = new HandEditsContext(regen.OverwritePaths, overwriteDirs);
             for (var i = 0; i < roots.Count; i++)
             {
                 // A directory nested in this one is another entry's, and is compared as its own.
                 var nested = roots.Where((r, j) => j != i && IsUnder(r.Committed, roots[i].Committed))
                     .Select(r => r.Committed).ToList();
-                Diff(roots[i].Committed, nested, temps[i], roots[i].Label, !narrowed, drifted, lines);
+                Diff(roots[i].Committed, nested, temps[i], roots[i].Label, !narrowed, orphans, handEdits,
+                    drifted, lines, editedOrphans);
             }
 
             return new Result
@@ -123,6 +157,7 @@ public static class CodegenDrift
                 Clean = drifted.Count == 0,
                 DriftedFiles = drifted.ToList(),
                 Lines = lines,
+                EditedOrphans = editedOrphans.ToList(),
             };
         }
         finally
@@ -137,7 +172,8 @@ public static class CodegenDrift
     /// <paramref name="reportExtra"/>.</summary>
     private static void Diff(
         string committed, IReadOnlyList<string> nested, string fresh, string label, bool reportExtra,
-        SortedSet<string> drifted, List<string> lines)
+        OrphanContext? orphans, HandEditsContext handEdits,
+        SortedSet<string> drifted, List<string> lines, SortedSet<string> editedOrphans)
     {
         var committedFiles = ListFiles(committed);
         committedFiles.RemoveWhere(rel => nested.Any(n => IsUnder(Path.Combine(committed, rel), n)));
@@ -150,8 +186,36 @@ public static class CodegenDrift
             if (inCommitted && !inFresh)
             {
                 if (!reportExtra) continue;
-                drifted.Add(shown);
-                lines.Add($"- {shown} (committed but a fresh regen would not emit it)");
+                if (orphans is null)
+                {
+                    drifted.Add(shown);
+                    lines.Add($"- {shown} (committed but a fresh regen would not emit it)");
+                    continue;
+                }
+                // Asked of the same evidence gen's sweep asks (OrphanSweep.Classify), so gen
+                // removes exactly what is reported here as removable.
+                var full = Path.Combine(committed, rel);
+                var dirRel = rel.Replace('/', Path.DirectorySeparatorChar);
+                switch (OrphanSweep.Classify(orphans.Hashes, orphans.ProjectRoot, full, dirRel))
+                {
+                    case OrphanSweep.Verdict.Stranger:
+                        continue; // never ours: gen never touches it, so neither does the gate
+                    case OrphanSweep.Verdict.Pristine:
+                        drifted.Add(shown);
+                        lines.Add($"- {shown} (committed but a fresh regen would not emit it; 'dotnet meta gen' deletes it)");
+                        break;
+                    case OrphanSweep.Verdict.Edited when handEdits.OverwriteDirs.Contains(Path.GetFullPath(committed)):
+                        drifted.Add(shown);
+                        lines.Add($"- {shown} (no generator emits it any more, and it was edited by hand; " +
+                            "handEdits is Overwrite, so 'dotnet meta gen' deletes it)");
+                        break;
+                    default:
+                        drifted.Add(shown);
+                        editedOrphans.Add(shown);
+                        lines.Add($"- {shown} (no generator emits it any more, and it was edited by hand: " +
+                            "delete it, or move your edits into a file of your own and then delete it)");
+                        break;
+                }
             }
             else if (!inCommitted && inFresh)
             {
@@ -165,11 +229,26 @@ public static class CodegenDrift
                 if (!string.Equals(a, b, StringComparison.Ordinal))
                 {
                     drifted.Add(shown);
-                    lines.Add($"~ {shown} (committed content differs from a fresh regen)");
+                    var full = Path.Combine(committed, rel);
+                    var edited = orphans is not null
+                        && handEdits.OverwritePaths.Contains(Path.GetFullPath(Path.Combine(fresh, rel)))
+                        && OrphanSweep.Classify(orphans.Hashes, orphans.ProjectRoot, full,
+                            rel.Replace('/', Path.DirectorySeparatorChar)) == OrphanSweep.Verdict.Edited;
+                    lines.Add(edited
+                        ? $"~ {shown} (edited by hand; its generator sets handEdits: Overwrite, so 'dotnet meta gen' " +
+                          "replaces it with fresh output)"
+                        : $"~ {shown} (committed content differs from a fresh regen)");
                 }
             }
         }
     }
+
+    /// <summary>The manifest and project an extra file is classified against.</summary>
+    private sealed record OrphanContext(IReadOnlyDictionary<string, string> Hashes, string ProjectRoot);
+
+    /// <summary>The regen's <see cref="HandEdits.Overwrite"/> paths (temp tree) and the committed
+    /// directories whose edited orphans gen deletes.</summary>
+    private sealed record HandEditsContext(IReadOnlySet<string> OverwritePaths, IReadOnlySet<string> OverwriteDirs);
 
     /// <summary>True when <paramref name="path"/> lies inside the directory <paramref name="dir"/>.</summary>
     private static bool IsUnder(string path, string dir) =>

@@ -27,7 +27,7 @@ import {
   TEMPLATE_ATTR_FORMAT,
   RESPONSE_FORMAT_XML,
   TEMPLATE_ATTR_TEXT_REF,
-  resolveObjectRef,
+  refTarget,
 } from "@metaobjectsdev/metadata";
 import type { MetaData, MetaObject } from "@metaobjectsdev/metadata";
 import { libraryManifests } from "@metaobjectsdev/metadata/library";
@@ -126,11 +126,10 @@ export function renderTraceHelper(entity: MetaObject, ctx: GenContext, outPath: 
   const entityName = entity.name;
   const fnName = `record${toPascalCase(entityName)}`;
 
-  // ADR-0056: the request and response types are the value objects' OWN interfaces. ADR-0042:
-  // a bare ref resolves in the prompt's package first.
-  const promptPkg = prompt.package ?? prompt.fileDefaultPackage ?? "";
-  const requestVo = resolveObjectRef(ctx.loadedRoot, payloadRef, promptPkg).node;
-  const responseVo = resolveObjectRef(ctx.loadedRoot, responseRef, promptPkg).node;
+  // ADR-0056: the request and response types are the value objects' OWN interfaces. ADR-0059
+  // R7: each is the value object the loader bound for the prompt's ref.
+  const requestVo = refTarget(prompt, TEMPLATE_ATTR_PAYLOAD_REF);
+  const responseVo = refTarget(prompt, TEMPLATE_ATTR_RESPONSE_REF);
   if (requestVo === undefined || responseVo === undefined) return undefined;
   const extStyle = ctx.config.extStyle ?? "js";
   const requestImport = valueObjectImport(ctx.renderContext, requestVo, outPath, extStyle);

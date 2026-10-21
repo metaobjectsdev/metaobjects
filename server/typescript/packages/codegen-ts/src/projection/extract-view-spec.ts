@@ -5,6 +5,9 @@ import {
   TYPE_ORIGIN,
   TYPE_RELATIONSHIP,
   isMetaObject,
+  TYPE_OBJECT,
+  lookupCanonical,
+  splitChildTail,
   isReadOnlySource,
   SOURCE_ROLE_PRIMARY,
   SOURCE_ATTR_SCHEMA,
@@ -53,6 +56,7 @@ import {
   findReferencesBetween,
   resolveRelationshipReference,
   resolveObjectRef,
+  refTarget,
   type AggregateFunction,
   type ReferenceLookup,
 } from "@metaobjectsdev/metadata";
@@ -353,19 +357,25 @@ function findReferenceHop(obj: MetaData, name: string): MetaData | undefined {
 function resolveHop(
   obj: MetaData,
   name: string,
-): { hop: MetaData; targetName: string; cardinality: "one" | "many" } | undefined {
+): { hop: MetaData; target: MetaObject | undefined; cardinality: "one" | "many" } | undefined {
+  // ADR-0059 R3/R7 — a hop's target is the object its reference attribute binds to, resolved
+  // in the package of the node that declares that attribute, never the walked entity's.
   const rel = findRelationship(obj, name);
   if (rel) {
-    const targetName = rel.attr(RELATIONSHIP_ATTR_OBJECT_REF) as string | undefined;
-    if (!targetName) return undefined;
+    if (!rel.attr(RELATIONSHIP_ATTR_OBJECT_REF)) return undefined;
+    const target = refTarget(rel, RELATIONSHIP_ATTR_OBJECT_REF);
     const cardAttr = rel.attr(RELATIONSHIP_ATTR_CARDINALITY) as string | undefined;
-    return { hop: rel, targetName, cardinality: cardAttr === CARDINALITY_ONE ? "one" : "many" };
+    return {
+      hop: rel,
+      target: isMetaObject(target) ? target : undefined,
+      cardinality: cardAttr === CARDINALITY_ONE ? "one" : "many",
+    };
   }
   const ref = findReferenceHop(obj, name);
   if (ref) {
-    const targetName = ref.attr(IDENTITY_REFERENCE_ATTR_REFERENCES) as string | undefined;
-    if (!targetName) return undefined;
-    return { hop: ref, targetName, cardinality: "one" };
+    if (!ref.attr(IDENTITY_REFERENCE_ATTR_REFERENCES)) return undefined;
+    const target = refTarget(ref, IDENTITY_REFERENCE_ATTR_REFERENCES);
+    return { hop: ref, target: isMetaObject(target) ? target : undefined, cardinality: "one" };
   }
   return undefined;
 }
@@ -400,7 +410,7 @@ function resolveHopReference(
   }
   // ADR-0039: resolving — @sourceRefField may be inherited via extends.
   const sourceRefField = hop.attr(RELATIONSHIP_ATTR_SOURCE_REF_FIELD) as string | undefined;
-  const matching = resolveRelationshipReference(holder, hopName, target.name, sourceRefField);
+  const matching = resolveRelationshipReference(holder, hopName, target, sourceRefField);
   if (matching) {
     return { holder, other: target, referenceIdentity: matching };
   }
@@ -416,7 +426,7 @@ function resolveHopReference(
 export function hopReferenceIdentity(holder: MetaObject, hopName: string, root: MetaRoot): MetaReferenceIdentity | undefined {
   const resolved = resolveHop(holder, hopName);
   if (!resolved) return undefined;
-  const target = resolveEntityRef(root, resolved.targetName, packageOf(holder));
+  const target = resolved.target;
   if (!target) return undefined;
   const ref = resolveHopReference(holder, resolved.hop, hopName, target);
   if (Array.isArray(ref)) return ref.length === 1 ? ref[0]!.referenceIdentity : undefined;
@@ -544,15 +554,12 @@ export function projectionViewRole(projection: MetaObject): string | undefined {
 export function refNamedOwner(node: MetaData, root: MetaRoot): MetaObject | undefined {
   const ref = (node as { superRef?: string }).superRef;
   if (ref === undefined) return undefined;
-  // The entity portion is everything before the FIRST "." (packages use "::", the
-  // member path uses ".").
-  const dot = ref.indexOf(".");
-  if (dot <= 0) return undefined;
-  const entityRef = ref.slice(0, dot);
-  // An FQN `extends` binds the EXACT package's entity (#244); a bare ref keeps the prior
-  // findObject behavior (a projection extends its base by bare name in the same package).
-  if (entityRef.includes("::")) return resolveEntityRef(root, entityRef, "");
-  return root.findObject(entityRef) ?? undefined;
+  // The loader has rewritten `extends` to its canonical spelling (ADR-0059 R5), so the
+  // owner is looked up exactly, with no referrer and no short-name match (R7).
+  const { owner, tail } = splitChildTail(ref);
+  if (tail === "") return undefined;
+  const found = lookupCanonical(root, owner, { ownerType: TYPE_OBJECT });
+  return isMetaObject(found) ? found : undefined;
 }
 
 /** Effective package of an object, taken from its resolution key ("<pkg>::<Name>"). */
@@ -687,26 +694,24 @@ function primaryKeyColumn(entity: MetaObject, ctx: ExtractContext): string | und
 }
 
 /**
- * Walk a `@via` dotted path to its terminal (related) entity name. any/all carry no
+ * Walk a `@via` dotted path to its terminal (related) entity. any/all carry no
  * `@of` to name the aggregated entity, so it is derived from the last `@via` hop.
  * Returns undefined if any hop fails to resolve (a prior loader error already fired).
  */
-function viaTerminalEntity(via: string, root: MetaRoot, referrerPkg: string): string | undefined {
+function viaTerminalEntity(via: string, root: MetaRoot, referrerPkg: string): MetaObject | undefined {
   const segments = via.split(".");
   const rawEntity = segments[0];
   if (!rawEntity) return undefined;
   let currentObj = resolveEntityRef(root, rawEntity, referrerPkg);
   if (!currentObj) return undefined;
-  let terminal = currentObj.resolutionKey();
   for (const relName of segments.slice(1)) {
     const resolved = resolveHop(currentObj, relName);
     if (!resolved) return undefined;
-    const target = resolveEntityRef(root, resolved.targetName, packageOf(currentObj));
+    const target = resolved.target;
     if (!target) return undefined;
     currentObj = target;
-    terminal = target.resolutionKey();
   }
-  return terminal;
+  return currentObj;
 }
 
 /**
@@ -855,11 +860,7 @@ export function walkViaPath(via: string, root: MetaRoot, referrerPkg: string, ct
     // a traversed relationship/reference may inherit its target via extends.
     const resolved = resolveHop(currentObj, relName);
     if (!resolved) break;
-    const { hop, targetName, cardinality } = resolved;
-    // @objectRef/@references may be package-qualified ("pkg::Entity"); resolve it
-    // package-aware relative to the hop's source entity (the loader qualifies a
-    // same-package ref even when authored bare), so the join binds the exact target.
-    const target = resolveEntityRef(root, targetName, packageOf(currentObj));
+    const { hop, target, cardinality } = resolved;
     if (!target) break;
 
     // #368: two identity.reference declarations onto the same target are legal
@@ -1153,11 +1154,10 @@ function buildSelectSpec(
         // hop, and @filter is the (required) quantified predicate.
         const via = origin.ownAttr(ORIGIN_AGGREGATE_ATTR_VIA) as string | undefined;
         if (!via) continue;
-        const relatedName = viaTerminalEntity(via, root, projPkg);
-        if (!relatedName) continue;
-        const relatedEntity = resolveEntityRef(root, relatedName, projPkg);
-        const sourceAlias = findAliasInTree(joinTree, relatedName);
-        if (!relatedEntity || sourceAlias === undefined) continue;
+        const relatedEntity = viaTerminalEntity(via, root, projPkg);
+        if (!relatedEntity) continue;
+        const sourceAlias = findAliasInTree(joinTree, relatedEntity.resolutionKey());
+        if (sourceAlias === undefined) continue;
         const joinedPk = primaryKeyColumn(relatedEntity, ctx);
         if (joinedPk === undefined) continue;
         const pred = filterAttr !== undefined
@@ -1191,19 +1191,15 @@ function buildSelectSpec(
         // caller that reached codegen without loading, never a silent-drop path.
         const via = origin.ownAttr(ORIGIN_AGGREGATE_ATTR_VIA) as string | undefined;
         if (!via) continue;
-        // ADR-0039: resolving — @objectRef may be inherited via extends.
-        const objectRef = field.attr(FIELD_ATTR_OBJECT_REF) as string | undefined;
-        if (!objectRef) continue;
-        const relatedName = viaTerminalEntity(via, root, projPkg);
-        if (!relatedName) continue;
-        const relatedEntity = resolveEntityRef(root, relatedName, projPkg);
+        const relatedEntity = viaTerminalEntity(via, root, projPkg);
         if (!relatedEntity) continue;
         const sourceAlias = findAliasInTree(joinTree, relatedEntity.resolutionKey());
         if (sourceAlias === undefined) continue;
         const joinedPk = primaryKeyColumn(relatedEntity, ctx);
         if (joinedPk === undefined) continue;
-        // ADR-0042 — a bare @objectRef resolves in the projection's package.
-        const vo = resolveObjectRef(root, objectRef, projPkg).node;
+        // ADR-0059 R7 — the VO the loader bound for @objectRef, resolved where it was declared.
+        // ADR-0039: resolving — @objectRef may be inherited via extends.
+        const vo = refTarget(field, FIELD_ATTR_OBJECT_REF);
         if (!vo) continue;
         // ADR-0039: resolving — a value object may inherit members via extends, and the
         // terminal entity may inherit fields. The VO's member list IS the exposure: a

@@ -586,8 +586,9 @@ Each spec entry derives the neutral template data dict for its scope
 `--out`, or under its own `OutDir` when it sets one, and are gated byte-identical against the
 shared `fixtures/template-codegen-conformance/` corpus. A `target` field is rejected (C# has no
 output-target concept); a missing spec file, a bad template ref or a wrong `TemplateRoot`
-surfaces as a clean error, not a stack trace. For output to be regenerable, the **template**
-must emit the `@generated` header itself (the write path refuses to overwrite files lacking it).
+surfaces as a clean error, not a stack trace. The write path decides from the committed hash
+manifest, not the `@generated` header, so the template need not emit one (see
+[codegen-concepts](../features/codegen-concepts.md#7-safety-never-clobbering-hand-edits)).
 
 ## Angular 18 frontend
 

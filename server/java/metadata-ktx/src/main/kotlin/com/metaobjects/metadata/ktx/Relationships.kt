@@ -1,6 +1,5 @@
 package com.metaobjects.metadata.ktx
 
-import com.metaobjects.MetaDataNotFoundException
 import com.metaobjects.`object`.MetaObject
 import com.metaobjects.relationship.MetaRelationship
 
@@ -24,21 +23,8 @@ val MetaRelationship.cardinalityType: Cardinality?
     }
 
 /**
- * Resolve `@objectRef` against this relationship's owning loader; null if absent or unresolved.
- *
- * Tries the value as an FQN first ([com.metaobjects.loader.MetaDataLoader.getMetaObjectByName]);
- * falls back to a short-name scan of the loader's root, mirroring what the validation phase
- * does for origin `@via` path resolution (origin/relationship attrs accept bare entity names).
+ * The object `@objectRef` names; null if absent or unresolved. Reads the target the loader
+ * bound once (ADR-0059 R7); a short name never matches a packaged object.
  */
 val MetaRelationship.targetObjectOrNull: MetaObject?
-    get() {
-        val ref = objectRef ?: return null
-        val loader = loader ?: return null
-        try {
-            return loader.getMetaObjectByName(ref)
-        } catch (_: MetaDataNotFoundException) {
-            // fall through to short-name scan
-        }
-        return loader.root.getChildren(MetaObject::class.java, false)
-            .firstOrNull { it.shortName == ref || it.name == ref }
-    }
+    get() = com.metaobjects.loader.References.refTarget(this, "objectRef")

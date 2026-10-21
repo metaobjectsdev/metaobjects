@@ -170,7 +170,7 @@ describe("requirement stub deletion integrity, through runGen", () => {
       abs(DROP_STUB),
     ]);
     // A removal is not a problem — it should not masquerade as one.
-    expect(result.warnings.filter((w) => w.includes("no longer produced"))).toEqual([]);
+    expect(result.warnings.filter((w) => w.includes("no longer generated"))).toEqual([]);
   });
 
   test("REFUSES to delete a stub whose body was filled in, and says why", async () => {
@@ -189,7 +189,7 @@ describe("requirement stub deletion integrity, through runGen", () => {
     expect(existsSync(abs(DROP_STUB))).toBe(true);
     expect(readFileSync(abs(DROP_STUB), "utf-8")).toContain("expect(council.slug)");
     expect(result.files.filter((f) => f.status === "removed")).toEqual([]);
-    const refusal = result.warnings.find((w) => w.includes("no longer produced"));
+    const refusal = result.warnings.find((w) => w.includes("no longer generated"));
     expect(refusal).toBeDefined();
     // Naming the file is the requirement — a refusal nobody can act on gets the
     // file deleted by hand, which is the outcome the refusal exists to prevent.
@@ -203,7 +203,7 @@ describe("requirement stub deletion integrity, through runGen", () => {
     await gen({ withDrop: false });
 
     const third = await gen({ withDrop: false });
-    expect(third.warnings.some((w) => w.includes("no longer produced"))).toBe(true);
+    expect(third.warnings.some((w) => w.includes("no longer generated"))).toBe(true);
     expect(existsSync(abs(DROP_STUB))).toBe(true);
   });
 
@@ -250,20 +250,29 @@ describe("requirement stub deletion integrity, through runGen", () => {
     expect(result.files.filter((f) => f.status === "removed")).toEqual([]);
   });
 
-  test("a custom path with no owns warns, and deletes nothing", async () => {
+  test("a custom path with no owns: the run-wide sweep still removes the untouched stub", async () => {
     const generatorOpts = {
       path: (v: { path: string }, c: string) => `spec/${v.path}__${c}.spec.ts`,
     };
     const first = await gen({ withDrop: true, generatorOpts });
-    expect(first.warnings.some((w) => w.includes("without a matching 'owns'"))).toBe(true);
+    // Nothing to warn about: the policy claims nothing, and the run-wide sweep covers it.
+    expect(first.warnings.some((w) => w.includes("without a matching 'owns'"))).toBe(false);
 
     const custom = join(OUT_DIR, "spec", "drop__object.entity.spec.ts");
     expect(existsSync(abs(custom))).toBe(true);
 
-    // Claiming nothing is the safe degradation: it can only ever delete less.
     const result = await gen({ withDrop: false, generatorOpts });
-    expect(existsSync(abs(custom))).toBe(true);
-    expect(result.files.filter((f) => f.status === "removed")).toEqual([]);
+    expect(existsSync(abs(custom))).toBe(false);
+    expect(result.files.filter((f) => f.status === "removed").map((f) => f.path)).toEqual([abs(custom)]);
+  });
+
+  test("a custom path with no owns and reconcileOrphans: false warns that it cannot keep the stubs", async () => {
+    const generatorOpts = {
+      path: (v: { path: string }, c: string) => `spec/${v.path}__${c}.spec.ts`,
+      reconcileOrphans: false,
+    };
+    const first = await gen({ withDrop: true, generatorOpts });
+    expect(first.warnings.some((w) => w.includes("cannot tell which files are its stubs"))).toBe(true);
   });
 
   test("a custom path WITH owns reconciles correctly and stops warning", async () => {

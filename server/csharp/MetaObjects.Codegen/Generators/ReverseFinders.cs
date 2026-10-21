@@ -20,6 +20,7 @@
 // (M2MNavigation) and is unaffected.
 
 using MetaObjects.Meta;
+using static MetaObjects.Core.Identity.IdentityConstants;
 
 namespace MetaObjects.Codegen.Generators;
 
@@ -31,8 +32,10 @@ namespace MetaObjects.Codegen.Generators;
 public sealed record ReverseFk(
     /// <summary>The local FK field name on the referencing entity (e.g. "currentSceneId").</summary>
     string FkField,
-    /// <summary>The bare target entity name the FK references (e.g. "Scene").</summary>
-    string TargetEntity);
+    /// <summary>The bare target entity name the FK references (e.g. "Scene"); a display name only.</summary>
+    string TargetEntity,
+    /// <summary>The entity the loader bound the reference to (null when it did not resolve).</summary>
+    MetaObject? Target = null);
 
 /// <summary>
 /// Builds <see cref="ReverseFk"/> descriptors and renders the reverse finders for
@@ -54,7 +57,8 @@ public static class ReverseFinderBuilder
             var fkField = reference.Fields.Count > 0 ? reference.Fields[0] : null;
             var target = reference.TargetEntity;
             if (string.IsNullOrEmpty(fkField) || string.IsNullOrEmpty(target)) continue;
-            result.Add(new ReverseFk(fkField!, CSharpNaming.StripPkg(target!)));
+            var bound = global::MetaObjects.NamingRefs.RefTarget(reference, IDENTITY_REFERENCE_ATTR_REFERENCES) as MetaObject;
+            result.Add(new ReverseFk(fkField!, bound?.Name ?? CSharpNaming.StripPkg(target!), bound));
         }
         return result;
     }
@@ -69,7 +73,7 @@ public static class ReverseFinderBuilder
     /// </summary>
     private static string FkValueType(MetaObject entity, ReverseFk fk, MetaRoot root)
     {
-        var target = root.FindObject(fk.TargetEntity);
+        var target = fk.Target;
         var targetPkField = target?.PrimaryIdentity()?.Fields is { Count: 1 } pk
             ? target.FindField(pk[0])
             : null;

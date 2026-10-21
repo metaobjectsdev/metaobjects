@@ -1,0 +1,19 @@
+{
+  "metadata.root": {
+    "package": "shop::catalog",
+    "children": [
+      {
+        "object.value": {
+          "name": "Product",
+          "children": [
+            {
+              "field.string": {
+                "name": "sku"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

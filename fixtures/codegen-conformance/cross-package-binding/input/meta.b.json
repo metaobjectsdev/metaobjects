@@ -1,0 +1,38 @@
+{
+  "metadata.root": {
+    "package": "b",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Tag",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "b_tags"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "name",
+                "@required": true,
+                "@maxLength": 80
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id",
+                "@generation": "increment"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

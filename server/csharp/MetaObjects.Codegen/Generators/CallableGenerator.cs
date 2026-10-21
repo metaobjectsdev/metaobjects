@@ -84,8 +84,7 @@ public class CallableGenerator : PerEntityGenerator
         MetaObject? argsObject = null;
         if (argsObjectName is not null)
         {
-            argsObject = global::MetaObjects.NamingRefs.ResolveObjectRef(
-                ctx.Root, argsObjectName, global::MetaObjects.NamingRefs.EffectivePackage(entity)) as MetaObject;
+            argsObject = global::MetaObjects.NamingRefs.RefTarget(source, SOURCE_ATTR_PARAMETER_REF) as MetaObject;
             if (argsObject is null)
                 ctx.Warn(
                     $"{Name}: callable \"{entity.Name}\" @parameterRef \"{argsObjectName}\" did not resolve — " +

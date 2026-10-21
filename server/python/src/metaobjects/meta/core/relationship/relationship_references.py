@@ -17,7 +17,7 @@ suffix list, same order, same "candidate side only" stripping).
 from __future__ import annotations
 
 from ...meta_data import MetaData
-from ....naming import strip_package
+from ....naming_refs import ref_target
 from ....shared.base_types import TYPE_IDENTITY
 from ....shared.separators import PACKAGE_SEP
 from ..identity.identity_constants import (
@@ -71,7 +71,7 @@ def reference_target_entity(ref: MetaData) -> str | None:
     None when the attr is absent or empty.
 
     Reused (not reimplemented) by ``codegen.generators.router_generator.reverse_fks_for``
-    and ``derive_m2m_fields._ref_target_entity`` — both had their own copy of this exact
+    and ``derive_m2m_fields`` — both had their own copy of this exact
     blind spot before #368's follow-up fixed them onto this one. ``naming_refs.
     _split_child_tail`` runs the same character-level search but stays a separate,
     private implementation (desugar-phase, over raw pre-resolution strings, five
@@ -110,22 +110,21 @@ def reference_pairing_keys(ref: MetaData) -> set[str]:
     return keys
 
 
-def reference_candidates_for(holder: MetaData, target_entity: str) -> list[MetaData]:
-    """Every identity.reference on ``holder`` whose @references targets
-    ``target_entity``. Package-insensitive on both sides: @references and
-    @objectRef may each be bare or fully qualified, and @references may use the
-    dotted ``Entity.field`` form (see :func:`reference_target_entity`).
+def reference_candidates_for(holder: MetaData, target: MetaData | None) -> list[MetaData]:
+    """Every identity.reference on ``holder`` whose @references binds to ``target``.
+
+    ADR-0059 R7: compared by the BOUND object, never by a short name. ``target`` is the
+    entity node. A ``None`` target matches nothing.
     """
-    target = strip_package(target_entity)
+    target_node = target
+    if target_node is None:
+        return []
     candidates: list[MetaData] = []
     # ADR-0039: resolving -- children() honors references inherited via extends.
     for child in holder.children():
         if child.type != TYPE_IDENTITY or child.sub_type != IDENTITY_SUBTYPE_REFERENCE:
             continue
-        references = reference_target_entity(child)
-        if references is None:
-            continue
-        if strip_package(references) != target:
+        if ref_target(child, IDENTITY_REFERENCE_ATTR_REFERENCES) is not target_node:
             continue
         if _first_fk_field(child) is None:
             continue
@@ -136,7 +135,7 @@ def reference_candidates_for(holder: MetaData, target_entity: str) -> list[MetaD
 def resolve_relationship_reference(
     holder: MetaData,
     relationship_name: str,
-    target_entity: str,
+    target_entity: MetaData | None,
     source_ref_field: str | None = None,
 ) -> MetaData | None:
     """Which identity.reference does this ``@cardinality: one`` relationship

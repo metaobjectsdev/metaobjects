@@ -76,6 +76,10 @@ silent footguns and "multiple ways to say the same thing." Four problems with YA
 | Port           | Status                                                                                  |
 |----------------|-----------------------------------------------------------------------------------------|
 | **TypeScript** | D1 + D2 + D3 + D4 shipped (`core/yaml-desugar.ts`, `ERR_YAML_COERCION`).              |
-| **Python**     | _pending_ — YAML loader port to follow.                                                 |
-| **Java**       | _pending_ — YAML loader port to follow.                                                 |
-| **C#**         | _pending_ — YAML loader follows the source-v2 cutover (currently held on v1).          |
+| **Python**     | D1 + D2 + D3 + D4 shipped (2026-05-24).                                                  |
+| **Java**       | D1 + D2 + D3 + D4 shipped (2026-05-24).                                                  |
+| **C#**         | D1 + D2 + D3 + D4 shipped (2026-05-24).                                                  |
+
+The desugar is **syntax-only** ([ADR-0059](ADR-0059-references-resolve-once-after-the-tree.md)):
+it lowers keys, scalar bodies and sigils, and leaves every reference value exactly as written.
+One resolver per port binds references after the whole tree loads, the same for YAML and JSON.

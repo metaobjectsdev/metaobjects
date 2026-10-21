@@ -32,8 +32,8 @@ that:
 Skips (no helper emitted) when the entity is abstract, does not derive from
 ``LlmCallBase``, has no nested ``template.prompt``, or that prompt carries NEITHER
 ``@responseRef`` NOR ``@payloadRef`` (both gate the helper — matching the TS
-reference). The response VO is resolved via ``resolve_payload_vo`` (short-name OR
-FQN); a non-``object.value`` target is a hard generator error (matching Java).
+reference). The response VO is the target the loader bound (``bound_payload_vo``);
+a non-``object.value`` target is a hard generator error (matching Java).
 
 STI/TPH discriminator handling is DEFERRED (matching the Java port's Slice 2 — a
 plain trace entity is the target).
@@ -46,7 +46,7 @@ from metaobjects.codegen.constants import generated_header
 from metaobjects.codegen.format import ruff_format
 from metaobjects.codegen.generator import EmittedFile, GenContext, Generator
 from metaobjects.codegen.generators.find_inbound import response_format_of
-from metaobjects.codegen.value_objects import pkg_of, resolve_payload_vo
+from metaobjects.codegen.value_objects import bound_payload_vo
 from metaobjects.meta.core.object.meta_object import MetaObject
 from metaobjects.meta.core.object.object_constants import OBJECT_SUBTYPE_ENTITY
 from metaobjects.meta.meta_data import MetaData
@@ -164,7 +164,7 @@ def render_trace_helper(entity: MetaObject, root: MetaData) -> str | None:
     # its own package first — the prompt is nested inside `entity` but carries its
     # OWN effective package via resolution_key()'s ancestor walk).
     response_vo = (
-        resolve_payload_vo(root, response_ref, pkg_of(prompt)) if response_ref else None
+        bound_payload_vo(prompt, tc.TEMPLATE_ATTR_RESPONSE_REF) if response_ref else None
     )
     if response_ref is not None and response_vo is None:
         raise ValueError(

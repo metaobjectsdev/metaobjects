@@ -1,0 +1,38 @@
+{
+  "metadata.root": {
+    "package": "shop::orders",
+    "children": [
+      {
+        "object.value": {
+          "name": "Order",
+          "children": [
+            {
+              "field.object": {
+                "name": "customer",
+                "@objectRef": "shop::people::Customer"
+              }
+            },
+            {
+              "field.object": {
+                "name": "product",
+                "@objectRef": "shop::catalog::Product"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.value": {
+          "name": "Note",
+          "children": [
+            {
+              "field.string": {
+                "name": "text"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

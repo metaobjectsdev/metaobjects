@@ -36,7 +36,7 @@ public static class ReferentialActions
     ///     right where the FK is.</item>
     ///   <item>A correlated sibling relationship on the same entity — matched
     ///     package-aware against the resolved <c>@references</c> target
-    ///     (<see cref="NamingRefs.RefMatchesObject"/> / ADR-0042, so bare and FQN forms
+    ///     (bound target identity / ADR-0059, so bare and FQN forms
     ///     pair correctly); an M:N relationship (<c>@through</c>) never correlates with a
     ///     direct FK. Its explicit <c>@onDelete</c>, else its subtype default
     ///     (composition→cascade, aggregation→set-null, association→restrict);
@@ -71,11 +71,7 @@ public static class ReferentialActions
         // @references resolves in the DECLARING owner's package). Both relationship tiers
         // then correlate against the resolved NODE, so a bare @references pairs correctly
         // with an FQN @objectRef and vice versa.
-        var root = entity.Parent;
-        var refOwner = reference.Parent ?? entity;
-        var targetObj = root is not null
-            ? NamingRefs.ResolveObjectRef(root, target, NamingRefs.EffectivePackage(refOwner)) as MetaObject
-            : null;
+        var targetObj = NamingRefs.RefTarget(reference, IDENTITY_REFERENCE_ATTR_REFERENCES) as MetaObject;
 
         // (2) A sibling relationship on the FK-owning entity. An M:N relationship
         //     (@through) never correlates — it describes the junction path, not this
@@ -100,11 +96,10 @@ public static class ReferentialActions
             var objectRef = r.ObjectRef;
             if (objectRef is null) return false;
             if (targetObj is null) return objectRef == target;
-            if (!NamingRefs.RefMatchesObject(
-                    targetObj, objectRef, NamingRefs.EffectivePackage(r.Parent ?? entity)))
+            if (!ReferenceEquals(NamingRefs.RefTarget(r, RELATIONSHIP_ATTR_OBJECT_REF), targetObj))
                 return false;
             return ReferenceEquals(
-                RelationshipReferences.ResolveRelationshipReference(entity, r.Name, objectRef, r.SourceRefField),
+                RelationshipReferences.ResolveRelationshipReference(entity, r.Name, targetObj, r.SourceRefField),
                 reference);
         });
 
@@ -178,19 +173,12 @@ public static class ReferentialActions
     private static MetaRelationship? FindReverseRelationship(
         MetaObject entity, MetaReferenceIdentity reference, MetaObject targetObj)
     {
-        var root = entity.Parent;
-        if (root is null) return null;
-
         // Ambiguity guard: exactly one enforced reference from `entity` to this target,
         // and it must be `reference` itself.
         var refsToTarget = entity.ReferenceIdentities().Where(r =>
         {
             if (!r.Enforce) return false;
-            var t = r.TargetEntity;
-            if (t is null) return false;
-            return ReferenceEquals(
-                NamingRefs.ResolveObjectRef(root, t, NamingRefs.EffectivePackage(r.Parent ?? entity)),
-                targetObj);
+            return ReferenceEquals(NamingRefs.RefTarget(r, IDENTITY_REFERENCE_ATTR_REFERENCES), targetObj);
         }).ToList();
         if (refsToTarget.Count != 1 || !ReferenceEquals(refsToTarget[0], reference)) return null;
 
@@ -205,8 +193,7 @@ public static class ReferentialActions
             if (r.Through is not null) return false; // M:N — junction path, not this FK
             var objectRef = r.ObjectRef;
             if (objectRef is null) return false;
-            return NamingRefs.RefMatchesObject(
-                entity, objectRef, NamingRefs.EffectivePackage(r.Parent ?? targetObj));
+            return ReferenceEquals(NamingRefs.RefTarget(r, RELATIONSHIP_ATTR_OBJECT_REF), entity);
         }).ToList();
         return reverseCandidates.Count == 1 ? reverseCandidates[0] : null;
     }

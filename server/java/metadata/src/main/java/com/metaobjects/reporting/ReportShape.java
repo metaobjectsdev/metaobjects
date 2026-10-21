@@ -31,6 +31,7 @@ import com.metaobjects.field.TimestampField;
 import com.metaobjects.identity.MetaIdentity;
 import com.metaobjects.identity.PrimaryIdentity;
 import com.metaobjects.identity.ReferenceIdentity;
+import com.metaobjects.loader.References;
 import com.metaobjects.loader.ValidationPhase;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.relationship.MetaRelationship;
@@ -371,9 +372,9 @@ public final class ReportShape {
                     }
                 }
             }
-            String targetRef = rel != null ? rel.getObjectRef() : refNode != null ? refNode.getTargetEntity() : null;
-            if (targetRef == null || targetRef.isEmpty()) return false;
-            MetaObject target = ValidationPhase.resolveRootObject(root, targetRef, packageOf(current));
+            MetaObject target = rel != null
+                    ? References.refTarget(rel, MetaRelationship.ATTR_OBJECT_REF)
+                    : refNode != null ? References.refTarget(refNode, MetaIdentity.ATTR_REFERENCES) : null;
             if (target == null) return false;
 
             // The reference the hop crosses, as the lowering resolves it. A has-many hop, whose FK
@@ -381,7 +382,7 @@ public final class ReportShape {
             ReferenceIdentity reference = refNode != null
                     ? refNode
                     : RelationshipReferences.resolveRelationshipReference(
-                            current, rel.getShortName(), target.getShortName(), rel.getSourceRefField());
+                            current, rel.getShortName(), target, rel.getSourceRefField());
             if (reference == null || reference.getFields().isEmpty()) return false;
             MetaField<?> fk = current.findMetaField(reference.getFields().get(0)).orElse(null);
             if (fk == null || !isRequiredField(fk)) return false;
@@ -452,9 +453,9 @@ public final class ReportShape {
                     }
                 }
             }
-            String targetRef = rel != null ? rel.getObjectRef() : refNode != null ? refNode.getTargetEntity() : null;
-            if (targetRef == null || targetRef.isEmpty()) return null;
-            MetaObject target = ValidationPhase.resolveRootObject(root, targetRef, packageOf(current));
+            MetaObject target = rel != null
+                    ? References.refTarget(rel, MetaRelationship.ATTR_OBJECT_REF)
+                    : refNode != null ? References.refTarget(refNode, MetaIdentity.ATTR_REFERENCES) : null;
             if (target == null) return null;
             current = target;
         }

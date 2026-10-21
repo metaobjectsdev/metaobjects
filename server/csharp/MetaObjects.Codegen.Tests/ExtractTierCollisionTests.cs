@@ -256,7 +256,7 @@ public sealed class ExtractTierCollisionTests
         // "Report") and resolves via the canonical FQN-exact matcher — never MetaRoot's
         // bare-name-first-match FindObject.
         Assert.Contains("public const string PAYLOAD_FQN = \"acme::beta::Report\";", parserSrc);
-        Assert.Contains("global::MetaObjects.NamingRefs.ResolveObjectRef(root, PAYLOAD_FQN, \"\")", parserSrc);
+        Assert.Contains("global::MetaObjects.NamingRefs.LookupCanonical(root, PAYLOAD_FQN)", parserSrc);
         Assert.DoesNotContain("root.FindObject(PAYLOAD_FQN)", parserSrc);
 
         var asm = Compile([.. entityFiles.Select(f => f.Content), namesSrc, .. parserFiles.Select(f => f.Content)]);

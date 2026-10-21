@@ -30,11 +30,13 @@ import { fieldAnchorSlug } from "./field-anchor.js";
  * An enriched payload-field node. Structurally a verify `PayloadField` (so the
  * shared resolver walks it), plus the per-field doc metadata the annotator needs
  * to emit a `ResolvedField` + link: `owner` (the VO that declares the field),
- * `type`, and `required`. Container fields (object / array-of-object) carry
+ * `ownerKey` (that VO's resolution key, which names its page exactly), `type`, and
+ * `required`. Container fields (object / array-of-object) carry
  * `fields` whose nodes are owned by the nested VO.
  */
 export interface AnnotatePayloadField extends PayloadField {
 	owner: string;
+	ownerKey?: string;
 	type: string;
 	required: boolean;
 	fields?: AnnotatePayloadField[];
@@ -88,7 +90,7 @@ export interface AnnotateOptions {
 	 * (the SAME `docPageHref(layout, …)` the Payload cross-link uses) so the link
 	 * resolves under package layout too.
 	 */
-	fieldHref?: (owner: string, name: string) => string;
+	fieldHref?: (owner: string, name: string, ownerKey?: string) => string;
 }
 
 // A Mustache parse token: [type, value, start, end, subTokens?, closeStart?, ...].
@@ -142,7 +144,7 @@ export function annotateTemplate(
 		const hit = resolveTemplateVariable(stack, path);
 		if (!hit) return undefined;
 		const field = toResolvedField(hit);
-		return { field, href: buildFieldHref(field.owner, field.name) };
+		return { field, href: buildFieldHref(field.owner, field.name, hit.ownerKey) };
 	}
 
 	// Build a variable token ({{x}} or {{&x}}/{{{x}}}). The implicit iterator

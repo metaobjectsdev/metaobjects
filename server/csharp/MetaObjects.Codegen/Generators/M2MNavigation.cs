@@ -107,16 +107,8 @@ public static class M2MNavigationBuilder
     private static M2MNavigation? Build(MetaObject source, MetaRelationship rel, MetaRoot root, Action<string>? onWarn = null)
     {
         if (rel.ObjectRef is not { } targetRef || rel.Through is not { } throughRef) return null;
-        // Resolve by the SAME rule the derivation uses (FQN-exact when qualified, bare
-        // short name otherwise), or IsSelfJoin below can disagree with the FK derivation:
-        // StripPkg + FindObject binds "b::Account" to a same-short-named `a::Account`,
-        // which then compares identity-equal to the source and reports a cross-package
-        // hetero M:N as a self-join. Falls back to the previous resolution when the
-        // qualified name does not resolve exactly, so nothing that bound before stops.
-        var target = M2MDerivation.ResolveEntity(root, targetRef)
-            ?? root.FindObject(CSharpNaming.StripPkg(targetRef));
-        var junction = M2MDerivation.ResolveEntity(root, throughRef)
-            ?? root.FindObject(CSharpNaming.StripPkg(throughRef));
+        var target = global::MetaObjects.NamingRefs.RefTarget(rel, RELATIONSHIP_ATTR_OBJECT_REF) as MetaObject;
+        var junction = global::MetaObjects.NamingRefs.RefTarget(rel, RELATIONSHIP_ATTR_THROUGH) as MetaObject;
         if (target is null || junction is null) return null;
 
         // Owner ruling 2026-09-20: an un-pairable junction is a LOAD ERROR

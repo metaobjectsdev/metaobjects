@@ -1,0 +1,17 @@
+{
+  "errors": [
+    {
+      "code": "ERR_BAD_ATTR_VALUE",
+      "source": {
+        "format": "resolved",
+        "files": [
+          "meta.acme.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[1]['object.value']",
+        "referrer": "X",
+        "target": "..::..::Base"
+      }
+    }
+  ],
+  "warnings": []
+}

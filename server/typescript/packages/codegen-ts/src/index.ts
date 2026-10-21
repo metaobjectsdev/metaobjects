@@ -86,6 +86,7 @@ export type {
   MergeStrategy,
   BaselineMode,
   DecideAndWriteOpts,
+  HandEdits,
 } from "./overwrite-policy.js";
 export { decideAndWrite, GitMissingError, WRITE_STATUSES } from "./overwrite-policy.js";
 // The committed half of `.gen-state`. Exported for `verify --codegen`, which needs
@@ -408,7 +409,7 @@ export type {
   ReconcileOrphansArgs,
   OrphanPolicy,
 } from "./reconcile-orphans.js";
-export { sweepOrphans } from "./orphan-sweep.js";
+export { sweepOrphans, orphanVerdict } from "./orphan-sweep.js";
 export type {
   OrphanJob,
   SweepOrphansArgs,

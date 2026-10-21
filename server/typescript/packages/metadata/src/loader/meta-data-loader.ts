@@ -36,6 +36,7 @@ import { validateFieldMutability } from "../core/field/validate-field-mutability
 import { validateEnumNormalizeAmbiguity } from "../core/field/validate-enum-normalize-ambiguity.js";
 import { validateDiscriminator } from "../core/object/validate-discriminator.js";
 import { resolveDeferredSupers, EXTENDS_TARGET_MISMATCH_RULE } from "../super-resolve.js";
+import { resolveReferences } from "./resolve-references.js";
 import { validateSubtypeRules } from "../subtype-rules.js";
 import { validateMaxOccurs } from "../validate-max-occurs.js";
 import { validateIdentityPassthrough } from "../core/identity/validate-identity-passthrough.js";
@@ -590,6 +591,19 @@ export class MetaDataLoader {
           );
           continue;
         }
+        if (failure.kind === "over-drop") {
+          // ADR-0059 R2 — `..::` dropped more segments than the package has.
+          errors.push(
+            new ParseError(
+              `the extends ref '${failure.ref}' on ${failure.nodeFqn} climbs above the root package — each '..::' drops one segment of the declaring package`,
+              {
+                code: "ERR_BAD_ATTR_VALUE",
+                source: resolvedSource(failure.source, failure.nodeFqn, failure.ref),
+              },
+            ),
+          );
+          continue;
+        }
         errors.push(
           new ParseError(
             `the SuperClass '${failure.ref}' does not exist (referenced by ${failure.nodeFqn})`,
@@ -750,6 +764,10 @@ export class MetaDataLoader {
       // finite number, boolean → true|false). Enum @default membership is validated
       // by validateAttrSchema (Check 5). Cross-port parity with Java/Python/C#.
       errors.push(...validateFieldDefaults(root));
+
+      // ADR-0059 R5 — after the last validation pass, before freeze: resolve every
+      // reference once, record its target and rewrite it to its canonical spelling.
+      resolveReferences(root);
     }
 
     // If nothing parsed successfully, synthesize an empty root so callers

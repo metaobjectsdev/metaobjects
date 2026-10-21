@@ -12,7 +12,7 @@ import com.metaobjects.render.VerifyOptions;
 import com.metaobjects.template.MetaTemplate;
 import com.metaobjects.template.PromptTemplate;
 import com.metaobjects.template.TemplateConstants;
-import com.metaobjects.validation.SymbolTable;
+import com.metaobjects.loader.References;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -96,14 +96,6 @@ public final class TemplateVerify {
         List<Drift> warnings = new ArrayList<>();
         List<String> unresolved = new ArrayList<>();
 
-        // ADR-0042 — resolve @payloadRef through the loader's OWN package-local symbol table
-        // (#228), so a bare ref binds the template's own package (else root-level) and an FQN
-        // binds exactly — the same contract the loader validated the ref under. The prior
-        // package-blind bare-tail scan bound a same-short-named value-object in the WRONG
-        // package under a cross-package collision (load-order-dependent), deriving the wrong
-        // field tree and mis-reporting {{field}} drift.
-        SymbolTable symbols = SymbolTable.build(loader.getRoot());
-
         for (com.metaobjects.MetaData child : loader.getRoot().getChildren()) {
             if (!(child instanceof MetaTemplate tmpl)) continue;
 
@@ -116,7 +108,7 @@ public final class TemplateVerify {
 
             // Both subtypes: @payloadRef must resolve to a loaded object.value (a
             // non-empty derived field tree). Catches a renamed VO before codegen.
-            MetaObject payloadVo = resolveValueObject(symbols, payloadRef, tmpl.getPackage());
+            MetaObject payloadVo = valueObjectOrNull(References.refTarget(tmpl, "payloadRef"));
             List<PayloadField> fields = payloadVo == null
                     ? List.of()
                     : derivePayloadFieldTree(loader, payloadVo, new LinkedHashSet<>());
@@ -207,32 +199,10 @@ public final class TemplateVerify {
     }
 
     /**
-     * Resolve a {@code field.object}'s {@code @objectRef} to its target
-     * {@code object.value} by BARE short-name (the cross-port render-helper
-     * consensus; the raw attr value is read directly, NOT package-folded).
+     * The {@code object.value} a {@code field.object}'s {@code @objectRef} is bound to.
      */
     private static MetaObject resolveNestedObjectRef(MetaDataLoader loader, ObjectField field) {
-        if (!field.hasMetaAttr(MetaObject.ATTR_OBJECT_REF, false)) return null;
-        String ref = field.getMetaAttr(MetaObject.ATTR_OBJECT_REF, false).getValueAsString();
-        if (ref == null || ref.isEmpty()) return null;
-        // ADR-0041: a FULLY-QUALIFIED @objectRef (contains "::") resolves EXACTLY on
-        // the value-object's package-qualified name — never a bare-tail fallback. A
-        // bare-tail match binds a same-named object.value in the WRONG package when
-        // the short name collides across packages (e.g. two prompt trees each declare
-        // their own `PlayerActionView`/`MemoryView`), yielding the wrong element
-        // field-tree and spurious ERR_VAR_NOT_ON_PAYLOAD on the inner {{fields}}. A
-        // bare ref (no "::") still matches the object.value's short name (the
-        // cross-port render-helper consensus). Mirrors the Kotlin render helper.
-        boolean fqn = ref.contains("::");
-        String refShort = shortName(ref);
-        for (MetaObject obj : loader.getMetaObjects()) {
-            if (!MetaObject.SUBTYPE_VALUE.equals(obj.getSubType())) continue;
-            boolean matches = fqn
-                    ? obj.getName().equals(ref)
-                    : shortName(obj.getName()).equals(refShort);
-            if (matches) return obj;
-        }
-        return null;
+        return valueObjectOrNull(References.refTarget(field, MetaObject.ATTR_OBJECT_REF));
     }
 
     /**
@@ -249,20 +219,7 @@ public final class TemplateVerify {
         if (ref != null && !ref.isEmpty()) refs.add(ref);
     }
 
-    /**
-     * Resolve {@code @payloadRef} to its {@code object.value} target under the loader's ADR-0042
-     * package-local contract (rejects entities). {@code referrerPkg} is the template's own package
-     * ({@code ""} for a root-level template): a bare ref binds {@code <referrerPkg>::<ref>} first,
-     * else a root-level object; an FQN binds exactly — no cross-package bare-name fallback.
-     */
-    private static MetaObject resolveValueObject(SymbolTable symbols, String ref, String referrerPkg) {
-        MetaObject obj = symbols.resolveObject(ref, referrerPkg == null ? "" : referrerPkg);
+    private static MetaObject valueObjectOrNull(MetaObject obj) {
         return (obj != null && MetaObject.SUBTYPE_VALUE.equals(obj.getSubType())) ? obj : null;
-    }
-
-    /** Last {@code ::} segment of a (possibly packaged) metadata name. */
-    private static String shortName(String fqn) {
-        int sep = fqn.lastIndexOf("::");
-        return sep < 0 ? fqn : fqn.substring(sep + 2);
     }
 }
