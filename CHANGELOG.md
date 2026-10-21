@@ -1430,9 +1430,12 @@ until you regenerate.
   reference, in every port.** Python, Java and C# also reported `ERR_INVALID_RELATIONSHIP` when
   the relationship declared `@sourceRefField`, and C# matched the candidate references by short
   name. Gated by `fixtures/conformance/error-relationship-one-unresolved-objectref-sourceref/`.
-  C# `ReferenceCandidatesFor` / `ResolveRelationshipReference` and Java
-  `referenceCandidatesFor` / `resolveRelationshipReference` lose their name overloads; pass the
-  target object.
+  C# `ReferenceCandidatesFor` / `ResolveRelationshipReference` lose their name overloads; pass
+  the target object. Java `referenceCandidatesFor` / `resolveRelationshipReference` and Kotlin
+  `KotlinGenUtil.resolveObjectByShortOrFqn` keep their string forms, deprecated, so a generator
+  ejected before 1.1.0 still compiles. They now look the value up as an exact canonical
+  reference: a short name no longer matches an object in a package. Pass the target object, or
+  call `KotlinGenUtil.lookupCanonicalObject`.
 - **Python: the YAML twin gate fails on a JSON load that crashes.** It used to skip the fixture
   as if its providers did not compose.
 - **`gen` deletes a file it wrote earlier and no longer generates, in every port.** Renaming a
