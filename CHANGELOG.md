@@ -859,10 +859,12 @@ generator catalog and the Atlas evaluation are 1.2 work.
   that is not numeric, is `ERR_INVALID_MEASURE`. A fractional `@default` (`0.5`) is
   `ERR_BAD_ATTR_VALUE` on the measure in every port: TypeScript says "@default '0.5' is not an
   integer. A measure's @default is a whole number (for example 0).", while C#, Java and Python
-  refuse it through their existing integer-attribute check with that check's message. No port
-  changed its general `attr.int` check, so a fraction in a validator's `@min` or `@max` loads
-  where it did. `@default: 0.0` (or `1.0`) loads as that integer in every port, and a
-  non-number `@default` reports that one error (both under **Fixed**, with fixtures).
+  refuse it through their integer-attribute check with that check's message. That check now
+  refuses a fraction in every `attr.int` and `attr.long` in TypeScript, C# and Python, as Java
+  already did, so a fractional `validator.numeric` `@min` or `@max` (`0.5`) is
+  `ERR_BAD_ATTR_VALUE` too (see the upgrade guide). `@default: 0.0` (or `1.0`) loads as that
+  integer in every port, and a non-number `@default` reports that one error (both under
+  **Fixed**, with fixtures).
   TypeScript lowers it: the view selects `FROM` the spine entity's table with `LEFT OUTER
   JOIN`s back to `@from`, and a defaulted measure is `COALESCE(…, n)` (SQLite writes `n.0` for a
   `decimal`, `double` or `float` measure and for a ratio, so the column keeps one storage class;
@@ -1494,7 +1496,8 @@ until you regenerate.
     on one is `400 invalid_filter_field` and a sort `400 invalid_sort`. A Java report map
     dimension keeps its `@valueType`.
   - **An integer attribute written `4.0` loads as `4`**, and a fraction is
-    `ERR_BAD_ATTR_VALUE`, in every port (a requirement's `level`, a measure's `@default`). A
+    `ERR_BAD_ATTR_VALUE`, in every port (a requirement's `level`, a measure's `@default`, a
+    `validator.numeric` `@min` or `@max`). A
     bad `@default` reports that one error, not a second rule error beside it.
   - **A requirement's package is its own, else the nearest enclosing declaration, else the
     file's**, and an overlay that declares a package gives it to the children it adds. Coverage

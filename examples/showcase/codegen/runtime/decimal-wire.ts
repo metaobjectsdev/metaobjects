@@ -99,10 +99,12 @@ export function decimalFits(canonical: string, precision: number | undefined, sc
 /**
  * W1/W4 on a value a driver hands back for a decimal column: a string (Postgres `numeric`, MySQL
  * `DECIMAL`, a SQLite text value) is canonicalized, a number (a SQLite or D1 REAL or INTEGER) is
- * rendered at 15 significant digits and canonicalized, a bigint is its digits. Null passes
- * through. A value in none of those shapes is left for the caller to see.
+ * rendered at 15 significant digits and canonicalized, a bigint is its digits, and an array (a
+ * `field.decimal` declared `isArray`) is rewritten element by element. Null passes through. A
+ * value in none of those shapes is left for the caller to see.
  */
 export function decimalToWire(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(decimalToWire);
   if (typeof value === "string") return canonicalDecimal(value) ?? value;
   if (typeof value === "number") return decimalFromDouble15(value) ?? value;
   if (typeof value === "bigint") return value.toString();

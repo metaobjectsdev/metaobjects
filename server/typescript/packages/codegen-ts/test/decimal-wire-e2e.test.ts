@@ -28,6 +28,7 @@ const MODEL = {
       { "field.string": { name: "bucket", "@required": true, "@filterable": true } },
       { "field.decimal": { name: "amount", "@precision": 9, "@scale": 4, "@filterable": true, "@sortable": true } },
       { "field.decimal": { name: "weight", "@required": true } },
+      { "field.decimal": { name: "readings", isArray: true, "@precision": 9, "@scale": 4 } },
       { "identity.primary": { name: "pk", "@fields": "id", "@generation": "increment" } },
     ]}},
   ]},
@@ -38,6 +39,7 @@ const entries = sqliteTable("entries", {
   bucket: text("bucket").notNull(),
   amount: numeric("amount"),
   weight: numeric("weight").notNull(),
+  readings: text("readings", { mode: "json" }),
 });
 
 const dir = mkdtempSync(join(import.meta.dir, "tmp-decimal-"));
@@ -52,6 +54,7 @@ async function execute(name: string, source: string): Promise<Record<string, unk
 let app: Hono;
 let entry: MetaObject;
 let moduleText: string;
+let sqlite: Database;
 beforeAll(async () => {
   const { root, errors } = await new MetaDataLoader({ strict: true }).load([
     new InMemoryStringSource(JSON.stringify(MODEL), { id: "ledger.json" }),
@@ -62,8 +65,8 @@ beforeAll(async () => {
   const schemas = await execute("schemas", moduleText);
   const allowlists = await execute("allowlist", renderFilterAllowlist(entry).toString());
 
-  const sqlite = new Database(":memory:");
-  sqlite.run("CREATE TABLE entries (id INTEGER PRIMARY KEY AUTOINCREMENT, bucket TEXT NOT NULL, amount NUMERIC, weight NUMERIC NOT NULL)");
+  sqlite = new Database(":memory:");
+  sqlite.run("CREATE TABLE entries (id INTEGER PRIMARY KEY AUTOINCREMENT, bucket TEXT NOT NULL, amount NUMERIC, weight NUMERIC NOT NULL, readings TEXT)");
   app = new Hono();
   mountCrudRoutes({
     app, path: "/entries", db: drizzle(sqlite), table: entries,
@@ -85,8 +88,8 @@ describe("generated decimal write schema and route, SQLite", () => {
   });
 
   test("the route is given every decimal field name", () => {
-    expect(decimalFieldNames(entry)).toEqual(["amount", "weight"]);
-    expect(decimalColumnsLine(entry, "    ")).toBe('\n    decimalColumns: ["amount","weight"],');
+    expect(decimalFieldNames(entry)).toEqual(["amount", "weight", "readings"]);
+    expect(decimalColumnsLine(entry, "    ")).toBe('\n    decimalColumns: ["amount","weight","readings"],');
   });
 
   test("a string and a number are accepted, and answered as the canonical string", async () => {
@@ -115,5 +118,20 @@ describe("generated decimal write schema and route, SQLite", () => {
     expect(rows.map((r) => r.amount)).toEqual(["0.1", "0.3", "100.25", "15", "0"]);
     const gt = (await (await app.request("/entries?filter[bucket][eq]=a&filter[amount][gt]=15")).json()) as Array<{ amount: unknown }>;
     expect(gt.map((r) => r.amount)).toEqual(["100.25"]);
+  });
+
+  test("a decimal array is written and read element by element", async () => {
+    const res = await post({ bucket: "arr", weight: "1", readings: ["100.2500", 0.3, "1.5e1"] });
+    expect(res.status).toBe(201);
+    expect(((await res.json()) as { readings: unknown }).readings).toEqual(["100.25", "0.3", "15"]);
+    for (const readings of [["0.12345"], ["12abc"]]) {
+      expect((await post({ bucket: "arr", weight: "1", readings })).status).toBe(400);
+    }
+  });
+
+  test("a decimal array the database holds in another spelling is answered canonical", async () => {
+    sqlite.run(`INSERT INTO entries (bucket, weight, readings) VALUES ('raw', 1, '["100.5000", 0.30000000000000004, "-0.0"]')`);
+    const rows = (await (await app.request("/entries?filter[bucket][eq]=raw")).json()) as Array<{ readings: unknown }>;
+    expect(rows.map((r) => r.readings)).toEqual([["100.5", "0.3", "0"]]);
   });
 });

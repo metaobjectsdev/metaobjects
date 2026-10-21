@@ -141,6 +141,14 @@ rather than rounded. A decimal filter operand is compared exactly; a bad one is
 `meta migrate` warns for one declared with `@precision` above 15. An owned routes generator
 keeps its 1.0 decimal handling until you resync it (step 6).
 
+### Fractional validator bounds (TypeScript, C#, Python)
+
+An integer attribute (`attr.int`, `attr.long`) no longer accepts a fraction. A
+`validator.numeric` declares `@min` and `@max` as integers, so a bound such as `@min: 0.5` on a
+`decimal` or `double` field is now `ERR_BAD_ATTR_VALUE` at load in TypeScript, C# and Python.
+Java already refused it, so the five ports now agree. Write an integer bound (`@min: 0`). A
+whole number written `1.0` still loads, as `1`.
+
 ## Diffs to expect after regenerating
 
 - **References are written fully qualified (ADR-0059).** `meta export` and canonical

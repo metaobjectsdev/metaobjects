@@ -122,12 +122,13 @@ export function servesClientTier(entity: MetaObject): boolean {
  * the number a NUMERIC-affinity column stores). The generated route passes these names to the
  * mount as `decimalColumns` and the mount rewrites each row under them. Which keys are decimals
  * comes from the model, never from the shape of a value. Empty for an object with no decimal,
- * which keeps its route byte-identical. An array of decimals is not a decimal column.
+ * which keeps its route byte-identical. A decimal declared `isArray` is listed too: the mount
+ * rewrites each element of its array.
  */
 export function decimalFieldNames(entity: MetaObject): readonly string[] {
   // ADR-0039: resolving. A decimal may be inherited via extends, and a report read model's
   // derived ratio, average or sum is a field of the report itself.
-  return entity.fields().filter((f) => f.subType === FIELD_SUBTYPE_DECIMAL && !f.resolvedIsArray()).map((f) => f.name);
+  return entity.fields().filter((f) => f.subType === FIELD_SUBTYPE_DECIMAL).map((f) => f.name);
 }
 
 /** `\n<indent>decimalColumns: [...],` for a mount option list, or "" when the object has no decimal.

@@ -29,12 +29,14 @@ import {
   FIELD_ATTR_STORAGE,
   FIELD_ATTR_DB_COLUMN_TYPE,
   FIELD_ATTR_INT_VALUE_MAP,
+  FIELD_ATTR_PRECISION,
+  FIELD_ATTR_SCALE,
   STORAGE_JSONB,
   STORAGE_FLATTENED,
   DB_COLUMN_TYPE_JSONB,
 } from "@metaobjectsdev/metadata";
 import type { Dialect, Row } from "./persistence-driver.js";
-import { decimalToWire, parseDecimalInput } from "./decimal-wire.js";
+import { decimalFits, decimalToWire, parseDecimalInput } from "./decimal-wire.js";
 
 export function coerceRowOnRead(entity: MetaData, row: Row, dialect: Dialect): Row {
   const hydrated = parseJsonTextArrays(entity, deserializeJsonbObjectFields(entity, row));
@@ -136,11 +138,11 @@ function encodeIntBackedEnums(entity: MetaData, row: Row): Row {
 }
 
 export function coerceRowOnWrite(entity: MetaData, row: Row, dialect: Dialect): Row {
-  const jsonbColumned = serializeJsonbColumns(entity, row);
+  const jsonbColumned = serializeJsonbColumns(entity, bindDecimals(entity, row));
   // Dialect-independent: an int-backed enum's column is INTEGER on every dialect
   // (SQLite has one integer storage class), so the symbol→int encode is not gated
   // on the dialect the way the boolean mapping below is.
-  const encoded = encodeIntBackedEnums(entity, bindDecimals(entity, jsonbColumned));
+  const encoded = encodeIntBackedEnums(entity, jsonbColumned);
   if (dialect === "mysql") return mapBooleansToInt(entity, isoTimestampsToDates(entity, encoded));
   if (dialect !== "sqlite") return encoded;
   return mapBooleansToInt(entity, encoded);
@@ -307,21 +309,41 @@ function canonicalizeDecimals(entity: MetaData, row: Row): Row {
 }
 
 /**
- * Write side: a `field.decimal` value is bound as its exact canonical string. A string in the
- * JSON-number grammar or a number is accepted; anything else is refused here rather than
- * reaching a column that would round it, reject it with a driver error, or store garbage.
+ * Write side: a `field.decimal` value is bound as its exact canonical string, and a decimal
+ * declared `isArray` as an array of them. A string in the JSON-number grammar or a number is
+ * accepted; anything else, or a value the declared `@precision` / `@scale` cannot hold (W3), is
+ * refused here rather than reaching a column that would round it, reject it with a driver error,
+ * or store garbage.
  */
 function bindDecimals(entity: MetaData, row: Row): Row {
   let out: Row | null = null;
+  // ADR-0039: resolving — a decimal, its isArray and its @precision / @scale may be inherited.
   for (const child of entity.children()) {
     if (child.type !== TYPE_FIELD || child.subType !== FIELD_SUBTYPE_DECIMAL) continue;
     if (!(child.name in row)) continue;
     const v = row[child.name];
     if (v === null || v === undefined) continue;
-    const canonical = parseDecimalInput(v);
-    if (canonical === undefined) {
-      throw new Error(`field.decimal '${child.name}' cannot be written: ${JSON.stringify(v)} is not a decimal number (a string in the JSON-number grammar, or a number)`);
+    const precision = child.attr(FIELD_ATTR_PRECISION);
+    const scale = child.attr(FIELD_ATTR_SCALE);
+    const bind = (value: unknown): string => {
+      const canonical = parseDecimalInput(value);
+      if (canonical === undefined) {
+        throw new Error(`field.decimal '${child.name}' cannot be written: ${JSON.stringify(value)} is not a decimal number (a string in the JSON-number grammar, or a number)`);
+      }
+      if (!decimalFits(canonical, typeof precision === "number" ? precision : undefined, typeof scale === "number" ? scale : undefined)) {
+        throw new Error(`field.decimal '${child.name}' cannot be written: ${canonical} does not fit @precision ${String(precision)} / @scale ${String(scale ?? 0)}`);
+      }
+      return canonical;
+    };
+    if (child.resolvedIsArray()) {
+      if (!Array.isArray(v)) {
+        throw new Error(`field.decimal '${child.name}' cannot be written: ${JSON.stringify(v)} is not an array of decimal numbers`);
+      }
+      out ??= { ...row };
+      out[child.name] = v.map((element) => (element === null ? null : bind(element)));
+      continue;
     }
+    const canonical = bind(v);
     if (canonical === v) continue;
     out ??= { ...row };
     out[child.name] = canonical;
