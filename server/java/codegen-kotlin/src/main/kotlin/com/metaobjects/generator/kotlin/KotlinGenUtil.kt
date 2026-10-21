@@ -56,6 +56,15 @@ public object KotlinGenUtil {
         com.metaobjects.loader.References.lookupCanonical(loader.root, ref)
 
     /**
+     * The earlier name of [lookupCanonicalObject], kept so a generator ejected before 1.1.0
+     * still compiles unchanged. It now does the same exact canonical lookup; it no longer
+     * matches a short name, whatever its name says.
+     */
+    @Deprecated("Use lookupCanonicalObject", ReplaceWith("lookupCanonicalObject(loader, ref)"))
+    fun resolveObjectByShortOrFqn(loader: MetaDataLoader, ref: String): MetaObject? =
+        lookupCanonicalObject(loader, ref)
+
+    /**
      * Resolve a CANONICAL object reference exactly (ADR-0059 R7), or null: `pkg::Name` binds
      * that package's object, `::Name` and a bare `Name` bind the root-level object. The same
      * lookup as [lookupCanonicalObject]; no short-name match and no package applied. Prefer

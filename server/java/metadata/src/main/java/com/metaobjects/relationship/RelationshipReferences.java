@@ -138,6 +138,48 @@ public final class RelationshipReferences {
         return pick(referenceCandidatesFor(holder, targetNode), relationshipName, sourceRefField);
     }
 
+    /**
+     * The earlier signature, kept so a generator ejected before 1.1.0 still compiles unchanged.
+     * {@code targetEntity} is read as a CANONICAL reference value and looked up exactly
+     * (ADR-0059 R7); it is never matched by short name.
+     *
+     * @deprecated pass the bound target node, e.g. {@code References.refTarget(rel, "objectRef")}
+     */
+    @Deprecated
+    public static ReferenceIdentity resolveRelationshipReference(
+            MetaObject holder, String relationshipName, String targetEntity, String sourceRefField) {
+        return resolveRelationshipReference(holder, relationshipName, canonicalTarget(holder, targetEntity),
+                sourceRefField);
+    }
+
+    /**
+     * The earlier no-{@code @sourceRefField} overload, kept for generators ejected before 1.1.0.
+     *
+     * @deprecated pass the bound target node
+     */
+    @Deprecated
+    public static ReferenceIdentity resolveRelationshipReference(
+            MetaObject holder, String relationshipName, String targetEntity) {
+        return resolveRelationshipReference(holder, relationshipName, targetEntity, null);
+    }
+
+    /**
+     * The earlier signature, kept for generators ejected before 1.1.0: {@code targetEntity} is
+     * looked up as an exact canonical value.
+     *
+     * @deprecated pass the bound target node
+     */
+    @Deprecated
+    public static List<ReferenceIdentity> referenceCandidatesFor(MetaObject holder, String targetEntity) {
+        return referenceCandidatesFor(holder, canonicalTarget(holder, targetEntity));
+    }
+
+    private static MetaObject canonicalTarget(MetaObject holder, String value) {
+        if (holder == null) return null;
+        com.metaobjects.MetaData root = References.topLevelRoot(holder);
+        return root == null ? null : References.lookupCanonical(root, value);
+    }
+
     private static ReferenceIdentity pick(List<ReferenceIdentity> candidates, String relationshipName,
                                           String sourceRefField) {
         if (candidates.isEmpty()) return null;
