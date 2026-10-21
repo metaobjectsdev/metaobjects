@@ -126,8 +126,10 @@ is touched, so "what did upstream change?" is a diff of two files whose body is 
 - **`meta eject --list` compares each copy** against what the installed packages would write
   today: `identical`, `same content, your formatting`, `DIFFERS: N line(s) only in the
   package, M only in yours`, or `not in the package`, with the `diff -u` command for each
-  that differs. Take an upgrade by merging the package's change into your copy; the two
-  files differ by their import lines alone.
+  that differs. The comparison covers the companion files a generator copies with it (its
+  template modules, Java's support classes, the Kotlin decimal wire), not only the generator
+  file. Take an upgrade by merging the package's change into your copy; the two files differ
+  by their import lines alone.
 - **A copy from before 1.1 gets no template modules it would never call.** It imports the
   renderers from the package, so copying them beside it would be dead code. `meta eject
   <name> --force` takes the new shape; to keep your changes, merge them into the new file.
