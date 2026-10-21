@@ -1234,11 +1234,19 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         return "MetaDecimalWire.fits($value, $precision, $scale)"
     }
 
-    /** `if (!fits) return 400` for a decimal [field] whose bound value is the expression [value]. */
+    /**
+     * `if (!fits) return 400` for a decimal [field] whose bound value is the expression [value]; for
+     * a decimal declared `isArray`, when any element does not fit.
+     */
     private fun StringBuilder.appendDecimalRangeCheck(indent: String, field: MetaField<*>, value: String) {
-        if (field !is DecimalField || field.isArrayType) return
+        if (field !is DecimalField) return
+        val outOfRange = if (field.isArrayType) {
+            "$value?.any { !${decimalFitsExpr(field, "it")} } == true"
+        } else {
+            "!${decimalFitsExpr(field, value)}"
+        }
         append(indent)
-        append("if (!${decimalFitsExpr(field, value)}) return@transaction ")
+        append("if ($outOfRange) return@transaction ")
         append("ResponseEntity.badRequest().body(mapOf(\"error\" to \"validation\", \"field\" to \"${field.name}\") as Any)\n")
     }
 
@@ -1252,15 +1260,20 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         field is ObjectField || field is MapField || field.isArrayType || KotlinTypeMapper.isJsonbOpenBag(field)
 
     /**
-     * The expression binding a PRESENT PATCH value of [field] to [ktType]. A scalar `field.decimal`
-     * binds through the same canonical reader as a create body (ADR-0019 Amendment 1, W2/W3): a
-     * string in the JSON-number grammar or a JSON number, anything else (or a value past the
-     * exact range) answers `400 {"error":"validation","field":...}`. Everything else binds through
-     * the configured ObjectMapper.
+     * The expression binding a PRESENT PATCH value of [field] to [ktType]. A `field.decimal` binds
+     * through the same canonical reader as a create body (ADR-0019 Amendment 1, W2/W3), each
+     * element of one declared `isArray`: a string in the JSON-number grammar or a JSON number,
+     * anything else (or a value past the exact range) answers `400 {"error":"validation","field":...}`.
+     * Everything else binds through the configured ObjectMapper.
      */
     private fun patchBindExpr(field: MetaField<*>, fn: String, ktType: String): String =
-        if (field is DecimalField && !field.isArrayType) {
-            "runCatching { MetaDecimalWire.fromNode(body.get(\"$fn\")) }" +
+        if (field is DecimalField) {
+            val read = if (field.isArrayType) {
+                "body.get(\"$fn\").also { require(it.isArray) }.map { MetaDecimalWire.fromNode(it) }"
+            } else {
+                "MetaDecimalWire.fromNode(body.get(\"$fn\"))"
+            }
+            "runCatching { $read }" +
                 ".getOrElse { return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"validation\", \"field\" to \"$fn\") as Any) }"
         } else {
             "objectMapper.treeToValue(body.get(\"$fn\"), object : TypeReference<$ktType>() {})"

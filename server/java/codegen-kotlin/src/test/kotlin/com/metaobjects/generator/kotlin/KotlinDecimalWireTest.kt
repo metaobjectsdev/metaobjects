@@ -132,6 +132,79 @@ class KotlinDecimalWireTest {
     }
 
     @Test
+    fun `a decimal array is read and range-checked element by element on create and on PATCH (W2, W3)`() {
+        val json = model.replace(
+            "{ \"field.string\": { \"name\": \"name\", \"@maxLength\": 40 } },",
+            "{ \"field.decimal\": { \"name\": \"readings\", \"isArray\": true, \"@precision\": 9, \"@scale\": 4 } },",
+        )
+        val files = emit(json, all())
+        val controller = files.getValue("acme/shop/ItemController.kt").lines().map { it.trim() }
+        fun line(prefix: String): String =
+            controller.firstOrNull { it.startsWith(prefix) } ?: error("no generated line starting '$prefix':\n" + controller.joinToString("\n"))
+        // The generated create range check and the generated PATCH bind + range check, run as written.
+        val harness = """
+            package acme.shop
+
+            import com.fasterxml.jackson.databind.JsonNode
+            import java.math.BigDecimal
+
+            class ResponseEntity<T>(val status: Int, val body: T?) {
+                class Builder { fun body(b: Any): ResponseEntity<Any> = ResponseEntity(400, b) }
+                companion object { fun badRequest() = Builder() }
+            }
+            fun <T> transaction(block: () -> T): T = block()
+            class Dto(val readings: List<BigDecimal>?)
+
+            object Harness {
+                @JvmStatic fun create(dto: Dto): ResponseEntity<Any> = transaction {
+                    ${line("if (dto.readings")}
+                    ResponseEntity(201, dto.readings?.map { MetaDecimalWire.format(it) })
+                }
+                @JvmStatic fun patch(body: JsonNode): ResponseEntity<Any> = transaction {
+                    ${line("val hasReadings")}
+                    ${line("val nullReadings")}
+                    ${line("val vReadings")}
+                    ${line("if (vReadings")}
+                    ResponseEntity(200, vReadings?.map { MetaDecimalWire.format(it) })
+                }
+            }
+        """.trimIndent()
+        val sources = files.filterKeys { it.endsWith("MetaDecimalWire.kt") }.map { (path, src) ->
+            com.tschuchort.compiletesting.SourceFile.kotlin(path.substringAfterLast('/'), src)
+        } + com.tschuchort.compiletesting.SourceFile.kotlin("Harness.kt", harness)
+        val result = com.tschuchort.compiletesting.KotlinCompilation().apply {
+            this.sources = sources
+            inheritClassPath = true
+            messageOutputStream = System.out
+        }.compile()
+        assertEquals(com.tschuchort.compiletesting.KotlinCompilation.ExitCode.OK, result.exitCode, result.messages + "\n" + harness)
+        val cl = result.classLoader
+        val h = cl.loadClass("acme.shop.Harness")
+        val mapper = com.fasterxml.jackson.databind.ObjectMapper()
+        fun outcome(r: Any?): Pair<Any?, Any?> {
+            val c = r!!.javaClass
+            return c.getMethod("getStatus").invoke(r) to c.getMethod("getBody").invoke(r)
+        }
+        fun patch(body: String) = outcome(h.getMethod("patch", com.fasterxml.jackson.databind.JsonNode::class.java).invoke(null, mapper.readTree(body)))
+        fun create(vararg readings: String): Pair<Any?, Any?> {
+            val dto = cl.loadClass("acme.shop.Dto").getConstructor(List::class.java)
+                .newInstance(readings.map { java.math.BigDecimal(it) })
+            return outcome(h.getMethod("create", dto.javaClass).invoke(null, dto))
+        }
+        val refused = mapOf("error" to "validation", "field" to "readings")
+
+        // Oracle: ADR-0019 Amendment 1 — canonical strings (W1), exact input (W2), decimal(9, 4) range (W3).
+        assertEquals(200 to listOf("100.5", "0.3", "15"), patch("""{"readings": ["100.5000", 0.3, "1.5e1"]}"""))
+        assertEquals(400 to refused, patch("""{"readings": ["1", "0.12345"]}"""))
+        assertEquals(400 to refused, patch("""{"readings": ["100000"]}"""))
+        assertEquals(400 to refused, patch("""{"readings": ["12abc"]}"""))
+        assertEquals(400 to refused, patch("""{"readings": "100.5"}"""))
+        assertEquals(201 to listOf("100.5", "0"), create("100.5000", "0.0000"))
+        assertEquals(400 to refused, create("1", "0.12345"))
+        assertEquals(400 to refused, create("100000"))
+    }
+
+    @Test
     fun `a TPH base and its subtype enforce the declared range on their per-subtype writes`() {
         val src = emit(tphModel, all()).getValue("acme/shop/ChargeController.kt")
         assertTrue("if (!MetaDecimalWire.fits(dto.fee, 12, 2))" in src, src)

@@ -131,17 +131,29 @@ def coerce_decimal_fields(
 ) -> dict[str, Any]:
     """A copy of *dto* with each present decimal field parsed under W2 (``null`` stays
     ``None``) and held to its column's range under W3 (*limits*: name to (precision, scale)).
+    A list (a decimal declared ``isArray``) is parsed and range-checked element by element.
     Raises ``ValueError`` naming the field when one is malformed or out of range."""
     out = dict(dto)
     for name in decimal_fields:
         if name in out and out[name] is not None:
+            limit = limits.get(name) if limits else None
             try:
-                out[name] = parse_decimal(out[name])
-                if limits and name in limits:
-                    check_decimal_range(out[name], *limits[name])
+                value = out[name]
+                out[name] = (
+                    [None if v is None else _coerce_decimal(v, limit) for v in value]
+                    if isinstance(value, list)
+                    else _coerce_decimal(value, limit)
+                )
             except ValueError as exc:
                 raise ValueError(f"{name}: {exc}") from None
     return out
+
+
+def _coerce_decimal(value: Any, limit: tuple[int, int] | None) -> Decimal:
+    parsed = parse_decimal(value)
+    if limit is not None:
+        check_decimal_range(parsed, *limit)
+    return parsed
 
 
 def coerce_decimal_predicates(

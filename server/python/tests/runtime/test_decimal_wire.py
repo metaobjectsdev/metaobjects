@@ -130,3 +130,16 @@ def test_w3_range_is_enforced_and_nothing_is_rounded(text: str, ok: bool) -> Non
     else:
         with pytest.raises(ValueError):
             coerce_decimal_fields({"amount": text}, fields, limits)
+
+
+def test_a_decimal_array_is_coerced_and_range_checked_element_by_element() -> None:
+    # ADR-0019 Amendment 1 over a ``field.decimal`` declared ``isArray``: each element is read
+    # exactly (W2), held to the column's range (W3), and leaves as its canonical string (W1).
+    fields = frozenset({"readings"})
+    limits = {"readings": (9, 4)}
+    coerced = coerce_decimal_fields({"readings": ["100.5000", 2.5, "1.5e1", None]}, fields, limits)
+    assert to_wire(coerced) == {"readings": ["100.5", "2.5", "15", None]}
+    assert coerce_decimal_fields({"readings": []}, fields, limits) == {"readings": []}
+    for bad in (["1", "0.12345"], ["100000"], ["1", "12abc"], [True]):
+        with pytest.raises(ValueError, match="readings"):
+            coerce_decimal_fields({"readings": bad}, fields, limits)
