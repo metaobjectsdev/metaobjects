@@ -131,3 +131,30 @@ def test_without_gen_state_the_legacy_marker_rule_stands(tmp_path: Path) -> None
     q = tmp_path / "B.py"
     q.write_text(generated_header("B", "B") + "old\n")
     assert decide_and_write(str(q), generated_header("B", "B") + "new\n", "overwrite") == "overwrite"
+
+
+def test_jvm_object_entry_is_read_and_preserved_on_record(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    state.mkdir()
+    jvm = {"hash": content_hash("jvm body"), "generator": "java:dto", "outputDir": "target/gen"}
+    (state / ".hashes.json").write_text(
+        json.dumps({"Plain.txt": "abc", "Jvm.java": jvm}, indent=2) + "\n", encoding="utf-8"
+    )
+
+    assert read_generated_hash(str(state), "Jvm.java") == jvm["hash"]
+
+    target = tmp_path / "Other.py"
+    assert _gen(target, "other\n", state) == "new"
+
+    saved = json.loads((state / ".hashes.json").read_text(encoding="utf-8"))
+    assert saved["Jvm.java"] == jvm
+    assert saved["Plain.txt"] == "abc"
+    assert saved["Other.py"] == content_hash("other\n")
+
+    jvm_file = tmp_path / "Jvm.java"
+    jvm_file.write_text("jvm body", encoding="utf-8")
+    assert _gen(jvm_file, "jvm body v2", state) == "overwrite"
+    saved = json.loads((state / ".hashes.json").read_text(encoding="utf-8"))
+    assert saved["Jvm.java"]["generator"] == "java:dto"
+    assert saved["Jvm.java"]["outputDir"] == "target/gen"
+    assert saved["Jvm.java"]["hash"] == content_hash("jvm body v2")

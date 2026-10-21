@@ -35,6 +35,34 @@ public class OverwriteHashManifestTests : IDisposable
     private string StateDir => Path.Combine(_root, ".metaobjects", ".gen-state");
     private string TargetPath => Path.Combine(OutDir, "A.cs");
 
+    [Fact]
+    public void JvmObjectEntry_IsReadAsRecordedHashAndPreservedOnRecord()
+    {
+        Directory.CreateDirectory(StateDir);
+        var jvmHash = HashManifest.ContentHash("jvm body");
+        File.WriteAllText(Path.Combine(StateDir, ".hashes.json"),
+            "{\n  \"Jvm.java\": { \"hash\": \"" + jvmHash + "\", \"generator\": \"java:dto\", \"outputDir\": \"target/gen\" },\n  \"Plain.txt\": \"abc\"\n}\n");
+
+        Assert.True(HashManifest.IsPristine(StateDir, "Jvm.java", "jvm body"));
+
+        HashManifest.Record(StateDir, "Other.cs", "other");
+
+        using var doc = JsonDocument.Parse(File.ReadAllText(Path.Combine(StateDir, ".hashes.json")));
+        var jvm = doc.RootElement.GetProperty("Jvm.java");
+        Assert.Equal(JsonValueKind.Object, jvm.ValueKind);
+        Assert.Equal(jvmHash, jvm.GetProperty("hash").GetString());
+        Assert.Equal("java:dto", jvm.GetProperty("generator").GetString());
+        Assert.Equal("target/gen", jvm.GetProperty("outputDir").GetString());
+        Assert.Equal("abc", doc.RootElement.GetProperty("Plain.txt").GetString());
+        Assert.Equal(HashManifest.ContentHash("other"), doc.RootElement.GetProperty("Other.cs").GetString());
+
+        HashManifest.Record(StateDir, "Jvm.java", "jvm body v2");
+        using var after = JsonDocument.Parse(File.ReadAllText(Path.Combine(StateDir, ".hashes.json")));
+        var updated = after.RootElement.GetProperty("Jvm.java");
+        Assert.Equal(HashManifest.ContentHash("jvm body v2"), updated.GetProperty("hash").GetString());
+        Assert.Equal("java:dto", updated.GetProperty("generator").GetString());
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_root)) Directory.Delete(_root, recursive: true);

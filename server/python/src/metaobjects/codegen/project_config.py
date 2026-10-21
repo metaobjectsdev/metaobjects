@@ -62,6 +62,17 @@ LEGACY_DOCS_KEY = "docs"
 #: Every key a ``targets.<name>`` mapping may carry. Same contract as above.
 TARGET_KEYS: tuple[str, ...] = ("outDir", "generators", "entities", "templateSpec")
 
+#: Every key a mapping entry of a target's ``generators`` list may carry: the generator's
+#: name and its ``handEdits`` setting. Same contract as above.
+GENERATOR_ENTRY_KEYS: tuple[str, ...] = ("name", "handEdits")
+
+#: The values ``handEdits`` accepts, the same in every port. ``keep`` (the default) refuses
+#: a generated file edited by hand, and an edited file no generator emits any more;
+#: ``overwrite`` regenerates over the edit and deletes such an orphan, naming each one.
+HAND_EDITS_VALUES: tuple[str, ...] = ("keep", "overwrite")
+HAND_EDITS_KEEP = "keep"
+HAND_EDITS_OVERWRITE = "overwrite"
+
 #: Every key the ``apiDocs`` block may carry (the ``api-docs`` generator's options). Same
 #: contract as above.
 API_DOCS_KEYS: tuple[str, ...] = ("apiSubDir", "projectName", "modelBaseUrl")
@@ -127,6 +138,9 @@ class TargetConfig:
     #: A declarative template-spec (SP-1) whose generators also write into this target,
     #: relative to the config file's directory (or absolute); ``None`` => none.
     template_spec: str | None = None
+    #: The ``generators`` entries (as written in ``generators``) declared with
+    #: ``handEdits: overwrite``. Every other entry keeps hand edits.
+    overwrite_hand_edits: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True)
@@ -235,6 +249,36 @@ def _require_str_list(value: object, ctx: str) -> list[str]:
     if not isinstance(value, list) or not all(isinstance(x, str) for x in value):
         raise ConfigError(f"{ctx} must be a list of strings.")
     return list(value)
+
+
+def _parse_generator_entries(value: object, ctx: str) -> tuple[list[str], frozenset[str]]:
+    """A target's ``generators``: each entry a name, or a mapping ``{name, handEdits}``.
+
+    Returns the names in order and the ones declared ``handEdits: overwrite``."""
+    if not isinstance(value, list):
+        raise ConfigError(f"{ctx} must be a list of generator names or {{name, handEdits}} mappings.")
+    names: list[str] = []
+    overwrite: set[str] = set()
+    for entry in value:
+        if isinstance(entry, str):
+            names.append(entry)
+            continue
+        if not isinstance(entry, dict):
+            raise ConfigError(f"{ctx}: each entry must be a generator name or a {{name, handEdits}} mapping.")
+        _reject_unknown_keys(entry, GENERATOR_ENTRY_KEYS, ctx)
+        name = entry.get("name")
+        if not isinstance(name, str) or not name:
+            raise ConfigError(f"{ctx}: a mapping entry must declare a non-empty 'name'.")
+        hand_edits = entry.get("handEdits", HAND_EDITS_KEEP)
+        if hand_edits not in HAND_EDITS_VALUES:
+            raise ConfigError(
+                f"{ctx}: entry {name!r} has handEdits {hand_edits!r}; expected one of "
+                f"{', '.join(HAND_EDITS_VALUES)}."
+            )
+        names.append(name)
+        if hand_edits == HAND_EDITS_OVERWRITE:
+            overwrite.add(name)
+    return names, frozenset(overwrite)
 
 
 def _parse_requirement_tests(raw: object, ctx: str) -> RequirementTestsConfig:
@@ -385,8 +429,10 @@ def load_project_config(path: Path) -> ProjectConfig:
         if not isinstance(out_dir, str) or not out_dir:
             raise ConfigError(f"{ctx} must declare a non-empty 'outDir' string.")
         generators = spec.get("generators")
+        overwrite_hand_edits: frozenset[str] = frozenset()
         if generators is not None:
-            generators = _require_str_list(generators, f"{ctx} 'generators'")
+            generators, overwrite_hand_edits = _parse_generator_entries(
+                generators, f"{ctx} 'generators'")
         entities = spec.get("entities")
         if entities is not None:
             entities = _require_str_list(entities, f"{ctx} 'entities'")
@@ -396,7 +442,7 @@ def load_project_config(path: Path) -> ProjectConfig:
         targets.append(
             TargetConfig(
                 name=str(name), out_dir=out_dir, generators=generators, entities=entities,
-                template_spec=template_spec,
+                template_spec=template_spec, overwrite_hand_edits=overwrite_hand_edits,
             )
         )
 

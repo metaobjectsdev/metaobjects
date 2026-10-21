@@ -234,6 +234,24 @@ one-time fix.
 | `--baseline=adopt` | TS · Python · C# | record the files you HAVE as the merge base and **write nothing** |
 | `--baseline=fresh` | TS only | overwrite the refused files from fresh output and re-baseline (**discards** hand edits). A local snapshot body for a path the manifest has no record of is ignored, not merged against, so stale content from an earlier checkout is not kept as a hand edit |
 
+`--baseline` answers for one run. To decide once, per generator, set `handEdits` on its
+entry instead:
+
+| setting | ports | what it does |
+|---|---|---|
+| `handEdits: keep` | all | the default: an edited generated file is refused, and so is an edited file no generator emits any more |
+| `handEdits: overwrite` | all | replace that generator's edited files with fresh output and re-baseline them; the orphan sweep deletes an edited file no generator emits any more when every generator writing into its directory overwrites. Each discarded file is named. A file the manifest has no record of is still refused |
+
+| | `--baseline=fresh` | `handEdits: overwrite` |
+|---|---|---|
+| scope | one run, every generator | every run, one generator |
+| a file with no manifest record | overwritten | refused |
+| an edited orphan | untouched | deleted (when the whole directory overwrites) |
+| `verify --codegen` | not affected | reports the edit as drift that `gen` fixes |
+
+Syntax per port, and the orphan rule both follow:
+[own-your-codegen](own-your-codegen.md#handedits-keep-or-discard-edits-to-one-generators-files).
+
 **`adopt` exists because the refusal's own remedy was unreachable.** It told you to commit
 `.hashes.json` — but nothing writes a manifest until a `gen` succeeds, and a run where
 every file refuses writes none, so there was nothing to commit and the next run refused

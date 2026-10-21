@@ -205,11 +205,16 @@ public static class CodegenCli
     /// to the current directory for a caller that names no project (mirrors
     /// <c>GenConfig.ProjectRoot</c>'s own default).
     /// </param>
+    /// <param name="sweepOrphans">
+    /// <paramref name="generators"/> is the project's WHOLE list, so a recorded file none of
+    /// them emitted is stale output and is deleted when untouched (<see cref="GenConfig.SweepOrphans"/>).
+    /// </param>
     public static GenOutcome RunGen(
         LoadResult load, string outDir, string ns, bool emitAbstractShapes,
         IReadOnlyList<IGenerator> generators, string? projectRoot = null,
         string baseline = "default",
-        bool? includeNames = null)
+        bool? includeNames = null,
+        bool sweepOrphans = false)
     {
         var loadErrors = load.Errors.Select(e => e.Code.ToString()).ToList();
         if (loadErrors.Count > 0) return new GenOutcome(loadErrors, null);
@@ -235,6 +240,7 @@ public static class CodegenCli
             // `is NamesGenerator`, so an OWNED copy of NamesGenerator — a different CLR
             // type, in a different assembly, once ejected — still satisfies the gate.
             IncludeNames = includeNames ?? generators.Any(g => g.Name == "names"),
+            SweepOrphans = sweepOrphans,
         };
 
         CodegenRunner.RunResult result;
@@ -323,15 +329,17 @@ public static class CodegenCli
         IReadOnlyList<IGenerator> declared, string? templateSpecFlag, string projectRoot)
     {
         if (templateSpecFlag is not null) return "--template-spec";
-        if (declared.Any(g => g is TemplateSpecGenerator)) return null;
+        if (declared.Any(g => Unwrapped(g) is TemplateSpecGenerator)) return null;
         return File.Exists(Path.Combine(projectRoot, TemplateSpecFileName)) ? TemplateSpecFileName : null;
     }
+
+    private static IGenerator Unwrapped(IGenerator g) => g is HandEditsGenerator h ? h.Inner : g;
 
     /// <summary>Read every declared template spec once, so a missing or malformed file is a clean
     /// error before anything is written. <c>null</c> when they all read.</summary>
     private static string? CheckTemplateSpecs(IReadOnlyList<IGenerator> suite)
     {
-        foreach (var spec in suite.OfType<TemplateSpecGenerator>())
+        foreach (var spec in suite.Select(Unwrapped).OfType<TemplateSpecGenerator>())
         {
             try { _ = spec.Generators(); }
             catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException or JsonException)
@@ -385,9 +393,14 @@ public static class CodegenCli
     /// <summary><paramref name="selected"/>, with the run's <paramref name="templateRoot"/> given to each
     /// template-spec entry that names none of its own.</summary>
     private static List<IGenerator> WithTemplateRoot(IReadOnlyList<IGenerator> selected, string templateRoot) =>
-        [.. selected.Select(g => g is TemplateSpecGenerator { TemplateRoot: null } spec
-            ? new TemplateSpecGenerator { Spec = spec.Spec, TemplateRoot = templateRoot, OutDir = spec.OutDir }
-            : g)];
+        [.. selected.Select(g => g switch
+        {
+            TemplateSpecGenerator { TemplateRoot: null } spec =>
+                new TemplateSpecGenerator { Spec = spec.Spec, TemplateRoot = templateRoot, OutDir = spec.OutDir },
+            HandEditsGenerator { Inner: TemplateSpecGenerator { TemplateRoot: null } } wrapped =>
+                WithTemplateRoot([wrapped.Inner], templateRoot)[0].WithHandEdits(wrapped.HandEdits),
+            _ => g,
+        })];
 
     /// <summary>The registry names of the entries in <paramref name="generators"/> that a registry
     /// generator builds, for the advisory requires check.</summary>
@@ -684,7 +697,10 @@ public static class CodegenCli
         // ADR-0023: gen loads leniently; name what `verify` would reject instead of staying silent.
         WarnUnknownAttrs(meta);
         var outcome = RunGen(meta.Load(), a.OutDir, a.Namespace, a.EmitAbstractShapes, suite, projectRoot, a.Baseline,
-            includeNames: declared.Any(g => g.Name == "names"));
+            includeNames: declared.Any(g => g.Name == "names"),
+            // Only a run of the whole declared list can tell a stale file from one the
+            // narrowing left out.
+            sweepOrphans: a.Selection is not { Count: > 0 });
         if (!outcome.Ok)
         {
             ReportFailure(outcome, GenCommandName);
@@ -693,7 +709,9 @@ public static class CodegenCli
         foreach (var f in outcome.Result!.Files) Console.WriteLine($"  {f.Status}: {f.Path}");
         foreach (var w in outcome.Result!.Warnings) Console.Error.WriteLine($"  warning: {w}");
         var writtenCount = outcome.Result!.Files.Count(f => f.Status == "written");
-        Console.WriteLine($"{GenCommandName}: {writtenCount} file(s) written");
+        var removedCount = outcome.Result!.Files.Count(f => f.Status == "removed");
+        Console.WriteLine($"{GenCommandName}: {writtenCount} file(s) written" +
+            (removedCount > 0 ? $", {removedCount} file(s) no generator emits any more removed" : ""));
 
         // A refusal is a FAILED gate, matching TypeScript's `meta gen` (exit 1): an adopter
         // wiring gen into CI as a drift gate must not be green while codegen refused to write.
@@ -847,6 +865,9 @@ public static class CodegenCli
             Namespace = effectiveNs,
             ColumnNamingStrategy = columnNaming,
             IncludeNames = declared.Any(g => g.Name == "names"),
+            // The manifest gen keeps: an extra file is classified by what gen recorded writing.
+            GenStateDir = Path.Combine(projectRoot, ".metaobjects", ".gen-state"),
+            ProjectRoot = projectRoot,
         };
         var result = CodegenDrift.Compute(config, load.Root, suite, narrowed: a.Selection is { Count: > 0 });
         if (result.Error is not null)
@@ -870,7 +891,7 @@ public static class CodegenCli
             Console.Error.WriteLine(NamingDiffers(committed, naming));
             return 1;
         }
-        Console.Error.WriteLine("Run 'dotnet meta gen' to regenerate, then commit the result.");
+        foreach (var line in CodegenDrift.Remedy(result)) Console.Error.WriteLine(line);
         return 1;
     }
 }

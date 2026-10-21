@@ -151,6 +151,102 @@ describe("meta verify --codegen — files MetaObjects never wrote", () => {
     }
   });
 
+  test("the remedy works: meta gen deletes the untouched orphan and the gate goes green", async () => {
+    // The loop this closes: the gate convicted `Tag.ts` and said "run 'meta gen'", and
+    // gen never deleted anything, so the gate failed identically after every run.
+    const root = setupRepo();
+    try {
+      expect(await run(["gen", "--cwd", root])).toBe(0);
+      deleteTagEntity(root);
+
+      out = []; err = [];
+      expect(await run(["verify", "--cwd", root, "--codegen"])).toBe(1);
+      expect(all()).toContain("'meta gen' deletes it");
+
+      out = []; err = [];
+      expect(await run(["gen", "--cwd", root])).toBe(0);
+      expect(existsSync(join(root, OUT, "Tag.ts"))).toBe(false);
+      expect(readFileSync(join(root, MANIFEST), "utf8")).not.toContain("Tag.ts");
+
+      out = []; err = [];
+      expect(await run(["verify", "--cwd", root, "--codegen"])).toBe(0);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("a hand-edited orphan is refused by gen, and the gate says to delete it", async () => {
+    const root = setupRepo();
+    try {
+      expect(await run(["gen", "--cwd", root])).toBe(0);
+      writeFileSync(join(root, OUT, "Tag.ts"), `${readFileSync(join(root, OUT, "Tag.ts"), "utf8")}// mine\n`);
+      deleteTagEntity(root);
+
+      out = []; err = [];
+      await run(["gen", "--cwd", root]);
+      expect(existsSync(join(root, OUT, "Tag.ts"))).toBe(true);
+      expect(all()).toContain("NOT deleted");
+
+      out = []; err = [];
+      expect(await run(["verify", "--cwd", root, "--codegen"])).toBe(1);
+      expect(all()).toContain("edited by hand: delete it");
+      expect(all()).toContain("'meta gen' will NOT delete them");
+      expect(all()).not.toContain("Run 'meta gen' to regenerate");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("handEdits: overwrite — the gate calls an edit drift that gen fixes, and gen fixes it", async () => {
+    const root = setupRepo();
+    try {
+      writeFileSync(
+        join(root, "metaobjects.config.ts"),
+        `
+import { defineConfig } from "@metaobjectsdev/codegen-ts";
+import { entityFile } from "@metaobjectsdev/codegen-ts/generators";
+export default defineConfig({
+  outDir: ${JSON.stringify(join(root, OUT))},
+  dialect: "sqlite",
+  dbImport: "~/db",
+  extStyle: "none",
+  generators: [{ ...entityFile(), handEdits: "overwrite" }],
+});
+`,
+      );
+      expect(await run(["gen", "--cwd", root])).toBe(0);
+      const tag = join(root, OUT, "Tag.ts");
+      writeFileSync(tag, `${readFileSync(tag, "utf8")}// mine\n`);
+
+      out = []; err = [];
+      expect(await run(["verify", "--cwd", root, "--codegen"])).toBe(1);
+      expect(all()).toContain(`handEdits: "overwrite"`);
+      expect(all()).toContain("Run 'meta gen' to regenerate");
+
+      out = []; err = [];
+      expect(await run(["gen", "--cwd", root])).toBe(0);
+      expect(all()).toContain("overwrote hand-edited");
+      expect(readFileSync(tag, "utf8")).not.toContain("// mine");
+
+      // An edited orphan of an overwriting generator is deleted, not refused.
+      writeFileSync(tag, `${readFileSync(tag, "utf8")}// mine\n`);
+      deleteTagEntity(root);
+      out = []; err = [];
+      expect(await run(["verify", "--cwd", root, "--codegen"])).toBe(1);
+      expect(all()).toContain("so 'meta gen' deletes it");
+      expect(all()).not.toContain("will NOT delete");
+      out = []; err = [];
+      expect(await run(["gen", "--cwd", root])).toBe(0);
+      expect(existsSync(tag)).toBe(false);
+      expect(all()).toContain("deleted hand-edited");
+
+      out = []; err = [];
+      expect(await run(["verify", "--cwd", root, "--codegen"])).toBe(0);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   test("with no manifest at all, the old conservative verdict stands", async () => {
     const root = setupRepo();
     try {

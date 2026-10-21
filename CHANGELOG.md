@@ -47,6 +47,15 @@ has a section per port, written for a coding agent to apply to the config by han
 ADR-0034 Amendment 9, which numbers the release 1.1.0 (Maven 8.1.0) by the maintainer's
 explicit decision. The entries are under **Removed** and **Changed**.
 
+**Breaking, Java and Kotlin: commit `.metaobjects/.gen-state/.hashes.json`.** `mvn
+metaobjects:generate` now records what it writes in the same committed hash manifest the other
+ports use, and decides overwrites from it instead of from the `GENERATED` header token alone.
+An edited generated file is refused by name (it was overwritten), and a file no generator emits
+any more is deleted. The first run adopts your existing generated files and tells you to commit
+the manifest; commit it in every module. Migration:
+[jvm-codegen-hash-manifest.md](docs/features/migrations/jvm-codegen-hash-manifest.md). The
+entry is under **Changed**.
+
 **What 1.1.0 is.** The reporting release (FR-044): declare dimensions, measures, segments and an
 `object.report`, and get a SQL view, a served read-only list route in every port, a generated
 TanStack list hook, and a Cube data model, with `@spine` for rows that have no facts and
@@ -124,6 +133,18 @@ generator catalog and the Atlas evaluation are 1.2 work.
 
 ### Added
 
+- **`handEdits: keep | overwrite` on every generator entry, in every port.** `keep`, the
+  default, is the behaviour so far: an edited generated file is refused, and so is an edited
+  file no generator emits any more. `overwrite` replaces that generator's edited files with
+  fresh output and re-baselines their manifest records, and the orphan sweep deletes an
+  edited file no generator emits any more when every generator writing into its directory
+  overwrites. Each discarded file is named on its own line, and a file the manifest has no
+  record of is still refused. `verify --codegen` follows the setting: under `overwrite` an edit
+  is drift that `gen` fixes, and the remedy says so. Set it with `{ ...entityFile(), handEdits:
+  "overwrite" }` (TypeScript), a `{ name: entity, handEdits: overwrite }` entry in
+  `metaobjects.config.yaml` (Python), `new EntityGenerator().WithHandEdits(HandEdits.Overwrite)`
+  (C#) or `<handEdits>overwrite</handEdits>` on a `<generator>` (Java, Kotlin).
+  `--baseline=fresh` stays as the one-run form; `docs/features/cli.md` sets the two side by side.
 - **Python: `templates` in `metaobjects.config.yaml`.** The template directory was a flag
   only; `gen`, `verify --codegen` and `verify --templates` read the key, and a `--templates`
   that contradicts it is refused.
@@ -887,6 +908,27 @@ loaded, then rewrites each to its canonical spelling before the tree is frozen. 
   name: pass `refTarget(rel, "objectRef")` (`ref_target` in Python). The name form matched by
   short name.
 
+**Java and Kotlin: codegen decides overwrites from the committed hash manifest (ADR-0060).**
+**Commit `.metaobjects/.gen-state/.hashes.json` in every module that runs the plugin.**
+`GeneratedFileWriter` records each file it writes (module-relative path to SHA-256), the same
+file as TypeScript, Python and C#. A file that still matches its record is
+overwritten; an edited one is refused by name with a warning, where 8.0.x overwrote it; a file
+with no record is adopted when it carries the `GENERATED` token and refused when it does not.
+The first run on an 8.0.x project adopts every generated file, deletes nothing and prints one
+notice. After a full run, a recorded file no generator emitted is deleted when untouched and
+refused when edited, and `mvn metaobjects:verify` reports it with the matching remedy. Two
+executions in one module share the manifest without touching each other's files: each entry
+names its owner (the generator's registry id and its output directory, not the Maven
+execution), a run deletes only its own generators' orphans and those of generators the module
+no longer configures, even in a shared output directory, and one file two generators
+emit with different content fails the goal; two modules have two. **New build-time check:**
+two executions that configure the same generator into the same `<outputDir>` (in the main
+build or any profile) now fail `generate` and `verify` before anything is written, naming
+both executions; give each its own `<outputDir>` or merge them into one execution. User templates, api-docs pages and the `META-INF/services` registration are not
+recorded, so they are never deleted. A refusal stays a warning on the JVM. To keep the 8.0.x
+outcome for output nobody edits, set `<handEdits>overwrite</handEdits>` on that `<generator>`.
+Migration: [jvm-codegen-hash-manifest.md](docs/features/migrations/jvm-codegen-hash-manifest.md).
+
 **One physical-naming setting, read by every port (ADR-0058).** **This changes generated column names in C#, Java, Kotlin's runtime and Python unless you add
 one line.** Column and table names that the metadata does not give (`@column`, `@table`,
 `@view`, a source's `name`) now come from one project setting, `naming` in
@@ -1393,6 +1435,20 @@ until you regenerate.
   target object.
 - **Python: the YAML twin gate fails on a JSON load that crashes.** It used to skip the fixture
   as if its providers did not compose.
+- **`gen` deletes a file it wrote earlier and no longer generates, in every port.** Renaming a
+  value object (`Telemetry` to `TelemetryReading`), deleting an entity, or a release moving
+  api-docs pages to another package left the old files on disk. `verify --codegen` then
+  reported them as extra and said to regenerate, and regenerating removed nothing, so an agent
+  following the remedy looped. Now a full `gen` run deletes a file the committed manifest
+  records writing, that no generator emitted this run and that still hashes to what was
+  recorded, and drops its record. An edited such file is refused by name and stays recorded;
+  `verify --codegen` reports it as edited by hand and says to delete it rather than to
+  regenerate. A file the manifest does not record is never touched and is not drift. A run
+  narrowed by `--generators`, an entity filter or a partial `--target`, and
+  `--baseline=adopt`, delete nothing. The rule, written once for every port, is in
+  `docs/features/own-your-codegen.md` ("Files that are no longer generated"). TypeScript's
+  `orphanPolicy: { keep: true }` opts a generator's namespace out; the `requirement-tests`
+  generator's `reconcileOrphans: false` now does exactly that.
 - **SQLite and D1: a backtick-quoted CHECK constraint name is read.** Introspection read
   `CONSTRAINT "name"` and a bare name but not `` CONSTRAINT `name` `` (the quoting Drizzle-written
   migrations use) or `[name]`, so the stored check had an empty name, and `meta verify --db` and

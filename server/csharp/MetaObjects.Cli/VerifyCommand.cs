@@ -442,6 +442,9 @@ public static class VerifyCommand
             // --out reading the SAME root's naming.columns, so this regen agrees with it
             // by construction rather than needing a flag told to match.
             ColumnNamingStrategy = load.Root.PhysicalNaming.Columns,
+            // The manifest gen keeps: an extra file is classified by what gen recorded writing.
+            GenStateDir = Path.Combine(GenCommand.ProjectRootFor(opts.MetadataDir), ".metaobjects", ".gen-state"),
+            ProjectRoot = GenCommand.ProjectRootFor(opts.MetadataDir),
         };
         return Codegen.CodegenDrift.Compute(config, load.Root, generators);
     }

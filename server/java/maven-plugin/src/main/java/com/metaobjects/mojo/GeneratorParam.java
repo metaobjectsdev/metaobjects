@@ -12,10 +12,16 @@ import java.util.Map;
  */
 public class GeneratorParam {
 
+    /** Refuse a hand-edited generated file by name (the default). */
+    public static final String HAND_EDITS_KEEP = "keep";
+    /** Replace a hand-edited generated file with fresh output and re-baseline its hash. */
+    public static final String HAND_EDITS_OVERWRITE = "overwrite";
+
     private String classname = null;
     private Map<String,String> args = null;
     private List<String> filters = null;
     private List<String> scripts = null;
+    private String handEdits = HAND_EDITS_KEEP;
 
     public GeneratorParam() {}
 
@@ -81,6 +87,43 @@ public class GeneratorParam {
      */
     public void setScripts(List<String> scripts) {
         this.scripts = scripts;
+    }
+
+    /**
+     * How this generator's write decisions treat a generated file that was hand-edited
+     * since it was written: {@link #HAND_EDITS_KEEP} (default) refuses it by name and
+     * leaves it in place; {@link #HAND_EDITS_OVERWRITE} replaces it with fresh output
+     * (and lets the orphan sweep delete a hand-edited file this generator's output
+     * directory no longer emits, when every generator writing there agrees). Same name
+     * and values on every port.
+     * @return the configured policy, or {@link #HAND_EDITS_KEEP} if unset
+     */
+    public String getHandEdits() {
+        return handEdits == null ? HAND_EDITS_KEEP : handEdits;
+    }
+
+    /**
+     * Set the hand-edit policy ({@link #HAND_EDITS_KEEP} or {@link #HAND_EDITS_OVERWRITE}).
+     * @param handEdits the policy name
+     */
+    public void setHandEdits(String handEdits) {
+        this.handEdits = handEdits;
+    }
+
+    /**
+     * Validate and return this entry's {@code handEdits}, failing fast on a typo rather
+     * than silently falling back to {@code keep}.
+     * @throws com.metaobjects.MetaDataException if the value is neither "keep" nor "overwrite"
+     */
+    public String validatedHandEdits() {
+        String value = getHandEdits();
+        if (!HAND_EDITS_KEEP.equals(value) && !HAND_EDITS_OVERWRITE.equals(value)) {
+            throw new com.metaobjects.MetaDataException(
+                "Generator [" + classname + "] has <handEdits>" + value + "</handEdits>; "
+                    + "valid values are '" + HAND_EDITS_KEEP + "' (default) and '"
+                    + HAND_EDITS_OVERWRITE + "'.");
+        }
+        return value;
     }
 
     //////////////////////////////////////////////////////////////

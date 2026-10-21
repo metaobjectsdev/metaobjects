@@ -652,9 +652,10 @@ renders the same everywhere.
 
 One deliberate difference from the other ports: this generator writes its output
 **directly**, not through `GeneratedFileWriter`, so your template is under no
-obligation to emit the `@generated` marker. The marker floor guards output whose
-header MetaObjects controls; a user template's output is not that. The tradeoff is
-that these files are overwritten on every run — keep hand edits out of them.
+obligation to emit a marker, and its output is not recorded in the codegen hash manifest.
+The tradeoff is that these files are overwritten on every run, and the orphan sweep never
+deletes one that is no longer rendered — keep hand edits out of them, and delete a stale one
+yourself.
 
 The data dict your template receives is documented in
 [`codegen-data-shapes.md`](../features/codegen-data-shapes.md).

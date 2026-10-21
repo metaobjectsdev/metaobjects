@@ -9,7 +9,10 @@
 //    2026-08-17, and it was never true for C#/Python. It remains true for Java/Kotlin
 //    only. Stating it unqualified told an adopter that deleting the header takes
 //    ownership of a TypeScript/C#/Python file — backwards, since editing the content
-//    (which breaks the hash) is what takes ownership there.
+//    (which breaks the hash) is what takes ownership there. From Maven 8.1.0 (ADR-0060)
+//    Java and Kotlin use the same manifest, so the skill now states one rule for every
+//    port and names the JVM's one difference: a first-run adoption of files carrying the
+//    `GENERATED` token.
 // 2. The skill's only cross-reference to `docs/features/codegen-concepts.md` pointed at
 //    §3/§10 (authoring mechanisms), never at §5-§7, which is where the write-once /
 //    base-plus-extension question is actually answered.
@@ -22,18 +25,13 @@ function readSkill(name: string): string {
   return readFileSync(join(resolveAgentContextRoot(), "skills", name, "SKILL.md"), "utf8");
 }
 
-test("the skill states the overwrite policy PER PORT, not as one universal rule", () => {
+test("the skill does not state the retired header-ownership overwrite claim", () => {
   const skill = readSkill("metaobjects-codegen");
-  // The retired claim. It was true for TS until 2026-08-17 and is still true for the
-  // JVM, which is exactly why stating it unqualified is worse than stating nothing.
+  // The retired claim. Stating it unqualified told an adopter that deleting the header
+  // takes ownership of a file, which is backwards on every port now.
   expect(skill).not.toMatch(/Refuses to overwrite any file that does NOT carry the `@generated` header/);
-  // The hash manifest is what actually decides in three of five ports; an adopter who
-  // does not know that will delete the header and believe the file is theirs.
-  expect(skill).toMatch(/hash manifest/i);
-  // The per-port split has to name both halves, or a reader still walks away thinking
-  // one rule covers every port.
-  expect(skill).toMatch(/TypeScript,\s*C#,\s*Python/);
-  expect(skill).toMatch(/Java,\s*Kotlin/);
+  // The 8.0.x JVM rule (the marker decides, removing it takes ownership) is retired too.
+  expect(skill).not.toMatch(/Remove that token and\s+regeneration never touches the file again/);
 });
 
 test("the skill points at the sections that answer the write-once question", () => {

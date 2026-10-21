@@ -513,11 +513,12 @@ describe("ADR-0034 — the requirement-tests reference over a ledger that declar
     { label: "the uncovered warning switched off", opts: { warnUncovered: false }, files: 6 },
     // Seven of the eight requirements uncovered: five are named and the rest counted.
     { label: "more uncovered requirements than the warning names", opts: { filter: (r) => r.path === "Orders.Recorded" }, files: 1, warns: ", and 2 more." },
-    // A custom `path` with no `owns`: the stubs move and the generator says it can no
-    // longer clean up after a deleted requirement.
-    { label: "a custom path without owns", opts: { path: specPath }, files: 6, warns: "a custom 'path' was supplied without a matching 'owns'" },
+    // A custom `path` with no `owns`: the stubs move, the policy claims nothing, and the
+    // run-wide sweep cleans up after a deleted requirement, so there is nothing to warn about
+    // until `reconcileOrphans: false` asks to keep files it cannot name.
+    { label: "a custom path without owns", opts: { path: specPath }, files: 6, warns: "2 requirement(s) matched no filter" },
     { label: "a custom path with its owns, under member grain", opts: { path: specPath, owns: ownsSpecs, grain: "member", forceOrphanDelete: true }, files: 8, warns: "2 requirement(s) matched no filter" },
-    { label: "a custom path with orphan reconciliation off", opts: { path: specPath, reconcileOrphans: false, warnUncovered: false }, files: 6 },
+    { label: "a custom path with orphan reconciliation off", opts: { path: specPath, reconcileOrphans: false, warnUncovered: false }, files: 6, warns: "cannot tell which files are its stubs" },
   ];
 
   for (const run of RUNS) {
@@ -595,6 +596,7 @@ describe("ADR-0034 — the requirement-tests reference is the same GENERATOR, no
     target: g.target,
     reconciles: g.orphanPolicy !== undefined,
     force: g.orphanPolicy?.force,
+    keep: g.orphanPolicy?.keep,
     owns: g.orphanPolicy === undefined ? null : SAMPLE_PATHS.filter((p) => g.orphanPolicy?.owns(p)),
   });
 
@@ -609,6 +611,7 @@ describe("ADR-0034 — the requirement-tests reference is the same GENERATOR, no
         target: undefined,
         reconciles: true,
         force: undefined,
+        keep: undefined,
         owns: ["requirements/Orders.Recorded.object.entity.test.ts", "requirements/deep/nested.test.ts"],
       },
     },
@@ -620,6 +623,7 @@ describe("ADR-0034 — the requirement-tests reference is the same GENERATOR, no
         target: undefined,
         reconciles: true,
         force: undefined,
+        keep: undefined,
         owns: ["requirements/Orders.Recorded.object.entity.test.ts", "requirements/deep/nested.test.ts"],
       },
     },
@@ -631,13 +635,14 @@ describe("ADR-0034 — the requirement-tests reference is the same GENERATOR, no
         target: "api-tests",
         reconciles: true,
         force: undefined,
+        keep: undefined,
         owns: ["requirements/Orders.Recorded.object.entity.test.ts", "requirements/deep/nested.test.ts"],
       },
     },
     {
       label: "a custom path without owns claims NOTHING",
       opts: { path: specPath },
-      expected: { name: "requirement-tests", target: undefined, reconciles: true, force: undefined, owns: [] },
+      expected: { name: "requirement-tests", target: undefined, reconciles: true, force: undefined, keep: undefined, owns: [] },
     },
     {
       label: "a custom path with owns claims exactly what owns says",
@@ -647,6 +652,7 @@ describe("ADR-0034 — the requirement-tests reference is the same GENERATOR, no
         target: undefined,
         reconciles: true,
         force: undefined,
+        keep: undefined,
         owns: ["specs/Orders.Recorded.object.entity.spec.ts"],
       },
     },
@@ -658,13 +664,21 @@ describe("ADR-0034 — the requirement-tests reference is the same GENERATOR, no
         target: undefined,
         reconciles: true,
         force: true,
+        keep: undefined,
         owns: ["requirements/Orders.Recorded.object.entity.test.ts", "requirements/deep/nested.test.ts"],
       },
     },
     {
-      label: "reconcileOrphans: false declares no policy at all",
+      label: "reconcileOrphans: false keeps its namespace, and force does not apply",
       opts: { reconcileOrphans: false, forceOrphanDelete: true },
-      expected: { name: "requirement-tests", target: undefined, reconciles: false, force: undefined, owns: null },
+      expected: {
+        name: "requirement-tests",
+        target: undefined,
+        reconciles: true,
+        force: undefined,
+        keep: true,
+        owns: ["requirements/Orders.Recorded.object.entity.test.ts", "requirements/deep/nested.test.ts"],
+      },
     },
   ];
 

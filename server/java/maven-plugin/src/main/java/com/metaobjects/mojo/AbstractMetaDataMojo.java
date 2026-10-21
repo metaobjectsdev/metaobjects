@@ -16,12 +16,24 @@ import com.metaobjects.loader.LoaderConfigurationConstants;
 import com.metaobjects.loader.LoaderOptions;
 import com.metaobjects.generator.EmitsPhysicalNameConstants;
 import com.metaobjects.loader.MetaDataLoader;
+import com.metaobjects.generator.util.HashManifest;
+import org.apache.maven.model.Plugin;
+import org.apache.maven.model.PluginExecution;
+import org.apache.maven.execution.MavenSession;
+import org.apache.maven.model.Profile;
+import org.apache.maven.model.building.ModelBuildingRequest;
 import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoExecution;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
+import org.apache.maven.plugins.annotations.Component;
 import org.apache.maven.plugins.annotations.Parameter;
+import org.apache.maven.project.DefaultProjectBuildingRequest;
 import org.apache.maven.project.MavenProject;
+import org.apache.maven.project.ProjectBuilder;
+import org.apache.maven.project.ProjectBuildingException;
+import org.apache.maven.project.ProjectBuildingRequest;
+import org.codehaus.plexus.util.xml.Xpp3Dom;
 
 import java.io.File;
 import java.lang.reflect.Constructor;
@@ -33,7 +45,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -54,8 +68,262 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
     @Parameter( defaultValue = "${project}", readonly = true, required = true )
     protected MavenProject project;
 
+    @Parameter( defaultValue = "${session}", readonly = true )
+    protected MavenSession session;
+
+    @Component
+    protected ProjectBuilder projectBuilder;
+
     @Parameter( defaultValue = "${mojoExecution}", readonly = true, required = true )
     protected MojoExecution execution;
+
+    /** This plugin's key in a module's build model. */
+    static final String PLUGIN_KEY = "com.metaobjects:metaobjects-maven-plugin";
+
+    /**
+     * What a codegen hash manifest entry {@code g} writes is recorded against: the
+     * generator's registry id and its output directory relative to the module basedir.
+     * It names the configuration, not the Maven execution, so a command-line run, a
+     * renamed execution and the lifecycle execution with the same configuration agree.
+     * {@code null} for a generator with no {@code outputDir}.
+     */
+    protected HashManifest.Owner ownerOf(GeneratorParam g) {
+        return ownerOf(g.getClassname(), mergeAndOverwriteArgs(g).get(GeneratorBase.ARG_OUTPUTDIR));
+    }
+
+    private HashManifest.Owner ownerOf(String classname, String outputDir) {
+        if (classname == null || outputDir == null) return null;
+        return new HashManifest.Owner(RequiresCheck.registryId(classname), moduleDir(Path.of(outputDir)));
+    }
+
+    /** {@code dir} as an owner names it: relative to the module basedir when inside it. */
+    private String moduleDir(Path outputDir) {
+        Path dir = outputDir.toAbsolutePath().normalize();
+        String shown = dir.toString();
+        if (project != null && project.getBasedir() != null) {
+            Path base = project.getBasedir().toPath().toAbsolutePath().normalize();
+            if (dir.startsWith(base)) shown = base.relativize(dir).toString();
+        }
+        return shown.replace(File.separatorChar, '/');
+    }
+
+    /**
+     * Whether no generator the module configures for {@code dir}, in any execution or the
+     * plugin-level configuration, keeps hand edits: an edited orphan there may be deleted
+     * only when every writer of the directory says {@code handEdits=overwrite}. {@code false}
+     * when what is configured is unknown, so an edited orphan is never deleted on a guess.
+     */
+    protected boolean noConfiguredWriterKeeps(Path dir) {
+        ConfiguredOwners c = configured();
+        return c.owners() != null && !c.keepDirs().contains(moduleDir(dir));
+    }
+
+    /**
+     * Every generator/output-directory pair the module configures for
+     * {@code metaobjects:generate}: in each of its executions and in the plugin-level
+     * configuration a command-line run uses. It is the union over the module built with
+     * no profile, with each profile of the module and its parents active alone, and with
+     * this build's own active profiles, so a profile switched off for one build does not
+     * make its generators' files look stranded, and two profiles that set the same
+     * property or execution differently each count. Maven builds each model, so profile
+     * properties, inherited profiles and basedirs resolve as they do when the profile is
+     * on. {@code null} when a model cannot be built or none declares this plugin, so what
+     * is configured is unknown. Computed once per module per build and kept in the
+     * project's build context, since every execution of the module reads the same POMs.
+     */
+    protected Set<HashManifest.Owner> configuredOwners() {
+        return configured().owners();
+    }
+
+    /**
+     * Fail before anything is written when two {@code metaobjects:generate} executions of
+     * the module, in any of the models {@link #configuredOwners} reads, configure the same
+     * generator into the same output directory. Their files would share one owner, so
+     * neither execution could tell the other's output from its own orphans. The
+     * plugin-level configuration is no execution of its own: a command-line run of it and
+     * the one execution that inherits it are the same configuration. An execution disabled
+     * with {@code <phase>none</phase>} is not counted here, though its pairs still count as
+     * configured, so the output of an on-demand run is never stranded; run explicitly
+     * ({@code mvn metaobjects:generate@<id>}), it is refused when an enabled execution owns
+     * one of its generator/output-directory pairs.
+     */
+    protected void refuseSharedGeneratorDirs() {
+        List<String> shared = new ArrayList<>();
+        Map<HashManifest.Owner, List<String>> executions = configured().executions();
+        executions.forEach((owner, by) -> {
+            if (by.size() > 1) shared.add("'" + owner + "' in executions " + String.join(" and ", by));
+        });
+        String self = execution != null ? execution.getExecutionId() : null;
+        if (isDisabledGenerateExecution(self) && getGenerators() != null) {
+            for (GeneratorParam g : getGenerators()) {
+                HashManifest.Owner owner = ownerOf(g);
+                List<String> by = owner != null ? executions.get(owner) : null;
+                if (by != null && !by.isEmpty()) {
+                    shared.add("'" + owner + "' in executions " + String.join(" and ", by) + " and '" + self
+                            + "' (<phase>none</phase>, invoked explicitly)");
+                }
+            }
+        }
+        if (shared.isEmpty()) return;
+        shared.sort(String::compareTo);
+        throw new MetaDataException("Two metaobjects:generate executions of this module configure the same "
+                + "generator into the same output directory: " + String.join("; ", shared) + ". Give each "
+                + "execution its own <outputDir>, or merge them into one execution.");
+    }
+
+    private ConfiguredOwners configured() {
+        if (project == null || project.getFile() == null || projectBuilder == null || session == null) {
+            return ConfiguredOwners.UNKNOWN;
+        }
+        if (project.getContextValue(CONFIGURED_OWNERS_CONTEXT_KEY) instanceof ConfiguredOwners known) {
+            return known;
+        }
+        ConfiguredOwners read = readConfiguredOwners();
+        project.setContextValue(CONFIGURED_OWNERS_CONTEXT_KEY, read);
+        return read;
+    }
+
+    private record ConfiguredOwners(Set<HashManifest.Owner> owners, Map<HashManifest.Owner, List<String>> executions,
+                                    Set<String> keepDirs) {
+        static final ConfiguredOwners UNKNOWN = new ConfiguredOwners(null, Map.of(), Set.of());
+    }
+
+    private static final String CONFIGURED_OWNERS_CONTEXT_KEY =
+            AbstractMetaDataMojo.class.getName() + ".configuredOwners";
+
+    private ConfiguredOwners readConfiguredOwners() {
+        Set<String> profileIds = new LinkedHashSet<>();
+        for (MavenProject p = project; p != null; p = p.getParent()) {
+            if (p.getModel() == null) continue;
+            for (Profile profile : p.getModel().getProfiles()) profileIds.add(profile.getId());
+        }
+        List<MavenProject> models = new ArrayList<>();
+        models.add(project);
+        MavenProject base = projectWith(null, profileIds);
+        if (base == null) return ConfiguredOwners.UNKNOWN;
+        models.add(base);
+        for (String id : profileIds) {
+            MavenProject alone = projectWith(id, profileIds);
+            if (alone == null) return ConfiguredOwners.UNKNOWN;
+            models.add(alone);
+        }
+        Set<HashManifest.Owner> out = new HashSet<>();
+        Set<String> keepDirs = new HashSet<>();
+        Map<HashManifest.Owner, Set<String>> executions = new HashMap<>();
+        Map<String, String> profileOf = new HashMap<>();
+        Set<String> baseIds = generateExecutionIds(base);
+        List<String> profiles = new ArrayList<>(profileIds);
+        for (int i = 0; i < profiles.size(); i++) {
+            for (String id : generateExecutionIds(models.get(i + 2))) {
+                if (!baseIds.contains(id)) profileOf.putIfAbsent(id, profiles.get(i));
+            }
+        }
+        boolean declared = false;
+        for (MavenProject model : models) {
+            Plugin plugin = model.getPlugin(PLUGIN_KEY);
+            if (plugin == null) continue;
+            declared = true;
+            Xpp3Dom pluginLevel = plugin.getConfiguration() instanceof Xpp3Dom dom ? dom : null;
+            out.addAll(configuredIn(pluginLevel, keepDirs));
+            for (PluginExecution e : plugin.getExecutions()) {
+                if (!e.getGoals().contains("generate")) continue;
+                if (!(e.getConfiguration() instanceof Xpp3Dom execution)) continue;
+                for (HashManifest.Owner owner : configuredIn(pluginLevel == null ? execution
+                        : Xpp3Dom.mergeXpp3Dom(new Xpp3Dom(execution), pluginLevel), keepDirs)) {
+                    out.add(owner);
+                    if (isEnabledGenerate(e)) {
+                        executions.computeIfAbsent(owner, k -> new LinkedHashSet<>()).add(e.getId());
+                    }
+                }
+            }
+        }
+        if (!declared) return ConfiguredOwners.UNKNOWN;
+        Map<HashManifest.Owner, List<String>> byOwner = new HashMap<>();
+        executions.forEach((owner, ids) -> byOwner.put(owner, ids.stream()
+                .map(id -> "'" + id + "'" + (profileOf.containsKey(id) ? " (profile '" + profileOf.get(id) + "')" : ""))
+                .toList()));
+        return new ConfiguredOwners(out, byOwner, keepDirs);
+    }
+
+    private static Set<String> generateExecutionIds(MavenProject model) {
+        Set<String> ids = new HashSet<>();
+        Plugin plugin = model.getPlugin(PLUGIN_KEY);
+        if (plugin == null) return ids;
+        for (PluginExecution e : plugin.getExecutions()) {
+            if (isEnabledGenerate(e)) ids.add(e.getId());
+        }
+        return ids;
+    }
+
+    /** A {@code metaobjects:generate} execution not switched off with {@code <phase>none</phase>}
+     *  (how a module disables an execution it inherits). */
+    private static boolean isEnabledGenerate(PluginExecution e) {
+        return e.getGoals().contains("generate") && !"none".equals(e.getPhase());
+    }
+
+    /** Whether {@code id} names a generate execution of this module disabled with
+     *  {@code <phase>none</phase>}, as {@code mvn metaobjects:generate@<id>} can still run. */
+    private boolean isDisabledGenerateExecution(String id) {
+        Plugin plugin = project != null && id != null ? project.getPlugin(PLUGIN_KEY) : null;
+        if (plugin == null) return false;
+        for (PluginExecution e : plugin.getExecutions()) {
+            if (id.equals(e.getId()) && e.getGoals().contains("generate") && !isEnabledGenerate(e)) return true;
+        }
+        return false;
+    }
+
+    /** This module built by Maven with only profile {@code active} on ({@code null}: none of
+     *  {@code all}); {@code null} when the build fails. */
+    private MavenProject projectWith(String active, Set<String> all) {
+        List<String> inactive = new ArrayList<>(all);
+        inactive.remove(active);
+        ProjectBuildingRequest request = new DefaultProjectBuildingRequest(session.getProjectBuildingRequest());
+        request.setActiveProfileIds(active == null ? List.of() : List.of(active));
+        request.setInactiveProfileIds(inactive);
+        request.setResolveDependencies(false);
+        request.setValidationLevel(ModelBuildingRequest.VALIDATION_LEVEL_MINIMAL);
+        request.setProject(null);
+        try {
+            return projectBuilder.build(project.getFile(), request).getProject();
+        } catch (ProjectBuildingException e) {
+            getLog().warn("MetaData Mojo > Could not read every profile's configuration of this module, so files "
+                    + "only a removed generator wrote are not cleaned up this run: " + e.getMessage());
+            return null;
+        }
+    }
+
+    /** The generator/output-directory pairs {@code dom} configures; adds to {@code keepDirs}
+     *  the output directory of each one that keeps hand edits. */
+    private List<HashManifest.Owner> configuredIn(Xpp3Dom dom, Set<String> keepDirs) {
+        List<HashManifest.Owner> out = new ArrayList<>();
+        if (dom == null) return out;
+        Map<String, String> domGlobals = childValues(dom.getChild("globals"));
+        Xpp3Dom generators = dom.getChild("generators");
+        if (generators == null) return out;
+        for (Xpp3Dom generator : generators.getChildren()) {
+            Xpp3Dom classname = generator.getChild("classname");
+            if (classname == null) continue;
+            Map<String, String> args = mergeArgs(domGlobals, childValues(generator.getChild("args")));
+            HashManifest.Owner owner = ownerOf(classname.getValue(), args.get(GeneratorBase.ARG_OUTPUTDIR));
+            if (owner == null) continue;
+            out.add(owner);
+            Xpp3Dom handEdits = generator.getChild("handEdits");
+            if (handEdits == null || handEdits.getValue() == null
+                    || !GeneratorParam.HAND_EDITS_OVERWRITE.equals(handEdits.getValue().trim())) {
+                keepDirs.add(owner.outputDir());
+            }
+        }
+        return out;
+    }
+
+    private static Map<String, String> childValues(Xpp3Dom dom) {
+        Map<String, String> out = new HashMap<>();
+        if (dom == null) return out;
+        for (Xpp3Dom child : dom.getChildren()) {
+            if (child.getValue() != null) out.put(child.getName(), child.getValue().trim());
+        }
+        return out;
+    }
 
     @Parameter(name="loader")
     private LoaderParam loaderConfig = null;
@@ -257,9 +525,24 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
 
     public Map<String, String> mergeAndOverwriteArgs(GeneratorParam g) {
 
+        Map<String,String> allargs = mergeArgs(globals, g.getArgs());
+
+        // Dump the args to debug
+        getLog().debug( "-- Generator ["+g.getClass().getSimpleName()+"] merged Args");
+        for ( String key : allargs.keySet()) {
+            getLog().debug( "    "+key+" = '"+allargs.get(key) +
+                    ((globals!=null && allargs.get(key).equals(globals.get(key)))?"  #GLOBAL#":""));
+        }
+
+        return allargs;
+    }
+
+    /** {@code args} over {@code globalArgs}, with every path arg resolved against the
+     *  module basedir. */
+    private Map<String, String> mergeArgs(Map<String, String> globalArgs, Map<String, String> args) {
         Map<String,String> allargs = new HashMap<>();
-        if ( globals != null ) allargs.putAll(globals);
-        if ( g.getArgs() != null ) allargs.putAll(g.getArgs());
+        if ( globalArgs != null ) allargs.putAll(globalArgs);
+        if ( args != null ) allargs.putAll(args);
 
         File basedir = project != null ? project.getBasedir() : null;
         if ( basedir != null ) {
@@ -269,14 +552,6 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
                 allargs.put(key, basedir.toPath().resolve(value).normalize().toString());
             }
         }
-
-        // Dump the args to debug
-        getLog().debug( "-- Generator ["+g.getClass().getSimpleName()+"] merged Args");
-        for ( String key : allargs.keySet()) {
-            getLog().debug( "    "+key+" = '"+allargs.get(key) +
-                    ((globals!=null && allargs.get(key).equals(globals.get(key)))?"  #GLOBAL#":""));
-        }
-
         return allargs;
     }
 

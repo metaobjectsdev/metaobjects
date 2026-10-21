@@ -126,7 +126,7 @@ for (const impl of IMPLEMENTATIONS) {
       expect(removed(result)).toEqual([abs(WEEK_CUBE)]);
       expect(readFileSync(abs(PROGRAM_CUBE), "utf8")).toBe(program);
       // A removal is not a problem and must not masquerade as one.
-      expect(result.warnings.filter((w) => w.includes("no longer produced"))).toEqual([]);
+      expect(result.warnings.filter((w) => w.includes("no longer generated"))).toEqual([]);
     });
 
     test("a run that names entities removes nothing, and says it skipped the cleanup", async () => {
@@ -157,7 +157,7 @@ for (const impl of IMPLEMENTATIONS) {
 
       expect(readFileSync(abs(WEEK_CUBE), "utf8")).toBe(edited);
       expect(removed(result)).toEqual([]);
-      const refusal = result.warnings.find((w) => w.includes("no longer produced"));
+      const refusal = result.warnings.find((w) => w.includes("no longer generated"));
       expect(refusal).toBeDefined();
       expect(refusal).toContain("Week.yml");
       expect(refusal).toContain("cube-model");
