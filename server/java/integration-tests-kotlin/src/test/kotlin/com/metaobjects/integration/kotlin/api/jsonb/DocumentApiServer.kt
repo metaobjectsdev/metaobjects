@@ -82,6 +82,8 @@ class DocumentApiServer(private val pg: PostgresContainer) : AutoCloseable {
                     it[markers] = toJsonElement(r["markers"])
                     it[measure] = toJsonElement(r["measure"])
                     it[measures] = toJsonElement(r["measures"])
+                    it[tiers] = toJsonElement(r["tiers"])
+                    it[pricing] = toJsonElement(r["pricing"])
                 }
             }
         }
@@ -153,6 +155,8 @@ class DocumentApiServer(private val pg: PostgresContainer) : AutoCloseable {
                 it[markers] = toJsonElement(markersVal)
                 it[measure] = toJsonElement(canon["measure"])
                 it[measures] = toJsonElement(canon["measures"])
+                it[tiers] = toJsonElement(canon["tiers"])
+                it[pricing] = toJsonElement(canon["pricing"])
             }[DocumentTable.id]
         }
         val row = transaction(db) {
@@ -194,7 +198,7 @@ class DocumentApiServer(private val pg: PostgresContainer) : AutoCloseable {
         }
         // Apply only the present keys (absent = untouched). Guard the empty-SET case (Exposed throws).
         val canon = canonicalizeMeasures(body) ?: return sendJson(exchange, 400, mapOf("error" to "validation"))
-        val settableKeys = listOf("title", "payload", "primaryMarker", "optionalMarker", "markers", "measure", "measures")
+        val settableKeys = listOf("title", "payload", "primaryMarker", "optionalMarker", "markers", "measure", "measures", "tiers", "pricing")
         if (settableKeys.any { body.containsKey(it) }) {
             transaction(db) {
                 DocumentTable.update({ DocumentTable.id eq id }) {
@@ -205,6 +209,8 @@ class DocumentApiServer(private val pg: PostgresContainer) : AutoCloseable {
                     if (body.containsKey("markers")) it[markers] = toJsonElement(body["markers"])
                     if (body.containsKey("measure")) it[measure] = toJsonElement(canon["measure"])
                     if (body.containsKey("measures")) it[measures] = toJsonElement(canon["measures"])
+                    if (body.containsKey("tiers")) it[tiers] = toJsonElement(canon["tiers"])
+                    if (body.containsKey("pricing")) it[pricing] = toJsonElement(canon["pricing"])
                 }
             }
         }
@@ -238,6 +244,28 @@ class DocumentApiServer(private val pg: PostgresContainer) : AutoCloseable {
             if (many !is List<*>) return null
             out["measures"] = many.map { canonicalMeasure(it) ?: return null }
         }
+        // A field.map of Tier: the decimal rule applies to EACH map value; the keys are arbitrary
+        // text and never matched with Tier's member names (a key named "amount" is just a key).
+        val tiersVal = body["tiers"]
+        if (tiersVal != null) out["tiers"] = canonicalTierMap(tiersVal) ?: return null
+        // Pricing { tiers: map of Tier }
+        val pricingVal = body["pricing"]
+        if (pricingVal != null) {
+            val pricingMap = pricingVal as? Map<*, *> ?: return null
+            val outPricing = LinkedHashMap<String, Any?>()
+            for ((k, v) in pricingMap) outPricing[k as String] = v
+            val inner = outPricing["tiers"]
+            if (inner != null) outPricing["tiers"] = canonicalTierMap(inner) ?: return null
+            out["pricing"] = outPricing
+        }
+        return out
+    }
+
+    /** A map whose every value is a Tier; each value's decimal is canonicalised, or null on a violation. */
+    private fun canonicalTierMap(value: Any?): Map<String, Any?>? {
+        val map = value as? Map<*, *> ?: return null
+        val out = LinkedHashMap<String, Any?>()
+        for ((k, v) in map) out[k as String] = canonicalMeasure(v) ?: return null   // Tier has the one decimal(12, 4)
         return out
     }
 
@@ -282,6 +310,8 @@ class DocumentApiServer(private val pg: PostgresContainer) : AutoCloseable {
         "markers" to fromJsonElement(row[DocumentTable.markers]),
         "measure" to fromJsonElement(row[DocumentTable.measure]),
         "measures" to fromJsonElement(row[DocumentTable.measures]),
+        "tiers" to fromJsonElement(row[DocumentTable.tiers]),
+        "pricing" to fromJsonElement(row[DocumentTable.pricing]),
     )
 
     /** Jackson value (Map/List/scalar/null) → kotlinx `JsonElement` (the column type). */
@@ -326,6 +356,8 @@ class DocumentApiServer(private val pg: PostgresContainer) : AutoCloseable {
         val markers = jsonb("markers", { it.toString() }, { Json.parseToJsonElement(it) }).nullable()
         val measure = jsonb("measure", { it.toString() }, { Json.parseToJsonElement(it) }).nullable()
         val measures = jsonb("measures", { it.toString() }, { Json.parseToJsonElement(it) }).nullable()
+        val tiers = jsonb("tiers", { it.toString() }, { Json.parseToJsonElement(it) }).nullable()
+        val pricing = jsonb("pricing", { it.toString() }, { Json.parseToJsonElement(it) }).nullable()
 
         override val primaryKey = PrimaryKey(id)
     }

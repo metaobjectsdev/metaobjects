@@ -214,14 +214,17 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
 
         // FR-035: the PATCH-settable columns = scalar + value-object fields minus the PK. Program D:
         // a field.object value-object jsonb column IS settable — bound via Jackson treeToValue into
-        // the generated VO record / List<VO> and validated (spec §0). Still EXCLUDED: MapField
-        // (dict-of-VO, staged out) and the `field.string @dbColumnType=jsonb` open bag (its
+        // the generated VO record / List<VO> and validated (spec §0). A dict-of-VO MapField is
+        // settable the same way (Map<String, VO>, each value validated). Still EXCLUDED: a
+        // scalar-valued MapField and the `field.string @dbColumnType=jsonb` open bag (its
         // in-process type is a kotlinx JsonElement the raw-JsonNode patch path can't bind — a
         // create-only column, see KNOWN_GAPS).
         // When this is EMPTY (a PK + only map/open-bag columns) the controller emits no ObjectMapper
         // ctor param / TypeReference import (they'd be unused → allWarningsAsErrors).
         val patchSettableFields = entity.metaFields.filter {
-            it !is MapField && it.name != pkFieldName &&
+            // A dict-of-VO map (field.map @objectRef) IS settable, like a jsonb value-object column;
+            // a scalar-valued map stays out (unchanged).
+            (it !is MapField || isVoMapColumn(it)) && it.name != pkFieldName &&
                 !KotlinTypeMapper.isJsonbOpenBag(it) &&
                 // Program D: only a jsonb value-object column is settable. A flattened object
                 // field (@storage:flattened) is materialised by the Exposed table as per-subfield
@@ -452,9 +455,10 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             for (field in entity.metaFields) {
                 // Program D: a field.object value-object jsonb column IS written on create — the
                 // DTO property is the typed VO (record / List<VO>) and the Exposed Column<VO> codec
-                // encodes it to jsonb. MapField (dict-of-VO) stays skipped (staged out); a flattened
-                // object field (no single `Table.<field>`) is skipped too.
-                if (field is MapField || (field is ObjectField && !isJsonbObjectColumn(field))) continue
+                // encodes it to jsonb. A dict-of-VO MapField is written the same way (Map<String, VO>); a
+                // scalar-valued MapField stays skipped, and so does a flattened object field (no
+                // single `Table.<field>`).
+                if ((field is MapField && !isVoMapColumn(field)) || (field is ObjectField && !isJsonbObjectColumn(field))) continue
                 // Skip the PK column on insert — the table's @generation=increment owns it.
                 // If the entity has no auto-incrementing PK the consumer can override the
                 // generated handler; this is the 95% case.
@@ -531,6 +535,8 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                     // controller needs no extra import (mirrors the Exposed column codec).
                     val elem: String = if (field is ObjectField) {
                         voElementTypeFqn(field, loader)
+                    } else if (field is MapField) {
+                        "kotlin.collections.Map<kotlin.String, ${voMapValueTypeFqn(field, loader)}>"
                     } else {
                         (KotlinTypeMapper.enumTypeName(field, entity, providedEnums) ?: KotlinTypeMapper.kotlinTypeName(field)).toString()
                     }
@@ -552,6 +558,10 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                     // value-object's constraints, so a present VO is validated EXPLICITLY —
                     // validator.validate(voElement) per element (single VO whole; array VO per element),
                     // 400 on any violation. (A present-null / cleared value is already handled above.)
+                    if (field is MapField) {
+                        // Each map VALUE is a value object validated on its own (the keys are arbitrary text).
+                        append("                if (v$cap != null && v$cap.values.any { validator.validate(it).isNotEmpty() }) return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"validation\") as Any)\n")
+                    }
                     if (field is ObjectField) {
                         if (field.isArrayType) {
                             append("                if (v$cap != null && v$cap.any { validator.validate(it).isNotEmpty() }) return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"validation\") as Any)\n")
@@ -1904,7 +1914,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
     }
 
     /** Read the `@objectRef` attr off a value-object [field] (resolving); null when absent. */
-    private fun readObjectRef(field: ObjectField): String? {
+    private fun readObjectRef(field: MetaField<*>): String? {
         if (!field.hasMetaAttr(ObjectField.ATTR_OBJECTREF, true)) return null
         return runCatching { field.getMetaAttr(ObjectField.ATTR_OBJECTREF, true).valueAsString }.getOrNull()
     }
@@ -1920,6 +1930,16 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         if (!field.hasMetaAttr(ObjectField.ATTR_STORAGE, true)) return true   // default = single jsonb column
         val storage = runCatching { field.getMetaAttr(ObjectField.ATTR_STORAGE, true).valueAsString }.getOrNull()
         return !STORAGE_FLATTENED.equals(storage?.trim(), ignoreCase = true)
+    }
+
+    /** True for a `field.map` whose values are a value object (`@objectRef`), stored as one jsonb column. */
+    private fun isVoMapColumn(field: MetaField<*>): Boolean =
+        field is MapField && readObjectRef(field) != null
+
+    /** The fully-qualified Kotlin type of the value object a dict-of-VO map's values reference. */
+    private fun voMapValueTypeFqn(field: MapField, loader: MetaDataLoader): String {
+        val target = readObjectRef(field)?.let { KotlinGenUtil.lookupCanonicalObject(loader, it) }
+        return target?.let { PackageMapping.toKotlin(it.name) } ?: "kotlin.Any"
     }
 
     /**
@@ -2164,17 +2184,17 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         // rowTo<Entity>: ResultRow → data class. Program D: a field.object value-object jsonb
         // column IS read here — the Exposed Column<VO> codec (the shared Jackson metaJsonbMapper)
         // already decodes the jsonb text to the VO record / List<VO>, so `row[Table.col]` yields
-        // the typed value the data-class property expects. MapField (dict-of-VO) stays skipped
-        // (staged out). The `field.string @dbColumnType=jsonb` open bag is a StringField, so it is
+        // the typed value the data-class property expects. A dict-of-VO MapField is read the same
+        // way (Map<String, VO>); a scalar-valued MapField stays skipped. The `field.string @dbColumnType=jsonb` open bag is a StringField, so it is
         // read here too (its column decodes to a kotlinx JsonElement).
         // #214: reads route to `readObj` (the view for a write-through entity), which carries the
         // DERIVED columns — so a derived scalar field (a StringField / etc.) maps here too.
         append("/** GENERATED — map an Exposed ResultRow to the ${shortName} data class. */\n")
         append("private fun rowTo${shortName}(row: ResultRow): ${shortName} = ${shortName}(\n")
         for (field in entity.metaFields) {
-            // MapField (staged out) and a flattened object field (materialised as per-subfield
-            // columns, no single `Table.<field>`) are skipped — the data class defaults them.
-            if (field is MapField || (field is ObjectField && !isJsonbObjectColumn(field))) continue
+            // A scalar-valued MapField (staged out) and a flattened object field (materialised as
+            // per-subfield columns, no single `Table.<field>`) are skipped — the data class defaults them.
+            if ((field is MapField && !isVoMapColumn(field)) || (field is ObjectField && !isJsonbObjectColumn(field))) continue
             // The column PROPERTY, which the table generator renames when the field name is a
             // member of Exposed's Table (`source` is declared `sourceColumn`). Identity otherwise.
             append("    ${field.name} = row[${readObj}.${KotlinNaming.safeColumnProperty(field.name, exposedApi())}],\n")

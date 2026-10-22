@@ -295,9 +295,9 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
                 // Program D (spec §0): a field.object (value-object) member carries @field:Valid so a
                 // parent validator.validate(bean) / @Valid cascades into the nested VO's own
                 // constraints (the create-body POST path). jakarta validateValue does NOT cascade, so
-                // the PATCH path validates present VO values explicitly in the controller. MapField is
-                // NOT an ObjectField (dict-of-VO is staged out), so it never gets @Valid here.
-                if (field is ObjectField) {
+                // the PATCH path validates present VO values explicitly in the controller. A dict-of-VO
+                // MapField cascades the same way: @Valid on a Map validates each VALUE.
+                if (field is ObjectField || (field is MapField && readObjectRef(field) != null)) {
                     propBuilder.addAnnotation(constraint(VALID))
                 }
             }

@@ -173,12 +173,17 @@ def coerce_decimal_fields(
 def _nested(value: Any, spec: dict[str, Any], path: str) -> Any:
     """A jsonb value-object field (*value* a dict, or a list of them) under the top-level
     decimal rule: each declared decimal inside is parsed under W2, held to its range under W3
-    (*spec*: ``{"d": {name: (precision, scale) | None}, "o": {name: spec}}``) and stored as its
+    (*spec*: ``{"d": {name: (precision, scale) | None}, "o": {name: spec}}``, or ``{"m": spec}`` for a
+    ``field.map`` of value objects, applied to each value) and stored as its
     canonical string; every other number is a float. Raises ``ValueError`` naming the path."""
     if isinstance(value, list):
         return [_nested(v, spec, path) for v in value]
     if not isinstance(value, dict):
         return _floats(value)
+    if "m" in spec:
+        # a field.map of value objects: the spec applies to EACH value; keys are arbitrary
+        # text and never matched against member names.
+        return {k: _nested(v, spec["m"], f"{path}.{k}") for k, v in value.items()}
     out: dict[str, Any] = {}
     for k, v in value.items():
         if k in spec["d"] and v is not None:

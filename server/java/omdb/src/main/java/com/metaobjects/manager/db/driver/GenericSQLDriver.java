@@ -76,13 +76,16 @@ public class GenericSQLDriver implements DatabaseDriver {
     private final java.util.Map<MetaObject, Gson> fallbackGsonCache = new java.util.concurrent.ConcurrentHashMap<>();
 
     /**
-     * Returns true if the field is declared as a typed-owned-object jsonb column via
+     * Returns true if the field is a typed jsonb column: a field.map of a value object, or one declared via
      * {@code @storage="jsonb"} (the cross-port owned-object storage shape; see
      * {@link com.metaobjects.field.ObjectField#ATTR_STORAGE}). Uses the attr model so
      * jsonb detection works even without a dedicated {@code JsonbField} class.
      */
     protected boolean isJsonbField(MetaField f) {
         try {
+            if (com.metaobjects.field.MapField.SUBTYPE_MAP.equals(f.getSubType()) && MetaDataUtil.hasObjectRef(f)) {
+                return true;
+            }
             return f.hasMetaAttr(com.metaobjects.field.ObjectField.ATTR_STORAGE)
                 && CoreDBMetaDataProvider.DB_COLUMN_TYPE_JSONB.equals(
                     f.getMetaAttr(com.metaobjects.field.ObjectField.ATTR_STORAGE).getValueAsString());
@@ -191,11 +194,16 @@ public class GenericSQLDriver implements DatabaseDriver {
         try {
             // isArray:true → the JSON is an array of the referenced VO; target List<VO> instead of VO.
             boolean isArray = f.isArrayType();
+            // field.map @objectRef → the JSON is an object whose VALUES are the referenced VO
+            // (keys are arbitrary text, never VO member names); target Map<String, VO> so the VO
+            // deserializer (and its decimal read) applies to each value.
+            boolean isMap = com.metaobjects.field.MapField.SUBTYPE_MAP.equals(f.getSubType())
+                && MetaDataUtil.hasObjectRef(f);
             // Step 1: registry-bound typed POJO wins, deserialized via Gson reflection.
             if (MetaDataUtil.hasObjectRef(f)) {
                 Class<?> bound = ObjectClassRegistry.global().resolve(resolveObjectRefFqn(f));
                 if (bound != null) {
-                    return buildGson(f.getLoader()).fromJson(json, jsonbTargetType(bound, isArray));
+                    return buildGson(f.getLoader()).fromJson(json, jsonbTargetType(bound, isArray, isMap));
                 }
             }
             // Step 2: fall back to the MetaObject's declared class (e.g. ValueObject).
@@ -207,7 +215,7 @@ public class GenericSQLDriver implements DatabaseDriver {
                     m -> new GsonBuilder()
                             .registerTypeAdapter(refClass, new MetaObjectDeserializer(m))
                             .create());
-            return fallbackGson.fromJson(json, jsonbTargetType(refClass, isArray));
+            return fallbackGson.fromJson(json, jsonbTargetType(refClass, isArray, isMap));
         } catch (Exception e) {
             throw new IllegalStateException("jsonb deserialize failed for field [" + f + "]: " + e, e);
         }
@@ -218,7 +226,11 @@ public class GenericSQLDriver implements DatabaseDriver {
      * array ({@code isArray:true}), else the bare {@code elementClass}. The parameterized {@code List}
      * type drives Gson to apply the element deserializer per array element (see {@link #deserializeJsonb}).
      */
-    private static java.lang.reflect.Type jsonbTargetType(Class<?> elementClass, boolean isArray) {
+    private static java.lang.reflect.Type jsonbTargetType(Class<?> elementClass, boolean isArray, boolean isMap) {
+        if (isMap) {
+            return com.google.gson.reflect.TypeToken.getParameterized(
+                java.util.LinkedHashMap.class, String.class, elementClass).getType();
+        }
         return isArray
             ? com.google.gson.reflect.TypeToken.getParameterized(java.util.List.class, elementClass).getType()
             : elementClass;

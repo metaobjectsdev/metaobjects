@@ -140,9 +140,9 @@ walk: the component types as `Map<String, V>`, `@Valid` cascades into the map's 
 and PATCH validates each value explicitly — vanilla handler; the TPH carve-out is below.
 That entry used to say a persistence-conformance roundtrip column was needed first; the
 CODEGEN rung did not in fact depend on it, and the gate
-it named is still open and still the right one — for the RUNTIME tier, not this one. OMDB does
-not read or write a map (its jsonb path keys off the `@storage` attr a map does not carry), so a
-mapped column is generated-code-only until that lands. See `docs/features/field-types.md`.
+it named is still open and still the right one — for the RUNTIME tier, not this one. OMDB reads and
+writes a `field.map @objectRef` as a jsonb column of value objects (each value follows the
+decimal rule); the TPH carve-out below still applies. See `docs/features/field-types.md`.
 
 **Still staged out** (tracked follow-ups): the Kotlin `field.string @dbColumnType=jsonb`
 open-bag PATCH (needs a kotlinx `parseToJsonElement` bridge).

@@ -1,0 +1,38 @@
+{
+  "metadata.root": {
+    "package": "jsonmap",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Doc",
+          "@object": "com.metaobjects.object.value.ValueObject",
+          "children": [
+            { "source.rdb": { "@table": "JSONMAP_DOC" } },
+            { "field.long": { "name": "id", "@column": "id" } },
+            { "field.map": { "name": "tiers", "@column": "tiers", "@objectRef": "jsonmap::Tier" } },
+            { "field.object": { "name": "pricing", "@column": "pricing", "@storage": "jsonb", "@objectRef": "jsonmap::Pricing" } },
+            { "identity.primary": { "name": "primary", "@fields": ["id"], "@generation": "increment" } }
+          ]
+        }
+      },
+      {
+        "object.value": {
+          "name": "Tier",
+          "@object": "com.metaobjects.object.value.ValueObject",
+          "children": [
+            { "field.decimal": { "name": "amount", "@column": "amount", "@precision": 12, "@scale": 4 } }
+          ]
+        }
+      },
+      {
+        "object.value": {
+          "name": "Pricing",
+          "@object": "com.metaobjects.object.value.ValueObject",
+          "children": [
+            { "field.map": { "name": "tiers", "@column": "tiers", "@objectRef": "jsonmap::Tier" } }
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -201,6 +201,12 @@ _FLOAT_META = {
                 {"field.double": {"name": "readings", "isArray": True}},
                 {"field.decimal": {"name": "amount", "@precision": 12, "@scale": 4}},
             ]}},
+            {"object.value": {"name": "Tier", "children": [
+                {"field.decimal": {"name": "amount", "@precision": 12, "@scale": 4}},
+            ]}},
+            {"object.value": {"name": "Pricing", "children": [
+                {"field.map": {"name": "tiers", "@objectRef": "Tier"}},
+            ]}},
             {"object.entity": {"name": "Sample", "children": [
                 {"source.rdb": {"@table": "samples"}},
                 {"field.long": {"name": "id"}},
@@ -208,6 +214,8 @@ _FLOAT_META = {
                 {"field.decimal": {"name": "series", "isArray": True, "@precision": 9, "@scale": 4}},
                 {"field.object": {"name": "fix", "@objectRef": "Fix", "@storage": "jsonb"}},
                 {"field.object": {"name": "fixes", "@objectRef": "Fix", "@storage": "jsonb", "isArray": True}},
+                {"field.map": {"name": "tiers", "@objectRef": "Tier"}},
+                {"field.object": {"name": "pricing", "@objectRef": "Pricing", "@storage": "jsonb"}},
                 {"identity.primary": {"name": "pk", "@fields": ["id"], "@generation": "increment"}},
             ]}},
         ],
@@ -224,7 +232,8 @@ def float_client() -> TestClient:
     pkg_dir = tmp / pkg
     pkg_dir.mkdir()
     (pkg_dir / "__init__.py").write_text("")
-    (pkg_dir / "Fix.py").write_text(render_entity_model(objs["Fix"]))
+    for vo in ("Fix", "Tier", "Pricing"):
+        (pkg_dir / f"{vo}.py").write_text(render_entity_model(objs[vo]))
     sample = objs["Sample"]
     (pkg_dir / "sample_filter_allowlist.py").write_text(render_filter_allowlist(sample) or "")
     (pkg_dir / "Sample.py").write_text(render_entity_model(sample))
@@ -235,7 +244,7 @@ def float_client() -> TestClient:
     finally:
         sys.path.remove(str(tmp))
     db = sqlite3.connect(":memory:", check_same_thread=False)
-    db.execute("CREATE TABLE samples (id INTEGER PRIMARY KEY AUTOINCREMENT, score REAL, series TEXT, fix TEXT, fixes TEXT)")
+    db.execute("CREATE TABLE samples (id INTEGER PRIMARY KEY AUTOINCREMENT, score REAL, series TEXT, fix TEXT, fixes TEXT, tiers TEXT, pricing TEXT)")
     om = ObjectManager(root, SqliteDriver(db))  # type: ignore[arg-type]
 
     class Repo(_Repo):
@@ -283,11 +292,38 @@ def test_a_decimal_inside_a_jsonb_value_object_follows_the_top_level_rule(float_
     )
     assert ok.status_code == 201, ok.text
     body = ok.json()
-    assert body["fix"] == {"latitude": 1.5, "amount": "100.5", "readings": None} or body["fix"]["amount"] == "100.5"
+    assert body["fix"] == {"latitude": 1.5, "amount": "100.5"}
     assert [f["amount"] for f in body["fixes"]] == ["2.5", None]
     assert float_client.get("/api/samples/1").json()["fix"]["amount"] == "100.5"
     for bad in ('"0.12345"', '"abc"', '"123456789.5"'):
         resp = float_client.post("/api/samples", content='{"fix": {"latitude": 1, "amount": ' + bad + "}}", headers=hdr)
+        assert resp.status_code == 400 and resp.json() == {"error": "validation"}, (bad, resp.text)
+    assert len(float_client.get("/api/samples").json()) == 1
+
+
+def test_a_decimal_in_a_value_object_map_applies_to_each_value_and_keys_are_never_members(float_client: TestClient) -> None:
+    # C1: a field.map of a value object applies the nested rule to EACH map value; a key named
+    # like a member ("amount") is just a key. Top-level map and a map nested in a value object.
+    hdr = {"content-type": "application/json"}
+    ok = float_client.post(
+        "/api/samples",
+        content='{"tiers": {"amount": {"amount": "1.5000"}, "gold": {"amount": 2.50}},'
+        ' "pricing": {"tiers": {"amount": {"amount": 100}, "silver": {"amount": "0.25"}}}}',
+        headers=hdr,
+    )
+    assert ok.status_code == 201, ok.text
+    expected_tiers = {"amount": {"amount": "1.5"}, "gold": {"amount": "2.5"}}
+    expected_pricing = {"tiers": {"amount": {"amount": "100"}, "silver": {"amount": "0.25"}}}
+    body = ok.json()
+    assert body["tiers"] == expected_tiers and body["pricing"] == expected_pricing
+    got = float_client.get("/api/samples/1").json()
+    assert got["tiers"] == expected_tiers and got["pricing"] == expected_pricing
+    for bad in (
+        '{"tiers": {"gold": {"amount": "0.12345"}}}',
+        '{"pricing": {"tiers": {"amount": {"amount": "0.12345"}}}}',
+        '{"tiers": {"amount": {"amount": "abc"}}}',
+    ):
+        resp = float_client.post("/api/samples", content=bad, headers=hdr)
         assert resp.status_code == 400 and resp.json() == {"error": "validation"}, (bad, resp.text)
     assert len(float_client.get("/api/samples").json()) == 1
 

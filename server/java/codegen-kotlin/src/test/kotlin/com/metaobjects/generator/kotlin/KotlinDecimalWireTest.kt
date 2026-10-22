@@ -331,6 +331,61 @@ class KotlinDecimalWireTest {
         assertTrue(e is com.fasterxml.jackson.core.JsonProcessingException, "an excess-scale element must be refused: $e")
     }
 
+    private val mapModel = """{
+      "metadata.root": { "package": "acme::shop", "children": [
+        { "object.value": { "name": "Tier", "children": [
+            { "field.decimal": { "name": "amount", "@precision": 12, "@scale": 4 } }
+        ] } },
+        { "object.value": { "name": "Pricing", "children": [
+            { "field.map": { "name": "tiers", "@objectRef": "Tier" } }
+        ] } },
+        { "object.entity": { "name": "Doc", "children": [
+            { "field.long": { "name": "id" } },
+            { "field.map": { "name": "tiers", "@objectRef": "Tier" } },
+            { "field.object": { "name": "pricing", "@objectRef": "Pricing", "@storage": "jsonb" } },
+            { "source.rdb": { "@table": "docs" } },
+            { "identity.primary": { "@fields": ["id"], "@generation": "increment" } }
+        ] } }
+      ] }
+    }""".trimIndent()
+
+    @Test
+    fun `a decimal in the value objects of a field map follows the top-level rule per value, and a key named amount is just a key`() {
+        val files = emit(mapModel, listOf(KotlinEntityGenerator(), KotlinExposedTableGenerator()))
+        val sources = files.filterKeys { it.endsWith(".kt") }.map { (path, src) ->
+            com.tschuchort.compiletesting.SourceFile.kotlin(path.substringAfterLast('/'), src)
+        }
+        val result = com.tschuchort.compiletesting.KotlinCompilation().apply {
+            this.sources = sources
+            inheritClassPath = true
+            messageOutputStream = System.out
+        }.compile()
+        assertEquals(com.tschuchort.compiletesting.KotlinCompilation.ExitCode.OK, result.exitCode, result.messages)
+        val mapper = com.fasterxml.jackson.databind.ObjectMapper().registerModule(com.fasterxml.jackson.module.kotlin.KotlinModule.Builder().build())
+        val doc = result.classLoader.loadClass("acme.shop.Doc")
+        fun roundTrip(json: String): com.fasterxml.jackson.databind.JsonNode =
+            mapper.valueToTree(mapper.readValue(json, doc))
+        // Top-level map and a map nested in a value object: a string or a number is read exactly,
+        // written as the canonical string, for EACH value. The key "amount" is a key, not a member.
+        val out = roundTrip("""{"id":1,
+            "tiers":{"amount":{"amount":"1.5000"},"gold":{"amount":2.50}},
+            "pricing":{"tiers":{"amount":{"amount":100},"silver":{"amount":"0.25"}}}}""")
+        assertEquals("1.5", out.get("tiers").get("amount").get("amount").asText())
+        assertEquals("2.5", out.get("tiers").get("gold").get("amount").asText())
+        assertEquals("100", out.get("pricing").get("tiers").get("amount").get("amount").asText())
+        assertEquals("0.25", out.get("pricing").get("tiers").get("silver").get("amount").asText())
+        // More fraction digits than @scale (or a non-number) is refused, never rounded.
+        for (bad in listOf(
+            """{"id":1,"tiers":{"gold":{"amount":"0.12345"}}}""",
+            """{"id":1,"tiers":{"amount":{"amount":0.12345}}}""",
+            """{"id":1,"pricing":{"tiers":{"amount":{"amount":"0.12345"}}}}""",
+            """{"id":1,"pricing":{"tiers":{"x":{"amount":"NaN"}}}}""",
+        )) {
+            val e = runCatching { mapper.readValue(bad, doc) }.exceptionOrNull()
+            assertTrue(e is com.fasterxml.jackson.core.JsonProcessingException, "must be refused: $bad but got $e")
+        }
+    }
+
     @Test
     fun `a precision with no scale declares scale 0, as the Java port reads it`() {
         val json = model.replace("\"@precision\": 12, \"@scale\": 2,", "\"@precision\": 12,")

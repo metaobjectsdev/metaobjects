@@ -74,17 +74,16 @@ Four rows need a footnote:
   > added a boundary check of your own while this was open, it is now redundant rather than
   > load-bearing.
 
-  **The RUNTIME tier is not there yet, and no conformance corpus covers it.** No
-  persistence- or api-contract-conformance fixture exercises `field.map` on any port; it is
-  loader- and codegen-gated only. Of the runtime persistence layers, only Python's
-  `ObjectManager` encodes a map (its jsonb write codec names `FIELD_SUBTYPE_MAP`
-  alongside `FIELD_SUBTYPE_OBJECT`). TypeScript's `runtime-ts`, Java's OMDB and the Kotlin
-  Exposed persistence lane carry no map handling at all — OMDB's jsonb path in particular
-  is gated on the `@storage` attr, which a map does not have, and serializes through a
-  per-`MetaObject` Gson adapter that has no map-of-value-object binding. Closing that is a
-  cross-port runtime workstream, not a codegen change, and it is the prerequisite for the
-  shared `op: roundtrip` persistence scenario that would gate this subtype the way every
-  other persistable subtype is gated.
+  **The RUNTIME tier is partial, and no persistence conformance corpus covers it.** No
+  persistence-conformance fixture exercises `field.map`; the api-contract
+  `jsonb/scenarios/jsonb-value-object-map-decimals.yaml` gates a map of value objects through
+  each port's generated API. Of the runtime persistence layers, Python's `ObjectManager` encodes
+  a map (its jsonb write codec names `FIELD_SUBTYPE_MAP` alongside `FIELD_SUBTYPE_OBJECT`), and
+  Java's OMDB maps a `field.map @objectRef` to a jsonb column whose values are the value object
+  (`GenericSQLDriver`). TypeScript's `runtime-ts` and the Kotlin Exposed persistence lane carry
+  no map-of-value-object handling. Closing that gap across ports is a cross-port runtime
+  workstream, not a codegen change, and it is the prerequisite for the shared `op: roundtrip`
+  persistence scenario that would gate this subtype the way every other persistable subtype is gated.
 
   So: for data you intend to READ BACK THROUGH A PORT RUNTIME today, a stable key set is
   still better declared as an `object.value` behind `field.object`, which every runtime

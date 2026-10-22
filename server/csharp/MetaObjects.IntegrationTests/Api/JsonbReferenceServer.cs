@@ -41,7 +41,7 @@ internal sealed class JsonbReferenceServer : IAsyncDisposable
     private const int MarkerLabelMaxLength = 40;
 
     // The jsonb columns carried in a document row's wire projection (id + title are scalar).
-    private static readonly string[] JsonbColumns = { "payload", "primaryMarker", "optionalMarker", "markers", "measure", "measures" };
+    private static readonly string[] JsonbColumns = { "payload", "primaryMarker", "optionalMarker", "markers", "measure", "measures", "tiers", "pricing" };
 
     private JsonbReferenceServer(PostgresContainer pg, HttpListener listener, string baseUrl)
     {
@@ -160,8 +160,8 @@ internal sealed class JsonbReferenceServer : IAsyncDisposable
         await using (var ins = c.CreateCommand())
         {
             ins.CommandText =
-                "INSERT INTO \"documents\" (\"title\", \"payload\", \"primaryMarker\", \"optionalMarker\", \"markers\", \"measure\", \"measures\") " +
-                "VALUES (@title, @payload, @primaryMarker, @optionalMarker, @markers, @measure, @measures) RETURNING id";
+                "INSERT INTO \"documents\" (\"title\", \"payload\", \"primaryMarker\", \"optionalMarker\", \"markers\", \"measure\", \"measures\", \"tiers\", \"pricing\") " +
+                "VALUES (@title, @payload, @primaryMarker, @optionalMarker, @markers, @measure, @measures, @tiers, @pricing) RETURNING id";
             ins.Parameters.AddWithValue("@title", body["title"]!.GetValue<string>());
             AddJsonbParam(ins, "@payload", body["payload"]);
             AddJsonbParam(ins, "@primaryMarker", body["primaryMarker"]);
@@ -169,6 +169,8 @@ internal sealed class JsonbReferenceServer : IAsyncDisposable
             AddJsonbParam(ins, "@markers", body["markers"]);
             AddJsonbParam(ins, "@measure", body["measure"]);
             AddJsonbParam(ins, "@measures", body["measures"]);
+            AddJsonbParam(ins, "@tiers", body["tiers"]);
+            AddJsonbParam(ins, "@pricing", body["pricing"]);
             newId = Convert.ToInt64(await ins.ExecuteScalarAsync());
         }
         await SendJsonAsync(ctx, 201, await SelectRowAsync(c, newId) ?? new Dictionary<string, object?>());
@@ -271,8 +273,71 @@ internal sealed class JsonbReferenceServer : IAsyncDisposable
         return outObj;
     }
 
+    // Tier { amount: decimal(12, 4) }. A map of Tier applies the Tier rule to EACH map value; the map
+    // keys are arbitrary text and are never matched with Tier's member names (a key `amount` is a key).
+    private static JsonObject? CanonicalTier(JsonNode? node)
+    {
+        if (node is not JsonObject obj) return null;
+        var outObj = new JsonObject();
+        foreach (var kvp in obj)
+        {
+            if (kvp.Value is null || kvp.Value.GetValueKind() == JsonValueKind.Null) continue;
+            if (kvp.Key == "amount")
+            {
+                var el = JsonSerializer.SerializeToElement(kvp.Value);
+                if (!DecimalWire.TryParseElement(el, out var d) || !DecimalWire.Fits(d, MeasurePrecision, MeasureScale))
+                    return null;
+                outObj["amount"] = DecimalWire.Format(d);
+            }
+            else outObj[kvp.Key] = kvp.Value.DeepClone();
+        }
+        return outObj;
+    }
+
+    private static JsonObject? CanonicalTierMap(JsonNode? node)
+    {
+        if (node is not JsonObject map) return null;
+        var outMap = new JsonObject();
+        foreach (var kvp in map)
+        {
+            var canon = CanonicalTier(kvp.Value);
+            if (canon is null) return null;
+            outMap[kvp.Key] = canon;
+        }
+        return outMap;
+    }
+
+    private static bool CanonicalizeTiers(JsonObject body)
+    {
+        if (PresentNonNull(body, "tiers"))
+        {
+            var canon = CanonicalTierMap(body["tiers"]);
+            if (canon is null) return false;
+            body["tiers"] = canon;
+        }
+        if (PresentNonNull(body, "pricing"))
+        {
+            if (body["pricing"] is not JsonObject pricing) return false;
+            var outP = new JsonObject();
+            foreach (var kvp in pricing)
+            {
+                if (kvp.Value is null || kvp.Value.GetValueKind() == JsonValueKind.Null) continue;
+                if (kvp.Key == "tiers")
+                {
+                    var canon = CanonicalTierMap(kvp.Value);
+                    if (canon is null) return false;
+                    outP["tiers"] = canon;
+                }
+                else outP[kvp.Key] = kvp.Value.DeepClone();
+            }
+            body["pricing"] = outP;
+        }
+        return true;
+    }
+
     private static bool CanonicalizeMeasures(JsonObject body)
     {
+        if (!CanonicalizeTiers(body)) return false;
         if (PresentNonNull(body, "measure"))
         {
             var canon = CanonicalMeasure(body["measure"]);

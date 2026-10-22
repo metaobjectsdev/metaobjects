@@ -816,6 +816,20 @@ public class DbContextGenerator : IGenerator
         sb.AppendLine("                v => System.Text.Json.JsonSerializer.Deserialize<");
         sb.AppendLine("                    System.Collections.Generic.Dictionary<string, TValue>>(v, Options)!);");
         sb.AppendLine();
+        // A value object that holds a map is stored as ONE document converted whole: EF Core 8 cannot
+        // map a Dictionary<string, VO> member inside an owned-JSON type. The same Options serve it, so
+        // a decimal member keeps its canonical-string wire form (DecimalWire.Declared on the member).
+        sb.AppendLine("        /// <summary>A whole value-object document (or collection of them) as one jsonb value,");
+        sb.AppendLine("        /// for a value object that holds a map (EF Core 8 cannot own a dictionary inside JSON).</summary>");
+        sb.AppendLine("        internal static Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<TModel, string> ObjectConverter<TModel>() => new(");
+        sb.AppendLine("            v => System.Text.Json.JsonSerializer.Serialize(v, Options),");
+        sb.AppendLine("            v => System.Text.Json.JsonSerializer.Deserialize<TModel>(v, Options)!);");
+        sb.AppendLine();
+        sb.AppendLine("        internal static Microsoft.EntityFrameworkCore.ChangeTracking.ValueComparer<TModel> ObjectComparer<TModel>() => new(");
+        sb.AppendLine("            (a, b) => System.Text.Json.JsonSerializer.Serialize(a, Options) == System.Text.Json.JsonSerializer.Serialize(b, Options),");
+        sb.AppendLine("            v => System.Text.Json.JsonSerializer.Serialize(v, Options).GetHashCode(),");
+        sb.AppendLine("            v => System.Text.Json.JsonSerializer.Deserialize<TModel>(System.Text.Json.JsonSerializer.Serialize(v, Options), Options)!);");
+        sb.AppendLine();
         sb.AppendLine("        internal static Microsoft.EntityFrameworkCore.ChangeTracking.ValueComparer<");
         sb.AppendLine("            System.Collections.Generic.Dictionary<string, TValue>?> Comparer<TValue>() => new(");
         sb.AppendLine("                (a, b) => Eq(a, b), v => Hash(v), v => Snap(v));");
@@ -1066,6 +1080,19 @@ public class DbContextGenerator : IGenerator
             if (DbColumnTypeConfig(className, f) is { } cfg) modelLines.Add(cfg);
     }
 
+    // True when a value object declares a field.map, or holds a value object that does.
+    private static bool HoldsMap(MetaObject vo, MetaRoot root, HashSet<MetaObject> seen)
+    {
+        if (!seen.Add(vo)) return false;
+        foreach (var nf in vo.Fields())
+        {
+            if (nf.SubType == FIELD_SUBTYPE_MAP) return true;
+            if (nf.SubType == FIELD_SUBTYPE_OBJECT && ValueObjectNames.ResolveFieldRef(nf, root) is { } nested
+                && HoldsMap(nested, root, seen)) return true;
+        }
+        return false;
+    }
+
     // Owned-type config for an object-typed entity field. @storage flattened maps each
     // nested scalar to "{parentCol}_{nestedCol}"; every other storage collapses to one
     // json column (.ToJson) — matching the TS-owned schema DDL. null (with a warning)
@@ -1106,6 +1133,21 @@ public class DbContextGenerator : IGenerator
         // every sibling port stores the member SYMBOL — a cross-port wire-contract break, and a
         // positionally fragile one: reordering @values silently re-maps already-stored data,
         // which is precisely why @intValueMap was specified as a MAP rather than an array.
+        // A value object that holds a field.map (directly or through a nested value object) cannot be
+        // an EF Core 8 owned-JSON type: the dictionary member has no owned mapping and model
+        // finalization fails. Such a field is one jsonb property converted whole instead, which keeps
+        // the stored document identical (every member serializes by its [JsonPropertyName], a decimal
+        // as its canonical string through DecimalWire.Declared).
+        if (field.Storage != STORAGE_FLATTENED && HoldsMap(vo, ctx.Root, new HashSet<MetaObject>()))
+        {
+            var modelType = CSharpNaming.IsRequired(entity, field) ? "" : "?";
+            var voType = MapValueTypeRef(field, ctx);
+            var clr = field.ResolvedIsArray()
+                ? $"System.Collections.Generic.ICollection<{voType}>{modelType}"
+                : voType + modelType;
+            return $"        modelBuilder.Entity<{owner}>().Property(x => x.{nav}).HasColumnName({parentColRef})"
+                + $".HasColumnType(\"jsonb\").HasConversion({MapJsonbHelperName}.ObjectConverter<{clr}>(), {MapJsonbHelperName}.ObjectComparer<{clr}>());";
+        }
         var jsonEnums = JsonEnumConversions(vo, ctx);
         if (field.ResolvedIsArray())
             return jsonEnums.Count == 0

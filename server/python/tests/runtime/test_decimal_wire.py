@@ -157,3 +157,31 @@ def test_a_non_decimal_number_in_a_body_is_a_float_not_a_decimal() -> None:
     assert coerced["weight"] == 2.5 and isinstance(coerced["weight"], float)
     assert coerced["telemetry"] == {"latitude": 51.5, "tags": [1.25, 3]}
     json.dumps(coerced["telemetry"])
+
+
+def test_a_map_of_value_objects_applies_the_nested_rule_to_each_value_and_never_matches_keys() -> None:
+    # Pricing { tiers: field.map @objectRef Tier }, Tier { amount: decimal(12, 4) }. A map key
+    # named "amount" is a key, not the member: its value is a Tier.
+    tier = {"d": {"amount": (12, 4)}, "o": {}}
+    nested = {
+        "tiers": {"m": tier},
+        "pricing": {"d": {}, "o": {"tiers": {"m": tier}}},
+    }
+    body = parse_json_object(
+        '{"tiers": {"amount": {"amount": "1.5000"}, "gold": {"amount": 2.50, "w": 1.5}},'
+        ' "pricing": {"tiers": {"amount": {"amount": 100}}}}'
+    )
+    out = to_wire(coerce_decimal_fields(body, frozenset(), None, nested))
+    assert out == {
+        "tiers": {"amount": {"amount": "1.5"}, "gold": {"amount": "2.5", "w": 1.5}},
+        "pricing": {"tiers": {"amount": {"amount": "100"}}},
+    }
+    for bad in (
+        '{"tiers": {"gold": {"amount": "0.12345"}}}',
+        '{"pricing": {"tiers": {"amount": {"amount": "0.12345"}}}}',
+    ):
+        with pytest.raises(ValueError, match="tiers"):
+            coerce_decimal_fields(parse_json_object(bad), frozenset(), None, nested)
+    # a null map, and a map value that is not an object, fall through
+    assert coerce_decimal_fields({"tiers": None}, frozenset(), None, nested) == {"tiers": None}
+    assert coerce_decimal_fields({"tiers": {"a": 1.5}}, frozenset(), None, nested) == {"tiers": {"a": 1.5}}

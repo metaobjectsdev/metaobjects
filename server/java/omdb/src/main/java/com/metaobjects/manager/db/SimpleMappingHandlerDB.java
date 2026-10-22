@@ -262,9 +262,12 @@ public class SimpleMappingHandlerDB implements MappingHandler {
 		return null;
 	}
 
-	/** Returns true if the field is declared as a typed-owned-object jsonb column via {@code @storage="jsonb"}. */
+	/** Returns true if the field is a typed jsonb column: a field.map of a value object, or one declared via {@code @storage="jsonb"}. */
 	protected boolean isJsonbField(MetaField mf) {
 		try {
+			if (com.metaobjects.field.MapField.SUBTYPE_MAP.equals(mf.getSubType()) && com.metaobjects.util.MetaDataUtil.hasObjectRef(mf)) {
+				return true;
+			}
 			return mf.hasMetaAttr(com.metaobjects.field.ObjectField.ATTR_STORAGE)
 				&& CoreDBMetaDataProvider.DB_COLUMN_TYPE_JSONB.equals(
 					mf.getMetaAttr(com.metaobjects.field.ObjectField.ATTR_STORAGE).getValueAsString());

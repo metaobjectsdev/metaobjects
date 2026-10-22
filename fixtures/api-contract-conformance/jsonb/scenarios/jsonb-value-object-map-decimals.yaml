@@ -1,0 +1,77 @@
+name: jsonb-value-object-map-decimals
+description: >
+  A decimal inside a value object that a `field.map` holds follows the top-level decimal rule
+  (ADR-0019 Amendment 1, W1 to W3) for EACH map value, the way an array applies it per element.
+  The map keys are arbitrary text and are never compared with the value object's member names:
+  a key named `amount` is a key, and its value is a Tier. Two shapes: a top-level map
+  (Document.tiers, a map of Tier) and a map nested in a value object (Document.pricing, a Pricing
+  whose `tiers` is a map of Tier). Tier is { amount: field.decimal @precision 12 @scale 4 }. A
+  string or a JSON number is read exactly and emitted as the canonical string ("1.5000" in or 1.5
+  in gives "1.5" out). More fraction digits than @scale is `400 {"error": "validation"}` and
+  persists nothing. The title and primaryMarker are required on every write; implicit-id POSTs
+  land at 3, 4, ...
+requests:
+  - id: r1
+    method: POST
+    path: /api/documents
+    body:
+      title: "map-a"
+      primaryMarker: { label: "a", score: 1 }
+      tiers:
+        amount: { amount: "1.5000" }
+        gold: { amount: 2.50 }
+      pricing:
+        tiers:
+          amount: { amount: 100 }
+          silver: { amount: "0.25" }
+    expect:
+      status: 201
+      body:
+        hasId: true
+        row:
+          tiers:
+            amount: { amount: "1.5" }
+            gold: { amount: "2.5" }
+          pricing:
+            tiers:
+              amount: { amount: "100" }
+              silver: { amount: "0.25" }
+  - id: r2
+    method: GET
+    path: /api/documents/3
+    expect:
+      status: 200
+      body:
+        row:
+          tiers:
+            amount: { amount: "1.5" }
+            gold: { amount: "2.5" }
+          pricing:
+            tiers:
+              amount: { amount: "100" }
+              silver: { amount: "0.25" }
+  - id: r3
+    method: POST
+    path: /api/documents
+    body:
+      title: "map-bad-top"
+      primaryMarker: { label: "b", score: 1 }
+      tiers:
+        gold: { amount: "0.12345" }
+    expect:
+      status: 400
+      body:
+        error: validation
+  - id: r4
+    method: POST
+    path: /api/documents
+    body:
+      title: "map-bad-nested"
+      primaryMarker: { label: "c", score: 1 }
+      pricing:
+        tiers:
+          amount: { amount: "0.12345" }
+    expect:
+      status: 400
+      body:
+        error: validation

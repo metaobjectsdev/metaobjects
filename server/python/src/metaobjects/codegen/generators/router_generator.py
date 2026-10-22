@@ -229,12 +229,22 @@ def _nested_decimal_spec(vo: MetaObject, seen: frozenset[str]) -> dict[str, Any]
     for f in vo.fields():
         if f.sub_type == fc.FIELD_SUBTYPE_DECIMAL:
             spec["d"][f.name] = _decimal_limit(f)
-        elif f.sub_type == fc.FIELD_SUBTYPE_OBJECT:
-            target = object_ref_target(f)
-            inner = _nested_decimal_spec(target, seen) if target is not None else None
+        elif f.sub_type in (fc.FIELD_SUBTYPE_OBJECT, fc.FIELD_SUBTYPE_MAP):
+            inner = _field_decimal_spec(f, seen)
             if inner is not None:
                 spec["o"][f.name] = inner
     return spec if spec["d"] or spec["o"] else None
+
+
+def _field_decimal_spec(f: MetaField, seen: frozenset[str]) -> dict[str, Any] | None:
+    """The spec for a value-object-holding field. A ``field.map`` is wrapped as
+    ``{"m": <value object spec>}``: the spec applies to EACH map value and the keys are never
+    compared with member names. A map whose value is not a value object has no spec."""
+    target = object_ref_target(f)
+    inner = _nested_decimal_spec(target, seen) if target is not None else None
+    if inner is not None and f.sub_type == fc.FIELD_SUBTYPE_MAP:
+        return {"m": inner}
+    return inner
 
 
 def _nested_decimals(entities: list[MetaObject]) -> dict[str, Any]:
@@ -243,10 +253,9 @@ def _nested_decimals(entities: list[MetaObject]) -> dict[str, Any]:
     out: dict[str, Any] = {}
     for entity in entities:
         for f in entity.fields():
-            if f.name in out or f.sub_type != fc.FIELD_SUBTYPE_OBJECT:
+            if f.name in out or f.sub_type not in (fc.FIELD_SUBTYPE_OBJECT, fc.FIELD_SUBTYPE_MAP):
                 continue
-            target = object_ref_target(f)
-            spec = _nested_decimal_spec(target, frozenset()) if target is not None else None
+            spec = _field_decimal_spec(f, frozenset())
             if spec is not None:
                 out[f.name] = spec
     return out

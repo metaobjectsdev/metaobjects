@@ -78,13 +78,16 @@ value → set). Notes:
     `fixtures/api-contract-conformance/jsonb/scenarios/jsonb-value-object-patch.yaml`.
   - `field.object @storage flattened` — EXCLUDED: the Exposed table materialises it
     as per-subfield columns; there is no single `Table.<field>` to bind.
-  - `field.map` — EXCLUDED (`it !is MapField`): dict-of-VO, staged out.
+  - `field.map @objectRef` (dict-of-VO) — SETTABLE, created and read like a jsonb value-object
+    column (`Map<String, VO>`, each value validated, a decimal in a value following the
+    ADR-0019 Amendment 1 rule per value). A scalar-valued `field.map` (`@valueType`) stays
+    EXCLUDED (`isVoMapColumn`), staged out.
   - `field.string @dbColumnType=jsonb` open-bag — EXCLUDED (`isJsonbOpenBag`):
     create-only (next bullet); its PATCH is the tracked Kotlin follow-up (the
     kotlinx `parseToJsonElement` bridge) the sibling `codegen-spring`
     `KNOWN_GAPS.md` lists under "Still staged out".
   The remaining exclusions are deliberate staging (each for the substrate reason
-  above), not per-port bugs — save the map one, which is a live divergence from
+  above), not per-port bugs — save the scalar-valued map one, which is a live divergence from
   Java and C# (both patch map columns; C#'s G7 records the split). Closing any of
   them is separately-scoped follow-up work, not a piecemeal port fix.
   **TPH residual.** The per-subtype path has its own SSOT —

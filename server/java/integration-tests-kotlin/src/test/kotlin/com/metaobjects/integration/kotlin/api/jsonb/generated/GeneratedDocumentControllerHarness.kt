@@ -172,7 +172,7 @@ class GeneratedDocumentControllerHarness(
                 // Program D: the seed rows carry the required primaryMarker (+ optional single/array
                 // VO on row 1). Pass every present VO column through the generated controller's OWN
                 // create path — so the create MUST handle value objects for seeding to succeed.
-                for (k in listOf("primaryMarker", "optionalMarker", "markers", "measure", "measures")) {
+                for (k in listOf("primaryMarker", "optionalMarker", "markers", "measure", "measures", "tiers", "pricing")) {
                     if (r.containsKey(k)) body[k] = r[k]
                 }
                 val res = exchange("POST", "/api/documents", body)
