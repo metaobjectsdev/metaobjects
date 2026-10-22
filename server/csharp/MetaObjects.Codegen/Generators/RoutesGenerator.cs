@@ -315,7 +315,10 @@ public class RoutesGenerator : PerEntityGenerator
             sb.AppendLine("        {");
             sb.AppendLine("            var existing = await db." + dbSet + ".FindAsync(id);");
             sb.AppendLine("            if (existing is null) return Results.NotFound(new { error = \"not_found\" });");
-            sb.AppendLine("            using var body = await System.Text.Json.JsonDocument.ParseAsync(http.Request.Body);");
+            sb.AppendLine("            System.Text.Json.JsonDocument body;");
+            sb.AppendLine("            try { body = await System.Text.Json.JsonDocument.ParseAsync(http.Request.Body); }");
+            sb.AppendLine("            catch (System.Text.Json.JsonException) { return Results.BadRequest(new { error = \"validation\" }); }");
+            sb.AppendLine("            using var bodyScope = body;");
             sb.AppendLine("            // Deserialize each value with the app's CONFIGURED JSON options, not defaults —");
             sb.AppendLine("            // a field.timestamp binds to DateTimeOffset via a custom converter registered on");
             sb.AppendLine("            // ConfigureHttpJsonOptions, and default options cannot read the wire format, throwing 500.");
@@ -770,7 +773,10 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine($"        app.MapPost(prefix + \"{mapPath}\", async (HttpContext http, AppDbContext db) =>");
         sb.AppendLine("        {");
         AppendJsonOptsLocal(sb);
-        sb.AppendLine("            using var __body = await System.Text.Json.JsonDocument.ParseAsync(http.Request.Body);");
+        sb.AppendLine("            System.Text.Json.JsonDocument __body;");
+        sb.AppendLine("            try { __body = await System.Text.Json.JsonDocument.ParseAsync(http.Request.Body); }");
+        sb.AppendLine("            catch (System.Text.Json.JsonException) { return Results.BadRequest(new { error = \"validation\" }); }");
+        sb.AppendLine("            using var __bodyScope = __body;");
         sb.AppendLine("            if (__body.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object)");
         sb.AppendLine("                return Results.BadRequest(new { error = \"validation\" });");
         // FR-036 #4 — @required-key presence: an omitted key OR an explicit null on a @required
@@ -1193,7 +1199,9 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine("        {");
         sb.AppendLine($"            var existing = await db.{dbSet}.OfType<{subCls}>().FirstOrDefaultAsync(x => x.{pkProp} == id);");
         sb.AppendLine("            if (existing is null) return Results.NotFound(new { error = \"not_found\" });");
-        sb.AppendLine("            var body = await System.Text.Json.JsonDocument.ParseAsync(http.Request.Body);");
+        sb.AppendLine("            System.Text.Json.JsonDocument body;");
+        sb.AppendLine("            try { body = await System.Text.Json.JsonDocument.ParseAsync(http.Request.Body); }");
+        sb.AppendLine("            catch (System.Text.Json.JsonException) { return Results.BadRequest(new { error = \"validation\" }); }");
         sb.AppendLine("            // Configured JSON options (not defaults) so a custom converter — e.g. the");
         sb.AppendLine("            // field.timestamp DateTimeOffset converter — is honored; defaults throw 500 on it.");
         sb.AppendLine("            var jsonOpts = ((Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>)");
