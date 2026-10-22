@@ -360,4 +360,48 @@ public class DecimalWireTests
         Assert.False(DecimalWire.FitsDeclared(price, "Net", 123456789012m));
         Assert.True(DecimalWire.FitsDeclared(price, "Free", 1.2345678901234567890123m));
     }
+
+    private const string ArrayShapeModel = """
+    { "metadata.root": { "package": "acme::shop", "children": [
+      { "object.value": { "name": "Labels", "children": [
+        { "field.string": { "name": "tags", "isArray": true } }
+      ]}},
+      { "object.entity": { "name": "BaseTagged", "abstract": true, "children": [
+        { "field.string": { "name": "tags", "isArray": true } }
+      ]}},
+      { "object.entity": { "name": "Post", "extends": "BaseTagged", "children": [
+        { "source.rdb": { "@table": "posts" } },
+        { "field.long": { "name": "id" } },
+        { "field.object": { "name": "labels", "@objectRef": "Labels", "@storage": "jsonb" } },
+        { "identity.primary": { "@fields": "id" } }
+      ]}}
+    ]}}
+    """;
+
+    [Fact]
+    public void A_non_decimal_array_inherited_from_an_abstract_shape_starts_empty_while_a_value_object_one_is_omitted_when_null()
+    {
+        var r = new MetaDataLoader().Load([new InMemoryStringSource(ArrayShapeModel, id: "array-shape.json")]);
+        Assert.Empty(r.Errors);
+        var ctx = new GenContext
+        {
+            Entities = r.Root.Objects(), Root = r.Root,
+            Config = new GenConfig { OutDir = Path.Combine(Path.GetTempPath(), "unused-array-shape"), Namespace = "Acme.Shop" },
+        };
+        var files = new EntityGenerator().Generate(ctx);
+        var trees = files.Select(f => CSharpSyntaxTree.ParseText(f.Content, new CSharpParseOptions(LanguageVersion.CSharp12), path: f.Path));
+        var comp = CSharpCompilation.Create("array_shape_" + Guid.NewGuid().ToString("N"), trees,
+            DbContextCompileTests.BuildReferences(), new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+        using var ms = new MemoryStream();
+        var emit = comp.Emit(ms);
+        Assert.True(emit.Success, string.Join("\n", emit.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error)));
+        var asm = Assembly.Load(ms.ToArray());
+
+        var post = asm.GetTypes().Single(t => t.Name == "Post");
+        var tags = Assert.IsAssignableFrom<IList<string>>(post.GetProperty("Tags")!.GetValue(Activator.CreateInstance(post)));
+        Assert.Empty(tags);
+
+        var labels = asm.GetTypes().Single(t => t.Name == "Labels");
+        Assert.Equal("{}", JsonSerializer.Serialize(Activator.CreateInstance(labels), labels));
+    }
 }

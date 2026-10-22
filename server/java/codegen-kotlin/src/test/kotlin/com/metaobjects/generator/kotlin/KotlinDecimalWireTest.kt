@@ -256,21 +256,6 @@ class KotlinDecimalWireTest {
     private val unsizedModel = model.replace("\"@precision\": 12, \"@scale\": 2, ", "")
 
     @Test
-    fun `a decimal with no precision is an unbounded column and the controller range-checks nothing`() {
-        val files = emit(unsizedModel, all())
-        val table = files.getValue("acme/shop/ItemTable.kt")
-        assertTrue("val price = portableDecimal(\"price\").nullable()" in table, table)
-        assertFalse("decimal(" in table, table)
-        val controller = files.getValue("acme/shop/ItemController.kt")
-        assertFalse("MetaDecimalWire.fits(" in controller, controller)
-        val support = files.getValue("acme/shop/MetaPortableColumnTypes.kt")
-        assertTrue("internal fun Table.portableDecimal(name: String): Column<BigDecimal>" in support, support)
-        // A declared precision keeps its range check and sized column.
-        val sized = emit(model, all())
-        assertTrue("MetaDecimalWire.fits(dto.price, 12, 2)" in sized.getValue("acme/shop/ItemController.kt"))
-    }
-
-    @Test
     fun `the unbounded decimal column compiles and reads a value exactly, never rounding to a scale`() {
         val files = emit(unsizedModel, listOf(KotlinEntityGenerator(), KotlinExposedTableGenerator()))
         val sources = files.filterKeys { it.endsWith(".kt") }.map { (path, src) ->

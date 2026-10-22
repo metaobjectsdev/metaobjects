@@ -835,7 +835,8 @@ public class EntityGenerator : IGenerator
             if (CSharpNaming.ScalarFor(field.SubType) is not null)
                 // VO POCO members carry NO EF-mapping attrs but DO carry validation
                 // DataAnnotations (the VO is validated in full on POST/PATCH; Program D).
-                member = ScalarProperty(vo, field, [], withAttributes: false, withValidationAttributes: true);
+                member = ScalarProperty(vo, field, [], withAttributes: false, withValidationAttributes: true,
+                    valueObject: true);
             else if (field.SubType == FIELD_SUBTYPE_ENUM)
                 // Same rule as the scalar arm: no [Column(...)]. A VO's column mapping is decided
                 // by each OWNER (fluent, in the DbContext — .ToJson or the flattened per-member
@@ -1459,9 +1460,10 @@ public static class DecimalWire
     // validation attrs follow withAttributes (mapped entities emit both, byte-identical
     // to before).
     //
-    // When the field is an array (isArray: true), emit List<T> with an empty-list
-    // initializer instead of a scalar T property. Arrays are always non-nullable
-    // (the jsonb column holds the list; the list itself is never null in C#).
+    // When the field is an array (isArray: true), emit IList<T> with an empty-list
+    // initializer instead of a scalar T property. A NON-required decimal array, and a
+    // NON-required array member of a value object (valueObject: true, so a null member is
+    // omitted on the wire), are nullable with no initializer instead.
     //
     // includeNames (C1) is only consulted when withAttributes is true — it is the
     // ctx.Config.IncludeNames run-level presence gate CSharpNaming.ColumnRef needs;
@@ -1471,7 +1473,8 @@ public static class DecimalWire
         MetaObject owner, MetaField field, IReadOnlyList<string> pkFields,
         bool withAttributes, ColumnNamingStrategy strategy = ColumnNamingStrategy.Literal,
         bool includeNames = false,
-        string? baseTypeOverride = null, bool? withValidationAttributes = null)
+        string? baseTypeOverride = null, bool? withValidationAttributes = null,
+        bool valueObject = false)
     {
         var emitValidation = withValidationAttributes ?? withAttributes;
         // A @dbColumnType:jsonb open-bag shifts the CLR property to a parsed JSON value
@@ -1498,8 +1501,9 @@ public static class DecimalWire
             // ICollection<T> property throws at query compile time), so a scalar array is an IList<T>.
             AppendDecimalConverterAttribute(arr, field, nullable: false);
             // A NON-required decimal array is nullable (no initializer) so PATCH null / an omitted
-            // POST value stays a NULL column instead of failing as a required collection.
-            if ((IsDecimalWireField(field) || !withAttributes) && !CSharpNaming.IsRequired(owner, field))
+            // POST value stays a NULL column instead of failing as a required collection; a
+            // NON-required value-object array is nullable so a null member is omitted on the wire.
+            if ((IsDecimalWireField(field) || valueObject) && !CSharpNaming.IsRequired(owner, field))
                 arr.Append($"    public IList<{baseType}>? {propName} {{ get; set; }}");
             else
                 arr.Append($"    public IList<{baseType}> {propName} {{ get; set; }} = new List<{baseType}>();");

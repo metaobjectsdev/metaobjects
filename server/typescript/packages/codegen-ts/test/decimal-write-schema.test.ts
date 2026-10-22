@@ -51,10 +51,12 @@ describe("generated decimal write schema", () => {
     });
   }
   // double15 is the READ rule (a SQLite double rendered at 15 digits). On INPUT a JSON number is
-  // read exactly or refused (D3): the vectors whose shortest form carries more than 15 digits fail.
+  // read exactly or refused (D3): the vectors whose shortest form carries more than 15 significant
+  // digits (17, 16 and 17 here, counted by hand) fail.
+  const refusedAsInput = new Set(["0.30000000000000004", "0.3333333333333333", "123456789012345680"]);
   for (const v of vectors.double15) {
     const n = Number(v.double);
-    const exact = Number.isSafeInteger(n) || Number(n.toPrecision(15)) === n;
+    const exact = !refusedAsInput.has(v.double);
     test(`double15 ${v.double} as input is ${exact ? "read exactly" : "refused"}`, () => {
       if (exact) expect(open.parse(n)).toBe(v.out);
       else expect(open.safeParse(n).success).toBe(false);

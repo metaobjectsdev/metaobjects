@@ -229,7 +229,7 @@ def _nested_decimal_spec(vo: MetaObject, seen: frozenset[str]) -> dict[str, Any]
     for f in vo.fields():
         if f.sub_type == fc.FIELD_SUBTYPE_DECIMAL:
             spec["d"][f.name] = _decimal_limit(f)
-        elif f.sub_type in (fc.FIELD_SUBTYPE_OBJECT, fc.FIELD_SUBTYPE_MAP):
+        elif f.sub_type == fc.FIELD_SUBTYPE_OBJECT:
             target = object_ref_target(f)
             inner = _nested_decimal_spec(target, seen) if target is not None else None
             if inner is not None:
