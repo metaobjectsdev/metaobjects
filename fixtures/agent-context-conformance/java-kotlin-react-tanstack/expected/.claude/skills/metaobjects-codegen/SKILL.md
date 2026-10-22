@@ -49,16 +49,19 @@ exact config, generator names and commands for this project; read it. The other 
 
 ## Upgrading a project from 1.0 to 1.1
 
-Read both guides before the first `gen` of an upgrade, for every port the project uses; the
-build can stay green while the result is wrong.
+Read the one upgrade guide, https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/upgrading-1.0-to-1.1.md, before the first `gen`, for every
+port the project uses; the build can stay green while the result is wrong. It lists the steps
+in order and every change that needs action.
 
-- https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/physical-naming.md: the default column and table names are now `snake_case` in every
-  port (C#, Java, Kotlin's runtime and Python defaulted to the field names). A database whose
-  columns are named like its fields needs `"naming": { "columns": "literal" }` in
-  `.metaobjects/config.json`, or regenerated code queries columns that do not exist. The
-  per-port naming flags and generator args are removed.
-- https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md: documentation is a generator in the project's list, and the docs
-  commands are removed.
+- The default column and table names are now `snake_case` in every port (C#, Java, Kotlin's
+  runtime and Python defaulted to the field names). A database whose columns are named like
+  its fields needs `"naming": { "columns": "literal" }` in `.metaobjects/config.json`, or
+  regenerated code queries columns that do not exist. The per-port naming flags and generator
+  args are removed.
+- Documentation is a generator in the project's list, and the docs commands are removed. C#
+  and Python also need a generator list (`dotnet meta init`; `metaobjects.config.yaml`).
+- A `field.decimal` crosses the API as one canonical string, and a fractional validator `@min`
+  or `@max` is refused (write an integer bound).
 - **Resync the generators you own.** An ejected copy keeps the logic it was copied with, and a
   plain `gen` does not refresh it. `meta eject --list` (`dotnet meta eject`, `metaobjects eject`,
   `mvn metaobjects:eject`) reports each copy that differs from the reference;

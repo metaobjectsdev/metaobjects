@@ -4,6 +4,8 @@ The MetaObjects CLI — scaffolds `metaobjects/` + `.metaobjects/`, runs codegen
 
 **Status:** v0.3. TS reference implementation with Projects D–G shipped end-to-end.
 
+**Upgrading from 1.0.x:** see the [1.0 to 1.1 upgrade guide](https://github.com/metaobjectsdev/metaobjects/blob/v1.1.0/docs/features/migrations/upgrading-1.0-to-1.1.md) before you regenerate. It lists every step and change that needs action, per port.
+
 ## Install
 
 ```bash

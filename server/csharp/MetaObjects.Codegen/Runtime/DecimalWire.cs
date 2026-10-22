@@ -173,8 +173,20 @@ public static class DecimalWire
     /// </summary>
     public static bool FitsDeclared(Type owner, string property, decimal value)
     {
-        var declared = owner.GetProperty(property)?.GetCustomAttributes(typeof(DeclaredAttribute), true);
-        return declared is not { Length: > 0 } || ((DeclaredAttribute)declared[0]).Accepts(value);
+        var attributes = owner.GetProperty(property)?.GetCustomAttributes(true);
+        if (attributes is null) return true;
+        foreach (var attribute in attributes)
+        {
+            // The attribute is matched by name, not by type identity: a route in another namespace
+            // than the entity resolves THIS DecimalWire, while the entity carries the copy emitted
+            // into its own namespace, and the two DeclaredAttribute types are different types.
+            var type = attribute.GetType();
+            if (type.Name != nameof(DeclaredAttribute) || type.DeclaringType?.Name != nameof(DecimalWire)) continue;
+            var precision = type.GetProperty(nameof(DeclaredAttribute.Precision))?.GetValue(attribute);
+            var scale = type.GetProperty(nameof(DeclaredAttribute.Scale))?.GetValue(attribute);
+            return precision is int p && scale is int sc ? Fits(value, p, sc) : true;
+        }
+        return true;
     }
 
     private static decimal ReadOne(ref Utf8JsonReader reader, int? precision = null, int? scale = null)

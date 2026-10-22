@@ -1,0 +1,208 @@
+name: jsonb-value-object-numbers
+description: >
+  Numbers inside a jsonb value object (Measure: `ratio` field.double, `samples` field.double
+  isArray, `amount` field.decimal @precision 12 @scale 4), single (Document.measure) and
+  array-of-VO (Document.measures).
+  A double is a JSON number in and out, fractional values kept (0.25 stays 0.25, never "0.25", never
+  rounded to an integer, never a 500). A decimal inside a value object follows the SAME rule as a
+  top-level decimal (ADR-0019 Amendment 1, W1 to W3): it is accepted as a string in the JSON-number
+  grammar or as a JSON number, read exactly, and emitted as a CANONICAL STRING ("1.5000" in or 1.5
+  in gives "1.5" out; "100" stays "100"). More fraction digits than @scale (5th) or more integer
+  digits than @precision - @scale (9th) is `400 {"error": "validation"}`, on POST, PATCH and PUT, and
+  persists nothing. What is stored is the canonical form, so the GET after a write returns the same
+  strings. Seed row 1 carries measure { ratio 0.25, samples [0.5, 1.75], amount "1.5" }; implicit-id
+  POSTs land at 3, 4, ... The title and primaryMarker are required on every write.
+requests:
+  - id: r1
+    method: GET
+    path: /api/documents/1
+    expect:
+      status: 200
+      body:
+        row:
+          measure: { ratio: 0.25, samples: [0.5, 1.75], amount: "1.5" }
+  - id: r2
+    method: POST
+    path: /api/documents
+    body:
+      title: "num-a"
+      primaryMarker: { label: "a", score: 1 }
+      measure: { ratio: 0.125, samples: [0.1, 2.5, 3], amount: "1.5000" }
+      measures:
+        - { ratio: 1.5, samples: [], amount: 2.25 }
+        - { ratio: -0.75, samples: [0.001], amount: "100" }
+    expect:
+      status: 201
+      body:
+        hasId: true
+        row:
+          measure: { ratio: 0.125, samples: [0.1, 2.5, 3], amount: "1.5" }
+          measures:
+            - { ratio: 1.5, samples: [], amount: "2.25" }
+            - { ratio: -0.75, samples: [0.001], amount: "100" }
+  - id: r3
+    method: GET
+    path: /api/documents/3
+    expect:
+      status: 200
+      body:
+        row:
+          measure: { ratio: 0.125, samples: [0.1, 2.5, 3], amount: "1.5" }
+          measures:
+            - { ratio: 1.5, samples: [], amount: "2.25" }
+            - { ratio: -0.75, samples: [0.001], amount: "100" }
+  - id: r4
+    method: POST
+    path: /api/documents
+    body:
+      title: "num-b"
+      primaryMarker: { label: "b", score: 1 }
+      measure: { amount: 1.5 }
+    expect:
+      status: 201
+      body:
+        row:
+          measure: { amount: "1.5" }
+  - id: r5
+    method: POST
+    path: /api/documents
+    body:
+      title: "num-bad-scale"
+      primaryMarker: { label: "c", score: 1 }
+      measure: { amount: "1.12345" }
+    expect:
+      status: 400
+      body:
+        error: validation
+  - id: r6
+    method: POST
+    path: /api/documents
+    body:
+      title: "num-bad-scale-array"
+      primaryMarker: { label: "c", score: 1 }
+      measures: [ { amount: "1.5" }, { amount: "0.00001" } ]
+    expect:
+      status: 400
+      body:
+        error: validation
+  - id: r7
+    method: POST
+    path: /api/documents
+    body:
+      title: "num-bad-int-digits"
+      primaryMarker: { label: "c", score: 1 }
+      measure: { amount: "123456789.5" }
+    expect:
+      status: 400
+      body:
+        error: validation
+  - id: r8
+    method: POST
+    path: /api/documents
+    body:
+      title: "num-bad-text"
+      primaryMarker: { label: "c", score: 1 }
+      measure: { amount: "12abc" }
+    expect:
+      status: 400
+      body:
+        error: validation
+  - id: r9
+    method: GET
+    path: /api/documents/5
+    expect:
+      status: 404
+  - id: r10
+    method: PATCH
+    path: /api/documents/3
+    body:
+      measure: { ratio: 0.5, samples: [9.25], amount: 12345678.1234 }
+    expect:
+      status: 200
+      body:
+        row:
+          measure: { ratio: 0.5, samples: [9.25], amount: "12345678.1234" }
+  - id: r11
+    method: GET
+    path: /api/documents/3
+    expect:
+      status: 200
+      body:
+        row:
+          measure: { ratio: 0.5, samples: [9.25], amount: "12345678.1234" }
+          measures:
+            - { ratio: 1.5, samples: [], amount: "2.25" }
+            - { ratio: -0.75, samples: [0.001], amount: "100" }
+  - id: r12
+    method: PATCH
+    path: /api/documents/3
+    body:
+      measures: [ { ratio: 0.2, amount: "3.10" } ]
+    expect:
+      status: 200
+      body:
+        row:
+          measures: [ { ratio: 0.2, amount: "3.1" } ]
+  - id: r13
+    method: PATCH
+    path: /api/documents/3
+    body:
+      measures: [ { ratio: 0.2, amount: "3.123456" } ]
+    expect:
+      status: 400
+      body:
+        error: validation
+  - id: r14
+    method: PATCH
+    path: /api/documents/3
+    body:
+      measure: { amount: "1.123456" }
+    expect:
+      status: 400
+      body:
+        error: validation
+  - id: r15
+    method: GET
+    path: /api/documents/3
+    expect:
+      status: 200
+      body:
+        row:
+          measure: { ratio: 0.5, samples: [9.25], amount: "12345678.1234" }
+          measures: [ { ratio: 0.2, amount: "3.1" } ]
+  - id: r16
+    method: PUT
+    path: /api/documents/3
+    body:
+      title: "num-a-put"
+      primaryMarker: { label: "a", score: 1 }
+      measure: { ratio: 0.75, samples: [1.5, 2.5], amount: "7.5000" }
+      measures: [ { ratio: 2.5, samples: [0.5], amount: 8 } ]
+    expect:
+      status: 200
+      body:
+        row:
+          title: "num-a-put"
+          measure: { ratio: 0.75, samples: [1.5, 2.5], amount: "7.5" }
+          measures: [ { ratio: 2.5, samples: [0.5], amount: "8" } ]
+  - id: r17
+    method: PUT
+    path: /api/documents/3
+    body:
+      title: "num-a-put-bad"
+      primaryMarker: { label: "a", score: 1 }
+      measure: { ratio: 0.75, amount: "7.55555" }
+    expect:
+      status: 400
+      body:
+        error: validation
+  - id: r18
+    method: GET
+    path: /api/documents/3
+    expect:
+      status: 200
+      body:
+        row:
+          title: "num-a-put"
+          measure: { ratio: 0.75, samples: [1.5, 2.5], amount: "7.5" }
+          measures: [ { ratio: 2.5, samples: [0.5], amount: "8" } ]

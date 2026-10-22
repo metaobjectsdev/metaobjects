@@ -67,6 +67,7 @@ abstract class DecimalOmdbApiContractLane {
         ObjectClassRegistry reg = new ObjectClassRegistry();
         Map<String, Class<?>> bindings = new HashMap<>();
         bindings.put("acme::ledger::Entry", ValueObject.class);
+        bindings.put("acme::ledger::Sample", ValueObject.class);
         reg.register(() -> bindings);
         ObjectClassRegistry.setGlobal(reg);
 
@@ -141,6 +142,13 @@ abstract class DecimalOmdbApiContractLane {
         long next = rows.stream().mapToLong(r -> ((Number) r.get("id")).longValue()).max().orElse(0) + 1;
         try (Connection c = connection(); Statement s = c.createStatement()) {
             s.execute((engine == ScenarioEngine.SQLITE ? "DELETE FROM " : "TRUNCATE TABLE ") + q + "entries" + q);
+            // Sample (the array and unbounded decimals) starts empty: the seed holds `samples: []`.
+            s.execute((engine == ScenarioEngine.SQLITE ? "DELETE FROM " : "TRUNCATE TABLE ") + q + "samples" + q);
+            switch (engine) {
+                case POSTGRES -> s.execute("ALTER TABLE \"samples\" ALTER COLUMN \"id\" RESTART WITH 1");
+                case MYSQL -> s.execute("ALTER TABLE `samples` AUTO_INCREMENT = 1");
+                case SQLITE -> s.execute("DELETE FROM sqlite_sequence WHERE name = 'samples'");
+            }
             for (Map<String, Object> row : rows) {
                 String cols = row.keySet().stream().map(k -> q + k + q).collect(Collectors.joining(", "));
                 String vals = row.values().stream().map(DecimalOmdbApiContractLane::literal).collect(Collectors.joining(", "));

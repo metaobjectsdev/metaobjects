@@ -3,6 +3,8 @@
 TypeScript codegen for the metaobjects metamodel — emits Drizzle schema +
 inferred types + Zod validators + typed CRUD queries from a loaded `MetaData`.
 
+**Upgrading from 1.0.x:** see the [1.0 to 1.1 upgrade guide](https://github.com/metaobjectsdev/metaobjects/blob/v1.1.0/docs/features/migrations/upgrading-1.0-to-1.1.md) before you regenerate. It lists every step and change that needs action, per port.
+
 ## Install
 
 ```bash

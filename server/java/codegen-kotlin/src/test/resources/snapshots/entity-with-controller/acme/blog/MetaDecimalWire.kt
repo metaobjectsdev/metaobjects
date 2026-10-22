@@ -4,9 +4,12 @@ import com.fasterxml.jackson.core.JsonGenerator
 import com.fasterxml.jackson.core.JsonParser
 import com.fasterxml.jackson.core.JsonToken
 import com.fasterxml.jackson.databind.DeserializationContext
+import com.fasterxml.jackson.databind.BeanProperty
+import com.fasterxml.jackson.databind.JsonDeserializer
 import com.fasterxml.jackson.databind.JsonMappingException
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.SerializerProvider
+import com.fasterxml.jackson.databind.deser.ContextualDeserializer
 import com.fasterxml.jackson.databind.deser.std.StdDeserializer
 import com.fasterxml.jackson.databind.ser.std.StdSerializer
 import java.math.BigDecimal
@@ -105,19 +108,40 @@ internal object MetaDecimalWire {
         }
     }
 
-    /** Reads a decimal from a string or a number, exactly; anything else is a 400-shaped mapping error. */
-    class Deserializer : StdDeserializer<BigDecimal>(BigDecimal::class.java) {
+    /**
+     * The `@precision` and `@scale` a decimal inside a value object declares. [Deserializer] reads it
+     * from the property it is bound to and refuses, with a 400, a value the field cannot hold
+     * (more fraction digits than [scale], or more integer digits than precision - scale). Trailing
+     * zeros do not count and nothing is rounded.
+     */
+    @Retention(AnnotationRetention.RUNTIME)
+    @Target(AnnotationTarget.VALUE_PARAMETER, AnnotationTarget.PROPERTY, AnnotationTarget.FIELD)
+    annotation class Declared(val precision: Int, val scale: Int)
+
+    /**
+     * Reads a decimal from a string or a number, exactly; anything else is a 400-shaped mapping
+     * error. A property carrying [Declared] is also range-checked against it.
+     */
+    class Deserializer(private val precision: Int? = null, private val scale: Int = 0) :
+        StdDeserializer<BigDecimal>(BigDecimal::class.java), ContextualDeserializer {
+        override fun createContextual(ctxt: DeserializationContext, property: BeanProperty?): JsonDeserializer<*> {
+            val declared = property?.getAnnotation(Declared::class.java) ?: return this
+            return Deserializer(declared.precision, declared.scale)
+        }
+
         override fun deserialize(p: JsonParser, ctxt: DeserializationContext): BigDecimal? {
             val token = p.currentToken()
             try {
-                if (token == JsonToken.VALUE_STRING) return parse(p.text)
-                if (token == JsonToken.VALUE_NUMBER_INT || token == JsonToken.VALUE_NUMBER_FLOAT) {
-                    return fromJsonNumber(p.decimalValue)
+                val value = when (token) {
+                    JsonToken.VALUE_STRING -> parse(p.text)
+                    JsonToken.VALUE_NUMBER_INT, JsonToken.VALUE_NUMBER_FLOAT -> fromJsonNumber(p.decimalValue)
+                    else -> return ctxt.handleUnexpectedToken(BigDecimal::class.java, p) as BigDecimal?
                 }
+                require(precision == null || fits(value, precision, scale)) { "decimal out of range: " + value }
+                return value
             } catch (e: IllegalArgumentException) {
                 return ctxt.handleWeirdStringValue(BigDecimal::class.java, p.text, "%s", e.message) as BigDecimal?
             }
-            return ctxt.handleUnexpectedToken(BigDecimal::class.java, p) as BigDecimal?
         }
     }
 }

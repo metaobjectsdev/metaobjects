@@ -37,6 +37,10 @@ settable fields) passed. `r2`/`r4` below POST without an `id` and expect `201`,
 and `jsonb-value-object-patch`'s nested-constraint `400` pins that the fix still
 cascades validation into the value objects.
 
+Two more columns carry numbers (scenario `jsonb-value-object-numbers`): `measure` (single) and
+`measures` (array) of the `Measure` value object `{ ratio: field.double; samples: field.double
+isArray; amount: field.decimal @precision 12 @scale 4 }`. Both are nullable.
+
 The `Marker` value object (`object.value`) is `{ label: field.string @required
 @maxLength 40; score: field.int }` — so a nested-constraint violation
 (`null` / `""` / label > 40 chars) is a 400.
@@ -53,7 +57,8 @@ jsonb/
 ├── seed.json              # 2 seed Documents (ids 1, 2), jsonb object + VO columns
 └── scenarios/
     ├── jsonb-open-bag-roundtrip.yaml   # open-bag parsed-value contract
-    └── jsonb-value-object-patch.yaml   # Program D — cross-port VO-column PATCH/POST
+    ├── jsonb-value-object-patch.yaml   # Program D — cross-port VO-column PATCH/POST
+    └── jsonb-value-object-numbers.yaml # doubles and decimals inside a value object
 ```
 
 `seed.json` is applied fresh before the scenario; the runner advances the id
@@ -140,3 +145,19 @@ booted over HTTP) are wired and green for:
 
 All five ports are now wired and green — both lanes each. The jsonb open-bag
 parsed-value contract is locked cross-port at the api-contract boundary.
+
+## Scenario — `jsonb-value-object-numbers.yaml` (1.1.0 review D4 / C1)
+
+A number inside a jsonb value object keeps its type through every port. The ruling (option A): a
+`field.decimal` inside a value object follows the SAME rule as a top-level decimal (ADR-0019
+Amendment 1; see `../decimal/README.md`), per element for an array of value objects.
+
+| Requests | What it pins |
+|---|---|
+| `r1` GET | the seeded `measure` reads back: doubles as JSON numbers, `amount "1.5"` a string |
+| `r2`/`r3` POST + GET | fractional doubles (and a double array, including `[]`) round-trip as JSON numbers; the decimal accepts `"1.5000"` or `2.25` or `"100"` and comes out canonical: `"1.5"`, `"2.25"`, `"100"` |
+| `r4` POST | a decimal sent as a JSON number (`1.5`) is `"1.5"` |
+| `r5`-`r8`, `r9` | a 5th fraction digit (single and in an array element), a 9th integer digit and `"12abc"` are `400 validation`; nothing is persisted (GET id 5 is 404) |
+| `r10`/`r11` PATCH + GET | PATCH single `measure` (decimal as a number) is canonical, `measures` untouched |
+| `r12`-`r15` | PATCH array element canonicalized (`"3.10"` gives `"3.1"`); excess scale in an array element or in `measure` is `400` and the stored value is unchanged |
+| `r16`-`r18` PUT | PUT canonicalizes and persists; excess scale on PUT is `400` and nothing changes |

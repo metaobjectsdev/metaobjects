@@ -12,6 +12,7 @@
     { "id": 10, "bucket": "E", "amount": null, "flagged": false },
     { "id": 11, "bucket": "F", "amount": null, "flagged": false }
   ],
+  "samples": [],
   "reports": {
     "EntryTotals": [
       { "bucket": "A", "entries": 2, "total": "0.3", "totalOrZero": "0.3", "mean": "0.15", "top": "0.2", "flaggedShare": "0.5", "perFlagged": "2" },

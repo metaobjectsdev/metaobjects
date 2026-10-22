@@ -14,10 +14,11 @@ here.**
 
 _npm `1.1.0` (all 14 `@metaobjectsdev/*` packages in lockstep), PyPI `1.1.0`, NuGet `1.1.0` and
 Maven Central `8.1.0`. **`metamodelVersion` moves `1.0` to `1.1`.** The vocabulary is additive:
-a model that uses none of the new names loads as it did under 1.0, with two exceptions: a bare
-`extends` naming an object in another package is refused in TypeScript, Python and C# (see
-**Breaking** below), and the Java and Python parser fixes under **Fixed** bring those ports into
-line with TypeScript. What it generates is NOT unchanged in every port: in C#, Java, Kotlin's runtime and
+a model that uses none of the new names loads as it did under 1.0, with three exceptions: a bare
+`extends` naming an object in another package is refused in TypeScript, Python and C#, a
+fractional `validator.numeric` `@min` or `@max` is refused in TypeScript, C# and Python (both
+under **Breaking** below), and the Java and Python parser fixes under **Fixed** bring those
+ports into line with TypeScript. What it generates is NOT unchanged in every port: in C#, Java, Kotlin's runtime and
 Python the default for column and table names flips from the field name to `snake_case`, so a
 1.0 estate whose columns are named like its fields must add
 `"naming": { "columns": "literal" }` (see **Breaking** below). Each entry says which models it
@@ -35,7 +36,10 @@ those four). A database whose columns are named exactly like the fields adds
 (`--column-naming`, the `columnNaming` pom arg, `ObjectManager(column_naming=)`,
 `columnNamingStrategy`) are removed and refused with a message naming the setting. Nothing in the
 build fails if you skip this: the first failure is a query against a column that does not exist.
-Migration: [physical-naming.md](docs/features/migrations/physical-naming.md). The entry is under
+Upgrade every port of an estate together: a 1.1 TypeScript tool reads `naming`, a 1.0.x C#, Java
+or Python tool silently ignores the unknown key and keeps the old column names, so two ports of
+one estate disagree about the schema without any error (only a 1.0.x TypeScript tool refuses the
+key). Migration: [physical-naming.md](docs/features/migrations/physical-naming.md). The entry is under
 **Changed**.
 
 **Breaking, in every port: documentation is generated the way code is.** Every generator,
@@ -43,7 +47,7 @@ documentation included, is an entry in the project's generator list; one command
 list; nothing is generated that the list does not declare. The docs commands are removed:
 `meta docs` and `meta verify --docs` (TypeScript), `dotnet meta docs` (C#), `metaobjects docs`
 (Python) and the `metaobjects:docs` goal (Java and Kotlin, 8.1.0). Each prints where its work
-went and exits 2. A gen command given a 1.0 docs configuration fails before it writes anything
+went and exits 2 (the Maven goal fails the build, so `mvn` exits 1). A gen command given a 1.0 docs configuration fails before it writes anything
 rather than running and writing no documentation, and in TypeScript a project with no
 `metaobjects.config.ts` fails `meta gen` with a pointer instead of having its pages written
 from defaults. There is no upgrade script: [docs-are-generators.md](docs/features/migrations/docs-are-generators.md)
@@ -77,14 +81,25 @@ package.** It now fails with `ERR_UNRESOLVED_SUPER`, as Java already did and ADR
 bare name binds the declaring file's own package, then the root. Qualify the reference:
 `extends: other::Base`. The entry is under **Changed** (ADR-0059).
 
+**Breaking, TypeScript, C# and Python: `attr.int` and `attr.long` take whole numbers only, so a
+fractional validator bound is refused.** A `validator.numeric` declares `@min` and `@max` as
+integers, and a fraction such as `@min: 0.5` on a `decimal` or `double` field is now
+`ERR_BAD_ATTR_VALUE` at load ("'@min' must be of type 'int' but got the fraction 0.5"), as Java
+already refused it, so the five ports agree. 1.0.x TypeScript accepted it. Fix: write an integer
+bound (`@min: 0`). A decimal-valued bound (for example "at least 0.01") cannot be declared in
+1.1.0: that needs new metamodel vocabulary, which is 1.2 work. A whole number written `1.0`
+still loads, as `1`. The entry is under **Changed** and the FR-044 report entries.
+
 **Breaking, in every port: a `field.decimal` crosses the API as one canonical string
 (ADR-0019 Amendment 1).** Every decimal a generated route sends, on an entity, a projection or a
 report row (an `avg`, a ratio, a `sum` of a decimal), is a JSON string in plain notation with no
 exponent and no trailing fraction zeros: `12.50` is sent `"12.5"`, zero is `"0"`. Before 1.1.0
-each port sent its own form (TypeScript a string, the others a number), so a client that read a
-number from C#, Java, Kotlin or Python now reads a string. Display formatting, such as two digits
+each port sent its own form (TypeScript a string that kept trailing zeros, the others a number), so
+a client that read a number from C#, Java, Kotlin or Python now reads a string, and TypeScript's
+`"12.50"` is now `"12.5"`. Display formatting, such as two digits
 for an amount of money, is a view's job, never the wire's. On input a route takes a string in
-JSON-number grammar or a JSON number, read exactly; anything else is `400 validation`, and so is
+JSON-number grammar or a JSON number, read exactly (in TypeScript a JSON number is exact to 15 significant
+digits, so send a string for more); anything else is `400 validation`, and so is
 a value with more fraction digits than `@scale` or more integer digits than
 `@precision - @scale` (nothing is rounded). A decimal filter operand uses the same grammar, is
 compared exactly, and a bad one is `400 invalid_filter_value`. Postgres and MySQL keep the
@@ -93,7 +108,7 @@ declared precision; SQLite and D1, which have no decimal type, keep 15 significa
 generator keeps its old decimal handling until you resync it. The per-port entries are under
 **Changed**.
 
-**Nine diffs to expect when you upgrade.**
+**Eleven diffs to expect when you upgrade.**
 
 - **Generated files no generator emits any more are deleted.** The first full `gen` after the
   upgrade, in every port, deletes a file the committed hash manifest records writing, that no
@@ -166,6 +181,26 @@ generator keeps its old decimal handling until you resync it. The per-port entri
   reaches a shared or `@provided` enum: an old copy of one beside the packaged other generates
   code that does not compile. The **Fixed** entry lists each port's before and after, and the
   re-eject commands.
+
+- **CLI exit codes changed.** `meta gen` on a model that does not load exits 1 (1.0.13 exited 2).
+  `meta init` in an initialised project is a no-op that exits 0 (it exited 1; `--force` still
+  re-scaffolds). The removed docs commands exit 2, except the Maven `docs` goal, which fails
+  the build, so `mvn` exits 1. A script that tests for a specific code needs the new one.
+- **Smaller changes an adopter can hit.** Each has its own entry.
+  - TypeScript: `ObjectManager` now enforces numeric bounds, array bounds, uri/inet format and
+    an assigned primary key; `RequirementTestArgs` and `RequirementView` gained required
+    fields (a compile break for code that builds them by hand).
+  - Java: every regenerated class has a one-time header diff; `entity` no longer writes
+    `<Name>Extractor`; decimal filter operands are `BigDecimal`, not `String`, so a hand-written
+    repository that casts `(String) p.value()` breaks.
+  - Kotlin: also emits `MetaPortableColumnTypes.kt` and `<Report>Names`; `portableUuid` binds
+    text on MySQL and SQLite, which differs from an Exposed-created `BINARY(16)` column.
+  - Python: refuses a project module that shadows the standard library; answers 400, not 422,
+    for a malformed body.
+  - The `mermaid-er` generator is removed.
+  - C# and Python: `gen` and `verify --codegen` need a generator list (`codegen/Generators.cs`,
+    written by `dotnet meta init`; `metaobjects.config.yaml`), and exit 2 without one. Python's
+    `gen <dir> --out` form is gone.
 
 **Not in 1.1.0.** Derived measures, the preview `reporting` library, the dbt exporter, the second
 requirements slice and the advisory lint port, the JSON Schema and OpenAPI generators, the
@@ -1483,6 +1518,16 @@ until you regenerate.
 ### Fixed
 
 - **Found by the 1.1.0 release review, in every port unless named.**
+  - **Python: writing a `field.decimal` array no longer answers 500.** The write coercion
+    converted the whole list as one decimal; it now converts each element and keeps `None`.
+  - **Kotlin: a `field.decimal` with no `@precision` is unbounded, as in the other four
+    ports.** It was an Exposed `decimal(19,4)` column that rounded to four places on read, and
+    the new range check refused values that column could not hold. An undeclared decimal now
+    has an unbounded column type and no range check; a declared `@precision` is checked as
+    before.
+  - **A `field.decimal` inside a jsonb value object follows the top-level decimal rule in all
+    five ports**: written as the canonical string, read from a string or a JSON number exactly.
+    The ports disagreed before (TypeScript refused a number, Python stored a float).
   - **The loader refuses four more report shapes**, with the cross-port code and a message
     naming the fix: a dimension or measure over a `field.object` or `@objectRef` field
     (D5, M10: `ERR_INVALID_DIMENSION` / `ERR_INVALID_MEASURE`; a `field.map` with `@valueType`

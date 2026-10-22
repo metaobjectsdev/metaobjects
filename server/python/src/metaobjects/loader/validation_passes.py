@@ -550,7 +550,12 @@ def _validate_attr_schema(
                     errors.append(
                         MetaError(
                             f"{_node_label(node)} attribute '@{attr_node.name}' has value "
-                            f"{raw_value!r} which does not match expected type '{effective_value_type}'",
+                            f"{raw_value!r} which does not match expected type '{effective_value_type}'"
+                            + (
+                                "; this attribute is integral, so write an integer (for a validator @min/@max, use an integer bound)"
+                                if effective_value_type in ("int", "long") and isinstance(raw_value, float)
+                                else ""
+                            ),
                             ErrorCode.ERR_BAD_ATTR_VALUE,
                             envelope=node.source,
                         )

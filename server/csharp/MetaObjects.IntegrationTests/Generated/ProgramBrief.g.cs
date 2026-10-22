@@ -12,12 +12,15 @@ namespace MetaObjects.IntegrationTests.Generated;
 public class ProgramBrief
 {
     [JsonPropertyName("title")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     [Required(AllowEmptyStrings = true)]
     [MaxLength(200)]
     [MinLength(1)]
     public string Title { get; set; } = default!;
     [JsonPropertyName("weekCount")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public int? WeekCount { get; set; }
     [JsonPropertyName("weekLabels")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public ICollection<WeekLabel>? WeekLabels { get; set; }
 }

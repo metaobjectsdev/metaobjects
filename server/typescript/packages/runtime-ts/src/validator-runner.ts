@@ -7,7 +7,8 @@ import {
   VALIDATOR_SUBTYPE_REQUIRED, VALIDATOR_SUBTYPE_LENGTH, VALIDATOR_SUBTYPE_REGEX,
   FIELD_SUBTYPE_STRING, FIELD_SUBTYPE_INT, FIELD_SUBTYPE_LONG,
   FIELD_SUBTYPE_DOUBLE, FIELD_SUBTYPE_FLOAT, FIELD_SUBTYPE_CURRENCY,
-  FIELD_SUBTYPE_BOOLEAN, FIELD_SUBTYPE_UUID, FIELD_SUBTYPE_OBJECT,
+  FIELD_SUBTYPE_BOOLEAN, FIELD_SUBTYPE_UUID, FIELD_SUBTYPE_OBJECT, FIELD_SUBTYPE_DECIMAL,
+  FIELD_ATTR_PRECISION, FIELD_ATTR_SCALE,
   FIELD_ATTR_REQUIRED, FIELD_ATTR_MAX_LENGTH, FIELD_ATTR_DEFAULT,
   FIELD_ATTR_DB_COLUMN_TYPE, DB_COLUMN_TYPE_JSONB, FIELD_ATTR_OBJECT_REF,
   OBJECT_SUBTYPE_VALUE,
@@ -17,6 +18,7 @@ import {
   IDENTITY_ATTR_FIELDS, IDENTITY_ATTR_GENERATION, GENERATION_INCREMENT, GENERATION_UUID,
 } from "@metaobjectsdev/metadata";
 import type { ValidationFailure } from "./errors.js";
+import { decimalFits, parseDecimalInput } from "./decimal-wire.js";
 import { isAbsoluteUri, isInetLiteral } from "./net-format.js";
 
 export type ValidationResult =
@@ -301,12 +303,40 @@ function checkType(subType: string, value: unknown): string | null {
 }
 
 /**
+ * ADR-0019 Amendment 1 (W2, W3) on a write: a decimal is a string in the JSON-number grammar or a
+ * JSON number a double holds exactly, and must fit the declared `@precision` / `@scale`. Refused
+ * here, as a validation failure, so the write answers 400 rather than failing later in the coercer.
+ */
+function decimalErrors(field: MetaData, value: unknown, label: string): ValidationFailure[] {
+  const canonical = parseDecimalInput(value);
+  if (canonical === undefined) {
+    return [{
+      field: label, rule: "type",
+      message: `'${label}' must be a decimal number (a string in the JSON-number grammar, or a number a double holds exactly: send a string for more than 15 significant digits)`,
+      expected: FIELD_SUBTYPE_DECIMAL, received: typeof value,
+    }];
+  }
+  // ADR-0039: effective attrs — @precision / @scale may be inherited via extends.
+  const precision = field.attr(FIELD_ATTR_PRECISION);
+  const scale = field.attr(FIELD_ATTR_SCALE);
+  if (!decimalFits(canonical, typeof precision === "number" ? precision : undefined, typeof scale === "number" ? scale : undefined)) {
+    return [{
+      field: label, rule: "range",
+      message: `'${label}' (${canonical}) does not fit @precision ${String(precision)} / @scale ${String(scale ?? 0)}`,
+      expected: { precision, scale }, received: canonical,
+    }];
+  }
+  return [];
+}
+
+/**
  * The type, length and regex errors for one scalar value of `field` — the whole field
  * value, or one element of a scalar array (then `required` is false: element presence is not
  * the field's `@required`, and `label` is `name[i]`).
  */
 function scalarErrors(field: MetaData, value: unknown, required: boolean, label: string): ValidationFailure[] {
   const errors: ValidationFailure[] = [];
+  if (field.subType === FIELD_SUBTYPE_DECIMAL) return decimalErrors(field, value, label);
   const typeError = checkType(field.subType, value);
   if (typeError !== null) {
     errors.push({

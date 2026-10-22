@@ -116,7 +116,7 @@ export class MetaAttr extends MetaData implements DataTypeAware {
       // Rule A: an integral number (4, 4.0, 1e2) is an int; a fraction is not.
       return Number.isInteger(value)
         ? []
-        : [{ message: `attribute '@${this.name}' must be of type '${this.subType}' but got the fraction ${value}` }];
+        : [{ message: `attribute '@${this.name}' must be of type '${this.subType}' but got the fraction ${value}; this attribute is integral, so write an integer (for a validator @min/@max, use an integer bound)` }];
     }
     if (dt === DATA_TYPE_DOUBLE) {
       return typeof value === "number" ? [] : [this._typeError("number", value)];

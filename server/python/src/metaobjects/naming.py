@@ -60,7 +60,7 @@ DEFAULT_TABLE_NAMING = TABLE_NAMING_SNAKE_CASE
 #: ADR-0058 Decision 4 — the migration guide every removed naming source points at.
 #: One named constant: every refusal site below quotes the SAME url.
 PHYSICAL_NAMING_MIGRATION_GUIDE_URL = (
-    "https://github.com/metaobjectsdev/metaobjects/blob/main/"
+    "https://github.com/metaobjectsdev/metaobjects/blob/v1.1.0/"
     "docs/features/migrations/physical-naming.md"
 )
 

@@ -19,7 +19,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import re
-from decimal import Decimal, InvalidOperation
+from decimal import Context, Decimal, InvalidOperation
 from typing import Any, Iterable
 
 #: A string body value and a filter operand: the JSON-number grammar. An exponent is allowed on
@@ -31,13 +31,22 @@ _JSON_NUMBER = re.compile(r"-?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?")
 MAX_DIGITS = 1000
 
 
+_EXACT = Context(prec=MAX_DIGITS * 2 + 64)
+
+
+def _normalize(value: Decimal) -> Decimal:
+    """``Decimal.normalize`` rounds to the context precision (28 digits); an unbounded decimal
+    must not lose digits, so normalize under a context wide enough for any in-range value."""
+    return value.normalize(_EXACT)
+
+
 def format_decimal(value: Decimal) -> str:
     """W1: the canonical wire string of *value*."""
     if not value.is_finite():
         raise ValueError(f"{value} is not a finite decimal")
     if value == 0:
         return "0"
-    normalized = value.normalize()
+    normalized = _normalize(value)
     if abs(normalized.adjusted()) > MAX_DIGITS:
         raise ValueError("decimal out of range")
     return format(normalized, "f")
@@ -113,7 +122,7 @@ def check_decimal_range(value: Decimal, precision: int, scale: int) -> None:
     """W3: raise ``ValueError`` when *value* cannot be held by ``DECIMAL(precision, scale)``
     -- more fraction digits than *scale* or more integer digits than ``precision - scale``.
     Trailing fraction zeros do not count (``100.2500`` is ``100.25``); nothing is rounded."""
-    d = value.normalize()
+    d = _normalize(value)
     exponent = d.as_tuple().exponent
     if not isinstance(exponent, int):
         raise ValueError("not a finite number")
@@ -128,6 +137,7 @@ def coerce_decimal_fields(
     dto: dict[str, Any],
     decimal_fields: frozenset[str],
     limits: dict[str, tuple[int, int]] | None = None,
+    nested: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """A copy of *dto* with each present decimal field parsed under W2 (``null`` stays
     ``None``) and held to its column's range under W3 (*limits*: name to (precision, scale)).
@@ -136,7 +146,11 @@ def coerce_decimal_fields(
     # parse_json_object reads EVERY non-integer number as a Decimal; only a declared decimal
     # field keeps it. A double/float field, or a number inside a jsonb value object, goes back
     # to the float a JSON number is for them (json.dumps cannot serialize a Decimal).
-    out = {k: v if k in decimal_fields else _floats(v) for k, v in dto.items()}
+    nested = nested or {}
+    out = {
+        k: v if k in decimal_fields else _nested(v, nested[k], k) if k in nested else _floats(v)
+        for k, v in dto.items()
+    }
     for name in decimal_fields:
         if name in out and out[name] is not None:
             limit = limits.get(name) if limits else None
@@ -150,6 +164,34 @@ def coerce_decimal_fields(
             except ValueError as exc:
                 raise ValueError(f"{name}: {exc}") from None
     return out
+
+
+def _nested(value: Any, spec: dict[str, Any], path: str) -> Any:
+    """A jsonb value-object field (*value* a dict, or a list of them) under the top-level
+    decimal rule: each declared decimal inside is parsed under W2, held to its range under W3
+    (*spec*: ``{"d": {name: (precision, scale) | None}, "o": {name: spec}}``) and stored as its
+    canonical string; every other number is a float. Raises ``ValueError`` naming the path."""
+    if isinstance(value, list):
+        return [_nested(v, spec, path) for v in value]
+    if not isinstance(value, dict):
+        return _floats(value)
+    out: dict[str, Any] = {}
+    for k, v in value.items():
+        if k in spec["d"] and v is not None:
+            limit = spec["d"][k]
+            try:
+                out[k] = [None if e is None else _canonical(e, limit) for e in v] if isinstance(v, list) else _canonical(v, limit)
+            except ValueError as exc:
+                raise ValueError(f"{path}.{k}: {exc}") from None
+        elif k in spec["o"]:
+            out[k] = _nested(v, spec["o"][k], f"{path}.{k}")
+        else:
+            out[k] = _floats(v)
+    return out
+
+
+def _canonical(value: Any, limit: tuple[int, int] | None) -> str:
+    return format_decimal(_coerce_decimal(value, limit))
 
 
 def _floats(value: Any) -> Any:

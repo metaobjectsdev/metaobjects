@@ -30,6 +30,8 @@ If you are an AI assistant helping someone adopt MetaObjects in their project, d
 
    Re-run `meta init --refresh-docs` to update the scaffolded agent docs after a CLI upgrade. (The Node `meta` CLI is the single agent-context scaffolder for every backend, by design — ADR-0033; the JVM/Python/C# CLIs deliberately redirect to it. Run `meta init` regardless of backend language, or `npx meta agent-docs --server <lang>` to scaffold just the agent context.)
 
+**Upgrading a 1.0.x project to 1.1.0:** read <https://github.com/metaobjectsdev/metaobjects/blob/v1.1.0/docs/features/migrations/upgrading-1.0-to-1.1.md> before the first `gen`. It is the one page for every port: the steps in order and every change that needs action (the physical-naming default, documentation as a generator, the canonical decimal string, integer-only validator bounds). Several of them fail nothing when skipped.
+
 3. **After scaffolding, load `.metaobjects/AGENTS.md` and the `.claude/skills/metaobjects-*` skills.** They teach metadata authoring, codegen, runtime/UI, prompt construction, and `verify` — for this project's exact stack and version.
 
 This `llms.txt` is the short index; the deep, version-matched how-to is the scaffolded local context.

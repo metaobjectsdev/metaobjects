@@ -27,7 +27,7 @@ import static org.junit.Assert.fail;
 public class RemovedDocsGoalTest {
 
     private static final String MIGRATION =
-            "See https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md, section \"Java and Kotlin\".";
+            "See https://github.com/metaobjectsdev/metaobjects/blob/v1.1.0/docs/features/migrations/docs-are-generators.md, section \"Java and Kotlin\".";
 
     @Rule
     public MojoRule rule = new MojoRule();

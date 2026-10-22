@@ -21,6 +21,7 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using MetaObjects.Codegen.Runtime;
 using MetaObjects.IntegrationTests.Runner;
 using Npgsql;
 using NpgsqlTypes;
@@ -40,7 +41,7 @@ internal sealed class JsonbReferenceServer : IAsyncDisposable
     private const int MarkerLabelMaxLength = 40;
 
     // The jsonb columns carried in a document row's wire projection (id + title are scalar).
-    private static readonly string[] JsonbColumns = { "payload", "primaryMarker", "optionalMarker", "markers" };
+    private static readonly string[] JsonbColumns = { "payload", "primaryMarker", "optionalMarker", "markers", "measure", "measures" };
 
     private JsonbReferenceServer(PostgresContainer pg, HttpListener listener, string baseUrl)
     {
@@ -151,6 +152,7 @@ internal sealed class JsonbReferenceServer : IAsyncDisposable
         // Optional VO columns: when present + non-null, validate nested constraints.
         if (PresentNonNull(body, "optionalMarker") && !ValidMarker(body["optionalMarker"])) { await BadValidation(ctx); return; }
         if (PresentNonNull(body, "markers") && !ValidMarkerArray(body["markers"])) { await BadValidation(ctx); return; }
+        if (!CanonicalizeMeasures(body)) { await BadValidation(ctx); return; }
 
         long newId;
         await using var c = new NpgsqlConnection(_pg.ConnectionString);
@@ -158,13 +160,15 @@ internal sealed class JsonbReferenceServer : IAsyncDisposable
         await using (var ins = c.CreateCommand())
         {
             ins.CommandText =
-                "INSERT INTO \"documents\" (\"title\", \"payload\", \"primaryMarker\", \"optionalMarker\", \"markers\") " +
-                "VALUES (@title, @payload, @primaryMarker, @optionalMarker, @markers) RETURNING id";
+                "INSERT INTO \"documents\" (\"title\", \"payload\", \"primaryMarker\", \"optionalMarker\", \"markers\", \"measure\", \"measures\") " +
+                "VALUES (@title, @payload, @primaryMarker, @optionalMarker, @markers, @measure, @measures) RETURNING id";
             ins.Parameters.AddWithValue("@title", body["title"]!.GetValue<string>());
             AddJsonbParam(ins, "@payload", body["payload"]);
             AddJsonbParam(ins, "@primaryMarker", body["primaryMarker"]);
             AddJsonbParam(ins, "@optionalMarker", body["optionalMarker"]);
             AddJsonbParam(ins, "@markers", body["markers"]);
+            AddJsonbParam(ins, "@measure", body["measure"]);
+            AddJsonbParam(ins, "@measures", body["measures"]);
             newId = Convert.ToInt64(await ins.ExecuteScalarAsync());
         }
         await SendJsonAsync(ctx, 201, await SelectRowAsync(c, newId) ?? new Dictionary<string, object?>());
@@ -189,6 +193,7 @@ internal sealed class JsonbReferenceServer : IAsyncDisposable
         }
         if (PresentNonNull(body, "optionalMarker") && !ValidMarker(body["optionalMarker"])) { await BadValidation(ctx); return; }
         if (PresentNonNull(body, "markers") && !ValidMarkerArray(body["markers"])) { await BadValidation(ctx); return; }
+        if (!CanonicalizeMeasures(body)) { await BadValidation(ctx); return; }
 
         await using var c = new NpgsqlConnection(_pg.ConnectionString);
         await c.OpenAsync();
@@ -239,6 +244,53 @@ internal sealed class JsonbReferenceServer : IAsyncDisposable
         if (node is not JsonArray arr) return false;
         foreach (var el in arr)
             if (!ValidMarker(el)) return false;
+        return true;
+    }
+
+    // Measure { ratio: double; samples: double[]; amount: decimal(12, 4) }. A present Measure is
+    // canonicalized in place: the decimal `amount` is read exactly (string-or-number), range-checked
+    // against its declared precision/scale and stored as its canonical string; null members are dropped.
+    private const int MeasurePrecision = 12, MeasureScale = 4;
+
+    private static JsonObject? CanonicalMeasure(JsonNode? node)
+    {
+        if (node is not JsonObject obj) return null;
+        var outObj = new JsonObject();
+        foreach (var kvp in obj)
+        {
+            if (kvp.Value is null || kvp.Value.GetValueKind() == JsonValueKind.Null) continue;
+            if (kvp.Key == "amount")
+            {
+                var el = JsonSerializer.SerializeToElement(kvp.Value);
+                if (!DecimalWire.TryParseElement(el, out var d) || !DecimalWire.Fits(d, MeasurePrecision, MeasureScale))
+                    return null;
+                outObj["amount"] = DecimalWire.Format(d);
+            }
+            else outObj[kvp.Key] = kvp.Value.DeepClone();
+        }
+        return outObj;
+    }
+
+    private static bool CanonicalizeMeasures(JsonObject body)
+    {
+        if (PresentNonNull(body, "measure"))
+        {
+            var canon = CanonicalMeasure(body["measure"]);
+            if (canon is null) return false;
+            body["measure"] = canon;
+        }
+        if (PresentNonNull(body, "measures"))
+        {
+            if (body["measures"] is not JsonArray arr) return false;
+            var list = new JsonArray();
+            foreach (var el in arr)
+            {
+                var canon = CanonicalMeasure(el);
+                if (canon is null) return false;
+                list.Add(canon);
+            }
+            body["measures"] = list;
+        }
         return true;
     }
 

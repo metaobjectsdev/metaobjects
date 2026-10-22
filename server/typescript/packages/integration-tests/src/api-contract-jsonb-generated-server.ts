@@ -87,7 +87,9 @@ export const db = drizzle(pool);
        "payload" jsonb,
        "primary_marker" jsonb NOT NULL,
        "optional_marker" jsonb,
-       "markers" jsonb
+       "markers" jsonb,
+       "measure" jsonb,
+       "measures" jsonb
      )`,
   );
 
@@ -113,11 +115,11 @@ export const db = drizzle(pool);
           v === undefined || v === null ? "NULL" : `${sqlStr(JSON.stringify(v))}::jsonb`;
         await executeSql(
           connectionUri,
-          `INSERT INTO "documents" ("id", "title", "payload", "primary_marker", "optional_marker", "markers") VALUES (${
+          `INSERT INTO "documents" ("id", "title", "payload", "primary_marker", "optional_marker", "markers", "measure", "measures") VALUES (${
             r.id ?? "DEFAULT"
           }, ${sqlStr(r.title)}, ${jsonbSql(r.payload)}, ${jsonbSql(r.primaryMarker)}, ${jsonbSql(
             r.optionalMarker,
-          )}, ${jsonbSql(r.markers)})`,
+          )}, ${jsonbSql(r.markers)}, ${jsonbSql(r.measure)}, ${jsonbSql(r.measures)})`,
         );
       }
       await executeSql(

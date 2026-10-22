@@ -30,6 +30,8 @@ internal static class JsonbFixture
           "primaryMarker" jsonb NOT NULL,
           "optionalMarker" jsonb,
           "markers" jsonb,
+          "measure" jsonb,
+          "measures" jsonb,
           CONSTRAINT "documents_pkey" PRIMARY KEY ("id")
         );
         """;
@@ -70,8 +72,8 @@ internal static class JsonbFixture
                 if (rowNode is not JsonObject row) continue;
                 await using var ins = c.CreateCommand();
                 ins.CommandText =
-                    "INSERT INTO \"documents\" (\"id\", \"title\", \"payload\", \"primaryMarker\", \"optionalMarker\", \"markers\") " +
-                    "VALUES (@id, @title, @payload, @primaryMarker, @optionalMarker, @markers)";
+                    "INSERT INTO \"documents\" (\"id\", \"title\", \"payload\", \"primaryMarker\", \"optionalMarker\", \"markers\", \"measure\", \"measures\") " +
+                    "VALUES (@id, @title, @payload, @primaryMarker, @optionalMarker, @markers, @measure, @measures)";
                 ins.Parameters.AddWithValue("@id", row["id"]!.GetValue<long>());
                 ins.Parameters.AddWithValue("@title", row["title"]!.GetValue<string>());
                 // payload + the VO columns are JSON — serialize each and bind as jsonb (an
@@ -81,6 +83,8 @@ internal static class JsonbFixture
                 AddJsonbParam(ins, "@primaryMarker", row["primaryMarker"]);
                 AddJsonbParam(ins, "@optionalMarker", row["optionalMarker"]);
                 AddJsonbParam(ins, "@markers", row["markers"]);
+                AddJsonbParam(ins, "@measure", row["measure"]);
+                AddJsonbParam(ins, "@measures", row["measures"]);
                 await ins.ExecuteNonQueryAsync();
             }
         }

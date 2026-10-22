@@ -117,7 +117,7 @@ def test_the_removal_line_is_the_amendment_s() -> None:
     assert DOCS_COMMAND_REMOVED == (
         "metaobjects docs was removed in 1.1.0. `metaobjects gen` writes documentation now: "
         "declare each docs generator in a target's `generators` in metaobjects.config.yaml. "
-        'See https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md, section "Python".'
+        'See https://github.com/metaobjectsdev/metaobjects/blob/v1.1.0/docs/features/migrations/docs-are-generators.md, section "Python".'
     )
 
 
@@ -148,7 +148,7 @@ def test_the_1_0_shape_line_is_the_amendment_s() -> None:
         "metaobjects gen: found 1.0 docs configuration (the docs block in "
         "metaobjects.config.yaml). Nothing reads it any more, so this run would write no "
         "documentation. Declare each docs generator in a target's `generators` in "
-        "metaobjects.config.yaml. See https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md, "
+        "metaobjects.config.yaml. See https://github.com/metaobjectsdev/metaobjects/blob/v1.1.0/docs/features/migrations/docs-are-generators.md, "
         'section "Python".'
     )
 
@@ -176,7 +176,7 @@ def test_no_config_fails_and_writes_nothing(
 def test_the_no_list_line_is_the_amendment_s() -> None:
     assert no_generator_list_message("metaobjects gen") == (
         "metaobjects gen: no metaobjects.config.yaml. The generator list lives there in 1.1.0, "
-        'documentation included. See https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md, section "Python".'
+        'documentation included. See https://github.com/metaobjectsdev/metaobjects/blob/v1.1.0/docs/features/migrations/docs-are-generators.md, section "Python".'
     )
 
 
@@ -391,7 +391,7 @@ def test_a_target_with_no_generators_key_is_refused_with_the_migration_line(
     assert capsys.readouterr().err.strip() == (
         f"{name}: target(s) 'api' declare no `generators` key. In 1.1.0 a target runs only the "
         "generators it lists: list them, or write `generators: []` for a target that writes "
-        'nothing. See https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md, section "Python".'
+        'nothing. See https://github.com/metaobjectsdev/metaobjects/blob/v1.1.0/docs/features/migrations/docs-are-generators.md, section "Python".'
     )
     assert not (tmp_path / "gen").exists()
 

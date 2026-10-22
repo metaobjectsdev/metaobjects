@@ -25,20 +25,20 @@ before writing anything, so a build never passes while silently writing no docum
 **What you see.** `meta docs` fails (exit 2) with:
 
 ```
-`meta docs` was removed in 1.1.0. `meta gen` writes documentation now: declare each docs generator in `generators` in metaobjects.config.ts. See https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md, section "TypeScript".
+`meta docs` was removed in 1.1.0. `meta gen` writes documentation now: declare each docs generator in `generators` in metaobjects.config.ts. See https://github.com/metaobjectsdev/metaobjects/blob/v1.1.0/docs/features/migrations/docs-are-generators.md, section "TypeScript".
 ```
 
 `meta verify --docs` fails (exit 2) with:
 
 ```
-`meta verify --docs` was removed in 1.1.0. `meta verify --codegen` checks documentation now, with everything else `generators` declares. See https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md, section "TypeScript".
+`meta verify --docs` was removed in 1.1.0. `meta verify --codegen` checks documentation now, with everything else `generators` declares. See https://github.com/metaobjectsdev/metaobjects/blob/v1.1.0/docs/features/migrations/docs-are-generators.md, section "TypeScript".
 ```
 
 A config that still has a `docs` block fails `meta gen` and `meta verify --codegen` before
 anything is written:
 
 ```
-meta gen: found 1.0 docs configuration (the docs block in metaobjects.config.ts). Nothing reads it any more, so this run would write no documentation. Declare each docs generator in `generators` in metaobjects.config.ts. See https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md, section "TypeScript".
+meta gen: found 1.0 docs configuration (the docs block in metaobjects.config.ts). Nothing reads it any more, so this run would write no documentation. Declare each docs generator in `generators` in metaobjects.config.ts. See https://github.com/metaobjectsdev/metaobjects/blob/v1.1.0/docs/features/migrations/docs-are-generators.md, section "TypeScript".
 ```
 
 **Before (1.0).** `meta docs` wrote four sets of pages nobody listed (the model pages, the
@@ -218,7 +218,7 @@ all and wrote the model pages and the requirement ledger. In 1.1.0 nothing is ge
 until a config declares it, and `meta gen` with no config fails with:
 
 ```
-meta gen: no metaobjects.config.ts. Nothing is generated until a config declares it, documentation included; `meta init` writes one. A 1.0 project that ran `meta docs` with no config: see https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md, section "TypeScript".
+meta gen: no metaobjects.config.ts. Nothing is generated until a config declares it, documentation included; `meta init` writes one. A 1.0 project that ran `meta docs` with no config: see https://github.com/metaobjectsdev/metaobjects/blob/v1.1.0/docs/features/migrations/docs-are-generators.md, section "TypeScript".
 ```
 
 Write a `metaobjects.config.ts` at the project root with a `docs` target and `docsFile()`
@@ -245,14 +245,14 @@ node, so drop it if yours declares none. Then run `meta gen`.
 **What you see.** `dotnet meta docs` prints this line and exits 2:
 
 ```
-dotnet meta docs was removed in 1.1.0. `dotnet meta gen` writes documentation now: declare each docs generator in codegen/Generators.cs. See https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md, section "C#".
+dotnet meta docs was removed in 1.1.0. `dotnet meta gen` writes documentation now: declare each docs generator in codegen/Generators.cs. See https://github.com/metaobjectsdev/metaobjects/blob/v1.1.0/docs/features/migrations/docs-are-generators.md, section "C#".
 ```
 
 `dotnet meta gen` (and `dotnet meta verify --codegen`) in a project with no
 `codegen/Generators.cs` prints this and exits 2, writing nothing:
 
 ```
-dotnet meta gen: no codegen/Generators.cs. The generator list lives there in 1.1.0, documentation included; `dotnet meta init` writes it. See https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md, section "C#".
+dotnet meta gen: no codegen/Generators.cs. The generator list lives there in 1.1.0, documentation included; `dotnet meta init` writes it. See https://github.com/metaobjectsdev/metaobjects/blob/v1.1.0/docs/features/migrations/docs-are-generators.md, section "C#".
 ```
 
 `dotnet meta gen` given `--project` or `--model-base-url` fails before writing anything,
@@ -328,7 +328,7 @@ and replace `Program.cs` with the two lines above. `dotnet meta init` writes
 (`dotnet meta verify --codegen` in place of `dotnet meta gen` for the gate):
 
 ```
-dotnet meta gen: codegen/Program.cs does not run Generators.All, so it would ignore the generator list in codegen/Generators.cs. Replace it with the two-line entry `using MetaObjects.Codegen;` and `return CodegenCli.Run(args, Generators.All);`. See https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md, section "C#".
+dotnet meta gen: codegen/Program.cs does not run Generators.All, so it would ignore the generator list in codegen/Generators.cs. Replace it with the two-line entry `using MetaObjects.Codegen;` and `return CodegenCli.Run(args, Generators.All);`. See https://github.com/metaobjectsdev/metaobjects/blob/v1.1.0/docs/features/migrations/docs-are-generators.md, section "C#".
 ```
 
 `init` and `eject` say the same, and warn when `codegen/Codegen.csproj` still pins an older
@@ -341,7 +341,7 @@ Neither is read in 1.1.0. A run that finds either, with no spec entry in the lis
 before writing anything:
 
 ```
-dotnet meta gen: found 1.0 template-spec configuration (template-spec.json). Nothing reads it any more, so this run would not render its templates. Declare it in codegen/Generators.cs as `new MetaObjects.Codegen.TemplateCodegen.TemplateSpecGenerator { Spec = "template-spec.json" }`. See https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md, section "C#".
+dotnet meta gen: found 1.0 template-spec configuration (template-spec.json). Nothing reads it any more, so this run would not render its templates. Declare it in codegen/Generators.cs as `new MetaObjects.Codegen.TemplateCodegen.TemplateSpecGenerator { Spec = "template-spec.json" }`. See https://github.com/metaobjectsdev/metaobjects/blob/v1.1.0/docs/features/migrations/docs-are-generators.md, section "C#".
 ```
 
 (`--template-spec` in place of `template-spec.json` when the flag was given;
@@ -417,7 +417,7 @@ move the value to `naming` in `.metaobjects/config.json` ([physical-naming.md](p
 **What you see.** `metaobjects docs` prints this line and exits 2:
 
 ```
-metaobjects docs was removed in 1.1.0. `metaobjects gen` writes documentation now: declare each docs generator in a target's `generators` in metaobjects.config.yaml. See https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md, section "Python".
+metaobjects docs was removed in 1.1.0. `metaobjects gen` writes documentation now: declare each docs generator in a target's `generators` in metaobjects.config.yaml. See https://github.com/metaobjectsdev/metaobjects/blob/v1.1.0/docs/features/migrations/docs-are-generators.md, section "Python".
 ```
 
 `metaobjects gen` (and `metaobjects verify --codegen`) with no `metaobjects.config.yaml`
@@ -425,20 +425,20 @@ prints this and exits 2, writing nothing. That includes the 1.0 form
 `metaobjects gen <metadata_dir> --out <dir> --generators <names>`:
 
 ```
-metaobjects gen: no metaobjects.config.yaml. The generator list lives there in 1.1.0, documentation included. See https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md, section "Python".
+metaobjects gen: no metaobjects.config.yaml. The generator list lives there in 1.1.0, documentation included. See https://github.com/metaobjectsdev/metaobjects/blob/v1.1.0/docs/features/migrations/docs-are-generators.md, section "Python".
 ```
 
 A config that still has a top-level `docs` block fails `gen` before it writes anything:
 
 ```
-metaobjects gen: found 1.0 docs configuration (the docs block in metaobjects.config.yaml). Nothing reads it any more, so this run would write no documentation. Declare each docs generator in a target's `generators` in metaobjects.config.yaml. See https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md, section "Python".
+metaobjects gen: found 1.0 docs configuration (the docs block in metaobjects.config.yaml). Nothing reads it any more, so this run would write no documentation. Declare each docs generator in a target's `generators` in metaobjects.config.yaml. See https://github.com/metaobjectsdev/metaobjects/blob/v1.1.0/docs/features/migrations/docs-are-generators.md, section "Python".
 ```
 
 A target with no `generators` key fails `gen` (exit 2) before anything is written; list its
 generators, or write `generators: []` for a target that writes nothing:
 
 ```
-metaobjects gen: target(s) 'api' declare no `generators` key. In 1.1.0 a target runs only the generators it lists: list them, or write `generators: []` for a target that writes nothing. See https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md, section "Python".
+metaobjects gen: target(s) 'api' declare no `generators` key. In 1.1.0 a target runs only the generators it lists: list them, or write `generators: []` for a target that writes nothing. See https://github.com/metaobjectsdev/metaobjects/blob/v1.1.0/docs/features/migrations/docs-are-generators.md, section "Python".
 ```
 
 **Before (1.0).** Code from a config file, or from flags with no config, and the api
@@ -530,7 +530,7 @@ metaobjects gen --target docs
 **What you see.** A pom that binds the `docs` goal fails with:
 
 ```
-metaobjects:docs was removed in 8.1.0. `mvn metaobjects:generate` writes documentation now: declare each docs generator as a <generator> entry in the plugin's <generators>. See https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md, section "Java and Kotlin".
+metaobjects:docs was removed in 8.1.0. `mvn metaobjects:generate` writes documentation now: declare each docs generator as a <generator> entry in the plugin's <generators>. See https://github.com/metaobjectsdev/metaobjects/blob/v1.1.0/docs/features/migrations/docs-are-generators.md, section "Java and Kotlin".
 ```
 
 A pom that still sets the goal's parameters fails in `generate` and `verify` with a line

@@ -222,7 +222,7 @@ class GeneratedReportControllerHarness(
          * one time dimension at two grains; `SalesByCategory` reaches a dimension through two references.
          */
         /** The `decimal/` sub-corpus: one writable entity and the report read from it. */
-        val DECIMAL_SERVED = listOf("Entry", "EntryTotals")
+        val DECIMAL_SERVED = listOf("Entry", "Sample", "EntryTotals")
 
         val SERVED = listOf(
             "InvoiceStatusTotals", "InvoicesByMonth", "InvoiceTotals", "InvoiceCalendar", "InvoiceDisputes",

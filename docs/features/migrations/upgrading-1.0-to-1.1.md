@@ -7,16 +7,18 @@ under `[1.1.0]`, and the longer guides it links are written for a coding agent t
 
 1.1.0 is a MINOR: `metamodelVersion` moves from `1.0` to `1.1`, the vocabulary is additive (a
 model that uses none of the new names keeps its meaning), and the reporting feature is new.
-Five changes still need action in an existing project, and three of them fail nothing when you
+Six changes still need action in an existing project, and several of them fail nothing when you
 skip them, so read the whole list before you regenerate.
 
 ## Before you start
 
-- **Upgrade every port together.** All five ports read `.metaobjects/config.json`, and a 1.0.x
-  reader refuses a key it does not know: once you add `naming` (step 3), a 1.0.x TypeScript,
-  C#, Java, Kotlin or Python tool in the same estate fails with "Unrecognized key(s) in object:
-  'naming'". From 1.1.0 on, an unknown key there is a warning, not a failure, so the next key a
-  release adds is not the same trap.
+- **Upgrade every port together, because the failure is silent.** All five ports read
+  `.metaobjects/config.json`. Once you add `naming` (step 2), a 1.0.x TypeScript tool refuses
+  it ("Unrecognized key(s) in object: 'naming'"), but a 1.0.x C#, Java or Python tool ignores
+  the unknown key without a word and keeps its old column names. A mixed estate therefore does
+  not fail: the old port reads and writes columns named like the fields while the new ones use
+  `snake_case`. From 1.1.0 on, an unknown key there is a warning in TypeScript, so the next key
+  a release adds is not the same trap.
 - **Mixed-version exports.** A 1.1 `meta export` file can hold a root-level reference written
   `::Name`, which 1.0.x refuses (`ERR_RELATIVE_REF_IN_CANONICAL`). Read 1.1 exports with 1.1
   tools.
@@ -29,18 +31,27 @@ skip them, so read the whole list before you regenerate.
    `metaobjects` `1.1.0` (PyPI), `MetaObjects*` `1.1.0` (NuGet), `com.metaobjects:*` `8.1.0`
    (Maven, including the `metaobjects-maven-plugin` version in each `pom.xml`). Reinstall
    cleanly and read the resolved versions back.
-2. **`meta upgrade`**, then `meta upgrade --apply` if it reports anything. Then load the model
-   (`meta verify`): a bare cross-package `extends` now fails with `ERR_UNRESOLVED_SUPER`, and the
-   message names the spelling to write (see "References and `extends`").
-3. **Set the physical naming rule** if your database's columns are named like the fields (C#,
-   Java, the JVM runtime and Python; see "Column and table names"). This is the step that
-   fails nothing when skipped.
-4. **Move documentation into the generator list** if you ran `meta docs`, `dotnet meta docs`,
-   `metaobjects docs` or the `metaobjects:docs` goal (see "Documentation is generated").
+2. **Set the physical naming rule** if your database's columns are named like the fields (C#,
+   Java, the JVM runtime and Python; see "Column and table names"). TypeScript: move
+   `columnNamingStrategy` to the same setting. This is the step that fails nothing when
+   skipped.
+3. **Give every port a generator list, and move documentation into it.** TypeScript: remove
+   the `docs` block from `metaobjects.config.ts` and declare each docs generator. C#: run
+   `dotnet meta init` once to write `codegen/Generators.cs`; without it `dotnet meta gen` and
+   `verify --codegen` exit 2. Python: write the target's `generators` in
+   `metaobjects.config.yaml`; without that file `metaobjects gen` exits 2, and the `gen <dir>
+   --out` form is gone. Java and Kotlin: the `<generators>` list in the pom, and the
+   `metaobjects:docs` goal is removed. Do this whether or not you ever ran a docs command (see
+   "Documentation is generated").
+4. **`meta upgrade`**, then `meta upgrade --apply` if it reports anything. Then load the model
+   (`meta verify`), which refuses a leftover `columnNamingStrategy` or `docs` block until steps
+   2 and 3 are done: a bare cross-package `extends` now fails with `ERR_UNRESOLVED_SUPER`, and
+   the message names the spelling to write (see "References and `extends`").
 5. **Java and Kotlin: let `mvn metaobjects:generate` write the hash manifest, then commit
    `.metaobjects/.gen-state/.hashes.json`** in every module (see "JVM hash manifest").
-6. **Resync the generators you own.** `meta eject --list` (TypeScript; `metaobjects eject
-   --list`, `dotnet meta gen --list`, `mvn metaobjects:eject -Dlist=true` in the other ports)
+6. **Resync the generators you own.** `meta eject --list` (TypeScript; `metaobjects gen --list`
+   in Python, which has no `eject --list`; `dotnet meta gen --list`,
+   `mvn metaobjects:eject -Dlist=true` in the other ports)
    reports each owned copy, and every file it owns beside it (in TypeScript the renderers
    under `codegen/templates/`), as identical to the 1.1.0 reference or not. An owned copy keeps the logic it was copied with: it gets no
    report output and none of the 1.1 fixes until you resync it. For a copy you never edited,
@@ -132,9 +143,10 @@ had. `meta upgrade` does not make this edit: choosing the package needs the whol
 
 A `field.decimal` crosses the generated API as one canonical string in every port (ADR-0019
 Amendment 1): `12.50` is sent `"12.5"`, zero `"0"`, never a number and never an exponent. In
-1.0 C#, Java, Kotlin and Python sent a number. A client that reads a decimal from those ports
+1.0 C#, Java, Kotlin and Python sent a number, and TypeScript sent `"12.50"`, now `"12.5"`. A client that reads a decimal from those ports
 parses a string now; format it for display with the field's `@scale` (display is a view's job).
-On input a string or a JSON number is accepted, read exactly, and a value with more fraction
+On input a string or a JSON number is accepted, read exactly (TypeScript reads a JSON number
+exactly to 15 significant digits, so send a string for more), and a value with more fraction
 digits than `@scale` or more integer digits than `@precision - @scale` is `400 validation`
 rather than rounded. A decimal filter operand is compared exactly; a bad one is
 `400 invalid_filter_value`. On SQLite and D1 a decimal keeps 15 significant digits, and
@@ -186,8 +198,21 @@ whole number written `1.0` still loads, as `1`.
 
 ## CLI behaviour that changed
 
+- `meta gen` on a model that does not load exits 1 (1.0.13 exited 2).
+- The removed docs commands exit 2; the Maven `docs` goal fails the build, so `mvn` exits 1.
 - `meta init` in a project that is already initialised is a no-op that exits 0 (1.0 exited 1,
   "already exists; use --force"). `--force` still re-scaffolds.
+- TypeScript `ObjectManager` now enforces numeric bounds, array bounds, uri/inet format and an
+  assigned primary key; `RequirementTestArgs` and `RequirementView` gained required fields (a
+  compile break for code that builds them by hand).
+- Java: every regenerated class has a one-time header diff; `entity` no longer writes
+  `<Name>Extractor`; a decimal filter operand is a `BigDecimal`, not a `String`, so a
+  hand-written repository that casts `(String) p.value()` breaks.
+- Kotlin also emits `MetaPortableColumnTypes.kt` and `<Report>Names`; `portableUuid` binds text
+  on MySQL and SQLite, which differs from an Exposed-created `BINARY(16)` column.
+- Python refuses a project module that shadows the standard library, and answers 400, not 422,
+  for a malformed body.
+- The `mermaid-er` generator is removed.
 
 ## New in 1.1, nothing to do
 

@@ -190,6 +190,13 @@ object KotlinTypeMapper {
     const val EXPOSED_PORTABLE_DECIMAL_FN = "portableDecimal"
 
     /**
+     * Builder extension for an `isArray` `field.decimal` column: a `Column<List<BigDecimal>>` that is a
+     * native `NUMERIC[]` on Postgres and a JSON text array of canonical strings on MySQL and SQLite,
+     * which have no array type. Same support file as [EXPOSED_PORTABLE_DECIMAL_FN].
+     */
+    const val EXPOSED_PORTABLE_DECIMAL_ARRAY_FN = "portableDecimalArray"
+
+    /**
      * Compute the generated Kotlin enum-class name for an [EnumField] hung off [entity].
      *
      * Returns {@code null} when [field] is not an {@link EnumField} (the caller should
@@ -512,9 +519,15 @@ object KotlinTypeMapper {
         // DOUBLE PRECISION (float8). Keeps field.float distinct on the wire. See R6.
         is FloatField     -> "float($colExpr)"
         // field.decimal → Exposed `decimal(name, precision, scale)` (Postgres NUMERIC(p,s)).
-        // Exposed requires both precision and scale; read the declared @precision/@scale,
-        // falling back to 19,4 (matching the TS column-mapper default) when absent.
-        is DecimalField   -> "$EXPOSED_PORTABLE_DECIMAL_FN($colExpr, ${decimalPrecision(field)}, ${decimalScale(field)})"
+        // A declared @precision gives `portableDecimal(name, p, s)`; with none the column is
+        // unbounded (plain NUMERIC, nothing rounded on read), as the schema owner emits it.
+        //
+        // An `isArray` decimal is a native `NUMERIC[]` on Postgres (the schema owner declares no bound on
+        // the elements; the wire layer has range-checked each against @precision/@scale), read unrounded.
+        is DecimalField   ->
+            if (isArrayResolved(field)) "$EXPOSED_PORTABLE_DECIMAL_ARRAY_FN($colExpr)"
+            else if (isUnboundedDecimal(field)) "$EXPOSED_PORTABLE_DECIMAL_FN($colExpr)"
+            else "$EXPOSED_PORTABLE_DECIMAL_FN($colExpr, ${decimalPrecision(field)}, ${decimalScale(field)})"
         is BooleanField   -> "bool($colExpr)"
         is DateField      -> "date($colExpr)"
         // field.time → Exposed `time(name)` (Postgres TIME, java.time.LocalTime).
@@ -668,7 +681,7 @@ object KotlinTypeMapper {
      * ([EXPOSED_PORTABLE_DECIMAL_FN]). Mirrors [exposedColumnSpec]'s two branches.
      */
     fun usesPortableHelper(field: MetaField<*>): Boolean =
-        (field is UuidField || field is DecimalField) && !isArrayResolved(field)
+        field is DecimalField || (field is UuidField && !isArrayResolved(field))
 
     fun usesUuidStringHelper(field: MetaField<*>): Boolean =
         field is StringField && !isArrayResolved(field) && dbColumnType(field) == DB_COLUMN_TYPE_UUID
@@ -709,6 +722,13 @@ object KotlinTypeMapper {
 
     /** Default NUMERIC scale when a [DecimalField] declares no `@scale`. See [DECIMAL_DEFAULT_PRECISION]. */
     private const val DECIMAL_DEFAULT_SCALE = 4
+
+    /**
+     * True when a [DecimalField] declares no `@precision`: its column is plain unbounded NUMERIC
+     * (what the schema owner emits), so it is neither rounded on read nor range-checked on write.
+     */
+    fun isUnboundedDecimal(field: DecimalField): Boolean =
+        intAttr(field, DecimalField.ATTR_PRECISION) == null
 
     /** Resolve @precision on a DecimalField; default [DECIMAL_DEFAULT_PRECISION]. */
     fun decimalPrecision(field: DecimalField): Int =

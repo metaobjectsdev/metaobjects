@@ -50,11 +50,26 @@ describe("generated decimal write schema", () => {
       else expect(r.success ? r.data : r.error).toBe(v.value as string);
     });
   }
+  // double15 is the READ rule (a SQLite double rendered at 15 digits). On INPUT a JSON number is
+  // read exactly or refused (D3): the vectors whose shortest form carries more than 15 digits fail.
   for (const v of vectors.double15) {
-    test(`double15 ${v.double}`, () => {
-      expect(open.parse(Number(v.double))).toBe(v.out);
+    const n = Number(v.double);
+    const exact = Number.isSafeInteger(n) || Number(n.toPrecision(15)) === n;
+    test(`double15 ${v.double} as input is ${exact ? "read exactly" : "refused"}`, () => {
+      if (exact) expect(open.parse(n)).toBe(v.out);
+      else expect(open.safeParse(n).success).toBe(false);
     });
   }
+
+  test("D3: a JSON number a double cannot hold exactly is refused with a message that says to send a string", () => {
+    const r = open.safeParse(JSON.parse("1234567890.123456789"));
+    expect(r.success).toBe(false);
+    expect(JSON.stringify(r.success ? "" : r.error.issues)).toContain("send it as a string");
+    expect(open.safeParse(0.1 + 0.2).success).toBe(false);
+    expect(open.parse(9007199254740991)).toBe("9007199254740991");
+    expect(open.parse(1234567890123456)).toBe("1234567890123456");
+    expect(open.parse("1234567890.123456789")).toBe("1234567890.123456789");
+  });
 
   test("W3: a value the declared column cannot hold is refused, never rounded", () => {
     const col = schemaFor(28, 10);

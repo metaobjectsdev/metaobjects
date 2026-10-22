@@ -253,6 +253,99 @@ class KotlinDecimalWireTest {
         assertEquals(false, call("fits", java.math.BigDecimal("100.1"), 4, 2))
     }
 
+    private val unsizedModel = model.replace("\"@precision\": 12, \"@scale\": 2, ", "")
+
+    @Test
+    fun `a decimal with no precision is an unbounded column and the controller range-checks nothing`() {
+        val files = emit(unsizedModel, all())
+        val table = files.getValue("acme/shop/ItemTable.kt")
+        assertTrue("val price = portableDecimal(\"price\").nullable()" in table, table)
+        assertFalse("decimal(" in table, table)
+        val controller = files.getValue("acme/shop/ItemController.kt")
+        assertFalse("MetaDecimalWire.fits(" in controller, controller)
+        val support = files.getValue("acme/shop/MetaPortableColumnTypes.kt")
+        assertTrue("internal fun Table.portableDecimal(name: String): Column<BigDecimal>" in support, support)
+        // A declared precision keeps its range check and sized column.
+        val sized = emit(model, all())
+        assertTrue("MetaDecimalWire.fits(dto.price, 12, 2)" in sized.getValue("acme/shop/ItemController.kt"))
+    }
+
+    @Test
+    fun `the unbounded decimal column compiles and reads a value exactly, never rounding to a scale`() {
+        val files = emit(unsizedModel, listOf(KotlinEntityGenerator(), KotlinExposedTableGenerator()))
+        val sources = files.filterKeys { it.endsWith(".kt") }.map { (path, src) ->
+            com.tschuchort.compiletesting.SourceFile.kotlin(path.substringAfterLast('/'), src)
+        }
+        val result = com.tschuchort.compiletesting.KotlinCompilation().apply {
+            this.sources = sources
+            inheritClassPath = true
+            messageOutputStream = System.out
+        }.compile()
+        assertEquals(com.tschuchort.compiletesting.KotlinCompilation.ExitCode.OK, result.exitCode, result.messages)
+        val type = result.classLoader.loadClass("acme.shop.MetaUnboundedDecimalColumnType")
+            .getDeclaredConstructor().apply { isAccessible = true }.newInstance() as org.jetbrains.exposed.sql.ColumnType<*>
+        assertEquals("NUMERIC", type.sqlType())
+        @Suppress("UNCHECKED_CAST")
+        val t = type as org.jetbrains.exposed.sql.ColumnType<java.math.BigDecimal>
+        assertEquals(java.math.BigDecimal("1.234567"), t.valueFromDB(java.math.BigDecimal("1.234567")))
+        assertEquals(java.math.BigDecimal("12345678901234567890.123456789"), t.valueFromDB("12345678901234567890.123456789"))
+        assertEquals("1.234567", t.nonNullValueToString(java.math.BigDecimal("1.234567")))
+    }
+
+    private val voModel = """{
+      "metadata.root": { "package": "acme::shop", "children": [
+        { "object.value": { "name": "Price", "children": [
+            { "field.decimal": { "name": "net", "@precision": 12, "@scale": 2 } },
+            { "field.decimal": { "name": "free" } }
+        ] } },
+        { "object.entity": { "name": "Item", "children": [
+            { "field.long": { "name": "id" } },
+            { "field.object": { "name": "price", "@objectRef": "Price", "@storage": "jsonb" } },
+            { "field.object": { "name": "prices", "@objectRef": "Price", "isArray": true, "@storage": "jsonb" } },
+            { "source.rdb": { "@table": "items" } },
+            { "identity.primary": { "@fields": ["id"], "@generation": "increment" } }
+        ] } }
+      ] }
+    }""".trimIndent()
+
+    @Test
+    fun `a decimal inside a jsonb value object reads a string or number exactly, checks its declared range and writes canonical`() {
+        val files = emit(voModel, listOf(KotlinEntityGenerator(), KotlinExposedTableGenerator()))
+        val sources = files.filterKeys { it.endsWith(".kt") }.map { (path, src) ->
+            com.tschuchort.compiletesting.SourceFile.kotlin(path.substringAfterLast('/'), src)
+        }
+        val result = com.tschuchort.compiletesting.KotlinCompilation().apply {
+            this.sources = sources
+            inheritClassPath = true
+            messageOutputStream = System.out
+        }.compile()
+        assertEquals(com.tschuchort.compiletesting.KotlinCompilation.ExitCode.OK, result.exitCode, result.messages)
+        val mapper = com.fasterxml.jackson.databind.ObjectMapper().registerModule(com.fasterxml.jackson.module.kotlin.KotlinModule.Builder().build())
+        val price = result.classLoader.loadClass("acme.shop.Price")
+        val item = result.classLoader.loadClass("acme.shop.Item")
+        fun net(json: String): String? = mapper.valueToTree<com.fasterxml.jackson.databind.JsonNode>(mapper.readValue(json, price)).get("net").asText()
+        // A string or a JSON number, read exactly; written as the canonical string.
+        assertEquals("1.5", net("""{"net":"1.5000"}"""))
+        assertEquals("1234567890.12", net("""{"net":1234567890.12}"""))
+        assertEquals("0", net("""{"net":"0.00"}"""))
+        // Past the declared @precision/@scale is refused, never rounded.
+        for (bad in listOf("""{"net":"1.234"}""", """{"net":1.234}""", """{"net":"12345678901"}""", """{"net":"NaN"}""", """{"net":""}""")) {
+            val e = runCatching { mapper.readValue(bad, price) }.exceptionOrNull()
+            assertTrue(e is com.fasterxml.jackson.core.JsonProcessingException, "must be refused: $bad but got $e")
+        }
+        // A VO decimal with no @precision is bounded only by the engine-wide limits.
+        val free = mapper.valueToTree<com.fasterxml.jackson.databind.JsonNode>(mapper.readValue("""{"net":"1","free":"1.23456789012345678901"}""", price))
+        assertEquals("1.23456789012345678901", free.get("free").asText())
+        // The single and the array-of-VO members of the entity follow the same rule.
+        val out = mapper.valueToTree<com.fasterxml.jackson.databind.JsonNode>(
+            mapper.readValue("""{"id":1,"price":{"net":"2.50"},"prices":[{"net":3},{"net":"4.10"}]}""", item))
+        assertEquals("2.5", out.get("price").get("net").asText())
+        assertEquals("3", out.get("prices").get(0).get("net").asText())
+        assertEquals("4.1", out.get("prices").get(1).get("net").asText())
+        val e = runCatching { mapper.readValue("""{"id":1,"prices":[{"net":"1.001"}]}""", item) }.exceptionOrNull()
+        assertTrue(e is com.fasterxml.jackson.core.JsonProcessingException, "an excess-scale element must be refused: $e")
+    }
+
     @Test
     fun `a precision with no scale declares scale 0, as the Java port reads it`() {
         val json = model.replace("\"@precision\": 12, \"@scale\": 2,", "\"@precision\": 12,")

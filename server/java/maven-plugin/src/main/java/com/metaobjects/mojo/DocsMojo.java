@@ -21,7 +21,7 @@ public class DocsMojo extends AbstractMojo {
 
     /** Where the change to a 1.0 pom is written down, before and after. */
     static final String MIGRATION =
-            "https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md, section \"Java and Kotlin\"";
+            "https://github.com/metaobjectsdev/metaobjects/blob/v1.1.0/docs/features/migrations/docs-are-generators.md, section \"Java and Kotlin\"";
 
     /** What this goal prints. ADR-0034 Amendment 9 fixes the sentence for every port. */
     static final String REMOVED =

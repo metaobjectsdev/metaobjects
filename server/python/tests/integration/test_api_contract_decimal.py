@@ -34,7 +34,7 @@ _CORPUS = next(
     for p in [Path(__file__).resolve(), *Path(__file__).resolve().parents]
     if (p / "fixtures" / "api-contract-conformance" / "decimal").is_dir()
 )
-_MODEL = LaneModel(reports=(("EntryTotals", "entry_totals"),), entities=(("Entry", "entry"),))
+_MODEL = LaneModel(reports=(("EntryTotals", "entry_totals"),), entities=(("Entry", "entry"), ("Sample", "sample")))
 _KNOWN_ENGINES = {"postgres", "mysql", "sqlite", "d1"}
 #: The fields the model declares decimal: Entry.amount and the EntryTotals measures that
 #: sum, average, take a maximum or divide a decimal.

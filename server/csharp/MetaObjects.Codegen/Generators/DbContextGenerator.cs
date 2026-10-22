@@ -1253,8 +1253,19 @@ public class DbContextGenerator : IGenerator
         var lines = new List<string>();
         foreach (var nf in vo.Fields())
         {
-            if (nf.SubType != FIELD_SUBTYPE_ENUM) continue;
             var prop = CSharpNaming.Pascal(nf.Name);
+            // A decimal member of a JSON document is stored as its CANONICAL STRING (the same text
+            // the wire carries, ADR-0019 Amendment 1), not as EF's default JSON number: an exact
+            // read-back, identical to every other port's stored form. Single members only.
+            if (nf.SubType == FIELD_SUBTYPE_DECIMAL && !nf.ResolvedIsArray()
+                && CSharpNaming.DbColumnTypeClrOverride(nf) is null)
+            {
+                lines.Add(CSharpNaming.IsRequired(vo, nf)
+                    ? $"            {builder}.Property(p => p.{prop}).HasConversion(v => DecimalWire.Format(v), s => decimal.Parse(s, System.Globalization.CultureInfo.InvariantCulture));"
+                    : $"            {builder}.Property(p => p.{prop}).HasConversion(v => v == null ? null : DecimalWire.Format(v.Value), s => s == null ? (decimal?)null : decimal.Parse(s, System.Globalization.CultureInfo.InvariantCulture));");
+                continue;
+            }
+            if (nf.SubType != FIELD_SUBTYPE_ENUM) continue;
             // ADR-0039: resolving — array-ness is inheritable via extends.
             lines.Add(nf.ResolvedIsArray()
                 ? $"            {builder}.PrimitiveCollection(p => p.{prop}).ElementType().HasConversion<string>();"

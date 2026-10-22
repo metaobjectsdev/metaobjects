@@ -52,6 +52,8 @@ public class SpringDecimalWireCompileRunTest {
             { "field.decimal": { "name": "amount", "@precision": 20, "@scale": 10, "@filterable": true } },
             { "field.string":  { "name": "label", "@filterable": true } },
             { "field.decimal": { "name": "tiers", "isArray": true, "@precision": 12, "@scale": 2 } },
+            { "field.object":  { "name": "price", "@objectRef": "Price", "@storage": "jsonb" } },
+            { "field.object":  { "name": "prices", "@objectRef": "Price", "isArray": true, "@storage": "jsonb" } },
             { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } }
           ]}}
         ]}}
@@ -131,6 +133,44 @@ public class SpringDecimalWireCompileRunTest {
             Class<?> price = cl.loadClass(PKG + ".Price");
             Object p = MAPPER.readValue("{\"net\":\"9.50\"}", price);
             assertEquals("9.5", MAPPER.valueToTree(p).get("net").asText());
+
+            // C1: a decimal inside a jsonb value object follows the top-level rule: a string or a
+            // JSON number read exactly, canonical string out, range-checked against the VO field's
+            // own @precision/@scale with nothing rounded.
+            Object num = MAPPER.readValue("{\"net\":1234567890.12}", price);
+            assertEquals("1234567890.12", MAPPER.valueToTree(num).get("net").asText());
+            Object canon = MAPPER.readValue("{\"net\":\"1.5000\"}", price);
+            assertEquals("1.5", MAPPER.valueToTree(canon).get("net").asText());
+            for (String bad : new String[]{"{\"net\":\"1.234\"}", "{\"net\":1.234}",
+                    "{\"net\":\"12345678901\"}", "{\"net\":\"NaN\"}", "{\"net\":\"\"}"}) {
+                try {
+                    MAPPER.readValue(bad, price);
+                    fail("a value outside the VO field's declared range must be refused: " + bad);
+                } catch (com.fasterxml.jackson.core.JsonProcessingException expected) {
+                    // Spring maps this to 400 validation
+                }
+            }
+            // The same through the entity's single and array-of-VO jsonb members.
+            Object withVo = MAPPER.readValue(
+                "{\"price\":{\"net\":\"2.50\"},\"prices\":[{\"net\":3},{\"net\":\"4.10\"}]}", dto);
+            JsonNode voOut = MAPPER.valueToTree(withVo);
+            assertEquals("2.5", voOut.get("price").get("net").asText());
+            assertEquals("3", voOut.get("prices").get(0).get("net").asText());
+            assertEquals("4.1", voOut.get("prices").get(1).get("net").asText());
+            try {
+                MAPPER.readValue("{\"prices\":[{\"net\":\"1.001\"}]}", dto);
+                fail("an excess-scale decimal inside an array-of-VO element must be refused");
+            } catch (com.fasterxml.jackson.core.JsonProcessingException expected) {
+                // Spring maps this to 400 validation
+            }
+            // The PATCH path binds the VO through the same record.
+            try {
+                patchClass.getMethod("fromJson", JsonNode.class, ObjectMapper.class)
+                    .invoke(null, MAPPER.readTree("{\"price\":{\"net\":\"1.001\"}}"), MAPPER);
+                fail("a PATCH VO with an excess-scale decimal must be refused");
+            } catch (java.lang.reflect.InvocationTargetException e) {
+                assertEquals("PatchValidationException", e.getCause().getClass().getSimpleName());
+            }
 
             // The allowlist names its decimal fields.
             Class<?> allow = cl.loadClass(PKG + ".EntryFilterAllowlist");

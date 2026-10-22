@@ -2033,7 +2033,10 @@ public static partial class ValidationPasses
             {
                 errors.Add(new MetaError(
                     $"{NodeLabel(node)} attribute '@{attrName}' must be of type " +
-                    $"'{effectiveValueType}' but got {RuntimeTypeName(value)}",
+                    $"'{effectiveValueType}' but got {RuntimeTypeName(value)}" +
+                    (effectiveValueType is ATTR_SUBTYPE_INT or ATTR_SUBTYPE_LONG && value is double or float
+                        ? "; this attribute is integral, so write an integer (for a validator @min/@max, use an integer bound)"
+                        : ""),
                     ErrorCode.ERR_BAD_ATTR_VALUE,
                     Envelope: node.Source));
                 // Skip allowedValues check when type is already wrong.

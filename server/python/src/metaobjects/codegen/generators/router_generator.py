@@ -39,6 +39,7 @@ pick their preferred persistence layer.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 from pathlib import Path
 
 from metaobjects.apidocs.naming import route_path as _route_path
@@ -51,6 +52,7 @@ from metaobjects.codegen.generators.tph_plan import TphPlan, is_tph_subtype, tph
 from metaobjects.codegen.instance_artifacts import has_item_route
 from metaobjects.source_resolution import primary_rdb_source
 from metaobjects.codegen.type_map import PyType, field_is_array, py_type_for
+from metaobjects.codegen.value_objects import object_ref_target
 from metaobjects.meta.core.field import field_constants as fc
 from metaobjects.loader.validate_field_mutability import (
     is_read_only_mutability,
@@ -162,7 +164,7 @@ _DECIMAL_COERCE: list[str] = [
     "    if dto is None:  # the body was not a JSON object: the cross-port 400, not FastAPI's 422",
     '        return JSONResponse(status_code=400, content={"error": "validation"})',
     "    try:",
-    "        dto = coerce_decimal_fields(dto, _DECIMAL_FIELDS, _DECIMAL_LIMITS)",
+    "        dto = coerce_decimal_fields(dto, _DECIMAL_FIELDS, _DECIMAL_LIMITS, _NESTED_DECIMALS)",
     "    except ValueError:",
     '        return JSONResponse(status_code=400, content={"error": "validation"})',
 ]
@@ -209,10 +211,59 @@ def _decimal_limits(entities: list[MetaObject]) -> dict[str, tuple[int, int]]:
     return out
 
 
+def _decimal_limit(f: MetaField) -> tuple[int, int] | None:
+    precision = f.attrs().get(fc.FIELD_ATTR_PRECISION)
+    scale = f.attrs().get(fc.FIELD_ATTR_SCALE, 0)
+    if isinstance(precision, int) and not isinstance(precision, bool) and isinstance(scale, int):
+        return (precision, scale)
+    return None
+
+
+def _nested_decimal_spec(vo: MetaObject, seen: frozenset[str]) -> dict[str, Any] | None:
+    """The decimal fields inside the value object *vo* (and the value objects it embeds), as
+    ``{"d": {name: (precision, scale) | None}, "o": {name: spec}}``, or ``None`` when it holds
+    none (ADR-0019 Amendment 1: a decimal inside a jsonb value object follows the top-level rule)."""
+    if vo.name in seen:
+        return None
+    seen = seen | {vo.name}
+    spec: dict[str, Any] = {"d": {}, "o": {}}
+    for f in vo.fields():
+        if f.sub_type == fc.FIELD_SUBTYPE_DECIMAL:
+            spec["d"][f.name] = _decimal_limit(f)
+        elif f.sub_type in (fc.FIELD_SUBTYPE_OBJECT, fc.FIELD_SUBTYPE_MAP):
+            target = object_ref_target(f)
+            inner = _nested_decimal_spec(target, seen) if target is not None else None
+            if inner is not None:
+                spec["o"][f.name] = inner
+    return spec if spec["d"] or spec["o"] else None
+
+
+def _nested_decimals(entities: list[MetaObject]) -> dict[str, Any]:
+    """``{object field name: spec}`` for each jsonb value-object field of *entities* that
+    reaches a decimal (the first declaration of a name wins)."""
+    out: dict[str, Any] = {}
+    for entity in entities:
+        for f in entity.fields():
+            if f.name in out or f.sub_type != fc.FIELD_SUBTYPE_OBJECT:
+                continue
+            target = object_ref_target(f)
+            spec = _nested_decimal_spec(target, frozenset()) if target is not None else None
+            if spec is not None:
+                out[f.name] = spec
+    return out
+
+
 def _decimal_limits_lines(entities: list[MetaObject]) -> list[str]:
     limits = _decimal_limits(entities)
     body = "{" + ", ".join(f'"{n}": ({p}, {sc})' for n, (p, sc) in limits.items()) + "}"
-    return ["", "", f"_DECIMAL_LIMITS: dict[str, tuple[int, int]] = {body}"]
+    return [
+        "",
+        "",
+        f"_DECIMAL_LIMITS: dict[str, tuple[int, int]] = {body}",
+        "",
+        "",
+        f"_NESTED_DECIMALS: dict[str, Any] = {_nested_decimals(entities)!r}",
+    ]
 
 
 def _required_field_names(entity: MetaObject) -> list[str]:

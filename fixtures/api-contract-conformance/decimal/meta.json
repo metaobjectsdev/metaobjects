@@ -18,6 +18,13 @@
         { "measure.ratio":      { "name": "flaggedShare", "@numerator": "flaggedEntries", "@denominator": "entries" } },
         { "measure.ratio":      { "name": "perFlagged", "@numerator": "entries", "@denominator": "flaggedEntries" } }
     ] } },
+    { "object.entity": { "name": "Sample", "children": [
+        { "source.rdb":         { "@table": "samples" } },
+        { "field.long":         { "name": "id", "@filterable": true, "@sortable": true } },
+        { "field.decimal":      { "name": "readings", "isArray": true, "@precision": 9, "@scale": 4 } },
+        { "field.decimal":      { "name": "free" } },
+        { "identity.primary":   { "name": "pk", "@fields": "id", "@generation": "increment" } }
+    ] } },
     { "object.report": { "name": "EntryTotals", "@from": "Entry", "@dimensions": ["bucket"],
       "@measures": ["entries", "total", "totalOrZero", "mean", "top", "flaggedShare", "perFlagged"],
       "children": [ { "source.rdb": { "@kind": "view", "@view": "v_entry_totals" } } ] } }

@@ -57,6 +57,8 @@ public final class GeneratedDecimalControllerHarness implements AutoCloseable {
     private final Constructor<?> entryControllerCtor;
     private final Constructor<?> totalsRepoCtor;
     private final Constructor<?> totalsControllerCtor;
+    private final Constructor<?> sampleControllerCtor;
+    private final Constructor<?> sampleRepoCtor;
 
     private TomcatHost host;
 
@@ -77,12 +79,13 @@ public final class GeneratedDecimalControllerHarness implements AutoCloseable {
         runGenerator(new SpringFilterAllowlistGenerator(), loader, srcDir);
 
         Path pkgDir = srcDir.resolve(PKG.replace('.', '/'));
-        for (String generated : List.of("EntryController", "EntryTotalsController")) {
+        for (String generated : List.of("EntryController", "SampleController", "EntryTotalsController")) {
             if (!Files.exists(pkgDir.resolve(generated + ".java"))) {
                 throw new IllegalStateException("codegen did not emit " + generated + " under " + pkgDir);
             }
         }
         Files.writeString(pkgDir.resolve("OmdbEntryRepository.java"), OmdbEntryRepositorySource.SOURCE);
+        Files.writeString(pkgDir.resolve("OmdbSampleRepository.java"), OmdbEntryRepositorySource.sourceFor("Sample"));
         Files.writeString(pkgDir.resolve(OmdbReportRepositorySource.simpleName("EntryTotals") + ".java"),
             OmdbReportRepositorySource.source(PKG, "EntryTotals"));
 
@@ -93,6 +96,11 @@ public final class GeneratedDecimalControllerHarness implements AutoCloseable {
         this.entryControllerCtor = classLoader.loadClass(PKG + ".EntryController")
             .getDeclaredConstructor(entryRepo, ObjectMapper.class, Validator.class);
         this.entryRepoCtor = classLoader.loadClass(OmdbEntryRepositorySource.FQCN)
+            .getDeclaredConstructor(ObjectManagerDB.class, MetaObject.class);
+        Class<?> sampleRepo = classLoader.loadClass(PKG + ".SampleRepository");
+        this.sampleControllerCtor = classLoader.loadClass(PKG + ".SampleController")
+            .getDeclaredConstructor(sampleRepo, ObjectMapper.class, Validator.class);
+        this.sampleRepoCtor = classLoader.loadClass(OmdbEntryRepositorySource.fqcnFor("Sample"))
             .getDeclaredConstructor(ObjectManagerDB.class, MetaObject.class);
         Class<?> totalsRepo = classLoader.loadClass(PKG + ".EntryTotalsRepository");
         this.totalsControllerCtor = classLoader.loadClass(PKG + ".EntryTotalsController")
@@ -106,9 +114,11 @@ public final class GeneratedDecimalControllerHarness implements AutoCloseable {
         MetaObject entry = find("Entry");
         MetaObject totals = find("EntryTotals");
         Object entryController = entryControllerCtor.newInstance(entryRepoCtor.newInstance(omdb, entry), mapper, validator);
+        Object sampleController = sampleControllerCtor.newInstance(
+            sampleRepoCtor.newInstance(omdb, find("Sample")), mapper, validator);
         Object totalsController = totalsControllerCtor.newInstance(totalsRepoCtor.newInstance(omdb, totals));
         if (host != null) host.close();
-        this.host = TomcatHost.start(mapper, entryController, totalsController);
+        this.host = TomcatHost.start(mapper, entryController, sampleController, totalsController);
     }
 
     private MetaObject find(String name) {

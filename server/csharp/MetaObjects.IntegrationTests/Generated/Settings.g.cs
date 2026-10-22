@@ -12,9 +12,12 @@ namespace MetaObjects.IntegrationTests.Generated;
 public class Settings
 {
     [JsonPropertyName("theme")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Theme { get; set; }
     [JsonPropertyName("notify")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public bool? Notify { get; set; }
     [JsonPropertyName("retries")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public int? Retries { get; set; }
 }
