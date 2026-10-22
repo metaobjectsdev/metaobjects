@@ -1,3 +1,7 @@
+using System.Reflection;
+using System.Text.Json;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using MetaObjects.Codegen;
 using MetaObjects.Codegen.Generators;
 using MetaObjects.Loader;
@@ -36,7 +40,7 @@ public class ValueObjectWireIgnoreTests
     """;
 
     [Fact]
-    public void A_non_nullable_value_type_member_carries_no_ignore_condition()
+    public void A_value_object_with_required_value_type_members_round_trips_and_omits_a_null_optional_member()
     {
         var r = new MetaDataLoader().Load([new InMemoryStringSource(Model, id: "model.json")]);
         Assert.Empty(r.Errors);
@@ -46,18 +50,27 @@ public class ValueObjectWireIgnoreTests
             Root = r.Root,
             Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated" },
         });
-        var src = Assert.Single(files, f => f.Path == "Telemetry.g.cs").Content;
+        var trees = files.Select(f => CSharpSyntaxTree.ParseText(f.Content, new CSharpParseOptions(LanguageVersion.CSharp12), path: f.Path));
+        var comp = CSharpCompilation.Create("vo_wire_ignore_" + Guid.NewGuid().ToString("N"), trees,
+            DbContextCompileTests.BuildReferences(), new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+        using var ms = new MemoryStream();
+        var emit = comp.Emit(ms);
+        Assert.True(emit.Success, string.Join("\n", emit.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error)));
+        var telemetry = Assembly.Load(ms.ToArray()).GetTypes().Single(t => t.Name == "Telemetry");
 
-        var lines = src.Split('\n').Select(l => l.TrimEnd()).ToList();
-        string[] Attrs(string decl) =>
-            lines.TakeWhile(l => !l.Contains(decl)).Reverse().TakeWhile(l => l.TrimStart().StartsWith("[")).ToArray();
+        const string body = """
+            {"capturedAt":"2026-03-04T05:06:07Z","latitude":51.5,"live":true,"fee":"12.50","token":"3f2504e0-4f89-11d3-9a0c-0305e82c3301"}
+            """;
+        var value = JsonSerializer.Deserialize(body, telemetry)!;
+        Assert.Equal(51.5, telemetry.GetProperty("Latitude")!.GetValue(value));
+        Assert.Equal(DateTimeOffset.Parse("2026-03-04T05:06:07Z"), telemetry.GetProperty("CapturedAt")!.GetValue(value));
+        Assert.Null(telemetry.GetProperty("TempC")!.GetValue(value));
 
-        Assert.DoesNotContain(Attrs("public double Latitude"), l => l.Contains("WhenWritingNull"));
-        Assert.DoesNotContain(Attrs("public DateTimeOffset CapturedAt"), l => l.Contains("WhenWritingNull"));
-        Assert.DoesNotContain(Attrs("public bool Live"), l => l.Contains("WhenWritingNull"));
-        Assert.DoesNotContain(Attrs("public decimal Fee"), l => l.Contains("WhenWritingNull"));
-        Assert.DoesNotContain(Attrs("public Guid Token"), l => l.Contains("WhenWritingNull"));
-        Assert.Contains(Attrs("public int? TempC"), l => l.Contains("WhenWritingNull"));
-        Assert.Contains(Attrs("public string? Note"), l => l.Contains("WhenWritingNull"));
+        var wire = JsonDocument.Parse(JsonSerializer.Serialize(value, telemetry)).RootElement;
+        Assert.Equal(51.5, wire.GetProperty("latitude").GetDouble());
+        Assert.Equal(DateTimeOffset.Parse("2026-03-04T05:06:07Z"), wire.GetProperty("capturedAt").GetDateTimeOffset());
+        Assert.True(wire.GetProperty("live").GetBoolean());
+        Assert.False(wire.TryGetProperty("tempC", out _));
+        Assert.False(wire.TryGetProperty("note", out _));
     }
 }
