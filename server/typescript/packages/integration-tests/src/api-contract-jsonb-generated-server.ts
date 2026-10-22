@@ -89,7 +89,9 @@ export const db = drizzle(pool);
        "optional_marker" jsonb,
        "markers" jsonb,
        "measure" jsonb,
-       "measures" jsonb
+       "measures" jsonb,
+       "tiers" jsonb,
+       "pricing" jsonb
      )`,
   );
 

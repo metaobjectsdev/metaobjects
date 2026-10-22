@@ -347,14 +347,14 @@ public class DbContextCompileTests
             "modelBuilder.Entity<InvoiceView>().Property(x => x.DocUrl).HasColumnType(\"text\").HasConversion(",
             dbctx);
         // [1] — and the owned-VO OwnsOne config over the read model, so the jsonb VO round-trips.
-        Assert.Contains("modelBuilder.Entity<InvoiceView>().OwnsOne(x => x.BillingAddress", dbctx);
+        Assert.Contains("modelBuilder.Entity<InvoiceView>().Property(x => x.BillingAddress)", dbctx); // Address holds a map: one converted jsonb property, not an owned type
 
         // The write entity still gets its own copies of both configs (unchanged behavior).
         Assert.Contains("public Uri? DocUrl { get; set; }", writeEntity);
         Assert.Contains(
             "modelBuilder.Entity<Invoice>().Property(x => x.DocUrl).HasColumnType(\"text\").HasConversion(",
             dbctx);
-        Assert.Contains("modelBuilder.Entity<Invoice>().OwnsOne(x => x.BillingAddress", dbctx);
+        Assert.Contains("modelBuilder.Entity<Invoice>().Property(x => x.BillingAddress)", dbctx);
     }
 
     // I1 (Important) -- a sourceless CONCRETE object.entity: no source.rdb child

@@ -60,9 +60,11 @@ _COLUMN: dict[str, str] = {
     "markers": "markers",
     "measure": "measure",
     "measures": "measures",
+    "tiers": "tiers",
+    "pricing": "pricing",
 }
 _JSONB_FIELDS: frozenset[str] = frozenset(
-    {"payload", "primaryMarker", "optionalMarker", "markers", "measure", "measures"}
+    {"payload", "primaryMarker", "optionalMarker", "markers", "measure", "measures", "tiers", "pricing"}
 )
 
 
@@ -82,7 +84,9 @@ class DocumentRepository:
             "    optional_marker JSONB,"
             "    markers JSONB,"
             "    measure JSONB,"
-            "    measures JSONB"
+            "    measures JSONB,"
+            "    tiers JSONB,"
+            "    pricing JSONB"
             ")"
         )
 
@@ -100,8 +104,8 @@ class DocumentRepository:
                 for r in rows:
                     cur.execute(
                         'INSERT INTO "documents" '
-                        "(id, title, payload, primary_marker, optional_marker, markers, measure, measures) "
-                        "VALUES (%s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb)",
+                        "(id, title, payload, primary_marker, optional_marker, markers, measure, measures, tiers, pricing) "
+                        "VALUES (%s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb)",
                         (
                             int(r["id"]),
                             r["title"],
@@ -111,6 +115,8 @@ class DocumentRepository:
                             _dump_payload(r.get("markers")),
                             _dump_payload(r.get("measure")),
                             _dump_payload(r.get("measures")),
+                            _dump_payload(r.get("tiers")),
+                            _dump_payload(r.get("pricing")),
                         ),
                     )
                 cur.execute(
@@ -126,7 +132,7 @@ class DocumentRepository:
             cur = conn.cursor()
             try:
                 cur.execute(
-                    "SELECT id, title, payload, primary_marker, optional_marker, markers, measure, measures "
+                    "SELECT id, title, payload, primary_marker, optional_marker, markers, measure, measures, tiers, pricing "
                     'FROM "documents" WHERE id = %s',
                     (int(ident),),
                 )
@@ -141,8 +147,8 @@ class DocumentRepository:
             try:
                 cur.execute(
                     'INSERT INTO "documents" '
-                    "(title, payload, primary_marker, optional_marker, markers, measure, measures) "
-                    "VALUES (%s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb) RETURNING id",
+                    "(title, payload, primary_marker, optional_marker, markers, measure, measures, tiers, pricing) "
+                    "VALUES (%s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb) RETURNING id",
                     (
                         dto.get("title"),
                         _dump_payload(dto.get("payload")),
@@ -151,6 +157,8 @@ class DocumentRepository:
                         _dump_payload(dto.get("markers")),
                         _dump_payload(dto.get("measure")),
                         _dump_payload(dto.get("measures")),
+                        _dump_payload(dto.get("tiers")),
+                        _dump_payload(dto.get("pricing")),
                     ),
                 )
                 new_id = int(cur.fetchone()[0])
@@ -233,7 +241,7 @@ def make_jsonb_app(repo: DocumentRepository) -> FastAPI:
             if dto.get(name) is None:
                 return _validation_400()
         # Present values validated with the create rules (title @maxLength + nested VO).
-        if _title_violation(dto) or _vo_present_violation(dto) or not _canonicalize_measures(dto):
+        if _title_violation(dto) or _vo_present_violation(dto) or not _canonicalize_measures(dto) or not _canonicalize_tiers(dto):
             return _validation_400()
         return repo.create(dto)
 
@@ -247,7 +255,7 @@ def make_jsonb_app(repo: DocumentRepository) -> FastAPI:
             if name in dto and dto[name] is None:
                 return _validation_400()
         # Validate PRESENT, non-null values (nested VO recurses into each element).
-        if _title_violation(dto) or _vo_present_violation(dto) or not _canonicalize_measures(dto):
+        if _title_violation(dto) or _vo_present_violation(dto) or not _canonicalize_measures(dto) or not _canonicalize_tiers(dto):
             return _validation_400()
         saved = repo.update(document_id, dto)
         if saved is None:
@@ -335,6 +343,59 @@ def _canonicalize_measures(dto: dict[str, Any]) -> bool:
     return True
 
 
+_TIER_PRECISION, _TIER_SCALE = 12, 4
+
+
+def _canonical_tier_map(value: Any) -> dict[str, Any] | None:
+    """A ``field.map`` of ``Tier`` ({amount: decimal(12, 4)}): the decimal rule applies to EACH
+    map value; the keys are arbitrary and never compared with member names. ``None`` on a violation."""
+    if not isinstance(value, dict):
+        return None
+    out: dict[str, Any] = {}
+    for key, tier in value.items():
+        canon = _canonical_decimal_member(tier, "amount", _TIER_PRECISION, _TIER_SCALE)
+        if canon is None:
+            return None
+        out[key] = canon
+    return out
+
+
+def _canonical_decimal_member(obj: Any, member: str, precision: int, scale: int) -> dict[str, Any] | None:
+    if not isinstance(obj, dict):
+        return None
+    out = dict(obj)
+    if out.get(member) is not None:
+        try:
+            d = parse_decimal(out[member])
+            check_decimal_range(d, precision, scale)
+            out[member] = format_decimal(d)
+        except (ValueError, ArithmeticError):
+            return None
+    return out
+
+
+def _canonicalize_tiers(dto: dict[str, Any]) -> bool:
+    """Validate and canonicalise Document.tiers (a map of Tier) and Document.pricing (a Pricing
+    whose ``tiers`` is a map of Tier) in place; False on a violation."""
+    if dto.get("tiers") is not None:
+        canon = _canonical_tier_map(dto["tiers"])
+        if canon is None:
+            return False
+        dto["tiers"] = canon
+    pricing = dto.get("pricing")
+    if pricing is not None:
+        if not isinstance(pricing, dict):
+            return False
+        out = dict(pricing)
+        if out.get("tiers") is not None:
+            canon = _canonical_tier_map(out["tiers"])
+            if canon is None:
+                return False
+            out["tiers"] = canon
+        dto["pricing"] = out
+    return True
+
+
 def _dump_payload(value: Any) -> Any:
     """jsonb bind: a dict/list is ``json.dumps``-serialized for the ``::jsonb``
     cast; ``None`` stays ``None`` (SQL NULL); a pre-serialized string passes
@@ -358,7 +419,7 @@ def _decode_jsonb(value: Any) -> Any:
 
 
 def _row_to_dict(row: Any) -> dict[str, Any]:
-    ident, title, payload, primary_marker, optional_marker, markers, measure, measures = row
+    ident, title, payload, primary_marker, optional_marker, markers, measure, measures, tiers, pricing = row
     return {
         "id": int(ident),
         "title": title,
@@ -368,4 +429,6 @@ def _row_to_dict(row: Any) -> dict[str, Any]:
         "markers": _decode_jsonb(markers),
         "measure": _decode_jsonb(measure),
         "measures": _decode_jsonb(measures),
+        "tiers": _decode_jsonb(tiers),
+        "pricing": _decode_jsonb(pricing),
     }

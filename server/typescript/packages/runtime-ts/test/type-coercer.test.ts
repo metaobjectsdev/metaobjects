@@ -193,3 +193,64 @@ describe("runValidators on a decimal (ADR-0019 Amendment 1)", () => {
     }
   });
 });
+
+describe("a field.decimal inside a value object held by a field.map (ADR-0019 Amendment 1, C1)", () => {
+  async function doc(): Promise<MetaData> {
+    const model = { "metadata.root": { package: "ledger", children: [
+      { "object.value": { name: "Tier", children: [
+        { "field.decimal": { name: "amount", "@precision": 9, "@scale": 4 } },
+      ]}},
+      { "object.value": { name: "Pricing", children: [
+        { "field.map": { name: "tiers", "@objectRef": "Tier" } },
+      ]}},
+      { "object.entity": { name: "Doc", children: [
+        { "field.long": { name: "id" } },
+        { "field.map": { name: "tiers", "@objectRef": "Tier" } },
+        { "field.object": { name: "pricing", "@objectRef": "Pricing", "@storage": "jsonb" } },
+        { "field.map": { name: "labels", "@valueType": "string" } },
+        { "identity.primary": { name: "pk", "@fields": "id" } },
+      ]}},
+    ]}};
+    const { root, errors } = await new MetaDataLoader({ strict: true }).load([
+      new InMemoryStringSource(JSON.stringify(model), { id: "ledger.json" }),
+    ]);
+    expect(errors).toEqual([]);
+    return root.objects().find((o) => o.name === "Doc") as MetaData;
+  }
+
+  test("write: each map value is bound canonical, top-level and nested; a key named amount is only a key", async () => {
+    const e = await doc();
+    const out = coerceRowOnWrite(e, {
+      id: 1,
+      tiers: { amount: { amount: "1.5000" }, gold: { amount: 2.5 } },
+      pricing: { tiers: { amount: { amount: 100 }, silver: { amount: "0.25" } } },
+      labels: { amount: "1.5000" },
+    }, "postgres");
+    expect(out.tiers).toEqual({ amount: { amount: "1.5" }, gold: { amount: "2.5" } });
+    expect(JSON.parse(out.pricing as string)).toEqual({ tiers: { amount: { amount: "100" }, silver: { amount: "0.25" } } });
+    expect(out.labels).toEqual({ amount: "1.5000" });
+  });
+
+  test("write: excess scale in any map value is refused", async () => {
+    const e = await doc();
+    expect(() => coerceRowOnWrite(e, { id: 1, tiers: { gold: { amount: "0.12345" } } }, "postgres")).toThrow(/field\.decimal 'amount' cannot be written/);
+    expect(() => coerceRowOnWrite(e, { id: 1, pricing: { tiers: { amount: { amount: "0.12345" } } } }, "postgres")).toThrow(/field\.decimal 'amount' cannot be written/);
+  });
+
+  test("read: stored uncanonical map values are answered canonical", async () => {
+    const e = await doc();
+    const out = coerceRowOnRead(e, { id: 1, tiers: { amount: { amount: "1.5000" } }, pricing: { tiers: { x: { amount: 2.5 } } } }, "postgres");
+    expect(out.tiers).toEqual({ amount: { amount: "1.5" } });
+    expect(out.pricing).toEqual({ tiers: { x: { amount: "2.5" } } });
+  });
+
+  test("runValidators: a map value with an excess scale fails, keyed by the map key", async () => {
+    const { runValidators } = await import("../src/validator-runner.js");
+    const e = await doc();
+    expect(runValidators(e, { id: 1, tiers: { amount: { amount: "1.5" } } }).ok).toBe(true);
+    const bad = runValidators(e, { id: 1, tiers: { amount: { amount: "0.12345" } } });
+    expect(bad.ok).toBe(false);
+    expect(runValidators(e, { id: 1, pricing: { tiers: { amount: { amount: "0.12345" } } } }).ok).toBe(false);
+    expect(runValidators(e, { id: 1, labels: { amount: "0.12345" } }).ok).toBe(true);
+  });
+});

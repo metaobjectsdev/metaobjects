@@ -58,6 +58,7 @@ jsonb/
 └── scenarios/
     ├── jsonb-open-bag-roundtrip.yaml   # open-bag parsed-value contract
     ├── jsonb-value-object-patch.yaml   # Program D — cross-port VO-column PATCH/POST
+    ├── jsonb-value-object-map-decimals.yaml  # decimals in a field.map of value objects, per map value
     └── jsonb-value-object-numbers.yaml # doubles and decimals inside a value object
 ```
 

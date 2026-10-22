@@ -63,8 +63,9 @@ in order and every change that needs action.
 - A `field.decimal` crosses the API as one canonical string, and a fractional validator `@min`
   or `@max` is refused (write an integer bound).
 - **Resync the generators you own.** An ejected copy keeps the logic it was copied with, and a
-  plain `gen` does not refresh it. `meta eject --list` (`dotnet meta eject`, `metaobjects eject`,
-  `mvn metaobjects:eject`) reports each copy that differs from the reference;
+  plain `gen` does not refresh it. `meta eject --list` (TypeScript; `metaobjects gen --list` in Python, which has no
+  `eject --list`; `dotnet meta gen --list`; `mvn metaobjects:eject -Dlist=true` in Java and Kotlin)
+  reports each copy that differs from the reference;
   `eject <name> --force` takes the new reference for a copy you never edited, and a copy you
   edited is three-way merged instead. Steps for 1.0.x: https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/upgrading-within-1.0.md.
 

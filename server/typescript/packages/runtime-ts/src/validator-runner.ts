@@ -7,7 +7,7 @@ import {
   VALIDATOR_SUBTYPE_REQUIRED, VALIDATOR_SUBTYPE_LENGTH, VALIDATOR_SUBTYPE_REGEX,
   FIELD_SUBTYPE_STRING, FIELD_SUBTYPE_INT, FIELD_SUBTYPE_LONG,
   FIELD_SUBTYPE_DOUBLE, FIELD_SUBTYPE_FLOAT, FIELD_SUBTYPE_CURRENCY,
-  FIELD_SUBTYPE_BOOLEAN, FIELD_SUBTYPE_UUID, FIELD_SUBTYPE_OBJECT, FIELD_SUBTYPE_DECIMAL,
+  FIELD_SUBTYPE_BOOLEAN, FIELD_SUBTYPE_UUID, FIELD_SUBTYPE_OBJECT, FIELD_SUBTYPE_MAP, FIELD_SUBTYPE_DECIMAL,
   FIELD_ATTR_PRECISION, FIELD_ATTR_SCALE,
   FIELD_ATTR_REQUIRED, FIELD_ATTR_MAX_LENGTH, FIELD_ATTR_DEFAULT,
   FIELD_ATTR_DB_COLUMN_TYPE, DB_COLUMN_TYPE_JSONB, FIELD_ATTR_OBJECT_REF,
@@ -150,6 +150,38 @@ export function runValidators(
         });
       }
       continue;
+    }
+
+    // A map of value objects (`field.map @objectRef`): every map value is a VO validated in full,
+    // as an array element is. The keys are arbitrary text and are never compared with the VO's
+    // member names. A map whose value is a scalar (@valueType) is unchanged.
+    if (field.subType === FIELD_SUBTYPE_MAP) {
+      const vo = resolveVoRef(field);
+      if (vo !== undefined) {
+        if (typeof value !== "object" || Array.isArray(value)) {
+          errors.push({
+            field: field.name, rule: "type",
+            message: `'${field.name}' must be a map of ${vo.name}`,
+            expected: "object", received: Array.isArray(value) ? "array" : typeof value,
+          });
+          continue;
+        }
+        for (const [key, el] of Object.entries(value as Record<string, unknown>)) {
+          if (typeof el !== "object" || el === null || Array.isArray(el)) {
+            errors.push({
+              field: `${field.name}.${key}`, rule: "type",
+              message: `'${field.name}.${key}' must be a ${vo.name} object`,
+              expected: vo.name, received: el === null ? "null" : Array.isArray(el) ? "array" : typeof el,
+            });
+            continue;
+          }
+          const sub = runValidators(vo, el as Record<string, unknown>);
+          if (!sub.ok) {
+            for (const e of sub.errors) errors.push({ ...e, field: `${field.name}.${key}.${e.field}` });
+          }
+        }
+        continue;
+      }
     }
 
     // A scalar array (`field.string isArray`, …) — stored as a native array or a JSON array.

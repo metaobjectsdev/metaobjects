@@ -183,6 +183,8 @@ public class MetaObjectDeserializer implements JsonDeserializer<Object> {
                     // Check if this is an array field using universal @isArray support
                     if (mf.isArrayType()) {
                         readFieldObjectArray(mo, mf, vo, el, context);
+                    } else if (isObjectRefMap(mf)) {
+                        readFieldObjectMap(mf, vo, el, context);
                     } else {
                         readFieldObject(mo, mf, vo, el, context);
                     }
@@ -266,6 +268,35 @@ public class MetaObjectDeserializer implements JsonDeserializer<Object> {
         }
 
         mf.setObjectArray( vo, objects );
+    }
+
+    /** A {@code field.map} whose values are a referenced value object ({@code @objectRef}). */
+    private static boolean isObjectRefMap(MetaField mf) {
+        return com.metaobjects.field.MapField.SUBTYPE_MAP.equals(mf.getSubType())
+            && MetaDataUtil.hasObjectRef(mf);
+    }
+
+    /** Read a map of value objects: each VALUE is the referenced object (its own field rules,
+     *  decimals included, apply); the keys are arbitrary text and are never matched with the
+     *  object's member names. */
+    protected void readFieldObjectMap(MetaField mf, Object vo, JsonElement el,
+                                      JsonDeserializationContext context) {
+        if (!el.isJsonObject()) throw new MetaDataException("Expected JsonObject when reading MetaField "+
+                "["+mf+"], but found JsonElement: "+el);
+        Class<?> clazz = getObjectRefClass(mf);
+        // Deserialize each value with the REFERENCED object's own deserializer: several value
+        // objects share one Java class (ValueObject), so a class-keyed context.deserialize would
+        // read a Tier with the containing object's rules when the JSON carries no "@type".
+        MetaObjectDeserializer valueReader = new MetaObjectDeserializer(MetaDataUtil.getObjectRef(mf));
+        java.util.Map<String, Object> out = new java.util.LinkedHashMap<>();
+        for (java.util.Map.Entry<String, JsonElement> e : ((JsonObject) el).entrySet()) {
+            JsonElement v = e.getValue();
+            if (v.isJsonNull()) { out.put(e.getKey(), null); continue; }
+            if (!v.isJsonObject()) throw new MetaDataException("Expected JsonObject for key ["+e.getKey()+
+                    "] when reading MetaField ["+mf+"], but found JsonElement: "+v);
+            out.put(e.getKey(), valueReader.deserialize(v, clazz, context));
+        }
+        mf.setObject(vo, out);
     }
 
     protected void readFieldObject(MetaObject mo, MetaField mf, Object vo,

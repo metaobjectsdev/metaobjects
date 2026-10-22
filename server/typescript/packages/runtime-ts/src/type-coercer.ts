@@ -23,6 +23,7 @@ import {
   TYPE_FIELD,
   FIELD_SUBTYPE_BOOLEAN,
   FIELD_SUBTYPE_DECIMAL,
+  FIELD_SUBTYPE_MAP,
   FIELD_SUBTYPE_ENUM,
   FIELD_SUBTYPE_OBJECT,
   FIELD_SUBTYPE_TIMESTAMP,
@@ -294,7 +295,8 @@ function parseJsonTextArrays(entity: MetaData, row: Row): Row {
 
 /** The `object.value` a jsonb `field.object` references, or undefined (not a value object, or unresolved). */
 function valueObjectOf(field: MetaData): MetaData | undefined {
-  if (field.type !== TYPE_FIELD || field.subType !== FIELD_SUBTYPE_OBJECT) return undefined;
+  // A field.map of value objects binds @objectRef the same way (its values are the value objects).
+  if (field.type !== TYPE_FIELD || (field.subType !== FIELD_SUBTYPE_OBJECT && field.subType !== FIELD_SUBTYPE_MAP)) return undefined;
   // ADR-0059 R7: the object the loader bound @objectRef to.
   const target = refTarget(field, FIELD_ATTR_OBJECT_REF);
   return target?.subType === OBJECT_SUBTYPE_VALUE ? target : undefined;
@@ -327,7 +329,18 @@ function mapDecimals(
       if (vo === undefined) continue;
       const one = (el: unknown): unknown =>
         el !== null && typeof el === "object" && !Array.isArray(el) ? mapDecimals(vo, el as Row, convert) : el;
-      if (Array.isArray(v)) {
+      if (child.subType === FIELD_SUBTYPE_MAP) {
+        // The rule applies to EACH map value; keys are arbitrary text, never compared with the
+        // value object's member names (a key named `amount` is just a key).
+        if (typeof v === "object" && !Array.isArray(v)) {
+          let mapped: Row | null = null;
+          for (const [key, el] of Object.entries(v as Row)) {
+            const m = one(el);
+            if (m !== el) (mapped ??= { ...(v as Row) })[key] = m;
+          }
+          if (mapped !== null) next = mapped;
+        }
+      } else if (Array.isArray(v)) {
         const mapped = v.map(one);
         if (mapped.some((el, i) => el !== v[i])) next = mapped;
       } else {

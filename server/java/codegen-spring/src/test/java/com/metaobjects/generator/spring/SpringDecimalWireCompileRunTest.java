@@ -46,6 +46,12 @@ public class SpringDecimalWireCompileRunTest {
           { "object.value": { "name": "Price", "children": [
             { "field.decimal": { "name": "net", "@precision": 12, "@scale": 2 } }
           ]}},
+          { "object.value": { "name": "Tier", "children": [
+            { "field.decimal": { "name": "amount", "@precision": 12, "@scale": 4 } }
+          ]}},
+          { "object.value": { "name": "Pricing", "children": [
+            { "field.map": { "name": "tiers", "@objectRef": "Tier" } }
+          ]}},
           { "object.entity": { "name": "Entry", "children": [
             { "source.rdb":    { "@table": "entries" } },
             { "field.long":    { "name": "id" } },
@@ -53,6 +59,8 @@ public class SpringDecimalWireCompileRunTest {
             { "field.string":  { "name": "label", "@filterable": true } },
             { "field.decimal": { "name": "tiers", "isArray": true, "@precision": 12, "@scale": 2 } },
             { "field.object":  { "name": "price", "@objectRef": "Price", "@storage": "jsonb" } },
+            { "field.map":     { "name": "tierMap", "@objectRef": "Tier", "@storage": "jsonb" } },
+            { "field.object":  { "name": "pricing", "@objectRef": "Pricing", "@storage": "jsonb" } },
             { "field.object":  { "name": "prices", "@objectRef": "Price", "isArray": true, "@storage": "jsonb" } },
             { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } }
           ]}}
@@ -170,6 +178,36 @@ public class SpringDecimalWireCompileRunTest {
                 fail("a PATCH VO with an excess-scale decimal must be refused");
             } catch (java.lang.reflect.InvocationTargetException e) {
                 assertEquals("PatchValidationException", e.getCause().getClass().getSimpleName());
+            }
+
+            // C1 on a field.map of value objects: the rule applies to EACH map value; a key named
+            // "amount" is just a key (never matched with Tier's member), at top level and nested.
+            JsonNode mapOut = MAPPER.valueToTree(MAPPER.readValue(
+                "{\"tierMap\":{\"amount\":{\"amount\":\"1.5000\"},\"gold\":{\"amount\":2.50}},"
+                + "\"pricing\":{\"tiers\":{\"amount\":{\"amount\":100},\"silver\":{\"amount\":\"0.25\"}}}}", dto));
+            assertEquals("1.5", mapOut.get("tierMap").get("amount").get("amount").asText());
+            assertEquals("2.5", mapOut.get("tierMap").get("gold").get("amount").asText());
+            assertEquals("100", mapOut.get("pricing").get("tiers").get("amount").get("amount").asText());
+            assertEquals("0.25", mapOut.get("pricing").get("tiers").get("silver").get("amount").asText());
+            for (String bad : new String[]{"{\"tierMap\":{\"gold\":{\"amount\":\"0.12345\"}}}",
+                    "{\"tierMap\":{\"amount\":{\"amount\":0.12345}}}",
+                    "{\"pricing\":{\"tiers\":{\"amount\":{\"amount\":\"0.12345\"}}}}"}) {
+                try {
+                    MAPPER.readValue(bad, dto);
+                    fail("an excess-scale decimal inside a map value must be refused: " + bad);
+                } catch (com.fasterxml.jackson.core.JsonProcessingException expected) {
+                    // Spring maps this to 400 validation
+                }
+            }
+            for (String bad : new String[]{"{\"tierMap\":{\"gold\":{\"amount\":\"0.12345\"}}}",
+                    "{\"pricing\":{\"tiers\":{\"amount\":{\"amount\":\"0.12345\"}}}}"}) {
+                try {
+                    patchClass.getMethod("fromJson", JsonNode.class, ObjectMapper.class)
+                        .invoke(null, MAPPER.readTree(bad), MAPPER);
+                    fail("a PATCH map value with an excess-scale decimal must be refused: " + bad);
+                } catch (java.lang.reflect.InvocationTargetException e) {
+                    assertEquals("PatchValidationException", e.getCause().getClass().getSimpleName());
+                }
             }
 
             // The allowlist names its decimal fields.

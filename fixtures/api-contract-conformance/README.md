@@ -53,7 +53,7 @@ fixtures/api-contract-conformance/
 ```
 
 Beside the 31 core scenarios above sit seven **sub-corpora**, each a directory with its
-own `meta.json`, `seed.json`, `scenarios/` and `README.md` (74 scenarios in all, 105 with the
+own `meta.json`, `seed.json`, `scenarios/` and `README.md` (74 scenarios in all, 106 with the
 core):
 
 | Directory | Scenarios | Gates | Lanes |

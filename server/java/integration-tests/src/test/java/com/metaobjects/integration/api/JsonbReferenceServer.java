@@ -81,15 +81,17 @@ final class JsonbReferenceServer implements AutoCloseable {
                 + "optional_marker JSONB, "           // nullable single VO
                 + "markers JSONB, "                   // nullable array-of-VO
                 + "measure JSONB, "                   // nullable single Measure VO (decimal amount)
-                + "measures JSONB)");                 // nullable array-of-Measure VO
+                + "measures JSONB, "                  // nullable array-of-Measure VO
+                + "tiers JSONB, "                     // nullable map of Tier VO (decimal amount per value)
+                + "pricing JSONB)");                  // nullable Pricing VO holding a map of Tier
         }
     }
 
     private void applySeed(List<Map<String, Object>> seedRows) throws SQLException {
         try (Connection c = connect()) {
             try (PreparedStatement ps = c.prepareStatement(
-                "INSERT INTO \"documents\" (id, title, payload, primary_marker, optional_marker, markers, measure, measures) "
-                + "VALUES (?, ?, ?, ?, ?, ?, ?, ?)")) {
+                "INSERT INTO \"documents\" (id, title, payload, primary_marker, optional_marker, markers, measure, measures, tiers, pricing) "
+                + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
                 for (Map<String, Object> r : seedRows) {
                     ps.setLong(1, ((Number) r.get("id")).longValue());
                     ps.setString(2, String.valueOf(r.get("title")));
@@ -99,6 +101,8 @@ final class JsonbReferenceServer implements AutoCloseable {
                     bindJsonb(ps, 6, r.get("markers"));
                     bindJsonb(ps, 7, r.get("measure"));
                     bindJsonb(ps, 8, r.get("measures"));
+                    bindJsonb(ps, 9, r.get("tiers"));
+                    bindJsonb(ps, 10, r.get("pricing"));
                     ps.executeUpdate();
                 }
             }
@@ -163,7 +167,7 @@ final class JsonbReferenceServer implements AutoCloseable {
     private Map<String, Object> findById(long id) throws SQLException {
         try (Connection c = connect();
              PreparedStatement ps = c.prepareStatement(
-                 "SELECT id, title, payload, primary_marker, optional_marker, markers, measure, measures "
+                 "SELECT id, title, payload, primary_marker, optional_marker, markers, measure, measures, tiers, pricing "
                  + "FROM \"documents\" WHERE id = ?")) {
             ps.setLong(1, id);
             try (ResultSet rs = ps.executeQuery()) {
@@ -175,9 +179,9 @@ final class JsonbReferenceServer implements AutoCloseable {
     private Map<String, Object> create(Map<String, Object> body) throws SQLException {
         try (Connection c = connect();
              PreparedStatement ps = c.prepareStatement(
-                 "INSERT INTO \"documents\" (title, payload, primary_marker, optional_marker, markers, measure, measures) "
-                 + "VALUES (?, ?, ?, ?, ?, ?, ?) "
-                 + "RETURNING id, title, payload, primary_marker, optional_marker, markers, measure, measures")) {
+                 "INSERT INTO \"documents\" (title, payload, primary_marker, optional_marker, markers, measure, measures, tiers, pricing) "
+                 + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                 + "RETURNING id, title, payload, primary_marker, optional_marker, markers, measure, measures, tiers, pricing")) {
             ps.setString(1, String.valueOf(body.get("title")));
             bindJsonb(ps, 2, body.get("payload"));
             bindJsonb(ps, 3, body.get("primaryMarker"));
@@ -185,6 +189,8 @@ final class JsonbReferenceServer implements AutoCloseable {
             bindJsonb(ps, 5, body.get("markers"));
             bindJsonb(ps, 6, body.get("measure"));
             bindJsonb(ps, 7, body.get("measures"));
+            bindJsonb(ps, 8, body.get("tiers"));
+            bindJsonb(ps, 9, body.get("pricing"));
             try (ResultSet rs = ps.executeQuery()) {
                 rs.next();
                 return rowFrom(rs);
@@ -209,6 +215,8 @@ final class JsonbReferenceServer implements AutoCloseable {
         addAssignment(body, "markers", "markers", true, setClauses, values, jsonb);
         addAssignment(body, "measure", "measure", true, setClauses, values, jsonb);
         addAssignment(body, "measures", "measures", true, setClauses, values, jsonb);
+        addAssignment(body, "tiers", "tiers", true, setClauses, values, jsonb);
+        addAssignment(body, "pricing", "pricing", true, setClauses, values, jsonb);
         if (!setClauses.isEmpty()) {
             String sql = "UPDATE \"documents\" SET " + String.join(", ", setClauses) + " WHERE id = ?";
             try (Connection c = connect(); PreparedStatement ps = c.prepareStatement(sql)) {
@@ -244,6 +252,8 @@ final class JsonbReferenceServer implements AutoCloseable {
         row.put("markers", parseJson(rs.getString("markers")));
         row.put("measure", parseJson(rs.getString("measure")));
         row.put("measures", parseJson(rs.getString("measures")));
+        row.put("tiers", parseJson(rs.getString("tiers")));
+        row.put("pricing", parseJson(rs.getString("pricing")));
         return row;
     }
 
@@ -336,7 +346,40 @@ final class JsonbReferenceServer implements AutoCloseable {
             }
             body.put("measures", out);
         }
+        // A field.map of Tier: the decimal rule applies to EACH map value; keys are never matched
+        // against Tier's member names (a key named "amount" is just a key).
+        Object tiers = body.get("tiers");
+        if (body.containsKey("tiers") && tiers != null) {
+            Map<String, Object> canon = canonicalTierMap(tiers);
+            if (canon == null) return false;
+            body.put("tiers", canon);
+        }
+        // Pricing { tiers: map of Tier }
+        Object pricing = body.get("pricing");
+        if (body.containsKey("pricing") && pricing != null) {
+            if (!(pricing instanceof Map<?, ?> pm)) return false;
+            Map<String, Object> outPricing = new LinkedHashMap<>((Map<String, Object>) pm);
+            Object inner = outPricing.get("tiers");
+            if (inner != null) {
+                Map<String, Object> canon = canonicalTierMap(inner);
+                if (canon == null) return false;
+                outPricing.put("tiers", canon);
+            }
+            body.put("pricing", outPricing);
+        }
         return true;
+    }
+
+    /** A map whose every value is a Tier; each value's decimal is canonicalised, or null on a violation. */
+    private static Map<String, Object> canonicalTierMap(Object map) {
+        if (!(map instanceof Map<?, ?> m)) return null;
+        Map<String, Object> out = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> e : m.entrySet()) {
+            Map<String, Object> canon = canonicalMeasure(e.getValue());   // Tier has the same one decimal(12, 4)
+            if (canon == null) return null;
+            out.put(String.valueOf(e.getKey()), canon);
+        }
+        return out;
     }
 
     /** A Measure with its decimal amount range-checked and written as its canonical string, or null. */

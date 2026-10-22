@@ -1529,8 +1529,10 @@ until you regenerate.
     five ports**: written as the canonical string, read from a string or a JSON number exactly.
     The ports disagreed before (TypeScript refused a number, Python stored a float). A
     `field.double` inside a value object stays a JSON number, and a fractional number that is
-    not a declared decimal stays a float in Python (it answered 500). A decimal inside a
-    `field.map` value object is not covered: it is not part of the rule and is not gated.
+    not a declared decimal stays a float in Python (it answered 500). The rule also holds
+    for a value object held by a `field.map` (applied to each map value; the keys are arbitrary
+    and never matched with member names), gated by the `jsonb-value-object-map-decimals`
+    scenario in every port.
   - **A `field.decimal` array works in C#, Java and Kotlin.** Java binds a Postgres `numeric[]`
     as exact `BigDecimal` elements, a non-required C# decimal array is nullable, and each
     element follows the scalar decimal rule (a bad element is `400 validation`).

@@ -80,7 +80,7 @@ final class InMemoryDocumentRepositorySource {
             @Override
             public DocumentDto create(DocumentDto dto) {
                 DocumentDto saved = new DocumentDto(nextId.getAndIncrement(), dto.title(), dto.payload(),
-                    dto.primaryMarker(), dto.optionalMarker(), dto.markers(), dto.measure(), dto.measures());
+                    dto.primaryMarker(), dto.optionalMarker(), dto.markers(), dto.measure(), dto.measures(), dto.tiers(), dto.pricing());
                 rows.add(saved);
                 return saved;
             }
@@ -98,7 +98,9 @@ final class InMemoryDocumentRepositorySource {
                             dto.optionalMarker() != null ? dto.optionalMarker() : cur.optionalMarker(),
                             dto.markers()        != null ? dto.markers()        : cur.markers(),
                             dto.measure()        != null ? dto.measure()        : cur.measure(),
-                            dto.measures()       != null ? dto.measures()       : cur.measures());
+                            dto.measures()       != null ? dto.measures()       : cur.measures(),
+                            dto.tiers()          != null ? dto.tiers()          : cur.tiers(),
+                            dto.pricing()        != null ? dto.pricing()        : cur.pricing());
                         rows.set(i, merged);
                         return Optional.of(merged);
                     }
@@ -121,7 +123,9 @@ final class InMemoryDocumentRepositorySource {
                             patch.hasOptionalMarker() ? patch.optionalMarker() : cur.optionalMarker(),
                             patch.hasMarkers()        ? patch.markers()        : cur.markers(),
                             patch.hasMeasure()        ? patch.measure()        : cur.measure(),
-                            patch.hasMeasures()       ? patch.measures()       : cur.measures());
+                            patch.hasMeasures()       ? patch.measures()       : cur.measures(),
+                            patch.hasTiers()          ? patch.tiers()          : cur.tiers(),
+                            patch.hasPricing()        ? patch.pricing()        : cur.pricing());
                         rows.set(i, merged);
                         return Optional.of(merged);
                     }

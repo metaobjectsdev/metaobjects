@@ -17,6 +17,18 @@
           { "field.decimal": { "name": "amount", "@precision": 12, "@scale": 4 } }
         ]
       }},
+      { "object.value": {
+        "name": "Tier",
+        "children": [
+          { "field.decimal": { "name": "amount", "@precision": 12, "@scale": 4 } }
+        ]
+      }},
+      { "object.value": {
+        "name": "Pricing",
+        "children": [
+          { "field.map": { "name": "tiers", "@objectRef": "Tier" } }
+        ]
+      }},
       { "object.entity": {
         "name": "Document",
         "children": [
@@ -29,6 +41,8 @@
           { "field.object":     { "name": "markers",        "@objectRef": "Marker", "@storage": "jsonb", "isArray": true } },
           { "field.object":     { "name": "measure",  "@objectRef": "Measure", "@storage": "jsonb" } },
           { "field.object":     { "name": "measures", "@objectRef": "Measure", "@storage": "jsonb", "isArray": true } },
+          { "field.map":        { "name": "tiers", "@objectRef": "Tier" } },
+          { "field.object":     { "name": "pricing", "@objectRef": "Pricing", "@storage": "jsonb" } },
           { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } }
         ]
       }}
