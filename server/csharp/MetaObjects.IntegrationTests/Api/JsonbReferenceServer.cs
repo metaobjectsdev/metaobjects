@@ -41,7 +41,7 @@ internal sealed class JsonbReferenceServer : IAsyncDisposable
     private const int MarkerLabelMaxLength = 40;
 
     // The jsonb columns carried in a document row's wire projection (id + title are scalar).
-    private static readonly string[] JsonbColumns = { "payload", "primaryMarker", "optionalMarker", "markers", "measure", "measures", "tiers", "pricing" };
+    private static readonly string[] JsonbColumns = { "payload", "primaryMarker", "optionalMarker", "markers", "measure", "measures", "telemetry", "tiers", "pricing" };
 
     private JsonbReferenceServer(PostgresContainer pg, HttpListener listener, string baseUrl)
     {
@@ -160,8 +160,8 @@ internal sealed class JsonbReferenceServer : IAsyncDisposable
         await using (var ins = c.CreateCommand())
         {
             ins.CommandText =
-                "INSERT INTO \"documents\" (\"title\", \"payload\", \"primaryMarker\", \"optionalMarker\", \"markers\", \"measure\", \"measures\", \"tiers\", \"pricing\") " +
-                "VALUES (@title, @payload, @primaryMarker, @optionalMarker, @markers, @measure, @measures, @tiers, @pricing) RETURNING id";
+                "INSERT INTO \"documents\" (\"title\", \"payload\", \"primaryMarker\", \"optionalMarker\", \"markers\", \"measure\", \"measures\", \"telemetry\", \"tiers\", \"pricing\") " +
+                "VALUES (@title, @payload, @primaryMarker, @optionalMarker, @markers, @measure, @measures, @telemetry, @tiers, @pricing) RETURNING id";
             ins.Parameters.AddWithValue("@title", body["title"]!.GetValue<string>());
             AddJsonbParam(ins, "@payload", body["payload"]);
             AddJsonbParam(ins, "@primaryMarker", body["primaryMarker"]);
@@ -169,6 +169,7 @@ internal sealed class JsonbReferenceServer : IAsyncDisposable
             AddJsonbParam(ins, "@markers", body["markers"]);
             AddJsonbParam(ins, "@measure", body["measure"]);
             AddJsonbParam(ins, "@measures", body["measures"]);
+            AddJsonbParam(ins, "@telemetry", body["telemetry"]);
             AddJsonbParam(ins, "@tiers", body["tiers"]);
             AddJsonbParam(ins, "@pricing", body["pricing"]);
             newId = Convert.ToInt64(await ins.ExecuteScalarAsync());

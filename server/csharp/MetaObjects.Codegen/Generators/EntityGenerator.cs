@@ -852,8 +852,14 @@ public class EntityGenerator : IGenerator
             if (member is null) continue;
             // Pin the jsonb element name (+ wire name) to the metadata field name so the
             // stored owned-JSON keys match the shared seed + the cross-port wire contract.
-            // A null member is omitted on the wire (the cross-port value-object contract).
-            member = $"    [JsonPropertyName(\"{field.Name}\")]\n    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]\n" + member;
+            // A null member is omitted on the wire (the cross-port value-object contract). Only a
+            // NULLABLE member can be null, and System.Text.Json throws InvalidOperationException
+            // when WhenWritingNull sits on a non-nullable value type (double, DateTimeOffset, ...),
+            // so the condition is emitted for the nullable members alone.
+            var nullableMember = System.Text.RegularExpressions.Regex.IsMatch(member, @"^\s*public\s+[^=;{(]*\?\s+\w+", System.Text.RegularExpressions.RegexOptions.Multiline);
+            member = $"    [JsonPropertyName(\"{field.Name}\")]\n"
+                + (nullableMember ? "    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]\n" : "")
+                + member;
             member = ApplyPropertyAttributes(member, vo, field, ctx);
             members.Add(XmlDocBuilder.Prepend(member, field, "    "));
         }

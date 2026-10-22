@@ -82,6 +82,7 @@ class DocumentApiServer(private val pg: PostgresContainer) : AutoCloseable {
                     it[markers] = toJsonElement(r["markers"])
                     it[measure] = toJsonElement(r["measure"])
                     it[measures] = toJsonElement(r["measures"])
+                    it[telemetry] = toJsonElement(r["telemetry"])
                     it[tiers] = toJsonElement(r["tiers"])
                     it[pricing] = toJsonElement(r["pricing"])
                 }
@@ -155,6 +156,7 @@ class DocumentApiServer(private val pg: PostgresContainer) : AutoCloseable {
                 it[markers] = toJsonElement(markersVal)
                 it[measure] = toJsonElement(canon["measure"])
                 it[measures] = toJsonElement(canon["measures"])
+                it[telemetry] = toJsonElement(body["telemetry"])
                 it[tiers] = toJsonElement(canon["tiers"])
                 it[pricing] = toJsonElement(canon["pricing"])
             }[DocumentTable.id]
@@ -198,7 +200,7 @@ class DocumentApiServer(private val pg: PostgresContainer) : AutoCloseable {
         }
         // Apply only the present keys (absent = untouched). Guard the empty-SET case (Exposed throws).
         val canon = canonicalizeMeasures(body) ?: return sendJson(exchange, 400, mapOf("error" to "validation"))
-        val settableKeys = listOf("title", "payload", "primaryMarker", "optionalMarker", "markers", "measure", "measures", "tiers", "pricing")
+        val settableKeys = listOf("title", "payload", "primaryMarker", "optionalMarker", "markers", "measure", "measures", "telemetry", "tiers", "pricing")
         if (settableKeys.any { body.containsKey(it) }) {
             transaction(db) {
                 DocumentTable.update({ DocumentTable.id eq id }) {
@@ -209,6 +211,7 @@ class DocumentApiServer(private val pg: PostgresContainer) : AutoCloseable {
                     if (body.containsKey("markers")) it[markers] = toJsonElement(body["markers"])
                     if (body.containsKey("measure")) it[measure] = toJsonElement(canon["measure"])
                     if (body.containsKey("measures")) it[measures] = toJsonElement(canon["measures"])
+                    if (body.containsKey("telemetry")) it[telemetry] = toJsonElement(body["telemetry"])
                     if (body.containsKey("tiers")) it[tiers] = toJsonElement(canon["tiers"])
                     if (body.containsKey("pricing")) it[pricing] = toJsonElement(canon["pricing"])
                 }
@@ -310,6 +313,7 @@ class DocumentApiServer(private val pg: PostgresContainer) : AutoCloseable {
         "markers" to fromJsonElement(row[DocumentTable.markers]),
         "measure" to fromJsonElement(row[DocumentTable.measure]),
         "measures" to fromJsonElement(row[DocumentTable.measures]),
+        "telemetry" to fromJsonElement(row[DocumentTable.telemetry]),
         "tiers" to fromJsonElement(row[DocumentTable.tiers]),
         "pricing" to fromJsonElement(row[DocumentTable.pricing]),
     )
@@ -356,6 +360,7 @@ class DocumentApiServer(private val pg: PostgresContainer) : AutoCloseable {
         val markers = jsonb("markers", { it.toString() }, { Json.parseToJsonElement(it) }).nullable()
         val measure = jsonb("measure", { it.toString() }, { Json.parseToJsonElement(it) }).nullable()
         val measures = jsonb("measures", { it.toString() }, { Json.parseToJsonElement(it) }).nullable()
+        val telemetry = jsonb("telemetry", { it.toString() }, { Json.parseToJsonElement(it) }).nullable()
         val tiers = jsonb("tiers", { it.toString() }, { Json.parseToJsonElement(it) }).nullable()
         val pricing = jsonb("pricing", { it.toString() }, { Json.parseToJsonElement(it) }).nullable()
 

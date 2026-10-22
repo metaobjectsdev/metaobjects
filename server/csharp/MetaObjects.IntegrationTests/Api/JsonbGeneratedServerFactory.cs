@@ -62,6 +62,10 @@ internal sealed class JsonbGeneratedServerFactory : IAsyncDisposable
         builder.WebHost.UseUrls(baseUrl);
         builder.Logging.ClearProviders();
         RegisterGeneratedDbContext(builder.Services, dbContextType, pg.ConnectionString);
+        // The documented host registration: a field.timestamp crosses the wire as UTC with the Z
+        // designator (a Telemetry value object holds one).
+        builder.Services.ConfigureHttpJsonOptions(o =>
+            o.SerializerOptions.Converters.Add(new MetaObjects.Codegen.Runtime.Iso8601TimestampConverter()));
 
         var app = builder.Build();
 

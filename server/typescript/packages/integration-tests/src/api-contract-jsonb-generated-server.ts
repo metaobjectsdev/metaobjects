@@ -90,6 +90,7 @@ export const db = drizzle(pool);
        "markers" jsonb,
        "measure" jsonb,
        "measures" jsonb,
+       "telemetry" jsonb,
        "tiers" jsonb,
        "pricing" jsonb
      )`,

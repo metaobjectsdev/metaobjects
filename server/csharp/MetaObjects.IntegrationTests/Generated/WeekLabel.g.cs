@@ -12,7 +12,6 @@ namespace MetaObjects.IntegrationTests.Generated;
 public class WeekLabel
 {
     [JsonPropertyName("label")]
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     [Required(AllowEmptyStrings = true)]
     [MaxLength(80)]
     [MinLength(1)]

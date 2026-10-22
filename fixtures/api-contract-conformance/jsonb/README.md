@@ -59,7 +59,8 @@ jsonb/
     ├── jsonb-open-bag-roundtrip.yaml   # open-bag parsed-value contract
     ├── jsonb-value-object-patch.yaml   # Program D — cross-port VO-column PATCH/POST
     ├── jsonb-value-object-map-decimals.yaml  # decimals in a field.map of value objects, per map value
-    └── jsonb-value-object-numbers.yaml # doubles and decimals inside a value object
+    ├── jsonb-value-object-numbers.yaml # doubles and decimals inside a value object
+    └── jsonb-value-object-required-value-types.yaml # required double + timestamp in a value object
 ```
 
 `seed.json` is applied fresh before the scenario; the runner advances the id
@@ -162,3 +163,17 @@ Amendment 1; see `../decimal/README.md`), per element for an array of value obje
 | `r10`/`r11` PATCH + GET | PATCH single `measure` (decimal as a number) is canonical, `measures` untouched |
 | `r12`-`r15` | PATCH array element canonicalized (`"3.10"` gives `"3.1"`); excess scale in an array element or in `measure` is `400` and the stored value is unchanged |
 | `r16`-`r18` PUT | PUT canonicalizes and persists; excess scale on PUT is `400` and nothing changes |
+
+## Scenario — `jsonb-value-object-required-value-types.yaml`
+
+A value object whose REQUIRED members are non-nullable value types in the native language
+(`Telemetry { capturedAt: field.timestamp @required; latitude: field.double @required; tempC:
+field.int }`, held by the nullable `Document.telemetry`). A port whose generated model cannot
+serialize or deserialize such a member answers every request that touches the owning entity
+with a 500 (C# 1.1.0-rc.8: a null-omission condition on a non-nullable `double` /
+`DateTimeOffset` made System.Text.Json throw).
+
+| Requests | What it pins |
+|---|---|
+| `r1`/`r2` POST + GET | create is `201`, the double stays a JSON number, the timestamp keeps its UTC `Z` spelling, `tempC` round-trips |
+| `r3`/`r4` PATCH + GET | PATCH replaces the value object (`tempC` omitted when absent) and it persists |
