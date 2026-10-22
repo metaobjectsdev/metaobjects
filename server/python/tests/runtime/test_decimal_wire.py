@@ -143,3 +143,17 @@ def test_a_decimal_array_is_coerced_and_range_checked_element_by_element() -> No
     for bad in (["1", "0.12345"], ["100000"], ["1", "12abc"], [True]):
         with pytest.raises(ValueError, match="readings"):
             coerce_decimal_fields({"readings": bad}, fields, limits)
+
+
+def test_a_non_decimal_number_in_a_body_is_a_float_not_a_decimal() -> None:
+    # parse_json_object reads every non-integer number as a Decimal; only a declared decimal
+    # field keeps it. A double field and a number nested in a jsonb value object (or an array
+    # of them) must come back as floats, or json.dumps of the jsonb column fails.
+    body = parse_json_object(
+        '{"amount": 1.50, "weight": 2.5, "telemetry": {"latitude": 51.5, "tags": [1.25, 3]}}'
+    )
+    coerced = coerce_decimal_fields(body, frozenset({"amount"}))
+    assert coerced["amount"] == Decimal("1.50")
+    assert coerced["weight"] == 2.5 and isinstance(coerced["weight"], float)
+    assert coerced["telemetry"] == {"latitude": 51.5, "tags": [1.25, 3]}
+    json.dumps(coerced["telemetry"])

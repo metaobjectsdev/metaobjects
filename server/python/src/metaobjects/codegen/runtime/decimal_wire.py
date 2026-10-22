@@ -133,7 +133,10 @@ def coerce_decimal_fields(
     ``None``) and held to its column's range under W3 (*limits*: name to (precision, scale)).
     A list (a decimal declared ``isArray``) is parsed and range-checked element by element.
     Raises ``ValueError`` naming the field when one is malformed or out of range."""
-    out = dict(dto)
+    # parse_json_object reads EVERY non-integer number as a Decimal; only a declared decimal
+    # field keeps it. A double/float field, or a number inside a jsonb value object, goes back
+    # to the float a JSON number is for them (json.dumps cannot serialize a Decimal).
+    out = {k: v if k in decimal_fields else _floats(v) for k, v in dto.items()}
     for name in decimal_fields:
         if name in out and out[name] is not None:
             limit = limits.get(name) if limits else None
@@ -147,6 +150,17 @@ def coerce_decimal_fields(
             except ValueError as exc:
                 raise ValueError(f"{name}: {exc}") from None
     return out
+
+
+def _floats(value: Any) -> Any:
+    """*value* with every ``Decimal`` (at any depth of a dict or list) as a ``float``."""
+    if isinstance(value, Decimal):
+        return float(value)
+    if isinstance(value, dict):
+        return {k: _floats(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_floats(v) for v in value]
+    return value
 
 
 def _coerce_decimal(value: Any, limit: tuple[int, int] | None) -> Decimal:

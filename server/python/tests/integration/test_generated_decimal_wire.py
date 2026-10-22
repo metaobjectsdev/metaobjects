@@ -190,3 +190,82 @@ def test_a_value_beyond_the_declared_range_is_a_400_and_nothing_is_rounded(clien
         resp = _post(client, '{"amount": ' + bad + "}")
         assert resp.status_code == 400 and resp.json() == {"error": "validation"}
     assert client.get("/api/entries").json() == []
+
+
+_FLOAT_META = {
+    "metadata.root": {
+        "package": "acme::fleet",
+        "children": [
+            {"object.value": {"name": "Fix", "children": [
+                {"field.double": {"name": "latitude", "@required": True}},
+                {"field.double": {"name": "readings", "isArray": True}},
+            ]}},
+            {"object.entity": {"name": "Sample", "children": [
+                {"source.rdb": {"@table": "samples"}},
+                {"field.long": {"name": "id"}},
+                {"field.double": {"name": "score"}},
+                {"field.object": {"name": "fix", "@objectRef": "Fix", "@storage": "jsonb"}},
+                {"field.object": {"name": "fixes", "@objectRef": "Fix", "@storage": "jsonb", "isArray": True}},
+                {"identity.primary": {"name": "pk", "@fields": ["id"], "@generation": "increment"}},
+            ]}},
+        ],
+    }
+}
+
+
+@pytest.fixture()
+def float_client() -> TestClient:
+    root = load_string(json.dumps(_FLOAT_META)).root
+    objs = {c.name.split("::")[-1]: c for c in root.children()}
+    pkg = f"genflt_{uuid.uuid4().hex[:8]}"
+    tmp = Path(tempfile.mkdtemp(prefix="genflt-"))
+    pkg_dir = tmp / pkg
+    pkg_dir.mkdir()
+    (pkg_dir / "__init__.py").write_text("")
+    (pkg_dir / "Fix.py").write_text(render_entity_model(objs["Fix"]))
+    sample = objs["Sample"]
+    (pkg_dir / "sample_filter_allowlist.py").write_text(render_filter_allowlist(sample) or "")
+    (pkg_dir / "Sample.py").write_text(render_entity_model(sample))
+    (pkg_dir / "sample_router.py").write_text(render_router(sample) or "")
+    sys.path.insert(0, str(tmp))
+    try:
+        mod = importlib.import_module(f"{pkg}.sample_router")
+    finally:
+        sys.path.remove(str(tmp))
+    db = sqlite3.connect(":memory:", check_same_thread=False)
+    db.execute("CREATE TABLE samples (id INTEGER PRIMARY KEY AUTOINCREMENT, score REAL, fix TEXT, fixes TEXT)")
+    om = ObjectManager(root, SqliteDriver(db))  # type: ignore[arg-type]
+
+    class Repo(_Repo):
+        def list(self, limit: int, offset: int, sort: Any, filters: list[FilterPredicate]) -> list[Any]:
+            return self.om.find_many("Sample", None, sort=[("id", "asc")], limit=limit, offset=offset)
+
+        def find_by_id(self, id: int) -> Any:
+            return self.om.find_by_id("Sample", id)
+
+        def create(self, dto: Any) -> Any:
+            return self.om.create("Sample", dto)
+
+        def update(self, id: int, dto: Any) -> Any:
+            return self.om.update("Sample", id, dto)
+
+    app = FastAPI()
+    app.include_router(mod.router)
+    app.dependency_overrides[mod.get_repository] = lambda: Repo(om)
+    return TestClient(app)
+
+
+def test_a_double_and_a_jsonb_value_object_take_fractional_numbers_on_every_write(float_client: TestClient) -> None:
+    # parse_json_object reads every fractional number as a Decimal; only a declared decimal
+    # keeps it. A double, or a number inside a jsonb value object / array, is a float again --
+    # json.dumps of the jsonb column used to fail with a 500.
+    body = '{"score": 1.5, "fix": {"latitude": 51.25, "readings": [0.5, 2]}, "fixes": [{"latitude": 1.75}]}'
+    hdr = {"content-type": "application/json"}
+    created = float_client.post("/api/samples", content=body, headers=hdr)
+    assert created.status_code == 201, created.text
+    assert created.json()["score"] == 1.5
+    assert created.json()["fix"]["latitude"] == 51.25
+    for send in (float_client.patch, float_client.put):
+        resp = send("/api/samples/1", content='{"score": 2.5, "fix": {"latitude": 3.125}}', headers=hdr)
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["score"] == 2.5 and resp.json()["fix"]["latitude"] == 3.125
