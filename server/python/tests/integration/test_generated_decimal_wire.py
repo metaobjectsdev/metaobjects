@@ -214,7 +214,7 @@ _FLOAT_META = {
                 {"field.decimal": {"name": "series", "isArray": True, "@precision": 9, "@scale": 4}},
                 {"field.object": {"name": "fix", "@objectRef": "Fix", "@storage": "jsonb"}},
                 {"field.object": {"name": "fixes", "@objectRef": "Fix", "@storage": "jsonb", "isArray": True}},
-                {"field.map": {"name": "tiers", "@objectRef": "Tier", "@storage": "jsonb"}},
+                {"field.map": {"name": "tiers", "@objectRef": "Tier"}},
                 {"field.object": {"name": "pricing", "@objectRef": "Pricing", "@storage": "jsonb"}},
                 {"identity.primary": {"name": "pk", "@fields": ["id"], "@generation": "increment"}},
             ]}},

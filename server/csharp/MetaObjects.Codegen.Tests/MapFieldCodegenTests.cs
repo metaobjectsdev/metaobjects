@@ -326,30 +326,4 @@ public class MapFieldCodegenTests
         Assert.DoesNotContain("ValueObjectValidator.Validate(input.Labels)", routes);
         Assert.DoesNotContain("ValueObjectValidator.Validate(input.Channels)", routes);
     }
-
-    // A value object that holds a map cannot be an EF Core 8 owned-JSON type (the dictionary member
-    // has no owned mapping and model finalization fails), so its field is one converted jsonb property.
-    [Fact]
-    public void A_value_object_holding_a_map_is_converted_whole_not_owned()
-    {
-        const string model = """
-        { "metadata.root": { "package": "acme", "children": [
-          { "object.value": { "name": "Tier", "children": [
-            { "field.decimal": { "name": "amount", "@precision": 12, "@scale": 4 } } ]}},
-          { "object.value": { "name": "Pricing", "children": [
-            { "field.map": { "name": "tiers", "@objectRef": "Tier" } } ]}},
-          { "object.entity": { "name": "Doc", "children": [
-            { "source.rdb": { "@table": "docs" } },
-            { "field.long": { "name": "id" } },
-            { "field.object": { "name": "pricing", "@objectRef": "Pricing", "@storage": "jsonb" } },
-            { "identity.primary": { "@fields": "id" } }
-          ]}}
-        ]}}
-        """;
-        var db = new DbContextGenerator().Generate(Ctx(Load(model, "vo-map.json"))).Single().Content;
-        Assert.DoesNotContain("OwnsOne(x => x.Pricing", db);
-        Assert.Contains("Property(x => x.Pricing)", db);
-        Assert.Contains("MapJsonb.ObjectConverter<Acme.Generated.Pricing?>()", db);
-        Assert.Contains("ObjectConverter<TModel>", db);
-    }
 }

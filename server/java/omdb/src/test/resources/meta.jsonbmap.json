@@ -9,7 +9,7 @@
           "children": [
             { "source.rdb": { "@table": "JSONMAP_DOC" } },
             { "field.long": { "name": "id", "@column": "id" } },
-            { "field.map": { "name": "tiers", "@column": "tiers", "@storage": "jsonb", "@objectRef": "jsonmap::Tier" } },
+            { "field.map": { "name": "tiers", "@column": "tiers", "@objectRef": "jsonmap::Tier" } },
             { "field.object": { "name": "pricing", "@column": "pricing", "@storage": "jsonb", "@objectRef": "jsonmap::Pricing" } },
             { "identity.primary": { "name": "primary", "@fields": ["id"], "@generation": "increment" } }
           ]

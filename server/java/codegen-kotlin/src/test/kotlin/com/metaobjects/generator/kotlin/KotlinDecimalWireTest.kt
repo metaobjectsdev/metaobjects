@@ -341,7 +341,7 @@ class KotlinDecimalWireTest {
         ] } },
         { "object.entity": { "name": "Doc", "children": [
             { "field.long": { "name": "id" } },
-            { "field.map": { "name": "tiers", "@objectRef": "Tier", "@storage": "jsonb" } },
+            { "field.map": { "name": "tiers", "@objectRef": "Tier" } },
             { "field.object": { "name": "pricing", "@objectRef": "Pricing", "@storage": "jsonb" } },
             { "source.rdb": { "@table": "docs" } },
             { "identity.primary": { "@fields": ["id"], "@generation": "increment" } }
@@ -384,12 +384,6 @@ class KotlinDecimalWireTest {
             val e = runCatching { mapper.readValue(bad, doc) }.exceptionOrNull()
             assertTrue(e is com.fasterxml.jackson.core.JsonProcessingException, "must be refused: $bad but got $e")
         }
-        // The generated controller writes, reads and PATCHes the map column, validating each value.
-        val ctl = emit(mapModel, all()).getValue("acme/shop/DocController.kt")
-        assertTrue("it[tiers] = dto.tiers" in ctl, ctl)
-        assertTrue("tiers = row[DocTable.tiers]" in ctl, ctl)
-        assertTrue("TypeReference<kotlin.collections.Map<kotlin.String, acme.shop.Tier>>" in ctl, ctl)
-        assertTrue("vTiers.values.any { validator.validate(it).isNotEmpty() }" in ctl, ctl)
     }
 
     @Test

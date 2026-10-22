@@ -59,7 +59,7 @@ public class SpringDecimalWireCompileRunTest {
             { "field.string":  { "name": "label", "@filterable": true } },
             { "field.decimal": { "name": "tiers", "isArray": true, "@precision": 12, "@scale": 2 } },
             { "field.object":  { "name": "price", "@objectRef": "Price", "@storage": "jsonb" } },
-            { "field.map":     { "name": "tierMap", "@objectRef": "Tier", "@storage": "jsonb" } },
+            { "field.map":     { "name": "tierMap", "@objectRef": "Tier" } },
             { "field.object":  { "name": "pricing", "@objectRef": "Pricing", "@storage": "jsonb" } },
             { "field.object":  { "name": "prices", "@objectRef": "Price", "isArray": true, "@storage": "jsonb" } },
             { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } }
