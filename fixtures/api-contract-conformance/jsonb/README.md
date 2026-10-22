@@ -15,7 +15,7 @@ Java `Object`, Kotlin `JsonElement`, C# `JsonDocument`); this corpus locks it
 in cross-port.
 
 The single `Document` entity (`acme::store`, `@table="documents"`) carries an
-open-bag field plus three value-object columns:
+open-bag field plus four value-object columns:
 
 | Field            | Type                                                      | Notes                                    |
 |------------------|----------------------------------------------------------|------------------------------------------|
@@ -25,6 +25,7 @@ open-bag field plus three value-object columns:
 | `primaryMarker`  | `field.object @objectRef=Marker @storage=jsonb @required`| required single VO — present-null → 400   |
 | `optionalMarker` | `field.object @objectRef=Marker @storage=jsonb`          | nullable single VO — FR-035 tristate      |
 | `markers`        | `field.object @objectRef=Marker @storage=jsonb isArray`  | nullable array of VO — `[]` ≠ null        |
+| `telemetry`      | `field.object @objectRef=Telemetry @storage=jsonb`       | nullable VO with required non-nullable value types — see `jsonb-value-object-required-value-types` |
 
 **Why `id` is `@required`.** It is the shape every real model has — a shared
 `BaseEntity` declares `id` required — and the one no other api-contract entity
@@ -53,13 +54,14 @@ The `Marker` value object (`object.value`) is `{ label: field.string @required
 ```
 jsonb/
 ├── README.md              # this file
-├── meta.json              # the Document entity + Marker value object
+├── meta.json              # the Document entity + Marker and Telemetry value objects
 ├── seed.json              # 2 seed Documents (ids 1, 2), jsonb object + VO columns
 └── scenarios/
     ├── jsonb-open-bag-roundtrip.yaml   # open-bag parsed-value contract
     ├── jsonb-value-object-patch.yaml   # Program D — cross-port VO-column PATCH/POST
     ├── jsonb-value-object-map-decimals.yaml  # decimals in a field.map of value objects, per map value
-    └── jsonb-value-object-numbers.yaml # doubles and decimals inside a value object
+    ├── jsonb-value-object-numbers.yaml # doubles and decimals inside a value object
+    └── jsonb-value-object-required-value-types.yaml # required double + timestamp in a value object
 ```
 
 `seed.json` is applied fresh before the scenario; the runner advances the id
@@ -162,3 +164,18 @@ Amendment 1; see `../decimal/README.md`), per element for an array of value obje
 | `r10`/`r11` PATCH + GET | PATCH single `measure` (decimal as a number) is canonical, `measures` untouched |
 | `r12`-`r15` | PATCH array element canonicalized (`"3.10"` gives `"3.1"`); excess scale in an array element or in `measure` is `400` and the stored value is unchanged |
 | `r16`-`r18` PUT | PUT canonicalizes and persists; excess scale on PUT is `400` and nothing changes |
+
+## Scenario — `jsonb-value-object-required-value-types.yaml`
+
+A value object whose REQUIRED members are non-nullable value types in the native language
+(`Telemetry { capturedAt: field.timestamp @required; latitude: field.double @required; tempC:
+field.int }`, held by the nullable `Document.telemetry`). A port whose generated model cannot
+serialize or deserialize such a member answers every request that touches the owning entity
+with a 500 (C# emitted a null-omission condition on a non-nullable `double` /
+`DateTimeOffset`, which System.Text.Json rejects with `InvalidOperationException`;
+the condition is emitted on nullable members only).
+
+| Requests | What it pins |
+|---|---|
+| `r1`/`r2` POST + GET | create is `201`, the double stays a JSON number, the timestamp keeps its UTC `Z` spelling, `tempC` round-trips |
+| `r3`/`r4` PATCH + GET | PATCH replaces the value object (`tempC` omitted when absent) and it persists |

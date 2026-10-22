@@ -60,11 +60,12 @@ _COLUMN: dict[str, str] = {
     "markers": "markers",
     "measure": "measure",
     "measures": "measures",
+    "telemetry": "telemetry",
     "tiers": "tiers",
     "pricing": "pricing",
 }
 _JSONB_FIELDS: frozenset[str] = frozenset(
-    {"payload", "primaryMarker", "optionalMarker", "markers", "measure", "measures", "tiers", "pricing"}
+    {"payload", "primaryMarker", "optionalMarker", "markers", "measure", "measures", "telemetry", "tiers", "pricing"}
 )
 
 
@@ -85,6 +86,7 @@ class DocumentRepository:
             "    markers JSONB,"
             "    measure JSONB,"
             "    measures JSONB,"
+            "    telemetry JSONB,"
             "    tiers JSONB,"
             "    pricing JSONB"
             ")"
@@ -104,8 +106,8 @@ class DocumentRepository:
                 for r in rows:
                     cur.execute(
                         'INSERT INTO "documents" '
-                        "(id, title, payload, primary_marker, optional_marker, markers, measure, measures, tiers, pricing) "
-                        "VALUES (%s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb)",
+                        "(id, title, payload, primary_marker, optional_marker, markers, measure, measures, telemetry, tiers, pricing) "
+                        "VALUES (%s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb)",
                         (
                             int(r["id"]),
                             r["title"],
@@ -115,6 +117,7 @@ class DocumentRepository:
                             _dump_payload(r.get("markers")),
                             _dump_payload(r.get("measure")),
                             _dump_payload(r.get("measures")),
+                            _dump_payload(r.get("telemetry")),
                             _dump_payload(r.get("tiers")),
                             _dump_payload(r.get("pricing")),
                         ),
@@ -132,7 +135,7 @@ class DocumentRepository:
             cur = conn.cursor()
             try:
                 cur.execute(
-                    "SELECT id, title, payload, primary_marker, optional_marker, markers, measure, measures, tiers, pricing "
+                    "SELECT id, title, payload, primary_marker, optional_marker, markers, measure, measures, telemetry, tiers, pricing "
                     'FROM "documents" WHERE id = %s',
                     (int(ident),),
                 )
@@ -147,8 +150,8 @@ class DocumentRepository:
             try:
                 cur.execute(
                     'INSERT INTO "documents" '
-                    "(title, payload, primary_marker, optional_marker, markers, measure, measures, tiers, pricing) "
-                    "VALUES (%s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb) RETURNING id",
+                    "(title, payload, primary_marker, optional_marker, markers, measure, measures, telemetry, tiers, pricing) "
+                    "VALUES (%s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb) RETURNING id",
                     (
                         dto.get("title"),
                         _dump_payload(dto.get("payload")),
@@ -157,6 +160,7 @@ class DocumentRepository:
                         _dump_payload(dto.get("markers")),
                         _dump_payload(dto.get("measure")),
                         _dump_payload(dto.get("measures")),
+                        _dump_payload(dto.get("telemetry")),
                         _dump_payload(dto.get("tiers")),
                         _dump_payload(dto.get("pricing")),
                     ),
@@ -419,7 +423,7 @@ def _decode_jsonb(value: Any) -> Any:
 
 
 def _row_to_dict(row: Any) -> dict[str, Any]:
-    ident, title, payload, primary_marker, optional_marker, markers, measure, measures, tiers, pricing = row
+    ident, title, payload, primary_marker, optional_marker, markers, measure, measures, telemetry, tiers, pricing = row
     return {
         "id": int(ident),
         "title": title,
@@ -429,6 +433,7 @@ def _row_to_dict(row: Any) -> dict[str, Any]:
         "markers": _decode_jsonb(markers),
         "measure": _decode_jsonb(measure),
         "measures": _decode_jsonb(measures),
+        "telemetry": _decode_jsonb(telemetry),
         "tiers": _decode_jsonb(tiers),
         "pricing": _decode_jsonb(pricing),
     }

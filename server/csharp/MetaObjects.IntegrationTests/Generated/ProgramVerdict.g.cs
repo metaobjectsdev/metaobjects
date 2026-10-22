@@ -13,10 +13,8 @@ public class ProgramVerdict
 {
     public enum ProgramVerdictVerdict { GOOD, OK, POOR }
     [JsonPropertyName("verdict")]
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public ProgramVerdictVerdict Verdict { get; set; }
     [JsonPropertyName("rationale")]
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     [Required(AllowEmptyStrings = true)]
     [MaxLength(480)]
     [MinLength(1)]

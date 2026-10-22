@@ -44,6 +44,7 @@ export interface DocumentRow {
   markers?: Marker[] | null;
   measure?: Measure | null;
   measures?: Measure[] | null;
+  telemetry?: { capturedAt: string; latitude: number; tempC?: number } | null;
   tiers?: Record<string, { amount?: string | number }> | null;
   pricing?: { tiers?: Record<string, { amount?: string | number }> | null } | null;
 }
@@ -81,6 +82,7 @@ export async function startJsonbServer(connectionUri: string, root: MetaRoot): P
     .addColumn("markers", "jsonb")
     .addColumn("measure", "jsonb")
     .addColumn("measures", "jsonb")
+    .addColumn("telemetry", "jsonb")
     .addColumn("tiers", "jsonb")
     .addColumn("pricing", "jsonb")
     .execute();

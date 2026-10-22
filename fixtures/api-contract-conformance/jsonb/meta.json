@@ -18,6 +18,14 @@
         ]
       }},
       { "object.value": {
+        "name": "Telemetry",
+        "children": [
+          { "field.timestamp": { "name": "capturedAt", "@required": true } },
+          { "field.double":    { "name": "latitude", "@required": true } },
+          { "field.int":       { "name": "tempC" } }
+        ]
+      }},
+      { "object.value": {
         "name": "Tier",
         "children": [
           { "field.decimal": { "name": "amount", "@precision": 12, "@scale": 4 } }
@@ -41,6 +49,7 @@
           { "field.object":     { "name": "markers",        "@objectRef": "Marker", "@storage": "jsonb", "isArray": true } },
           { "field.object":     { "name": "measure",  "@objectRef": "Measure", "@storage": "jsonb" } },
           { "field.object":     { "name": "measures", "@objectRef": "Measure", "@storage": "jsonb", "isArray": true } },
+          { "field.object":     { "name": "telemetry", "@objectRef": "Telemetry", "@storage": "jsonb" } },
           { "field.map":        { "name": "tiers", "@objectRef": "Tier" } },
           { "field.object":     { "name": "pricing", "@objectRef": "Pricing", "@storage": "jsonb" } },
           { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } }

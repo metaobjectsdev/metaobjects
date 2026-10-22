@@ -82,6 +82,7 @@ final class JsonbReferenceServer implements AutoCloseable {
                 + "markers JSONB, "                   // nullable array-of-VO
                 + "measure JSONB, "                   // nullable single Measure VO (decimal amount)
                 + "measures JSONB, "                  // nullable array-of-Measure VO
+                + "telemetry JSONB, "                 // nullable single Telemetry VO (required value-type members)
                 + "tiers JSONB, "                     // nullable map of Tier VO (decimal amount per value)
                 + "pricing JSONB)");                  // nullable Pricing VO holding a map of Tier
         }
@@ -90,8 +91,8 @@ final class JsonbReferenceServer implements AutoCloseable {
     private void applySeed(List<Map<String, Object>> seedRows) throws SQLException {
         try (Connection c = connect()) {
             try (PreparedStatement ps = c.prepareStatement(
-                "INSERT INTO \"documents\" (id, title, payload, primary_marker, optional_marker, markers, measure, measures, tiers, pricing) "
-                + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
+                "INSERT INTO \"documents\" (id, title, payload, primary_marker, optional_marker, markers, measure, measures, telemetry, tiers, pricing) "
+                + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
                 for (Map<String, Object> r : seedRows) {
                     ps.setLong(1, ((Number) r.get("id")).longValue());
                     ps.setString(2, String.valueOf(r.get("title")));
@@ -101,8 +102,9 @@ final class JsonbReferenceServer implements AutoCloseable {
                     bindJsonb(ps, 6, r.get("markers"));
                     bindJsonb(ps, 7, r.get("measure"));
                     bindJsonb(ps, 8, r.get("measures"));
-                    bindJsonb(ps, 9, r.get("tiers"));
-                    bindJsonb(ps, 10, r.get("pricing"));
+                    bindJsonb(ps, 9, r.get("telemetry"));
+                    bindJsonb(ps, 10, r.get("tiers"));
+                    bindJsonb(ps, 11, r.get("pricing"));
                     ps.executeUpdate();
                 }
             }
@@ -167,7 +169,7 @@ final class JsonbReferenceServer implements AutoCloseable {
     private Map<String, Object> findById(long id) throws SQLException {
         try (Connection c = connect();
              PreparedStatement ps = c.prepareStatement(
-                 "SELECT id, title, payload, primary_marker, optional_marker, markers, measure, measures, tiers, pricing "
+                 "SELECT id, title, payload, primary_marker, optional_marker, markers, measure, measures, telemetry, tiers, pricing "
                  + "FROM \"documents\" WHERE id = ?")) {
             ps.setLong(1, id);
             try (ResultSet rs = ps.executeQuery()) {
@@ -179,9 +181,9 @@ final class JsonbReferenceServer implements AutoCloseable {
     private Map<String, Object> create(Map<String, Object> body) throws SQLException {
         try (Connection c = connect();
              PreparedStatement ps = c.prepareStatement(
-                 "INSERT INTO \"documents\" (title, payload, primary_marker, optional_marker, markers, measure, measures, tiers, pricing) "
-                 + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
-                 + "RETURNING id, title, payload, primary_marker, optional_marker, markers, measure, measures, tiers, pricing")) {
+                 "INSERT INTO \"documents\" (title, payload, primary_marker, optional_marker, markers, measure, measures, telemetry, tiers, pricing) "
+                 + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                 + "RETURNING id, title, payload, primary_marker, optional_marker, markers, measure, measures, telemetry, tiers, pricing")) {
             ps.setString(1, String.valueOf(body.get("title")));
             bindJsonb(ps, 2, body.get("payload"));
             bindJsonb(ps, 3, body.get("primaryMarker"));
@@ -189,8 +191,9 @@ final class JsonbReferenceServer implements AutoCloseable {
             bindJsonb(ps, 5, body.get("markers"));
             bindJsonb(ps, 6, body.get("measure"));
             bindJsonb(ps, 7, body.get("measures"));
-            bindJsonb(ps, 8, body.get("tiers"));
-            bindJsonb(ps, 9, body.get("pricing"));
+            bindJsonb(ps, 8, body.get("telemetry"));
+            bindJsonb(ps, 9, body.get("tiers"));
+            bindJsonb(ps, 10, body.get("pricing"));
             try (ResultSet rs = ps.executeQuery()) {
                 rs.next();
                 return rowFrom(rs);
@@ -215,6 +218,7 @@ final class JsonbReferenceServer implements AutoCloseable {
         addAssignment(body, "markers", "markers", true, setClauses, values, jsonb);
         addAssignment(body, "measure", "measure", true, setClauses, values, jsonb);
         addAssignment(body, "measures", "measures", true, setClauses, values, jsonb);
+        addAssignment(body, "telemetry", "telemetry", true, setClauses, values, jsonb);
         addAssignment(body, "tiers", "tiers", true, setClauses, values, jsonb);
         addAssignment(body, "pricing", "pricing", true, setClauses, values, jsonb);
         if (!setClauses.isEmpty()) {
@@ -252,6 +256,7 @@ final class JsonbReferenceServer implements AutoCloseable {
         row.put("markers", parseJson(rs.getString("markers")));
         row.put("measure", parseJson(rs.getString("measure")));
         row.put("measures", parseJson(rs.getString("measures")));
+        row.put("telemetry", parseJson(rs.getString("telemetry")));
         row.put("tiers", parseJson(rs.getString("tiers")));
         row.put("pricing", parseJson(rs.getString("pricing")));
         return row;

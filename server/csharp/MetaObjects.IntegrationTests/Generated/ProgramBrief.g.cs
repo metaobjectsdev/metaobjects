@@ -12,7 +12,6 @@ namespace MetaObjects.IntegrationTests.Generated;
 public class ProgramBrief
 {
     [JsonPropertyName("title")]
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     [Required(AllowEmptyStrings = true)]
     [MaxLength(200)]
     [MinLength(1)]

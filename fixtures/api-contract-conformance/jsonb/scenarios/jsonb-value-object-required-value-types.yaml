@@ -1,0 +1,50 @@
+name: jsonb-value-object-required-value-types
+description: >
+  A jsonb value object whose REQUIRED members are non-nullable value types (Telemetry:
+  `capturedAt` field.timestamp @required, `latitude` field.double @required, `tempC` field.int
+  optional), held by Document.telemetry. A port whose generated model refuses to serialize or
+  deserialize such a type answers every request that touches the owning entity with a 500
+  (System.Text.Json threw InvalidOperationException when a null-omission condition sat on a
+  non-nullable `double` / `DateTimeOffset`, so POST /api/documents answered 500). The contract: a
+  POST, the read-back and a PATCH all succeed, the double stays a JSON number, the timestamp keeps
+  its UTC `Z` spelling, and the optional `tempC` is omitted when absent. Implicit-id POSTs land at 3.
+requests:
+  - id: r1
+    method: POST
+    path: /api/documents
+    body:
+      title: "telemetry-a"
+      primaryMarker: { label: "a", score: 1 }
+      telemetry: { capturedAt: "2026-03-01T12:00:00Z", latitude: 51.5, tempC: 18 }
+    expect:
+      status: 201
+      body:
+        hasId: true
+        row:
+          telemetry: { capturedAt: "2026-03-01T12:00:00Z", latitude: 51.5, tempC: 18 }
+  - id: r2
+    method: GET
+    path: /api/documents/3
+    expect:
+      status: 200
+      body:
+        row:
+          telemetry: { capturedAt: "2026-03-01T12:00:00Z", latitude: 51.5, tempC: 18 }
+  - id: r3
+    method: PATCH
+    path: /api/documents/3
+    body:
+      telemetry: { capturedAt: "2026-03-02T08:30:00Z", latitude: -33.25 }
+    expect:
+      status: 200
+      body:
+        row:
+          telemetry: { capturedAt: "2026-03-02T08:30:00Z", latitude: -33.25 }
+  - id: r4
+    method: GET
+    path: /api/documents/3
+    expect:
+      status: 200
+      body:
+        row:
+          telemetry: { capturedAt: "2026-03-02T08:30:00Z", latitude: -33.25 }

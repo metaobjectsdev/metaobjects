@@ -55,7 +55,11 @@ public final class GeneratedJsonbControllerHarness implements AutoCloseable {
     private static final String DTO_FQCN = ENTITY_PKG + ".DocumentDto";
     private static final String REPO_FQCN = ENTITY_PKG + ".DocumentRepository";
 
-    private final ObjectMapper mapper = new ObjectMapper();
+    // The mapper a Spring Boot host provides by default: JavaTimeModule, dates as ISO strings (a
+    // Telemetry value object holds a field.timestamp, an Instant).
+    private final ObjectMapper mapper = new ObjectMapper()
+        .registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule())
+        .disable(com.fasterxml.jackson.databind.SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
     private final URLClassLoader classLoader;
     private final Class<?> dtoClass;             // acme.store.DocumentDto (record w/ VO components)
     private final Constructor<?> controllerCtor;
