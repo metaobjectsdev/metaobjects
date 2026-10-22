@@ -1261,8 +1261,8 @@ public class DbContextGenerator : IGenerator
                 && CSharpNaming.DbColumnTypeClrOverride(nf) is null)
             {
                 lines.Add(CSharpNaming.IsRequired(vo, nf)
-                    ? $"            {builder}.Property(p => p.{prop}).HasConversion(v => DecimalWire.Format(v), s => decimal.Parse(s, System.Globalization.CultureInfo.InvariantCulture));"
-                    : $"            {builder}.Property(p => p.{prop}).HasConversion(v => v == null ? null : DecimalWire.Format(v.Value), s => s == null ? (decimal?)null : decimal.Parse(s, System.Globalization.CultureInfo.InvariantCulture));");
+                    ? $"            {builder}.Property(p => p.{prop}).HasConversion(v => v.ToString(\"0.############################\", System.Globalization.CultureInfo.InvariantCulture), s => decimal.Parse(s, System.Globalization.CultureInfo.InvariantCulture));"
+                    : $"            {builder}.Property(p => p.{prop}).HasConversion(v => v == null ? null : v.Value.ToString(\"0.############################\", System.Globalization.CultureInfo.InvariantCulture), s => s == null ? (decimal?)null : decimal.Parse(s, System.Globalization.CultureInfo.InvariantCulture));");
                 continue;
             }
             if (nf.SubType != FIELD_SUBTYPE_ENUM) continue;

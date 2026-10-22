@@ -54,7 +54,7 @@ public final class ColumnNaming {
      * at the same page.
      */
     public static final String PHYSICAL_NAMING_MIGRATION_GUIDE =
-        "https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/physical-naming.md";
+        "https://github.com/metaobjectsdev/metaobjects/blob/v1.1.0/docs/features/migrations/physical-naming.md";
 
     /**
      * The exact refusal text for a configuration source ADR-0058 removed — a pom generator

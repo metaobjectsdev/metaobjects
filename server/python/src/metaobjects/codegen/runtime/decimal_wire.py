@@ -147,10 +147,14 @@ def coerce_decimal_fields(
     # field keeps it. A double/float field, or a number inside a jsonb value object, goes back
     # to the float a JSON number is for them (json.dumps cannot serialize a Decimal).
     nested = nested or {}
-    out = {
-        k: v if k in decimal_fields else _nested(v, nested[k], k) if k in nested else _floats(v)
-        for k, v in dto.items()
-    }
+    out: dict[str, Any] = {}
+    for k, v in dto.items():
+        if k in decimal_fields:
+            out[k] = v
+        elif k in nested:
+            out[k] = _nested(v, nested[k], k)
+        else:
+            out[k] = _floats(v)
     for name in decimal_fields:
         if name in out and out[name] is not None:
             limit = limits.get(name) if limits else None

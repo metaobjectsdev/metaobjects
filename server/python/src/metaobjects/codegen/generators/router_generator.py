@@ -204,10 +204,9 @@ def _decimal_limits(entities: list[MetaObject]) -> dict[str, tuple[int, int]]:
         for f in entity.fields():
             if f.sub_type != fc.FIELD_SUBTYPE_DECIMAL or f.name in out:
                 continue
-            precision = f.attrs().get(fc.FIELD_ATTR_PRECISION)
-            scale = f.attrs().get(fc.FIELD_ATTR_SCALE, 0)
-            if isinstance(precision, int) and not isinstance(precision, bool) and isinstance(scale, int):
-                out[f.name] = (precision, scale)
+            limit = _decimal_limit(f)
+            if limit is not None:
+                out[f.name] = limit
     return out
 
 

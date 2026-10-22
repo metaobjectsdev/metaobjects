@@ -84,8 +84,7 @@ export function parseDecimalInput(value: unknown): string | undefined {
  */
 export function decimalFromJsonNumber(value: number): string | undefined {
   if (!Number.isFinite(value)) return undefined;
-  if (Number.isSafeInteger(value)) return canonicalDecimal(String(value));
-  if (Number(value.toPrecision(15)) !== value) return undefined;
+  if (!Number.isSafeInteger(value) && Number(value.toPrecision(15)) !== value) return undefined;
   return canonicalDecimal(String(value));
 }
 
