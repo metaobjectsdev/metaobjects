@@ -15,7 +15,7 @@ Java `Object`, Kotlin `JsonElement`, C# `JsonDocument`); this corpus locks it
 in cross-port.
 
 The single `Document` entity (`acme::store`, `@table="documents"`) carries an
-open-bag field plus three value-object columns:
+open-bag field plus four value-object columns:
 
 | Field            | Type                                                      | Notes                                    |
 |------------------|----------------------------------------------------------|------------------------------------------|
@@ -25,6 +25,7 @@ open-bag field plus three value-object columns:
 | `primaryMarker`  | `field.object @objectRef=Marker @storage=jsonb @required`| required single VO — present-null → 400   |
 | `optionalMarker` | `field.object @objectRef=Marker @storage=jsonb`          | nullable single VO — FR-035 tristate      |
 | `markers`        | `field.object @objectRef=Marker @storage=jsonb isArray`  | nullable array of VO — `[]` ≠ null        |
+| `telemetry`      | `field.object @objectRef=Telemetry @storage=jsonb`       | nullable VO with required non-nullable value types — see `jsonb-value-object-required-value-types` |
 
 **Why `id` is `@required`.** It is the shape every real model has — a shared
 `BaseEntity` declares `id` required — and the one no other api-contract entity
@@ -53,7 +54,7 @@ The `Marker` value object (`object.value`) is `{ label: field.string @required
 ```
 jsonb/
 ├── README.md              # this file
-├── meta.json              # the Document entity + Marker value object
+├── meta.json              # the Document entity + Marker and Telemetry value objects
 ├── seed.json              # 2 seed Documents (ids 1, 2), jsonb object + VO columns
 └── scenarios/
     ├── jsonb-open-bag-roundtrip.yaml   # open-bag parsed-value contract
@@ -170,8 +171,9 @@ A value object whose REQUIRED members are non-nullable value types in the native
 (`Telemetry { capturedAt: field.timestamp @required; latitude: field.double @required; tempC:
 field.int }`, held by the nullable `Document.telemetry`). A port whose generated model cannot
 serialize or deserialize such a member answers every request that touches the owning entity
-with a 500 (C# 1.1.0-rc.8: a null-omission condition on a non-nullable `double` /
-`DateTimeOffset` made System.Text.Json throw).
+with a 500 (C# emitted a null-omission condition on a non-nullable `double` /
+`DateTimeOffset`, which System.Text.Json rejects with `InvalidOperationException`;
+the condition is emitted on nullable members only).
 
 | Requests | What it pins |
 |---|---|
