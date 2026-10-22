@@ -1,7 +1,10 @@
 # `api-contract-conformance/decimal/` — a decimal is exact on the wire (ADR-0019 Amendment 1)
 
-Cross-port REST contract for `field.decimal`, over one writable entity (`Entry`, a
-`decimal(28,10)` `amount`) and one served report (`EntryTotals`) read from it.
+Cross-port REST contract for `field.decimal`, over two writable entities and one served report: `Entry` (a
+`decimal(28,10)` `amount`) with the report `EntryTotals` read from it, and `Sample` (table `samples`,
+served at `/api/samples`), which carries the two shapes `Entry` does not: `readings`, a
+`field.decimal isArray` with `@precision 9 @scale 4`, and `free`, a `field.decimal` with NO
+`@precision` and NO `@scale`.
 
 ## The rule (W1 to W4)
 
@@ -21,6 +24,14 @@ Cross-port REST contract for `field.decimal`, over one writable entity (`Entry`,
   `"0.3"`. They do not promise `12345678901234567.89`, and equality against a computed double
   (a view's sum) is not promised either, so the `-15` scenarios use ranges there.
 
+- **W5, array.** Each element of a decimal array follows W1 to W3 on its own; an element that
+  fails makes the whole write `400 validation` and persists nothing. A null element is outside
+  the contract.
+- **W6, undeclared precision.** A decimal with no `@precision` has no range check and no implied
+  default (no `decimal(19,4)`): `1.234567` and a 20-integer-digit value are stored and read back
+  exactly and canonical, never rounded, never refused for size. Only a non-number is `400`.
+  The schemas: Postgres `NUMERIC` / `NUMERIC[]`, MySQL `DECIMAL(65,30)` / `JSON`, SQLite `NUMERIC` / `TEXT`.
+
 ## Scenarios
 
 `engines:` is exact (see the persistence corpus README): a scenario with it runs only on the
@@ -37,14 +48,17 @@ whose values fit 15 significant digits (buckets `A`, `D`, `E`, `F`), which every
 | `decimal-write-exact-15` | all | the 15-digit subset |
 | `decimal-report-exact` | postgres, mysql | the `EntryTotals` rows are exactly `seed.json` `reports`; a decimal measure filters exactly; `entries` (a count) is a JSON number |
 | `decimal-report-exact-15` | all | buckets A, D, E, F of the report |
+| `decimal-array-exact` | postgres | `Sample.readings`: POST `["100.5000", 2.5, "1.5e1"]` answers and reads `["100.5","2.5","15"]`; a 5th fraction digit, a 6th integer digit and a non-number element are `400 validation` and persist nothing; PATCH replaces (also `[]`, and `null`) |
+| `decimal-unbounded-exact` | postgres, mysql | `Sample.free`: `"1.234567"` and `"12345678901234567890.123456789"` are stored and read exactly; a JSON number is canonical; PATCH; `"12abc"` is `400` |
+| `decimal-unbounded-exact-15` | all | the 15-digit subset (`1.234567`, `123456789012.123`, `0.0000123`) |
 
 ## Files
 
 ```
 decimal/
 ├── README.md
-├── meta.json               # Entry + the EntryTotals report (served at /api/entry_totals)
-├── seed.json               # `entries` (eleven rows) and `reports` (what v_entry_totals returns)
+├── meta.json               # Entry + the EntryTotals report (served at /api/entry_totals) + Sample (/api/samples)
+├── seed.json               # `entries` (eleven rows), `samples` (empty, so the first POST is id 1) and `reports` (what v_entry_totals returns)
 ├── schema.postgres.sql     # TypeScript-produced: the table and the view
 ├── schema.sqlite.sql       # the same, for SQLite and D1
 ├── schema.mysql.sql        # MySQL 8.4: the hand-written table plus the view buildReportViews lowers

@@ -292,7 +292,7 @@ public class RoutesGenerator : PerEntityGenerator
             // body carries the derived (view-computed) fields (read-your-writes).
             AppendCreateHandler(sb, "/" + route, cls, dbSet, requiredKeys,
                 "Results.Created(prefix + \"/" + route + "\", input)", voFields, mapVoFields, autoSetFields,
-                writeThrough ? (readDbSet, pkProp!, route) : null);
+                writeThrough ? (readDbSet, pkProp!, route) : null, parseBody: HasDecimalField(entity));
 
             // PATCH + PUT share the same handler — TS reference exposes both verbs, and both
             // return the updated row (HTTP 200), matching the cross-port api-contract.
@@ -315,7 +315,10 @@ public class RoutesGenerator : PerEntityGenerator
             sb.AppendLine("        {");
             sb.AppendLine("            var existing = await db." + dbSet + ".FindAsync(id);");
             sb.AppendLine("            if (existing is null) return Results.NotFound(new { error = \"not_found\" });");
-            sb.AppendLine("            using var body = await System.Text.Json.JsonDocument.ParseAsync(http.Request.Body);");
+            sb.AppendLine("            System.Text.Json.JsonDocument body;");
+            sb.AppendLine("            try { body = await System.Text.Json.JsonDocument.ParseAsync(http.Request.Body); }");
+            sb.AppendLine("            catch (System.Text.Json.JsonException) { return Results.BadRequest(new { error = \"validation\" }); }");
+            sb.AppendLine("            using var bodyScope = body;");
             sb.AppendLine("            // Deserialize each value with the app's CONFIGURED JSON options, not defaults —");
             sb.AppendLine("            // a field.timestamp binds to DateTimeOffset via a custom converter registered on");
             sb.AppendLine("            // ConfigureHttpJsonOptions, and default options cannot read the wire format, throwing 500.");
@@ -749,9 +752,13 @@ public class RoutesGenerator : PerEntityGenerator
         IReadOnlyList<string> requiredKeys, string createdExpr, IReadOnlyList<VoField> voFields,
         IReadOnlyList<MapVoField> mapVoFields,
         IReadOnlyList<AutoSetField> autoSetFields,
-        (string ReadDbSet, string PkProp, string Route)? reRead = null)
+        (string ReadDbSet, string PkProp, string Route)? reRead = null,
+        bool parseBody = false)
     {
-        if (requiredKeys.Count == 0)
+        // A decimal field can refuse its value while the body is bound (out of declared range, not a
+        // number). The framework's own binding answers that with a bare 400 and no body, so an entity
+        // carrying one parses the body itself and returns the cross-port {error:"validation"} envelope.
+        if (requiredKeys.Count == 0 && !parseBody)
         {
             sb.AppendLine($"        app.MapPost(prefix + \"{mapPath}\", async ({cls} input, AppDbContext db) =>");
             sb.AppendLine("        {");
@@ -766,7 +773,10 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine($"        app.MapPost(prefix + \"{mapPath}\", async (HttpContext http, AppDbContext db) =>");
         sb.AppendLine("        {");
         AppendJsonOptsLocal(sb);
-        sb.AppendLine("            using var __body = await System.Text.Json.JsonDocument.ParseAsync(http.Request.Body);");
+        sb.AppendLine("            System.Text.Json.JsonDocument __body;");
+        sb.AppendLine("            try { __body = await System.Text.Json.JsonDocument.ParseAsync(http.Request.Body); }");
+        sb.AppendLine("            catch (System.Text.Json.JsonException) { return Results.BadRequest(new { error = \"validation\" }); }");
+        sb.AppendLine("            using var __bodyScope = __body;");
         sb.AppendLine("            if (__body.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object)");
         sb.AppendLine("                return Results.BadRequest(new { error = \"validation\" });");
         // FR-036 #4 — @required-key presence: an omitted key OR an explicit null on a @required
@@ -775,7 +785,7 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine("            var __present = new System.Collections.Generic.HashSet<string>(System.StringComparer.OrdinalIgnoreCase);");
         sb.AppendLine("            foreach (var __p in __body.RootElement.EnumerateObject())");
         sb.AppendLine("                if (__p.Value.ValueKind != System.Text.Json.JsonValueKind.Null) __present.Add(__p.Name);");
-        sb.Append("            foreach (var __req in new[] { ");
+        sb.Append(requiredKeys.Count == 0 ? "            foreach (var __req in new string[] { " : "            foreach (var __req in new[] { ");
         sb.Append(string.Join(", ", requiredKeys.Select(k => "\"" + k + "\"")));
         sb.AppendLine(" })");
         sb.AppendLine("                if (!__present.Contains(__req)) return Results.BadRequest(new { error = \"validation\" });");
@@ -922,8 +932,20 @@ public class RoutesGenerator : PerEntityGenerator
     // (`mount`). The parameter keeps its name `app`, so a caller passing `app:` by name still compiles.
     // true iff the entity has a field that surfaces as a CLR decimal (and so a DecimalWire copy
     // is emitted into its namespace).
-    private static bool HasDecimalField(MetaObject entity) =>
-        entity.Fields().Any(f => f.SubType == FIELD_SUBTYPE_DECIMAL && CSharpNaming.DbColumnTypeClrOverride(f) is null);
+    // A decimal reached through a value-object column counts too: its member is bound from the body
+    // with the same exact-read rule, so the same {error:"validation"} envelope must answer a refusal.
+    private static bool HasDecimalField(MetaObject entity, HashSet<MetaObject>? seen = null)
+    {
+        seen ??= [];
+        if (!seen.Add(entity)) return false;
+        foreach (var f in entity.Fields())
+        {
+            if (f.SubType == FIELD_SUBTYPE_DECIMAL && CSharpNaming.DbColumnTypeClrOverride(f) is null) return true;
+            if (f.SubType == FIELD_SUBTYPE_OBJECT && ValueObjectNames.ResolveFieldRef(f, entity) is { } vo
+                && HasDecimalField(vo, seen)) return true;
+        }
+        return false;
+    }
 
     private static void AppendDecimalRangeGroup(StringBuilder sb)
         {
@@ -1167,7 +1189,8 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine();
         // VO columns on a TPH subtype are out of scope (Program D §6) — no typed arms.
         AppendCreateHandler(sb, "/" + subRoute, subCls, dbSet, requiredKeys,
-            "Results.Created(prefix + \"/" + subRoute + "/\" + input." + pkProp + ", input)", [], mapVoFields, autoSetFields);
+            "Results.Created(prefix + \"/" + subRoute + "/\" + input." + pkProp + ", input)", [], mapVoFields, autoSetFields,
+            parseBody: HasDecimalField(st.Entity));
 
         // Per-subtype update (PATCH + PUT): partial merge of the JSON body onto the scoped
         // entity, NEVER touching the PK or the discriminator. Cross-subtype id → 404.
@@ -1176,7 +1199,9 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine("        {");
         sb.AppendLine($"            var existing = await db.{dbSet}.OfType<{subCls}>().FirstOrDefaultAsync(x => x.{pkProp} == id);");
         sb.AppendLine("            if (existing is null) return Results.NotFound(new { error = \"not_found\" });");
-        sb.AppendLine("            var body = await System.Text.Json.JsonDocument.ParseAsync(http.Request.Body);");
+        sb.AppendLine("            System.Text.Json.JsonDocument body;");
+        sb.AppendLine("            try { body = await System.Text.Json.JsonDocument.ParseAsync(http.Request.Body); }");
+        sb.AppendLine("            catch (System.Text.Json.JsonException) { return Results.BadRequest(new { error = \"validation\" }); }");
         sb.AppendLine("            // Configured JSON options (not defaults) so a custom converter — e.g. the");
         sb.AppendLine("            // field.timestamp DateTimeOffset converter — is honored; defaults throw 500 on it.");
         sb.AppendLine("            var jsonOpts = ((Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>)");

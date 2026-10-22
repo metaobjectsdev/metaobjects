@@ -275,7 +275,7 @@ public static class CodegenCli
     /// <c>DOCS_MIGRATION_GUIDE</c>, Python's <c>_MIGRATION_SECTION</c>, Java's
     /// <c>DocsMojo.MIGRATION</c>); moving the document is one edit here too, not a six-site grep.</summary>
     public const string DocsMigrationGuide =
-        "https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md, section \"C#\"";
+        "https://github.com/metaobjectsdev/metaobjects/blob/v1.1.0/docs/features/migrations/docs-are-generators.md, section \"C#\"";
 
     /// <summary>What <c>dotnet meta docs</c> prints, exit 2: the command was removed.</summary>
     public const string DocsCommandRemoved =
@@ -482,7 +482,7 @@ public static class CodegenCli
     /// points at the same place.
     /// </summary>
     public const string PhysicalNamingMigrationGuide =
-        "https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/physical-naming.md";
+        "https://github.com/metaobjectsdev/metaobjects/blob/v1.1.0/docs/features/migrations/physical-naming.md";
 
     /// <summary>
     /// What <c>--column-naming &lt;value&gt;</c> prints, exit 2, on <c>dotnet meta gen</c> or

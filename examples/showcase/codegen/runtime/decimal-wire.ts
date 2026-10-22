@@ -71,8 +71,21 @@ export function decimalFromDouble15(value: number): string | undefined {
  */
 export function parseDecimalInput(value: unknown): string | undefined {
   if (typeof value === "string") return canonicalDecimal(value);
-  if (typeof value === "number") return decimalFromDouble15(value);
+  if (typeof value === "number") return decimalFromJsonNumber(value);
   return undefined;
+}
+
+/**
+ * W2 for a JSON number on input. `JSON.parse` has already rounded the client's digits to a double,
+ * so only a number that IS its own 15-digit form (or a safe integer, taken as `String(n)`) can be
+ * read exactly: anything else would be silently rounded, so it is refused (`undefined`) and the
+ * client is told to send a string. The test is `Number(n.toPrecision(15)) === n`: a number whose
+ * shortest round-trip form carries more than 15 significant digits fails it.
+ */
+export function decimalFromJsonNumber(value: number): string | undefined {
+  if (!Number.isFinite(value)) return undefined;
+  if (!Number.isSafeInteger(value) && Number(value.toPrecision(15)) !== value) return undefined;
+  return canonicalDecimal(String(value));
 }
 
 /** W2 for a query-string filter operand: the same grammar as a body string, compared exactly. */

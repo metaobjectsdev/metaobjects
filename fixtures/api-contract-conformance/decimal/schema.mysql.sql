@@ -9,6 +9,12 @@ CREATE TABLE `entries` (
   `flagged` BOOLEAN NOT NULL
 );
 
+CREATE TABLE `samples` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `readings` JSON,
+  `free` DECIMAL(65,30)
+);
+
 CREATE VIEW `v_entry_totals` AS
   SELECT
     e.`bucket` AS `bucket`,

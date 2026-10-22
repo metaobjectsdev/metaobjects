@@ -1,0 +1,106 @@
+name: decimal-array-exact
+description: >
+  A `field.decimal isArray` (Sample.readings, @precision 9, @scale 4) follows the W1 to W3 rule per
+  element. Each element comes in as a string in the JSON-number grammar or a JSON number;
+  it is stored and answered canonical (`"100.5000"` is "100.5", `"1.5e1"` is "15", the number 2.5 is
+  "2.5"). (A null element is not part of the contract.) An element past @scale (a 5th fraction digit) or
+  past @precision - @scale integer digits (a 6th), or one that is not a number, makes the whole write
+  `400 {"error": "validation"}` and persists nothing. PATCH replaces the whole array; `[]` is an empty
+  array, distinct from null. Table `samples` starts empty (seed `samples: []`), so the first POST is id 1.
+  Postgres only: SQLite and MySQL have no native array column, and a port's runtime need not
+  support an array there.
+engines: [postgres]
+requests:
+  - id: r1
+    method: POST
+    path: /api/samples
+    body: { readings: ["100.5000", 2.5, "1.5e1"] }
+    expect:
+      status: 201
+      body:
+        hasId: true
+        row:
+          readings: ["100.5", "2.5", "15"]
+  - id: r2
+    method: GET
+    path: /api/samples/1
+    expect:
+      status: 200
+      body:
+        row:
+          id: 1
+          readings: ["100.5", "2.5", "15"]
+  - id: r3
+    method: POST
+    path: /api/samples
+    body: { readings: ["1.12345"] }
+    expect:
+      status: 400
+      body:
+        error: validation
+  - id: r4
+    method: POST
+    path: /api/samples
+    body: { readings: ["1.5", "123456.5"] }
+    expect:
+      status: 400
+      body:
+        error: validation
+  - id: r5
+    method: POST
+    path: /api/samples
+    body: { readings: ["1.5", "12abc"] }
+    expect:
+      status: 400
+      body:
+        error: validation
+  - id: r6
+    method: GET
+    path: /api/samples
+    expect:
+      status: 200
+      body:
+        length: 1
+  - id: r7
+    method: PATCH
+    path: /api/samples/1
+    body: { readings: [0.5, "-3.2500", "0.0000"] }
+    expect:
+      status: 200
+      body:
+        row:
+          readings: ["0.5", "-3.25", "0"]
+  - id: r8
+    method: PATCH
+    path: /api/samples/1
+    body: { readings: ["0.00001"] }
+    expect:
+      status: 400
+      body:
+        error: validation
+  - id: r9
+    method: GET
+    path: /api/samples/1
+    expect:
+      status: 200
+      body:
+        row:
+          readings: ["0.5", "-3.25", "0"]
+  - id: r10
+    method: PATCH
+    path: /api/samples/1
+    body: { readings: [] }
+    expect:
+      status: 200
+      body:
+        row:
+          readings: []
+  - id: r11
+    method: PATCH
+    path: /api/samples/1
+    body: { readings: null }
+    expect:
+      status: 200
+      body:
+        row:
+          readings: null

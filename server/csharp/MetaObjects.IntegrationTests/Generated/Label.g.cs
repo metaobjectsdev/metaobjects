@@ -12,7 +12,9 @@ namespace MetaObjects.IntegrationTests.Generated;
 public class Label
 {
     [JsonPropertyName("key")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Key { get; set; }
     [JsonPropertyName("weight")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public int? Weight { get; set; }
 }

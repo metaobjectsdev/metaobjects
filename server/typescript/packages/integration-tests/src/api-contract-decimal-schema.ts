@@ -28,6 +28,12 @@ const MYSQL_TABLES = [
   \`amount\` DECIMAL(28,10),
   \`flagged\` BOOLEAN NOT NULL
 )`,
+  // MySQL has no array column and no unbounded decimal: readings is JSON (strings), free is the widest DECIMAL.
+  `CREATE TABLE \`samples\` (
+  \`id\` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  \`readings\` JSON,
+  \`free\` DECIMAL(65,30)
+)`,
 ];
 
 /** The bytes of decimal/schema.<dialect>.sql for a loaded decimal/meta.json. */

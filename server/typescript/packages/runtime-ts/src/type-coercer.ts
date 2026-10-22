@@ -18,7 +18,7 @@
 // strings for temporal columns directly, and the temporal read parsers pin the
 // wire form.
 
-import type { MetaData } from "@metaobjectsdev/metadata";
+import { refTarget, type MetaData } from "@metaobjectsdev/metadata";
 import {
   TYPE_FIELD,
   FIELD_SUBTYPE_BOOLEAN,
@@ -27,6 +27,8 @@ import {
   FIELD_SUBTYPE_OBJECT,
   FIELD_SUBTYPE_TIMESTAMP,
   FIELD_ATTR_STORAGE,
+  FIELD_ATTR_OBJECT_REF,
+  OBJECT_SUBTYPE_VALUE,
   FIELD_ATTR_DB_COLUMN_TYPE,
   FIELD_ATTR_INT_VALUE_MAP,
   FIELD_ATTR_PRECISION,
@@ -290,45 +292,76 @@ function parseJsonTextArrays(entity: MetaData, row: Row): Row {
   return out ?? row;
 }
 
-/** Read side: every `field.decimal` the row carries becomes its canonical string. */
-function canonicalizeDecimals(entity: MetaData, row: Row): Row {
+/** The `object.value` a jsonb `field.object` references, or undefined (not a value object, or unresolved). */
+function valueObjectOf(field: MetaData): MetaData | undefined {
+  if (field.type !== TYPE_FIELD || field.subType !== FIELD_SUBTYPE_OBJECT) return undefined;
+  // ADR-0059 R7: the object the loader bound @objectRef to.
+  const target = refTarget(field, FIELD_ATTR_OBJECT_REF);
+  return target?.subType === OBJECT_SUBTYPE_VALUE ? target : undefined;
+}
+
+/**
+ * Apply `convert` to every `field.decimal` of `owner` present in `row`, and recurse into a
+ * `field.object` whose value object declares decimals (captain ruling C1: a decimal inside a
+ * jsonb value object follows the top-level rule). `convert` answers the new value; a row, an
+ * object or an array is copied only when something changed.
+ */
+function mapDecimals(
+  owner: MetaData,
+  row: Row,
+  convert: (field: MetaData, value: unknown) => unknown,
+): Row {
   let out: Row | null = null;
   // Effective children (ADR-0039): a decimal may be inherited via extends, and a report's
   // derived ratio / average / sum is a decimal field of the report itself.
-  for (const child of entity.children()) {
-    if (child.type !== TYPE_FIELD || child.subType !== FIELD_SUBTYPE_DECIMAL) continue;
+  for (const child of owner.children()) {
+    if (child.type !== TYPE_FIELD) continue;
     if (!(child.name in row)) continue;
     const v = row[child.name];
     if (v === null || v === undefined) continue;
-    const wire = decimalToWire(v);
-    if (wire === v) continue;
+    let next: unknown = v;
+    if (child.subType === FIELD_SUBTYPE_DECIMAL) {
+      next = convert(child, v);
+    } else {
+      const vo = valueObjectOf(child);
+      if (vo === undefined) continue;
+      const one = (el: unknown): unknown =>
+        el !== null && typeof el === "object" && !Array.isArray(el) ? mapDecimals(vo, el as Row, convert) : el;
+      if (Array.isArray(v)) {
+        const mapped = v.map(one);
+        if (mapped.some((el, i) => el !== v[i])) next = mapped;
+      } else {
+        next = one(v);
+      }
+    }
+    if (next === v) continue;
     out ??= { ...row };
-    out[child.name] = wire;
+    out[child.name] = next;
   }
   return out ?? row;
 }
 
+/** Read side: every `field.decimal` the row carries becomes its canonical string. */
+function canonicalizeDecimals(entity: MetaData, row: Row): Row {
+  return mapDecimals(entity, row, (_field, v) => decimalToWire(v));
+}
+
 /**
  * Write side: a `field.decimal` value is bound as its exact canonical string, and a decimal
- * declared `isArray` as an array of them. A string in the JSON-number grammar or a number is
- * accepted; anything else, or a value the declared `@precision` / `@scale` cannot hold (W3), is
- * refused here rather than reaching a column that would round it, reject it with a driver error,
- * or store garbage.
+ * declared `isArray` as an array of them. A string in the JSON-number grammar or a number a double
+ * holds exactly is accepted; anything else, or a value the declared `@precision` / `@scale` cannot
+ * hold (W3), is refused here rather than reaching a column that would round it, reject it with a
+ * driver error, or store garbage. A decimal inside a jsonb value object is bound the same way.
  */
 function bindDecimals(entity: MetaData, row: Row): Row {
-  let out: Row | null = null;
-  // ADR-0039: resolving — a decimal, its isArray and its @precision / @scale may be inherited.
-  for (const child of entity.children()) {
-    if (child.type !== TYPE_FIELD || child.subType !== FIELD_SUBTYPE_DECIMAL) continue;
-    if (!(child.name in row)) continue;
-    const v = row[child.name];
-    if (v === null || v === undefined) continue;
+  return mapDecimals(entity, row, (child, v) => {
+    // ADR-0039: resolving — a decimal, its isArray and its @precision / @scale may be inherited.
     const precision = child.attr(FIELD_ATTR_PRECISION);
     const scale = child.attr(FIELD_ATTR_SCALE);
     const bind = (value: unknown): string => {
       const canonical = parseDecimalInput(value);
       if (canonical === undefined) {
-        throw new Error(`field.decimal '${child.name}' cannot be written: ${JSON.stringify(value)} is not a decimal number (a string in the JSON-number grammar, or a number)`);
+        throw new Error(`field.decimal '${child.name}' cannot be written: ${JSON.stringify(value)} is not a decimal number (a string in the JSON-number grammar, or a number a double holds exactly: send a string for more than 15 significant digits)`);
       }
       if (!decimalFits(canonical, typeof precision === "number" ? precision : undefined, typeof scale === "number" ? scale : undefined)) {
         throw new Error(`field.decimal '${child.name}' cannot be written: ${canonical} does not fit @precision ${String(precision)} / @scale ${String(scale ?? 0)}`);
@@ -339,14 +372,8 @@ function bindDecimals(entity: MetaData, row: Row): Row {
       if (!Array.isArray(v)) {
         throw new Error(`field.decimal '${child.name}' cannot be written: ${JSON.stringify(v)} is not an array of decimal numbers`);
       }
-      out ??= { ...row };
-      out[child.name] = v.map((element) => (element === null ? null : bind(element)));
-      continue;
+      return v.map((element) => (element === null ? null : bind(element)));
     }
-    const canonical = bind(v);
-    if (canonical === v) continue;
-    out ??= { ...row };
-    out[child.name] = canonical;
-  }
-  return out ?? row;
+    return bind(v);
+  });
 }

@@ -9,6 +9,12 @@ CREATE TABLE "entries" (
   "flagged" INTEGER NOT NULL
 );
 
+CREATE TABLE "samples" (
+  "id" INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+  "readings" TEXT,
+  "free" NUMERIC
+);
+
 CREATE VIEW "v_entry_totals" AS
   SELECT
     e."bucket" AS "bucket",

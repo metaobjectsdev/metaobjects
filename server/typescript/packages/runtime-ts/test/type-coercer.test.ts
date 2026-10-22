@@ -128,3 +128,68 @@ describe("field.decimal isArray", () => {
     expect(() => coerceRowOnWrite(e, { amount: "0.12345" }, "postgres")).toThrow("does not fit");
   });
 });
+
+describe("a field.decimal inside a jsonb value object (captain ruling C1)", () => {
+  async function invoice(): Promise<MetaData> {
+    const model = { "metadata.root": { package: "ledger", children: [
+      { "object.value": { name: "Money", children: [
+        { "field.decimal": { name: "amount", "@precision": 9, "@scale": 4 } },
+      ]}},
+      { "object.entity": { name: "Invoice", children: [
+        { "field.long": { name: "id" } },
+        { "field.object": { name: "total", "@objectRef": "Money", "@storage": "jsonb" } },
+        { "field.object": { name: "lines", "@objectRef": "Money", isArray: true, "@storage": "jsonb" } },
+        { "identity.primary": { name: "pk", "@fields": "id" } },
+      ]}},
+    ]}};
+    const { root, errors } = await new MetaDataLoader({ strict: true }).load([
+      new InMemoryStringSource(JSON.stringify(model), { id: "ledger.json" }),
+    ]);
+    expect(errors).toEqual([]);
+    return root.objects().find((o) => o.name === "Invoice") as MetaData;
+  }
+
+  test("write: a string or exact number is bound as the canonical string, single and array", async () => {
+    const e = await invoice();
+    const out = coerceRowOnWrite(e, { id: 1, total: { amount: 100.25 }, lines: [{ amount: "2.5000" }, { amount: 0.3 }] }, "postgres");
+    expect(JSON.parse(out.total as string)).toEqual({ amount: "100.25" });
+    expect(JSON.parse(out.lines as string)).toEqual([{ amount: "2.5" }, { amount: "0.3" }]);
+  });
+
+  test("write: excess scale, a non-number, and an inexact JSON number are refused", async () => {
+    const e = await invoice();
+    for (const amount of ["0.12345", "100000", "12abc", 1234567890.123456789]) {
+      expect(() => coerceRowOnWrite(e, { id: 1, total: { amount } }, "postgres")).toThrow(/field\.decimal 'amount' cannot be written/);
+      expect(() => coerceRowOnWrite(e, { id: 1, lines: [{ amount }] }, "postgres")).toThrow(/field\.decimal 'amount' cannot be written/);
+    }
+  });
+
+  test("read: a stored uncanonical string, or a number, is answered canonical", async () => {
+    const e = await invoice();
+    const out = coerceRowOnRead(e, { id: 1, total: '{"amount":"1.5000"}', lines: [{ amount: "2.50" }, { amount: 0.1 }] }, "postgres");
+    expect(out.total).toEqual({ amount: "1.5" });
+    expect(out.lines).toEqual([{ amount: "2.5" }, { amount: "0.1" }]);
+  });
+});
+
+describe("runValidators on a decimal (ADR-0019 Amendment 1)", () => {
+  test("a non-number, an inexact JSON number and an excess scale are validation failures, not thrown errors", async () => {
+    const { runValidators } = await import("../src/validator-runner.js");
+    const { root, errors } = await new MetaDataLoader({ strict: true }).load([
+      new InMemoryStringSource(JSON.stringify({ "metadata.root": { package: "p", children: [
+        { "object.entity": { name: "E", children: [
+          { "field.long": { name: "id" } },
+          { "field.decimal": { name: "amt", "@precision": 9, "@scale": 4 } },
+          { "identity.primary": { name: "pk", "@fields": "id" } },
+        ]}},
+      ]}}), { id: "p.json" }),
+    ]);
+    expect(errors).toEqual([]);
+    const e = root.objects().find((o) => o.name === "E") as MetaData;
+    expect(runValidators(e, { id: 1, amt: "1.5" }).ok).toBe(true);
+    expect(runValidators(e, { id: 1, amt: 0.25 }).ok).toBe(true);
+    for (const amt of ["12abc", "1.12345", "123456", 1234567890.123456789, true]) {
+      expect(runValidators(e, { id: 1, amt }).ok).toBe(false);
+    }
+  });
+});

@@ -176,7 +176,7 @@ Publish in tier order so a dependent never lands before its dependency. **`forge
    lands, the page would publish the previous release's versions.
 
 7. **`v<version>` is cut LAST, and it is not just a marker — the website deploys from it.**
-   metaobjects.dev's Pages workflow resolves the newest `v0.x` tag, clones that tree, and
+   metaobjects.dev's Pages workflow resolves the newest `vN.N.N` release tag (version-agnostic), clones that tree, and
    injects its `examples/showcase/site-payload.json` into the pages. So the tag decides
    what the site states about the release, **including all five version coordinates.**
 
@@ -202,6 +202,10 @@ Publish in tier order so a dependent never lands before its dependency. **`forge
    missing injector / payload / `site-reference/`, **llms mirrors naming a version this
    release did not ship on any line that makes a registry claim**, or a tag the deploy's
    own filter would not resolve.
+
+   **The tag does not trigger the site.** After `finish-release` has pushed the tag, dispatch
+   the website repository's **Deploy to GitHub Pages** workflow by hand (the previous releases
+   did the same); until you do, the site keeps stating the previous release.
 
    A registry that genuinely **sat out** the release under publish-what-changed is declared
    (`--sat-out pypi,nuget`) rather than guessed — guessing "sat out" ships the stale number,
@@ -557,10 +561,14 @@ are its check.
 **Before `bun publish`: run the FULL local CI on the release commit and confirm it is
 green.** Its `ts-slow` section carries the real-Postgres migrate gate. Publishing is
 irreversible on all four registries, and the `v*` tag is pushed *after* `bun publish`, so
-even if Actions were on, a tag-triggered `integration-tests` run could never be the
-pre-publish gate. This is the last gate that can precede the irreversible step — and with
-Actions disabled it is the only one, so the flagless script (all five ports, the reactor,
-the docker matrix) is what you run, not `--quick`.
+even though Actions is on (since 2026-09-20), a tag-triggered `integration-tests` run could
+never be the pre-publish gate. This is the last gate that can precede the irreversible step,
+and it is the only one that runs before it, so the flagless script (all five ports, the
+reactor, the docker matrix) is what you run, not `--quick`. Run it on the commit you will
+tag, after every fix for this release has merged: the `python-v`, `csharp-v` and `java-v`
+tags must sit on that same commit, so cut the npm release commit from `main` only once the
+last fix is in, and tag all three ports on it (a Python tag on an earlier commit publishes
+without the later fixes).
 
 ```bash
 scripts/ci-local.sh --strict-toolchains        # must end "LOCAL CI PASSED"
@@ -839,6 +847,11 @@ versioned on its own major line — npm major + 7, so `7.x` while npm was `0.x` 
 > ```
 > If all are `200`, the release is out — the error was just the response parse. Bump the plugin to
 > ≥`0.7.0` to stop the crash on the next release.
+>
+> **A polling timeout can also report red after the deployment published.** `java-v8.0.11`
+> failed with `Polling for … timed out before the deployment completed`, yet 8.0.11 is on
+> Central (HTTP 200). Check Central with the loop above before any re-run: a re-run of a
+> published version fails as a duplicate.
 
 **The `minor.patch` is CONVERGENT across languages, not lockstepped** (standing policy since
 0.25.0): npm, PyPI and NuGet share one `major.minor.patch` and Maven Central takes the same

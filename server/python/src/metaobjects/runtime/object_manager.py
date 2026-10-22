@@ -1028,6 +1028,8 @@ def _coerce_write_value(field: MetaField, value: Any) -> Any:
     # decimal / currency: a decimal authored as a string → Decimal (exact; never
     # via float). currency is integer minor units — already an int, pass through.
     if sub == fc.FIELD_SUBTYPE_DECIMAL:
+        if _field_is_array(field) and isinstance(value, list):
+            return [None if v is None else v if isinstance(v, _decimal.Decimal) else _decimal.Decimal(str(v)) for v in value]
         return value if isinstance(value, _decimal.Decimal) else _decimal.Decimal(str(value))
 
     # uuid (logical field.uuid, or a string field pinned to a uuid column):

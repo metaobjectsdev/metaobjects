@@ -3,7 +3,8 @@
     { "id": 1, "title": "alpha", "payload": { "seeded": true, "n": 1 },
       "primaryMarker": { "label": "seed-owner-a", "score": 1 },
       "optionalMarker": { "label": "seed-opt-a", "score": 2 },
-      "markers": [ { "label": "m1", "score": 10 }, { "label": "m2", "score": 20 } ] },
+      "markers": [ { "label": "m1", "score": 10 }, { "label": "m2", "score": 20 } ],
+      "measure": { "ratio": 0.25, "samples": [0.5, 1.75], "amount": "1.5" } },
     { "id": 2, "title": "beta",  "payload": { "k": "v" },
       "primaryMarker": { "label": "seed-owner-b", "score": 3 } }
   ]

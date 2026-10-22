@@ -777,9 +777,10 @@ function zodFieldExpr(
     case FIELD_SUBTYPE_DECIMAL: {
       // ADR-0019 Amendment 1 (W2, W3): a WRITE shape takes a decimal as a string in the
       // JSON-number grammar or a JSON number, stores its canonical string, and refuses what the
-      // column cannot hold. The TPH read shape parses rows the database already holds, and a value
-      // object's member is JSON that stores whatever it is given, so both keep a bare string.
-      if (readShape || owner?.subType === OBJECT_SUBTYPE_VALUE) {
+      // column cannot hold. A decimal inside a jsonb value object follows the same rule (captain
+      // ruling C1: its @precision / @scale bound it, the stored JSON holds the canonical string).
+      // Only the TPH read shape, which parses rows the database already holds, keeps a bare string.
+      if (readShape) {
         baseStr = "z.string()";
         break;
       }

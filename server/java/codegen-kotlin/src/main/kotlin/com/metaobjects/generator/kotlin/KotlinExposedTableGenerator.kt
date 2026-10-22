@@ -652,7 +652,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         // The decimal column type reads a SQLite double through the package's generated decimal wire.
         KotlinDecimalWireEmitter.write(pkg, outRoot)
         val api = exposedApi()
-        emitSupportFile(pkg, outRoot, PORTABLE_SUPPORT_FILE_NAME, portableSupportFileImports(api), portableSupportBlock())
+        emitSupportFile(pkg, outRoot, PORTABLE_SUPPORT_FILE_NAME, portableSupportFileImports(api), portableSupportBlock(api))
     }
 
     private fun emitUuidStringSupportFile(pkg: String, outRoot: Path) {
@@ -1700,9 +1700,11 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             |import ${ExposedImports.core(api, "ColumnType")}
             |import ${ExposedImports.core(api, "DecimalColumnType")}
             |import ${ExposedImports.core(api, "Table")}
+            |import ${ExposedImports.statementsApi(api, "PreparedStatementApi")}
             |import $uuidColumnTypeImport
             |import ${ExposedImports.vendors(api, "currentDialect")}
-            |""".trimMargin()
+            |${if (api == ExposedApi.V1) "import org.jetbrains.exposed.v1.jdbc.statements.jdbc.JdbcPreparedStatementImpl" else ""}
+            |""".trimMargin().replace("\n\n", "\n").trimEnd() + "\n"
         }
 
         /**
@@ -1713,7 +1715,18 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
          * everything to Exposed's own column type and changes only the value it hands the driver,
          * and only on the engine that needs it. Postgres is untouched.
          */
-        fun portableSupportBlock(): String = """
+        fun portableSupportBlock(api: ExposedApi): String {
+            // 0.x binds a typed array by element-type name; 1.x wants an ArrayColumnType there, so it
+            // binds through the raw JDBC statement, as MetaInetColumnType does.
+            val decimalArrayBind = if (api == ExposedApi.V1) {
+                "            @Suppress(\"UNCHECKED_CAST\")\n" +
+                    "            val raw = (stmt as JdbcPreparedStatementImpl).statement\n" +
+                    "            raw.setArray(index, raw.connection.createArrayOf(\"numeric\", value as Array<Any?>))"
+            } else {
+                "            @Suppress(\"UNCHECKED_CAST\")\n" +
+                    "            stmt.setArray(index, \"numeric\", value as Array<Any?>)"
+            }
+            return """
             |private fun isPostgres(): Boolean = currentDialect.name.equals("postgresql", ignoreCase = true)
             |
             |private fun isSqlite(): Boolean = currentDialect.name.equals("sqlite", ignoreCase = true)
@@ -1753,7 +1766,61 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             |/** Column builder for `field.decimal`: a `Column<java.math.BigDecimal>`. */
             |internal fun Table.portableDecimal(name: String, precision: Int, scale: Int): Column<BigDecimal> =
             |    registerColumn(name, MetaPortableDecimalColumnType(precision, scale))
+            |
+            |/**
+            | * GENERATED — do not hand-edit. A decimal column with no declared `@precision`: plain unbounded
+            | * `NUMERIC`, read exactly. Exposed's own `DecimalColumnType` would round every value to its scale
+            | * (HALF_EVEN) on read, so this type does not delegate the read to it.
+            | */
+            |internal class MetaUnboundedDecimalColumnType : ColumnType<BigDecimal>() {
+            |    override fun sqlType(): String = "NUMERIC"
+            |    override fun valueFromDB(value: Any): BigDecimal = when {
+            |        value is BigDecimal -> value
+            |        value is Number && isSqlite() -> MetaDecimalWire.fromDouble15(value.toDouble())
+            |        else -> BigDecimal(value.toString())
+            |    }
+            |    override fun notNullValueToDB(value: BigDecimal): Any =
+            |        if (isSqlite()) value.toDouble() else value
+            |    override fun nonNullValueToString(value: BigDecimal): String = value.toPlainString()
+            |}
+            |
+            |/** Column builder for a `field.decimal` with no `@precision`: a `Column<java.math.BigDecimal>`, unbounded. */
+            |internal fun Table.portableDecimal(name: String): Column<BigDecimal> =
+            |    registerColumn(name, MetaUnboundedDecimalColumnType())
+            |
+            |/**
+            | * GENERATED — do not hand-edit. An `isArray` decimal column: a native `NUMERIC[]` on Postgres, and on
+            | * MySQL and SQLite (no array type) a JSON text array of canonical strings. Elements are read exactly.
+            | */
+            |internal class MetaDecimalArrayColumnType : ColumnType<List<BigDecimal>>() {
+            |    private fun isMySql(): Boolean = currentDialect.name.let { it.equals("mysql", ignoreCase = true) || it.equals("mariadb", ignoreCase = true) }
+            |    private fun decimalOf(element: Any): BigDecimal = if (element is BigDecimal) element else BigDecimal(element.toString())
+            |    private fun json(value: List<BigDecimal>): String = value.joinToString(",", "[", "]") { "\"" + MetaDecimalWire.format(it) + "\"" }
+            |    override fun sqlType(): String = if (isPostgres()) "NUMERIC[]" else if (isMySql()) "JSON" else "TEXT"
+            |    override fun valueFromDB(value: Any): List<BigDecimal> = when (value) {
+            |        is java.sql.Array -> (value.array as Array<*>).map { decimalOf(it!!) }
+            |        is Array<*> -> value.map { decimalOf(it!!) }
+            |        is List<*> -> value.map { decimalOf(it!!) }
+            |        else -> com.fasterxml.jackson.databind.ObjectMapper().readTree(value.toString()).map { MetaDecimalWire.fromNode(it) }
+            |    }
+            |    override fun notNullValueToDB(value: List<BigDecimal>): Any =
+            |        if (isPostgres()) value.toTypedArray<Any?>() else json(value)
+            |    override fun nonNullValueToString(value: List<BigDecimal>): String =
+            |        if (isPostgres()) value.joinToString(",", "ARRAY[", "]::numeric[]") { it.toPlainString() } else "'" + json(value) + "'"
+            |    override fun setParameter(stmt: PreparedStatementApi, index: Int, value: Any?) {
+            |        if (value is Array<*>) {
+            |$decimalArrayBind
+            |        } else {
+            |            super.setParameter(stmt, index, value)
+            |        }
+            |    }
+            |}
+            |
+            |/** Column builder for an `isArray` `field.decimal`: a `Column<List<java.math.BigDecimal>>`. */
+            |internal fun Table.portableDecimalArray(name: String): Column<List<BigDecimal>> =
+            |    registerColumn(name, MetaDecimalArrayColumnType())
             |""".trimMargin()
+        }
 
         /**
          * File name (sans `.kt`) of the per-package support file emitted for a `field.string
@@ -1777,8 +1844,8 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             |import ${ExposedImports.core(api, "Column")}
             |import ${ExposedImports.core(api, "ColumnType")}
             |import ${ExposedImports.core(api, "Table")}
-            |import $uuidColumnTypeImport
             |import ${ExposedImports.statementsApi(api, "PreparedStatementApi")}
+            |import $uuidColumnTypeImport
             |""".trimMargin()
         }
 

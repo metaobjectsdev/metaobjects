@@ -1,0 +1,88 @@
+name: decimal-unbounded-exact
+description: >
+  A `field.decimal` with NO @precision and NO @scale (Sample.free) has no range limit of its own:
+  the schema owner emits plain NUMERIC. A port must not invent a default such as decimal(19,4): the
+  value is stored and read back exactly and canonical, never rounded and never `400 validation` for
+  its size. Here 7 fraction digits and a 20-integer-digit value. Only a string that is not a number
+  is refused. MySQL has no unbounded decimal, so its schema uses DECIMAL(65,30), which holds all of
+  these. Postgres and MySQL only (W4: SQLite and D1 keep a double, see decimal-unbounded-exact-15).
+engines: [postgres, mysql]
+requests:
+  - id: r1
+    method: POST
+    path: /api/samples
+    body: { free: "1.234567" }
+    expect:
+      status: 201
+      body:
+        hasId: true
+        row:
+          free: "1.234567"
+  - id: r2
+    method: GET
+    path: /api/samples/1
+    expect:
+      status: 200
+      body:
+        row:
+          free: "1.234567"
+  - id: r3
+    method: POST
+    path: /api/samples
+    body: { free: "12345678901234567890.123456789" }
+    expect:
+      status: 201
+      body:
+        row:
+          free: "12345678901234567890.123456789"
+  - id: r4
+    method: GET
+    path: /api/samples/2
+    expect:
+      status: 200
+      body:
+        row:
+          free: "12345678901234567890.123456789"
+  - id: r5
+    method: POST
+    path: /api/samples
+    body: { free: "-98765432109876543210" }
+    expect:
+      status: 201
+      body:
+        row:
+          free: "-98765432109876543210"
+  - id: r6
+    method: POST
+    path: /api/samples
+    body: { free: 1.5 }
+    expect:
+      status: 201
+      body:
+        row:
+          free: "1.5"
+  - id: r7
+    method: PATCH
+    path: /api/samples/1
+    body: { free: "2.718281828" }
+    expect:
+      status: 200
+      body:
+        row:
+          free: "2.718281828"
+  - id: r8
+    method: GET
+    path: /api/samples/1
+    expect:
+      status: 200
+      body:
+        row:
+          free: "2.718281828"
+  - id: r9
+    method: POST
+    path: /api/samples
+    body: { free: "12abc" }
+    expect:
+      status: 400
+      body:
+        error: validation

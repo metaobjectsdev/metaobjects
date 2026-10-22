@@ -32,7 +32,10 @@ import { splitStatements } from "./sql-script.ts";
 export type DecimalEngine = "postgres" | "mysql" | "sqlite" | "d1";
 
 /** The served objects: the emitted routes file and the route the corpus calls. */
-const SERVED = ["Entry", "EntryTotals"] as const;
+const SERVED = ["Entry", "EntryTotals", "Sample"] as const;
+
+/** The tables the seed fills (and resets), in the order they are emptied. */
+const TABLES = ["entries", "samples"] as const;
 
 export interface DecimalServerHandle {
   baseUrl: string;
@@ -103,7 +106,9 @@ export async function startDecimalServer(
   return {
     baseUrl,
     applySeed: async (seed: ReportSeed) => {
-      await client.run(engine === "postgres" ? `TRUNCATE TABLE "entries" RESTART IDENTITY` : engine === "mysql" ? "TRUNCATE TABLE `entries`" : `DELETE FROM "entries"`);
+      for (const table of TABLES) {
+        await client.run(engine === "postgres" ? `TRUNCATE TABLE "${table}" RESTART IDENTITY` : engine === "mysql" ? `TRUNCATE TABLE \`${table}\`` : `DELETE FROM "${table}"`);
+      }
       for (const r of seedInserts(root, seed)) {
         const q = engine === "mysql" ? "`" : '"';
         await client.run(
@@ -142,7 +147,10 @@ export const db = drizzle(pool);
         await admin.query(sql.replace(/\?/g, () => `$${++n}`), params);
       },
       afterSeed: async () => {
-        await admin.query(`SELECT setval(pg_get_serial_sequence('"entries"', 'id'), (SELECT COALESCE(MAX("id"), 1) FROM "entries"))`);
+        // An empty table must hand out id 1 next (is_called false); a seeded one continues after its highest id.
+        for (const table of TABLES) {
+          await admin.query(`SELECT setval(pg_get_serial_sequence('"${table}"', 'id'), (SELECT COALESCE(MAX("id"), 1) FROM "${table}"), (SELECT COUNT(*) > 0 FROM "${table}"))`);
+        }
       },
       close: async () => { await mod.pool.end(); await admin.end(); },
     };
@@ -160,6 +168,7 @@ export const db = drizzle(pool);
     // A previous server on this database may have left the objects behind.
     await admin.query("DROP VIEW IF EXISTS `v_entry_totals`");
     await admin.query("DROP TABLE IF EXISTS `entries`");
+    await admin.query("DROP TABLE IF EXISTS `samples`");
     return {
       run: async (sql, params = []) => { await admin.query(sql, params); },
       afterSeed: async () => {},
@@ -167,6 +176,7 @@ export const db = drizzle(pool);
         await new Promise<void>((done) => mod.pool.end(done));
         await admin.query("DROP VIEW IF EXISTS `v_entry_totals`");
         await admin.query("DROP TABLE IF EXISTS `entries`");
+        await admin.query("DROP TABLE IF EXISTS `samples`");
         await admin.end();
       },
     };

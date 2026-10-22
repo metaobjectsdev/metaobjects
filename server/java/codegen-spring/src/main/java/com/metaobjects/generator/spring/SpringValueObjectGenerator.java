@@ -161,11 +161,11 @@ public class SpringValueObjectGenerator extends MultiFileDirectGeneratorBase<Met
         if (usesValidation) {
             src.append("import jakarta.validation.constraints.*;\n");
         }
-        if (usesDecimal || usesValid || usesValidation) {
-            src.append('\n');
-        }
+        // A value object is stored as jsonb; the api-contract wire omits an absent member, never null.
+        src.append("import com.fasterxml.jackson.annotation.JsonInclude;\n\n");
         src.append("/** GENERATED — value object ").append(recordName)
            .append(". Do not hand-edit; regenerated from metadata. */\n");
+        src.append("@JsonInclude(JsonInclude.Include.NON_NULL)\n");
         src.append("public record ").append(recordName).append("(\n");
         List<String[]> components = new ArrayList<>(fields.size());
         for (int i = 0; i < fields.size(); i++) {

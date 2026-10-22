@@ -280,6 +280,7 @@ public class GenericSQLDriver implements DatabaseDriver {
         java.util.List<?> list = (value instanceof java.util.List<?> l)
             ? l : java.util.List.of(value);
         boolean uuid = "uuid".equalsIgnoreCase(elementType);
+        boolean numeric = "numeric".equalsIgnoreCase(elementType);
         Object[] elements = new Object[list.size()];
         for (int i = 0; i < list.size(); i++) {
             Object e = list.get(i);
@@ -287,6 +288,8 @@ public class GenericSQLDriver implements DatabaseDriver {
                 elements[i] = null;
             } else if (uuid) {
                 elements[i] = (e instanceof java.util.UUID u) ? u : java.util.UUID.fromString(e.toString());
+            } else if (numeric) {
+                elements[i] = (e instanceof java.math.BigDecimal d) ? d : new java.math.BigDecimal(e.toString());
             } else {
                 elements[i] = e.toString();
             }
@@ -311,10 +314,13 @@ public class GenericSQLDriver implements DatabaseDriver {
         }
         Object raw = sqlArr.getArray();
         boolean uuid = "uuid".equalsIgnoreCase(elementType);
+        boolean numeric = "numeric".equalsIgnoreCase(elementType);
         java.util.List<Object> out = new ArrayList<>();
         if (raw instanceof Object[] arr) {
             for (Object e : arr) {
                 if (e == null) { out.add(null); continue; }
+                // numeric[] elements stay exact BigDecimals (never text, never a double).
+                if (numeric) { out.add(e instanceof java.math.BigDecimal d ? d : new java.math.BigDecimal(e.toString())); continue; }
                 out.add(uuid ? e.toString().toLowerCase(java.util.Locale.ROOT) : e.toString());
             }
         }

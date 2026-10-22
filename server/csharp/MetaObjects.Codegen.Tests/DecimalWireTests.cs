@@ -273,4 +273,135 @@ public class DecimalWireTests
         var edge = JsonSerializer.Deserialize("{\"DecVal\":\"123456789012.123456\"}", allTypes)!;
         Assert.Equal(123456789012.123456m, allTypes.GetProperty("DecVal")!.GetValue(edge));
     }
+
+    // C1 (captain ruling A): a decimal inside a jsonb value object follows the top-level rule.
+    private const string ValueObjectModel = """
+    { "metadata.root": { "package": "acme::shop", "children": [
+      { "object.value": { "name": "Price", "children": [
+        { "field.decimal": { "name": "net", "@precision": 12, "@scale": 2 } },
+        { "field.decimal": { "name": "free" } }
+      ]}},
+      { "object.entity": { "name": "Item", "children": [
+        { "source.rdb": { "@table": "items" } },
+        { "field.long": { "name": "id" } },
+        { "field.object": { "name": "price", "@objectRef": "Price", "@storage": "jsonb" } },
+        { "field.object": { "name": "prices", "@objectRef": "Price", "isArray": true, "@storage": "jsonb" } },
+        { "identity.primary": { "@fields": "id" } }
+      ]}}
+    ]}}
+    """;
+
+    [Fact]
+    public void A_decimal_inside_a_jsonb_value_object_reads_exactly_checks_its_declared_range_and_writes_canonical()
+    {
+        var r = new MetaDataLoader().Load([new InMemoryStringSource(ValueObjectModel, id: "vo-decimal.json")]);
+        Assert.Empty(r.Errors);
+        var ctx = new GenContext
+        {
+            Entities = r.Root.Objects(), Root = r.Root,
+            Config = new GenConfig { OutDir = Path.Combine(Path.GetTempPath(), "unused-vo-decimal"), Namespace = "Acme.Shop" },
+        };
+        var files = new EntityGenerator().Generate(ctx);
+        var trees = files.Select(f => CSharpSyntaxTree.ParseText(f.Content, new CSharpParseOptions(LanguageVersion.CSharp12), path: f.Path));
+        var comp = CSharpCompilation.Create("vo_decimal_" + Guid.NewGuid().ToString("N"), trees,
+            DbContextCompileTests.BuildReferences(), new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+        using var ms = new MemoryStream();
+        var emit = comp.Emit(ms);
+        Assert.True(emit.Success, string.Join("\n", emit.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error)));
+        var asm = Assembly.Load(ms.ToArray());
+        var price = asm.GetTypes().Single(t => t.Name == "Price");
+        var item = asm.GetTypes().Single(t => t.Name == "Item");
+
+        string Net(string json) => JsonDocument.Parse(JsonSerializer.Serialize(JsonSerializer.Deserialize(json, price), price))
+            .RootElement.GetProperty("net").GetString()!;
+
+        // A string or a JSON number, read exactly; written as the canonical string.
+        Assert.Equal("1.5", Net("{\"net\":\"1.5000\"}"));
+        Assert.Equal("1234567890.12", Net("{\"net\":1234567890.12}"));
+        Assert.Equal("0", Net("{\"net\":\"0.00\"}"));
+        // Past the declared @precision/@scale is refused, never rounded.
+        foreach (var bad in new[] { "{\"net\":\"1.234\"}", "{\"net\":1.234}", "{\"net\":\"12345678901\"}",
+                                     "{\"net\":\"NaN\"}", "{\"net\":\"\"}" })
+            Assert.Throws<JsonException>(() => JsonSerializer.Deserialize(bad, price));
+        // A VO decimal with no @precision is bounded only by what decimal holds.
+        var free = JsonSerializer.Deserialize("{\"net\":\"1\",\"free\":\"1.2345678901234567890123\"}", price)!;
+        Assert.Equal(1.2345678901234567890123m, price.GetProperty("Free")!.GetValue(free));
+        // The single and the array-of-VO members of the entity follow the same rule.
+        var back = JsonSerializer.Deserialize(
+            "{\"Price\":{\"net\":\"2.50\"},\"Prices\":[{\"net\":3},{\"net\":\"4.10\"}]}", item)!;
+        var outJson = JsonDocument.Parse(JsonSerializer.Serialize(back, item)).RootElement;
+        Assert.Equal("2.5", outJson.GetProperty("Price").GetProperty("net").GetString());
+        Assert.Equal("3", outJson.GetProperty("Prices")[0].GetProperty("net").GetString());
+        Assert.Equal("4.1", outJson.GetProperty("Prices")[1].GetProperty("net").GetString());
+        Assert.Throws<JsonException>(() => JsonSerializer.Deserialize("{\"Prices\":[{\"net\":\"1.001\"}]}", item));
+    }
+
+    [Fact]
+    public void FitsDeclared_finds_the_declared_range_on_an_entity_carrying_another_namespaces_copy_of_the_helper()
+    {
+        // A route mounted in a namespace other than the entity's resolves THIS DecimalWire while the
+        // entity's property carries the DeclaredAttribute of its own namespace's copy (review C4).
+        var r = new MetaDataLoader().Load([new InMemoryStringSource(ValueObjectModel, id: "c4.json")]);
+        Assert.Empty(r.Errors);
+        var ctx = new GenContext
+        {
+            Entities = r.Root.Objects(), Root = r.Root,
+            Config = new GenConfig { OutDir = Path.Combine(Path.GetTempPath(), "unused-c4"), Namespace = "Acme.Shop" },
+        };
+        var trees = new EntityGenerator().Generate(ctx)
+            .Select(f => CSharpSyntaxTree.ParseText(f.Content, new CSharpParseOptions(LanguageVersion.CSharp12), path: f.Path));
+        var comp = CSharpCompilation.Create("c4_" + Guid.NewGuid().ToString("N"), trees,
+            DbContextCompileTests.BuildReferences(), new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+        using var ms = new MemoryStream();
+        Assert.True(comp.Emit(ms).Success);
+        var price = Assembly.Load(ms.ToArray()).GetTypes().Single(t => t.Name == "Price");
+        Assert.True(DecimalWire.FitsDeclared(price, "Net", 99999999.99m));
+        Assert.False(DecimalWire.FitsDeclared(price, "Net", 1.001m));
+        Assert.False(DecimalWire.FitsDeclared(price, "Net", 123456789012m));
+        Assert.True(DecimalWire.FitsDeclared(price, "Free", 1.2345678901234567890123m));
+    }
+
+    private const string ArrayShapeModel = """
+    { "metadata.root": { "package": "acme::shop", "children": [
+      { "object.value": { "name": "Labels", "children": [
+        { "field.string": { "name": "tags", "isArray": true } }
+      ]}},
+      { "object.entity": { "name": "BaseTagged", "abstract": true, "children": [
+        { "field.string": { "name": "tags", "isArray": true } }
+      ]}},
+      { "object.entity": { "name": "Post", "extends": "BaseTagged", "children": [
+        { "source.rdb": { "@table": "posts" } },
+        { "field.long": { "name": "id" } },
+        { "field.object": { "name": "labels", "@objectRef": "Labels", "@storage": "jsonb" } },
+        { "identity.primary": { "@fields": "id" } }
+      ]}}
+    ]}}
+    """;
+
+    [Fact]
+    public void A_non_decimal_array_inherited_from_an_abstract_shape_starts_empty_while_a_value_object_one_is_omitted_when_null()
+    {
+        var r = new MetaDataLoader().Load([new InMemoryStringSource(ArrayShapeModel, id: "array-shape.json")]);
+        Assert.Empty(r.Errors);
+        var ctx = new GenContext
+        {
+            Entities = r.Root.Objects(), Root = r.Root,
+            Config = new GenConfig { OutDir = Path.Combine(Path.GetTempPath(), "unused-array-shape"), Namespace = "Acme.Shop" },
+        };
+        var files = new EntityGenerator().Generate(ctx);
+        var trees = files.Select(f => CSharpSyntaxTree.ParseText(f.Content, new CSharpParseOptions(LanguageVersion.CSharp12), path: f.Path));
+        var comp = CSharpCompilation.Create("array_shape_" + Guid.NewGuid().ToString("N"), trees,
+            DbContextCompileTests.BuildReferences(), new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+        using var ms = new MemoryStream();
+        var emit = comp.Emit(ms);
+        Assert.True(emit.Success, string.Join("\n", emit.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error)));
+        var asm = Assembly.Load(ms.ToArray());
+
+        var post = asm.GetTypes().Single(t => t.Name == "Post");
+        var tags = Assert.IsAssignableFrom<IList<string>>(post.GetProperty("Tags")!.GetValue(Activator.CreateInstance(post)));
+        Assert.Empty(tags);
+
+        var labels = asm.GetTypes().Single(t => t.Name == "Labels");
+        Assert.Equal("{}", JsonSerializer.Serialize(Activator.CreateInstance(labels), labels));
+    }
 }

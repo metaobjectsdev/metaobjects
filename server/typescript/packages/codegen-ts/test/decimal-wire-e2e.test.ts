@@ -113,6 +113,16 @@ describe("generated decimal write schema and route, SQLite", () => {
     }
   });
 
+  test("a JSON number a double cannot hold exactly is a 400 telling the client to send a string, never rounded", async () => {
+    // JSON.stringify of the double, so the wire carries the rounded digits a real client's body would
+    for (const amount of [0.1 + 0.2, 1234.56789012345678]) {
+      const res = await post({ bucket: "inexact", amount, weight: "1" });
+      expect(res.status).toBe(400);
+      expect(JSON.stringify(await res.json())).toContain("send it as a string");
+    }
+    expect((await post({ bucket: "inexact", weight: 9007199254740991 })).status).toBe(201);
+  });
+
   test("a decimal list answers strings, never numbers, and filters by number", async () => {
     const rows = (await (await app.request("/entries?filter[bucket][eq]=a")).json()) as Array<{ amount: unknown }>;
     expect(rows.map((r) => r.amount)).toEqual(["0.1", "0.3", "100.25", "15", "0"]);

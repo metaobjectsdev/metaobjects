@@ -209,6 +209,8 @@ public class PostgresDriver extends GenericSQLDriver {
     protected String nativeArrayElementType(com.metaobjects.field.MetaField f) {
         if (!f.isArrayType()) return null;
         if (com.metaobjects.field.UuidField.SUBTYPE_UUID.equals(f.getSubType())) return "uuid";
+        // field.decimal isArray is a native NUMERIC[] (no bound on the elements; the wire layer range-checks them).
+        if (com.metaobjects.field.DecimalField.SUBTYPE_DECIMAL.equals(f.getSubType())) return "numeric";
         if (com.metaobjects.field.StringField.SUBTYPE_STRING.equals(f.getSubType())
                 && !isOpenJsonbField(f)) {
             return "text";

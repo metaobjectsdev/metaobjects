@@ -28,6 +28,8 @@ import pg8000.dbapi as pg8000
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 
+from metaobjects.codegen.runtime.decimal_wire import check_decimal_range, format_decimal, parse_decimal
+
 from .postgres_container import PostgresInfo
 
 
@@ -44,6 +46,10 @@ _MARKER_LABEL_MAX = 40
 # Value-object columns, split by cardinality (drives present-value validation).
 _VO_SINGLE_FIELDS: tuple[str, ...] = ("primaryMarker", "optionalMarker")
 _VO_ARRAY_FIELDS: tuple[str, ...] = ("markers",)
+# Measure { ratio: double; samples: double[]; amount: decimal(12, 4) } columns.
+_MEASURE_SINGLE = "measure"
+_MEASURE_ARRAY = "measures"
+_MEASURE_PRECISION, _MEASURE_SCALE = 12, 4
 
 # Wire name → physical (snake_case) column. Every non-title column is jsonb.
 _COLUMN: dict[str, str] = {
@@ -52,8 +58,12 @@ _COLUMN: dict[str, str] = {
     "primaryMarker": "primary_marker",
     "optionalMarker": "optional_marker",
     "markers": "markers",
+    "measure": "measure",
+    "measures": "measures",
 }
-_JSONB_FIELDS: frozenset[str] = frozenset({"payload", "primaryMarker", "optionalMarker", "markers"})
+_JSONB_FIELDS: frozenset[str] = frozenset(
+    {"payload", "primaryMarker", "optionalMarker", "markers", "measure", "measures"}
+)
 
 
 class DocumentRepository:
@@ -70,7 +80,9 @@ class DocumentRepository:
             "    payload JSONB,"
             "    primary_marker JSONB NOT NULL,"
             "    optional_marker JSONB,"
-            "    markers JSONB"
+            "    markers JSONB,"
+            "    measure JSONB,"
+            "    measures JSONB"
             ")"
         )
 
@@ -88,8 +100,8 @@ class DocumentRepository:
                 for r in rows:
                     cur.execute(
                         'INSERT INTO "documents" '
-                        "(id, title, payload, primary_marker, optional_marker, markers) "
-                        "VALUES (%s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb)",
+                        "(id, title, payload, primary_marker, optional_marker, markers, measure, measures) "
+                        "VALUES (%s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb)",
                         (
                             int(r["id"]),
                             r["title"],
@@ -97,6 +109,8 @@ class DocumentRepository:
                             _dump_payload(r.get("primaryMarker")),
                             _dump_payload(r.get("optionalMarker")),
                             _dump_payload(r.get("markers")),
+                            _dump_payload(r.get("measure")),
+                            _dump_payload(r.get("measures")),
                         ),
                     )
                 cur.execute(
@@ -112,7 +126,7 @@ class DocumentRepository:
             cur = conn.cursor()
             try:
                 cur.execute(
-                    "SELECT id, title, payload, primary_marker, optional_marker, markers "
+                    "SELECT id, title, payload, primary_marker, optional_marker, markers, measure, measures "
                     'FROM "documents" WHERE id = %s',
                     (int(ident),),
                 )
@@ -127,14 +141,16 @@ class DocumentRepository:
             try:
                 cur.execute(
                     'INSERT INTO "documents" '
-                    "(title, payload, primary_marker, optional_marker, markers) "
-                    "VALUES (%s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb) RETURNING id",
+                    "(title, payload, primary_marker, optional_marker, markers, measure, measures) "
+                    "VALUES (%s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb) RETURNING id",
                     (
                         dto.get("title"),
                         _dump_payload(dto.get("payload")),
                         _dump_payload(dto.get("primaryMarker")),
                         _dump_payload(dto.get("optionalMarker")),
                         _dump_payload(dto.get("markers")),
+                        _dump_payload(dto.get("measure")),
+                        _dump_payload(dto.get("measures")),
                     ),
                 )
                 new_id = int(cur.fetchone()[0])
@@ -217,7 +233,7 @@ def make_jsonb_app(repo: DocumentRepository) -> FastAPI:
             if dto.get(name) is None:
                 return _validation_400()
         # Present values validated with the create rules (title @maxLength + nested VO).
-        if _title_violation(dto) or _vo_present_violation(dto):
+        if _title_violation(dto) or _vo_present_violation(dto) or not _canonicalize_measures(dto):
             return _validation_400()
         return repo.create(dto)
 
@@ -231,7 +247,7 @@ def make_jsonb_app(repo: DocumentRepository) -> FastAPI:
             if name in dto and dto[name] is None:
                 return _validation_400()
         # Validate PRESENT, non-null values (nested VO recurses into each element).
-        if _title_violation(dto) or _vo_present_violation(dto):
+        if _title_violation(dto) or _vo_present_violation(dto) or not _canonicalize_measures(dto):
             return _validation_400()
         saved = repo.update(document_id, dto)
         if saved is None:
@@ -283,6 +299,42 @@ def _vo_present_violation(dto: dict[str, Any]) -> bool:
     return False
 
 
+def _canonical_measure(measure: Any) -> dict[str, Any] | None:
+    """A ``Measure`` with its decimal ``amount`` canonicalised (W1 to W3), or ``None`` when the
+    value is not a valid Measure. What is stored is the canonical string."""
+    if not isinstance(measure, dict):
+        return None
+    out = dict(measure)
+    amount = out.get("amount")
+    if amount is not None:
+        try:
+            d = parse_decimal(amount)
+            check_decimal_range(d, _MEASURE_PRECISION, _MEASURE_SCALE)
+            out["amount"] = format_decimal(d)
+        except (ValueError, ArithmeticError):
+            return None
+    return out
+
+
+def _canonicalize_measures(dto: dict[str, Any]) -> bool:
+    """Validate and canonicalise the present Measure columns in place; False on a violation."""
+    single = dto.get(_MEASURE_SINGLE)
+    if _MEASURE_SINGLE in dto and single is not None:
+        canon = _canonical_measure(single)
+        if canon is None:
+            return False
+        dto[_MEASURE_SINGLE] = canon
+    many = dto.get(_MEASURE_ARRAY)
+    if _MEASURE_ARRAY in dto and many is not None:
+        if not isinstance(many, list):
+            return False
+        canon_list = [_canonical_measure(m) for m in many]
+        if any(c is None for c in canon_list):
+            return False
+        dto[_MEASURE_ARRAY] = canon_list
+    return True
+
+
 def _dump_payload(value: Any) -> Any:
     """jsonb bind: a dict/list is ``json.dumps``-serialized for the ``::jsonb``
     cast; ``None`` stays ``None`` (SQL NULL); a pre-serialized string passes
@@ -306,7 +358,7 @@ def _decode_jsonb(value: Any) -> Any:
 
 
 def _row_to_dict(row: Any) -> dict[str, Any]:
-    ident, title, payload, primary_marker, optional_marker, markers = row
+    ident, title, payload, primary_marker, optional_marker, markers, measure, measures = row
     return {
         "id": int(ident),
         "title": title,
@@ -314,4 +366,6 @@ def _row_to_dict(row: Any) -> dict[str, Any]:
         "primaryMarker": _decode_jsonb(primary_marker),
         "optionalMarker": _decode_jsonb(optional_marker),
         "markers": _decode_jsonb(markers),
+        "measure": _decode_jsonb(measure),
+        "measures": _decode_jsonb(measures),
     }

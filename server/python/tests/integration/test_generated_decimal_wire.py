@@ -190,3 +190,119 @@ def test_a_value_beyond_the_declared_range_is_a_400_and_nothing_is_rounded(clien
         resp = _post(client, '{"amount": ' + bad + "}")
         assert resp.status_code == 400 and resp.json() == {"error": "validation"}
     assert client.get("/api/entries").json() == []
+
+
+_FLOAT_META = {
+    "metadata.root": {
+        "package": "acme::fleet",
+        "children": [
+            {"object.value": {"name": "Fix", "children": [
+                {"field.double": {"name": "latitude", "@required": True}},
+                {"field.double": {"name": "readings", "isArray": True}},
+                {"field.decimal": {"name": "amount", "@precision": 12, "@scale": 4}},
+            ]}},
+            {"object.entity": {"name": "Sample", "children": [
+                {"source.rdb": {"@table": "samples"}},
+                {"field.long": {"name": "id"}},
+                {"field.double": {"name": "score"}},
+                {"field.decimal": {"name": "series", "isArray": True, "@precision": 9, "@scale": 4}},
+                {"field.object": {"name": "fix", "@objectRef": "Fix", "@storage": "jsonb"}},
+                {"field.object": {"name": "fixes", "@objectRef": "Fix", "@storage": "jsonb", "isArray": True}},
+                {"identity.primary": {"name": "pk", "@fields": ["id"], "@generation": "increment"}},
+            ]}},
+        ],
+    }
+}
+
+
+@pytest.fixture()
+def float_client() -> TestClient:
+    root = load_string(json.dumps(_FLOAT_META)).root
+    objs = {c.name.split("::")[-1]: c for c in root.children()}
+    pkg = f"genflt_{uuid.uuid4().hex[:8]}"
+    tmp = Path(tempfile.mkdtemp(prefix="genflt-"))
+    pkg_dir = tmp / pkg
+    pkg_dir.mkdir()
+    (pkg_dir / "__init__.py").write_text("")
+    (pkg_dir / "Fix.py").write_text(render_entity_model(objs["Fix"]))
+    sample = objs["Sample"]
+    (pkg_dir / "sample_filter_allowlist.py").write_text(render_filter_allowlist(sample) or "")
+    (pkg_dir / "Sample.py").write_text(render_entity_model(sample))
+    (pkg_dir / "sample_router.py").write_text(render_router(sample) or "")
+    sys.path.insert(0, str(tmp))
+    try:
+        mod = importlib.import_module(f"{pkg}.sample_router")
+    finally:
+        sys.path.remove(str(tmp))
+    db = sqlite3.connect(":memory:", check_same_thread=False)
+    db.execute("CREATE TABLE samples (id INTEGER PRIMARY KEY AUTOINCREMENT, score REAL, series TEXT, fix TEXT, fixes TEXT)")
+    om = ObjectManager(root, SqliteDriver(db))  # type: ignore[arg-type]
+
+    class Repo(_Repo):
+        def list(self, limit: int, offset: int, sort: Any, filters: list[FilterPredicate]) -> list[Any]:
+            return self.om.find_many("Sample", None, sort=[("id", "asc")], limit=limit, offset=offset)
+
+        def find_by_id(self, id: int) -> Any:
+            return self.om.find_by_id("Sample", id)
+
+        def create(self, dto: Any) -> Any:
+            return self.om.create("Sample", dto)
+
+        def update(self, id: int, dto: Any) -> Any:
+            return self.om.update("Sample", id, dto)
+
+    app = FastAPI()
+    app.include_router(mod.router)
+    app.dependency_overrides[mod.get_repository] = lambda: Repo(om)
+    return TestClient(app)
+
+
+def test_a_double_and_a_jsonb_value_object_take_fractional_numbers_on_every_write(float_client: TestClient) -> None:
+    # parse_json_object reads every fractional number as a Decimal; only a declared decimal
+    # keeps it. A double, or a number inside a jsonb value object / array, is a float again --
+    # json.dumps of the jsonb column used to fail with a 500.
+    body = '{"score": 1.5, "fix": {"latitude": 51.25, "readings": [0.5, 2]}, "fixes": [{"latitude": 1.75}]}'
+    hdr = {"content-type": "application/json"}
+    created = float_client.post("/api/samples", content=body, headers=hdr)
+    assert created.status_code == 201, created.text
+    assert created.json()["score"] == 1.5
+    assert created.json()["fix"]["latitude"] == 51.25
+    for send in (float_client.patch, float_client.put):
+        resp = send("/api/samples/1", content='{"score": 2.5, "fix": {"latitude": 3.125}}', headers=hdr)
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["score"] == 2.5 and resp.json()["fix"]["latitude"] == 3.125
+
+
+def test_a_decimal_inside_a_jsonb_value_object_follows_the_top_level_rule(float_client: TestClient) -> None:
+    # C1: a string or a JSON number in, read exactly, stored and emitted as the canonical string.
+    hdr = {"content-type": "application/json"}
+    ok = float_client.post(
+        "/api/samples",
+        content='{"fix": {"latitude": 1.5, "amount": "100.5000"}, "fixes": [{"latitude": 2.5, "amount": 2.50}, {"latitude": 3, "amount": null}]}',
+        headers=hdr,
+    )
+    assert ok.status_code == 201, ok.text
+    body = ok.json()
+    assert body["fix"] == {"latitude": 1.5, "amount": "100.5", "readings": None} or body["fix"]["amount"] == "100.5"
+    assert [f["amount"] for f in body["fixes"]] == ["2.5", None]
+    assert float_client.get("/api/samples/1").json()["fix"]["amount"] == "100.5"
+    for bad in ('"0.12345"', '"abc"', '"123456789.5"'):
+        resp = float_client.post("/api/samples", content='{"fix": {"latitude": 1, "amount": ' + bad + "}}", headers=hdr)
+        assert resp.status_code == 400 and resp.json() == {"error": "validation"}, (bad, resp.text)
+    assert len(float_client.get("/api/samples").json()) == 1
+
+
+def test_a_decimal_array_is_range_checked_element_wise_and_coerced_for_the_driver(float_client: TestClient) -> None:
+    # SQLite has no array column, so the write itself is covered on Postgres by the shared
+    # api-contract decimal corpus; here: the route refuses an excess-scale element (nothing
+    # persisted) and the runtime codec turns a list into a list of Decimals (it used to
+    # Decimal(str(list)) and raise InvalidOperation -> 500).
+    hdr = {"content-type": "application/json"}
+    bad = float_client.post("/api/samples", content='{"series": ["1", "0.12345"]}', headers=hdr)
+    assert bad.status_code == 400 and bad.json() == {"error": "validation"}
+    root = load_string(json.dumps(_FLOAT_META)).root
+    sample = next(c for c in root.children() if c.name.endswith("Sample"))
+    series = next(f for f in sample.fields() if f.name == "series")
+    from metaobjects.runtime.object_manager import _coerce_write_value
+
+    assert _coerce_write_value(series, [Decimal("1.5"), "2", 3, None]) == [Decimal("1.5"), Decimal("2"), Decimal("3"), None]

@@ -148,4 +148,22 @@ public sealed class DecimalWireGeneratedApiTests
         Assert.Contains("decimal_out_of_range", bh);
         Assert.DoesNotContain("   at ", bh);
     }
+
+    // A malformed or empty JSON body is the client's fault: 400 validation, never an unhandled
+    // JsonException (500) from the hand-parsed POST handler that decimal entities use.
+    [Fact]
+    public async Task Malformed_and_empty_body_are_400_not_500_on_sqlite()
+    {
+        using var db = new SqliteTempDatabase("mo-decimal-malformed-");
+        await using var server = await Start(ScenarioEngine.Sqlite, $"Data Source={db.FilePath}");
+        using var c = new HttpClient { BaseAddress = new Uri(server.BaseUrl) };
+
+        var (s1, b1) = await Send(c, "POST", "/api/ledgers", "{not json");
+        Assert.Equal(400, s1);
+        Assert.Contains("validation", b1);
+
+        var (s2, b2) = await Send(c, "POST", "/api/ledgers", "");
+        Assert.Equal(400, s2);
+        Assert.Contains("validation", b2);
+    }
 }

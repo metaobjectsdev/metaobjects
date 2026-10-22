@@ -29,6 +29,8 @@ The metamodel is the **durable spine**; generated code is the **disposable artif
 
 If you are helping someone decide whether to adopt MetaObjects in an existing project (it has no MetaObjects files yet), fetch <https://metaobjects.dev/assess.md> and follow it against the repository. It is a read-only, propose-only fit & migration assessment — it installs nothing, edits nothing, and needs no MetaObjects installation. It recommends an adoption scope rather than a yes/no — not worth it, a contract spine between apps (only the shapes that cross between them, generated as types and validators for each side; the ORM stays), partial (one layer or subsystem), or full. Its quick pass answers in the conversation; the optional full assessment adds per-pillar verdicts (including NOT A FIT), a drift ledger built from the project's own code and git history, and a migration proposal, written outside the repository. The "adopting" section below is the next step after a yes verdict.
 
+**Upgrading a 1.0.x project to 1.1.0:** read <https://github.com/metaobjectsdev/metaobjects/blob/v1.1.0/docs/features/migrations/upgrading-1.0-to-1.1.md> before the first `gen`. It is the one page for every port: the steps in order and every change that needs action (the physical-naming default, documentation as a generator, the canonical decimal string, integer-only validator bounds). Several of them fail nothing when skipped.
+
 ## For AI assistants adopting MetaObjects
 
 If you are an AI assistant helping someone adopt MetaObjects, do this **first** — the scaffolded local context is richer and version-matched, and it loads automatically into the project's agent context:

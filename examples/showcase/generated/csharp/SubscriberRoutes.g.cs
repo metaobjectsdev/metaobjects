@@ -85,7 +85,10 @@ public static class SubscriberRoutes
             var jsonOpts = ((Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>)
                 http.RequestServices.GetService(typeof(Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>))!)
                 .Value.SerializerOptions;
-            using var __body = await System.Text.Json.JsonDocument.ParseAsync(http.Request.Body);
+            System.Text.Json.JsonDocument __body;
+            try { __body = await System.Text.Json.JsonDocument.ParseAsync(http.Request.Body); }
+            catch (System.Text.Json.JsonException) { return Results.BadRequest(new { error = "validation" }); }
+            using var __bodyScope = __body;
             if (__body.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object)
                 return Results.BadRequest(new { error = "validation" });
             var __present = new System.Collections.Generic.HashSet<string>(System.StringComparer.OrdinalIgnoreCase);
@@ -119,7 +122,10 @@ public static class SubscriberRoutes
         {
             var existing = await db.Subscribers.FindAsync(id);
             if (existing is null) return Results.NotFound(new { error = "not_found" });
-            using var body = await System.Text.Json.JsonDocument.ParseAsync(http.Request.Body);
+            System.Text.Json.JsonDocument body;
+            try { body = await System.Text.Json.JsonDocument.ParseAsync(http.Request.Body); }
+            catch (System.Text.Json.JsonException) { return Results.BadRequest(new { error = "validation" }); }
+            using var bodyScope = body;
             // Deserialize each value with the app's CONFIGURED JSON options, not defaults —
             // a field.timestamp binds to DateTimeOffset via a custom converter registered on
             // ConfigureHttpJsonOptions, and default options cannot read the wire format, throwing 500.

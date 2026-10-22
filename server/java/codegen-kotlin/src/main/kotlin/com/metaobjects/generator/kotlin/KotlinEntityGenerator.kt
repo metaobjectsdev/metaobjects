@@ -222,6 +222,17 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         val typeBuilder = TypeSpec.classBuilder(shortName)
             .addModifiers(KModifier.DATA)
             .addKdoc("GENERATED — do not hand-edit. Regenerated from metadata.\n")
+            .apply {
+                // A value object is stored as jsonb and the api-contract wire omits an absent member
+                // rather than writing it as null, so its null members are not serialized.
+                if (obj.subType == MetaObject.SUBTYPE_VALUE) {
+                    addAnnotation(
+                        AnnotationSpec.builder(ClassName("com.fasterxml.jackson.annotation", "JsonInclude"))
+                            .addMember("%T.Include.NON_NULL", ClassName("com.fasterxml.jackson.annotation", "JsonInclude"))
+                            .build(),
+                    )
+                }
+            }
 
         // FR-017 TPH: a discriminator base's data class is the UNION of subtype columns and serves
         // as the partial-PATCH-friendly wire body — every property is nullable + defaulted + carries
@@ -290,7 +301,8 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
                     propBuilder.addAnnotation(constraint(VALID))
                 }
             }
-            decimalWireAnnotations(field, pkg).forEach { propBuilder.addAnnotation(it) }
+            decimalWireAnnotations(field, pkg, declaredRange = obj.subType == MetaObject.SUBTYPE_VALUE)
+                .forEach { propBuilder.addAnnotation(it) }
             typeBuilder.addProperty(propBuilder.build())
         }
 
@@ -623,18 +635,29 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
      * constructor parameter, the two places Jackson's Kotlin module looks. `contentUsing` for an
      * `@isArray` property (the elements are the decimals).
      */
-    private fun decimalWireAnnotations(field: MetaField<*>, pkg: String): List<AnnotationSpec> {
+    private fun decimalWireAnnotations(field: MetaField<*>, pkg: String, declaredRange: Boolean = false): List<AnnotationSpec> {
         if (field !is DecimalField) return emptyList()
         decimalWirePackages.add(pkg)
         val serializer = ClassName(pkg, KotlinDecimalWireEmitter.FILE_NAME, "Serializer")
         val deserializer = ClassName(pkg, KotlinDecimalWireEmitter.FILE_NAME, "Deserializer")
         val member = if (field.isArrayType) "contentUsing" else "using"
-        return listOf(
+        val annotations = mutableListOf(
             AnnotationSpec.builder(JSON_SERIALIZE).useSiteTarget(AnnotationSpec.UseSiteTarget.GET)
                 .addMember("$member = %T::class", serializer).build(),
             AnnotationSpec.builder(JSON_DESERIALIZE).useSiteTarget(AnnotationSpec.UseSiteTarget.PARAM)
                 .addMember("$member = %T::class", deserializer).build(),
         )
+        // C1: a decimal inside a (jsonb) value object has no controller range check of its own, so the
+        // deserializer enforces the field's declared @precision/@scale: nothing rounded, excess is a 400.
+        // Only a declared precision bounds it, as with a top-level decimal.
+        if (declaredRange && !KotlinTypeMapper.isUnboundedDecimal(field)) {
+            annotations += AnnotationSpec.builder(ClassName(pkg, KotlinDecimalWireEmitter.FILE_NAME, "Declared"))
+                .useSiteTarget(AnnotationSpec.UseSiteTarget.PARAM)
+                .addMember("precision = %L", KotlinTypeMapper.decimalPrecision(field))
+                .addMember("scale = %L", KotlinTypeMapper.decimalScale(field))
+                .build()
+        }
+        return annotations
     }
 
     private fun isStrictNetField(field: MetaField<*>): Boolean =

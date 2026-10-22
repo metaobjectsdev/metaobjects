@@ -602,7 +602,12 @@ public class EntityGenerator : IGenerator
             arr.AppendLine($"    [Column({CSharpNaming.ColumnRef(entity, field, strategy, includeNames)})]");
             AppendArrayValidatorAttributes(arr, field);
             AppendDecimalConverterAttribute(arr, field, nullable: false);
-            arr.Append($"    public IList<{baseType}> {propName} {{ get; set; }} = new List<{baseType}>();");
+            // A NON-required decimal array is nullable (no initializer) so PATCH null / an omitted
+            // POST value stays a NULL column instead of failing as a required collection.
+            if (IsDecimalWireField(field) && !CSharpNaming.IsRequired(entity, field))
+                arr.Append($"    public IList<{baseType}>? {propName} {{ get; set; }}");
+            else
+                arr.Append($"    public IList<{baseType}> {propName} {{ get; set; }} = new List<{baseType}>();");
             return arr.ToString();
         }
 
@@ -830,7 +835,8 @@ public class EntityGenerator : IGenerator
             if (CSharpNaming.ScalarFor(field.SubType) is not null)
                 // VO POCO members carry NO EF-mapping attrs but DO carry validation
                 // DataAnnotations (the VO is validated in full on POST/PATCH; Program D).
-                member = ScalarProperty(vo, field, [], withAttributes: false, withValidationAttributes: true);
+                member = ScalarProperty(vo, field, [], withAttributes: false, withValidationAttributes: true,
+                    valueObject: true);
             else if (field.SubType == FIELD_SUBTYPE_ENUM)
                 // Same rule as the scalar arm: no [Column(...)]. A VO's column mapping is decided
                 // by each OWNER (fluent, in the DbContext — .ToJson or the flattened per-member
@@ -846,7 +852,8 @@ public class EntityGenerator : IGenerator
             if (member is null) continue;
             // Pin the jsonb element name (+ wire name) to the metadata field name so the
             // stored owned-JSON keys match the shared seed + the cross-port wire contract.
-            member = $"    [JsonPropertyName(\"{field.Name}\")]\n" + member;
+            // A null member is omitted on the wire (the cross-port value-object contract).
+            member = $"    [JsonPropertyName(\"{field.Name}\")]\n    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]\n" + member;
             member = ApplyPropertyAttributes(member, vo, field, ctx);
             members.Add(XmlDocBuilder.Prepend(member, field, "    "));
         }
@@ -1188,8 +1195,20 @@ public static class DecimalWire
     /// </summary>
     public static bool FitsDeclared(Type owner, string property, decimal value)
     {
-        var declared = owner.GetProperty(property)?.GetCustomAttributes(typeof(DeclaredAttribute), true);
-        return declared is not { Length: > 0 } || ((DeclaredAttribute)declared[0]).Accepts(value);
+        var attributes = owner.GetProperty(property)?.GetCustomAttributes(true);
+        if (attributes is null) return true;
+        foreach (var attribute in attributes)
+        {
+            // The attribute is matched by name, not by type identity: a route in another namespace
+            // than the entity resolves THIS DecimalWire, while the entity carries the copy emitted
+            // into its own namespace, and the two DeclaredAttribute types are different types.
+            var type = attribute.GetType();
+            if (type.Name != nameof(DeclaredAttribute) || type.DeclaringType?.Name != nameof(DecimalWire)) continue;
+            var precision = type.GetProperty(nameof(DeclaredAttribute.Precision))?.GetValue(attribute);
+            var scale = type.GetProperty(nameof(DeclaredAttribute.Scale))?.GetValue(attribute);
+            return precision is int p && scale is int sc ? Fits(value, p, sc) : true;
+        }
+        return true;
     }
 
     private static decimal ReadOne(ref Utf8JsonReader reader, int? precision = null, int? scale = null)
@@ -1441,9 +1460,10 @@ public static class DecimalWire
     // validation attrs follow withAttributes (mapped entities emit both, byte-identical
     // to before).
     //
-    // When the field is an array (isArray: true), emit List<T> with an empty-list
-    // initializer instead of a scalar T property. Arrays are always non-nullable
-    // (the jsonb column holds the list; the list itself is never null in C#).
+    // When the field is an array (isArray: true), emit IList<T> with an empty-list
+    // initializer instead of a scalar T property. A NON-required decimal array, and a
+    // NON-required array member of a value object (valueObject: true, so a null member is
+    // omitted on the wire), are nullable with no initializer instead.
     //
     // includeNames (C1) is only consulted when withAttributes is true — it is the
     // ctx.Config.IncludeNames run-level presence gate CSharpNaming.ColumnRef needs;
@@ -1453,7 +1473,8 @@ public static class DecimalWire
         MetaObject owner, MetaField field, IReadOnlyList<string> pkFields,
         bool withAttributes, ColumnNamingStrategy strategy = ColumnNamingStrategy.Literal,
         bool includeNames = false,
-        string? baseTypeOverride = null, bool? withValidationAttributes = null)
+        string? baseTypeOverride = null, bool? withValidationAttributes = null,
+        bool valueObject = false)
     {
         var emitValidation = withValidationAttributes ?? withAttributes;
         // A @dbColumnType:jsonb open-bag shifts the CLR property to a parsed JSON value
@@ -1479,7 +1500,13 @@ public static class DecimalWire
             // EF Core 8 on SQLite materializes a primitive collection only through IList<T> (an
             // ICollection<T> property throws at query compile time), so a scalar array is an IList<T>.
             AppendDecimalConverterAttribute(arr, field, nullable: false);
-            arr.Append($"    public IList<{baseType}> {propName} {{ get; set; }} = new List<{baseType}>();");
+            // A NON-required decimal array is nullable (no initializer) so PATCH null / an omitted
+            // POST value stays a NULL column instead of failing as a required collection; a
+            // NON-required value-object array is nullable so a null member is omitted on the wire.
+            if ((IsDecimalWireField(field) || valueObject) && !CSharpNaming.IsRequired(owner, field))
+                arr.Append($"    public IList<{baseType}>? {propName} {{ get; set; }}");
+            else
+                arr.Append($"    public IList<{baseType}> {propName} {{ get; set; }} = new List<{baseType}>();");
             return arr.ToString();
         }
 

@@ -212,4 +212,30 @@ final class OmdbEntryRepositorySource {
             }
         }
         """;
+
+    /** The same seam for another entity of the corpus (same shape; only the names differ). */
+    static String sourceFor(String entity) {
+        String source = SOURCE;
+        if (entity.equals("Sample")) {
+            // Sample carries `readings` (a decimal array) and `free` (a decimal with no @precision).
+            source = source
+                .replace("if (dto.bucket() != null) vo.setString(\"bucket\", dto.bucket());", "vo.setObject(\"readings\", dto.readings());")
+                .replace("if (dto.flagged() != null) vo.setBoolean(\"flagged\", dto.flagged());", "")
+                .replace("vo.setString(\"bucket\", dto.bucket());", "vo.setObject(\"readings\", dto.readings());")
+                .replace("vo.setObject(\"amount\", dto.amount());", "vo.setObject(\"free\", dto.free());")
+                .replace("vo.setBoolean(\"flagged\", Boolean.TRUE.equals(dto.flagged()));", "")
+                .replace("if (patch.hasBucket()) vo.setString(\"bucket\", patch.bucket());", "if (patch.hasReadings()) vo.setObject(\"readings\", patch.readings());")
+                .replace("if (patch.hasAmount()) vo.setObject(\"amount\", patch.amount());", "if (patch.hasFree()) vo.setObject(\"free\", patch.free());")
+                .replace("if (patch.hasFlagged()) vo.setBoolean(\"flagged\", Boolean.TRUE.equals(patch.flagged()));", "");
+        }
+        return source
+            .replace("OmdbEntryRepository", "Omdb" + entity + "Repository")
+            .replace("EntryRepository", entity + "Repository")
+            .replace("EntryDto", entity + "Dto")
+            .replace("EntryPatch", entity + "Patch");
+    }
+
+    static String fqcnFor(String entity) {
+        return PKG + ".Omdb" + entity + "Repository";
+    }
 }

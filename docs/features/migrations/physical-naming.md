@@ -30,6 +30,10 @@ every runtime `ObjectManager` and `verify` read it, so they always produce the s
 
 An unknown key or value fails when the file is read. Index and constraint names are unchanged.
 
+**Upgrade every port of an estate together.** A 1.0.x TypeScript tool refuses the new `naming` key,
+but a 1.0.x C#, Java or Python tool ignores an unknown top-level key silently and keeps the old
+column names, so a mixed estate disagrees about the schema without any error.
+
 **The default is now `snake_case` in every port.** It is what `meta migrate` has always
 created. C#, Java, Kotlin's runtime and Python used `literal` by default. **If your database's
 columns are named exactly like your fields** (`firstName`, not `first_name`), add one line to
@@ -47,7 +51,7 @@ Every place the rule used to be set now fails with a message that names this set
 example:
 
 ```
---column-naming was removed in 1.1.0. Column and table naming is one project setting now, read by every port: "naming" in .metaobjects/config.json, for example "naming": { "columns": "literal" }. Move it there and delete --column-naming. See https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/physical-naming.md
+--column-naming was removed in 1.1.0. Column and table naming is one project setting now, read by every port: "naming" in .metaobjects/config.json, for example "naming": { "columns": "literal" }. Move it there and delete --column-naming. See https://github.com/metaobjectsdev/metaobjects/blob/v1.1.0/docs/features/migrations/physical-naming.md
 ```
 
 It never falls back to the default, because the old value may be the one that matches your

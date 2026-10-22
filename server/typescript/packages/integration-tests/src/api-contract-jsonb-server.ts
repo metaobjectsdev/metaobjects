@@ -29,6 +29,12 @@ export interface Marker {
   score?: number;
 }
 
+export interface Measure {
+  ratio?: number;
+  samples?: number[];
+  amount?: string | number;
+}
+
 export interface DocumentRow {
   id?: number;
   title: string;
@@ -36,6 +42,8 @@ export interface DocumentRow {
   primaryMarker?: Marker;
   optionalMarker?: Marker | null;
   markers?: Marker[] | null;
+  measure?: Measure | null;
+  measures?: Measure[] | null;
 }
 
 export interface JsonbServerHandle {
@@ -58,7 +66,7 @@ export async function startJsonbServer(connectionUri: string, root: MetaRoot): P
 
   // Literal column naming (the corpus pins physical name = field name), so a
   // small CREATE TABLE matches the entity. `payload` is a bare jsonb column —
-  // the open bag holds any JSON value. The three Marker value-object columns
+  // the open bag holds any JSON value. The Marker and Measure value-object columns
   // are jsonb too (single / single-nullable / array); `primaryMarker` is
   // @required (NOT NULL). Program D exercises VO-column POST + PATCH here.
   await kysely.schema
@@ -69,6 +77,8 @@ export async function startJsonbServer(connectionUri: string, root: MetaRoot): P
     .addColumn("primaryMarker", "jsonb", (c) => c.notNull())
     .addColumn("optionalMarker", "jsonb")
     .addColumn("markers", "jsonb")
+    .addColumn("measure", "jsonb")
+    .addColumn("measures", "jsonb")
     .execute();
 
   const driver = kyselyDriver({ db: kysely as never, dialect: "postgres" });

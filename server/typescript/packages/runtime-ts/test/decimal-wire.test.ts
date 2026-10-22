@@ -107,3 +107,24 @@ describe("read-only mounts send a named decimal as a string", () => {
     expect(byKind(JSON.parse(res.body) as Array<{ kind: string; n: number; share: number }>)).toEqual([{ kind: "a", n: 2, share: 0.5 }, { kind: "b", n: 1, share: 0 }]);
   });
 });
+
+describe("D3: a JSON number is read exactly or refused, never rounded", async () => {
+  const { parseDecimalInput } = await import("../src/decimal-wire.js");
+  test("exact numbers are accepted", () => {
+    expect(parseDecimalInput(0.3)).toBe("0.3");
+    expect(parseDecimalInput(100.25)).toBe("100.25");
+    expect(parseDecimalInput(1e-7)).toBe("0.0000001");
+    expect(parseDecimalInput(1e21)).toBe("1000000000000000000000");
+    expect(parseDecimalInput(Number.MAX_SAFE_INTEGER)).toBe("9007199254740991");
+    expect(parseDecimalInput(1234567890123456)).toBe("1234567890123456");
+  });
+  test("a number carrying more than 15 significant digits is refused", () => {
+    expect(parseDecimalInput(JSON.parse("1234567890.123456789"))).toBeUndefined();
+    expect(parseDecimalInput(0.1 + 0.2)).toBeUndefined();
+    expect(parseDecimalInput(2 ** 53 + 2)).toBeUndefined();
+    expect(parseDecimalInput(Number.NaN)).toBeUndefined();
+  });
+  test("the same digits as a string stay exact", () => {
+    expect(parseDecimalInput("1234567890.123456789")).toBe("1234567890.123456789");
+  });
+});

@@ -176,7 +176,7 @@ class NoGeneratorsSelectedError(ValueError):
 
 
 #: The migration section every 1.1.0 refusal below points at (ADR-0034 Amendment 9).
-_MIGRATION_SECTION = 'See https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/docs-are-generators.md, section "Python".'
+_MIGRATION_SECTION = 'See https://github.com/metaobjectsdev/metaobjects/blob/v1.1.0/docs/features/migrations/docs-are-generators.md, section "Python".'
 
 #: What ``metaobjects docs`` prints, exit 2: the command was removed in 1.1.0.
 DOCS_COMMAND_REMOVED = (

@@ -1240,6 +1240,9 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
      */
     private fun StringBuilder.appendDecimalRangeCheck(indent: String, field: MetaField<*>, value: String) {
         if (field !is DecimalField) return
+        // No @precision: the column is unbounded NUMERIC, so there is no declared range to check
+        // (Java, C#, TypeScript and Python check only a declared precision).
+        if (KotlinTypeMapper.isUnboundedDecimal(field)) return
         val outOfRange = if (field.isArrayType) {
             "$value?.any { !${decimalFitsExpr(field, "it")} } == true"
         } else {

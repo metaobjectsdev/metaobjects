@@ -61,11 +61,26 @@ class ReportLane:
                 # An explicit id does not advance an identity column: continue after the seed
                 # (or restart at 1 when the table was left empty), as the other engines do.
                 for table, seed_rows in self.base_tables.items():
-                    if _has_id(seed_rows):
+                    if not seed_rows:
+                        # An empty seed (the decimal corpus' ``samples``) restarts at 1 so the
+                        # first POST is id 1; only if the table has a generated ``id``.
                         cur.execute(
-                            f"SELECT setval(pg_get_serial_sequence('{d.quote(table)}', 'id'), "
-                            f"COALESCE((SELECT MAX({d.quote('id')}) FROM {d.quote(table)}), 0) + 1, false)"
+                            f"SELECT 1 FROM information_schema.columns WHERE table_name = '{table}' "
+                            "AND column_name = 'id' AND (is_identity = 'YES' OR column_default LIKE 'nextval%')"
                         )
+                        if cur.fetchone() is None:
+                            continue
+                    elif not _has_id(seed_rows):
+                        continue
+                    cur.execute(
+                        f"SELECT setval(pg_get_serial_sequence('{d.quote(table)}', 'id'), "
+                        f"COALESCE((SELECT MAX({d.quote('id')}) FROM {d.quote(table)}), 0) + 1, false)"
+                    )
+            elif self.engine == "mysql":
+                # DELETE leaves AUTO_INCREMENT where it was: restart an empty-seeded table at 1.
+                for table, seed_rows in self.base_tables.items():
+                    if not seed_rows:
+                        cur.execute(f"ALTER TABLE {d.quote(table)} AUTO_INCREMENT = 1")
             self.conn.commit()
         finally:
             cur.close()

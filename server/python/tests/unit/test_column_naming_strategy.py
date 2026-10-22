@@ -120,5 +120,5 @@ def test_object_manager_column_naming_argument_is_refused() -> None:
         'project setting now, read by every port: "naming" in .metaobjects/config.json, for '
         'example "naming": { "columns": "literal" }. Move it there and delete '
         "ObjectManager(column_naming=...). See "
-        "https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/migrations/physical-naming.md"
+        "https://github.com/metaobjectsdev/metaobjects/blob/v1.1.0/docs/features/migrations/physical-naming.md"
     )

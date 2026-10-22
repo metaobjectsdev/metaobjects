@@ -38,7 +38,7 @@ import java.sql.DriverManager
 class DocumentApiServer(private val pg: PostgresContainer) : AutoCloseable {
 
     private val db: Database = Database.connect(pg.jdbcUrl, user = pg.username, password = pg.password)
-    private val mapper = ObjectMapper()
+    private val mapper = ObjectMapper().enable(com.fasterxml.jackson.databind.DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS)
     private val httpServer: HttpServer = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
     val baseUrl: String
 
@@ -80,6 +80,8 @@ class DocumentApiServer(private val pg: PostgresContainer) : AutoCloseable {
                     it[primaryMarker] = toJsonElement(r["primaryMarker"])!!
                     it[optionalMarker] = toJsonElement(r["optionalMarker"])
                     it[markers] = toJsonElement(r["markers"])
+                    it[measure] = toJsonElement(r["measure"])
+                    it[measures] = toJsonElement(r["measures"])
                 }
             }
         }
@@ -141,6 +143,7 @@ class DocumentApiServer(private val pg: PostgresContainer) : AutoCloseable {
         val markersVal = body["markers"]
         if (markersVal != null && !(markersVal is List<*> && markersVal.all { isValidMarker(it) }))
             return sendJson(exchange, 400, mapOf("error" to "validation"))
+        val canon = canonicalizeMeasures(body) ?: return sendJson(exchange, 400, mapOf("error" to "validation"))
         val newId = transaction(db) {
             DocumentTable.insert {
                 it[title] = body["title"] as String
@@ -148,6 +151,8 @@ class DocumentApiServer(private val pg: PostgresContainer) : AutoCloseable {
                 it[primaryMarker] = toJsonElement(primary)!!
                 it[optionalMarker] = toJsonElement(optional)
                 it[markers] = toJsonElement(markersVal)
+                it[measure] = toJsonElement(canon["measure"])
+                it[measures] = toJsonElement(canon["measures"])
             }[DocumentTable.id]
         }
         val row = transaction(db) {
@@ -188,7 +193,8 @@ class DocumentApiServer(private val pg: PostgresContainer) : AutoCloseable {
                 return sendJson(exchange, 400, mapOf("error" to "validation"))
         }
         // Apply only the present keys (absent = untouched). Guard the empty-SET case (Exposed throws).
-        val settableKeys = listOf("title", "payload", "primaryMarker", "optionalMarker", "markers")
+        val canon = canonicalizeMeasures(body) ?: return sendJson(exchange, 400, mapOf("error" to "validation"))
+        val settableKeys = listOf("title", "payload", "primaryMarker", "optionalMarker", "markers", "measure", "measures")
         if (settableKeys.any { body.containsKey(it) }) {
             transaction(db) {
                 DocumentTable.update({ DocumentTable.id eq id }) {
@@ -197,6 +203,8 @@ class DocumentApiServer(private val pg: PostgresContainer) : AutoCloseable {
                     if (body.containsKey("primaryMarker")) it[primaryMarker] = toJsonElement(body["primaryMarker"])!!
                     if (body.containsKey("optionalMarker")) it[optionalMarker] = toJsonElement(body["optionalMarker"])
                     if (body.containsKey("markers")) it[markers] = toJsonElement(body["markers"])
+                    if (body.containsKey("measure")) it[measure] = toJsonElement(canon["measure"])
+                    if (body.containsKey("measures")) it[measures] = toJsonElement(canon["measures"])
                 }
             }
         }
@@ -217,6 +225,43 @@ class DocumentApiServer(private val pg: PostgresContainer) : AutoCloseable {
         return label.isNotEmpty() && label.length <= 40
     }
 
+    /**
+     * Validate and canonicalise the present `Measure { ratio; samples; amount: decimal(12, 4) }` columns:
+     * returns a map holding the canonical `measure` / `measures` values, or null on a violation.
+     */
+    private fun canonicalizeMeasures(body: Map<String, Any?>): Map<String, Any?>? {
+        val out = LinkedHashMap<String, Any?>()
+        val single = body["measure"]
+        if (single != null) out["measure"] = canonicalMeasure(single) ?: return null
+        val many = body["measures"]
+        if (many != null) {
+            if (many !is List<*>) return null
+            out["measures"] = many.map { canonicalMeasure(it) ?: return null }
+        }
+        return out
+    }
+
+    /** The Measure with its decimal amount range-checked and written as its canonical string, or null. */
+    private fun canonicalMeasure(value: Any?): Map<String, Any?>? {
+        val map = value as? Map<*, *> ?: return null
+        val out = LinkedHashMap<String, Any?>()
+        for ((k, v) in map) out[k as String] = v
+        val amount = out["amount"]
+        if (amount != null) {
+            val d = when (amount) {
+                is String -> if (Regex("-?\\d+(\\.\\d+)?").matches(amount)) java.math.BigDecimal(amount) else return null
+                is Number -> java.math.BigDecimal(amount.toString())
+                else -> return null
+            }
+            val stripped = if (d.signum() == 0) java.math.BigDecimal.ZERO else d.stripTrailingZeros()
+            val scale = maxOf(stripped.scale(), 0)
+            val intDigits = stripped.precision() - stripped.scale()
+            if (scale > 4 || intDigits > 12 - 4) return null
+            out["amount"] = stripped.toPlainString()
+        }
+        return out
+    }
+
     // -----------------------------------------------------------------------
     // Helpers
     // -----------------------------------------------------------------------
@@ -235,6 +280,8 @@ class DocumentApiServer(private val pg: PostgresContainer) : AutoCloseable {
         "primaryMarker" to fromJsonElement(row[DocumentTable.primaryMarker]),
         "optionalMarker" to fromJsonElement(row[DocumentTable.optionalMarker]),
         "markers" to fromJsonElement(row[DocumentTable.markers]),
+        "measure" to fromJsonElement(row[DocumentTable.measure]),
+        "measures" to fromJsonElement(row[DocumentTable.measures]),
     )
 
     /** Jackson value (Map/List/scalar/null) → kotlinx `JsonElement` (the column type). */
@@ -277,6 +324,8 @@ class DocumentApiServer(private val pg: PostgresContainer) : AutoCloseable {
         val primaryMarker = jsonb("primary_marker", { it.toString() }, { Json.parseToJsonElement(it) })
         val optionalMarker = jsonb("optional_marker", { it.toString() }, { Json.parseToJsonElement(it) }).nullable()
         val markers = jsonb("markers", { it.toString() }, { Json.parseToJsonElement(it) }).nullable()
+        val measure = jsonb("measure", { it.toString() }, { Json.parseToJsonElement(it) }).nullable()
+        val measures = jsonb("measures", { it.toString() }, { Json.parseToJsonElement(it) }).nullable()
 
         override val primaryKey = PrimaryKey(id)
     }

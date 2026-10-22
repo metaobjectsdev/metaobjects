@@ -9,6 +9,14 @@
           { "field.int":    { "name": "score" } }
         ]
       }},
+      { "object.value": {
+        "name": "Measure",
+        "children": [
+          { "field.double":  { "name": "ratio" } },
+          { "field.double":  { "name": "samples", "isArray": true } },
+          { "field.decimal": { "name": "amount", "@precision": 12, "@scale": 4 } }
+        ]
+      }},
       { "object.entity": {
         "name": "Document",
         "children": [
@@ -19,6 +27,8 @@
           { "field.object":     { "name": "primaryMarker",  "@objectRef": "Marker", "@storage": "jsonb", "@required": true } },
           { "field.object":     { "name": "optionalMarker", "@objectRef": "Marker", "@storage": "jsonb" } },
           { "field.object":     { "name": "markers",        "@objectRef": "Marker", "@storage": "jsonb", "isArray": true } },
+          { "field.object":     { "name": "measure",  "@objectRef": "Measure", "@storage": "jsonb" } },
+          { "field.object":     { "name": "measures", "@objectRef": "Measure", "@storage": "jsonb", "isArray": true } },
           { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } }
         ]
       }}

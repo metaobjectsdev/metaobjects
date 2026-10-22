@@ -1,0 +1,50 @@
+name: decimal-unbounded-exact-15
+description: >
+  The decimal-unbounded-exact cases whose values fit 15 significant digits, run on every engine
+  (W4). An undeclared-precision decimal is stored and read back canonical: 1.234567 is not rounded
+  to 1.2346 and not refused. The 20-integer-digit cases are Postgres and MySQL only.
+requests:
+  - id: r1
+    method: POST
+    path: /api/samples
+    body: { free: "1.234567" }
+    expect:
+      status: 201
+      body:
+        hasId: true
+        row:
+          free: "1.234567"
+  - id: r2
+    method: GET
+    path: /api/samples/1
+    expect:
+      status: 200
+      body:
+        row:
+          free: "1.234567"
+  - id: r3
+    method: POST
+    path: /api/samples
+    body: { free: "123456789012.123" }
+    expect:
+      status: 201
+      body:
+        row:
+          free: "123456789012.123"
+  - id: r4
+    method: PATCH
+    path: /api/samples/1
+    body: { free: 0.0000123 }
+    expect:
+      status: 200
+      body:
+        row:
+          free: "0.0000123"
+  - id: r5
+    method: POST
+    path: /api/samples
+    body: { free: "12abc" }
+    expect:
+      status: 400
+      body:
+        error: validation

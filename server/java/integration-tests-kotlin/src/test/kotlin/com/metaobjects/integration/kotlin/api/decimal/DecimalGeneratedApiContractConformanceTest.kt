@@ -65,13 +65,13 @@ internal class DecimalGeneratedApiContractConformanceTest {
     }
 
     @Test
-    fun `the corpus has its eight scenarios`() {
+    fun `the corpus has its eleven scenarios`() {
         // A lane that silently ran fewer would still be green.
-        assertEquals(8, scenarios().count())
+        assertEquals(11, scenarios().count())
     }
 
     @Test
-    fun `the entity and the report both get a controller`() {
+    fun `the entities and the report all get a controller`() {
         for (name in GeneratedReportControllerHarness.DECIMAL_SERVED) {
             assertTrue("acme/ledger/${name}Controller.kt" in HARNESS.emittedFiles, "$name was not generated")
         }

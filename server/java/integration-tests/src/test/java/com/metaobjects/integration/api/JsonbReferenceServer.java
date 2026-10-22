@@ -47,7 +47,8 @@ import java.util.Map;
 final class JsonbReferenceServer implements AutoCloseable {
 
     private final PostgresContainer pg;
-    private final ObjectMapper mapper = new ObjectMapper();
+    private final ObjectMapper mapper = new ObjectMapper()
+        .enable(com.fasterxml.jackson.databind.DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS);
     private final HttpServer httpServer;
     private final String baseUrl;
 
@@ -78,15 +79,17 @@ final class JsonbReferenceServer implements AutoCloseable {
                 + "payload JSONB, "
                 + "primary_marker JSONB NOT NULL, "   // required single VO (Program D)
                 + "optional_marker JSONB, "           // nullable single VO
-                + "markers JSONB)");                  // nullable array-of-VO
+                + "markers JSONB, "                   // nullable array-of-VO
+                + "measure JSONB, "                   // nullable single Measure VO (decimal amount)
+                + "measures JSONB)");                 // nullable array-of-Measure VO
         }
     }
 
     private void applySeed(List<Map<String, Object>> seedRows) throws SQLException {
         try (Connection c = connect()) {
             try (PreparedStatement ps = c.prepareStatement(
-                "INSERT INTO \"documents\" (id, title, payload, primary_marker, optional_marker, markers) "
-                + "VALUES (?, ?, ?, ?, ?, ?)")) {
+                "INSERT INTO \"documents\" (id, title, payload, primary_marker, optional_marker, markers, measure, measures) "
+                + "VALUES (?, ?, ?, ?, ?, ?, ?, ?)")) {
                 for (Map<String, Object> r : seedRows) {
                     ps.setLong(1, ((Number) r.get("id")).longValue());
                     ps.setString(2, String.valueOf(r.get("title")));
@@ -94,6 +97,8 @@ final class JsonbReferenceServer implements AutoCloseable {
                     bindJsonb(ps, 4, r.get("primaryMarker"));
                     bindJsonb(ps, 5, r.get("optionalMarker"));
                     bindJsonb(ps, 6, r.get("markers"));
+                    bindJsonb(ps, 7, r.get("measure"));
+                    bindJsonb(ps, 8, r.get("measures"));
                     ps.executeUpdate();
                 }
             }
@@ -137,7 +142,7 @@ final class JsonbReferenceServer implements AutoCloseable {
             Map<String, Object> body = readBody(exchange);
             // Program D: nested value-object validation on CREATE (required primaryMarker present +
             // valid; a present optional/array VO valid) → 400 before persisting.
-            if (!voValidForCreate(body)) { sendJson(exchange, 400, Map.of("error", "validation")); return; }
+            if (!voValidForCreate(body) || !canonicalizeMeasures(body)) { sendJson(exchange, 400, Map.of("error", "validation")); return; }
             sendJson(exchange, 201, create(body));
             return;
         }
@@ -146,7 +151,7 @@ final class JsonbReferenceServer implements AutoCloseable {
             Map<String, Object> body = readBody(exchange);
             // FR-035 tristate + Program D nested VO validation: present-null on the @required
             // primaryMarker → 400; a present value must be a valid Marker (single or array) → 400.
-            if (!voValidForPatch(body)) { sendJson(exchange, 400, Map.of("error", "validation")); return; }
+            if (!voValidForPatch(body) || !canonicalizeMeasures(body)) { sendJson(exchange, 400, Map.of("error", "validation")); return; }
             Map<String, Object> row = patch(id, body);
             if (row == null) { sendJson(exchange, 404, Map.of("error", "not_found")); return; }
             sendJson(exchange, 200, row);
@@ -158,7 +163,7 @@ final class JsonbReferenceServer implements AutoCloseable {
     private Map<String, Object> findById(long id) throws SQLException {
         try (Connection c = connect();
              PreparedStatement ps = c.prepareStatement(
-                 "SELECT id, title, payload, primary_marker, optional_marker, markers "
+                 "SELECT id, title, payload, primary_marker, optional_marker, markers, measure, measures "
                  + "FROM \"documents\" WHERE id = ?")) {
             ps.setLong(1, id);
             try (ResultSet rs = ps.executeQuery()) {
@@ -170,14 +175,16 @@ final class JsonbReferenceServer implements AutoCloseable {
     private Map<String, Object> create(Map<String, Object> body) throws SQLException {
         try (Connection c = connect();
              PreparedStatement ps = c.prepareStatement(
-                 "INSERT INTO \"documents\" (title, payload, primary_marker, optional_marker, markers) "
-                 + "VALUES (?, ?, ?, ?, ?) "
-                 + "RETURNING id, title, payload, primary_marker, optional_marker, markers")) {
+                 "INSERT INTO \"documents\" (title, payload, primary_marker, optional_marker, markers, measure, measures) "
+                 + "VALUES (?, ?, ?, ?, ?, ?, ?) "
+                 + "RETURNING id, title, payload, primary_marker, optional_marker, markers, measure, measures")) {
             ps.setString(1, String.valueOf(body.get("title")));
             bindJsonb(ps, 2, body.get("payload"));
             bindJsonb(ps, 3, body.get("primaryMarker"));
             bindJsonb(ps, 4, body.get("optionalMarker"));
             bindJsonb(ps, 5, body.get("markers"));
+            bindJsonb(ps, 6, body.get("measure"));
+            bindJsonb(ps, 7, body.get("measures"));
             try (ResultSet rs = ps.executeQuery()) {
                 rs.next();
                 return rowFrom(rs);
@@ -200,6 +207,8 @@ final class JsonbReferenceServer implements AutoCloseable {
         addAssignment(body, "primaryMarker", "primary_marker", true, setClauses, values, jsonb);
         addAssignment(body, "optionalMarker", "optional_marker", true, setClauses, values, jsonb);
         addAssignment(body, "markers", "markers", true, setClauses, values, jsonb);
+        addAssignment(body, "measure", "measure", true, setClauses, values, jsonb);
+        addAssignment(body, "measures", "measures", true, setClauses, values, jsonb);
         if (!setClauses.isEmpty()) {
             String sql = "UPDATE \"documents\" SET " + String.join(", ", setClauses) + " WHERE id = ?";
             try (Connection c = connect(); PreparedStatement ps = c.prepareStatement(sql)) {
@@ -233,6 +242,8 @@ final class JsonbReferenceServer implements AutoCloseable {
         row.put("primaryMarker", parseJson(rs.getString("primary_marker")));
         row.put("optionalMarker", parseJson(rs.getString("optional_marker")));
         row.put("markers", parseJson(rs.getString("markers")));
+        row.put("measure", parseJson(rs.getString("measure")));
+        row.put("measures", parseJson(rs.getString("measures")));
         return row;
     }
 
@@ -298,6 +309,59 @@ final class JsonbReferenceServer implements AutoCloseable {
         if (!(v instanceof List<?> list)) return false;
         for (Object el : list) if (!validMarker(el)) return false;
         return true;
+    }
+
+    // --- Measure { ratio: double; samples: double[]; amount: decimal(12, 4) } ---------------------
+
+    private static final int MEASURE_PRECISION = 12;
+    private static final int MEASURE_SCALE = 4;
+
+    /** Validate and canonicalise the present Measure columns in place; false on a violation. */
+    @SuppressWarnings("unchecked")
+    private static boolean canonicalizeMeasures(Map<String, Object> body) {
+        Object single = body.get("measure");
+        if (body.containsKey("measure") && single != null) {
+            Map<String, Object> canon = canonicalMeasure(single);
+            if (canon == null) return false;
+            body.put("measure", canon);
+        }
+        Object many = body.get("measures");
+        if (body.containsKey("measures") && many != null) {
+            if (!(many instanceof List<?> list)) return false;
+            List<Object> out = new ArrayList<>();
+            for (Object m : list) {
+                Map<String, Object> canon = canonicalMeasure(m);
+                if (canon == null) return false;
+                out.add(canon);
+            }
+            body.put("measures", out);
+        }
+        return true;
+    }
+
+    /** A Measure with its decimal amount range-checked and written as its canonical string, or null. */
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> canonicalMeasure(Object measure) {
+        if (!(measure instanceof Map<?, ?> m)) return null;
+        Map<String, Object> out = new LinkedHashMap<>((Map<String, Object>) m);
+        Object amount = out.get("amount");
+        if (amount != null) {
+            java.math.BigDecimal d;
+            if (amount instanceof String str) {
+                if (!str.matches("-?\\d+(\\.\\d+)?")) return null;
+                d = new java.math.BigDecimal(str);
+            } else if (amount instanceof Number n && !(amount instanceof Double dd && (dd.isNaN() || dd.isInfinite()))) {
+                d = new java.math.BigDecimal(n.toString());
+            } else {
+                return null;
+            }
+            java.math.BigDecimal stripped = d.signum() == 0 ? java.math.BigDecimal.ZERO : d.stripTrailingZeros();
+            int scale = Math.max(stripped.scale(), 0);
+            int intDigits = stripped.precision() - stripped.scale();
+            if (scale > MEASURE_SCALE || intDigits > MEASURE_PRECISION - MEASURE_SCALE) return null;
+            out.put("amount", stripped.toPlainString());
+        }
+        return out;
     }
 
     // -----------------------------------------------------------------------
