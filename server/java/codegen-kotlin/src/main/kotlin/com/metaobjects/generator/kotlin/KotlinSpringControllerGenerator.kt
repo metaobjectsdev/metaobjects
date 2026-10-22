@@ -1932,13 +1932,6 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         return !STORAGE_FLATTENED.equals(storage?.trim(), ignoreCase = true)
     }
 
-    /**
-     * The fully-qualified Kotlin type of the value object a [field] `field.object` references
-     * (e.g. `acme.store.Marker`) — the Jackson bind target for the PATCH TypeReference. Emitted
-     * fully-qualified so the generated controller needs no extra import (mirrors the Exposed
-     * column codec in [KotlinExposedTableGenerator]). Falls back to a Jackson `JsonNode` when the
-     * `@objectRef` cannot resolve (defensive — the loader gates the attr's presence).
-     */
     /** True for a `field.map` whose values are a value object (`@objectRef`), stored as one jsonb column. */
     private fun isVoMapColumn(field: MetaField<*>): Boolean =
         field is MapField && readObjectRef(field) != null
@@ -1949,6 +1942,13 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         return target?.let { PackageMapping.toKotlin(it.name) } ?: "kotlin.Any"
     }
 
+    /**
+     * The fully-qualified Kotlin type of the value object a [field] `field.object` references
+     * (e.g. `acme.store.Marker`) — the Jackson bind target for the PATCH TypeReference. Emitted
+     * fully-qualified so the generated controller needs no extra import (mirrors the Exposed
+     * column codec in [KotlinExposedTableGenerator]). Falls back to a Jackson `JsonNode` when the
+     * `@objectRef` cannot resolve (defensive — the loader gates the attr's presence).
+     */
     private fun voElementTypeFqn(field: ObjectField, loader: MetaDataLoader): String {
         val target = readObjectRef(field)?.let { KotlinGenUtil.lookupCanonicalObject(loader, it) }
         return target?.let { PackageMapping.toKotlin(it.name) }

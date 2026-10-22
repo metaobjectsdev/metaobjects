@@ -1080,18 +1080,7 @@ public class DbContextGenerator : IGenerator
             if (DbColumnTypeConfig(className, f) is { } cfg) modelLines.Add(cfg);
     }
 
-    // Owned-type config for an object-typed entity field. @storage flattened maps each
-    // nested scalar to "{parentCol}_{nestedCol}"; every other storage collapses to one
-    // json column (.ToJson) — matching the TS-owned schema DDL. null (with a warning)
-    // when @objectRef can't be resolved. <paramref name="owner"/> is the emitted CLR class
-    // name (the write entity, or a write-through entity's <Entity>View read model — #214).
-    //
-    // KNOWN GAP: a @required non-flattened object field gets a NOT NULL jsonb column in
-    // the TS-owned schema DDL, but .ToJson here does not mark the owned navigation
-    // required, so EF models it nullable — a gen↔schema nullability mismatch. Deferred
-    // until the exact EF Core required-owned-JSON mapping can be validated against a
-    // live provider.
-    // True when a value object declares a field.map, or holds (non-flattened) a value object that does.
+    // True when a value object declares a field.map, or holds a value object that does.
     private static bool HoldsMap(MetaObject vo, MetaRoot root, HashSet<MetaObject> seen)
     {
         if (!seen.Add(vo)) return false;
@@ -1104,6 +1093,17 @@ public class DbContextGenerator : IGenerator
         return false;
     }
 
+    // Owned-type config for an object-typed entity field. @storage flattened maps each
+    // nested scalar to "{parentCol}_{nestedCol}"; every other storage collapses to one
+    // json column (.ToJson) — matching the TS-owned schema DDL. null (with a warning)
+    // when @objectRef can't be resolved. <paramref name="owner"/> is the emitted CLR class
+    // name (the write entity, or a write-through entity's <Entity>View read model — #214).
+    //
+    // KNOWN GAP: a @required non-flattened object field gets a NOT NULL jsonb column in
+    // the TS-owned schema DDL, but .ToJson here does not mark the owned navigation
+    // required, so EF models it nullable — a gen↔schema nullability mismatch. Deferred
+    // until the exact EF Core required-owned-JSON mapping can be validated against a
+    // live provider.
     private string? OwnedTypeConfig(string owner, MetaObject entity, MetaField field, GenContext ctx)
     {
         if (ValueObjectNames.ResolveFieldRef(field, ctx.Root) is not { } vo)

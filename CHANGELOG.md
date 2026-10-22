@@ -1532,7 +1532,10 @@ until you regenerate.
     not a declared decimal stays a float in Python (it answered 500). The rule also holds
     for a value object held by a `field.map` (applied to each map value; the keys are arbitrary
     and never matched with member names), gated by the `jsonb-value-object-map-decimals`
-    scenario in every port.
+    scenario in every port. To get there, the generated Kotlin controller now creates, reads
+    and patches a `field.map` of value objects (it skipped that column before), and the
+    generated C# `DbContext` maps a value object that holds a map as one converted jsonb
+    property instead of an owned type (EF Core 8 cannot own a dictionary inside JSON).
   - **A `field.decimal` array works in C#, Java and Kotlin.** Java binds a Postgres `numeric[]`
     as exact `BigDecimal` elements, a non-required C# decimal array is nullable, and each
     element follows the scalar decimal rule (a bad element is `400 validation`).
