@@ -1527,7 +1527,17 @@ until you regenerate.
     before.
   - **A `field.decimal` inside a jsonb value object follows the top-level decimal rule in all
     five ports**: written as the canonical string, read from a string or a JSON number exactly.
-    The ports disagreed before (TypeScript refused a number, Python stored a float).
+    The ports disagreed before (TypeScript refused a number, Python stored a float). A
+    `field.double` inside a value object stays a JSON number, and a fractional number that is
+    not a declared decimal stays a float in Python (it answered 500). A decimal inside a
+    `field.map` value object is not covered: it is not part of the rule and is not gated.
+  - **A `field.decimal` array works in C#, Java and Kotlin.** Java binds a Postgres `numeric[]`
+    as exact `BigDecimal` elements, a non-required C# decimal array is nullable, and each
+    element follows the scalar decimal rule (a bad element is `400 validation`).
+  - **C# and Java: a value object omits an unset member on the wire instead of sending `null`**,
+    as the other ports do. A C# value-object array property becomes nullable with no
+    initializer; an abstract shape's array keeps its `new List<T>()` initializer.
+  - **C#: a malformed or empty JSON body on a decimal-bearing entity is `400 validation`.**
   - **The loader refuses four more report shapes**, with the cross-port code and a message
     naming the fix: a dimension or measure over a `field.object` or `@objectRef` field
     (D5, M10: `ERR_INVALID_DIMENSION` / `ERR_INVALID_MEASURE`; a `field.map` with `@valueType`
