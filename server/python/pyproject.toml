@@ -50,7 +50,7 @@ Issues = "https://github.com/metaobjectsdev/metaobjects/issues"
 Changelog = "https://github.com/metaobjectsdev/metaobjects/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "mypy>=1.10", "ruff>=0.6", "pydantic>=2"]
+dev = ["pytest>=8", "pytest-xdist>=3.6", "mypy>=1.10", "ruff>=0.6", "pydantic>=2"]
 # On-demand cross-language conformance suites — persistence + api-contract.
 # pg8000 is pure-python so this extra installs cleanly without native deps;
 # the persistence harness shells out to the docker CLI directly (matches the
@@ -103,6 +103,9 @@ exclude = ["tests/codegen/golden/"]
 [dependency-groups]
 dev = [
     "pytest>=9.0.3",
+    # scripts/ci-local.sh and scripts/integration-test.sh run the suite with `-n`; serial,
+    # the ~4,000 tests were the longest step in the full local run.
+    "pytest-xdist>=3.6",
     # `uv run` installs THIS group (PEP 735), not [project.optional-dependencies].
     # The validator-parity corpus (tests/codegen/test_validation_conformance.py)
     # imports pydantic to exercise the generated Pydantic models, so it must be here

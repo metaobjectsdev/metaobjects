@@ -10,6 +10,16 @@ here.**
 
 ## [Unreleased]
 
+### Changed
+
+- **Python: `metaobjects gen` and `verify --codegen` run ruff as its own binary.** Every emitted
+  file is import-sorted and formatted by ruff twice, and each call used to go through
+  `python -m ruff`, which starts a second interpreter only to exec the binary the ruff package
+  installed. That start was about 90% of codegen time (59 ms against 6 ms a call, measured). The
+  formatter now resolves that binary once with ruff's own `find_ruff_bin`, so the ruff version
+  and the generated output are unchanged; it falls back to `python -m ruff` if the binary cannot
+  be found.
+
 ## [1.1.0] — 2026-10-22
 
 _npm `1.1.0` (all 14 `@metaobjectsdev/*` packages in lockstep), PyPI `1.1.0`, NuGet `1.1.0` and

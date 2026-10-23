@@ -75,13 +75,32 @@
 #                                    #   machine where skips indicate real problems.
 #   scripts/ci-local.sh --help
 #
+# THE FULL RUN IS PARALLEL (see "Lanes" below). The flagless run does the steps that
+# write into the tree first, in order: install, the drift gates, one workspace build.
+# Then it runs the rest as independent LANES side by side, at most MO_CI_JOBS at once
+# (default 8): java (the reactor, which already holds every java/kotlin conformance
+# class), python, mutation, csharp, ts, ts-integ, java-integ and kotlin-integ (both
+# after java, which installs the jars they read), showcase (after java and csharp), cube
+# and gates. Each lane writes to its own log; the log prints as one block when the lane
+# ends, so output never interleaves. The summary lists every step with its time, the
+# slowest steps and each lane's wall time. Every step still runs and still fails the
+# run; only the order changes. --quick and --only run serially as before.
+# Worker counts inside the runners: MO_CI_PY_WORKERS (pytest-xdist, default 8),
+# MO_CI_TS_WORKERS (bun test --parallel for the integration suite, default 6) and
+# MO_CI_JVM_FORKS (surefire forkCount for the JVM integration modules, default 3).
+#
 # POSTGRES SIDECAR (see ensure_pg_sidecar below). Any lane that runs integration
 # tests shares ONE Postgres container instead of booting a Testcontainers instance
 # per scenario. It is started (or reused) automatically and costs ~6s cold, ~1s warm.
 # Measured on this repo: python integration 6m54s -> 11s, kotlin integration 47s with
-# zero containers booted. If METAOBJECTS_TEST_PG_URL is already set — as local-ci.yml
-# does from its `services:` block — nothing here changes. Opt out with
-# MO_CI_NO_PG_SIDECAR=1; rename it with MO_PG_SIDECAR_NAME.
+# zero containers booted. Every port's helper creates its own database per scenario,
+# so lanes that share the container never share a database. Its name carries a hash of
+# this checkout's path, so two checkouts on one machine never share or stop each
+# other's. It is left running for the next run (that is the ~1s warm start), so each
+# checkout keeps one; `docker rm -f metaobjects-ci-sidecar-<n>` removes it. If
+# METAOBJECTS_TEST_PG_URL is already set — as local-ci.yml does from its
+# `services:` block — nothing here changes. Opt out with MO_CI_NO_PG_SIDECAR=1; rename
+# it with MO_PG_SIDECAR_NAME.
 #
 # MO_CI_LEAK_BASE overrides the ref the leak scan diffs against (default origin/main,
 # else HEAD~1); hygiene.yml points it at the PR's base branch. MO_CI_JACOCO=1 keeps
@@ -127,6 +146,10 @@ done
 [ -n "$ONLY" ] && [ "$QUICK" -eq 1 ] && { echo "--only and --quick are mutually exclusive" >&2; exit 2; }
 [ "$INTEG_ONLY" -eq 1 ] && [ "$QUICK" -eq 1 ] && { echo "--integration-only and --quick are mutually exclusive" >&2; exit 2; }
 [ "$INTEG_ONLY" -eq 1 ] && [ "$NO_INTEG" -eq 1 ] && { echo "--integration-only and --no-integration are mutually exclusive" >&2; exit 2; }
+MO_CI_JOBS="${MO_CI_JOBS:-8}"
+case "$MO_CI_JOBS" in
+  ''|*[!0-9]*|0) echo "MO_CI_JOBS must be a positive integer (got '${MO_CI_JOBS}')" >&2; exit 2 ;;
+esac
 
 in_lane() { # in_lane <section> — true when the section is selected
   [ -z "$ONLY" ] && return 0
@@ -145,8 +168,20 @@ want_any() { # want_any <section...> — true when ANY listed section's should r
   local s; for s in "$@"; do want "$s" && return 0; done; return 1
 }
 
-PASS=(); FAIL=(); SKIP=()
 have() { command -v "$1" >/dev/null 2>&1; }
+
+# Every verdict is a line in a results file — "<PASS|FAIL|SKIP>\t<seconds>\t<name>" — rather
+# than an entry in a shell array, because the full run's lanes are background subshells and
+# an array a subshell appends to dies with it. Each lane writes its own file; the summary
+# reads them all back in lane order.
+CI_T0=$SECONDS
+CI_TMP="$(mktemp -d "${TMPDIR:-/tmp}/mo-ci-local.XXXXXX")"
+CI_RESULTS="$CI_TMP/main.tsv"; : > "$CI_RESULTS"
+record() { printf '%s\t%s\t%s\n' "$1" "$2" "$3" >> "$CI_RESULTS"; }  # record <verdict> <secs> <name>
+fmt_dur() { if [ "$1" -ge 60 ]; then printf '%dm%02ds' $(($1 / 60)) $(($1 % 60)); else printf '%ds' "$1"; fi; }
+step_passed() { # step_passed "<name>" — true when a step of that name has PASSED in this run
+  cat "$CI_TMP"/*.tsv 2>/dev/null | awk -F'\t' -v n="$1" '$1 == "PASS" && $3 == n { f = 1 } END { exit !f }'
+}
 
 # Every Maven call a gate makes — here and in the scripts it spawns (integration-test.sh,
 # fatjar-smoke.sh) — resolves and INSTALLS into a CI-owned local repository, never the
@@ -163,22 +198,32 @@ export MAVEN_ARGS="${MAVEN_ARGS:+$MAVEN_ARGS }-Dmaven.repo.local=${METAOBJECTS_C
 # ssh2/cpu-features chain needs node-gyp on the machine — `npm i -g node-gyp`
 # fixes it for good). Retry once as defense-in-depth for transient installer
 # flakes; a genuinely broken install still fails both attempts.
-bun_install() { bun install || bun install; }
+#
+# The full run installs ONCE, before its lanes fork (MO_CI_DEPS_INSTALLED=1), so the install
+# every gate keeps for running on its own cannot rewrite node_modules under a sibling lane.
+bun_install() { [ "${MO_CI_DEPS_INSTALLED:-0}" = "1" ] && return 0; bun install || bun install; }
 
 step() {  # step "<name>" <cmd...>
   local name="$1"; shift
+  local t0=$SECONDS dt
   echo ""
   echo "── ▶ $name ──────────────────────────────────────────────"
-  if "$@"; then PASS+=("$name"); else FAIL+=("$name"); echo "  ✖ $name FAILED" >&2; fi
+  if "$@"; then
+    dt=$((SECONDS - t0)); record PASS "$dt" "$name"
+    echo "── ✓ $name ($(fmt_dur "$dt"))"
+  else
+    dt=$((SECONDS - t0)); record FAIL "$dt" "$name"
+    echo "  ✖ $name FAILED ($(fmt_dur "$dt"))" >&2
+  fi
 }
 step_if() {  # step_if <tool> "<name>" <cmd...>  — SKIP (or FAIL under --strict-toolchains) when tool absent
   local tool="$1"; local name="$2"; shift 2
   if have "$tool"; then step "$name" "$@"; elif [ "$STRICT" -eq 1 ]; then
     echo ""; echo "  ✖ $name — '$tool' not installed (strict-toolchains)" >&2
-    FAIL+=("$name (no $tool, strict)")
+    record FAIL 0 "$name (no $tool, strict)"
   else
     echo ""; echo "── ⊘ $name — SKIPPED ('$tool' not installed) ──" >&2
-    SKIP+=("$name (no $tool)")
+    record SKIP 0 "$name (no $tool)"
   fi
 }
 
@@ -516,6 +561,9 @@ gate_ts_build_typecheck() { bun_install && bun run --filter '*' build && bun run
 # Build only (no typecheck) — the ts-slow lane needs the workspace dist/ to run the
 # integration tests, but the typecheck already runs in ts-fast, so don't repeat it.
 gate_ts_build() { bun_install && bun run --filter '*' build; }
+# The full run's other half of gate_ts_build_typecheck: it builds before its lanes fork (every
+# lane that runs the CLI or the integration suite reads dist/) and typechecks inside one.
+gate_ts_typecheck() { bun run --filter '*' typecheck; }
 
 # migrate-ts real-Postgres suites — apply / lifecycle / rollback / introspection against a
 # real engine. ADR-0015 makes migrate-ts the project's ONLY migrate engine, so this is the
@@ -595,17 +643,23 @@ gate_ts_unit() {
   # any warm developer box — which is exactly what happened the first time they ran.
   # Scoped, not `--filter '*'`: metadata (its `constants` subpath is the fix under test)
   # plus every published browser package. ~3s cold, so the lane stays cheap.
-  bun run --filter '@metaobjectsdev/metadata' \
-          --filter '@metaobjectsdev/runtime-web' \
-          --filter '@metaobjectsdev/react' \
-          --filter '@metaobjectsdev/tanstack' \
-          --filter '@metaobjectsdev/angular' build || return 1
-  # sdk's suite asserts that `agent-context/` — the gitignored copy bundled INTO the
-  # package for publishing — exists. That copy is produced by sdk's build, so on a clean
-  # checkout the assertion fails; on a developer box it passes off a stale artifact. Run
-  # the bundle step alone rather than sdk's full `build`, which also runs tsc and would
-  # drag in every dependency's dist for no gain here.
-  bun run --filter '@metaobjectsdev/sdk' bundle-agent-context || return 1
+  #
+  # The full run has already built the WHOLE workspace before its lanes fork
+  # (MO_CI_WORKSPACE_BUILT=1), which covers both steps below; rebuilding metadata's dist/
+  # here would rewrite it under the lanes running the CLI and the integration suite.
+  if [ "${MO_CI_WORKSPACE_BUILT:-0}" != "1" ]; then
+    bun run --filter '@metaobjectsdev/metadata' \
+            --filter '@metaobjectsdev/runtime-web' \
+            --filter '@metaobjectsdev/react' \
+            --filter '@metaobjectsdev/tanstack' \
+            --filter '@metaobjectsdev/angular' build || return 1
+    # sdk's suite asserts that `agent-context/` — the gitignored copy bundled INTO the
+    # package for publishing — exists. That copy is produced by sdk's build, so on a clean
+    # checkout the assertion fails; on a developer box it passes off a stale artifact. Run
+    # the bundle step alone rather than sdk's full `build`, which also runs tsc and would
+    # drag in every dependency's dist for no gain here.
+    bun run --filter '@metaobjectsdev/sdk' bundle-agent-context || return 1
+  fi
   # Every server-side TS package whose suite no other lane runs in full. The three
   # originals (metadata/render/runtime-ts) plus, from 2026-08-09, the seven that were
   # gated by NOTHING AT ALL: gate_conf_ts covers migrate-ts / codegen-ts / cli in full
@@ -669,9 +723,20 @@ gate_conf_python() {
   # ModuleNotFoundError on 9 modules (it only passed locally where the venv had
   # been synced with the extra by a prior run). This matches every other
   # tests/integration invocation in the repo (scripts/integration-test.sh,
-  # docs/CONFORMANCE.md). The PG-backed scenarios connect to the lane's Postgres
-  # sidecar via METAOBJECTS_TEST_PG_URL (set in local-ci.yml).
-  ( cd server/python && uv run --extra integration pytest tests/ -q )
+  # docs/CONFORMANCE.md).
+  #
+  # EXCEPT tests/integration when this selection also runs `integration-tests (python)`,
+  # which is that directory: running it here too ran its ~380 Postgres and MySQL scenarios
+  # twice per full run. Under --no-integration (conformance.yml) it stays in, because half
+  # of it needs no docker (the generated-lane and normalization tests) and this is then the
+  # only step that runs it.
+  #
+  # -n: pytest-xdist. The suite is ~4,000 independent tests, many of which shell out to a
+  # formatter or compile generated code, so it is wall-clock bound, not CPU bound; serial it
+  # was the longest step in the full run. MO_CI_PY_WORKERS overrides the worker count.
+  local skip_integ="--ignore=tests/integration"
+  [ "$NO_INTEG" -eq 1 ] && skip_integ=""
+  ( cd server/python && uv run --extra integration pytest tests/ $skip_integ -q -n "${MO_CI_PY_WORKERS:-8}" )
 }
 gate_conf_kotlin() {
   ( cd server/java \
@@ -690,6 +755,10 @@ gate_java_reactor() {
   [ "${MO_CI_JACOCO:-0}" = "1" ] && jacoco=""
   ( cd server/java && mvn -q clean install $jacoco )
 }
+# The full run's JVM integration lanes need the reactor installed and must not install it
+# themselves (two concurrent `mvn install`s clobber the shared module jars). When the reactor
+# step is not selected — `--integration-only` — this installs it without its tests.
+gate_java_install() { ( cd server/java && mvn -q -DskipTests -Djacoco.skip=true install ); }
 gate_completeness() { ( cd server/typescript/packages/metadata && bun run conformance:mutation ); }
 gate_doc_template_drift() {
   bash scripts/sync-doc-templates.sh \
@@ -726,9 +795,9 @@ run_cube_lane() {
   echo "  real Cube. Start docker and run: scripts/ci-local.sh --only cube" >&2
   echo "  ════════════════════════════════════════════════════════════════════════" >&2
   if [ "$STRICT" -eq 1 ]; then
-    FAIL+=("cube-model live check (docker down, strict)")
+    record FAIL 0 "cube-model live check (docker down, strict)"
   else
-    SKIP+=("cube-model live check (docker down)")
+    record SKIP 0 "cube-model live check (docker down)"
   fi
 }
 
@@ -753,11 +822,27 @@ run_cube_lane() {
 #     no readiness gate and that was the dominant flake: the first connect to a
 #     transiently-slow sidecar hung to the test timeout.
 #
+#   * the container name is PER CHECKOUT (a checksum of this checkout's path). Several
+#     checkouts of this repository run on one machine at once, and a shared name made them
+#     reuse one database: the migrate-ts and runtime-ts suites create fixed table names in
+#     it, so two checkouts' runs could drop each other's tables mid-test.
+#
 # Opt out with MO_CI_NO_PG_SIDECAR=1 to get the old per-scenario-container behaviour.
-MO_PG_SIDECAR_NAME="${MO_PG_SIDECAR_NAME:-metaobjects-ci-sidecar}"
+MO_PG_SIDECAR_NAME="${MO_PG_SIDECAR_NAME:-metaobjects-ci-sidecar-$(printf '%s' "$ROOT" | cksum | cut -d' ' -f1)}"
+MO_CI_PG_URL=""   # set by start_pg_sidecar; exported only by use_pg_sidecar
 
+# ensure_pg_sidecar — start (or reuse) the sidecar and export its URL into THIS shell.
 ensure_pg_sidecar() {
   [ -n "${METAOBJECTS_TEST_PG_URL:-}" ] && return 0   # CI, or an explicit override
+  start_pg_sidecar && use_pg_sidecar
+}
+
+# start_pg_sidecar — start (or reuse) the sidecar and record its URL in MO_CI_PG_URL, exporting
+# nothing. The full run calls it once before its lanes fork and lets each lane that runs an
+# integration suite export the URL for itself, so a lane with no database (ts unit suites)
+# never sees one: runtime-ts's suite runs its real-PG files whenever the URL is set, against
+# the same fixed table names the ts-integration lane is using at that moment.
+start_pg_sidecar() {
   [ "${MO_CI_NO_PG_SIDECAR:-0}" = "1" ] && return 0
 
   local name="$MO_PG_SIDECAR_NAME" port
@@ -804,19 +889,25 @@ ensure_pg_sidecar() {
   # exactly as the ts-slow job does, so migrate-ts's real-Postgres suites run locally
   # instead of self-skipping.
   #
-  # The two *_EXPECT sentinels are armed HERE and nowhere else — at the one point where a
-  # database is proven up and its URL exported. Every fallback above returns before this,
+  # The two *_EXPECT sentinels are armed by use_pg_sidecar and nowhere else — only once a
+  # database is proven up here and its URL recorded. Every fallback above returns before this,
   # so a box with no docker, no published port or a sidecar that never became ready still
   # self-skips as it always did rather than failing for want of a database it was never
   # going to have. Armed, they turn "the URL stopped being set" from a silent 26-test skip
   # reported as ✓ into a loud failure. Hosted CI sets both from its `services:` block; the
   # local run had neither, which is why a local ✓ and a hosted ✖ could disagree about the
   # only real-engine gate on migration correctness.
-  export METAOBJECTS_TEST_PG_URL="postgres://metaobjects:metaobjects@localhost:${port}/metaobjects_test"
+  MO_CI_PG_URL="postgres://metaobjects:metaobjects@localhost:${port}/metaobjects_test"
+  echo "    METAOBJECTS_TEST_PG_URL -> localhost:${port} (stop it: docker rm -f $name)"
+}
+
+# use_pg_sidecar — export the URL start_pg_sidecar recorded (nothing when it fell back).
+use_pg_sidecar() {
+  [ -n "$MO_CI_PG_URL" ] || return 0
+  export METAOBJECTS_TEST_PG_URL="$MO_CI_PG_URL"
   export MIGRATE_TS_PG_URL="$METAOBJECTS_TEST_PG_URL"
   export MIGRATE_TS_PG_EXPECT=1
   export RUNTIME_TS_PG_EXPECT=1
-  echo "    METAOBJECTS_TEST_PG_URL -> localhost:${port} (stop it: docker rm -f $name)"
 }
 
 run_integration_for() { # run_integration_for "<label>" <runner...>
@@ -825,21 +916,241 @@ run_integration_for() { # run_integration_for "<label>" <runner...>
     ensure_pg_sidecar
     local r; for r in "$@"; do step "integration-tests ($r)" gate_integration_port "$r"; done
   elif [ "$STRICT" -eq 1 ]; then
-    FAIL+=("integration-tests $label (docker down, strict)")
+    record FAIL 0 "integration-tests $label (docker down, strict)"
     echo "  ✖ docker is DOWN — integration ($label) FAILED (strict-toolchains)." >&2
   else
-    SKIP+=("integration-tests $label (docker down)")
+    record SKIP 0 "integration-tests $label (docker down)"
     echo "  ⊘ docker is DOWN — integration ($label) skipped." >&2
   fi
 }
 
+
+# ── Lanes: the full run's parallel scheduler ──────────────────────────────────
+# The full run (no --quick, no --only) runs its steps as LANES — groups of steps that touch
+# disjoint state — several at once, with each lane's output captured and printed whole when
+# the lane finishes, so the log reads lane by lane rather than interleaved. Serially the full
+# run took about 85 minutes; most of that was five ports' suites waiting for each other.
+#
+# What makes two lanes safe to overlap is what they WRITE, not what they test:
+#   * the TS workspace is installed and built ONCE, before any lane starts. Every lane that
+#     runs the CLI or the integration suite reads dist/, so nothing may rebuild it while they
+#     run — MO_CI_WORKSPACE_BUILT tells gate_ts_unit and integration-test.sh it is built;
+#   * the drift gates rewrite tracked files (then diff them), so they run before the fork too;
+#   * every `mvn install` and every `dotnet build` of the working tree has ONE owner: the java
+#     lane installs the reactor, the two JVM integration lanes only read the installed jars
+#     (MO_CI_JAVA_INSTALLED skips their own install), and the showcase lane — which builds
+#     both trees again — waits for the java and csharp lanes;
+#   * databases: every integration helper creates a uniquely named database per scenario on
+#     the sidecar, or starts its own container on a random host port. Only the lanes that run
+#     an integration suite are given the sidecar's URL (use_pg_sidecar).
+#
+# MO_CI_JOBS caps how many lanes run at once (default 8); MO_CI_JOBS=1 runs them one after
+# another, in the order they are declared.
+LANE_NAMES=(); LANE_AFTER=(); LANE_FNS=(); LANE_PID=()
+lane() { LANE_NAMES+=("$1"); LANE_AFTER+=("$2"); LANE_FNS+=("$3"); }  # lane <name> <after,...> <fn>
+
+lane_report() { # lane_report <name> — print a finished lane's log as one block
+  local name="$1" secs mark
+  secs="$(cat "$CI_TMP/lane-$name.secs" 2>/dev/null)"
+  mark="✓"
+  if [ -z "$secs" ]; then
+    record FAIL 0 "lane $name exited before it finished"; secs=0; mark="✖"
+  fi
+  grep -q '^FAIL' "$CI_TMP/lane-$name.tsv" 2>/dev/null && mark="✖"
+  echo ""
+  echo "╔═════════════ lane: $name ═════════════"
+  cat "$CI_TMP/lane-$name.log"
+  echo "╚═════════════ lane: $name — $mark $(fmt_dur "$secs") ═════════════"
+  : > "$CI_TMP/lane-$name.done"
+}
+
+lane_start() { # lane_start <index>
+  local name="${LANE_NAMES[$1]}" fn="${LANE_FNS[$1]}"
+  (
+    trap - EXIT INT TERM
+    CI_RESULTS="$CI_TMP/lane-$name.tsv"; : > "$CI_RESULTS"
+    t0=$SECONDS
+    "$fn"
+    echo $((SECONDS - t0)) > "$CI_TMP/lane-$name.secs"
+  ) > "$CI_TMP/lane-$name.log" 2>&1 < /dev/null &
+  LANE_PID[$1]=$!
+}
+
+run_lanes() {
+  local max="$MO_CI_JOBS" n=${#LANE_NAMES[@]} i d ready running=0 left
+  local -a st=()
+  left=$n
+  for ((i = 0; i < n; i++)); do st[i]=wait; done
+  while [ "$left" -gt 0 ]; do
+    for ((i = 0; i < n; i++)); do
+      [ "${st[i]}" = run ] || continue
+      kill -0 "${LANE_PID[i]}" 2>/dev/null && continue
+      wait "${LANE_PID[i]}" 2>/dev/null
+      st[i]=done; running=$((running - 1)); left=$((left - 1))
+      lane_report "${LANE_NAMES[i]}"
+    done
+    for ((i = 0; i < n; i++)); do
+      [ "${st[i]}" = wait ] && [ "$running" -lt "$max" ] || continue
+      ready=1
+      for d in ${LANE_AFTER[i]//,/ }; do [ -e "$CI_TMP/lane-$d.done" ] || ready=0; done
+      [ "$ready" -eq 1 ] || continue
+      lane_start "$i"; st[i]=run; running=$((running + 1))
+      echo "  ▸ lane ${LANE_NAMES[i]} started${LANE_AFTER[i]:+ (after ${LANE_AFTER[i]})}"
+    done
+    [ "$left" -gt 0 ] && sleep 1
+  done
+}
+
+kill_tree() { local c; for c in $(pgrep -P "$1" 2>/dev/null); do kill_tree "$c"; done; kill "$1" 2>/dev/null; }
+ci_cleanup() {
+  local p; for p in "${LANE_PID[@]:-}"; do [ -n "$p" ] && kill -0 "$p" 2>/dev/null && kill_tree "$p"; done
+  rm -rf "$CI_TMP"
+}
+trap ci_cleanup EXIT
+trap 'exit 130' INT TERM
+
+# ── Step groups (the serial selections and the full run's lanes share them) ────
+run_gates_offline() {
+  if want_any gates leak-scan; then step "leak-scan (security)"   gate_leak_scan;             fi
+  if want gates; then step    "pom-version parity"               gate_pom_versions;           fi
+  if want gates; then step    "bun-version parity"               gate_bun_version;            fi
+  if want gates; then step    "uv.lock version parity"           gate_uv_lock_version;        fi
+  if want gates; then step    "publish-intent parity"            gate_publish_intent;         fi
+  if want gates; then step    "publish-set parity"               gate_publish_set;            fi
+  if want gates; then step    "no committed pre-release version" gate_no_prerelease_versions; fi
+  if want gates; then step    "script-name hook collisions"      gate_script_name_hooks;      fi
+  if want gates; then step    "ci lane selection"                gate_ci_port_selection;      fi
+  if want gates; then step    "extract field kinds"              gate_extract_field_kinds;    fi
+  if want gates; then step    "no-magic gate wired (5 ports)"    gate_no_magic_coverage;      fi
+  if want gates; then step    "test-file references resolve"     gate_test_references;        fi
+  if want gates; then step    "metamodel-version bump"           gate_metamodel_version;      fi
+  if want gates; then step    "positioning claims"               gate_positioning_claims;     fi
+  if want gates; then step    "hosted assess prompt builds"      gate_assess_prompt;          fi
+  if want gates; then step    "migration guides vs registry"     gate_migration_guides;       fi
+}
+# Every gate below runs bun over workspace TypeScript, and on a FRESH CI checkout there is
+# no node_modules — so a bare `@metaobjectsdev/*` specifier either fails to resolve (what
+# `owned template copies current` did, red on CI and green on every warm dev box) or, worse,
+# silently binds the PUBLISHED package out of bun's install cache and gates the release
+# against a stale loader. Installing ONCE first ("dependencies installed", ahead of this
+# group in both orders) makes that class unreachable instead of asking each new gate to
+# remember a `bun_install &&` prefix; the prefixes that already exist stay, so each gate is
+# still runnable on its own. Warm cost is ~6ms.
+run_gates_bun() {
+  if want gates; then step_if bun "peer-range bounds"            gate_peer_ranges;            fi
+  if want gates; then step_if bun "owned template copies current" gate_owned_template_copies; fi
+  if want gates; then step_if bun "reference templates lint"     gate_reference_templates_lint; fi
+  if want gates; then step_if bun "shipped doc examples load"    gate_doc_examples;           fi
+  if want gates; then step_if bun "no retired \$apiPrefix"        gate_no_api_prefix;          fi
+  if want gates; then step_if bun "site payload is true"         gate_site_payload;           fi
+  if want gates; then step_if bun "site reference is fresh"     gate_site_reference;         fi
+  if want gates; then step_if bun "release tag gate"             gate_release_tag;            fi
+  if want gates; then step_if bun "scripts/ typecheck"        gate_scripts_typecheck;      fi
+  if want gates; then step_if bun "requirements ledger verifies" gate_requirements_ledger;    fi
+  if want gates; then step_if bun "requirements cover vocabulary" gate_requirements_vocabulary; fi
+  if want gates; then step_if bun "metamodel scaffolder"      gate_scaffold_metamodel;     fi
+  if want gates; then step_if bun "requirement harness"       gate_requirement_harness;    fi
+  if want gates; then step_if bun "fixture-lint"                 gate_fixture_lint;           fi
+}
+run_drift_gates() {
+  if want gates; then step_if bun "doc-template drift"           gate_doc_template_drift;     fi
+  if want gates; then step_if bun "embedded-library drift"       gate_embedded_library_drift; fi
+}
+
+# The showcase needs all three toolchains at once, which no single --only lane has: full run only.
+run_showcase() {
+  if have mvn && have dotnet && have uv; then
+    step "showcase current in all ports" gate_showcase_all_ports
+  elif [ "$STRICT" -eq 1 ]; then
+    echo ""; echo "  ✖ showcase current in all ports — needs mvn, dotnet and uv (strict-toolchains)" >&2
+    record FAIL 0 "showcase current in all ports (missing toolchain, strict)"
+  else
+    echo ""; echo "── ⊘ showcase current in all ports — SKIPPED (needs mvn, dotnet and uv) ──" >&2
+    record SKIP 0 "showcase current in all ports (needs mvn+dotnet+uv)"
+  fi
+}
+
+# ── The full run's lanes ──────────────────────────────────────────────────────
+DOCKER_UP=0
+integ_ready() { [ "$NO_INTEG" -eq 0 ] && [ "$DOCKER_UP" -eq 1 ]; }
+
+lane_gates() { run_gates_offline; run_gates_bun; }
+lane_ts() {
+  if want ts; then step_if bun "ts typecheck"            gate_ts_typecheck; fi
+  if want ts; then step_if bun "conformance: typescript" gate_conf_ts;      fi
+  if want ts; then step_if bun "ts unit suites"          gate_ts_unit;      fi
+}
+lane_mutation() { if want ts; then step_if bun "completeness-gate (mutation)" gate_completeness; fi; }
+# ts-slow's half: the two real-PG suites plus the TS integration suite.
+lane_ts_integ() {
+  integ_ready || return 0
+  use_pg_sidecar
+  step_if bun "migrate-ts real-PG suite"          gate_migrate_ts_pg
+  step_if bun "runtime-ts real-PG dialect matrix" gate_runtime_ts_pg
+  step "integration-tests (ts)" gate_integration_port ts
+}
+lane_cube() { [ "$NO_INTEG" -eq 0 ] && run_cube_lane; return 0; }
+lane_csharp() {
+  if want csharp; then step_if dotnet "conformance: csharp" gate_conf_csharp; fi
+  if integ_ready; then use_pg_sidecar; step "integration-tests (csharp)" gate_integration_port csharp; fi
+}
+lane_python() {
+  if want python; then step_if uv "conformance: python" gate_conf_python; fi
+  if integ_ready; then use_pg_sidecar; step "integration-tests (python)" gate_integration_port python; fi
+}
+# NOT run here: `conformance: java` and `conformance: kotlin`. Every test class those two
+# name lives in a reactor module, and java-reactor runs every test in every reactor module,
+# so in the full run they ran each of those tests a second time. They stay the java-fast
+# lane's quick signal, where the reactor is a separate job.
+lane_java() {
+  if want java; then
+    echo "  (conformance: java / kotlin run inside java-reactor — every class they name is in a reactor module)"
+    step_if mvn "java-reactor (install)" gate_java_reactor
+    # A red reactor stops installing at the first failing module, which would leave the two
+    # integration lanes nothing to run against. Install the rest without tests, HERE, so
+    # they still give their own verdict and nobody else writes the jars.
+    if [ "${MO_CI_LIST_ONLY:-0}" != "1" ] && integ_ready && have mvn \
+       && ! step_passed "java-reactor (install)"; then
+      step "java install (for integration)" gate_java_install
+    fi
+  elif integ_ready; then
+    step_if mvn "java install (for integration)" gate_java_install
+  fi
+}
+lane_jvm_integ() { # lane_jvm_integ <java|kotlin>
+  integ_ready || return 0
+  # The java lane installed the jars (reactor, else a test-less install) unless even that
+  # failed to compile. Installing here instead would race the other JVM integration lane
+  # over the same jars. Without mvn at all the step runs and fails, as it always has.
+  if [ "${MO_CI_LIST_ONLY:-0}" != "1" ] && have mvn \
+     && ! step_passed "java-reactor (install)" && ! step_passed "java install (for integration)"; then
+    echo "  ✖ integration-tests ($1) not run: server/java did not install (see lane java)" >&2
+    record FAIL 0 "integration-tests ($1) — not run: server/java did not install"
+    return 0
+  fi
+  use_pg_sidecar
+  # MO_CI_INTEG_JACOCO_SKIP: no JaCoCo agent here, as in this run's reactor (see
+  # scripts/integration-test.sh, jvm_test_args; MO_CI_JACOCO=1 keeps it).
+  export MO_CI_JAVA_INSTALLED=1 MO_CI_INTEG_JACOCO_SKIP=1
+  step "integration-tests ($1)" gate_integration_port "$1"
+}
+lane_java_integ() { lane_jvm_integ java; }
+lane_kotlin_integ() { lane_jvm_integ kotlin; }
+# After java and csharp: its JVM leg runs `mvn install` of server/java, but into a TEMP local
+# repository (regen-showcase.ts, jvmRepository), so the jars the JVM integration lanes read
+# from ~/.m2 are never rewritten; its C# leg builds MetaObjects.Codegen, which only the
+# finished csharp lane uses. Every other output goes to a pristine temp copy (--check).
+lane_showcase() { want gates && run_showcase; return 0; }
+
 # ── Banner ────────────────────────────────────────────────────────────────────
+PARALLEL=0
+[ -z "$ONLY" ] && [ "$QUICK" -eq 0 ] && PARALLEL=1
 if [ -n "$ONLY" ]; then
   _mode="only:$(echo "${ONLY# }" | tr ' ' ',')"
 elif [ "$QUICK" -eq 1 ]; then
   _mode="quick — TS + drift gates only"
 else
-  _mode="full — all ports + reactor + docker"
+  _mode="full — all ports + reactor + docker, $MO_CI_JOBS lanes at once"
 fi
 [ "$NO_INTEG" -eq 1 ] && _mode="$_mode, no integration"
 [ "$INTEG_ONLY" -eq 1 ] && _mode="$_mode, integration only"
@@ -853,162 +1164,190 @@ if [ "${MO_CI_LIST_ONLY:-0}" = "1" ]; then
   step_if() { local t="$1" n="$2"; have "$t" && echo "  + $n" || echo "  ⊘ $n (no $t, would skip)"; }
   run_integration_for() { local label="$1"; shift; local r; for r in "$@"; do echo "  + integration-tests ($r)"; done; }
   run_cube_lane() { echo "  + cube-model live check (Cube + Postgres)"; }
+  start_pg_sidecar() { :; }
+  use_pg_sidecar() { :; }
   echo "Steps that would run:"
 fi
 
 # ── Step invocations ──────────────────────────────────────────────────────────
-# Fast tier: shared gates and TS checks, interleaved in the original order so
-# that no-flags execution is byte-equivalent to the pre-refactor script.
-if want_any gates leak-scan; then step "leak-scan (security)"   gate_leak_scan;             fi
-if want gates; then step    "pom-version parity"               gate_pom_versions;           fi
-if want gates; then step    "bun-version parity"               gate_bun_version;            fi
-if want gates; then step    "uv.lock version parity"           gate_uv_lock_version;        fi
-if want gates; then step    "publish-intent parity"            gate_publish_intent;         fi
-if want gates; then step    "publish-set parity"               gate_publish_set;            fi
-if want gates; then step    "no committed pre-release version" gate_no_prerelease_versions; fi
-if want gates; then step    "script-name hook collisions"      gate_script_name_hooks;      fi
-if want gates; then step    "ci lane selection"                gate_ci_port_selection;      fi
-if want gates; then step    "extract field kinds"              gate_extract_field_kinds;    fi
-if want gates; then step    "no-magic gate wired (5 ports)"    gate_no_magic_coverage;      fi
-if want gates; then step    "test-file references resolve"     gate_test_references;        fi
-if want gates; then step    "metamodel-version bump"           gate_metamodel_version;      fi
-if want gates; then step    "positioning claims"               gate_positioning_claims;     fi
-if want gates; then step    "hosted assess prompt builds"      gate_assess_prompt;          fi
-if want gates; then step    "migration guides vs registry"     gate_migration_guides;       fi
-# Every gate below this line runs bun over workspace TypeScript, and on a FRESH CI
-# checkout there is no node_modules — so a bare `@metaobjectsdev/*` specifier either
-# fails to resolve (what `owned template copies current` did, red on CI and green on
-# every warm dev box) or, worse, silently binds the PUBLISHED package out of bun's
-# install cache and gates the release against a stale loader. Installing ONCE here
-# makes that class unreachable instead of asking each new gate to remember a
-# `bun_install &&` prefix; the prefixes that already exist stay, so each gate is still
-# runnable on its own. Warm cost is ~6ms.
-if want gates; then step_if bun "dependencies installed"       bun_install;                 fi
-if want gates; then step_if bun "peer-range bounds"            gate_peer_ranges;            fi
-if want gates; then step_if bun "owned template copies current" gate_owned_template_copies; fi
-if want gates; then step_if bun "reference templates lint"     gate_reference_templates_lint; fi
-if want gates; then step_if bun "shipped doc examples load"    gate_doc_examples;           fi
-if want gates; then step_if bun "no retired \$apiPrefix"        gate_no_api_prefix;          fi
-if want gates; then step_if bun "site payload is true"         gate_site_payload;           fi
-if want gates; then step_if bun "site reference is fresh"     gate_site_reference;         fi
-if want gates; then step_if bun "release tag gate"             gate_release_tag;            fi
-if want gates; then step_if bun "scripts/ typecheck"        gate_scripts_typecheck;      fi
-if want gates; then step_if bun "requirements ledger verifies" gate_requirements_ledger;    fi
-if want gates; then step_if bun "requirements cover vocabulary" gate_requirements_vocabulary; fi
-if want gates; then step_if bun "metamodel scaffolder"      gate_scaffold_metamodel;     fi
-if want gates; then step_if bun "requirement harness"       gate_requirement_harness;    fi
-if want gates; then step_if bun "fixture-lint"                 gate_fixture_lint;           fi
-# The ts port is split into two lanes so CI can run them as separate jobs (see
-# .github/workflows/local-ci.yml): a FAST lane (build+typecheck, conformance,
-# completeness — the pure-code correctness signal, no docker) and a SLOW lane
-# (docker/sidecar integration). Isolating integration means a docker/sidecar
-# hiccup no longer fails the code signal, and vice versa. `--only ts` (and a plain
-# local run) still runs both lanes, so it stays byte-equivalent to before.
-if want_any ts ts-fast; then step_if bun "ts build + typecheck"         gate_ts_build_typecheck;     fi
-if want_any ts ts-fast; then step_if bun "conformance: typescript"      gate_conf_ts;                fi
-if want_any ts ts-unit; then step_if bun "ts unit suites"               gate_ts_unit;                fi
-if want_any ts ts-fast; then step_if bun "completeness-gate (mutation)" gate_completeness;           fi
-if want gates; then step_if bun "doc-template drift"           gate_doc_template_drift;     fi
-if want gates; then step_if bun "embedded-library drift"       gate_embedded_library_drift; fi
+if [ "$PARALLEL" -eq 0 ]; then
+  # Fast tier: shared gates and TS checks, in their original order.
+  run_gates_offline
+  if want gates; then step_if bun "dependencies installed"       bun_install;                 fi
+  run_gates_bun
+  # The ts port is split into two lanes so CI can run them as separate jobs (see
+  # .github/workflows/local-ci.yml): a FAST lane (build+typecheck, conformance,
+  # completeness — the pure-code correctness signal, no docker) and a SLOW lane
+  # (docker/sidecar integration). Isolating integration means a docker/sidecar
+  # hiccup no longer fails the code signal, and vice versa. `--only ts` still runs both.
+  if want_any ts ts-fast; then step_if bun "ts build + typecheck"         gate_ts_build_typecheck;     fi
+  if want_any ts ts-fast; then step_if bun "conformance: typescript"      gate_conf_ts;                fi
+  if want_any ts ts-unit; then step_if bun "ts unit suites"               gate_ts_unit;                fi
+  if want_any ts ts-fast; then step_if bun "completeness-gate (mutation)" gate_completeness;           fi
+  run_drift_gates
 
-if [ "$QUICK" -eq 1 ]; then
-  echo ""
-  echo "── ⊘ --quick: SKIPPING the other-language ports (csharp/java/python/kotlin),"
-  echo "        the full Java reactor, the docker integration suite and the cube live"
-  echo "        check. Run the full \`scripts/ci-local.sh\` (no flag) before opening/merging"
-  echo "        a PR or tagging."
-  SKIP+=("csharp/java/python/kotlin conformance (--quick)")
-  SKIP+=("java-reactor (--quick)")
-  SKIP+=("integration-tests (--quick)")
-  SKIP+=("cube-model live check (--quick)")
-else
-  # Heavy tier — other-language ports + full reactor + docker integration suite.
-  #
-  # The Java port is split into two lanes so CI can run them as separate jobs
-  # (see .github/workflows/local-ci.yml): a FAST lane (java+kotlin conformance,
-  # ~2-3m — the correctness signal) and a SLOW lane (full reactor + docker
-  # integration). Running them as parallel jobs surfaces the conformance verdict
-  # quickly and means a cancel/OOM mid-integration no longer kills the fast
-  # signal. `--only java` (local, unqualified) still runs BOTH lanes, in order,
-  # so a plain local run is byte-equivalent to before.
-  if want csharp;               then step_if dotnet "conformance: csharp"        gate_conf_csharp;  fi
-  if want_any java java-fast;   then step_if mvn "conformance: java"             gate_conf_java;    fi
-  if want python;               then step_if uv "conformance: python"            gate_conf_python;  fi
-  if want_any java java-fast;   then step_if mvn "conformance: kotlin"           gate_conf_kotlin;  fi
-  if want_any java java-slow;   then step_if mvn "java-reactor (install)"        gate_java_reactor; fi
-  # Needs all three toolchains at once, which no single --only lane has: flagless run only.
-  if [ -z "$ONLY" ] && [ "$INTEG_ONLY" -eq 0 ]; then
-    if have mvn && have dotnet && have uv; then
-      step "showcase current in all ports" gate_showcase_all_ports
-    elif [ "$STRICT" -eq 1 ]; then
-      echo ""; echo "  ✖ showcase current in all ports — needs mvn, dotnet and uv (strict-toolchains)" >&2
-      FAIL+=("showcase current in all ports (missing toolchain, strict)")
+  if [ "$QUICK" -eq 1 ]; then
+    echo ""
+    echo "── ⊘ --quick: SKIPPING the other-language ports (csharp/java/python/kotlin),"
+    echo "        the full Java reactor, the docker integration suite and the cube live"
+    echo "        check. Run the full \`scripts/ci-local.sh\` (no flag) before opening/merging"
+    echo "        a PR or tagging."
+    record SKIP 0 "csharp/java/python/kotlin conformance (--quick)"
+    record SKIP 0 "java-reactor (--quick)"
+    record SKIP 0 "integration-tests (--quick)"
+    record SKIP 0 "cube-model live check (--quick)"
+  else
+    # Heavy tier for --only — other-language ports + full reactor + docker integration.
+    #
+    # The Java port is split into two lanes so CI can run them as separate jobs
+    # (see .github/workflows/local-ci.yml): a FAST lane (java+kotlin conformance,
+    # ~2-3m — the correctness signal) and a SLOW lane (full reactor + docker
+    # integration). Running them as parallel jobs surfaces the conformance verdict
+    # quickly and means a cancel/OOM mid-integration no longer kills the fast
+    # signal. `--only java` still runs BOTH lanes, in order.
+    if want csharp;               then step_if dotnet "conformance: csharp"        gate_conf_csharp;  fi
+    if want_any java java-fast;   then step_if mvn "conformance: java"             gate_conf_java;    fi
+    if want python;               then step_if uv "conformance: python"            gate_conf_python;  fi
+    if want_any java java-fast;   then step_if mvn "conformance: kotlin"           gate_conf_kotlin;  fi
+    if want_any java java-slow;   then step_if mvn "java-reactor (install)"        gate_java_reactor; fi
+    # --no-integration drops the docker half; --integration-only keeps ONLY it, which is
+    # why it asks in_lane / in_lane_any (selection) where the checks above ask want.
+    if [ "$NO_INTEG" -eq 1 ]; then
+      # Not recorded as a SKIP: a selector the caller chose is not a gap, and a SKIP entry
+      # would make every conformance.yml lane report "passed with skips" under --strict-toolchains.
+      echo ""; echo "── ⊘ --no-integration: not running the docker/Postgres integration half ──"
     else
-      echo ""; echo "── ⊘ showcase current in all ports — SKIPPED (needs mvn, dotnet and uv) ──" >&2
-      SKIP+=("showcase current in all ports (needs mvn+dotnet+uv)")
+      # ts-slow needs the workspace dist/ to run integration. When the fast lane also
+      # runs (umbrella `ts`), its build already produced it — only build here when
+      # ts-slow runs without it (the CI ts-slow job, or --integration-only).
+      if in_lane_any ts ts-slow && ! want_any ts ts-fast; then step_if bun "ts build (for integration)" gate_ts_build; fi
+      # Bring the sidecar up BEFORE the two real-PG gates, not just before the docker
+      # integration step. `ensure_pg_sidecar` exports MIGRATE_TS_PG_URL so migrate-ts's
+      # real-Postgres suites run locally instead of self-skipping — but it was once only
+      # called from run_integration_for, which runs AFTER both gates. So on a local run the
+      # suite that calls itself "the ONLY real-engine gate on migration correctness" ran
+      # with no database, self-skipped 26 tests, and the lane reported ✓. Hosted ts-slow ran
+      # the same 26 and went red on three stale assertions; a local run could not see it,
+      # which is how a red reached main believing it was green.
+      #
+      # Ordered BEFORE the docker integration step so a container-readiness flake there
+      # can never prevent the migrate verdict from being produced.
+      if in_lane_any ts ts-slow && docker info >/dev/null 2>&1; then ensure_pg_sidecar; fi
+      in_lane_any ts ts-slow     && step_if bun "migrate-ts real-PG suite" gate_migrate_ts_pg
+      in_lane_any ts ts-slow     && step_if bun "runtime-ts real-PG dialect matrix" gate_runtime_ts_pg
+      in_lane_any ts ts-slow     && run_integration_for ts     ts
+      in_lane_any java java-slow && run_integration_for java   java kotlin
+      in_lane python             && run_integration_for python python
+      in_lane csharp             && run_integration_for csharp csharp
+      # The cube lane needs the workspace installed (and builds it, as ts-slow does) when no
+      # earlier step in this selection did: `--only cube`, alone or with --integration-only.
+      # Docker is asked first, so a docker-down run records its SKIP without paying for an
+      # install/build.
+      if in_lane cube; then
+        if docker info >/dev/null 2>&1 && ! want_any ts ts-fast && ! in_lane_any ts ts-slow; then
+          step_if bun "ts build (for the cube lane)" gate_ts_build
+        fi
+        run_cube_lane
+      fi
     fi
   fi
-  # Docker integration — full suite when no --only, per-port otherwise.
-  # --no-integration drops this whole half; --integration-only keeps ONLY it, which is
-  # why it asks in_lane / in_lane_any (selection) where the checks above ask want.
+else
+  # ── The full run: a short serial prelude, then the lanes ──────────────────
+  # Prelude — everything that WRITES what a lane reads. The drift gates rewrite tracked
+  # files before diffing them, and the build writes dist/, so both finish before any lane
+  # starts. The build runs here without its typecheck, which the ts lane runs.
+  echo ""; echo "── prelude (serial): install, drift gates, workspace build ──"
+  if want gates; then step_if bun "dependencies installed" bun_install; fi
+  run_drift_gates
+  if want ts; then
+    step_if bun "ts build" gate_ts_build
+  elif [ "$NO_INTEG" -eq 0 ]; then
+    step_if bun "ts build (for integration)" gate_ts_build
+  fi
+  # Exported even when a prelude step failed: a lane that reinstalled or rebuilt for itself
+  # would rewrite node_modules/ or dist/ under the lanes reading them. The lanes run anyway,
+  # so every verdict is still reported, and the summary names the prelude failure first.
+  export MO_CI_DEPS_INSTALLED=1 MO_CI_WORKSPACE_BUILT=1
+  PRELUDE_FAILS="$(awk -F'\t' '$1 == "FAIL" { print $3 }' "$CI_RESULTS")"
+  if [ -n "$PRELUDE_FAILS" ]; then
+    echo "" >&2
+    echo "  ✖ the prelude failed; lanes that need its install or build will fail with it:" >&2
+    printf '      %s\n' "$PRELUDE_FAILS" >&2
+  fi
+
   if [ "$NO_INTEG" -eq 1 ]; then
-    # Not added to SKIP: a selector the caller chose is not a gap, and a SKIP entry would
-    # make every conformance.yml lane report "passed with skips" under --strict-toolchains.
     echo ""; echo "── ⊘ --no-integration: not running the docker/Postgres integration half ──"
-  elif [ -z "$ONLY" ]; then
-    if docker info >/dev/null 2>&1; then
-      step "integration-tests (5-port + docker)" gate_integration
+  elif [ "${MO_CI_LIST_ONLY:-0}" = "1" ] || docker info >/dev/null 2>&1; then
+    DOCKER_UP=1
+    if [ -n "${METAOBJECTS_TEST_PG_URL:-}" ]; then
+      # A caller-supplied database is honoured, but handed only to the integration lanes,
+      # exactly like the sidecar's URL (see start_pg_sidecar).
+      MO_CI_PG_URL="$METAOBJECTS_TEST_PG_URL"
+      unset METAOBJECTS_TEST_PG_URL MIGRATE_TS_PG_URL MIGRATE_TS_PG_EXPECT RUNTIME_TS_PG_EXPECT
     else
-      echo ""; echo "  ✖ docker is DOWN — cannot run the integration suite. Start docker, or use --quick." >&2
-      FAIL+=("integration-tests (docker down)")
+      start_pg_sidecar
     fi
-    run_cube_lane
   else
-    # ts-slow needs the workspace dist/ to run integration. When the fast lane also
-    # runs (umbrella `ts` / local full), its build already produced it — only build
-    # here when ts-slow runs without it (the CI ts-slow job, or --integration-only).
-    if in_lane_any ts ts-slow && ! want_any ts ts-fast; then step_if bun "ts build (for integration)" gate_ts_build; fi
-    # Bring the sidecar up BEFORE the two real-PG gates, not just before the docker
-    # integration step. `ensure_pg_sidecar` exports MIGRATE_TS_PG_URL and its own comment
-    # says that is so "migrate-ts's real-Postgres suites run locally instead of
-    # self-skipping" — but it was only ever called from run_integration_for, which runs
-    # AFTER both gates. So on a local run the suite that calls itself "the ONLY
-    # real-engine gate on migration correctness" ran with no database, self-skipped 26
-    # tests, and the lane reported ✓. Hosted ts-slow ran the same 26 and went red on
-    # three stale assertions; a local run could not see it, which is how a red reached
-    # main believing it was green.
-    #
-    # Ordered BEFORE the docker integration step so a container-readiness flake there
-    # can never prevent the migrate verdict from being produced.
-    if in_lane_any ts ts-slow && docker info >/dev/null 2>&1; then ensure_pg_sidecar; fi
-    in_lane_any ts ts-slow     && step_if bun "migrate-ts real-PG suite" gate_migrate_ts_pg
-    in_lane_any ts ts-slow     && step_if bun "runtime-ts real-PG dialect matrix" gate_runtime_ts_pg
-    in_lane_any ts ts-slow     && run_integration_for ts     ts
-    in_lane_any java java-slow && run_integration_for java   java kotlin
-    in_lane python             && run_integration_for python python
-    in_lane csharp             && run_integration_for csharp csharp
-    # The cube lane needs the workspace installed (and builds it, as ts-slow does) when no
-    # earlier step in this selection did: `--only cube`, alone or with --integration-only. Docker
-    # is asked first, so a docker-down run records its SKIP without paying for an install/build.
-    if in_lane cube; then
-      if docker info >/dev/null 2>&1 && ! want_any ts ts-fast && ! in_lane_any ts ts-slow; then
-        step_if bun "ts build (for the cube lane)" gate_ts_build
-      fi
-      run_cube_lane
-    fi
+    echo ""; echo "  ✖ docker is DOWN — cannot run the integration suite. Start docker, or use --quick." >&2
+    record FAIL 0 "integration-tests (docker down)"
+  fi
+
+  # Declared longest-first: with fewer slots than lanes, the long ones must not queue.
+  lane java         ""            lane_java
+  lane python       ""            lane_python
+  lane mutation     ""            lane_mutation
+  lane csharp       ""            lane_csharp
+  lane ts-integ     ""            lane_ts_integ
+  lane ts           ""            lane_ts
+  lane kotlin-integ java          lane_kotlin_integ
+  lane java-integ   java          lane_java_integ
+  lane showcase     java,csharp   lane_showcase
+  lane cube         ""            lane_cube
+  lane gates        ""            lane_gates
+
+  if [ "${MO_CI_LIST_ONLY:-0}" = "1" ]; then
+    for ((_i = 0; _i < ${#LANE_NAMES[@]}; _i++)); do
+      echo "── lane ${LANE_NAMES[_i]}${LANE_AFTER[_i]:+ (after ${LANE_AFTER[_i]})}:"
+      ( "${LANE_FNS[_i]}" )
+    done
+  else
+    echo ""; echo "── lanes (up to $MO_CI_JOBS at once; each lane's log prints when it finishes) ──"
+    run_lanes
   fi
 fi
 
 # ── Dry-run listing exits before summary ──────────────────────────────────────
 if [ "${MO_CI_LIST_ONLY:-0}" = "1" ]; then exit 0; fi
 
+# ── Summary ───────────────────────────────────────────────────────────────────
+CI_ALL="$CI_TMP/all.tsv"
+cat "$CI_TMP/main.tsv" > "$CI_ALL"
+for _n in "${LANE_NAMES[@]:-}"; do [ -n "$_n" ] && [ -f "$CI_TMP/lane-$_n.tsv" ] && cat "$CI_TMP/lane-$_n.tsv" >> "$CI_ALL"; done
+
+awk_dur='function dur(s) { return s >= 60 ? sprintf("%dm%02ds", int(s / 60), s % 60) : sprintf("%ds", s) }'
 echo ""
 echo "══════════════════════ SUMMARY ══════════════════════"
-for p in "${PASS[@]:-}"; do [ -n "${p:-}" ] && echo "  ✓ $p"; done
-for s in "${SKIP[@]:-}"; do [ -n "${s:-}" ] && echo "  ⊘ $s"; done
-for f in "${FAIL[@]:-}"; do [ -n "${f:-}" ] && echo "  ✖ $f"; done
+if [ -n "${PRELUDE_FAILS:-}" ]; then
+  echo "  ✖ PRELUDE FAILED FIRST — fix it before reading the lane failures below:"
+  printf '      %s\n' "$PRELUDE_FAILS"
+fi
+for _v in PASS SKIP FAIL; do
+  awk -F'\t' -v v="$_v" "$awk_dur"'
+    $1 == v { m = (v == "PASS") ? "✓" : (v == "SKIP") ? "⊘" : "✖"
+              printf "  %s %s%s\n", m, $3, ($2 > 0 ? "  (" dur($2) ")" : "") }' "$CI_ALL"
+done
+echo "── slowest steps ──"
+sort -t$'\t' -k2,2nr "$CI_ALL" | awk -F'\t' "$awk_dur"' NR <= 12 && $2 > 0 { printf "  %8s  %s\n", dur($2), $3 }'
+if [ "${#LANE_NAMES[@]}" -gt 0 ]; then
+  echo "── lanes (wall time, ran $MO_CI_JOBS at once) ──"
+  for _n in "${LANE_NAMES[@]}"; do
+    printf '%s\t%s\n' "$(cat "$CI_TMP/lane-$_n.secs" 2>/dev/null || echo 0)" "$_n"
+  done | sort -t$'\t' -k1,1nr | awk -F'\t' "$awk_dur"' { printf "  %8s  %s\n", dur($1), $2 }'
+fi
+echo "  total wall time: $(fmt_dur $((SECONDS - CI_T0)))"
 echo "══════════════════════════════════════════════════════"
 
-if [ "${#FAIL[@]}" -gt 0 ]; then echo "LOCAL CI FAILED — ${#FAIL[@]} gate(s) red." >&2; exit 1; fi
-if [ "${#SKIP[@]}" -gt 0 ]; then echo "LOCAL CI PASSED (with ${#SKIP[@]} skipped — see ⊘ above)."; exit 0; fi
+_fails="$(grep -c '^FAIL' "$CI_ALL")"; _skips="$(grep -c '^SKIP' "$CI_ALL")"
+if [ "$_fails" -gt 0 ]; then echo "LOCAL CI FAILED — $_fails gate(s) red." >&2; exit 1; fi
+if [ "$_skips" -gt 0 ]; then echo "LOCAL CI PASSED (with $_skips skipped — see ⊘ above)."; exit 0; fi
 echo "LOCAL CI PASSED"
