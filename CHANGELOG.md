@@ -10,7 +10,7 @@ here.**
 
 ## [Unreleased]
 
-## [1.1.0] — 2026-10-10
+## [1.1.0] — 2026-10-22
 
 _npm `1.1.0` (all 14 `@metaobjectsdev/*` packages in lockstep), PyPI `1.1.0`, NuGet `1.1.0` and
 Maven Central `8.1.0`. **`metamodelVersion` moves `1.0` to `1.1`.** The vocabulary is additive:
