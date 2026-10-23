@@ -85,7 +85,10 @@ class MySqlContainer:
                 "run", "-d", "--name", self._name,
                 "-e", f"MYSQL_ROOT_PASSWORD={self.PASSWORD}",
                 "-e", f"MYSQL_DATABASE={self.DATABASE}",
-                "-p", "127.0.0.1::3306", self.IMAGE,
+                # Native AIO reserves ~17k kernel aio-nr slots per server; with the default
+                # fs.aio-max-nr (65536) parallel lanes exhaust it and InnoDB dies with EAGAIN
+                # at io_setup(). Buffered I/O is plenty for a test database.
+                "-p", "127.0.0.1::3306", self.IMAGE, "--innodb-use-native-aio=0",
             )
             port = published_port(self._name, 3306)
             self._info = MySqlInfo("127.0.0.1", port, self.DATABASE, self.USER, self.PASSWORD)

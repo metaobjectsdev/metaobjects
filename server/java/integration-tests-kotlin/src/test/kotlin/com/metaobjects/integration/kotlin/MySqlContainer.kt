@@ -39,7 +39,7 @@ class MySqlContainer : AutoCloseable {
                     "-e", "MYSQL_ROOT_PASSWORD=$PASSWORD",
                     "-e", "MYSQL_DATABASE=$DB",
                     "-p", "127.0.0.1::3306",
-                    IMAGE,
+                    IMAGE, "--innodb-use-native-aio=0",
                 )
                 val url = "jdbc:mysql://127.0.0.1:${PostgresContainer.publishedPort(name, 3306)}/$DB"
                 waitForReady(url)

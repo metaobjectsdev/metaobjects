@@ -36,7 +36,7 @@ export async function startMysql(): Promise<MysqlContainerHandle> {
   let url: string;
   try {
     docker(["run", "-d", "--name", name, "-e", `MYSQL_ROOT_PASSWORD=${PASSWORD}`,
-      "-e", `MYSQL_DATABASE=${DATABASE}`, "-p", "127.0.0.1::3306", IMAGE]);
+      "-e", `MYSQL_DATABASE=${DATABASE}`, "-p", "127.0.0.1::3306", IMAGE, "--innodb-use-native-aio=0"]);
     url = `mysql://root:${PASSWORD}@127.0.0.1:${publishedPort(name, 3306)}/${DATABASE}`;
   } catch (e) {
     stop();

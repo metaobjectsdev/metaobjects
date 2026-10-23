@@ -648,8 +648,8 @@ both together), the TPH subtype's `sql`, a one-to-one join from both ends, the i
 `CASE`, and a two-hop `@spine` report, whose rows, the spine rows with no facts included, must
 equal the lowered view's. Each query's rows are compared with plain SQL on the same database.
 
-Run it with `scripts/ci-local.sh --only cube`. The full `scripts/ci-local.sh` runs it after the
-integration suite, and `--quick` and `--no-integration` drop it. The first run pulls the Cube
+Run it with `scripts/ci-local.sh --only cube`. The full `scripts/ci-local.sh` runs it as its own
+parallel lane, and `--quick` and `--no-integration` drop it. The first run pulls the Cube
 image, which is about 1 GB. With Docker down, the lane records a SKIP behind a banner, never a
 pass; under `--strict-toolchains` it is a failure. In CI it is a `cube` entry in
 `integration-tests.yml`, which runs on release tags and on manual dispatch, not on every push.

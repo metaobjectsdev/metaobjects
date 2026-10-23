@@ -51,7 +51,7 @@ public final class MySqlContainer implements AutoCloseable, JdbcTarget {
                 "-e", "MYSQL_ROOT_PASSWORD=" + PASSWORD,
                 "-e", "MYSQL_DATABASE=" + DB,
                 "-p", "127.0.0.1::3306",
-                IMAGE);
+                IMAGE, "--innodb-use-native-aio=0");
             String url = "jdbc:mysql://127.0.0.1:" + PostgresContainer.publishedPort(name, 3306) + "/" + DB;
             waitForReady(url);
             this.jdbcUrl = url;
