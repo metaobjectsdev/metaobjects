@@ -3,7 +3,6 @@ package com.metaobjects.integration;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.net.ServerSocket;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
@@ -79,47 +78,26 @@ public final class PostgresContainer implements AutoCloseable, JdbcTarget {
         this.username = PG_USER;
         this.password = PG_PASSWORD;
         this.name = "metaobjects-test-" + UUID.randomUUID().toString().substring(0, 8);
-        // PORT RACE. pickFreePort() opens a socket, closes it, and hands the number to
-        // docker, which binds it LATER -- a check-then-act gap. Alone that never bites;
-        // under a full CI run five ports start containers at once and two can be handed
-        // the same number. The loser's container is created and then dies, and because
-        // the readiness probe only ever asked `docker exec`, a dead container was
-        // indistinguishable from a slow one for the whole window. Retry on a FRESH port.
+        // The host port is assigned by docker at bind time (`-p 127.0.0.1::5432`) and read
+        // back with `docker port`. Picking a free port here, releasing it and handing the
+        // number to docker is a check-then-act race that parallel CI lanes lose.
         //
         // Deliberately NOT `--rm`: an auto-removed container takes its logs with it, so
-        // the one artefact that explains the failure disappears exactly when it is
+        // the one artefact that explains a failure disappears exactly when it is
         // needed. close() already force-removes, so nothing leaks.
-        String startedUrl = null;
-        RuntimeException lastFailure = null;
-        for (int attempt = 1; attempt <= START_ATTEMPTS && startedUrl == null; attempt++) {
-            int port = pickFreePort();
-            try {
-                runDocker("run", "-d",
-                    "--name", name,
-                    "-e", "POSTGRES_PASSWORD=" + PG_PASSWORD,
-                    "-p", port + ":5432",
-                    IMAGE);
-            } catch (RuntimeException e) {
-                // docker refused the bind outright -- the cleanest form of the race.
-                lastFailure = e;
-                forceRemove();
-                continue;
-            }
-            String candidate = "jdbc:postgresql://localhost:" + port + "/postgres";
-            try {
-                waitForReady(candidate);
-                startedUrl = candidate;
-            } catch (RuntimeException e) {
-                lastFailure = e;
-                forceRemove();
-            }
+        try {
+            runDocker("run", "-d",
+                "--name", name,
+                "-e", "POSTGRES_PASSWORD=" + PG_PASSWORD,
+                "-p", "127.0.0.1::5432",
+                IMAGE);
+            String url = "jdbc:postgresql://127.0.0.1:" + publishedPort(name, 5432) + "/postgres";
+            waitForReady(url);
+            this.jdbcUrl = url;
+        } catch (RuntimeException e) {
+            forceRemove();
+            throw e;
         }
-        if (startedUrl == null) {
-            throw new RuntimeException(
-                "postgres container '" + name + "' failed to start in " + START_ATTEMPTS + " attempts",
-                lastFailure);
-        }
-        this.jdbcUrl = startedUrl;
     }
 
     @Override public String jdbcUrl()  { return jdbcUrl; }
@@ -150,9 +128,15 @@ public final class PostgresContainer implements AutoCloseable, JdbcTarget {
     // Helpers
     // -----------------------------------------------------------------------
 
-    private static int pickFreePort() {
-        try (ServerSocket s = new ServerSocket(0)) { return s.getLocalPort(); }
-        catch (IOException e) { throw new RuntimeException("could not pick free port", e); }
+    /** The host port docker assigned to {@code containerPort} ({@code docker port} prints {@code 127.0.0.1:<port>}). */
+    static int publishedPort(String container, int containerPort) {
+        String out = runDocker("port", container, containerPort + "/tcp");
+        String first = out.lines().findFirst().orElse("");
+        String port = first.substring(first.lastIndexOf(':') + 1).trim();
+        if (!port.matches("\\d+")) {
+            throw new RuntimeException("docker port " + container + " " + containerPort + "/tcp printed no port: '" + out + "'");
+        }
+        return Integer.parseInt(port);
     }
 
     private static String runDocker(String... args) {
@@ -187,8 +171,6 @@ public final class PostgresContainer implements AutoCloseable, JdbcTarget {
     // test logic. Raising the bound costs nothing when the container is ready quickly
     // (this polls every 250ms and returns immediately) and only changes how long the
     // pathological case takes to give up.
-    /** Fresh-port retries before giving up -- see the port-race note in the constructor. */
-    private static final int START_ATTEMPTS = 3;
 
     private static final int READY_TIMEOUT_S =
         Integer.parseInt(System.getenv().getOrDefault("MO_PG_READY_TIMEOUT_S", "120"));
@@ -222,7 +204,7 @@ public final class PostgresContainer implements AutoCloseable, JdbcTarget {
             + " (state=" + inspectState() + "). docker logs:\n" + tailLogs());
     }
 
-    /** Best-effort teardown between start attempts. */
+    /** Best-effort teardown of a container that failed to start. */
     private void forceRemove() {
         try { runDocker("rm", "-f", name); } catch (RuntimeException ignored) { /* already gone */ }
     }

@@ -25,7 +25,6 @@
 
 import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { createServer } from "node:net";
 import { Client } from "pg";
 
 /** Env var naming the shared CI Postgres sidecar (admin URL). Unset = per-container fallback. */
@@ -48,45 +47,30 @@ export async function startPostgres(image = "postgres:16-alpine"): Promise<Runni
   const sharedUrl = process.env[SHARED_PG_URL_ENV];
   if (sharedUrl) return startOnSharedPostgres(sharedUrl);
 
-  // PORT RACE. pickFreePort() closes its probe socket and hands the number to docker,
-  // which binds it LATER -- a check-then-act gap. Alone it never bites; under a full CI
-  // run several ports start containers at once and two can be handed the same number.
-  // The loser's container is created and then dies, and a readiness probe that only
-  // asks `docker exec` cannot tell that from a slow boot. Retry on a FRESH port.
+  // The host port is assigned by docker at bind time (`-p 127.0.0.1::5432`) and read
+  // back with `docker port`. Picking a free port here, releasing it and handing the
+  // number to docker is a check-then-act race that parallel CI lanes lose.
   //
   // Deliberately NOT `--rm`: an auto-removed container takes its logs with it, so the
-  // one artefact explaining the failure vanishes exactly when it is needed. stop()
+  // one artefact explaining a failure vanishes exactly when it is needed. stop()
   // force-removes, so nothing leaks.
   const name = `metaobjects-test-${randomUUID().slice(0, 8)}`;
   const forceRemove = (): void => { try { runDocker(["rm", "-f", name]); } catch { /* already gone */ } };
-  let lastFailure: unknown;
-  for (let attempt = 1; attempt <= PG_START_ATTEMPTS; attempt++) {
-    const port = await pickFreePort();
-    try {
-      runDocker([
-        "run", "-d",
-        "--name", name,
-        "-e", "POSTGRES_PASSWORD=test",
-        "-p", `${port}:5432`,
-        image,
-      ]);
-    } catch (e) {
-      lastFailure = e;   // docker refused the bind outright — the cleanest form of the race
-      forceRemove();
-      continue;
-    }
-    const connectionUri = `postgres://postgres:test@localhost:${port}/postgres`;
-    try {
-      await waitForPgReady(name, connectionUri);
-      return { connectionUri, stop: async () => { forceRemove(); } };
-    } catch (e) {
-      lastFailure = e;
-      forceRemove();
-    }
+  try {
+    runDocker([
+      "run", "-d",
+      "--name", name,
+      "-e", "POSTGRES_PASSWORD=test",
+      "-p", "127.0.0.1::5432",
+      image,
+    ]);
+    const connectionUri = `postgres://postgres:test@127.0.0.1:${publishedPort(name, 5432)}/postgres`;
+    await waitForPgReady(name, connectionUri);
+    return { connectionUri, stop: async () => { forceRemove(); } };
+  } catch (e) {
+    forceRemove();
+    throw e;
   }
-  throw new Error(
-    `postgres container '${name}' failed to start in ${PG_START_ATTEMPTS} attempts: ${String(lastFailure)}`,
-  );
 }
 
 // Shared-sidecar mode: create a fresh, uniquely-named database on the already
@@ -164,8 +148,6 @@ function runDocker(args: string[]): string {
 // (this polls every 250ms and returns immediately) and only changes how long the
 // pathological case takes to give up.
 const PG_READY_TIMEOUT_S = Number(process.env["MO_PG_READY_TIMEOUT_S"] ?? "120");
-/** Fresh-port retries before giving up — see the port-race note in startPostgres(). */
-const PG_START_ATTEMPTS = 3;
 
 async function waitForPgReady(name: string, uri: string): Promise<void> {
   const deadline = Date.now() + PG_READY_TIMEOUT_S * 1000;
@@ -216,18 +198,10 @@ async function canConnect(uri: string): Promise<boolean> {
   }
 }
 
-// Bind ephemeral, read assigned port, close. Race-free enough for serial
-// scenarios (we don't run parallel containers).
-function pickFreePort(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const srv = createServer();
-    srv.unref();
-    srv.listen(0, "127.0.0.1", () => {
-      const addr = srv.address();
-      if (addr && typeof addr === "object") {
-        const port = addr.port;
-        srv.close(() => resolve(port));
-      } else reject(new Error("could not pick free port"));
-    });
-  });
+/** The host port docker assigned to `containerPort` (`docker port` prints `127.0.0.1:<port>`). */
+export function publishedPort(name: string, containerPort: number): number {
+  const out = runDocker(["port", name, `${containerPort}/tcp`]);
+  const m = /:(\d+)\s*$/m.exec(out.split("\n")[0] ?? "");
+  if (m === null) throw new Error(`docker port ${name} ${containerPort}/tcp printed no port: '${out}'`);
+  return Number(m[1]);
 }

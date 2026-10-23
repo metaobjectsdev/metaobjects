@@ -2,7 +2,6 @@ package com.metaobjects.generator.kotlin.exposed1x
 
 import java.io.BufferedReader
 import java.io.InputStreamReader
-import java.net.ServerSocket
 import java.net.URI
 import java.nio.charset.StandardCharsets
 import java.sql.DriverManager
@@ -49,36 +48,23 @@ class PostgresContainer : AutoCloseable {
             username = PG_USER
             password = PG_PASSWORD
             name = "metaobjects-test-kt-exp1x-" + UUID.randomUUID().toString().substring(0, 8)
-            var startedUrl: String? = null
-            var lastFailure: RuntimeException? = null
-            for (attempt in 1..START_ATTEMPTS) {
-                if (startedUrl != null) break
-                val port = pickFreePort()
-                try {
-                    runDocker(
-                        "run", "-d",
-                        "--name", name,
-                        "-e", "POSTGRES_PASSWORD=$PG_PASSWORD",
-                        "-p", "$port:5432",
-                        IMAGE,
-                    )
-                } catch (e: RuntimeException) {
-                    lastFailure = e
-                    forceRemove()
-                    continue
-                }
-                val candidate = "jdbc:postgresql://localhost:$port/postgres"
-                try {
-                    waitForReady(candidate)
-                    startedUrl = candidate
-                } catch (e: RuntimeException) {
-                    lastFailure = e
-                    forceRemove()
-                }
+            // Docker assigns the host port at bind time (`-p 127.0.0.1::5432`, read back with
+            // `docker port`): a port picked, released and handed to docker races parallel lanes.
+            jdbcUrl = try {
+                runDocker(
+                    "run", "-d",
+                    "--name", name,
+                    "-e", "POSTGRES_PASSWORD=$PG_PASSWORD",
+                    "-p", "127.0.0.1::5432",
+                    IMAGE,
+                )
+                val url = "jdbc:postgresql://127.0.0.1:${publishedPort(name, 5432)}/postgres"
+                waitForReady(url)
+                url
+            } catch (e: RuntimeException) {
+                forceRemove()
+                throw e
             }
-            jdbcUrl = startedUrl ?: throw RuntimeException(
-                "postgres container '$name' failed to start in $START_ATTEMPTS attempts", lastFailure,
-            )
         }
     }
 
@@ -162,7 +148,6 @@ class PostgresContainer : AutoCloseable {
         private const val IMAGE = "postgres:16-alpine"
         private const val PG_USER = "postgres"
         private const val PG_PASSWORD = "test"
-        private const val START_ATTEMPTS = 3
         private val READY_TIMEOUT_S: Int =
             (System.getenv("MO_PG_READY_TIMEOUT_S") ?: "120").toInt()
 
@@ -179,7 +164,12 @@ class PostgresContainer : AutoCloseable {
             }
         }
 
-        private fun pickFreePort(): Int = ServerSocket(0).use { it.localPort }
+        /** The host port docker assigned to [containerPort] (`docker port` prints `127.0.0.1:<port>`). */
+        private fun publishedPort(container: String, containerPort: Int): Int {
+            val out = runDocker("port", container, "$containerPort/tcp")
+            return out.lineSequence().firstOrNull()?.substringAfterLast(':')?.trim()?.toIntOrNull()
+                ?: throw RuntimeException("docker port $container $containerPort/tcp printed no port: '$out'")
+        }
 
         private fun runDocker(vararg args: String): String {
             val cmd = arrayOf("docker", *args)

@@ -83,3 +83,19 @@ def test_nonzero_ruff_with_no_stderr_still_names_the_exit_code(monkeypatch) -> N
 
     assert "2" in msg
     assert not msg.rstrip().endswith(":")
+
+
+def test_ruff_runs_as_its_own_binary_not_through_a_second_interpreter() -> None:
+    """`python -m ruff` starts an interpreter only to exec ruff's binary, and gen runs
+    ruff twice per emitted file: that start was ~90% of codegen wall time. The command
+    must be the binary the installed ruff package ships, which is the same ruff."""
+    import pytest
+
+    import metaobjects.codegen.format as fmt
+    from ruff import find_ruff_bin
+
+    try:
+        binary = find_ruff_bin()
+    except FileNotFoundError:
+        pytest.skip("this ruff install ships no binary; format.py falls back to `-m ruff`")
+    assert fmt._ruff_command() == [str(binary)]

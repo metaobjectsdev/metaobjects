@@ -11,7 +11,6 @@ against an existing server instead: the tests then OWN that database and drop ev
 from __future__ import annotations
 
 import os
-import socket
 import subprocess
 import time
 import uuid
@@ -19,6 +18,8 @@ from contextlib import closing
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import unquote, urlsplit
+
+from .postgres_container import published_port
 
 SHARED_MYSQL_URL_ENV = "METAOBJECTS_TEST_MYSQL_URL"
 
@@ -65,7 +66,6 @@ class MySqlContainer:
     DATABASE = "mo_test"
     USER = "root"
     PASSWORD = "test"
-    START_ATTEMPTS = 3
 
     def __init__(self) -> None:
         shared = os.environ.get(SHARED_MYSQL_URL_ENV)
@@ -79,31 +79,23 @@ class MySqlContainer:
             )
             return
         self._name = f"metaobjects-mysql-py-{uuid.uuid4().hex[:8]}"
-        last_failure: Exception | None = None
-        for _attempt in range(self.START_ATTEMPTS):
-            port = _pick_free_port()
-            self._info = MySqlInfo("localhost", port, self.DATABASE, self.USER, self.PASSWORD)
-            try:
-                _docker(
-                    "run", "-d", "--name", self._name,
-                    "-e", f"MYSQL_ROOT_PASSWORD={self.PASSWORD}",
-                    "-e", f"MYSQL_DATABASE={self.DATABASE}",
-                    "-p", f"{port}:3306", self.IMAGE,
-                )
-            except Exception as e:  # noqa: BLE001 -- docker refused the bind; retry on a new port
-                last_failure = e
-                self._force_remove()
-                continue
-            try:
-                self._wait_ready()
-                return
-            except Exception as e:  # noqa: BLE001 -- died on startup; retry on a new port
-                last_failure = e
-                self._force_remove()
-        raise RuntimeError(
-            f"mysql container '{self._name}' failed to start in {self.START_ATTEMPTS} attempts; "
-            f"last err: {last_failure}"
-        )
+        # Docker assigns the host port at bind time; see the port note in postgres_container.
+        try:
+            _docker(
+                "run", "-d", "--name", self._name,
+                "-e", f"MYSQL_ROOT_PASSWORD={self.PASSWORD}",
+                "-e", f"MYSQL_DATABASE={self.DATABASE}",
+                # Native AIO reserves ~17k kernel aio-nr slots per server; with the default
+                # fs.aio-max-nr (65536) parallel lanes exhaust it and InnoDB dies with EAGAIN
+                # at io_setup(). Buffered I/O is plenty for a test database.
+                "-p", "127.0.0.1::3306", self.IMAGE, "--innodb-use-native-aio=0",
+            )
+            port = published_port(self._name, 3306)
+            self._info = MySqlInfo("127.0.0.1", port, self.DATABASE, self.USER, self.PASSWORD)
+            self._wait_ready()
+        except BaseException:
+            self._force_remove()
+            raise
 
     def info(self) -> MySqlInfo:
         return self._info
@@ -168,9 +160,3 @@ def _docker(*args: str) -> str:
     if r.returncode != 0:
         raise subprocess.CalledProcessError(r.returncode, ["docker", *args], output=r.stdout, stderr=r.stderr)
     return r.stdout.strip()
-
-
-def _pick_free_port() -> int:
-    with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
-        s.bind(("127.0.0.1", 0))
-        return int(s.getsockname()[1])

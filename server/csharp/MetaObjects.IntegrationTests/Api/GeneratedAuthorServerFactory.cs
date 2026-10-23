@@ -106,11 +106,8 @@ internal sealed class GeneratedAuthorServerFactory : IAsyncDisposable
         var routesType = generatedAssembly.GetType($"{GeneratedNamespace}.AuthorRoutes")
             ?? throw new InvalidOperationException("generated AuthorRoutes type not found");
 
-        int port = PickFreePort();
-        string baseUrl = $"http://127.0.0.1:{port}";
-
         var builder = WebApplication.CreateBuilder();
-        builder.WebHost.UseUrls(baseUrl);
+        LoopbackKestrel.BindAnyPort(builder);
         // Quiet the host (no console spew during the test run).
         builder.Logging.ClearProviders();
 
@@ -137,7 +134,7 @@ internal sealed class GeneratedAuthorServerFactory : IAsyncDisposable
         mapMethod.Invoke(null, new object[] { app, "/api" });
 
         await app.StartAsync();
-        return new GeneratedAuthorServerFactory(pg, app, baseUrl);
+        return new GeneratedAuthorServerFactory(pg, app, LoopbackKestrel.BoundUrl(app));
     }
 
     public async ValueTask DisposeAsync()
@@ -341,15 +338,6 @@ internal sealed class GeneratedAuthorServerFactory : IAsyncDisposable
             DateTime.ParseExact(s, TimestampFmt, System.Globalization.CultureInfo.InvariantCulture,
                 System.Globalization.DateTimeStyles.None),
             DateTimeKind.Utc);
-
-    private static int PickFreePort()
-    {
-        var l = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
-        l.Start();
-        int port = ((System.Net.IPEndPoint)l.LocalEndpoint).Port;
-        l.Stop();
-        return port;
-    }
 }
 
 /// <summary>

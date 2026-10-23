@@ -132,7 +132,7 @@ booted over HTTP) are wired and green for:
   converter refuses polymorphic bodies → HTTP 415), so the Kotlin generated lane
   wires a small Jackson `JsonElement` codec module (the consumer's serialization
   wiring).
-- **C#** — reference (hand-rolled `HttpListener` over Postgres testcontainer) +
+- **C#** — reference (hand-rolled Kestrel server over Postgres testcontainer) +
   generated (the real `MetaObjects.Codegen` `DocumentRoutes` + `AppDbContext`
   Roslyn-compiled and booted full-stack on Kestrel over Postgres testcontainer).
   The generated lane locks the #105 codegen: the `payload` property is typed

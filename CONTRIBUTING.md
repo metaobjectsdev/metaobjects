@@ -91,6 +91,14 @@ scripts/ci-local.sh --quick    # hygiene.yml in full + the TypeScript half of
 MO_CI_LIST_ONLY=1 scripts/ci-local.sh --quick   # print the steps, run nothing
 ```
 
+The full run does its tree-writing steps first (install, the drift gates, one workspace
+build), then runs the rest as parallel lanes: at most `MO_CI_JOBS` at once, default 8. Each
+lane's output prints as one block when the lane finishes, so lanes never interleave. The
+summary gives every step's time, the slowest steps and each lane's wall time. `--quick` and
+`--only` run serially. `MO_CI_PY_WORKERS` (default 8), `MO_CI_TS_WORKERS` (default 6) and
+`MO_CI_JVM_FORKS` (default 3) set the worker counts for pytest-xdist, the TypeScript
+integration suite and the JVM integration modules' surefire forks.
+
 It SKIPS (loudly, not silently) any port whose toolchain (bun/dotnet/uv/mvn) isn't
 installed. The `.githooks/pre-push` hook additionally runs the TS build+typecheck
 gate and a Java pom-version drift guard on every push (activate hooks once per

@@ -1,11 +1,11 @@
-// AuthorApiServer — minimal reference ASP.NET / HttpListener server implementing
+// AuthorApiServer — minimal reference ASP.NET Core (Kestrel) server implementing
 // the cross-port REST API contract for the Author entity from the
 // api-contract-conformance corpus.
 //
 // Why hand-rolled (vs the RoutesGenerator output): the generator's output is a
-// Minimal-API mapping requiring a full WebApplication host pulling EF Core +
-// Kestrel. For a 10-route contract test that's disproportionate, and the
-// pattern matches the Java/Kotlin reference runners byte-for-byte. The corpus
+// Minimal-API mapping over EF Core. This server is the independent fixed point
+// the generated lane is measured against: one catch-all handler over raw Npgsql,
+// and the pattern matches the Java/Kotlin reference runners byte-for-byte. The corpus
 // is the contract both must satisfy.
 //
 // Backend is a Postgres testcontainer (matches the persistence-conformance
@@ -13,7 +13,9 @@
 // the wire shape against real autoincrement + null semantics).
 
 using System.Globalization;
-using System.Net;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Logging;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -77,18 +79,15 @@ internal sealed class AuthorApiServer : IAsyncDisposable
     private const string TimestampFmt = "yyyy-MM-ddTHH:mm:ss";
 
     private readonly PostgresContainer _pg;
-    private readonly HttpListener _listener;
-    private readonly Task _loop;
-    private readonly CancellationTokenSource _cts = new();
+    private readonly WebApplication _app;
 
     public string BaseUrl { get; }
 
-    private AuthorApiServer(PostgresContainer pg, HttpListener listener, string baseUrl)
+    private AuthorApiServer(PostgresContainer pg, WebApplication app, string baseUrl)
     {
         _pg = pg;
-        _listener = listener;
+        _app = app;
         BaseUrl = baseUrl;
-        _loop = Task.Run(AcceptLoopAsync);
     }
 
     public static async Task<AuthorApiServer> StartAsync(PostgresContainer pg)
@@ -114,20 +113,23 @@ internal sealed class AuthorApiServer : IAsyncDisposable
                 )";
             await cmd.ExecuteNonQueryAsync();
         }
-        int port = PickFreePort();
-        var listener = new HttpListener();
-        string baseUrl = $"http://127.0.0.1:{port}";
-        listener.Prefixes.Add(baseUrl + "/");
-        listener.Start();
-        return new AuthorApiServer(pg, listener, baseUrl);
+        var builder = WebApplication.CreateBuilder();
+        LoopbackKestrel.BindAnyPort(builder);
+        builder.Logging.ClearProviders();
+        var app = builder.Build();
+        AuthorApiServer? server = null;
+        // The bound address exists only after StartAsync, and no client can reach the
+        // server before it is returned, so the handler is wired before the instance exists.
+        app.Run(ctx => server!.HandleAsync(ctx));
+        await app.StartAsync();
+        server = new AuthorApiServer(pg, app, LoopbackKestrel.BoundUrl(app));
+        return server;
     }
 
     public async ValueTask DisposeAsync()
     {
-        _cts.Cancel();
-        try { _listener.Stop(); _listener.Close(); } catch { /* ignored */ }
-        try { await _loop; } catch { /* ignored */ }
-        _cts.Dispose();
+        try { await _app.StopAsync(); } catch { /* ignored */ }
+        try { await _app.DisposeAsync(); } catch { /* ignored */ }
     }
 
     // ----- seed / truncate -----
@@ -183,22 +185,7 @@ internal sealed class AuthorApiServer : IAsyncDisposable
 
     // ----- HTTP loop -----
 
-    private async Task AcceptLoopAsync()
-    {
-        while (!_cts.IsCancellationRequested)
-        {
-            HttpListenerContext ctx;
-            try
-            {
-                ctx = await _listener.GetContextAsync();
-            }
-            catch (HttpListenerException) { break; }
-            catch (ObjectDisposedException) { break; }
-            _ = Task.Run(() => HandleAsync(ctx));
-        }
-    }
-
-    private async Task HandleAsync(HttpListenerContext ctx)
+    private async Task HandleAsync(HttpContext ctx)
     {
         try
         {
@@ -213,18 +200,14 @@ internal sealed class AuthorApiServer : IAsyncDisposable
             }
             catch { /* nothing we can do */ }
         }
-        finally
-        {
-            try { ctx.Response.Close(); } catch { /* ignored */ }
-        }
     }
 
-    private async Task DispatchAsync(HttpListenerContext ctx)
+    private async Task DispatchAsync(HttpContext ctx)
     {
-        string method = ctx.Request.HttpMethod.ToUpperInvariant();
-        string rawPath = ctx.Request.Url?.AbsolutePath ?? "";
-        var qs = ctx.Request.QueryString;
-        string rawQuery = ctx.Request.Url?.Query ?? "";
+        string method = ctx.Request.Method.ToUpperInvariant();
+        string rawPath = ctx.Request.Path.Value ?? "";
+        var qs = ctx.Request.Query;
+        string rawQuery = ctx.Request.QueryString.Value ?? "";
         if (rawQuery.StartsWith("?")) rawQuery = rawQuery.Substring(1);
 
         string trimmed = rawPath.StartsWith("/api/authors")
@@ -246,8 +229,8 @@ internal sealed class AuthorApiServer : IAsyncDisposable
     }
 
     private async Task ListAuthorsAsync(
-        HttpListenerContext ctx,
-        System.Collections.Specialized.NameValueCollection qs,
+        HttpContext ctx,
+        IQueryCollection qs,
         string rawQuery)
     {
         string sortField = "id";
@@ -504,7 +487,7 @@ internal sealed class AuthorApiServer : IAsyncDisposable
             cmd.Parameters.AddWithValue("@p" + i, values[i] ?? (object)DBNull.Value);
     }
 
-    private async Task GetAuthorAsync(HttpListenerContext ctx, string idStr)
+    private async Task GetAuthorAsync(HttpContext ctx, string idStr)
     {
         long? id = ParseLongOrNull(idStr);
         if (id is null) { await SendJsonAsync(ctx, 400, new Dictionary<string, object?> { ["error"] = "invalid_id" }); return; }
@@ -529,7 +512,7 @@ internal sealed class AuthorApiServer : IAsyncDisposable
         (body.GetValueOrDefault("name") is string n && n.Length > 100)
         || (body.GetValueOrDefault("bio") is string b && b.Length > 1000);
 
-    private async Task CreateAuthorAsync(HttpListenerContext ctx)
+    private async Task CreateAuthorAsync(HttpContext ctx)
     {
         var parsed = await ReadJsonBodyAsync(ctx);
         if (parsed is not Dictionary<string, object?> body)
@@ -579,7 +562,7 @@ internal sealed class AuthorApiServer : IAsyncDisposable
         await SendJsonAsync(ctx, 201, row);
     }
 
-    private async Task UpdateAuthorAsync(HttpListenerContext ctx, string idStr)
+    private async Task UpdateAuthorAsync(HttpContext ctx, string idStr)
     {
         long? id = ParseLongOrNull(idStr);
         if (id is null) { await SendJsonAsync(ctx, 400, new Dictionary<string, object?> { ["error"] = "invalid_id" }); return; }
@@ -662,7 +645,7 @@ internal sealed class AuthorApiServer : IAsyncDisposable
         await SendJsonAsync(ctx, 200, row);
     }
 
-    private async Task DeleteAuthorAsync(HttpListenerContext ctx, string idStr)
+    private async Task DeleteAuthorAsync(HttpContext ctx, string idStr)
     {
         long? id = ParseLongOrNull(idStr);
         if (id is null) { await SendJsonAsync(ctx, 400, new Dictionary<string, object?> { ["error"] = "invalid_id" }); return; }
@@ -708,9 +691,9 @@ internal sealed class AuthorApiServer : IAsyncDisposable
         return rdr.IsDBNull(ord) ? null : rdr.GetDateTime(ord).ToString(TimestampFmt, CultureInfo.InvariantCulture);
     }
 
-    private static async Task<object?> ReadJsonBodyAsync(HttpListenerContext ctx)
+    private static async Task<object?> ReadJsonBodyAsync(HttpContext ctx)
     {
-        using var reader = new StreamReader(ctx.Request.InputStream, ctx.Request.ContentEncoding);
+        using var reader = new StreamReader(ctx.Request.Body, Encoding.UTF8);
         string text = await reader.ReadToEndAsync();
         if (string.IsNullOrEmpty(text)) return null;
         return JsonNodeToObject(JsonNode.Parse(text));
@@ -743,20 +726,20 @@ internal sealed class AuthorApiServer : IAsyncDisposable
         return null;
     }
 
-    private static async Task SendJsonAsync(HttpListenerContext ctx, int status, object body)
+    private static async Task SendJsonAsync(HttpContext ctx, int status, object body)
     {
         byte[] bytes = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(body, JsonOpts));
         ctx.Response.StatusCode = status;
         ctx.Response.ContentType = "application/json";
-        ctx.Response.ContentLength64 = bytes.Length;
-        await ctx.Response.OutputStream.WriteAsync(bytes);
+        ctx.Response.ContentLength = bytes.Length;
+        await ctx.Response.Body.WriteAsync(bytes);
     }
 
-    private static async Task SendNoContentAsync(HttpListenerContext ctx)
+    private static async Task SendNoContentAsync(HttpContext ctx)
     {
         ctx.Response.StatusCode = 204;
-        ctx.Response.ContentLength64 = 0;
-        await ctx.Response.OutputStream.FlushAsync();
+        ctx.Response.ContentLength = 0;
+        await ctx.Response.Body.FlushAsync();
     }
 
     private static readonly JsonSerializerOptions JsonOpts = new()
@@ -777,16 +760,5 @@ internal sealed class AuthorApiServer : IAsyncDisposable
     {
         if (s is null) return null;
         return long.TryParse(s, NumberStyles.Integer, CultureInfo.InvariantCulture, out var n) ? n : null;
-    }
-
-    private static int PickFreePort()
-    {
-        // Bind to port 0, read what the OS gave us, release. Race-free for our
-        // single-instance test usage; HttpListener will re-bind in StartAsync.
-        var l = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
-        l.Start();
-        int port = ((System.Net.IPEndPoint)l.LocalEndpoint).Port;
-        l.Stop();
-        return port;
     }
 }

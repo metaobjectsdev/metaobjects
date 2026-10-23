@@ -290,11 +290,25 @@
            3.9.9), 3.5.4 unpinned on the hosted runner, 3.5.2 with this pin — three
            surefire versions over one test set, which is the one build input a
            "green here, red there" investigation cannot afford to have floating. Found while diagnosing a full-reactor-only test failure in
-           September 2026; it was not the cause, and it made the cause harder to see. -->
+           September 2026; it was not the cause, and it made the cause harder to see.
+
+           logback.configurationFile points every module's tests at the ONE shared test
+           config, src/test/resources/logback-test.xml beside this pom (root WARN). Only
+           `metadata` had a copy on its test classpath, so every other module fell back to
+           logback's default of DEBUG on the console: 1.86M DEBUG lines in one full local CI
+           run, 1.1M of them from integration-tests alone, each one formatted and piped
+           through surefire. A test that asserts on a log event attaches its own appender
+           and level, so this changes no verdict. .mvn/ beside this pom makes
+           maven.multiModuleProjectDirectory this directory for `-f <module>/pom.xml` too. -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
         <version>${surefire.plugin.version}</version>
+        <configuration>
+          <systemPropertyVariables>
+            <logback.configurationFile>${maven.multiModuleProjectDirectory}/src/test/resources/logback-test.xml</logback.configurationFile>
+          </systemPropertyVariables>
+        </configuration>
       </plugin>
       <!-- JaCoCo Code Coverage Plugin -->
       <plugin>

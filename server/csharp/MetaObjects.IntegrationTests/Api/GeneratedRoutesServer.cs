@@ -79,14 +79,8 @@ internal sealed class GeneratedRoutesServer : IAsyncDisposable
         var assembly = Assembly.Load(ms.ToArray());
         var dbContextType = assembly.GetType($"{ns}.AppDbContext") ?? throw new InvalidOperationException("no AppDbContext");
 
-        var l = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
-        l.Start();
-        int port = ((System.Net.IPEndPoint)l.LocalEndpoint).Port;
-        l.Stop();
-        var baseUrl = $"http://127.0.0.1:{port}";
-
         var builder = WebApplication.CreateBuilder();
-        builder.WebHost.UseUrls(baseUrl);
+        LoopbackKestrel.BindAnyPort(builder);
         builder.Logging.ClearProviders();
         var addDbContext = typeof(EntityFrameworkServiceCollectionExtensions).GetMethods(BindingFlags.Public | BindingFlags.Static)
             .First(m => m.Name == "AddDbContext" && m.IsGenericMethodDefinition && m.GetGenericArguments().Length == 1 && m.GetParameters().Length == 4)
@@ -99,7 +93,7 @@ internal sealed class GeneratedRoutesServer : IAsyncDisposable
             assembly.GetType($"{ns}.{name}Routes")!.GetMethod($"Map{name}Routes", BindingFlags.Public | BindingFlags.Static)!
                 .Invoke(null, [app, "/api"]);
         await app.StartAsync();
-        return new GeneratedRoutesServer(app, baseUrl);
+        return new GeneratedRoutesServer(app, LoopbackKestrel.BoundUrl(app));
     }
 
     public async ValueTask DisposeAsync()

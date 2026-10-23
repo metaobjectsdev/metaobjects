@@ -4,6 +4,7 @@ Both passes read stdin / write stdout, so generated code is import-sorted AND
 formatted — i.e. `ruff check`- and `ruff format`-clean for downstream consumers."""
 from __future__ import annotations
 
+import functools
 import importlib.util
 import subprocess
 import sys
@@ -16,9 +17,26 @@ _STDIN_NAME = "generated.py"
 _RUFF_AVAILABLE = importlib.util.find_spec("ruff") is not None
 
 
+@functools.cache
+def _ruff_command() -> list[str]:
+    """The installed ruff package's own binary, resolved once.
+
+    ``python -m ruff`` starts a second interpreter only to exec this same binary, and
+    ``gen`` formats every emitted file twice: the interpreter start was ~90% of codegen
+    wall time (measured: 59 ms vs 6 ms a call). ``find_ruff_bin`` is ruff's documented
+    lookup for the binary its package installed, so the version — and the output — is
+    the one ``-m ruff`` would have run. Falls back to ``-m ruff`` if it cannot find it."""
+    try:
+        from ruff import find_ruff_bin
+
+        return [str(find_ruff_bin())]
+    except (ImportError, FileNotFoundError):
+        return [sys.executable, "-m", "ruff"]
+
+
 def _run_ruff(args: list[str], source: str) -> str:
     proc = subprocess.run(
-        [sys.executable, "-m", "ruff", *args],
+        [*_ruff_command(), *args],
         input=source,
         capture_output=True,
         text=True,

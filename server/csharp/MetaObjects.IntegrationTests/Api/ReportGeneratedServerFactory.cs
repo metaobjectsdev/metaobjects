@@ -80,11 +80,8 @@ internal sealed class ReportGeneratedServerFactory : IAsyncDisposable
         var dbContextType = assembly.GetType($"{GeneratedNamespace}.AppDbContext")
             ?? throw new InvalidOperationException("generated AppDbContext type not found");
 
-        int port = PickFreePort();
-        string baseUrl = $"http://127.0.0.1:{port}";
-
         var builder = WebApplication.CreateBuilder();
-        builder.WebHost.UseUrls(baseUrl);
+        LoopbackKestrel.BindAnyPort(builder);
         builder.Logging.ClearProviders();
         // Host concern, not generator output: the generated routes return the row object and
         // the host owns serialization, so an enum dimension (InvoiceStatusTotals.status)
@@ -109,7 +106,7 @@ internal sealed class ReportGeneratedServerFactory : IAsyncDisposable
         }
 
         await app.StartAsync();
-        return new ReportGeneratedServerFactory(engine, connectionString, app, baseUrl);
+        return new ReportGeneratedServerFactory(engine, connectionString, app, LoopbackKestrel.BoundUrl(app));
     }
 
     public async Task ApplySeedAsync() =>
@@ -240,14 +237,5 @@ internal sealed class ReportGeneratedServerFactory : IAsyncDisposable
         {
             services, configure, ServiceLifetime.Scoped, ServiceLifetime.Scoped,
         });
-    }
-
-    private static int PickFreePort()
-    {
-        var l = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
-        l.Start();
-        int port = ((System.Net.IPEndPoint)l.LocalEndpoint).Port;
-        l.Stop();
-        return port;
     }
 }

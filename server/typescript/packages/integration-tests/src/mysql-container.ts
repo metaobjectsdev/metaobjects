@@ -11,7 +11,7 @@
 
 import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { createServer } from "node:net";
+import { publishedPort } from "./postgres-container.ts";
 import mysql from "mysql2/promise";
 
 const URL_ENV = "METAOBJECTS_TEST_MYSQL_URL";
@@ -31,11 +31,17 @@ export async function startMysql(): Promise<MysqlContainerHandle> {
   if (existing !== undefined && existing !== "") return { url: existing, stop: () => {} };
 
   const name = `metaobjects-mysql-${randomUUID().slice(0, 8)}`;
-  const port = await freePort();
-  docker(["run", "-d", "--name", name, "-e", `MYSQL_ROOT_PASSWORD=${PASSWORD}`,
-    "-e", `MYSQL_DATABASE=${DATABASE}`, "-p", `${port}:3306`, IMAGE]);
-  const url = `mysql://root:${PASSWORD}@127.0.0.1:${port}/${DATABASE}`;
   const stop = () => { spawnSync("docker", ["rm", "-f", name], { stdio: "ignore" }); };
+  // Docker assigns the host port at bind time; see the port note in postgres-container.ts.
+  let url: string;
+  try {
+    docker(["run", "-d", "--name", name, "-e", `MYSQL_ROOT_PASSWORD=${PASSWORD}`,
+      "-e", `MYSQL_DATABASE=${DATABASE}`, "-p", "127.0.0.1::3306", IMAGE, "--innodb-use-native-aio=0"]);
+    url = `mysql://root:${PASSWORD}@127.0.0.1:${publishedPort(name, 3306)}/${DATABASE}`;
+  } catch (e) {
+    stop();
+    throw e;
+  }
 
   const deadline = Date.now() + READY_DEADLINE_MS;
   while (Date.now() < deadline) {
@@ -65,16 +71,4 @@ async function canConnect(url: string): Promise<boolean> {
 function docker(args: string[]): void {
   const r = spawnSync("docker", args, { encoding: "utf8" });
   if (r.status !== 0) throw new Error(`docker ${args.join(" ")} failed: ${r.stderr}`);
-}
-
-function freePort(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const srv = createServer();
-    srv.once("error", reject);
-    srv.listen(0, "127.0.0.1", () => {
-      const addr = srv.address();
-      const port = typeof addr === "object" && addr !== null ? addr.port : 0;
-      srv.close(() => resolve(port));
-    });
-  });
 }

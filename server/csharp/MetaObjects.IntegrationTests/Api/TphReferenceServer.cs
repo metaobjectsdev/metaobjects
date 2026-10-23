@@ -1,5 +1,5 @@
 // TphReferenceServer — the FR-017 hand-rolled REFERENCE lane for the TPH
-// polymorphic-CRUD api-contract. An HttpListener server over the seeded single
+// polymorphic-CRUD api-contract. A Kestrel server over the seeded single
 // `auths` table that implements the cross-port contract directly:
 //
 //   GET    /api/auths            polymorphic list (union; each row tagged by `type`)
@@ -16,7 +16,9 @@
 // must also satisfy; the corpus + assertion vocabulary are shared.
 
 using System.Globalization;
-using System.Net;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Logging;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -44,29 +46,31 @@ internal sealed class TphReferenceServer : IAsyncDisposable
     private static readonly string[] AllCols = { "id", "type", "reference", "quantity", "copayAmount", "approver" };
 
     private readonly PostgresContainer _pg;
-    private readonly HttpListener _listener;
-    private readonly Task _loop;
-    private readonly CancellationTokenSource _cts = new();
+    private readonly WebApplication _app;
 
     public string BaseUrl { get; }
 
-    private TphReferenceServer(PostgresContainer pg, HttpListener listener, string baseUrl)
+    private TphReferenceServer(PostgresContainer pg, WebApplication app, string baseUrl)
     {
         _pg = pg;
-        _listener = listener;
+        _app = app;
         BaseUrl = baseUrl;
-        _loop = Task.Run(AcceptLoopAsync);
     }
 
     public static async Task<TphReferenceServer> StartAsync(PostgresContainer pg)
     {
         await TphFixture.ProvisionSchemaAsync(pg.ConnectionString);
-        int port = PickFreePort();
-        var listener = new HttpListener();
-        string baseUrl = $"http://127.0.0.1:{port}";
-        listener.Prefixes.Add(baseUrl + "/");
-        listener.Start();
-        return new TphReferenceServer(pg, listener, baseUrl);
+        var builder = WebApplication.CreateBuilder();
+        LoopbackKestrel.BindAnyPort(builder);
+        builder.Logging.ClearProviders();
+        var app = builder.Build();
+        TphReferenceServer? server = null;
+        // The bound address exists only after StartAsync, and no client can reach the
+        // server before it is returned, so the handler is wired before the instance exists.
+        app.Run(ctx => server!.HandleAsync(ctx));
+        await app.StartAsync();
+        server = new TphReferenceServer(pg, app, LoopbackKestrel.BoundUrl(app));
+        return server;
     }
 
     public async Task ApplySeedAsync() =>
@@ -74,25 +78,11 @@ internal sealed class TphReferenceServer : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        _cts.Cancel();
-        try { _listener.Stop(); _listener.Close(); } catch { /* ignored */ }
-        try { await _loop; } catch { /* ignored */ }
-        _cts.Dispose();
+        try { await _app.StopAsync(); } catch { /* ignored */ }
+        try { await _app.DisposeAsync(); } catch { /* ignored */ }
     }
 
-    private async Task AcceptLoopAsync()
-    {
-        while (!_cts.IsCancellationRequested)
-        {
-            HttpListenerContext ctx;
-            try { ctx = await _listener.GetContextAsync(); }
-            catch (HttpListenerException) { break; }
-            catch (ObjectDisposedException) { break; }
-            _ = Task.Run(() => HandleAsync(ctx));
-        }
-    }
-
-    private async Task HandleAsync(HttpListenerContext ctx)
+    private async Task HandleAsync(HttpContext ctx)
     {
         try { await DispatchAsync(ctx); }
         catch (Exception ex)
@@ -100,15 +90,14 @@ internal sealed class TphReferenceServer : IAsyncDisposable
             try { await SendJsonAsync(ctx, 500, new Dictionary<string, object?> { ["error"] = "internal", ["message"] = ex.Message }); }
             catch { /* nothing more */ }
         }
-        finally { try { ctx.Response.Close(); } catch { /* ignored */ } }
     }
 
-    private async Task DispatchAsync(HttpListenerContext ctx)
+    private async Task DispatchAsync(HttpContext ctx)
     {
-        string method = ctx.Request.HttpMethod.ToUpperInvariant();
-        string rawPath = (ctx.Request.Url?.AbsolutePath ?? "").Trim('/');
+        string method = ctx.Request.Method.ToUpperInvariant();
+        string rawPath = (ctx.Request.Path.Value ?? "").Trim('/');
         var segs = rawPath.Split('/', StringSplitOptions.RemoveEmptyEntries);
-        var query = ctx.Request.QueryString;
+        var query = ctx.Request.Query;
 
         // api / auths [...] — anything else is 404.
         if (segs.Length < 2 || segs[0] != "api" || segs[1] != "auths")
@@ -254,20 +243,19 @@ internal sealed class TphReferenceServer : IAsyncDisposable
     private sealed record BaseFilter(string Field, string Op, string[] Values);
 
     private static (List<BaseFilter> Filters, string? Error, string? Field) ParseFilters(
-        System.Collections.Specialized.NameValueCollection query,
+        IQueryCollection query,
         IReadOnlyDictionary<string, string[]> filterOps)
     {
         var filters = new List<BaseFilter>();
-        foreach (string? key in query.AllKeys)
+        foreach (string key in query.Keys)
         {
-            if (key is null) continue;
             var m = System.Text.RegularExpressions.Regex.Match(key, @"^filter\[([^\]]+)\](?:\[([^\]]+)\])?$");
             if (!m.Success) continue;
             string field = m.Groups[1].Value;
             string op = m.Groups[2].Success ? m.Groups[2].Value : "eq";
             if (!filterOps.TryGetValue(field, out var ops)) return (filters, "invalid_filter_field", field);
             if (!ops.Contains(op)) return (filters, "invalid_filter_op", field);
-            string raw = query[key] ?? "";
+            string raw = query[key].ToString();
             string[] values = op == "in" ? raw.Split(',') : new[] { raw };
             if (field == "id" && values.Any(v => !long.TryParse(v, out _))) return (filters, "invalid_filter_value", field);
             if (field == "copayAmount" && values.Any(v => !DecimalWire.TryParse(v, out _))) return (filters, "invalid_filter_value", field);
@@ -278,7 +266,7 @@ internal sealed class TphReferenceServer : IAsyncDisposable
 
     private async Task<List<object?>> ListAsync(
         string? discriminator,
-        System.Collections.Specialized.NameValueCollection query,
+        IQueryCollection query,
         IReadOnlyList<BaseFilter>? filters = null)
     {
         var sql = new StringBuilder("SELECT * FROM \"auths\"");
@@ -308,7 +296,7 @@ internal sealed class TphReferenceServer : IAsyncDisposable
         }
         if (where.Count > 0) sql.Append(" WHERE ").Append(string.Join(" AND ", where));
         // ?sort=field:dir — only the corpus's `id` sort is exercised; gate to known columns.
-        var sort = query["sort"];
+        string? sort = query["sort"];
         if (!string.IsNullOrWhiteSpace(sort))
         {
             var parts = sort.Split(':', 2);
@@ -485,15 +473,15 @@ internal sealed class TphReferenceServer : IAsyncDisposable
         return d;
     }
 
-    private async Task Respond(HttpListenerContext ctx, Dictionary<string, object?>? row)
+    private async Task Respond(HttpContext ctx, Dictionary<string, object?>? row)
     {
         if (row is null) { await SendJsonAsync(ctx, 404, NotFound()); return; }
         await SendJsonAsync(ctx, 200, row);
     }
 
-    private static async Task<JsonObject> ReadBodyAsync(HttpListenerContext ctx)
+    private static async Task<JsonObject> ReadBodyAsync(HttpContext ctx)
     {
-        using var sr = new StreamReader(ctx.Request.InputStream, Encoding.UTF8);
+        using var sr = new StreamReader(ctx.Request.Body, Encoding.UTF8);
         var text = await sr.ReadToEndAsync();
         if (string.IsNullOrWhiteSpace(text)) return new JsonObject();
         return JsonNode.Parse(text) as JsonObject ?? new JsonObject();
@@ -501,26 +489,17 @@ internal sealed class TphReferenceServer : IAsyncDisposable
 
     private static Dictionary<string, object?> NotFound() => new() { ["error"] = "not_found" };
 
-    private static async Task SendJsonAsync(HttpListenerContext ctx, int status, object body)
+    private static async Task SendJsonAsync(HttpContext ctx, int status, object body)
     {
         byte[] bytes = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(body, JsonOpts));
         ctx.Response.StatusCode = status;
         ctx.Response.ContentType = "application/json";
-        ctx.Response.ContentLength64 = bytes.Length;
-        await ctx.Response.OutputStream.WriteAsync(bytes);
+        ctx.Response.ContentLength = bytes.Length;
+        await ctx.Response.Body.WriteAsync(bytes);
     }
 
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
         DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.Never,
     };
-
-    private static int PickFreePort()
-    {
-        var l = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
-        l.Start();
-        int port = ((System.Net.IPEndPoint)l.LocalEndpoint).Port;
-        l.Stop();
-        return port;
-    }
 }
