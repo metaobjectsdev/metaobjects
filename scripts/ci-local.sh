@@ -725,17 +725,17 @@ gate_conf_python() {
   # tests/integration invocation in the repo (scripts/integration-test.sh,
   # docs/CONFORMANCE.md).
   #
-  # EXCEPT tests/integration when this selection also runs `integration-tests (python)`,
+  # EXCEPT tests/integration when this invocation will really run `integration-tests (python)`,
   # which is that directory: running it here too ran its ~380 Postgres and MySQL scenarios
-  # twice per full run. Under --no-integration (conformance.yml) it stays in, because half
-  # of it needs no docker (the generated-lane and normalization tests) and this is then the
-  # only step that runs it.
+  # twice per full run. Under --no-integration (conformance.yml), or with docker down (that
+  # step is then only a SKIP), it stays in, because half of it needs no docker (the
+  # generated-lane and normalization tests) and this is then the only step that runs it.
   #
   # -n: pytest-xdist. The suite is ~4,000 independent tests, many of which shell out to a
   # formatter or compile generated code, so it is wall-clock bound, not CPU bound; serial it
   # was the longest step in the full run. MO_CI_PY_WORKERS overrides the worker count.
   local skip_integ="--ignore=tests/integration"
-  [ "$NO_INTEG" -eq 1 ] && skip_integ=""
+  if [ "$NO_INTEG" -eq 1 ] || ! docker info >/dev/null 2>&1; then skip_integ=""; fi
   ( cd server/python && uv run --extra integration pytest tests/ $skip_integ -q -n "${MO_CI_PY_WORKERS:-8}" )
 }
 gate_conf_kotlin() {
