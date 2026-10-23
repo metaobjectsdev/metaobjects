@@ -13,6 +13,7 @@ public class SubscriberBlurbPayload
 {
     public enum SubscriberBlurbPayloadStatus { active, paused, cancelled }
     [JsonPropertyName("name")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Name { get; set; }
     [JsonPropertyName("status")]
     public SubscriberBlurbPayloadStatus Status { get; set; }

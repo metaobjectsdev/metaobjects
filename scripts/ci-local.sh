@@ -399,9 +399,21 @@ gate_no_api_prefix() { bun scripts/check-no-api-prefix.ts; }
 #
 # Deliberately does NOT run the other four ports: that shells out to mvn/dotnet/uv,
 # and this lane is `step_if bun` — guarded on bun alone and included in `--quick`, the
-# documented pre-PR command. The release preflight runs `--check --all-ports`, which
-# refuses to leave a port out.
+# documented pre-PR command. The other four ports are checked by `gate_showcase_all_ports`
+# in the heavy tier of the flagless run, and again by the release preflight
+# (`--check --all-ports`); both refuse to leave a port out.
 gate_site_payload() { bun_install && bun test scripts/site && bun scripts/build-site-payload.ts --check; }
+
+# ── the showcase is current in EVERY port, not just ts+sql ────────────────────
+# `gate_site_payload` can only afford `--bun-only`, so a change to the python, csharp,
+# java or kotlin emitter left the committed showcase stale while the full run stayed
+# green, and the first thing to notice was the release preflight (`--check --all-ports`)
+# refusing the release cut (#447/#448 value-object null omission). No single CI lane has
+# mvn, dotnet and uv together, so this runs in the flagless full run only, which is the
+# one place all three coexist; it is absent from `--quick` (bun-only by design) and from
+# every `--only` lane. It needs the workspace built (`gate_ts_build_typecheck` earlier in
+# the same run) for the reason given above `gate_site_payload`.
+gate_showcase_all_ports() { bun_install && bun scripts/regen-showcase.ts --check --all-ports; }
 
 # ── the published metamodel reference tracks the registry ─────────────────────
 # site-reference/ is rendered HTML the site COPIES at deploy — the deploy has no install
@@ -924,6 +936,18 @@ else
   if want python;               then step_if uv "conformance: python"            gate_conf_python;  fi
   if want_any java java-fast;   then step_if mvn "conformance: kotlin"           gate_conf_kotlin;  fi
   if want_any java java-slow;   then step_if mvn "java-reactor (install)"        gate_java_reactor; fi
+  # Needs all three toolchains at once, which no single --only lane has: flagless run only.
+  if [ -z "$ONLY" ] && [ "$INTEG_ONLY" -eq 0 ]; then
+    if have mvn && have dotnet && have uv; then
+      step "showcase current in all ports" gate_showcase_all_ports
+    elif [ "$STRICT" -eq 1 ]; then
+      echo ""; echo "  ✖ showcase current in all ports — needs mvn, dotnet and uv (strict-toolchains)" >&2
+      FAIL+=("showcase current in all ports (missing toolchain, strict)")
+    else
+      echo ""; echo "── ⊘ showcase current in all ports — SKIPPED (needs mvn, dotnet and uv) ──" >&2
+      SKIP+=("showcase current in all ports (needs mvn+dotnet+uv)")
+    fi
+  fi
   # Docker integration — full suite when no --only, per-port otherwise.
   # --no-integration drops this whole half; --integration-only keeps ONLY it, which is
   # why it asks in_lane / in_lane_any (selection) where the checks above ask want.

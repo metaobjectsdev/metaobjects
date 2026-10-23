@@ -83,7 +83,8 @@ a PR, so nothing red leaves your machine:
 ```bash
 scripts/ci-local.sh            # full parity: hygiene.yml's leak-scan, all-port
                                # conformance, the java reactor, the drift/mutation
-                               # gates, + integration-tests.yml's docker suite
+                               # gates, the showcase current in all five ports, +
+                               # integration-tests.yml's docker suite
 scripts/ci-local.sh --quick    # hygiene.yml in full + the TypeScript half of
                                # conformance.yml; skips the C#/Java/Kotlin/Python
                                # ports, the java reactor and the docker suite
