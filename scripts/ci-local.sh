@@ -55,8 +55,8 @@
 #                                    #   cube   → the cube-model live check: a real Cube
 #                                    #            (cubejs/cube, pinned) over a private
 #                                    #            Postgres, both in docker (FR-044). Its
-#                                    #            own lane: the full run adds it after the
-#                                    #            integration suite; --quick and
+#                                    #            own lane: the full run runs it as its own
+#                                    #            parallel lane; --quick and
 #                                    #            --no-integration drop it; no other
 #                                    #            section includes it
 #   scripts/ci-local.sh --no-integration
@@ -456,8 +456,8 @@ gate_site_payload() { bun_install && bun test scripts/site && bun scripts/build-
 # refusing the release cut (#447/#448 value-object null omission). No single CI lane has
 # mvn, dotnet and uv together, so this runs in the flagless full run only, which is the
 # one place all three coexist; it is absent from `--quick` (bun-only by design) and from
-# every `--only` lane. It needs the workspace built (`gate_ts_build_typecheck` earlier in
-# the same run) for the reason given above `gate_site_payload`.
+# every `--only` lane. It needs the workspace built (the full run's prelude build, before
+# its lanes start) for the reason given above `gate_site_payload`.
 gate_showcase_all_ports() { bun_install && bun scripts/regen-showcase.ts --check --all-ports; }
 
 # ── the published metamodel reference tracks the registry ─────────────────────
@@ -780,7 +780,7 @@ gate_integration_port() { scripts/integration-test.sh "$1"; }
 # each served report's Cube query compared with its SQL view, then every Postgres case of the
 # mapping corpus compiled in the same Cube. It owns its containers and a private network, binds
 # only an ephemeral 127.0.0.1 port, and never uses the Postgres sidecar below. Its own lane
-# because the image is about 1 GB: `--only cube`, and the full run after the integration suite.
+# because the image is about 1 GB: `--only cube`, and the full run's `cube` lane.
 gate_cube() { scripts/integration-test.sh cube; }
 
 # Docker down is a SKIP with a banner, never a quiet pass; --strict-toolchains makes it a FAIL.
