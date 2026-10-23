@@ -75,6 +75,9 @@ _DECIMAL_FIELDS: frozenset[str] = frozenset()
 _DECIMAL_LIMITS: dict[str, tuple[int, int]] = {}
 
 
+_NESTED_DECIMALS: dict[str, Any] = {}
+
+
 async def _json_body(request: Request) -> dict[str, Any] | None:
     """GENERATED — the request body as a JSON object (non-integer numbers are exact `Decimal`s), or None."""
     try:
@@ -182,7 +185,9 @@ def create_subscriber(
     ):  # the body was not a JSON object: the cross-port 400, not FastAPI's 422
         return JSONResponse(status_code=400, content={"error": "validation"})
     try:
-        dto = coerce_decimal_fields(dto, _DECIMAL_FIELDS, _DECIMAL_LIMITS)
+        dto = coerce_decimal_fields(
+            dto, _DECIMAL_FIELDS, _DECIMAL_LIMITS, _NESTED_DECIMALS
+        )
     except ValueError:
         return JSONResponse(status_code=400, content={"error": "validation"})
     # FR-036: run the generated field constraints (length / pattern /
@@ -215,7 +220,9 @@ def update_subscriber(
     ):  # the body was not a JSON object: the cross-port 400, not FastAPI's 422
         return JSONResponse(status_code=400, content={"error": "validation"})
     try:
-        dto = coerce_decimal_fields(dto, _DECIMAL_FIELDS, _DECIMAL_LIMITS)
+        dto = coerce_decimal_fields(
+            dto, _DECIMAL_FIELDS, _DECIMAL_LIMITS, _NESTED_DECIMALS
+        )
     except ValueError:
         return JSONResponse(status_code=400, content={"error": "validation"})
     # FR-035 PATCH-2: an explicit null on a @required field is a 400 —
