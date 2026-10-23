@@ -1,5 +1,5 @@
 // M2mReferenceServer — the FR-018 hand-rolled REFERENCE lane for the M:N traversal
-// api-contract. An HttpListener server that mounts GET /api/<source-plural>/{id}/
+// api-contract. A Kestrel server that mounts GET /api/<source-plural>/{id}/
 // <relationName> for every M:N relationship in the m2m corpus model and resolves the
 // traversal via the runtime M2MResolver (raw Npgsql against the seeded Postgres).
 //
@@ -24,7 +24,9 @@
 // applied by the CALLER, exactly as RoutesGenerator wraps its emitted join with the
 // OfType<Sub>() scope/narrow rather than teaching the join itself about TPH.
 
-using System.Net;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Logging;
 using System.Text;
 using System.Text.Json;
 using Npgsql;
@@ -38,9 +40,7 @@ namespace MetaObjects.IntegrationTests.Api;
 internal sealed class M2mReferenceServer : IAsyncDisposable
 {
     private readonly PostgresContainer _pg;
-    private readonly HttpListener _listener;
-    private readonly Task _loop;
-    private readonly CancellationTokenSource _cts = new();
+    private readonly WebApplication _app;
     private readonly MetaRoot _root;
     // route table: (routePrefix, relationName) -> the resolved route descriptor. routePrefix
     // is either a base plural ("accounts", "posts") or a TPH subtype path ("accounts/member").
@@ -49,15 +49,14 @@ internal sealed class M2mReferenceServer : IAsyncDisposable
     public string BaseUrl { get; }
 
     private M2mReferenceServer(
-        PostgresContainer pg, HttpListener listener, string baseUrl, MetaRoot root,
+        PostgresContainer pg, WebApplication app, string baseUrl, MetaRoot root,
         Dictionary<(string, string), M2mRoute> routes)
     {
         _pg = pg;
-        _listener = listener;
+        _app = app;
         BaseUrl = baseUrl;
         _root = root;
         _routes = routes;
-        _loop = Task.Run(AcceptLoopAsync);
     }
 
     public static async Task<M2mReferenceServer> StartAsync(PostgresContainer pg)
@@ -73,12 +72,17 @@ internal sealed class M2mReferenceServer : IAsyncDisposable
 
         var routes = BuildRoutes(root);
 
-        int port = PickFreePort();
-        var listener = new HttpListener();
-        string baseUrl = $"http://127.0.0.1:{port}";
-        listener.Prefixes.Add(baseUrl + "/");
-        listener.Start();
-        return new M2mReferenceServer(pg, listener, baseUrl, root, routes);
+        var builder = WebApplication.CreateBuilder();
+        LoopbackKestrel.BindAnyPort(builder);
+        builder.Logging.ClearProviders();
+        var app = builder.Build();
+        M2mReferenceServer? server = null;
+        // The bound address exists only after StartAsync, and no client can reach the
+        // server before it is returned, so the handler is wired before the instance exists.
+        app.Run(ctx => server!.HandleAsync(ctx));
+        await app.StartAsync();
+        server = new M2mReferenceServer(pg, app, LoopbackKestrel.BoundUrl(app), root, routes);
+        return server;
     }
 
     /// <summary>
@@ -157,25 +161,11 @@ internal sealed class M2mReferenceServer : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        _cts.Cancel();
-        try { _listener.Stop(); _listener.Close(); } catch { /* ignored */ }
-        try { await _loop; } catch { /* ignored */ }
-        _cts.Dispose();
+        try { await _app.StopAsync(); } catch { /* ignored */ }
+        try { await _app.DisposeAsync(); } catch { /* ignored */ }
     }
 
-    private async Task AcceptLoopAsync()
-    {
-        while (!_cts.IsCancellationRequested)
-        {
-            HttpListenerContext ctx;
-            try { ctx = await _listener.GetContextAsync(); }
-            catch (HttpListenerException) { break; }
-            catch (ObjectDisposedException) { break; }
-            _ = Task.Run(() => HandleAsync(ctx));
-        }
-    }
-
-    private async Task HandleAsync(HttpListenerContext ctx)
+    private async Task HandleAsync(HttpContext ctx)
     {
         try { await DispatchAsync(ctx); }
         catch (Exception ex)
@@ -187,16 +177,15 @@ internal sealed class M2mReferenceServer : IAsyncDisposable
             }
             catch { /* nothing more */ }
         }
-        finally { try { ctx.Response.Close(); } catch { /* ignored */ } }
     }
 
     // Match GET /api/<plural>/{id}/<relation> (base / non-TPH) or
     // GET /api/<basePlural>/<subtypeSegment>/{id}/<relation> (TPH subtype-scoped), and
     // resolve via M2MResolver — narrowed by the route's TPH source gate / target filter.
-    private async Task DispatchAsync(HttpListenerContext ctx)
+    private async Task DispatchAsync(HttpContext ctx)
     {
-        string method = ctx.Request.HttpMethod.ToUpperInvariant();
-        string rawPath = (ctx.Request.Url?.AbsolutePath ?? "").Trim('/');
+        string method = ctx.Request.Method.ToUpperInvariant();
+        string rawPath = (ctx.Request.Path.Value ?? "").Trim('/');
         var segs = rawPath.Split('/', StringSplitOptions.RemoveEmptyEntries);
 
         M2mRoute? route = null;
@@ -299,13 +288,13 @@ internal sealed class M2mReferenceServer : IAsyncDisposable
         return pk.Fields[0];
     }
 
-    private static async Task SendJsonAsync(HttpListenerContext ctx, int status, object body)
+    private static async Task SendJsonAsync(HttpContext ctx, int status, object body)
     {
         byte[] bytes = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(body, JsonOpts));
         ctx.Response.StatusCode = status;
         ctx.Response.ContentType = "application/json";
-        ctx.Response.ContentLength64 = bytes.Length;
-        await ctx.Response.OutputStream.WriteAsync(bytes);
+        ctx.Response.ContentLength = bytes.Length;
+        await ctx.Response.Body.WriteAsync(bytes);
     }
 
     private static readonly JsonSerializerOptions JsonOpts = new()
@@ -313,14 +302,6 @@ internal sealed class M2mReferenceServer : IAsyncDisposable
         DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.Never,
     };
 
-    private static int PickFreePort()
-    {
-        var l = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
-        l.Start();
-        int port = ((System.Net.IPEndPoint)l.LocalEndpoint).Port;
-        l.Stop();
-        return port;
-    }
 
     private static string Quote(string identifier) => "\"" + identifier.Replace("\"", "\"\"") + "\"";
 

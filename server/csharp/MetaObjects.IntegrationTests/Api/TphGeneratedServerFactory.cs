@@ -56,11 +56,8 @@ internal sealed class TphGeneratedServerFactory : IAsyncDisposable
         var dbContextType = assembly.GetType($"{GeneratedNamespace}.AppDbContext")
             ?? throw new InvalidOperationException("generated AppDbContext type not found");
 
-        int port = PickFreePort();
-        string baseUrl = $"http://127.0.0.1:{port}";
-
         var builder = WebApplication.CreateBuilder();
-        builder.WebHost.UseUrls(baseUrl);
+        LoopbackKestrel.BindAnyPort(builder);
         builder.Logging.ClearProviders();
         // TPH host concern: serialize the discriminator enum as its string symbol.
         builder.Services.ConfigureHttpJsonOptions(o =>
@@ -81,7 +78,7 @@ internal sealed class TphGeneratedServerFactory : IAsyncDisposable
         }
 
         await app.StartAsync();
-        return new TphGeneratedServerFactory(pg, app, baseUrl);
+        return new TphGeneratedServerFactory(pg, app, LoopbackKestrel.BoundUrl(app));
     }
 
     public async Task ApplySeedAsync() =>
@@ -198,14 +195,5 @@ internal sealed class TphGeneratedServerFactory : IAsyncDisposable
         {
             services, configure, ServiceLifetime.Scoped, ServiceLifetime.Scoped,
         });
-    }
-
-    private static int PickFreePort()
-    {
-        var l = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
-        l.Start();
-        int port = ((System.Net.IPEndPoint)l.LocalEndpoint).Port;
-        l.Stop();
-        return port;
     }
 }

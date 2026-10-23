@@ -2,7 +2,6 @@ package com.metaobjects.integration.kotlin
 
 import java.io.BufferedReader
 import java.io.InputStreamReader
-import java.net.ServerSocket
 import java.nio.charset.StandardCharsets
 import java.sql.DriverManager
 import java.util.UUID
@@ -33,36 +32,22 @@ class MySqlContainer : AutoCloseable {
             name = "metaobjects-mysql-kt-" + UUID.randomUUID().toString().substring(0, 8)
             username = "root"
             password = PASSWORD
-            var started: String? = null
-            var last: RuntimeException? = null
-            for (attempt in 1..START_ATTEMPTS) {
-                if (started != null) break
-                val port = ServerSocket(0).use { it.localPort }
-                try {
-                    runDocker(
-                        "run", "-d", "--name", name,
-                        "-e", "MYSQL_ROOT_PASSWORD=$PASSWORD",
-                        "-e", "MYSQL_DATABASE=$DB",
-                        "-p", "$port:3306",
-                        IMAGE,
-                    )
-                } catch (e: RuntimeException) {
-                    last = e
-                    forceRemove()
-                    continue
-                }
-                val candidate = "jdbc:mysql://localhost:$port/$DB"
-                try {
-                    waitForReady(candidate)
-                    started = candidate
-                } catch (e: RuntimeException) {
-                    last = e
-                    forceRemove()
-                }
+            // Docker assigns the host port at bind time; see the port note in PostgresContainer.
+            jdbcUrl = try {
+                runDocker(
+                    "run", "-d", "--name", name,
+                    "-e", "MYSQL_ROOT_PASSWORD=$PASSWORD",
+                    "-e", "MYSQL_DATABASE=$DB",
+                    "-p", "127.0.0.1::3306",
+                    IMAGE,
+                )
+                val url = "jdbc:mysql://127.0.0.1:${PostgresContainer.publishedPort(name, 3306)}/$DB"
+                waitForReady(url)
+                url
+            } catch (e: RuntimeException) {
+                forceRemove()
+                throw e
             }
-            jdbcUrl = started ?: throw RuntimeException(
-                "mysql container '$name' failed to start in $START_ATTEMPTS attempts", last,
-            )
         }
     }
 
@@ -120,7 +105,6 @@ class MySqlContainer : AutoCloseable {
         private const val IMAGE = "mysql:8.4"
         private const val DB = "mo_test"
         private const val PASSWORD = "test"
-        private const val START_ATTEMPTS = 3
         private val READY_TIMEOUT_S: Int = (System.getenv("MO_MYSQL_READY_TIMEOUT_S") ?: "180").toInt()
 
         private fun runDockerQuiet(vararg args: String): String = try {

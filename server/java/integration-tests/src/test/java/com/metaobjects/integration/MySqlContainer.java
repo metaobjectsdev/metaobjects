@@ -3,7 +3,6 @@ package com.metaobjects.integration;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.net.ServerSocket;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -26,7 +25,6 @@ public final class MySqlContainer implements AutoCloseable, JdbcTarget {
     private static final String IMAGE = "mysql:8.4";
     private static final String DB = "mo_test";
     private static final String PASSWORD = "test";
-    private static final int START_ATTEMPTS = 3;
     private static final int READY_TIMEOUT_S =
         Integer.parseInt(System.getenv().getOrDefault("MO_MYSQL_READY_TIMEOUT_S", "180"));
 
@@ -47,35 +45,20 @@ public final class MySqlContainer implements AutoCloseable, JdbcTarget {
         this.name = "metaobjects-mysql-" + UUID.randomUUID().toString().substring(0, 8);
         this.username = "root";
         this.password = PASSWORD;
-        String started = null;
-        RuntimeException last = null;
-        for (int attempt = 1; attempt <= START_ATTEMPTS && started == null; attempt++) {
-            int port = pickFreePort();
-            try {
-                runDocker("run", "-d", "--name", name,
-                    "-e", "MYSQL_ROOT_PASSWORD=" + PASSWORD,
-                    "-e", "MYSQL_DATABASE=" + DB,
-                    "-p", port + ":3306",
-                    IMAGE);
-            } catch (RuntimeException e) {
-                last = e;
-                forceRemove();
-                continue;
-            }
-            String candidate = "jdbc:mysql://localhost:" + port + "/" + DB;
-            try {
-                waitForReady(candidate);
-                started = candidate;
-            } catch (RuntimeException e) {
-                last = e;
-                forceRemove();
-            }
+        // Docker assigns the host port at bind time; see the port note in PostgresContainer.
+        try {
+            runDocker("run", "-d", "--name", name,
+                "-e", "MYSQL_ROOT_PASSWORD=" + PASSWORD,
+                "-e", "MYSQL_DATABASE=" + DB,
+                "-p", "127.0.0.1::3306",
+                IMAGE);
+            String url = "jdbc:mysql://127.0.0.1:" + PostgresContainer.publishedPort(name, 3306) + "/" + DB;
+            waitForReady(url);
+            this.jdbcUrl = url;
+        } catch (RuntimeException e) {
+            forceRemove();
+            throw e;
         }
-        if (started == null) {
-            throw new RuntimeException("mysql container '" + name + "' failed to start in "
-                + START_ATTEMPTS + " attempts", last);
-        }
-        this.jdbcUrl = started;
     }
 
     @Override public String jdbcUrl()  { return jdbcUrl; }
@@ -141,11 +124,6 @@ public final class MySqlContainer implements AutoCloseable, JdbcTarget {
     private static String runDockerQuiet(String... args) {
         try { return runDocker(args); }
         catch (RuntimeException e) { return "(docker " + args[0] + " unavailable: " + e.getMessage() + ")"; }
-    }
-
-    private static int pickFreePort() {
-        try (ServerSocket s = new ServerSocket(0)) { return s.getLocalPort(); }
-        catch (IOException e) { throw new RuntimeException("could not pick free port", e); }
     }
 
     private static String runDocker(String... args) {

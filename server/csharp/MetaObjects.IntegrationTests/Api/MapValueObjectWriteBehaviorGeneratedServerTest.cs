@@ -190,11 +190,8 @@ public sealed class MapValueObjectWriteBehaviorGeneratedServerTest
         var dbContextType = assembly.GetType($"{GeneratedNamespace}.AppDbContext")
             ?? throw new InvalidOperationException("generated AppDbContext type not found");
 
-        int port = PickFreePort();
-        string baseUrl = $"http://127.0.0.1:{port}";
-
         var builder = WebApplication.CreateBuilder();
-        builder.WebHost.UseUrls(baseUrl);
+        LoopbackKestrel.BindAnyPort(builder);
         builder.Logging.ClearProviders();
         // The wire contract for an enum field is its member SYMBOL (a real app registers
         // this at the host level, e.g. via ConfigureHttpJsonOptions — see
@@ -215,7 +212,7 @@ public sealed class MapValueObjectWriteBehaviorGeneratedServerTest
         }
 
         await app.StartAsync();
-        return (baseUrl, app);
+        return (LoopbackKestrel.BoundUrl(app), app);
     }
 
     private static (Assembly Assembly, IReadOnlyList<string> RouteEntities) CompileGeneratedServer()
@@ -308,14 +305,5 @@ public sealed class MapValueObjectWriteBehaviorGeneratedServerTest
         {
             services, configure, ServiceLifetime.Scoped, ServiceLifetime.Scoped,
         });
-    }
-
-    private static int PickFreePort()
-    {
-        var l = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
-        l.Start();
-        int port = ((System.Net.IPEndPoint)l.LocalEndpoint).Port;
-        l.Stop();
-        return port;
     }
 }

@@ -55,11 +55,8 @@ internal sealed class JsonbGeneratedServerFactory : IAsyncDisposable
         var dbContextType = assembly.GetType($"{GeneratedNamespace}.AppDbContext")
             ?? throw new InvalidOperationException("generated AppDbContext type not found");
 
-        int port = PickFreePort();
-        string baseUrl = $"http://127.0.0.1:{port}";
-
         var builder = WebApplication.CreateBuilder();
-        builder.WebHost.UseUrls(baseUrl);
+        LoopbackKestrel.BindAnyPort(builder);
         builder.Logging.ClearProviders();
         RegisterGeneratedDbContext(builder.Services, dbContextType, pg.ConnectionString);
         // The documented host registration: a field.timestamp crosses the wire as UTC with the Z
@@ -79,7 +76,7 @@ internal sealed class JsonbGeneratedServerFactory : IAsyncDisposable
         }
 
         await app.StartAsync();
-        return new JsonbGeneratedServerFactory(pg, app, baseUrl);
+        return new JsonbGeneratedServerFactory(pg, app, LoopbackKestrel.BoundUrl(app));
     }
 
     public async Task ApplySeedAsync() =>
@@ -194,14 +191,5 @@ internal sealed class JsonbGeneratedServerFactory : IAsyncDisposable
         {
             services, configure, ServiceLifetime.Scoped, ServiceLifetime.Scoped,
         });
-    }
-
-    private static int PickFreePort()
-    {
-        var l = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
-        l.Start();
-        int port = ((System.Net.IPEndPoint)l.LocalEndpoint).Port;
-        l.Stop();
-        return port;
     }
 }

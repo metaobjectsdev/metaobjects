@@ -16,11 +16,9 @@ Two modes, mirroring the TS/Java/Kotlin/C# integration suites:
 from __future__ import annotations
 
 import os
-import socket
 import subprocess
 import time
 import uuid
-from contextlib import closing
 from dataclasses import dataclass
 from urllib.parse import urlsplit
 
@@ -43,8 +41,6 @@ class PostgresContainer:
 
     IMAGE = "postgres:16-alpine"
 
-    #: Fresh-port retries before giving up -- see the port-race note in __init__.
-    START_ATTEMPTS = 3
     USER = "postgres"
     PASSWORD = "test"
     DATABASE = "postgres"
@@ -60,45 +56,30 @@ class PostgresContainer:
         self._shared = False
         self._admin_url = None
         self._name = f"metaobjects-test-{uuid.uuid4().hex[:8]}"
-        # PORT RACE. _pick_free_port() closes its probe socket and hands the number to
-        # docker, which binds it LATER -- a check-then-act gap. Alone it never bites;
-        # under a full CI run several ports start containers at once and two can be
-        # handed the same number. The loser's container is created and then dies, and a
-        # readiness probe that only asks `docker exec` cannot tell that from a slow
-        # boot. Retry on a FRESH port.
+        # The host port is assigned by docker at bind time (``-p 127.0.0.1::5432``) and
+        # read back with ``docker port``. Picking a free port here, releasing it and
+        # handing the number to docker is a check-then-act race that parallel CI lanes lose.
         #
         # Deliberately NOT `--rm`: an auto-removed container takes its logs with it, so
-        # the one artefact explaining the failure vanishes exactly when it is needed.
+        # the one artefact explaining a failure vanishes exactly when it is needed.
         # close() force-removes, so nothing leaks.
-        last_failure: Exception | None = None
-        for _attempt in range(self.START_ATTEMPTS):
-            self._port = _pick_free_port()
+        try:
+            _docker(
+                "run", "-d",
+                "--name", self._name,
+                "-e", f"POSTGRES_PASSWORD={self.PASSWORD}",
+                "-p", "127.0.0.1::5432",
+                self.IMAGE,
+            )
+            self._port = published_port(self._name, 5432)
             self._info = PostgresInfo(
-                host="localhost", port=self._port, database=self.DATABASE,
+                host="127.0.0.1", port=self._port, database=self.DATABASE,
                 user=self.USER, password=self.PASSWORD,
             )
-            try:
-                _docker(
-                    "run", "-d",
-                    "--name", self._name,
-                    "-e", f"POSTGRES_PASSWORD={self.PASSWORD}",
-                    "-p", f"{self._port}:5432",
-                    self.IMAGE,
-                )
-            except Exception as e:  # noqa: BLE001 — docker refused the bind; retry on a new port
-                last_failure = e
-                self._force_remove()
-                continue
-            try:
-                self._wait_ready()
-                return
-            except Exception as e:  # noqa: BLE001 — died on startup; retry on a new port
-                last_failure = e
-                self._force_remove()
-        raise RuntimeError(
-            f"postgres container '{self._name}' failed to start in "
-            f"{self.START_ATTEMPTS} attempts; last err: {last_failure}"
-        )
+            self._wait_ready()
+        except BaseException:
+            self._force_remove()
+            raise
 
     # -- Shared-sidecar mode -------------------------------------------------
     # CREATE a fresh, uniquely-named database on the already-running Postgres
@@ -174,7 +155,7 @@ class PostgresContainer:
     # ready quickly (the loop polls every 250ms and returns immediately) and only
     # changes how long the pathological case takes to give up.
     def _force_remove(self) -> None:
-        """Best-effort teardown between start attempts."""
+        """Best-effort teardown of a container that failed to start."""
         try:
             _docker("rm", "-f", self._name)
         except Exception:  # noqa: BLE001 — already gone
@@ -218,7 +199,7 @@ class PostgresContainer:
             if ready.returncode == 0:
                 try:
                     conn = pg8000.dbapi.connect(
-                        host="localhost", port=self._port,
+                        host="127.0.0.1", port=self._port,
                         user=self.USER, password=self.PASSWORD, database=self.DATABASE,
                     )
                     conn.close()
@@ -243,7 +224,11 @@ def _docker(*args: str) -> str:
     return r.stdout.strip()
 
 
-def _pick_free_port() -> int:
-    with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
-        s.bind(("127.0.0.1", 0))
-        return int(s.getsockname()[1])
+def published_port(name: str, container_port: int) -> int:
+    """The host port docker assigned to *container_port* (``docker port`` prints ``127.0.0.1:<port>``)."""
+    out = _docker("port", name, f"{container_port}/tcp")
+    first = out.splitlines()[0] if out else ""
+    port = first.rsplit(":", 1)[-1].strip()
+    if not port.isdigit():
+        raise RuntimeError(f"docker port {name} {container_port}/tcp printed no port: {out!r}")
+    return int(port)

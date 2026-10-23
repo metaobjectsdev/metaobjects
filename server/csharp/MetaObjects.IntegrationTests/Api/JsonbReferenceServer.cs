@@ -17,7 +17,9 @@
 // the independent second implementation; JsonbGeneratedServerFactory hosts the real
 // generated routes/AppDbContext, and the two lanes share the corpus + assertions.
 
-using System.Net;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Logging;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -31,9 +33,7 @@ namespace MetaObjects.IntegrationTests.Api;
 internal sealed class JsonbReferenceServer : IAsyncDisposable
 {
     private readonly PostgresContainer _pg;
-    private readonly HttpListener _listener;
-    private readonly Task _loop;
-    private readonly CancellationTokenSource _cts = new();
+    private readonly WebApplication _app;
 
     public string BaseUrl { get; }
 
@@ -43,23 +43,27 @@ internal sealed class JsonbReferenceServer : IAsyncDisposable
     // The jsonb columns carried in a document row's wire projection (id + title are scalar).
     private static readonly string[] JsonbColumns = { "payload", "primaryMarker", "optionalMarker", "markers", "measure", "measures", "telemetry", "tiers", "pricing" };
 
-    private JsonbReferenceServer(PostgresContainer pg, HttpListener listener, string baseUrl)
+    private JsonbReferenceServer(PostgresContainer pg, WebApplication app, string baseUrl)
     {
         _pg = pg;
-        _listener = listener;
+        _app = app;
         BaseUrl = baseUrl;
-        _loop = Task.Run(AcceptLoopAsync);
     }
 
     public static async Task<JsonbReferenceServer> StartAsync(PostgresContainer pg)
     {
         await JsonbFixture.ProvisionSchemaAsync(pg.ConnectionString);
-        int port = PickFreePort();
-        var listener = new HttpListener();
-        string baseUrl = $"http://127.0.0.1:{port}";
-        listener.Prefixes.Add(baseUrl + "/");
-        listener.Start();
-        return new JsonbReferenceServer(pg, listener, baseUrl);
+        var builder = WebApplication.CreateBuilder();
+        LoopbackKestrel.BindAnyPort(builder);
+        builder.Logging.ClearProviders();
+        var app = builder.Build();
+        JsonbReferenceServer? server = null;
+        // The bound address exists only after StartAsync, and no client can reach the
+        // server before it is returned, so the handler is wired before the instance exists.
+        app.Run(ctx => server!.HandleAsync(ctx));
+        await app.StartAsync();
+        server = new JsonbReferenceServer(pg, app, LoopbackKestrel.BoundUrl(app));
+        return server;
     }
 
     public async Task ApplySeedAsync() =>
@@ -67,27 +71,13 @@ internal sealed class JsonbReferenceServer : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        _cts.Cancel();
-        try { _listener.Stop(); _listener.Close(); } catch { /* ignored */ }
-        try { await _loop; } catch { /* ignored */ }
-        _cts.Dispose();
+        try { await _app.StopAsync(); } catch { /* ignored */ }
+        try { await _app.DisposeAsync(); } catch { /* ignored */ }
     }
 
     // ----- HTTP loop -----
 
-    private async Task AcceptLoopAsync()
-    {
-        while (!_cts.IsCancellationRequested)
-        {
-            HttpListenerContext ctx;
-            try { ctx = await _listener.GetContextAsync(); }
-            catch (HttpListenerException) { break; }
-            catch (ObjectDisposedException) { break; }
-            _ = Task.Run(() => HandleAsync(ctx));
-        }
-    }
-
-    private async Task HandleAsync(HttpListenerContext ctx)
+    private async Task HandleAsync(HttpContext ctx)
     {
         try { await DispatchAsync(ctx); }
         catch (Exception ex)
@@ -99,16 +89,12 @@ internal sealed class JsonbReferenceServer : IAsyncDisposable
             }
             catch { /* nothing we can do */ }
         }
-        finally
-        {
-            try { ctx.Response.Close(); } catch { /* ignored */ }
-        }
     }
 
-    private async Task DispatchAsync(HttpListenerContext ctx)
+    private async Task DispatchAsync(HttpContext ctx)
     {
-        string method = ctx.Request.HttpMethod.ToUpperInvariant();
-        string rawPath = ctx.Request.Url?.AbsolutePath ?? "";
+        string method = ctx.Request.Method.ToUpperInvariant();
+        string rawPath = ctx.Request.Path.Value ?? "";
         string trimmed = rawPath.StartsWith("/api/documents")
             ? rawPath.Substring("/api/documents".Length)
             : rawPath;
@@ -122,7 +108,7 @@ internal sealed class JsonbReferenceServer : IAsyncDisposable
         await SendJsonAsync(ctx, 404, new Dictionary<string, object?> { ["error"] = "not_found" });
     }
 
-    private async Task GetDocumentAsync(HttpListenerContext ctx, string idStr)
+    private async Task GetDocumentAsync(HttpContext ctx, string idStr)
     {
         long? id = ParseLongOrNull(idStr);
         if (id is null) { await SendJsonAsync(ctx, 400, new Dictionary<string, object?> { ["error"] = "invalid_id" }); return; }
@@ -140,7 +126,7 @@ internal sealed class JsonbReferenceServer : IAsyncDisposable
         await SendJsonAsync(ctx, 200, RowToMap(rdr));
     }
 
-    private async Task CreateDocumentAsync(HttpListenerContext ctx)
+    private async Task CreateDocumentAsync(HttpContext ctx)
     {
         var body = await ReadJsonObjectAsync(ctx);
         if (body is null) { await BadValidation(ctx); return; }
@@ -177,7 +163,7 @@ internal sealed class JsonbReferenceServer : IAsyncDisposable
         await SendJsonAsync(ctx, 201, await SelectRowAsync(c, newId) ?? new Dictionary<string, object?>());
     }
 
-    private async Task UpdateDocumentAsync(HttpListenerContext ctx, string idStr)
+    private async Task UpdateDocumentAsync(HttpContext ctx, string idStr)
     {
         long? id = ParseLongOrNull(idStr);
         if (id is null) { await SendJsonAsync(ctx, 400, new Dictionary<string, object?> { ["error"] = "invalid_id" }); return; }
@@ -364,7 +350,7 @@ internal sealed class JsonbReferenceServer : IAsyncDisposable
         body.TryGetPropertyValue(key, out var node) && node is not null
         && node.GetValueKind() != JsonValueKind.Null;
 
-    private Task BadValidation(HttpListenerContext ctx) =>
+    private Task BadValidation(HttpContext ctx) =>
         SendJsonAsync(ctx, 400, new Dictionary<string, object?> { ["error"] = "validation" });
 
     // ----- data / helpers -----
@@ -378,7 +364,7 @@ internal sealed class JsonbReferenceServer : IAsyncDisposable
         return await rdr.ReadAsync() ? RowToMap(rdr) : null;
     }
 
-    private async Task Respond(HttpListenerContext ctx, Dictionary<string, object?>? row)
+    private async Task Respond(HttpContext ctx, Dictionary<string, object?>? row)
     {
         if (row is null) { await SendJsonAsync(ctx, 404, new Dictionary<string, object?> { ["error"] = "not_found" }); return; }
         await SendJsonAsync(ctx, 200, row);
@@ -409,9 +395,9 @@ internal sealed class JsonbReferenceServer : IAsyncDisposable
         cmd.Parameters.Add(new NpgsqlParameter(name, NpgsqlDbType.Jsonb) { Value = value });
     }
 
-    private static async Task<JsonObject?> ReadJsonObjectAsync(HttpListenerContext ctx)
+    private static async Task<JsonObject?> ReadJsonObjectAsync(HttpContext ctx)
     {
-        using var reader = new StreamReader(ctx.Request.InputStream, ctx.Request.ContentEncoding);
+        using var reader = new StreamReader(ctx.Request.Body, Encoding.UTF8);
         string text = await reader.ReadToEndAsync();
         if (string.IsNullOrEmpty(text)) return null;
         return JsonNode.Parse(text) as JsonObject;
@@ -443,13 +429,13 @@ internal sealed class JsonbReferenceServer : IAsyncDisposable
         return null;
     }
 
-    private static async Task SendJsonAsync(HttpListenerContext ctx, int status, object body)
+    private static async Task SendJsonAsync(HttpContext ctx, int status, object body)
     {
         byte[] bytes = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(body, JsonOpts));
         ctx.Response.StatusCode = status;
         ctx.Response.ContentType = "application/json";
-        ctx.Response.ContentLength64 = bytes.Length;
-        await ctx.Response.OutputStream.WriteAsync(bytes);
+        ctx.Response.ContentLength = bytes.Length;
+        await ctx.Response.Body.WriteAsync(bytes);
     }
 
     private static readonly JsonSerializerOptions JsonOpts = new()
@@ -460,13 +446,4 @@ internal sealed class JsonbReferenceServer : IAsyncDisposable
     private static long? ParseLongOrNull(string? s) =>
         long.TryParse(s, System.Globalization.NumberStyles.Integer,
             System.Globalization.CultureInfo.InvariantCulture, out var n) ? n : null;
-
-    private static int PickFreePort()
-    {
-        var l = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
-        l.Start();
-        int port = ((System.Net.IPEndPoint)l.LocalEndpoint).Port;
-        l.Stop();
-        return port;
-    }
 }

@@ -2,7 +2,6 @@ package com.metaobjects.integration.kotlin
 
 import java.io.BufferedReader
 import java.io.InputStreamReader
-import java.net.ServerSocket
 import java.net.URI
 import java.nio.charset.StandardCharsets
 import java.sql.DriverManager
@@ -59,46 +58,28 @@ class PostgresContainer : AutoCloseable {
             username = PG_USER
             password = PG_PASSWORD
             name = "metaobjects-test-kt-" + UUID.randomUUID().toString().substring(0, 8)
-            // PORT RACE. pickFreePort() closes its probe socket and hands the number to
-            // docker, which binds it LATER -- a check-then-act gap. Alone it never bites;
-            // under a full CI run several ports start containers at once and two can be
-            // handed the same number. The loser's container is created and then dies, and
-            // a readiness probe that only asks `docker exec` cannot tell that from a slow
-            // boot. Retry on a FRESH port.
+            // The host port is assigned by docker at bind time (`-p 127.0.0.1::5432`) and read
+            // back with `docker port`. Picking a free port here, releasing it and handing the
+            // number to docker is a check-then-act race that parallel CI lanes lose.
             //
             // Deliberately NOT `--rm`: an auto-removed container takes its logs with it,
-            // so the one artefact explaining the failure vanishes exactly when it is
+            // so the one artefact explaining a failure vanishes exactly when it is
             // needed. close() force-removes, so nothing leaks.
-            var startedUrl: String? = null
-            var lastFailure: RuntimeException? = null
-            for (attempt in 1..START_ATTEMPTS) {
-                if (startedUrl != null) break
-                val port = pickFreePort()
-                try {
-                    runDocker(
-                        "run", "-d",
-                        "--name", name,
-                        "-e", "POSTGRES_PASSWORD=$PG_PASSWORD",
-                        "-p", "$port:5432",
-                        IMAGE,
-                    )
-                } catch (e: RuntimeException) {
-                    lastFailure = e   // docker refused the bind outright
-                    forceRemove()
-                    continue
-                }
-                val candidate = "jdbc:postgresql://localhost:$port/postgres"
-                try {
-                    waitForReady(candidate)
-                    startedUrl = candidate
-                } catch (e: RuntimeException) {
-                    lastFailure = e
-                    forceRemove()
-                }
+            jdbcUrl = try {
+                runDocker(
+                    "run", "-d",
+                    "--name", name,
+                    "-e", "POSTGRES_PASSWORD=$PG_PASSWORD",
+                    "-p", "127.0.0.1::5432",
+                    IMAGE,
+                )
+                val url = "jdbc:postgresql://127.0.0.1:${publishedPort(name, 5432)}/postgres"
+                waitForReady(url)
+                url
+            } catch (e: RuntimeException) {
+                forceRemove()
+                throw e
             }
-            jdbcUrl = startedUrl ?: throw RuntimeException(
-                "postgres container '$name' failed to start in $START_ATTEMPTS attempts", lastFailure,
-            )
         }
     }
 
@@ -174,7 +155,7 @@ class PostgresContainer : AutoCloseable {
         false
     }
 
-    /** Best-effort teardown between start attempts. */
+    /** Best-effort teardown of a container that failed to start. */
     private fun forceRemove() {
         try { runDocker("rm", "-f", name!!) } catch (_: RuntimeException) { /* already gone */ }  // non-null in per-container mode
     }
@@ -200,14 +181,16 @@ class PostgresContainer : AutoCloseable {
         private const val PG_USER = "postgres"
         private const val PG_PASSWORD = "test"
 
-        /** Fresh-port retries before giving up -- see the port-race note above. */
-        private const val START_ATTEMPTS = 3
-
         /** Container readiness bound, seconds. Overridable so a loaded CI box can widen it. */
         private val READY_TIMEOUT_S: Int =
             (System.getenv("MO_PG_READY_TIMEOUT_S") ?: "120").toInt()
 
-        private fun pickFreePort(): Int = ServerSocket(0).use { it.localPort }
+        /** The host port docker assigned to [containerPort] (`docker port` prints `127.0.0.1:<port>`). */
+        internal fun publishedPort(container: String, containerPort: Int): Int {
+            val out = runDocker("port", container, "$containerPort/tcp")
+            return out.lineSequence().firstOrNull()?.substringAfterLast(':')?.trim()?.toIntOrNull()
+                ?: throw RuntimeException("docker port $container $containerPort/tcp printed no port: '$out'")
+        }
 
         private fun runDocker(vararg args: String): String {
             val cmd = arrayOf("docker", *args)
