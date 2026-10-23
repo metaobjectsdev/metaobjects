@@ -852,6 +852,13 @@ versioned on its own major line — npm major + 7, so `7.x` while npm was `0.x` 
 > failed with `Polling for … timed out before the deployment completed`, yet 8.0.11 is on
 > Central (HTTP 200). Check Central with the loop above before any re-run: a re-run of a
 > published version fails as a duplicate.
+>
+> **The runner's Maven version can change under the workflow.** `java-v8.1.0` was rejected with
+> `Bundle has content that does NOT have a .pom file`: the `ubuntu-latest` (24.04) image (2026-10-12 and
+> later) ships Maven 3.10.0, which writes `maven-metadata-local.xml` into the install target, and
+> `central-publishing-maven-plugin 0.11.0` left it in the staged bundle. Fixed in plugin `0.12.0` (`8.1.0` published with it);
+> if that signature returns, inspect the bundle for `maven-metadata-local.xml` and check the
+> runner's `mvn -v` before suspecting the poms.
 
 **The `minor.patch` is CONVERGENT across languages, not lockstepped** (standing policy since
 0.25.0): npm, PyPI and NuGet share one `major.minor.patch` and Maven Central takes the same
