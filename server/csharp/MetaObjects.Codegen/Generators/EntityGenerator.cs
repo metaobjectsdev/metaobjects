@@ -43,8 +43,15 @@ public class EntityGenerator : IGenerator
     /// like NPI/PARequired that a plain PascalCase of the field name would mangle).</summary>
     protected virtual string PropertyName(MetaField field) => CSharpNaming.Pascal(field.Name);
 
+    /// <summary>Scope this entry to some objects: only those it accepts are emitted (entities
+    /// and value objects alike). A value object an emitted entity points at is still emitted,
+    /// because it is resolved through the model root. <c>null</c>, the default, accepts every
+    /// object. See <see cref="GenContext.Narrow"/>.</summary>
+    public Func<MetaObject, bool>? Include { get; init; }
+
     public virtual IEnumerable<EmittedFile> Generate(GenContext ctx)
     {
+        ctx = ctx.Narrow(Include);
         // FR-044 — a view-backed report joins the set as its ROW MODEL (a keyless,
         // projection-shaped object carrying its derived fields); every other report node
         // is dropped. See ReportRows.

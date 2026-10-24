@@ -13,7 +13,7 @@ skip them, so read the whole list before you regenerate.
 ## Before you start
 
 - **Upgrade every port together, because the failure is silent.** All five ports read
-  `.metaobjects/config.json`. Once you add `naming` (step 2), a 1.0.x TypeScript tool refuses
+  `.metaobjects/config.json`. Once you add `naming` (step 3), a 1.0.x TypeScript tool refuses
   it ("Unrecognized key(s) in object: 'naming'"), but a 1.0.x C#, Java or Python tool ignores
   the unknown key without a word and keeps its old column names. A mixed estate therefore does
   not fail: the old port reads and writes columns named like the fields while the new ones use
@@ -27,15 +27,23 @@ skip them, so read the whole list before you regenerate.
 
 ## The steps
 
-1. **Bump every MetaObjects package together**: all `@metaobjectsdev/*` at `1.1.0`,
+1. **Refresh the agent context first**: `meta init --docs-only --refresh-docs` (or `npx meta
+   agent-docs`). A coding agent doing this upgrade reads the `metaobjects-*` skills in
+   `.claude/skills/`, and until this step they are the OLD version's, which describe the old
+   behaviour (the 1.0.x skill told C# and Python adopters they had no generator seam, which
+   was never true). Do it before anything below, so the rest of the upgrade is done on the
+   new skills. C#, Java and Python projects run this one command through Node `meta`
+   (`dotnet meta agent-docs` only prints a redirect). A file you edited is left alone and the
+   new copy written beside it as `<file>.new`; merge it by hand and delete the `.new`.
+2. **Bump every MetaObjects package together**: all `@metaobjectsdev/*` at `1.1.0`,
    `metaobjects` `1.1.0` (PyPI), `MetaObjects*` `1.1.0` (NuGet), `com.metaobjects:*` `8.1.0`
    (Maven, including the `metaobjects-maven-plugin` version in each `pom.xml`). Reinstall
    cleanly and read the resolved versions back.
-2. **Set the physical naming rule** if your database's columns are named like the fields (C#,
+3. **Set the physical naming rule** if your database's columns are named like the fields (C#,
    Java, the JVM runtime and Python; see "Column and table names"). TypeScript: move
    `columnNamingStrategy` to the same setting. This is the step that fails nothing when
    skipped.
-3. **Give every port a generator list, and move documentation into it.** TypeScript: remove
+4. **Give every port a generator list, and move documentation into it.** TypeScript: remove
    the `docs` block from `metaobjects.config.ts` and declare each docs generator. C#: run
    `dotnet meta init` once to write `codegen/Generators.cs`; without it `dotnet meta gen` and
    `verify --codegen` exit 2. Python: write the target's `generators` in
@@ -43,13 +51,13 @@ skip them, so read the whole list before you regenerate.
    --out` form is gone. Java and Kotlin: the `<generators>` list in the pom, and the
    `metaobjects:docs` goal is removed. Do this whether or not you ever ran a docs command (see
    "Documentation is generated").
-4. **`meta upgrade`**, then `meta upgrade --apply` if it reports anything. Then load the model
+5. **`meta upgrade`**, then `meta upgrade --apply` if it reports anything. Then load the model
    (`meta verify`), which refuses a leftover `columnNamingStrategy` or `docs` block until steps
-   2 and 3 are done: a bare cross-package `extends` now fails with `ERR_UNRESOLVED_SUPER`, and
+   3 and 4 are done: a bare cross-package `extends` now fails with `ERR_UNRESOLVED_SUPER`, and
    the message names the spelling to write (see "References and `extends`").
-5. **Java and Kotlin: let `mvn metaobjects:generate` write the hash manifest, then commit
+6. **Java and Kotlin: let `mvn metaobjects:generate` write the hash manifest, then commit
    `.metaobjects/.gen-state/.hashes.json`** in every module (see "JVM hash manifest").
-6. **Resync the generators you own.** `meta eject --list` (TypeScript; `metaobjects gen --list`
+7. **Resync the generators you own.** `meta eject --list` (TypeScript; `metaobjects gen --list`
    in Python, which has no `eject --list`; `dotnet meta gen --list`,
    `mvn metaobjects:eject -Dlist=true` in the other ports)
    reports each owned copy, and every file it owns beside it (in TypeScript the renderers
@@ -57,14 +65,10 @@ skip them, so read the whole list before you regenerate.
    report output and none of the 1.1 fixes until you resync it. For a copy you never edited,
    `meta eject <name> --force` (Java: `mvn metaobjects:eject -Dnames=<name> -Dforce=true`)
    takes the new reference; for one you edited, three-way merge it.
-7. **Regenerate** (`meta gen`, `dotnet meta gen`, `metaobjects gen`, `mvn metaobjects:generate`),
+8. **Regenerate** (`meta gen`, `dotnet meta gen`, `metaobjects gen`, `mvn metaobjects:generate`),
    then build and run your tests. Read the generated diff against "Diffs to expect".
-8. **Run the drift gates**: `meta verify --codegen` (and your port's `verify`). They should be
+9. **Run the drift gates**: `meta verify --codegen` (and your port's `verify`). They should be
    clean; a column-name mismatch is reported naming the `naming` setting.
-9. **Refresh the agent context**: `meta init --docs-only --refresh-docs` (or `npx meta
-   agent-docs`). A file you edited is left alone and the new copy written beside it as
-   `<file>.new`; merge it by hand and delete the `.new`.
-
 ## Changes that need action
 
 ### Column and table names (C#, Java, the JVM runtime, Python)
@@ -151,7 +155,7 @@ digits than `@scale` or more integer digits than `@precision - @scale` is `400 v
 rather than rounded. A decimal filter operand is compared exactly; a bad one is
 `400 invalid_filter_value`. On SQLite and D1 a decimal keeps 15 significant digits, and
 `meta migrate` warns for one declared with `@precision` above 15. An owned routes generator
-keeps its 1.0 decimal handling until you resync it (step 6).
+keeps its 1.0 decimal handling until you resync it (step 7).
 
 ### Fractional validator bounds (TypeScript, C#, Python)
 
@@ -195,6 +199,29 @@ whole number written `1.0` still loads, as `1`.
 - **Owned Java Spring generators** made before 1.1.0 keep their old rules: re-eject with
   `mvn metaobjects:eject -Dnames=<generator> -Dforce=true` and merge your edits back from
   `git diff`.
+
+## Changes to generated text (for subclassed or post-processed generators)
+
+"Diffs to expect" is for someone who regenerates and reads the diff. If you subclass a
+packaged generator (the sanctioned extension path, ADR-0002) or rewrite its output afterwards,
+a rule keyed to the old text silently stops matching, so this is the list of emit-shape
+changes, with the `protected virtual` seam that replaces a text rewrite. Prefer the seam: it
+survives the next change to the text. The list is C#, where the request that produced it came
+from; the Java/Kotlin and Python generators have their own extension seams and the changes
+that reach them are in the CHANGELOG.
+
+| Changed in | Old text | New text | Seam instead of a rewrite |
+|---|---|---|---|
+| 1.0.5 and after | `HasForeignKey(nameof(Owner.Prop))` | `HasForeignKey(e => e.Prop)`, or `e => new { e.A, e.B }` for a composite (the `M:N` `UsingEntity` sides too) | `DbContextGenerator.EmitOnModelCreatingBody(sb, modelLines, ctx)` receives the lines as a list before they are written. There is no seam for the key expression itself, so match the lambda form |
+| 1.1.0 | scalar and enum arrays `ICollection<T>` | `IList<T>`; a non-required value-object array is nullable and has no initializer | `EntityGenerator.ScalarProperty(...)` / `EnumProperty(...)` return the property text; override the one you changed |
+| 1.1.0 | no `JsonIgnore` on value-object members | on a nullable member, `[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]` beside `[JsonPropertyName("…")]` | `EntityGenerator.EmitPropertyAttributes(sb, owner, field, ctx)` adds attributes; to change the POCO itself, override `EmitValueObjectPoco(vo, ctx)` |
+| 1.1.0 | `decimal` written and read as a JSON number | a `[DecimalWire…]` converter attribute on each decimal member and one `DecimalWire.g.cs` per namespace | `EntityGenerator.ScalarProperty(...)` for the member; `EmitFileUsings(sb, entity, ctx)` for the usings the attribute needs |
+| 1.0.13 | `DbSet` and navigation names from the 1.0 pluralizer (`CallScriptses`) | an already-plural entity name stays as it is (`CallScripts`) | `DbContextGenerator.EmitDbSetDeclarations(sb, objects, ctx)`; the name itself is `CSharpNaming`'s, so a rewrite keyed to the old plural has to be re-keyed |
+| 1.1.0 | a reference written bare in canonical output | `pkg::Name` (a root-level target is `::Name`), so `MetaReferenceIdentity.TargetEntity` is a qualified reference | none needed: resolve a reference through the model (`ValueObjectNames.ResolveFieldRef(field, ctx.Root)` for an `@objectRef`) instead of comparing the string |
+
+Per-entry overrides that need no text rewrite at all: `new EntityGenerator { Include = o => … }`
+scopes a packaged generator to some objects (1.1.2; see `references/csharp.md` in the
+`metaobjects-codegen` skill), and `PropertyName(field)` renames a property.
 
 ## CLI behaviour that changed
 

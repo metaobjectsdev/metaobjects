@@ -216,5 +216,5 @@ public static class ReportRows
     /// </para>
     /// </summary>
     public static IReadOnlyList<MetaObject> WithReportRows(GenContext ctx) =>
-        [.. ctx.Entities.Where(o => !o.IsReport()), .. For(ctx.Root)];
+        [.. ctx.Entities.Where(o => !o.IsReport()), .. For(ctx.Root).Where(o => ctx.Scope?.Invoke(o) ?? true)];
 }

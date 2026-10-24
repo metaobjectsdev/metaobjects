@@ -60,7 +60,7 @@ public static class MetadataLocation
     /// <c>dotnet meta gen /repo/model/catalog</c> reads <c>/repo/.metaobjects/config.json</c>,
     /// as the Maven plugin does. Null when no such ancestor exists.
     /// </summary>
-    private static NeutralConfig? ConfigFor(string metadataDir)
+    internal static NeutralConfig? ConfigFor(string metadataDir)
     {
         for (var dir = new DirectoryInfo(ProjectRootFor(metadataDir)); dir is not null; dir = dir.Parent)
         {

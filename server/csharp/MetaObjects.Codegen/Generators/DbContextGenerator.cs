@@ -68,8 +68,13 @@ public class DbContextGenerator : IGenerator
         && InstanceArtifacts.EmitsInstanceArtifacts(obj)
         && !TphPlanBuilder.IsTphSubtype(obj, root);
 
+    /// <summary>Scope this entry to some objects: only those it accepts get a <c>DbSet</c>
+    /// and mapping. <c>null</c>, the default, accepts every object. See <see cref="GenContext.Narrow"/>.</summary>
+    public Func<MetaObject, bool>? Include { get; init; }
+
     public virtual IEnumerable<EmittedFile> Generate(GenContext ctx)
     {
+        ctx = ctx.Narrow(Include);
         // FR-017 TPH: a concrete subtype shares the base's single table — it gets NO
         // DbSet and no per-subtype model config; the hierarchy is reached via the base
         // DbSet (`.OfType<Sub>()`). Filter subtypes out of the emitted set entirely.

@@ -14,8 +14,8 @@ public class MetaRoot(TypeId typeId, string name) : MetaData(typeId, name)
     /// The project's physical-naming rules (<c>naming</c> in <c>.metaobjects/config.json</c>,
     /// ADR-0058). Set by the project-aware load (<see cref="MetaObjects.Config.MetadataLocation"/>),
     /// read by every name resolver through <see cref="PhysicalNaming.Of"/>. A tree loaded with
-    /// no project — or built directly via <c>MetaDataLoader.FromDirectory</c>/<c>FromUris</c>
-    /// with no project-aware wrapper — keeps the default.
+    /// no project — or built via <c>MetaDataLoader.FromUris</c> with no project-aware
+    /// wrapper — keeps the default. <c>FromDirectory</c> reads the project's config itself.
     /// </summary>
     public PhysicalNaming PhysicalNaming { get; set; } = PhysicalNaming.Default;
 

@@ -90,7 +90,7 @@ import { isAbstract, perEntity, type Generator } from "@metaobjectsdev/codegen-t
 export function fieldListGenerator(): Generator {
   return {
     name: "field-list",                          // shows in diagnostics
-    filter: (obj) => !isAbstract(obj),           // ctx.entities has EVERY object, abstract ones too
+    filter: (obj) => !isAbstract(obj),           // TypeScript's own seam; ctx.entities has EVERY object, abstract ones too
     generate: perEntity((obj) => ({              // perPackage / perModel for other scopes
       path: `field-list/${obj.name}.txt`,        // relative to outDir
       content: obj.fields()                      // fields() includes inherited fields
@@ -124,7 +124,9 @@ without typechecking, so a wrong accessor runs silently.
 
 - **Which objects.** The runner hands you every object — entities, value objects,
   projections and abstract bases. Filter: abstract bases only contribute fields to what
-  `extends` them.
+  `extends` them. To scope a generator that ships with the tool to some objects, use the
+  port's own idiom (a TypeScript `filter`, a C# `Include`, a Python `filter()` method; the
+  table in `references/owning-generators.md`), never emit everything and delete files by name.
 - **Resolving accessors, always (ADR-0039).** `fields()`, `attr()`, `isRequired`,
   `resolvedIsArray()` see what a field or object inherits through `extends`; the `own*()`
   forms and the raw `isArray` flag do not, and the output is silently wrong on any model

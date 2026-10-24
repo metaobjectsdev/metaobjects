@@ -295,6 +295,31 @@ public sealed class GenContext
     /// <see cref="GeneratorApplicability"/>): the packaged generators' answers.
     /// </summary>
     public GeneratorApplicability Applicability { get; init; } = GeneratorApplicability.Packaged;
+
+    /// <summary>
+    /// The predicate <see cref="Narrow"/> applied, so a view-backed report's row model (which
+    /// joins a generator's set from <see cref="Root"/>, not from <see cref="Entities"/>) is
+    /// held to it too. <c>null</c> on a context nobody narrowed.
+    /// </summary>
+    public Func<MetaObject, bool>? Scope { get; init; }
+
+    /// <summary>
+    /// The same context with <see cref="Entities"/> reduced to the objects
+    /// <paramref name="include"/> accepts (and every report row model held to it too).
+    /// <see cref="Root"/> is untouched, so a generator that resolves a reference through it
+    /// (a value object an emitted entity points at) still finds the target. <c>null</c> returns
+    /// this context. This is what the packaged generators' <c>Include</c> property does.
+    /// </summary>
+    public GenContext Narrow(Func<MetaObject, bool>? include) =>
+        include is null ? this : new GenContext
+        {
+            Entities = Entities.Where(include).ToList(),
+            Root = Root,
+            Config = Config,
+            Warn = Warn,
+            Applicability = Applicability,
+            Scope = Scope is null ? include : o => Scope(o) && include(o),
+        };
 }
 
 /// <summary>A codegen unit. Kebab-case <see cref="Name"/> surfaces in diagnostics.</summary>
@@ -376,5 +401,13 @@ public abstract class PerEntityGenerator : IGenerator
     protected abstract EmittedFile GenerateOne(MetaObject entity, GenContext ctx);
 
     public virtual IEnumerable<EmittedFile> Generate(GenContext ctx) =>
-        ctx.Entities.Where(Filter).Select(e => GenerateOne(e, ctx));
+        ctx.Narrow(Include).Entities.Where(Filter).Select(e => GenerateOne(e, ctx));
+
+    /// <summary>
+    /// Scope this entry to some objects: only those it accepts are generated for. Set on the
+    /// entry in <c>codegen/Generators.cs</c> (<c>new RoutesGenerator { Include = o =&gt; ... }</c>).
+    /// <c>null</c>, the default, accepts every object. Separate from <see cref="Filter"/>,
+    /// which is the generator's OWN applicability rule and stays the subclass seam.
+    /// </summary>
+    public Func<MetaObject, bool>? Include { get; init; }
 }

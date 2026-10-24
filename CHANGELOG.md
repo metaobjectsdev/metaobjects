@@ -10,6 +10,47 @@ here.**
 
 ## [Unreleased]
 
+## [1.1.2] — unreleased
+
+_Fixes #455. A bug-fix release: no vocabulary or `metamodelVersion` change._
+
+### Fixed
+
+- **C#: `MetaDataLoader.FromDirectory` (every overload, the registry overload included) now applies
+  the project's `naming`**, as the JVM `fromDirectory` does. A host that composed its own registry
+  and loaded with `FromDirectory(dir, registry, strict: true)` got `PhysicalNaming.Default`
+  (snake_case) whatever `.metaobjects/config.json` said, and every `[Column]` and `[Table]`
+  changed without a word. The config is found the way the CLI finds it (the nearest ancestor
+  `.metaobjects/config.json`, no further than the repository root); a malformed one throws. A
+  hosted runner that builds its own `GenConfig` still sets `ColumnNamingStrategy` from the loaded
+  root: `ColumnNamingStrategy = load.Root.PhysicalNaming.Columns`.
+
+### Added
+
+- **C#: `Include` on the packaged generators.** `EntityGenerator`, `DbContextGenerator`,
+  `RoutesGenerator`, `FilterAllowlistGenerator`, `NamesGenerator` and `CallableGenerator` take an
+  optional `Func<MetaObject, bool>? Include` init property that scopes the entry to some objects
+  (`new EntityGenerator { Include = o => … }`), and `GenContext.Narrow(predicate)` hands any
+  other generator a narrowed context. C# had no equivalent of the TypeScript `filter`, so an
+  adopter whose value objects belong to another port (ADR-0056 emits a POCO for every concrete
+  `object.value`) dropped emitted files by name afterwards. The property is `Include`, not
+  `Filter`, because `PerEntityGenerator.Filter(MetaObject)` is the generators' own applicability
+  method and stays the subclass seam. Nothing changes for an entry that sets none.
+- **`meta upgrade` prints the agent-context refresh as its first line.**
+
+### Documentation
+
+- **Every upgrade guide starts with the agent-context refresh**, and says why: the agent doing the
+  upgrade reads the `metaobjects-*` skills, and refreshing them last (as the 1.0-to-1.1 guide did,
+  at step 9) meant the whole upgrade ran on the old version's skill.
+- **`upgrading-1.0-to-1.1.md` gains "Changes to generated text (for subclassed or post-processed
+  generators)"**: the C# emit-shape changes since 1.0.5, each with the `protected virtual` seam that
+  replaces rewriting the text.
+- **The codegen skill says how to narrow a generator in each language's own idiom** (TypeScript
+  `filter`, C# `Include`, Python `filter()`, the JVM's args or eject), and `references/csharp.md`
+  gains "Scoping a generator to some objects", which names dropping files by name as the
+  anti-pattern. Its claim that every port reads `naming` now says what a hosted runner must do.
+
 ## [1.1.1] — 2026-10-24
 
 _npm `1.1.1` (full lockstep across all 14 `@metaobjectsdev/*` publish candidates), PyPI `1.1.1`, NuGet `1.1.1` and Maven Central `8.1.1`._
