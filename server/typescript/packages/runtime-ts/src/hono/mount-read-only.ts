@@ -13,7 +13,7 @@ import type {
 } from "../drizzle-fastify/filter-allowlist.js";
 import { isTruthyFlag, coerceIdForColumn, rawIdLiteral, contractErrorCode, viewBaseConfig } from "../drizzle-fastify/util.js";
 import { timestampWire } from "../timestamp-wire.js";
-import { withDecimals } from "../decimal-wire.js";
+import { withWire, type WireOptions } from "../wire-format.js";
 // An unexpected error on a mounted route answers `500 { error: "internal" }`.
 import { guardRoute } from "./route-guard.js";
 
@@ -22,7 +22,7 @@ type AnyView = any;
 // biome-ignore lint/suspicious/noExplicitAny: generic Hono app
 type AnyHono = Hono<any, any, any>;
 
-export interface MountReadOnlyOptions {
+export interface MountReadOnlyOptions extends WireOptions {
   readonly app: AnyHono;
   readonly path: string;
   // biome-ignore lint/suspicious/noExplicitAny: dynamic Drizzle client
@@ -49,14 +49,6 @@ export interface MountReadOnlyOptions {
   readonly itemRoutes?: boolean;
   /** The noun in the 405 message, which is free prose. Default "projection". */
   readonly resource?: "projection" | "report";
-  /**
-   * The names of the view's `field.decimal` fields. A decimal is a canonical string on the wire
-   * on every dialect (ADR-0019 Amendment 1): Postgres and MySQL return the column's scale
-   * (`"100.5000"`), and SQLite hands back a number, a REAL for a computed one (a report's ratio,
-   * average or sum). Each row is rewritten under these keys. The generated route passes them;
-   * absent, rows are sent as read. Default none.
-   */
-  readonly decimalColumns?: readonly string[];
 }
 
 function resolveViewName(view: AnyView): string | undefined {
@@ -139,7 +131,7 @@ export function mountReadOnlyCrudRoutes(opts: MountReadOnlyOptions): void {
   const useRawSql = isEmptyColumnView(view) && !!viewName;
   // The raw-SQL branch has no declared columns, so nothing names a timestamp there.
   const timestamps = timestampWire(view);
-  const toWire = withDecimals(timestamps, opts.decimalColumns);
+  const toWire = withWire(timestamps, opts);
 
   // ── List ──────────────────────────────────────────────────────────────────
   app.get(path, guardRoute(async (c) => {

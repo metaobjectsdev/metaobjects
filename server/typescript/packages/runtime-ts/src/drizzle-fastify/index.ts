@@ -29,13 +29,15 @@ export type { FilterAllowlist, SortAllowlist } from "./filter-allowlist.js";
 import { parseFilterParams, parsePageBound, FilterParseError } from "./filter-parser.js";
 import { isTruthyFlag, contractErrorCode, coerceIdForColumn, firstRow, extractRowCount } from "./util.js";
 import { timestampWire } from "../timestamp-wire.js";
-import { withDecimals } from "../decimal-wire.js";
+import { withWire, type WireOptions } from "../wire-format.js";
 import { supportsReturning, type SqlDialect } from "../sql-dialect.js";
 import { withContractErrorHandler } from "./route-error-handler.js";
 import { validationErrorBody } from "../route-errors.js";
 export { isTruthyFlag, contractErrorCode, parseId, coerceIdForColumn } from "./util.js";
 export { timestampWire, canonicalTimestamp } from "../timestamp-wire.js";
-export { decimalWire, withDecimals, canonicalDecimal, parseDecimalInput, parseDecimalOperand } from "../decimal-wire.js";
+export { decimalWire, withDecimals, decimalToNative, canonicalDecimal, parseDecimalInput, parseDecimalOperand } from "../decimal-wire.js";
+export { withWire, nullMembersWire } from "../wire-format.js";
+export type { WireOptions, ValueObjectShape, NullMembersMode } from "../wire-format.js";
 
 // ---------------------------------------------------------------------------
 // Loose types — we don't bind to a specific Drizzle backend so the helper
@@ -49,7 +51,7 @@ type AnyTable = any;
 
 export type CrudVerb = "list" | "get" | "create" | "update" | "delete";
 
-export interface CrudRoutesOptions {
+export interface CrudRoutesOptions extends WireOptions {
   fastify: FastifyInstance;
   /** REST resource path, e.g. "/subscribers". */
   path: string;
@@ -86,13 +88,6 @@ export interface CrudRoutesOptions {
   updateMethod?: "patch" | "put";
   filterAllowlist?: FilterAllowlist;
   sortAllowlist?:   SortAllowlist;
-  /**
-   * The names of the entity's `field.decimal` fields. A decimal is a canonical string on the
-   * wire on every dialect (ADR-0019 Amendment 1): Postgres and MySQL return the column's scale
-   * (`"100.5000"`) and SQLite hands back a number, so each row the routes send is rewritten
-   * under these keys. The generated route passes them; absent, rows are sent as read.
-   */
-  decimalColumns?: readonly string[];
   /** Dialect — required if filterAllowlist or sortAllowlist is set (for dialect-specific `like` lowering: SQLite lowers to GLOB to stay case-sensitive; ADR-0049). */
   dialect?: SqlDialect;
   /**
@@ -131,7 +126,7 @@ function readSource(opts: VerbOptions): AnyTable {
  * non-timestamp of the same name.
  */
 function readWire(opts: VerbOptions): (row: unknown) => unknown {
-  return withDecimals(timestampWire(readSource(opts)), opts.decimalColumns);
+  return withWire(timestampWire(readSource(opts)), opts);
 }
 
 /**
@@ -140,7 +135,7 @@ function readWire(opts: VerbOptions): (row: unknown) => unknown {
  * against the union of both sources.
  */
 function echoWire(opts: VerbOptions): (row: unknown) => unknown {
-  return withDecimals(timestampWire(opts.table, opts.readView), opts.decimalColumns);
+  return withWire(timestampWire(opts.table, opts.readView), opts);
 }
 
 /** #214 — after a write to the base table, re-read the row THROUGH the replica

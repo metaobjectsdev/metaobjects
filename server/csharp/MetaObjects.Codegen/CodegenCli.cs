@@ -785,6 +785,38 @@ public static class CodegenCli
         "regenerate: that rewrites column or table names to ones the database does not have. Declare " +
         $"{NamingBlock(committed)} in .metaobjects/config.json, and gen and verify --codegen both read it.";
 
+    /// <summary>
+    /// The other wire setting (ADR-0019 Amendment 2) that reproduces the committed output
+    /// exactly, or <c>null</c>. Candidates are every combination of the two keys other than
+    /// <paramref name="used"/>, native before string and native before emit before omit;
+    /// <c>emit</c> is never offered, because in C# it generates what <c>native</c> does.
+    /// </summary>
+    private static WireFormat? MatchingWire(
+        GenConfig config, Func<MetaRoot> load, IReadOnlyList<IGenerator> suite, bool narrowed, WireFormat used)
+    {
+        var generated = used.NullMembers == NullMemberForm.Emit ? used with { NullMembers = NullMemberForm.Native } : used;
+        foreach (var decimals in new[] { DecimalWireForm.Native, DecimalWireForm.String })
+            foreach (var nulls in new[] { NullMemberForm.Native, NullMemberForm.Omit })
+            {
+                var candidate = new WireFormat(decimals, nulls);
+                if (candidate == generated) continue;
+                var root = load();
+                root.WireFormat = candidate;
+                var probe = CodegenDrift.Compute(config, root, suite, narrowed);
+                if (probe.Error is null && probe.Clean) return candidate;
+            }
+        return null;
+    }
+
+    /// <summary>What <c>verify --codegen</c> says, in place of "regenerate", when the committed output
+    /// was generated with the wire setting <paramref name="committed"/> and this run used
+    /// <paramref name="used"/>. The Python port prints the same text.</summary>
+    private static string WireDiffers(WireFormat committed, WireFormat used) =>
+        $"The committed output was generated with {committed.Block()}; this run used {used.Block()} " +
+        "(.metaobjects/config.json; each key defaults to native). Do not regenerate: that changes the " +
+        "JSON your API writes for decimals or for a value object's null members. Declare " +
+        $"{committed.Block()} in .metaobjects/config.json, and gen and verify --codegen both read it.";
+
     private static int RunVerifyArgs(string[] rest, IReadOnlyList<IGenerator> declared)
     {
         var a = OwnedArgs.Parse(rest, VerifyCommandName, VerifyValueFlags, VerifyBoolFlags);
@@ -889,6 +921,14 @@ public static class CodegenCli
         if (MatchingNaming(config, () => meta.Load(strict: !a.Lax).Root, suite, a.Selection is { Count: > 0 }, naming) is { } committed)
         {
             Console.Error.WriteLine(NamingDiffers(committed, naming));
+            return 1;
+        }
+        // The same for the wire setting: it reaches every decimal property's converter and every
+        // value object's null handling, so a regen under the wrong one changes the API's JSON.
+        var wire = load.Root.WireFormat;
+        if (MatchingWire(config, () => meta.Load(strict: !a.Lax).Root, suite, a.Selection is { Count: > 0 }, wire) is { } committedWire)
+        {
+            Console.Error.WriteLine(WireDiffers(committedWire, wire));
             return 1;
         }
         foreach (var line in CodegenDrift.Remedy(result)) Console.Error.WriteLine(line);

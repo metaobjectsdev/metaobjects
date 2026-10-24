@@ -1,11 +1,13 @@
-// DecimalWire — the wire form of a field.decimal (ADR-0019 Amendment 1, W1-W4).
+// DecimalWire — the wire form of a field.decimal (ADR-0019 Amendments 1 and 2, W1-W4).
 //
-// A decimal crosses JSON as a canonical STRING: `^-?(0|[1-9][0-9]*)(\.[0-9]*[1-9])?$`,
-// plain notation, no exponent, no trailing fractional zeros, zero as "0". A JSON number is
-// a double to every JavaScript client, so the string is the only spelling a browser reads
-// exactly. Input takes a string in the JSON-number grammar or a JSON number; anything else
-// is refused. A value `decimal` cannot hold (more than 28-29 significant digits) is an
-// error, never a rounded value (W3).
+// Output follows the project's `wire.decimals` setting (Amendment 2). Under `native`, the
+// default, a decimal is what System.Text.Json writes for it: a JSON number carrying its scale
+// (`12.50`), through the `Number` attribute. Under `string` it is the canonical STRING,
+// `^-?(0|[1-9][0-9]*)(\.[0-9]*[1-9])?$`: plain notation, no exponent, no trailing fractional
+// zeros, zero as "0" (the plain converters and `Declared`), the form every port writes alike and
+// the only spelling a browser reads exactly. Input is the same under both: a string in the
+// JSON-number grammar or a JSON number; anything else is refused. A value `decimal` cannot hold
+// (more than 28-29 significant digits) is an error, never a rounded value (W3).
 //
 // ONE source, two homes. This file is the package's production helper (the filter
 // dispatcher parses its operands through it). The entity generator emits the SAME text,
@@ -168,8 +170,9 @@ public static class DecimalWire
 
     /// <summary>
     /// W3 for a declared property: false when <paramref name="property"/> of <paramref name="owner"/>
-    /// carries <see cref="DeclaredAttribute"/> and <paramref name="value"/> does not fit it.
-    /// True for a property with no declared precision (the PATCH merge asks this per key).
+    /// carries <see cref="DeclaredAttribute"/> (or a <see cref="NumberAttribute"/> with a precision)
+    /// and <paramref name="value"/> does not fit it. True for a property with no declared
+    /// precision (the PATCH merge asks this per key).
     /// </summary>
     public static bool FitsDeclared(Type owner, string property, decimal value)
     {
@@ -181,7 +184,8 @@ public static class DecimalWire
             // than the entity resolves THIS DecimalWire, while the entity carries the copy emitted
             // into its own namespace, and the two DeclaredAttribute types are different types.
             var type = attribute.GetType();
-            if (type.Name != nameof(DeclaredAttribute) || type.DeclaringType?.Name != nameof(DecimalWire)) continue;
+            if (type.Name is not (nameof(DeclaredAttribute) or nameof(NumberAttribute))
+                || type.DeclaringType?.Name != nameof(DecimalWire)) continue;
             var precision = type.GetProperty(nameof(DeclaredAttribute.Precision))?.GetValue(attribute);
             var scale = type.GetProperty(nameof(DeclaredAttribute.Scale))?.GetValue(attribute);
             return precision is int p && scale is int sc ? Fits(value, p, sc) : true;
@@ -211,8 +215,9 @@ public static class DecimalWire
     }
 
     /// <summary>
-    /// A decimal property with a declared <c>@precision</c> and <c>@scale</c>: the same wire form
-    /// as the plain converters, and a value the column cannot hold is refused, never rounded (W3).
+    /// A decimal property with a declared <c>@precision</c> and <c>@scale</c>, under
+    /// <c>wire.decimals: string</c>: the same wire form as the plain converters, and a value the
+    /// column cannot hold is refused, never rounded (W3).
     /// </summary>
     [AttributeUsage(AttributeTargets.Property)]
     public sealed class DeclaredAttribute(int precision, int scale) : JsonConverterAttribute
@@ -231,8 +236,43 @@ public static class DecimalWire
         }
     }
 
-    /// <summary>A decimal property: written as the canonical string, read from a string or a number.</summary>
-    public sealed class DecimalJsonConverter(int? precision, int? scale) : JsonConverter<decimal>
+    /// <summary>
+    /// A decimal property under <c>wire.decimals: native</c>: written as System.Text.Json writes a
+    /// <c>decimal</c> (a JSON number carrying its scale), read by the same rules as the string form
+    /// (a string or a number; a declared <c>@precision</c> and <c>@scale</c> refuse a value the
+    /// column cannot hold, never rounded).
+    /// </summary>
+    [AttributeUsage(AttributeTargets.Property)]
+    public sealed class NumberAttribute : JsonConverterAttribute
+    {
+        public NumberAttribute() { }
+
+        public NumberAttribute(int precision, int scale)
+        {
+            Precision = precision;
+            Scale = scale;
+        }
+
+        public int? Precision { get; }
+        public int? Scale { get; }
+
+        public override JsonConverter? CreateConverter(Type typeToConvert)
+        {
+            if (typeToConvert == typeof(decimal)) return new DecimalJsonConverter(Precision, Scale, asString: false);
+            if (typeToConvert == typeof(decimal?)) return new NullableDecimalJsonConverter(Precision, Scale, asString: false);
+            if (typeToConvert == typeof(IList<decimal>)) return new DecimalListJsonConverter(Precision, Scale, asString: false);
+            return null;
+        }
+    }
+
+    private static void WriteOne(Utf8JsonWriter writer, decimal value, bool asString)
+    {
+        if (asString) writer.WriteStringValue(Format(value));
+        else writer.WriteNumberValue(value);
+    }
+
+    /// <summary>A decimal property: written as the canonical string (or, from <see cref="NumberAttribute"/>, a JSON number), read from a string or a number.</summary>
+    public sealed class DecimalJsonConverter(int? precision, int? scale, bool asString = true) : JsonConverter<decimal>
     {
         public DecimalJsonConverter() : this(null, null) { }
 
@@ -240,11 +280,11 @@ public static class DecimalWire
             => ReadOne(ref reader, precision, scale);
 
         public override void Write(Utf8JsonWriter writer, decimal value, JsonSerializerOptions options)
-            => writer.WriteStringValue(Format(value));
+            => WriteOne(writer, value, asString);
     }
 
     /// <summary>A nullable decimal property: null is JSON null, with the key present.</summary>
-    public sealed class NullableDecimalJsonConverter(int? precision, int? scale) : JsonConverter<decimal?>
+    public sealed class NullableDecimalJsonConverter(int? precision, int? scale, bool asString = true) : JsonConverter<decimal?>
     {
         public NullableDecimalJsonConverter() : this(null, null) { }
 
@@ -256,12 +296,12 @@ public static class DecimalWire
         public override void Write(Utf8JsonWriter writer, decimal? value, JsonSerializerOptions options)
         {
             if (value is null) writer.WriteNullValue();
-            else writer.WriteStringValue(Format(value.Value));
+            else WriteOne(writer, value.Value, asString);
         }
     }
 
-    /// <summary>An <c>@isArray</c> decimal property, typed <c>IList&lt;decimal&gt;</c> (the one collection shape EF Core 8 on SQLite can materialize): an array of canonical strings.</summary>
-    public sealed class DecimalListJsonConverter(int? precision, int? scale) : JsonConverter<IList<decimal>>
+    /// <summary>An <c>@isArray</c> decimal property, typed <c>IList&lt;decimal&gt;</c> (the one collection shape EF Core 8 on SQLite can materialize): an array of canonical strings (or JSON numbers).</summary>
+    public sealed class DecimalListJsonConverter(int? precision, int? scale, bool asString = true) : JsonConverter<IList<decimal>>
     {
         public DecimalListJsonConverter() : this(null, null) { }
 
@@ -277,7 +317,7 @@ public static class DecimalWire
         public override void Write(Utf8JsonWriter writer, IList<decimal> value, JsonSerializerOptions options)
         {
             writer.WriteStartArray();
-            foreach (var d in value) writer.WriteStringValue(Format(d));
+            foreach (var d in value) WriteOne(writer, d, asString);
             writer.WriteEndArray();
         }
     }

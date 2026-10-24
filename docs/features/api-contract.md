@@ -322,12 +322,12 @@ for the one-line change.
 | `field.int`, `field.long`, `field.double` | number | `long` MAY be string on overflow; defer to per-port docs. |
 | `field.boolean` | boolean | – |
 | `field.date` | string | ISO 8601 calendar date (`YYYY-MM-DD`). Asserted literally by the `report/` sub-corpus (a time dimension's bucket), the first corpus to do so. |
-| `field.decimal` | string, canonical | ADR-0019 Amendment 1. **Out:** plain notation, no exponent, no trailing fraction zeros, zero as `"0"`, matching `^-?(0\|[1-9][0-9]*)(\.[0-9]*[1-9])?$` (`12.50` is sent `"12.5"`). **In:** a string in JSON-number grammar or a JSON number, read exactly (TypeScript reads a JSON number exactly to 15 significant digits, so send a string for more); anything else is `400 validation`, and so is a value with more fraction digits than `@scale` or more integer digits than `@precision - @scale` (nothing is rounded). A filter operand uses the same grammar, is compared exactly, and a bad one is `400 invalid_filter_value`. Postgres and MySQL are exact to the declared precision; SQLite and D1 to 15 significant digits. Every decimal (entity, projection, report row) in every port; the `decimal/` sub-corpus asserts it. The wire carries the value, not a presentation: showing `12.5` as `12.50`, or with two digits for money, is a view's job, not the API's. |
+| `field.decimal` | per [the wire setting](#the-wire-setting) | **Out:** by default, the port's language-standard form (a JSON number in C#, Java and Kotlin; a string in Python and TypeScript). Under `"wire": { "decimals": "string" }`, the canonical string of ADR-0019 Amendment 1: plain notation, no exponent, no trailing fraction zeros, zero as `"0"`, matching `^-?(0\|[1-9][0-9]*)(\.[0-9]*[1-9])?$` (`12.50` is sent `"12.5"`). **In, in every mode:** a string in JSON-number grammar or a JSON number, read exactly (TypeScript reads a JSON number exactly to 15 significant digits, so send a string for more); anything else is `400 validation`, and so is a value with more fraction digits than `@scale` or more integer digits than `@precision - @scale` (nothing is rounded). A filter operand uses the same grammar, is compared exactly, and a bad one is `400 invalid_filter_value`. Postgres and MySQL are exact to the declared precision; SQLite and D1 to 15 significant digits. The setting covers every decimal (entity, projection, report row) in every port; the `decimal/` sub-corpus asserts the string form, which the corpus pins. |
 | `field.time` | string | `HH:MM:SS[.fff]`. |
 | `field.timestamp` | string | Instant, tz-aware by default (ADR-0036 Wave 2) — `YYYY-MM-DDTHH:MM:SS[.fff]Z`, **always UTC**. |
 | `field.timestamp` (`@localTime: true`) | string | Naive wall clock — `YYYY-MM-DDTHH:MM:SS[.fff]`, **no `Z`**. |
 | `field.currency` | **integer minor units** | Cents for USD, yen for JPY. Float arithmetic is forbidden. Server never formats. |
-| `field.object` (`@storage: jsonb`) | object | Nested per the sub-object schema. |
+| `field.object` (`@storage: jsonb`) | object | Nested per the sub-object schema. A null member is written per [the wire setting](#the-wire-setting) (`nullMembers`). |
 | `field.object` (`@storage: flattened`) | object | Same JSON shape — only the storage differs. |
 
 The currency invariant is the load-bearing one: every port emits and
@@ -351,6 +351,53 @@ compares equal:
   zeros** — and the fractional component *and its `.`* are **omitted
   entirely when zero**. A whole-second instant is `2026-05-25T14:30:00Z`,
   never `2026-05-25T14:30:00.000Z`.
+
+### The wire setting
+
+What a generated API writes for a decimal and for a value object's null member is a project
+setting, `wire` in `.metaobjects/config.json`, read by every port's codegen the way `naming` is
+([ADR-0019 Amendment 2](../../spec/decisions/ADR-0019-runtime-return-type-contract.md)):
+
+```json
+{ "schema_version": 1, "wire": { "decimals": "native", "nullMembers": "native" } }
+```
+
+Both keys default to `native`: **each port writes what its language's standard serializer
+writes**, so a C# API looks like a C# API and a Python API like a Python API. Identical output
+across ports is something you opt into:
+
+```json
+{ "schema_version": 1, "wire": { "decimals": "string", "nullMembers": "omit" } }
+```
+
+That is the form 1.1.0 and 1.1.1 wrote, and the form the cross-port conformance corpora pin in
+their own config. Choose it when clients written in several languages share one contract, or when
+a browser client must read a decimal exactly: `JSON.parse` turns a JSON number into a double
+before your code sees it.
+
+| Port | `decimals: native` (default) | `decimals: string` | `nullMembers: native` (default) | `emit` | `omit` | Change from 1.1.1 with no setting |
+|---|---|---|---|---|---|---|
+| C# | JSON number, as System.Text.Json writes a `decimal` (`12.50`, `0.0000001`) | `"12.5"` | `null`, key present | same as native | left out | decimals are numbers again, null members are written again (the 1.0.x output) |
+| Java | JSON number, as the host's Jackson `ObjectMapper` writes a `BigDecimal` (Spring Boot: `12.50`, `1E-7`) | `"12.5"` | `null`, key present | same as native | left out | the same: the 1.0.x output |
+| Kotlin | same as Java | `"12.5"` | `null`, key present | same as native | left out | the same: the 1.0.x output |
+| Python | string, as Pydantic writes a `Decimal` (`"12.50"`, `"1E-7"`) | `"12.5"` | as stored: a stored `null` is `null`, a missing member is absent | every declared member, `null` when unset | left out | decimals keep their scale (`"12.50"`, not `"12.5"`) |
+| TypeScript | string, as the runtime holds it: the driver's text on Postgres and MySQL (`"12.50"`); the stored number at 15 significant digits on SQLite and D1 | `"12.5"` | as stored: a stored `null` is `null`, a missing member is absent | every declared member, `null` when unset | left out | decimals keep their scale (`"12.50"`, not `"12.5"`) |
+
+- **Input never follows the setting.** A decimal in a request body is a string in the
+  JSON-number grammar or a JSON number in every mode. Garbage, and a value past the field's
+  `@scale` or `@precision`, is `400 validation`, never rounded. A filter operand is compared
+  exactly.
+- `nullMembers` covers the members of an `object.value` only, and so also the jsonb that a typed
+  serializer writes. A top-level entity field that is null is always written as `null`.
+- There is no `"number"` value for `decimals`. In C#, Java and Kotlin, `native` already is a
+  number; in Python and TypeScript, a number would be a lossy spelling those languages do not
+  use.
+- An unknown key or value is refused when the config is read. Every port's codegen drift gate
+  (`meta verify --codegen`, `dotnet meta verify --codegen`, `mvn metaobjects:verify`,
+  `metaobjects verify`) says which `wire` block reproduces committed output that was generated
+  under another setting, instead of telling you to regenerate.
+- Changing the setting changes generated code (converters, annotations, serializers), so
+  regenerate after you change it, and commit the result.
 
 ### Error response
 
@@ -437,7 +484,8 @@ The surface:
   mount item routes only for a **single-column** identity, while TypeScript and Python
   bind a composite one to its first field.
 - Filters apply to a projection's `field.decimal` and `field.float` fields as they do to
-  an entity's. A decimal is the canonical string of "Type encodings".
+  an entity's. A decimal is written as "Type encodings" and [the wire setting](#the-wire-setting)
+  say, as for an entity.
 - **The api docs list the same routes.** A projection's api page documents `GET <path>`,
   and `GET <path>/{id}` only when the item route exists. The `405` refusals are not
   operations a caller can use, so no write verb is documented. Pinned in every port by

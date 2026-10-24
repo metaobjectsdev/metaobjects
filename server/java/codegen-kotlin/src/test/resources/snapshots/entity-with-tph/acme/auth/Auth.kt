@@ -1,7 +1,6 @@
 package acme.auth
 
 import com.fasterxml.jackson.databind.`annotation`.JsonDeserialize
-import com.fasterxml.jackson.databind.`annotation`.JsonSerialize
 import java.math.BigDecimal
 import kotlin.Int
 import kotlin.Long
@@ -16,7 +15,6 @@ public data class Auth(
   public val type: AuthType? = null,
   public val reference: String? = null,
   public val quantity: Int? = null,
-  @get:JsonSerialize(using = MetaDecimalWire.Serializer::class)
   @param:JsonDeserialize(using = MetaDecimalWire.Deserializer::class)
   public val copayAmount: BigDecimal? = null,
   public val priorAuthNumber: String? = null,

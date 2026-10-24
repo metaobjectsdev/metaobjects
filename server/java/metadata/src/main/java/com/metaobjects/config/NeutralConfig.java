@@ -40,8 +40,9 @@ import java.util.Optional;
 /**
  * The port-neutral subset of {@code .metaobjects/config.json}.
  *
- * <p>Reads only {@code schema_version}, {@code sources}, and {@code naming} (ADR-0058, the
- * project's physical-naming rules). The file also carries TypeScript-owned keys
+ * <p>Reads only {@code schema_version}, {@code sources}, {@code naming} (ADR-0058, the
+ * project's physical-naming rules) and {@code wire} (ADR-0019 Amendment 2, the output form of a
+ * generated REST surface). The file also carries TypeScript-owned keys
  * ({@code pending_in_git}, {@code confidence_thresholds}, {@code extract}, {@code migrate},
  * {@code scope}); those are IGNORED rather than modeled, so a new TS-only key never becomes
  * a four-port change. {@code scope} in particular is entirely out of scope for this reader
@@ -61,10 +62,13 @@ public final class NeutralConfig {
 
     private final List<Map<String, String>> sources;
     private final PhysicalNaming physicalNaming;
+    private final WireFormat wireFormat;
 
-    private NeutralConfig(List<Map<String, String>> sources, PhysicalNaming physicalNaming) {
+    private NeutralConfig(List<Map<String, String>> sources, PhysicalNaming physicalNaming,
+                          WireFormat wireFormat) {
         this.sources = List.copyOf(sources);
         this.physicalNaming = physicalNaming;
+        this.wireFormat = wireFormat;
     }
 
     /**
@@ -82,6 +86,14 @@ public final class NeutralConfig {
      */
     public PhysicalNaming getPhysicalNaming() {
         return physicalNaming;
+    }
+
+    /**
+     * ADR-0019 Amendment 2 — the project's wire-format setting ({@code wire} in this file), each
+     * absent key at its {@code native} default. Never {@code null}.
+     */
+    public WireFormat getWireFormat() {
+        return wireFormat;
     }
 
     /**
@@ -270,8 +282,51 @@ public final class NeutralConfig {
         // PhysicalNaming.of validates the values themselves (unknown columns/tables rule).
         PhysicalNaming physicalNaming = PhysicalNaming.of(columns, tables);
 
+        WireFormat wireFormat = parseWire(root.get("wire"), origin);
+
         // Unknown top-level keys (including `scope`/`migrate`) are IGNORED by
         // design — see the class javadoc.
-        return new NeutralConfig(specs, physicalNaming);
+        return new NeutralConfig(specs, physicalNaming, wireFormat);
+    }
+
+    /**
+     * ADR-0019 Amendment 2 — the {@code wire} block. Refused exactly as {@code naming} is: an
+     * unknown key, an unknown value, or a non-object block.
+     */
+    private static WireFormat parseWire(JsonElement wire, String origin) {
+        if (wire == null) return WireFormat.DEFAULT;
+        if (!wire.isJsonObject()) {
+            throw new MetaDataException(origin + ": \"wire\" must be an object", ErrorCode.ERR_BAD_ATTR_VALUE);
+        }
+        JsonObject wireObj = wire.getAsJsonObject();
+        WireFormat.Decimals decimals = WireFormat.Decimals.NATIVE;
+        WireFormat.NullMembers nullMembers = WireFormat.NullMembers.NATIVE;
+        for (String key : wireObj.keySet()) {
+            JsonElement el = wireObj.get(key);
+            String raw = el.isJsonPrimitive() && el.getAsJsonPrimitive().isString() ? el.getAsString() : null;
+            switch (key) {
+                case "decimals" -> {
+                    decimals = raw == null ? null : WireFormat.decimalsOf(raw);
+                    if (decimals == null) {
+                        throw new MetaDataException(
+                                origin + ": \"wire.decimals\" must be one of \"native\", \"string\"",
+                                ErrorCode.ERR_BAD_ATTR_VALUE);
+                    }
+                }
+                case "nullMembers" -> {
+                    nullMembers = raw == null ? null : WireFormat.nullMembersOf(raw);
+                    if (nullMembers == null) {
+                        throw new MetaDataException(
+                                origin + ": \"wire.nullMembers\" must be one of \"native\", \"emit\", \"omit\"",
+                                ErrorCode.ERR_BAD_ATTR_VALUE);
+                    }
+                }
+                default -> throw new MetaDataException(
+                        origin + ": \"wire\" has unknown key \"" + key
+                                + "\"; expected \"decimals\" and/or \"nullMembers\"",
+                        ErrorCode.ERR_BAD_ATTR_VALUE);
+            }
+        }
+        return new WireFormat(decimals, nullMembers);
     }
 }

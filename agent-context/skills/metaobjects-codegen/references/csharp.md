@@ -11,6 +11,7 @@ is **schema-migrations only** on the C# side (ADR-0015): `meta migrate` /
 - `MetaObjects.Codegen` generators
 - Docs — one more entry in `codegen/Generators.cs`
 - Persistence + routes are the deployed artifact
+- The JSON the API writes
 - Write your own generator
 - Scoping a generator to some objects
 - Extending the generators (open-for-extension, ADR-0002)
@@ -206,6 +207,18 @@ C# generates a *complete* server stack: the entity classes + `AppDbContext` ARE 
 persistence layer (EF Core), and the minimal-API routes mount on your `WebApplication`.
 There is no runtime "ObjectManager" layer to wire — the generated EF Core code is
 what runs. (The other ports leave a repository seam; C# does not.)
+
+## The JSON the API writes
+
+With no `wire` setting, the generated API writes what System.Text.Json writes: a decimal is a
+JSON number with its scale (`12.50`, through `[DecimalWire.Number]`), and a value object's null
+member is `null` with its key present. That is the 1.0.x output. `"wire": { "decimals":
+"string", "nullMembers": "omit" }` in `.metaobjects/config.json` gives the cross-port form
+(`"12.5"`, null members left out). The input checks (a string or a number; `400` past `@scale`
+or `@precision`) hold in every mode. Never strip the attributes or delete `DecimalWire.g.cs` to
+change the output: set `wire` and regenerate. `dotnet meta verify --codegen` names the `wire`
+block that reproduces committed output generated under another setting. See
+`references/wire-format.md`.
 
 ## Write your own generator
 

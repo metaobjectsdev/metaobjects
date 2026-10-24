@@ -51,6 +51,14 @@ internal static class CorpusPaths
     internal static PhysicalNaming Naming =>
         NeutralConfig.Read(CorpusDir)?.Naming ?? PhysicalNaming.Default;
 
+    /// <summary>
+    /// ADR-0019 Amendment 2 — the corpus's pinned wire setting, read from the same file as
+    /// <see cref="Naming"/>: the corpus pins the cross-port form
+    /// (<c>{"wire":{"decimals":"string","nullMembers":"omit"}}</c>); a project's default is native.
+    /// </summary>
+    internal static WireFormat Wire =>
+        NeutralConfig.Read(CorpusDir)?.Wire ?? WireFormat.Default;
+
     /// <summary>The shared fitness corpus every codegen gate generates from.</summary>
     internal static string FitnessMetadata =>
         Path.Combine(RepoRoot(), "fixtures", "persistence-conformance", "canonical", "meta.fitness.json");

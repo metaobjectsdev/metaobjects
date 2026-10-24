@@ -254,6 +254,96 @@ def test_real_drift_still_says_regenerate(
     assert "The committed output was generated with" not in err
 
 
+# --- wire (ADR-0019 Amendment 2) ----------------------------------------------------------
+
+PRICED_MODEL = {
+    "metadata.root": {
+        "package": "acme",
+        "children": [
+            {"object.entity": {"name": "Invoice", "children": [
+                {"source.rdb": {"@table": "invoices"}},
+                {"field.long": {"name": "id"}},
+                {"field.decimal": {"name": "amount", "@precision": 12, "@scale": 2}},
+                {"identity.primary": {"@fields": "id"}},
+            ]}},
+        ],
+    }
+}
+
+
+def _wire_project(root: Path, wire: dict[str, str] | None) -> Path:
+    meta = root / "metaobjects"
+    meta.mkdir(parents=True, exist_ok=True)
+    (meta / "meta.acme.json").write_text(json.dumps(PRICED_MODEL), encoding="utf-8")
+    (root / "metaobjects.config.yaml").write_text(
+        "targets:\n  app:\n    outDir: gen\n    generators: [entity, filter-allowlist, routes]\n",
+        encoding="utf-8",
+    )
+    _write_wire(root, wire)
+    return root / "gen"
+
+
+def _write_wire(root: Path, wire: dict[str, str] | None) -> None:
+    dot = root / ".metaobjects"
+    dot.mkdir(parents=True, exist_ok=True)
+    raw: dict[str, object] = {"schema_version": 1, "naming": {"columns": "literal"}}
+    if wire is not None:
+        raw["wire"] = wire
+    (dot / "config.json").write_text(json.dumps(raw), encoding="utf-8")
+
+
+def test_wire_in_dot_metaobjects_config_reaches_the_generated_router(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+) -> None:
+    out = _wire_project(tmp_path, {"decimals": "string", "nullMembers": "omit"})
+    monkeypatch.chdir(tmp_path)
+    assert main(["gen"]) == 0
+    [router] = list(out.rglob("invoice_router.py"))
+    assert '_WIRE = WireOutput(decimals="string", null_members="omit")' in router.read_text(encoding="utf-8")
+    capsys.readouterr()
+    assert main(["verify", "--codegen"]) == 0
+
+
+def test_verify_with_another_wire_says_the_wire_block_differs_not_regenerate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+) -> None:
+    # Committed under the portable form; then the config drops the wire block, so the native
+    # default disagrees. Regenerating would change the JSON the routes write to existing clients.
+    _wire_project(tmp_path, {"decimals": "string", "nullMembers": "omit"})
+    monkeypatch.chdir(tmp_path)
+    assert main(["gen"]) == 0
+    _write_wire(tmp_path, None)
+    capsys.readouterr()
+    assert main(["verify", "--codegen"]) == 1
+    err = capsys.readouterr().err
+    assert (
+        'The committed output was generated with "wire": { "decimals": "string", '
+        '"nullMembers": "omit" }; this run used "wire": { "decimals": "native", '
+        '"nullMembers": "native" } (the wire block of .metaobjects/config.json; each key '
+        "defaults to native). Do not regenerate" in err
+    )
+    assert (
+        'Declare "wire": { "decimals": "string", "nullMembers": "omit" } in '
+        ".metaobjects/config.json" in err
+    )
+    assert "regenerate (metaobjects gen)" not in err
+
+
+def test_verify_with_unrelated_drift_next_to_a_wire_change_still_says_regenerate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+) -> None:
+    out = _wire_project(tmp_path, {"decimals": "string"})
+    monkeypatch.chdir(tmp_path)
+    assert main(["gen"]) == 0
+    [router] = list(out.rglob("invoice_router.py"))
+    router.write_text(router.read_text(encoding="utf-8") + "# edited\n", encoding="utf-8")
+    capsys.readouterr()
+    assert main(["verify", "--codegen"]) == 1
+    err = capsys.readouterr().err
+    assert "regenerate (metaobjects gen) and commit the result." in err
+    assert "this run used \"wire\"" not in err
+
+
 # --- templates ----------------------------------------------------------------------------
 
 

@@ -12,10 +12,53 @@ here.**
 
 ## [1.1.2] — unreleased
 
-_Fixes #455. A bug-fix release: no vocabulary or `metamodelVersion` change._
+_Fixes #454 and #455. A bug-fix release: no vocabulary or `metamodelVersion` change._
 
 ### Fixed
 
+- **Each port writes its language's standard JSON again by default, and the cross-port form is
+  a setting (#454).** 1.1.0 changed what every generated API writes, with no way back. Decimals
+  became canonical strings (`12.50` was sent as `"12.5"`), and C#, Java and Kotlin stopped
+  writing a value object's null members. On an upgrade within 1.x, that broke clients of live
+  APIs. The output form is now the project setting `wire` in `.metaobjects/config.json`, read by
+  every port's codegen the way `naming` is (ADR-0019 Amendment 2):
+
+  ```json
+  { "schema_version": 1, "wire": { "decimals": "native", "nullMembers": "native" } }
+  ```
+
+  Both keys default to `native`, meaning what the language's standard serializer writes. **C#,
+  Java and Kotlin** write a decimal as a JSON number again (`12.50`), and a value object's null
+  member as `null` with its key present: the 1.0.x output. **Python and TypeScript** write a
+  decimal as their standard string, which keeps its scale (`"12.50"`). That is a change from
+  1.1.1's `"12.5"`. **Python adopters coming from 1.0.x:** 1.0.x routers returned plain dicts,
+  and FastAPI's encoder wrote a `Decimal` as a float (`12.5`), losing digits past a double's
+  precision. From 1.1.2 a decimal is Pydantic's string, `str(Decimal)` (`"12.50"`), so a client
+  that read a number now reads a string. There is no float option, by decision: a float that
+  loses precision is not the Python-normal form, and Pydantic's string is.
+  **To keep 1.1.0's output** in every port, declare
+  `"wire": { "decimals": "string", "nullMembers": "omit" }` and regenerate. `nullMembers` also
+  takes `"emit"`, which writes every declared member of a value object, `null` when unset,
+  including members the stored value lacks (Python and TypeScript; in C#, Java and Kotlin
+  `emit` is what `native` already writes). Input is unchanged in every mode: a decimal is
+  accepted as a string or a number, and garbage or a value past `@scale` or `@precision` is
+  `400 validation`, never rounded. An unknown key or value is refused when the config is read.
+  Every port's codegen drift gate says which `wire` block reproduces committed output generated
+  under a different setting, instead of telling you to regenerate. The conformance
+  corpora pin the portable form in their own config. The per-port table is in
+  `docs/features/api-contract.md`, "The wire setting".
+
+  **What to expect when you regenerate with no setting.** C# entity and value-object properties
+  carry `[DecimalWire.Number]` in place of the string converters, and lose
+  `[JsonIgnore(WhenWritingNull)]`. A non-required array member of a value object starts as an
+  empty list again. Java DTOs and records, and Kotlin data classes, lose the decimal serializer
+  annotation and `@JsonInclude(NON_NULL)`. Python and TypeScript routes stop canonicalizing
+  decimals on output.
+- **C#: two namespaces no longer collide on `DecimalWire.g.cs` and `MetaNetValidation.g.cs`.**
+  When the model's packages bound to more than one namespace, each namespace's copy of a helper
+  was named `DecimalWire.g.cs`, and `gen` refused the duplicate output path (`emitted by both
+  "entity" and "entity"`). With more than one namespace, each copy is now named after its
+  namespace (`DecimalWire.Acme.Billing.g.cs`). A single-namespace project keeps the plain name.
 - **C#: `MetaDataLoader.FromDirectory` (every overload, the registry overload included) now applies
   the project's `naming`**, as the JVM `fromDirectory` does. A host that composed its own registry
   and loaded with `FromDirectory(dir, registry, strict: true)` got `PhysicalNaming.Default`

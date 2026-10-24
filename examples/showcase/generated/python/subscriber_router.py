@@ -22,10 +22,11 @@ from metaobjects.codegen.runtime.constraint_errors import (
     classify_constraint_error,
 )
 from metaobjects.codegen.runtime.decimal_wire import (
+    WireOutput,
     coerce_decimal_fields,
     coerce_decimal_predicates,
     parse_json_object,
-    to_wire,
+    render_wire,
 )
 from metaobjects.codegen.runtime.filter_parser import (
     FilterPredicate,
@@ -76,6 +77,9 @@ _DECIMAL_LIMITS: dict[str, tuple[int, int]] = {}
 
 
 _NESTED_DECIMALS: dict[str, Any] = {}
+
+
+_WIRE = WireOutput(decimals="native", null_members="native")
 
 
 async def _json_body(request: Request) -> dict[str, Any] | None:
@@ -160,8 +164,8 @@ def list_subscribers(
     rows = repo.list(actual_limit, actual_offset, sort_clause, predicates)
     if with_count == 1:
         total = repo.count(predicates)
-        return {"rows": to_wire(rows), "total": total}
-    return to_wire(rows)
+        return {"rows": render_wire(rows, _WIRE), "total": total}
+    return render_wire(rows, _WIRE)
 
 
 @router.get("/{subscriber_id}")
@@ -172,7 +176,7 @@ def get_subscriber(
     row = repo.find_by_id(subscriber_id)
     if row is None:
         return JSONResponse(status_code=404, content={"error": "not_found"})
-    return to_wire(row)
+    return render_wire(row, _WIRE)
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
@@ -200,7 +204,7 @@ def create_subscriber(
     _asnow = _dt.datetime.now(_dt.timezone.utc)
     dto["createdAt"] = _asnow
     try:
-        return to_wire(repo.create(dto))
+        return render_wire(repo.create(dto), _WIRE)
     except Exception as exc:
         failure = classify_constraint_error(exc)
         if failure is None:
@@ -247,7 +251,7 @@ def update_subscriber(
         return JSONResponse(status_code=failure.status, content=failure.body())
     if saved is None:
         return JSONResponse(status_code=404, content={"error": "not_found"})
-    return to_wire(saved)
+    return render_wire(saved, _WIRE)
 
 
 @router.delete("/{subscriber_id}", status_code=status.HTTP_204_NO_CONTENT)

@@ -24,6 +24,7 @@ from typing import Any
 from fastapi import FastAPI
 
 from metaobjects import MetaDataLoader
+from .corpus_config import attach_corpus_wire
 from metaobjects.codegen.generators.filter_allowlist_generator import render_filter_allowlist
 from metaobjects.codegen.generators.entity_model import render_entity_model
 from metaobjects.codegen.generators.router_generator import render_router
@@ -43,6 +44,7 @@ def _load_corpus_objects(meta_json: Path) -> tuple[MetaObject, list[MetaObject]]
     tmp = Path(tempfile.mkdtemp(prefix="apic-jsonb-meta-"))
     shutil.copy(meta_json, tmp / "meta.json")
     result = MetaDataLoader.from_directory(str(tmp))
+    attach_corpus_wire(result.root, meta_json)
     if result.errors:
         msgs = "; ".join(f"{e.code}: {e.message}" for e in result.errors)
         raise RuntimeError(f"corpus meta.json failed to load: {msgs}")

@@ -16,7 +16,7 @@
 // shows `resolveCollection`, the documented single authority for locating a project.
 
 // Config
-export { ConfigSchema, DEFAULT_CONFIG, loadConfig, setConfigWarningSink, splitUnknownTopLevelKeys, CONFIG_TOP_LEVEL_KEYS, saveConfig, AllowTokenEnum, physicalNamingFromConfig } from "./config.js";
+export { ConfigSchema, DEFAULT_CONFIG, loadConfig, setConfigWarningSink, splitUnknownTopLevelKeys, CONFIG_TOP_LEVEL_KEYS, saveConfig, AllowTokenEnum, physicalNamingFromConfig, wireFormatFromConfig } from "./config.js";
 export type { Config } from "./config.js";
 
 // Metadata dependencies (FR-023) — the `dependencies` config key's schema,

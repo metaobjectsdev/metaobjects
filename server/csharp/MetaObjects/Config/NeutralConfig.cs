@@ -18,6 +18,9 @@
 // becomes a physical database name, read by every port. An unknown key, an unknown value,
 // or a non-object `naming` is refused (ERR_BAD_ATTR_VALUE), the same "present but
 // wrong-shaped raises" rule `sources`/`libraries` already follow.
+//
+// `wire` (ADR-0019 Amendment 2) is read here too — the output form of a generated REST surface
+// (`decimals`, `nullMembers`), refused exactly as `naming` is.
 using System.Text.Json;
 using MetaObjects.Meta;
 
@@ -53,13 +56,18 @@ public sealed class NeutralConfig
     /// same as an empty `naming: {}` block.
     public PhysicalNaming Naming { get; }
 
+    /// ADR-0019 Amendment 2 — the project's wire-format setting (`wire` in config.json), each
+    /// absent key at its native default. Never null.
+    public WireFormat Wire { get; }
+
     private NeutralConfig(
         IReadOnlyList<IReadOnlyDictionary<string, string>> sources, IReadOnlyList<string> libraries,
-        PhysicalNaming naming)
+        PhysicalNaming naming, WireFormat wire)
     {
         Sources = sources;
         Libraries = libraries;
         Naming = naming;
+        Wire = wire;
     }
 
     /// Returns null when `<configDir>/.metaobjects/config.json` does not exist.
@@ -212,8 +220,53 @@ public sealed class NeutralConfig
 
             // Unknown top-level keys (including `scope`/`migrate`) are IGNORED by
             // design — see the file header.
-            return new NeutralConfig(specs, libraries, new PhysicalNaming(columns, tables));
+            return new NeutralConfig(specs, libraries, new PhysicalNaming(columns, tables), ReadWire(root, path));
         }
+    }
+
+    /// The `wire` block (ADR-0019 Amendment 2): an unknown key, an unknown value, or a
+    /// non-object block is refused, the same rule as `naming`.
+    private static WireFormat ReadWire(JsonElement root, string path)
+    {
+        if (!root.TryGetProperty("wire", out var wire)) return WireFormat.Default;
+        if (wire.ValueKind != JsonValueKind.Object)
+            throw new MetaModelException($"{path}: \"wire\" must be an object", ErrorCode.ERR_BAD_ATTR_VALUE);
+
+        var decimals = DecimalWireForm.Native;
+        var nullMembers = NullMemberForm.Native;
+        foreach (var p in wire.EnumerateObject())
+        {
+            var raw = p.Value.ValueKind == JsonValueKind.String ? p.Value.GetString() : null;
+            switch (p.Name)
+            {
+                case "decimals":
+                    decimals = raw switch
+                    {
+                        "native" => DecimalWireForm.Native,
+                        "string" => DecimalWireForm.String,
+                        _ => throw new MetaModelException(
+                            $"{path}: \"wire.decimals\" must be one of \"native\", \"string\"",
+                            ErrorCode.ERR_BAD_ATTR_VALUE),
+                    };
+                    break;
+                case "nullMembers":
+                    nullMembers = raw switch
+                    {
+                        "native" => NullMemberForm.Native,
+                        "emit" => NullMemberForm.Emit,
+                        "omit" => NullMemberForm.Omit,
+                        _ => throw new MetaModelException(
+                            $"{path}: \"wire.nullMembers\" must be one of \"native\", \"emit\", \"omit\"",
+                            ErrorCode.ERR_BAD_ATTR_VALUE),
+                    };
+                    break;
+                default:
+                    throw new MetaModelException(
+                        $"{path}: \"wire\" has an unknown key \"{p.Name}\" (expected \"decimals\" and/or \"nullMembers\")",
+                        ErrorCode.ERR_BAD_ATTR_VALUE);
+            }
+        }
+        return new WireFormat(decimals, nullMembers);
     }
 
     /// The cross-port spellings (ADR-0058) — not .NET enum names, so the JSON value reads

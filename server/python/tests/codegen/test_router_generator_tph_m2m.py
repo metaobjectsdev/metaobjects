@@ -254,10 +254,19 @@ def test_base_declared_m2m_mounted_at_base_path_with_no_subtype_gate() -> None:
         "    auth_id: int,\n"
         "    repo: Annotated[AuthRepository, Depends(get_repository)],\n"
         ") -> list[Any]:\n"
-        "    return to_wire(repo.find_related_tags(None, auth_id))"
+        "    return render_wire(repo.find_related_tags(None, auth_id), _WIRE_TAG)"
     ) in out
     # No gate anywhere near this handler — find_by_id is never called with None.
     assert 'repo.find_by_id(None, auth_id) is None' not in out
+
+
+#: The wire constant each relation's TARGET rows are written through.
+_TARGET_WIRE = {
+    "tags": "_WIRE_TAG",
+    "auditors": "_WIRE_TAG",
+    "linkedAuths": "_WIRE_BRIDGE_AUTH",
+    "priorityTickets": "_WIRE_PRIORITY_TICKET",
+}
 
 
 def _gated_body(
@@ -275,7 +284,8 @@ def _gated_body(
     return (
         f'    if repo.find_by_id("{subtype}", {pk_param}) is None:\n'
         "        return []\n"
-        f'    return to_wire(repo.find_related_{relation}("{subtype}", {pk_param}{tail}))'
+        f'    return render_wire(repo.find_related_{relation}("{subtype}", {pk_param}{tail}), '
+        f"{_TARGET_WIRE[relation]})"
     )
 
 
@@ -322,7 +332,7 @@ def test_priority_tickets_target_discriminator_independent_of_source_gate() -> N
         "    auth_id: int,\n"
         "    repo: Annotated[AuthRepository, Depends(get_repository)],\n"
         ") -> list[Any]:\n"
-        '    return to_wire(repo.find_related_priorityTickets(None, auth_id, "Priority"))'
+        '    return render_wire(repo.find_related_priorityTickets(None, auth_id, "Priority"), _WIRE_PRIORITY_TICKET)'
     ) in out
     # Inherited by every subtype too (rule b) — each subtype's OWN gate applies,
     # while the target literal stays fixed at "Priority" regardless.

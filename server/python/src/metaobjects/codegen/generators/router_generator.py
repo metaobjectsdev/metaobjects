@@ -72,6 +72,7 @@ from metaobjects.meta.persistence.source.source_constants import (
 )
 from metaobjects.naming import DEFAULT_COLUMN_NAMING
 from metaobjects.naming_refs import ref_target
+from metaobjects.wire import WIRE_NATIVE, WireFormat, wire_of
 from metaobjects.shared.base_types import TYPE_IDENTITY
 
 from ..runtime.fr010_field_mapping import is_required
@@ -259,6 +260,64 @@ def _nested_decimals(entities: list[MetaObject]) -> dict[str, Any]:
             if spec is not None:
                 out[f.name] = spec
     return out
+
+
+def _vo_shape(vo: MetaObject, seen: frozenset[str]) -> dict[str, Any]:
+    """The declared members of the value object *vo*, as ``{"f": [member, ...], "o": {member:
+    shape}}`` (``o`` for the members that are themselves value objects or maps of them). What
+    ``nullMembers: emit`` fills in; ``omit`` walks it to reach nested value objects."""
+    seen = seen | {vo.name}
+    shape: dict[str, Any] = {"f": [f.name for f in vo.fields()], "o": {}}
+    for f in vo.fields():
+        inner = _field_shape(f, seen)
+        if inner is not None:
+            shape["o"][f.name] = inner
+    return shape
+
+
+def _field_shape(f: MetaField, seen: frozenset[str]) -> dict[str, Any] | None:
+    if f.sub_type not in (fc.FIELD_SUBTYPE_OBJECT, fc.FIELD_SUBTYPE_MAP):
+        return None
+    target = object_ref_target(f)
+    if target is None or target.name in seen:
+        return None
+    shape = _vo_shape(target, seen)
+    return {"m": shape} if f.sub_type == fc.FIELD_SUBTYPE_MAP else shape
+
+
+def _wire_lines(entities: list[MetaObject], wire: WireFormat, name: str = "_WIRE") -> list[str]:
+    """The *name* constant a response of *entities* is written through: the project's ``wire``
+    setting (ADR-0019 Amendment 2) and, when ``nullMembers`` is not ``native``, the declared
+    members of each value-object field of *entities* (the first declaration of a name wins)."""
+    shapes: dict[str, Any] = {}
+    if wire.null_members != WIRE_NATIVE:
+        for entity in entities:
+            for f in entity.fields():
+                if f.name not in shapes and (shape := _field_shape(f, frozenset())) is not None:
+                    shapes[f.name] = shape
+    args = f'decimals="{wire.decimals}", null_members="{wire.null_members}"'
+    if shapes:
+        args += f", shapes={shapes!r}"
+    return ["", "", f"{name} = WireOutput({args})"]
+
+
+def _m2m_wire_name(target: str) -> str:
+    """The wire constant an M:N traversal onto *target* writes the target's rows through."""
+    return f"_WIRE_{_snake_case(target).upper()}"
+
+
+def _m2m_wire_lines(
+    descriptors: list[M2mDescriptor], object_index: dict[str, MetaObject], wire: WireFormat
+) -> list[str]:
+    """One :func:`_m2m_wire_name` constant per distinct M:N target, shaped by the TARGET's
+    value-object fields (and its TPH subtypes' when the target is a discriminator base)."""
+    lines: list[str] = []
+    for name in dict.fromkeys(d.target_entity for d in descriptors):
+        target = next(o for o in object_index.values() if o.name == name)
+        plan = tph_plan_for(target, object_index)
+        entities = [target, *(st.entity for st in plan.subtypes)] if plan is not None else [target]
+        lines.extend(_wire_lines(entities, wire, _m2m_wire_name(name)))
+    return lines
 
 
 def _decimal_limits_lines(entities: list[MetaObject]) -> list[str]:
@@ -734,8 +793,8 @@ class RouterGenerator:
                 "    rows = repo.list(actual_limit, actual_offset, sort_clause, predicates)",
                 "    if with_count == 1:",
                 "        total = repo.count(predicates)",
-                '        return {"rows": to_wire(rows), "total": total}',
-                "    return to_wire(rows)",
+                '        return {"rows": render_wire(rows, _WIRE), "total": total}',
+                "    return render_wire(rows, _WIRE)",
             ]
         if name == "get":
             return [
@@ -747,7 +806,7 @@ class RouterGenerator:
                 f"    row = repo.find_by_id({pk_param})",
                 "    if row is None:",
                 '        return JSONResponse(status_code=404, content={"error": "not_found"})',
-                "    return to_wire(row)",
+                "    return render_wire(row, _WIRE)",
             ]
         if name == "create":
             return [
@@ -768,7 +827,7 @@ class RouterGenerator:
                 # (a fresh row's createdAt == updatedAt), ignoring any caller-supplied value.
                 *create_autoset,
                 "    try:",
-                "        return to_wire(repo.create(dto))",
+                "        return render_wire(repo.create(dto), _WIRE)",
                 *_CONSTRAINT_EXCEPT,
             ]
         if name == "update":
@@ -803,7 +862,7 @@ class RouterGenerator:
                 *_CONSTRAINT_EXCEPT,
                 "    if saved is None:",
                 '        return JSONResponse(status_code=404, content={"error": "not_found"})',
-                "    return to_wire(saved)",
+                "    return render_wire(saved, _WIRE)",
             ]
         if name == "delete":
             return [
@@ -836,8 +895,9 @@ class RouterGenerator:
             f"    {pk_param}: {pk_type},",
             f"    repo: Annotated[{repo_class}, Depends(get_repository)],",
             ") -> list[Any]:",
-            f"    return to_wire(repo.find_related_{d.relation_name}"
-            f"({pk_param}{_target_subtype_arg(d, {d.target_discriminator})}))",
+            f"    return render_wire(repo.find_related_{d.relation_name}"
+            f"({pk_param}{_target_subtype_arg(d, {d.target_discriminator})}), "
+            f"{_m2m_wire_name(d.target_entity)})",
         ]
 
     def _emit_tph_m2m_route(
@@ -893,8 +953,9 @@ class RouterGenerator:
                 "        return []",
             ]
         lines.append(
-            f"    return to_wire(repo.find_related_{d.relation_name}"
-            f"({subtype_expr}, {pk_param}{_target_subtype_arg(d, target_discs)}))"
+            f"    return render_wire(repo.find_related_{d.relation_name}"
+            f"({subtype_expr}, {pk_param}{_target_subtype_arg(d, target_discs)}), "
+            f"{_m2m_wire_name(d.target_entity)})"
         )
         return lines
 
@@ -923,8 +984,8 @@ class RouterGenerator:
             f"    rows = {repo_var}.list({subtype_expr}, actual_limit, actual_offset, sort_clause, predicates)",
             "    if with_count == 1:",
             f"        total = {repo_var}.count({subtype_expr}, predicates)",
-            '        return {"rows": to_wire(rows), "total": total}',
-            "    return to_wire(rows)",
+            '        return {"rows": render_wire(rows, _WIRE), "total": total}',
+            "    return render_wire(rows, _WIRE)",
         ]
 
     def _render_tph_router(
@@ -933,6 +994,7 @@ class RouterGenerator:
         plan: TphPlan,
         object_index: dict[str, MetaObject],
         column_naming: str = DEFAULT_COLUMN_NAMING,
+        wire: WireFormat = WireFormat(),
     ) -> str:
         """FR-017 TPH: emit the discriminator base's router — a polymorphic collection
         at the base path + a full per-subtype CRUD set at /<base>/<segment>. The repo
@@ -1090,7 +1152,8 @@ class RouterGenerator:
         parts.append("    coerce_decimal_fields,")
         parts.append("    coerce_decimal_predicates,")
         parts.append("    parse_json_object,")
-        parts.append("    to_wire,")
+        parts.append("    WireOutput,")
+        parts.append("    render_wire,")
         parts.append(")")
         parts.append(f"from {_runtime_module('filter_parser')} import (")
         parts.append("    FilterPredicate,")
@@ -1116,6 +1179,12 @@ class RouterGenerator:
         parts.append("")
         parts.append(f"_DECIMAL_FIELDS: frozenset[str] = {decimal_set_body}")
         parts.extend(_decimal_limits_lines([entity, *(st.entity for st in plan.subtypes)]))
+        parts.extend(_wire_lines([entity, *(st.entity for st in plan.subtypes)], wire))
+        parts.extend(_m2m_wire_lines(
+            [*base_m2m, *(d for st in plan.subtypes for d in sub_m2m[st.entity.name])],
+            object_index,
+            wire,
+        ))
         parts.append("")
         parts.append("")
         parts.extend(_JSON_BODY_LINES)
@@ -1207,7 +1276,7 @@ class RouterGenerator:
             # non-@autoSet hierarchy — byte-identical output).
             parts.extend(create_autoset)
             parts.append("    try:")
-            parts.append(f'        return to_wire(repo.create("{val}", dto))')
+            parts.append(f'        return render_wire(repo.create("{val}", dto), _WIRE)')
             parts.extend(_CONSTRAINT_EXCEPT)
             parts.append("")
             parts.append("")
@@ -1219,7 +1288,7 @@ class RouterGenerator:
             parts.append(f'    row = repo.find_by_id("{val}", {pk_param})')
             parts.append("    if row is None:")
             parts.append('        return JSONResponse(status_code=404, content={"error": "not_found"})')
-            parts.append("    return to_wire(row)")
+            parts.append("    return render_wire(row, _WIRE)")
             parts.append("")
             parts.append("")
             parts.append(f'@router.patch("/{seg}/{{{pk_param}}}")')
@@ -1248,7 +1317,7 @@ class RouterGenerator:
             parts.extend(_CONSTRAINT_EXCEPT)
             parts.append("    if saved is None:")
             parts.append('        return JSONResponse(status_code=404, content={"error": "not_found"})')
-            parts.append("    return to_wire(saved)")
+            parts.append("    return render_wire(saved, _WIRE)")
             parts.append("")
             parts.append("")
             parts.append(f'@router.delete("/{seg}/{{{pk_param}}}", status_code=status.HTTP_204_NO_CONTENT)')
@@ -1298,7 +1367,7 @@ class RouterGenerator:
         parts.append(f"    row = repo.find_by_id(None, {pk_param})")
         parts.append("    if row is None:")
         parts.append('        return JSONResponse(status_code=404, content={"error": "not_found"})')
-        parts.append("    return to_wire(row)")
+        parts.append("    return render_wire(row, _WIRE)")
         parts.append("")
 
         # FW-8 rule (a): every relationship the BASE resolves — every row of the
@@ -1326,6 +1395,7 @@ class RouterGenerator:
         entity: MetaObject,
         object_index: dict[str, MetaObject] | None = None,
         column_naming: str = DEFAULT_COLUMN_NAMING,
+        wire: WireFormat | None = None,
     ) -> str | None:
         """Render an entity as a FastAPI ``APIRouter`` module.
 
@@ -1342,6 +1412,8 @@ class RouterGenerator:
         source URL segment is the ENTITY name pluralized (cross-port grammar), NOT
         the physical ``@table``. Without an index, only CRUD is emitted (back-compat).
 
+        *wire* is the run's ``wire`` setting; omitted, it is read from the loaded root.
+
         *column_naming* is ``GenConfig.column_naming`` for this run — passed through
         to :func:`resolve_m2m_descriptors` so the M:N descriptor's physical junction
         columns are resolved by the SAME strategy the ``names`` generator applies to
@@ -1353,6 +1425,9 @@ class RouterGenerator:
         """
         if not emits_router(entity):
             return None
+        # ADR-0019 Amendment 2: the project's `wire` setting, from the loaded root. A caller
+        # that holds an object detached from the root (a report's read model) passes it.
+        wire = wire if wire is not None else wire_of(entity)
         # FR-017 TPH: a concrete subtype is folded into its base's single table — it
         # emits no standalone router (its CRUD lives under the base's per-subtype segment).
         if object_index is not None and is_tph_subtype(entity):
@@ -1371,7 +1446,7 @@ class RouterGenerator:
             # answering the cross-port 405 envelope. Gated by
             # fixtures/api-contract-conformance/projection/.
             if is_read_only_routed(entity):
-                return self._render_readonly_router(entity, column_naming)
+                return self._render_readonly_router(entity, column_naming, wire)
             return None
 
         # FR-017 TPH: a discriminator base emits a polymorphic collection at the base
@@ -1379,7 +1454,7 @@ class RouterGenerator:
         if object_index is not None:
             plan = tph_plan_for(entity, object_index)
             if plan is not None:
-                return self._render_tph_router(entity, plan, object_index, column_naming)
+                return self._render_tph_router(entity, plan, object_index, column_naming, wire)
 
         m2m: list[M2mDescriptor] = (
             resolve_m2m_descriptors(entity, object_index, column_naming)
@@ -1458,7 +1533,8 @@ class RouterGenerator:
         parts.append("    coerce_decimal_fields,")
         parts.append("    coerce_decimal_predicates,")
         parts.append("    parse_json_object,")
-        parts.append("    to_wire,")
+        parts.append("    WireOutput,")
+        parts.append("    render_wire,")
         parts.append(")")
         parts.append(f"from {_runtime_module('filter_parser')} import (")
         parts.append("    FilterPredicate,")
@@ -1485,6 +1561,8 @@ class RouterGenerator:
         parts.append("")
         parts.append(f"_DECIMAL_FIELDS: frozenset[str] = {decimal_set_body}")
         parts.extend(_decimal_limits_lines([entity]))
+        parts.extend(_wire_lines([entity], wire))
+        parts.extend(_m2m_wire_lines(m2m, object_index or {}, wire))
         parts.append("")
         parts.append("")
         parts.extend(_JSON_BODY_LINES)
@@ -1599,6 +1677,7 @@ class RouterGenerator:
         self,
         entity: MetaObject,
         column_naming: str = DEFAULT_COLUMN_NAMING,
+        wire: WireFormat = WireFormat(),
     ) -> str:
         """Render a read-only (`@kind: view` / `materializedView`) object as a FastAPI
         ``APIRouter``: GET list + GET by id, and the four write verbs answering 405. An
@@ -1663,7 +1742,8 @@ class RouterGenerator:
         parts.append("")
         parts.append(f"from {_runtime_module('decimal_wire')} import (")
         parts.append("    coerce_decimal_predicates,")
-        parts.append("    to_wire,")
+        parts.append("    WireOutput,")
+        parts.append("    render_wire,")
         parts.append(")")
         parts.append(f"from {_runtime_module('filter_parser')} import (")
         parts.append("    FilterPredicate,")
@@ -1682,6 +1762,7 @@ class RouterGenerator:
             "_DECIMAL_FIELDS: frozenset[str] = "
             + _py_set_literal(_decimal_field_names([entity]), frozen=True)
         )
+        parts.extend(_wire_lines([entity], wire))
         parts.append("")
         parts.append("")
         parts.extend(_sort_parse_fn_lines())
@@ -1746,7 +1827,8 @@ class RouterGenerator:
             # reads (`c.config.column_naming`) — so the M:N descriptor built here
             # and the per-field constants built there can't disagree about a
             # column name within one run.
-            source = self.render_router(entity, index, c.config.column_naming)
+            wire = wire_of(c.loaded_root) if c.loaded_root is not None else None
+            source = self.render_router(entity, index, c.config.column_naming, wire)
             if source is None:
                 return []
             snake = _snake_case(entity.name)

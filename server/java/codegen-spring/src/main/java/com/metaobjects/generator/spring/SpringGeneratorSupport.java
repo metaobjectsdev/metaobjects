@@ -10,6 +10,7 @@ import com.metaobjects.generator.spring.SpringNaming;
 import com.metaobjects.generator.spring.SpringTypeMapper;
 
 import com.metaobjects.MetaData;
+import com.metaobjects.config.WireFormat;
 import com.metaobjects.field.EnumField;
 import com.metaobjects.field.MetaField;
 import com.metaobjects.field.ObjectField;
@@ -633,20 +634,25 @@ public final class SpringGeneratorSupport {
      * type. The annotations ride on the component itself, so a host's {@code ObjectMapper}
      * options cannot change the bytes.
      */
-    public static String decimalJsonAnnotations(String type, String runtimePackage) {
+    public static String decimalJsonAnnotations(String type, String runtimePackage, WireFormat wire) {
         if (!isDecimalComponent(type)) return "";
         String key = DECIMAL_LIST_TYPE.equals(type) ? "contentUsing" : "using";
-        return "@JsonSerialize(" + key + " = CanonicalDecimalSerializer.class) "
-            + "@JsonDeserialize(" + key + " = CanonicalDecimalDeserializer.class)";
+        // ADR-0019 Amendment 2: the OUTPUT half is emitted only when the project asks for the
+        // canonical string; under native the host ObjectMapper writes a BigDecimal as a number.
+        // The INPUT half (strict deserializer, W2/W3) rides in every mode.
+        String out = wire.decimalsAsString()
+            ? "@JsonSerialize(" + key + " = CanonicalDecimalSerializer.class) " : "";
+        return out + "@JsonDeserialize(" + key + " = CanonicalDecimalDeserializer.class)";
     }
 
     /**
-     * {@link #decimalJsonAnnotations(String, String)} plus, for a field that declares
+     * {@link #decimalJsonAnnotations(String, String, WireFormat)} plus, for a field that declares
      * {@code @precision}, the {@code @DeclaredDecimal} the strict deserializer reads to refuse a
      * value the column cannot hold (W3).
      */
-    public static String decimalJsonAnnotations(String type, String runtimePackage, MetaField<?> field) {
-        String json = decimalJsonAnnotations(type, runtimePackage);
+    public static String decimalJsonAnnotations(String type, String runtimePackage, MetaField<?> field,
+            WireFormat wire) {
+        String json = decimalJsonAnnotations(type, runtimePackage, wire);
         if (json.isEmpty()) return json;
         int[] bound = declaredDecimalBound(field);
         return bound == null ? json
@@ -671,11 +677,13 @@ public final class SpringGeneratorSupport {
      * runtime classes they name (imported, so the ejected runtime package is what the output
      * names).
      */
-    public static String decimalAnnotationImports(String runtimePackage) {
+    public static String decimalAnnotationImports(String runtimePackage, WireFormat wire) {
+        String out = wire.decimalsAsString()
+            ? "import com.fasterxml.jackson.databind.annotation.JsonSerialize;\n"
+              + "import " + runtimePackage + ".CanonicalDecimalSerializer;\n" : "";
         return "import com.fasterxml.jackson.databind.annotation.JsonDeserialize;\n"
-            + "import com.fasterxml.jackson.databind.annotation.JsonSerialize;\n"
+            + out
             + "import " + runtimePackage + ".CanonicalDecimalDeserializer;\n"
-            + "import " + runtimePackage + ".CanonicalDecimalSerializer;\n"
             + "import " + runtimePackage + ".DeclaredDecimal;\n";
     }
 }

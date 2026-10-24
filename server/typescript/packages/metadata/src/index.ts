@@ -379,6 +379,15 @@ export {
 } from "./naming.js";
 export type { EntityNameMap, ColumnNamingStrategy, PhysicalNaming, TableNamingRule } from "./naming.js";
 
+// Wire format (ADR-0019 Amendment 2): the `wire` block of .metaobjects/config.json.
+export {
+  WIRE_DECIMALS, WIRE_NULL_MEMBERS, WIRE_KEY_DECIMALS, WIRE_KEY_NULL_MEMBERS,
+  WIRE_DECIMALS_NATIVE, WIRE_DECIMALS_STRING,
+  WIRE_NULL_MEMBERS_NATIVE, WIRE_NULL_MEMBERS_EMIT, WIRE_NULL_MEMBERS_OMIT,
+  DEFAULT_WIRE_FORMAT, wireFormatOf,
+} from "./wire.js";
+export type { WireFormat, WireDecimals, WireNullMembers } from "./wire.js";
+
 // Retired vocabulary: the map the loader reads to explain a retirement, and the raw-document
 // rewriter `meta upgrade` drives from the SAME entries — so the error message and the fix
 // cannot drift apart.

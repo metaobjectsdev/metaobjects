@@ -120,9 +120,9 @@ def test_per_entity_sort_allowlist_constant_emitted() -> None:
 def test_with_count_returns_envelope_bare_list_otherwise() -> None:
     out = _require(_author())
     # withCount=1 → {"rows": ..., "total": N}
-    assert 'return {"rows": to_wire(rows), "total": total}' in out
+    assert 'return {"rows": render_wire(rows, _WIRE), "total": total}' in out
     # default → bare list
-    assert "return to_wire(rows)" in out
+    assert "return render_wire(rows, _WIRE)" in out
     # The 404 envelope and 400 invalid_sort envelope are part of the contract.
     assert '"error": "not_found"' in out
     # invalid_sort NAMES the rejected field — required cross-port on every

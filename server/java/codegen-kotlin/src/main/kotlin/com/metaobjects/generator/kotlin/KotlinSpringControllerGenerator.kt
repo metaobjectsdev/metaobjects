@@ -4,6 +4,7 @@ package com.metaobjects.generator.kotlin
 // com.metaobjects.generator.kotlin when this generator is copied out via
 // `mvn metaobjects:eject` and its own package is renamed — an explicit import, not
 // same-package bare-name resolution, is what keeps the ejected copy compiling.
+import com.metaobjects.config.WireFormat
 import com.metaobjects.generator.kotlin.ExposedApi
 import com.metaobjects.generator.kotlin.ExposedImports
 import com.metaobjects.generator.kotlin.Fr019SharedEnum
@@ -181,7 +182,8 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             val tph = KotlinTphPlan.planFor(entity, loader)
             if (tph != null) emitTph(entity, tph, outRoot, loader) else emit(entity, outRoot, loader)
         }
-        for (pkg in decimalWirePackages) KotlinDecimalWireEmitter.write(pkg, outRoot)
+        val wire = WireFormat.of(loader.root)
+        for (pkg in decimalWirePackages) KotlinDecimalWireEmitter.write(pkg, outRoot, wire)
     }
 
     protected open fun emit(entity: MetaObject, outRoot: Path, loader: MetaDataLoader) {

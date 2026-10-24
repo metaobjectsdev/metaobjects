@@ -5,25 +5,39 @@
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { loadDirectory, loadUris, type MetaRoot } from "@metaobjectsdev/metadata";
-import { ConfigSchema, physicalNamingFromConfig } from "@metaobjectsdev/sdk";
+import { DEFAULT_WIRE_FORMAT, loadDirectory, loadUris, type MetaRoot, type WireFormat } from "@metaobjectsdev/metadata";
+import { ConfigSchema, physicalNamingFromConfig, wireFormatFromConfig, type Config } from "@metaobjectsdev/sdk";
 
 /**
- * ADR-0058 — set `root`'s physical naming from the nearest `.metaobjects/config.json` at or
+ * ADR-0058 — set `root`'s physical naming and wire format from the nearest `.metaobjects/config.json` at or
  * above `startDir`, as a project-aware load does. A corpus that pins a committed schema
  * declares the naming that schema uses there, and every port's runner reads that one file.
  * No file up to the repository root leaves the default.
  */
 export function applyNearestNaming(root: MetaRoot, startDir: string): MetaRoot {
+  const config = nearestConfig(startDir);
+  if (config === undefined) return root;
+  root.physicalNaming = physicalNamingFromConfig(config);
+  // ADR-0019 Amendment 2: the corpus pins its wire form in the same file, so generated
+  // routes are emitted with it and no lane carries a literal.
+  root.wireFormat = wireFormatFromConfig(config);
+  return root;
+}
+
+/** The nearest `.metaobjects/config.json` at or above `startDir`, never past the repository. */
+export function nearestConfig(startDir: string): Config | undefined {
   for (let dir = startDir; ; dir = dirname(dir)) {
     const file = join(dir, ".metaobjects", "config.json");
-    if (existsSync(file)) {
-      root.physicalNaming = physicalNamingFromConfig(ConfigSchema.parse(JSON.parse(readFileSync(file, "utf8"))));
-      return root;
-    }
+    if (existsSync(file)) return ConfigSchema.parse(JSON.parse(readFileSync(file, "utf8")));
     // Never past the repository: a config above it belongs to something else.
-    if (existsSync(join(dir, ".git")) || dirname(dir) === dir) return root;
+    if (existsSync(join(dir, ".git")) || dirname(dir) === dir) return undefined;
   }
+}
+
+/** The wire format a hand-rolled reference server mounts with: the corpus's own, from its config. */
+export function nearestWireFormat(startDir: string): WireFormat {
+  const config = nearestConfig(startDir);
+  return config === undefined ? DEFAULT_WIRE_FORMAT : wireFormatFromConfig(config);
 }
 
 export async function loadMetadataDir(dir: string): Promise<MetaRoot> {

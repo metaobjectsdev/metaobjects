@@ -125,20 +125,39 @@ export function decimalToWire(value: unknown): unknown {
 }
 
 /**
- * Rewrite the values under `columns` to their canonical string. Returns `undefined` when there is
- * nothing to do. Which keys are decimals comes from the caller (the generated route passes the
- * names of the entity's `field.decimal` fields), never from the shape of a value: an integer
- * column is not a decimal because it is a number.
+ * The `native` output form (`wire.decimals: native`, ADR-0019 Amendment 2): the string the
+ * in-process type holds, NOT canonicalized. A string a driver handed back (Postgres `numeric`,
+ * MySQL `DECIMAL`, SQLite text) passes through as it is (`"12.50"` stays `"12.50"`), a number
+ * (a SQLite or D1 REAL or INTEGER) is rendered at 15 significant digits (W4, because the TS type
+ * is `string`), a bigint is its digits, and an array is rewritten element by element.
+ */
+export function decimalToNative(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(decimalToNative);
+  if (typeof value === "number") return decimalFromDouble15(value) ?? value;
+  if (typeof value === "bigint") return value.toString();
+  return value;
+}
+
+/** How a decimal is written: `native` (default) or the canonical `string` (`wire.decimals`). */
+export type DecimalWireMode = "native" | "string";
+
+/**
+ * Rewrite the values under `columns` to their wire form (`mode`, default `native`). Returns
+ * `undefined` when there is nothing to do. Which keys are decimals comes from the caller (the
+ * generated route passes the names of the entity's `field.decimal` fields), never from the shape
+ * of a value: an integer column is not a decimal because it is a number.
  */
 export function decimalWire(
   columns: readonly string[] | undefined,
+  mode: DecimalWireMode = "native",
 ): ((row: unknown) => unknown) | undefined {
   if (columns === undefined || columns.length === 0) return undefined;
+  const convert = mode === "string" ? decimalToWire : decimalToNative;
   return (row) => {
     if (row === null || typeof row !== "object") return row;
     const out = { ...(row as Record<string, unknown>) };
     for (const c of columns) {
-      if (c in out) out[c] = decimalToWire(out[c]);
+      if (c in out) out[c] = convert(out[c]);
     }
     return out;
   };
@@ -148,7 +167,8 @@ export function decimalWire(
 export function withDecimals(
   base: (row: unknown) => unknown,
   columns: readonly string[] | undefined,
+  mode: DecimalWireMode = "native",
 ): (row: unknown) => unknown {
-  const decimals = decimalWire(columns);
+  const decimals = decimalWire(columns, mode);
   return decimals === undefined ? base : (row) => decimals(base(row));
 }

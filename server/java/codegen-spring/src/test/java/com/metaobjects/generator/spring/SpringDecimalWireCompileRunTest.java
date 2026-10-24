@@ -2,6 +2,7 @@ package com.metaobjects.generator.spring;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.metaobjects.config.WireFormat;
 import com.metaobjects.loader.MetaDataLoader;
 import org.junit.Rule;
 import org.junit.Test;
@@ -75,6 +76,8 @@ public class SpringDecimalWireCompileRunTest {
         Path srcDir = tmp.newFolder("src").toPath();
         Path classesDir = tmp.newFolder("classes").toPath();
         MetaDataLoader loader = SpringTestFixtures.loadFixture(tmp.newFolder("fx").toPath(), "ledger", META);
+        // The canonical output form is opt-in (ADR-0019 Amendment 2): pin the form the corpora pin.
+        loader.getRoot().setWireFormat(new WireFormat(WireFormat.Decimals.STRING, WireFormat.NullMembers.OMIT));
         runGenerator(new SpringDtoGenerator(), loader, srcDir);
         runGenerator(new SpringValueObjectGenerator(), loader, srcDir);
         runGenerator(new SpringFilterAllowlistGenerator(), loader, srcDir);

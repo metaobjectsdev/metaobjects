@@ -1,6 +1,6 @@
 # Conformance coverage
 
-The MetaObjects standard ships **30 shared conformance corpora** under
+The MetaObjects standard ships **31 shared conformance corpora** under
 [`fixtures/`](../fixtures/). Every port runs every corpus that is *applicable to
 it* and asserts the same expected behaviour against the same fixtures. **This page
 is the inverse index**: fixture → feature doc + per-port pass status, and it is the
@@ -54,6 +54,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 | [`fixtures/requirement-check-conformance/`](../fixtures/requirement-check-conformance/) (the `verify` requirement gate, ADR-0057) | 43 cases | ✓ (reference) | ✓ | inherits via Java (one Maven `metaobjects:verify` goal) | ✓ | ✓ |
 | [`fixtures/requirement-test-identity-conformance/`](../fixtures/requirement-test-identity-conformance/) (the identity, skip state and digest of each generated requirement test, and the filter seam, ADR-0057) | 26 cases | ✓ (reference) | ✓ | identity function inherits via Java; emitted names asserted by its own generator test | ✓ | ✓ |
 | [`fixtures/naming-conformance/`](../fixtures/naming-conformance/) | 8 cases | ✓ | ✓ | inherits via Java (`RouteNaming.pluralize`) | ✓ | ✓ |
+| [`fixtures/wire-conformance/`](../fixtures/wire-conformance/) (the `wire` setting, ADR-0019 Amendment 2) | 6 cases + 8 refusals | ✓ | ✓ | inherits via Java (one config reader) | ✓ | ✓ |
 | [`fixtures/codegen-noop/`](../fixtures/codegen-noop/) (FR-044 — reporting vocabulary: what is lowered, what stays inert) | 1 model pair (`reporting/with` vs `reporting/without`) | ✓ (codegen + migrate) | ✓ | ✓ | ✓ | ✓ |
 | [`fixtures/cube-model/`](../fixtures/cube-model/) (FR-044 Plan 4 — the `cube-model` generator's golden Cube files, plus the canonical model's golden) | 46 cases (36 trees + 10 errors) + 1 canonical golden | ✓ (the exporter is TypeScript-only, spec R6; its `cube` lane also loads the files into a real Cube) | — | — | — | — |
 

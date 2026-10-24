@@ -72,4 +72,11 @@ internal static class CorpusPaths
     /// pins <c>{"naming":{"columns":"literal"}}</c>, matching the committed schema artifacts.
     /// </summary>
     public static readonly PhysicalNaming Naming = NeutralConfig.Read(Corpus)?.Naming ?? PhysicalNaming.Default;
+
+    /// <summary>
+    /// ADR-0019 Amendment 2 — the corpus's pinned wire setting, read from the same file as
+    /// <see cref="Naming"/>: the corpus pins the cross-port form
+    /// (<c>{"wire":{"decimals":"string","nullMembers":"omit"}}</c>); a project's default is native.
+    /// </summary>
+    public static readonly WireFormat Wire = NeutralConfig.Read(Corpus)?.Wire ?? WireFormat.Default;
 }

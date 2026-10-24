@@ -216,10 +216,12 @@ public class SpringReportRestSurfaceTest extends SharedRegistryTestBase {
      * {@code @spine: "Week.fkProgram"}; {@code totalMinutesOrZero} / {@code longShareOrZero}
      * are {@code totalMinutes} / {@code longShare} with {@code @default: 0}.
      */
-    /** ADR-0019 Amendment 1: a decimal component binds the canonical serializer and strict deserializer. */
+    /**
+     * ADR-0019 Amendment 1/2: a decimal component always binds the strict deserializer; the
+     * canonical serializer is emitted only under {@code wire.decimals: string} (default is native).
+     */
     private static final String DECIMAL_WIRE =
-        "@JsonSerialize(using = CanonicalDecimalSerializer.class) "
-        + "@JsonDeserialize(using = CanonicalDecimalDeserializer.class) ";
+        "@JsonDeserialize(using = CanonicalDecimalDeserializer.class) ";
 
     @Test
     public void aSpineKeyAndADefaultedMeasureAreNotNullAndTheSameMeasureWithoutADefaultIsNullable() throws Exception {

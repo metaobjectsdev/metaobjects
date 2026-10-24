@@ -143,19 +143,43 @@ them all; pick the one the object meant. In 1.0 the TypeScript, Python and C# lo
 first match in load order, so with one candidate the qualified spelling keeps the meaning it
 had. `meta upgrade` does not make this edit: choosing the package needs the whole model.
 
-### Decimals on the wire (every port)
+### Decimals and null members on the wire (every port)
 
-A `field.decimal` crosses the generated API as one canonical string in every port (ADR-0019
-Amendment 1): `12.50` is sent `"12.5"`, zero `"0"`, never a number and never an exponent. In
-1.0 C#, Java, Kotlin and Python sent a number, and TypeScript sent `"12.50"`, now `"12.5"`. A client that reads a decimal from those ports
-parses a string now; format it for display with the field's `@scale` (display is a view's job).
-On input a string or a JSON number is accepted, read exactly (TypeScript reads a JSON number
-exactly to 15 significant digits, so send a string for more), and a value with more fraction
-digits than `@scale` or more integer digits than `@precision - @scale` is `400 validation`
-rather than rounded. A decimal filter operand is compared exactly; a bad one is
-`400 invalid_filter_value`. On SQLite and D1 a decimal keeps 15 significant digits, and
-`meta migrate` warns for one declared with `@precision` above 15. An owned routes generator
-keeps its 1.0 decimal handling until you resync it (step 7).
+**Upgrade to 1.1.2 or later, not 1.1.0 or 1.1.1.** 1.1.0 and 1.1.1 changed what every generated
+API writes, with no opt-out: a decimal became a canonical string (`12.50` was sent as `"12.5"`),
+and C#, Java and Kotlin stopped writing a value object's null members. From 1.1.2 the output is
+the project setting `wire` in `.metaobjects/config.json` (ADR-0019 Amendment 2), and with no
+setting each port writes its language's standard JSON:
+
+- **C#, Java and Kotlin:** a decimal is a JSON number and a null member is `null`, as in 1.0.x.
+  Nothing changes for your clients.
+- **TypeScript:** a decimal is the string the driver returns, which keeps its scale (`"12.50"`):
+  the 1.0.x output on Postgres and MySQL.
+- **Python:** a decimal is the string Pydantic writes for a `Decimal`, `str(value)` (`"12.50"`).
+  1.0.x routers returned plain dicts, and FastAPI's encoder turned a `Decimal` into a float
+  (`12.5`, losing digits past a double's precision). A client that read a number now reads a
+  string. There is no float option, by decision: a float that loses precision is not the
+  Python-normal form, and Pydantic's `str(Decimal)` is. Update a client that parsed the number to
+  parse the string (`"decimals": "string"` gives the canonical `"12.5"` instead).
+
+To have every port write one form, which suits clients in several languages or a browser that
+must read decimals exactly, declare the form 1.1.0 wrote and regenerate:
+
+```json
+{ "schema_version": 1, "wire": { "decimals": "string", "nullMembers": "omit" } }
+```
+
+If you already upgraded to 1.1.0 or 1.1.1 and your clients now expect that form, declare that
+block before you move to 1.1.2, or your output changes back. [api-contract.md, "The wire
+setting"](../api-contract.md#the-wire-setting) has the full per-port table.
+
+Input is the same in every mode. A string or a JSON number is accepted and read exactly
+(TypeScript reads a JSON number exactly to 15 significant digits, so send a string for more). A
+value with more fraction digits than `@scale`, or more integer digits than
+`@precision - @scale`, is `400 validation` rather than rounded. A decimal filter operand is
+compared exactly; a bad one is `400 invalid_filter_value`. On SQLite and D1 a decimal keeps 15
+significant digits, and `meta migrate` warns for one declared with `@precision` above 15. An
+owned routes generator keeps its 1.0 decimal handling until you resync it (step 7).
 
 ### Fractional validator bounds (TypeScript, C#, Python)
 
@@ -189,10 +213,12 @@ whole number written `1.0` still loads, as `1`.
   (`emitSharedEnums=true`, an `<args>` entry on `SpringValueObjectGenerator` or
   `SpringOutputParserGenerator`; Kotlin's `providedEnumNamespace` / `providedEnumPackages` in the
   plugin's `<globals>`). See the CHANGELOG entry.
-- **Decimal wire files.** C# writes `DecimalWire.g.cs` per namespace and Kotlin
-  `MetaDecimalWire.kt` per package; Java's DTOs and allowlists gain decimal annotations and
-  `DECIMAL_FIELDS`; TypeScript and Python routes call their decimal wire. See "Decimals on the
-  wire".
+- **Decimal wire files.** C# writes `DecimalWire.g.cs` per namespace (named
+  `DecimalWire.<Namespace>.g.cs` when the model binds more than one namespace) and Kotlin
+  `MetaDecimalWire.kt` per package. Java's allowlists gain `DECIMAL_FIELDS`, and TypeScript and
+  Python routes call their decimal wire. These check input in every mode. The output
+  annotations appear only under `"wire": { "decimals": "string" }`. See "Decimals and null
+  members on the wire".
 - **C# array properties are `IList<T>`** (scalar and enum arrays on entities, TPH subtypes,
   value objects and report rows; they were `ICollection<T>`, which EF Core 8 cannot read on
   SQLite). Code that assigns a `HashSet<T>` to one assigns a `List<T>`.
@@ -214,8 +240,8 @@ that reach them are in the CHANGELOG.
 |---|---|---|---|
 | 1.0.5 and after | `HasForeignKey(nameof(Owner.Prop))` | `HasForeignKey(e => e.Prop)`, or `e => new { e.A, e.B }` for a composite (the `M:N` `UsingEntity` sides too) | `DbContextGenerator.EmitOnModelCreatingBody(sb, modelLines, ctx)` receives the lines as a list before they are written. There is no seam for the key expression itself, so match the lambda form |
 | 1.1.0 | scalar and enum arrays `ICollection<T>` | `IList<T>`; a non-required value-object array is nullable and has no initializer | `EntityGenerator.ScalarProperty(...)` / `EnumProperty(...)` return the property text; override the one you changed |
-| 1.1.0 | no `JsonIgnore` on value-object members | on a nullable member, `[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]` beside `[JsonPropertyName("…")]` | `EntityGenerator.EmitPropertyAttributes(sb, owner, field, ctx)` adds attributes; to change the POCO itself, override `EmitValueObjectPoco(vo, ctx)` |
-| 1.1.0 | `decimal` written and read as a JSON number | a `[DecimalWire…]` converter attribute on each decimal member and one `DecimalWire.g.cs` per namespace | `EntityGenerator.ScalarProperty(...)` for the member; `EmitFileUsings(sb, entity, ctx)` for the usings the attribute needs |
+| 1.1.0, narrowed in 1.1.2 | no `JsonIgnore` on value-object members | 1.1.0 and 1.1.1: on every nullable member, `[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]` beside `[JsonPropertyName("…")]`. From 1.1.2, only under `"wire": { "nullMembers": "omit" }`; with no setting there is none, as in 1.0 | to drop or keep the attribute, set `wire.nullMembers` and regenerate (do not strip it). `EntityGenerator.EmitPropertyAttributes(sb, owner, field, ctx)` adds other attributes; to change the POCO itself, override `EmitValueObjectPoco(vo, ctx)` |
+| 1.1.0, changed in 1.1.2 | `decimal` written and read as a JSON number | 1.1.0 and 1.1.1: a `[DecimalWire…]` string-converter attribute on each decimal member. From 1.1.2, with no setting, `[DecimalWire.Number]` (or `[DecimalWire.Number(p, s)]` with `@precision`), which writes a JSON number and keeps the strict input check; the string converters, or `[DecimalWire.Declared(p, s)]`, only under `"wire": { "decimals": "string" }`. One `DecimalWire.g.cs` per namespace in every mode (`DecimalWire.<Namespace>.g.cs` when there is more than one); do not delete it, because the input check lives there | to change the output form, set `wire.decimals` and regenerate (do not strip the attribute). `EntityGenerator.ScalarProperty(...)` for the member; `EmitFileUsings(sb, entity, ctx)` for the usings the attribute needs |
 | 1.0.13 | `DbSet` and navigation names from the 1.0 pluralizer (`CallScriptses`) | an already-plural entity name stays as it is (`CallScripts`) | `DbContextGenerator.EmitDbSetDeclarations(sb, objects, ctx)`; the name itself is `CSharpNaming`'s, so a rewrite keyed to the old plural has to be re-keyed |
 | 1.1.0 | a reference written bare in canonical output | `pkg::Name` (a root-level target is `::Name`), so `MetaReferenceIdentity.TargetEntity` is a qualified reference | none needed: resolve a reference through the model (`ValueObjectNames.ResolveFieldRef(field, ctx.Root)` for an `@objectRef`) instead of comparing the string |
 

@@ -1,0 +1,28 @@
+{
+  "metadata.root": {
+    "package": "acme::commerce",
+    "children": [
+      { "object.value": { "name": "Address", "children": [
+          { "field.string": { "name": "street", "@maxLength": 200 } },
+          { "field.string": { "name": "city", "@maxLength": 100 } },
+          { "field.string": { "name": "zip", "@maxLength": 20 } }
+      ] } },
+      { "object.value": { "name": "UserMetadata", "children": [
+          { "field.string": { "name": "locale" } },
+          { "field.string": { "name": "timezone" } }
+      ] } },
+      { "object.entity": { "name": "User", "children": [
+          { "field.long":   { "name": "id" } },
+          { "field.string": { "name": "email", "@maxLength": 255 } },
+          { "field.object": { "name": "address",
+              "@objectRef": "Address",
+              "@storage": "flattened" } },
+          { "field.object": { "name": "preferences",
+              "@objectRef": "UserMetadata",
+              "@storage": "jsonb" } },
+          { "source.rdb":   { "@table": "users" } },
+          { "identity.primary": { "@fields": "id", "@generation": "increment" } }
+      ] } }
+    ]
+  }
+}

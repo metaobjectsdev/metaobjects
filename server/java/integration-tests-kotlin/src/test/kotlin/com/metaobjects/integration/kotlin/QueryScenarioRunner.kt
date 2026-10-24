@@ -119,6 +119,7 @@ object QueryScenarioRunner {
         // naming.columns: literal. Read with the SAME NeutralConfig reader every port uses,
         // rather than passing a strategy.
         root.physicalNaming = com.metaobjects.config.SourceResolver.resolvePhysicalNaming(corpus)
+        root.wireFormat = com.metaobjects.config.SourceResolver.resolveWireFormat(corpus)
 
         // 4. Run queries; each gets its own Exposed transaction.
         for (spec in scenario.queries) {

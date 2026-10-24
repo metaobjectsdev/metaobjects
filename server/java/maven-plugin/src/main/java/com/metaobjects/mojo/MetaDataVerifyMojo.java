@@ -1,5 +1,6 @@
 package com.metaobjects.mojo;
 
+import com.metaobjects.config.WireFormat;
 import com.metaobjects.generator.Generator;
 import com.metaobjects.generator.GeneratorBase;
 import com.metaobjects.generator.util.HashManifest;
@@ -429,6 +430,13 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
             }
 
             if (!drift.isEmpty()) {
+                // ADR-0019 Amendment 2: committed output generated under another `wire` setting is
+                // drift that regenerating would "fix" by changing the API's JSON. Name the setting.
+                if (drift.size() > editedOrphans.size()) {
+                    WireFormat used = loader.getRoot().getWireFormat();
+                    WireFormat committed = matchingWire(loader, projectClassLoader, overrides, targets, ownHashes, projectRoot);
+                    if (committed != null) throw new MojoFailureException(wireDiffers(committed, used));
+                }
                 StringBuilder sb = new StringBuilder();
                 if (drift.size() > editedOrphans.size()) {
                     sb.append("generated code is stale — run `mvn ").append(genGoal())
@@ -459,6 +467,61 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
             deleteRecursively(tempRoot);
         }
         failOnRequirementErrors(requirementErrors);
+    }
+
+    /**
+     * ADR-0019 Amendment 2: the other {@code wire} setting under which the generators reproduce the
+     * committed output exactly, or {@code null} when none does. Probes decimals {native, string} x
+     * nullMembers {native, omit} ({@code emit} writes what {@code native} writes on the JVM), skipping
+     * the setting this run used, then puts that setting back on the root. Each probe runs fresh
+     * generator instances, since a generator need not support a second {@code execute}. A probe that
+     * fails answers "no match", so the ordinary drift report still prints.
+     */
+    private WireFormat matchingWire(MetaDataLoader loader, ClassLoader projectClassLoader,
+                                    Map<GeneratorParam, Map<String, String>> overrides, List<GenTarget> targets,
+                                    Map<String, String> ownHashes, Path projectRoot) throws MojoExecutionException {
+        WireFormat used = loader.getRoot().getWireFormat();
+        WireFormat.NullMembers usedNulls = used.nullMembers() == WireFormat.NullMembers.EMIT
+                ? WireFormat.NullMembers.NATIVE : used.nullMembers();
+        try {
+            for (WireFormat.Decimals d : WireFormat.Decimals.values()) {
+                for (WireFormat.NullMembers n : List.of(WireFormat.NullMembers.NATIVE, WireFormat.NullMembers.OMIT)) {
+                    if (d == used.decimals() && n == usedNulls) continue;
+                    loader.getRoot().setWireFormat(new WireFormat(d, n));
+                    for (GenTarget t : targets) deleteRecursively(t.tempDir);
+                    try {
+                        for (Generator gen : buildGenerators(projectClassLoader, overrides)) gen.execute(loader);
+                    } catch (RuntimeException e) {
+                        getLog().debug("MetaData Verify Mojo > wire probe failed: " + e);
+                        return null;
+                    }
+                    List<String> drift = new ArrayList<>();
+                    for (GenTarget t : targets) drift.addAll(compareTrees(t, ownHashes, projectRoot, new ArrayList<>()));
+                    if (ownHashes != null) {
+                        drift.addAll(strandedOutsideTargets(ownHashes, targets, projectRoot, new ArrayList<>()));
+                    }
+                    if (drift.isEmpty()) return new WireFormat(d, n);
+                }
+            }
+            return null;
+        } finally {
+            loader.getRoot().setWireFormat(used);
+        }
+    }
+
+    /** The {@code wire} block that declares {@code wire}. */
+    static String wireBlock(WireFormat wire) {
+        return "\"wire\": { \"decimals\": \"" + wire.decimals().wireName()
+                + "\", \"nullMembers\": \"" + wire.nullMembers().wireName() + "\" }";
+    }
+
+    /** The verify failure for committed output that another {@code wire} setting reproduces. */
+    static String wireDiffers(WireFormat committed, WireFormat used) {
+        return "The committed output was generated with " + wireBlock(committed) + "; this run used "
+                + wireBlock(used) + " (.metaobjects/config.json; each key defaults to native). Do not "
+                + "regenerate: that changes the JSON your API writes for decimals or for a value object's "
+                + "null members. Declare " + wireBlock(committed) + " in .metaobjects/config.json, and "
+                + "generate and verify both read it.";
     }
 
     /**

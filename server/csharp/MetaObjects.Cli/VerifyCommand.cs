@@ -111,6 +111,11 @@ public static class VerifyCommand
         /// <see cref="Options"/> directly and names no project.
         /// </summary>
         public MetaObjects.Meta.PhysicalNaming Naming { get; init; } = MetaObjects.Meta.PhysicalNaming.Default;
+        /// <summary>
+        /// ADR-0019 Amendment 2 — the project's wire-format setting, from the same file as
+        /// <see cref="Naming"/> and set on the loaded root beside it. Defaults to native.
+        /// </summary>
+        public MetaObjects.Meta.WireFormat Wire { get; init; } = MetaObjects.Meta.WireFormat.Default;
         /// <summary>Templates root for the <c>--templates</c> gate (<c>--templates &lt;root&gt;</c>).</summary>
         public string? TemplatesRoot { get; init; }
         /// <summary>The committed output dir for the <c>--codegen</c> gate (<c>--out &lt;dir&gt;</c>).</summary>
@@ -254,6 +259,7 @@ public static class VerifyCommand
             : MetaDataLoader.FromDirectory(opts.MetadataDir, opts.Libraries, strict: opts.Strict);
         // ADR-0058 — every resolver reads naming.columns/naming.tables from the root.
         result.Root.PhysicalNaming = opts.Naming;
+        result.Root.WireFormat = opts.Wire;
         return result;
     }
 

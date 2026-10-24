@@ -1,7 +1,6 @@
 package acme.catalog
 
 import com.fasterxml.jackson.databind.`annotation`.JsonDeserialize
-import com.fasterxml.jackson.databind.`annotation`.JsonSerialize
 import jakarta.validation.constraints.NotNull
 import jakarta.validation.constraints.Size
 import java.math.BigDecimal
@@ -18,7 +17,6 @@ public data class Product(
   @field:NotNull
   @field:Size(min = 1, max = 40)
   public val name: String,
-  @get:JsonSerialize(using = MetaDecimalWire.Serializer::class)
   @param:JsonDeserialize(using = MetaDecimalWire.Deserializer::class)
   public val price: BigDecimal? = null,
   public val rating: Float? = null,

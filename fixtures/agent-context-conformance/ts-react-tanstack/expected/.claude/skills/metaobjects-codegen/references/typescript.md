@@ -9,6 +9,7 @@ packages. Codegen runs through the Node `meta` CLI (`@metaobjectsdev/cli`, binar
 - Install
 - `metaobjects.config.ts`
 - The generators
+- The JSON the routes write
 - Run
 - Multiple output targets
 - Field subtype → column mapping
@@ -261,6 +262,18 @@ read-view (#214): `entityFile()` routes generated **reads** through the replica 
 writes target the table with derived fields excluded from the insert/update codecs; a
 create/update re-reads the row via the view by primary key (read-your-writes). The replica
 view's DDL is emitted by `meta migrate` from the same origin assembly as a projection view.
+
+## The JSON the routes write
+
+With no `wire` setting, the generated routes write a decimal as the string the driver returns
+(`"12.50"` on Postgres and MySQL; SQLite and D1 at 15 significant digits) and a value object as
+stored. `"wire": { "decimals": "string", "nullMembers": "omit" }` in `.metaobjects/config.json`
+gives the cross-port form (`"12.5"`, null members left out); `"nullMembers": "emit"` writes every
+declared member, `null` when unset. The setting reaches the generated route as mount options
+(`decimalWire`, `nullMembers`, `valueObjects`), so set it and run `meta gen`; do not edit the
+options in a generated route. The input checks (a string or a number; `400` past `@scale` or
+`@precision`) hold in every mode. `meta verify --codegen` names the `wire` block that
+reproduces committed output generated under another setting. See `references/wire-format.md`.
 
 ## Discriminator inheritance (TPH)
 

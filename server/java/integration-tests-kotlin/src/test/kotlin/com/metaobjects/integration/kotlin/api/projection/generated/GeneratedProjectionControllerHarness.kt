@@ -79,6 +79,12 @@ class GeneratedProjectionControllerHarness(
         // depend on this. Read with the SAME NeutralConfig reader every port uses.
         loader.root.physicalNaming =
             com.metaobjects.config.SourceResolver.resolvePhysicalNaming(corpusRoot)
+        // ADR-0019 Amendment 2: the same file pins wire (decimals: string, nullMembers: omit), so the
+        // generated serializers write the portable form. Discovered by walking up from the meta file, so a
+        // sub-corpus directory (jsonb/, m2m/, ...) reads the config at the api-contract corpus root.
+        loader.root.wireFormat = com.metaobjects.config.SourceResolver
+            .discoverWireFormat(listOf(java.nio.file.Path.of(corpusRoot.toString(), "meta.json").toUri()))
+            .orElse(com.metaobjects.config.WireFormat.DEFAULT)
         columnsRule = loader.root.physicalNaming.columns()
 
         val srcDir = genDir.resolve("src")

@@ -59,10 +59,12 @@ def _apply_discovered_naming(result: "LoadResult", start: Path) -> None:
     *start*) to the loaded root; warn once when there is none and the default applies."""
     from ..config.neutral_config import find_project_dir
     from ..naming import attach_naming
+    from ..wire import attach_wire
 
     project = find_project_dir(start if start.is_dir() else start.parent)
     if project is not None:
         attach_naming(result.root, project)
+        attach_wire(result.root, project)
         return
     warnings.warn(
         f"no .metaobjects/config.json found at or above {start}: physical names use the "

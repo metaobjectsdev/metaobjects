@@ -115,6 +115,10 @@ public final class GeneratedM2mControllerHarness implements AutoCloseable {
         // depend on this. Read with the SAME NeutralConfig reader every port uses.
         loader.getRoot().setPhysicalNaming(
                 com.metaobjects.config.SourceResolver.resolvePhysicalNaming(corpusRoot));
+        // ADR-0019 Amendment 2 - the corpus's config.json (found by walking up from the corpus dir) pins the wire form (string / omit).
+        loader.getRoot().setWireFormat(
+                com.metaobjects.config.SourceResolver.discoverWireFormat(java.util.List.of((corpusRoot).toUri()))
+                        .orElse(com.metaobjects.config.WireFormat.DEFAULT));
 
         // 2. Generate controllers + DTOs + repository interfaces + filter allowlists for ALL entities.
         runGenerator(new SpringControllerGenerator(), loader, srcDir);

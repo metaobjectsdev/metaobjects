@@ -92,6 +92,7 @@ internal sealed class ProjectionGeneratedServerFactory : IAsyncDisposable
         var loadResult = new MetaDataLoader().Load([new FileSource(ApiContractCorpusPaths.ProjectionMetaJson)]);
         // ADR-0058 — the corpus's committed naming rule, not a hardcoded default.
         loadResult.Root.PhysicalNaming = ApiContractCorpusPaths.Naming;
+        loadResult.Root.WireFormat = ApiContractCorpusPaths.Wire;
         if (loadResult.Errors.Count != 0)
             throw new InvalidOperationException(
                 "projection corpus metadata failed to load: " +

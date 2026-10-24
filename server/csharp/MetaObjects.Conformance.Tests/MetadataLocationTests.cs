@@ -121,11 +121,23 @@ public sealed class MetadataLocationTests : IDisposable
     }
 
     [Fact]
+    public void FromDirectory_with_a_registry_applies_the_projects_wire()
+    {
+        WriteConfig("""{ "schema_version": 1, "wire": { "decimals": "string", "nullMembers": "omit" } }""");
+
+        var result = MetaObjects.Loader.MetaDataLoader.FromDirectory(
+            MetaDir, MetaObjects.Provider.ComposeRegistry(MetaObjects.CoreTypes.LibraryProviders), libraries: ["iam"], strict: true);
+
+        Assert.Equal(new WireFormat(DecimalWireForm.String, NullMemberForm.Omit), result.Root.WireFormat);
+    }
+
+    [Fact]
     public void FromDirectory_without_a_project_config_keeps_the_default()
     {
         var result = MetaObjects.Loader.MetaDataLoader.FromDirectory(
             MetaDir, MetaObjects.Provider.ComposeRegistry(MetaObjects.CoreTypes.LibraryProviders), libraries: ["iam"]);
 
         Assert.Equal(PhysicalNaming.Default, result.Root.PhysicalNaming);
+        Assert.Equal(WireFormat.Default, result.Root.WireFormat);
     }
 }

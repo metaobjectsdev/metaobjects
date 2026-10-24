@@ -1,10 +1,8 @@
 package acme;
 
 import jakarta.validation.constraints.*;
-import com.fasterxml.jackson.annotation.JsonInclude;
 
 /** GENERATED — value object SubscriberBlurbPayload. Do not hand-edit; regenerated from metadata. */
-@JsonInclude(JsonInclude.Include.NON_NULL)
 public record SubscriberBlurbPayload(
     String name,
     @NotNull Status status

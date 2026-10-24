@@ -4,6 +4,7 @@ package com.metaobjects.generator.kotlin
 // com.metaobjects.generator.kotlin when this generator is copied out via
 // `mvn metaobjects:eject` and its own package is renamed — an explicit import, not
 // same-package bare-name resolution, is what keeps the ejected copy compiling.
+import com.metaobjects.config.WireFormat
 import com.metaobjects.generator.kotlin.Fr019SharedEnum
 import com.metaobjects.generator.kotlin.KotlinEnumEmitter
 import com.metaobjects.generator.kotlin.KotlinGenUtil
@@ -89,6 +90,8 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         parseArgs()
         val outRoot = Paths.get(outDir.absolutePath)
         decimalWirePackages.clear()
+        // ADR-0019 Amendment 2: the project's wire setting, read from the loaded root.
+        wire = WireFormat.of(loader.root)
         fr019Config = Fr019SharedEnum.ProvidedEnumConfig.fromArgs(args)
         // emitAbstractShapes (default OFF): when ON, an abstract entity is emitted as a Kotlin
         // `interface` shape (read-only properties) instead of being suppressed. It is NEVER
@@ -126,11 +129,14 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         // has such a field (a same-package MetaNetJson the data-class properties bind through).
         emitNetJsonSupport(loader, outRoot)
         // ADR-0019 Amendment 1: the decimal wire rule, once per package that wrote a decimal property.
-        for (pkg in decimalWirePackages) KotlinDecimalWireEmitter.write(pkg, outRoot)
+        for (pkg in decimalWirePackages) KotlinDecimalWireEmitter.write(pkg, outRoot, wire)
     }
 
     /** Packages whose emitted data classes carry a decimal property: each gets one `MetaDecimalWire.kt`. */
     private val decimalWirePackages = linkedSetOf<String>()
+
+    /** ADR-0019 Amendment 2: the project's wire setting (native unless `.metaobjects/config.json` says otherwise). */
+    private var wire: WireFormat = WireFormat.DEFAULT
 
     /**
      * #234: emit the per-package `MetaNetJson.kt` support object (the strict field.uri / field.inet
@@ -223,9 +229,9 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             .addModifiers(KModifier.DATA)
             .addKdoc("GENERATED — do not hand-edit. Regenerated from metadata.\n")
             .apply {
-                // A value object is stored as jsonb and the api-contract wire omits an absent member
-                // rather than writing it as null, so its null members are not serialized.
-                if (obj.subType == MetaObject.SUBTYPE_VALUE) {
+                // `wire.nullMembers: omit` (ADR-0019 Amendment 2): a value object's null members are left
+                // out. Under native/emit Jackson writes them as null with the key present.
+                if (obj.subType == MetaObject.SUBTYPE_VALUE && wire.omitNullMembers()) {
                     addAnnotation(
                         AnnotationSpec.builder(ClassName("com.fasterxml.jackson.annotation", "JsonInclude"))
                             .addMember("%T.Include.NON_NULL", ClassName("com.fasterxml.jackson.annotation", "JsonInclude"))
@@ -641,12 +647,14 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         val serializer = ClassName(pkg, KotlinDecimalWireEmitter.FILE_NAME, "Serializer")
         val deserializer = ClassName(pkg, KotlinDecimalWireEmitter.FILE_NAME, "Deserializer")
         val member = if (field.isArrayType) "contentUsing" else "using"
-        val annotations = mutableListOf(
-            AnnotationSpec.builder(JSON_SERIALIZE).useSiteTarget(AnnotationSpec.UseSiteTarget.GET)
-                .addMember("$member = %T::class", serializer).build(),
-            AnnotationSpec.builder(JSON_DESERIALIZE).useSiteTarget(AnnotationSpec.UseSiteTarget.PARAM)
-                .addMember("$member = %T::class", deserializer).build(),
-        )
+        val annotations = mutableListOf<AnnotationSpec>()
+        // The output half only under `wire.decimals: string`; native lets Jackson write the BigDecimal.
+        if (wire.decimalsAsString()) {
+            annotations += AnnotationSpec.builder(JSON_SERIALIZE).useSiteTarget(AnnotationSpec.UseSiteTarget.GET)
+                .addMember("$member = %T::class", serializer).build()
+        }
+        annotations += AnnotationSpec.builder(JSON_DESERIALIZE).useSiteTarget(AnnotationSpec.UseSiteTarget.PARAM)
+            .addMember("$member = %T::class", deserializer).build()
         // C1: a decimal inside a (jsonb) value object has no controller range check of its own, so the
         // deserializer enforces the field's declared @precision/@scale: nothing rounded, excess is a 400.
         // Only a declared precision bounds it, as with a top-level decimal.

@@ -112,3 +112,85 @@ comparable across ports and engines, and it is the form the persistence corpus a
   CHANGELOG. The wire contract is part of `metamodelVersion` (`docs/compatibility-policy.md`),
   which moves to `1.1` in the same release. An owned (ejected) route or DTO generator keeps the old
   spelling until it is resynced.
+
+## Amendment 2 (2026-10-24): each port writes its language's standard JSON by default
+
+**Context.** Amendment 1 made the W1 string the only output, in every port, with no opt-out, and
+1.1.0 shipped it on a minor release. It also shipped a second change no amendment recorded: C#,
+Java and Kotlin started leaving a value object's null member out of the JSON
+(`[JsonIgnore(WhenWritingNull)]`, `@JsonInclude(NON_NULL)`), because the api-contract corpus
+asserted the omitted form. For an adopter with a live API this was a breaking change to its
+clients on an upgrade within one major line. A C# adopter moving from 1.0.4 to 1.1.1 had its
+decimals turn from `12.50` into `"12.5"` and its null members disappear. It could only get back
+by editing the generated output and deleting the helper file. The defaults had been chosen to
+make five ports agree for our own conformance corpora, not to make each port do what its
+language does.
+
+**The rule.** Each port's default is its language's standard behaviour: what that language's
+standard serializer writes for the port's in-process type. Identical output across ports is an
+opt-in setting. Conformance corpora pin that setting explicitly and never decide a default. A
+future change that would make a port's default output differ from its language's standard,
+so that the ports agree, needs a new amendment that answers this one.
+
+**Decision.** The OUTPUT form of a generated REST surface is a project setting. It sits in
+`.metaobjects/config.json` beside `naming` ([ADR-0058](ADR-0058-one-physical-naming-setting.md)), and
+the same config reader reads it in every port:
+
+```json
+{ "schema_version": 1, "wire": { "decimals": "native", "nullMembers": "native" } }
+```
+
+- `wire.decimals`: `"native"` (default) or `"string"`. `string` is Amendment 1's W1, exactly as
+  1.1.0 and 1.1.1 wrote it. `native` writes what the port's standard serializer writes for its
+  in-process decimal type, with no MetaObjects canonicalization on output.
+- `wire.nullMembers`: `"native"` (default), `"emit"` or `"omit"`. It covers the members of a
+  value object (`object.value`) on the wire, and therefore in the jsonb that a typed serializer
+  writes. A top-level entity field is unchanged: its key is present and its value is `null`.
+  `omit` leaves a null member out. `emit` writes it as `null` with its key present, including a
+  member the stored value lacks. `native` is what the port's standard behaviour gives for its
+  in-process value-object representation.
+- An absent block or key means the default. An unknown key, an unknown value or a `wire` that is
+  not an object is refused when the file is read (`ERR_BAD_ATTR_VALUE`, worded like `naming`'s
+  refusals). The shared cases are in `fixtures/wire-conformance/config-blocks.json`.
+- The project-aware load carries the setting on the loaded root, as `naming` is carried. Codegen
+  reads it from there; there is no CLI flag and no generator argument. Every port's codegen
+  drift gate (`meta verify --codegen`, `dotnet meta verify --codegen`, `mvn metaobjects:verify`,
+  `metaobjects verify`) says when a different `wire` block reproduces the committed output
+  exactly, instead of telling you to regenerate.
+- There is deliberately no `"number"` value. In C#, Java and Kotlin, `native` already is a JSON
+  number. In TypeScript (in-process `string`) and Python (`Decimal`, which Pydantic writes as a
+  string), a number would be a lossy spelling the language does not use.
+
+**Input does not follow the setting.** W2 (a decimal is a JSON string in the JSON-number grammar
+or a JSON number, and anything else is `400 validation`), W3 (nothing is rounded: over-scale or
+over-precision is `400 validation`), W4 (SQLite and D1 at 15 significant digits), exact filter
+operands and `400 invalid_filter_value` apply in every mode. A generated input converter is kept
+in every mode. Only output canonicalization, and the null-member annotation, depend on the
+setting.
+
+**What each port writes.**
+
+| Port | `decimals: native` (default) | `decimals: string` | `nullMembers: native` (default) | `emit` | `omit` |
+|---|---|---|---|---|---|
+| C# | a JSON number, as System.Text.Json writes a `decimal`: its scale is kept (`12.50`, `0.0000001`) | `"12.5"` | `null`, key present | same as native | left out |
+| Java | a JSON number, as the host's Jackson `ObjectMapper` writes a `BigDecimal` (Spring Boot's default: `12.50`, `1E-7`) | `"12.5"` | `null`, key present | same as native | left out |
+| Kotlin | same as Java | `"12.5"` | `null`, key present | same as native | left out |
+| Python | a string, as Pydantic v2 writes a `Decimal`: `str(value)` (`"12.50"`, `"1E-7"`) | `"12.5"` | as the runtime holds the value object (a dict): a stored `null` is `null`, a missing member is absent | every declared member present, `null` when unset | left out |
+| TypeScript | a string, as the runtime holds it: the driver's text on Postgres and MySQL (`"12.50"`); on SQLite and D1, the stored number at 15 significant digits | `"12.5"` | as stored (`JSON.stringify`: a stored `null` is written, a missing member is absent) | every declared member present, `null` when unset | left out |
+
+In C#, Java and Kotlin, the 1.1.2 default restores the 1.0.x output. In TypeScript and Python it
+differs from 1.1.1, which also canonicalized: a decimal is again the driver's or `str(Decimal)`
+spelling (`"12.50"`, not `"12.5"`). A project that wants 1.1.1's output in every port declares
+`"wire": { "decimals": "string", "nullMembers": "omit" }`.
+
+**Consequences.**
+
+- The api-contract and persistence corpora pin the portable form in their own
+  `.metaobjects/config.json` (`"wire": { "decimals": "string", "nullMembers": "omit" }`). Every
+  port's generated lane reads it from there, as it reads `naming`, so the corpora keep asserting
+  W1 bytes. Each port also tests that the default writes the language-standard shape on real
+  serialized output of its generated code.
+- A browser client that must read a decimal exactly should use `"decimals": "string"`.
+  `JSON.parse` turns a number into a double before any user code sees it (Amendment 1, "Why a
+  string"). That is a choice the project makes; it is no longer the default.
+- No vocabulary changes, so `metamodelVersion` does not move. The fix ships in 1.1.2 as a bug fix.

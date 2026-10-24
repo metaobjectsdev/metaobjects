@@ -172,12 +172,37 @@ public final class SourceResolver {
     }
 
     /**
+     * ADR-0019 Amendment 2 — the wire-format setting declared in {@code root}'s
+     * {@code .metaobjects/config.json}, or {@link WireFormat#DEFAULT} when the file is absent.
+     * Set on the loaded root beside {@link #resolvePhysicalNaming(Path)}.
+     */
+    public static WireFormat resolveWireFormat(Path root) {
+        Path base = root.toAbsolutePath().normalize();
+        return NeutralConfig.read(base)
+                .map(NeutralConfig::getWireFormat)
+                .orElse(WireFormat.DEFAULT);
+    }
+
+    /**
+     * ADR-0019 Amendment 2 — the wire-format setting of the {@code .metaobjects/config.json}
+     * found by the same walk as {@link #discoverPhysicalNaming(List)}, or empty when there is none.
+     */
+    public static java.util.Optional<WireFormat> discoverWireFormat(List<java.net.URI> uris) {
+        return discoverConfig(uris).map(NeutralConfig::getWireFormat);
+    }
+
+    /**
      * ADR-0058 — the physical-naming rules of the {@code .metaobjects/config.json} found by
      * walking up from the first {@code file:} URI (stopping after a directory holding
      * {@code .git}), or empty when there is no {@code file:} URI or no config on the walk.
      * The same walk the Maven plugin does for its source location.
      */
     public static java.util.Optional<PhysicalNaming> discoverPhysicalNaming(List<java.net.URI> uris) {
+        return discoverConfig(uris).map(NeutralConfig::getPhysicalNaming);
+    }
+
+    /** The {@code .metaobjects/config.json} the naming and wire discovery walk finds, if any. */
+    private static java.util.Optional<NeutralConfig> discoverConfig(List<java.net.URI> uris) {
         for (java.net.URI uri : uris) {
             if (!"file".equalsIgnoreCase(uri.getScheme())) continue;
             Path location;
@@ -188,7 +213,7 @@ public final class SourceResolver {
             }
             for (Path dir = location; dir != null; dir = dir.getParent()) {
                 java.util.Optional<NeutralConfig> cfg = NeutralConfig.read(dir);
-                if (cfg.isPresent()) return java.util.Optional.of(cfg.get().getPhysicalNaming());
+                if (cfg.isPresent()) return cfg;
                 if (Files.exists(dir.resolve(".git"))) break;
             }
             return java.util.Optional.empty();

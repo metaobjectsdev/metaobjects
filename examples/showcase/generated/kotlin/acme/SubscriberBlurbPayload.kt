@@ -1,6 +1,5 @@
 package acme
 
-import com.fasterxml.jackson.`annotation`.JsonInclude
 import jakarta.validation.constraints.NotNull
 import kotlin.String
 import kotlin.jvm.JvmStatic
@@ -8,7 +7,6 @@ import kotlin.jvm.JvmStatic
 /**
  * GENERATED — do not hand-edit. Regenerated from metadata.
  */
-@JsonInclude(JsonInclude.Include.NON_NULL)
 public data class SubscriberBlurbPayload(
   public val name: String? = null,
   @field:NotNull

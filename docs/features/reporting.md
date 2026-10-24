@@ -580,7 +580,7 @@ encodings"), applied to the column types above:
 | `currency` | integer minor units |
 | `date` (a time dimension at `day`, `week`, `month`, `quarter` or `year`) | `YYYY-MM-DD`, the first day of the bucket |
 | `timestamp` (a time dimension at `hour`) | an instant with `Z`, or naive without for a `@localTime` field |
-| `decimal` (`avg`, a ratio, a `sum` of a decimal) | a canonical string, as for every decimal ([api-contract.md](api-contract.md), ADR-0019 Amendment 1): `"12.5"`, zero as `"0"`, no exponent. The digits are the engine's: Postgres and MySQL are exact, SQLite and D1 exact to 15 significant digits. |
+| `decimal` (`avg`, a ratio, a `sum` of a decimal) | as for every decimal, per the project's `wire` setting ([api-contract.md, "The wire setting"](api-contract.md#the-wire-setting)): by default the port's language-standard form, and the canonical string (`"12.5"`, zero as `"0"`, no exponent) under `"decimals": "string"`. The digits are the engine's: Postgres and MySQL are exact, SQLite and D1 exact to 15 significant digits. |
 | a null value | `null`, with the key present |
 
 **What each port generates for a served report.** `<R>` is the report's name.
@@ -731,7 +731,7 @@ array and one over a map, which refuse a filter (`invalid_filter_field`) and a s
 report it finds fails. Every port runs the scenarios through its generated routes against the
 real views on Postgres, SQLite and MySQL (`report/schema.sqlite.sql`, `report/schema.mysql.sql`),
 and TypeScript also through local D1. A report's decimal columns are asserted as canonical
-strings by the `decimal/` sub-corpus, on the same engines.
+strings by the `decimal/` sub-corpus, which pins `"decimals": "string"`, on the same engines.
 
 ## Exporting to Cube
 

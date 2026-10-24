@@ -26,7 +26,9 @@ from metaobjects.codegen.generators.entity_model import render_entity_model
 from metaobjects.codegen.generators.filter_allowlist_generator import render_filter_allowlist
 from metaobjects.codegen.generators.router_generator import render_router
 from metaobjects.codegen.runtime.filter_parser import FilterPredicate
+from metaobjects.codegen.runtime.m2m_codegen import build_object_index
 from metaobjects.runtime import ObjectManager, SqliteDriver
+from metaobjects.wire import WireFormat
 
 _META = {
     "metadata.root": {
@@ -78,9 +80,18 @@ class _Repo:
             return self.om.delete("Entry", id)
 
 
+#: The portable form the cross-port corpora pin; the canonical-output tests below run in it.
+_PORTABLE = WireFormat(decimals="string", null_members="omit")
+
+
 @pytest.fixture()
 def client() -> TestClient:
+    return _make_client(_PORTABLE)
+
+
+def _make_client(wire: WireFormat) -> TestClient:
     root = load_string(json.dumps(_META)).root
+    root.wire = wire  # type: ignore[attr-defined]
     entry = next(c for c in root.children() if c.name == "Entry")
     pkg = f"gendec_{uuid.uuid4().hex[:8]}"
     tmp = Path(tempfile.mkdtemp(prefix="gendec-"))
@@ -225,7 +236,13 @@ _FLOAT_META = {
 
 @pytest.fixture()
 def float_client() -> TestClient:
+    # Canonical decimals; a null member stays as stored (`native`), which this test sends.
+    return _make_float_client(WireFormat(decimals="string"))
+
+
+def _make_float_client(wire: WireFormat) -> TestClient:
     root = load_string(json.dumps(_FLOAT_META)).root
+    root.wire = wire  # type: ignore[attr-defined]
     objs = {c.name.split("::")[-1]: c for c in root.children()}
     pkg = f"genflt_{uuid.uuid4().hex[:8]}"
     tmp = Path(tempfile.mkdtemp(prefix="genflt-"))
@@ -342,3 +359,220 @@ def test_a_decimal_array_is_range_checked_element_wise_and_coerced_for_the_drive
     from metaobjects.runtime.object_manager import _coerce_write_value
 
     assert _coerce_write_value(series, [Decimal("1.5"), "2", 3, None]) == [Decimal("1.5"), Decimal("2"), Decimal("3"), None]
+
+
+# --- the `wire` setting (ADR-0019 Amendment 2): the DEFAULT is native -------------------------
+
+
+def _row_client(wire: WireFormat, rows: list[dict[str, Any]]) -> TestClient:
+    """The Sample router over a repository that returns *rows* verbatim (a driver that keeps a
+    decimal's scale, as Postgres and MySQL do; SQLite cannot), under the given wire setting."""
+    root = load_string(json.dumps(_FLOAT_META)).root
+    root.wire = wire  # type: ignore[attr-defined]
+    objs = {c.name.split("::")[-1]: c for c in root.children()}
+    pkg = f"genwire_{uuid.uuid4().hex[:8]}"
+    tmp = Path(tempfile.mkdtemp(prefix="genwire-"))
+    pkg_dir = tmp / pkg
+    pkg_dir.mkdir()
+    (pkg_dir / "__init__.py").write_text("")
+    for vo in ("Fix", "Tier", "Pricing"):
+        (pkg_dir / f"{vo}.py").write_text(render_entity_model(objs[vo]))
+    sample = objs["Sample"]
+    (pkg_dir / "sample_filter_allowlist.py").write_text(render_filter_allowlist(sample) or "")
+    (pkg_dir / "Sample.py").write_text(render_entity_model(sample))
+    (pkg_dir / "sample_router.py").write_text(render_router(sample) or "")
+    sys.path.insert(0, str(tmp))
+    try:
+        mod = importlib.import_module(f"{pkg}.sample_router")
+    finally:
+        sys.path.remove(str(tmp))
+
+    class Repo:
+        def list(self, limit: int, offset: int, sort: Any, filters: list[FilterPredicate]) -> list[Any]:
+            return rows
+
+        def count(self, filters: list[FilterPredicate]) -> int:
+            return len(rows)
+
+        def find_by_id(self, id: int) -> Any:
+            return rows[0]
+
+        def create(self, dto: Any) -> Any:
+            return rows[0]
+
+    app = FastAPI()
+    app.include_router(mod.router)
+    app.dependency_overrides[mod.get_repository] = lambda: Repo()
+    return TestClient(app)
+
+
+_DECIMAL_ROW = {
+    "id": 1,
+    "score": 1.5,
+    "series": [Decimal("12.50"), Decimal("0.0000001"), Decimal("100")],
+    "fix": None,
+    "fixes": None,
+    "tiers": None,
+    "pricing": None,
+}
+
+
+def test_native_is_the_default_and_writes_a_decimal_as_pydantic_does() -> None:
+    """`str(Decimal)`: the scale is kept and a small value keeps its exponent; not the float a
+    plain-dict row would become under FastAPI's own encoder."""
+    default = _row_client(WireFormat(), [_DECIMAL_ROW])
+    assert default.get("/api/samples/1").json()["series"] == ["12.50", "1E-7", "100"]
+    assert default.get("/api/samples").json()[0]["series"] == ["12.50", "1E-7", "100"]
+    assert default.get("/api/samples?withCount=1").json()["rows"][0]["series"] == ["12.50", "1E-7", "100"]
+
+
+def test_string_writes_the_canonical_form() -> None:
+    string = _row_client(WireFormat(decimals="string"), [_DECIMAL_ROW])
+    assert string.get("/api/samples/1").json()["series"] == ["12.5", "0.0000001", "100"]
+
+
+def test_input_refusals_hold_under_native() -> None:
+    native = _row_client(WireFormat(), [_DECIMAL_ROW])
+    hdr = {"content-type": "application/json"}
+    for bad in ('{"series": ["abc"]}', '{"series": ["0.12345"]}', "[1]", "{"):
+        resp = native.post("/api/samples", content=bad, headers=hdr)
+        assert resp.status_code == 400 and resp.json() == {"error": "validation"}, (bad, resp.text)
+    assert native.post("/api/samples", content='{"series": ["1.5", 2]}', headers=hdr).status_code == 201
+    bad_filter = native.get("/api/samples", params={"filter[series][gt]": "oops"})
+    assert bad_filter.status_code == 400
+
+
+#: A stored value object: `latitude` set, `readings` explicitly null, `amount` absent.
+_VO_ROW = {**_DECIMAL_ROW, "series": None, "fix": {"latitude": 51.25, "readings": None}}
+
+
+def test_null_members_native_passes_the_stored_value_object_through() -> None:
+    fix = _row_client(WireFormat(), [_VO_ROW]).get("/api/samples/1").json()["fix"]
+    assert fix == {"latitude": 51.25, "readings": None}
+
+
+def test_null_members_omit_drops_a_null_member_but_not_a_null_field() -> None:
+    body = _row_client(WireFormat(null_members="omit"), [_VO_ROW]).get("/api/samples/1").json()
+    assert body["fix"] == {"latitude": 51.25}
+    assert body["tiers"] is None and "tiers" in body  # a top-level field is untouched
+
+
+def test_null_members_emit_writes_every_declared_member() -> None:
+    body = _row_client(WireFormat(null_members="emit"), [_VO_ROW]).get("/api/samples/1").json()
+    assert body["fix"] == {"latitude": 51.25, "readings": None, "amount": None}
+
+
+def test_null_members_reach_arrays_maps_and_nested_value_objects() -> None:
+    row = {
+        **_DECIMAL_ROW,
+        "series": None,
+        "fixes": [{"latitude": 1.0}, {"latitude": 2.0, "amount": None}],
+        "tiers": {"gold": {"amount": None}},
+        "pricing": {"tiers": {"silver": {}}},
+    }
+    emit = _row_client(WireFormat(null_members="emit"), [row]).get("/api/samples/1").json()
+    assert emit["fixes"] == [
+        {"latitude": 1.0, "readings": None, "amount": None},
+        {"latitude": 2.0, "readings": None, "amount": None},
+    ]
+    assert emit["tiers"] == {"gold": {"amount": None}}
+    assert emit["pricing"] == {"tiers": {"silver": {"amount": None}}}
+    omit = _row_client(WireFormat(null_members="omit"), [row]).get("/api/samples/1").json()
+    assert omit["fixes"] == [{"latitude": 1.0}, {"latitude": 2.0}]
+    assert omit["tiers"] == {"gold": {}}
+    assert omit["pricing"] == {"tiers": {"silver": {}}}
+
+
+def test_a_generated_router_carries_the_setting_only_as_data() -> None:
+    root = load_string(json.dumps(_FLOAT_META)).root
+    sample = next(c for c in root.children() if c.name.endswith("Sample"))
+    assert '_WIRE = WireOutput(decimals="native", null_members="native")' in (render_router(sample) or "")
+    root.wire = _PORTABLE  # type: ignore[attr-defined]
+    src = render_router(sample) or ""
+    assert '_WIRE = WireOutput(decimals="string", null_members="omit", shapes=' in src
+
+
+# --- an M:N traversal writes the TARGET's rows, so the TARGET's value objects are shaped ----
+
+#: Post and Tag both declare a value object named `meta`, with different members; only Tag has `info`.
+_M2M_META = {
+    "metadata.root": {
+        "package": "acme::blog",
+        "children": [
+            {"object.value": {"name": "PostMeta", "children": [
+                {"field.string": {"name": "headline"}},
+            ]}},
+            {"object.value": {"name": "TagMeta", "children": [
+                {"field.string": {"name": "label"}},
+                {"field.string": {"name": "note"}},
+            ]}},
+            {"object.entity": {"name": "Post", "children": [
+                {"source.rdb": {"@table": "posts"}},
+                {"field.long": {"name": "id"}},
+                {"field.object": {"name": "meta", "@objectRef": "PostMeta", "@storage": "jsonb"}},
+                {"relationship.association": {"name": "tags", "@cardinality": "many", "@objectRef": "Tag", "@through": "PostTag"}},
+                {"identity.primary": {"name": "pk", "@fields": ["id"], "@generation": "increment"}},
+            ]}},
+            {"object.entity": {"name": "Tag", "children": [
+                {"source.rdb": {"@table": "tags"}},
+                {"field.long": {"name": "id"}},
+                {"field.object": {"name": "meta", "@objectRef": "TagMeta", "@storage": "jsonb"}},
+                {"field.object": {"name": "info", "@objectRef": "TagMeta", "@storage": "jsonb"}},
+                {"identity.primary": {"name": "pk", "@fields": ["id"], "@generation": "increment"}},
+            ]}},
+            {"object.entity": {"name": "PostTag", "children": [
+                {"source.rdb": {"@table": "post_tags"}},
+                {"field.long": {"name": "postId", "@required": True}},
+                {"field.long": {"name": "tagId", "@required": True}},
+                {"identity.primary": {"name": "pk", "@fields": ["postId", "tagId"]}},
+                {"identity.reference": {"name": "fkPost", "@fields": "postId", "@references": "Post"}},
+                {"identity.reference": {"name": "fkTag", "@fields": "tagId", "@references": "Tag"}},
+            ]}},
+        ],
+    }
+}
+
+
+def _m2m_client(wire: WireFormat, tags: list[dict[str, Any]]) -> TestClient:
+    root = load_string(json.dumps(_M2M_META)).root
+    root.wire = wire  # type: ignore[attr-defined]
+    objs = {c.name.split("::")[-1]: c for c in root.children()}
+    index = build_object_index(list(objs.values()))
+    pkg = f"genm2m_{uuid.uuid4().hex[:8]}"
+    tmp = Path(tempfile.mkdtemp(prefix="genm2m-"))
+    pkg_dir = tmp / pkg
+    pkg_dir.mkdir()
+    (pkg_dir / "__init__.py").write_text("")
+    for name in ("PostMeta", "TagMeta", "Tag", "Post"):
+        (pkg_dir / f"{name}.py").write_text(render_entity_model(objs[name], index))
+    post = objs["Post"]
+    (pkg_dir / "post_filter_allowlist.py").write_text(render_filter_allowlist(post) or "")
+    (pkg_dir / "post_router.py").write_text(render_router(post, index) or "")
+    sys.path.insert(0, str(tmp))
+    try:
+        mod = importlib.import_module(f"{pkg}.post_router")
+    finally:
+        sys.path.remove(str(tmp))
+
+    class Repo:
+        def find_related_tags(self, id: int) -> list[Any]:
+            return tags
+
+    app = FastAPI()
+    app.include_router(mod.router)
+    app.dependency_overrides[mod.get_repository] = lambda: Repo()
+    return TestClient(app)
+
+
+_TAG_ROW = {"id": 7, "meta": {"label": "x", "note": None}, "info": {"label": "y", "note": None}}
+
+
+def test_an_m2m_traversal_omits_a_null_member_of_the_targets_value_object() -> None:
+    body = _m2m_client(WireFormat(null_members="omit"), [_TAG_ROW]).get("/api/posts/1/tags").json()
+    assert body == [{"id": 7, "meta": {"label": "x"}, "info": {"label": "y"}}]
+
+
+def test_an_m2m_traversal_emits_the_targets_members_not_the_sources() -> None:
+    row = {"id": 7, "meta": {"label": "x"}, "info": {"note": "n"}}
+    body = _m2m_client(WireFormat(null_members="emit"), [row]).get("/api/posts/1/tags").json()
+    assert body == [{"id": 7, "meta": {"label": "x", "note": None}, "info": {"label": None, "note": "n"}}]

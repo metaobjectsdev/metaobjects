@@ -40,6 +40,7 @@ exact config, generator names and commands for this project; read it. The other 
 | `references/choosing-layers.md` | the generated API does not fit, you need joined or derived data, or you are adopting onto existing code |
 | `references/template-or-code.md` | choosing between a code generator and a Mustache template |
 | `references/physical-names.md` | before you write a table, column or index name as a string |
+| `references/wire-format.md` | a generated API's JSON for decimals or null value-object members is not what a client expects, or you are about to edit a JSON converter or annotation |
 | `references/dependencies-and-shared-models.md` | the project consumes or publishes metadata across projects |
 | `references/typescript-document-store.md` | a TypeScript project on MongoDB, or any store MetaObjects does not manage, wanting a tested repository generator |
 | `references/typescript-mysql.md` | a TypeScript project on a MySQL database |
@@ -60,8 +61,11 @@ in order and every change that needs action.
   args are removed.
 - Documentation is a generator in the project's list, and the docs commands are removed. C#
   and Python also need a generator list (`dotnet meta init`; `metaobjects.config.yaml`).
-- A `field.decimal` crosses the API as one canonical string, and a fractional validator `@min`
-  or `@max` is refused (write an integer bound).
+- Upgrade to 1.1.2 or later. With no `wire` setting, each port writes its language's standard
+  JSON (C#, Java and Kotlin keep their 1.0.x decimals and null members). A project whose clients
+  expect 1.1.0's canonical decimal strings declares `"wire": { "decimals": "string",
+  "nullMembers": "omit" }`; see `references/wire-format.md`. A fractional validator `@min` or
+  `@max` is refused (write an integer bound).
 - **Resync the generators you own.** An ejected copy keeps the logic it was copied with, and a
   plain `gen` does not refresh it. `meta eject --list` (TypeScript; `metaobjects gen --list` in Python, which has no
   `eject --list`; `dotnet meta gen --list`; `mvn metaobjects:eject -Dlist=true` in Java and Kotlin)
@@ -388,6 +392,15 @@ names artifact (`<Entity>.names.ts`, `<Entity>Names.java`, …) — **but only w
 `names` generator**, since no port generates it by default. Reference its constants from raw SQL,
 migration scripts and external mappings; prefer the ORM's typed column handle where one exists.
 Details: `references/physical-names.md`.
+
+## The JSON your API writes is a project setting
+
+Each port writes what its language's standard serializer writes: a C# decimal is a JSON
+number, a Python one `str(Decimal)`. Identical output across ports is opt-in, through `wire` in
+`.metaobjects/config.json` (`"decimals": "string"`, `"nullMembers": "omit"` or `"emit"`). Never
+change one port to match another or to match a conformance corpus, and never hand-edit a
+generated converter or annotation: change the setting and regenerate. Input rules hold in every
+mode. Details and the per-port table: `references/wire-format.md`.
 
 ## Dialects
 

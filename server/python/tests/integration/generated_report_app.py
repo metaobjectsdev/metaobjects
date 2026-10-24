@@ -39,6 +39,7 @@ from typing import Any
 from fastapi import FastAPI
 
 from metaobjects import MetaDataLoader
+from .corpus_config import attach_corpus_wire
 from metaobjects.codegen.config import GenConfig
 from metaobjects.codegen.generator_registry import GeneratorBuildContext, list_generators
 from metaobjects.codegen.runner import run_gen
@@ -72,6 +73,7 @@ def _load_root(meta_json: Path):
     tmp = Path(tempfile.mkdtemp(prefix="apic-report-meta-"))
     shutil.copy(meta_json, tmp / "meta.json")
     result = MetaDataLoader.from_directory(str(tmp))
+    attach_corpus_wire(result.root, meta_json)
     if result.errors:
         msgs = "; ".join(f"{e.code}: {e.message}" for e in result.errors)
         raise RuntimeError(f"report meta.json failed to load: {msgs}")

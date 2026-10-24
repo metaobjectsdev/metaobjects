@@ -687,6 +687,10 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
         // ADR-0058 — the project's physical-naming rules, set on the loaded root so every
         // resolver downstream of this load (codegen, OMDB) reads the one setting.
         loader.getRoot().setPhysicalNaming(resolvePhysicalNaming(srcDir));
+        // ADR-0019 Amendment 2 — the wire setting, from the same file, read by the generators.
+        loader.getRoot().setWireFormat(resolveProjectConfig(srcDir)
+                .map(com.metaobjects.config.NeutralConfig::getWireFormat)
+                .orElse(com.metaobjects.config.WireFormat.DEFAULT));
 
         getLog().info("MetaData Mojo > Create Loader: " + loader.toString());
 
@@ -912,17 +916,27 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
      * when no such ancestor exists, the module basedir's config (or the default).
      */
     protected com.metaobjects.database.PhysicalNaming resolvePhysicalNaming(File srcDir) {
+        return resolveProjectConfig(srcDir)
+                .map(com.metaobjects.config.NeutralConfig::getPhysicalNaming)
+                .orElse(com.metaobjects.database.PhysicalNaming.DEFAULT);
+    }
+
+    /**
+     * The {@code .metaobjects/config.json} of the project that holds this goal's metadata, found
+     * as {@link #resolvePhysicalNaming(File)} describes; empty when there is none.
+     */
+    protected java.util.Optional<com.metaobjects.config.NeutralConfig> resolveProjectConfig(File srcDir) {
         Path basedir = getProjectBaseDir().toPath();
         Path location = srcDir != null ? srcDir.toPath() : localSourceLocation(basedir);
         if (location != null) {
             for (Path dir = location.toAbsolutePath().normalize(); dir != null; dir = dir.getParent()) {
                 java.util.Optional<com.metaobjects.config.NeutralConfig> cfg =
                         com.metaobjects.config.NeutralConfig.read(dir);
-                if (cfg.isPresent()) return cfg.get().getPhysicalNaming();
+                if (cfg.isPresent()) return cfg;
                 if (Files.exists(dir.resolve(".git"))) break;
             }
         }
-        return com.metaobjects.config.SourceResolver.resolvePhysicalNaming(basedir);
+        return com.metaobjects.config.NeutralConfig.read(basedir.toAbsolutePath().normalize());
     }
 
     /** The first {@code <sources>} entry that is an existing local path, as a directory; else null. */

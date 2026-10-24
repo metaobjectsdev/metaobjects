@@ -204,6 +204,26 @@ public class MetaRoot extends MetaData implements com.metaobjects.database.Physi
     }
 
     /**
+     * ADR-0019 Amendment 2 — the project's wire-format setting ({@code wire} in
+     * {@code .metaobjects/config.json}), set by the same project-aware load that sets the
+     * physical-naming rules and read by codegen through
+     * {@link com.metaobjects.config.WireFormat#of(MetaData)}. A tree loaded with no project keeps
+     * the {@code native} default.
+     */
+    private transient com.metaobjects.config.WireFormat wireFormat =
+        com.metaobjects.config.WireFormat.DEFAULT;
+
+    /** The project's wire-format setting for this tree. Never {@code null}. */
+    public com.metaobjects.config.WireFormat getWireFormat() {
+        return wireFormat;
+    }
+
+    /** Sets the project's wire-format setting on this root ({@code null} restores the default). */
+    public void setWireFormat(com.metaobjects.config.WireFormat wireFormat) {
+        this.wireFormat = (wireFormat != null) ? wireFormat : com.metaobjects.config.WireFormat.DEFAULT;
+    }
+
+    /**
      * Returns all {@code object} children of this root node.
      *
      * @return list of MetaObject children; empty list if none
