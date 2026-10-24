@@ -6,24 +6,40 @@ Postgres + Npgsql.
 
 ## Install
 
-Published to [NuGet](https://www.nuget.org/packages/MetaObjects) at `1.0.13` — four
-packages, version-locked to the C# port version:
+Published to [NuGet](https://www.nuget.org/packages/MetaObjects) at `1.1.0` — four
+packages, version-locked to the C# port version: `MetaObjects` (loader), `MetaObjects.Codegen`,
+`MetaObjects.Render` and the `MetaObjects.Cli` tool.
 
-```xml
-<!-- YourApp.csproj -->
-<ItemGroup>
-  <PackageReference Include="MetaObjects"          Version="1.0.13" />
-  <PackageReference Include="MetaObjects.Codegen"  Version="1.0.13" />
-  <PackageReference Include="MetaObjects.Render"   Version="1.0.13" />
-</ItemGroup>
-```
-
-Install the CLI as a .NET tool:
+Install the CLI as a .NET tool, then scaffold the generator list:
 
 ```bash
 dotnet tool install --global MetaObjects.Cli
 dotnet meta          # bare invocation prints the usage banner
-dotnet meta init     # writes codegen/Generators.cs (the generator list), Program.cs, Codegen.csproj
+dotnet meta init     # writes codegen/Generators.cs (the generator list), codegen/Program.cs, codegen/Codegen.csproj
+```
+
+Your app is a separate project beside `codegen/`. `dotnet meta init` runs from the root of your
+repository, and the app's `.csproj` at that root must not compile `codegen/`, which has its own
+`Main` (without the `Compile Remove` the build fails with CS0579 and CS8802). This sample uses
+SQLite so it runs with nothing else installed; the same generated code runs on Postgres (see
+[Use](#use)):
+
+```xml
+<!-- App.csproj -->
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="MetaObjects.Codegen" Version="1.1.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="8.0.11" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Remove="codegen/**" />
+  </ItemGroup>
+</Project>
 ```
 
 The C# CLI is invoked as `dotnet meta` (command `dotnet-meta`), or run directly
@@ -33,10 +49,9 @@ canonical Node `meta` CLI, which owns schema + TS codegen (ADR-0015).
 
 ## Configure
 
-Drop metadata under `metadata/`:
+Drop metadata under `metaobjects/`, for example `metaobjects/meta.blog.json`:
 
-```jsonc
-// metadata/meta.blog.json
+```json
 { "metadata.root": {
     "package": "acme::blog",
     "children": [
@@ -45,8 +60,9 @@ Drop metadata under `metadata/`:
         "children": [
           { "source.rdb": { "@table": "authors" } },
           { "field.long":   { "name": "id" } },
-          { "field.string": { "name": "name", "@required": true, "@maxLength": 200 } },
+          { "field.string": { "name": "name", "@required": true, "@maxLength": 200, "@filterable": true } },
           { "field.string": { "name": "bio", "@maxLength": 2000 } },
+          { "field.enum":   { "name": "role", "@values": ["writer", "editor"], "@required": true, "@filterable": true } },
           { "identity.primary": { "@fields": "id", "@generation": "increment" } }
         ]
       }}
@@ -68,7 +84,7 @@ var registry = Provider.ComposeRegistry(new IMetaDataTypeProvider[] {
     yourProvider,            // adds your custom subtype/attrs
 });
 
-var loader = MetaDataLoader.FromDirectory("./metadata", registry);
+var loader = MetaDataLoader.FromDirectory("./metaobjects", registry);
 ```
 
 The provider object has the same four-member contract (`Id`, `Dependencies`,
@@ -111,13 +127,24 @@ using MetaObjects.Codegen;
 return CodegenCli.Run(args, Generators.All);
 ```
 
+Replace the empty list `dotnet meta init` wrote with the one above before the first `gen`: with
+an empty list `gen` writes nothing, and `--out` is required.
+
 ```bash
 # Run the list: EF Core entities + AppDbContext + CRUD minimal-API routes
-dotnet meta gen ./metadata --out ./Generated --namespace Acme.Blog
+dotnet meta gen ./metaobjects --out ./Generated --namespace Acme.Blog
 
-# Drift-check templates against payloads (FR-004)
-dotnet meta verify ./metadata --templates ./prompts
+# The drift gate: regenerate into a temp tree and fail (exit 1, naming the files) if the
+# committed ./Generated differs. Run it in CI; the namespace is inferred from ./Generated.
+dotnet meta verify ./metaobjects --codegen --out ./Generated
 ```
+
+`verify --codegen` is the gate for generated code. `dotnet meta verify ./metaobjects
+--templates ./prompts` is a different gate, for prompt templates against their payloads
+(FR-004): it says nothing about generated code, and it fails with exit 2 when the directory it
+is given does not exist. A bare `dotnet meta verify ./metaobjects` runs that templates gate
+against `prompts/` when it exists, else `templates/`, and fails the same way when neither
+exists; pass both subverbs to run both.
 
 `dotnet meta gen --list` is the catalog, and it shows what each generator requires. `routes`
 requires `entity`, `db-context` and `filter-allowlist`, because the handlers it emits
@@ -308,18 +335,37 @@ regenerate. See the "Column naming" section of
 
 ```csharp
 // Program.cs
+using System.Text.Json.Serialization;
 using Acme.Blog;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
-builder.Services.AddDbContext<AppDbContext>(opts =>
-    opts.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+builder.Services.AddDbContext<AppDbContext>(opts => opts.UseSqlite("Data Source=blog.db"));
+// Enum fields (role) travel as their symbols ("writer"), not integers: the routes return the
+// entity and the host owns serialization, so without this POST {"role":"writer"} is a 400.
+builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 
 var app = builder.Build();
+using (var scope = app.Services.CreateScope())
+    scope.ServiceProvider.GetRequiredService<AppDbContext>().Database.EnsureCreated();  // the sample creates its own table
 
-app.MapAuthorRoutes();   // generated — GET/POST/PUT/DELETE on /api/authors
+app.MapAuthorRoutes();   // generated — GET/POST/PATCH/PUT/DELETE on /api/authors
 app.Run();
 ```
+
+```bash
+dotnet run --urls http://127.0.0.1:5077
+curl -X POST -H 'content-type: application/json' -d '{"name":"Ada","role":"writer"}' http://127.0.0.1:5077/api/authors   # 201
+curl -g 'http://127.0.0.1:5077/api/authors?filter[role][eq]=writer'                                                      # 200, the row
+```
+
+A filter works on a field marked `@filterable` (`name` and `role` above); any other field answers
+400 `invalid_filter_field`.
+
+**Postgres.** Swap `UseSqlite(...)` for `UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection"))`
+and add `Npgsql.EntityFrameworkCore.PostgreSQL` instead of the SQLite package. `EnsureCreated`
+is for samples; on Postgres create the tables with the Node CLI's migrations
+(`meta migrate`, ADR-0015) — the C# port has no migrate surface.
 
 EF Core does the rest — the generated entities and `AppDbContext` are plain EF Core with
 no MetaObjects types in them. Note the one exception: generated **routes** emit
@@ -343,10 +389,10 @@ or per-file `DIFFERS`, `verify --codegen` does not treat it as drift, and
 has the diff recipe for pulling an upstream fix into it.
 
 **Consumer dependencies.** The generated `AppDbContext` and the `Program.cs`
-wiring above use EF Core (`AddDbContext`, `DbContext`, `UseNpgsql`), which
-MetaObjects does not pull in for you — add the two EF Core NuGet packages to
-the consuming app: `Microsoft.EntityFrameworkCore` and
-`Npgsql.EntityFrameworkCore.PostgreSQL`.
+wiring above use EF Core (`AddDbContext`, `DbContext`, `UseSqlite`), which
+MetaObjects does not pull in for you — add the EF Core provider package for your
+database to the consuming app (`Microsoft.EntityFrameworkCore.Sqlite` above,
+`Npgsql.EntityFrameworkCore.PostgreSQL` for Postgres).
 
 ```csharp
 // Optional handwritten service over the generated DbContext
@@ -465,14 +511,14 @@ contract: `dotnet meta eject requirement-tests` copies it to
 are core and are not ejectable.
 
 ```bash
-# The gate: runs beside whichever drift gate verify was given
-dotnet meta verify ./metadata --templates ./prompts
-dotnet meta verify ./metadata --templates ./prompts --require-implementers
+# The gate: runs on every verify, beside whichever drift gate it was given
+dotnet meta verify ./metaobjects --codegen --out ./Generated
+dotnet meta verify ./metaobjects --codegen --out ./Generated --require-implementers
 
 # The tests: the same run as everything else codegen/Generators.cs declares. The entry's
 # OutDir puts them in the test project, which references xunit; the app's --out does not.
-dotnet meta gen ./metadata --out ./Generated
-dotnet meta verify ./metadata --codegen --out ./Generated
+dotnet meta gen ./metaobjects --out ./Generated
+dotnet meta verify ./metaobjects --codegen --out ./Generated
 ```
 
 Give the entry an `OutDir` in `codegen/Generators.cs` (below): the tests need xunit, which

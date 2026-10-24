@@ -318,4 +318,39 @@ public class MetaDataVerifyMojoManifestTest {
 
         verify.execute();
     }
+
+    /**
+     * A generate configuration that sits inside an {@code <execution>} is invisible to a bare
+     * {@code mvn metaobjects:generate} (it fails with "No <loader> element was defined"), so the
+     * stale message names the execution; with the configuration at plugin level the bare goal
+     * is the command that works.
+     */
+    @Test
+    public void staleMessage_namesTheGenerateCommandThatWorksForTheModule() throws Exception {
+        Path basedir = tempFolder.getRoot().toPath();
+        String outDir = tempFolder.newFolder("generated-sources").getAbsolutePath();
+        GeneratorParam dto = gen(DtoGenerator.class, outDir, "Dto.java");
+        MavenProject inExecution = module(basedir, dto);
+        generateIn(inExecution, dto);
+        Files.writeString(Path.of(outDir, "Dto.java"), MARKER_BODY + "// drift\n");
+
+        assertTrue(staleMessage(inExecution, dto).contains("run `mvn metaobjects:generate@codegen` and commit"));
+
+        Plugin atPluginLevel = inExecution.getModel().getBuild().getPlugins().get(0);
+        atPluginLevel.setConfiguration(configuration(dto));
+        assertTrue(staleMessage(inExecution, dto).contains("run `mvn metaobjects:generate` and commit"));
+    }
+
+    private String staleMessage(MavenProject module, GeneratorParam dto) throws Exception {
+        MetaDataVerifyMojo verify = new MetaDataVerifyMojo();
+        verify.project = module;
+        verify.setLoader(testLoader());
+        verify.setGenerators(List.of(dto));
+        try {
+            verify.execute();
+        } catch (MojoFailureException e) {
+            return e.getMessage();
+        }
+        throw new AssertionError("expected MojoFailureException");
+    }
 }

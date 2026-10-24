@@ -72,4 +72,52 @@ public sealed class CliSurfaceTests : IDisposable
         Assert.Equal(2, exit);
         Assert.Contains("--out needs a value", stderr);
     }
+
+    private string WriteBlogModel()
+    {
+        var model = Path.Combine(_tmp, "metaobjects");
+        Directory.CreateDirectory(model);
+        File.WriteAllText(Path.Combine(model, "meta.blog.json"),
+            """{ "metadata.root": { "package": "acme::blog", "children": [ { "object.entity": { "name": "Author", "children": [ { "field.long": { "name": "id" } } ] } } ] } }""");
+        return model;
+    }
+
+    [Fact]
+    public void Verify_templates_naming_a_missing_directory_fails_instead_of_passing()
+    {
+        var model = WriteBlogModel();
+        var (exit, stdout, stderr) = CliProcess.Run(_tmp, "verify", model, "--templates", Path.Combine(_tmp, "no-such-prompts"));
+        Assert.Equal(2, exit);
+        Assert.Contains("templates directory not found", stderr);
+        Assert.DoesNotContain("OK", stdout);
+    }
+
+    [Fact]
+    public void Verify_prompts_naming_a_missing_directory_fails_too()
+    {
+        var model = WriteBlogModel();
+        var (exit, _, stderr) = CliProcess.Run(_tmp, "verify", model, "--templates", "--prompts", Path.Combine(_tmp, "no-such-prompts"));
+        Assert.Equal(2, exit);
+        Assert.Contains("templates directory not found", stderr);
+    }
+
+    [Fact]
+    public void A_bare_verify_with_neither_prompts_nor_templates_fails()
+    {
+        var model = WriteBlogModel();
+        var (exit, stdout, stderr) = CliProcess.Run(_tmp, "verify", model);
+        Assert.Equal(2, exit);
+        Assert.Contains("templates directory not found", stderr);
+        Assert.DoesNotContain("OK", stdout);
+    }
+
+    [Fact]
+    public void A_bare_verify_runs_the_templates_default_its_help_describes()
+    {
+        var model = WriteBlogModel();
+        Directory.CreateDirectory(Path.Combine(_tmp, "prompts"));
+        var (exit, stdout, stderr) = CliProcess.Run(_tmp, "verify", model);
+        Assert.True(exit == 0, $"exit={exit}\nstderr={stderr}");
+        Assert.Contains("running --templates (default)", stdout);
+    }
 }

@@ -10,6 +10,41 @@ here.**
 
 ## [Unreleased]
 
+### Fixed
+
+- **A fresh `npm i @metaobjectsdev/cli` no longer reports high-severity advisories.**
+  `@metaobjectsdev/sdk` declared `zod` `^3.23.0`, which resolves to a release the zod advisory
+  GHSA-mrhx-c7xc-m3w5 covers (fixed in 4.6.6), and npm installed it beside the `zod` 4 the CLI
+  already used. The sdk now declares `^4.6.6` and reads its config with the zod 4 API; the
+  config it accepts is unchanged, and a rejected config still names each offending path, with
+  the reason now in zod 4's wording.
+- **C#: `dotnet meta verify --templates <dir>` fails when `<dir>` does not exist.** It exited 0
+  with "OK", since nothing in an empty root can drift. It now exits 2 and names the directory.
+  A bare `dotnet meta verify <metadataDir>` runs the templates gate its help describes, reading
+  `prompts/` when that directory exists and `templates/` otherwise, where it used to exit 2 asking
+  for a root. The generated-code gate is `verify --codegen --out <dir>`, as before.
+- **C#: the generated create route no longer warns CS8600.** `Author input;` is now `Author? input;`.
+  The next regeneration changes that one line in every `*Routes.g.cs`.
+- **C#: the drift message says `gen` needs `--out`.** "Run 'dotnet meta gen'" on its own exits 2.
+- **Java and Kotlin: the stale-code message names a command that runs.** When the generate
+  configuration sits inside an `<execution>`, `mvn metaobjects:verify` now suggests
+  `mvn metaobjects:generate@<id>`; a bare `mvn metaobjects:generate` fails there with "No
+  <loader> element was defined".
+
+### Documentation
+
+- The Java, Kotlin and C# quickstarts in `docs/ports/` work as written on a clean machine against
+  the published packages: the Java and Kotlin poms carry a Java level, the dependencies the
+  generated code compiles against and a plugin-level `<configuration>` (Kotlin also its
+  `<executions>` and `kotlin-maven-plugin`), and the C# page fills the generator list before the
+  first `gen`, gives the app project, serializes enums as strings, marks fields `@filterable` and
+  ends in the real drift gate.
+- The README opens with a copy-paste quick start, and its Languages table, the port pages and the
+  Python floor name 1.1.0 / 8.1.0.
+- `CONTRIBUTING.md` says one thing about CI: GitHub Actions runs `scripts/ci-local.sh` — the
+  leak scan on every pull request, the conformance and integration lanes on `main`, nightly
+  and on release tags.
+
 ### Changed
 
 - **Python: `metaobjects gen` and `verify --codegen` run ruff as its own binary.** Every emitted

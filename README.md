@@ -30,6 +30,19 @@ at something real, not that the something is correct.
 > **Scope.** It protects what the model declares; your hand-written logic is still
 > yours.
 
+## Quick start
+
+```bash
+npm i @metaobjectsdev/cli && npx meta init           # scaffold metaobjects/, the config and agent skills
+# declare an entity in metaobjects/ (a 10-line model: metaobjects.dev/getting-started)
+npx meta gen --list --probe --format text            # what your model can generate
+npx meta eject entity queries names barrel           # copy them in; add the lines it prints to metaobjects.config.ts
+npx meta gen && npx meta verify --codegen            # generate, then fail if generated code has drifted
+```
+
+Java, Kotlin, C# and Python start the same way from their own package: see
+[`docs/ports/`](docs/ports/).
+
 The metamodel is the **durable spine**; generated code is the **disposable
 artifact**. Substrate is local-first: typed metadata lives in your repo as YAML or
 JSON you own. The entity/model tier of the output is dependency-free, and the optional
@@ -133,11 +146,11 @@ first-week wedge plan — and `meta init` picks up from there.
 
 | Language | Status | Quickstart | Source |
 |---|---|---|---|
-| TypeScript | **npm `1.0.13`** — the `@metaobjectsdev/*` packages | [`docs/ports/typescript.md`](docs/ports/typescript.md) | [`server/typescript/`](server/typescript/) · [`client/web/`](client/web/) |
-| Java | **Maven Central `8.0.13`** (`com.metaobjects:*` — the JVM major is npm major + 7) — loader + OMDB + render + Maven plugin all shipped; full conformance green | [`docs/ports/java.md`](docs/ports/java.md) | [`server/java/`](server/java/) |
-| Kotlin | **Maven Central `8.0.13`** — codegen tier on top of Java: 16 generators (entity, Exposed table, names, relations, repository, output-parser, output-prompt, render-helper, extractor, filter-allowlist, validator, Spring config, storedProc, Spring controller, requirement-tests, api-docs); 24 / 24 persistence-conformance | [`docs/ports/kotlin.md`](docs/ports/kotlin.md) | [`server/java/codegen-kotlin/`](server/java/codegen-kotlin/) · [`server/java/metadata-ktx/`](server/java/metadata-ktx/) |
-| C# | **NuGet `1.0.13`** — loader + conformance + EF Core codegen + render engine + `dotnet meta` CLI all shipped | [`docs/ports/csharp.md`](docs/ports/csharp.md) | [`server/csharp/`](server/csharp/) |
-| Python | **PyPI `1.0.13`** — loader + conformance + render + entity-model codegen + ObjectManager runtime shipped; schema migrations are TS-owned (ADR-0015) | [`docs/ports/python.md`](docs/ports/python.md) | [`server/python/`](server/python/) |
+| TypeScript | **npm `1.1.0`** — the `@metaobjectsdev/*` packages | [`docs/ports/typescript.md`](docs/ports/typescript.md) | [`server/typescript/`](server/typescript/) · [`client/web/`](client/web/) |
+| Java | **Maven Central `8.1.0`** (`com.metaobjects:*` — the JVM major is npm major + 7) — loader + OMDB + render + Maven plugin all shipped; full conformance green | [`docs/ports/java.md`](docs/ports/java.md) | [`server/java/`](server/java/) |
+| Kotlin | **Maven Central `8.1.0`** — codegen tier on top of Java: 16 generators (entity, Exposed table, names, relations, repository, output-parser, output-prompt, render-helper, extractor, filter-allowlist, validator, Spring config, storedProc, Spring controller, requirement-tests, api-docs); 24 / 24 persistence-conformance | [`docs/ports/kotlin.md`](docs/ports/kotlin.md) | [`server/java/codegen-kotlin/`](server/java/codegen-kotlin/) · [`server/java/metadata-ktx/`](server/java/metadata-ktx/) |
+| C# | **NuGet `1.1.0`** — loader + conformance + EF Core codegen + render engine + `dotnet meta` CLI all shipped | [`docs/ports/csharp.md`](docs/ports/csharp.md) | [`server/csharp/`](server/csharp/) |
+| Python | **PyPI `1.1.0`** — loader + conformance + render + entity-model codegen + ObjectManager runtime shipped; schema migrations are TS-owned (ADR-0015) | [`docs/ports/python.md`](docs/ports/python.md) | [`server/python/`](server/python/) |
 
 ## Capability matrix
 
@@ -308,7 +321,7 @@ metaobjects/
 |---|---|
 | TypeScript | `npm i @metaobjectsdev/cli && npx meta init` → [`docs/ports/typescript.md`](docs/ports/typescript.md) |
 | Java | Add `metaobjects-maven-plugin` to your `pom.xml` → [`docs/ports/java.md`](docs/ports/java.md) |
-| Kotlin | Add `metaobjects-codegen-kotlin` + `metaobjects-metadata-ktx` → [`docs/ports/kotlin.md`](docs/ports/kotlin.md) |
+| Kotlin | Add `metaobjects-metadata-ktx` and the Maven plugin (it bundles the Kotlin generators) → [`docs/ports/kotlin.md`](docs/ports/kotlin.md) |
 | C# | `dotnet tool install --global MetaObjects.Cli` → [`docs/ports/csharp.md`](docs/ports/csharp.md) |
 | Python | `pip install metaobjects` → [`docs/ports/python.md`](docs/ports/python.md) |
 

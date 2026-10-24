@@ -7,6 +7,8 @@ import com.metaobjects.generator.util.OrphanSweep;
 import com.metaobjects.generator.verify.TemplateVerify;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.requirement.RequirementCheck;
+import org.apache.maven.model.Plugin;
+import org.apache.maven.model.PluginExecution;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugins.annotations.LifecyclePhase;
@@ -82,8 +84,25 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
     /** What every line of this goal's requirement report starts with, as the field lint's does. */
     private static final String PREFIX = "metaobjects:verify \u2014 ";
 
-    /** The gen goal to suggest in the failure message ({@code groupId:artifactId:goal}). */
+    /** The gen goal to suggest in the failure message. */
     private static final String GEN_GOAL = "metaobjects:generate";
+
+    /**
+     * The generate invocation to suggest in a failure message. A generate configuration that
+     * lives inside an {@code <execution>} is not seen by a bare {@code mvn metaobjects:generate}
+     * (it fails with "No <loader> element was defined"), so name the execution that holds it.
+     * With the configuration at plugin level, or when the module is not known, the bare goal works.
+     */
+    private String genGoal() {
+        Plugin plugin = project != null ? project.getPlugin(PLUGIN_KEY) : null;
+        if (plugin == null || plugin.getConfiguration() != null) return GEN_GOAL;
+        for (PluginExecution e : plugin.getExecutions()) {
+            if (e.getGoals().contains("generate") && !"none".equals(e.getPhase())) {
+                return GEN_GOAL + "@" + e.getId();
+            }
+        }
+        return GEN_GOAL;
+    }
 
     /** Verify mode: {@code codegen} (default), {@code templates}. */
     static final String MODE_CODEGEN = "codegen";
@@ -412,7 +431,7 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
             if (!drift.isEmpty()) {
                 StringBuilder sb = new StringBuilder();
                 if (drift.size() > editedOrphans.size()) {
-                    sb.append("generated code is stale — run `mvn ").append(GEN_GOAL)
+                    sb.append("generated code is stale — run `mvn ").append(genGoal())
                             .append("` and commit. Drifted files:");
                 } else {
                     // Every drifted file is an orphan that was edited by hand and that
@@ -426,7 +445,7 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
                 }
                 if (!editedOrphans.isEmpty()) {
                     sb.append("\n\nFor the file(s) above that no generator emits any more and that were "
-                            + "edited by hand, `mvn ").append(GEN_GOAL)
+                            + "edited by hand, `mvn ").append(genGoal())
                             .append("` will NOT delete them. Delete each one, or move your edits into a "
                                     + "file of your own first.");
                 }
@@ -490,7 +509,7 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
             switch (OrphanSweep.classify(ownHashes, root, file)) {
                 case PRISTINE:
                     drift.add("[stale-in-repo] " + file + " (committed; no configured generator produces it; "
-                            + "'mvn " + GEN_GOAL + "' deletes it)");
+                            + "'mvn " + genGoal() + "' deletes it)");
                     break;
                 case EDITED:
                     drift.add("[stale-in-repo] " + file + " (no configured generator emits it any more, and "
@@ -556,12 +575,12 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
                         break;
                     case PRISTINE:
                         drift.add("[stale-in-repo] " + committedFile + " (committed; generator no longer "
-                                + "produces it; 'mvn " + GEN_GOAL + "' deletes it)");
+                                + "produces it; 'mvn " + genGoal() + "' deletes it)");
                         break;
                     case EDITED:
                         if (t.allOverwrite) {
                             drift.add("[stale-in-repo] " + committedFile + " (no generator emits it any "
-                                    + "more, and it was edited by hand: 'mvn " + GEN_GOAL
+                                    + "more, and it was edited by hand: 'mvn " + genGoal()
                                     + "' will overwrite and delete it, handEdits: overwrite)");
                         } else {
                             drift.add("[stale-in-repo] " + committedFile + " (no generator emits it any "

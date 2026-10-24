@@ -36,7 +36,10 @@ if (args.Length == 0 || helpRequested)
         "    gen --list                                       list available generators (stable names) and exit\n" +
         "    verify <metadataDir> [--templates [--prompts <dir>]] [--codegen --out <dir> [--namespace <ns>]] [--db] [--lax]\n" +
         "                                                     drift gates (ADR-0021 D2 subverbs):\n" +
-        "                                                       --templates  template/prompt drift (default)\n" +
+        "                                                       --templates  template/prompt drift (default); the\n" +
+        "                                                                    directory is --prompts <dir> or the inline\n" +
+        "                                                                    root and must exist; with none it reads\n" +
+        "                                                                    prompts/ if present, else templates/\n" +
         "                                                       --codegen    regen-to-temp vs committed --out\n" +
         "                                                       --namespace  codegen regen namespace; inferred\n" +
         "                                                                    from the committed --out when omitted\n" +
@@ -422,15 +425,21 @@ static int RunVerify(string[] rest)
     // falls back to the port-neutral .metaobjects/config.json ladder.
     var resolvedMeta = ResolveMetadataDirOrExit(metadataDir);
 
-    // The templates gate needs a root. Bare verify (defaults to templates) and an
-    // explicit --templates both require it; surface a clear usage error if absent.
+    // The templates gate needs a root, and it must exist: a typo'd or absent directory used
+    // to verify clean, because nothing in an empty root can drift. With none named (bare
+    // verify, or a bare --templates) it reads the same default `gen` does: prompts/ when that
+    // directory exists, else templates/ — and neither existing fails the same way.
     var wantsTemplates = templates || (!codegen && !db);
-    if (wantsTemplates && templatesRoot is null)
+    if (wantsTemplates)
     {
-        Console.Error.WriteLine("usage: dotnet meta verify <metadataDir> --templates <templatesRoot>");
-        Console.Error.WriteLine("  (the templates gate is the default; pass --codegen --out <dir> for codegen drift —");
-        Console.Error.WriteLine("   --namespace is inferred from the committed output when omitted)");
-        return 2;
+        templatesRoot ??= GenCommand.DefaultTemplateRoot();
+        if (!Directory.Exists(templatesRoot))
+        {
+            Console.Error.WriteLine($"dotnet meta verify --templates: templates directory not found: {templatesRoot}");
+            Console.Error.WriteLine("  (name the directory that holds your prompt bodies, e.g. --templates ./prompts;");
+            Console.Error.WriteLine("   with none named it reads prompts/ when that exists, else templates/)");
+            return 2;
+        }
     }
 
     // Advisory: nudge a re-scaffold if the copied-in agent context predates this build.

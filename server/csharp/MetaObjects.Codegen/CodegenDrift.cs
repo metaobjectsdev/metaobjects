@@ -81,7 +81,7 @@ public static class CodegenDrift
     {
         var lines = new List<string>();
         if (result.DriftedFiles.Count > result.EditedOrphans.Count)
-            lines.Add("Run 'dotnet meta gen' to regenerate, then commit the result.");
+            lines.Add("Run 'dotnet meta gen' to regenerate (it needs --out, the same directory you gave this command), then commit the result.");
         if (result.EditedOrphans.Count > 0)
             lines.Add("For the file(s) above that no generator emits any more and that were edited by hand, " +
                 "'dotnet meta gen' will NOT delete them. Delete each one, or move your edits into a file of your own first.");

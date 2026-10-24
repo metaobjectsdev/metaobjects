@@ -146,7 +146,7 @@ export const ConfigSchema = z.object({
       pending_promote: z.number().min(0).max(1).default(0.8),
       drift_warn: z.number().min(0).max(1).default(0.7),
     })
-    .default({}),
+    .prefault({}),
   sources: z.array(SourceSpecSchema).default([]),
   /** Declared metadata dependencies (FR-023) — read from this file at every
    *  rung of the source ladder, by every port, not just TypeScript (DESIGN
@@ -281,20 +281,23 @@ export function splitUnknownTopLevelKeys(doc: unknown): { known: unknown; unknow
  */
 export function describeConfigError(path: string, error: z.ZodError): string {
   const lines = new Set<string>();
-  const visit = (issues: readonly z.ZodIssue[]): void => {
+  // zod 4 reports a union arm's issue paths relative to the union, so carry the prefix down.
+  const visit = (issues: readonly z.core.$ZodIssue[], prefix: readonly PropertyKey[]): void => {
     for (const issue of issues) {
+      const full = [...prefix, ...issue.path];
       if (issue.code === "invalid_union") {
-        visit(issue.unionErrors.flatMap((e) => e.issues));
+        for (const arm of issue.errors) visit(arm, full);
         continue;
       }
-      const at = issue.path.reduce<string>(
-        (acc, seg) => (typeof seg === "number" ? `${acc}[${seg}]` : acc === "" ? seg : `${acc}.${seg}`),
+      const at = full.reduce<string>(
+        (acc, seg) =>
+          typeof seg === "number" ? `${acc}[${seg}]` : acc === "" ? String(seg) : `${acc}.${String(seg)}`,
         "",
       );
       lines.add(`  ${at === "" ? "(top level)" : at}: ${issue.message}`);
     }
   };
-  visit(error.issues);
+  visit(error.issues, []);
   const touchesSources = error.issues.some((i) => i.path[0] === "sources");
   return [
     `${path} is not a valid MetaObjects config:`,

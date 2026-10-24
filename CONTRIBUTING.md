@@ -25,10 +25,12 @@ conformance corpora. This guide covers how to propose changes.
 1. **Fork** the repo and create a branch from `main`.
 2. Make your change following the discipline below — **tests first (TDD)**.
 3. Run the gates locally with **`scripts/ci-local.sh --quick`** and make sure it's
-   green. **This matters:** nothing in `.github/workflows/` runs any more — see the
+   green. **This matters:** on a pull request GitHub Actions runs only the leak scan
+   (`hygiene.yml`); the conformance and integration lanes run on `main`, nightly and on
+   release tags, so your local run is the only check of the rest before merge — see the
    *Local CI* section below.
 4. Open a **pull request** against `main` and fill out the PR template.
-5. A maintainer runs the full gates locally and approves before merge.
+5. A maintainer reviews the change and the checks on the pull request before merge.
 
 ## The cardinal rule: the metamodel is the spine
 
@@ -71,14 +73,15 @@ cd server/python     && pytest            # Python (in its .venv)
 Cross-language persistence / api-contract corpora (Docker + Testcontainers) run via
 `scripts/integration-test.sh`.
 
-### Local CI (this IS the CI — run it before opening/merging a PR)
+### Local CI (the checks GitHub runs — run it before opening a PR)
 
-GitHub Actions is enabled on this repository. The three check workflows in
-`.github/workflows/` run on GitHub as thin wrappers over `scripts/ci-local.sh`,
-the single definition of the checks: each wrapper checks out, installs the
-toolchains its lane needs, and calls the script, so a local run is the same
-check a workflow run would be. Run the script locally before opening or merging
-a PR, so nothing red leaves your machine:
+GitHub Actions is enabled on this repository. The check workflows in
+`.github/workflows/` are thin wrappers over `scripts/ci-local.sh`, the single
+definition of the checks: each wrapper checks out, installs the toolchains its
+lane needs, and calls the script, so a local run is the same check a workflow
+run would be. A pull request runs only the leak scan; the other lanes run on
+`main`, nightly and on release tags. Run the script locally before opening or
+merging a PR, so nothing red reaches `main`:
 
 ```bash
 scripts/ci-local.sh            # full parity: hygiene.yml's leak-scan, all-port

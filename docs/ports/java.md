@@ -12,13 +12,18 @@ Prompt / template drift is still checked via the `metaobjects-render` `Verify` A
 
 ## Install
 
-Set `${metaobjects.version}` to the current Maven Central release (`8.0.13`) — both
-the dependency and plugin blocks below resolve it from one `<properties>` entry:
+Set `${metaobjects.version}` to the current Maven Central release (`8.1.0`) — both
+the dependency and plugin blocks below resolve it from one `<properties>` entry. The
+generated records need Java 17 or newer, so set the compiler level here too (Maven
+defaults to Java 8, where `mvn compile` fails with "records are not supported in -source 8"):
 
 ```xml
 <!-- pom.xml -->
 <properties>
-  <metaobjects.version>8.0.13</metaobjects.version>
+  <metaobjects.version>8.1.0</metaobjects.version>
+  <spring-boot.version>3.3.5</spring-boot.version>
+  <maven.compiler.release>21</maven.compiler.release>
+  <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 </properties>
 
 <dependencies>
@@ -37,12 +42,38 @@ the dependency and plugin blocks below resolve it from one `<properties>` entry:
     <artifactId>metaobjects-render</artifactId>
     <version>${metaobjects.version}</version>
   </dependency>
+  <!-- what the generated Spring code compiles against: the controller's
+       com.metaobjects.generator.spring.runtime helpers, and Spring itself -->
+  <dependency>
+    <groupId>com.metaobjects</groupId>
+    <artifactId>metaobjects-codegen-spring</artifactId>
+    <version>${metaobjects.version}</version>
+  </dependency>
+  <dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-web</artifactId>
+    <version>${spring-boot.version}</version>
+  </dependency>
+  <dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-validation</artifactId>
+    <version>${spring-boot.version}</version>
+  </dependency>
 </dependencies>
 ```
 
 For Spring integration: add `metaobjects-core-spring`.
 
 ## Configure
+
+Keep the `<configuration>` at plugin level, as below, not inside the `<execution>`: the
+execution binds the goal to `generate-sources`, and the plugin-level configuration is what a
+bare `mvn metaobjects:generate` or `mvn metaobjects:verify` from the command line reads.
+Inside the execution those fail with "No <loader> element was defined", and only
+`mvn metaobjects:verify@generate` works.
+
+These two blocks go in your `pom.xml` beside your own `<groupId>`, `<artifactId>` and
+`<version>`.
 
 ```xml
 <build>
@@ -51,48 +82,48 @@ For Spring integration: add `metaobjects-core-spring`.
       <groupId>com.metaobjects</groupId>
       <artifactId>metaobjects-maven-plugin</artifactId>
       <version>${metaobjects.version}</version>
+      <configuration>
+        <loader>
+          <sourceDir>src/main/metaobjects</sourceDir>
+        </loader>
+        <generators>
+          <generator>
+            <classname>com.metaobjects.generator.spring.SpringDtoGenerator</classname>
+            <args>
+              <outputDir>${project.build.directory}/generated-sources/java</outputDir>
+            </args>
+          </generator>
+          <generator>
+            <classname>com.metaobjects.generator.spring.SpringControllerGenerator</classname>
+            <args>
+              <outputDir>${project.build.directory}/generated-sources/java</outputDir>
+            </args>
+          </generator>
+          <generator>
+            <classname>com.metaobjects.generator.spring.SpringRepositoryGenerator</classname>
+            <args>
+              <outputDir>${project.build.directory}/generated-sources/java</outputDir>
+            </args>
+          </generator>
+          <generator>
+            <classname>com.metaobjects.generator.spring.SpringValueObjectGenerator</classname>
+            <args>
+              <outputDir>${project.build.directory}/generated-sources/java</outputDir>
+            </args>
+          </generator>
+          <generator>
+            <classname>com.metaobjects.generator.spring.SpringFilterAllowlistGenerator</classname>
+            <args>
+              <outputDir>${project.build.directory}/generated-sources/java</outputDir>
+            </args>
+          </generator>
+        </generators>
+      </configuration>
       <executions>
         <execution>
           <id>generate</id>
           <phase>generate-sources</phase>
           <goals><goal>generate</goal></goals>
-          <configuration>
-            <loader>
-              <sourceDir>src/main/metaobjects</sourceDir>
-            </loader>
-            <generators>
-              <generator>
-                <classname>com.metaobjects.generator.spring.SpringDtoGenerator</classname>
-                <args>
-                  <outputDir>${project.build.directory}/generated-sources/java</outputDir>
-                </args>
-              </generator>
-              <generator>
-                <classname>com.metaobjects.generator.spring.SpringControllerGenerator</classname>
-                <args>
-                  <outputDir>${project.build.directory}/generated-sources/java</outputDir>
-                </args>
-              </generator>
-              <generator>
-                <classname>com.metaobjects.generator.spring.SpringRepositoryGenerator</classname>
-                <args>
-                  <outputDir>${project.build.directory}/generated-sources/java</outputDir>
-                </args>
-              </generator>
-              <generator>
-                <classname>com.metaobjects.generator.spring.SpringValueObjectGenerator</classname>
-                <args>
-                  <outputDir>${project.build.directory}/generated-sources/java</outputDir>
-                </args>
-              </generator>
-              <generator>
-                <classname>com.metaobjects.generator.spring.SpringFilterAllowlistGenerator</classname>
-                <args>
-                  <outputDir>${project.build.directory}/generated-sources/java</outputDir>
-                </args>
-              </generator>
-            </generators>
-          </configuration>
         </execution>
       </executions>
     </plugin>
@@ -100,10 +131,9 @@ For Spring integration: add `metaobjects-core-spring`.
 </build>
 ```
 
-Drop metadata under `src/main/metaobjects/`:
+Drop metadata under `src/main/metaobjects/`, for example `src/main/metaobjects/meta.blog.json`:
 
-```jsonc
-// src/main/metaobjects/meta.blog.json
+```json
 { "metadata.root": {
     "package": "acme::blog",
     "children": [
@@ -172,7 +202,22 @@ internal/test partial sets. The cross-port contract lives in
 
 ```bash
 mvn compile                  # runs the generate goal (bound to generate-sources)
+mvn metaobjects:generate     # or run it alone
 ```
+
+The generators write the DTO records, the Spring controller, the repository and the filter
+allowlist under `target/generated-sources/java`, which Maven compiles with your code.
+
+## Verify
+
+```bash
+mvn metaobjects:verify       # fails with the stale files named when the model moved and nobody regenerated
+```
+
+It regenerates into a temporary directory and compares: change `src/main/metaobjects/` without
+regenerating and the build exits 1 with `generated code is stale` and a `[content-differs]` line
+per file; `mvn metaobjects:generate` (or `mvn compile`) and it is green again. The same goal also
+runs the requirement gate. Add it to your CI after `mvn compile`.
 
 Schema migrations are not a Java-port concern — author them with the TypeScript
 toolchain (`@metaobjectsdev/cli migrate`), then apply the resulting DDL to the

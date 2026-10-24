@@ -793,7 +793,7 @@ public class RoutesGenerator : PerEntityGenerator
         // throws JsonException — return the cross-port 400 {error:"validation"} rather than an
         // unhandled 500 (matches the no-required-keys path's automatic model-binding 400, and
         // every other port). Program D — the VO columns make wrong-shaped bodies reachable.
-        sb.AppendLine($"            {cls} input;");
+        sb.AppendLine($"            {cls}? input;");
         sb.AppendLine("            try { input = System.Text.Json.JsonSerializer.Deserialize<" + cls + ">(__body.RootElement.GetRawText(), jsonOpts); }");
         sb.AppendLine("            catch (System.Text.Json.JsonException) { return Results.BadRequest(new { error = \"validation\" }); }");
         sb.AppendLine("            if (input is null) return Results.BadRequest(new { error = \"validation\" });");
