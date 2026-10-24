@@ -252,8 +252,8 @@ VOs) has to say which objects this generator is for. In order of preference:
    `Filter(MetaObject)` is the per-entity generators' own applicability method, which stays
    the subclass seam). `null`, the default, accepts every object.
    ```csharp
-   new MetaObjects.Codegen.Generators.EntityGenerator { Include = o => o.Package == "acme::orders" },
-   new MetaObjects.Codegen.Generators.DbContextGenerator { Include = o => o.Package == "acme::orders" },
+   new MetaObjects.Codegen.Generators.EntityGenerator { Include = o => NamingRefs.EffectivePackageOf(o) == "acme::orders" },
+   new MetaObjects.Codegen.Generators.DbContextGenerator { Include = o => NamingRefs.EffectivePackageOf(o) == "acme::orders" },
    ```
    Give the same predicate to every entry that should agree: an `Include` on `entity` alone
    leaves `db-context` mapping classes that were never emitted.
