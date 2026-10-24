@@ -16,7 +16,8 @@ here.**
   `@metaobjectsdev/sdk` declared `zod` `^3.23.0`, which resolves to a release the zod advisory
   GHSA-mrhx-c7xc-m3w5 covers (fixed in 4.6.6), and npm installed it beside the `zod` 4 the CLI
   already used. The sdk now declares `^4.6.6` and reads its config with the zod 4 API; the
-  config it accepts and the messages it prints are unchanged.
+  config it accepts is unchanged, and a rejected config still names each offending path, with
+  the reason now in zod 4's wording.
 - **C#: `dotnet meta verify --templates <dir>` fails when `<dir>` does not exist.** It exited 0
   with "OK", since nothing in an empty root can drift. It now exits 2 and names the directory.
   A bare `dotnet meta verify <metadataDir>` runs the templates gate its help describes, reading
@@ -40,8 +41,9 @@ here.**
   ends in the real drift gate.
 - The README opens with a copy-paste quick start, and its Languages table, the port pages and the
   Python floor name 1.1.0 / 8.1.0.
-- `CONTRIBUTING.md` says one thing about CI: GitHub Actions runs on pull requests, the same
-  checks as `scripts/ci-local.sh`.
+- `CONTRIBUTING.md` says one thing about CI: GitHub Actions runs `scripts/ci-local.sh` — the
+  leak scan on every pull request, the conformance and integration lanes on `main`, nightly
+  and on release tags.
 
 ### Changed
 

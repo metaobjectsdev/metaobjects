@@ -25,8 +25,10 @@ conformance corpora. This guide covers how to propose changes.
 1. **Fork** the repo and create a branch from `main`.
 2. Make your change following the discipline below — **tests first (TDD)**.
 3. Run the gates locally with **`scripts/ci-local.sh --quick`** and make sure it's
-   green. **This matters:** GitHub Actions runs the same checks on your pull request,
-   so a red local run is a red PR — see the *Local CI* section below.
+   green. **This matters:** on a pull request GitHub Actions runs only the leak scan
+   (`hygiene.yml`); the conformance and integration lanes run on `main`, nightly and on
+   release tags, so your local run is the only check of the rest before merge — see the
+   *Local CI* section below.
 4. Open a **pull request** against `main` and fill out the PR template.
 5. A maintainer reviews the change and the checks on the pull request before merge.
 
@@ -71,7 +73,7 @@ cd server/python     && pytest            # Python (in its .venv)
 Cross-language persistence / api-contract corpora (Docker + Testcontainers) run via
 `scripts/integration-test.sh`.
 
-### Local CI (the same checks the pull request runs — run it first)
+### Local CI (the same checks GitHub runs — run it before opening a PR)
 
 GitHub Actions is enabled on this repository. The three check workflows in
 `.github/workflows/` run on GitHub as thin wrappers over `scripts/ci-local.sh`,

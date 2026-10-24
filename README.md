@@ -36,8 +36,8 @@ at something real, not that the something is correct.
 npm i @metaobjectsdev/cli && npx meta init           # scaffold metaobjects/, the config and agent skills
 # declare an entity in metaobjects/ (a 10-line model: metaobjects.dev/getting-started)
 npx meta gen --list --probe --format text            # what your model can generate
-npx meta eject entity queries routes names barrel    # copy the generators you chose into your repo
-npx meta gen && npx meta verify                      # generate, then fail if anything has drifted
+npx meta eject entity queries routes names barrel    # copy them in; add the lines it prints to metaobjects.config.ts
+npx meta gen && npx meta verify --codegen            # generate, then fail if generated code has drifted
 ```
 
 Java, Kotlin, C# and Python start the same way from their own package: see
