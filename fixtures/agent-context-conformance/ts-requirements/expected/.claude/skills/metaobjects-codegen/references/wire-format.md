@@ -77,11 +77,12 @@ The generated input converters stay in every mode.
 ## Upgrading, and drift
 
 - From 1.0.x, upgrade to 1.1.2 or later. With no setting, C#, Java and Kotlin keep their 1.0.x
-  output. In Python and TypeScript, a decimal keeps its scale (`"12.50"`).
-- In Python this is a change: a 1.0.x router wrote a decimal as a JSON number, a float that can
-  lose digits (`12.5`). It now writes a string, Pydantic's `str(Decimal)`, which is the
-  Python-normal form. There is no float option, by decision. Update a client that read the
-  number to read the string (`"decimals": "string"` gives the canonical `"12.5"`).
+  output. In TypeScript, a decimal keeps its scale (`"12.50"`). Python changed; see the next bullet.
+- In Python this is a change, not a no-op. A 1.0.x router wrote a decimal as a JSON number, a float
+  that can lose digits (`12.5`). The 1.1.2 default writes a string, Pydantic's `str(Decimal)`, which
+  is the Python-normal form (`"12.50"` for a decimal stored at scale 2). There is no float option, by
+  decision. Update a Python client that read the number to read the string. `"decimals": "string"`
+  gives the canonical `"12.5"` form that 1.1.0 and 1.1.1 wrote.
 - A project already on 1.1.0 or 1.1.1 whose clients now expect strings and omitted members
   declares `"wire": { "decimals": "string", "nullMembers": "omit" }` before it moves to 1.1.2.
 - Every port's codegen drift gate (`meta verify --codegen`, `dotnet meta verify --codegen`,
