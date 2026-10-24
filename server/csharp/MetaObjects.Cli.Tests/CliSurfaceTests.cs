@@ -102,9 +102,20 @@ public sealed class CliSurfaceTests : IDisposable
     }
 
     [Fact]
+    public void A_bare_verify_with_neither_prompts_nor_templates_fails()
+    {
+        var model = WriteBlogModel();
+        var (exit, stdout, stderr) = CliProcess.Run(_tmp, "verify", model);
+        Assert.Equal(2, exit);
+        Assert.Contains("templates directory not found", stderr);
+        Assert.DoesNotContain("OK", stdout);
+    }
+
+    [Fact]
     public void A_bare_verify_runs_the_templates_default_its_help_describes()
     {
         var model = WriteBlogModel();
+        Directory.CreateDirectory(Path.Combine(_tmp, "prompts"));
         var (exit, stdout, stderr) = CliProcess.Run(_tmp, "verify", model);
         Assert.True(exit == 0, $"exit={exit}\nstderr={stderr}");
         Assert.Contains("running --templates (default)", stdout);

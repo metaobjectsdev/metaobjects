@@ -425,15 +425,15 @@ static int RunVerify(string[] rest)
     // falls back to the port-neutral .metaobjects/config.json ladder.
     var resolvedMeta = ResolveMetadataDirOrExit(metadataDir);
 
-    // The templates gate needs a root. One named on the command line must exist: a typo'd
-    // directory used to verify clean, because nothing in an empty root can drift. With none
-    // named (bare verify, or a bare --templates) it reads the same default `gen` does:
-    // prompts/ when that directory exists, else templates/.
+    // The templates gate needs a root, and it must exist: a typo'd or absent directory used
+    // to verify clean, because nothing in an empty root can drift. With none named (bare
+    // verify, or a bare --templates) it reads the same default `gen` does: prompts/ when that
+    // directory exists, else templates/ — and neither existing fails the same way.
     var wantsTemplates = templates || (!codegen && !db);
     if (wantsTemplates)
     {
-        if (templatesRoot is null) templatesRoot = GenCommand.DefaultTemplateRoot();
-        else if (!Directory.Exists(templatesRoot))
+        templatesRoot ??= GenCommand.DefaultTemplateRoot();
+        if (!Directory.Exists(templatesRoot))
         {
             Console.Error.WriteLine($"dotnet meta verify --templates: templates directory not found: {templatesRoot}");
             Console.Error.WriteLine("  (name the directory that holds your prompt bodies, e.g. --templates ./prompts;");
