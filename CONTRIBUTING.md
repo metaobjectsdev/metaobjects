@@ -73,14 +73,15 @@ cd server/python     && pytest            # Python (in its .venv)
 Cross-language persistence / api-contract corpora (Docker + Testcontainers) run via
 `scripts/integration-test.sh`.
 
-### Local CI (the same checks GitHub runs — run it before opening a PR)
+### Local CI (the checks GitHub runs — run it before opening a PR)
 
-GitHub Actions is enabled on this repository. The three check workflows in
-`.github/workflows/` run on GitHub as thin wrappers over `scripts/ci-local.sh`,
-the single definition of the checks: each wrapper checks out, installs the
-toolchains its lane needs, and calls the script, so a local run is the same
-check a workflow run would be. Run the script locally before opening or merging
-a PR, so nothing red leaves your machine:
+GitHub Actions is enabled on this repository. The check workflows in
+`.github/workflows/` are thin wrappers over `scripts/ci-local.sh`, the single
+definition of the checks: each wrapper checks out, installs the toolchains its
+lane needs, and calls the script, so a local run is the same check a workflow
+run would be. A pull request runs only the leak scan; the other lanes run on
+`main`, nightly and on release tags. Run the script locally before opening or
+merging a PR, so nothing red reaches `main`:
 
 ```bash
 scripts/ci-local.sh            # full parity: hygiene.yml's leak-scan, all-port
