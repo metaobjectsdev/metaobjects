@@ -126,7 +126,7 @@ public class EntityGeneratorTests
         Assert.Contains("app.MapPost(prefix + \"/subscribers\", async (HttpContext http, AppDbContext db) =>", src);
         Assert.Contains("foreach (var __req in new[] { \"email\" })", src);
         Assert.Contains("if (!__present.Contains(__req)) return Results.BadRequest(new { error = \"validation\" });", src);
-        Assert.Contains("Subscriber input;", src);
+        Assert.Contains("Subscriber? input;", src);
         Assert.Contains("try { input = System.Text.Json.JsonSerializer.Deserialize<Subscriber>(__body.RootElement.GetRawText(), jsonOpts); }", src);
         Assert.Contains("catch (System.Text.Json.JsonException) { return Results.BadRequest(new { error = \"validation\" }); }", src);
         // PATCH + PUT share the same update handler (matches TS reference). It takes the raw

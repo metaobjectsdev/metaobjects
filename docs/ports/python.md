@@ -26,7 +26,7 @@ pip install metaobjects        # or: uv add metaobjects
 [project]
 requires-python = ">=3.11"
 dependencies = [
-    "metaobjects>=0.19",
+    "metaobjects>=1.1",
 ]
 ```
 

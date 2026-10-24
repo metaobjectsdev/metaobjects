@@ -15,9 +15,42 @@ Two modules:
 
 ## Install
 
+Every version below comes from one `<properties>` entry. Set the Java level (Maven defaults to
+Java 8, which the generated code does not target) and give the Kotlin compiler a `kotlin-stdlib`. The generated code also
+imports Spring (`@Configuration`, `ApplicationReadyEvent`) and Jakarta Validation
+(`@NotNull`, `@Size`), so `spring-boot-starter` and `spring-boot-starter-validation` are
+dependencies of the generated code, not just of your app. Put these in your `pom.xml` beside
+your own `<groupId>`, `<artifactId>` and `<version>`:
+
 ```xml
 <!-- pom.xml -->
+<properties>
+  <metaobjects.version>8.1.0</metaobjects.version>
+  <kotlin.version>2.0.21</kotlin.version>
+  <spring-boot.version>3.3.5</spring-boot.version>
+  <exposed.version>0.55.0</exposed.version>
+  <jackson.version>2.17.2</jackson.version>
+  <kotlinx-serialization.version>1.7.3</kotlinx-serialization.version>
+  <maven.compiler.release>21</maven.compiler.release>
+  <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+</properties>
+
 <dependencies>
+  <dependency>
+    <groupId>org.jetbrains.kotlin</groupId>
+    <artifactId>kotlin-stdlib</artifactId>
+    <version>${kotlin.version}</version>
+  </dependency>
+  <dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter</artifactId>
+    <version>${spring-boot.version}</version>
+  </dependency>
+  <dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-validation</artifactId>
+    <version>${spring-boot.version}</version>
+  </dependency>
   <dependency>
     <groupId>com.metaobjects</groupId>
     <artifactId>metaobjects-metadata</artifactId>
@@ -109,9 +142,16 @@ The 16 generators registered in `codegen-kotlin` (`GeneratorRegistry.kt`):
 | `KotlinRequirementTestsGenerator` | Per metamodel package that holds a tested requirement, two files in `testPackage`: `Requirements_<pkgKey>_Witnesses.kt` (an interface whose default members fail with `unimplemented requirement: ...`) and `Requirements_<pkgKey>_Test.kt` (one JUnit Jupiter `@Test` per requirement, calling a project-owned witness). See "Requirement tests" below | every tested `requirement.*` (functional, level 4 or above by default) |
 | `KotlinApiDocsGenerator` | The Kotlin SDK api reference, under `<outputDir>/<apiSubDir>`: `<Unit>.md` per entity, value object, projection, served report and template, a `README.md` index and `AGENT-API.md`. A `<generator>` entry like any other, run by `metaobjects:generate` and checked by `metaobjects:verify`. Args: `outputDir` (required, generated files only), `apiSubDir` (default `api/kotlin`), `layout` (`flat` or `package`), `projectName` and `modelBaseUrl`, as for the Java `api-docs`. The `metaobjects:docs` goal was removed in 8.1.0 ([migration](../features/migrations/docs-are-generators.md#java-and-kotlin)). Ejectable, with the page model, builder, renderer and path math | the whole model, once |
 
-Maven wiring:
+Maven wiring. The plugin bundles `metaobjects-codegen-kotlin`, so it is not a dependency of your
+project. Keep `<configuration>` at plugin level and bind the goal in `<executions>`: without the
+`<executions>` block `mvn compile` generates nothing and still exits 0, and with the configuration
+inside the execution a bare `mvn metaobjects:generate` or `mvn metaobjects:verify` fails with
+"No <loader> element was defined". The `kotlin-maven-plugin` that follows compiles what the first
+plugin generated; it has to be told about `generated-sources/kotlin` and your own `src/main/kotlin`.
 
 ```xml
+<build>
+  <plugins>
 <plugin>
   <groupId>com.metaobjects</groupId>
   <artifactId>metaobjects-maven-plugin</artifactId>
@@ -150,8 +190,38 @@ Maven wiring:
       </generator>
     </generators>
   </configuration>
+  <executions>
+    <execution>
+      <id>generate</id>
+      <phase>generate-sources</phase>
+      <goals><goal>generate</goal></goals>
+    </execution>
+  </executions>
 </plugin>
+<plugin>
+  <groupId>org.jetbrains.kotlin</groupId>
+  <artifactId>kotlin-maven-plugin</artifactId>
+  <version>${kotlin.version}</version>
+  <executions>
+    <execution>
+      <id>compile</id>
+      <phase>compile</phase>
+      <goals><goal>compile</goal></goals>
+      <configuration>
+        <sourceDirs>
+          <sourceDir>${project.basedir}/src/main/kotlin</sourceDir>
+          <sourceDir>${project.build.directory}/generated-sources/kotlin</sourceDir>
+        </sourceDirs>
+      </configuration>
+    </execution>
+  </executions>
+</plugin>
+  </plugins>
+</build>
 ```
+
+The `KotlinSpringConfigGenerator` reads its model from the classpath (`<metadataResource>`), so the
+same file goes under `src/main/resources/` as well as `src/main/metaobjects/`.
 
 **Requirement tests.** `mvn metaobjects:verify` checks the model's `requirement.*` nodes on every run (the Java goal; Kotlin has no CLI of its own), and `-Dmeta.verify.requireImplementers=true` or `META_REQUIRE_IMPLEMENTERS=1` also fails the build on a live functional requirement that nothing implements. Those checks are core and are not ejectable. `KotlinRequirementTestsGenerator` is the other half: a reference helper and a recommended approach, not a contract. It is the Kotlin sibling of the Java `JUnitRequirementTestsGenerator` (the same args, the same test identities, one conformance corpus for both). It writes one JUnit Jupiter test per tested requirement; the test calls a **witness**, a function you write, and a live requirement with no witness fails. A JUnit 4 project replaces the text through the `renderer` arg, or ejects the generator.
 
@@ -352,7 +422,9 @@ reactor's 2.0.21; its round-trip test additionally needs docker. Run via
 ## Generate
 
 ```bash
-mvn compile                            # runs the codegen as part of generate-sources
+mvn compile                            # runs the codegen as part of generate-sources, then compiles it
+mvn metaobjects:generate               # or run the codegen alone
+mvn metaobjects:verify                 # fails, naming the files, when generated code is stale against the model
 ```
 
 Schema migrations are owned by the TypeScript toolchain — see the

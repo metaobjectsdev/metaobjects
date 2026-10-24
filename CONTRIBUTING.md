@@ -25,10 +25,10 @@ conformance corpora. This guide covers how to propose changes.
 1. **Fork** the repo and create a branch from `main`.
 2. Make your change following the discipline below — **tests first (TDD)**.
 3. Run the gates locally with **`scripts/ci-local.sh --quick`** and make sure it's
-   green. **This matters:** nothing in `.github/workflows/` runs any more — see the
-   *Local CI* section below.
+   green. **This matters:** GitHub Actions runs the same checks on your pull request,
+   so a red local run is a red PR — see the *Local CI* section below.
 4. Open a **pull request** against `main` and fill out the PR template.
-5. A maintainer runs the full gates locally and approves before merge.
+5. A maintainer reviews the change and the checks on the pull request before merge.
 
 ## The cardinal rule: the metamodel is the spine
 
@@ -71,7 +71,7 @@ cd server/python     && pytest            # Python (in its .venv)
 Cross-language persistence / api-contract corpora (Docker + Testcontainers) run via
 `scripts/integration-test.sh`.
 
-### Local CI (this IS the CI — run it before opening/merging a PR)
+### Local CI (the same checks the pull request runs — run it first)
 
 GitHub Actions is enabled on this repository. The three check workflows in
 `.github/workflows/` run on GitHub as thin wrappers over `scripts/ci-local.sh`,

@@ -96,7 +96,7 @@ public static class SubscriberRoutes
                 if (__p.Value.ValueKind != System.Text.Json.JsonValueKind.Null) __present.Add(__p.Name);
             foreach (var __req in new[] { "email", "status" })
                 if (!__present.Contains(__req)) return Results.BadRequest(new { error = "validation" });
-            Subscriber input;
+            Subscriber? input;
             try { input = System.Text.Json.JsonSerializer.Deserialize<Subscriber>(__body.RootElement.GetRawText(), jsonOpts); }
             catch (System.Text.Json.JsonException) { return Results.BadRequest(new { error = "validation" }); }
             if (input is null) return Results.BadRequest(new { error = "validation" });
