@@ -10,6 +10,21 @@ here.**
 
 ## [Unreleased]
 
+### Changed
+
+- **Requirements guidance: a feature commit updates its requirement.** The agent context
+  (the authoring and verify skills and the always-on file `meta init` writes) now tells an
+  agent that a commit adding, changing or removing behaviour updates the ledger in the same
+  commit, or says why not. `verify` checks that the ledger's links resolve, not that it is
+  current, so nothing else enforces it.
+- **The adoption docs recommend the strict requirements check** (`--require-implementers`, or
+  its per-port form) in the project's verify script or pre-push hook once the ledger is clean.
+
+### Fixed
+
+- The 1.1.0 entry's handler-code figure of 439 lines retired is corrected to about 460, as
+  measured in one adopter's pull request.
+
 ## [1.1.2] — unreleased
 
 _Fixes #454 and #455. A bug-fix release: no vocabulary or `metamodelVersion` change._
@@ -205,7 +220,7 @@ every port's `verify`), the derived-key parity fix across the ports, and the lis
 nested-average fixes found by the first adopter to map real report pages onto the feature.
 
 **How much smaller the code gets.** The size reduction comes in two steps, and each is its own
-number. The first landed on 1.0.x: 439 lines of handler code retired. The second is reporting,
+number. The first landed on 1.0.x: about 460 lines of handler code retired, measured in one adopter's pull request. The second is reporting,
 and it is a SQL reduction only: in an adopter, hand-written SQL went from 75 lines to 15 (-80%).
 Total hand-written lines did not fall, so do not read it as a total line reduction.
 
