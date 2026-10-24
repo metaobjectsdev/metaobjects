@@ -527,6 +527,7 @@ are core and are not ejectable.
 # The gate: runs on every verify, beside whichever drift gate it was given
 dotnet meta verify ./metaobjects --codegen --out ./Generated
 dotnet meta verify ./metaobjects --codegen --out ./Generated --require-implementers
+# Recommended once the ledger is clean: use this form in the project's verify script or pre-push hook
 
 # The tests: the same run as everything else codegen/Generators.cs declares. The entry's
 # OutDir puts them in the test project, which references xunit; the app's --out does not.

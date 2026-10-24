@@ -10,6 +10,7 @@ subverb**: requirements are metadata, so they are checked on *every* `meta verif
 - The status asymmetry — the one that surprises people
 - Exit codes
 - The strict switch — `--require-implementers`
+- Keeping the ledger current
 - The error codes, and the fix for each
 - The authoring lint — a second section, never an error
 - `verify` does not look at your tests
@@ -112,6 +113,17 @@ It raises that one finding to an error and **keeps its code**. Every other warni
 warning. If CI went red on this code, check whether the switch is set before treating it
 as a new defect: the fix is to add the `@implementedBy` link (or drop the entry to
 `planned`), not to unset the switch.
+
+Once the ledger is clean, set the switch where the project already runs `verify`: its verify
+script, CI job or pre-push hook. Until then a stale `live` claim is only a warning that
+nobody reads.
+
+## Keeping the ledger current
+
+`verify` proves the ledger's links resolve, not that the ledger is current. A commit that
+adds, changes or removes behaviour updates the ledger in the same commit: the new or changed
+claim, its `@status` and its `@implementedBy`. If the commit should not touch the ledger, the
+commit message says why.
 
 ## The error codes, and the fix for each
 

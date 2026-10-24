@@ -8,6 +8,7 @@ more than the rest.
 - A requirement is PRESCRIPTIVE — it states what should be true, never what happened
 - Do not delete a retired capability's entry
 - When you add an entity, claim it
+- A feature commit updates the ledger in the same commit
 - Every requirement states its counterexample
 - Four prose slots, and `statement` is the one that means "description"
 - `title` is a LABEL and is chartered here; `summary` is not
@@ -55,6 +56,14 @@ the requirement went stale.
 
 **2. When you add an entity, claim it.** Every `object.entity` should appear in some
 requirement's `implementedBy`, or `verify` says so.
+
+**A commit that adds, changes or removes behaviour updates the ledger in the same commit.**
+`verify` checks that the ledger's links resolve, never that it is current, so nothing fails
+when a feature ships and its requirement does not move. In the same commit, write the new or
+changed claim, set its `@status` (`planned` to `live` when it lands, `retired` when it is
+removed) and keep its `@implementedBy` pointing at the real nodes (a retired entry carries
+none). If the commit should not
+touch the ledger, say why in the commit message.
 
 **Every requirement states its counterexample.** One sentence: what breaking it looks like.
 *"Every entity has a uuid primary key"* is violable — point at one with a composite string

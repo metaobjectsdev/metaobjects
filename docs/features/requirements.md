@@ -430,6 +430,12 @@ more than it links. A project whose ledger has caught up can make it fail the bu
 | Java, Kotlin | `mvn metaobjects:verify -Dmeta.verify.requireImplementers=true` | `META_REQUIRE_IMPLEMENTERS=1` |
 | C# | `dotnet meta verify ./metadata --templates ./prompts --require-implementers` | `META_REQUIRE_IMPLEMENTERS=1` |
 
+**Recommended once the ledger is clean:** set the switch in the project's verify script or
+pre-push hook. Every adopter ledger we measured passed the default gate, because the gate
+checks that links resolve, not that the ledger is current, and as a warning the finding goes
+unread. Pair it with the authoring rule that a commit adding, changing or removing behaviour
+updates its requirement in the same commit.
+
 The switch raises that one finding to an error and keeps its code, so a report or a
 suppression keyed on the code still matches. No other warning changes severity. It is not
 called `--strict`, because `verify` already has `--lax` on a different axis and a `--strict`

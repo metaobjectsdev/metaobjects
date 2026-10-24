@@ -436,7 +436,8 @@ Declare what the software must do as `requirement.*` nodes and `metaobjects veri
 them on every run: it prints the ledger summary, and an error (a dangling reference on a
 live requirement, a link above the floor, a live policy applied to nothing) exits non-zero.
 `--require-implementers` (or `META_REQUIRE_IMPLEMENTERS=1`) also fails the run on a live
-functional requirement that nothing implements. Those checks are core and are not
+functional requirement that nothing implements; once the ledger is clean, put it in the
+project's verify script or pre-push hook. Those checks are core and are not
 ejectable. A model with no requirement sees no change. Metadata that does not load is not
 that: `verify` prints the load errors and exits non-zero, also when no drift gate ran and so
 none loaded it.

@@ -591,7 +591,7 @@ checks them on every run, in either mode: it logs the ledger summary, and an err
 dangling reference on a live requirement, a link above the floor, a live policy applied to
 nothing) fails the build. `-Dmeta.verify.requireImplementers=true` (or
 `META_REQUIRE_IMPLEMENTERS=1`) also fails it on a live functional requirement that nothing
-implements. Those checks are core and are not ejectable.
+implements; once the ledger is clean, set it in the build or pre-push hook that runs the goal. Those checks are core and are not ejectable.
 
 This generator is the other half, and it is a reference helper and a recommended approach,
 not a contract: it writes one JUnit Jupiter test per tested requirement. The test does not

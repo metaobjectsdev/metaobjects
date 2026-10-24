@@ -812,7 +812,8 @@ edit). The other four ports do not merge: their generated tests call a *witness*
 See [Generated requirement tests and witnesses](../features/requirements.md#generated-requirement-tests-and-witnesses).
 
 `meta verify --require-implementers` (or `META_REQUIRE_IMPLEMENTERS=1`) raises
-`WARN_REQUIREMENT_NOTHING_IMPLEMENTS` to an error. See
+`WARN_REQUIREMENT_NOTHING_IMPLEMENTS` to an error; once the ledger is clean, put it in the
+project's verify script or pre-push hook. See
 [Requiring implementers](../features/requirements.md#requiring-implementers).
 
 ## Capability snapshot
