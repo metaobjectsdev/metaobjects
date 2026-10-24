@@ -281,7 +281,7 @@ public class ConfiguredGeneratorsTest {
             fail("expected the removed generator's file to be drift");
         } catch (MojoFailureException e) {
             assertTrue(e.getMessage(), e.getMessage().contains("Client.java")
-                    && e.getMessage().contains("'mvn metaobjects:generate' deletes it"));
+                    && e.getMessage().contains("'mvn metaobjects:generate@codegen' deletes it"));
         }
 
         generate(build(pom), "codegen", NO_PROFILES, gen(DTO, mainDir, "Dto.java"));
