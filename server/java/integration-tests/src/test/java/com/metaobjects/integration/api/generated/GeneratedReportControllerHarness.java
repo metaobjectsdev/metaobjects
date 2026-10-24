@@ -95,6 +95,10 @@ public final class GeneratedReportControllerHarness implements AutoCloseable {
         // the SAME NeutralConfig reader every port uses.
         loader.getRoot().setPhysicalNaming(
                 com.metaobjects.config.SourceResolver.resolvePhysicalNaming(corpusRoot.getParent()));
+        // ADR-0019 Amendment 2 - the corpus's config.json (found by walking up from the corpus dir) pins the wire form (string / omit).
+        loader.getRoot().setWireFormat(
+                com.metaobjects.config.SourceResolver.discoverWireFormat(java.util.List.of((corpusRoot.getParent()).toUri()))
+                        .orElse(com.metaobjects.config.WireFormat.DEFAULT));
 
         runGenerator(new SpringControllerGenerator(), loader, srcDir);
         runGenerator(new SpringDtoGenerator(), loader, srcDir);

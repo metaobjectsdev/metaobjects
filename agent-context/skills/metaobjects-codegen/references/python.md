@@ -14,6 +14,7 @@ through the Node `meta` tool — the Python CLI has **no `migrate` subcommand** 
 - Generators
 - Discriminator inheritance (TPH)
 - No ORM — you own persistence (unlike the C# port)
+- The JSON the routers write
 - Known gaps (current — may require a hand-edit)
 - Re-scaffold this context
 
@@ -241,6 +242,17 @@ persistence layer and no runnable server**. Two things you hand-write:
    app = FastAPI()
    app.include_router(author_router)
    ```
+
+## The JSON the routers write
+
+With no `wire` setting, a generated router writes a decimal as Pydantic writes a `Decimal`,
+`str(value)` (`"12.50"`), and a value object as the runtime holds it. `"wire": { "decimals":
+"string" }` in `.metaobjects/config.json` writes the canonical string (`"12.5"`).
+`"nullMembers": "emit"` writes every declared value-object member, `null` when unset, and
+`"omit"` leaves null members out. The input checks hold in every mode. Set `wire` and regenerate
+rather than editing `render_wire(..., _WIRE)` in a router. `metaobjects verify` names the
+`wire` block that reproduces committed output generated under another setting. See
+`references/wire-format.md`.
 
 ## Known gaps (current — may require a hand-edit)
 

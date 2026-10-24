@@ -19,6 +19,14 @@ public class MetaRoot(TypeId typeId, string name) : MetaData(typeId, name)
     /// </summary>
     public PhysicalNaming PhysicalNaming { get; set; } = PhysicalNaming.Default;
 
+    /// <summary>
+    /// The project's wire-format setting (<c>wire</c> in <c>.metaobjects/config.json</c>,
+    /// ADR-0019 Amendment 2), set by the same project-aware load as <see cref="PhysicalNaming"/>
+    /// and read by codegen through <see cref="MetaObjects.Meta.WireFormat.Of"/>. A tree loaded with
+    /// no project keeps the native default.
+    /// </summary>
+    public WireFormat WireFormat { get; set; } = WireFormat.Default;
+
     /// <summary>Object entities defined at this root level.</summary>
     public IReadOnlyList<MetaObject> Objects()
     {

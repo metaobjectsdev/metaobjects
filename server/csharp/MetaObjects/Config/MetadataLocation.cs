@@ -26,17 +26,24 @@ namespace MetaObjects.Config;
 /// none). <see cref="Load"/> sets it on the loaded root, so every resolver (codegen, the
 /// runtime, verify) agrees with the project's config without being passed a strategy value.
 /// </param>
+/// <param name="Wire">
+/// ADR-0019 Amendment 2 — the project's wire-format setting from the same file (null: the
+/// native default). <see cref="Load"/> sets it on the loaded root for codegen.
+/// </param>
 public sealed record ResolvedMetadata(
-    string Directory, IReadOnlyList<string>? Files, IReadOnlyList<string> Libraries, PhysicalNaming Naming)
+    string Directory, IReadOnlyList<string>? Files, IReadOnlyList<string> Libraries, PhysicalNaming Naming,
+    WireFormat? Wire = null)
 {
     /// <summary>Load this metadata, with the project's <c>libraries</c>, and set the loaded
-    /// root's <see cref="MetaRoot.PhysicalNaming"/> from <see cref="Naming"/> (ADR-0058).</summary>
+    /// root's <see cref="MetaRoot.PhysicalNaming"/> from <see cref="Naming"/> (ADR-0058) and its
+    /// <see cref="MetaRoot.WireFormat"/> from <see cref="Wire"/>.</summary>
     public LoadResult Load(bool strict = false)
     {
         var result = Files is { } files
             ? MetaDataLoader.FromUris(files.Select(f => new Uri(f)).ToList(), Libraries, strict)
             : MetaDataLoader.FromDirectory(Directory, Libraries, strict: strict);
         result.Root.PhysicalNaming = Naming;
+        result.Root.WireFormat = Wire ?? WireFormat.Default;
         return result;
     }
 }
@@ -87,20 +94,21 @@ public static class MetadataLocation
             var explicitCfg = ConfigFor(metadataDir);
             var explicitLibs = explicitCfg?.Libraries ?? Array.Empty<string>();
             var explicitNaming = explicitCfg?.Naming ?? PhysicalNaming.Default;
-            return new ResolvedMetadata(metadataDir, null, explicitLibs, explicitNaming);
+            return new ResolvedMetadata(metadataDir, null, explicitLibs, explicitNaming, explicitCfg?.Wire);
         }
 
         var cfg = NeutralConfig.Read(cwd);
         var specs = cfg?.Sources ?? Array.Empty<IReadOnlyDictionary<string, string>>();
         var libraries = cfg?.Libraries ?? Array.Empty<string>();
         var naming = cfg?.Naming ?? PhysicalNaming.Default;
+        var wire = cfg?.Wire;
 
         if (specs.Count == 0)
         {
             // No declared sources: resolve the DEFAULT directory through the same ladder
             // the shared conformance corpus gates (ERR_COLLECTION_NOT_FOUND when absent).
             var defaultFiles = SourceResolver.ResolveCollection(cwd);
-            return new ResolvedMetadata(Path.Combine(cwd, NeutralConfig.DefaultMetadataDir), defaultFiles, libraries, naming);
+            return new ResolvedMetadata(Path.Combine(cwd, NeutralConfig.DefaultMetadataDir), defaultFiles, libraries, naming, wire);
         }
 
         if (specs.Count > 1)
@@ -130,6 +138,6 @@ public static class MetadataLocation
                 "\"sources\" at the file's containing directory.");
         }
 
-        return new ResolvedMetadata(resolved, files, libraries, naming);
+        return new ResolvedMetadata(resolved, files, libraries, naming, wire);
     }
 }

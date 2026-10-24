@@ -442,21 +442,30 @@ derived field reads a `field.object`. A report with no view source, or an abstra
 generates nothing. The contract is in
 [reporting](../features/reporting.md#how-a-report-is-served).
 
-### Decimals on the wire
+### Decimals and null members on the wire
 
-A `field.decimal` crosses the API as one canonical string (ADR-0019 Amendment 1): `12.50` is
-`"12.5"`, zero is `"0"`, never a JSON number or an exponent. Input may be a string or a number,
-is read exactly, and is `400 validation` when it has more fraction digits than `@scale` or more
-integer digits than `@precision - @scale` (no `@scale` beside `@precision` means 0). A filter
-operand compares exactly; a bad one is `400 invalid_filter_value`. On SQLite a decimal is read at
-15 significant digits. Every port runs the shared vectors in `fixtures/decimal-wire/`.
+What the generated records write is the project setting `wire` in `.metaobjects/config.json`
+([api-contract.md, "The wire setting"](../features/api-contract.md#the-wire-setting)). With no
+setting, the host's Jackson `ObjectMapper` decides: a decimal is a JSON number as Jackson writes
+a `BigDecimal` (`12.50`, and `1E-7` under Spring Boot's defaults), and a value object's null
+member is `null` with its key present. `"wire": { "decimals": "string" }` writes the canonical
+string of ADR-0019 Amendment 1 (`"12.5"`, zero `"0"`), and `"nullMembers": "omit"` leaves a null
+member out. `emit` writes what `native` writes. A top-level null field is always `null`.
 
-The generated DTO, Patch and value-object records write a `BigDecimal` through
-`CanonicalDecimalSerializer` and read it through `CanonicalDecimalDeserializer`, which checks
-the field's `@DeclaredDecimal(precision, scale)`. A filter allowlist lists its decimal fields in
-`DECIMAL_FIELDS`, and `FilterParser.parse(rawQuery, FIELDS, OPS_BY_FIELD, DECIMAL_FIELDS)`
-hands the repository `BigDecimal` operands. These classes live in
-`com.metaobjects.generator.spring.runtime`.
+Input is the same in every mode. It may be a string or a number, is read exactly, and is
+`400 validation` when it has more fraction digits than `@scale` or more integer digits than
+`@precision - @scale` (no `@scale` beside `@precision` means 0). A filter operand compares
+exactly; a bad one is `400 invalid_filter_value`. On SQLite a decimal is read at 15 significant
+digits. Every port runs the shared vectors in `fixtures/decimal-wire/`.
+
+The generated DTO, Patch and value-object records read a `BigDecimal` through
+`CanonicalDecimalDeserializer`, which checks the field's `@DeclaredDecimal(precision, scale)`.
+Under `"decimals": "string"` they also write it through `CanonicalDecimalSerializer`, and under
+`"nullMembers": "omit"` each value-object record carries `@JsonInclude(NON_NULL)`. A filter
+allowlist lists its decimal fields in `DECIMAL_FIELDS`, and `FilterParser.parse(rawQuery, FIELDS,
+OPS_BY_FIELD, DECIMAL_FIELDS)` hands the repository `BigDecimal` operands. These classes live in
+`com.metaobjects.generator.spring.runtime`. `mvn metaobjects:verify` names the `wire`
+block that reproduces committed output generated under another setting.
 
 ### `<Entity>Names` — the physical names, as constants
 

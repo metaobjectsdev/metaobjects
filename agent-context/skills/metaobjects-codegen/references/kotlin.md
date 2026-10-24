@@ -16,6 +16,7 @@ migration reference).
 - Write your own generator
 - When a generator's output is wrong — own the generator
 - `codegen-kotlin` generators
+- The JSON the API writes
 
 ## Maven coordinates
 
@@ -295,6 +296,18 @@ Metadata lives wherever the plugin's `<loader><sourceDir>` points (the examples 
 `src/main/metaobjects`; nothing requires that path), in the same canonical JSON the other
 ports read — fused-key form, `source.rdb` + `@table`, `@column` for a renamed
 physical column.
+
+## The JSON the API writes
+
+With no `wire` setting, the generated data classes write what the host's Jackson `ObjectMapper` writes: a
+decimal is a JSON number (`12.50`; `1E-7` under Spring Boot's defaults), and a value object's
+null member is `null` with its key present. `"wire": { "decimals": "string", "nullMembers":
+"omit" }` in `.metaobjects/config.json` gives the cross-port form (`"12.5"`, null members left
+out): `string` adds the canonical decimal serializer, and `omit` adds `@JsonInclude(NON_NULL)` to
+each value-object type. The input checks (a string or a number; `400` past `@scale` or
+`@precision`) hold in every mode. Never strip those annotations from generated code to change
+the output: set `wire` and regenerate. `mvn metaobjects:verify` names the `wire` block that
+reproduces committed output generated under another setting. See `references/wire-format.md`.
 
 ## Discriminator inheritance (TPH)
 

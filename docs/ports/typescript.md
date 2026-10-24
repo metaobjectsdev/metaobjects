@@ -374,19 +374,31 @@ export default defineConfig({
 The mapping, the refusals, the Cube query that reproduces a report and the `cube` lane that
 checks the output against a real Cube are in [cube-export](../features/cube-export.md).
 
-### Decimals on the wire
+### Decimals and null members on the wire
 
-A `field.decimal` crosses the API as one canonical string (ADR-0019 Amendment 1): `12.50` is
-`"12.5"`, zero is `"0"`, never a JSON number or an exponent. Input may be a string or a number,
-is read exactly, and is `400 validation` when it has more fraction digits than `@scale` or more
-integer digits than `@precision - @scale` (no `@scale` beside `@precision` means 0). A filter
-operand compares exactly; a bad one is `400 invalid_filter_value`. On SQLite a decimal is read at
-15 significant digits. Every port runs the shared vectors in `fixtures/decimal-wire/`.
+What the generated routes write is the project setting `wire` in `.metaobjects/config.json`
+([api-contract.md, "The wire setting"](../features/api-contract.md#the-wire-setting)). With no
+setting, a decimal is the string the database driver returns, which keeps its scale (`"12.50"`
+on Postgres and MySQL). SQLite and D1 return a number, which is written at 15 significant digits
+(`0.1 + 0.2` is `"0.3"`). A value object is written as stored: a member stored as `null` is
+`null`, and a member the stored value lacks is absent. `"wire": { "decimals": "string" }` writes
+the canonical string of ADR-0019 Amendment 1 (`"12.5"`, zero `"0"`). `"nullMembers": "emit"`
+writes every declared member, `null` when unset, and `"omit"` leaves a null member out. Both
+reach arrays and maps of value objects, and nested ones. A top-level null field is always `null`.
+
+Input is the same in every mode. It may be a string or a number, is read exactly, and is
+`400 validation` when it has more fraction digits than `@scale` or more integer digits than
+`@precision - @scale` (no `@scale` beside `@precision` means 0). A filter operand compares
+exactly; a bad one is `400 invalid_filter_value`. On SQLite a decimal is read at 15 significant
+digits. Every port runs the shared vectors in `fixtures/decimal-wire/`.
 
 A generated model module's write schema carries a local `decimalWrite` function, so generated
-code imports nothing from MetaObjects; the route mounts in `@metaobjectsdev/runtime-ts` write
-decimals and read filter operands by the same rule. `meta migrate` warns for a decimal declared
-with `@precision` above 15 on SQLite or D1.
+code imports nothing from MetaObjects. A generated route passes its mount `decimalColumns`, plus
+`decimalWire: "string"` and `nullMembers` with the value-object shapes when the setting asks for
+them; the route mounts in `@metaobjectsdev/runtime-ts` write the response and read filter
+operands by those options. `meta migrate` warns for a decimal declared with `@precision` above 15
+on SQLite or D1. `meta verify --codegen` names the `wire` block that reproduces committed output
+generated under another setting.
 
 ### `<Entity>Names` — the physical names, as constants
 

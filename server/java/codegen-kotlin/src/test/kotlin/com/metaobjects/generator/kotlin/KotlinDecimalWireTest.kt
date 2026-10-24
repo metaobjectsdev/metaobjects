@@ -1,5 +1,6 @@
 package com.metaobjects.generator.kotlin
 
+import com.metaobjects.config.WireFormat
 import com.metaobjects.generator.Generator
 import com.metaobjects.metadata.ktx.loadString
 import java.nio.file.Files
@@ -49,10 +50,14 @@ class KotlinDecimalWireTest {
       ] }
     }""".trimIndent()
 
-    private fun emit(json: String, generators: List<Generator>): Map<String, String> {
+    /** The cross-port form the conformance corpora pin: canonical decimal strings, null members omitted. */
+    private val pinned = WireFormat(WireFormat.Decimals.STRING, WireFormat.NullMembers.OMIT)
+
+    private fun emit(json: String, generators: List<Generator>, wire: WireFormat = pinned): Map<String, String> {
         val outDir = Files.createTempDirectory("kt-decimal-wire-")
         try {
             val loader = loadString("decimal-wire", json)
+            loader.root.wireFormat = wire
             for (gen in generators) {
                 gen.setArgs(mapOf("outputDir" to outDir.toString()))
                 gen.execute(loader)
@@ -460,5 +465,101 @@ class KotlinDecimalWireTest {
         }
         println("decimal-wire vectors: format=${vs.get("format").size()} parse=${vs.get("parse").size()} " +
             "filterOperand=${vs.get("filterOperand").size()} double15=${vs.get("double15").size()}")
+    }
+
+    private val nativeModel = """{
+      "metadata.root": { "package": "acme::shop", "children": [
+        { "object.value": { "name": "Price", "children": [
+            { "field.decimal": { "name": "net", "@precision": 12, "@scale": 2 } },
+            { "field.string": { "name": "note", "@maxLength": 20 } }
+        ] } },
+        { "object.entity": { "name": "Item", "children": [
+            { "field.long": { "name": "id" } },
+            { "field.decimal": { "name": "price", "@precision": 12, "@scale": 2 } },
+            { "field.decimal": { "name": "tiny", "@precision": 12, "@scale": 8 } },
+            { "field.decimal": { "name": "readings", "isArray": true, "@precision": 9, "@scale": 4 } },
+            { "field.object": { "name": "cost", "@objectRef": "Price", "@storage": "jsonb" } },
+            { "source.rdb": { "@table": "items" } },
+            { "identity.primary": { "@fields": ["id"], "@generation": "increment" } }
+        ] } }
+      ] }
+    }""".trimIndent()
+
+    private fun compileAndLoadItem(wire: WireFormat): Pair<ClassLoader, com.fasterxml.jackson.databind.ObjectMapper> {
+        val files = emit(nativeModel, listOf(KotlinEntityGenerator(), KotlinExposedTableGenerator()), wire)
+        val result = com.tschuchort.compiletesting.KotlinCompilation().apply {
+            sources = files.filterKeys { it.endsWith(".kt") }.map { (path, src) ->
+                com.tschuchort.compiletesting.SourceFile.kotlin(path.substringAfterLast('/'), src)
+            }
+            inheritClassPath = true
+            messageOutputStream = System.out
+        }.compile()
+        assertEquals(com.tschuchort.compiletesting.KotlinCompilation.ExitCode.OK, result.exitCode, result.messages)
+        val mapper = com.fasterxml.jackson.databind.ObjectMapper()
+            .registerModule(com.fasterxml.jackson.module.kotlin.KotlinModule.Builder().build())
+        return result.classLoader to mapper
+    }
+
+    private fun writeItem(wire: WireFormat): String {
+        val (cl, mapper) = compileAndLoadItem(wire)
+        val item = mapper.readValue(
+            """{"id":1,"price":"12.50","tiny":"0.0000001","readings":["1.5000",2],"cost":{"net":"3.10"}}""",
+            cl.loadClass("acme.shop.Item"))
+        return mapper.writeValueAsString(item)
+    }
+
+    @Test
+    fun `the native default writes a decimal as a JSON number, a decimal list as numbers and a null member as null`() {
+        val json = writeItem(WireFormat.DEFAULT)
+        // Jackson's own BigDecimal output as the plain ObjectMapper configures it: a number, scale kept.
+        assertTrue("\"price\":12.50" in json, json)
+        // Recorded: BigDecimal("0.0000001") under native is written by Jackson as 1E-7 (BigDecimal.toString()).
+        assertTrue("\"tiny\":1E-7" in json, json)
+        assertTrue("\"readings\":[1.5000,2]" in json, json)
+        // A value object's null member: key present, null.
+        assertTrue("\"cost\":{\"net\":3.10,\"note\":null}" in json, json)
+    }
+
+    @Test
+    fun `emit writes a null member as null like native, and omit leaves it out`() {
+        val emit = writeItem(WireFormat(WireFormat.Decimals.NATIVE, WireFormat.NullMembers.EMIT))
+        assertTrue("\"note\":null" in emit, emit)
+        val omit = writeItem(WireFormat(WireFormat.Decimals.NATIVE, WireFormat.NullMembers.OMIT))
+        assertFalse("note" in omit, omit)
+        assertTrue("\"price\":12.50" in omit, omit)
+    }
+
+    @Test
+    fun `string writes the canonical decimal strings, and omit with it drops the null member`() {
+        val json = writeItem(pinned)
+        assertTrue("\"price\":\"12.5\"" in json, json)
+        assertTrue("\"tiny\":\"0.0000001\"" in json, json)
+        assertTrue("\"readings\":[\"1.5\",\"2\"]" in json, json)
+        assertTrue("\"cost\":{\"net\":\"3.1\"}" in json, json)
+    }
+
+    @Test
+    fun `native keeps the strict input rules - garbage and over-scale are refused`() {
+        val (cl, mapper) = compileAndLoadItem(WireFormat.DEFAULT)
+        val item = cl.loadClass("acme.shop.Item")
+        for (bad in listOf(
+            """{"id":1,"price":"12abc"}""",
+            """{"id":1,"price":"NaN"}""",
+            """{"id":1,"cost":{"net":"1.234"}}""",
+        )) {
+            val e = runCatching { mapper.readValue(bad, item) }.exceptionOrNull()
+            assertTrue(e is com.fasterxml.jackson.core.JsonProcessingException, "must be refused: $bad but got $e")
+        }
+    }
+
+    @Test
+    fun `native emits no serializer and no JsonInclude, but keeps the deserializer`() {
+        val files = emit(nativeModel, all(), WireFormat.DEFAULT)
+        val src = files.getValue("acme/shop/Item.kt")
+        assertFalse("JsonSerialize" in src, src)
+        assertTrue("MetaDecimalWire.Deserializer" in src, src)
+        assertFalse("JsonInclude" in files.getValue("acme/shop/Price.kt"))
+        assertFalse("class Serializer" in files.getValue("acme/shop/MetaDecimalWire.kt"))
+        assertTrue("class Deserializer" in files.getValue("acme/shop/MetaDecimalWire.kt"))
     }
 }

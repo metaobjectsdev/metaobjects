@@ -1,0 +1,12 @@
+{
+  "metadata.root": { "package": "acme::catalog", "children": [
+    { "object.entity": { "name": "Product", "children": [
+        { "source.rdb":    { "@table": "products" } },
+        { "field.long":    { "name": "id" } },
+        { "field.string":  { "name": "name", "@maxLength": 40, "@required": true } },
+        { "field.decimal": { "name": "price", "@precision": 10, "@scale": 2, "@filterable": true } },
+        { "field.float":   { "name": "rating", "@filterable": true } },
+        { "identity.primary": { "name": "pk", "@fields": "id", "@generation": "increment" } }
+    ] } }
+  ] }
+}

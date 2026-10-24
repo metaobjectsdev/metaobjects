@@ -66,6 +66,8 @@ public class IntegrationFixtureDriftTests
         var result = new MetaDataLoader().Load([new FileSource(CorpusMetadata)]);
         Assert.True(result.Errors.Count == 0,
             "corpus metadata failed to load: " + string.Join("; ", result.Errors.Select(e => e.ToString())));
+        // The corpus pins the cross-port wire form (ADR-0019 Amendment 2) in the same config file.
+        result.Root.WireFormat = CorpusPaths.Wire;
 
         var ctx = new GenContext
         {

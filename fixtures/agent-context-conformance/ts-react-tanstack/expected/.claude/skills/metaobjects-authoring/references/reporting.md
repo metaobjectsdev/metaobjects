@@ -166,7 +166,7 @@ A concrete report whose read source is `@kind: view` is served by every port's g
 - `<segment>` is the report name, snake_cased then pluralized, like any object: `InvoicesByMonth` is `/invoices_by_months`, `StoreTotals` is `/store_totals`. There is no report-specific spelling.
 - **Every derived field with filter operators is filterable and sortable**, dimension and measure alike, with its type's own operators. You cannot narrow that set: a report has no field to put `@filterable` on. A field of the `@from` entity that the report does not expose is refused with a `400`.
 - A time dimension at `day` or coarser is `YYYY-MM-DD`; a null measure is `null` with the key present (a measure with `@default` is never null); `currency` is integer minor units.
-- **A decimal (`avg`, a ratio, a `sum` of a decimal) is one canonical string in every port** (ADR-0019 Amendment 1: `12.5`, never `12.50` or an exponent). Display formatting is a view's job. Do not parse it as a float to compare.
+- **A decimal (`avg`, a ratio, a `sum` of a decimal) is written per the project's `wire` setting**: by default, the port's language-standard form (a JSON number in C#, Java and Kotlin; a string in Python and TypeScript), and under `"wire": { "decimals": "string" }` one canonical string in every port (`12.5`, never `12.50` or an exponent). Do not parse it as a float to compare.
 - `meta gen` writes a model page for every report (`docsFile()`; a sourceless one is marked "Not served") and an API page for a served one (`apiDocsFile()`) — each an ordinary entry in `generators`.
 
 The files each port generates are in the `metaobjects-codegen` skill's reference for that language ("Reports").

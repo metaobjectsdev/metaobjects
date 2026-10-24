@@ -5,16 +5,18 @@ using Microsoft.CodeAnalysis.CSharp;
 using MetaObjects.Codegen;
 using MetaObjects.Codegen.Generators;
 using MetaObjects.Loader;
+using MetaObjects.Meta;
 using Xunit;
 
 namespace MetaObjects.Codegen.Tests;
 
 /// <summary>
-/// A value-object member that is null is omitted on the wire via
-/// <c>[JsonIgnore(WhenWritingNull)]</c>, but System.Text.Json throws InvalidOperationException
+/// Under <c>wire.nullMembers: omit</c> (ADR-0019 Amendment 2) a value-object member that is null
+/// is omitted on the wire via <c>[JsonIgnore(WhenWritingNull)]</c>, but System.Text.Json throws InvalidOperationException
 /// the first time it builds type info for a type carrying that condition on a NON-nullable value
 /// type (<c>double</c>, <c>DateTimeOffset</c>), so every request that touched the owning entity
-/// answered 500. The condition belongs on the nullable members only.
+/// answered 500. The condition belongs on the nullable members only. The default (native) writes
+/// the member as System.Text.Json does, <c>null</c> with its key present.
 /// </summary>
 public class ValueObjectWireIgnoreTests
 {
@@ -39,11 +41,14 @@ public class ValueObjectWireIgnoreTests
     ]}}
     """;
 
-    [Fact]
-    public void A_value_object_with_required_value_type_members_round_trips_and_omits_a_null_optional_member()
+    [Theory]
+    [InlineData(NullMemberForm.Omit)]
+    [InlineData(NullMemberForm.Native)]
+    public void A_value_object_with_required_value_type_members_round_trips_and_writes_a_null_optional_member_per_the_setting(NullMemberForm nulls)
     {
         var r = new MetaDataLoader().Load([new InMemoryStringSource(Model, id: "model.json")]);
         Assert.Empty(r.Errors);
+        r.Root.WireFormat = new WireFormat(DecimalWireForm.String, nulls);
         var files = new EntityGenerator().Generate(new GenContext
         {
             Entities = r.Root.Objects(),
@@ -70,7 +75,17 @@ public class ValueObjectWireIgnoreTests
         Assert.Equal(51.5, wire.GetProperty("latitude").GetDouble());
         Assert.Equal(DateTimeOffset.Parse("2026-03-04T05:06:07Z"), wire.GetProperty("capturedAt").GetDateTimeOffset());
         Assert.True(wire.GetProperty("live").GetBoolean());
-        Assert.False(wire.TryGetProperty("tempC", out _));
-        Assert.False(wire.TryGetProperty("note", out _));
+        if (nulls == NullMemberForm.Omit)
+        {
+            Assert.False(wire.TryGetProperty("tempC", out _));
+            Assert.False(wire.TryGetProperty("note", out _));
+            Assert.False(wire.TryGetProperty("tags", out _));
+        }
+        else
+        {
+            Assert.Equal(JsonValueKind.Null, wire.GetProperty("tempC").ValueKind);
+            Assert.Equal(JsonValueKind.Null, wire.GetProperty("note").ValueKind);
+            Assert.Equal(0, wire.GetProperty("tags").GetArrayLength());
+        }
     }
 }

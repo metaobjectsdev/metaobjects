@@ -6,13 +6,13 @@ import { parseFilterParams, parsePageBound, RAW_VIEW_MAX_LIMIT, FilterParseError
 import type { FilterAllowlist, SortAllowlist } from "./filter-allowlist.js";
 import { isTruthyFlag, contractErrorCode, coerceIdForColumn, rawIdLiteral, viewBaseConfig } from "./util.js";
 import { timestampWire } from "../timestamp-wire.js";
-import { withDecimals } from "../decimal-wire.js";
+import { withWire, type WireOptions } from "../wire-format.js";
 import { withContractErrorHandler } from "./route-error-handler.js";
 
 // biome-ignore lint/suspicious/noExplicitAny: dynamic dispatch over user-supplied views
 type AnyView = any;
 
-export interface MountReadOnlyOptions {
+export interface MountReadOnlyOptions extends WireOptions {
   readonly fastify: FastifyInstance;
   readonly path: string;
   // biome-ignore lint/suspicious/noExplicitAny: dynamic Drizzle client
@@ -50,14 +50,6 @@ export interface MountReadOnlyOptions {
   readonly itemRoutes?: boolean;
   /** The noun in the 405 message, which is free prose. Default "projection". */
   readonly resource?: "projection" | "report";
-  /**
-   * The names of the view's `field.decimal` fields. A decimal is a canonical string on the wire
-   * on every dialect (ADR-0019 Amendment 1): Postgres and MySQL return the column's scale
-   * (`"100.5000"`), and SQLite hands back a number, a REAL for a computed one (a report's ratio,
-   * average or sum). Each row is rewritten under these keys. The generated route passes them;
-   * absent, rows are sent as read. Default none.
-   */
-  readonly decimalColumns?: readonly string[];
 }
 
 const rejectMutation = (resource: string) => async (
@@ -160,7 +152,7 @@ export function mountReadOnlyCrudRoutes(opts: MountReadOnlyOptions): void {
   const useRawSql = isEmptyColumnView(view) && !!viewName;
   // The raw-SQL branch has no declared columns, so nothing names a timestamp there.
   const timestamps = timestampWire(view);
-  const toWire = withDecimals(timestamps, opts.decimalColumns);
+  const toWire = withWire(timestamps, opts);
 
   // ── List ──────────────────────────────────────────────────────────────────
   fastify.get(path, ro, async (req, reply) => {

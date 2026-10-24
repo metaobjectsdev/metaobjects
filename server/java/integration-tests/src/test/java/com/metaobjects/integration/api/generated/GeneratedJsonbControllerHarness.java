@@ -87,6 +87,10 @@ public final class GeneratedJsonbControllerHarness implements AutoCloseable {
         // depend on this. Read with the SAME NeutralConfig reader every port uses.
         loader.getRoot().setPhysicalNaming(
                 com.metaobjects.config.SourceResolver.resolvePhysicalNaming(corpusRoot));
+        // ADR-0019 Amendment 2 - the corpus's config.json (found by walking up from the corpus dir) pins the wire form (string / omit).
+        loader.getRoot().setWireFormat(
+                com.metaobjects.config.SourceResolver.discoverWireFormat(java.util.List.of((corpusRoot).toUri()))
+                        .orElse(com.metaobjects.config.WireFormat.DEFAULT));
 
         // 2. Run the generators — emit the GENERATED controller + DTO + repo interface +
         //    filter allowlist + value-object records (Program D) into srcDir, UNMODIFIED.

@@ -1,5 +1,6 @@
 package com.metaobjects.generator.kotlin
 
+import com.metaobjects.config.WireFormat
 import com.metaobjects.generator.util.GeneratedFileWriter
 import java.nio.file.Path
 
@@ -19,11 +20,35 @@ object KotlinDecimalWireEmitter {
     const val FILE_NAME = "MetaDecimalWire"
 
     /** Write `MetaDecimalWire.kt` into [pkg] under [outRoot]. */
-    fun write(pkg: String, outRoot: Path) {
+    fun write(pkg: String, outRoot: Path, wire: WireFormat) {
         val header = if (pkg.isEmpty()) "" else "package $pkg\n\n"
         val outFile = outRoot.resolve(pkg.replace('.', '/')).resolve("$FILE_NAME.kt")
-        GeneratedFileWriter.write(outFile, header + BODY + "\n")
+        GeneratedFileWriter.write(outFile, header + body(wire) + "\n")
     }
+
+    /**
+     * The body for [wire] (ADR-0019 Amendment 2): the output [MetaDecimalWire.Serializer] exists only
+     * under `decimals: string`; under `native` Jackson writes a BigDecimal as the host configures it.
+     * The strict input half (parse, range checks, [MetaDecimalWire.Deserializer]) is in every mode.
+     */
+    fun body(wire: WireFormat): String {
+        if (wire.decimalsAsString()) return BODY
+        val start = BODY.indexOf(SERIALIZER_START)
+        val end = BODY.indexOf(SERIALIZER_END, start)
+        check(start >= 0 && end > start) { "serializer block markers missing from the decimal wire body" }
+        var out = BODY.substring(0, start) + BODY.substring(end + SERIALIZER_END.length)
+        for (imp in SERIALIZER_IMPORTS) out = out.replace(imp, "")
+        return out.replace("written as a canonical string (plain notation, no trailing fraction zeros, zero as \"0\"),\n * and read",
+            "written as the host serializer writes it,\n * and read")
+    }
+
+    private const val SERIALIZER_START = "    /** Writes a decimal as its canonical string. */\n"
+    private const val SERIALIZER_END = "\n    }\n\n"
+    private val SERIALIZER_IMPORTS = listOf(
+        "import com.fasterxml.jackson.core.JsonGenerator\n",
+        "import com.fasterxml.jackson.databind.SerializerProvider\n",
+        "import com.fasterxml.jackson.databind.ser.std.StdSerializer\n",
+    )
 
     /**
      * The fixed body. `+`-concatenated messages and no Kotlin string templates, so this raw string

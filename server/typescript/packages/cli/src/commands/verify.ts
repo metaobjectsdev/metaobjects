@@ -113,6 +113,11 @@ import {
   TEMPLATE_ATTR_TEXT_BODY_REF,
   REQUIREMENT_STATUSES,
   physicalNamingOf,
+  WIRE_DECIMALS,
+  WIRE_NULL_MEMBERS,
+  WIRE_KEY_DECIMALS,
+  WIRE_KEY_NULL_MEMBERS,
+  type WireFormat,
 } from "@metaobjectsdev/metadata";
 import { verify, ERR_REQUIRED_SLOT_UNUSED, ERR_PARTIAL_UNRESOLVED } from "@metaobjectsdev/render";
 import { describeLoadError, reportLoadError } from "../lib/load-error.js";
@@ -1640,6 +1645,29 @@ export async function verifyCommand(
       return 2;
     }
 
+    // ADR-0019 Amendment 2: committed output generated under another `wire` setting is drift
+    // that regenerating would "fix" by changing the JSON the API writes. Name the setting.
+    if (!result.clean && result.driftedFiles.length > result.handEditedNames.length + result.editedOrphans.length) {
+      const used = codegenRoot.wireFormat;
+      const committed = await matchingWire(used, async (wire) => {
+        codegenRoot.wireFormat = wire;
+        try {
+          const probe = await computeCodegenDrift(config, codegenRoot, genConfigDir, genCollection.inScope,
+            genCollection.ownFiles, {
+              sourceRoots: sourceRootsOf(genCollection),
+              agentSchema: () => buildAgentSchemaInput(codegenRoot, config.dialect, () => {}),
+            });
+          return probe.error === undefined && probe.clean;
+        } finally {
+          codegenRoot.wireFormat = used;
+        }
+      });
+      if (committed !== undefined) {
+        log.error(wireDiffersMessage(committed, used));
+        return 1;
+      }
+    }
+
     // Hand edits are not drift, but they must never be INVISIBLE: a validator weakened
     // inside a generated file used to pass this gate with "every file's generated
     // contribution is current" and nothing else. Reported on every run; fails the build
@@ -1863,6 +1891,40 @@ interface VerifyGateRow {
  * prove a file was edited but cannot show the edit. Deleting a generated file and
  * re-running `meta gen` re-emits its pristine generation; git then shows the difference.
  */
+/** A `wire` setting as the block that declares it in `.metaobjects/config.json`. */
+export function wireBlock(wire: WireFormat): string {
+  return `"wire": { "${WIRE_KEY_DECIMALS}": "${wire.decimals}", "${WIRE_KEY_NULL_MEMBERS}": "${wire.nullMembers}" }`;
+}
+
+/**
+ * ADR-0019 Amendment 2: the other `wire` setting under which `reproduces` says the generators
+ * write the committed output exactly, or `undefined` when none does. Probes decimals {native,
+ * string} x nullMembers {native, emit, omit}, skipping the setting this run used.
+ */
+export async function matchingWire(
+  used: WireFormat,
+  reproduces: (wire: WireFormat) => Promise<boolean>,
+): Promise<WireFormat | undefined> {
+  for (const decimals of WIRE_DECIMALS) {
+    for (const nullMembers of WIRE_NULL_MEMBERS) {
+      if (decimals === used.decimals && nullMembers === used.nullMembers) continue;
+      const wire: WireFormat = { decimals, nullMembers };
+      if (await reproduces(wire)) return wire;
+    }
+  }
+  return undefined;
+}
+
+/** The verify failure for committed output that another `wire` setting reproduces. */
+export function wireDiffersMessage(committed: WireFormat, used: WireFormat): string {
+  return (
+    `The committed output was generated with ${wireBlock(committed)}; this run used ${wireBlock(used)} ` +
+    "(.metaobjects/config.json; each key defaults to native). Do not regenerate: that changes the JSON " +
+    "your API writes for decimals or for a value object's null members. Declare " +
+    `${wireBlock(committed)} in .metaobjects/config.json, and 'meta gen' and 'meta verify --codegen' both read it.`
+  );
+}
+
 export function handEditNotice(paths: readonly string[], forbidden: boolean): string[] {
   const header = forbidden
     ? `meta verify — ${paths.length} generated file(s) carry hand edits, and --forbid-hand-edits is set:`

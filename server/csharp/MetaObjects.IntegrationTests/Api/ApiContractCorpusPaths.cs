@@ -27,6 +27,13 @@ internal static class ApiContractCorpusPaths
     /// </summary>
     public static readonly PhysicalNaming Naming = NeutralConfig.Read(Corpus)?.Naming ?? PhysicalNaming.Default;
 
+    /// <summary>
+    /// ADR-0019 Amendment 2 — the corpus's pinned wire setting, read from the same file as
+    /// <see cref="Naming"/>: the corpus pins the cross-port form
+    /// (<c>{"wire":{"decimals":"string","nullMembers":"omit"}}</c>); a project's default is native.
+    /// </summary>
+    public static readonly WireFormat Wire = NeutralConfig.Read(Corpus)?.Wire ?? WireFormat.Default;
+
     // The corpus Author model — fed to the C# generators in the SP-F generated-server
     // lane (GeneratedAuthorServerFactory) to produce + host the real routes/AppDbContext.
     public static readonly string MetaJson = Path.Combine(Corpus, "meta.json");

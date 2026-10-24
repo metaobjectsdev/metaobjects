@@ -7,6 +7,14 @@ import {
   COLUMN_NAMING_STRATEGIES,
   DEFAULT_PHYSICAL_NAMING,
   TABLE_NAMING_RULES,
+  DEFAULT_WIRE_FORMAT,
+  WIRE_DECIMALS,
+  WIRE_NULL_MEMBERS,
+  WIRE_KEY_DECIMALS,
+  WIRE_KEY_NULL_MEMBERS,
+  type WireDecimals,
+  type WireFormat,
+  type WireNullMembers,
   type PhysicalNaming,
   type ColumnNamingStrategy,
   type TableNamingRule,
@@ -197,6 +205,27 @@ export const ConfigSchema = z.object({
     })
     .strict()
     .optional(),
+  /**
+   * The OUTPUT form of a generated REST surface (ADR-0019 Amendment 2). `decimals`: `native`
+   * (default; the string the in-process type holds) or `string` (canonical W1 string).
+   * `nullMembers`: `native` (default; as stored), `emit` (every declared member, `null` when
+   * unset) or `omit` (drop null members) for a value object's members. Input rules do not
+   * follow it. Absent means the default for both.
+   */
+  wire: z
+    .strictObject({
+      decimals: z.enum(WIRE_DECIMALS as unknown as [WireDecimals, ...WireDecimals[]], {
+        message: `"wire.decimals" must be one of ${WIRE_DECIMALS.map((v) => `"${v}"`).join(", ")}`,
+      }).optional(),
+      nullMembers: z.enum(WIRE_NULL_MEMBERS as unknown as [WireNullMembers, ...WireNullMembers[]], {
+        message: `"wire.nullMembers" must be one of ${WIRE_NULL_MEMBERS.map((v) => `"${v}"`).join(", ")}`,
+      }).optional(),
+    }, {
+      error: (iss) => iss.code === "unrecognized_keys"
+        ? `"wire" has an unknown key "${iss.keys[0]}" (expected "${WIRE_KEY_DECIMALS}" and/or "${WIRE_KEY_NULL_MEMBERS}")`
+        : iss.code === "invalid_type" ? `"wire" must be an object` : undefined,
+    })
+    .optional(),
 }).strict();
 
 export type Config = z.infer<typeof ConfigSchema>;
@@ -206,6 +235,14 @@ export function physicalNamingFromConfig(cfg: Pick<Config, "naming">): PhysicalN
   return {
     columns: cfg.naming?.columns ?? DEFAULT_PHYSICAL_NAMING.columns,
     tables: cfg.naming?.tables ?? DEFAULT_PHYSICAL_NAMING.tables,
+  };
+}
+
+/** The wire format a config declares, each absent key at its default (ADR-0019 Amendment 2). */
+export function wireFormatFromConfig(cfg: Pick<Config, "wire">): WireFormat {
+  return {
+    decimals: cfg.wire?.decimals ?? DEFAULT_WIRE_FORMAT.decimals,
+    nullMembers: cfg.wire?.nullMembers ?? DEFAULT_WIRE_FORMAT.nullMembers,
   };
 }
 

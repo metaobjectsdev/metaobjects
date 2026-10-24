@@ -19,7 +19,7 @@ describe("decimalWire", () => {
   });
 
   test("a number under a named key becomes its string; everything else passes through", () => {
-    const wire = decimalWire(["share", "avg"])!;
+    const wire = decimalWire(["share", "avg"], "string")!;
     expect(wire({ share: 0.4, avg: 1.6666666666666667, n: 5, label: "a" })).toEqual({
       share: "0.4", avg: "1.66666666666667", n: 5, label: "a",
     });
@@ -29,8 +29,15 @@ describe("decimalWire", () => {
     expect(wire(null)).toBeNull();
   });
 
+  test("native (the default) leaves a driver string as it is, and renders a number at 15 digits", () => {
+    const wire = decimalWire(["share", "avg", "big"])!;
+    expect(wire({ share: "12.50", avg: 0.1 + 0.2, big: 12n, n: 5 })).toEqual({ share: "12.50", avg: "0.3", big: "12", n: 5 });
+    expect(wire({ share: ["1.10", 2.5], avg: null })).toEqual({ share: ["1.10", "2.5"], avg: null });
+    expect(decimalWire(["share"], "native")!({ share: "0.0000001" })).toEqual({ share: "0.0000001" });
+  });
+
   test("an integer-valued REAL keeps no decimal point, and a key not named stays a number", () => {
-    expect(decimalWire(["share"])!({ share: 1, other: 1 })).toEqual({ share: "1", other: 1 });
+    expect(decimalWire(["share"], "string")!({ share: 1, other: 1 })).toEqual({ share: "1", other: 1 });
   });
 });
 
@@ -58,7 +65,7 @@ describe("read-only mounts send a named decimal as a string", () => {
     const base = { path: "/shares", db, view: view(), filterAllowlist: {}, sortAllowlist: {}, dialect: "sqlite" as const, itemRoutes: false, resource: "report" as const };
 
     fastify = Fastify();
-    mountFastify({ fastify, ...base, decimalColumns: ["share"] });
+    mountFastify({ fastify, ...base, decimalColumns: ["share"], decimalWire: "string" as const });
     await fastify.ready();
 
     plainFastify = Fastify();
@@ -66,7 +73,7 @@ describe("read-only mounts send a named decimal as a string", () => {
     await plainFastify.ready();
 
     hono = new Hono();
-    mountHono({ app: hono, ...base, decimalColumns: ["share"] });
+    mountHono({ app: hono, ...base, decimalColumns: ["share"], decimalWire: "string" as const });
   });
 
   afterAll(async () => {

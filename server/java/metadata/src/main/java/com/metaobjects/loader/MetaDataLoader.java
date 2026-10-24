@@ -724,6 +724,10 @@ public class MetaDataLoader implements LoaderConfigurable {
             // ADR-0058: the same naming discovery fromUris does, walking up from the directory.
             loader.getRoot().setPhysicalNaming(
                 discoverNamingOrWarn(name, List.of(directory.toAbsolutePath().toUri())));
+            // ADR-0019 Amendment 2: the wire setting from the same file, else the native default.
+            loader.getRoot().setWireFormat(com.metaobjects.config.SourceResolver
+                .discoverWireFormat(List.of(directory.toAbsolutePath().toUri()))
+                .orElse(com.metaobjects.config.WireFormat.DEFAULT));
         } catch (MetaDataLoadingException e) {
             throw e;
         } catch (Exception e) {
@@ -808,6 +812,9 @@ public class MetaDataLoader implements LoaderConfigurable {
             com.metaobjects.database.PhysicalNaming naming = physicalNaming != null
                 ? physicalNaming : discoverNamingOrWarn(name, uris);
             loader.getRoot().setPhysicalNaming(naming);
+            // ADR-0019 Amendment 2: the wire setting from the same file, else the native default.
+            loader.getRoot().setWireFormat(com.metaobjects.config.SourceResolver
+                .discoverWireFormat(uris).orElse(com.metaobjects.config.WireFormat.DEFAULT));
         } catch (MetaDataLoadingException e) {
             throw e;
         } catch (Exception e) {

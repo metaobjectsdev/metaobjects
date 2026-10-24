@@ -6,6 +6,8 @@ One production helper, used by the generated routers and tested against the shar
 * **W1, emit** -- :func:`format_decimal` / :func:`to_wire`: every ``Decimal`` leaves as a JSON
   string in canonical form (plain notation, no exponent, no trailing fractional zeros, zero is
   ``"0"``).
+  Which form leaves is the project's ``wire`` setting (:func:`render_wire`): ``string`` is W1,
+  ``native`` is :func:`to_native`.
 * **W2, accept** -- :func:`parse_decimal` (a request-body value) and :func:`parse_decimal_operand`
   (a filter operand): a string in the JSON-number grammar, or a JSON number; anything else is a
   ``ValueError``. Nothing goes through a ``float``: :func:`parse_json_object` reads a body with
@@ -20,7 +22,7 @@ import dataclasses
 import json
 import re
 from decimal import Context, Decimal, InvalidOperation
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable
 
 #: A string body value and a filter operand: the JSON-number grammar. An exponent is allowed on
 #: input only. No sign other than ``-``, no leading zeros, no bare point, no whitespace.
@@ -245,17 +247,81 @@ def coerce_decimal_predicates(
     return out, None
 
 
-def to_wire(value: Any) -> Any:
-    """W1 over a whole response: every ``Decimal`` in *value* (a row, a list of rows, the
-    ``{"rows", "total"}`` envelope, a Pydantic model) as its canonical string. Everything else
-    is left for the framework's encoder."""
+def _render(value: Any, decimal: Callable[[Decimal], str]) -> Any:
+    """*value* with every ``Decimal`` (at any depth of a dict, list or Pydantic model) as the
+    string *decimal* makes of it; everything else is left for the framework's encoder."""
     if isinstance(value, Decimal):
-        return format_decimal(value)
+        return decimal(value)
     if isinstance(value, dict):
-        return {k: to_wire(v) for k, v in value.items()}
+        return {k: _render(v, decimal) for k, v in value.items()}
     if isinstance(value, (list, tuple)):
-        return [to_wire(v) for v in value]
+        return [_render(v, decimal) for v in value]
     dump = getattr(value, "model_dump", None)
     if callable(dump):
-        return to_wire(dump())
+        return _render(dump(), decimal)
     return value
+
+
+def to_wire(value: Any) -> Any:
+    """W1 over a whole response: every ``Decimal`` in *value* (a row, a list of rows, the
+    ``{"rows", "total"}`` envelope, a Pydantic model) as its canonical string."""
+    return _render(value, format_decimal)
+
+
+def to_native(value: Any) -> Any:
+    """The ``native`` decimal form over a whole response: every ``Decimal`` as ``str(value)``,
+    which is what Pydantic v2 writes for one and keeps the value's scale (``Decimal("12.50")``
+    is ``"12.50"``). FastAPI's own encoder would turn a ``Decimal`` in a plain dict row into a
+    ``float``, which is lossy; a string is the exact form."""
+    return _render(value, str)
+
+
+@dataclasses.dataclass(frozen=True)
+class WireOutput:
+    """The ``wire`` project setting (ADR-0019 Amendment 2) a generated router writes with.
+
+    *decimals* is ``native`` or ``string``; *null_members* is ``native``, ``emit`` or ``omit``.
+    *shapes* names, per value-object field of the entity, its declared members:
+    ``{"f": [member, ...], "o": {member: shape}}``, or ``{"m": shape}`` for a ``field.map`` of
+    value objects (the shape applies to each value)."""
+
+    decimals: str = "native"
+    null_members: str = "native"
+    shapes: dict[str, Any] = dataclasses.field(default_factory=dict)
+
+
+def render_wire(value: Any, wire: WireOutput) -> Any:
+    """A response *value* (a row, a list of rows, the ``{"rows", "total"}`` envelope, a
+    Pydantic model) in the form *wire* asks for. Input rules do not depend on *wire*."""
+    if wire.null_members != "native" and wire.shapes:
+        value = _shape_members(value, wire)
+    return to_wire(value) if wire.decimals == "string" else to_native(value)
+
+
+def _shape_members(value: Any, wire: WireOutput) -> Any:
+    """Apply ``omit`` / ``emit`` to the value-object fields of every row in *value*. A row's
+    other fields (a top-level ``null`` among them) are untouched."""
+    if isinstance(value, (list, tuple)):
+        return [_shape_members(v, wire) for v in value]
+    dump = getattr(value, "model_dump", None)
+    if callable(dump):
+        value = dump()
+    if not isinstance(value, dict):
+        return value
+    out: dict[str, Any] = {}
+    for k, v in value.items():
+        out[k] = _shape_vo(v, wire.shapes[k], wire.null_members) if k in wire.shapes else _shape_members(v, wire)
+    return out
+
+
+def _shape_vo(value: Any, shape: dict[str, Any], mode: str) -> Any:
+    if isinstance(value, list):
+        return [_shape_vo(v, shape, mode) for v in value]
+    if not isinstance(value, dict):
+        return value
+    if "m" in shape:
+        return {k: _shape_vo(v, shape["m"], mode) for k, v in value.items()}
+    members = {k: _shape_vo(v, shape["o"][k], mode) if k in shape["o"] else v for k, v in value.items()}
+    if mode == "omit":
+        return {k: v for k, v in members.items() if v is not None}
+    return {**{name: None for name in shape["f"]}, **members}

@@ -148,6 +148,7 @@ from metaobjects.render.verify import (
     verify as render_verify,
 )
 from metaobjects.shared.base_types import TYPE_OBJECT, TYPE_TEMPLATE
+from metaobjects.wire import WireFormat, wire_block, wire_candidates
 
 
 #: The error a run with no generator selection reports.
@@ -505,6 +506,7 @@ def _load_root(
     # so codegen and the runtime (both reached from an explicit-`metadata_dir` CLI
     # invocation) read the same values `gen`/`verify --codegen` would.
     result.root.naming = neutral.naming if neutral is not None else NamingRules()
+    result.root.wire = neutral.wire if neutral is not None else WireFormat()
     return result.root, []
 
 
@@ -567,6 +569,7 @@ def _load_collection_result(
         # project's ONE naming setting (read at the same rung as `libraries`); attach
         # it to the loaded root so codegen, the runtime and `verify` agree.
         result.root.naming = collection.naming
+        result.root.wire = collection.wire
     return result
 
 
@@ -2151,6 +2154,20 @@ def _verify_codegen_config(args: argparse.Namespace) -> int:
         ):
             print(naming_differs_message(candidate, used), file=sys.stderr)
             return 1
+    # The same question for the `wire` setting: it reaches the JSON every generated route
+    # writes, so "regenerate" would change the contract existing clients read.
+    used_wire = root.wire
+    for wire_candidate in wire_candidates(used_wire):
+        root.wire = wire_candidate
+        try:
+            other_errors, other_reports = compare(column_naming)
+        finally:
+            root.wire = used_wire
+        if not other_errors and all(
+            _report_clean(rep.changed, rep.missing, rep.extra) for rep in other_reports
+        ):
+            print(wire_differs_message(wire_candidate, used_wire), file=sys.stderr)
+            return 1
     if regenerable:
         print("regenerate (metaobjects gen) and commit the result.", file=sys.stderr)
     if edited_orphans:
@@ -2200,6 +2217,20 @@ def naming_differs_message(committed: NamingRules, used: NamingRules) -> str:
         f"{_naming_block(used)} (.metaobjects/config.json; each rule defaults to snake_case). Do "
         f"not regenerate: that rewrites column or table names to ones the database does not have. "
         f"Declare {_naming_block(committed)} in .metaobjects/config.json, and gen and verify "
+        f"--codegen both read it."
+    )
+
+
+def wire_differs_message(committed: WireFormat, used: WireFormat) -> str:
+    """What ``verify --codegen`` says, in place of "regenerate", when the committed output was
+    generated with the ``committed`` wire format and this run's loaded root resolved ``used``
+    (ADR-0019 Amendment 2: the ``wire`` block of ``.metaobjects/config.json``)."""
+    return (
+        f"The committed output was generated with {wire_block(committed)}; this run used "
+        f"{wire_block(used)} (the wire block of .metaobjects/config.json; each key defaults to "
+        f"native). Do not regenerate: that changes the JSON the generated routes write "
+        f"(decimals, value-object null members) for clients already reading it. "
+        f"Declare {wire_block(committed)} in .metaobjects/config.json, and gen and verify "
         f"--codegen both read it."
     )
 

@@ -33,14 +33,16 @@ abstract registry anchor, never authored (`ERR_ABSTRACT_SUBTYPE_AUTHORED`).
 
 Four rows need a footnote:
 
-- **`field.decimal`** is exact in every port's own type, and crosses JSON as a canonical
-  string (`"12.5"`, zero as `"0"`; a JSON number is accepted on input). TypeScript's type is
-  that string. Postgres and MySQL keep the declared `numeric(@precision, @scale)` exactly;
-  SQLite and D1 have no decimal type and keep 15 significant digits, so `meta migrate` warns
-  for a decimal there with `@precision` above 15. Trailing fraction zeros are not kept
-  (`12.50` crosses as `"12.5"`): the wire carries the value, and display formatting, such as
-  two digits for an amount of money, is a view concern. The rule is ADR-0019 Amendment 1, and
-  [api-contract.md](api-contract.md) "Type encodings" has the wire detail.
+- **`field.decimal`** is exact in every port's own type. TypeScript's type is a string.
+  Postgres and MySQL keep the declared `numeric(@precision, @scale)` exactly; SQLite and D1 have
+  no decimal type and keep 15 significant digits, so `meta migrate` warns for a decimal there
+  with `@precision` above 15. On the JSON wire, each port writes its language's standard form
+  by default: a number in C#, Java and Kotlin (`12.50`), and a string in Python and TypeScript
+  (`"12.50"`). The project setting `"wire": { "decimals": "string" }` makes every port write
+  the canonical string of ADR-0019 Amendment 1 (`"12.5"`, zero as `"0"`). Input takes a string
+  or a number in every mode, and a value past `@scale` or `@precision` is refused, never
+  rounded. [api-contract.md, "The wire setting"](api-contract.md#the-wire-setting) has the
+  per-port table.
 
 - **`field.uri` / `field.inet`** bind a native URL/IP type on every port but TypeScript,
   which has none (the same reason `field.uuid` is a `string` there). `@lenient: true`

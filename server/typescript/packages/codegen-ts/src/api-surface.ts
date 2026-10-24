@@ -24,7 +24,20 @@
 // grid, its grid hook, the Angular service) is. They differ for a served report, which has
 // a route and a list hook and no grid, form or detail hook.
 
-import { FIELD_SUBTYPE_DECIMAL, type MetaObject } from "@metaobjectsdev/metadata";
+import {
+  FIELD_ATTR_OBJECT_REF,
+  FIELD_SUBTYPE_DECIMAL,
+  FIELD_SUBTYPE_MAP,
+  FIELD_SUBTYPE_OBJECT,
+  OBJECT_SUBTYPE_VALUE,
+  TYPE_FIELD,
+  WIRE_DECIMALS_STRING,
+  WIRE_NULL_MEMBERS_NATIVE,
+  refTarget,
+  wireFormatOf,
+  type MetaData,
+  type MetaObject,
+} from "@metaobjectsdev/metadata";
 import { isAbstract } from "./instance-artifacts.js";
 import { isProjection } from "./projection/projection-detector.js";
 import { hasAnyRdbSource, hasWritableRdbSource, isReport, servedReport } from "./source-detect.js";
@@ -131,13 +144,82 @@ export function decimalFieldNames(entity: MetaObject): readonly string[] {
   return entity.fields().filter((f) => f.subType === FIELD_SUBTYPE_DECIMAL).map((f) => f.name);
 }
 
-/** `\n<indent>decimalColumns: [...],` for a mount option list, or "" when the object has no decimal.
- *  Several objects share one mount when a single-table (TPH) base's polymorphic route serves its
- *  subtypes' rows too: pass them all, so a decimal only a subtype declares is still a decimal. */
-export function decimalColumnsLine(entity: MetaObject | readonly MetaObject[], indent: string): string {
+/** The declared shape of a value object, as a generated mount takes it (`ValueObjectShape` in runtime-ts). */
+interface ValueObjectShapeData {
+  members: string[];
+  map?: true;
+  nested?: Record<string, ValueObjectShapeData>;
+}
+
+/** The value object a `field.object` / `field.map` field references, or undefined. */
+function valueObjectOf(field: MetaData): MetaData | undefined {
+  if (field.subType !== FIELD_SUBTYPE_OBJECT && field.subType !== FIELD_SUBTYPE_MAP) return undefined;
+  const target = refTarget(field, FIELD_ATTR_OBJECT_REF);
+  return target?.subType === OBJECT_SUBTYPE_VALUE ? target : undefined;
+}
+
+function shapeOf(field: MetaData, vo: MetaData, path: readonly MetaData[]): ValueObjectShapeData {
+  // ADR-0039: resolving. A value object's members may be inherited via extends.
+  const fields = vo.children().filter((c) => c.type === TYPE_FIELD);
+  const shape: ValueObjectShapeData = { members: fields.map((f) => f.name) };
+  if (field.subType === FIELD_SUBTYPE_MAP) shape.map = true;
+  for (const f of fields) {
+    const inner = valueObjectOf(f);
+    // A value object that contains itself is walked once: the stored value is finite, and
+    // shaping stops where the declaration repeats.
+    if (inner === undefined || path.includes(inner)) continue;
+    (shape.nested ??= {})[f.name] = shapeOf(f, inner, [...path, inner]);
+  }
+  return shape;
+}
+
+/** The jsonb columns of `entity` that hold a value object (or an array / map of them), with their declared shape. */
+export function valueObjectShapes(entity: MetaObject): Record<string, ValueObjectShapeData> {
+  const out: Record<string, ValueObjectShapeData> = {};
+  for (const f of entity.fields()) {
+    const vo = valueObjectOf(f);
+    if (vo !== undefined) out[f.name] = shapeOf(f, vo, [vo]);
+  }
+  return out;
+}
+
+/**
+ * The wire options a generated mount takes (ADR-0019 Amendment 2), one `\n<indent>key: value,`
+ * line each, or "" when the object needs none:
+ *
+ *  - `decimalColumns`: the object's `field.decimal` names (always, when it has any: under
+ *    `native` the mount still renders a SQLite number at 15 digits);
+ *  - `decimalWire: "string"`: only when the project asks for canonical strings;
+ *  - `nullMembers` + `valueObjects`: only when the project asks to `emit` or `omit` null
+ *    members and the object has a value-object column.
+ *
+ * The setting is the project's, read from the root. Several objects share one mount when a
+ * single-table (TPH) base's polymorphic route serves its subtypes' rows too: pass them all,
+ * so a decimal or value object only a subtype declares is still covered. `root` is the loaded
+ * root the setting is read from (`ctx.loadedRoot`).
+ */
+export function decimalColumnsLine(entity: MetaObject | readonly MetaObject[], indent: string, root?: MetaData): string {
   const objects: readonly MetaObject[] = Array.isArray(entity) ? entity : [entity as MetaObject];
+  const first = objects[0];
+  if (first === undefined) return "";
+  // A report's read model is a detached object with no root of its own, so a generator passes the
+  // loaded root; without one the object's own root answers.
+  const wire = wireFormatOf(root ?? first);
   const names = [...new Set(objects.flatMap((o) => decimalFieldNames(o)))];
-  return names.length > 0 ? `\n${indent}decimalColumns: ${JSON.stringify(names)},` : "";
+  let lines = "";
+  if (names.length > 0) {
+    lines += `\n${indent}decimalColumns: ${JSON.stringify(names)},`;
+    if (wire.decimals === WIRE_DECIMALS_STRING) lines += `\n${indent}decimalWire: ${JSON.stringify(wire.decimals)},`;
+  }
+  if (wire.nullMembers !== WIRE_NULL_MEMBERS_NATIVE) {
+    const shapes: Record<string, ValueObjectShapeData> = {};
+    for (const o of objects) for (const [column, shape] of Object.entries(valueObjectShapes(o))) shapes[column] ??= shape;
+    if (Object.keys(shapes).length > 0) {
+      lines += `\n${indent}nullMembers: ${JSON.stringify(wire.nullMembers)},`;
+      lines += `\n${indent}valueObjects: ${JSON.stringify(shapes)},`;
+    }
+  }
+  return lines;
 }
 
 /**

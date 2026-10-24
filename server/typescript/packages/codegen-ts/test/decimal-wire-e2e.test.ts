@@ -1,4 +1,5 @@
-// A field.decimal end to end on SQLite, GENERATED code executed (ADR-0019 Amendment 1).
+// A field.decimal end to end on SQLite, GENERATED code executed (ADR-0019 Amendment 1),
+// with `wire.decimals: string` pinned.
 //
 // The Zod module and the filter allowlist rendered from metadata, mounted with runtime-ts's Hono
 // helper over bun:sqlite with the `decimalColumns` option the generated route passes. Covers the
@@ -75,6 +76,9 @@ beforeAll(async () => {
     filterAllowlist: allowlists["EntryFilterAllowlist"] as never,
     sortAllowlist: {}, dialect: "sqlite",
     decimalColumns: decimalFieldNames(entry),
+    // This file pins the 1.1 canonical form (`wire.decimals: string`); wire-format-e2e.test.ts
+    // covers the native default.
+    decimalWire: "string",
   });
 });
 

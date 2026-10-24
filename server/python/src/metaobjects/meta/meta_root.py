@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from ..naming import NamingRules
+from ..wire import WireFormat
 from .meta_data import MetaData
 
 
@@ -16,3 +17,7 @@ class MetaRoot(MetaData):
         # after loading — never during construction, since the loader seeds an empty
         # root before any file is read.
         self.naming: NamingRules = NamingRules()
+        # ADR-0019 Amendment 2 — the project `wire` setting (output form of the generated
+        # REST surface), attached by the same project-aware loads as `naming`; read with
+        # `wire_of()`. `native` for both keys until a load attaches the project's own.
+        self.wire: WireFormat = WireFormat()

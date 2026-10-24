@@ -148,6 +148,7 @@ public static class QueryScenarioRunner
                 "failed to load corpus metadata: " + string.Join("; ", result.Errors.Select(e => e.Message)));
         // ADR-0058 — the corpus's committed naming rule, not a hardcoded default.
         result.Root.PhysicalNaming = CorpusPaths.Naming;
+        result.Root.WireFormat = CorpusPaths.Wire;
         return result.Root;
     }
 

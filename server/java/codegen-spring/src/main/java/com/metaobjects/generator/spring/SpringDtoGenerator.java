@@ -4,6 +4,7 @@ package com.metaobjects.generator.spring;
 // com.metaobjects.generator.spring when this generator is copied out via
 // `mvn metaobjects:eject` and its own package is renamed — an explicit import, not
 // same-package bare-name resolution, is what keeps the ejected copy compiling.
+import com.metaobjects.config.WireFormat;
 import com.metaobjects.generator.spring.AutoSetSupport;
 import com.metaobjects.generator.spring.Fr019SharedEnum;
 import com.metaobjects.generator.spring.SpringGeneratorSupport;
@@ -100,6 +101,9 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
     private Fr019SharedEnum.ProvidedEnumConfig fr019Config =
         new Fr019SharedEnum.ProvidedEnumConfig(null, java.util.Map.of());
 
+    /** The project's wire setting for the current run (ADR-0019 Amendment 2). */
+    private WireFormat wire = WireFormat.DEFAULT;
+
     @Override
     protected Class<MetaObject> getFilterClass() {
         return MetaObject.class;
@@ -110,6 +114,9 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
     public void execute(MetaDataLoader loader) {
         parseArgs();
         runtimePackage = getArg(ARG_RUNTIME_PACKAGE, RUNTIME_PACKAGE);
+        // ADR-0019 Amendment 2: read from the loaded root, not from a shape being emitted - a
+        // served report's shape is synthesized from its read model and carries no parent.
+        wire = loader.getRoot().getWireFormat();
         Path outRoot = Paths.get(outDir.getAbsolutePath());
         fr019Config = Fr019SharedEnum.ProvidedEnumConfig.of(
             getArg("providedEnumNamespace"), getArg("providedEnumPackages"));
@@ -555,7 +562,7 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         boolean usesDecimal = fields.stream()
             .anyMatch(f -> SpringGeneratorSupport.isDecimalComponent(componentTypeFr019(f, entity)));
         if (usesDecimal) {
-            src.append(SpringGeneratorSupport.decimalAnnotationImports(runtimePackage));
+            src.append(SpringGeneratorSupport.decimalAnnotationImports(runtimePackage, wire));
         } else if (usesNetDeser) {
             src.append("import com.fasterxml.jackson.databind.annotation.JsonDeserialize;\n");
         }
@@ -587,7 +594,7 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
             String jsonName = SpringNaming.jsonPropertyAnnotation(field.getName());
             src.append("    ");
             if (!annotations.isEmpty()) src.append(annotations).append(' ');
-            String decimalJson = SpringGeneratorSupport.decimalJsonAnnotations(type, runtimePackage, field);
+            String decimalJson = SpringGeneratorSupport.decimalJsonAnnotations(type, runtimePackage, field, wire);
             if (!decimalJson.isEmpty()) src.append(decimalJson).append(' ');
             if (!jsonName.isEmpty()) src.append(jsonName).append(' ');
             src.append(type).append(' ').append(component);

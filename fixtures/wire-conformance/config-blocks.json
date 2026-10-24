@@ -1,0 +1,21 @@
+{
+  "_comment": "Cross-port wire-format setting (ADR-0019 Amendment 2). Each case is the `wire` block of a project's .metaobjects/config.json (null = the key is absent). A port parses it with the reader it uses for that file and must resolve `decimals` and `nullMembers` to the values below; the default is `native` for both, which means each port's own language-standard output. `invalid` blocks must be refused when the config is read.",
+  "cases": [
+    { "name": "default", "wire": null, "decimals": "native", "nullMembers": "native" },
+    { "name": "empty block is the default", "wire": {}, "decimals": "native", "nullMembers": "native" },
+    { "name": "explicit native", "wire": { "decimals": "native", "nullMembers": "native" }, "decimals": "native", "nullMembers": "native" },
+    { "name": "portable form (what the corpora pin)", "wire": { "decimals": "string", "nullMembers": "omit" }, "decimals": "string", "nullMembers": "omit" },
+    { "name": "decimals alone", "wire": { "decimals": "string" }, "decimals": "string", "nullMembers": "native" },
+    { "name": "emit null members", "wire": { "nullMembers": "emit" }, "decimals": "native", "nullMembers": "emit" }
+  ],
+  "invalid": [
+    { "name": "wire is not an object", "wire": "string" },
+    { "name": "wire is an array", "wire": ["string"] },
+    { "name": "unknown key", "wire": { "dates": "iso" } },
+    { "name": "number is not a decimals value", "wire": { "decimals": "number" } },
+    { "name": "unknown decimals value", "wire": { "decimals": "canonical" } },
+    { "name": "decimals is not a string", "wire": { "decimals": true } },
+    { "name": "unknown nullMembers value", "wire": { "nullMembers": "skip" } },
+    { "name": "nullMembers is not a string", "wire": { "nullMembers": null } }
+  ]
+}

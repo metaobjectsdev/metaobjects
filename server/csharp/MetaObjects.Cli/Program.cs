@@ -497,6 +497,8 @@ static int RunVerify(string[] rest)
         // ADR-0058 — same source as Libraries; the --codegen gate's regen reads it from
         // the loaded root rather than a flag (see VerifyCommand.RunCodegenDrift).
         Naming = resolvedMeta.Naming,
+        // ADR-0019 Amendment 2 — the wire setting, from the same file, for the --codegen regen.
+        Wire = resolvedMeta.Wire ?? MetaObjects.Meta.WireFormat.Default,
         TemplatesRoot = templatesRoot,
         OutDir = outDir,
         Namespace = ns,

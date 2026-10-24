@@ -34,7 +34,7 @@ import type { FastifyInstance, RouteShorthandOptions } from "fastify";
 import { and, eq, or, inArray } from "drizzle-orm";
 import { coerceIdForColumn } from "./util.js";
 import { timestampWire } from "../timestamp-wire.js";
-import { withDecimals } from "../decimal-wire.js";
+import { withWire, type WireOptions } from "../wire-format.js";
 import { withContractErrorHandler } from "./route-error-handler.js";
 
 // Loose Drizzle types — the helper works across libsql / better-sqlite3 / pg.
@@ -43,7 +43,7 @@ type AnyDrizzle = any;
 // biome-ignore lint/suspicious/noExplicitAny: dynamic dispatch over user's Drizzle table
 type AnyTable = any;
 
-export interface M2mRouteOptions {
+export interface M2mRouteOptions extends WireOptions {
   fastify: FastifyInstance;
   /** Source resource path, e.g. "/posts". The route mounts at `{path}/:id/{relationName}`. */
   path: string;
@@ -61,8 +61,6 @@ export interface M2mRouteOptions {
   targetColumn: string;
   /** Target entity PK column (physical column name, e.g. "id"). Defaults to "id". */
   targetPkColumn?: string;
-  /** The names of the TARGET entity's `field.decimal` fields, sent as canonical strings (ADR-0019 Amendment 1). */
-  decimalColumns?: readonly string[];
   /** Undirected self-join: union both junction FK columns on read. */
   symmetric: boolean;
   /**
@@ -90,7 +88,7 @@ export function mountM2mRoute(opts: M2mRouteOptions): void {
   const route = `${opts.path}/:id/${opts.relationName}`;
   // Route-scoped contract error handler — see route-error-handler.ts.
   const ro = withContractErrorHandler(opts.routeOptions);
-  const toWire = withDecimals(timestampWire(opts.targetTable), opts.decimalColumns);
+  const toWire = withWire(timestampWire(opts.targetTable), opts);
 
   opts.fastify.get(route, ro, async (req, reply) => {
     const { id } = req.params as { id: string };

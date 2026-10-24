@@ -33,6 +33,7 @@ Preserve the following contracts exactly across all language ports:
 **Wire format:**
 - Currency: integer minor units on the wire always. Float arithmetic for money is forbidden.
 - Pagination: `?limit=N&offset=N` — identical across all generated endpoints.
+- **Output form is a project setting, and the default is each language's own** (ADR-0019 Amendment 2): `wire` in `.metaobjects/config.json` (`decimals`: `native`|`string`; `nullMembers`: `native`|`emit`|`omit`), read by the same config reader as `naming` and carried on the loaded root. `native` means what that port's standard serializer writes. Never make a port's default match another port or a corpus. The corpora pin `{"decimals": "string", "nullMembers": "omit"}` in their own config, and a harness reads it from there. Input rules (W2, W3) hold in every mode. Shared cases: `fixtures/wire-conformance/`.
 - **Runtime return types**: a port's runtime `ObjectManager` returns **native in-process language types** (`field.decimal`→`BigDecimal`/`decimal`/`Decimal`, TS `string`; temporal→native; jsonb→native map). Wire canonicalization (the bullets above + `normalization.md`) is applied at the **serialization boundary**, never inside the runtime query path. See [ADR-0019](spec/decisions/ADR-0019-runtime-return-type-contract.md).
 
 **Grammar:**

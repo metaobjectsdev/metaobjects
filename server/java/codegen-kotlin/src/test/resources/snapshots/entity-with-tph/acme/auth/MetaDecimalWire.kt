@@ -1,6 +1,5 @@
 package acme.auth
 
-import com.fasterxml.jackson.core.JsonGenerator
 import com.fasterxml.jackson.core.JsonParser
 import com.fasterxml.jackson.core.JsonToken
 import com.fasterxml.jackson.databind.DeserializationContext
@@ -8,17 +7,15 @@ import com.fasterxml.jackson.databind.BeanProperty
 import com.fasterxml.jackson.databind.JsonDeserializer
 import com.fasterxml.jackson.databind.JsonMappingException
 import com.fasterxml.jackson.databind.JsonNode
-import com.fasterxml.jackson.databind.SerializerProvider
 import com.fasterxml.jackson.databind.deser.ContextualDeserializer
 import com.fasterxml.jackson.databind.deser.std.StdDeserializer
-import com.fasterxml.jackson.databind.ser.std.StdSerializer
 import java.math.BigDecimal
 import java.math.MathContext
 import java.math.RoundingMode
 
 /**
  * GENERATED (ADR-0019 Amendment 1) — do not hand-edit. The decimal wire rule: a decimal is
- * written as a canonical string (plain notation, no trailing fraction zeros, zero as "0"),
+ * written as the host serializer writes it,
  * and read from a string or number in the JSON-number grammar, exactly, never through a
  * binary float. Dependency-free (Jackson only).
  */
@@ -99,13 +96,6 @@ internal object MetaDecimalWire {
             t = if (t.cause === t) null else t.cause
         }
         return out
-    }
-
-    /** Writes a decimal as its canonical string. */
-    class Serializer : StdSerializer<BigDecimal>(BigDecimal::class.java) {
-        override fun serialize(value: BigDecimal, gen: JsonGenerator, provider: SerializerProvider) {
-            gen.writeString(format(value))
-        }
     }
 
     /**

@@ -1,5 +1,6 @@
 package com.metaobjects.generator.kotlin
 
+import com.metaobjects.config.WireFormat
 import com.metaobjects.metadata.ktx.loadString
 import org.junit.jupiter.api.DynamicTest
 import org.junit.jupiter.api.TestFactory
@@ -46,6 +47,8 @@ class KotlinCodegenSnapshotTest {
         val outDir = Files.createTempDirectory("snap-$name-")
         try {
             val loader = loadString(name, metaText)
+            // ADR-0019 Amendment 2: a fixture may pin the wire setting; absent = the native default.
+            loader.root.wireFormat = config.wire
             for (g in config.generators) {
                 val gen = when (g) {
                     "entity"     -> KotlinEntityGenerator()
@@ -78,6 +81,17 @@ class KotlinCodegenSnapshotTest {
 
             val snapshotDir = snapshotsRoot.resolve(name)
             val emittedFiles = Files.walk(outDir).filter { it.isRegularFile() }.sorted().toList()
+
+            if (System.getProperty("snapshots.update") == "true") {
+                // Deliberate refresh: -Dsnapshots.update=true rewrites this fixture's snapshot tree.
+                snapshotDir.toFile().deleteRecursively()
+                for (f in emittedFiles) {
+                    val target = snapshotDir.resolve(outDir.relativize(f).toString())
+                    Files.createDirectories(target.parent)
+                    Files.copy(f, target)
+                }
+                return
+            }
 
             if (!snapshotDir.isDirectory() || Files.walk(snapshotDir).filter { it.isRegularFile() }.count() == 0L) {
                 // First run: create snapshots
@@ -122,6 +136,7 @@ class KotlinCodegenSnapshotTest {
         val generators: List<String>,
         val validatorPackage: String?,
         val useNames: Boolean,
+        val wire: WireFormat,
     )
 
     private fun parseConfig(json: String): FixtureConfig {
@@ -130,6 +145,8 @@ class KotlinCodegenSnapshotTest {
             ?.split(",")?.map { it.trim().trim('"') } ?: emptyList()
         val pkg = Regex("\"validatorPackage\"\\s*:\\s*\"([^\"]+)\"").find(json)?.groupValues?.get(1)
         val useNames = Regex("\"useNames\"\\s*:\\s*true").containsMatchIn(json)
-        return FixtureConfig(gens, pkg, useNames)
+        val decimals = if (Regex("\"wireDecimals\"\\s*:\\s*\"string\"").containsMatchIn(json)) WireFormat.Decimals.STRING else WireFormat.Decimals.NATIVE
+        val nulls = if (Regex("\"wireNullMembers\"\\s*:\\s*\"omit\"").containsMatchIn(json)) WireFormat.NullMembers.OMIT else WireFormat.NullMembers.NATIVE
+        return FixtureConfig(gens, pkg, useNames, WireFormat(decimals, nulls))
     }
 }

@@ -8,6 +8,7 @@ import { TYPE_OBJECT, TYPE_FIELD } from "./base-types.js";
 import type { MetaObject } from "../core/object/meta-object.js";
 import type { MetaField } from "../core/field/meta-field.js";
 import { DEFAULT_PHYSICAL_NAMING, type PhysicalNaming } from "../naming.js";
+import { DEFAULT_WIRE_FORMAT, type WireFormat } from "../wire.js";
 import { PACKAGE_SEPARATOR } from "./structural.js";
 import { lookupCanonical } from "../naming-refs.js";
 
@@ -18,6 +19,12 @@ export class MetaRoot extends MetaData {
    * resolver through `physicalNamingOf`. A tree loaded with no project has the default.
    */
   physicalNaming: PhysicalNaming = DEFAULT_PHYSICAL_NAMING;
+
+  /**
+   * The project's wire format (`wire` in `.metaobjects/config.json`, ADR-0019 Amendment 2),
+   * set by the project-aware load beside `physicalNaming` and read through `wireFormatOf`.
+   */
+  wireFormat: WireFormat = DEFAULT_WIRE_FORMAT;
 
   /** Object entities defined at this root level. */
   objects(): MetaObject[] {

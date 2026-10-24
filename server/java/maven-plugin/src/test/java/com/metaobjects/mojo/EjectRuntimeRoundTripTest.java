@@ -91,6 +91,16 @@ public class EjectRuntimeRoundTripTest {
                 MetaDataLoader.SUBTYPE_MANUAL, "eject-runtime-test");
         loader.setSourceURIs(List.of(uri));
         loader.init();
+        loader.getRoot().setWireFormat(corpusWire());
+    }
+
+    /**
+     * The corpus's own pinned wire form (string / omit): the declared runtime set is the superset
+     * a project can need, and the output names the canonical serializer only under that form.
+     */
+    private com.metaobjects.config.WireFormat corpusWire() {
+        return com.metaobjects.config.SourceResolver.discoverWireFormat(List.of(canonical.toUri()))
+                .orElse(com.metaobjects.config.WireFormat.DEFAULT);
     }
 
     private static Path findCanonical() {
@@ -183,6 +193,7 @@ public class EjectRuntimeRoundTripTest {
                 MetaDataLoader.SUBTYPE_MANUAL, "eject-decimal-vo");
         l.setSourceURIs(List.of(file.toUri()));
         l.init();
+        l.getRoot().setWireFormat(corpusWire());
         return l;
     }
 

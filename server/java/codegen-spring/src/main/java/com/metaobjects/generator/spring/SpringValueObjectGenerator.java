@@ -9,6 +9,7 @@ import com.metaobjects.generator.spring.SpringNaming;
 import com.metaobjects.generator.spring.SpringRecordBuilder;
 import com.metaobjects.generator.spring.SpringTypeMapper;
 
+import com.metaobjects.config.WireFormat;
 import com.metaobjects.field.EnumField;
 import com.metaobjects.field.MetaField;
 import com.metaobjects.generator.GeneratorException;
@@ -87,10 +88,14 @@ public class SpringValueObjectGenerator extends MultiFileDirectGeneratorBase<Met
         return MetaObject.class;
     }
 
+    /** The project's wire setting for the current run (ADR-0019 Amendment 2). */
+    private WireFormat wire = WireFormat.DEFAULT;
+
     @Override
     public void execute(MetaDataLoader loader) {
         parseArgs();
         runtimePackage = getArg(ARG_RUNTIME_PACKAGE, RUNTIME_PACKAGE);
+        wire = loader.getRoot().getWireFormat();
         Path outRoot = Paths.get(outDir.getAbsolutePath());
         fr019Config = Fr019SharedEnum.ProvidedEnumConfig.of(
             getArg("providedEnumNamespace"), getArg("providedEnumPackages"));
@@ -153,7 +158,7 @@ public class SpringValueObjectGenerator extends MultiFileDirectGeneratorBase<Met
         boolean usesDecimal = fields.stream()
             .anyMatch(f -> SpringGeneratorSupport.isDecimalComponent(componentTypeFr019(f, vo)));
         if (usesDecimal) {
-            src.append(SpringGeneratorSupport.decimalAnnotationImports(runtimePackage));
+            src.append(SpringGeneratorSupport.decimalAnnotationImports(runtimePackage, wire));
         }
         if (usesValid) {
             src.append("import jakarta.validation.Valid;\n");
@@ -161,11 +166,14 @@ public class SpringValueObjectGenerator extends MultiFileDirectGeneratorBase<Met
         if (usesValidation) {
             src.append("import jakarta.validation.constraints.*;\n");
         }
-        // A value object is stored as jsonb; the api-contract wire omits an absent member, never null.
-        src.append("import com.fasterxml.jackson.annotation.JsonInclude;\n\n");
+        // ADR-0019 Amendment 2: the NON_NULL annotation is emitted only when the project asks
+        // for omitted null members; native and emit leave Jackson's own null-with-key behaviour.
+        boolean omitNulls = wire.omitNullMembers();
+        if (omitNulls) src.append("import com.fasterxml.jackson.annotation.JsonInclude;\n");
+        if (!src.toString().endsWith("\n\n")) src.append('\n');
         src.append("/** GENERATED — value object ").append(recordName)
            .append(". Do not hand-edit; regenerated from metadata. */\n");
-        src.append("@JsonInclude(JsonInclude.Include.NON_NULL)\n");
+        if (omitNulls) src.append("@JsonInclude(JsonInclude.Include.NON_NULL)\n");
         src.append("public record ").append(recordName).append("(\n");
         List<String[]> components = new ArrayList<>(fields.size());
         for (int i = 0; i < fields.size(); i++) {
@@ -178,7 +186,7 @@ public class SpringValueObjectGenerator extends MultiFileDirectGeneratorBase<Met
             String jsonName = SpringNaming.jsonPropertyAnnotation(field.getName());
             src.append("    ");
             if (!a.isEmpty()) src.append(a).append(' ');
-            String decimalJson = SpringGeneratorSupport.decimalJsonAnnotations(type, runtimePackage, field);
+            String decimalJson = SpringGeneratorSupport.decimalJsonAnnotations(type, runtimePackage, field, wire);
             if (!decimalJson.isEmpty()) src.append(decimalJson).append(' ');
             if (!jsonName.isEmpty()) src.append(jsonName).append(' ');
             src.append(type).append(' ').append(component);

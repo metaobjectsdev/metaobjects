@@ -76,6 +76,7 @@ public class CodegenCompileConformanceTests
         // ADR-0058 — the corpus's committed naming rule (read from its .metaobjects/config.json
         // via CorpusPaths.Naming), not a hardcoded default.
         result.Root.PhysicalNaming = CorpusPaths.Naming;
+        result.Root.WireFormat = CorpusPaths.Wire;
         return result.Root;
     }
 

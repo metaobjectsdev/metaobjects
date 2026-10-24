@@ -116,6 +116,12 @@ public final class GeneratedProjectionControllerHarness implements AutoCloseable
 
                 com.metaobjects.config.SourceResolver.resolvePhysicalNaming(corpusRoot));
 
+        // ADR-0019 Amendment 2 - the corpus's config.json (found by walking up from the corpus dir) pins the wire form (string / omit).
+
+        loader.getRoot().setWireFormat(
+                com.metaobjects.config.SourceResolver.discoverWireFormat(java.util.List.of((corpusRoot).toUri()))
+                        .orElse(com.metaobjects.config.WireFormat.DEFAULT));
+
         runGenerator(new SpringControllerGenerator(), loader, srcDir);
         runGenerator(new SpringDtoGenerator(), loader, srcDir);
         runGenerator(new SpringRepositoryGenerator(), loader, srcDir);

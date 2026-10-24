@@ -44,6 +44,7 @@ internal sealed class GeneratedRoutesServer : IAsyncDisposable
             throw new InvalidOperationException("metadata failed to load: " + string.Join("; ", load.Errors.Select(e => e.ToString())));
         var root = load.Root;
         root.PhysicalNaming = ApiContractCorpusPaths.Naming;
+        root.WireFormat = ApiContractCorpusPaths.Wire;
         var ctx = new GenContext
         {
             Entities = root.Objects(),

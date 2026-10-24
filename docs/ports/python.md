@@ -267,18 +267,31 @@ The generated `get_repository` raises until you override it. Any object with the
 `AuthorRepository` methods above works, including an in-memory dict while you try it
 out. Serve the app with `uvicorn my_app.main:app --reload` (`pip install uvicorn`).
 
-### Decimals on the wire
+### Decimals and null members on the wire
 
-A `field.decimal` crosses the API as one canonical string (ADR-0019 Amendment 1): `12.50` is
-`"12.5"`, zero is `"0"`, never a JSON number or an exponent. Input may be a string or a number,
-is read exactly, and is `400 validation` when it has more fraction digits than `@scale` or more
-integer digits than `@precision - @scale` (no `@scale` beside `@precision` means 0). A filter
-operand compares exactly; a bad one is `400 invalid_filter_value`. On SQLite a decimal is read at
-15 significant digits. Every port runs the shared vectors in `fixtures/decimal-wire/`.
+What the generated routers write is the project setting `wire` in `.metaobjects/config.json`
+([api-contract.md, "The wire setting"](../features/api-contract.md#the-wire-setting)). With no
+setting, a decimal is written the way Pydantic writes a `Decimal`, `str(value)`, which keeps its
+scale (`"12.50"`, `"1E-7"`). A value object is written as the runtime holds it: a member stored
+as `null` is `null`, and a member the stored value lacks is absent. `"wire": { "decimals":
+"string" }` writes the canonical string of ADR-0019 Amendment 1 (`"12.5"`, zero `"0"`).
+`"nullMembers": "emit"` writes every declared member, `null` when unset, and `"omit"` leaves a
+null member out. Both reach arrays and maps of value objects, and nested ones. A top-level null
+field is always `null`. On SQLite a decimal is read back without its scale, so `native` writes
+`"12.5"` there.
 
-Generated routers import `metaobjects.codegen.runtime.decimal_wire` (`format_decimal`,
-`parse_decimal`, `parse_decimal_operand`, `check_decimal_range`) and pass each decimal field's
-declared limits. A malformed or non-object JSON body is `400 validation`.
+Input is the same in every mode. It may be a string or a number, is read exactly, and is
+`400 validation` when it has more fraction digits than `@scale` or more integer digits than
+`@precision - @scale` (no `@scale` beside `@precision` means 0). A filter operand compares
+exactly; a bad one is `400 invalid_filter_value`. On SQLite a decimal is read at 15 significant
+digits. Every port runs the shared vectors in `fixtures/decimal-wire/`.
+
+Generated routers import `metaobjects.codegen.runtime.decimal_wire` (`parse_decimal`,
+`parse_decimal_operand`, `check_decimal_range`, `render_wire`) and pass each decimal field's
+declared limits. Each router writes its responses through `render_wire(value, _WIRE)`, where
+`_WIRE` is the setting it was generated with. A malformed or non-object JSON body is
+`400 validation`. `metaobjects verify` names the `wire` block that reproduces committed output
+generated under another setting.
 
 ### `<entity>_names.py` — the physical names, as constants
 

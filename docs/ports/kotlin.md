@@ -544,21 +544,31 @@ A column property whose name is a member of Exposed's `Table` gets a `Column` su
 follows the output mode: `options` and `storageParameters` are `Table` members only in Exposed
 1.x, so they are suffixed only with `exposedApi=1`.
 
-### Decimals on the wire
+### Decimals and null members on the wire
 
-A `field.decimal` crosses the API as one canonical string (ADR-0019 Amendment 1): `12.50` is
-`"12.5"`, zero is `"0"`, never a JSON number or an exponent. Input may be a string or a number,
-is read exactly, and is `400 validation` when it has more fraction digits than `@scale` or more
-integer digits than `@precision - @scale` (no `@scale` beside `@precision` means 0). A filter
-operand compares exactly; a bad one is `400 invalid_filter_value`. On SQLite a decimal is read at
-15 significant digits. Every port runs the shared vectors in `fixtures/decimal-wire/`.
+What the generated data classes write is the project setting `wire` in `.metaobjects/config.json`
+([api-contract.md, "The wire setting"](../features/api-contract.md#the-wire-setting)). With no
+setting, the host's Jackson `ObjectMapper` decides: a decimal is a JSON number as Jackson writes
+a `BigDecimal` (`12.50`, and `1E-7` under Spring Boot's defaults), and a value object's null
+member is `null` with its key present. `"wire": { "decimals": "string" }` writes the canonical
+string of ADR-0019 Amendment 1 (`"12.5"`, zero `"0"`) through `@get:JsonSerialize`, and
+`"nullMembers": "omit"` puts `@JsonInclude(NON_NULL)` on each value-object data class. `emit`
+writes what `native` writes. A top-level null field is always `null`.
+
+Input is the same in every mode. It may be a string or a number, is read exactly, and is
+`400 validation` when it has more fraction digits than `@scale` or more integer digits than
+`@precision - @scale` (no `@scale` beside `@precision` means 0). A filter operand compares
+exactly; a bad one is `400 invalid_filter_value`. On SQLite a decimal is read at 15 significant
+digits. Every port runs the shared vectors in `fixtures/decimal-wire/`.
 
 Generated Kotlin imports nothing from MetaObjects, so codegen writes `MetaDecimalWire.kt` into
-each package that has a decimal: the canonical writer, the strict reader, the declared-digit
-check and the `400 validation` envelope for an unreadable body. The Exposed tables of a package
+each package that has a decimal: the strict reader, the declared-digit check, the `400
+validation` envelope for an unreadable body and, under `"decimals": "string"`, the canonical
+writer. The Exposed tables of a package
 that has a decimal or uuid column also get `MetaPortableColumnTypes.kt`, which binds them on
 SQLite and MySQL as well as Postgres; the exposed-table generator writes it. Ejecting `entity`,
-`routes` or `exposed-table` copies `KotlinDecimalWireEmitter.kt` with the generator.
+`routes` or `exposed-table` copies `KotlinDecimalWireEmitter.kt` with the generator. `mvn metaobjects:verify` names the `wire`
+block that reproduces committed output generated under another setting.
 
 ### `<Entity>Names` — the physical names, as constants
 

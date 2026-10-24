@@ -49,9 +49,15 @@ public class EntityGenerator : IGenerator
     /// object. See <see cref="GenContext.Narrow"/>.</summary>
     public Func<MetaObject, bool>? Include { get; init; }
 
+    // The run's wire setting (ADR-0019 Amendment 2), read from the loaded root when Generate
+    // starts. Read from the run, not from each field's own root: a report's row model is a
+    // synthesized tree that belongs to no root.
+    private WireFormat _wire = WireFormat.Default;
+
     public virtual IEnumerable<EmittedFile> Generate(GenContext ctx)
     {
         ctx = ctx.Narrow(Include);
+        _wire = ctx.Root.WireFormat;
         // FR-044 — a view-backed report joins the set as its ROW MODEL (a keyless,
         // projection-shaped object carrying its derived fields); every other report node
         // is dropped. See ReportRows.
@@ -181,22 +187,30 @@ public class EntityGenerator : IGenerator
         // A sourceless entity with a field.uri hit this the moment #248 moved it out of `mapped`;
         // the value-object arm was the same hole, reachable already whenever no MAPPED entity in
         // the namespace happened to carry a strict uri/inet.
-        foreach (var ns in mapped.Concat(unmappedShapes).Concat(valueObjects).Where(HasStrictNetField)
-            .Select(e => PackageBindingResolver.Resolve(
-                ctx.Config, PackageBindingResolver.EffectivePackage(e), e.Name, fallbackContext: e.Name))
-            .Distinct(StringComparer.Ordinal))
-            files.Add(EmitNetValidationFile(ns));
+        var netNamespaces = HelperNamespaces(mapped.Concat(unmappedShapes).Concat(valueObjects).Where(HasStrictNetField), ctx);
+        foreach (var ns in netNamespaces)
+            files.Add(EmitNetValidationFile(ns, HelperFileName("MetaNetValidation", ns, netNamespaces)));
 
         // ADR-0019 Amendment 1 — the decimal wire helper, ONCE per namespace that has a decimal
         // property (every emitted shape that can carry one: mapped entities incl. projections,
         // report rows, TPH classes and abstract shapes, sourceless shapes and value objects).
-        foreach (var ns in mapped.Concat(unmappedShapes).Concat(valueObjects).Where(HasDecimalWireField)
-            .Select(e => PackageBindingResolver.Resolve(
-                ctx.Config, PackageBindingResolver.EffectivePackage(e), e.Name, fallbackContext: e.Name))
-            .Distinct(StringComparer.Ordinal))
-            files.Add(EmitDecimalWireFile(ns));
+        var decimalNamespaces = HelperNamespaces(mapped.Concat(unmappedShapes).Concat(valueObjects).Where(HasDecimalWireField), ctx);
+        foreach (var ns in decimalNamespaces)
+            files.Add(EmitDecimalWireFile(ns, HelperFileName("DecimalWire", ns, decimalNamespaces)));
         return files;
     }
+
+    // The distinct namespaces (package bindings) the given shapes land in, in first-seen order.
+    private static List<string> HelperNamespaces(IEnumerable<MetaObject> shapes, GenContext ctx) =>
+        shapes.Select(e => PackageBindingResolver.Resolve(
+                ctx.Config, PackageBindingResolver.EffectivePackage(e), e.Name, fallbackContext: e.Name))
+            .Distinct(StringComparer.Ordinal).ToList();
+
+    // A per-namespace helper's file name. Every namespace's copy lands in the one output
+    // directory, so a model whose packages bind to more than one namespace names each copy
+    // after its namespace (`DecimalWire.Acme.Billing.g.cs`); one namespace keeps the plain name.
+    private static string HelperFileName(string stem, string ns, IReadOnlyCollection<string> namespaces) =>
+        namespaces.Count > 1 ? $"{stem}.{ns}.g.cs" : $"{stem}.g.cs";
 
     // EF Core entity (table) or projection (view) class. For a write-through entity
     // (#214) this emits the WRITE half: the table-mapped, derived-FREE entity (the
@@ -608,7 +622,7 @@ public class EntityGenerator : IGenerator
             var arr = new StringBuilder();
             arr.AppendLine($"    [Column({CSharpNaming.ColumnRef(entity, field, strategy, includeNames)})]");
             AppendArrayValidatorAttributes(arr, field);
-            AppendDecimalConverterAttribute(arr, field, nullable: false);
+            AppendDecimalConverterAttribute(arr, field, nullable: false, _wire);
             // A NON-required decimal array is nullable (no initializer) so PATCH null / an omitted
             // POST value stays a NULL column instead of failing as a required collection.
             if (IsDecimalWireField(field) && !CSharpNaming.IsRequired(entity, field))
@@ -625,7 +639,7 @@ public class EntityGenerator : IGenerator
         else
             AppendNumericValidatorAttributes(sb, field);
         var required = CSharpNaming.IsRequired(entity, field);
-        AppendDecimalConverterAttribute(sb, field, nullable: !required);
+        AppendDecimalConverterAttribute(sb, field, nullable: !required, _wire);
         var nullable = required ? "" : "?";
         // Mirrors ScalarProperty's own initializer handling (its non-TPH sibling): a
         // literal-safe @default (bool/int/long/double/float/decimal/string) wins over the
@@ -859,11 +873,13 @@ public class EntityGenerator : IGenerator
             if (member is null) continue;
             // Pin the jsonb element name (+ wire name) to the metadata field name so the
             // stored owned-JSON keys match the shared seed + the cross-port wire contract.
-            // A null member is omitted on the wire (the cross-port value-object contract). Only a
-            // NULLABLE member can be null, and System.Text.Json throws InvalidOperationException
-            // when WhenWritingNull sits on a non-nullable value type (double, DateTimeOffset, ...),
-            // so the condition is emitted for the nullable members alone.
-            var nullableMember = System.Text.RegularExpressions.Regex.IsMatch(member, @"^\s*public\s+[^=;{(]*\?\s+\w+", System.Text.RegularExpressions.RegexOptions.Multiline);
+            // Under `wire.nullMembers: omit` (ADR-0019 Amendment 2) a null member is left out of
+            // the wire; the default writes it as System.Text.Json does, `null` with the key
+            // present. Only a NULLABLE member can be null, and System.Text.Json throws
+            // InvalidOperationException when WhenWritingNull sits on a non-nullable value type
+            // (double, DateTimeOffset, ...), so the condition is emitted for the nullable members alone.
+            var nullableMember = _wire.NullMembers == NullMemberForm.Omit
+                && System.Text.RegularExpressions.Regex.IsMatch(member, @"^\s*public\s+[^=;{(]*\?\s+\w+", System.Text.RegularExpressions.RegexOptions.Multiline);
             member = $"    [JsonPropertyName(\"{field.Name}\")]\n"
                 + (nullableMember ? "    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]\n" : "")
                 + member;
@@ -1033,14 +1049,16 @@ public class EntityGenerator : IGenerator
     // the namespace swap. It lives HERE (not read from the HelperRuntime resource) so an
     // ejected EntityGenerator stays self-contained, the way the MetaNetValidation text is.
     private const string DecimalWireSourceTemplate = """
-// DecimalWire — the wire form of a field.decimal (ADR-0019 Amendment 1, W1-W4).
+// DecimalWire — the wire form of a field.decimal (ADR-0019 Amendments 1 and 2, W1-W4).
 //
-// A decimal crosses JSON as a canonical STRING: `^-?(0|[1-9][0-9]*)(\.[0-9]*[1-9])?$`,
-// plain notation, no exponent, no trailing fractional zeros, zero as "0". A JSON number is
-// a double to every JavaScript client, so the string is the only spelling a browser reads
-// exactly. Input takes a string in the JSON-number grammar or a JSON number; anything else
-// is refused. A value `decimal` cannot hold (more than 28-29 significant digits) is an
-// error, never a rounded value (W3).
+// Output follows the project's `wire.decimals` setting (Amendment 2). Under `native`, the
+// default, a decimal is what System.Text.Json writes for it: a JSON number carrying its scale
+// (`12.50`), through the `Number` attribute. Under `string` it is the canonical STRING,
+// `^-?(0|[1-9][0-9]*)(\.[0-9]*[1-9])?$`: plain notation, no exponent, no trailing fractional
+// zeros, zero as "0" (the plain converters and `Declared`), the form every port writes alike and
+// the only spelling a browser reads exactly. Input is the same under both: a string in the
+// JSON-number grammar or a JSON number; anything else is refused. A value `decimal` cannot hold
+// (more than 28-29 significant digits) is an error, never a rounded value (W3).
 //
 // ONE source, two homes. This file is the package's production helper (the filter
 // dispatcher parses its operands through it). The entity generator emits the SAME text,
@@ -1203,8 +1221,9 @@ public static class DecimalWire
 
     /// <summary>
     /// W3 for a declared property: false when <paramref name="property"/> of <paramref name="owner"/>
-    /// carries <see cref="DeclaredAttribute"/> and <paramref name="value"/> does not fit it.
-    /// True for a property with no declared precision (the PATCH merge asks this per key).
+    /// carries <see cref="DeclaredAttribute"/> (or a <see cref="NumberAttribute"/> with a precision)
+    /// and <paramref name="value"/> does not fit it. True for a property with no declared
+    /// precision (the PATCH merge asks this per key).
     /// </summary>
     public static bool FitsDeclared(Type owner, string property, decimal value)
     {
@@ -1216,7 +1235,8 @@ public static class DecimalWire
             // than the entity resolves THIS DecimalWire, while the entity carries the copy emitted
             // into its own namespace, and the two DeclaredAttribute types are different types.
             var type = attribute.GetType();
-            if (type.Name != nameof(DeclaredAttribute) || type.DeclaringType?.Name != nameof(DecimalWire)) continue;
+            if (type.Name is not (nameof(DeclaredAttribute) or nameof(NumberAttribute))
+                || type.DeclaringType?.Name != nameof(DecimalWire)) continue;
             var precision = type.GetProperty(nameof(DeclaredAttribute.Precision))?.GetValue(attribute);
             var scale = type.GetProperty(nameof(DeclaredAttribute.Scale))?.GetValue(attribute);
             return precision is int p && scale is int sc ? Fits(value, p, sc) : true;
@@ -1246,8 +1266,9 @@ public static class DecimalWire
     }
 
     /// <summary>
-    /// A decimal property with a declared <c>@precision</c> and <c>@scale</c>: the same wire form
-    /// as the plain converters, and a value the column cannot hold is refused, never rounded (W3).
+    /// A decimal property with a declared <c>@precision</c> and <c>@scale</c>, under
+    /// <c>wire.decimals: string</c>: the same wire form as the plain converters, and a value the
+    /// column cannot hold is refused, never rounded (W3).
     /// </summary>
     [AttributeUsage(AttributeTargets.Property)]
     public sealed class DeclaredAttribute(int precision, int scale) : JsonConverterAttribute
@@ -1266,8 +1287,43 @@ public static class DecimalWire
         }
     }
 
-    /// <summary>A decimal property: written as the canonical string, read from a string or a number.</summary>
-    public sealed class DecimalJsonConverter(int? precision, int? scale) : JsonConverter<decimal>
+    /// <summary>
+    /// A decimal property under <c>wire.decimals: native</c>: written as System.Text.Json writes a
+    /// <c>decimal</c> (a JSON number carrying its scale), read by the same rules as the string form
+    /// (a string or a number; a declared <c>@precision</c> and <c>@scale</c> refuse a value the
+    /// column cannot hold, never rounded).
+    /// </summary>
+    [AttributeUsage(AttributeTargets.Property)]
+    public sealed class NumberAttribute : JsonConverterAttribute
+    {
+        public NumberAttribute() { }
+
+        public NumberAttribute(int precision, int scale)
+        {
+            Precision = precision;
+            Scale = scale;
+        }
+
+        public int? Precision { get; }
+        public int? Scale { get; }
+
+        public override JsonConverter? CreateConverter(Type typeToConvert)
+        {
+            if (typeToConvert == typeof(decimal)) return new DecimalJsonConverter(Precision, Scale, asString: false);
+            if (typeToConvert == typeof(decimal?)) return new NullableDecimalJsonConverter(Precision, Scale, asString: false);
+            if (typeToConvert == typeof(IList<decimal>)) return new DecimalListJsonConverter(Precision, Scale, asString: false);
+            return null;
+        }
+    }
+
+    private static void WriteOne(Utf8JsonWriter writer, decimal value, bool asString)
+    {
+        if (asString) writer.WriteStringValue(Format(value));
+        else writer.WriteNumberValue(value);
+    }
+
+    /// <summary>A decimal property: written as the canonical string (or, from <see cref="NumberAttribute"/>, a JSON number), read from a string or a number.</summary>
+    public sealed class DecimalJsonConverter(int? precision, int? scale, bool asString = true) : JsonConverter<decimal>
     {
         public DecimalJsonConverter() : this(null, null) { }
 
@@ -1275,11 +1331,11 @@ public static class DecimalWire
             => ReadOne(ref reader, precision, scale);
 
         public override void Write(Utf8JsonWriter writer, decimal value, JsonSerializerOptions options)
-            => writer.WriteStringValue(Format(value));
+            => WriteOne(writer, value, asString);
     }
 
     /// <summary>A nullable decimal property: null is JSON null, with the key present.</summary>
-    public sealed class NullableDecimalJsonConverter(int? precision, int? scale) : JsonConverter<decimal?>
+    public sealed class NullableDecimalJsonConverter(int? precision, int? scale, bool asString = true) : JsonConverter<decimal?>
     {
         public NullableDecimalJsonConverter() : this(null, null) { }
 
@@ -1291,12 +1347,12 @@ public static class DecimalWire
         public override void Write(Utf8JsonWriter writer, decimal? value, JsonSerializerOptions options)
         {
             if (value is null) writer.WriteNullValue();
-            else writer.WriteStringValue(Format(value.Value));
+            else WriteOne(writer, value.Value, asString);
         }
     }
 
-    /// <summary>An <c>@isArray</c> decimal property, typed <c>IList&lt;decimal&gt;</c> (the one collection shape EF Core 8 on SQLite can materialize): an array of canonical strings.</summary>
-    public sealed class DecimalListJsonConverter(int? precision, int? scale) : JsonConverter<IList<decimal>>
+    /// <summary>An <c>@isArray</c> decimal property, typed <c>IList&lt;decimal&gt;</c> (the one collection shape EF Core 8 on SQLite can materialize): an array of canonical strings (or JSON numbers).</summary>
+    public sealed class DecimalListJsonConverter(int? precision, int? scale, bool asString = true) : JsonConverter<IList<decimal>>
     {
         public DecimalListJsonConverter() : this(null, null) { }
 
@@ -1312,15 +1368,15 @@ public static class DecimalWire
         public override void Write(Utf8JsonWriter writer, IList<decimal> value, JsonSerializerOptions options)
         {
             writer.WriteStartArray();
-            foreach (var d in value) writer.WriteStringValue(Format(d));
+            foreach (var d in value) WriteOne(writer, d, asString);
             writer.WriteEndArray();
         }
     }
 }
 """;
 
-    private static EmittedFile EmitDecimalWireFile(string ns) =>
-        new("DecimalWire.g.cs", DecimalWireSourceTemplate.Replace("__NS__", ns, StringComparison.Ordinal) + "\n");
+    private static EmittedFile EmitDecimalWireFile(string ns, string fileName) =>
+        new(fileName, DecimalWireSourceTemplate.Replace("__NS__", ns, StringComparison.Ordinal) + "\n");
 
     // true iff FIELD surfaces as a CLR decimal (single or @isArray) and so carries the
     // per-property wire converter. A jsonb override keeps the JsonDocument type, not decimal.
@@ -1330,10 +1386,19 @@ public static class DecimalWire
     private static bool HasDecimalWireField(MetaObject entity) => entity.Fields().Any(IsDecimalWireField);
 
     // The per-property converter: host JSON options cannot drop it. `required` decides which
-    // closed type the property has (decimal, decimal?, IList<decimal>).
-    private static void AppendDecimalConverterAttribute(StringBuilder sb, MetaField field, bool nullable)
+    // closed type the property has (decimal, decimal?, IList<decimal>). Under the default
+    // `wire.decimals: native` (ADR-0019 Amendment 2) it writes what System.Text.Json writes, a
+    // JSON number, and keeps only the input rules; `string` writes the canonical string.
+    private static void AppendDecimalConverterAttribute(StringBuilder sb, MetaField field, bool nullable, WireFormat wire)
     {
         if (!IsDecimalWireField(field)) return;
+        if (wire.Decimals == DecimalWireForm.Native)
+        {
+            sb.AppendLine(field.Precision is long p
+                ? $"    [DecimalWire.Number({p}, {field.Scale ?? 0})]"
+                : "    [DecimalWire.Number]");
+            return;
+        }
         // W3: a declared @precision and @scale bound the input; the attribute carries both.
         if (field.Precision is long precision)
         {
@@ -1349,7 +1414,7 @@ public static class DecimalWire
     // converters implementing the Contract-A rules (absolute-scheme URI; IPv4/IPv6 literal, no DNS)
     // verified against the shared validation-conformance corpus. Dependency-free, so the generated
     // code runs without any MetaObjects runtime. The body is fixed; only the namespace varies.
-    private static EmittedFile EmitNetValidationFile(string ns)
+    private static EmittedFile EmitNetValidationFile(string ns, string fileName)
     {
         var sb = new StringBuilder();
         sb.AppendLine("// Generated by MetaObjects entity-generator. Do not edit by hand.");
@@ -1440,7 +1505,7 @@ public static class DecimalWire
         sb.AppendLine("        }");
         sb.AppendLine("    }");
         sb.AppendLine("}");
-        return new EmittedFile("MetaNetValidation.g.cs", sb.ToString());
+        return new EmittedFile(fileName, sb.ToString());
     }
 
     // A property for an enum-subtype field. The property type is the nested enum name.
@@ -1474,9 +1539,9 @@ public static class DecimalWire
     // to before).
     //
     // When the field is an array (isArray: true), emit IList<T> with an empty-list
-    // initializer instead of a scalar T property. A NON-required decimal array, and a
-    // NON-required array member of a value object (valueObject: true, so a null member is
-    // omitted on the wire), are nullable with no initializer instead.
+    // initializer instead of a scalar T property. A NON-required decimal array, and, under
+    // `wire.nullMembers: omit`, a NON-required array member of a value object (valueObject:
+    // true, so a null member is omitted on the wire), are nullable with no initializer instead.
     //
     // includeNames (C1) is only consulted when withAttributes is true — it is the
     // ctx.Config.IncludeNames run-level presence gate CSharpNaming.ColumnRef needs;
@@ -1512,11 +1577,12 @@ public static class DecimalWire
                 AppendArrayValidatorAttributes(arr, field);
             // EF Core 8 on SQLite materializes a primitive collection only through IList<T> (an
             // ICollection<T> property throws at query compile time), so a scalar array is an IList<T>.
-            AppendDecimalConverterAttribute(arr, field, nullable: false);
+            AppendDecimalConverterAttribute(arr, field, nullable: false, _wire);
             // A NON-required decimal array is nullable (no initializer) so PATCH null / an omitted
             // POST value stays a NULL column instead of failing as a required collection; a
             // NON-required value-object array is nullable so a null member is omitted on the wire.
-            if ((IsDecimalWireField(field) || valueObject) && !CSharpNaming.IsRequired(owner, field))
+            var omittable = valueObject && _wire.NullMembers == NullMemberForm.Omit;
+            if ((IsDecimalWireField(field) || omittable) && !CSharpNaming.IsRequired(owner, field))
                 arr.Append($"    public IList<{baseType}>? {propName} {{ get; set; }}");
             else
                 arr.Append($"    public IList<{baseType}> {propName} {{ get; set; }} = new List<{baseType}>();");
@@ -1573,7 +1639,7 @@ public static class DecimalWire
             AppendNetConverterAttribute(sb, field);
         // ADR-0019 Amendment 1: a decimal crosses JSON as a canonical string. Attached per
         // property (not through host JsonSerializerOptions) so no host configuration drops it.
-        AppendDecimalConverterAttribute(sb, field, nullable: !nonNull);
+        AppendDecimalConverterAttribute(sb, field, nullable: !nonNull, _wire);
 
         var type = nonNull ? baseType : baseType + "?";
         // A literal-safe @default (bool / integer / floating / string) emits a property

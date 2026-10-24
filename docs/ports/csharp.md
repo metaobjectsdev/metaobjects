@@ -194,20 +194,33 @@ The codegen emits:
 - `AuthorFilterAllowlist.g.cs` — the server-side filter/sort allowlist feeding the
   generated list handler.
 
-### Decimals on the wire
+### Decimals and null members on the wire
 
-A `field.decimal` crosses the API as one canonical string (ADR-0019 Amendment 1): `12.50` is
-`"12.5"`, zero is `"0"`, never a JSON number or an exponent. Input may be a string or a number,
-is read exactly, and is `400 validation` when it has more fraction digits than `@scale` or more
-integer digits than `@precision - @scale` (no `@scale` beside `@precision` means 0). A filter
-operand compares exactly; a bad one is `400 invalid_filter_value`. On SQLite a decimal is read at
-15 significant digits. Every port runs the shared vectors in `fixtures/decimal-wire/`.
+What the generated API writes is the project setting `wire` in `.metaobjects/config.json`
+([api-contract.md, "The wire setting"](../features/api-contract.md#the-wire-setting)). With no
+setting, it writes what System.Text.Json writes: a decimal is a JSON number that keeps its scale
+(`12.50`, `0.0000001`), and a value object's null member is `null` with its key present. That is
+the 1.0.x output. `"wire": { "decimals": "string" }` writes the canonical string of ADR-0019
+Amendment 1 (`12.50` is `"12.5"`, zero is `"0"`). `"nullMembers": "omit"` leaves a null member
+out (`[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]` on each nullable member),
+and `"emit"` is what the default already writes.
 
-`dotnet meta gen` writes `DecimalWire.g.cs` once per namespace. A decimal property carries its
-JSON converter and, with `@precision`, `[DecimalWire.Declared(precision, scale)]`; a decimal
-array is an `IList<decimal>` with `DecimalListJsonConverter`. A stored value the CLR `decimal`
-cannot hold answers `500 {"error": "decimal_out_of_range"}` (`DecimalRangeEndpointFilter`).
-An owned `routes` generator copies `DecimalWire.cs` and `DecimalRangeEndpointFilter.cs`.
+Input is the same in every mode. It may be a string or a number, is read exactly, and is
+`400 validation` when it has more fraction digits than `@scale` or more integer digits than
+`@precision - @scale` (no `@scale` beside `@precision` means 0). A filter operand compares
+exactly; a bad one is `400 invalid_filter_value`. On SQLite a decimal is read at 15 significant
+digits. Every port runs the shared vectors in `fixtures/decimal-wire/`.
+
+`dotnet meta gen` writes `DecimalWire.g.cs` once per namespace that has a decimal (named
+`DecimalWire.<Namespace>.g.cs` when the model binds more than one namespace;
+`MetaNetValidation` follows the same rule). By default a decimal property carries
+`[DecimalWire.Number]`, or `[DecimalWire.Number(precision, scale)]` with `@precision`. Under
+`"decimals": "string"` it carries the string converter, or `[DecimalWire.Declared(precision,
+scale)]`. A decimal array is an `IList<decimal>`. A stored value the CLR `decimal` cannot hold
+answers `500 {"error": "decimal_out_of_range"}` (`DecimalRangeEndpointFilter`). An owned `routes`
+generator copies `DecimalWire.cs` and `DecimalRangeEndpointFilter.cs`. Do not strip the
+attributes or delete `DecimalWire.g.cs` to change the output: they also check input. Set `wire`
+and regenerate.
 
 ### `<Entity>Names` — the physical names, as constants
 

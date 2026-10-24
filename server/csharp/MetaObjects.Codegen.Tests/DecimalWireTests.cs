@@ -197,6 +197,7 @@ public class DecimalWireTests
         Assert.Empty(result.Errors);
         root = result.Root;
         root.PhysicalNaming = CorpusPaths.Naming;
+        root.WireFormat = CorpusPaths.Wire;
         var ctx = new GenContext
         {
             Entities = root.Objects(),
@@ -291,24 +292,37 @@ public class DecimalWireTests
     ]}}
     """;
 
-    [Fact]
-    public void A_decimal_inside_a_jsonb_value_object_reads_exactly_checks_its_declared_range_and_writes_canonical()
+    // ADR-0019 Amendment 2: the cross-port form a project opts into, and the form the corpora pin.
+    private static readonly WireFormat Portable = new(DecimalWireForm.String, NullMemberForm.Omit);
+
+    private static IReadOnlyList<EmittedFile> EmitModel(string model, WireFormat? wire, GenConfig? config = null)
     {
-        var r = new MetaDataLoader().Load([new InMemoryStringSource(ValueObjectModel, id: "vo-decimal.json")]);
+        var r = new MetaDataLoader().Load([new InMemoryStringSource(model, id: "wire-model.json")]);
         Assert.Empty(r.Errors);
+        if (wire is not null) r.Root.WireFormat = wire;
         var ctx = new GenContext
         {
             Entities = r.Root.Objects(), Root = r.Root,
-            Config = new GenConfig { OutDir = Path.Combine(Path.GetTempPath(), "unused-vo-decimal"), Namespace = "Acme.Shop" },
+            Config = config ?? new GenConfig { OutDir = Path.Combine(Path.GetTempPath(), "unused-wire-model"), Namespace = "Acme.Shop" },
         };
-        var files = new EntityGenerator().Generate(ctx);
+        return new EntityGenerator().Generate(ctx).ToList();
+    }
+
+    private static Assembly Compile(IEnumerable<EmittedFile> files)
+    {
         var trees = files.Select(f => CSharpSyntaxTree.ParseText(f.Content, new CSharpParseOptions(LanguageVersion.CSharp12), path: f.Path));
-        var comp = CSharpCompilation.Create("vo_decimal_" + Guid.NewGuid().ToString("N"), trees,
+        var comp = CSharpCompilation.Create("wire_" + Guid.NewGuid().ToString("N"), trees,
             DbContextCompileTests.BuildReferences(), new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
         using var ms = new MemoryStream();
         var emit = comp.Emit(ms);
         Assert.True(emit.Success, string.Join("\n", emit.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error)));
-        var asm = Assembly.Load(ms.ToArray());
+        return Assembly.Load(ms.ToArray());
+    }
+
+    [Fact]
+    public void A_decimal_inside_a_jsonb_value_object_reads_exactly_checks_its_declared_range_and_writes_canonical()
+    {
+        var asm = Compile(EmitModel(ValueObjectModel, Portable));
         var price = asm.GetTypes().Single(t => t.Name == "Price");
         var item = asm.GetTypes().Single(t => t.Name == "Item");
 
@@ -341,24 +355,15 @@ public class DecimalWireTests
     {
         // A route mounted in a namespace other than the entity's resolves THIS DecimalWire while the
         // entity's property carries the DeclaredAttribute of its own namespace's copy (review C4).
-        var r = new MetaDataLoader().Load([new InMemoryStringSource(ValueObjectModel, id: "c4.json")]);
-        Assert.Empty(r.Errors);
-        var ctx = new GenContext
+        // Both wire forms: the native Number attribute carries the declared range as Declared does.
+        foreach (var wire in new[] { Portable, WireFormat.Default })
         {
-            Entities = r.Root.Objects(), Root = r.Root,
-            Config = new GenConfig { OutDir = Path.Combine(Path.GetTempPath(), "unused-c4"), Namespace = "Acme.Shop" },
-        };
-        var trees = new EntityGenerator().Generate(ctx)
-            .Select(f => CSharpSyntaxTree.ParseText(f.Content, new CSharpParseOptions(LanguageVersion.CSharp12), path: f.Path));
-        var comp = CSharpCompilation.Create("c4_" + Guid.NewGuid().ToString("N"), trees,
-            DbContextCompileTests.BuildReferences(), new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
-        using var ms = new MemoryStream();
-        Assert.True(comp.Emit(ms).Success);
-        var price = Assembly.Load(ms.ToArray()).GetTypes().Single(t => t.Name == "Price");
-        Assert.True(DecimalWire.FitsDeclared(price, "Net", 99999999.99m));
-        Assert.False(DecimalWire.FitsDeclared(price, "Net", 1.001m));
-        Assert.False(DecimalWire.FitsDeclared(price, "Net", 123456789012m));
-        Assert.True(DecimalWire.FitsDeclared(price, "Free", 1.2345678901234567890123m));
+            var price = Compile(EmitModel(ValueObjectModel, wire)).GetTypes().Single(t => t.Name == "Price");
+            Assert.True(DecimalWire.FitsDeclared(price, "Net", 99999999.99m));
+            Assert.False(DecimalWire.FitsDeclared(price, "Net", 1.001m));
+            Assert.False(DecimalWire.FitsDeclared(price, "Net", 123456789012m));
+            Assert.True(DecimalWire.FitsDeclared(price, "Free", 1.2345678901234567890123m));
+        }
     }
 
     private const string ArrayShapeModel = """
@@ -381,21 +386,7 @@ public class DecimalWireTests
     [Fact]
     public void A_non_decimal_array_inherited_from_an_abstract_shape_starts_empty_while_a_value_object_one_is_omitted_when_null()
     {
-        var r = new MetaDataLoader().Load([new InMemoryStringSource(ArrayShapeModel, id: "array-shape.json")]);
-        Assert.Empty(r.Errors);
-        var ctx = new GenContext
-        {
-            Entities = r.Root.Objects(), Root = r.Root,
-            Config = new GenConfig { OutDir = Path.Combine(Path.GetTempPath(), "unused-array-shape"), Namespace = "Acme.Shop" },
-        };
-        var files = new EntityGenerator().Generate(ctx);
-        var trees = files.Select(f => CSharpSyntaxTree.ParseText(f.Content, new CSharpParseOptions(LanguageVersion.CSharp12), path: f.Path));
-        var comp = CSharpCompilation.Create("array_shape_" + Guid.NewGuid().ToString("N"), trees,
-            DbContextCompileTests.BuildReferences(), new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
-        using var ms = new MemoryStream();
-        var emit = comp.Emit(ms);
-        Assert.True(emit.Success, string.Join("\n", emit.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error)));
-        var asm = Assembly.Load(ms.ToArray());
+        var asm = Compile(EmitModel(ArrayShapeModel, Portable));
 
         var post = asm.GetTypes().Single(t => t.Name == "Post");
         var tags = Assert.IsAssignableFrom<IList<string>>(post.GetProperty("Tags")!.GetValue(Activator.CreateInstance(post)));
@@ -403,5 +394,149 @@ public class DecimalWireTests
 
         var labels = asm.GetTypes().Single(t => t.Name == "Labels");
         Assert.Equal("{}", JsonSerializer.Serialize(Activator.CreateInstance(labels), labels));
+    }
+
+    // ---- ADR-0019 Amendment 2: the wire setting -----------------------------------------------
+
+    private const string NativeShapeModel = """
+    { "metadata.root": { "package": "acme::shop", "children": [
+      { "object.value": { "name": "Price", "children": [
+        { "field.decimal": { "name": "net", "@precision": 12, "@scale": 2 } },
+        { "field.string": { "name": "note" } },
+        { "field.string": { "name": "tags", "isArray": true } }
+      ]}},
+      { "object.entity": { "name": "Item", "children": [
+        { "source.rdb": { "@table": "items" } },
+        { "field.long": { "name": "id" } },
+        { "field.decimal": { "name": "amount", "@precision": 10, "@scale": 2 } },
+        { "field.decimal": { "name": "ratio" } },
+        { "field.decimal": { "name": "steps", "isArray": true } },
+        { "field.object": { "name": "price", "@objectRef": "Price", "@storage": "jsonb" } },
+        { "identity.primary": { "@fields": "id" } }
+      ]}}
+    ]}}
+    """;
+
+    [Fact]
+    public void The_native_default_writes_what_System_Text_Json_writes_and_keeps_the_input_rules()
+    {
+        // No setting at all: the 1.0.x shape. A decimal is a JSON number carrying its scale, a
+        // value object's null member is null with its key present, an unset array member is [].
+        var asm = Compile(EmitModel(NativeShapeModel, wire: null));
+        var item = asm.GetTypes().Single(t => t.Name == "Item");
+        var price = asm.GetTypes().Single(t => t.Name == "Price");
+        var vo = Activator.CreateInstance(price)!;
+        price.GetProperty("Net")!.SetValue(vo, 12.50m);
+        var row = Activator.CreateInstance(item)!;
+        item.GetProperty("Amount")!.SetValue(row, 12.50m);
+        item.GetProperty("Ratio")!.SetValue(row, 0.0000001m);
+        item.GetProperty("Steps")!.SetValue(row, new List<decimal> { 1.50m, 2m });
+        item.GetProperty("Price")!.SetValue(row, vo);
+
+        var json = JsonSerializer.Serialize(row, item);
+        Assert.Contains("\"Amount\":12.50", json);
+        Assert.Contains("\"Ratio\":0.0000001", json);
+        Assert.Contains("\"Steps\":[1.50,2]", json);
+        Assert.Contains("\"Price\":{\"net\":12.50,\"note\":null,\"tags\":[]}", json);
+
+        // W2/W3 hold in native mode: a string or a number is read, garbage and over-scale refused.
+        var back = JsonSerializer.Deserialize("{\"Amount\":\"12.5\",\"Ratio\":3}", item)!;
+        Assert.Equal(12.5m, item.GetProperty("Amount")!.GetValue(back));
+        foreach (var bad in new[] { "{\"Amount\":\"abc\"}", "{\"Amount\":1.234}", "{\"Amount\":\"123456789\"}",
+                                     "{\"Price\":{\"net\":\"1.001\"}}", "{\"Steps\":[\"x\"]}" })
+            Assert.Throws<JsonException>(() => JsonSerializer.Deserialize(bad, item));
+        Assert.True(DecimalWire.FitsDeclared(item, "Amount", 12345678.12m));
+        Assert.False(DecimalWire.FitsDeclared(item, "Amount", 1.001m));
+    }
+
+    [Fact]
+    public void The_portable_setting_writes_canonical_strings_and_omits_null_members()
+    {
+        var asm = Compile(EmitModel(NativeShapeModel, Portable));
+        var item = asm.GetTypes().Single(t => t.Name == "Item");
+        var price = asm.GetTypes().Single(t => t.Name == "Price");
+        var vo = Activator.CreateInstance(price)!;
+        price.GetProperty("Net")!.SetValue(vo, 12.50m);
+        var row = Activator.CreateInstance(item)!;
+        item.GetProperty("Amount")!.SetValue(row, 12.50m);
+        item.GetProperty("Steps")!.SetValue(row, new List<decimal> { 1.50m, 2m });
+        item.GetProperty("Price")!.SetValue(row, vo);
+
+        var json = JsonSerializer.Serialize(row, item);
+        Assert.Contains("\"Amount\":\"12.5\"", json);
+        Assert.Contains("\"Steps\":[\"1.5\",\"2\"]", json);
+        Assert.Contains("\"Price\":{\"net\":\"12.5\"}", json);
+    }
+
+    [Fact]
+    public void Each_wire_key_switches_only_its_own_output()
+    {
+        string Gen(WireFormat w) => string.Join("\n", EmitModel(NativeShapeModel, w).Select(f => f.Path + "\n" + f.Content));
+        var native = Gen(WireFormat.Default);
+        // C#'s standard serializer writes a null member with its key: `emit` generates what native does.
+        Assert.Equal(native, Gen(new WireFormat(DecimalWireForm.Native, NullMemberForm.Emit)));
+        Assert.DoesNotContain("WhenWritingNull", native, StringComparison.Ordinal);
+        Assert.DoesNotContain("DecimalWire.Declared", native, StringComparison.Ordinal);
+
+        var stringOnly = Gen(new WireFormat(DecimalWireForm.String, NullMemberForm.Native));
+        Assert.Contains("[DecimalWire.Declared(10, 2)]", stringOnly, StringComparison.Ordinal);
+        Assert.DoesNotContain("WhenWritingNull", stringOnly, StringComparison.Ordinal);
+
+        var omitOnly = Gen(new WireFormat(DecimalWireForm.Native, NullMemberForm.Omit));
+        Assert.Contains("[DecimalWire.Number(10, 2)]", omitOnly, StringComparison.Ordinal);
+        Assert.Contains("WhenWritingNull", omitOnly, StringComparison.Ordinal);
+    }
+
+    private const string TwoNamespaceModel = """
+    { "metadata.root": { "package": "acme::billing", "children": [
+      { "object.entity": { "name": "Invoice", "children": [
+        { "source.rdb": { "@table": "invoices" } },
+        { "field.long": { "name": "id" } },
+        { "field.decimal": { "name": "total" } },
+        { "field.uri": { "name": "link" } },
+        { "identity.primary": { "@fields": "id" } }
+      ]}}
+    ]}}
+    """;
+
+    private const string SecondNamespaceModel = """
+    { "metadata.root": { "package": "acme::shipping", "children": [
+      { "object.entity": { "name": "Parcel", "children": [
+        { "source.rdb": { "@table": "parcels" } },
+        { "field.long": { "name": "id" } },
+        { "field.decimal": { "name": "weight" } },
+        { "field.uri": { "name": "tracking" } },
+        { "identity.primary": { "@fields": "id" } }
+      ]}}
+    ]}}
+    """;
+
+    [Fact]
+    public void Helpers_for_packages_bound_to_different_namespaces_get_distinct_file_names()
+    {
+        // #454: two namespaces in one output directory each need DecimalWire and MetaNetValidation;
+        // both copies used to be named DecimalWire.g.cs, and gen refused the duplicate path.
+        var r = new MetaDataLoader().Load([
+            new InMemoryStringSource(TwoNamespaceModel, id: "billing.json"),
+            new InMemoryStringSource(SecondNamespaceModel, id: "shipping.json")]);
+        Assert.Empty(r.Errors);
+        var ctx = new GenContext
+        {
+            Entities = r.Root.Objects(), Root = r.Root,
+            Config = new GenConfig
+            {
+                OutDir = Path.Combine(Path.GetTempPath(), "unused-two-ns"),
+                Namespace = "Acme",
+                PackageNamespaces = new() { ["acme::billing"] = "Acme.Billing", ["acme::shipping"] = "Acme.Shipping" },
+            },
+        };
+        var files = new EntityGenerator().Generate(ctx);
+        var paths = files.Select(f => f.Path).ToList();
+        Assert.Equal(paths.Count, paths.Distinct(StringComparer.Ordinal).Count());
+        Assert.Contains("DecimalWire.Acme.Billing.g.cs", paths);
+        Assert.Contains("DecimalWire.Acme.Shipping.g.cs", paths);
+        Assert.Contains("MetaNetValidation.Acme.Billing.g.cs", paths);
+        Assert.Contains("MetaNetValidation.Acme.Shipping.g.cs", paths);
+        Compile(files);
     }
 }

@@ -19,6 +19,8 @@ import {
   type SortAllowlist,
 } from "@metaobjectsdev/runtime-ts/drizzle-fastify";
 import { bigintAsNumberTypes } from "./pg-bigint-number-types.ts";
+import { nearestWireFormat } from "./load-metadata.ts";
+import { API_CONTRACT_TPH_DIR } from "./paths.ts";
 import { seedTph, type TphSeed } from "./api-contract-tph-generated-server.ts";
 
 export interface TphServerHandle {
@@ -107,6 +109,9 @@ const copayAmount = z
   .nullable()
   .optional();
 const DECIMAL_COLUMNS = ["copayAmount"] as const;
+// The decimal output form is the corpus's own `wire` setting (ADR-0019 Amendment 2), read from
+// its .metaobjects/config.json like the generated lanes, never a literal here.
+const DECIMAL_WIRE = nearestWireFormat(API_CONTRACT_TPH_DIR).decimals;
 
 // Per-subtype insert schemas (discriminator pinned, omitted at the route boundary).
 const BridgeInsert = z.object({ reference: z.string().min(1).max(80), quantity: z.number().int(), ...writeOnceInsertShape, ...autoSetInsertShape });
@@ -166,7 +171,7 @@ export async function startTphServer(connectionUri: string): Promise<TphServerHa
         fastify: instance, path: "/auths", db, table: auths,
         insertSchema: AuthInsertSchema, updateSchema: AuthUpdateSchema,
         filterAllowlist: AuthFilterAllowlist, sortAllowlist: AuthSortAllowlist,
-        dialect: "postgres", expose: ["list", "get"], decimalColumns: DECIMAL_COLUMNS,
+        dialect: "postgres", expose: ["list", "get"], decimalColumns: DECIMAL_COLUMNS, decimalWire: DECIMAL_WIRE,
       });
       mountCrudRoutes({
         fastify: instance, path: "/auths/bridge", db, table: auths,
@@ -178,7 +183,7 @@ export async function startTphServer(connectionUri: string): Promise<TphServerHa
         fastify: instance, path: "/auths/copay", db, table: auths,
         insertSchema: CopayInsert, updateSchema: CopayUpdate,
         filterAllowlist: CopayFilterAllowlist, sortAllowlist: CopaySortAllowlist,
-        dialect: "postgres", discriminator: { column: "type", value: "Copay" }, decimalColumns: DECIMAL_COLUMNS,
+        dialect: "postgres", discriminator: { column: "type", value: "Copay" }, decimalColumns: DECIMAL_COLUMNS, decimalWire: DECIMAL_WIRE,
       });
       mountCrudRoutes({
         fastify: instance, path: "/auths/priorauth", db, table: auths,

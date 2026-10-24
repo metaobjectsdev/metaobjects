@@ -139,7 +139,7 @@ def test_route_body_passes_the_resolved_discriminator_value_literal() -> None:
         "    sponsor_id: int,\n"
         "    repo: Annotated[SponsorRepository, Depends(get_repository)],\n"
         ") -> list[Any]:\n"
-        '    return to_wire(repo.find_related_bridgeAuths(sponsor_id, "Bridge"))'
+        '    return render_wire(repo.find_related_bridgeAuths(sponsor_id, "Bridge"), _WIRE)'
     ) in out
 
 

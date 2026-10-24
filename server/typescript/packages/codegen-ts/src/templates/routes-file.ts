@@ -29,7 +29,7 @@ import { GENERATED_HEADER, GENERATED_EDIT_NOTE, sidecarLine } from "../constants
 import { routesHandlerName } from "../naming.js";
 import { isProjection, isWriteThrough } from "../projection/projection-detector.js";
 import { isReport } from "../source-detect.js";
-import { decimalColumnsLine, decimalFieldNames, itemRouteField } from "../api-surface.js";
+import { decimalColumnsLine, itemRouteField } from "../api-surface.js";
 import { DEFAULT_ID_FIELD, pkInfoOf } from "../pk-resolver.js";
 import type { RelationEntry } from "../relation-resolver.js";
 import { isTphDiscriminatorBase, tphPlan } from "./tph-discriminator.js";
@@ -93,15 +93,13 @@ export function renderRoutesFile(
     // The mount addresses `id` by default. A projection keyed on another field names it
     // (the view's key for that column, which is the field name), so `GET /:id` reads the
     // same column the by-id query does. Absent for `id`, which keeps that output's bytes.
-    // A decimal is a canonical string on the wire on every dialect (ADR-0019 Amendment 1).
-    const decimalColumns = decimalFieldNames(entity);
     const keylessOpts = (indent: string): string =>
       (idField !== undefined && idField !== DEFAULT_ID_FIELD
         ? `\n${indent}idColumn: ${JSON.stringify(idField)},`
         : "") +
       (keyless ? `\n${indent}itemRoutes: false,` : "") +
       (report ? `\n${indent}resource: "report",` : "") +
-      (decimalColumns.length > 0 ? `\n${indent}decimalColumns: ${JSON.stringify(decimalColumns)},` : "");
+      decimalColumnsLine(entity, indent, ctx.loadedRoot);
     const FastifyInstanceSym = imp("t:FastifyInstance@fastify");
     const mountReadOnlyCrudRoutesSym = imp(`mountReadOnlyCrudRoutes@${runtimeSpec}`);
     // A projection mount is read-only by construction, so `expose` cannot narrow it —
@@ -236,7 +234,7 @@ export async function ${handlerName}(fastify: ${FastifyInstanceSym}) {
       updateSchema: ${entityName}UpdateSchema,
       filterAllowlist: ${entityName}FilterAllowlist,
       sortAllowlist: ${entityName}SortAllowlist,
-      dialect: ${JSON.stringify(ctx.dialect)},${decimalColumnsLine(entity, "      ")}${exposeLinePrefixed}
+      dialect: ${JSON.stringify(ctx.dialect)},${decimalColumnsLine(entity, "      ", ctx.loadedRoot)}${exposeLinePrefixed}
     });
 ${m2mMountsPrefixed}  }, { prefix: ${JSON.stringify(ctx.apiPrefix)} });
 }
@@ -261,7 +259,7 @@ export async function ${handlerName}(fastify: ${FastifyInstanceSym}) {
     updateSchema: ${entityName}UpdateSchema,
     filterAllowlist: ${entityName}FilterAllowlist,
     sortAllowlist: ${entityName}SortAllowlist,
-    dialect: ${JSON.stringify(ctx.dialect)},${decimalColumnsLine(entity, "    ")}${exposeLineFlat}
+    dialect: ${JSON.stringify(ctx.dialect)},${decimalColumnsLine(entity, "    ", ctx.loadedRoot)}${exposeLineFlat}
   });
 ${m2mMountsFlat}}
 `;
@@ -412,7 +410,7 @@ function renderM2mMount(
     sourceColumn: ${sourceColumn},
     targetColumn: ${targetColumn},
     targetPkColumn: ${targetPkColumn},
-    symmetric: ${entry.symmetric ? "true" : "false"},${decimalColumnsLine(entry.target, "    ")}${discriminatorLine}${sourceDiscriminatorLine}
+    symmetric: ${entry.symmetric ? "true" : "false"},${decimalColumnsLine(entry.target, "    ", ctx.loadedRoot)}${discriminatorLine}${sourceDiscriminatorLine}
   });`;
 }
 
@@ -510,7 +508,7 @@ function renderTphRoutesFile(
       updateSchema: ${baseUpdateSym},
       filterAllowlist: ${baseFilterSym},
       sortAllowlist: ${baseSortSym},
-      dialect: ${dialectLit},${decimalColumnsLine([base, ...plan.subtypes.map((st) => st.entity)], "      ")}${polymorphicExposeLine}
+      dialect: ${dialectLit},${decimalColumnsLine([base, ...plan.subtypes.map((st) => st.entity)], "      ", ctx.loadedRoot)}${polymorphicExposeLine}
     });`;
 
   // FR-018 x FR-017 — M:N traversal inside a TPH hierarchy. This file never consulted
@@ -553,7 +551,7 @@ function renderTphRoutesFile(
       updateSchema: ${subUpdateSym},
       filterAllowlist: ${subFilterSym},
       sortAllowlist: ${subSortSym},
-      dialect: ${dialectLit},${decimalColumnsLine(sub, "      ")}
+      dialect: ${dialectLit},${decimalColumnsLine(sub, "      ", ctx.loadedRoot)}
       discriminator: { column: ${JSON.stringify(discField)}, value: ${JSON.stringify(value)} },${exposeLine(expose, "      ")}
     });`;
     // This subtype's own M:N navigations, mounted beneath its segment and gated on the

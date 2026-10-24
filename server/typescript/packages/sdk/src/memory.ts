@@ -14,6 +14,7 @@ import {
   type MetaDataTypeProvider,
   type MetaRoot,
   type PhysicalNaming,
+  type WireFormat,
 } from "@metaobjectsdev/metadata";
 import { FileSource } from "@metaobjectsdev/metadata/core";
 // FR-043 — a node-only subpath (it reaches the filesystem), which is why it is imported
@@ -111,6 +112,8 @@ export interface LoadMemoryOptions {
    * `files` passes them too (`resolveCollection(...).physicalNaming`), or gets the default.
    */
   physicalNaming?: PhysicalNaming;
+  /** The project wire format; defaults to the collection's (`resolveCollection(...).wireFormat`) when `files` is not passed. */
+  wireFormat?: WireFormat;
 }
 
 /** Default provider bundle threaded by {@link loadMemory} when no options
@@ -166,7 +169,7 @@ export async function loadMemory(
   repoRoot: string,
   options?: LoadMemoryOptions,
 ): Promise<MetaRoot> {
-  const { result, importedPackages, importedNodes, libraries, physicalNaming } =
+  const { result, importedPackages, importedNodes, libraries, physicalNaming, wireFormat } =
     await loadCollectionRaw(repoRoot, options, options?.strict === true);
 
   if (result.errors.length > 0) {
@@ -186,6 +189,7 @@ export async function loadMemory(
   refuseLibraryPackageMisuse(result.root, libraries);
 
   if (physicalNaming !== undefined) result.root.physicalNaming = physicalNaming;
+  if (wireFormat !== undefined) result.root.wireFormat = wireFormat;
   return result.root;
 }
 
@@ -245,6 +249,7 @@ async function loadCollectionRaw(
   importedNodes: ReadonlySet<string> | undefined;
   libraries: readonly string[] | undefined;
   physicalNaming: PhysicalNaming | undefined;
+  wireFormat: WireFormat | undefined;
 }> {
   const extra = options?.providers ?? [];
   let providers: readonly MetaDataTypeProvider[];
@@ -272,6 +277,7 @@ async function loadCollectionRaw(
   let importedNodes: ReadonlySet<string> | undefined;
   let libraries: readonly string[] | undefined = options?.libraries;
   let physicalNaming: PhysicalNaming | undefined = options?.physicalNaming;
+  let wireFormat: WireFormat | undefined = options?.wireFormat;
   if (options?.files !== undefined) {
     paths = [...options.files];
     fileIds = options.fileIds;
@@ -291,6 +297,7 @@ async function loadCollectionRaw(
     importedNodes = collection.importedNodes;
     libraries ??= collection.libraries;
     physicalNaming ??= collection.physicalNaming;
+    wireFormat ??= collection.wireFormat;
   }
 
   const loader = new MetaDataLoader({
@@ -316,7 +323,7 @@ async function loadCollectionRaw(
       return id === undefined ? new FileSource(p) : new FileSource(p, { id });
     }),
   ]);
-  return { result, registry, importedPackages, importedNodes, libraries, physicalNaming };
+  return { result, registry, importedPackages, importedNodes, libraries, physicalNaming, wireFormat };
 }
 
 /** Every source file that contributed to a node, across the envelope variants that

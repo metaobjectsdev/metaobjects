@@ -1,10 +1,8 @@
 package acme.shipping;
 
 import jakarta.validation.constraints.*;
-import com.fasterxml.jackson.annotation.JsonInclude;
 
 /** GENERATED — value object ShipmentNote. Do not hand-edit; regenerated from metadata. */
-@JsonInclude(JsonInclude.Include.NON_NULL)
 public record ShipmentNote(
     @NotNull @Size(min = 1) String text,
     ShipmentNoteKind kind,

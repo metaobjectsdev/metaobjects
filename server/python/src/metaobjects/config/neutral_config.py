@@ -7,6 +7,7 @@ from pathlib import Path
 
 from metaobjects.errors import ErrorCode, ParseError
 from metaobjects.naming import COLUMN_NAMING_STRATEGIES, TABLE_NAMING_RULES, NamingRules
+from metaobjects.wire import WIRE_DECIMALS, WIRE_NULL_MEMBERS, WireFormat
 
 #: The DEFAULT value of `sources` when the key is absent or empty — never a
 #: requirement, and never assumed to exist by any other code path.
@@ -74,6 +75,12 @@ class NeutralConfig:
     #: fail the load loudly, not silently fall back to the default and rename
     #: every column.
     naming: NamingRules
+
+    #: ADR-0019 Amendment 2 — the `wire` block: the OUTPUT form of a generated REST
+    #: surface (decimals, value-object null members). Absent or `{}` ⇒ `native` for both.
+    #: Attached to the loaded root (`MetaRoot.wire`) beside `naming`; validated HERE
+    #: for the same reason `naming` is.
+    wire: WireFormat = WireFormat()
 
 
 def find_project_dir(start: Path) -> Path | None:
@@ -167,6 +174,7 @@ def read_neutral_config(config_dir: Path) -> NeutralConfig | None:
     migrate_scope = _read_migrate_scope(raw, path)
     libraries = _read_libraries(raw, path)
     naming = _read_naming(raw, path)
+    wire = _read_wire(raw, path)
 
     # Unknown top-level keys are IGNORED by design — see the module docstring.
     return NeutralConfig(
@@ -176,6 +184,7 @@ def read_neutral_config(config_dir: Path) -> NeutralConfig | None:
         migrate_scope=migrate_scope,
         libraries=libraries,
         naming=naming,
+        wire=wire,
     )
 
 
@@ -294,6 +303,39 @@ def _read_naming(raw: dict[str, object], path: Path) -> NamingRules:
             code=ErrorCode.ERR_COLLECTION_NOT_FOUND,
         )
     return NamingRules(columns=columns, tables=tables)
+
+
+#: Every key the `wire` block accepts, and the ONLY ones it accepts (refused, not ignored, like `naming`).
+_WIRE_KEYS = ("decimals", "nullMembers")
+
+
+def _read_wire(raw: dict[str, object], path: Path) -> WireFormat:
+    """ADR-0019 Amendment 2 — the `wire` block. Absent or `{}` ⇒ `native` for both keys.
+    Refuses a non-object `wire`, an unknown key, or a value outside the closed set a key
+    accepts: a mistake must not silently fall back to the default and change the JSON an
+    API writes."""
+    if "wire" not in raw:
+        return WireFormat()
+    wire = raw["wire"]
+    if not isinstance(wire, dict):
+        raise ParseError(f'{path}: "wire" must be an object', code=ErrorCode.ERR_COLLECTION_NOT_FOUND)
+    for key in wire:
+        if key not in _WIRE_KEYS:
+            raise ParseError(
+                f'{path}: "wire" has an unknown key "{key}" (expected "decimals" and/or "nullMembers")',
+                code=ErrorCode.ERR_COLLECTION_NOT_FOUND,
+            )
+    values: dict[str, str] = {}
+    for key, allowed in (("decimals", WIRE_DECIMALS), ("nullMembers", WIRE_NULL_MEMBERS)):
+        value = wire.get(key, allowed[0])
+        if not isinstance(value, str) or value not in allowed:
+            choices = ", ".join(f'"{a}"' for a in allowed)
+            raise ParseError(
+                f'{path}: "wire.{key}" must be one of {choices}, got {json.dumps(value)}',
+                code=ErrorCode.ERR_COLLECTION_NOT_FOUND,
+            )
+        values[key] = value
+    return WireFormat(decimals=values["decimals"], null_members=values["nullMembers"])
 
 
 def _validate_dependency_spec(dep: object, path: Path) -> dict[str, str]:

@@ -4,6 +4,7 @@ package com.metaobjects.generator.kotlin
 // com.metaobjects.generator.kotlin when this generator is copied out via
 // `mvn metaobjects:eject` and its own package is renamed — an explicit import, not
 // same-package bare-name resolution, is what keeps the ejected copy compiling.
+import com.metaobjects.config.WireFormat
 import com.metaobjects.generator.kotlin.ExposedApi
 import com.metaobjects.generator.kotlin.ExposedImports
 import com.metaobjects.generator.kotlin.Fr019SharedEnum
@@ -108,8 +109,12 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
 
     override fun getFilterClass(): Class<MetaObject> = MetaObject::class.java
 
+    /** ADR-0019 Amendment 2: the project's wire setting; only the shared decimal-wire file's content depends on it. */
+    private var wire: WireFormat = WireFormat.DEFAULT
+
     override fun execute(loader: MetaDataLoader) {
         parseArgs()
+        wire = WireFormat.of(loader.root)
         // ADR-0058 — the pom generator arg is REMOVED; refuse by name rather than silently
         // ignoring a value that used to work. Column naming is read from the loaded root
         // (com.metaobjects.database.PhysicalNaming) wherever a field or table name is
@@ -650,7 +655,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
      */
     private fun emitPortableSupportFile(pkg: String, outRoot: Path) {
         // The decimal column type reads a SQLite double through the package's generated decimal wire.
-        KotlinDecimalWireEmitter.write(pkg, outRoot)
+        KotlinDecimalWireEmitter.write(pkg, outRoot, wire)
         val api = exposedApi()
         emitSupportFile(pkg, outRoot, PORTABLE_SUPPORT_FILE_NAME, portableSupportFileImports(api), portableSupportBlock(api))
     }
