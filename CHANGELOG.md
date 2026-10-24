@@ -10,6 +10,10 @@ here.**
 
 ## [Unreleased]
 
+## [1.1.1] — 2026-10-24
+
+_npm `1.1.1` (full lockstep across all 14 `@metaobjectsdev/*` publish candidates)._
+
 ### Fixed
 
 - **A fresh `npm i @metaobjectsdev/cli` no longer reports high-severity advisories.**
