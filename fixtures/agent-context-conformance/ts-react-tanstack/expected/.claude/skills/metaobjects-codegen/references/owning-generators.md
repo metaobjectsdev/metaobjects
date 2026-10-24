@@ -51,7 +51,7 @@ adopt the surface you decided against.
 |---|---|
 | **TypeScript** | the generator's `filter: (obj) => boolean` |
 | **C#** | `new EntityGenerator { Include = o => ... }` on the entry in `codegen/Generators.cs` (also on `db-context`, `routes`, `filter-allowlist`, `names`, `callable`); for any other generator, wrap it and hand it a narrowed `GenContext` (`ctx.Narrow(...)`), or eject and edit. `references/csharp.md`, "Scoping a generator to some objects". Never emit everything and delete files by name afterwards |
-| **Python** | the owned generator's `filter(self, obj)` method |
+| **Python** | the `filter=` argument on the generator factory (a callable of the object), e.g. `trace_helper_generator(filter=...)` |
 | **Java / Kotlin** | the entry's `<args>` in the pom where the generator offers one; otherwise `mvn metaobjects:eject` the generator and edit its object selection |
 
 Every port gets a reference generator's source the same way — its `eject` command — and

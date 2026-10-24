@@ -125,7 +125,7 @@ without typechecking, so a wrong accessor runs silently.
 - **Which objects.** The runner hands you every object — entities, value objects,
   projections and abstract bases. Filter: abstract bases only contribute fields to what
   `extends` them. To scope a generator that ships with the tool to some objects, use the
-  port's own idiom (a TypeScript `filter`, a C# `Include`, a Python `filter()` method; the
+  port's own idiom (a TypeScript `filter`, a C# `Include`, a Python `filter=` argument; the
   table in `references/owning-generators.md`), never emit everything and delete files by name.
 - **Resolving accessors, always (ADR-0039).** `fields()`, `attr()`, `isRequired`,
   `resolvedIsArray()` see what a field or object inherits through `extends`; the `own*()`
