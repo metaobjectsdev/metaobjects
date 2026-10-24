@@ -31,7 +31,11 @@ _Fixes #454 and #455. A bug-fix release: no vocabulary or `metamodelVersion` cha
   Java and Kotlin** write a decimal as a JSON number again (`12.50`), and a value object's null
   member as `null` with its key present: the 1.0.x output. **Python and TypeScript** write a
   decimal as their standard string, which keeps its scale (`"12.50"`). That is a change from
-  1.1.1's `"12.5"`.
+  1.1.1's `"12.5"`. **Python adopters coming from 1.0.x:** 1.0.x routers returned plain dicts,
+  and FastAPI's encoder wrote a `Decimal` as a float (`12.5`), losing digits past a double's
+  precision. From 1.1.2 a decimal is Pydantic's string, `str(Decimal)` (`"12.50"`), so a client
+  that read a number now reads a string. There is no float option, by decision: a float that
+  loses precision is not the Python-normal form, and Pydantic's string is.
   **To keep 1.1.0's output** in every port, declare
   `"wire": { "decimals": "string", "nullMembers": "omit" }` and regenerate. `nullMembers` also
   takes `"emit"`, which writes every declared member of a value object, `null` when unset,

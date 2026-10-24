@@ -158,7 +158,9 @@ setting each port writes its language's standard JSON:
 - **Python:** a decimal is the string Pydantic writes for a `Decimal`, `str(value)` (`"12.50"`).
   1.0.x routers returned plain dicts, and FastAPI's encoder turned a `Decimal` into a float
   (`12.5`, losing digits past a double's precision). A client that read a number now reads a
-  string. No setting restores the float, because it loses digits.
+  string. There is no float option, by decision: a float that loses precision is not the
+  Python-normal form, and Pydantic's `str(Decimal)` is. Update a client that parsed the number to
+  parse the string (`"decimals": "string"` gives the canonical `"12.5"` instead).
 
 To have every port write one form, which suits clients in several languages or a browser that
 must read decimals exactly, declare the form 1.1.0 wrote and regenerate:
