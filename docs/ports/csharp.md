@@ -6,7 +6,7 @@ Postgres + Npgsql.
 
 ## Install
 
-Published to [NuGet](https://www.nuget.org/packages/MetaObjects) at `1.1.0` — four
+Published to [NuGet](https://www.nuget.org/packages/MetaObjects) at `1.1.2` — four
 packages, version-locked to the C# port version: `MetaObjects` (loader), `MetaObjects.Codegen`,
 `MetaObjects.Render` and the `MetaObjects.Cli` tool.
 
@@ -33,7 +33,7 @@ SQLite so it runs with nothing else installed; the same generated code runs on P
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="MetaObjects.Codegen" Version="1.1.0" />
+    <PackageReference Include="MetaObjects.Codegen" Version="1.1.2" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="8.0.11" />
   </ItemGroup>
   <ItemGroup>
