@@ -65,7 +65,7 @@ public class FilterAllowlistGenerator : PerEntityGenerator
     // FR-044 — a served report joins the set as its ROW MODEL (ReportRows), whose derived
     // fields are what the allowlist lists; a raw report node in the entity set is dropped.
     public override IEnumerable<EmittedFile> Generate(GenContext ctx) =>
-        ReportRows.WithReportRows(ctx).Where(Filter).Select(e => GenerateOne(e, ctx));
+        ReportRows.WithReportRows(ctx.Narrow(Include)).Where(Filter).Select(e => GenerateOne(e, ctx));
 
     protected override EmittedFile GenerateOne(MetaObject entity, GenContext ctx)
     {

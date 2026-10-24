@@ -12,6 +12,7 @@ is **schema-migrations only** on the C# side (ADR-0015): `meta migrate` /
 - Docs — one more entry in `codegen/Generators.cs`
 - Persistence + routes are the deployed artifact
 - Write your own generator
+- Scoping a generator to some objects
 - Extending the generators (open-for-extension, ADR-0002)
 - Re-scaffold this context
 
@@ -53,6 +54,8 @@ public static class Generators
 
 **Column names come from `naming` in `.metaobjects/config.json`, the one setting every port
 reads** (ADR-0058): `meta migrate`, every port's codegen and every runtime `ObjectManager`.
+A hosted runner that builds its own `GenConfig` sets `ColumnNamingStrategy` from the loaded
+root (see "Scoping a generator to some objects", last paragraph).
 The default is `snake_case`, what `meta migrate` creates. A database whose columns are named
 exactly like the fields declares it there, once, for every port:
 
@@ -235,6 +238,53 @@ entry runs, and `--generators` only narrows. Model reads: `Fields()`, `Attr(n)`,
 `@objectRef`; `CSharpNaming.RoutePath(obj)` is the REST segment; constants come from
 `using static MetaObjects.Core.Field.FieldConstants;`. A generator that throws is reported
 as the generator, with its message.
+
+## Scoping a generator to some objects
+
+C# has no TypeScript-style `filter`: `IGenerator` is `Name` + `Generate(GenContext)` + `OutDir`.
+Since ADR-0056 `EntityGenerator` emits a POCO for every concrete `object.value` in
+`ctx.Entities`, so a project whose value objects belong to another port (catalog or config
+VOs) has to say which objects this generator is for. In order of preference:
+
+1. **`Include` on the packaged generator.** `EntityGenerator`, `DbContextGenerator`,
+   `RoutesGenerator`, `FilterAllowlistGenerator`, `NamesGenerator` and `CallableGenerator` take
+   an optional `Func<MetaObject, bool>? Include` init property (it is `Include`, not `Filter`:
+   `Filter(MetaObject)` is the per-entity generators' own applicability method, which stays
+   the subclass seam). `null`, the default, accepts every object.
+   ```csharp
+   new MetaObjects.Codegen.Generators.EntityGenerator { Include = o => NamingRefs.EffectivePackageOf(o) == "acme::orders" },
+   new MetaObjects.Codegen.Generators.DbContextGenerator { Include = o => NamingRefs.EffectivePackageOf(o) == "acme::orders" },
+   ```
+   Give the same predicate to every entry that should agree: an `Include` on `entity` alone
+   leaves `db-context` mapping classes that were never emitted.
+2. **Hand a generator a narrowed context.** For any `IGenerator` without `Include` (your own,
+   or a subclass), wrap it: `inner.Generate(ctx.Narrow(o => ...))`. `Narrow` returns the same
+   context with `Entities` reduced and everything else (`Root`, `Config`, `Warn`,
+   `Applicability`) kept. Build the `GenContext` by hand only if you must, and copy all of
+   those members.
+3. **Eject and edit** (`dotnet meta eject <name>`): the owned copy's object selection is yours.
+
+What narrowing reaches. Narrowing reduces `ctx.Entities`, and that is the set `entity`,
+`db-context`, `routes`, `filter-allowlist`, `names` and `callable` iterate. A generator that
+walks `ctx.Root` instead (the prompt tier: `output-parser`, `extractor`, `output-prompt`,
+`render-helper`) is not narrowed, and neither is the resolution of a reference:
+`EntityGenerator` finds the value objects an emitted entity points at through `ctx.Root`, so an
+anchored value object is still emitted when `Include` rejects it by name. To drop a value
+object nothing anchors, reject it in `Include`; to drop one an entity references, change the
+model.
+
+**The anti-pattern: letting a generator emit everything and dropping files by name
+afterwards** (a `Where(f => !f.Path.StartsWith(...))` over `Generate`'s result). The emitted
+set and the committed set then disagree, `verify --codegen` regenerates the unfiltered set and
+reports drift, and a renamed file silently stops matching. Narrow the input, or own the
+generator.
+
+**A hosted runner** (your own `CodegenRunner.Run` call, not `dotnet meta gen`) must apply the
+project's `naming` itself. `MetaDataLoader.FromDirectory(dir, registry, ...)` reads
+`.metaobjects/config.json` above the directory and sets `root.PhysicalNaming` from it (since
+1.1.2; through 1.1.1 a host got snake_case whatever the project said). `GenConfig` is built by
+hand, so set its strategy from the root: `ColumnNamingStrategy = load.Root.PhysicalNaming.Columns`.
+`MetadataLocation.Resolve(...).Load()` and `dotnet meta gen` do both for you.
 
 ## Extending the generators (open-for-extension, ADR-0002)
 

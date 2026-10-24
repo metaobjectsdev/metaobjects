@@ -47,7 +47,7 @@ public sealed class NamesGenerator : PerEntityGenerator
         var emitted = new HashSet<string>(StringComparer.Ordinal);
         var files = new List<EmittedFile>();
 
-        var participants = ctx.Entities.Where(Filter).ToList();
+        var participants = ctx.Narrow(Include).Entities.Where(Filter).ToList();
         foreach (var entity in participants)
         {
             emitted.Add(entity.Name);

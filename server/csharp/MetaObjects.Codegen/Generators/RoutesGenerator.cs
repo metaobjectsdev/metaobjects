@@ -79,7 +79,7 @@ public class RoutesGenerator : PerEntityGenerator
     // projection-shaped object, so GenerateStandardRoutes emits the list GET and the POST
     // refusal and nothing else. A raw report node in the entity set is dropped.
     public override IEnumerable<EmittedFile> Generate(GenContext ctx) =>
-        ReportRows.WithReportRows(ctx)
+        ReportRows.WithReportRows(ctx.Narrow(Include))
             .Where(e => AppliesTo(e, ctx.Root))
             .Select(e => GenerateOne(e, ctx));
 

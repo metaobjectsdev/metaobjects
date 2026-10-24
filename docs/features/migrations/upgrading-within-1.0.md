@@ -13,6 +13,11 @@ cross.
 
 ## The steps
 
+0. **Refresh the agent context first**: `meta init --docs-only --refresh-docs` (or `npx meta
+   agent-docs`). It updates `.metaobjects/` and `.claude/skills/metaobjects-*`; an agent doing
+   this upgrade reads those skills, and until they are refreshed they describe the OLD version.
+   A file you edited is left alone and the new copy is written beside it as `<file>.new`;
+   merge it by hand and delete the `.new`.
 1. **Bump every MetaObjects package together**: all `@metaobjectsdev/*` at the same version
    (npm), `metaobjects` (PyPI), `MetaObjects*` (NuGet), `com.metaobjects:*` at npm major + 7
    (Maven). Reinstall cleanly and read the resolved versions back.
@@ -26,9 +31,6 @@ cross.
    learn what changed.
 5. **Schema.** If `meta gen` or `meta migrate --dry-run` reports a schema change, write the
    migration your usual way and read it before applying it (see "Views" below).
-6. **Agent context.** `meta init --docs-only --refresh-docs` (or `npx meta agent-docs`) updates
-   `.metaobjects/` and `.claude/skills/metaobjects-*`. A file you edited is left alone and the
-   new copy is written beside it as `<file>.new`; merge it by hand and delete the `.new`.
 
 ## What to look for after `meta gen`
 

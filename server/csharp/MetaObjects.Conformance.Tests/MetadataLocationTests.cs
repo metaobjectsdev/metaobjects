@@ -108,4 +108,24 @@ public sealed class MetadataLocationTests : IDisposable
         var ex = Assert.Throws<MetadataLocationException>(() => MetadataLocation.Resolve(null, cwd: _root));
         Assert.Contains("2 metadata sources", ex.Message);
     }
+
+    [Fact]
+    public void FromDirectory_with_a_registry_applies_the_projects_naming()
+    {
+        WriteConfig("""{ "schema_version": 1, "naming": { "columns": "literal", "tables": "literal" } }""");
+
+        var result = MetaObjects.Loader.MetaDataLoader.FromDirectory(
+            MetaDir, MetaObjects.Provider.ComposeRegistry(MetaObjects.CoreTypes.LibraryProviders), libraries: ["iam"], strict: true);
+
+        Assert.Equal(new PhysicalNaming(ColumnNamingStrategy.Literal, TableNamingRule.Literal), result.Root.PhysicalNaming);
+    }
+
+    [Fact]
+    public void FromDirectory_without_a_project_config_keeps_the_default()
+    {
+        var result = MetaObjects.Loader.MetaDataLoader.FromDirectory(
+            MetaDir, MetaObjects.Provider.ComposeRegistry(MetaObjects.CoreTypes.LibraryProviders), libraries: ["iam"]);
+
+        Assert.Equal(PhysicalNaming.Default, result.Root.PhysicalNaming);
+    }
 }

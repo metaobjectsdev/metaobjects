@@ -83,6 +83,14 @@ export async function upgradeCommand(args: string[], cwd: string): Promise<numbe
 
   const projectRoot = flags.projectRoot ?? cwd;
 
+  // The agent context (the `metaobjects-*` skills) is versioned with the tool, and an agent
+  // doing this upgrade reads it. Say so first, before anything else it will act on (#455).
+  log.info(
+    "First: refresh the agent context so the skills match this version: " +
+      "`meta init --docs-only --refresh-docs` (C#, Java and Python projects run it through Node `meta` too). " +
+      "Skills from an older version describe the old behaviour.\n",
+  );
+
   let files: readonly string[];
   try {
     files = (await resolveCollection(projectRoot)).files;
