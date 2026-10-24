@@ -181,18 +181,18 @@ def test_shadowed_name_seam_threads_target_subtype_for_the_whole_name() -> None:
 def test_every_mount_of_the_shadowed_name_passes_the_threaded_parameter() -> None:
     # Base mount (rule a — ungated): explicit None literal, not a dropped argument.
     out = _render()
-    assert "    return render_wire(repo.find_related_helpers(None, auth_id, None), _WIRE)" in out
+    assert "    return render_wire(repo.find_related_helpers(None, auth_id, None), _WIRE_TAG)" in out
     # Non-shadowing subtype (inherits the base's vanilla target): gated, None literal.
     assert (
         '    if repo.find_by_id("Copay", auth_id) is None:\n'
         "        return []\n"
-        '    return render_wire(repo.find_related_helpers("Copay", auth_id, None), _WIRE)'
+        '    return render_wire(repo.find_related_helpers("Copay", auth_id, None), _WIRE_TAG)'
     ) in out
     # Shadowing subtype: its OWN target's discriminator literal.
     assert (
         '    if repo.find_by_id("Bridge", auth_id) is None:\n'
         "        return []\n"
-        '    return render_wire(repo.find_related_helpers("Bridge", auth_id, "Priority"), _WIRE)'
+        '    return render_wire(repo.find_related_helpers("Bridge", auth_id, "Priority"), _WIRE_PRIORITY_TICKET)'
     ) in out
 
 

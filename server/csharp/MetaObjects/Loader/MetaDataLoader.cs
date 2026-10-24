@@ -155,7 +155,11 @@ public class MetaDataLoader
         // ADR-0058: the project's `naming` applies to a directory load too, as the JVM
         // fromDirectory does. Without this, a host that composes its own registry (the
         // documented way to add a provider) silently got snake_case whatever the project says.
-        if (Config.MetadataLocation.ConfigFor(directory) is { } cfg) result.Root.PhysicalNaming = cfg.Naming;
+        if (Config.MetadataLocation.ConfigFor(directory) is { } cfg)
+        {
+            result.Root.PhysicalNaming = cfg.Naming;
+            result.Root.WireFormat = cfg.Wire;
+        }
         return result;
     }
 

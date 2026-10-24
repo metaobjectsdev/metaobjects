@@ -291,8 +291,8 @@ class WireOutput:
 
 
 def render_wire(value: Any, wire: WireOutput) -> Any:
-    """A response *value* (a row, a list of rows, the ``{"rows", "total"}`` envelope, a
-    Pydantic model) in the form *wire* asks for. Input rules do not depend on *wire*."""
+    """A response *value* (a row, a list of rows, a Pydantic model) in the form *wire* asks
+    for. Input rules do not depend on *wire*."""
     if wire.null_members != "native" and wire.shapes:
         value = _shape_members(value, wire)
     return to_wire(value) if wire.decimals == "string" else to_native(value)
@@ -310,7 +310,7 @@ def _shape_members(value: Any, wire: WireOutput) -> Any:
         return value
     out: dict[str, Any] = {}
     for k, v in value.items():
-        out[k] = _shape_vo(v, wire.shapes[k], wire.null_members) if k in wire.shapes else _shape_members(v, wire)
+        out[k] = _shape_vo(v, wire.shapes[k], wire.null_members) if k in wire.shapes else v
     return out
 
 

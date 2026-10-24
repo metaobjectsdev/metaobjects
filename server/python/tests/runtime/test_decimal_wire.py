@@ -14,7 +14,9 @@ from metaobjects.codegen.runtime.decimal_wire import (
     parse_decimal,
     parse_decimal_operand,
     parse_json_object,
+    render_wire,
     to_wire,
+    WireOutput,
 )
 
 _VECTORS = json.loads(
@@ -185,3 +187,13 @@ def test_a_map_of_value_objects_applies_the_nested_rule_to_each_value_and_never_
     # a null map, and a map value that is not an object, fall through
     assert coerce_decimal_fields({"tiers": None}, frozenset(), None, nested) == {"tiers": None}
     assert coerce_decimal_fields({"tiers": {"a": 1.5}}, frozenset(), None, nested) == {"tiers": {"a": 1.5}}
+
+
+def test_only_a_rows_own_value_object_columns_are_shaped() -> None:
+    # `extras` is an untyped jsonb column; a key inside it named like the `address` column is data.
+    shapes = {"address": {"f": ["street", "city"], "o": {}}}
+    row = {"address": {"street": "Main"}, "extras": {"address": {"street": "Side"}}}
+    emit = render_wire([row], WireOutput(null_members="emit", shapes=shapes))
+    assert emit == [{"address": {"street": "Main", "city": None}, "extras": {"address": {"street": "Side"}}}]
+    omit = render_wire({**row, "extras": {"address": {"street": None}}}, WireOutput(null_members="omit", shapes=shapes))
+    assert omit == {"address": {"street": "Main"}, "extras": {"address": {"street": None}}}

@@ -26,6 +26,7 @@ from metaobjects.codegen.generators.entity_model import render_entity_model
 from metaobjects.codegen.generators.filter_allowlist_generator import render_filter_allowlist
 from metaobjects.codegen.generators.router_generator import render_router
 from metaobjects.codegen.runtime.filter_parser import FilterPredicate
+from metaobjects.codegen.runtime.m2m_codegen import build_object_index
 from metaobjects.runtime import ObjectManager, SqliteDriver
 from metaobjects.wire import WireFormat
 
@@ -489,3 +490,89 @@ def test_a_generated_router_carries_the_setting_only_as_data() -> None:
     root.wire = _PORTABLE  # type: ignore[attr-defined]
     src = render_router(sample) or ""
     assert '_WIRE = WireOutput(decimals="string", null_members="omit", shapes=' in src
+
+
+# --- an M:N traversal writes the TARGET's rows, so the TARGET's value objects are shaped ----
+
+#: Post and Tag both declare a value object named `meta`, with different members; only Tag has `info`.
+_M2M_META = {
+    "metadata.root": {
+        "package": "acme::blog",
+        "children": [
+            {"object.value": {"name": "PostMeta", "children": [
+                {"field.string": {"name": "headline"}},
+            ]}},
+            {"object.value": {"name": "TagMeta", "children": [
+                {"field.string": {"name": "label"}},
+                {"field.string": {"name": "note"}},
+            ]}},
+            {"object.entity": {"name": "Post", "children": [
+                {"source.rdb": {"@table": "posts"}},
+                {"field.long": {"name": "id"}},
+                {"field.object": {"name": "meta", "@objectRef": "PostMeta", "@storage": "jsonb"}},
+                {"relationship.association": {"name": "tags", "@cardinality": "many", "@objectRef": "Tag", "@through": "PostTag"}},
+                {"identity.primary": {"name": "pk", "@fields": ["id"], "@generation": "increment"}},
+            ]}},
+            {"object.entity": {"name": "Tag", "children": [
+                {"source.rdb": {"@table": "tags"}},
+                {"field.long": {"name": "id"}},
+                {"field.object": {"name": "meta", "@objectRef": "TagMeta", "@storage": "jsonb"}},
+                {"field.object": {"name": "info", "@objectRef": "TagMeta", "@storage": "jsonb"}},
+                {"identity.primary": {"name": "pk", "@fields": ["id"], "@generation": "increment"}},
+            ]}},
+            {"object.entity": {"name": "PostTag", "children": [
+                {"source.rdb": {"@table": "post_tags"}},
+                {"field.long": {"name": "postId", "@required": True}},
+                {"field.long": {"name": "tagId", "@required": True}},
+                {"identity.primary": {"name": "pk", "@fields": ["postId", "tagId"]}},
+                {"identity.reference": {"name": "fkPost", "@fields": "postId", "@references": "Post"}},
+                {"identity.reference": {"name": "fkTag", "@fields": "tagId", "@references": "Tag"}},
+            ]}},
+        ],
+    }
+}
+
+
+def _m2m_client(wire: WireFormat, tags: list[dict[str, Any]]) -> TestClient:
+    root = load_string(json.dumps(_M2M_META)).root
+    root.wire = wire  # type: ignore[attr-defined]
+    objs = {c.name.split("::")[-1]: c for c in root.children()}
+    index = build_object_index(list(objs.values()))
+    pkg = f"genm2m_{uuid.uuid4().hex[:8]}"
+    tmp = Path(tempfile.mkdtemp(prefix="genm2m-"))
+    pkg_dir = tmp / pkg
+    pkg_dir.mkdir()
+    (pkg_dir / "__init__.py").write_text("")
+    for name in ("PostMeta", "TagMeta", "Tag", "Post"):
+        (pkg_dir / f"{name}.py").write_text(render_entity_model(objs[name], index))
+    post = objs["Post"]
+    (pkg_dir / "post_filter_allowlist.py").write_text(render_filter_allowlist(post) or "")
+    (pkg_dir / "post_router.py").write_text(render_router(post, index) or "")
+    sys.path.insert(0, str(tmp))
+    try:
+        mod = importlib.import_module(f"{pkg}.post_router")
+    finally:
+        sys.path.remove(str(tmp))
+
+    class Repo:
+        def find_related_tags(self, id: int) -> list[Any]:
+            return tags
+
+    app = FastAPI()
+    app.include_router(mod.router)
+    app.dependency_overrides[mod.get_repository] = lambda: Repo()
+    return TestClient(app)
+
+
+_TAG_ROW = {"id": 7, "meta": {"label": "x", "note": None}, "info": {"label": "y", "note": None}}
+
+
+def test_an_m2m_traversal_omits_a_null_member_of_the_targets_value_object() -> None:
+    body = _m2m_client(WireFormat(null_members="omit"), [_TAG_ROW]).get("/api/posts/1/tags").json()
+    assert body == [{"id": 7, "meta": {"label": "x"}, "info": {"label": "y"}}]
+
+
+def test_an_m2m_traversal_emits_the_targets_members_not_the_sources() -> None:
+    row = {"id": 7, "meta": {"label": "x"}, "info": {"note": "n"}}
+    body = _m2m_client(WireFormat(null_members="emit"), [row]).get("/api/posts/1/tags").json()
+    assert body == [{"id": 7, "meta": {"label": "x", "note": None}, "info": {"label": None, "note": "n"}}]

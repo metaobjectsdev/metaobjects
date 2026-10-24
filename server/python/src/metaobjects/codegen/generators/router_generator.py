@@ -285,8 +285,8 @@ def _field_shape(f: MetaField, seen: frozenset[str]) -> dict[str, Any] | None:
     return {"m": shape} if f.sub_type == fc.FIELD_SUBTYPE_MAP else shape
 
 
-def _wire_lines(entities: list[MetaObject], wire: WireFormat) -> list[str]:
-    """The ``_WIRE`` constant every response is written through: the project's ``wire``
+def _wire_lines(entities: list[MetaObject], wire: WireFormat, name: str = "_WIRE") -> list[str]:
+    """The *name* constant a response of *entities* is written through: the project's ``wire``
     setting (ADR-0019 Amendment 2) and, when ``nullMembers`` is not ``native``, the declared
     members of each value-object field of *entities* (the first declaration of a name wins)."""
     shapes: dict[str, Any] = {}
@@ -298,7 +298,26 @@ def _wire_lines(entities: list[MetaObject], wire: WireFormat) -> list[str]:
     args = f'decimals="{wire.decimals}", null_members="{wire.null_members}"'
     if shapes:
         args += f", shapes={shapes!r}"
-    return ["", "", f"_WIRE = WireOutput({args})"]
+    return ["", "", f"{name} = WireOutput({args})"]
+
+
+def _m2m_wire_name(target: str) -> str:
+    """The wire constant an M:N traversal onto *target* writes the target's rows through."""
+    return f"_WIRE_{_snake_case(target).upper()}"
+
+
+def _m2m_wire_lines(
+    descriptors: list[M2mDescriptor], object_index: dict[str, MetaObject], wire: WireFormat
+) -> list[str]:
+    """One :func:`_m2m_wire_name` constant per distinct M:N target, shaped by the TARGET's
+    value-object fields (and its TPH subtypes' when the target is a discriminator base)."""
+    lines: list[str] = []
+    for name in dict.fromkeys(d.target_entity for d in descriptors):
+        target = next(o for o in object_index.values() if o.name == name)
+        plan = tph_plan_for(target, object_index)
+        entities = [target, *(st.entity for st in plan.subtypes)] if plan is not None else [target]
+        lines.extend(_wire_lines(entities, wire, _m2m_wire_name(name)))
+    return lines
 
 
 def _decimal_limits_lines(entities: list[MetaObject]) -> list[str]:
@@ -877,7 +896,8 @@ class RouterGenerator:
             f"    repo: Annotated[{repo_class}, Depends(get_repository)],",
             ") -> list[Any]:",
             f"    return render_wire(repo.find_related_{d.relation_name}"
-            f"({pk_param}{_target_subtype_arg(d, {d.target_discriminator})}), _WIRE)",
+            f"({pk_param}{_target_subtype_arg(d, {d.target_discriminator})}), "
+            f"{_m2m_wire_name(d.target_entity)})",
         ]
 
     def _emit_tph_m2m_route(
@@ -934,7 +954,8 @@ class RouterGenerator:
             ]
         lines.append(
             f"    return render_wire(repo.find_related_{d.relation_name}"
-            f"({subtype_expr}, {pk_param}{_target_subtype_arg(d, target_discs)}), _WIRE)"
+            f"({subtype_expr}, {pk_param}{_target_subtype_arg(d, target_discs)}), "
+            f"{_m2m_wire_name(d.target_entity)})"
         )
         return lines
 
@@ -1159,6 +1180,11 @@ class RouterGenerator:
         parts.append(f"_DECIMAL_FIELDS: frozenset[str] = {decimal_set_body}")
         parts.extend(_decimal_limits_lines([entity, *(st.entity for st in plan.subtypes)]))
         parts.extend(_wire_lines([entity, *(st.entity for st in plan.subtypes)], wire))
+        parts.extend(_m2m_wire_lines(
+            [*base_m2m, *(d for st in plan.subtypes for d in sub_m2m[st.entity.name])],
+            object_index,
+            wire,
+        ))
         parts.append("")
         parts.append("")
         parts.extend(_JSON_BODY_LINES)
@@ -1536,6 +1562,7 @@ class RouterGenerator:
         parts.append(f"_DECIMAL_FIELDS: frozenset[str] = {decimal_set_body}")
         parts.extend(_decimal_limits_lines([entity]))
         parts.extend(_wire_lines([entity], wire))
+        parts.extend(_m2m_wire_lines(m2m, object_index or {}, wire))
         parts.append("")
         parts.append("")
         parts.extend(_JSON_BODY_LINES)
