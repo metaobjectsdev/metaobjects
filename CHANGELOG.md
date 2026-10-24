@@ -10,7 +10,7 @@ here.**
 
 ## [Unreleased]
 
-## [1.1.2] — unreleased
+## [1.1.2] — 2026-10-24
 
 _Fixes #454 and #455. A bug-fix release: no vocabulary or `metamodelVersion` change._
 
