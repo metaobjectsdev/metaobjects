@@ -192,7 +192,12 @@ function readCastTarget(s: string, i: number): { type: string; consumed: number 
  * cast on anything that is not a literal or a text-returning operator is a REAL cast and
  * survives, because erasing it would let a genuine change read as clean drift.
  */
-function isElidableCast(type: string, lhs: string): boolean {
+function isElidableCast(type: string, lhs: string, rest: string): boolean {
+  // `::text` directly before a regex-match operator (`~`, `~*`, `!~`, `!~*`). Those
+  // operators are defined on text, so on a varchar/text column PG adds the cast itself
+  // (`"key" ~ '…'` comes back `((key)::text ~ '…'::text)`), and on any other column type
+  // the uncast spelling is not valid SQL — so a cast here is never the author's meaning.
+  if (type === "text" && /^\s*!?~\*?(?![-+*\/<>=~!@#%^&|?])/.test(rest)) return true;
   // `->>` / `#>>` yield text; a following `::text` cannot change anything.
   if (type === "text" && /(?:->>|#>>)\s*(?:'(?:[^']|'')*'|[\w."]+)$/.test(lhs)) return true;
   // A numeric literal cast to a numeric type.
@@ -246,7 +251,7 @@ function collapseSeparatorSpacingOutsideQuotes(s: string): string {
       const target = readCastTarget(s, i);
       i += target.consumed;
       const lhs = out.replace(/\s+$/, "");
-      token = isElidableCast(target.type, lhs) ? "" : `::${target.type}`;
+      token = isElidableCast(target.type, lhs, s.slice(i)) ? "" : `::${target.type}`;
       out = lhs;
       // Whitespace AFTER the target type is load-bearing — `x::integer is not null` must
       // not become `x::integeris not null` — so the cast, unlike a comma or an operator,

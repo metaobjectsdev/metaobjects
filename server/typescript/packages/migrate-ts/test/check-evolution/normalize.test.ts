@@ -204,3 +204,18 @@ describe("stripCheckWrapper", () => {
     expect(stripCheckWrapper("qty >= 1")).toBe("qty >= 1");
   });
 });
+
+describe("regex check on a varchar/text column", () => {
+  const generated = `"key" ~ '^[a-z0-9][a-z0-9-]*$'`;
+  const introspected = `(((key)::text ~ '^[a-z0-9][a-z0-9-]*$'::text))`;
+  test("Postgres's added column cast does not read as drift", () => {
+    expect(checkExprEquals(generated, introspected)).toBe(true);
+    expect(checkExprEquals(generated, `(((key)::text !~* '^[a-z0-9][a-z0-9-]*$'::text))`)).toBe(false);
+  });
+  test("a changed regex pattern still reads as drift", () => {
+    expect(checkExprEquals(generated, `(((key)::text ~ '^[a-z][a-z0-9-]*$'::text))`)).toBe(false);
+  });
+  test("a cast that is not before a regex operator survives", () => {
+    expect(checkExprEquals("qty > 0", "((qty)::text > '0'::text)")).toBe(false);
+  });
+});
