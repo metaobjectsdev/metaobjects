@@ -1,6 +1,6 @@
 import { join, relative, resolve, isAbsolute, dirname } from "node:path";
 import { warnMissingPromptGenerators } from "./prompt-generator-gate.js";
-import { runEmitsHonoRoutes, runEmitsUiTier, runRoutesExpose, warnUnmarkedUiGenerators } from "./ui-tier-gate.js";
+import { runEmitsHonoRoutes, runEmitsUiTier, runRoutesExpose, warnUnmarkedRoutesGenerators, warnUnmarkedUiGenerators } from "./ui-tier-gate.js";
 import { warnRetiredCodegenAttrs } from "./retired-codegen-attrs.js";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
@@ -709,6 +709,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
     (m) => warnings.push(m),
   );
   warnUnmarkedUiGenerators(config.generators, (m) => warnings.push(m));
+  warnUnmarkedRoutesGenerators(config.generators, (m) => warnings.push(m));
 
   // Codegen is opt-in, so `meta gen` is the post-selection audit: the two ways a legal
   // selection still surprises you. Warnings only — see catalog-gates.ts.

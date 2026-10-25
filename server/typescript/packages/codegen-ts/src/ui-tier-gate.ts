@@ -1,4 +1,5 @@
 import type { Generator } from "./generator.js";
+import { tphDiscriminatorBase } from "./tph.js";
 import { CRUD_VERBS, resolveExpose, type CrudVerb, type ExposeOption, type RoutesExpose } from "./routes-expose.js";
 
 /**
@@ -83,9 +84,10 @@ export function runEmitsHonoRoutes(generators: readonly Generator[]): boolean {
  * page that lists DELETE for a route the adopter does not mount is a lie).
  *
  * Per surface, because the Fastify and Hono routes files are separate generators with their
- * own option: a surface is narrowed only when EVERY generator mounting it carries an `expose`
- * (several on one surface union their verbs), and a surface with none, or one that mounts all
- * five, documents all five. Undefined when no surface is narrowed.
+ * own option: several generators on one surface union their verbs, and a generator with no
+ * `expose` mounts all five. A generator's own `filter` removes the entities it rejects, so an
+ * entity no generator on the surface accepts is documented with no routes. Undefined when no
+ * generator on any surface carries an `expose` or a `filter`.
  */
 export function runRoutesExpose(generators: readonly Generator[]): RoutesExpose | undefined {
   const rest = surfaceExpose(generators.filter((g) => g.emitsHonoRoutes !== true));
@@ -98,14 +100,42 @@ function surfaceExpose(generators: readonly Generator[]): ExposeOption | undefin
   const mounts = generators
     .map((g) => g.mountsRoutes)
     .filter((m): m is NonNullable<typeof m> => m !== undefined);
-  if (mounts.length === 0 || mounts.some((m) => m.expose === undefined)) return undefined;
+  if (mounts.length === 0 || mounts.some((m) => m.expose === undefined && m.filter === undefined)) return undefined;
   return (entity) => {
+    // A TPH subtype has no routes file of its own: its mounts live in the base's file, so the
+    // base is the entity the generator's `filter` and `expose` were applied to.
+    const mounted = tphDiscriminatorBase(entity) ?? entity;
     const union = new Set<CrudVerb>();
     for (const m of mounts) {
-      const verbs = resolveExpose(entity, m.expose);
-      if (verbs === undefined) return undefined;
-      for (const v of verbs) union.add(v);
+      // An entity the generator's own `filter` rejects is mounted by that generator nowhere.
+      if (m.filter !== undefined && !m.filter(mounted)) continue;
+      for (const v of resolveExpose(mounted, m.expose) ?? CRUD_VERBS) union.add(v);
     }
     return CRUD_VERBS.filter((v) => union.has(v));
   };
+}
+
+/**
+ * A routes generator ejected before `mountsRoutes` existed still mounts its routes, but the api
+ * reference cannot see its `expose` or `filter` and documents all five verbs for every entity.
+ * Warned about when the run writes an api reference, by name for the same reason as
+ * {@link warnUnmarkedUiGenerators}; adding the marker silences it.
+ */
+export function warnUnmarkedRoutesGenerators(
+  generators: readonly Generator[],
+  warn: (msg: string) => void,
+): void {
+  if (!generators.some((g) => g.emitsApiDocs !== undefined)) return;
+  const stale = generators.filter(
+    (g) => (g.name === "routes-file" || g.name === "routes-file-hono") && g.mountsRoutes === undefined,
+  );
+  if (stale.length === 0) return;
+  const names = stale.map((g) => `'${g.name}'`).join(", ");
+  warn(
+    `${names} mount${stale.length === 1 ? "s" : ""} routes but carr${stale.length === 1 ? "ies" : "y"} no ` +
+      `'mountsRoutes' marker — an owned copy ejected before the marker existed. The api reference ` +
+      `lists every verb for every entity whatever its 'expose' or 'filter' says: add ` +
+      `'mountsRoutes: opts?.expose !== undefined ? { expose: opts.expose } : {}' beside 'name:' in your ` +
+      `copy (and 'filter' likewise), or re-eject it with 'meta eject routes --force'.`,
+  );
 }

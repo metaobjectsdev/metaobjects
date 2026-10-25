@@ -164,7 +164,12 @@ export interface Generator {
    *  (`runRoutesExpose`), per surface (a `emitsHonoRoutes` generator is the Hono one), so the API docs list the verbs each routes file actually mounts, not all five.
    *  Absent `expose` means every verb. A copy ejected before this marker existed needs
    *  `meta eject routes --force` (or the same one-line addition) to be honoured. */
-  mountsRoutes?: { readonly expose?: ExposeOption };
+  mountsRoutes?: {
+    readonly expose?: ExposeOption;
+    /** The generator's own `filter` option (not its built-in gates): an entity it rejects is
+     *  mounted nowhere, so the API docs list none of its routes. */
+    readonly filter?: (entity: MetaObject) => boolean;
+  };
   /** Marks a generator that writes the per-object model pages and their index (`docsFile()`).
    *  The runner reads it, per target, to tell an api reference generator in the same target
    *  that there are model pages to link back to (`ctx.docs.modelPages`). It changes nothing
