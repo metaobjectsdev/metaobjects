@@ -26,10 +26,10 @@ here.**
   column.** Postgres stores `"key" ~ '^[a-z]+$'` as `((key)::text ~ '^[a-z]+$'::text)`; the
   literal's `::text` was already folded away but the column's was not, so a database `migrate`
   had just built showed the same constraint as both added and dropped. The comparison now
-  drops a `::text` cast only when it sits directly before a regex-match operator (`~`, `~*`,
-  `!~`, `!~*`), whatever the column type; a changed pattern or any other cast still reads as
-  drift. Known gap: on a `citext` column the cast and uncast spellings differ in meaning
-  (case-sensitive vs case-insensitive) but compare equal. Schema comparison is TypeScript-owned, so no other port
+  drops a `(col)::text` cast before a regex-match operator (`~`, `~*`, `!~`, `!~*`) only when
+  the database column is `text`, `varchar` or `bpchar`; on any other column, `citext` included,
+  the cast changes the operator and still reads as drift, as does a changed pattern or any
+  other cast. Schema comparison is TypeScript-owned, so no other port
   carries this comparison.
 
 - **The api reference now follows a routes generator's `filter` as well as its `expose`.**

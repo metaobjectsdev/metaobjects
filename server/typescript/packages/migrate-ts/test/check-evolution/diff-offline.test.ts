@@ -50,3 +50,23 @@ describe("diffTableChecks — postgres existing-table evolution", () => {
     expect(r.changes.some((c) => c.kind.endsWith("-check"))).toBe(false);
   });
 });
+
+describe("diffTableChecks — regex check on a text-family column", () => {
+  const generated = CHK("spaces_key_regex_chk", `"key" ~ '^[a-z0-9][a-z0-9-]*$'`);
+  const stored = CHK("spaces_key_regex_chk", `(((key)::text ~ '^[a-z0-9][a-z0-9-]*$'::text))`);
+  const withKey = (udtName: string | undefined, checks: CheckDescriptor[]): SchemaSnapshot => ({
+    tables: [{ name: "spaces", columns: [{ name: "key", sqlType: { kind: "text" }, nullable: false, ...(udtName ? { udtName } : {}) }],
+      indexes: [], foreignKeys: [], checks, primaryKey: [] }],
+    views: [],
+  });
+  const checkChanges = async (udtName: string | undefined) => {
+    const r = await diff({ expected: withKey(undefined, [generated]), actual: withKey(udtName, [stored]), dialect: "postgres" });
+    return r.changes.filter((c) => c.kind.endsWith("-check"));
+  };
+  test.each(["text", "varchar", "bpchar"])("%s column: Postgres's rewrite is no drift", async (udt) => {
+    expect(await checkChanges(udt)).toEqual([]);
+  });
+  test("citext column: cast vs uncast is drift", async () => {
+    expect((await checkChanges("citext")).map((c) => c.kind).sort()).toEqual(["add-check", "drop-check"]);
+  });
+});

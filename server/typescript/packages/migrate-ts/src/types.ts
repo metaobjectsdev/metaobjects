@@ -46,6 +46,12 @@ export interface ColumnDescriptor {
   name: string;
   sqlType: SqlType;
   nullable: boolean;
+  /**
+   * Postgres `udt_name` as introspected (`text`, `varchar`, `bpchar`, `citext`, …). Set by
+   * the Postgres introspector only; absent on the expected side and on SQLite. `sqlType`
+   * folds every unrecognised type into `text`, so this is the only place citext survives.
+   */
+  udtName?: string;
   default?: ColumnDefault;
   identity?: "increment" | "uuid";
   /**

@@ -475,6 +475,7 @@ async function readColumns(k: Kysely<any>, schema: string, tableName: string): P
       name: r.column_name,
       sqlType,
       nullable: r.is_nullable === "YES",
+      udtName: r.udt_name.toLowerCase(),
     };
 
     const def = parsePgDefault(r.column_default);

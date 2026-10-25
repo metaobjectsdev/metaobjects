@@ -809,6 +809,8 @@ function respelledSpread(expected: CheckDescriptor, actual: CheckDescriptor): { 
   return checkExprRespelledNullSafe(expected.expression, actual.expression) ? { respelled: true } : {};
 }
 
+const PG_TEXT_FAMILY_UDTS: ReadonlySet<string> = new Set(["text", "varchar", "bpchar"]);
+
 function diffTableChecks(
   expected: TableDescriptor,
   actual: TableDescriptor,
@@ -829,12 +831,15 @@ function diffTableChecks(
   const exprFallback = dialect === "sqlite" || dialect === "d1";
   const actualByName = new Map(actual.checks.filter((c) => c.name !== "").map((c) => [c.name, c]));
   const consumed = new Set<CheckDescriptor>();
+  const textColumns = new Set(
+    actual.columns.filter((c) => c.udtName !== undefined && PG_TEXT_FAMILY_UDTS.has(c.udtName)).map((c) => c.name.toLowerCase()),
+  );
 
   for (const ec of expected.checks) {
     const ac = actualByName.get(ec.name);
     if (ac) {
       consumed.add(ac);
-      if (!checkExprEquals(ec.expression, ac.expression)) {
+      if (!checkExprEquals(ec.expression, ac.expression, textColumns)) {
         const respelled = respelledSpread(ec, ac);
         changes.push({ kind: "drop-check", table: expected.name, ...sx, check: ec.name, restore: ac, ...respelled, status: ALLOWED });
         changes.push({ kind: "add-check", table: expected.name, ...sx, check: ec, ...respelled, status: ALLOWED });
