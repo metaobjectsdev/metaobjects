@@ -27,8 +27,9 @@ here.**
   literal's `::text` was already folded away but the column's was not, so a database `migrate`
   had just built showed the same constraint as both added and dropped. The comparison now
   drops a `::text` cast only when it sits directly before a regex-match operator (`~`, `~*`,
-  `!~`, `!~*`), where the uncast spelling is the only valid one; a changed pattern or any
-  other cast still reads as drift. Schema comparison is TypeScript-owned, so no other port
+  `!~`, `!~*`), whatever the column type; a changed pattern or any other cast still reads as
+  drift. Known gap: on a `citext` column the cast and uncast spellings differ in meaning
+  (case-sensitive vs case-insensitive) but compare equal. Schema comparison is TypeScript-owned, so no other port
   carries this comparison.
 
 - **The api reference now follows a routes generator's `filter` as well as its `expose`.**

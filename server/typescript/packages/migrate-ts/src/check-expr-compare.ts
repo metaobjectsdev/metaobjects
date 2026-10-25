@@ -195,8 +195,11 @@ function readCastTarget(s: string, i: number): { type: string; consumed: number 
 function isElidableCast(type: string, lhs: string, rest: string): boolean {
   // `::text` directly before a regex-match operator (`~`, `~*`, `!~`, `!~*`). Those
   // operators are defined on text, so on a varchar/text column PG adds the cast itself
-  // (`"key" ~ '…'` comes back `((key)::text ~ '…'::text)`), and on any other column type
-  // the uncast spelling is not valid SQL — so a cast here is never the author's meaning.
+  // (`"key" ~ '…'` comes back `((key)::text ~ '…'::text)`). The comparator sees only the
+  // expression string, never the column type, so this elides the cast for every column.
+  // Known gap: on a `citext` column `col::text ~ 'A'` (case-sensitive) and `col ~ 'A'`
+  // (citext's own case-insensitive operator) both normalize alike, so switching between
+  // the two spellings reads as clean.
   if (type === "text" && /^\s*!?~\*?(?![-+*\/<>=~!@#%^&|?])/.test(rest)) return true;
   // `->>` / `#>>` yield text; a following `::text` cannot change anything.
   if (type === "text" && /(?:->>|#>>)\s*(?:'(?:[^']|'')*'|[\w."]+)$/.test(lhs)) return true;
