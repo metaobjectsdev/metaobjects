@@ -8,6 +8,12 @@ import { buildApiModel } from "../src/generators/api-model.js";
 import { routesFile } from "../src/generators/routes-file.js";
 import { routesFileHono } from "../src/generators/routes-file-hono.js";
 import { runRoutesExpose } from "../src/ui-tier-gate.js";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { runGen } from "../src/runner.js";
+import { defineConfig } from "../src/metaobjects-config.js";
+import { apiDocsFile } from "../src/generators/api-docs-file.js";
 
 const ENTITY = (name: string, table: string) => ({
   "object.entity": {
@@ -114,5 +120,121 @@ describe("runRoutesExpose reads the option off the configured generators", () =>
     const two = runRoutesExpose([routesFile({ expose: ["list"] }), routesFile({ expose: ["get", "delete"] })]);
     expect((two?.rest as Fn)(product)).toEqual(["list", "get", "delete"]);
     expect(runRoutesExpose([routesFile({ expose: ["list"] }), routesFile()])?.rest).toBeUndefined();
+  });
+});
+
+describe("a routes generator's own filter removes the entities it does not mount", () => {
+  test("the rejected entity is documented with no routes; the rest are unchanged", async () => {
+    const root = await loadRoot();
+    const expose = runRoutesExpose([routesFile({ filter: (e) => e.name !== "AuditEntry" })]);
+    const model = buildApiModel(root, { loadedRoot: root, ...(expose !== undefined && { expose }) });
+    expect(sigs(model, "AuditEntry")).toEqual([]);
+    expect(sigs(model, "Product")).toHaveLength(6);
+  });
+
+  test("filter and expose compose; a second unfiltered generator on the surface mounts everything", async () => {
+    const root = await loadRoot();
+    const audit = root.objects().find((o) => o.name === "AuditEntry")!;
+    const product = root.objects().find((o) => o.name === "Product")!;
+    type Fn = (e: typeof audit) => readonly string[] | undefined;
+    const both = runRoutesExpose([routesFile({ filter: (e) => e.name !== "AuditEntry", expose: ["list"] })]);
+    expect((both?.rest as Fn)(audit)).toEqual([]);
+    expect((both?.rest as Fn)(product)).toEqual(["list"]);
+    expect(runRoutesExpose([routesFile({ filter: () => false }), routesFile()])?.rest).toBeUndefined();
+  });
+});
+
+describe("a routes generator's filter also removes a read-only surface it does not mount", () => {
+  async function loadWithProjection() {
+    const res = await new MetaDataLoader().load([
+      new InMemoryStringSource(
+        JSON.stringify({
+          "metadata.root": {
+            package: "acme::shop",
+            children: [
+              ENTITY("Product", "products"),
+              {
+                "object.projection": {
+                  name: "ProductSummary",
+                  children: [
+                    { "source.rdb": { "@kind": "view", "@view": "v_product_summary" } },
+                    { "field.long": { name: "id", extends: "Product.id" } },
+                    { "field.string": { name: "title", extends: "Product.title" } },
+                    { "identity.primary": { name: "pk", extends: "Product.id" } },
+                  ],
+                },
+              },
+            ],
+          },
+        }),
+        { id: "meta.json", format: "json" },
+      ),
+    ]);
+    expect(res.errors).toEqual([]);
+    return res.root;
+  }
+
+  test("an unfiltered projection keeps GET list and GET by id; a filtered one is documented with no routes, Fastify and Hono", async () => {
+    const root = await loadWithProjection();
+    const docs = (expose: ReturnType<typeof runRoutesExpose>) =>
+      buildApiModel(root, { loadedRoot: root, ...(expose !== undefined && { expose }) });
+
+    const open = docs(undefined);
+    expect(sigs(open, "ProductSummary")).toHaveLength(2);
+
+    const fastify = docs(runRoutesExpose([routesFile({ filter: (e) => e.name !== "ProductSummary" })]));
+    expect(sigs(fastify, "ProductSummary")).toEqual([]);
+    expect(sigs(fastify, "Product")).toHaveLength(6);
+
+    const hono = docs(runRoutesExpose([routesFileHono({ filter: (e) => e.name !== "ProductSummary" })]));
+    expect(sigs(hono, "ProductSummary", "rest-hono")).toEqual([]);
+  });
+
+  test("expose cannot narrow a projection: the routes generators mount GET list and GET by id regardless", async () => {
+    const root = await loadWithProjection();
+    for (const gens of [
+      [routesFile({ expose: ["list"] })],
+      [routesFile({ expose: () => [] })],
+    ]) {
+      const expose = runRoutesExpose(gens);
+      const model = buildApiModel(root, { loadedRoot: root, ...(expose !== undefined && { expose }) });
+      expect(sigs(model, "ProductSummary")).toHaveLength(2);
+    }
+    const hono = runRoutesExpose([routesFileHono({ expose: ["list"] })]);
+    const honoModel = buildApiModel(root, { loadedRoot: root, includeHonoRoutes: true, ...(hono !== undefined && { expose: hono }) });
+    expect(sigs(honoModel, "ProductSummary", "rest-hono")).toHaveLength(2);
+  });
+});
+
+describe("through meta gen: the written api pages list only the mounted verbs", () => {
+  async function pages(generators: Parameters<typeof defineConfig>[0]["generators"]) {
+    const root = await loadRoot();
+    const tmp = mkdtempSync(join(tmpdir(), "api-docs-expose-"));
+    try {
+      const { warnings } = await runGen({
+        config: defineConfig({
+          outDir: join(tmp, "src"), extStyle: "none", dbImport: "../db", dialect: "sqlite",
+          targets: { docs: { outDir: join(tmp, "docs") } }, generators,
+        }),
+        metadata: root, projectRoot: tmp,
+      });
+      return { product: readFileSync(join(tmp, "docs", "api", "Product.md"), "utf8"), warnings };
+    } finally { rmSync(tmp, { recursive: true, force: true }); }
+  }
+
+  test("expose omitting create/update/delete: write routes are not documented; default is unchanged", async () => {
+    const narrowed = await pages([routesFile({ expose: ["list", "get"] }), apiDocsFile()]);
+    const page = narrowed.product;
+    expect(page).toContain("GET /products");
+    expect(page).not.toMatch(/\b(POST|PATCH|PUT|DELETE) \/products/);
+    const full = await pages([routesFile(), apiDocsFile()]);
+    expect(full.product).toMatch(/POST \/products/);
+    expect(full.product).toMatch(/DELETE \/products\/:id/);
+  });
+
+  test("an owned routes copy with no mountsRoutes marker is warned about", async () => {
+    const { mountsRoutes: _marker, ...stale } = routesFile();
+    const { warnings } = await pages([stale, apiDocsFile()]);
+    expect(warnings.join("\n")).toContain("mountsRoutes");
   });
 });

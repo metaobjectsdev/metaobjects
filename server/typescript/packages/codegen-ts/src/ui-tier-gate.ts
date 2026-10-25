@@ -1,3 +1,4 @@
+import type { MetaObject } from "@metaobjectsdev/metadata";
 import type { Generator } from "./generator.js";
 import { CRUD_VERBS, resolveExpose, type CrudVerb, type ExposeOption, type RoutesExpose } from "./routes-expose.js";
 
@@ -83,29 +84,63 @@ export function runEmitsHonoRoutes(generators: readonly Generator[]): boolean {
  * page that lists DELETE for a route the adopter does not mount is a lie).
  *
  * Per surface, because the Fastify and Hono routes files are separate generators with their
- * own option: a surface is narrowed only when EVERY generator mounting it carries an `expose`
- * (several on one surface union their verbs), and a surface with none, or one that mounts all
- * five, documents all five. Undefined when no surface is narrowed.
+ * own option: several generators on one surface union their verbs, and a generator with no
+ * `expose` mounts all five. A generator's own `filter` removes the entities it rejects, so an
+ * entity no generator on the surface accepts is documented with no routes. Undefined when no
+ * generator on any surface carries an `expose` or a `filter`.
  */
 export function runRoutesExpose(generators: readonly Generator[]): RoutesExpose | undefined {
   const rest = surfaceExpose(generators.filter((g) => g.emitsHonoRoutes !== true));
   const restHono = surfaceExpose(generators.filter((g) => g.emitsHonoRoutes === true));
   if (rest === undefined && restHono === undefined) return undefined;
-  return { ...(rest !== undefined && { rest }), ...(restHono !== undefined && { restHono }) };
+  return {
+    ...(rest !== undefined && { rest: rest.expose, restMounted: rest.mounted }),
+    ...(restHono !== undefined && { restHono: restHono.expose, restHonoMounted: restHono.mounted }),
+  };
 }
 
-function surfaceExpose(generators: readonly Generator[]): ExposeOption | undefined {
+function surfaceExpose(
+  generators: readonly Generator[],
+): { expose: ExposeOption; mounted: (entity: MetaObject) => boolean } | undefined {
   const mounts = generators
     .map((g) => g.mountsRoutes)
     .filter((m): m is NonNullable<typeof m> => m !== undefined);
-  if (mounts.length === 0 || mounts.some((m) => m.expose === undefined)) return undefined;
-  return (entity) => {
-    const union = new Set<CrudVerb>();
-    for (const m of mounts) {
-      const verbs = resolveExpose(entity, m.expose);
-      if (verbs === undefined) return undefined;
-      for (const v of verbs) union.add(v);
-    }
-    return CRUD_VERBS.filter((v) => union.has(v));
+  if (mounts.length === 0 || mounts.some((m) => m.expose === undefined && m.filter === undefined)) return undefined;
+  const accepts = (m: (typeof mounts)[number], entity: MetaObject): boolean => m.filter === undefined || m.filter(entity);
+  return {
+    mounted: (entity) => mounts.some((m) => accepts(m, entity)),
+    expose: (entity) => {
+      const union = new Set<CrudVerb>();
+      for (const m of mounts) {
+        if (!accepts(m, entity)) continue;
+        for (const v of resolveExpose(entity, m.expose) ?? CRUD_VERBS) union.add(v);
+      }
+      return CRUD_VERBS.filter((v) => union.has(v));
+    },
   };
+}
+
+/**
+ * A routes generator ejected before `mountsRoutes` existed still mounts its routes, but the api
+ * reference cannot see its `expose` or `filter` and documents all five verbs for every entity.
+ * Warned about when the run writes an api reference, by name for the same reason as
+ * {@link warnUnmarkedUiGenerators}; adding the marker silences it.
+ */
+export function warnUnmarkedRoutesGenerators(
+  generators: readonly Generator[],
+  warn: (msg: string) => void,
+): void {
+  if (!generators.some((g) => g.emitsApiDocs !== undefined)) return;
+  const stale = generators.filter(
+    (g) => (g.name === "routes-file" || g.name === "routes-file-hono") && g.mountsRoutes === undefined,
+  );
+  if (stale.length === 0) return;
+  const names = stale.map((g) => `'${g.name}'`).join(", ");
+  warn(
+    `${names} mount${stale.length === 1 ? "s" : ""} routes but carr${stale.length === 1 ? "ies" : "y"} no ` +
+      `'mountsRoutes' marker — an owned copy ejected before the marker existed. The api reference ` +
+      `lists every verb for every entity whatever its 'expose' or 'filter' says: add ` +
+      `'mountsRoutes: opts?.expose !== undefined ? { expose: opts.expose } : {}' beside 'name:' in your ` +
+      `copy (and 'filter' likewise), or re-eject it with 'meta eject routes --force'.`,
+  );
 }

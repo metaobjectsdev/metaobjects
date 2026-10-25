@@ -469,10 +469,12 @@ function buildEntityUnit(
     // object gets routes. (Its `filter` option can narrow that further; this builder
     // reads the model, not the wired generator set, and cannot see it. See the module
     // header.)
-    symbols.push(...restSymbols(obj, layout, root, apiPrefix, expose.rest));
+    if (expose.restMounted?.(obj) !== false) symbols.push(...restSymbols(obj, layout, root, apiPrefix, expose.rest));
     // The OPT-IN Hono variant mounts the SAME CRUD verbs under the same rules —
     // documented only when the adopter wired it.
-    if (includeHono) symbols.push(...restHonoSymbols(obj, layout, apiPrefix, expose.restHono));
+    if (includeHono && expose.restHonoMounted?.(obj) !== false) {
+      symbols.push(...restHonoSymbols(obj, layout, apiPrefix, expose.restHono));
+    }
   }
 
   // --- relation: the drizzle relations() export, when the resolver files entries

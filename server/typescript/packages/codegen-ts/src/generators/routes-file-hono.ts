@@ -63,7 +63,10 @@ export const routesFileHono = function routesFileHono(opts?: RoutesFileHonoOpts)
   const generator: Generator = {
     name: "routes-file-hono",
     // Read by the api reference (`apiDocsFile()`): it lists the verbs this file mounts.
-    mountsRoutes: opts?.expose !== undefined ? { expose: opts.expose } : {},
+    mountsRoutes: {
+      ...(opts?.expose !== undefined && { expose: opts.expose }),
+      ...(opts?.filter !== undefined && { filter: opts.filter }),
+    },
     // Marks this as the Hono routes generator so the runner can aggregate
     // `ctx.config.includeHonoRoutes` and api-docs auto-documents the Hono surface.
     emitsHonoRoutes: true,
