@@ -469,10 +469,12 @@ function buildEntityUnit(
     // object gets routes. (Its `filter` option can narrow that further; this builder
     // reads the model, not the wired generator set, and cannot see it. See the module
     // header.)
-    symbols.push(...restSymbols(obj, layout, root, apiPrefix, expose.rest));
+    if (expose.restMounted?.(obj) !== false) symbols.push(...restSymbols(obj, layout, root, apiPrefix, expose.rest));
     // The OPT-IN Hono variant mounts the SAME CRUD verbs under the same rules —
     // documented only when the adopter wired it.
-    if (includeHono) symbols.push(...restHonoSymbols(obj, layout, apiPrefix, expose.restHono));
+    if (includeHono && expose.restHonoMounted?.(obj) !== false) {
+      symbols.push(...restHonoSymbols(obj, layout, apiPrefix, expose.restHono));
+    }
   }
 
   // --- relation: the drizzle relations() export, when the resolver files entries
@@ -726,16 +728,17 @@ function restSymbols(
 /**
  * The CRUD verbs the routes generator mounts for `obj`, as `routes-file.ts` decides them.
  *
- * A read-only surface (a projection or a report) and a TPH discriminator base are read-only by
- * construction: they mount `list` and `get`, and an author's `expose` INTERSECTS with that set
- * (an empty result, as a routes generator's `filter` yields, mounts nothing). Any other entity mounts all five, narrowed by `expose`: the
+ * A read-only surface (a projection or a report) mounts `list` and `get` and `expose` cannot
+ * narrow it. A TPH discriminator base is read-only by construction and an author's `expose`
+ * INTERSECTS with that set. Any other entity mounts all five, narrowed by `expose`: the
  * option the run reads off the configured routes generator, so a page never lists a
  * verb the adopter did not mount (and overrides by hand).
  */
 function mountedVerbs(
   obj: MetaObject, tphBase: boolean, expose: ExposeOption | undefined,
 ): ReadonlySet<CrudVerb> {
-  const fixed = isReadOnlySurface(obj) || tphBase ? TPH_POLYMORPHIC_VERBS : CRUD_VERBS;
+  if (isReadOnlySurface(obj)) return new Set<CrudVerb>(["list", "get"]);
+  const fixed = tphBase ? TPH_POLYMORPHIC_VERBS : CRUD_VERBS;
   return new Set<CrudVerb>(intersectExpose(fixed, resolveExpose(obj, expose)));
 }
 

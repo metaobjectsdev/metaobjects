@@ -1,3 +1,4 @@
+import type { MetaObject } from "@metaobjectsdev/metadata";
 import type { Generator } from "./generator.js";
 import { CRUD_VERBS, resolveExpose, type CrudVerb, type ExposeOption, type RoutesExpose } from "./routes-expose.js";
 
@@ -92,22 +93,30 @@ export function runRoutesExpose(generators: readonly Generator[]): RoutesExpose 
   const rest = surfaceExpose(generators.filter((g) => g.emitsHonoRoutes !== true));
   const restHono = surfaceExpose(generators.filter((g) => g.emitsHonoRoutes === true));
   if (rest === undefined && restHono === undefined) return undefined;
-  return { ...(rest !== undefined && { rest }), ...(restHono !== undefined && { restHono }) };
+  return {
+    ...(rest !== undefined && { rest: rest.expose, restMounted: rest.mounted }),
+    ...(restHono !== undefined && { restHono: restHono.expose, restHonoMounted: restHono.mounted }),
+  };
 }
 
-function surfaceExpose(generators: readonly Generator[]): ExposeOption | undefined {
+function surfaceExpose(
+  generators: readonly Generator[],
+): { expose: ExposeOption; mounted: (entity: MetaObject) => boolean } | undefined {
   const mounts = generators
     .map((g) => g.mountsRoutes)
     .filter((m): m is NonNullable<typeof m> => m !== undefined);
   if (mounts.length === 0 || mounts.some((m) => m.expose === undefined && m.filter === undefined)) return undefined;
-  return (entity) => {
-    const union = new Set<CrudVerb>();
-    for (const m of mounts) {
-      // An entity the generator's own `filter` rejects is mounted by that generator nowhere.
-      if (m.filter !== undefined && !m.filter(entity)) continue;
-      for (const v of resolveExpose(entity, m.expose) ?? CRUD_VERBS) union.add(v);
-    }
-    return CRUD_VERBS.filter((v) => union.has(v));
+  const accepts = (m: (typeof mounts)[number], entity: MetaObject): boolean => m.filter === undefined || m.filter(entity);
+  return {
+    mounted: (entity) => mounts.some((m) => accepts(m, entity)),
+    expose: (entity) => {
+      const union = new Set<CrudVerb>();
+      for (const m of mounts) {
+        if (!accepts(m, entity)) continue;
+        for (const v of resolveExpose(entity, m.expose) ?? CRUD_VERBS) union.add(v);
+      }
+      return CRUD_VERBS.filter((v) => union.has(v));
+    },
   };
 }
 

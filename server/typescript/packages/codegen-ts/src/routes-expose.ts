@@ -50,11 +50,16 @@ export type ExposeOption =
 /**
  * The `expose` option of each routes SURFACE, as the api reference documents them: the Fastify
  * routes file and the opt-in Hono one are separate generators and each mounts its own verbs.
- * A surface left out mounts every verb.
+ * A surface left out mounts every verb. `restMounted` / `restHonoMounted` say whether any routes
+ * generator on that surface accepts the entity at all (its `filter`): an entity none accepts has no
+ * routes, however read-only its surface is. They are separate from `expose` because a read-only
+ * surface ignores `expose` but not `filter`.
  */
 export interface RoutesExpose {
   readonly rest?: ExposeOption;
   readonly restHono?: ExposeOption;
+  readonly restMounted?: (entity: MetaObject) => boolean;
+  readonly restHonoMounted?: (entity: MetaObject) => boolean;
 }
 
 /** Resolve the option for one entity. `undefined` means "mount all five". */

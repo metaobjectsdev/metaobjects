@@ -189,6 +189,21 @@ describe("a routes generator's filter also removes a read-only surface it does n
     const hono = docs(runRoutesExpose([routesFileHono({ filter: (e) => e.name !== "ProductSummary" })]));
     expect(sigs(hono, "ProductSummary", "rest-hono")).toEqual([]);
   });
+
+  test("expose cannot narrow a projection: the routes generators mount GET list and GET by id regardless", async () => {
+    const root = await loadWithProjection();
+    for (const gens of [
+      [routesFile({ expose: ["list"] })],
+      [routesFile({ expose: () => [] })],
+    ]) {
+      const expose = runRoutesExpose(gens);
+      const model = buildApiModel(root, { loadedRoot: root, ...(expose !== undefined && { expose }) });
+      expect(sigs(model, "ProductSummary")).toHaveLength(2);
+    }
+    const hono = runRoutesExpose([routesFileHono({ expose: ["list"] })]);
+    const honoModel = buildApiModel(root, { loadedRoot: root, includeHonoRoutes: true, ...(hono !== undefined && { expose: hono }) });
+    expect(sigs(honoModel, "ProductSummary", "rest-hono")).toHaveLength(2);
+  });
 });
 
 describe("through meta gen: the written api pages list only the mounted verbs", () => {
