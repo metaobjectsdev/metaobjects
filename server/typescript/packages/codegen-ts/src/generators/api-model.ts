@@ -726,17 +726,16 @@ function restSymbols(
 /**
  * The CRUD verbs the routes generator mounts for `obj`, as `routes-file.ts` decides them.
  *
- * A read-only surface (a projection or a report) mounts `list` and `get` and `expose` cannot
- * narrow it. A TPH discriminator base is read-only by construction and an author's `expose`
- * INTERSECTS with that set. Any other entity mounts all five, narrowed by `expose`: the
+ * A read-only surface (a projection or a report) and a TPH discriminator base are read-only by
+ * construction: they mount `list` and `get`, and an author's `expose` INTERSECTS with that set
+ * (an empty result, as a routes generator's `filter` yields, mounts nothing). Any other entity mounts all five, narrowed by `expose`: the
  * option the run reads off the configured routes generator, so a page never lists a
  * verb the adopter did not mount (and overrides by hand).
  */
 function mountedVerbs(
   obj: MetaObject, tphBase: boolean, expose: ExposeOption | undefined,
 ): ReadonlySet<CrudVerb> {
-  if (isReadOnlySurface(obj)) return new Set<CrudVerb>(["list", "get"]);
-  const fixed = tphBase ? TPH_POLYMORPHIC_VERBS : CRUD_VERBS;
+  const fixed = isReadOnlySurface(obj) || tphBase ? TPH_POLYMORPHIC_VERBS : CRUD_VERBS;
   return new Set<CrudVerb>(intersectExpose(fixed, resolveExpose(obj, expose)));
 }
 

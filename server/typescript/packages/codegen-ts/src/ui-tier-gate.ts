@@ -1,5 +1,4 @@
 import type { Generator } from "./generator.js";
-import { tphDiscriminatorBase } from "./tph.js";
 import { CRUD_VERBS, resolveExpose, type CrudVerb, type ExposeOption, type RoutesExpose } from "./routes-expose.js";
 
 /**
@@ -102,14 +101,11 @@ function surfaceExpose(generators: readonly Generator[]): ExposeOption | undefin
     .filter((m): m is NonNullable<typeof m> => m !== undefined);
   if (mounts.length === 0 || mounts.some((m) => m.expose === undefined && m.filter === undefined)) return undefined;
   return (entity) => {
-    // A TPH subtype has no routes file of its own: its mounts live in the base's file, so the
-    // base is the entity the generator's `filter` and `expose` were applied to.
-    const mounted = tphDiscriminatorBase(entity) ?? entity;
     const union = new Set<CrudVerb>();
     for (const m of mounts) {
       // An entity the generator's own `filter` rejects is mounted by that generator nowhere.
-      if (m.filter !== undefined && !m.filter(mounted)) continue;
-      for (const v of resolveExpose(mounted, m.expose) ?? CRUD_VERBS) union.add(v);
+      if (m.filter !== undefined && !m.filter(entity)) continue;
+      for (const v of resolveExpose(entity, m.expose) ?? CRUD_VERBS) union.add(v);
     }
     return CRUD_VERBS.filter((v) => union.has(v));
   };

@@ -144,6 +144,53 @@ describe("a routes generator's own filter removes the entities it does not mount
   });
 });
 
+describe("a routes generator's filter also removes a read-only surface it does not mount", () => {
+  async function loadWithProjection() {
+    const res = await new MetaDataLoader().load([
+      new InMemoryStringSource(
+        JSON.stringify({
+          "metadata.root": {
+            package: "acme::shop",
+            children: [
+              ENTITY("Product", "products"),
+              {
+                "object.projection": {
+                  name: "ProductSummary",
+                  children: [
+                    { "source.rdb": { "@kind": "view", "@view": "v_product_summary" } },
+                    { "field.long": { name: "id", extends: "Product.id" } },
+                    { "field.string": { name: "title", extends: "Product.title" } },
+                    { "identity.primary": { name: "pk", extends: "Product.id" } },
+                  ],
+                },
+              },
+            ],
+          },
+        }),
+        { id: "meta.json", format: "json" },
+      ),
+    ]);
+    expect(res.errors).toEqual([]);
+    return res.root;
+  }
+
+  test("an unfiltered projection keeps GET list and GET by id; a filtered one is documented with no routes, Fastify and Hono", async () => {
+    const root = await loadWithProjection();
+    const docs = (expose: ReturnType<typeof runRoutesExpose>) =>
+      buildApiModel(root, { loadedRoot: root, ...(expose !== undefined && { expose }) });
+
+    const open = docs(undefined);
+    expect(sigs(open, "ProductSummary")).toHaveLength(2);
+
+    const fastify = docs(runRoutesExpose([routesFile({ filter: (e) => e.name !== "ProductSummary" })]));
+    expect(sigs(fastify, "ProductSummary")).toEqual([]);
+    expect(sigs(fastify, "Product")).toHaveLength(6);
+
+    const hono = docs(runRoutesExpose([routesFileHono({ filter: (e) => e.name !== "ProductSummary" })]));
+    expect(sigs(hono, "ProductSummary", "rest-hono")).toEqual([]);
+  });
+});
+
 describe("through meta gen: the written api pages list only the mounted verbs", () => {
   async function pages(generators: Parameters<typeof defineConfig>[0]["generators"]) {
     const root = await loadRoot();
