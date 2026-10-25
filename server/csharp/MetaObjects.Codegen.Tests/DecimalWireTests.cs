@@ -539,4 +539,54 @@ public class DecimalWireTests
         Assert.Contains("MetaNetValidation.Acme.Shipping.g.cs", paths);
         Compile(files);
     }
+
+    [Fact]
+    public void Shared_helpers_carry_the_generated_marker_on_their_first_line()
+    {
+        var files = EmitFitness(out _);
+        var helpers = files.Where(f =>
+            f.Path.StartsWith("DecimalWire", StringComparison.Ordinal) ||
+            f.Path.StartsWith("MetaNetValidation", StringComparison.Ordinal)).ToList();
+        Assert.Contains(helpers, f => f.Path.StartsWith("DecimalWire", StringComparison.Ordinal));
+        Assert.Contains(helpers, f => f.Path.StartsWith("MetaNetValidation", StringComparison.Ordinal));
+        foreach (var f in helpers)
+            Assert.Equal(CodegenRunner.GeneratedMarker, f.Content.Split('\n')[0].Replace("// ", ""));
+    }
+
+    [Fact]
+    public void Rerun_without_a_state_dir_rewrites_the_helpers_in_every_namespace()
+    {
+        // #460: with no GenStateDir the runner falls back to the marker rule, and the helpers
+        // lacked the marker, so every run after the first refused to overwrite them.
+        var dir = Path.Combine(Path.GetTempPath(), "mo-helper-marker-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var r = new MetaDataLoader().Load([
+                new InMemoryStringSource(TwoNamespaceModel, id: "billing.json"),
+                new InMemoryStringSource(SecondNamespaceModel, id: "shipping.json")]);
+            Assert.Empty(r.Errors);
+            var config = new GenConfig
+            {
+                OutDir = dir,
+                Namespace = "Acme",
+                PackageNamespaces = new() { ["acme::billing"] = "Acme.Billing", ["acme::shipping"] = "Acme.Shipping" },
+            };
+            string[] helpers =
+            [
+                "DecimalWire.Acme.Billing.g.cs", "DecimalWire.Acme.Shipping.g.cs",
+                "MetaNetValidation.Acme.Billing.g.cs", "MetaNetValidation.Acme.Shipping.g.cs",
+            ];
+            CodegenRunner.Run(config, r.Root, [new EntityGenerator()]);
+            foreach (var h in helpers) File.WriteAllText(Path.Combine(dir, h), File.ReadAllText(Path.Combine(dir, h)) + "// stale\n");
+
+            var second = CodegenRunner.Run(config, r.Root, [new EntityGenerator()]);
+            Assert.DoesNotContain(second.Warnings, w => w.Contains("refusing to overwrite", StringComparison.Ordinal));
+            foreach (var h in helpers)
+            {
+                Assert.Contains(second.Files, f => f.Path == h && f.Status == "written");
+                Assert.DoesNotContain("// stale", File.ReadAllText(Path.Combine(dir, h)), StringComparison.Ordinal);
+            }
+        }
+        finally { try { Directory.Delete(dir, true); } catch { } }
+    }
 }
