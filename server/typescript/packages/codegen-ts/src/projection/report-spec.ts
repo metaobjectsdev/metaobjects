@@ -2,7 +2,7 @@
 // `extractReportSpec` produces it; the report DDL emitter renders it per dialect. Column
 // references are already resolved to unquoted `alias.column`, as in `ViewSpec`.
 
-import type { MeasureAgg, TimeGrain } from "@metaobjectsdev/metadata";
+import type { MeasureAgg, RelativeStartOf, TimeGrain } from "@metaobjectsdev/metadata";
 import type { JoinTree, ViewFilterClause } from "./view-spec.js";
 import type { ReportTemporal } from "./time-sql.js";
 
@@ -12,6 +12,8 @@ export interface RelativeNow {
   /** The signed ISO-8601 duration as authored, e.g. "-P90D". */
   readonly duration: string;
   readonly temporal: ReportTemporal;
+  /** Truncate the shifted instant to the start of this UTC calendar unit, when authored. */
+  readonly startOf?: RelativeStartOf;
 }
 
 export function isRelativeNow(v: unknown): v is RelativeNow {

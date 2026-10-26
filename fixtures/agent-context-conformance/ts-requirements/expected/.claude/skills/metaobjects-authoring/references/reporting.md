@@ -64,6 +64,8 @@ Only those last two rows make a measure other than `count`, or a dimension reach
 
 A filter value `{ "now": "-P30D" }` (the current time plus a signed ISO-8601 duration) is legal only on a `field.date` or `field.timestamp`, under `gt`, `gte`, `lt` or `lte`, and only in the `@filter` of a `segment`, a `measure.aggregate` or an `object.report`. It is evaluated when the view is **queried**, against the UTC clock.
 
+Add `"startOf": "day"`, `"week"` or `"month"` to cut the window to a calendar boundary: `{ "now": "-P90D", "startOf": "day" }` is midnight UTC, 90 days back, not 90 days before the moment of the query. The duration is applied first, then the result is truncated, and a week starts on Monday. No other unit is accepted (`ERR_BAD_ATTR_FILTER`), and there is no time-zone form.
+
 ## Nulls and zeros
 
 - A `count` is `0` over nothing, never null. It counts rows whose `@of` column is not null; a tuple with any null component is not counted.

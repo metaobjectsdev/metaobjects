@@ -151,7 +151,7 @@ CREATE VIEW `v_recent_programs` AS
   SELECT
     COUNT(p.`id`) AS `programs`
   FROM `programs` p
-  WHERE p.`created_ts` >= (UTC_TIMESTAMP(3) - INTERVAL 30 DAY);
+  WHERE p.`created_ts` >= DATE(UTC_TIMESTAMP(3) - INTERVAL 30 DAY);
 
 CREATE VIEW `v_asset_activity` AS
   SELECT

@@ -96,6 +96,8 @@ from ..meta.core.reporting.reporting_constants import (
     AGG_MIN,
     AGG_SUM,
     FILTER_RELATIVE_NOW,
+    FILTER_RELATIVE_START_OF,
+    RELATIVE_START_OF_UNITS,
     GRAIN_HOUR,
     ISO_DURATION_RE,
     MEASURE_SUBTYPE_AGGREGATE,
@@ -861,10 +863,10 @@ def _check_filter(
             relative = _relative_operand(operand)
             if relative is None:
                 continue
-            if len(relative) != 1:
+            if not set(relative) <= {FILTER_RELATIVE_NOW, FILTER_RELATIVE_START_OF}:
                 err(
                     f"@filter on '{key}' has a malformed relative date {_js_json(relative)}; a relative date is "
-                    f'exactly {{ now: "<ISO-8601 duration>" }} with no other keys.'
+                    f'{{ now: "<ISO-8601 duration>" }} with an optional startOf, and no other keys.'
                 )
                 continue
             if field.sub_type not in _TEMPORAL_FIELD_SUBTYPES:
@@ -885,6 +887,14 @@ def _check_filter(
                     f"@filter on '{key}' has relative date '{_quote_value(duration)}', which is not an ISO-8601 "
                     f"duration (e.g. '-P7D', '-PT12H')."
                 )
+                continue
+            if FILTER_RELATIVE_START_OF in relative:
+                start_of = relative[FILTER_RELATIVE_START_OF]
+                if not isinstance(start_of, str) or start_of not in RELATIVE_START_OF_UNITS:
+                    err(
+                        f"@filter on '{key}' has startOf '{_quote_value(start_of)}'; startOf is one of "
+                        f"{', '.join(RELATIVE_START_OF_UNITS)}."
+                    )
 
 
 # ---------------------------------------------------------------------------

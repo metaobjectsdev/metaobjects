@@ -257,8 +257,8 @@ CREATE VIEW "v_recent_programs" AS
   SELECT
     COUNT(p."id") AS "programs"
   FROM "programs" p
-  WHERE p."created_ts" >= ((now() AT TIME ZONE 'UTC') - INTERVAL 'P30D');
-COMMENT ON VIEW "v_recent_programs" IS 'metaobjects:v1:sha256:9e675bb71fe4a3c74f06f5db65d7908e246a59c2a8fc062fc2c899948841eccc';
+  WHERE p."created_ts" >= date_trunc('day', ((now() AT TIME ZONE 'UTC') - INTERVAL 'P30D'));
+COMMENT ON VIEW "v_recent_programs" IS 'metaobjects:v1:sha256:c003a47e4cfe2bde4be608547553408adbd261fb1b2ccadccaf523073d30aeb7';
 
 CREATE VIEW "v_asset_activity" AS
   SELECT

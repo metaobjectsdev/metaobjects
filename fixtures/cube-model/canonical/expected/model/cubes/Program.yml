@@ -70,7 +70,7 @@ cubes:
       - name: introOrFree
         sql: '({CUBE}."title" LIKE ''Intro%'' OR {CUBE}."priceCents" = 0)'
       - name: recentProgramsScope
-        sql: '{CUBE}."created_ts" >= ((now() AT TIME ZONE ''UTC'') - INTERVAL ''P30D'')'
+        sql: '{CUBE}."created_ts" >= date_trunc(''day'', ((now() AT TIME ZONE ''UTC'') - INTERVAL ''P30D''))'
       - name: liveIntroProgramsScope
         sql: '({CUBE}."status" IN (''DRAFT'', ''PUBLISHED'') AND {CUBE}."priceCents" < 5000)'
       - name: programsEmptyScopeScope

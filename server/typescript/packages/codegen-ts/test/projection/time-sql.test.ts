@@ -117,6 +117,35 @@ describe("relativeNowSql (Table E)", () => {
     expect(relativeNowSql(duration, temporal, "mysql")).toBe(sql);
   });
 
+  test.each([
+    ["-P90D", "instant", "day", `(date_trunc('day', (now() - INTERVAL 'P90D') AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')`],
+    ["-P1W", "naive", "week", `date_trunc('week', ((now() AT TIME ZONE 'UTC') - INTERVAL 'P1W'))`],
+    ["P0D", "date", "month", `CAST(date_trunc('month', ((now() AT TIME ZONE 'UTC') + INTERVAL 'P0D')) AS DATE)`],
+  ] as const)("postgres %s on %s startOf %s", (duration, temporal, startOf, sql) => {
+    expect(relativeNowSql(duration, temporal, "postgres", startOf)).toBe(sql);
+  });
+
+  test.each([
+    ["-P90D", "instant", "day", `strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-90 days', 'start of day')`],
+    ["P0D", "naive", "week", `strftime('%Y-%m-%dT%H:%M:%f', 'now', 'weekday 0', '-6 days', 'start of day')`],
+    ["-P1M", "date", "month", `date('now', '-1 months', 'start of month')`],
+  ] as const)("sqlite %s on %s startOf %s", (duration, temporal, startOf, sql) => {
+    expect(relativeNowSql(duration, temporal, "sqlite", startOf)).toBe(sql);
+  });
+
+  test.each([
+    ["-P90D", "instant", "day", `DATE(UTC_TIMESTAMP(3) - INTERVAL 90 DAY)`],
+    ["-P1W", "naive", "week",
+      `DATE(DATE_SUB(UTC_TIMESTAMP(3) - INTERVAL 1 WEEK, INTERVAL WEEKDAY(UTC_TIMESTAMP(3) - INTERVAL 1 WEEK) DAY))`],
+    ["P0D", "date", "month", `DATE(DATE_FORMAT(UTC_TIMESTAMP(3), '%Y-%m-01'))`],
+  ] as const)("mysql %s on %s startOf %s", (duration, temporal, startOf, sql) => {
+    expect(relativeNowSql(duration, temporal, "mysql", startOf)).toBe(sql);
+  });
+
+  test("an unknown startOf unit throws instead of reaching the SQL", () => {
+    expect(() => relativeNowSql("-P1D", "instant", "postgres", "year" as never)).toThrow(/year/);
+  });
+
   test("a malformed duration throws, naming it", () => {
     expect(() => parseIsoDuration("P")).toThrow(/P/);
     expect(() => relativeNowSql("7 days", "instant", "postgres")).toThrow(/7 days/);

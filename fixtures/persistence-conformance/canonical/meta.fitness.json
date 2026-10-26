@@ -404,7 +404,7 @@
         "@dimensions": ["createdAt:week"], "@measures": ["programs"], "@segment": "published",
         "children": [ { "source.rdb": { "@kind": "view", "@view": "v_programs_by_week" } } ] } },
       { "object.report": { "name": "RecentPrograms", "@from": "Program",
-        "@measures": ["programs"], "@filter": { "createdAt": { "gte": { "now": "-P30D" } } },
+        "@measures": ["programs"], "@filter": { "createdAt": { "gte": { "now": "-P30D", "startOf": "day" } } },
         "children": [ { "source.rdb": { "@kind": "view", "@view": "v_recent_programs" } } ] } },
       { "object.report": { "name": "AssetActivity", "@from": "Asset",
         "@dimensions": ["recordedAt:hour", "asOfDate:week"], "@measures": ["assets"],

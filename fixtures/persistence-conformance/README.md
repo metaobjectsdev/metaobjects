@@ -385,7 +385,7 @@ then measures in `@measures` order; a time dimension is named `<name><Grain>`, f
 | `report-totals-empty` | one row over an empty table: `count` is `0`, `sum` is `null`, a zero-denominator ratio is `null` |
 | `report-time-grains` | `month` grain beside an enum dimension; a segment-filtered `sum` that is `null`; the ISO Monday week boundary; a report-level `@segment` |
 | `report-time-hour-and-date` | `hour` on an instant, `week` on a `field.date` |
-| `report-relative-date` | a `{ now: "-P30D" }` filter, with a seed relative to the database clock |
+| `report-relative-date` | a `{ now: "-P30D", startOf: "day" }` filter, with a seed relative to the database clock |
 | `report-spine-zero-rows` | `@spine`: a program with no weeks has a row (`weeks` `0`, `totalMinutes` and `longShare` null, the `@default: 0` measures `0`); `count` is the number of programs; a measure filter drops the empty rows; filter and sort on a defaulted measure |
 | `report-spine-scoped` | `@spine` with a report `@segment`: a program whose weeks are all out of scope keeps its row, with `weeks` `0` |
 | `report-boolean-measures` | `@agg: any` / `all` over a nullable `field.boolean`: a boolean on the wire (never `0` / `1`), nulls ignored, `null` for a group with nothing to judge, a `segment`-scoped `any`; `filter` by value and `isNull` |

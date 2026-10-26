@@ -184,7 +184,7 @@ public static partial class ValidationPasses
         v is IReadOnlyDictionary<string, object?> o && o.ContainsKey(FILTER_RELATIVE_NOW);
 
     /// <summary>True for a well-formed relative value: exactly the one key <c>now</c>.</summary>
-    private static bool IsExactRelativeValue(IReadOnlyDictionary<string, object?> v) => v.Count == 1;
+    private static bool IsExactRelativeValue(IReadOnlyDictionary<string, object?> v) => v.Keys.All(k => k == FILTER_RELATIVE_NOW || k == FILTER_RELATIVE_START_OF);
 
     /// <summary>The relative value an op's operand carries: the operand itself, or one inside an array operand.</summary>
     private static IReadOnlyDictionary<string, object?>? RelativeOperand(object? v)
@@ -766,7 +766,7 @@ public static partial class ValidationPasses
                 if (!IsExactRelativeValue(relative))
                 {
                     Err($"@filter on '{key}' has a malformed relative date {JsonStringify(relative)}; a relative date is " +
-                        "exactly { now: \"<ISO-8601 duration>\" } with no other keys.");
+                        "{ now: \"<ISO-8601 duration>\" } with an optional startOf, and no other keys.");
                     continue;
                 }
                 if (!ReportingTemporalFieldSubtypes.Contains(field.SubType))
@@ -786,6 +786,13 @@ public static partial class ValidationPasses
                 {
                     Err($"@filter on '{key}' has relative date '{QuoteValue(duration)}', which is not an ISO-8601 " +
                         "duration (e.g. '-P7D', '-PT12H').");
+                    continue;
+                }
+                if (relative.TryGetValue(FILTER_RELATIVE_START_OF, out var startOf)
+                    && (startOf is not string unit || !RELATIVE_START_OF_UNITS.Contains(unit)))
+                {
+                    Err($"@filter on '{key}' has startOf '{QuoteValue(startOf)}'; startOf is one of " +
+                        $"{string.Join(", ", RELATIVE_START_OF_UNITS)}.");
                 }
             }
         }
