@@ -8,15 +8,16 @@ import static org.junit.Assert.assertEquals;
 public class OrderTermNullsTest {
 
     private static final class Generic extends GenericSQLDriver {
-        String term(String e, boolean desc) { return orderTerm(e, desc); }
+        String term(String e, boolean desc) { return orderTerm(e, desc, false); }
+        String distinctTerm(String e, boolean desc) { return orderTerm(e, desc, true); }
     }
 
     private static final class Pg extends PostgresDriver {
-        String term(String e, boolean desc) { return orderTerm(e, desc); }
+        String term(String e, boolean desc) { return orderTerm(e, desc, false); }
     }
 
     private static final class Lite extends SQLiteDriver {
-        String term(String e, boolean desc) { return orderTerm(e, desc); }
+        String term(String e, boolean desc) { return orderTerm(e, desc, false); }
     }
 
     @Test
@@ -24,6 +25,13 @@ public class OrderTermNullsTest {
         Generic d = new Generic();
         assertEquals("CASE WHEN c IS NULL THEN 1 ELSE 0 END, c", d.term("c", false));
         assertEquals("CASE WHEN c IS NULL THEN 1 ELSE 0 END DESC, c DESC", d.term("c", true));
+    }
+
+    @Test
+    public void genericDistinctKeepsThePlainOrderBy() {
+        Generic d = new Generic();
+        assertEquals("c", d.distinctTerm("c", false));
+        assertEquals("c DESC", d.distinctTerm("c", true));
     }
 
     @Test

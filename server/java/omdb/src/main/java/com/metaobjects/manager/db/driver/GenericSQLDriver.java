@@ -911,15 +911,19 @@ public class GenericSQLDriver implements DatabaseDriver {
      * ASC). The default is a leading {@code CASE WHEN expr IS NULL} key, which every supported
      * engine accepts; a driver with native {@code NULLS FIRST/LAST} overrides it.
      */
-    protected String orderTerm(String expr, boolean desc) {
+    protected String orderTerm(String expr, boolean desc, boolean distinct) {
         String dir = desc ? " DESC" : "";
+        // SELECT DISTINCT rejects ORDER BY items outside the select list (MSSQL, Oracle, MySQL), so no null key.
+        if (distinct) {
+            return expr + dir;
+        }
         return "CASE WHEN " + expr + " IS NULL THEN 1 ELSE 0 END" + dir + ", " + expr + dir;
     }
 
     /**
      * Gets the ORDER BY clause
      */
-    protected String getOrderString(MetaObject mc, ObjectMappingDB omdb, SortOrder order) throws MetaDataException {
+    protected String getOrderString(MetaObject mc, ObjectMappingDB omdb, SortOrder order, boolean distinct) throws MetaDataException {
 
         StringBuilder b = new StringBuilder();
 
@@ -951,7 +955,7 @@ public class GenericSQLDriver implements DatabaseDriver {
                 expr.append(quoteIdent(colDef.getName()));
             }
 
-            b.append(orderTerm(expr.toString(), order.getOrder() == SortOrder.DESC));
+            b.append(orderTerm(expr.toString(), order.getOrder() == SortOrder.DESC, distinct));
 
             order = order.getNext();
         }
@@ -1327,7 +1331,7 @@ public class GenericSQLDriver implements DatabaseDriver {
         }
 
         if (order != null) {
-            query.append(" ORDER BY ").append(getOrderString(mc, omdb, order));
+            query.append(" ORDER BY ").append(getOrderString(mc, omdb, order, options.isDistinct()));
         } else if (applyRange && rangeRequiresOrderBy()) {
             // ANSI OFFSET/FETCH (SQL Server 2012+, Oracle 12c+) is only valid
             // when preceded by an ORDER BY. Supply a deterministic fallback when

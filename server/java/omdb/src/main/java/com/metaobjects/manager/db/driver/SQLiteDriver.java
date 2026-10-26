@@ -280,7 +280,7 @@ public class SQLiteDriver extends GenericSQLDriver {
 
     /** Native null placement: nulls are larger than any value (ASC last, DESC first). */
     @Override
-    protected String orderTerm(String expr, boolean desc) {
+    protected String orderTerm(String expr, boolean desc, boolean distinct) {
         return expr + (desc ? " DESC NULLS FIRST" : " ASC NULLS LAST");
     }
 }
