@@ -360,7 +360,7 @@ describe("mountReadOnlyCrudRoutes — report row cap", () => {
     const app = Fastify();
     mountReadOnlyCrudRoutes({
       fastify: app, path: "/days", db: drizzle(client), view,
-      filterAllowlist: { n: { ops: ["eq"], subType: "int" } },
+      filterAllowlist: { n: { ops: ["eq"], subType: "number", leadingWildcard: false } },
       sortAllowlist: { id: { defaultOrder: "asc" } },
       dialect: "sqlite", itemRoutes: false, resource: "report",
       ...(reportMaxRows !== undefined && { reportMaxRows }),
