@@ -118,7 +118,7 @@ describe("relativeNowSql (Table E)", () => {
   });
 
   test.each([
-    ["-P90D", "instant", "day", `(date_trunc('day', (now() - INTERVAL 'P90D') AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')`],
+    ["-P90D", "instant", "day", `(date_trunc('day', ((now() AT TIME ZONE 'UTC') - INTERVAL 'P90D')) AT TIME ZONE 'UTC')`],
     ["-P1W", "naive", "week", `date_trunc('week', ((now() AT TIME ZONE 'UTC') - INTERVAL 'P1W'))`],
     ["P0D", "date", "month", `CAST(date_trunc('month', ((now() AT TIME ZONE 'UTC') + INTERVAL 'P0D')) AS DATE)`],
   ] as const)("postgres %s on %s startOf %s", (duration, temporal, startOf, sql) => {

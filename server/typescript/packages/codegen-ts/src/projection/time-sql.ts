@@ -151,15 +151,11 @@ export function relativeNowSql(
     case "postgres": {
       // ISO-8601 interval input is accepted as written.
       const interval = `INTERVAL '${d.magnitude}'`;
-      if (temporal === "instant") {
-        const shifted = `(now() ${d.sign} ${interval})`;
-        // date_trunc on a timestamptz truncates in the session zone, so cut the UTC wall clock.
-        return startOf === undefined
-          ? shifted
-          : `(date_trunc('${startOf}', ${shifted} AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')`;
-      }
+      if (temporal === "instant" && startOf === undefined) return `(now() ${d.sign} ${interval})`;
+      // A timestamptz shifts and truncates in the session zone, so do both on the UTC wall clock.
       const shiftedWall = `((now() AT TIME ZONE 'UTC') ${d.sign} ${interval})`;
       const utcWall = startOf === undefined ? shiftedWall : `date_trunc('${startOf}', ${shiftedWall})`;
+      if (temporal === "instant") return `(${utcWall} AT TIME ZONE 'UTC')`;
       return temporal === "naive" ? utcWall : `CAST(${utcWall} AS DATE)`;
     }
     case "sqlite": {
