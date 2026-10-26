@@ -333,7 +333,7 @@ def test_malformed_relative_value_is_refused() -> None:
         (
             ErrorCode.ERR_BAD_ATTR_FILTER,
             "report 'acme::shop::DailyRevenue': @filter on 'purchasedAt' has a malformed relative date "
-            '{"now":"-P7D","x":1}; a relative date is exactly { now: "<ISO-8601 duration>" } with no other keys.',
+            '{"now":"-P7D","x":1}; a relative date is { now: "<ISO-8601 duration>" } with an optional startOf, and no other keys.',
         )
     ]
 

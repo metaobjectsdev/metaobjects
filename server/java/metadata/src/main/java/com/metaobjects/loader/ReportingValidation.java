@@ -254,7 +254,7 @@ final class ReportingValidation {
     }
 
     /** An object operand carrying a {@code now} key — a relative-date value, well-formed
-     *  (exactly {@code { now }}) or not. A malformed one is refused, never read as data. */
+     *  ({@code { now }} plus an optional {@code startOf}) or not. A malformed one is refused, never read as data. */
     private static boolean isRelativeValue(Object v) {
         return v instanceof Map && ((Map<?, ?>) v).containsKey(ReportingConstants.FILTER_RELATIVE_NOW);
     }
@@ -863,9 +863,9 @@ final class ReportingValidation {
                 }
                 Map<?, ?> relative = relativeOperand(opEntry.getValue());
                 if (relative == null) continue;
-                if (relative.size() != 1) {
+                if (!ReportingConstants.isWellFormedRelativeKeys(relative.keySet())) {
                     err.accept("@filter on '" + key + "' has a malformed relative date " + GSON.toJson(relative)
-                            + "; a relative date is exactly { now: \"<ISO-8601 duration>\" } with no other keys.");
+                            + "; a relative date is { now: \"<ISO-8601 duration>\" } with an optional startOf, and no other keys.");
                     continue;
                 }
                 if (!TEMPORAL_FIELD_SUBTYPES.contains(field.getSubType())) {
@@ -884,6 +884,16 @@ final class ReportingValidation {
                         || !ReportingConstants.ISO_DURATION_RE.matcher((String) duration).matches()) {
                     err.accept("@filter on '" + key + "' has relative date '" + quoteValue(duration)
                             + "', which is not an ISO-8601 duration (e.g. '-P7D', '-PT12H').");
+                    continue;
+                }
+                if (relative.containsKey(ReportingConstants.FILTER_RELATIVE_START_OF)) {
+                    Object startOf = relative.get(ReportingConstants.FILTER_RELATIVE_START_OF);
+                    if (!(startOf instanceof String)
+                            || !ReportingConstants.RELATIVE_START_OF_UNITS.contains(startOf)) {
+                        err.accept("@filter on '" + key + "' has startOf '" + quoteValue(startOf)
+                                + "'; startOf is one of "
+                                + String.join(", ", ReportingConstants.RELATIVE_START_OF_UNITS) + ".");
+                    }
                 }
             }
         }

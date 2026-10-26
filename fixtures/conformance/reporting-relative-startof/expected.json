@@ -1,0 +1,375 @@
+{
+  "metadata.root": {
+    "package": "acme::shop",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Program",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "programs"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "title"
+              }
+            },
+            {
+              "field.timestamp": {
+                "name": "createdAt"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "relationship.association": {
+                "name": "purchases",
+                "@cardinality": "many",
+                "@objectRef": "acme::shop::Purchase"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Purchase",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "purchases"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "programId"
+              }
+            },
+            {
+              "field.string": {
+                "name": "customerEmail"
+              }
+            },
+            {
+              "field.currency": {
+                "name": "amountCents"
+              }
+            },
+            {
+              "field.string": {
+                "name": "status"
+              }
+            },
+            {
+              "field.boolean": {
+                "name": "refunded"
+              }
+            },
+            {
+              "field.timestamp": {
+                "name": "purchasedAt"
+              }
+            },
+            {
+              "field.date": {
+                "name": "purchasedOn"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "programRef",
+                "@fields": [
+                  "programId"
+                ],
+                "@references": "acme::shop::Program"
+              }
+            },
+            {
+              "relationship.association": {
+                "name": "program",
+                "@cardinality": "one",
+                "@objectRef": "acme::shop::Program"
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "program",
+                "@of": "acme::shop::Purchase.programId"
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "programTitle",
+                "@of": "acme::shop::Program.title",
+                "@via": "acme::shop::Purchase.program"
+              }
+            },
+            {
+              "dimension.time": {
+                "name": "purchasedAt",
+                "@grains": [
+                  "day",
+                  "week",
+                  "month",
+                  "quarter",
+                  "year"
+                ],
+                "@of": "acme::shop::Purchase.purchasedAt"
+              }
+            },
+            {
+              "dimension.time": {
+                "name": "programCreatedAt",
+                "@grains": [
+                  "month",
+                  "year"
+                ],
+                "@of": "acme::shop::Program.createdAt",
+                "@via": "acme::shop::Purchase.program"
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "refundedPurchases",
+                "@agg": "count",
+                "@filter": {
+                  "refunded": {
+                    "eq": true
+                  }
+                },
+                "@of": [
+                  "acme::shop::Purchase.id"
+                ]
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "purchases",
+                "@agg": "count",
+                "@of": [
+                  "acme::shop::Purchase.id"
+                ],
+                "@segment": "active"
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "buyers",
+                "@agg": "count",
+                "@distinct": true,
+                "@of": [
+                  "acme::shop::Purchase.customerEmail"
+                ],
+                "@segment": "active"
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "revenue",
+                "@agg": "sum",
+                "@of": [
+                  "acme::shop::Purchase.amountCents"
+                ],
+                "@segment": "active"
+              }
+            },
+            {
+              "segment.filter": {
+                "name": "active",
+                "@filter": {
+                  "status": {
+                    "eq": "active"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "WorkoutEvent",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "workout_events"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "programId"
+              }
+            },
+            {
+              "field.string": {
+                "name": "customerEmail"
+              }
+            },
+            {
+              "field.int": {
+                "name": "weekNumber"
+              }
+            },
+            {
+              "field.int": {
+                "name": "dayNumber"
+              }
+            },
+            {
+              "field.string": {
+                "name": "eventType"
+              }
+            },
+            {
+              "field.timestamp": {
+                "name": "occurredAt"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "program",
+                "@of": "acme::shop::WorkoutEvent.programId"
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "starters",
+                "@agg": "count",
+                "@distinct": true,
+                "@of": [
+                  "acme::shop::WorkoutEvent.customerEmail"
+                ]
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "daysEngaged",
+                "@agg": "count",
+                "@distinct": true,
+                "@of": [
+                  "acme::shop::WorkoutEvent.programId",
+                  "acme::shop::WorkoutEvent.customerEmail",
+                  "acme::shop::WorkoutEvent.weekNumber",
+                  "acme::shop::WorkoutEvent.dayNumber"
+                ]
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "lastActivityAt",
+                "@agg": "max",
+                "@of": [
+                  "acme::shop::WorkoutEvent.occurredAt"
+                ]
+              }
+            },
+            {
+              "measure.ratio": {
+                "name": "avgDaysPerStarter",
+                "@denominator": "starters",
+                "@numerator": "daysEngaged"
+              }
+            },
+            {
+              "segment.filter": {
+                "name": "completions",
+                "@filter": {
+                  "eventType": {
+                    "eq": "exercise_complete"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.report": {
+          "name": "ProgramEngagement",
+          "@dimensions": [
+            "program"
+          ],
+          "@from": "acme::shop::WorkoutEvent",
+          "@measures": [
+            "starters",
+            "daysEngaged",
+            "avgDaysPerStarter",
+            "lastActivityAt"
+          ],
+          "@segment": "completions"
+        }
+      },
+      {
+        "object.report": {
+          "name": "DailyRevenue",
+          "@dimensions": [
+            "purchasedAt:day"
+          ],
+          "@filter": {
+            "purchasedAt": {
+              "gte": {
+                "now": "-P90D",
+                "startOf": "day"
+              }
+            }
+          },
+          "@from": "acme::shop::Purchase",
+          "@measures": [
+            "purchases",
+            "revenue"
+          ]
+        }
+      },
+      {
+        "object.report": {
+          "name": "StoreTotals",
+          "@from": "acme::shop::Purchase",
+          "@measures": [
+            "purchases",
+            "buyers",
+            "revenue"
+          ]
+        }
+      }
+    ]
+  }
+}

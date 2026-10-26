@@ -273,6 +273,14 @@ An `attr.filter` value form meaning "the current time plus an ISO-8601 duration"
 against `field.timestamp` and `field.date`. Evaluated when the view is **queried**, not when
 it is created.
 
+*Amendment (calendar windows):* the value may also carry `startOf: day | week | month`
+(`{ now: "-P90D", startOf: "day" }`). The duration is applied, then the instant is truncated to
+the start of that UTC calendar unit (ISO week, Monday). It lowers on Postgres, SQLite/D1 and
+MySQL in the report view SQL, is validated by rule F2 in every port, and is pinned by the
+`reporting-relative-startof` and `error-relative-date-*` conformance fixtures and by the
+persistence `report-relative-date` scenario. Time zones are not part of it. `metamodelVersion`
+`1.2`.
+
 **ADR-0037:** a new value form inside an existing registered grammar, not a new attribute.
 **Admission:** RDB `now() - interval` (PG) / `strftime('%Y-%m-%dT%H:%M:%fZ','now','-7 days')`
 (SQLite, matching the ISO text storage adapters use); MongoDB `$$NOW` arithmetic; Search date

@@ -4,6 +4,8 @@
 import {
   GRAIN_DAY, GRAIN_HOUR, GRAIN_MONTH, GRAIN_QUARTER, GRAIN_WEEK, GRAIN_YEAR,
   ISO_DURATION_RE,
+  RELATIVE_START_OF_UNITS,
+  type RelativeStartOf,
   TIME_GRAINS,
   type TimeGrain,
 } from "@metaobjectsdev/metadata";
@@ -131,30 +133,51 @@ function truncateMysql(x: string, grain: TimeGrain): string {
   }
 }
 
-/** Table E. `{ now: "<duration>" }` as SQL, evaluated when the view is queried. */
+/** Table E. `{ now: "<duration>", startOf? }` as SQL, evaluated when the view is queried.
+ *  `startOf` truncates the shifted instant to the start of that UTC calendar unit (the week
+ *  starts on Monday); the result keeps the column's kind, so a day start is midnight UTC. */
 export function relativeNowSql(
   duration: string,
   temporal: ReportTemporal,
   dialect: ReportDialect,
+  startOf?: RelativeStartOf,
 ): string {
+  if (startOf !== undefined && !(RELATIVE_START_OF_UNITS as readonly string[]).includes(startOf)) {
+    // The loader validates it; a programmatic caller skips the loader and the unit is written into SQL.
+    throw new Error(`time-sql: "${String(startOf)}" is not a startOf unit (${RELATIVE_START_OF_UNITS.join(", ")}).`);
+  }
   const d = parseIsoDuration(duration);
   switch (dialect) {
     case "postgres": {
       // ISO-8601 interval input is accepted as written.
       const interval = `INTERVAL '${d.magnitude}'`;
-      if (temporal === "instant") return `(now() ${d.sign} ${interval})`;
-      const utcWall = `((now() AT TIME ZONE 'UTC') ${d.sign} ${interval})`;
+      if (temporal === "instant" && startOf === undefined) return `(now() ${d.sign} ${interval})`;
+      // A timestamptz shifts and truncates in the session zone, so do both on the UTC wall clock.
+      const shiftedWall = `((now() AT TIME ZONE 'UTC') ${d.sign} ${interval})`;
+      const utcWall = startOf === undefined ? shiftedWall : `date_trunc('${startOf}', ${shiftedWall})`;
+      if (temporal === "instant") return `(${utcWall} AT TIME ZONE 'UTC')`;
       return temporal === "naive" ? utcWall : `CAST(${utcWall} AS DATE)`;
     }
     case "sqlite": {
-      // One modifier per non-zero component, Y M W D H M S order; a week is 7 days.
+      // Years and months shift as one month count, then one modifier per non-zero component,
+      // W D H M S order; a week is 7 days.
+      const months = d.years * 12 + d.months;
       const mods = [
-        [d.years, "years"], [d.months, "months"], [d.weeks * 7, "days"], [d.days, "days"],
-        [d.hours, "hours"], [d.minutes, "minutes"], [d.seconds, "seconds"],
-      ]
-        .filter(([n]) => (n as number) !== 0)
-        .map(([n, unit]) => `'${d.sign}${n} ${unit}'`);
-      const args = ["'now'", ...mods].join(", ");
+        ...(months === 0 ? [] : sqliteClampedMonthShift(`${d.sign}${months} months`)),
+        ...[
+          [d.weeks * 7, "days"], [d.days, "days"],
+          [d.hours, "hours"], [d.minutes, "minutes"], [d.seconds, "seconds"],
+        ]
+          .filter(([n]) => (n as number) !== 0)
+          .map(([n, unit]) => `'${d.sign}${n} ${unit}'`),
+      ];
+      // Applied after the duration. SQLite's `weekday 0` moves forward to Sunday, so -6 days is Monday.
+      const truncation =
+        startOf === GRAIN_DAY ? ["'start of day'"]
+        : startOf === GRAIN_WEEK ? ["'weekday 0'", "'-6 days'", "'start of day'"]
+        : startOf === GRAIN_MONTH ? ["'start of month'"]
+        : [];
+      const args = ["'now'", ...mods, ...truncation].join(", ");
       if (temporal === "date") return `date(${args})`;
       const fmt = temporal === "instant" ? "%Y-%m-%dT%H:%M:%fZ" : "%Y-%m-%dT%H:%M:%f";
       return `strftime('${fmt}', ${args})`;
@@ -168,7 +191,26 @@ export function relativeNowSql(
         .map(([n, unit]) => ` ${d.sign} INTERVAL ${n} ${unit}`)
         .join("");
       const now = `UTC_TIMESTAMP(3)${intervals}`;
-      return temporal === "date" ? `DATE(${now})` : `(${now})`;
+      if (startOf === undefined) return temporal === "date" ? `DATE(${now})` : `(${now})`;
+      // The same cuts as Table D's MySQL arm; a DATE compares as midnight against a DATETIME.
+      return startOf === GRAIN_DAY ? `DATE(${now})`
+        : startOf === GRAIN_WEEK ? `DATE(DATE_SUB(${now}, INTERVAL WEEKDAY(${now}) DAY))`
+        : `DATE(DATE_FORMAT(${now}, '%Y-%m-01'))`;
     }
   }
+}
+
+/** SQLite rolls an overflowing month shift into the next month (March 31 minus a month is
+ *  March 3), where Postgres and MySQL clamp to the last day of the target month. So shift from
+ *  the first of the month, add back the day of the month capped at the target month's length,
+ *  then the time of day. */
+function sqliteClampedMonthShift(shift: string): string[] {
+  const day = `CAST(strftime('%d', 'now') AS INTEGER)`;
+  const lastDay = `CAST(strftime('%d', 'now', 'start of month', '${shift}', '+1 months', '-1 days') AS INTEGER)`;
+  return [
+    "'start of month'",
+    `'${shift}'`,
+    `'+' || (min(${day}, ${lastDay}) - 1) || ' days'`,
+    `'+' || strftime('%H:%M:%f', 'now')`,
+  ];
 }

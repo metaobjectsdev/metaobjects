@@ -225,7 +225,7 @@ CREATE VIEW "v_recent_programs" AS
   SELECT
     COUNT(p."id") AS "programs"
   FROM "programs" p
-  WHERE p."created_ts" >= strftime('%Y-%m-%dT%H:%M:%f', 'now', '-30 days');
+  WHERE p."created_ts" >= strftime('%Y-%m-%dT%H:%M:%f', 'now', '-30 days', 'start of day');
 
 CREATE VIEW "v_asset_activity" AS
   SELECT

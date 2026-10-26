@@ -1535,7 +1535,7 @@ describe("Table H — the canonical model", () => {
           { name: "live", sql: `{CUBE}."status" IN ('DRAFT', 'PUBLISHED')` },
           { name: "introOrFree", sql: `({CUBE}."title" LIKE 'Intro%' OR {CUBE}."priceCents" = 0)` },
           // RecentPrograms' relative @filter: a scope segment, and no rollup.
-          { name: "recentProgramsScope", sql: `{CUBE}."created_ts" >= ((now() AT TIME ZONE 'UTC') - INTERVAL 'P30D')` },
+          { name: "recentProgramsScope", sql: `{CUBE}."created_ts" >= date_trunc('day', ((now() AT TIME ZONE 'UTC') - INTERVAL 'P30D'))` },
           { name: "liveIntroProgramsScope", sql: `({CUBE}."status" IN ('DRAFT', 'PUBLISHED') AND {CUBE}."priceCents" < 5000)` },
           { name: "programsEmptyScopeScope", sql: `{CUBE}."priceCents" > 1000000` },
         ],

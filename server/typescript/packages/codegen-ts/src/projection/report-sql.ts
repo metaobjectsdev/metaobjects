@@ -17,6 +17,7 @@ import {
   FILTER_COMPOSE_OR,
   FILTER_OP_IN,
   FILTER_RELATIVE_NOW,
+  FILTER_RELATIVE_START_OF,
   OBJECT_REPORT_ATTR_FILTER,
   OBJECT_REPORT_ATTR_SEGMENT,
   TYPE_SEGMENT,
@@ -24,6 +25,7 @@ import {
   type MetaMeasure,
   type MetaObject,
   type MetaSegment,
+  type RelativeStartOf,
 } from "@metaobjectsdev/metadata";
 import { intValueMapOf } from "../enum-meta.js";
 import {
@@ -48,7 +50,7 @@ export function ref(r: string, d: ReportDialect, renderer: SqlRenderer = VIEW_SQ
 }
 
 export function literal(v: unknown, d: ReportDialect): string {
-  if (isRelativeNow(v)) return relativeNowSql(v.duration, v.temporal, d);
+  if (isRelativeNow(v)) return relativeNowSql(v.duration, v.temporal, d, v.startOf);
   if (v === null || v === undefined) return "NULL";
   if (typeof v === "number") return String(v);
   if (typeof v === "boolean") return d === "sqlite" ? (v ? "1" : "0") : v ? "TRUE" : "FALSE";
@@ -171,6 +173,7 @@ function lowerFilterValue(raw: unknown, op: string, field: MetaField, key: strin
       kind: "relativeNow" as const,
       duration: String(v[FILTER_RELATIVE_NOW]),
       temporal: temporalOf(field),
+      ...(FILTER_RELATIVE_START_OF in v ? { startOf: v[FILTER_RELATIVE_START_OF] as RelativeStartOf } : {}),
     };
   };
   if (isRelativeValue(raw)) return relative(raw);

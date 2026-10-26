@@ -8,7 +8,7 @@ joins, dimensions, measures, segments, and a rollup for each served report._
 listed by `meta gen --list`, imported from its package to run as shipped (or copied into your
 repo with `meta eject cube-model` to change it), and checked by `meta verify --codegen`. It is not core: what MetaObjects guarantees is the vocabulary and
 the loader's checks on it, and a generator that writes files into your repo is a helper you can
-copy and own. It adds no vocabulary (`metamodelVersion` stays 1.1) and has no runtime: the
+copy and own. It adds no vocabulary and has no runtime: the
 files it writes import nothing.
 
 **What it does.** For each concrete entity that has a table and declares a `dimension`,
@@ -680,8 +680,7 @@ jobs API) before a query can use them.
 
 ## Compatibility
 
-Nothing here changes a model or a file you already have. No vocabulary was registered, and
-`metamodelVersion` stays 1.1. The report view lowering and the exporter now share one SQL
+Nothing here changes a model or a file you already have. No vocabulary was registered. The report view lowering and the exporter now share one SQL
 module, a move that left every view's bytes as they were. No other generator's output changed.
 
 The design, the contract tables and the decisions made while building it are in
