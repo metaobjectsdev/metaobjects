@@ -44,6 +44,7 @@ here.**
   the cast changes the operator and still reads as drift, as does a changed pattern or any
   other cast. Schema comparison is TypeScript-owned, so no other port
   carries this comparison.
+
 - **A report list in Java, Kotlin and Python no longer silently drops rows past the 50th.** A
   90-day daily report showed 50 days with no error when `limit` was omitted. C# also ignored a
   `limit` of 0 or below on a report instead of refusing it. See the report row cap under
