@@ -1,9 +1,9 @@
 {
   "registries": {
     "npm": "1.1.4",
-    "pypi": "1.1.3",
-    "nuget": "1.1.3",
-    "maven": "8.1.3",
+    "pypi": "1.1.4",
+    "nuget": "1.1.4",
+    "maven": "8.1.4",
     "metamodel": "1.2"
   },
   "counts": {

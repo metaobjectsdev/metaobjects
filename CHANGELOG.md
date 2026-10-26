@@ -12,7 +12,7 @@ here.**
 
 ## [1.1.4] — 2026-10-26
 
-_npm `1.1.4` (full lockstep across all 14 `@metaobjectsdev/*` publish candidates)._
+_npm `1.1.4` (full lockstep across all 14 `@metaobjectsdev/*` publish candidates), PyPI `1.1.4`, NuGet `1.1.4` and Maven Central `8.1.4`._
 
 ### Added
 
