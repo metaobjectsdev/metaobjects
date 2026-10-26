@@ -415,3 +415,14 @@ def test_a_mysql_decimal_operand_is_cast_to_a_decimal() -> None:
     sql, _ = _op_clause("amount", "in", [Decimal("1"), Decimal("2")], f, MYSQL)
     assert sql.count("CAST(%s AS DECIMAL(65,30))") == 2
     assert _op_clause("amount", "eq", Decimal("1.5"), f, POSTGRES)[0] == '"amount" = %s'
+
+
+def test_order_term_puts_nulls_largest_on_every_dialect() -> None:
+    from metaobjects.runtime.dialect import MySqlDialect, PostgresDialect, SqliteDialect
+
+    for d in (PostgresDialect(), SqliteDialect()):
+        assert d.order_term('"c"', False) == '"c" ASC NULLS LAST'
+        assert d.order_term('"c"', True) == '"c" DESC NULLS FIRST'
+    my = MySqlDialect()
+    assert my.order_term("`c`", False) == "(`c` IS NULL) ASC, `c` ASC"
+    assert my.order_term("`c`", True) == "(`c` IS NULL) DESC, `c` DESC"
