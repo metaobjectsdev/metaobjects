@@ -1,0 +1,38 @@
+name: report-cap-refused
+description: >
+  A report is never truncated. The ReadingLog view has 61 rows and every lane runs this
+  corpus with a row cap of 60, so a request that would answer more than the cap is
+  refused before any body is written with 400 report_too_large, naming the cap. That holds
+  with no limit (the route fetches cap + 1 rows and sees the extra one), with withCount, and
+  with an explicit limit above the cap. A limit within the cap still pages.
+requests:
+  - id: r1
+    method: GET
+    path: /api/reading_logs
+    expect:
+      status: 400
+      body:
+        equals: { error: "report_too_large", maxRows: 60 }
+  - id: r2
+    method: GET
+    path: /api/reading_logs?withCount=1
+    expect:
+      status: 400
+      body:
+        equals: { error: "report_too_large", maxRows: 60 }
+  - id: r3
+    method: GET
+    path: /api/reading_logs?limit=61
+    expect:
+      status: 400
+      body:
+        equals: { error: "report_too_large", maxRows: 60 }
+  - id: r4
+    method: GET
+    path: /api/reading_logs?sort=seq:asc&limit=2&offset=59
+    expect:
+      status: 200
+      body:
+        equals:
+          - { seq: 60, readings: 1 }
+          - { seq: 61, readings: 1 }

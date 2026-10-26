@@ -94,7 +94,7 @@ class GeneratedReportControllerHarness(
             KotlinFilterAllowlistGenerator(),
             KotlinSpringControllerGenerator(),
         )) {
-            g.setArgs(mapOf("outputDir" to srcDir.toString(), "useNames" to "true"))
+            g.setArgs(mapOf("outputDir" to srcDir.toString(), "useNames" to "true", "reportMaxRows" to MAX_ROWS.toString()))
             g.execute(loader)
         }
 
@@ -232,8 +232,11 @@ class GeneratedReportControllerHarness(
 
         val SERVED = listOf(
             "InvoiceStatusTotals", "InvoicesByMonth", "InvoiceTotals", "InvoiceCalendar", "InvoiceDisputes",
-            "ProductRevenue", "SalesByCategory", "SalesBySku", "ProductRefunds", "TicketsByTags",
+            "ProductRevenue", "SalesByCategory", "SalesBySku", "ProductRefunds", "TicketsByTags", "ReadingLog",
         )
+
+        /** The row cap every lane builds its report routes with; `ReadingLog` has one row more. */
+        const val MAX_ROWS = 60
 
         /**
          * A seed value as a SQL literal. A date (`"2026-04-30"`) is a quoted string the engine

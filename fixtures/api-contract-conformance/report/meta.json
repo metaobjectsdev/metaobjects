@@ -158,6 +158,24 @@
         "@dimensions": ["tags", "attrs"],
         "@measures": ["tickets"],
         "children": [ { "source.rdb": { "@kind": "view", "@view": "v_tickets_by_tags" } } ]
+      }},
+      { "object.entity": {
+        "name": "Reading",
+        "children": [
+          { "source.rdb":       { "@table": "readings" } },
+          { "field.long":       { "name": "id" } },
+          { "field.int":        { "name": "seq", "@required": true } },
+          { "identity.primary": { "name": "pk", "@fields": "id", "@generation": "increment" } },
+          { "dimension.attribute": { "name": "seq", "@of": "Reading.seq" } },
+          { "measure.aggregate":   { "name": "readings", "@agg": "count", "@of": "Reading.id" } }
+        ]
+      }},
+      { "object.report": {
+        "name": "ReadingLog",
+        "@from": "Reading",
+        "@dimensions": ["seq"],
+        "@measures": ["readings"],
+        "children": [ { "source.rdb": { "@kind": "view", "@view": "v_reading_log" } } ]
       }}
     ]
   }

@@ -40,6 +40,11 @@ CREATE TABLE "tickets" (
   "attrs" TEXT
 );
 
+CREATE TABLE "readings" (
+  "id" INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+  "seq" INTEGER NOT NULL
+);
+
 CREATE VIEW "v_invoice_status_totals" AS
   SELECT
     i."status" AS "status",
@@ -131,3 +136,10 @@ CREATE VIEW "v_tickets_by_tags" AS
     COUNT(t."id") AS "tickets"
   FROM "tickets" t
   GROUP BY t."tags", t."attrs";
+
+CREATE VIEW "v_reading_log" AS
+  SELECT
+    r."seq" AS "seq",
+    COUNT(r."id") AS "readings"
+  FROM "readings" r
+  GROUP BY r."seq";

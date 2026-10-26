@@ -54,8 +54,14 @@ object uses (`InvoicesByMonth` is `/api/invoices_by_months`).
 - **A ratio is a decimal**, so `paidShare` reaches the wire as the canonical string
   (`"0.4"` for 2/5) in every port and on every engine (ADR-0019 Amendment 1). Exactness
   beyond that is the `decimal/` sub-corpus's job.
-- The default page size stays per port, as documented: TypeScript and C# return every
-  row when `limit` is omitted, Java, Kotlin and Python the first 50. The scenarios
+- **A report answers every row up to one cap, and is refused above it** (`cap-all-rows`,
+  `cap-refused`, `bad-page-bound`). There is no page default: with no `limit` all rows come
+  back, in every port, and `400 {"error": "report_too_large", "maxRows": N}` answers a
+  report longer than the cap or a `limit` above it. The cap is a generator option with a
+  default of 10,000; **every lane builds its routes with a cap of 60**, and `ReadingLog` has
+  61 rows (`Reading.seq` 1..61), so one view tells "exactly the cap" (60, past the old
+  50-row default) from "one past it". A bound that is not usable (`limit` 0 or below,
+  negative `offset`, not an integer) is `400 pagination.invalid_value`. The other scenarios
   that page pass `limit` explicitly.
 
 ## The model
@@ -153,11 +159,11 @@ hand-rolled reference server would answer every scenario by construction.
 
 | Port | Generated lane | Note |
 |---|---|---|
-| TypeScript | wired | `server/typescript/packages/integration-tests/test/api-contract-report.test.ts` (27 scenarios + a seed-vs-view check). Full stack: generated Fastify routes over the real views on Testcontainers Postgres. `api-contract-report-sqlite.test.ts` runs the same 27 on SQLite, `api-contract-report-mysql.test.ts` on MySQL 8.4, and the SQLite test file also runs them through local D1 (Miniflare) |
+| TypeScript | wired | `server/typescript/packages/integration-tests/test/api-contract-report.test.ts` (30 scenarios + a seed-vs-view check). Full stack: generated Fastify routes over the real views on Testcontainers Postgres. `api-contract-report-sqlite.test.ts` runs the same 30 on SQLite, `api-contract-report-mysql.test.ts` on MySQL 8.4, and the SQLite test file also runs them through local D1 (Miniflare) |
 | C# | wired | `server/csharp/MetaObjects.IntegrationTests/Api/ApiContractReportConformanceTest.cs`. Full stack: generated routes and EF Core over `schema.postgres.sql` on Testcontainers Postgres, over `schema.sqlite.sql` on SQLite, and over `schema.mysql.sql` on MySQL 8.4 |
-| Java | wired | `server/java/integration-tests/src/test/java/com/metaobjects/integration/api/ReportOmdb{Postgres,Sqlite,MySql}ApiContractConformanceTest.java` (27 scenarios + a scenario-count check, on each engine). Full stack: generated controllers over OMDB reading the real views |
-| Kotlin | wired | `server/java/integration-tests-kotlin/src/test/kotlin/com/metaobjects/integration/kotlin/api/report/ReportGeneratedApiContractConformanceTest.kt` (27 scenarios, the count check, and a check that the sourceless report generated nothing). Full stack: generated controllers over the generated Exposed table objects, reading the real views on Postgres, SQLite and MySQL |
-| Python | wired | `server/python/tests/integration/test_api_contract_report.py` (27 scenarios, a check that exactly the served reports are generated, a views-vs-seed check, and `/api/invoice_days` is `404`). Full stack: generated FastAPI routers over `ObjectManager`, reading the real views on Postgres, SQLite and MySQL |
+| Java | wired | `server/java/integration-tests/src/test/java/com/metaobjects/integration/api/ReportOmdb{Postgres,Sqlite,MySql}ApiContractConformanceTest.java` (30 scenarios + a scenario-count check, on each engine). Full stack: generated controllers over OMDB reading the real views |
+| Kotlin | wired | `server/java/integration-tests-kotlin/src/test/kotlin/com/metaobjects/integration/kotlin/api/report/ReportGeneratedApiContractConformanceTest.kt` (30 scenarios, the count check, and a check that the sourceless report generated nothing). Full stack: generated controllers over the generated Exposed table objects, reading the real views on Postgres, SQLite and MySQL |
+| Python | wired | `server/python/tests/integration/test_api_contract_report.py` (30 scenarios, a check that exactly the served reports are generated, a views-vs-seed check, and `/api/invoice_days` is `404`). Full stack: generated FastAPI routers over `ObjectManager`, reading the real views on Postgres, SQLite and MySQL |
 
 The scenarios use only assertion keys every runner already has (`equals`,
 `length`, `envelope`, `error` with `field`, and a status with no `body`).

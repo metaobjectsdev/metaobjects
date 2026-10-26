@@ -90,6 +90,8 @@ function renderRoutesHono(
   // mountReadOnlyCrudRoutes, a different helper that is read-only by construction and
   // takes no `expose` — there is no writable surface there to narrow.
   expose?: readonly CrudVerb[],
+  // Row cap of a served report (`routesFile({ reportMaxRows })`). undefined emits no key.
+  reportMaxRows?: number,
 ): string {
   const entityName = entity.name;
   const handlerName = `register${entityName}Routes`;
@@ -142,6 +144,7 @@ function renderRoutesHono(
         : "") +
       (keyless ? `\n${indent}itemRoutes: false,` : "") +
       (report ? `\n${indent}resource: "report",` : "") +
+      (report && reportMaxRows !== undefined ? `\n${indent}reportMaxRows: ${reportMaxRows},` : "") +
       decimalColumnsLine(entity, indent, ctx.loadedRoot);
     const HonoSym = imp("t:Hono@hono");
     const mountReadOnlyCrudRoutesSym = imp(`mountReadOnlyCrudRoutes@${runtimeSpec}`);
@@ -257,6 +260,13 @@ export interface RoutesFileHonoOpts {
    */
   registerAll?: boolean;
   /**
+   * The row cap of a report list route (default 10000, the same in every port). With no
+   * `limit` a report answers every row up to the cap and is refused above it with
+   * `400 { "error": "report_too_large", "maxRows": N }`; an explicit `limit` above it is
+   * refused the same way. Absent emits no key, so the output stays byte-identical.
+   */
+  reportMaxRows?: number;
+  /**
    * Where the emitted routes import their mount helpers from. Absent: the adapter copy
    * `meta eject routes-hono` placed in `codegen/runtime/`, by a path computed from the
    * target's output directory. A relative value is relative to the output root (like
@@ -331,7 +341,7 @@ export const routesFileHono = function routesFileHono(opts?: RoutesFileHonoOpts)
         effectivePackage(entity),
         `${entity.name}.routes.hono.ts`,
       ),
-      content: await formatTs(renderRoutesHono(entity, renderContext, resolveExpose(entity, opts?.expose))),
+      content: await formatTs(renderRoutesHono(entity, renderContext, resolveExpose(entity, opts?.expose), opts?.reportMaxRows)),
     };
   });
   if (opts?.target) {

@@ -45,6 +45,8 @@ export function renderRoutesFile(
   // which emits no `expose` key at all and so keeps output byte-identical for projects
   // that do not use it.
   expose?: readonly CrudVerb[],
+  // Row cap of a served report (`routesFile({ reportMaxRows })`). undefined emits no key.
+  reportMaxRows?: number,
 ): string {
   // FR-017 Tier 2 — a TPH discriminator base mounts polymorphic list/get at the
   // base path plus a full per-subtype CRUD route set scoped to each
@@ -99,6 +101,7 @@ export function renderRoutesFile(
         : "") +
       (keyless ? `\n${indent}itemRoutes: false,` : "") +
       (report ? `\n${indent}resource: "report",` : "") +
+      (report && reportMaxRows !== undefined ? `\n${indent}reportMaxRows: ${reportMaxRows},` : "") +
       decimalColumnsLine(entity, indent, ctx.loadedRoot);
     const FastifyInstanceSym = imp("t:FastifyInstance@fastify");
     const mountReadOnlyCrudRoutesSym = imp(`mountReadOnlyCrudRoutes@${runtimeSpec}`);

@@ -26,20 +26,20 @@ describe("api-contract report corpus", () => {
     const reports = root.objects().filter((o) => o.subType === OBJECT_SUBTYPE_REPORT);
     expect(reports.map((r) => r.name)).toEqual(
       ["InvoiceStatusTotals", "InvoicesByMonth", "InvoiceTotals", "InvoiceCalendar", "InvoiceDisputes", "InvoiceDays",
-        "ProductRevenue", "SalesByCategory", "SalesBySku", "ProductRefunds", "TicketsByTags"]);
+        "ProductRevenue", "SalesByCategory", "SalesBySku", "ProductRefunds", "TicketsByTags", "ReadingLog"]);
     expect(reports.filter((r) => reportReadSource(r) !== undefined).map((r) => r.name)).toEqual(
       ["InvoiceStatusTotals", "InvoicesByMonth", "InvoiceTotals", "InvoiceCalendar", "InvoiceDisputes",
-        "ProductRevenue", "SalesByCategory", "SalesBySku", "ProductRefunds", "TicketsByTags"]);
+        "ProductRevenue", "SalesByCategory", "SalesBySku", "ProductRefunds", "TicketsByTags", "ReadingLog"]);
   });
 
   test("the route segments are the ones the scenarios call", async () => {
     const root = await loadMetadataFile(join(API_CONTRACT_REPORT_DIR, "meta.json"));
     const segment = (name: string): string => pluralize(toSnakeCase(name));
     expect(["InvoiceStatusTotals", "InvoicesByMonth", "InvoiceTotals", "InvoiceCalendar", "InvoiceDisputes",
-      "ProductRevenue", "SalesByCategory", "SalesBySku", "ProductRefunds", "TicketsByTags"].map(segment)).toEqual(
+      "ProductRevenue", "SalesByCategory", "SalesBySku", "ProductRefunds", "TicketsByTags", "ReadingLog"].map(segment)).toEqual(
       ["invoice_status_totals", "invoices_by_months", "invoice_totals", "invoice_calendars", "invoice_disputes",
-        "product_revenues", "sales_by_categories", "sales_by_skus", "product_refunds", "tickets_by_tags"]);
-    expect(root.objects().length).toBe(16);
+        "product_revenues", "sales_by_categories", "sales_by_skus", "product_refunds", "tickets_by_tags", "reading_logs"]);
+    expect(root.objects().length).toBe(18);
   });
 
   test("each seeded report row has exactly the report's derived fields", async () => {
@@ -52,7 +52,7 @@ describe("api-contract report corpus", () => {
     }
     expect(Object.keys(seedReports())).toEqual(
       ["InvoiceStatusTotals", "InvoicesByMonth", "InvoiceTotals", "InvoiceCalendar", "InvoiceDisputes",
-        "SalesByCategory", "SalesBySku", "ProductRevenue", "ProductRefunds"]);
+        "SalesByCategory", "SalesBySku", "ProductRevenue", "ProductRefunds", "ReadingLog"]);
   });
 
   // A lane inserts every top-level key but `reports` in file order, so the order is the
@@ -60,9 +60,9 @@ describe("api-contract report corpus", () => {
   test("the base tables of seed.json are the model's tables, listed parents first", async () => {
     const root = await loadMetadataFile(join(API_CONTRACT_REPORT_DIR, "meta.json"));
     const tables = Object.keys(seed).filter((k) => k !== SEED_REPORTS_KEY);
-    expect(tables).toEqual(["invoices", "categories", "products", "sales"]);
+    expect(tables).toEqual(["invoices", "categories", "products", "sales", "readings"]);
     // Every key is an entity's table and every row key one of its fields (seedInserts throws otherwise).
-    expect(seedInserts(root, seed).length).toBe(5 + 2 + 3 + 3);
+    expect(seedInserts(root, seed).length).toBe(5 + 2 + 3 + 3 + 61);
     for (const [i, table] of tables.entries()) {
       const entity = root.objects().find((o) => o.isEntity() && resolveTableName(o) === table);
       if (entity === undefined) throw new Error(`no entity has table ${table}`);
@@ -77,9 +77,9 @@ describe("api-contract report corpus", () => {
     }
   });
 
-  test("every scenario parses, and there are twenty-seven", () => {
+  test("every scenario parses, and there are thirty", () => {
     const scenarios = loadScenarios(API_CONTRACT_REPORT_SCENARIOS_DIR);
-    expect(scenarios.length).toBe(27);
+    expect(scenarios.length).toBe(30);
     for (const s of scenarios) expect(s.requests.length).toBeGreaterThan(0);
   });
 

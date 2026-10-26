@@ -205,9 +205,14 @@ public final class GeneratedReportControllerHarness implements AutoCloseable {
         return loader;
     }
 
+    /** The row cap every lane builds its report routes with; {@code ReadingLog} has one row more. */
+    public static final int MAX_ROWS = 60;
+
     private static void runGenerator(Object generator, MetaDataLoader loader, Path outDir) {
         Map<String, String> args = new HashMap<>();
         args.put("outputDir", outDir.toString());
+        // The row cap of the corpus (report/README.md): ReadingLog has one row more.
+        args.put("reportMaxRows", String.valueOf(MAX_ROWS));
         ((com.metaobjects.generator.direct.MultiFileDirectGeneratorBase<?>) generator).setArgs(args);
         ((com.metaobjects.generator.direct.MultiFileDirectGeneratorBase<?>) generator).execute(loader);
     }

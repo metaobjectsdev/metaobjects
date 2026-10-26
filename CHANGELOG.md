@@ -12,6 +12,19 @@ here.**
 
 ### Changed
 
+- **A report list route answers every row up to one cap, and is refused above it, in all five
+  ports.** With no `limit` a served `object.report` returns all of its rows; one row past the
+  cap, or an explicit `limit` above it, is `400 { "error": "report_too_large", "maxRows": N }`,
+  before any body is written. The cap is 10,000 by default and a generator option:
+  `routesFile({ reportMaxRows })` / `routesFileHono` (TypeScript), `RoutesGenerator.ReportMaxRows`
+  (C#), the `reportMaxRows` generator arg (Java, Kotlin), `router_generator(report_max_rows=)`
+  (Python). **This changes served output in Java, Kotlin and Python**, whose report lists used to
+  stop at 50 rows with no limit; and in every port a report longer than the cap that used to answer
+  now answers `report_too_large`. Entity and projection lists keep their paging. A report page
+  bound that is not usable (`limit` below 1, a negative `offset`, not an integer) is
+  `400 pagination.invalid_value` in every port. Gated by the new `ReadingLog` report and the
+  `cap-all-rows`, `cap-refused` and `bad-page-bound` scenarios of the api-contract `report/` corpus.
+
 - **Requirements guidance: a feature commit updates its requirement.** The agent context
   (the authoring and verify skills and the always-on file `meta init` writes) now tells an
   agent that a commit adding, changing or removing behaviour updates the ledger in the same
@@ -31,7 +44,10 @@ here.**
   the cast changes the operator and still reads as drift, as does a changed pattern or any
   other cast. Schema comparison is TypeScript-owned, so no other port
   carries this comparison.
-
+- **A report list in Java, Kotlin and Python no longer silently drops rows past the 50th.** A
+  90-day daily report showed 50 days with no error when `limit` was omitted. C# also ignored a
+  `limit` of 0 or below on a report instead of refusing it. See the report row cap under
+  Changed.
 - **The api reference now follows a routes generator's `filter` as well as its `expose`.**
   `routesFile({ filter })` and `routesFileHono({ filter })` mount nothing for an entity the filter
   rejects, but the API pages still listed all five verbs for it. The pages now document the

@@ -53,6 +53,10 @@ const TABLES = [
   \`tags\` JSON,
   \`attrs\` JSON
 )`,
+  `CREATE TABLE \`readings\` (
+  \`id\` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  \`seq\` INT NOT NULL
+)`,
 ];
 
 

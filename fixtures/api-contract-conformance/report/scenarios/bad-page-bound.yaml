@@ -1,0 +1,41 @@
+name: report-bad-page-bound
+description: >
+  A page bound that is not usable is refused, never ignored: a limit of 0 or below, a
+  negative offset, and a value that is not an integer all answer 400
+  pagination.invalid_value (the TypeScript mounts' existing envelope for a malformed bound).
+requests:
+  - id: r1
+    method: GET
+    path: /api/reading_logs?limit=0
+    expect:
+      status: 400
+      body:
+        error: "pagination.invalid_value"
+  - id: r2
+    method: GET
+    path: /api/reading_logs?limit=-1
+    expect:
+      status: 400
+      body:
+        error: "pagination.invalid_value"
+  - id: r3
+    method: GET
+    path: /api/reading_logs?limit=abc
+    expect:
+      status: 400
+      body:
+        error: "pagination.invalid_value"
+  - id: r4
+    method: GET
+    path: /api/reading_logs?limit=2&offset=-1
+    expect:
+      status: 400
+      body:
+        error: "pagination.invalid_value"
+  - id: r5
+    method: GET
+    path: /api/reading_logs?limit=2&offset=abc
+    expect:
+      status: 400
+      body:
+        error: "pagination.invalid_value"

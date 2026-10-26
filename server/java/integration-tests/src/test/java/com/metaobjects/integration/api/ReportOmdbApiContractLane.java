@@ -113,7 +113,7 @@ abstract class ReportOmdbApiContractLane {
     @Test
     void theCorpusCarriesItsTwentySevenScenarios() {
         // A scenarios directory that resolved to nothing would leave this lane green and empty.
-        assertEquals(27, SCENARIOS.size());
+        assertEquals(30, SCENARIOS.size());
     }
 
     @ParameterizedTest(name = "{0}")

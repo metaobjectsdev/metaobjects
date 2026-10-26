@@ -658,6 +658,12 @@ def _auth_docstring_paragraph(*, read_only: bool) -> str:
     )
 
 
+#: The most rows a report list answers when no cap is configured, the same default in every
+#: port. With no ``limit`` a report answers every row up to the cap and is refused above it,
+#: never truncated.
+DEFAULT_REPORT_MAX_ROWS = 10_000
+
+
 class RouterGenerator:
     """One ``<entity_snake>_router.py`` per routed object (FastAPI ``APIRouter``):
     full CRUD for a writable source, read-only for a view-backed one.
@@ -688,6 +694,13 @@ class RouterGenerator:
     """
 
     name = "router-generator"
+
+    def __init__(self, report_max_rows: int = DEFAULT_REPORT_MAX_ROWS) -> None:
+        """*report_max_rows* is the row cap of a served report's list route: with no ``limit``
+        the route answers every row up to it, and one more row (or a ``limit`` above it) is
+        ``400 {"error": "report_too_large", "maxRows": N}``. Reports only; an entity's list
+        keeps its paging."""
+        self.report_max_rows = report_max_rows
 
     def _emit_repository_protocol(
         self, repo_class: str, m2m: list[M2mDescriptor], pk_type: str
@@ -758,12 +771,81 @@ class RouterGenerator:
         create_autoset: list[str] = (),
         update_autoset: list[str] = (),
         frozen_strip: list[str] = (),
+        report_max_rows: int | None = None,
     ) -> list[str]:
         """One CRUD route handler block, dispatched by *name*
         (``list`` / ``get`` / ``create`` / ``update`` / ``delete``). Override to
         change a handler's body / decorators / response shape. *model_name* /
         *patch_model* are the generated create + all-optional PATCH Pydantic models
-        used to run field constraints on POST / PATCH (FR-036)."""
+        used to run field constraints on POST / PATCH (FR-036). *report_max_rows* is
+        passed only for a served report's ``list``: every row up to that cap, refused above it."""
+        if name == "list" and report_max_rows is not None:
+            return [
+                '@router.get("")',
+                f"def list_{plural}(",
+                "    request: Request,",
+                f"    repo: Annotated[{repo_class}, Depends(get_repository)],",
+                "    limit: str | None = Query(None),",
+                "    offset: str | None = Query(None),",
+                "    sort: str | None = Query(None),",
+                '    with_count: int | None = Query(None, alias="withCount"),',
+                ") -> Any:",
+                f"    max_rows = {report_max_rows}",
+                "    too_large = JSONResponse(",
+                '        status_code=400, content={"error": "report_too_large", "maxRows": max_rows}',
+                "    )",
+                "    requested_limit: int | None = None",
+                "    if limit is not None:",
+                "        if not (limit.isascii() and limit.isdigit()) or int(limit) < 1:",
+                "            return JSONResponse(",
+                "                status_code=400,",
+                "                content={",
+                '                    "error": "pagination.invalid_value",',
+                '                    "param": "limit",',
+                '                    "value": limit,',
+                '                    "expected": f"an integer from 1 to {max_rows}",',
+                "                },",
+                "            )",
+                "        requested_limit = int(limit)",
+                "        if requested_limit > max_rows:",
+                "            return too_large",
+                "    actual_offset = 0",
+                "    if offset is not None:",
+                "        if not (offset.isascii() and offset.isdigit()):",
+                "            return JSONResponse(",
+                "                status_code=400,",
+                "                content={",
+                '                    "error": "pagination.invalid_value",',
+                '                    "param": "offset",',
+                '                    "value": offset,',
+                '                    "expected": "a non-negative integer (0 or more)",',
+                "                },",
+                "            )",
+                "        actual_offset = int(offset)",
+                "    sort_clause: _SortClause | None = None",
+                "    if sort is not None:",
+                "        sort_clause = _parse_sort(sort)",
+                "        if sort_clause is None:",
+                '            return JSONResponse(status_code=400, content={"error": "invalid_sort", "field": sort.split(":", 1)[0]})',
+                f"    filter_result = parse_filter(request.query_params, {fields_const}, {ops_const})",
+                "    if filter_result.error_envelope is not None:",
+                "        return JSONResponse(status_code=400, content=filter_result.error_envelope)",
+                "    predicates, decimal_error = coerce_decimal_predicates(",
+                "        filter_result.predicates, _DECIMAL_FIELDS",
+                "    )",
+                "    if decimal_error is not None:",
+                "        return JSONResponse(status_code=400, content=decimal_error)",
+                "    # With no limit the repository is asked for one row past the cap, so the",
+                "    # refusal comes before any body is written.",
+                "    fetch_limit = requested_limit if requested_limit is not None else max_rows + 1",
+                "    rows = repo.list(fetch_limit, actual_offset, sort_clause, predicates)",
+                "    if requested_limit is None and len(rows) > max_rows:",
+                "        return too_large",
+                "    if with_count == 1:",
+                "        total = repo.count(predicates)",
+                '        return {"rows": render_wire(rows, _WIRE), "total": total}',
+                "    return render_wire(rows, _WIRE)",
+            ]
         if name == "list":
             return [
                 '@router.get("")',
@@ -1803,6 +1885,9 @@ class RouterGenerator:
             # handlers do not read these; they are required by the shared signature.
             model_name="",
             patch_model="",
+            # Only a report is capped; passed for it alone so an adopter's `_emit_route_handler`
+            # override that does not take the keyword keeps working for a projection.
+            **({"report_max_rows": self.report_max_rows} if is_report else {}),
         )
         for i, hname in enumerate(("list", "get") if item_route else ("list",)):
             if i > 0:
@@ -1856,11 +1941,12 @@ def render_router(
     return RouterGenerator().render_router(entity, object_index, column_naming)
 
 
-def router_generator() -> Generator:
+def router_generator(report_max_rows: int = DEFAULT_REPORT_MAX_ROWS) -> Generator:
     """Generator factory: one ``<entity_snake>_router.py`` per routed object —
-    full CRUD for a writable source, read-only for a view-backed one.
+    full CRUD for a writable source, read-only for a view-backed one. *report_max_rows*
+    is the row cap of a served report's list route (default 10000).
 
     Returns a :class:`RouterGenerator` (subclassable extension seam). Skips objects
     without a ``source.rdb`` child and the non-collection read-only kinds
     (storedProc / tableFunction)."""
-    return RouterGenerator()
+    return RouterGenerator(report_max_rows)

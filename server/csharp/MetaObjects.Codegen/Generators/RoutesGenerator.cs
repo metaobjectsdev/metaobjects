@@ -106,6 +106,51 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine("    /// </remarks>");
     }
 
+    /// <summary>
+    /// The most rows a report list answers when its generator sets no cap, the same default in
+    /// every port. With no <c>limit</c> a report answers every row up to the cap and is refused
+    /// above it, never truncated.
+    /// </summary>
+    public const int DefaultReportMaxRows = 10_000;
+
+    /// <summary>
+    /// The row cap of a report list route: <c>new RoutesGenerator { ReportMaxRows = 500 }</c>.
+    /// With no <c>limit</c> the route answers every row up to the cap; one more row, or a
+    /// <c>limit</c> above the cap, is <c>400 { "error": "report_too_large", "maxRows": N }</c>.
+    /// Reports only: an entity's list keeps its paging.
+    /// </summary>
+    public int ReportMaxRows { get; init; } = DefaultReportMaxRows;
+
+    // A report answers all of its rows or refuses: no silent page default and no truncation. A
+    // bound that is not usable (limit below 1, negative offset, not an integer) is refused with
+    // the envelope the TypeScript mounts use, rather than ignored. The query fetches one row past
+    // the cap when no limit was sent, so the refusal comes before any body is written.
+    private void AppendReportPaging(StringBuilder sb)
+    {
+        var max = ReportMaxRows.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        sb.AppendLine("            // Pagination (report): every row up to the cap, refused above it.");
+        sb.AppendLine($"            const int maxRows = {max};");
+        sb.AppendLine("            long? limit = null;");
+        sb.AppendLine("            long offset = 0;");
+        sb.AppendLine("            if (qs.TryGetValue(\"limit\", out var limitRaw))");
+        sb.AppendLine("            {");
+        sb.AppendLine("                if (!long.TryParse(limitRaw, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var parsedLimit) || parsedLimit < 1)");
+        sb.AppendLine("                    return Results.BadRequest(new { error = \"pagination.invalid_value\", param = \"limit\", value = limitRaw.ToString(), expected = $\"an integer from 1 to {maxRows}\" });");
+        sb.AppendLine("                if (parsedLimit > maxRows)");
+        sb.AppendLine("                    return Results.BadRequest(new { error = \"report_too_large\", maxRows });");
+        sb.AppendLine("                limit = parsedLimit;");
+        sb.AppendLine("            }");
+        sb.AppendLine("            if (qs.TryGetValue(\"offset\", out var offsetRaw)");
+        sb.AppendLine("                && (!long.TryParse(offsetRaw, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out offset) || offset < 0))");
+        sb.AppendLine("                return Results.BadRequest(new { error = \"pagination.invalid_value\", param = \"offset\", value = offsetRaw.ToString(), expected = \"a non-negative integer (0 or more)\" });");
+        sb.AppendLine("            if (offset > 0) q = q.Skip((int)System.Math.Min(offset, int.MaxValue));");
+        sb.AppendLine("            q = q.Take((int)(limit ?? maxRows + 1L));");
+        sb.AppendLine();
+        sb.AppendLine("            var rows = await q.ToListAsync();");
+        sb.AppendLine("            if (limit is null && rows.Count > maxRows)");
+        sb.AppendLine("                return Results.BadRequest(new { error = \"report_too_large\", maxRows });");
+    }
+
     protected virtual EmittedFile GenerateStandardRoutes(MetaObject entity, GenContext ctx)
     {
         var cls = CSharpNaming.Pascal(entity.Name);
@@ -254,13 +299,18 @@ public class RoutesGenerator : PerEntityGenerator
             : $"                q = ApplySort{cls}(q, resolved, desc);");
         sb.AppendLine("            }");
         sb.AppendLine();
-        sb.AppendLine("            // Pagination: ?offset=N first (skip), then ?limit=N (take).");
-        sb.AppendLine("            if (qs.TryGetValue(\"offset\", out var offsetRaw) && int.TryParse(offsetRaw, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var offset) && offset > 0)");
-        sb.AppendLine("                q = q.Skip(offset);");
-        sb.AppendLine("            if (qs.TryGetValue(\"limit\", out var limitRaw) && int.TryParse(limitRaw, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var limit) && limit > 0)");
-        sb.AppendLine("                q = q.Take(limit);");
-        sb.AppendLine();
-        sb.AppendLine("            var rows = await q.ToListAsync();");
+        if (isReport)
+            AppendReportPaging(sb);
+        else
+        {
+            sb.AppendLine("            // Pagination: ?offset=N first (skip), then ?limit=N (take).");
+            sb.AppendLine("            if (qs.TryGetValue(\"offset\", out var offsetRaw) && int.TryParse(offsetRaw, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var offset) && offset > 0)");
+            sb.AppendLine("                q = q.Skip(offset);");
+            sb.AppendLine("            if (qs.TryGetValue(\"limit\", out var limitRaw) && int.TryParse(limitRaw, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var limit) && limit > 0)");
+            sb.AppendLine("                q = q.Take(limit);");
+            sb.AppendLine();
+            sb.AppendLine("            var rows = await q.ToListAsync();");
+        }
         sb.AppendLine();
         sb.AppendLine("            // withCount=1 → { rows, total } envelope; otherwise bare row array.");
         sb.AppendLine("            var withCount = qs.TryGetValue(\"withCount\", out var wc) && (wc == \"1\" || string.Equals(wc, \"true\", System.StringComparison.OrdinalIgnoreCase));");

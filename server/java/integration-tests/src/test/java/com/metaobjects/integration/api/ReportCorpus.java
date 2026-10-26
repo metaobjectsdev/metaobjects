@@ -30,7 +30,7 @@ final class ReportCorpus {
      *  references; {@code ProductRefunds} adds boolean {@code @agg any} measures. */
     static final List<String> SERVED =
         List.of("InvoiceStatusTotals", "InvoicesByMonth", "InvoiceTotals", "InvoiceCalendar", "InvoiceDisputes",
-            "ProductRevenue", "SalesByCategory", "SalesBySku", "ProductRefunds", "TicketsByTags");
+            "ProductRevenue", "SalesByCategory", "SalesBySku", "ProductRefunds", "TicketsByTags", "ReadingLog");
 
     /** The report that declares no view and must generate nothing. */
     static final String SOURCELESS = "InvoiceDays";

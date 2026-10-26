@@ -14,7 +14,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { runGen, defineConfig, buildReportViews } from "@metaobjectsdev/codegen-ts";
 import { entityFile, routesFile } from "@metaobjectsdev/test-generators";
 import mysql from "mysql2/promise";
-import { seedInserts, SERVED_REPORTS, type ReportSeed } from "./api-contract-report-generated-server.ts";
+import { REPORT_CORPUS_MAX_ROWS, seedInserts, SERVED_REPORTS, type ReportSeed } from "./api-contract-report-generated-server.ts";
 import { DEFAULT_PHYSICAL_NAMING } from "@metaobjectsdev/metadata";
 import { loadMetadataFile } from "./load-metadata.ts";
 
@@ -72,6 +72,13 @@ const BASE_TABLES: ReadonlyArray<{ name: string; ddl: string }> = [
       \`attrs\` JSON
     )`,
   },
+  {
+    name: "readings",
+    ddl: `CREATE TABLE \`readings\` (
+      \`id\` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+      \`seq\` INT NOT NULL
+    )`,
+  },
 ];
 
 export async function startMysqlReportServer(mysqlUrl: string, metaPath: string): Promise<MysqlReportServerHandle> {
@@ -92,7 +99,7 @@ export async function startMysqlReportServer(mysqlUrl: string, metaPath: string)
       dbImport: "./db",
       dialect: "mysql",
       apiPrefix: "/api",
-      generators: [entityFile(), routesFile()],
+      generators: [entityFile(), routesFile({ reportMaxRows: REPORT_CORPUS_MAX_ROWS })],
     }),
     metadata: root,
   });

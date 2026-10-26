@@ -27,6 +27,13 @@ export interface RoutesFileOpts {
    * your host file. Off by default, so a project that does not ask gets no new file.
    */
   registerAll?: boolean;
+  /**
+   * The row cap of a report list route (default 10000, the same in every port). With no
+   * `limit` a report answers every row up to the cap and is refused above it with
+   * `400 { "error": "report_too_large", "maxRows": N }`; an explicit `limit` above it is
+   * refused the same way. Absent emits no key, so the output stays byte-identical.
+   */
+  reportMaxRows?: number;
   target?: string;
 }
 
@@ -54,7 +61,7 @@ export const routesFile = function routesFile(opts?: RoutesFileOpts): Generator 
     }
     return {
       path: entityOutputPath(ctx.config.outputLayout ?? "flat", effectivePackage(entity), `${entity.name}.routes.ts`),
-      content: await formatTs(renderRoutesFile(entity, ctx.renderContext, resolveExpose(entity, opts?.expose))),
+      content: await formatTs(renderRoutesFile(entity, ctx.renderContext, resolveExpose(entity, opts?.expose), opts?.reportMaxRows)),
     };
   });
   const generator: Generator = {
