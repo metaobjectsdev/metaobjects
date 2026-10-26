@@ -929,14 +929,17 @@ A model that declares no reporting vocabulary gets nothing new from it. Outside 
 loads changes in two places: a bare `extends` naming an object in another package is refused in
 TypeScript, Python and C#, and fixes to Java and Python parsing bugs move those ports toward what
 TypeScript already did. The [CHANGELOG](../../CHANGELOG.md) lists them and the models they affect,
-and [upgrading-1.0-to-1.1.md](migrations/upgrading-1.0-to-1.1.md) the upgrade steps. Until 1.1
-ships, `main` carries `metamodelVersion` 1.1, so no 1.0.x PATCH is cut from it.
+and [upgrading-1.0-to-1.1.md](migrations/upgrading-1.0-to-1.1.md) the upgrade steps. 1.1
+shipped with `metamodelVersion` 1.1; `main` now carries 1.2 (below), so no 1.1.x PATCH is cut
+from it.
 
 `startOf` on a relative date is a second MINOR: `metamodelVersion` moves `1.1` to `1.2`. It
 is a new accepted value form inside `attr.filter`, so no registered attribute changed, and a
 model that does not use it loads and generates exactly as before. A model that uses it needs
 every port at this version, because an older loader refuses the extra key as a malformed
-relative date. The view SQL changes only for a report that declares it.
+relative date. The view SQL changes only for a report that declares it, and for a SQLite view
+whose relative date shifts by months or years, which now clamps to the end of a short month
+as Postgres and MySQL do.
 
 `@spine` and a measure's `@default` joined the same 1.1 change before it shipped, so
 `metamodelVersion` stays 1.1. A model that uses neither generates exactly as before. No

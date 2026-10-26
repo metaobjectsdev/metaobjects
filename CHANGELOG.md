@@ -55,6 +55,14 @@ _npm `1.1.3` (full lockstep across all 14 `@metaobjectsdev/*` publish candidates
 
 ### Fixed
 
+- **A relative date with months or years now lands on the same day on SQLite and D1 as on
+  Postgres and MySQL.** SQLite rolls an overflowing month shift into the next month, so
+  `{ "now": "-P1M" }` on March 31 was March 3 in a SQLite view and February 28 on Postgres, and
+  with `startOf: "month"` the window started a whole month late. The SQLite view SQL now clamps
+  the shift to the last day of the target month, as Postgres and MySQL do, and applies years and
+  months as one month count. A SQLite report view whose relative date has a month or year
+  component gets new SQL, so `meta migrate` proposes recreating it; nothing else changes.
+
 - **`meta verify --db` no longer reports false drift on a regex CHECK over a varchar/text
   column.** Postgres stores `"key" ~ '^[a-z]+$'` as `((key)::text ~ '^[a-z]+$'::text)`; the
   literal's `::text` was already folded away but the column's was not, so a database `migrate`

@@ -163,13 +163,18 @@ export function relativeNowSql(
       return temporal === "naive" ? utcWall : `CAST(${utcWall} AS DATE)`;
     }
     case "sqlite": {
-      // One modifier per non-zero component, Y M W D H M S order; a week is 7 days.
+      // Years and months shift as one month count, then one modifier per non-zero component,
+      // W D H M S order; a week is 7 days.
+      const months = d.years * 12 + d.months;
       const mods = [
-        [d.years, "years"], [d.months, "months"], [d.weeks * 7, "days"], [d.days, "days"],
-        [d.hours, "hours"], [d.minutes, "minutes"], [d.seconds, "seconds"],
-      ]
-        .filter(([n]) => (n as number) !== 0)
-        .map(([n, unit]) => `'${d.sign}${n} ${unit}'`);
+        ...(months === 0 ? [] : sqliteClampedMonthShift(`${d.sign}${months} months`)),
+        ...[
+          [d.weeks * 7, "days"], [d.days, "days"],
+          [d.hours, "hours"], [d.minutes, "minutes"], [d.seconds, "seconds"],
+        ]
+          .filter(([n]) => (n as number) !== 0)
+          .map(([n, unit]) => `'${d.sign}${n} ${unit}'`),
+      ];
       // Applied after the duration. SQLite's `weekday 0` moves forward to Sunday, so -6 days is Monday.
       const truncation =
         startOf === GRAIN_DAY ? ["'start of day'"]
@@ -197,4 +202,19 @@ export function relativeNowSql(
         : `DATE(DATE_FORMAT(${now}, '%Y-%m-01'))`;
     }
   }
+}
+
+/** SQLite rolls an overflowing month shift into the next month (March 31 minus a month is
+ *  March 3), where Postgres and MySQL clamp to the last day of the target month. So shift from
+ *  the first of the month, add back the day of the month capped at the target month's length,
+ *  then the time of day. */
+function sqliteClampedMonthShift(shift: string): string[] {
+  const day = `CAST(strftime('%d', 'now') AS INTEGER)`;
+  const lastDay = `CAST(strftime('%d', 'now', 'start of month', '${shift}', '+1 months', '-1 days') AS INTEGER)`;
+  return [
+    "'start of month'",
+    `'${shift}'`,
+    `'+' || (min(${day}, ${lastDay}) - 1) || ' days'`,
+    `'+' || strftime('%H:%M:%f', 'now')`,
+  ];
 }
