@@ -34,6 +34,10 @@ function literalColumns<T>(root: T): T {
   return root;
 }
 
+// Each test opens its own libsql file database and runs migrate + diff on it; under the default
+// parallel lane load that can pass bun's 5000ms default ("Unable to connect").
+const DB_TEST_TIMEOUT_MS = 60_000;
+
 let tmpDir: string;
 let k: Kysely<Record<string, unknown>>;
 let canonical: MetaRoot;
@@ -87,7 +91,7 @@ describe("D3 — a view recreated only around a table rebuild is not drift", () 
       expect(drift.changes.some((c) => c.kind === "add-fk" && c.table === "weeks")).toBe(true);
       expect(drift.changes.filter(isViewChange)).toEqual([]);
       expect(drift.blocked.filter(isViewChange)).toEqual([]);
-    });
+    }, { timeout: DB_TEST_TIMEOUT_MS });
 
     test(`${dialect}: the diff still plans each pair, marked unchanged`, async () => {
       await migrateWithWeeksFkMissing();
@@ -101,7 +105,7 @@ describe("D3 — a view recreated only around a table rebuild is not drift", () 
       const recreated = views.flatMap((c) => c.kind === "create-view" ? [c.view.name] : []);
       expect(recreated).toContain("v_program_minutes");
       expect(recreated).toContain("v_program_roster");
-    });
+    }, { timeout: DB_TEST_TIMEOUT_MS });
   }
 
   test("sqlite: the pair applies, and the database then matches the metadata", async () => {
@@ -119,5 +123,5 @@ describe("D3 — a view recreated only around a table rebuild is not drift", () 
     await applyRaw(up);
     const followup = await diff({ expected, actual: await introspectSqlite(k), dialect: "sqlite" });
     expect(followup.changes.filter((c) => !isInetResidue(c))).toEqual([]);
-  });
+  }, { timeout: DB_TEST_TIMEOUT_MS });
 });
