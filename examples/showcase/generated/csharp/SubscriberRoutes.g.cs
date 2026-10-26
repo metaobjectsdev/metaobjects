@@ -197,10 +197,10 @@ public static class SubscriberRoutes
     {
         return field switch
         {
-            "Id" => desc ? q.OrderByDescending(x => EF.Property<object>(x!, "Id")) : q.OrderBy(x => EF.Property<object>(x!, "Id")),
-            "Email" => desc ? q.OrderByDescending(x => EF.Property<object>(x!, "Email")) : q.OrderBy(x => EF.Property<object>(x!, "Email")),
-            "Name" => desc ? q.OrderByDescending(x => EF.Property<object>(x!, "Name")) : q.OrderBy(x => EF.Property<object>(x!, "Name")),
-            "CreatedAt" => desc ? q.OrderByDescending(x => EF.Property<object>(x!, "CreatedAt")) : q.OrderBy(x => EF.Property<object>(x!, "CreatedAt")),
+            "Id" => desc ? q.OrderByDescending(x => EF.Property<object>(x!, "Id") == null).ThenByDescending(x => EF.Property<object>(x!, "Id")) : q.OrderBy(x => EF.Property<object>(x!, "Id") == null).ThenBy(x => EF.Property<object>(x!, "Id")),
+            "Email" => desc ? q.OrderByDescending(x => EF.Property<object>(x!, "Email") == null).ThenByDescending(x => EF.Property<object>(x!, "Email")) : q.OrderBy(x => EF.Property<object>(x!, "Email") == null).ThenBy(x => EF.Property<object>(x!, "Email")),
+            "Name" => desc ? q.OrderByDescending(x => EF.Property<object>(x!, "Name") == null).ThenByDescending(x => EF.Property<object>(x!, "Name")) : q.OrderBy(x => EF.Property<object>(x!, "Name") == null).ThenBy(x => EF.Property<object>(x!, "Name")),
+            "CreatedAt" => desc ? q.OrderByDescending(x => EF.Property<object>(x!, "CreatedAt") == null).ThenByDescending(x => EF.Property<object>(x!, "CreatedAt")) : q.OrderBy(x => EF.Property<object>(x!, "CreatedAt") == null).ThenBy(x => EF.Property<object>(x!, "CreatedAt")),
             _ => (IOrderedQueryable<Subscriber>)q.OrderBy(x => 0),
         };
     }

@@ -408,9 +408,8 @@ Wire shapes follow the view's column types and [`normalization.md`](./normalizat
 and `"0"`), a `date`-grain bucket is a `DATE` string, and an instant `hour` bucket is a
 `TIMESTAMPTZ` string in UTC (`"2026-05-04T03:00:00Z"`). A measure with `@default` keeps its
 column type, so a defaulted integral `sum` is still a `BIGINT` string and a defaulted ratio a
-canonical decimal string. No scenario sorts a measure that can be null across a row where it
-is null: engines disagree on where nulls sort (Postgres last ascending, SQLite and MySQL
-first), while a defaulted measure sorts as its default everywhere.
+canonical decimal string. A defaulted measure sorts as its default everywhere. Where a null
+sorts is fixed in every port: see [Null ordering](../../docs/features/api-contract.md#null-ordering).
 
 ### Filter operators
 
