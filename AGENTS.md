@@ -22,7 +22,7 @@ The first four ship per-language today across the five ports (TS / C# / Java / P
 
 ## Status
 
-_Last refreshed 2026-10-14._
+_Last refreshed 2026-10-26._
 
 **1.0 gating — the quiet period is RETIRED (2026-09-06).** `docs/1.0-readiness.md` §G3 no
 longer asks for "one coordinated release with no metamodel-breaking change." It measured a
@@ -46,7 +46,7 @@ number. Both patterns are the convergent-publishing rule working as intended. **
 `dist-tag rm` 403s for every token we hold (`docs/RELEASING.md` §4).
 `metamodelVersion` read **`1.0`** through 1.0.13 — C4 landed and G4 shipped it, and no 1.0.x patch
 moved it (1.0.4 relaxed `@sourceRefField` onto `@cardinality: one` with a prose-only
-manifest footprint, and was ruled a hold). `metamodelVersion` read **`1.1`** from 1.1.0 for the FR-044 reporting vocabulary and the requirements slice 1 (the first slice of two, covering existence gates and per-entity coverage). **On `main` it now reads `1.2`** for calendar-aligned relative report windows (`startOf` on a relative date). Per-release detail lives in **`CHANGELOG.md`** — it is the log, and this file does
+manifest footprint, and was ruled a hold). `metamodelVersion` read **`1.1`** from 1.1.0 through 1.1.3 for the FR-044 reporting vocabulary and the requirements slice 1 (the first slice of two, covering existence gates and per-entity coverage). **It reads `1.2` from 1.1.4** for calendar-aligned relative report windows (`startOf` on a relative date). Per-release detail lives in **`CHANGELOG.md`** — it is the log, and this file does
 not duplicate it.
 
 The npm surface is **14 `@metaobjectsdev/*` packages in full lockstep**; the two `angular`
