@@ -69,7 +69,8 @@ Closed sets:
 `@spine` is a path written like a dimension's `@via`. A measure's `@default` is an integer.
 
 Plus one new value form inside the existing portable filter grammar: the **relative date**
-`{ "now": "<ISO-8601 duration>" }` (see [Relative dates](#relative-dates-in-filters)).
+`{ "now": "<ISO-8601 duration>" }`, optionally with `"startOf"` (see
+[Relative dates](#relative-dates-in-filters)).
 
 ## Declaring one
 
@@ -877,10 +878,35 @@ signed duration (`-P7D` is seven days ago, `-PT12H` twelve hours ago):
 It is evaluated when the view is **queried**, not when it is created. A view that uses it
 is therefore not cacheable by query text.
 
+#### Calendar-aligned windows: `startOf`
+
+A bare `-P90D` is 90 days before the moment of the query, so the window start moves through
+the day and a daily report counts a partial day at its oldest edge. Add `startOf` to cut the
+start to a calendar boundary:
+
+```jsonc
+"@filter": { "occurredAt": { "gte": { "now": "-P90D", "startOf": "day" } } }
+```
+
+| `startOf` | The window starts at |
+|---|---|
+| `day` | 00:00 UTC of the day the shifted instant falls on |
+| `week` | 00:00 UTC on the Monday of that ISO week |
+| `month` | 00:00 UTC on the first of that month |
+
+The duration is applied first and the result is then truncated: `{ "now": "-P1M", "startOf":
+"month" }` is the first of last month, and `{ "now": "P0D", "startOf": "month" }` is the first
+of this month. The cut is in UTC, the same clock as the time grains. There is no time-zone
+form; a window aligned to another zone is a separate piece of work. The view SQL carries the
+truncation on Postgres, SQLite (and D1) and MySQL, so every port that reads the view gets it.
+
+Only `day`, `week` and `month` are accepted. The key is legal exactly where `now` is, and
+only beside `now`.
+
 | Rule | Code | Refused |
 |---|---|---|
 | **F1** | `ERR_BAD_ATTR_FILTER` | A relative value anywhere except the `@filter` of a `segment`, a `measure.aggregate` or an `object.report`. In a `layout.dataGrid` preset, a projection `@filter` or an `origin.aggregate` `@filter` it fails the load, because no lowering exists for those hosts. |
-| **F2** | `ERR_BAD_ATTR_FILTER` | A relative value on any field except a `field.date` or `field.timestamp`; under any operator except `gt, gte, lt, lte`; as an object that carries keys besides `now`; or with a duration that does not match the ISO-8601 pattern `^[+-]?P(?!$)(\d+Y)?(\d+M)?(\d+W)?(\d+D)?(T(?=\d)(\d+H)?(\d+M)?(\d+S)?)?$`. |
+| **F2** | `ERR_BAD_ATTR_FILTER` | A relative value on any field except a `field.date` or `field.timestamp`; under any operator except `gt, gte, lt, lte`; as an object that carries keys besides `now` and `startOf`; with a duration that does not match the ISO-8601 pattern `^[+-]?P(?!$)(\d+Y)?(\d+M)?(\d+W)?(\d+D)?(T(?=\d)(\d+H)?(\d+M)?(\d+S)?)?$`; or with a `startOf` other than `day`, `week` or `month`. |
 
 An operator-less `{ "occurredAt": { "now": "-P7D" } }` is read as `eq`, and `eq` is not one
 of the four operators a relative date may sit under, so it is refused.
@@ -903,17 +929,26 @@ A model that declares no reporting vocabulary gets nothing new from it. Outside 
 loads changes in two places: a bare `extends` naming an object in another package is refused in
 TypeScript, Python and C#, and fixes to Java and Python parsing bugs move those ports toward what
 TypeScript already did. The [CHANGELOG](../../CHANGELOG.md) lists them and the models they affect,
-and [upgrading-1.0-to-1.1.md](migrations/upgrading-1.0-to-1.1.md) the upgrade steps. Until 1.1
-ships, `main` carries `metamodelVersion` 1.1, so no 1.0.x PATCH is cut from it.
+and [upgrading-1.0-to-1.1.md](migrations/upgrading-1.0-to-1.1.md) the upgrade steps. 1.1
+shipped with `metamodelVersion` 1.1; `main` now carries 1.2 (below), so no 1.1.x PATCH is cut
+from it.
+
+`startOf` on a relative date is a second MINOR: `metamodelVersion` moves `1.1` to `1.2`. It
+is a new accepted value form inside `attr.filter`, so no registered attribute changed, and a
+model that does not use it loads and generates exactly as before. A model that uses it needs
+every port at this version, because an older loader refuses the extra key as a malformed
+relative date. The view SQL changes only for a report that declares it, and for a SQLite view
+whose relative date shifts by months or years, which now clamps to the end of a short month
+as Postgres and MySQL do.
 
 `@spine` and a measure's `@default` joined the same 1.1 change before it shipped, so
-`metamodelVersion` stays 1.1. A model that uses neither generates exactly as before. No
+`metamodelVersion` did not move for them. A model that uses neither generates exactly as before. No
 generator you can own changed for them (the view SQL and the model pages' wording come from the
 packages), so an owned generator needs no resync. A report that declares
 `@spine`, or lists a measure with `@default`, lowers to different SQL and a tighter row type
 than the same report without it.
 
-Serving reports added no vocabulary (`metamodelVersion` stays 1.1). The same change corrected
+Serving reports added no vocabulary and did not move `metamodelVersion`. The same change corrected
 generated output for models that declare no report. Each is in the
 [CHANGELOG](../../CHANGELOG.md) with the shape it affects:
 

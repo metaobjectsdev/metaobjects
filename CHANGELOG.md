@@ -10,6 +10,32 @@ here.**
 
 ## [Unreleased]
 
+### Added
+
+- **Calendar-aligned relative report windows.** A relative date in a report, segment or measure
+  filter can now carry `startOf`: `{ "now": "-P90D", "startOf": "day" }` is midnight UTC 90 days
+  back, where `{ "now": "-P90D" }` is 90 days before the moment of the query. `startOf` is `day`,
+  `week` (ISO, Monday) or `month`; the duration is applied first, then the result is truncated.
+  The truncation is written into the report view SQL for Postgres, SQLite/D1 and MySQL, so every
+  port that reads the view gets it. Any other `startOf`, or an extra key, is refused with
+  `ERR_BAD_ATTR_FILTER` in every port. Pinned by the `reporting-relative-startof`,
+  `error-relative-date-bad-startof` and `error-relative-date-extra-key` conformance fixtures and
+  the persistence `report-relative-date` scenario, which seeds a row a minute either side of the
+  window start. UTC only; there is no time-zone form. **`metamodelVersion` moves `1.1` to `1.2`**
+  (a new accepted filter value form, no registered attribute): a model that uses `startOf` needs
+  every port at this version. A model that does not use it is unchanged. See
+  [docs/features/reporting.md](docs/features/reporting.md#calendar-aligned-windows-startof).
+
+### Fixed
+
+- **A relative date with months or years now lands on the same day on SQLite and D1 as on
+  Postgres and MySQL.** SQLite rolls an overflowing month shift into the next month, so
+  `{ "now": "-P1M" }` on March 31 was March 3 in a SQLite view and February 28 on Postgres, and
+  with `startOf: "month"` the window started a whole month late. The SQLite view SQL now clamps
+  the shift to the last day of the target month, as Postgres and MySQL do, and applies years and
+  months as one month count. A SQLite report view whose relative date has a month or year
+  component gets new SQL, so `meta migrate` proposes recreating it; nothing else changes.
+
 ## [1.1.3] — 2026-10-26
 
 _npm `1.1.3` (full lockstep across all 14 `@metaobjectsdev/*` publish candidates), PyPI `1.1.3`, NuGet `1.1.3` and Maven Central `8.1.3`._

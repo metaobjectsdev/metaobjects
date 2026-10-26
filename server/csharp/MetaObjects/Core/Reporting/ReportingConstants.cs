@@ -125,6 +125,16 @@ public static class ReportingConstants
     public const string FILTER_RELATIVE_NOW = "now";
 
     /// <summary>
+    /// The optional second key of a relative-date value:
+    /// <c>{ "now": "-P90D", "startOf": "day" }</c> truncates the instant (after the duration is
+    /// applied) to the start of that UTC calendar unit.
+    /// </summary>
+    public const string FILTER_RELATIVE_START_OF = "startOf";
+
+    /// <summary>The calendar units <c>startOf</c> accepts. A week is the ISO week, Monday start.</summary>
+    public static readonly IReadOnlyList<string> RELATIVE_START_OF_UNITS = new[] { "day", "week", "month" };
+
+    /// <summary>
     /// A signed ISO-8601 duration (<c>-P7D</c>, <c>P1Y2M</c>, <c>-PT12H</c>). The lookaheads
     /// refuse the degenerate <c>P</c> and <c>PT</c> forms (a designator with no component).
     /// The TS reference pattern, translated for .NET semantics: <c>[0-9]</c> rather than

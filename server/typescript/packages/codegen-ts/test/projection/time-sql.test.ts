@@ -1,3 +1,4 @@
+import { Database } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
 import { parseIsoDuration, relativeNowSql, truncateToGrain } from "../../src/projection/time-sql.js";
 
@@ -95,11 +96,10 @@ describe("relativeNowSql (Table E)", () => {
   test.each([
     ["-P7D", "instant", `strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-7 days')`],
     ["P1D", "instant", `strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '+1 days')`],
-    ["-P1Y2M3WT4H", "naive", `strftime('%Y-%m-%dT%H:%M:%f', 'now', '-1 years', '-2 months', '-21 days', '-4 hours')`],
     ["PT5M6S", "naive", `strftime('%Y-%m-%dT%H:%M:%f', 'now', '+5 minutes', '+6 seconds')`],
     ["-P1W2D", "instant", `strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-7 days', '-2 days')`],
+    ["-P3DT4H5M6S", "date", `date('now', '-3 days', '-4 hours', '-5 minutes', '-6 seconds')`],
     ["+P1D", "date", `date('now', '+1 days')`],
-    ["-P1Y2M3DT4H5M6S", "date", `date('now', '-1 years', '-2 months', '-3 days', '-4 hours', '-5 minutes', '-6 seconds')`],
     ["P0D", "date", `date('now')`],
   ] as const)("sqlite %s on %s", (duration, temporal, sql) => {
     expect(relativeNowSql(duration, temporal, "sqlite")).toBe(sql);
@@ -115,6 +115,63 @@ describe("relativeNowSql (Table E)", () => {
     ["P0D", "instant", `(UTC_TIMESTAMP(3))`],
   ] as const)("mysql %s on %s", (duration, temporal, sql) => {
     expect(relativeNowSql(duration, temporal, "mysql")).toBe(sql);
+  });
+
+  test.each([
+    ["-P90D", "instant", "day", `(date_trunc('day', ((now() AT TIME ZONE 'UTC') - INTERVAL 'P90D')) AT TIME ZONE 'UTC')`],
+    ["-P1W", "naive", "week", `date_trunc('week', ((now() AT TIME ZONE 'UTC') - INTERVAL 'P1W'))`],
+    ["P0D", "date", "month", `CAST(date_trunc('month', ((now() AT TIME ZONE 'UTC') + INTERVAL 'P0D')) AS DATE)`],
+  ] as const)("postgres %s on %s startOf %s", (duration, temporal, startOf, sql) => {
+    expect(relativeNowSql(duration, temporal, "postgres", startOf)).toBe(sql);
+  });
+
+  test.each([
+    ["-P90D", "instant", "day", `strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-90 days', 'start of day')`],
+    ["P0D", "naive", "week", `strftime('%Y-%m-%dT%H:%M:%f', 'now', 'weekday 0', '-6 days', 'start of day')`],
+  ] as const)("sqlite %s on %s startOf %s", (duration, temporal, startOf, sql) => {
+    expect(relativeNowSql(duration, temporal, "sqlite", startOf)).toBe(sql);
+  });
+
+  // Evaluated on a real SQLite with 'now' pinned. The expected values are calendar facts and
+  // Postgres interval semantics (a month shift clamps to the target month's last day), so a
+  // Sunday-start week or an overflowing month (March 31 minus a month read as March 3) fails.
+  // 2026-03-29 is a Sunday, 2026-03-30 a Monday, 2026-03-31 a Tuesday; 2028 is a leap year.
+  const atSqlite = (now: string, sql: string): unknown => {
+    const db = new Database(":memory:");
+    try {
+      return Object.values(db.query(`SELECT ${sql.replaceAll("'now'", `'${now}'`)}`).get() as object)[0];
+    } finally {
+      db.close();
+    }
+  };
+  test.each([
+    ["2026-03-31 10:20:30.456", "-P1M", "date", "month", "2026-02-01"],
+    ["2026-03-31 10:20:30.456", "-P1M1D", "date", "month", "2026-02-01"],
+    ["2026-05-31 10:20:30.456", "-P3M", "instant", "month", "2026-02-01T00:00:00.000Z"],
+    ["2026-03-31 10:20:30.456", "P0D", "naive", "month", "2026-03-01T00:00:00.000"],
+    ["2026-03-31 10:20:30.456", "-P1M", "instant", "day", "2026-02-28T00:00:00.000Z"],
+    ["2028-02-29 10:20:30.456", "-P1Y", "date", "day", "2027-02-28"],
+    ["2026-03-29 10:20:30.456", "P0D", "date", "week", "2026-03-23"],
+    ["2026-03-30 10:20:30.456", "P0D", "instant", "week", "2026-03-30T00:00:00.000Z"],
+    ["2026-03-31 10:20:30.456", "-P1W", "naive", "week", "2026-03-23T00:00:00.000"],
+    ["2026-03-31 10:20:30.456", "-P1M", "instant", undefined, "2026-02-28T10:20:30.456Z"],
+    ["2026-03-31 01:20:30.456", "-P1Y2M3DT4H", "naive", undefined, "2025-01-27T21:20:30.456"],
+    ["2026-01-31 10:20:30.456", "+P1M", "date", undefined, "2026-02-28"],
+  ] as const)("sqlite at %s: %s on %s startOf %s is %s", (now, duration, temporal, startOf, expected) => {
+    expect(atSqlite(now, relativeNowSql(duration, temporal, "sqlite", startOf))).toBe(expected);
+  });
+
+  test.each([
+    ["-P90D", "instant", "day", `DATE(UTC_TIMESTAMP(3) - INTERVAL 90 DAY)`],
+    ["-P1W", "naive", "week",
+      `DATE(DATE_SUB(UTC_TIMESTAMP(3) - INTERVAL 1 WEEK, INTERVAL WEEKDAY(UTC_TIMESTAMP(3) - INTERVAL 1 WEEK) DAY))`],
+    ["P0D", "date", "month", `DATE(DATE_FORMAT(UTC_TIMESTAMP(3), '%Y-%m-01'))`],
+  ] as const)("mysql %s on %s startOf %s", (duration, temporal, startOf, sql) => {
+    expect(relativeNowSql(duration, temporal, "mysql", startOf)).toBe(sql);
+  });
+
+  test("an unknown startOf unit throws instead of reaching the SQL", () => {
+    expect(() => relativeNowSql("-P1D", "instant", "postgres", "year" as never)).toThrow(/year/);
   });
 
   test("a malformed duration throws, naming it", () => {

@@ -975,8 +975,26 @@ describe("validateReporting — relative dates", () => {
     const msg = await single(m, "ERR_BAD_ATTR_FILTER");
     expect(msg).toBe(
       "report 'acme::shop::DailyRevenue': @filter on 'purchasedAt' has a malformed relative date " +
-        '{"now":"-P7D","x":1}; a relative date is exactly { now: "<ISO-8601 duration>" } with no other keys.',
+        '{"now":"-P7D","x":1}; a relative date is { now: "<ISO-8601 duration>" } with an optional startOf, and no other keys.',
     );
+  });
+
+  test("F2: startOf day, week and month are accepted beside now", async () => {
+    for (const startOf of ["day", "week", "month"]) {
+      const m = edit((x) =>
+        patchObject(x, "DailyRevenue", { "@filter": { purchasedAt: { gte: { now: "-P90D", startOf } } } }),
+      );
+      expect((await loadInline(m)).errors).toEqual([]);
+    }
+  });
+
+  test("F2: a startOf outside day, week and month is refused, naming the allowed units", async () => {
+    const m = edit((x) =>
+      patchObject(x, "DailyRevenue", { "@filter": { purchasedAt: { gte: { now: "-P90D", startOf: "year" } } } }),
+    );
+    const msg = await single(m, "ERR_BAD_ATTR_FILTER");
+    expect(msg).toContain("startOf 'year'");
+    expect(msg).toContain("day, week, month");
   });
 
   test("F1: an operand with a `now` key plus other keys is refused on a non-reporting host", async () => {

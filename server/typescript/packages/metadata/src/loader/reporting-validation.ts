@@ -82,6 +82,8 @@ import { SOURCE_KIND_VIEW } from "../persistence/source/source-constants.js";
 import { AGG_ALL, AGG_ANY } from "../persistence/origin/origin-constants.js";
 import {
   FILTER_RELATIVE_NOW,
+  FILTER_RELATIVE_START_OF,
+  RELATIVE_START_OF_UNITS,
   ISO_DURATION_RE,
   AGG_COUNT,
   AGG_SUM,
@@ -246,14 +248,14 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
 }
 
 /** An object operand carrying a `now` key — a relative-date value, well-formed
- *  (exactly `{ now }`) or not. A malformed one is refused, never read as data. */
+ *  (`{ now }` plus an optional `startOf`) or not. A malformed one is refused, never read as data. */
 function isRelativeValue(v: unknown): v is Record<string, unknown> {
   return isPlainObject(v) && Object.keys(v).includes(FILTER_RELATIVE_NOW);
 }
 
-/** True for a well-formed relative value: exactly the one key `now`. */
+/** True for a well-formed relative value: the key `now`, plus optionally `startOf`, and nothing else. */
 function isExactRelativeValue(v: Record<string, unknown>): boolean {
-  return Object.keys(v).length === 1;
+  return Object.keys(v).every((k) => k === FILTER_RELATIVE_NOW || k === FILTER_RELATIVE_START_OF);
 }
 
 /** The relative value an op's operand carries: the operand itself, or one inside an array operand. */
@@ -812,7 +814,7 @@ function checkFilter(
       if (!isExactRelativeValue(relative)) {
         err(
           `@filter on '${key}' has a malformed relative date ${JSON.stringify(relative)}; a relative date is ` +
-            `exactly { now: "<ISO-8601 duration>" } with no other keys.`,
+            `{ now: "<ISO-8601 duration>" } with an optional startOf, and no other keys.`,
         );
         continue;
       }
@@ -836,6 +838,16 @@ function checkFilter(
           `@filter on '${key}' has relative date '${quoteValue(duration)}', which is not an ISO-8601 ` +
             `duration (e.g. '-P7D', '-PT12H').`,
         );
+        continue;
+      }
+      if (FILTER_RELATIVE_START_OF in relative) {
+        const startOf = relative[FILTER_RELATIVE_START_OF];
+        if (typeof startOf !== "string" || !(RELATIVE_START_OF_UNITS as readonly string[]).includes(startOf)) {
+          err(
+            `@filter on '${key}' has startOf '${quoteValue(startOf)}'; startOf is one of ` +
+              `${RELATIVE_START_OF_UNITS.join(", ")}.`,
+          );
+        }
       }
     }
   }

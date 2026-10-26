@@ -128,6 +128,21 @@ public final class ReportingConstants {
     public static final String FILTER_RELATIVE_NOW = "now";
 
     /**
+     * The optional second key of a relative-date value:
+     * {@code { "now": "-P90D", "startOf": "day" }} truncates the instant (after the duration is
+     * applied) to the start of that UTC calendar unit.
+     */
+    public static final String FILTER_RELATIVE_START_OF = "startOf";
+
+    /** The calendar units {@code startOf} accepts. A week is the ISO week, Monday start. */
+    public static final java.util.List<String> RELATIVE_START_OF_UNITS = java.util.List.of("day", "week", "month");
+
+    /** True when a relative value's keys are {@code now} plus optionally {@code startOf}, and nothing else. */
+    public static boolean isWellFormedRelativeKeys(java.util.Set<?> keys) {
+        return keys.stream().allMatch(k -> FILTER_RELATIVE_NOW.equals(k) || FILTER_RELATIVE_START_OF.equals(k));
+    }
+
+    /**
      * A signed ISO-8601 duration ({@code -P7D}, {@code P1Y2M}, {@code -PT12H}). The lookaheads
      * refuse the degenerate {@code P} and {@code PT} forms. Use with {@code matches()} so the
      * whole value must match (the same pattern text as the TS reference).

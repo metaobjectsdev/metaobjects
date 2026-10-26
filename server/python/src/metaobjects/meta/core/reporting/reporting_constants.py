@@ -107,6 +107,13 @@ REPORT_DIMENSION_GRAIN_SEPARATOR = ":"
 #: Legal only in the ``@filter`` of a ``segment``, ``measure.aggregate`` or ``object.report``.
 FILTER_RELATIVE_NOW = "now"
 
+#: The optional second key of a relative-date value: ``{ "now": "-P90D", "startOf": "day" }``
+#: truncates the instant (after the duration is applied) to the start of that UTC calendar unit.
+FILTER_RELATIVE_START_OF = "startOf"
+
+#: The calendar units ``startOf`` accepts. A week is the ISO week, Monday start.
+RELATIVE_START_OF_UNITS: tuple[str, ...] = ("day", "week", "month")
+
 #: A signed ISO-8601 duration (``-P7D``, ``P1Y2M``, ``-PT12H``). The lookaheads refuse
 #: the degenerate ``P`` and ``PT`` forms (a designator with no component). The pattern
 #: is the rule table's verbatim; ``\Z`` stands in for JS ``$`` (Python ``$`` would also
