@@ -113,7 +113,7 @@ def test_sqlite_read_uses_qmark_placeholders_and_double_quotes() -> None:
     sql, params = rec.sql[-1]
     assert sql == (
         'SELECT "id", "label", "qty", "active", "price", "ref", "madeOn", "seenAt" FROM "items" '
-        'WHERE "qty" >= ? AND "label" = ? ORDER BY "qty" DESC LIMIT 5 OFFSET 10'
+        'WHERE "qty" >= ? AND "label" = ? ORDER BY "qty" DESC NULLS FIRST LIMIT 5 OFFSET 10'
     )
     assert params == (2, "a")
 
@@ -264,7 +264,7 @@ def test_mysql_read_uses_backticks_and_percent_placeholders() -> None:
     sql, params = conn.sql[-1]
     assert sql == (
         "SELECT `id`, `label`, `qty`, `active`, `price`, `ref`, `madeOn`, `seenAt` FROM `items` "
-        "WHERE `qty` >= %s AND `label` LIKE BINARY %s ORDER BY `qty` ASC "
+        "WHERE `qty` >= %s AND `label` LIKE BINARY %s ORDER BY (`qty` IS NULL) ASC, `qty` ASC "
         "LIMIT 18446744073709551615 OFFSET 4"
     )
     assert params == (2, "A%")

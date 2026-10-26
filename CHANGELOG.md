@@ -10,6 +10,17 @@ here.**
 
 ## [Unreleased]
 
+### Changed
+
+- **A list or report sort puts nulls last ascending and first descending, on every engine, in
+  all five ports.** Nulls sort as larger than any value, which is Postgres's own default, so
+  **Postgres output does not change; SQLite and MySQL sorted output does** for any column with
+  nulls: those engines used to put a null first ascending. It applies to every `?sort=` the
+  generated routes and the runtime `ObjectManager` drivers emit (TypeScript, C#, Java, Kotlin,
+  Python), using native `NULLS LAST` / `NULLS FIRST` where the engine has it and a leading
+  `col IS NULL` key where it does not (MySQL). Pinned by the api-contract `report/` scenario
+  `sort-null-ordering`; see [api-contract.md](docs/features/api-contract.md#null-ordering).
+
 ## [1.1.3] — 2026-10-26
 
 _npm `1.1.3` (full lockstep across all 14 `@metaobjectsdev/*` publish candidates), PyPI `1.1.3`, NuGet `1.1.3` and Maven Central `8.1.3`._

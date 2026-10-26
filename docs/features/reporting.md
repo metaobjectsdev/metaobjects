@@ -459,8 +459,8 @@ rating with no ratings is not `0`; null is the honest answer there.
 **Filter and sort.** The default is the value. `?filter[revenue][eq]=0` matches the empty
 rows, `isNull=true` matches nothing and `isNull=false` every row. A sort on a defaulted
 measure is the same on every engine, since the empty rows sort as their default. A measure
-without one sorts its null rows where the engine puts them: Postgres last ascending, SQLite
-and MySQL first.
+without one has null rows, and they sort as larger than any value: last ascending, first
+descending, the same on every engine (see [Null ordering](api-contract.md#null-ordering)).
 
 ### Boolean measures: `any` and `all`
 

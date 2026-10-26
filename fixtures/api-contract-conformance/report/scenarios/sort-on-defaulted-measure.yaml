@@ -1,9 +1,8 @@
 name: report-sort-on-defaulted-measure
 description: >
   A sort on a defaulted measure is deterministic on every engine: the product with no sale
-  sorts as its default, 0, never as a null whose place the engine chooses. The corpus never
-  sorts revenueCents (no @default) across that row, because Postgres puts a null last
-  ascending and SQLite and MySQL put it first.
+  sorts as its default, 0. A sort across a measure with no @default, where that row is null,
+  is pinned by sort-null-ordering.
 requests:
   - id: asc
     method: GET

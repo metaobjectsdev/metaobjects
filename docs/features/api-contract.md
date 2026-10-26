@@ -242,6 +242,16 @@ each handler they register instead; an `HTTPException` is rethrown to your
   (`fixtures/api-contract-conformance/scenarios/`), whose three arms cover the
   declared field, an explicit order beating it, and an undeclared field falling
   back to `asc`.
+- <a id="null-ordering"></a>**Null ordering — nulls sort as larger than any value, on every
+  engine.** `sort=<field>:asc` puts null rows last and `sort=<field>:desc` puts them first, in
+  every port (TypeScript, C#, Java, Kotlin, Python), on every engine each supports
+  (Postgres, SQLite and D1, MySQL), for entity lists, projections and served reports alike. That
+  is Postgres's own default; a bare `ORDER BY col` put nulls first ascending on SQLite and
+  MySQL, so the same request used to answer a different order per engine. Each port now pins
+  it: native `NULLS LAST` / `NULLS FIRST` where the engine has the clause, a leading
+  `col IS NULL` key (or the ORM's equivalent) where it does not. Guarded cross-port by the
+  `sort-null-ordering` scenario (`fixtures/api-contract-conformance/report/scenarios/`), an
+  ascending and a descending sort over a column with a null row.
 - **Known limit — enums sort by stored value, not declared order.** A
   string-backed `field.enum` sorts alphabetically (`high` < `low` < `medium`
   < `urgent`), not in `@values` order; an int-backed (`@intValueMap`) enum

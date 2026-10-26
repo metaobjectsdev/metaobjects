@@ -83,7 +83,7 @@ function makeDriver(state: State): PersistenceDriver {
       let rows = [...t.values()].filter((r) => matchesWhere(r, spec.where));
       if (spec.orderBy) {
         for (const ob of [...spec.orderBy].reverse()) {
-          rows.sort((a, b) => compareValues(a[ob.column], b[ob.column]) * (ob.direction === "asc" ? 1 : -1));
+          rows.sort((a, b) => compareForSort(a[ob.column], b[ob.column]) * (ob.direction === "asc" ? 1 : -1));
         }
       }
       if (spec.offset) rows = rows.slice(spec.offset);
@@ -223,6 +223,14 @@ function matchesWhere(row: Row, where?: WhereClause): boolean {
       throw new Error(`Unhandled WhereClause kind: ${JSON.stringify(exhaustive)}`);
     }
   }
+}
+
+// Sort order: nulls are larger than any value, as in the SQL drivers (ASC last, DESC first).
+function compareForSort(a: unknown, b: unknown): number {
+  const aNull = a === null || a === undefined;
+  const bNull = b === null || b === undefined;
+  if (aNull || bNull) return aNull === bNull ? 0 : aNull ? 1 : -1;
+  return compareValues(a, b);
 }
 
 function compareValues(a: unknown, b: unknown): number {

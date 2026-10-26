@@ -222,4 +222,10 @@ public class PostgresDriver extends GenericSQLDriver {
     public String toString() {
         return "PostgreSQL Database Driver (Enhanced for PostgreSQL 14+)";
     }
+
+    /** Native null placement: nulls are larger than any value (ASC last, DESC first). */
+    @Override
+    protected String orderTerm(String expr, boolean desc) {
+        return expr + (desc ? " DESC NULLS FIRST" : " ASC NULLS LAST");
+    }
 }

@@ -634,8 +634,7 @@ class ObjectManager:
             for field_name, direction in sort:
                 f = entity.find_field(field_name)
                 col = _column_of(f, self._column_naming) if f is not None else field_name
-                d = "DESC" if direction.lower() == "desc" else "ASC"
-                order_parts.append(f"{self._d.quote(col)} {d}")
+                order_parts.append(self._d.order_term(self._d.quote(col), direction.lower() == "desc"))
             if order_parts:
                 sql += " ORDER BY " + ", ".join(order_parts)
         if limit is not None:

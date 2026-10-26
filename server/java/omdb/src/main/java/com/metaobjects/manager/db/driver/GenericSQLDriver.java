@@ -906,6 +906,17 @@ public class GenericSQLDriver implements DatabaseDriver {
     }
 
     /**
+     * One ORDER BY term with nulls LARGER than any value: ASC puts them last, DESC first, on
+     * every engine (Postgres's own default; SQLite and MySQL would otherwise put nulls first on
+     * ASC). The default is a leading {@code CASE WHEN expr IS NULL} key, which every supported
+     * engine accepts; a driver with native {@code NULLS FIRST/LAST} overrides it.
+     */
+    protected String orderTerm(String expr, boolean desc) {
+        String dir = desc ? " DESC" : "";
+        return "CASE WHEN " + expr + " IS NULL THEN 1 ELSE 0 END" + dir + ", " + expr + dir;
+    }
+
+    /**
      * Gets the ORDER BY clause
      */
     protected String getOrderString(MetaObject mc, ObjectMappingDB omdb, SortOrder order) throws MetaDataException {
@@ -929,19 +940,18 @@ public class GenericSQLDriver implements DatabaseDriver {
                 throw new MetaDataException("MetaField [" + mf + "] has no column mapping for [" + omdb + "]");
             }
 
+            StringBuilder expr = new StringBuilder();
             if (mf instanceof com.metaobjects.field.StringField) {
-                b.append("UPPER(");
-                b.append(prefix).append(".");
-                b.append(quoteIdent(colDef.getName()));
-                b.append(')');
+                expr.append("UPPER(");
+                expr.append(prefix).append(".");
+                expr.append(quoteIdent(colDef.getName()));
+                expr.append(')');
             } else {
-                b.append(prefix).append(".");
-                b.append(quoteIdent(colDef.getName()));
+                expr.append(prefix).append(".");
+                expr.append(quoteIdent(colDef.getName()));
             }
 
-            if (order.getOrder() == SortOrder.DESC) {
-                b.append(" DESC");
-            }
+            b.append(orderTerm(expr.toString(), order.getOrder() == SortOrder.DESC));
 
             order = order.getNext();
         }

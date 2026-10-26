@@ -152,7 +152,7 @@ def test_filter_sort_limit_on_derived_fields() -> None:
         "ProgramMinutes", {"weeks": {"gte": 2}}, sort=[("totalMinutes", "desc")], limit=1
     )
     sql = drv.sql[0]
-    assert sql.endswith('FROM "v_program_minutes" WHERE "weeks" >= %s ORDER BY "totalMinutes" DESC LIMIT 1')
+    assert sql.endswith('FROM "v_program_minutes" WHERE "weeks" >= %s ORDER BY "totalMinutes" DESC NULLS FIRST LIMIT 1')
     assert drv.params[0] == (2,)
 
 

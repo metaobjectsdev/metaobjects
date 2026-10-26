@@ -207,7 +207,11 @@ function applyOrderLimit(
 ): AnyQuery {
   let out = q;
   if (orderBy) {
+    // Nulls sort as larger than any value on every engine (ASC last, DESC first), which is
+    // Postgres's default. A leading `col IS NULL` key says it in plain SQL: Kysely is an
+    // optional peer here, so no raw `NULLS LAST` fragment, and MySQL has no such clause.
     for (const ob of orderBy) {
+      out = out.orderBy((eb: AnyExprBuilder) => eb(ob.column, "is", null), ob.direction);
       out = out.orderBy(ob.column, ob.direction);
     }
   }

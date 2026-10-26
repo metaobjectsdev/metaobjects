@@ -67,9 +67,9 @@ internal class ReportGeneratedApiContractConformanceTest {
     }
 
     @Test
-    fun `the corpus has its thirty scenarios`() {
+    fun `the corpus has its thirty-one scenarios`() {
         // A lane that silently ran fewer would still be green.
-        assertEquals(30, scenarios().count())
+        assertEquals(31, scenarios().count())
     }
 
     @Test
