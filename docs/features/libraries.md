@@ -151,6 +151,35 @@ in, implied generator not wired* and *generator wired, its library not opted in*
 second matters more than it looks: a generator whose anchor is absent matches nothing
 and emits zero files, which reads exactly like "my model has no trace entities yet".
 
+## What belongs in MetaObjects: four kinds of package, five tests
+
+MetaObjects ships four kinds of package. They differ in who owns the result:
+
+| kind | what it is | ownership |
+|---|---|---|
+| **Vocabulary** | metamodel types and attributes | core, not ejectable: the metadata you write with it is already yours |
+| **Library** | `library/<name>/` with a `library.json`: metadata and requirements (`iam`, `ai`) | `meta eject <library>` (above) |
+| **Catalog generator** | a row in `meta gen --list` | import it as shipped, or eject it, except `template` and the package-only rows ([ADR-0034](../../spec/decisions/ADR-0034-codegen-scaffold-and-own.md), Amendment 5). A library may imply one only when it anchors on a library node (above). |
+| **Runtime helper** | an Apache-2.0 per-port package that generated code imports | copied by the route generator's eject, helper runtime included ([ADR-0034](../../spec/decisions/ADR-0034-codegen-scaffold-and-own.md), Amendment 3) |
+
+Something new belongs in this project only if it passes **all five** tests:
+
+1. Most apps would otherwise re-derive it by hand.
+2. It is model-shaped: derivable from declared metadata.
+3. It can be carried in all five ports, each in its own language's standard way.
+4. Its default needs no copyleft or commercial dependency.
+5. It ships as `preview` until one external adopter runs it with the drift gate enforced
+   ([compatibility-policy.md](../compatibility-policy.md)).
+
+Anything else stays with the adopter (policy, presentation, branding, scheduling) or in a
+separate project.
+
+**Worked example, reporting** ([reporting.md](reporting.md)). The vocabulary (dimensions,
+measures, segments, `object.report`) is core. The planned `reporting` library holds
+metadata only, so opting in adds no code. Exporting to another tool and dashboards are
+catalog generators, one per heavy format, so an adopter never takes a dependency they did
+not wire: `cube-model` ships today, a dashboard generator does not exist yet.
+
 ## What ships today
 
 | library | what it is | stability |
