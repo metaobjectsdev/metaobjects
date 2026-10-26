@@ -45,6 +45,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
 import org.slf4j.LoggerFactory
+import com.metaobjects.generator.util.GeneratorUtil
 import com.metaobjects.generator.util.RestSurfaceGate
 import com.metaobjects.generator.util.GeneratedFileWriter
 
@@ -107,6 +108,14 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
      * `exposedApi` generator arg (`<args><exposedApi>1</exposedApi></args>` in the pom).
      */
     protected fun exposedApi(): ExposedApi = ExposedApi.parse(getArg(ExposedApi.ARG_EXPOSED_API))
+
+    /**
+     * The row cap of a served report's list route, from the `reportMaxRows` generator arg
+     * (default [DEFAULT_REPORT_MAX_ROWS], the same in every port). With no `limit` a report
+     * answers every row up to the cap; one more row, or a `limit` above the cap, is
+     * `400 {"error": "report_too_large", "maxRows": N}`. Reports only.
+     */
+    protected fun reportMaxRows(): Int = getArg(ARG_REPORT_MAX_ROWS)?.toInt() ?: DEFAULT_REPORT_MAX_ROWS
 
     /**
      * FR-019: where a `@provided` enum is referenced from, read from the same two generator args
@@ -2099,7 +2108,11 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             // can never use.
             append("class ${shortName}Controller {\n\n")
 
-            appendListHandler(this, shortName, readObj, sortFields)
+            if (GeneratorUtil.isReport(entity)) {
+                appendReportListHandler(this, shortName, readObj, sortFields, reportMaxRows())
+            } else {
+                appendListHandler(this, shortName, readObj, sortFields)
+            }
             if (hasItem) {
                 appendGetHandler(this, shortName, readObj, pkFieldName, pkParamType)
             }
@@ -2249,6 +2262,62 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         append("    }\n\n")
     }
 
+    /**
+     * GET (list) of a report: every row up to the cap, refused above it. No page default and no
+     * truncation; a request that would answer more than [maxRows] rows is
+     * `400 {"error": "report_too_large", "maxRows": N}` before any body is written (when no `limit`
+     * is sent the query reads one row past the cap). A bound that is not usable (limit below 1,
+     * negative offset, not an integer) is `pagination.invalid_value`, the envelope the TypeScript
+     * mounts use. The bounds arrive as text so this handler, not Spring, decides what a bad one answers.
+     */
+    private fun appendReportListHandler(
+        sb: StringBuilder, shortName: String, readObj: String, sortFields: List<String>, maxRows: Int
+    ) = with(sb) {
+        val api = exposedApi()
+        append("    @GetMapping\n")
+        append("    fun list(\n")
+        append("        @RequestParam(required = false) limit: String?,\n")
+        append("        @RequestParam(required = false) offset: String?,\n")
+        append("        @RequestParam(required = false) sort: String?,\n")
+        append("        @RequestParam(required = false, name = \"withCount\") withCount: Int?,\n")
+        append("        request: HttpServletRequest,\n")
+        append("    ): ResponseEntity<Any> = transaction {\n")
+        append("        val maxRows = $maxRows\n")
+        append("        val tooLarge = ResponseEntity.badRequest().body(mapOf(\"error\" to \"report_too_large\", \"maxRows\" to maxRows) as Any)\n")
+        append("        var requestedLimit: Int? = null\n")
+        append("        if (limit != null) {\n")
+        append("            val n = limit.toLongOrNull()?.takeIf { it >= 1 }\n")
+        append("                ?: return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"pagination.invalid_value\", \"param\" to \"limit\", \"value\" to limit, \"expected\" to \"an integer from 1 to \$maxRows\") as Any)\n")
+        append("            if (n > maxRows) return@transaction tooLarge\n")
+        append("            requestedLimit = n.toInt()\n")
+        append("        }\n")
+        append("        val effectiveOffset: Long = if (offset == null) 0L else offset.toLongOrNull()?.takeIf { it >= 0 }\n")
+        append("            ?: return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"pagination.invalid_value\", \"param\" to \"offset\", \"value\" to offset, \"expected\" to \"a non-negative integer (0 or more)\") as Any)\n")
+        append("        val filterResult = parse${shortName}Filter(request.queryString)\n")
+        append("        if (filterResult.error != null) {\n")
+        append("            return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to filterResult.error, \"field\" to filterResult.field) as Any)\n")
+        append("        }\n")
+        append("        val whereOp = ${shortName}WhereOp(filterResult.predicates)\n")
+        append("        var q = if (whereOp != null) ${readObj}.selectAll().where { whereOp } else ${readObj}.selectAll()\n")
+        append("        if (sort != null) {\n")
+        append("            val parsed = parse${shortName}Sort(sort)\n")
+        append("                ?: return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"invalid_sort\", \"field\" to sort.substringBefore(':')) as Any)\n")
+        append("            val (field, dir) = parsed\n")
+        append("            q = q.orderBy(${sortColumnExpr(readObj, shortName, sortFields, api)} to dir)\n")
+        append("        }\n")
+        append("        val total: Long = if (withCount == 1) q.count() else -1L\n")
+        append("        val effectiveLimit = requestedLimit ?: (maxRows + 1)\n")
+        if (api == ExposedApi.V1) {
+            append("        val rows = q.limit(effectiveLimit).offset(effectiveOffset).map { rowTo${shortName}(it) }\n")
+        } else {
+            append("        val rows = q.limit(effectiveLimit, effectiveOffset).map { rowTo${shortName}(it) }\n")
+        }
+        append("        if (requestedLimit == null && rows.size > maxRows) return@transaction tooLarge\n")
+        append("        if (withCount == 1) ResponseEntity.ok(mapOf(\"rows\" to rows, \"total\" to total) as Any)\n")
+        append("        else ResponseEntity.ok(rows as Any)\n")
+        append("    }\n\n")
+    }
+
     /** GET /{id} — single row by primary key, 404 envelope on a miss. */
     private fun appendGetHandler(
         sb: StringBuilder, shortName: String, readObj: String, pkFieldName: String, pkParamType: String
@@ -2269,6 +2338,12 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
     }
 
     private companion object {
+        /** Generator arg: the row cap of a served report's list route. */
+        const val ARG_REPORT_MAX_ROWS = "reportMaxRows"
+
+        /** The most rows a report list answers when no [ARG_REPORT_MAX_ROWS] is given. */
+        const val DEFAULT_REPORT_MAX_ROWS = 10_000
+
         /** Default primary-key field name when the entity declares no identity.primary. */
         const val DEFAULT_PK_FIELD = "id"
 

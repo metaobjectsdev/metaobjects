@@ -42,6 +42,7 @@ from metaobjects import MetaDataLoader
 from .corpus_config import attach_corpus_wire
 from metaobjects.codegen.config import GenConfig
 from metaobjects.codegen.generator_registry import GeneratorBuildContext, list_generators
+from metaobjects.codegen.generators.router_generator import router_generator
 from metaobjects.codegen.runner import run_gen
 from metaobjects.codegen.runtime.filter_parser import FilterPredicate
 from metaobjects.naming import attach_naming
@@ -60,7 +61,11 @@ SERVED_REPORTS: dict[str, str] = {
     "SalesBySku": "sales_by_sku",
     "ProductRefunds": "product_refunds",
     "TicketsByTags": "tickets_by_tags",
+    "ReadingLog": "reading_log",
 }
+#: The row cap every lane builds its report routers with: ``ReadingLog`` has one row more, so the
+#: cap scenarios tell "exactly the cap" from "past it" (``report/README.md``).
+REPORT_CORPUS_MAX_ROWS = 60
 #: The sourceless report: generated nowhere, mounted nowhere.
 UNSERVED_REPORT = "InvoiceDays"
 
@@ -121,7 +126,9 @@ def generate_reports(corpus_root: Path, model: LaneModel = REPORT_MODEL) -> Gene
     templates = tmp / "templates"
     templates.mkdir()
     generators = [
-        entry.factory(GeneratorBuildContext(template_root=str(templates)))
+        router_generator(REPORT_CORPUS_MAX_ROWS)
+        if entry.name == "routes"
+        else entry.factory(GeneratorBuildContext(template_root=str(templates)))
         for entry in list_generators()
         if entry.name in _GENERATORS
     ]

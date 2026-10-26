@@ -10,7 +10,7 @@ import { FilterParseError, parsePageBound, SORT_EXPECTED } from "./list-params.j
 
 // Re-exported so existing importers keep one door; the definitions live in the
 // drizzle-free list-params module, which the ObjectManager Fastify mount also uses.
-export { FilterParseError, parsePageBound, PAGINATION_EXPECTED, RAW_VIEW_MAX_LIMIT, SORT_EXPECTED } from "./list-params.js";
+export { FilterParseError, parsePageBound, PAGINATION_EXPECTED, RAW_VIEW_MAX_LIMIT, REPORT_MAX_ROWS, ReportTooLargeError, parseReportPage, SORT_EXPECTED } from "./list-params.js";
 import {
   ANY_TEMPORAL_EXPECTED, FORMAT_EXPECTED, PLUS_OFFSET_HINT,
   looksLikeUnencodedPlusOffset, matchesAnyTemporal, matchesFormat, utcIsoIfZoned, utcIsoInstant,

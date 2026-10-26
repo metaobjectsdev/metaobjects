@@ -556,8 +556,26 @@ rule every object uses ([api-contract.md](api-contract.md)).
 | a filter or sort error | The four field-naming envelopes of [api-contract.md](api-contract.md), unchanged. |
 
 The route lists the compiled view. No request parameter picks dimensions, measures or a
-grain. The default page size is the port's own, as for any list route: TypeScript and C#
-return every row when `limit` is omitted, Java, Kotlin and Python the first 50.
+grain.
+
+**Paging and the row cap.** A report is a whole answer, so its list route has no page default.
+With no `limit` it returns **every row**, in all five ports, up to one cap: **10,000 rows**. One
+row past the cap, or an explicit `limit` above it, is refused before any body is written with
+`400 { "error": "report_too_large", "maxRows": N }`; the route never truncates silently. Narrow
+the report with a filter, or page it with `limit` and `offset`. The cap is a generator option, the
+same default everywhere, set where each port sets its other generator options:
+
+| Port | Set the cap |
+|---|---|
+| TypeScript | `routesFile({ reportMaxRows: 500 })` (and `routesFileHono`), or `reportMaxRows` on `mountReadOnlyCrudRoutes` in an owned routes file |
+| C# | `new RoutesGenerator { ReportMaxRows = 500 }` |
+| Java, Kotlin | the `reportMaxRows` generator arg (`<reportMaxRows>500</reportMaxRows>` in the plugin's `<args>`) |
+| Python | `router_generator(report_max_rows=500)` |
+
+A page bound that is not usable is refused, never ignored: `limit` below 1, a negative `offset` or
+a value that is not an integer answers `400 { "error": "pagination.invalid_value", "param": ... }`,
+the envelope the TypeScript mounts use for a malformed bound. Entity and projection lists keep
+their own paging ([api-contract.md](api-contract.md#sort--pagination)).
 
 **What a caller may filter and sort on.** Every derived field whose type has filter operators
 (string, enum, uuid, int, long, double, float, decimal, currency, date, time, timestamp,
@@ -716,7 +734,7 @@ compares the canonical string. D1 has no separate corpus: it is SQLite behind Cl
 binding, so TypeScript runs the same scenarios and the same REST scenarios through Miniflare's
 local D1 (`meta migrate --dialect d1`), with no cloud account.
 
-The REST surface is gated by twenty-seven scenarios under
+The REST surface is gated by thirty scenarios under
 [`fixtures/api-contract-conformance/report/`](../../fixtures/api-contract-conformance/report/),
 run in the **generated lane on all five ports**: list (a dimension with a segment-scoped sum
 that is null for one group), a time dimension at a grain (`YYYY-MM-DD`), a no-dimension
@@ -727,7 +745,9 @@ sale keeps its row, with a filter and a sort on its defaulted measure, a dimensi
 two references, one time dimension listed at two grains, a filter on a string (`like`), a boolean and a
 uuid dimension, a filter on a measure that carries its own `@filter`, and a dimension over an
 array and one over a map, which refuse a filter (`invalid_filter_field`) and a sort
-(`invalid_sort`). The corpus model carries one sourceless report, so a port that serves every
+(`invalid_sort`), and the row cap: a report of 61 rows served with a cap of 60 returns 60 rows past
+the old 50-row default, refuses the whole report, an explicit limit above the cap and a bad page
+bound. The corpus model carries one sourceless report, so a port that serves every
 report it finds fails. Every port runs the scenarios through its generated routes against the
 real views on Postgres, SQLite and MySQL (`report/schema.sqlite.sql`, `report/schema.mysql.sql`),
 and TypeScript also through local D1. A report's decimal columns are asserted as canonical

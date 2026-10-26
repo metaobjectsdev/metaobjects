@@ -2,7 +2,7 @@ import type { FastifyInstance, RouteShorthandOptions } from "fastify";
 import { quoteIdent, type SqlDialect } from "../sql-dialect.js";
 import { sql, eq, and, count } from "drizzle-orm";
 import qs from "qs";
-import { parseFilterParams, parsePageBound, RAW_VIEW_MAX_LIMIT, FilterParseError } from "./filter-parser.js";
+import { parseFilterParams, parsePageBound, parseReportPage, RAW_VIEW_MAX_LIMIT, REPORT_MAX_ROWS, ReportTooLargeError, FilterParseError } from "./filter-parser.js";
 import type { FilterAllowlist, SortAllowlist } from "./filter-allowlist.js";
 import { isTruthyFlag, contractErrorCode, coerceIdForColumn, rawIdLiteral, viewBaseConfig } from "./util.js";
 import { timestampWire } from "../timestamp-wire.js";
@@ -50,6 +50,13 @@ export interface MountReadOnlyOptions extends WireOptions {
   readonly itemRoutes?: boolean;
   /** The noun in the 405 message, which is free prose. Default "projection". */
   readonly resource?: "projection" | "report";
+  /**
+   * A report list's row cap (`resource: "report"` only; ignored otherwise). With no `limit`
+   * the route answers every row up to this many and refuses above it with
+   * `400 { "error": "report_too_large", "maxRows": N }`; an explicit `limit` above it is
+   * refused the same way. Default 10000, the same in every port.
+   */
+  readonly reportMaxRows?: number;
 }
 
 const rejectMutation = (resource: string) => async (
@@ -147,6 +154,9 @@ export function mountReadOnlyCrudRoutes(opts: MountReadOnlyOptions): void {
   const ro = withContractErrorHandler(opts.routeOptions);
   const reject = rejectMutation(opts.resource ?? "projection");
   const itemRoutes = opts.itemRoutes !== false;
+  // A report answers every row up to a cap and refuses above it; every other mount pages as asked.
+  const isReport = opts.resource === "report";
+  const reportMaxRows = opts.reportMaxRows ?? REPORT_MAX_ROWS;
 
   const viewName = resolveViewName(view);
   const useRawSql = isEmptyColumnView(view) && !!viewName;
@@ -167,11 +177,13 @@ export function mountReadOnlyCrudRoutes(opts: MountReadOnlyOptions): void {
         const queryString = qIdx >= 0 ? url.slice(qIdx + 1) : "";
         const parsed = qs.parse(queryString) as Record<string, unknown>;
         // A bound that is not an integer in range is a 400, not silently clamped.
-        const limitVal = parsePageBound(parsed, "limit", RAW_VIEW_MAX_LIMIT) ?? RAW_VIEW_MAX_LIMIT;
-        const offsetVal = parsePageBound(parsed, "offset") ?? 0;
+        const reportPage = isReport ? parseReportPage(parsed, reportMaxRows) : undefined;
+        const limitVal = reportPage?.limit ?? parsePageBound(parsed, "limit", RAW_VIEW_MAX_LIMIT) ?? RAW_VIEW_MAX_LIMIT;
+        const offsetVal = reportPage?.offset ?? parsePageBound(parsed, "offset") ?? 0;
         const withCount = isTruthyFlag(parsed["withCount"]);
         // biome-ignore lint/suspicious/noExplicitAny: dynamic raw result
         const rows = await rawRows(db, dialect, sql.raw(`SELECT * FROM ${quoteIdent(dialect, viewName)} LIMIT ${limitVal} OFFSET ${offsetVal}`)) as any[];
+        if (reportPage?.unbounded && rows.length > reportMaxRows) throw new ReportTooLargeError(reportMaxRows);
         const camelRows = rows.map((r: Record<string, unknown>) => camelizeRow(r));
         if (!withCount) return camelRows;
         // biome-ignore lint/suspicious/noExplicitAny: dynamic raw result
@@ -185,6 +197,7 @@ export function mountReadOnlyCrudRoutes(opts: MountReadOnlyOptions): void {
       const queryString = qIdx >= 0 ? url.slice(qIdx + 1) : "";
       const parsed = qs.parse(queryString) as Record<string, unknown>;
       const withCount = isTruthyFlag(parsed["withCount"]);
+      const reportPage = isReport ? parseReportPage(parsed, reportMaxRows) : undefined;
       const result = parseFilterParams({
         query: parsed,
         table: view,
@@ -198,13 +211,19 @@ export function mountReadOnlyCrudRoutes(opts: MountReadOnlyOptions): void {
       let q = db.select().from(view);
       if (combinedWhere) q = q.where(combinedWhere);
       if (result.orderBy) q = q.orderBy(...result.orderBy);
-      if (result.limit !== undefined) q = q.limit(result.limit);
-      if (result.offset !== undefined) q = q.offset(result.offset);
+      // A report fetches one row past the cap when no limit was sent, to tell exactly the
+      // cap apart from more than the cap before any body is written.
+      const limit = reportPage?.limit ?? result.limit;
+      const offset = reportPage?.offset ?? result.offset;
+      if (limit !== undefined) q = q.limit(limit);
+      if (offset !== undefined) q = q.offset(offset);
       // Await directly — `.all()` is libsql/better-sqlite3-only; the
       // node-postgres builder is thenable. (The useRawSql branch above keeps
       // db.all(sql.raw(...)) because that is the libsql raw-exec API, only
       // reachable for `.existing()` empty-column views which are sqlite-only.)
-      const rows = (await q as unknown[]).map(toWire);
+      const fetched = await q as unknown[];
+      if (reportPage?.unbounded && fetched.length > reportMaxRows) throw new ReportTooLargeError(reportMaxRows);
+      const rows = fetched.map(toWire);
 
       if (!withCount) return rows;
 
@@ -215,6 +234,10 @@ export function mountReadOnlyCrudRoutes(opts: MountReadOnlyOptions): void {
       const total = countRow?.c ?? 0;
       return { rows, total };
     } catch (err) {
+      if (err instanceof ReportTooLargeError) {
+        reply.code(400).send({ error: "report_too_large", maxRows: err.maxRows });
+        return;
+      }
       if (err instanceof FilterParseError) {
         // Spread the details so the cross-port-required `field` reaches the wire on a
         // projection route too (F20) — the writable mount already does this.

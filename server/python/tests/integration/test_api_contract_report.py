@@ -102,7 +102,7 @@ def test_exactly_the_served_reports_are_generated() -> None:
     allowlist and router (and the names module is not a route concern, so it is not asked
     for here: only the three generators the lane runs)."""
     emitted = generate_reports(_CORPUS).emitted
-    assert len(SERVED_REPORTS) == 10
+    assert len(SERVED_REPORTS) == 11
     for report, stem in SERVED_REPORTS.items():
         assert f"{report}.py" in emitted
         assert f"{stem}_filter_allowlist.py" in emitted

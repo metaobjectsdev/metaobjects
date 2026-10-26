@@ -47,6 +47,8 @@ export function renderRoutesFileHono(
   // mountReadOnlyCrudRoutes, a different helper that is read-only by construction and
   // takes no `expose` — there is no writable surface there to narrow.
   expose?: readonly CrudVerb[],
+  // Row cap of a served report (`routesFile({ reportMaxRows })`). undefined emits no key.
+  reportMaxRows?: number,
 ): string {
   const entityName = entity.name;
   const handlerName = `register${entityName}Routes`;
@@ -100,6 +102,7 @@ export function renderRoutesFileHono(
         : "") +
       (keyless ? `\n${indent}itemRoutes: false,` : "") +
       (report ? `\n${indent}resource: "report",` : "") +
+      (report && reportMaxRows !== undefined ? `\n${indent}reportMaxRows: ${reportMaxRows},` : "") +
       decimalColumnsLine(entity, indent, ctx.loadedRoot);
     const HonoSym = imp("t:Hono@hono");
     const mountReadOnlyCrudRoutesSym = imp(`mountReadOnlyCrudRoutes@${runtimeSpec}`);

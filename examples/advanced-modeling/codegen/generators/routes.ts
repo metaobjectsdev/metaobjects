@@ -107,6 +107,8 @@ function renderRoutes(
   // which emits no `expose` key at all and so keeps output byte-identical for projects
   // that do not use it.
   expose?: readonly CrudVerb[],
+  // Row cap of a served report (`routesFile({ reportMaxRows })`). undefined emits no key.
+  reportMaxRows?: number,
 ): string {
   // FR-017 Tier 2 — a TPH discriminator base mounts polymorphic list/get at the
   // base path plus a full per-subtype CRUD route set scoped to each
@@ -160,6 +162,7 @@ function renderRoutes(
         : "") +
       (keyless ? `\n${indent}itemRoutes: false,` : "") +
       (report ? `\n${indent}resource: "report",` : "") +
+      (report && reportMaxRows !== undefined ? `\n${indent}reportMaxRows: ${reportMaxRows},` : "") +
       decimalColumnsLine(entity, indent, ctx.loadedRoot);
     const FastifyInstanceSym = imp("t:FastifyInstance@fastify");
     const mountReadOnlyCrudRoutesSym = imp(`mountReadOnlyCrudRoutes@${runtimeSpec}`);
@@ -706,6 +709,13 @@ export interface RoutesFileOpts {
    */
   registerAll?: boolean;
   /**
+   * The row cap of a report list route (default 10000, the same in every port). With no
+   * `limit` a report answers every row up to the cap and is refused above it with
+   * `400 { "error": "report_too_large", "maxRows": N }`; an explicit `limit` above it is
+   * refused the same way. Absent emits no key, so the output stays byte-identical.
+   */
+  reportMaxRows?: number;
+  /**
    * Where the emitted routes import their mount helpers from. Absent: the adapter copy
    * `meta eject routes` placed in `codegen/runtime/`, by a path computed from the target's
    * output directory. A relative value is relative to the output root (like `dbImport`);
@@ -728,7 +738,7 @@ export const routesFile = function routesFile(opts?: RoutesFileOpts): Generator 
     };
     return {
       path: entityOutputPath(ctx.config.outputLayout ?? "flat", effectivePackage(entity), `${entity.name}.routes.ts`),
-      content: await formatTs(renderRoutes(entity, renderContext, resolveExpose(entity, opts?.expose))),
+      content: await formatTs(renderRoutes(entity, renderContext, resolveExpose(entity, opts?.expose), opts?.reportMaxRows)),
     };
   });
   const generator: Generator = {

@@ -1,0 +1,31 @@
+name: report-cap-all-rows
+description: >
+  With no limit a report answers EVERY row, not a page: 60 rows, more than the old
+  50-row default of Java, Kotlin and Python, and exactly the row cap every lane runs this
+  corpus with (60). The filter trims the 61-row report to 60. An explicit limit at the cap
+  is honoured as well.
+requests:
+  - id: r1
+    method: GET
+    path: /api/reading_logs?filter[seq][lte]=60&sort=seq:asc
+    expect:
+      status: 200
+      body:
+        length: 60
+  - id: r2
+    method: GET
+    path: /api/reading_logs?limit=60&sort=seq:asc
+    expect:
+      status: 200
+      body:
+        length: 60
+  - id: r3
+    method: GET
+    path: /api/reading_logs?filter[seq][gt]=55&sort=seq:asc&limit=3&offset=2
+    expect:
+      status: 200
+      body:
+        equals:
+          - { seq: 58, readings: 1 }
+          - { seq: 59, readings: 1 }
+          - { seq: 60, readings: 1 }

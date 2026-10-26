@@ -44,8 +44,12 @@ internal sealed class ReportGeneratedServerFactory : IAsyncDisposable
     // Ordinal order. InvoiceDays is in the model and declares no source.
     private static readonly string[] ExpectedRoutedNames =
         ["Category", "Invoice", "InvoiceCalendar", "InvoiceDisputes", "InvoiceStatusTotals", "InvoiceTotals",
-         "InvoicesByMonth", "Product", "ProductRefunds", "ProductRevenue", "Sale", "SalesByCategory", "SalesBySku", "Ticket", "TicketsByTags"];
+         "InvoicesByMonth", "Product", "ProductRefunds", "ProductRevenue", "Reading", "ReadingLog", "Sale", "SalesByCategory", "SalesBySku", "Ticket", "TicketsByTags"];
     private const string SourcelessReport = "InvoiceDays";
+
+    // The row cap the report routes are built with: ReadingLog has one row more, so the cap
+    // scenarios tell "exactly the cap" from "past it" (report/README.md).
+    private const int ReportCorpusMaxRows = 60;
 
     private readonly ScenarioEngine _engine;
     private readonly string _connectionString;
@@ -163,7 +167,7 @@ internal sealed class ReportGeneratedServerFactory : IAsyncDisposable
         var files = new EntityGenerator().Generate(ctx)
             .Concat(new DbContextGenerator().Generate(ctx))
             .Concat(new FilterAllowlistGenerator().Generate(ctx))
-            .Concat(new RoutesGenerator().Generate(ctx))
+            .Concat(new RoutesGenerator { ReportMaxRows = ReportCorpusMaxRows }.Generate(ctx))
             .Concat(new NamesGenerator().Generate(ctx))
             .ToList();
 

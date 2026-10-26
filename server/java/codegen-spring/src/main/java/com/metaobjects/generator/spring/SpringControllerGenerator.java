@@ -110,6 +110,20 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
      *  output must use the same owned runtime copy as an ejected neighbour. */
     public static final String ARG_RUNTIME_PACKAGE = "runtimePackage";
 
+    /**
+     * The most rows a report list answers when no {@link #ARG_REPORT_MAX_ROWS} is given; the same
+     * default in every port. With no {@code limit} a report answers every row up to the cap and
+     * is refused above it, never truncated.
+     */
+    public static final int DEFAULT_REPORT_MAX_ROWS = 10_000;
+
+    /** Generator arg: the row cap of a served report's list route (default
+     *  {@link #DEFAULT_REPORT_MAX_ROWS}). One row more than the cap, or a {@code limit} above
+     *  it, answers {@code 400 {"error": "report_too_large", "maxRows": N}}. Reports only. */
+    public static final String ARG_REPORT_MAX_ROWS = "reportMaxRows";
+
+    private int reportMaxRows = DEFAULT_REPORT_MAX_ROWS;
+
     /** The runtime package this run's output imports ({@link #ARG_RUNTIME_PACKAGE}). */
     private String runtimePackage = RUNTIME_PACKAGE;
 
@@ -126,6 +140,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
     public void execute(MetaDataLoader loader) {
         parseArgs();
         runtimePackage = getArg(ARG_RUNTIME_PACKAGE, RUNTIME_PACKAGE);
+        reportMaxRows = Integer.parseInt(getArg(ARG_REPORT_MAX_ROWS, String.valueOf(DEFAULT_REPORT_MAX_ROWS)));
         this.loader = loader;
         Path outRoot = Paths.get(outDir.getAbsolutePath());
         for (MetaObject declared : loader.getMetaObjects()) {
@@ -625,7 +640,11 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("        this.repository = repository;\n");
         src.append("    }\n\n");
 
-        appendListHandler(src, shortName, dtoName, repoName);
+        if (com.metaobjects.generator.util.GeneratorUtil.isReport(entity)) {
+            appendReportListHandler(src, shortName, dtoName, repoName, reportMaxRows);
+        } else {
+            appendListHandler(src, shortName, dtoName, repoName);
+        }
         if (hasItem) {
             appendGetByIdHandler(src, pkType);
         }
@@ -767,6 +786,82 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("            return ResponseEntity.ok(Map.of(\"rows\", rows, \"total\", total));\n");
         src.append("        }\n");
         src.append("        return ResponseEntity.ok(rows);\n");
+        src.append("    }\n\n");
+    }
+
+    /**
+     * GET (list) of a report: every row up to the cap, refused above it. There is no page
+     * default and nothing is truncated; a request that would answer more than {@code maxRows}
+     * rows is {@code 400 {"error": "report_too_large", "maxRows": N}} before any body is
+     * written (the repository is asked for one row past the cap when no {@code limit} is sent).
+     * A bound that is not usable (limit below 1, negative offset, not an integer) is refused with
+     * {@code pagination.invalid_value}, the envelope the TypeScript mounts use, instead of being
+     * ignored or answered by the framework's own conversion error. The bounds arrive as text so
+     * this handler, not Spring, decides what a bad one answers.
+     */
+    private static void appendReportListHandler(StringBuilder src, String shortName, String dtoName,
+                                                String repoName, int maxRows) {
+        String allowlistName = SpringNaming.filterAllowlistName(shortName);
+        src.append("    @GetMapping\n");
+        src.append("    public ResponseEntity<?> list(\n");
+        src.append("            @RequestParam(required = false) String limit,\n");
+        src.append("            @RequestParam(required = false) String offset,\n");
+        src.append("            @RequestParam(required = false) String sort,\n");
+        src.append("            @RequestParam(required = false, name = \"withCount\") Integer withCount,\n");
+        src.append("            HttpServletRequest request) {\n");
+        src.append("        final int maxRows = ").append(maxRows).append(";\n");
+        src.append("        Integer requestedLimit = null;\n");
+        src.append("        if (limit != null) {\n");
+        src.append("            Long parsed = parseBound(limit, 1);\n");
+        src.append("            if (parsed == null) {\n");
+        src.append("                return ResponseEntity.badRequest().body(Map.of(\"error\", \"pagination.invalid_value\", \"param\", \"limit\", \"value\", limit, \"expected\", \"an integer from 1 to \" + maxRows));\n");
+        src.append("            }\n");
+        src.append("            if (parsed > maxRows) {\n");
+        src.append("                return ResponseEntity.badRequest().body(Map.of(\"error\", \"report_too_large\", \"maxRows\", maxRows));\n");
+        src.append("            }\n");
+        src.append("            requestedLimit = parsed.intValue();\n");
+        src.append("        }\n");
+        src.append("        int actualOffset = 0;\n");
+        src.append("        if (offset != null) {\n");
+        src.append("            Long parsed = parseBound(offset, 0);\n");
+        src.append("            if (parsed == null) {\n");
+        src.append("                return ResponseEntity.badRequest().body(Map.of(\"error\", \"pagination.invalid_value\", \"param\", \"offset\", \"value\", offset, \"expected\", \"a non-negative integer (0 or more)\"));\n");
+        src.append("            }\n");
+        src.append("            actualOffset = (int) Math.min(parsed, Integer.MAX_VALUE);\n");
+        src.append("        }\n");
+        src.append("        ").append(repoName).append(".SortClause sortClause = null;\n");
+        src.append("        if (sort != null) {\n");
+        src.append("            sortClause = parseSort(sort);\n");
+        src.append("            if (sortClause == null) {\n");
+        src.append("                return ResponseEntity.badRequest().body(Map.of(\"error\", \"invalid_sort\", \"field\", sort.split(\":\", 2)[0]));\n");
+        src.append("            }\n");
+        src.append("        }\n");
+        src.append("        FilterParseResult filter = FilterParser.parse(\n");
+        src.append("                request.getQueryString(), ").append(allowlistName).append(".FIELDS, ")
+           .append(allowlistName).append(".OPS_BY_FIELD, ").append(allowlistName).append(".DECIMAL_FIELDS);\n");
+        src.append("        if (filter.error() != null) {\n");
+        src.append("            return ResponseEntity.badRequest().body(Map.of(\"error\", filter.error(), \"field\", filter.field()));\n");
+        src.append("        }\n");
+        src.append("        List<FilterPredicate> filters = filter.predicates();\n");
+        src.append("        List<").append(dtoName)
+           .append("> rows = repository.list(requestedLimit != null ? requestedLimit : maxRows + 1, actualOffset, sortClause, filters);\n");
+        src.append("        if (requestedLimit == null && rows.size() > maxRows) {\n");
+        src.append("            return ResponseEntity.badRequest().body(Map.of(\"error\", \"report_too_large\", \"maxRows\", maxRows));\n");
+        src.append("        }\n");
+        src.append("        if (withCount != null && withCount == 1) {\n");
+        src.append("            long total = repository.count(filters);\n");
+        src.append("            return ResponseEntity.ok(Map.of(\"rows\", rows, \"total\", total));\n");
+        src.append("        }\n");
+        src.append("        return ResponseEntity.ok(rows);\n");
+        src.append("    }\n\n");
+        src.append("    /** A page bound as an integer of at least {@code min}, or null when it is not one. */\n");
+        src.append("    private static Long parseBound(String raw, long min) {\n");
+        src.append("        try {\n");
+        src.append("            long n = Long.parseLong(raw);\n");
+        src.append("            return n >= min ? n : null;\n");
+        src.append("        } catch (NumberFormatException e) {\n");
+        src.append("            return null;\n");
+        src.append("        }\n");
         src.append("    }\n\n");
     }
 

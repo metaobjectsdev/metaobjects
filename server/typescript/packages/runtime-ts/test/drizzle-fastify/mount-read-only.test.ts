@@ -333,3 +333,85 @@ describe("mountReadOnlyCrudRoutes — GET :id addresses idColumn", () => {
     }
   });
 });
+
+// A report answers every row up to a cap and refuses above it: never a silent page default,
+// never a truncated body. Both the column-bearing and the opaque (raw-SQL) view are covered.
+describe("mountReadOnlyCrudRoutes — report row cap", () => {
+  let client: ReturnType<typeof createClient>;
+  const apps: FastifyInstance[] = [];
+
+  beforeAll(async () => {
+    client = createClient({ url: ":memory:" });
+    await client.execute(`CREATE TABLE days (id INTEGER PRIMARY KEY, n INTEGER NOT NULL)`);
+    await client.execute(`CREATE VIEW v_days AS SELECT id, n FROM days`);
+    const values = Array.from({ length: 60 }, (_, i) => `(${i + 1}, ${i + 1})`).join(",");
+    await client.execute(`INSERT INTO days (id, n) VALUES ${values}`);
+  });
+
+  afterAll(async () => {
+    for (const a of apps) await a.close();
+    client.close();
+  });
+
+  const mountReport = async (opaque: boolean, reportMaxRows?: number): Promise<FastifyInstance> => {
+    const view = opaque
+      ? sqliteView("v_days", {}).existing()
+      : sqliteView("v_days", { id: integer("id").notNull(), n: integer("n").notNull() }).existing();
+    const app = Fastify();
+    mountReadOnlyCrudRoutes({
+      fastify: app, path: "/days", db: drizzle(client), view,
+      filterAllowlist: { n: { ops: ["eq"], subType: "number", leadingWildcard: false } },
+      sortAllowlist: { id: { defaultOrder: "asc" } },
+      dialect: "sqlite", itemRoutes: false, resource: "report",
+      ...(reportMaxRows !== undefined && { reportMaxRows }),
+    });
+    await app.ready();
+    apps.push(app);
+    return app;
+  };
+
+  for (const opaque of [false, true]) {
+    const kind = opaque ? "opaque view" : "declared columns";
+    test(`${kind}: no limit returns every row, past 50`, async () => {
+      const app = await mountReport(opaque);
+      const res = await app.inject({ method: "GET", url: "/days" });
+      expect(res.statusCode).toBe(200);
+      expect(JSON.parse(res.body)).toHaveLength(60);
+    });
+
+    test(`${kind}: exactly the cap is answered, one more is refused`, async () => {
+      const exact = await mountReport(opaque, 60);
+      expect(JSON.parse((await exact.inject({ method: "GET", url: "/days" })).body)).toHaveLength(60);
+      const over = await mountReport(opaque, 59);
+      const res = await over.inject({ method: "GET", url: "/days" });
+      expect(res.statusCode).toBe(400);
+      expect(JSON.parse(res.body)).toEqual({ error: "report_too_large", maxRows: 59 });
+    });
+
+    test(`${kind}: a limit above the cap is refused, one within it pages`, async () => {
+      const app = await mountReport(opaque, 10);
+      const over = await app.inject({ method: "GET", url: "/days?limit=11" });
+      expect(over.statusCode).toBe(400);
+      expect(JSON.parse(over.body)).toEqual({ error: "report_too_large", maxRows: 10 });
+      const ok = await app.inject({ method: "GET", url: "/days?limit=10&offset=5" });
+      expect(JSON.parse(ok.body)).toHaveLength(10);
+    });
+
+    for (const url of ["/days?limit=0", "/days?limit=-1", "/days?limit=abc", "/days?offset=-1", "/days?offset=1.5"]) {
+      test(`${kind}: ${url} → 400 pagination.invalid_value`, async () => {
+        const app = await mountReport(opaque);
+        const res = await app.inject({ method: "GET", url });
+        expect(res.statusCode).toBe(400);
+        expect(JSON.parse(res.body).error).toBe("pagination.invalid_value");
+      });
+    }
+
+    for (const bad of ["0", "-1", "abc"]) {
+      test(`${kind}: ?limit=${bad} says a report limit starts at 1`, async () => {
+        const app = await mountReport(opaque, 10);
+        const res = await app.inject({ method: "GET", url: `/days?limit=${bad}` });
+        expect(JSON.parse(res.body).expected).toBe("an integer from 1 to 10");
+      });
+    }
+  }
+});

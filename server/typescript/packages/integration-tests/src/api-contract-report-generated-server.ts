@@ -147,6 +147,14 @@ const BASE_TABLES: ReadonlyArray<{ name: string; ddl: string }> = [
       "attrs" jsonb
     );`,
   },
+  {
+    name: "readings",
+    ddl: `
+    CREATE TABLE IF NOT EXISTS "readings" (
+      "id" bigserial PRIMARY KEY,
+      "seq" integer NOT NULL
+    );`,
+  },
 ];
 
 export interface GeneratedReportServerHandle {
@@ -168,7 +176,12 @@ export const SERVED_REPORTS = [
   { name: "SalesBySku", registrar: "salesBySkuRoutes" },
   { name: "ProductRefunds", registrar: "productRefundsRoutes" },
   { name: "TicketsByTags", registrar: "ticketsByTagsRoutes" },
+  { name: "ReadingLog", registrar: "readingLogRoutes" },
 ] as const;
+
+/** The row cap every lane builds its report routes with: ReadingLog has one row more than
+ *  this, so the cap scenarios can tell "exactly the cap" from "past it". */
+export const REPORT_CORPUS_MAX_ROWS = 60;
 
 export async function startGeneratedReportServer(
   connectionUri: string,
@@ -192,7 +205,7 @@ export async function startGeneratedReportServer(
       dbImport: "./db",
       dialect: "postgres",
       apiPrefix: "/api",
-      generators: [entityFile(), routesFile()],
+      generators: [entityFile(), routesFile({ reportMaxRows: REPORT_CORPUS_MAX_ROWS })],
     }),
     metadata: root,
   });
