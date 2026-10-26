@@ -79,14 +79,20 @@ export class ReportTooLargeError extends Error {
  * `maxRows` throws {@link ReportTooLargeError}.
  */
 export function parseReportPage(query: Record<string, unknown>, maxRows: number): ReportPage {
-  const limit = parsePageBound(query, "limit");
-  if (limit === 0) {
-    throw new FilterParseError(
+  const badLimit = (value: string) =>
+    new FilterParseError(
       "pagination.invalid_value",
-      `?limit= must be an integer from 1 to ${maxRows}, got "0".`,
-      { param: "limit", value: "0", expected: `an integer from 1 to ${maxRows}` },
+      `?limit= must be an integer from 1 to ${maxRows}, got "${value}".`,
+      { param: "limit", value, expected: `an integer from 1 to ${maxRows}` },
     );
+  let limit: number | undefined;
+  try {
+    limit = parsePageBound(query, "limit");
+  } catch (e) {
+    if (e instanceof FilterParseError) throw badLimit(String(query.limit));
+    throw e;
   }
+  if (limit === 0) throw badLimit("0");
   if (limit !== undefined && limit > maxRows) throw new ReportTooLargeError(maxRows);
   const offset = parsePageBound(query, "offset") ?? 0;
   return { limit: limit ?? maxRows + 1, offset, unbounded: limit === undefined };

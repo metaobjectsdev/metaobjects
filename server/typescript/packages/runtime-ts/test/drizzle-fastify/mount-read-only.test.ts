@@ -405,5 +405,13 @@ describe("mountReadOnlyCrudRoutes — report row cap", () => {
         expect(JSON.parse(res.body).error).toBe("pagination.invalid_value");
       });
     }
+
+    for (const bad of ["0", "-1", "abc"]) {
+      test(`${kind}: ?limit=${bad} says a report limit starts at 1`, async () => {
+        const app = await mountReport(opaque, 10);
+        const res = await app.inject({ method: "GET", url: `/days?limit=${bad}` });
+        expect(JSON.parse(res.body).expected).toBe("an integer from 1 to 10");
+      });
+    }
   }
 });
