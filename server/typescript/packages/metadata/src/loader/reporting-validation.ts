@@ -248,7 +248,7 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
 }
 
 /** An object operand carrying a `now` key — a relative-date value, well-formed
- *  (exactly `{ now }`) or not. A malformed one is refused, never read as data. */
+ *  (`{ now }` plus an optional `startOf`) or not. A malformed one is refused, never read as data. */
 function isRelativeValue(v: unknown): v is Record<string, unknown> {
   return isPlainObject(v) && Object.keys(v).includes(FILTER_RELATIVE_NOW);
 }

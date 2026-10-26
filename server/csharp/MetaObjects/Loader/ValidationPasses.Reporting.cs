@@ -183,7 +183,7 @@ public static partial class ValidationPasses
     private static bool IsRelativeValue(object? v) =>
         v is IReadOnlyDictionary<string, object?> o && o.ContainsKey(FILTER_RELATIVE_NOW);
 
-    /// <summary>True for a well-formed relative value: exactly the one key <c>now</c>.</summary>
+    /// <summary>True for a well-formed relative value: the key <c>now</c>, plus optionally <c>startOf</c>, and nothing else.</summary>
     private static bool IsExactRelativeValue(IReadOnlyDictionary<string, object?> v) => v.Keys.All(k => k == FILTER_RELATIVE_NOW || k == FILTER_RELATIVE_START_OF);
 
     /// <summary>The relative value an op's operand carries: the operand itself, or one inside an array operand.</summary>

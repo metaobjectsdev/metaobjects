@@ -312,7 +312,7 @@ def _is_document_field(field: MetaData) -> bool:
 
 def _is_relative_value(v: object) -> TypeGuard[dict[str, object]]:
     """An object operand carrying a ``now`` key — a relative-date value, well-formed
-    (exactly ``{ now }``) or not. A malformed one is refused, never read as data."""
+    (``{ now }`` plus an optional ``startOf``) or not. A malformed one is refused, never read as data."""
     return isinstance(v, dict) and FILTER_RELATIVE_NOW in v
 
 

@@ -254,7 +254,7 @@ final class ReportingValidation {
     }
 
     /** An object operand carrying a {@code now} key — a relative-date value, well-formed
-     *  (exactly {@code { now }}) or not. A malformed one is refused, never read as data. */
+     *  ({@code { now }} plus an optional {@code startOf}) or not. A malformed one is refused, never read as data. */
     private static boolean isRelativeValue(Object v) {
         return v instanceof Map && ((Map<?, ?>) v).containsKey(ReportingConstants.FILTER_RELATIVE_NOW);
     }
