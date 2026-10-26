@@ -10,6 +10,10 @@ here.**
 
 ## [Unreleased]
 
+## [1.1.4] — 2026-10-26
+
+_npm `1.1.4` (full lockstep across all 14 `@metaobjectsdev/*` publish candidates)._
+
 ### Added
 
 - **Calendar-aligned relative report windows.** A relative date in a report, segment or measure
