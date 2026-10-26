@@ -942,13 +942,13 @@ whose relative date shifts by months or years, which now clamps to the end of a 
 as Postgres and MySQL do.
 
 `@spine` and a measure's `@default` joined the same 1.1 change before it shipped, so
-`metamodelVersion` stays 1.1. A model that uses neither generates exactly as before. No
+`metamodelVersion` did not move for them. A model that uses neither generates exactly as before. No
 generator you can own changed for them (the view SQL and the model pages' wording come from the
 packages), so an owned generator needs no resync. A report that declares
 `@spine`, or lists a measure with `@default`, lowers to different SQL and a tighter row type
 than the same report without it.
 
-Serving reports added no vocabulary (`metamodelVersion` stays 1.1). The same change corrected
+Serving reports added no vocabulary and did not move `metamodelVersion`. The same change corrected
 generated output for models that declare no report. Each is in the
 [CHANGELOG](../../CHANGELOG.md) with the shape it affects:
 
