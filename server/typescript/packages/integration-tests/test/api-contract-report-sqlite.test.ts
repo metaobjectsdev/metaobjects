@@ -25,6 +25,11 @@ import { startSqliteReportServer, type SqliteReportEngine, type SqliteReportServ
 const SEED = JSON.parse(readFileSync(join(API_CONTRACT_REPORT_DIR, "seed.json"), "utf8")) as ReportSeed;
 const META_PATH = join(API_CONTRACT_REPORT_DIR, "meta.json");
 
+// Every test boots its own server; on D1 that is a Miniflare (workerd) process. Under the default
+// parallel lane load (8 lanes) that start-up alone can pass bun's 5000ms default, so these
+// server-backed tests get the same headroom as the other server-backed integration tests.
+const SERVER_TEST_TIMEOUT_MS = 120_000;
+
 const ENGINES: readonly SqliteReportEngine[] = ["sqlite", "d1"];
 
 async function withServer(
@@ -58,7 +63,7 @@ for (const engine of ENGINES) describe(`api contract report (FR-044) — GENERAT
       expect(row["invoices"]).toBe(5);
       expect(row["totalCents"]).toBe(315500);
     });
-  });
+  }, { timeout: SERVER_TEST_TIMEOUT_MS });
 
   test("a ratio is a string in the withCount envelope too", async () => {
     await withServer(engine, async (server) => {
@@ -68,14 +73,14 @@ for (const engine of ENGINES) describe(`api contract report (FR-044) — GENERAT
       expect(body.total).toBe(1);
       expect(typeof body.rows[0]!["paidShare"]).toBe("string");
     });
-  });
+  }, { timeout: SERVER_TEST_TIMEOUT_MS });
 
   test("a ratio over zero rows is null, not the string 'null' or 0", async () => {
     await withServer(engine, async (server) => {
       const rows = (await getJson(server, "/api/invoice_totals")) as Array<Record<string, unknown>>;
       expect(rows).toEqual([{ invoices: 0, totalCents: null, paidShare: null }]);
     }, { invoices: [] });
-  });
+  }, { timeout: SERVER_TEST_TIMEOUT_MS });
 
   test("a report with no decimal field is untouched: every value keeps its type", async () => {
     await withServer(engine, async (server) => {
@@ -89,7 +94,7 @@ for (const engine of ENGINES) describe(`api contract report (FR-044) — GENERAT
         SEED.reports!["ProductRevenue"],
       );
     });
-  });
+  }, { timeout: SERVER_TEST_TIMEOUT_MS });
 
   test("the filter and the sort on a ratio still compare numerically after the wire change", async () => {
     await withServer(engine, async (server) => {
@@ -101,11 +106,11 @@ for (const engine of ENGINES) describe(`api contract report (FR-044) — GENERAT
       expect(await hit("/api/invoice_totals?filter[paidShare][eq]=0.4")).toBe(1);
       expect(await hit("/api/invoice_totals?sort=paidShare:desc")).toBe(1);
     });
-  });
+  }, { timeout: SERVER_TEST_TIMEOUT_MS });
 
   for (const scenario of loadScenarios(API_CONTRACT_REPORT_SCENARIOS_DIR)) {
     test(`shared scenario: ${scenario.name}`, async () => {
       await withServer(engine, (server) => runScenario(scenario, server.baseUrl));
-    });
+    }, { timeout: SERVER_TEST_TIMEOUT_MS });
   }
 });
