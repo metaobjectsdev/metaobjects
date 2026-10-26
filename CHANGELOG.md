@@ -10,6 +10,10 @@ here.**
 
 ## [Unreleased]
 
+## [1.1.3] — 2026-10-26
+
+_npm `1.1.3` (full lockstep across all 14 `@metaobjectsdev/*` publish candidates)._
+
 ### Changed
 
 - **A report list route answers every row up to one cap, and is refused above it, in all five
