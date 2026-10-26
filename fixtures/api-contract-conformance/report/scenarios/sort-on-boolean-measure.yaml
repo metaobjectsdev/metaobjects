@@ -3,7 +3,8 @@ description: >
   A sort on a defaulted boolean measure is deterministic on every engine: false sorts
   before true, and the product with no sale sorts as its default, false, never as a null
   whose place the engine chooses. Atlas is the only true row, so it is first descending.
-  The corpus never sorts `hasRefund` (no @default) across Cinder's null row.
+  A sort across `hasRefund` (no @default), where Cinder's row is null, is pinned by
+  sort-null-ordering.
 requests:
   - id: desc
     method: GET

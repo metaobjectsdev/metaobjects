@@ -113,7 +113,7 @@ def test_sqlite_read_uses_qmark_placeholders_and_double_quotes() -> None:
     sql, params = rec.sql[-1]
     assert sql == (
         'SELECT "id", "label", "qty", "active", "price", "ref", "madeOn", "seenAt" FROM "items" '
-        'WHERE "qty" >= ? AND "label" = ? ORDER BY "qty" DESC LIMIT 5 OFFSET 10'
+        'WHERE "qty" >= ? AND "label" = ? ORDER BY "qty" DESC NULLS FIRST LIMIT 5 OFFSET 10'
     )
     assert params == (2, "a")
 
@@ -264,7 +264,7 @@ def test_mysql_read_uses_backticks_and_percent_placeholders() -> None:
     sql, params = conn.sql[-1]
     assert sql == (
         "SELECT `id`, `label`, `qty`, `active`, `price`, `ref`, `madeOn`, `seenAt` FROM `items` "
-        "WHERE `qty` >= %s AND `label` LIKE BINARY %s ORDER BY `qty` ASC "
+        "WHERE `qty` >= %s AND `label` LIKE BINARY %s ORDER BY (`qty` IS NULL) ASC, `qty` ASC "
         "LIMIT 18446744073709551615 OFFSET 4"
     )
     assert params == (2, "A%")
@@ -415,3 +415,14 @@ def test_a_mysql_decimal_operand_is_cast_to_a_decimal() -> None:
     sql, _ = _op_clause("amount", "in", [Decimal("1"), Decimal("2")], f, MYSQL)
     assert sql.count("CAST(%s AS DECIMAL(65,30))") == 2
     assert _op_clause("amount", "eq", Decimal("1.5"), f, POSTGRES)[0] == '"amount" = %s'
+
+
+def test_order_term_puts_nulls_largest_on_every_dialect() -> None:
+    from metaobjects.runtime.dialect import MySqlDialect, PostgresDialect, SqliteDialect
+
+    for d in (PostgresDialect(), SqliteDialect()):
+        assert d.order_term('"c"', False) == '"c" ASC NULLS LAST'
+        assert d.order_term('"c"', True) == '"c" DESC NULLS FIRST'
+    my = MySqlDialect()
+    assert my.order_term("`c`", False) == "(`c` IS NULL) ASC, `c` ASC"
+    assert my.order_term("`c`", True) == "(`c` IS NULL) DESC, `c` DESC"

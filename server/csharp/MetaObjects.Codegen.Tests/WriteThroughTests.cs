@@ -160,6 +160,15 @@ public class WriteThroughTests
         Assert.Contains("ApplySortOrder(IQueryable<OrderView> q", src);
     }
 
+    [Fact]
+    public void Entity_list_sort_puts_nulls_largest()
+    {
+        // Nulls sort as larger than any value on every provider: ASC last, DESC first.
+        var src = Src(new RoutesGenerator().Generate(Ctx(Load())), "OrderRoutes.g.cs");
+        Assert.Contains(".OrderByDescending(x => EF.Property<object>(x!, \"Id\") == null).ThenByDescending(", src);
+        Assert.Contains(".OrderBy(x => EF.Property<object>(x!, \"Id\") == null).ThenBy(", src);
+    }
+
     // ---- Reverse finders are reads → route to the view DbSet --------------------
 
     [Fact]

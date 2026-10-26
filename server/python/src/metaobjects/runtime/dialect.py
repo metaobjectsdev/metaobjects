@@ -68,6 +68,12 @@ class Dialect:
         """``col LIKE pattern`` with the pattern verbatim and the match case-SENSITIVE."""
         return f"{quoted_column} LIKE {self.placeholder}", [pattern]
 
+    def order_term(self, quoted_column: str, descending: bool) -> str:
+        """One ``ORDER BY`` term with nulls LARGER than any value: ASC puts them last, DESC
+        first, on every engine. That is Postgres's own default, so this is its native form;
+        SQLite and MySQL would put nulls first on ASC."""
+        return f"{quoted_column} {'DESC NULLS FIRST' if descending else 'ASC NULLS LAST'}"
+
     def false_predicate(self) -> str:
         return "FALSE"
 
@@ -269,6 +275,11 @@ class MySqlDialect(Dialect):
     synthesizes_type_codes = True
     default_values = "() VALUES ()"
     unbounded_limit = "18446744073709551615"
+
+    def order_term(self, quoted_column: str, descending: bool) -> str:
+        # No NULLS FIRST/LAST on MySQL: a leading `col IS NULL` key (0 for a value, 1 for null).
+        d = "DESC" if descending else "ASC"
+        return f"({quoted_column} IS NULL) {d}, {quoted_column} {d}"
 
     def quote(self, ident: str) -> str:
         if "`" in ident:

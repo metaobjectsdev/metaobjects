@@ -39,9 +39,12 @@ object uses (`InvoicesByMonth` is `/api/invoices_by_months`).
   (`revenueCents`) is `null` with the key present, and the sum with `@default: 0`
   (`revenueOrZero`) is `0`. `?filter[sales][gt]=0` removes the empty row at request time.
 - **A defaulted measure filters and sorts as its default.** `?filter[revenueOrZero][eq]=0`
-  matches the empty row, and `?sort=revenueOrZero:asc` puts it first on every engine. The
-  corpus never sorts a measure without a `@default` across a null row: where a null sorts is
-  the engine's choice (Postgres last ascending, SQLite and MySQL first).
+  matches the empty row, and `?sort=revenueOrZero:asc` puts it first on every engine.
+- **Nulls sort as larger than any value** (`sort-null-ordering`): ascending puts them last,
+  descending first, on every engine. `?sort=revenueCents:asc` ends on `Cinder`'s null row and
+  `:desc` starts on it. That is Postgres's own default; SQLite and MySQL would put a null first
+  ascending, so each port pins the order (`NULLS LAST` / `NULLS FIRST`, or a leading
+  `col IS NULL` key where the engine has no such clause).
 - **No grid or form is generated for a report in any port.** The read route and its row type
   are the surface in every port; TypeScript, the one port with a client tier, also generates
   the list hook. The corpus gates the route, not the hook.

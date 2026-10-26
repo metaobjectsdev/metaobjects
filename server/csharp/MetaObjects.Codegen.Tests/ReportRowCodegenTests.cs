@@ -354,7 +354,7 @@ public class ReportRowCodegenTests
             routes.IndexOf("SortAllowlist =", StringComparison.Ordinal)..routes.IndexOf("SortDefaultDesc =", StringComparison.Ordinal)];
         Assert.Contains("        \"Status\",\n", allowlist.ReplaceLineEndings("\n"));
         Assert.Contains(
-            "            \"Status\" => desc ? q.OrderByDescending(x => EF.Property<object>(x!, \"Status\")) : q.OrderBy(x => EF.Property<object>(x!, \"Status\")),",
+            "            \"Status\" => desc ? q.OrderByDescending(x => EF.Property<object>(x!, \"Status\") == null).ThenByDescending(x => EF.Property<object>(x!, \"Status\")) : q.OrderBy(x => EF.Property<object>(x!, \"Status\") == null).ThenBy(x => EF.Property<object>(x!, \"Status\")),",
             routes);
         // Every derived field of the cube is in the sort allowlist, in Table B order.
         var sortable = allowlist.Split('\n').Select(l => l.Trim()).Where(l => l.StartsWith('"'))

@@ -121,7 +121,7 @@ export function parseFilterParams(opts: ParseFilterOpts): ParseFilterResult {
   }
 
   if (typeof opts.query.sort === "string") {
-    result.orderBy = parseSort(opts.query.sort, opts.table, opts.sortAllowlist);
+    result.orderBy = parseSort(opts.query.sort, opts.table, opts.sortAllowlist, opts.dialect);
   }
 
   if (typeof opts.query.search === "string" && opts.query.search !== "") {
@@ -421,7 +421,7 @@ function ensureArray(v: unknown, key: string): unknown[] {
   throw new FilterParseError("filter.invalid_value", `Expected array for "${key}".`, { field: key });
 }
 
-function parseSort(spec: string, table: AnyTable, sortAllowlist: SortAllowlist): SQLWrapper[] {
+function parseSort(spec: string, table: AnyTable, sortAllowlist: SortAllowlist, dialect: SqlDialect | undefined): SQLWrapper[] {
   const colonIdx = spec.indexOf(":");
   const field = colonIdx === -1 ? spec : spec.slice(0, colonIdx);
   if (!sortAllowlist[field]) {
@@ -458,5 +458,21 @@ function parseSort(spec: string, table: AnyTable, sortAllowlist: SortAllowlist):
     );
   }
   const col = table[field];
-  return [order === "asc" ? asc(col as any) : desc(col as any)];
+  return nullsAsLargest(col as any, order, dialect);
+}
+
+/**
+ * Order a column with nulls as LARGER than any value: ASC puts them last, DESC first, on
+ * every engine. That is Postgres's own default; SQLite and MySQL put nulls first on ASC, so
+ * a bare `ORDER BY col` answered the same list in a different order per engine. SQLite
+ * (3.30+, D1 included) and Postgres take `NULLS FIRST/LAST`; MySQL has no such clause, so it
+ * gets a leading `col IS NULL` key (0 for a value, 1 for null).
+ */
+function nullsAsLargest(col: SQLWrapper, order: "asc" | "desc", dialect: SqlDialect | undefined): SQLWrapper[] {
+  if (dialect === "mysql") {
+    return order === "asc"
+      ? [asc(sql`(${col} IS NULL)`), asc(col)]
+      : [desc(sql`(${col} IS NULL)`), desc(col)];
+  }
+  return [order === "asc" ? sql`${col} ASC NULLS LAST` : sql`${col} DESC NULLS FIRST`];
 }

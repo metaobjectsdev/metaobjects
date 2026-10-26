@@ -77,9 +77,9 @@ describe("api-contract report corpus", () => {
     }
   });
 
-  test("every scenario parses, and there are thirty", () => {
+  test("every scenario parses, and there are thirty-one", () => {
     const scenarios = loadScenarios(API_CONTRACT_REPORT_SCENARIOS_DIR);
-    expect(scenarios.length).toBe(30);
+    expect(scenarios.length).toBe(31);
     for (const s of scenarios) expect(s.requests.length).toBeGreaterThan(0);
   });
 

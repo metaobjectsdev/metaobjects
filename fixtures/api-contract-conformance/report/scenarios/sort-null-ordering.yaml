@@ -1,0 +1,28 @@
+name: report-sort-null-ordering
+description: >
+  Nulls sort as larger than any value, on every engine: ascending puts them last, descending
+  puts them first. Cinder has no sale, so its revenueCents (a sum with no @default) is null.
+  That is Postgres's own default; SQLite and MySQL put a null first ascending, so each port
+  lowers the sort to `NULLS LAST` / `NULLS FIRST`, or to a leading `col IS NULL` key where
+  the engine has no such clause, and the same request answers the same order everywhere.
+requests:
+  - id: asc-nulls-last
+    method: GET
+    path: /api/product_revenues?sort=revenueCents:asc
+    expect:
+      status: 200
+      body:
+        equals:
+          - { productId: 2, productName: "Beacon", sales: 1, revenueCents: 4500, revenueOrZero: 4500 }
+          - { productId: 1, productName: "Atlas", sales: 2, revenueCents: 30000, revenueOrZero: 30000 }
+          - { productId: 3, productName: "Cinder", sales: 0, revenueCents: null, revenueOrZero: 0 }
+  - id: desc-nulls-first
+    method: GET
+    path: /api/product_revenues?sort=revenueCents:desc
+    expect:
+      status: 200
+      body:
+        equals:
+          - { productId: 3, productName: "Cinder", sales: 0, revenueCents: null, revenueOrZero: 0 }
+          - { productId: 1, productName: "Atlas", sales: 2, revenueCents: 30000, revenueOrZero: 30000 }
+          - { productId: 2, productName: "Beacon", sales: 1, revenueCents: 4500, revenueOrZero: 4500 }

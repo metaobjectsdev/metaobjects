@@ -142,6 +142,22 @@ describe("parseFilterParams — happy path", () => {
     expect(r.orderBy?.length).toBe(1);
   });
 
+  test("sort puts nulls last ascending and first descending on every dialect", () => {
+    const sortText = (q: string, dialect: "sqlite" | "postgres" | "mysql") =>
+      (parseFilterParams({ query: parsedQs(q), table, allowlist, sortAllowlist, dialect }).orderBy ?? [])
+        .map((o) => collectSqlText(o).toLowerCase());
+    for (const dialect of ["sqlite", "postgres"] as const) {
+      expect(sortText("?sort=email:asc", dialect).join(" ")).toContain("asc nulls last");
+      expect(sortText("?sort=email:desc", dialect).join(" ")).toContain("desc nulls first");
+    }
+    // MySQL has no NULLS clause: a leading `IS NULL` key carries the same order.
+    for (const q of ["?sort=email:asc", "?sort=email:desc"]) {
+      const keys = sortText(q, "mysql");
+      expect(keys.length).toBe(2);
+      expect(keys[0]).toContain("is null");
+    }
+  });
+
   test("sort default is asc when no order specified and the field declares none", () => {
     const r = parseFilterParams({
       query: parsedQs("?sort=email"),

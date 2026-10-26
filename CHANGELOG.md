@@ -26,6 +26,17 @@ here.**
   every port at this version. A model that does not use it is unchanged. See
   [docs/features/reporting.md](docs/features/reporting.md#calendar-aligned-windows-startof).
 
+### Changed
+
+- **A list or report sort puts nulls last ascending and first descending, on every engine, in
+  all five ports.** Nulls sort as larger than any value, which is Postgres's own default, so
+  **Postgres output does not change; SQLite and MySQL sorted output does** for any column with
+  nulls: those engines used to put a null first ascending. It applies to every `?sort=` the
+  generated routes and the runtime `ObjectManager` drivers emit (TypeScript, C#, Java, Kotlin,
+  Python), using native `NULLS LAST` / `NULLS FIRST` where the engine has it and a leading
+  `col IS NULL` key where it does not (MySQL). Pinned by the api-contract `report/` scenario
+  `sort-null-ordering`; see [api-contract.md](docs/features/api-contract.md#null-ordering).
+
 ### Fixed
 
 - **A relative date with months or years now lands on the same day on SQLite and D1 as on

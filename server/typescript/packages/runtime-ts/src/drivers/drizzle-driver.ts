@@ -29,6 +29,7 @@ import {
   count as drzCount,
   getTableName,
   getTableColumns,
+  sql,
   type SQL,
 } from "drizzle-orm";
 import { extractRowCount } from "../drizzle-fastify/util.js";
@@ -188,15 +189,17 @@ function makeDrizzleDriver(
   }
 
   function applyOrder(qb: AnyDrizzleDB, orderBy: SelectSpec["orderBy"], table: AnyTable): AnyDrizzleDB {
+    // Nulls sort as larger than any value on every engine (ASC last, DESC first), which is
+    // Postgres's default. MySQL has no NULLS clause, so it orders on `col IS NULL` first.
     if (!orderBy) return qb;
     const cols = columnMap(table);
-    const exprs = orderBy
-      .map((ob) => {
-        const c = cols.get(ob.column);
-        if (!c) return undefined;
-        return ob.direction === "desc" ? drzDesc(c) : drzAsc(c);
-      })
-      .filter((e): e is SQL => e !== undefined);
+    const exprs = orderBy.flatMap((ob): SQL[] => {
+      const c = cols.get(ob.column);
+      if (!c) return [];
+      const dir = ob.direction === "desc" ? drzDesc : drzAsc;
+      if (dialect === "mysql") return [dir(sql`(${c} IS NULL)`), dir(c)];
+      return [ob.direction === "desc" ? sql`${c} DESC NULLS FIRST` : sql`${c} ASC NULLS LAST`];
+    });
     return exprs.length > 0 ? qb.orderBy(...exprs) : qb;
   }
 

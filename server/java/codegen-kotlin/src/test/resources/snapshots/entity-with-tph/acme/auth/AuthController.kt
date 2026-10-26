@@ -56,8 +56,8 @@ private fun parseAuthSort(raw: String): Pair<String, SortOrder>? {
     if (field !in AuthSortAllowlist) return null
     val dir = when (parts.getOrNull(1)?.lowercase()
         ?: AuthSortDefaultOrder[field] ?: "asc") {
-        "asc" -> SortOrder.ASC
-        "desc" -> SortOrder.DESC
+        "asc" -> SortOrder.ASC_NULLS_LAST
+        "desc" -> SortOrder.DESC_NULLS_FIRST
         else -> return null
     }
     return field to dir

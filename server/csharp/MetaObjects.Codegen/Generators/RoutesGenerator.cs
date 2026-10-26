@@ -433,9 +433,9 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine("        {");
         foreach (var name in sortFields)
         {
-            var exact = $"desc ? q.OrderByDescending(x => EF.Property<object>(x!, \"{name}\")) : q.OrderBy(x => EF.Property<object>(x!, \"{name}\"))";
+            var exact = NullsLargestSort("q", $"EF.Property<object>(x!, \"{name}\")");
             sb.AppendLine(decimalSortFields.Contains(name)
-                ? $"            \"{name}\" => sqlite ? (desc ? q.OrderByDescending(x => (double?)EF.Property<decimal?>(x!, \"{name}\")) : q.OrderBy(x => (double?)EF.Property<decimal?>(x!, \"{name}\"))) : ({exact}),"
+                ? $"            \"{name}\" => sqlite ? ({NullsLargestSort("q", $"(double?)EF.Property<decimal?>(x!, \"{name}\")")}) : ({exact}),"
                 : $"            \"{name}\" => {exact},");
         }
         sb.AppendLine("            _ => (IOrderedQueryable<" + readCls + ">)q.OrderBy(x => 0),");
@@ -635,7 +635,7 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine("        return field switch");
         sb.AppendLine("        {");
         foreach (var name in sortFields)
-            sb.AppendLine($"            \"{name}\" => desc ? q.OrderByDescending(x => EF.Property<object>(x!, \"{name}\")) : q.OrderBy(x => EF.Property<object>(x!, \"{name}\")),");
+            sb.AppendLine($"            \"{name}\" => {NullsLargestSort("q", $"EF.Property<object>(x!, \"{name}\")")},");
         sb.AppendLine("            _ => (IOrderedQueryable<" + baseCls + ">)q.OrderBy(x => 0),");
         sb.AppendLine("        };");
         sb.AppendLine("    }");
@@ -1208,7 +1208,7 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine("                var desc = parts.Length > 1");
         sb.AppendLine("                    ? string.Equals(parts[1], \"desc\", System.StringComparison.OrdinalIgnoreCase)");
         sb.AppendLine($"                    : {subCls}SortDefaultDesc.TryGetValue(resolved, out var dd) && dd;");
-        sb.AppendLine("                q = desc ? q.OrderByDescending(x => EF.Property<object>(x!, resolved)) : q.OrderBy(x => EF.Property<object>(x!, resolved));");
+        sb.AppendLine("                q = " + NullsLargestSort("q", "EF.Property<object>(x!, resolved)") + ";");
         sb.AppendLine("            }");
         sb.AppendLine("            if (qs.TryGetValue(\"offset\", out var offRaw) && int.TryParse(offRaw, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var off) && off > 0) q = q.Skip(off);");
         sb.AppendLine("            if (qs.TryGetValue(\"limit\", out var limRaw) && int.TryParse(limRaw, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var lim) && lim > 0) q = q.Take(lim);");
@@ -1449,4 +1449,13 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine();
     }
 
+
+    /// <summary>
+    /// The emitted sort expression for one column, with nulls LARGER than any value: ASC puts
+    /// them last, DESC first, on every provider (Postgres's own default; SQLite and MySQL
+    /// would otherwise put them first on ASC). A leading `col == null` key says it in a way
+    /// every EF Core provider translates, where `NULLS LAST` is not portable.
+    /// </summary>
+    private static string NullsLargestSort(string query, string column) =>
+        $"desc ? {query}.OrderByDescending(x => {column} == null).ThenByDescending(x => {column}) : {query}.OrderBy(x => {column} == null).ThenBy(x => {column})";
 }

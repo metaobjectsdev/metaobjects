@@ -906,9 +906,24 @@ public class GenericSQLDriver implements DatabaseDriver {
     }
 
     /**
+     * One ORDER BY term with nulls LARGER than any value: ASC puts them last, DESC first, on
+     * every engine (Postgres's own default; SQLite and MySQL would otherwise put nulls first on
+     * ASC). The default is a leading {@code CASE WHEN expr IS NULL} key, which every supported
+     * engine accepts; a driver with native {@code NULLS FIRST/LAST} overrides it.
+     */
+    protected String orderTerm(String expr, boolean desc, boolean distinct) {
+        String dir = desc ? " DESC" : "";
+        // SELECT DISTINCT rejects ORDER BY items outside the select list (MSSQL, Oracle, MySQL), so no null key.
+        if (distinct) {
+            return expr + dir;
+        }
+        return "CASE WHEN " + expr + " IS NULL THEN 1 ELSE 0 END" + dir + ", " + expr + dir;
+    }
+
+    /**
      * Gets the ORDER BY clause
      */
-    protected String getOrderString(MetaObject mc, ObjectMappingDB omdb, SortOrder order) throws MetaDataException {
+    protected String getOrderString(MetaObject mc, ObjectMappingDB omdb, SortOrder order, boolean distinct) throws MetaDataException {
 
         StringBuilder b = new StringBuilder();
 
@@ -929,19 +944,18 @@ public class GenericSQLDriver implements DatabaseDriver {
                 throw new MetaDataException("MetaField [" + mf + "] has no column mapping for [" + omdb + "]");
             }
 
+            StringBuilder expr = new StringBuilder();
             if (mf instanceof com.metaobjects.field.StringField) {
-                b.append("UPPER(");
-                b.append(prefix).append(".");
-                b.append(quoteIdent(colDef.getName()));
-                b.append(')');
+                expr.append("UPPER(");
+                expr.append(prefix).append(".");
+                expr.append(quoteIdent(colDef.getName()));
+                expr.append(')');
             } else {
-                b.append(prefix).append(".");
-                b.append(quoteIdent(colDef.getName()));
+                expr.append(prefix).append(".");
+                expr.append(quoteIdent(colDef.getName()));
             }
 
-            if (order.getOrder() == SortOrder.DESC) {
-                b.append(" DESC");
-            }
+            b.append(orderTerm(expr.toString(), order.getOrder() == SortOrder.DESC, distinct));
 
             order = order.getNext();
         }
@@ -1317,7 +1331,7 @@ public class GenericSQLDriver implements DatabaseDriver {
         }
 
         if (order != null) {
-            query.append(" ORDER BY ").append(getOrderString(mc, omdb, order));
+            query.append(" ORDER BY ").append(getOrderString(mc, omdb, order, options.isDistinct()));
         } else if (applyRange && rangeRequiresOrderBy()) {
             // ANSI OFFSET/FETCH (SQL Server 2012+, Oracle 12c+) is only valid
             // when preceded by an ORDER BY. Supply a deterministic fallback when

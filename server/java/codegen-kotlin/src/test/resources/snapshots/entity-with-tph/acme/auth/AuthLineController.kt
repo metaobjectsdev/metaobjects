@@ -52,8 +52,8 @@ private fun parseAuthLineSort(raw: String): Pair<String, SortOrder>? {
     val dirRaw = parts.getOrNull(1)?.lowercase()
         ?: AuthLineSortDefaultOrder[field] ?: "asc"
     val dir = when (dirRaw) {
-        "asc" -> SortOrder.ASC
-        "desc" -> SortOrder.DESC
+        "asc" -> SortOrder.ASC_NULLS_LAST
+        "desc" -> SortOrder.DESC_NULLS_FIRST
         else -> return null
     }
     return field to dir
