@@ -22,6 +22,16 @@ here.**
 
 ### Fixed
 
+- **`meta verify --db` no longer reports false drift on a regex CHECK over a varchar/text
+  column.** Postgres stores `"key" ~ '^[a-z]+$'` as `((key)::text ~ '^[a-z]+$'::text)`; the
+  literal's `::text` was already folded away but the column's was not, so a database `migrate`
+  had just built showed the same constraint as both added and dropped. The comparison now
+  drops a `(col)::text` cast before a regex-match operator (`~`, `~*`, `!~`, `!~*`) only when
+  the database column is `text`, `varchar` or `bpchar`; on any other column, `citext` included,
+  the cast changes the operator and still reads as drift, as does a changed pattern or any
+  other cast. Schema comparison is TypeScript-owned, so no other port
+  carries this comparison.
+
 - **The api reference now follows a routes generator's `filter` as well as its `expose`.**
   `routesFile({ filter })` and `routesFileHono({ filter })` mount nothing for an entity the filter
   rejects, but the API pages still listed all five verbs for it. The pages now document the

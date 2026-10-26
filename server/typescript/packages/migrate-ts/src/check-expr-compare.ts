@@ -41,12 +41,17 @@ function unwrapBacktickIdentifiers(expr: string): string {
     .join("");
 }
 
+const NO_COLUMNS: ReadonlySet<string> = new Set();
+
 /**
  * Canonical form: drop casts/brackets/parens, fold `= ANY (ARRAY[…])` back to `IN`,
  * lower-case, collapse whitespace, canonicalize cast target types, and collapse spacing
  * around commas, casts and SYMBOLIC operators (outside single-quoted literals).
+ *
+ * `textColumns` (lower-cased names of text-family columns) lets a `(col)::text` cast before
+ * a regex operator fold away; see isElidableCast.
  */
-export function normalizeCheckExpr(expr: string): string {
+export function normalizeCheckExpr(expr: string, textColumns: ReadonlySet<string> = NO_COLUMNS): string {
   const stripped = unwrapBacktickIdentifiers(expr)
     .toLowerCase()
     // Drop `::text` / `::"MyType"` type casts PG adds to literals. The lookbehind
@@ -95,7 +100,7 @@ export function normalizeCheckExpr(expr: string): string {
   // meaningful, so two checks differing only there must stay distinct — else a real
   // pattern change reads as clean drift, which is this file's failure in the other
   // direction and the worse of the two.
-  return collapseSeparatorSpacingOutsideQuotes(folded);
+  return collapseSeparatorSpacingOutsideQuotes(folded, textColumns);
 }
 
 /**
@@ -192,7 +197,17 @@ function readCastTarget(s: string, i: number): { type: string; consumed: number 
  * cast on anything that is not a literal or a text-returning operator is a REAL cast and
  * survives, because erasing it would let a genuine change read as clean drift.
  */
-function isElidableCast(type: string, lhs: string): boolean {
+function isElidableCast(type: string, lhs: string, rest: string, textColumns: ReadonlySet<string>): boolean {
+  // `::text` on a COLUMN directly before a regex-match operator (`~`, `~*`, `!~`, `!~*`),
+  // and only when the caller names that column as text-family (text, character varying,
+  // character). On such a column PG adds the cast itself (`"key" ~ '…'` comes back
+  // `((key)::text ~ '…'::text)`). On any other column, citext included, the cast changes
+  // the operator (`col::text ~ 'A'` is case-sensitive, `col ~ 'A'` on citext is not), so it
+  // survives. With no set supplied nothing is elided.
+  if (type === "text" && /^\s*!?~\*?(?![-+*\/<>=~!@#%^&|?])/.test(rest)) {
+    const column = /(?:^|[^\w.])([a-z_]\w*)$/.exec(lhs)?.[1];
+    if (column !== undefined && textColumns.has(column)) return true;
+  }
   // `->>` / `#>>` yield text; a following `::text` cannot change anything.
   if (type === "text" && /(?:->>|#>>)\s*(?:'(?:[^']|'')*'|[\w."]+)$/.test(lhs)) return true;
   // A numeric literal cast to a numeric type.
@@ -210,7 +225,7 @@ function isElidableCast(type: string, lhs: string): boolean {
  * distinct regex CHECKs would compare equal — a real change reading as clean drift, which
  * is this file's failure in the worse direction.
  */
-function collapseSeparatorSpacingOutsideQuotes(s: string): string {
+function collapseSeparatorSpacingOutsideQuotes(s: string, textColumns: ReadonlySet<string>): string {
   let out = "";
   let i = 0;
   const n = s.length;
@@ -246,7 +261,7 @@ function collapseSeparatorSpacingOutsideQuotes(s: string): string {
       const target = readCastTarget(s, i);
       i += target.consumed;
       const lhs = out.replace(/\s+$/, "");
-      token = isElidableCast(target.type, lhs) ? "" : `::${target.type}`;
+      token = isElidableCast(target.type, lhs, s.slice(i), textColumns) ? "" : `::${target.type}`;
       out = lhs;
       // Whitespace AFTER the target type is load-bearing — `x::integer is not null` must
       // not become `x::integeris not null` — so the cast, unlike a comma or an operator,
@@ -272,9 +287,13 @@ function collapseSeparatorSpacingOutsideQuotes(s: string): string {
 }
 
 /** True when two CHECK expressions are equivalent after normalization. */
-export function checkExprEquals(a: string | undefined, b: string | undefined): boolean {
+export function checkExprEquals(
+  a: string | undefined,
+  b: string | undefined,
+  textColumns?: ReadonlySet<string>,
+): boolean {
   if (a === undefined || b === undefined) return false;
-  return normalizeCheckExpr(a) === normalizeCheckExpr(b);
+  return normalizeCheckExpr(a, textColumns) === normalizeCheckExpr(b, textColumns);
 }
 
 /**
