@@ -252,7 +252,8 @@ public static class EjectCommand
     /// <paramref name="names"/> every identical owned copy goes; with names only those, and a copy that
     /// DIFFERS is refused (exit 2, nothing removed) unless <paramref name="force"/>. Every name is
     /// validated before anything is deleted. Companion emitters go only when identical (or forced) and
-    /// no remaining owned generator is handed them; the helper runtime likewise. It never edits
+    /// no remaining owned generator is handed them. The helper runtime counts toward a copy being
+    /// identical, so it goes whole when no remaining owned generator's output imports it. It never edits
     /// codegen/Generators.cs or the project: it prints the edit that points each entry back at the
     /// shipped generator.
     /// </summary>
@@ -269,7 +270,7 @@ public static class EjectCommand
                 return new Outcome(0, [owned.Count == 0
                     ? "no owned generator copies under codegen/generators/; nothing to undo."
                     : "no owned copy is identical to its shipped generator, so nothing was removed: " +
-                      string.Join("; ", owned.Select(e => $"{e.Name} {OwnedCopy.Status(root, e)}")) + "."], []);
+                      string.Join("; ", owned.Select(e => $"{e.Name} {OwnedCopy.UndoStatus(root, e)}")) + "."], []);
             }
         }
         else
@@ -285,11 +286,11 @@ public static class EjectCommand
             if (notOwned.Count > 0)
                 return Outcome.Usage(
                     $"no owned copy of: {string.Join(", ", notOwned)} under codegen/generators/. Nothing was removed.");
-            var differs = targets.Where(e => OwnedCopy.Status(root, e) != "identical").ToList();
+            var differs = targets.Where(e => OwnedCopy.UndoStatus(root, e) != "identical").ToList();
             if (differs.Count > 0 && !force)
                 return Outcome.Usage(
                     "not removed (nothing was changed): " +
-                    string.Join("; ", differs.Select(e => $"{e.Name} {OwnedCopy.Status(root, e)}")) +
+                    string.Join("; ", differs.Select(e => $"{e.Name} {OwnedCopy.UndoStatus(root, e)}")) +
                     ". Undo drops only copies identical to the shipped generator; `dotnet meta gen --list` " +
                     "shows how each one differs. Pass --force to discard your edits.");
         }
@@ -335,12 +336,6 @@ public static class EjectCommand
                 {
                     var path = Path.Combine(runtimeDir, file);
                     if (!File.Exists(path)) continue;
-                    if (!force && OwnedCopy.Compare(File.ReadAllText(path), HelperRuntime.OwnedReference(file)).Verdict
-                        != OwnedCopy.Verdict.Identical)
-                    {
-                        lines.Add($"  kept {HelperRuntime.OwnedDirectory}/{file} — it differs from the shipped one, so it is yours");
-                        continue;
-                    }
                     File.Delete(path);
                     lines.Add($"  removed {HelperRuntime.OwnedDirectory}/{file}");
                     runtimeRemoved = true;

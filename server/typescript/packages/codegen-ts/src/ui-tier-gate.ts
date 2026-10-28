@@ -91,6 +91,12 @@ export function runEmitsQueries(generators: readonly Generator[]): boolean {
   return generators.some((g) => g.emitsQueries === true || g.name === "queries-file");
 }
 
+/** Does this run write the entity modules (`<Entity>.ts`: the model, its Zod schemas and its
+ *  `relations()`)? Same reasoning, and same name fallback, as {@link runEmitsQueries}. */
+export function runEmitsEntityModule(generators: readonly Generator[]): boolean {
+  return generators.some((g) => g.emitsEntityModule === true || g.name === "entity-file");
+}
+
 /** Does this run mount the Fastify REST routes? Same reasoning, and same name fallback, as {@link runEmitsQueries}. */
 export function runEmitsRestRoutes(generators: readonly Generator[]): boolean {
   return generators.some(

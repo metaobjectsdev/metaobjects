@@ -153,4 +153,36 @@ public sealed class EjectUndoTests : IDisposable
         Assert.DoesNotContain("entity", notice);
         Assert.Contains("dotnet meta eject --undo", notice);
     }
+
+    [Fact]
+    public void A_changed_helper_runtime_keeps_its_generator_out_of_the_notice_and_out_of_no_name_undo()
+    {
+        Eject("routes");
+        Assert.Contains("routes", OwnedCopy.IdenticalNotice(_root)!);
+        var runtimeFile = $"{HelperRuntime.OwnedDirectory}/{HelperRuntime.Files[0]}";
+        Edit(runtimeFile);
+
+        Assert.Null(OwnedCopy.IdenticalNotice(_root));
+        var result = EjectCommand.Undo([], _root, force: false);
+        Assert.Equal(0, result.ExitCode);
+        Assert.True(File.Exists(Owned("codegen/generators/RoutesGenerator.cs")));
+        Assert.True(File.Exists(Owned(runtimeFile)));
+
+        var named = EjectCommand.Undo(["routes"], _root, force: false);
+        Assert.Equal(2, named.ExitCode);
+        Assert.Contains(HelperRuntime.Files[0], string.Join("\n", named.Err));
+        Assert.True(File.Exists(Owned("codegen/generators/RoutesGenerator.cs")));
+    }
+
+    [Fact]
+    public void Undoing_the_last_runtime_user_removes_the_whole_identical_helper_runtime()
+    {
+        Eject("routes");
+
+        var result = EjectCommand.Undo([], _root, force: false);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.False(Directory.Exists(Owned(HelperRuntime.OwnedDirectory)));
+        Assert.Contains(result.Out, l => l.StartsWith("The helper runtime copy is gone"));
+    }
 }

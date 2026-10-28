@@ -18,11 +18,13 @@ import java.util.stream.Collectors;
  * this plugin ships: what {@code mvn metaobjects:eject -Dundo=true} removes, and what
  * {@code metaobjects:generate} mentions in one advisory line.
  *
- * <p>Maven-free, like {@link EjectSupport}: it takes a directory and a resource reader. "Identical"
+ * <p>Maven-free, like {@link EjectSupport}: it takes directories and a resource reader. "Identical"
  * is {@link EjectSupport#compare} over every file the eject wrote for the generator: the generator,
  * the classes copied with it and the page templates it reads (a file gone missing counts as
- * differing). The shared support and runtime copies are not part of that verdict: other owned
- * generators import them, so undo leaves them and names them.
+ * differing), and the shared support and helper runtime copies it reaches. Undo never deletes the
+ * shared copies (other owned generators import them) and names them instead; but a change to one
+ * keeps the generator out of "identical", because the shipped generator imports the shipped
+ * support and runtime, so the change would stop reaching the generated code.
  */
 final class OwnedStock {
 
@@ -76,8 +78,34 @@ final class OwnedStock {
         String stockClassname() { return entry.classname; }
     }
 
-    /** Every owned copy under {@code codegenRoot}, in catalog order; empty when there is none. */
-    static List<Copy> find(Path codegenRoot, Reader reader) throws IOException {
+    /** The source roots an owned helper runtime may sit under: {@code base}'s and each module's
+     *  {@code src/main/java}. */
+    static List<Path> runtimeRoots(Path base, List<String> modules) {
+        List<Path> roots = new ArrayList<>();
+        roots.add(base.resolve("src/main/java"));
+        if (modules != null) {
+            for (String module : modules) roots.add(base.resolve(module).resolve("src/main/java"));
+        }
+        return roots;
+    }
+
+    /** The owned runtime copy of {@code simple} under {@code roots}, recognised by its ownership
+     *  marker, or {@code null}. */
+    static Path findOwnedRuntime(List<Path> roots, String simple) throws IOException {
+        for (Path root : roots) {
+            if (!Files.isDirectory(root)) continue;
+            try (var walk = Files.walk(root)) {
+                for (Path p : (Iterable<Path>) walk.filter(f -> f.getFileName().toString().equals(simple + ".java"))::iterator) {
+                    if (EjectSupport.isOwnedRuntime(Files.readString(p, StandardCharsets.UTF_8))) return p;
+                }
+            }
+        }
+        return null;
+    }
+
+    /** Every owned copy under {@code codegenRoot}, in catalog order; empty when there is none. The
+     *  helper runtime its output imports is looked for under {@code runtimeRoots}. */
+    static List<Copy> find(Path codegenRoot, List<Path> runtimeRoots, Reader reader) throws IOException {
         List<Copy> out = new ArrayList<>();
         if (codegenRoot == null || !Files.isDirectory(codegenRoot)) return out;
         for (EjectSupport.Entry e : EjectSupport.allEntries()) {
@@ -116,6 +144,22 @@ final class OwnedStock {
                     fold(totals, differing, ref + EjectSupport.TEMPLATE_EXTENSION, EjectSupport.compare(
                             owned, reader.read(GeneratorRegistry.EJECT_TEMPLATE_RESOURCE_ROOT
                                     + ref + EjectSupport.TEMPLATE_EXTENSION)));
+                }
+                Set<String> support = new LinkedHashSet<>();
+                for (String source : e.sources()) support.addAll(EjectSupport.supportFor(reader.read(e.resourceOf(source))));
+                for (String simple : support) {
+                    Path owned = MetaDataEjectMojo.findOwned(codegenRoot, "java", simple + ".java");
+                    if (owned == null) continue;
+                    fold(totals, differing, simple + ".java", EjectSupport.compare(
+                            Files.readString(owned, StandardCharsets.UTF_8),
+                            reader.read(GeneratorRegistry.EJECT_SUPPORT_RESOURCE_ROOT + simple + ".java")));
+                }
+                for (String simple : e.runtime) {
+                    Path owned = findOwnedRuntime(runtimeRoots, simple);
+                    if (owned == null) continue;
+                    fold(totals, differing, simple + ".java", EjectSupport.compare(
+                            Files.readString(owned, StandardCharsets.UTF_8),
+                            reader.read(GeneratorRegistry.EJECT_RUNTIME_RESOURCE_ROOT + simple + ".java")));
                 }
             }
             out.add(new Copy(e, ownedPackage, files, differing, totals[0], totals[1],

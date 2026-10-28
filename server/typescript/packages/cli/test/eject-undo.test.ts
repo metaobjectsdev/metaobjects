@@ -4,7 +4,7 @@
 // period when the stock generators could not be imported keeps carrying it. Nothing used to
 // notice. `meta gen` now says so, and `--undo` removes the copy.
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ejectCommand, stockCopyNotice } from "../src/commands/eject.js";
@@ -30,6 +30,13 @@ function tmp(): string {
 }
 const gen = (dir: string, name: string): string => join(dir, "codegen/generators", `${name}.ts`);
 const text = (): string => [...logged, ...erred].join("\n");
+/** The adapter files eject copied under `codegen/runtime/`, project-relative. */
+const runtimeFiles = (dir: string): string[] =>
+  existsSync(join(dir, "codegen/runtime"))
+    ? (readdirSync(join(dir, "codegen/runtime"), { recursive: true }) as string[])
+        .filter((f) => f.endsWith(".ts"))
+        .map((f) => `codegen/runtime/${f.replaceAll("\\", "/")}`)
+    : [];
 
 describe("meta eject --undo", () => {
   test("with no names, removes every owned copy that is the shipped reference", async () => {
@@ -186,6 +193,40 @@ describe("meta eject --undo", () => {
     }
   });
 
+  test("a changed runtime adapter keeps the generator that reaches it, named or not", async () => {
+    const dir = tmp();
+    try {
+      expect(await ejectCommand(["entity"], dir, "text")).toBe(0);
+      const [adapter] = runtimeFiles(dir);
+      expect(adapter).toBeDefined();
+      const adapterPath = join(dir, adapter as string);
+      writeFileSync(adapterPath, `${readFileSync(adapterPath, "utf8")}\nexport const mine = 1;\n`, "utf8");
+      logged = []; erred = [];
+      expect(await ejectCommand(["--undo"], dir, "text")).toBe(0);
+      expect(existsSync(gen(dir, "entity"))).toBe(true);
+      expect(existsSync(adapterPath)).toBe(true);
+      logged = []; erred = [];
+      expect(await ejectCommand(["--undo", "entity"], dir, "text")).toBe(2);
+      expect(existsSync(gen(dir, "entity"))).toBe(true);
+      expect(text()).toContain(adapter as string);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("an unchanged runtime adapter goes whole with the last generator that reaches it", async () => {
+    const dir = tmp();
+    try {
+      expect(await ejectCommand(["entity"], dir, "text")).toBe(0);
+      expect(runtimeFiles(dir).length).toBeGreaterThan(0);
+      expect(await ejectCommand(["--undo"], dir, "text")).toBe(0);
+      expect(runtimeFiles(dir)).toEqual([]);
+      expect(existsSync(gen(dir, "entity"))).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test("--undo does not combine with --list", async () => {
     const dir = tmp();
     try {
@@ -233,6 +274,21 @@ describe("stockCopyNotice", () => {
       expect(notice).toContain("entity");
       expect(notice).not.toContain("barrel");
       expect(notice).toContain("meta eject --undo");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("leaves out a copy whose runtime adapter changed", async () => {
+    const dir = tmp();
+    try {
+      await ejectCommand(["entity", "barrel"], dir, "text");
+      const [adapter] = runtimeFiles(dir);
+      const adapterPath = join(dir, adapter as string);
+      writeFileSync(adapterPath, `${readFileSync(adapterPath, "utf8")}\nexport const mine = 1;\n`, "utf8");
+      const notice = await stockCopyNotice(dir);
+      expect(notice).toContain("barrel");
+      expect(notice).not.toContain("entity");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

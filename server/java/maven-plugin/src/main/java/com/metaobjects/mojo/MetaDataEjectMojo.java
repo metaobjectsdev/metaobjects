@@ -268,7 +268,9 @@ public class MetaDataEjectMojo extends AbstractMojo {
         Path codegenRoot = project.getBasedir().toPath().resolve(CODEGEN_DIR);
         List<OwnedStock.Copy> all;
         try {
-            all = OwnedStock.find(codegenRoot, OwnedStock.classpath(getClass().getClassLoader()));
+            all = OwnedStock.find(codegenRoot,
+                    OwnedStock.runtimeRoots(project.getBasedir().toPath(), project.getModules()),
+                    OwnedStock.classpath(getClass().getClassLoader()));
         } catch (IOException ex) {
             throw new MojoExecutionException("Could not compare the owned copies under " + codegenRoot, ex);
         }
@@ -988,21 +990,8 @@ public class MetaDataEjectMojo extends AbstractMojo {
     /** The owned runtime copy of {@code simple} in this module or one of its children, or {@code null}. */
     private Path findOwnedRuntime(String simple) throws IOException {
         if (project == null || project.getBasedir() == null) return null;
-        Path base = project.getBasedir().toPath();
-        List<Path> roots = new ArrayList<>();
-        roots.add(base.resolve("src/main/java"));
-        if (project.getModules() != null) {
-            for (String module : project.getModules()) roots.add(base.resolve(module).resolve("src/main/java"));
-        }
-        for (Path root : roots) {
-            if (!Files.isDirectory(root)) continue;
-            try (var walk = Files.walk(root)) {
-                for (Path p : (Iterable<Path>) walk.filter(f -> f.getFileName().toString().equals(simple + ".java"))::iterator) {
-                    if (EjectSupport.isOwnedRuntime(Files.readString(p, StandardCharsets.UTF_8))) return p;
-                }
-            }
-        }
-        return null;
+        return OwnedStock.findOwnedRuntime(
+                OwnedStock.runtimeRoots(project.getBasedir().toPath(), project.getModules()), simple);
     }
 
     // ------------------------------------------------------------------------------------

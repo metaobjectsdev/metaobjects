@@ -15,7 +15,8 @@ import { runGen } from "../src/runner.js";
 import { defineConfig } from "../src/metaobjects-config.js";
 import { apiDocsFile } from "../src/generators/api-docs-file.js";
 import { entityFile } from "../src/generators/entity-file.js";
-import { runEmitsQueries, runEmitsRestRoutes } from "../src/ui-tier-gate.js";
+import { docsFile } from "../src/generators/docs-file.js";
+import { runEmitsEntityModule, runEmitsQueries, runEmitsRestRoutes } from "../src/ui-tier-gate.js";
 
 async function loadRoot() {
   const res = await new MetaDataLoader().load([
@@ -62,6 +63,14 @@ describe("the api reference documents only the surfaces the run writes", () => {
     expect(without.has("model")).toBe(true);
   });
 
+  test("no entity generator: the model, its schemas and relations() are not documented", async () => {
+    const root = await loadRoot();
+    const without = kinds(buildApiModel(root, { loadedRoot: root, includeEntityModule: false }));
+    expect(without.has("model")).toBe(false);
+    expect(without.has("validation")).toBe(false);
+    expect(without.has("data-access")).toBe(true);
+  });
+
   test("no routes generator: the REST endpoints are not documented", async () => {
     const root = await loadRoot();
     const without = kinds(buildApiModel(root, { loadedRoot: root, includeRestRoutes: false }));
@@ -81,6 +90,14 @@ describe("what the run's generators say they write", () => {
     expect(runEmitsQueries([{ name: "queries-file", generate: () => [] }])).toBe(true);
     expect(runEmitsQueries([{ name: "house-queries", generate: () => [] }])).toBe(false);
     expect(runEmitsQueries([{ name: "house-queries", emitsQueries: true, generate: () => [] }])).toBe(true);
+  });
+
+  test("entity module: the shipped generator by its marker, an older owned copy by its name", () => {
+    expect(runEmitsEntityModule([])).toBe(false);
+    expect(runEmitsEntityModule([queriesFile(), routesFile()])).toBe(false);
+    expect(runEmitsEntityModule([entityFile()])).toBe(true);
+    expect(runEmitsEntityModule([{ name: "entity-file", generate: () => [] }])).toBe(true);
+    expect(runEmitsEntityModule([{ name: "house-entity", emitsEntityModule: true, generate: () => [] }])).toBe(true);
   });
 
   test("routes: Fastify counts, Hono alone does not", () => {
@@ -117,6 +134,14 @@ describe("through meta gen: the written pages follow the generator list", () => 
     const p = await page([entityFile(), queriesFile(), routesFile(), apiDocsFile()]);
     expect(p).toContain("GET /products");
     expect(p).toContain("findProductById");
+    expect(p).toContain("ProductInsertSchema");
+  });
+
+  test("the meta init --with-docs scaffold (docs generators only) names nothing that is not generated", async () => {
+    const p = await page([docsFile(), apiDocsFile()]);
+    for (const symbol of ["interface Product", "ProductInsertSchema", "ProductUpdateSchema", "findProductById", "GET /products"]) {
+      expect(p).not.toContain(symbol);
+    }
   });
 
   test("a generator of your own that mounts routes and carries the marker counts", async () => {

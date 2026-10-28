@@ -220,9 +220,11 @@ here.**
   It is now written only when `modelBaseUrl` is set.
 
 - **TypeScript API docs describe only what the run writes.** The `api-docs` pages listed the
-  stock queries and Fastify routes for every entity, whatever the generator list held. A project
-  that wires neither now gets pages without them, and an owned generator that writes them
-  counts when it carries the `emitsQueries` or `mountsRoutes` marker.
+  stock entity module (the model, its Zod schemas and `relations()`), queries and Fastify routes
+  for every entity, whatever the generator list held. A project that wires none of them, such as
+  the `meta init --with-docs` scaffold, now gets pages without them. An owned generator that
+  writes one counts when it carries the `emitsEntityModule`, `emitsQueries` or `mountsRoutes`
+  marker.
 
 - **The metamodel reference index reads as prose.** The generated index said "NOT documentation"
   in capitals and told a reader of an HTML page to "follow a link into `types/<family>.md`". It

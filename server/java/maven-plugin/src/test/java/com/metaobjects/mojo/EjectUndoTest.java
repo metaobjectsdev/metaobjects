@@ -66,6 +66,18 @@ public class EjectUndoTest {
         return c.getAllValues().stream().map(CharSequence::toString).collect(Collectors.joining("\n"));
     }
 
+    private List<OwnedStock.Copy> findOwned() throws IOException {
+        return OwnedStock.find(basedir.resolve("codegen"), OwnedStock.runtimeRoots(basedir, List.of()),
+                OwnedStock.classpath(getClass().getClassLoader()));
+    }
+
+    /** The helper runtime eject copied for the owned generators, under {@code src/main/java}. */
+    private List<Path> ownedRuntime() throws IOException {
+        try (var walk = Files.walk(basedir.resolve("src/main/java"))) {
+            return walk.filter(p -> p.toString().endsWith(".java")).sorted().collect(Collectors.toList());
+        }
+    }
+
     private Path ownedDto() {
         return basedir.resolve("codegen/src/main/java/com/acme/codegen/SpringDtoGenerator.java");
     }
@@ -138,19 +150,34 @@ public class EjectUndoTest {
 
     @Test
     public void theGenerateNoticeNamesIdenticalCopiesAndStaysSilentOtherwise() throws Exception {
-        assertNull(OwnedStock.notice(OwnedStock.find(basedir.resolve("codegen"),
-                OwnedStock.classpath(getClass().getClassLoader()))));
+        assertNull(OwnedStock.notice(findOwned()));
         eject("dto");
-        String line = OwnedStock.notice(OwnedStock.find(basedir.resolve("codegen"),
-                OwnedStock.classpath(getClass().getClassLoader())));
+        String line = OwnedStock.notice(findOwned());
         assertNotNull(line);
         assertTrue(line, line.contains("dto"));
         assertTrue(line, line.contains("mvn metaobjects:eject -Dundo=true"));
         Files.writeString(ownedDto(), Files.readString(ownedDto()) + "\n// mine\n");
-        assertNull(OwnedStock.notice(OwnedStock.find(basedir.resolve("codegen"),
-                OwnedStock.classpath(getClass().getClassLoader()))));
-        assertEquals(1, OwnedStock.find(basedir.resolve("codegen"),
-                OwnedStock.classpath(getClass().getClassLoader())).stream()
+        assertNull(OwnedStock.notice(findOwned()));
+        assertEquals(1, findOwned().stream()
                 .filter(c -> c.entry.stableName.equals("dto")).count());
+    }
+
+    @Test
+    public void aChangedHelperRuntimeKeepsTheGeneratorOutOfTheNoticeAndOutOfNoNameUndo() throws Exception {
+        eject("dto");
+        List<Path> runtime = ownedRuntime();
+        assertFalse("ejecting dto copies the helper runtime its output imports", runtime.isEmpty());
+        assertNotNull(OwnedStock.notice(findOwned()));
+        Files.writeString(runtime.get(0), Files.readString(runtime.get(0)) + "\n// mine\n");
+        assertNull(OwnedStock.notice(findOwned()));
+        undo(null, false);
+        assertTrue("the generator whose runtime changed is not undone", Files.exists(ownedDto()));
+        try {
+            undo("dto", false);
+            fail("expected MojoFailureException");
+        } catch (MojoFailureException expected) {
+            assertTrue(expected.getMessage(), expected.getMessage().contains(runtime.get(0).getFileName().toString()));
+        }
+        assertTrue(Files.exists(ownedDto()));
     }
 }

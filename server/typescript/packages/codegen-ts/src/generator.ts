@@ -133,7 +133,10 @@ export interface Generator {
   /** Named output target (registry key). Defaults to "default". */
   target?: string;
   /** Marks the generator that produces entity modules — the runner uses its
-   *  target as the entity-module target for cross-target import resolution. */
+   *  target as the entity-module target for cross-target import resolution, and
+   *  aggregates it into `ctx.config.includeEntityModule`, which the api reference reads
+   *  to document the model, its Zod schemas and its `relations()` only when something
+   *  emits them. A copy ejected before the marker is matched by its name. */
   emitsEntityModule?: boolean;
   /** FR-038 §8 — declare the output namespace this generator exclusively owns.
    *  A full `meta gen` run already removes every file it recorded writing in a

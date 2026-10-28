@@ -128,10 +128,28 @@ public static class OwnedCopy
         return clauses.Count == 0 ? "identical" : string.Join("; ", clauses);
     }
 
-    /// <summary>Every ejectable entry whose owned copy, and the emitters eject handed over with it,
-    /// is identical to the shipped one (<see cref="Status"/> reads <c>identical</c>).</summary>
+    /// <summary>
+    /// <see cref="Status"/>, plus a <c>"codegen/runtime/: …"</c> clause when the generator's output
+    /// imports the helper runtime and the owned copy of it is not identical. Undo reads this: the
+    /// shipped generator imports the shipped runtime, so dropping such a copy would silently stop
+    /// the runtime edit reaching the generated code.
+    /// </summary>
+    public static string? UndoStatus(string root, MetaObjects.Codegen.GeneratorRegistryEntry entry)
+    {
+        var status = Status(root, entry);
+        if (status is null
+            || !MetaObjects.Codegen.HelperRuntime.UsedBy(MetaObjects.Codegen.EjectableGenerators.ReadSource(entry.Name)!)
+            || RuntimeStatus(root) is not { } runtime || runtime == "identical")
+            return status;
+        var clause = $"{MetaObjects.Codegen.HelperRuntime.OwnedDirectory}/: {runtime}";
+        return status == "identical" ? clause : $"{status}; {clause}";
+    }
+
+    /// <summary>Every ejectable entry whose owned copy, the emitters eject handed over with it and the
+    /// helper runtime its output imports, is identical to the shipped one (<see cref="UndoStatus"/>
+    /// reads <c>identical</c>).</summary>
     public static IReadOnlyList<MetaObjects.Codegen.GeneratorRegistryEntry> IdenticalCopies(string root) =>
-        MetaObjects.Codegen.EjectableGenerators.Entries().Where(e => Status(root, e) == "identical").ToList();
+        MetaObjects.Codegen.EjectableGenerators.Entries().Where(e => UndoStatus(root, e) == "identical").ToList();
 
     /// <summary>
     /// The one advisory line <c>dotnet meta gen</c> prints when owned copies identical to the shipped

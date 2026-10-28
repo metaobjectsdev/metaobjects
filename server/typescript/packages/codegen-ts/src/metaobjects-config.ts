@@ -80,6 +80,10 @@ export interface ResolvedGenConfig {
    *  api-docs reads this to AUTO-DETECT whether to document the Hono CRUD surface
    *  (it otherwise mirrors the default Fastify-only suite). Undefined ⇒ false. */
   includeHonoRoutes?: boolean;
+  /** Whether a generator in the run writes the `<Entity>.ts` entity modules (the suite's
+   *  `emitsEntityModule` markers, or an `entity-file` by name). api-docs documents the model,
+   *  its Zod schemas and its `relations()` only then. Undefined ⇒ documented. */
+  includeEntityModule?: boolean;
   /** Whether a generator in the run writes the `<Entity>.queries.ts` modules (the suite's
    *  `emitsQueries` markers, or a `queries-file` by name). api-docs documents the query
    *  helpers only then. Undefined ⇒ documented, which is what a caller that is not a run

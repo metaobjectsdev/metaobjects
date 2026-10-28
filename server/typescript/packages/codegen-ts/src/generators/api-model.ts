@@ -290,6 +290,10 @@ export interface ApiModelContext {
    *  run didn't configure). The Fastify REST surface is always documented (it is
    *  the default-suite routes generator). Defaults to false. */
   includeHonoRoutes?: boolean;
+  /** Whether a generator in the run writes the entity modules. The model, its Zod schemas and its
+   *  `relations()` are documented only when it does; a caller that is not a run leaves it out
+   *  and gets them. Default true. */
+  includeEntityModule?: boolean;
   /** Whether a generator in the run writes the query modules. The query helpers are documented
    *  only when it does; a caller that is not a run leaves it out and gets them. Default true. */
   includeQueries?: boolean;
@@ -320,7 +324,11 @@ export function buildApiModel(root: MetaRoot, ctx: ApiModelContext): ApiModel {
   const apiPrefix = ctx.apiPrefix ?? "";
   const relationMap = ctx.relationMap ?? buildRelationMap(root);
   const includeHono = ctx.includeHonoRoutes ?? false;
-  const surfaces = { queries: ctx.includeQueries ?? true, rest: ctx.includeRestRoutes ?? true };
+  const surfaces = {
+    entity: ctx.includeEntityModule ?? true,
+    queries: ctx.includeQueries ?? true,
+    rest: ctx.includeRestRoutes ?? true,
+  };
   const expose = ctx.expose ?? {};
 
   const units: ApiUnitDoc[] = [];
@@ -443,7 +451,7 @@ function buildEntityUnit(
   layout: OutputLayout,
   relationMap: RelationMap,
   includeHono: boolean,
-  surfaces: { queries: boolean; rest: boolean },
+  surfaces: { entity: boolean; queries: boolean; rest: boolean },
   apiPrefix: string,
   expose: RoutesExpose,
 ): ApiUnitDoc {
@@ -456,7 +464,7 @@ function buildEntityUnit(
   const entityMod = entityModulePath(layout, obj, name);
 
   // --- model: the entity type/const the entity-file generator emits (bare name). ---
-  symbols.push({
+  if (surfaces.entity) symbols.push({
     name,
     kind: "model",
     importPath: entityMod,
@@ -470,7 +478,7 @@ function buildEntityUnit(
     if (surfaces.queries) symbols.push(...dataAccessSymbols(obj, ctx, root, layout));
     // A read-only object's entity module exports a read schema only: no insert or update
     // schema exists to document.
-    if (!isReadOnlySurface(obj)) symbols.push(...validationSymbols(obj, entityMod));
+    if (surfaces.entity && !isReadOnlySurface(obj)) symbols.push(...validationSymbols(obj, entityMod));
     // REST needs no gate of its own: the routes generator's built-in filter is
     // `servesReadApi && !isTphSubtype` — exactly isQueryable — so every queryable
     // object gets routes. (Its `filter` option can narrow that further; this builder
@@ -489,7 +497,7 @@ function buildEntityUnit(
   //     keys by the entity whose module renders the block — the discriminator
   //     base, for a TPH subtype; an abstract entity emits a value-object module
   //     and never carries one. Independent of isQueryable. ---
-  const relationSym = relationSymbol(obj, entityMod, relationMap);
+  const relationSym = surfaces.entity ? relationSymbol(obj, entityMod, relationMap) : undefined;
   if (relationSym !== undefined) symbols.push(relationSym);
 
   // --- callable: call<Entity>, only when the entity is backed by a stored-proc /
@@ -1289,6 +1297,7 @@ export function buildApiModelForRun(ctx: GenContext): ApiModel {
     loadedRoot: ctx.loadedRoot,
     outputLayout: ctx.config.outputLayout ?? "flat",
     includeHonoRoutes: ctx.config.includeHonoRoutes ?? false,
+    ...(ctx.config.includeEntityModule !== undefined && { includeEntityModule: ctx.config.includeEntityModule }),
     ...(ctx.config.includeQueries !== undefined && { includeQueries: ctx.config.includeQueries }),
     ...(ctx.config.includeRestRoutes !== undefined && { includeRestRoutes: ctx.config.includeRestRoutes }),
     // The verbs the routes generators actually mount (`expose`), so a page never lists a

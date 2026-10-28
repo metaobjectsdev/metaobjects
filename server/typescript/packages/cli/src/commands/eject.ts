@@ -427,6 +427,13 @@ interface GeneratorListRow {
    * Absent when the project owns none of its renderers.
    */
   templates?: GeneratorTemplateRow[];
+  /**
+   * The files under `codegen/runtime/` that differ from the installed adapter package, for a
+   * generator whose output imports that adapter. Any makes `status` `differs`: the shipped
+   * generator imports the package, so undoing this copy would drop the adapter edit unseen.
+   * Absent when none differ.
+   */
+  runtime?: string[];
 }
 
 interface GeneratorTemplateRow {
@@ -447,6 +454,7 @@ async function generatorListGroups(cwd: string): Promise<GeneratorListGroup[]> {
   // Every renderer the project holds, against the package: attributed to a generator by what
   // that generator imports, so a renderer another generator owns never flags this one.
   const templateStatus = await templateCopyStatus(cwd, packagedTemplates());
+  const changedRuntime = (await runtimeCopyStatus(cwd)).filter((r) => !isStockVerdict(r.verdict)).map((r) => r.path);
   for (const source of SOURCES) {
     const rows: GeneratorListRow[] = [];
     groups.push({ packageName: source.packageName, rows });
@@ -483,6 +491,10 @@ async function generatorListGroups(cwd: string): Promise<GeneratorListGroup[]> {
       }
       if (renderers.length > 0) row.templates = renderers;
       if (renderers.some((r) => r.status === "differs")) row.status = "differs";
+      if (ejectsRuntime(name) && changedRuntime.length > 0) {
+        row.runtime = changedRuntime;
+        row.status = "differs";
+      }
     }
   }
   return groups;
@@ -517,14 +529,19 @@ async function listOutput(cwd: string): Promise<string> {
       else if (r.status === "reformatted") lines.push(`  ${r.name}  [owned — same content as the reference, your formatting]`);
       else {
         const differing = (r.templates ?? []).filter((t) => t.status === "differs");
+        const companions = [
+          ...(differing.length > 0 ? [`${differing.length} renderer(s)`] : []),
+          ...(r.runtime ? [`${r.runtime.length} runtime adapter file(s)`] : []),
+        ];
         lines.push(
           generatorFileDiffers(r)
             ? `  ${r.name}  [owned — DIFFERS: ${r.behind} line(s) behind, ${r.own} line(s) of your own]`
-            : `  ${r.name}  [owned — DIFFERS: generator identical, ${differing.length} renderer(s) differ]`,
+            : `  ${r.name}  [owned — DIFFERS: generator identical, ${companions.join(" and ")} differ]`,
         );
         for (const t of differing) {
           lines.push(`    renderer ${t.path}  [DIFFERS: ${t.behind} line(s) behind, ${t.own} line(s) of your own]`);
         }
+        for (const path of r.runtime ?? []) lines.push(`    runtime ${path}  [DIFFERS]`);
       }
     }
     lines.push("");
@@ -598,9 +615,14 @@ async function listOutput(cwd: string): Promise<string> {
 // --undo: take back an owned copy that is the shipped reference
 // ---------------------------------------------------------------------------
 
-/** A generator row whose file, and every renderer it reaches, is the shipped reference. */
+/** A copy comparison that found the shipped content, whatever the formatting. */
+function isStockVerdict(verdict: string): boolean {
+  return verdict === "identical" || verdict === "reformatted";
+}
+
+/** A generator row whose file, every renderer it reaches and its runtime adapter, are the shipped reference. */
 function isStockRow(r: GeneratorListRow): boolean {
-  return r.status === "identical" || r.status === "reformatted";
+  return isStockVerdict(r.status);
 }
 
 /**
@@ -696,8 +718,13 @@ async function undoCommand(names: readonly string[], force: boolean, cwd: string
   if (refused.length > 0) {
     for (const r of refused) {
       const path = `${OWNED_GENERATORS_DIR}/${r.name}.ts`;
+      const changed = [
+        ...(r.templates ?? []).filter((t) => t.status === "differs").map((t) => t.path),
+        ...(r.runtime ?? []),
+      ];
       log.error(
-        `${path} differs from the ${r.package} reference (${r.behind} line(s) behind it, ${r.own} of your own), ` +
+        `${path} differs from the ${r.package} reference (${r.behind} line(s) behind it, ${r.own} of your own` +
+          `${changed.length > 0 ? `; changed with it: ${changed.join(", ")}` : ""}), ` +
           `so undoing it would discard your changes. See them: ${diffCommand(r.name, r.package, path)}`,
       );
     }
@@ -725,17 +752,17 @@ async function undoCommand(names: readonly string[], force: boolean, cwd: string
   const dropTemplates = new Set(targets.flatMap((r) => (r.templates ?? []).map((t) => t.path)));
   for (const row of templateRows) {
     if (!dropTemplates.has(row.path) || stillReached.has(row.path)) continue;
-    if (row.verdict === "identical" || row.verdict === "reformatted") removed.push(row.path);
+    if (isStockVerdict(row.verdict)) removed.push(row.path);
     else keptCompanions.push(row.path);
   }
   // The adapter source is one shared tree: it goes only when nothing left in the project emits
-  // code that imports it.
+  // code that imports it, and goes whole or not at all, so a forced undo never leaves half of it.
   const adapterDropped = targets.some((r) => ejectsRuntime(r.name)) && !remaining.some((r) => ejectsRuntime(r.name));
   if (adapterDropped) {
-    for (const row of await runtimeCopyStatus(cwd)) {
-      if (row.verdict === "identical" || row.verdict === "reformatted") removed.push(row.path);
-      else keptCompanions.push(row.path);
-    }
+    const rows = await runtimeCopyStatus(cwd);
+    const changed = rows.filter((row) => !isStockVerdict(row.verdict)).map((row) => row.path);
+    if (changed.length === 0) removed.push(...rows.map((row) => row.path));
+    else keptCompanions.push(...changed);
   }
   for (const rel of removed) await rm(join(cwd, rel), { force: true });
   await pruneEmptyDirs(cwd, [OWNED_TEMPLATES_DIR, OWNED_RUNTIME_DIR, OWNED_GENERATORS_DIR]);
