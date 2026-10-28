@@ -29,6 +29,7 @@ import {
   readLock,
   resolveCollection,
   verifySnapshot,
+  type ResolvedDependency,
 } from "@metaobjectsdev/sdk";
 import { collectionLoadOptions } from "./collection-load-options.js";
 
@@ -41,13 +42,11 @@ const ERR_COLLECTION_NOT_FOUND = "ERR_COLLECTION_NOT_FOUND";
  *  does read takes the same path, which is why the fallback is announced, not silent. */
 const PORT_ONLY_VOCABULARY_CODES: ReadonlySet<string> = new Set(["ERR_UNKNOWN_TYPE", "ERR_UNKNOWN_SUBTYPE"]);
 
-export interface DependencyLoadProof {
-  /** What was loaded: the whole collection, or only the locked dependency snapshots. */
-  readonly scope: "full" | "dependencies-only";
-  /** Why the project's own metadata was not part of it; present exactly when `scope` is
-   *  `dependencies-only`. */
-  readonly note: string | undefined;
-}
+/** What the proof loaded. `dependencies-only` carries the note saying why the project's
+ *  own metadata was left out; the note is typed present exactly in that case. */
+export type DependencyLoadProof =
+  | { readonly scope: "full" }
+  | { readonly scope: "dependencies-only"; readonly note: string };
 
 /** A failed proof, tagged with the step that failed so each caller keeps its own wording
  *  for "does not resolve" and "does not load". */
@@ -66,15 +65,8 @@ function codeOf(err: unknown): string | undefined {
   return typeof code === "string" ? code : undefined;
 }
 
-/** Load only the locked dependency snapshots, together. */
-async function loadDependenciesOnly(configDir: string): Promise<void> {
-  let resolved;
-  try {
-    const cfg = await loadConfig(join(configDir, DEFAULT_METAOBJECTS_DIR));
-    resolved = await verifySnapshot(configDir, cfg.dependencies, await readLock(configDir));
-  } catch (err) {
-    throw new DependencyLoadFailure("resolve", err);
-  }
+/** Load only the given locked dependency snapshots, together. */
+async function loadSnapshotsOnly(configDir: string, resolved: readonly ResolvedDependency[]): Promise<void> {
   try {
     await loadMemory(configDir, {
       files: resolved.map((d) => d.artifactPath),
@@ -99,10 +91,19 @@ export async function proveDependencySetLoads(configDir: string): Promise<Depend
   } catch (err) {
     // Only a project that carries a config: without one there is no dependency set to
     // prove, and the same code also reports "you passed a metadata directory".
-    if (codeOf(err) !== ERR_COLLECTION_NOT_FOUND || !existsSync(join(configDir, DEFAULT_METAOBJECTS_DIR, "config.json"))) {
+    const hasOwnConfig = existsSync(join(configDir, DEFAULT_METAOBJECTS_DIR, "config.json"));
+    if (codeOf(err) !== ERR_COLLECTION_NOT_FOUND || !hasOwnConfig) {
       throw new DependencyLoadFailure("resolve", err);
     }
-    await loadDependenciesOnly(configDir);
+    // No collection was resolved, so the snapshot is verified here.
+    let resolved;
+    try {
+      const cfg = await loadConfig(join(configDir, DEFAULT_METAOBJECTS_DIR));
+      resolved = await verifySnapshot(configDir, cfg.dependencies, await readLock(configDir));
+    } catch (verifyErr) {
+      throw new DependencyLoadFailure("resolve", verifyErr);
+    }
+    await loadSnapshotsOnly(configDir, resolved);
     return {
       scope: "dependencies-only",
       note:
@@ -114,13 +115,14 @@ export async function proveDependencySetLoads(configDir: string): Promise<Depend
 
   try {
     await loadMemory(collection.configDir, collectionLoadOptions(collection));
-    return { scope: "full", note: undefined };
+    return { scope: "full" };
   } catch (err) {
     const code = codeOf(err);
     if (code === undefined || !PORT_ONLY_VOCABULARY_CODES.has(code)) {
       throw new DependencyLoadFailure("load", err);
     }
-    await loadDependenciesOnly(configDir);
+    // The snapshot was already verified by resolveCollection; reuse it.
+    await loadSnapshotsOnly(collection.configDir, collection.dependencies);
     return {
       scope: "dependencies-only",
       note:

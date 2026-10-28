@@ -93,12 +93,12 @@ async function runSync(configDir: string, specs: readonly DependencySpec[], flag
       } else {
         for (const r of applied.report) log.info(r.line);
       }
-      if (proof?.note !== undefined) log.info(dependencyOnlyNotice("meta deps sync", proof.note));
+      if (proof?.scope === "dependencies-only") log.info(dependencyOnlyNotice("meta deps sync", proof.note));
     } else {
       emitStructured(
         {
           warnings: plan.warnings,
-          ...(proof?.note !== undefined ? { loadScope: proof.scope, loadNote: proof.note } : {}),
+          ...(proof?.scope === "dependencies-only" ? { loadScope: proof.scope, loadNote: proof.note } : {}),
           dependencies: applied.report.map((r) => ({ name: r.name, action: r.action, message: r.line })),
         },
         fmt,
@@ -225,14 +225,14 @@ async function runCheck(
     if (loadFailure !== undefined) {
       log.error(`meta deps check: the locked dependency set does not load: ${loadFailure}`);
     }
-    if (proof?.note !== undefined) log.info(dependencyOnlyNotice("meta deps check", proof.note));
+    if (proof?.scope === "dependencies-only") log.info(dependencyOnlyNotice("meta deps check", proof.note));
   } else {
     emitStructured(
       {
         dependencies: results.map((r) => ({ ...r, line: formatCheckLine(r) })),
         ...(failing.length > 0 ? { code: ERR_DEPENDENCY_UPSTREAM_DRIFT } : {}),
         ...(loadFailure !== undefined ? { loadError: loadFailure } : {}),
-        ...(proof?.note !== undefined ? { loadScope: proof.scope, loadNote: proof.note } : {}),
+        ...(proof?.scope === "dependencies-only" ? { loadScope: proof.scope, loadNote: proof.note } : {}),
       },
       fmt,
     );
