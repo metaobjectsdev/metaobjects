@@ -1839,7 +1839,8 @@ class RouterGenerator:
         # the generated module always carries the seam (an entity that later gains a
         # writeOnce field changes one literal, not the module's shape).
         parts.append(f"_FROZEN_FIELDS: frozenset[str] = {frozen_set_body}")
-        parts.extend(_denied_const_lines(_denied_names(entity)))
+        denied_names = _denied_names(entity)
+        parts.extend(_denied_const_lines(denied_names))
         parts.append("")
         parts.append("")
         parts.extend(_sort_parse_fn_lines())
@@ -1872,7 +1873,7 @@ class RouterGenerator:
             # FastAPI (the handler binds the RAW body dict and hands THAT to the
             # repository), so the strip has to live here, not in <Entity>Patch.
             frozen_strip=_frozen_strip_lines(entity),
-            denied_strip=_denied_strip_lines(_denied_names(entity)),
+            denied_strip=_denied_strip_lines(denied_names),
         )
         for i, hname in enumerate(("list", "get", "create", "update", "delete")):
             if i > 0:

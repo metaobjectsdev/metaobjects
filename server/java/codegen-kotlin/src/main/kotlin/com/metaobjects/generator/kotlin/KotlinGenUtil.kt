@@ -769,9 +769,12 @@ public object KotlinGenUtil {
             .any { it.subType == com.metaobjects.view.PresentationView.SUBTYPE_PASSWORD }
 
     /** #484 — `@formExclude: true` (resolving read): the field is not part of the write shape. */
-    fun isFormExcluded(field: MetaField<*>): Boolean {
-        if (!field.hasMetaAttr(ATTR_FORM_EXCLUDE, true)) return false
-        val raw = runCatching { field.getMetaAttr(ATTR_FORM_EXCLUDE, true).value }.getOrNull()
+    fun isFormExcluded(field: MetaField<*>): Boolean = resolvedBooleanAttr(field, ATTR_FORM_EXCLUDE)
+
+    /** Resolving boolean read: a Boolean value, or the string "true" in any case. */
+    private fun resolvedBooleanAttr(field: MetaField<*>, name: String): Boolean {
+        if (!field.hasMetaAttr(name, true)) return false
+        val raw = runCatching { field.getMetaAttr(name, true).value }.getOrNull()
         return when (raw) {
             is Boolean -> raw
             is String -> raw.equals("true", ignoreCase = true)
@@ -787,15 +790,7 @@ public object KotlinGenUtil {
 
     private const val ATTR_FORM_EXCLUDE = "formExclude"
 
-    fun isRequiredField(field: MetaField<*>): Boolean {
-        if (!field.hasMetaAttr(MetaField.ATTR_REQUIRED, true)) return false
-        val raw = runCatching { field.getMetaAttr(MetaField.ATTR_REQUIRED, true).value }.getOrNull()
-        return when (raw) {
-            is Boolean -> raw
-            is String -> raw.equals("true", ignoreCase = true)
-            else -> false
-        }
-    }
+    fun isRequiredField(field: MetaField<*>): Boolean = resolvedBooleanAttr(field, MetaField.ATTR_REQUIRED)
 
     /**
      * The `@autoSet` policy of [field] — [AUTO_SET_ON_CREATE] / [AUTO_SET_ON_UPDATE] — or null

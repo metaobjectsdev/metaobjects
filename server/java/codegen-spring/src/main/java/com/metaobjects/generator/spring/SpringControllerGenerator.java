@@ -684,10 +684,10 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         if (com.metaobjects.generator.util.GeneratorUtil.isReport(entity)) {
             appendReportListHandler(src, shortName, dtoName, repoName, reportMaxRows, reportExport, routeBase);
         } else {
-            appendListHandler(src, shortName, dtoName, repoName);
+            appendListHandler(src, shortName, dtoName, repoName, List.of());
         }
         if (hasItem) {
-            appendGetByIdHandler(src, pkType);
+            appendGetByIdHandler(src, pkType, List.of());
         }
 
         src.append("    @PostMapping\n");
@@ -792,10 +792,6 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
      * filter[&lt;field&gt;][&lt;op&gt;]=&lt;value&gt; grammar reaches FilterParser intact
      * (Spring's {@code @RequestParam} would collapse same-key occurrences).
      */
-    private static void appendListHandler(StringBuilder src, String shortName, String dtoName, String repoName) {
-        appendListHandler(src, shortName, dtoName, repoName, List.of());
-    }
-
     private static void appendListHandler(StringBuilder src, String shortName, String dtoName, String repoName,
             List<String> hidden) {
         String allowlistName = SpringNaming.filterAllowlistName(shortName);
@@ -1036,10 +1032,6 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
     }
 
     /** GET /{id} — single by primary key, 404 envelope on a miss. */
-    private static void appendGetByIdHandler(StringBuilder src, String pkType) {
-        appendGetByIdHandler(src, pkType, List.of());
-    }
-
     private static void appendGetByIdHandler(StringBuilder src, String pkType, List<String> hidden) {
         src.append("    @GetMapping(\"/{id}\")\n");
         src.append("    public ResponseEntity<?> get(@PathVariable ").append(pkType).append(" id) {\n");

@@ -54,12 +54,7 @@ export interface WireOptions {
 /** Remove `hidden` keys from a row. `undefined` when there is nothing to hide. */
 export function hiddenColumnsWire(hidden: readonly string[] | undefined): ((row: unknown) => unknown) | undefined {
   if (hidden === undefined || hidden.length === 0) return undefined;
-  return (row) => {
-    if (!isPlainObject(row)) return row;
-    const out = { ...row };
-    for (const column of hidden) delete out[column];
-    return out;
-  };
+  return (row) => (isPlainObject(row) ? omitKeys(row, hidden) : row);
 }
 
 /**
@@ -71,13 +66,18 @@ export function hiddenColumnsWire(hidden: readonly string[] | undefined): ((row:
  */
 export function stripDeniedColumns(body: unknown, denied: readonly string[] | undefined): unknown {
   if (denied === undefined || denied.length === 0 || !isPlainObject(body)) return body;
-  const out = { ...body };
-  for (const column of denied) delete out[column];
-  return out;
+  return omitKeys(body, denied);
 }
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
   return v !== null && typeof v === "object" && !Array.isArray(v);
+}
+
+/** A shallow copy of `obj` without the named keys. */
+function omitKeys(obj: Record<string, unknown>, keys: readonly string[]): Record<string, unknown> {
+  const out = { ...obj };
+  for (const key of keys) delete out[key];
+  return out;
 }
 
 function shapeMember(value: Record<string, unknown>, shape: ValueObjectShape, mode: NullMembersMode): Record<string, unknown> {

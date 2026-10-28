@@ -19,14 +19,14 @@ import { normalizeTimestampMode } from "./dialect-module.js";
  */
 export type GeneratorSpec = Generator | string;
 
+/** The closed set of codegen dialects. `d1` is deliberately absent: it is a `meta migrate` transport. */
+export const CODEGEN_DIALECTS = ["sqlite", "postgres", "mysql"] as const;
+
 /**
  * The SQL dialect generated code targets. `mysql` is codegen + runtime only: `meta migrate`
  * does not own a MySQL schema (ADR-0015), so the adopter writes the DDL.
  */
-export type Dialect = "sqlite" | "postgres" | "mysql";
-
-/** The closed set of codegen dialects. `d1` is deliberately absent: it is a `meta migrate` transport. */
-export const CODEGEN_DIALECTS = ["sqlite", "postgres", "mysql"] as const satisfies readonly Dialect[];
+export type Dialect = (typeof CODEGEN_DIALECTS)[number];
 
 /**
  * Refuse a `dialect` that is not one of {@link CODEGEN_DIALECTS}. Without this an unknown value

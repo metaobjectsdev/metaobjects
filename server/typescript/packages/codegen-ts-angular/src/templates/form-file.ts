@@ -20,6 +20,7 @@ import {
   IDENTITY_SUBTYPE_PRIMARY,
   IDENTITY_ATTR_FIELDS,
   FIELD_ATTR_DEFAULT,
+  FIELD_ATTR_FORM_EXCLUDE,
   FIELD_ATTR_MAX_LENGTH,
   FIELD_SUBTYPE_CURRENCY,
   FIELD_SUBTYPE_BOOLEAN,
@@ -55,7 +56,7 @@ function visibleFields(entity: MetaObject): MetaField[] {
   const out: MetaField[] = [];
   for (const child of entity.fields()) {
     // ADR-0039: resolving — a field may inherit @formExclude via extends.
-    if (child.attr("formExclude") === true) continue;
+    if (child.attr(FIELD_ATTR_FORM_EXCLUDE) === true) continue;
     // A credential is never edited through a generated form (see the React generator).
     if (isCredentialField(child)) continue;
     if (pkNames.has(child.name)) continue;
