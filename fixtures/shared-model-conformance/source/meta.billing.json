@@ -1,0 +1,39 @@
+{
+  "metadata.root": {
+    "package": "acme::billing",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Invoice",
+          "extends": "acme::common::Audited",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "invoices"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.object": {
+                "name": "billingAddress",
+                "@objectRef": "acme::common::Address"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
