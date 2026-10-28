@@ -121,7 +121,7 @@ your own `<groupId>`, `<artifactId>` and `<version>`:
 
 ## Configure
 
-The 16 generators registered in `codegen-kotlin` (`GeneratorRegistry.kt`):
+The 17 generators registered in `codegen-kotlin` (`GeneratorRegistry.kt`):
 
 | Generator | Output | Per |
 |---|---|---|
@@ -255,7 +255,7 @@ A requirement that becomes live adds a failing member (a red test, no compile br
 
 ### Declarative template-codegen (`TemplateScopeGenerator`)
 
-The 16 generators above are a starting point, not the ceiling. When you need a shape
+The 17 generators above are a starting point, not the ceiling. When you need a shape
 none of them emits, Kotlin has **both** authoring paths — and which to reach for is a
 real decision (tradeoff table: [`codegen-concepts.md` §3](../features/codegen-concepts.md)).
 

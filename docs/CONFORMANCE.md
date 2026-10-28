@@ -34,7 +34,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 | [`fixtures/extract-conformance/`](../fixtures/extract-conformance/) | 48 | ✓ | ✓ | inherits the shared JVM engine | ✓ | ✓ |
 | [`fixtures/output-prompt-conformance/`](../fixtures/output-prompt-conformance/) | 17 | ✓ | ✓ | ✓ | ✓ | ✓ |
 | [`fixtures/persistence-conformance/`](../fixtures/persistence-conformance/) | 59 (53 query + 6 migration) | all 59; the 24 `report-*` and the `-15` decimal scenarios also on SQLite, MySQL and D1, `decimal-exact` also on MySQL (a scenario's `engines:` key is exact) | 53 query (migrations TS-only, ADR-0015); the `report-*` and `engines:` scenarios also on SQLite and MySQL | 53 query (via Exposed); the `report-*` and `engines:` scenarios also on SQLite and MySQL | 53 query; the `report-*` and `engines:` scenarios also on SQLite and MySQL | 53 query (pg8000); the `report-*` and `engines:` scenarios also on SQLite (`sqlite3`) and MySQL (PyMySQL) |
-| [`fixtures/api-contract-conformance/`](../fixtures/api-contract-conformance/) | 112 (31 core + 10 tph + 9 m2m + 4 jsonb + 2 write-through + 12 projection + 33 report + 11 decimal) | ✓ (Fastify reference + generated lane); `report/` and `decimal/` also on SQLite, MySQL and D1 | ✓ (embedded HTTP + JDBC); `report/` and `decimal/` generated controllers over OMDB on Postgres, SQLite and MySQL | ✓ (embedded HTTP + Exposed); `report/` and `decimal/` also on SQLite and MySQL | ✓ (Kestrel + Npgsql); `report/` and `decimal/` also on SQLite and MySQL | ✓ (FastAPI + pg8000); `report/` and `decimal/` also on SQLite and MySQL |
+| [`fixtures/api-contract-conformance/`](../fixtures/api-contract-conformance/) | 117 (31 core + 10 tph + 9 m2m + 5 jsonb + 2 write-through + 12 projection + 37 report + 11 decimal) | ✓ (Fastify reference + generated lane); `report/` and `decimal/` also on SQLite, MySQL and D1 | ✓ (embedded HTTP + JDBC); `report/` and `decimal/` generated controllers over OMDB on Postgres, SQLite and MySQL | ✓ (embedded HTTP + Exposed); `report/` and `decimal/` also on SQLite and MySQL | ✓ (Kestrel + Npgsql); `report/` and `decimal/` also on SQLite and MySQL | ✓ (FastAPI + pg8000); `report/` and `decimal/` also on SQLite and MySQL |
 | [`fixtures/decimal-wire/`](../fixtures/decimal-wire/) | 1 vector file (format, parse, filter operand, 15-digit read) | ✓ (`runtime-ts` and the generated helper) | ✓ (`CanonicalDecimal`) | ✓ (the generated wire file) | ✓ (`DecimalWire`) | ✓ (`decimal_wire`) |
 | [`fixtures/validation-conformance/`](../fixtures/validation-conformance/) | 42 cases | ✓ (generated Zod + run-time `runValidators`) | ✓ | ✓ | ✓ | ✓ (generated Pydantic + run-time `run_validators`) |
 | [`fixtures/registry-conformance/`](../fixtures/registry-conformance/) | 1 canonical manifest | ✓ (reference emitter) | ✓ | ✓ | ✓ | ✓ |
@@ -348,9 +348,9 @@ REAL, a MySQL `DECIMAL` keeps its scale, a MySQL `DATETIME` is the UTC wall cloc
 `report-relative-date` carries a per-engine seed (`seed-data-engine`). `op: relate` and the
 write ops stay Postgres-only. See [features/reporting.md](features/reporting.md#what-the-corpus-gates).
 
-### `fixtures/api-contract-conformance/` (112)
+### `fixtures/api-contract-conformance/` (117)
 
-All 106 scenarios → [features/api-contract.md](features/api-contract.md) (cross-port
+All 117 scenarios → [features/api-contract.md](features/api-contract.md) (cross-port
 REST API URL grammar + JSON wire format). Verifies every backend's emitted CRUD
 routes answer identically over HTTP — list / get / create / patch+put / delete,
 plus pagination (`limit`/`offset`), sort (`sort=field:dir`), the `withCount=1`
@@ -364,12 +364,12 @@ URL grammar `?filter[<field>][<op>]=<value>` (FR-009). On top of the 31 core
 scenarios the corpus carries seven sub-corpora — `tph/` (10, single-table
 inheritance; a subtype decimal filters and refuses extra digits), `m2m/` (9 — 3 plain, 5 gating TPH x M:N together, the combination
 each corpus alone could not reach, and 1 pinning the collection-URL spelling),
-`jsonb/` (4, typed value-object columns; numbers inside them: a double stays a JSON number, a decimal is the canonical string),
+`jsonb/` (5, typed value-object columns; numbers inside them: a double stays a JSON number, a decimal is the canonical string),
 `write-through/` (2, table-write + view-read entities), `projection/` (12, a
 read-only view answers reads and refuses writes with 405; a projection with no declared
 identity has no item route; a projection keyed on a field not named `id` is addressed by
 it, whether its identity names `@fields` or derives them; decimal and float fields filter), `decimal/` (11, ADR-0019 Amendment 1: a decimal, array element and undeclared-precision column included, is one
-canonical string, read exactly, filtered exactly and refused past its declared digits) and `report/` (33,
+canonical string, read exactly, filtered exactly and refused past its declared digits) and `report/` (37,
 FR-044: a view-backed `object.report` is listed, filtered, sorted and paged on
 its derived fields, answers `POST` with 405 and mounts no `/{id}`; a `@spine` report keeps
 a row with no facts, and a measure with `@default` filters and sorts as its default). All 5 ports — TS, Java,
@@ -555,7 +555,7 @@ files into a real Cube.
 ## Orphaned fixtures (tested but not yet documented)
 
 The fixtures in the nine corpora mapped above (metamodel 413 + yaml 16 + verify 37
-+ render 16 + persistence 59 + api-contract 112 + source-resolution 25 + scope 10 +
++ render 16 + persistence 59 + api-contract 117 + source-resolution 25 + scope 10 +
 dependency 23) each map to a feature doc, and so do the two requirement corpora and the
 `cube-model` corpus, whose case lists live in their own READMEs. None are orphaned today. The remaining
 corpora in the totals table gate tooling contracts (registry manifests, provider
