@@ -104,7 +104,7 @@ public class EntityGenerator : IGenerator
         // namespace; consuming entity fields REFERENCE them (no nested redeclaration). @provided
         // shared enums emit nothing here (referenced from configured external namespace). With no
         // shared enums in the model (the common inline case) no file is emitted — byte-identical.
-        if (EmitSharedEnumsFile(ctx) is { } sharedEnums)
+        if (EmitSharedEnumsFile(ctx, valueObjects) is { } sharedEnums)
             files.Add(sharedEnums);
 
         foreach (var e in mapped)
@@ -943,15 +943,13 @@ public class EntityGenerator : IGenerator
     // Referencing a @provided enum with no ProvidedEnumNamespace configured throws here too
     // (the collect walk constructs each consuming reference's type), surfacing the config gap
     // as a codegen-time error before any file is written.
-    protected virtual EmittedFile? EmitSharedEnumsFile(GenContext ctx)
+    protected virtual EmittedFile? EmitSharedEnumsFile(GenContext ctx, IReadOnlyList<MetaObject> valueShapes)
     {
         // Surface a missing ProvidedEnumNamespace for any consumed @provided enum as a
         // codegen-time error (ADR-0026), even though @provided emits no file content.
-        // FR-023: an imported value object a generated entity holds is emitted as a POCO (the entity's
-        // property type needs it), so the enums IT uses are part of the output too.
-        var importedShapes = ctx.Root.ImportScope is { HasImports: true }
-            ? ReferencedValueObjects(ctx.Entities, ctx).Where(vo => !ctx.Root.InScope(vo)).ToList()
-            : null;
+        // FR-023: an imported value object this run emits a POCO for (a generated type needs it), so
+        // the enums IT uses are part of the output too.
+        var importedShapes = valueShapes.Where(vo => !ctx.Root.InScope(vo)).ToList();
 
         foreach (var shared in Fr019SharedEnum.CollectSharedEnums(ctx.Root, importedShapes))
             if (shared.Provided)
@@ -1949,7 +1947,9 @@ public static class DecimalWire
     private static bool ReferencesValueObject(MetaField f) =>
         (f.SubType == FIELD_SUBTYPE_OBJECT || f.SubType == FIELD_SUBTYPE_MAP) && f.ObjectRef is not null;
 
-    // Transitive closure of plain value objects reachable through entity object-fields.
+    // Transitive closure of plain value objects reachable from every type this run emits: entity
+    // object-fields, callable args, in-scope value shapes' object-fields, and template payload/response
+    // shapes. FR-023: an imported value object reaches the output only through this walk.
     protected static List<MetaObject> ReferencedValueObjects(IReadOnlyList<MetaObject> mapped, GenContext ctx)
     {
         var seen = new HashSet<string>(StringComparer.Ordinal);
@@ -1969,6 +1969,17 @@ public static class DecimalWire
             foreach (var src in e.Sources())
                 if (src.ParameterRef is not null)
                     Enqueue(global::MetaObjects.NamingRefs.RefTarget(src, SOURCE_ATTR_PARAMETER_REF) as MetaObject);
+
+        foreach (var shape in ctx.Entities.Where(o => !o.IsAbstract && ValueObjectNames.IsValueShape(o)))
+            foreach (var f in shape.Fields().Where(ReferencesValueObject))
+                Enqueue(ValueObjectNames.ResolveFieldRef(f, ctx.Root));
+
+        // ADR-0056: the template tier types a render helper by its @payloadRef shape and a parser by its
+        // @responseRef shape, and declares neither, so each must have a POCO here.
+        foreach (var tmpl in ctx.Root.Children().Where(c => c.Type == global::MetaObjects.Shared.BaseTypes.TYPE_TEMPLATE))
+            foreach (var attr in new[] { global::MetaObjects.Template.TemplateConstants.TEMPLATE_ATTR_PAYLOAD_REF, global::MetaObjects.Template.TemplateConstants.TEMPLATE_ATTR_RESPONSE_REF })
+                if (ValueObjectNames.PayloadShapeOf(tmpl, attr) is MetaObject { IsAbstract: false } shape && seen.Add(shape.ResolutionKey()))
+                    queue.Enqueue(shape);
 
         while (queue.Count > 0)
         {

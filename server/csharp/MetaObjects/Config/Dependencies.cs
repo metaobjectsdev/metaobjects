@@ -30,9 +30,6 @@ public static class DependencyFiles
     /// <summary><c>meta deps sync</c>'s output.</summary>
     public const string LockFile = "deps.lock.json";
 
-    /// <summary>The publisher-generated manifest beside a dependency's artifact.</summary>
-    public const string ManifestFile = "metaobjects.pkg.json";
-
     /// <summary>Suffix of a dependency's canonical-JSON artifact, e.g. <c>acme-common.metaobjects.json</c>.</summary>
     public const string ArtifactSuffix = ".metaobjects.json";
 
@@ -423,9 +420,6 @@ public sealed class ImportScope
 
     private readonly CompiledScope? _migrate;
 
-    /// <summary>True when at least one dependency is resolved.</summary>
-    public bool HasImports => Dependencies.Count > 0;
-
     private ImportScope(IReadOnlyList<ResolvedDependency> dependencies, IReadOnlyList<string> scopeInclude, IReadOnlyList<string>? migrateScope)
     {
         Dependencies = dependencies;
@@ -487,10 +481,6 @@ public sealed class ImportScope
         var pkg = DependencyResolver.PackageOf(fqn);
         return !ImportedPackages.Contains(pkg) || DependencyResolver.ExplicitlyIncludes(MigrateScope, pkg);
     }
-
-    /// <summary>The name of the dependency that owns <paramref name="pkg"/>, or null when none does.</summary>
-    public string? ImportedFrom(string pkg) =>
-        Dependencies.FirstOrDefault(d => d.Packages.Contains(pkg, StringComparer.Ordinal))?.Name;
 
     /// <summary>
     /// The snapshot artifacts as loader sources, in dependency-NAME order, each under its

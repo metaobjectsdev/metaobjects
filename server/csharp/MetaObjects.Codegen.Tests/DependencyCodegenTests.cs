@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using MetaObjects.Config;
 using MetaObjects.Meta;
 using Xunit;
@@ -70,6 +71,9 @@ public sealed class DependencyCodegenTests : IDisposable
             .ToDictionary(p => Path.GetRelativePath(OutDir, p).Replace('\\', '/'), File.ReadAllText);
     }
 
+    private static bool DeclaresClass(Dictionary<string, string> output, string name) =>
+        output.Any(kv => kv.Key.EndsWith(".cs", StringComparison.Ordinal) && Regex.IsMatch(kv.Value, $@"\bclass {name}\b"));
+
     [Fact]
     public void An_imported_node_emits_nothing_from_any_registered_generator()
     {
@@ -106,8 +110,44 @@ public sealed class DependencyCodegenTests : IDisposable
         var output = GenerateAll();
 
         // The entity's property type needs the POCO to compile, so it is the one imported shape emitted.
-        Assert.Contains(output, kv => kv.Value.Contains("class Address"));
+        Assert.True(DeclaresClass(output, "Address"));
         // The imported ENTITY that nothing local holds is still not emitted.
+        Assert.DoesNotContain(output, kv => kv.Key.Contains("Customer") || kv.Value.Contains("Customer"));
+    }
+
+    [Fact]
+    public void An_imported_value_object_a_local_value_object_holds_is_still_emitted()
+    {
+        Project("""
+        { "metadata.root": { "package": "app", "children": [
+          { "object.value": { "name": "InvoicePrompt", "children": [
+            { "field.string": { "name": "note" } },
+            { "field.object": { "name": "billTo", "@objectRef": "acme::common::Address" } }
+          ]}}
+        ]}}
+        """);
+        var output = GenerateAll();
+
+        // No entity holds Address: the local value object's property type alone needs its POCO.
+        Assert.True(DeclaresClass(output, "InvoicePrompt"));
+        Assert.True(DeclaresClass(output, "Address"));
+        Assert.DoesNotContain(output, kv => kv.Key.Contains("Customer") || kv.Value.Contains("Customer"));
+    }
+
+    [Fact]
+    public void An_imported_value_object_a_local_prompt_names_is_still_emitted()
+    {
+        Project("""
+        { "metadata.root": { "package": "app", "children": [
+          { "template.prompt": { "name": "AddressCheck", "@payloadRef": "acme::common::Address",
+            "@responseRef": "acme::common::Address", "@textRef": "address-check.mustache", "@format": "json" } }
+        ]}}
+        """);
+        var output = GenerateAll();
+
+        // The template tier types its payload and its reply by the value object's POCO and declares none of its own.
+        Assert.True(DeclaresClass(output, "Address"));
+        Assert.Contains(output, kv => kv.Key.Contains("AddressCheck"));
         Assert.DoesNotContain(output, kv => kv.Key.Contains("Customer") || kv.Value.Contains("Customer"));
     }
 

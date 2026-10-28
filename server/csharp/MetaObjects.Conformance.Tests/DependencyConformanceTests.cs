@@ -116,11 +116,19 @@ public class DependencyConformanceTests : IDisposable
     {
         var c = AllCases.EnumerateArray().Single(x => x.GetProperty("name").GetString() == name);
         var resolveDir = Materialize(c);
+        // The explicit rung: `dotnet meta gen <metadataDir>` must read the same dependencies.
+        var explicitDir = Path.Combine(resolveDir, NeutralConfig.DefaultMetadataDir);
+        var hasExplicitRung = Directory.Exists(explicitDir);
 
         if (c.TryGetProperty("expectError", out var expectError))
         {
             var ex = Assert.Throws<MetaModelException>(() => MetadataLocation.Resolve(null, resolveDir));
             Assert.Equal(expectError.GetString(), ex.Code.ToString());
+            if (hasExplicitRung)
+            {
+                var explicitEx = Assert.Throws<MetaModelException>(() => MetadataLocation.Resolve(explicitDir, _tmp));
+                Assert.Equal(expectError.GetString(), explicitEx.Code.ToString());
+            }
             return;
         }
 
@@ -131,10 +139,14 @@ public class DependencyConformanceTests : IDisposable
         AssertResolvedFiles(resolved, expectFiles, name);
         AssertArms(c, resolved, name);
 
-        // The explicit rung: `dotnet meta gen <metadataDir>` must read the same dependencies.
-        var explicitDir = Path.Combine(resolveDir, NeutralConfig.DefaultMetadataDir);
-        if (Directory.Exists(explicitDir))
-            AssertArms(c, MetadataLocation.Resolve(explicitDir, _tmp), name + " (explicit metadata dir)");
+        if (hasExplicitRung)
+        {
+            var explicitResolved = MetadataLocation.Resolve(explicitDir, _tmp);
+            var expectedArtifacts = Strings(expectFiles).Where(f => f.Split('/').Contains(".metaobjects"));
+            var gotArtifacts = (explicitResolved.Imports?.Dependencies.Select(d => d.ArtifactPath) ?? []).Select(Relative);
+            Assert.Equal(Sorted(expectedArtifacts), Sorted(gotArtifacts));
+            AssertArms(c, explicitResolved, name + " (explicit metadata dir)");
+        }
     }
 
     /// <summary>Dependency artifacts then the project's own files; compared as a set AND by length.</summary>
