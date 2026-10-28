@@ -69,5 +69,17 @@ public interface LoaderConfigurable {
         default List<String> getLibraries() {
             return java.util.Collections.emptyList();
         }
+
+        /**
+         * FR-023 — the project's resolved metadata dependencies. Their committed snapshot artifacts
+         * are loaded FIRST, ahead of {@link #getSources()}, each under its {@code dep:<name>/<artifact>}
+         * source id. A {@code default} for the same reason as {@link #getLibraries()}: this interface
+         * is the build-tool seam and an implementor outside this repo must keep compiling.
+         *
+         * @return the resolved dependencies; never null, empty when the project declares none
+         */
+        default com.metaobjects.config.DependencySet getDependencies() {
+            return com.metaobjects.config.DependencySet.EMPTY;
+        }
     }
 }

@@ -687,8 +687,14 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
             }
         }
 
+        // FR-023: the project's metadata dependencies. Read at EVERY rung of the ladder above
+        // (the pom's <sourceDir>/<sources> only changes where the project's own FILES come from),
+        // from the directory holding its `.metaobjects/` folder; the committed snapshot loads first.
+        com.metaobjects.config.DependencySet dependencies = com.metaobjects.config.DependencySet.resolve(
+                resolveProjectConfigDir(srcDir).orElse(getProjectBaseDir().toPath().toAbsolutePath().normalize()));
+
         MavenLoaderConfiguration.configure(configurable, sourceDir, projectClassLoader,
-                                         sources, libraries, loaderArgs(strict));
+                                         sources, libraries, dependencies, loaderArgs(strict));
 
         MetaDataLoader loader = configurable.getLoader();
 
@@ -707,6 +713,11 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
         // lax (where nothing is recorded). This is the shared reporting site for both the
         // generate and verify goals.
         failOnLoaderErrors(loader);
+
+        // FR-023 §11.5: refuse a new top-level node declared into a package a dependency owns. After
+        // the loader's own errors, never before (an overlay whose target the upstream removed fails
+        // first, with its own coded error).
+        dependencies.refuseUnownedPackages(loader.getRoot());
 
         return loader;
     }
@@ -934,17 +945,26 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
      * as {@link #resolvePhysicalNaming(File)} describes; empty when there is none.
      */
     protected java.util.Optional<com.metaobjects.config.NeutralConfig> resolveProjectConfig(File srcDir) {
+        return resolveProjectConfigDir(srcDir).flatMap(com.metaobjects.config.NeutralConfig::read);
+    }
+
+    /**
+     * The directory holding the {@code .metaobjects/} folder of the project that holds this goal's
+     * metadata (FR-023: its config, its dependency lock and its committed snapshot all live there),
+     * found as {@link #resolvePhysicalNaming(File)} describes; empty when there is none.
+     */
+    protected java.util.Optional<Path> resolveProjectConfigDir(File srcDir) {
         Path basedir = getProjectBaseDir().toPath();
         Path location = srcDir != null ? srcDir.toPath() : localSourceLocation(basedir);
         if (location != null) {
             for (Path dir = location.toAbsolutePath().normalize(); dir != null; dir = dir.getParent()) {
-                java.util.Optional<com.metaobjects.config.NeutralConfig> cfg =
-                        com.metaobjects.config.NeutralConfig.read(dir);
-                if (cfg.isPresent()) return cfg;
+                if (com.metaobjects.config.NeutralConfig.read(dir).isPresent()) return java.util.Optional.of(dir);
                 if (Files.exists(dir.resolve(".git"))) break;
             }
         }
-        return com.metaobjects.config.NeutralConfig.read(basedir.toAbsolutePath().normalize());
+        Path base = basedir.toAbsolutePath().normalize();
+        return com.metaobjects.config.NeutralConfig.read(base).isPresent()
+                ? java.util.Optional.of(base) : java.util.Optional.empty();
     }
 
     /** The first {@code <sources>} entry that is an existing local path, as a directory; else null. */

@@ -262,8 +262,8 @@ sixth ships two libraries at their own stability labels:
    `meta eject <library>`. See [`docs/features/libraries.md`](docs/features/libraries.md).
 
 **Sharing a model across your own projects** *(the TypeScript toolchain publishes;
-TypeScript and Python projects consume, over a `path` dependency such as a sibling
-checkout or submodule; Java, Kotlin and C# arrive in Phase 2)* — one project publishes
+TypeScript, Python, Java and Kotlin projects consume, over a `path` dependency such as a sibling
+checkout or submodule; C# arrives in Phase 2)* — one project publishes
 part of its model (a common `Customer`, an audited base, a set of enums) with
 `sharedModelFile()`, and another declares it in `dependencies`, syncs it into a
 committed, hash-locked snapshot and builds on it with `extends` and references. When the

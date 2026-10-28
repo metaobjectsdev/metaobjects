@@ -5,6 +5,7 @@ package com.metaobjects.generator.kotlin
 // `mvn metaobjects:eject` and its own package is renamed — an explicit import, not
 // same-package bare-name resolution, is what keeps the ejected copy compiling.
 import com.metaobjects.config.WireFormat
+import com.metaobjects.generator.util.GeneratorUtil
 import com.metaobjects.generator.kotlin.Fr019SharedEnum
 import com.metaobjects.generator.kotlin.KotlinEnumEmitter
 import com.metaobjects.generator.kotlin.KotlinGenUtil
@@ -146,7 +147,7 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
      */
     private fun emitNetJsonSupport(loader: MetaDataLoader, outRoot: Path) {
         val packages = linkedSetOf<String>()
-        for (obj in loader.metaObjects) {
+        for (obj in GeneratorUtil.ownMetaObjects(loader)) {
             // A report's row carries no deserializer (it is never bound from a request), so
             // a report is not counted here.
             if (obj.subType !in EMITTED_SUBTYPES) continue

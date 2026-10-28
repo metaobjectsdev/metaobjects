@@ -62,6 +62,22 @@ public class MavenLoaderConfiguration {
                                List<String> sources,
                                List<String> libraries,
                                Map<String, String> globals) {
+        configure(configurable, sourceDir, classLoader, sources, libraries, null, globals);
+    }
+
+    /**
+     * Configure a LoaderConfigurable instance, also loading the project's resolved metadata
+     * dependencies (FR-023) — their committed snapshot artifacts load FIRST.
+     *
+     * @param dependencies The project's resolved dependencies; may be null for none
+     */
+    public static void configure(LoaderConfigurable configurable,
+                               String sourceDir,
+                               ClassLoader classLoader,
+                               List<String> sources,
+                               List<String> libraries,
+                               com.metaobjects.config.DependencySet dependencies,
+                               Map<String, String> globals) {
         
         
         // Trigger lazy initialization of ServiceLoader type discovery
@@ -76,6 +92,7 @@ public class MavenLoaderConfiguration {
                 .classLoader(classLoader)
                 .sources(sources)
                 .libraries(libraries)
+                .dependencies(dependencies)
                 .arguments(globals)
                 .build();
                 
