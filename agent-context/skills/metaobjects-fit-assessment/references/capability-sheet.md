@@ -43,9 +43,13 @@ building block. Every generator is a reference helper an adopter selects, ejects
   target is hand-building the same design.
 
 **Out of the box, contract-only does not** (say so when it matters, and say the fix):
-- ship a generator for a Prisma schema, TypeORM entities, SQLAlchemy/Django models or JPA
-  entities — alongside those ORMs the shipped contract is Zod/TS types, records, POCOs or
-  Pydantic models *next to* the ORM model;
+- ship a generator for TypeORM entities, SQLAlchemy/Django models or JPA entities — alongside
+  those ORMs the shipped contract is Zod/TS types, records, POCOs or Pydantic models *next to*
+  the ORM model. **Prisma is the exception (TypeScript):** under `orm: "prisma"`, `prisma-schema`
+  generates `schema.prisma` from the model for Postgres, MySQL or SQLite, `verify --codegen` fails
+  on a hand edit, and `verify --db` checks the database Prisma pushed (Postgres, SQLite).
+  Views, expression/partial indexes and SQLite CHECKs are refused, not dropped
+  (`docs/recipes/prisma.md`);
 - ship an OpenAPI, AsyncAPI or JSON Schema generator;
 - reach a consumer outside the five ports (Go, Rust, Ruby, PHP, Swift…) directly.
 

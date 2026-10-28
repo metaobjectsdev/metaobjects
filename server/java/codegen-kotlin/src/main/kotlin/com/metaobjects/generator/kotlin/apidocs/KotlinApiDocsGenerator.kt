@@ -47,7 +47,10 @@ class KotlinApiDocsGenerator : FileEmittingGenerator() {
         }
         for (unit in model.units) {
             val pagePath = DocsPaths.docPageOutputPath(layout, unit.pkg, unit.node)
-            val modelHref = DocsPaths.modelCrossHref("$subDir/$pagePath", pagePath, modelBaseUrl)
+            // No model pages are written beside the api pages, so a relative link would be dead:
+            // the link is emitted only against a <modelBaseUrl> that hosts them.
+            val modelHref = if (modelBaseUrl.isNullOrEmpty()) null
+                else DocsPaths.modelCrossHref("$subDir/$pagePath", pagePath, modelBaseUrl)
             add(pagePath, renderer.renderUnitPage(unit, modelHref))
         }
         add("README.md", renderer.renderIndex(model, layout))
@@ -65,7 +68,7 @@ class KotlinApiDocsGenerator : FileEmittingGenerator() {
         /** Arg: the page layout, `flat` (one file per unit, the default) or `package`. */
         const val ARG_LAYOUT: String = "layout"
 
-        /** Arg: when set, the base URL the pages' links to the model pages are written against. */
+        /** Arg: the base URL the pages' links to the model pages are written against; with none set, the pages carry no such link. */
         const val ARG_MODEL_BASE_URL: String = "modelBaseUrl"
 
         /** The api-surface subdirectory of the cross-port docs contract. */

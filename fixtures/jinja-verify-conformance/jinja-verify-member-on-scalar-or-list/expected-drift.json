@@ -1,0 +1,5 @@
+[
+  { "code": "ERR_VAR_NOT_ON_PAYLOAD", "path": "displayName.first" },
+  { "code": "ERR_VAR_NOT_ON_PAYLOAD", "path": "labels.x" },
+  { "code": "ERR_VAR_NOT_ON_PAYLOAD", "path": "posts.title" }
+]

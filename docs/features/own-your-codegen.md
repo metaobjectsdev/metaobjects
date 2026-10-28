@@ -20,7 +20,9 @@ describes. A generator is a name plus a function from the model to files; `verif
 scaffolds a working one and wires it. Every port's 20-line shape, run end to end, plus
 JSON Schema and OpenAPI 3.1 examples to copy:
 [Write your own generator](../recipes/write-your-own-generator.md). Eject a reference
-(below) only when one already emits something close to what you want.
+(below) only when one already emits something close to what you want. A worked TypeScript
+example that sits on top of the stock routes: [a typed fetch client for the reference
+routes](../recipes/typed-client-for-the-reference-routes.md).
 
 **A stock generator already emits what you want? Import it.** Every stock generator runs
 as shipped from its package, with nothing copied into your repo, and an upgrade is how its
@@ -691,6 +693,35 @@ Where you set it:
 `handEdits` is a standing decision about one generator. `--baseline=fresh` (TypeScript) is a
 one-off for one run: it overwrites every refused file of that run, of every generator,
 including files the manifest has no record of.
+
+### Safety-relevant output: set `handEdits: "overwrite"`
+
+A generator whose output enforces something (a redaction rule, an audit log, an auth check)
+needs one more setting. The default is `handEdits: "keep"`: someone can hand-edit the emitted
+file, `meta gen` merges that edit into fresh output, and `meta verify --codegen` still passes
+after the merge. Run on a scratch project, a line appended to a generated client survived
+`meta gen` (status `merged`) and `verify --codegen` exited 0. For a redaction rule that is a
+silent hole.
+
+Set `handEdits: "overwrite"` on that generator. A hand edit is then discarded and named in the
+run's warnings, and the committed file always equals fresh output. One line, on the entry in
+`metaobjects.config.ts`:
+
+```ts
+generators: [entityFile(), { ...redactionGenerator(), handEdits: "overwrite" }],
+```
+
+Seen: with it set, `meta verify --codegen` exits 1 on an edited file (`edited by hand; its
+generator sets handEdits: "overwrite", so 'meta gen' replaces it with fresh output`), and
+`meta gen` prints `overwrote hand-edited <path> with fresh output` and restores it.
+The setting is per generator, and an edited file is discarded only when it is one `gen` has a record of writing.
+
+The same trap exists one layer up, in the model. `meta gen` loads metadata **leniently**: an
+unknown attribute is a warning, and generation goes on. A typo'd `@sensitve` on a field
+silently changes what your generator sees, so a redaction keyed on `@sensitive` quietly stops
+applying. `meta gen --strict` makes an unknown attribute an error (exit 1, nothing written).
+`meta verify` always rejects it. Use `--strict` in CI for any project whose generators
+enforce something.
 
 ## The sibling module (`<Entity>.extra.ts`) is a convention, not a mechanism
 

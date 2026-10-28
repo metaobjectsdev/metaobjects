@@ -133,7 +133,10 @@ export interface Generator {
   /** Named output target (registry key). Defaults to "default". */
   target?: string;
   /** Marks the generator that produces entity modules — the runner uses its
-   *  target as the entity-module target for cross-target import resolution. */
+   *  target as the entity-module target for cross-target import resolution, and
+   *  aggregates it into `ctx.config.includeEntityModule`, which the api reference reads
+   *  to document the model, its Zod schemas and its `relations()` only when something
+   *  emits them. A copy ejected before the marker is matched by its name. */
   emitsEntityModule?: boolean;
   /** FR-038 §8 — declare the output namespace this generator exclusively owns.
    *  A full `meta gen` run already removes every file it recorded writing in a
@@ -191,6 +194,11 @@ export interface Generator {
    *  generators read to emit the `format` branch on a report list route. Without a marked
    *  generator in the route file's target the routes are byte-identical to before export existed. */
   emitsReportExport?: boolean;
+  /** Marks the generator that writes the `<Entity>.queries.ts` data-access modules
+   *  (`queriesFile()`). The runner aggregates it across the run into
+   *  `ctx.config.includeQueries`, which the api reference reads to document the query helpers
+   *  only when something emits them. A copy ejected before the marker is matched by its name. */
+  emitsQueries?: boolean;
   /** Marks a generator that emits a CLIENT UI artifact — a form, a hook, a grid or
    *  its columns. The runner aggregates it across the suite into
    *  ResolvedGenConfig.includeUiTier, which `agent/ui.md` reads to decide whether

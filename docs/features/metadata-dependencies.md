@@ -8,7 +8,7 @@ alternative: declare a published metadata package as a dependency, `meta deps sy
 it into a committed snapshot, and build on it the same way you build on any other
 metadata in your own tree — `extends`, `overlay: true`, and plain FQN references.
 
-**Phase 1a scope.** This page describes what ships today: the `path` transport, the
+**What ships today:** the `path`, `npm` and `python` transports, the
 generated shared-model artifact, the lock + snapshot, default exclusion from your own
 codegen/schema/ledger, and the loader errors that fire when upstream moves. See
 [Deferred](#deferred) for what is designed but not built yet — read that section
@@ -45,7 +45,9 @@ going away.
   "schema_version": 1,
   "sources": [],
   "dependencies": [
-    { "name": "acme-common", "path": "../acme-common/metaobjects" }
+    { "name": "acme-common", "path": "../acme-common/metaobjects" },
+    { "name": "acme-billing", "npm": "@acme/billing-model", "dir": "metaobjects" },
+    { "name": "acme-scheduling", "python": "acme_scheduling", "dir": "metaobjects" }
   ]
 }
 ```
@@ -54,16 +56,76 @@ A dependency spec carries a `name` (`/^[a-z0-9][a-z0-9._-]*$/`, unique across th
 array — this is the LOCAL alias your config, lock, and `.metaobjects/deps/<name>/`
 snapshot directory key on) and exactly one transport key.
 
-**Only `path` resolves in Phase 1a.** It is resolved relative to the directory
-holding `.metaobjects/` and must point at a directory containing a publisher's
-`metaobjects.pkg.json` + artifact (below) — a sibling checkout, a git submodule, or
-any other directory your own build can reach on disk. `npm` and `python` transport
-keys are accepted by the config schema (reserved, the same precedent as `sources`'
-`resource`/`package` kinds) but `meta deps sync` refuses them today:
+Three transports locate the publisher's `metaobjects.pkg.json` + artifact (below).
+Each answers one question, *which directory holds the manifest?*, and only `meta deps
+sync` and `meta deps check` ask it. Every other command loads the committed snapshot.
+
+| Transport | Spec | Where it looks |
+|---|---|---|
+| `path` | `{ "name": "x", "path": "../lib/metaobjects" }` | that directory, relative to the directory holding `.metaobjects/`: a sibling checkout, a git submodule, or any directory your build can reach |
+| `npm` | `{ "name": "x", "npm": "@acme/model", "dir": "metaobjects" }` | the installed npm package, found from the directory holding `.metaobjects/` the way Node resolves it (`node_modules` up the tree, workspaces and hoisting included), then `dir` inside it |
+| `python` | `{ "name": "x", "python": "acme_model", "dir": "metaobjects" }` | the installed Python package, as `importlib.util.find_spec("acme_model")` reports it in your project's interpreter, then `dir` inside it |
+
+`dir` is optional (default: the package root), must stay inside the package, and is
+legal only beside `npm` or `python`. `python` takes an importable package name (dotted
+names such as `acme.model` work), not the distribution name you `pip install`. The `npm`
+transport reads a `node_modules` tree; a Yarn Plug'n'Play install has none, so set
+`nodeLinker: node-modules` for that project.
+
+**Install the package first, with your own package manager.** `meta deps sync` does no
+downloading. `npm install @acme/model` (or pnpm, yarn, bun) or `pip install acme-model`
+(or uv, poetry) puts the package where the transport finds it, and the ecosystem's own
+lock (`package-lock.json`, `uv.lock`, …) pins which version is installed. The
+dependency lock records what that version's shared model was when you last synced.
+Because the snapshot is committed, only the machine that runs `sync` needs the package
+installed. CI, `meta gen`, `meta migrate` and every other port load the snapshot.
+
+**Which Python interpreter.** `python` runs one interpreter, the first of:
+`$METAOBJECTS_PYTHON`; the active virtualenv (`$VIRTUAL_ENV`); a `.venv` beside
+`.metaobjects/`; `python3` on `PATH` (`python` on Windows). A set `$METAOBJECTS_PYTHON` or `$VIRTUAL_ENV`
+whose interpreter is missing is refused rather than skipped, because falling through
+would read a different environment. `sync` prints the interpreter it used:
 
 ```
-dependency "acme-common": transport `npm` is not supported by this toolchain yet; use `path`
+$ meta deps sync
+synced acme-scheduling (new)→0.4.0 ((new)→1c9e44d0) — python: /srv/app/.venv/bin/python (from .venv)
 ```
+
+The interpreter path never reaches the lock. `find_spec` imports the parent packages of
+a dotted name, so this runs your own environment's code, as `import` would.
+
+**When a transport cannot find the package**, `sync` and `check` fail with
+`ERR_DEPENDENCY_UNRESOLVED`, naming what was tried and the fix:
+
+```
+dependency "acme-billing": the npm package "@acme/billing-model" is not installed where
+/srv/app can resolve it. Install it (`npm install @acme/billing-model`, or your package
+manager's equivalent), then re-run.
+
+dependency "acme-scheduling": the Python package "acme_scheduling" is not installed in
+/usr/bin/python3 (from PATH). Install the distribution that provides it into that
+environment (for example `pip install acme-scheduling`), or point $METAOBJECTS_PYTHON at
+the interpreter that has it.
+
+dependency "acme-scheduling": no Python interpreter at /opt/py/bin/python (from
+$METAOBJECTS_PYTHON). Install Python, activate the project's virtualenv, or point
+$METAOBJECTS_PYTHON at the interpreter that has "acme_scheduling" installed.
+```
+
+If importing a dotted name's parent package raises, `sync` reports that error and asks
+you to fix the environment; the package is not missing.
+
+The package is installed but `dir` names a directory it does not ship: also
+`ERR_DEPENDENCY_UNRESOLVED`, telling you to check `dir` or ask the publisher to ship the
+output. The directory exists but holds no `metaobjects.pkg.json`:
+`ERR_DEPENDENCY_MANIFEST_INVALID`, with the same fix.
+
+**The installed version should match the manifest.** The publisher's generator stamps
+the host package's version into the manifest. When the installed package's own version
+(`package.json`, or the Python distribution's metadata) differs, `sync` warns (Python
+versions compare in PEP 440 normalized form, so `1.0.0-rc.1` equals `1.0.0rc1`): the
+publisher most likely released without regenerating the shared model. The lock records
+the manifest's version.
 
 `dependencies` is read at **every rung** of [the source ladder](metadata-sources.md) —
 wherever your own sources come from (the default `metaobjects/` directory, a declared
@@ -72,8 +134,8 @@ is read the same way on top of it.
 
 ## `meta deps sync`, `check`, and `list`
 
-**`meta deps sync [<name>…] [--dry-run]`** resolves each declared dependency's `path`,
-reads its `metaobjects.pkg.json`, verifies the sibling artifact's bytes hash to what
+**`meta deps sync [<name>…] [--dry-run]`** resolves each declared dependency through its
+transport, reads its `metaobjects.pkg.json`, verifies the sibling artifact's bytes hash to what
 the manifest records, and re-loads the artifact standalone with **core providers
 only** (a consumer loads it with its own providers, never the publisher's, so a
 Phase 1a export needing publisher-only vocabulary must fail at *publish* time, not
@@ -97,7 +159,7 @@ two steps do, and compares the artifact's *currently installed* hash against wha
 lock recorded. Once the hashes match, it also loads the committed snapshot and exits 1
 with the load error if the model does not load: matching hashes do not prove the model
 loads. It never writes the lock or the snapshot. It needs the
-publisher's `path` reachable right now, which is why it is a separate command from
+publisher reachable right now (its `path`, or the package installed), which is why it is a separate command from
 loading (below): CI running against a committed snapshot does not need the publisher
 checked out, but a `check` run does.
 
@@ -107,8 +169,8 @@ owned packages — with no resolution at all; it just reads
 
 ## Every dependency-aware port loads the committed snapshot, never the live path
 
-Once synced, TypeScript's and Python's collection resolvers — the two ports that
-implement dependencies in Phase 1a — load dependency artifacts from the committed
+Once synced, TypeScript's, Python's and Java's collection resolvers (Kotlin loads through
+Java's) load dependency artifacts from the committed
 snapshot **first**, then your own project files, offline, with no transport
 involved. At load time it checks the snapshot against the lock and refuses
 (`ERR_DEPENDENCY_SNAPSHOT_STALE`) when they disagree — a missing lock for a declared
@@ -242,8 +304,10 @@ inScope(fqn) = !imported(fqn) || explicitlyIncluded(packageOf(fqn), scope.includ
 ```
 
 So `scope.include` narrows a Python project's *own* codegen output not at all — it
-only ever widens which imported package is let back in. Do not read the TypeScript
-formula above as describing both ports.
+only ever widens which imported package is let back in. **Java and Kotlin follow Python**
+(`DependencySet.inScope`, read by `GeneratorUtil`'s selection points and `RestSurfaceGate`):
+the import-exclusion conjunct only, because those generators have never scoped the project's
+own objects either. Do not read the TypeScript formula above as describing every port.
 
 `migrate`, `verify --db`, and offline generate compose the schema-side twin, which
 also removes an excluded import from the *expected* schema before drift is computed
@@ -312,15 +376,17 @@ classifies those as breaking automatically — see [Deferred](#deferred).
 ## What fails at `meta deps check` / `verify --deps`
 
 `verify --deps` runs `meta deps check`'s comparison as one of `verify`'s gated
-subverbs (never part of the bare default — it needs the publisher's `path`
-reachable, which CI checking out only your own repo may not have). Each declared
+subverbs (never part of the bare default — it needs the publisher reachable, its
+`path` or its installed package, which CI checking out only your own repo may not
+have). Each declared
 dependency reports one of:
 
 - **`current`** — the installed artifact's hash matches the lock.
 - **`drifted`** — the publisher's artifact has changed since you last synced. Fix:
   review the artifact diff, then `meta deps sync`.
 - **`unresolved`** — the dependency could not be resolved at all right now (the
-  `path` moved, or the manifest/artifact fails validation).
+  `path` moved, the package is not installed, or the manifest/artifact fails
+  validation).
 
 Any `drifted` or `unresolved` dependency fails the command with
 `ERR_DEPENDENCY_UPSTREAM_DRIFT` — a check that cannot check must not pass. This is
@@ -390,15 +456,129 @@ publishes the same bytes as the packaged generator, and a test has a consumer sy
 verify what an ejected copy published. See
 [own-your-codegen](own-your-codegen.md#shared-model-you-own-the-inputs-the-package-owns-the-artifact).
 
-**Only TypeScript publishes in Phase 1a — and only TypeScript and Python consume.**
-TypeScript and Python are the only two ports that can *consume* a dependency at all
-today (load its snapshot, extend it, overlay it) — Java, Kotlin, and C# don't read
-`dependencies` yet (Phase 2). Of those two, only the TypeScript toolchain can
-*publish*: it alone can generate the artifact a publisher ships. A Python project
-that wants to publish a shared model runs a TypeScript `sharedModelFile()`
-generator against its own metadata the same way any TypeScript consumer would; a
-Java, C#, or Kotlin project cannot yet participate as either a publisher or a
-consumer.
+## Shipping the shared model inside your package
+
+A published model travels inside the package that implements it, the way a JVM
+library's jar once carried its `metadata/*.json`. Consumers install your package with
+their package manager and declare an `npm` or `python` dependency on it. Publishing is
+two steps: generate the shared model into the package, then release the package as you
+already do.
+
+**An npm package.**
+
+1. Point `sharedModelFile()`'s target inside the package, and list that directory in
+   `files` so it is packed:
+
+   ```ts
+   // metaobjects.config.ts
+   sharedModelFile({ name: "acme-billing", include: ["acme::billing::**"], target: "shared" }),
+   // …
+   targets: { shared: { outDir: "metaobjects" } },
+   ```
+
+   ```jsonc
+   // package.json
+   { "name": "@acme/billing-model", "version": "2.1.0", "files": ["dist", "metaobjects"] }
+   ```
+
+   `meta gen` writes `metaobjects/acme-billing.metaobjects.json` and
+   `metaobjects/metaobjects.pkg.json`, stamped with `package.json`'s version.
+2. Bump the version, run `meta gen`, then `npm publish`. `npm pack --dry-run` lists
+   the two files if `files` is right.
+
+Consumers declare `{ "name": "acme-billing", "npm": "@acme/billing-model", "dir": "metaobjects" }`.
+
+**A Python package.** The generator is TypeScript, so a Python project runs it with the
+Node `meta` it already uses for schema work.
+
+1. Point the target inside the importable package, and make sure the build ships the
+   JSON files as package data:
+
+   ```ts
+   targets: { shared: { outDir: "src/acme_scheduling/metaobjects" } },
+   ```
+
+   ```toml
+   # pyproject.toml
+   [project]
+   name = "acme-scheduling"
+   version = "0.4.0"
+
+   # hatchling ships every file inside the package directory by default. With
+   # setuptools, declare the data:
+   [tool.setuptools.package-data]
+   acme_scheduling = ["metaobjects/*.json"]
+   ```
+
+   With no `version` option and no `package.json` version nearer the project root, the
+   generator stamps `pyproject.toml`'s static `[project]` version. If the Node project
+   has its own `package.json` version, or the Python package lives elsewhere in the
+   repository, pass `version` explicitly so the manifest carries the version consumers
+   install.
+2. Bump the version, run `meta gen`, then build and upload as usual
+   (`python -m build`, then `twine upload` or `uv publish`). `unzip -l dist/*.whl`
+   shows the two files if the package data is right.
+
+Consumers declare `{ "name": "acme-scheduling", "python": "acme_scheduling", "dir": "metaobjects" }`.
+
+Run `meta verify --codegen` in your release pipeline before publishing: it fails when
+the committed shared model is stale against your metadata.
+
+### Recipe: a private registry (Gitea, Forgejo, …)
+
+A self-hosted Gitea serves an npm and a PyPI registry per owner (user or
+organization). The URLs have this shape; substitute your host and owner:
+
+| Ecosystem | Registry URL |
+|---|---|
+| npm | `https://git.example.com/api/packages/<owner>/npm/` |
+| PyPI (upload) | `https://git.example.com/api/packages/<owner>/pypi` |
+| PyPI (install index) | `https://git.example.com/api/packages/<owner>/pypi/simple/` |
+
+**Publishing needs a token; installing does not** when the packages are public (or the
+instance allows anonymous reads). Create a personal access token with package write
+scope, and keep it out of the repository:
+
+```ini
+# publisher's .npmrc (the token comes from the environment)
+@acme:registry=https://git.example.com/api/packages/<owner>/npm/
+//git.example.com/api/packages/<owner>/npm/:_authToken=${GITEA_TOKEN}
+```
+
+```bash
+npm publish                                   # with the .npmrc above
+python -m build
+twine upload --repository-url https://git.example.com/api/packages/<owner>/pypi \
+  -u <user> -p "$GITEA_TOKEN" dist/*
+```
+
+Consumers point their package manager at the registry with no credentials:
+
+```ini
+# consumer's .npmrc
+@acme:registry=https://git.example.com/api/packages/<owner>/npm/
+```
+
+```bash
+pip install --index-url https://git.example.com/api/packages/<owner>/pypi/simple/ \
+  --extra-index-url https://pypi.org/simple/ acme-scheduling
+# or in pyproject.toml / uv: an extra index with that URL
+```
+
+Then `meta deps sync` as for any other installed package. Nothing about the registry
+reaches `.metaobjects/`: the lock records the transport (`npm`/`python` + `dir`), never a
+URL.
+
+**Only TypeScript publishes in Phase 1a — TypeScript, Python, Java and Kotlin consume.**
+TypeScript, Python, Java and Kotlin can *consume* a dependency (load its snapshot, extend
+it, overlay it); C# doesn't read `dependencies` yet (Phase 2). Java reads it at every rung
+of the Maven plugin's source ladder (`<sourceDir>`/`<sources>`, the neutral config, the default
+directory), and Kotlin inherits that through the same plugin and loader, so a Spring
+or Kotlin build consumes a shared model with no extra configuration. Only the TypeScript
+toolchain can *publish*: it alone can generate the artifact a publisher ships. A Python,
+Java or Kotlin project that wants to publish a shared model runs a TypeScript
+`sharedModelFile()` generator against its own metadata the same way any TypeScript consumer
+would; a C# project cannot yet participate as either a publisher or a consumer.
 
 ## Vendoring vs. depending
 
@@ -421,7 +601,7 @@ If you have shipped a JVM library whose jar carried nothing but a `metadata/*.js
 resources directory, pulled by an ordinary dependency declaration and read off the
 classpath — this generalizes that pattern rather than replacing it with something
 unrecognizable. The artifact still travels *inside* the publisher's own ecosystem
-package (an npm package's files, in Phase 1a); it is still versioned with the
+package (an npm package's files or a Python package's package data); it is still versioned with the
 package that implements it; a consumer still pulls it through its own package
 manager. What's different: the artifact is **one flattened, generated file** rather
 than a directory of hand-placed sources, its manifest is generated rather than
@@ -432,10 +612,10 @@ cross-port contract every consumer gets today.
 
 ## Phase 2: Java, Kotlin and C#
 
-Tracked in [#482](https://github.com/metaobjectsdev/metaobjects/issues/482). Today only
-TypeScript and Python consume a dependency; Java, Kotlin and C# ignore the `dependencies` key,
-and a model there that references a node a dependency would supply fails loudly
-(`ERR_UNRESOLVED_OBJECT_REF`), never silently. Phase 2 adds no new contract. The manifest, the
+Tracked in [#482](https://github.com/metaobjectsdev/metaobjects/issues/482). Today TypeScript,
+Python, Java and Kotlin consume a dependency (Java and Kotlin shipped in slice S3); C# ignores the
+`dependencies` key, and a model there that references a node a dependency would supply fails
+loudly (`ERR_UNRESOLVED_OBJECT_REF`), never silently. Phase 2 adds no new contract. The manifest, the
 lock, the committed snapshot and the 24-case resolution corpus are plain files that every port
 already has the pieces to read; what is missing is each port *loading* the snapshot.
 
@@ -477,13 +657,13 @@ stays a separate, deferred option.
 ## Deferred
 
 Designed (see `docs/superpowers/specs/2026-09-11-fr-023-metadata-dependencies-design.md`)
-but **not** built in Phase 1a — do not assume any of the following exists:
+but **not** built yet — do not assume any of the following exists:
 
-- **The `npm` and `python` transports** (and `maven`/`nuget`, see
-  [Phase 2](#phase-2-java-kotlin-and-c)). Only `path` resolves; the others are refused with
-  `ERR_DEPENDENCY_UNRESOLVED`.
+- **The `maven` and `nuget` transports** (Phase 2, with the JVM and .NET consumers; see
+  [Phase 2](#phase-2-java-kotlin-and-c)).
 - **A local co-development override** (`deps.local.json`) that would point `sync` at
-  an unpublished local checkout without editing the committed config.
+  an unpublished local checkout without editing the committed config. Today, switch the
+  spec to `path` while co-developing, and back to `npm`/`python` before committing.
 - **A usage-aware breaking-change classifier** at sync/check time. Nothing
   automatically distinguishes a widening change (say, `@maxLength` growing) from a
   breaking one — the committed artifact's diff in your own history is today's
@@ -495,24 +675,31 @@ but **not** built in Phase 1a — do not assume any of the following exists:
 - **A runtime `ObjectManager` scope predicate.** Nothing at runtime refuses to serve
   an imported entity — "what's imported" is a load-time/codegen concept today, not a
   runtime one.
-- **Java, Kotlin, and C# as dependency consumers or publishers** — Phase 1a is
-  TypeScript + Python only; the other three ports arrive in Phase 2.
+- **C# as a dependency consumer, and Java, Kotlin and C# as publishers** — Java and
+  Kotlin consume from Phase 2 slice S3; C# arrives in a later slice. Spring apps do not yet
+  auto-load the snapshot at runtime (S4).
 
 ## Verified by
 
-- [`fixtures/dependency-conformance/`](../../fixtures/dependency-conformance/) — 35
-  cases. 24 pin resolution, the exhaustive `imported`/`inScope`/`inMigrateScope` sets,
+- [`fixtures/dependency-conformance/`](../../fixtures/dependency-conformance/) — 37
+  cases. 26 pin resolution (including `npm` and `python` dependencies loading from their
+  committed snapshot with nothing installed), the exhaustive `imported`/`inScope`/`inMigrateScope` sets,
   overlay/extends/reference behavior against a synced snapshot, and every load- and
-  resolution-time error above, run by TypeScript (the reference implementation) and
-  Python. 11 pin the upstream check (`current`, `drifted`, `unresolved`), run by TypeScript;
-  Python has no check yet. Three artifacts under `fixtures/dependency-conformance/artifacts/` are
+  resolution-time error above, run by TypeScript (the reference implementation),
+  Python and Java (Kotlin loads through the Java loader and Maven plugin, so it inherits the
+  corpus run and adds a codegen test that an imported entity emits nothing). 11 pin the upstream
+  check (`current`, `drifted`, `unresolved`), run by TypeScript; Python and Java have no check yet.
+  Three artifacts under `fixtures/dependency-conformance/artifacts/` are
   pinned by sha256 in the README so the corpus itself can never silently drift.
-  Python's runner asserts all 24 resolution cases identically to TypeScript's, with no
+  Python's runner asserts all 26 resolution cases identically to TypeScript's, with no
   exemptions — the two overlay cases that need a view child as incidental content
   use `view.currency` (the one concrete `view.*` subtype registered cross-port,
   per `fixtures/registry-conformance/expected-registry.json`), not `view.text`,
   so they exercise the full imported/selected/governed assertions like every
-  other case.
+  other case. `transport-cases.json` beside it pins the `npm` and `python` transports
+  themselves (14 cases: packages laid out under a temp `node_modules` and on a temp
+  Python import path, the directory each resolves to, the exact lock `sync` writes, and
+  each refusal), run by Node `meta deps sync`, the only writer.
 - [`fixtures/shared-model-conformance/`](../../fixtures/shared-model-conformance/) — 11 cases
   pinning what a publisher writes: the exact artifact and manifest bytes for a source tree and
   `include` / `exclude` / `files`, and the refusals (an empty selection, a closure failure naming

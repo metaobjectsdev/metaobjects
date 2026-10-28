@@ -110,3 +110,28 @@ describe("ProviderChain", () => {
     expect(chain.resolve("nope")).toBeUndefined();
   });
 });
+
+// ADR-0061: a project template may be Jinja; the chain reports the engine of the body it returns.
+describe("Jinja project templates", () => {
+  test("a project templates/<ref>.jinja resolves, and the chain reports engine jinja", () => {
+    const dir = makeTempProject();
+    mkdirSync(join(dir, "templates", "prompts"), { recursive: true });
+    writeFileSync(join(dir, "templates", "prompts", "greet.jinja"), "Hi {{ name }}");
+    writeFileSync(join(dir, "templates", "prompts", "plain.mustache"), "Hi {{name}}");
+    const provider = projectProvider(dir);
+    expect(provider.resolve("prompts/greet")).toBe("Hi {{ name }}");
+    expect(provider.engineOf?.("prompts/greet")).toBe("jinja");
+    expect(provider.engineOf?.("prompts/plain")).toBe("mustache");
+    expect(provider.engineOf?.("prompts/none")).toBeUndefined();
+    expect(new FileSystemProvider(join(dir, "templates")).engineOf("prompts/greet")).toBe("jinja");
+  });
+
+  test("ProviderChain asks the provider that answered", () => {
+    const chain = new ProviderChain([
+      { resolve: (r: string) => (r === "a" ? "A" : undefined), engineOf: () => "jinja" as const },
+      { resolve: () => "B" },
+    ]);
+    expect(chain.engineOf("a")).toBe("jinja");
+    expect(chain.engineOf("b")).toBe("mustache");
+  });
+});

@@ -9,6 +9,7 @@ USAGE:
 COMMANDS:
   init                  Scaffold a MetaObjects project in the current repo
   init --refresh-docs   Refresh .metaobjects/AGENTS.md + CLAUDE.md after CLI upgrades
+  init --with-docs      Scaffold with documentation wired (docsFile(), apiDocsFile()) so the first \`meta gen\` writes it
   init --config-only    Write only .metaobjects/config.json — for a Maven- or pip-rooted project
   agent-docs            Scaffold only the agent-context (.metaobjects/ + .claude/skills/) — canonical redirect target for all language ports
   gen [<entity>...]     Codegen TS targets from your declared metadata
@@ -16,7 +17,8 @@ COMMANDS:
                         way to get any output MetaObjects does not ship (OpenAPI, JSON Schema, …)
   eject <generator>     Copy a reference generator into codegen/generators/ to own it (any time after init)
   eject --list          List every ejectable generator name, grouped by package
-  deps sync [<name>...] Resolve declared dependencies (path transport): sync the committed
+  eject --undo          Remove owned generator copies that are the shipped reference
+  deps sync [<name>...] Resolve declared dependencies (path, npm, python): sync the committed
                         snapshot + sha256 lock (.metaobjects/deps/, .metaobjects/deps.lock.json)
   deps list             One line per locked dependency: name, version, hash, node/package summary
   types [query]         Search the metadata vocabulary (types, subtypes, @attrs) by name or description

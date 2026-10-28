@@ -266,3 +266,41 @@ describe("render-helper codegen — import-and-RUN proof (bun dynamic import)", 
     expect(email.textBody).toBe("Hi Ada");
   });
 });
+
+// ADR-0061: a Jinja body goes through the same gate, and the helper names its engine so a
+// runtime provider that cannot tell (an in-memory one, as here) still renders it as Jinja.
+describe("render-helper codegen — Jinja bodies", () => {
+  test("a Jinja body passes the gate, and the emitted call names the engine", async () => {
+    const root = await loadRoot(DOC_MODEL);
+    const gate = new InMemoryProvider({ "pages/welcome": "Hello {{ name | upper }}" }, { engine: "jinja" });
+    const src = renderRenderHelper(root, "WelcomePage", gate);
+    expect(src).toContain('engine: "jinja"');
+
+    const dir = mkdtempSync(join(import.meta.dir, "rh-jinja-"));
+    TEMP_DIRS.push(dir);
+    writeFileSync(join(dir, "payloads.ts"), "export interface WelcomeVO { name: string; }\n");
+    writeFileSync(join(dir, "WelcomePage.render.ts"), src);
+    const mod = await import(join(dir, "WelcomePage.render.ts"));
+    // The runtime provider here knows nothing about engines; the helper's own `engine` decides.
+    const runtime = new InMemoryProvider({ "pages/welcome": "Hello {{ name | upper }}" });
+    expect(mod.renderWelcomePage({ name: "Ada" }, runtime)).toBe("Hello ADA");
+  });
+
+  test("a drifted Jinja body THROWS (fails codegen) naming the path", async () => {
+    const root = await loadRoot(DOC_MODEL);
+    const gate = new InMemoryProvider({ "pages/welcome": "{% for x in nope %}{{ x }}{% endfor %}" }, { engine: "jinja" });
+    expect(() => renderRenderHelper(root, "WelcomePage", gate)).toThrow(/ERR_VAR_NOT_ON_PAYLOAD: \{\{nope\}\}/);
+  });
+
+  test("a Jinja body the check cannot settle THROWS with ERR_TEMPLATE_NOT_STATIC", async () => {
+    const root = await loadRoot(DOC_MODEL);
+    const gate = new InMemoryProvider({ "pages/welcome": "{% include name %}" }, { engine: "jinja" });
+    expect(() => renderRenderHelper(root, "WelcomePage", gate)).toThrow(/ERR_TEMPLATE_NOT_STATIC: include/);
+  });
+
+  test("a Mustache body emits no engine argument (byte-identical to before)", async () => {
+    const root = await loadRoot(DOC_MODEL);
+    const src = renderRenderHelper(root, "WelcomePage", new InMemoryProvider({ "pages/welcome": "Hello {{name}}" }));
+    expect(src).not.toContain("engine:");
+  });
+});

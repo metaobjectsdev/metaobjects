@@ -47,6 +47,7 @@ public class MetaDataGeneratorMojo extends AbstractMetaDataMojo
         // used to exit 0 on it.
         refuseUnmetRequires(generatorImpls);
         refuseSharedGeneratorDirs();
+        noteOwnedStock();
 
         // Refuse before any generator runs — the one choke point that sees the WHOLE
         // entity set every route-emitting generator below (Java's codegen-spring AND
@@ -55,7 +56,9 @@ public class MetaDataGeneratorMojo extends AbstractMetaDataMojo
         // only the post-loop registerGeneratedSourceRoots() logic below with no real
         // metadata — nothing to collide-check in that case.
         if (loader != null) {
-            RouteNaming.assertNoCollectionNameCollisions(loader.getMetaObjects());
+            // FR-023: an object a dependency owns gets no route here, so it cannot collide with one.
+            RouteNaming.assertNoCollectionNameCollisions(
+                    com.metaobjects.generator.util.GeneratorUtil.ownMetaObjects(loader));
         }
 
         // Where this EXECUTION's codegen hash manifest lives: anchored on the module
@@ -124,6 +127,24 @@ public class MetaDataGeneratorMojo extends AbstractMetaDataMojo
         }
 
         registerGeneratedSourceRoots();
+    }
+
+    /**
+     * One advisory line when an owned generator copy under {@code codegen/} is identical to the
+     * shipped generator. Never changes the build outcome: a failed comparison says nothing.
+     */
+    private void noteOwnedStock() {
+        if (project == null || project.getBasedir() == null) return;
+        try {
+            Path base = project.getBasedir().toPath();
+            String line = OwnedStock.notice(OwnedStock.find(
+                    base.resolve(MetaDataEjectMojo.CODEGEN_DIR),
+                    OwnedStock.runtimeRoots(base, project.getModules()),
+                    OwnedStock.classpath(getClass().getClassLoader())));
+            if (line != null) getLog().info("MetaData Mojo > " + line);
+        } catch (IOException | RuntimeException ignored) {
+            // advisory only
+        }
     }
 
     /**

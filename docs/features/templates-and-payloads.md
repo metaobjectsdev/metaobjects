@@ -21,8 +21,10 @@ This buys four guarantees:
 
 The vocabulary is `template.*` (the renderable unit) over a declared payload
 shape — an `object.value`, or (since #210) a **sourceless** `object.projection`.
-Mustache is the chosen template engine — it has the only published
-cross-language spec + conformance suite.
+Mustache is the default template engine in every port: it has the only published
+cross-language spec + conformance suite. Python and TypeScript also render **Jinja**
+bodies, chosen by the file's extension and held to the same payload check (see
+[Jinja templates](#jinja-templates-python-and-typescript), ADR-0061).
 
 ## Two template subtypes — the axis is DIRECTION
 
@@ -179,6 +181,61 @@ reference to the actual template text:
 A consumer can ship their own provider (RDB / Neo4j / Qdrant) — the engine takes
 the `Provider` interface and delegates. Locale, A/B, dynamic, and evolutionary
 prompts all live behind the provider seam without touching metadata.
+
+## Jinja templates (Python and TypeScript)
+
+A template body may be a Jinja file instead of a Mustache one: `prompts/lobby/welcome.jinja`
+(or `.j2`, or `.jinja2`) beside, or instead of, `welcome.mustache`. Nothing in the metadata
+changes: `@textRef` is still `lobby/welcome`, and the engine comes from the file
+([ADR-0061](../../spec/decisions/ADR-0061-per-port-template-engines.md)). Python renders it
+with jinja2 (`pip install "metaobjects[jinja]"`), TypeScript with nunjucks, which
+`@metaobjectsdev/render` depends on.
+
+- **Lookup.** `FilesystemProvider` reads `<ref>.mustache` first, then `.jinja`, `.j2` and
+  `.jinja2`, and reports which engine the file it found is for. Given one explicit
+  extension, it reads only that one. An in-memory provider takes the engine as an option
+  (`new InMemoryProvider(map, { engine: "jinja" })`, `InMemoryProvider(map, engine="jinja")`),
+  and `render` and `verify` both accept an explicit `engine`.
+- **The same check.** `verify`, and the render-helper generator at codegen time, check every
+  payload reference a Jinja body makes against the payload value object. They walk the
+  parsed template: `{{ user.name }}` is checked per segment, `{% for p in posts %}` binds `p`
+  to the element's fields, `set` / macro parameters / loop targets are locals, filter
+  arguments are checked (and so is an element attribute a filter names, as in
+  `map(attribute="title")`), and a literal `include` / `import` / `extends` is followed
+  through the provider. A drifted reference is `ERR_VAR_NOT_ON_PAYLOAD`, as for Mustache.
+- **Nothing passes unchecked.** A reference the check cannot settle without running the
+  template (`user[key]`, `{% include name %}`) is `ERR_TEMPLATE_NOT_STATIC`. A body that does
+  not parse is `ERR_TEMPLATE_SYNTAX`.
+- **At runtime too.** A generated render helper over a Jinja body passes the engine and the
+  payload field tree to `render`, so a body that drifted after the build is refused when it
+  is rendered.
+- **Escaping.** `@format` drives escaping exactly as for Mustache: every `{{ … }}` value goes
+  through that format's escaper, and `| safe` bypasses it. What a macro, a `call` block or a
+  block `set` renders is already escaped, and printing it does not escape it again.
+- **One engine per include chain.** A Mustache body includes Mustache partials, and a Jinja
+  body includes Jinja templates. A partial whose file is the other engine's is refused with
+  `ERR_TEMPLATE_ENGINE_UNSUPPORTED`, in `verify` and at render time, rather than spliced in
+  as text the including engine would misread.
+- **Java, Kotlin and C# do not render Jinja.** Their providers refuse a Jinja-only body with
+  `ERR_TEMPLATE_ENGINE_UNSUPPORTED`, and their `verify` reports it on that template, so a
+  model that needs those ports keeps its bodies in Mustache.
+
+```jinja
+{# prompts/lobby/welcome.jinja #}
+Hi {{ displayName | title }}, you have {{ postCount }} posts.
+{% for p in posts %}- {{ p.title }}
+{% endfor %}
+```
+
+Python and TypeScript render the shared Jinja vocabulary identically
+(`fixtures/jinja-render-conformance/`). Outside it the two engines differ: an empty list is
+false in jinja2 and true in nunjucks (write `{% if items | length %}`), a printed list or dict
+is engine-specific text, and Python-only syntax (`{% with %}`, `name.upper()`, `True`) does
+not run in nunjucks. Looping over a null value renders nothing in nunjucks and fails the
+render in jinja2 (guard it with `{% if items %}`). A string filter such as `upper` over
+already-escaped text (a `{% filter upper %}` block in an html render) keeps it escaped once in
+jinja2 and escapes it again in nunjucks. The Mustache-only accessors (`has<Field>`, `-first`, `-last`) are not
+added for a Jinja body; use `{% if field %}` and `loop.first` / `loop.last`.
 
 ## The rendered output
 
@@ -370,7 +427,8 @@ string output = Renderer.Render(new RenderRequest
 
 ### Python
 
-`metaobjects.render` ships the Mustache engine + `Verify`. The Python loader
+`metaobjects.render` ships the Mustache engine, Jinja through the `jinja` extra
+([Jinja templates](#jinja-templates-python-and-typescript)), and `Verify`. The Python loader
 recognizes `template.*` + `origin.*`. The payload is the value object's own Pydantic
 `BaseModel`, emitted by the `entity` generator as `<Name>.py` (ADR-0056), so a consumer
 can render from that model or from a plain `dict` — the engine reads a model through its
@@ -652,7 +710,9 @@ leaves a trace in the report that your own code would otherwise have to reconstr
 
 For every template, `verify` resolves the text, parses the `{{...}}` references,
 and checks each one exists on the payload VO. If a template references
-`{{authorName}}` but the payload only has `displayName`, the build fails.
+`{{authorName}}` but the payload only has `displayName`, the build fails. A Jinja
+body (Python and TypeScript) is checked the same way; see
+[Jinja templates](#jinja-templates-python-and-typescript).
 
 A bare `verify` also checks generated code and the requirement ledger; name the template
 check to run it alone. A run with no template root configured skips this check with a note
@@ -730,6 +790,11 @@ for payload typing per #270)
 Cross-port runner coverage: TS / Java / Kotlin / C# / Python all execute these
 via their respective conformance runners. See [`docs/CONFORMANCE.md`](../CONFORMANCE.md)
 for the per-port pass/skip ledger.
+
+**Jinja bodies (Python and TypeScript, ADR-0061)**
+
+- [`fixtures/jinja-render-conformance/`](../../fixtures/jinja-render-conformance/) — 15 cases: variables, loops, conditionals, `set` and macros, `include` and `import`, filters, html and json escaping (with and without `| escape`), whitespace control, `raw` and comments, plus an include cycle and an unresolved include. Byte-identical output from jinja2 and nunjucks.
+- [`fixtures/jinja-verify-conformance/`](../../fixtures/jinja-verify-conformance/) — 31 cases: the payload check over the parsed template (paths, loop targets, locals, filters, includes, imports, `extends` blocks, `ERR_TEMPLATE_NOT_STATIC`, `ERR_TEMPLATE_SYNTAX`, required slots and tags).
 
 ## See also
 

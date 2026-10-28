@@ -127,4 +127,41 @@ public static class OwnedCopy
         }
         return clauses.Count == 0 ? "identical" : string.Join("; ", clauses);
     }
+
+    /// <summary>
+    /// <see cref="Status"/>, plus a <c>"codegen/runtime/: …"</c> clause when the generator's output
+    /// imports the helper runtime and the owned copy of it is not identical. Undo reads this: the
+    /// shipped generator imports the shipped runtime, so dropping such a copy would silently stop
+    /// the runtime edit reaching the generated code.
+    /// </summary>
+    public static string? UndoStatus(string root, MetaObjects.Codegen.GeneratorRegistryEntry entry)
+    {
+        var status = Status(root, entry);
+        if (status is null
+            || !MetaObjects.Codegen.HelperRuntime.UsedBy(MetaObjects.Codegen.EjectableGenerators.ReadSource(entry.Name)!)
+            || RuntimeStatus(root) is not { } runtime || runtime == "identical")
+            return status;
+        var clause = $"{MetaObjects.Codegen.HelperRuntime.OwnedDirectory}/: {runtime}";
+        return status == "identical" ? clause : $"{status}; {clause}";
+    }
+
+    /// <summary>Every ejectable entry whose owned copy, the emitters eject handed over with it and the
+    /// helper runtime its output imports, is identical to the shipped one (<see cref="UndoStatus"/>
+    /// reads <c>identical</c>).</summary>
+    public static IReadOnlyList<MetaObjects.Codegen.GeneratorRegistryEntry> IdenticalCopies(string root) =>
+        MetaObjects.Codegen.EjectableGenerators.Entries().Where(e => UndoStatus(root, e) == "identical").ToList();
+
+    /// <summary>
+    /// The one advisory line <c>dotnet meta gen</c> prints when owned copies identical to the shipped
+    /// generators exist (they carry no change, only the upkeep of owning them), naming them and the
+    /// command that drops them. <c>null</c> when there are none, so a project without them pays nothing.
+    /// </summary>
+    public static string? IdenticalNotice(string root)
+    {
+        var names = IdenticalCopies(root).Select(e => e.Name).ToList();
+        return names.Count == 0
+            ? null
+            : $"note: owned generator copies identical to the shipped ones: {string.Join(", ", names)}. " +
+              "`dotnet meta eject --undo` drops them (it prints the codegen/Generators.cs edit; it changes nothing else).";
+    }
 }

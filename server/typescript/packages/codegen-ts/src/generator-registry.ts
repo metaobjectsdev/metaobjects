@@ -53,6 +53,7 @@ import {
   metamodelDocsFile,
   docsSiteFile,
   cubeModel,
+  prismaSchemaFile,
 } from "./generators/index.js";
 
 export type GeneratorTier = "native" | "neutral";
@@ -239,6 +240,23 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
     runtimePeers: ["drizzle-orm", "zod"],
     configKeys: ["dialect", "extStyle", "pluralizeCollections", "collectionNameOverrides"],
     ejectable: ejectable("queries"),
+  },
+  "prisma-schema": {
+    name: "prisma-schema",
+    kind: "generator",
+    layer: "persistence",
+    description:
+      "A Prisma schema (schema.prisma) for the model's tables, and schema.checks.sql for the CHECK constraints Prisma cannot declare, for a project that keeps Prisma as its ORM. Under orm: \"prisma\", entity writes the types and Zod schemas with no Drizzle table.",
+    tier: "native",
+    factory: () => prismaSchemaFile(),
+    factoryExport: "prismaSchemaFile",
+    options: "provider?, fileName?, header?, checks?, filter?, target?",
+    // The schema imports nothing; Prisma itself is the project's own dependency.
+    requires: [],
+    runtimePackages: [],
+    runtimePeers: [],
+    configKeys: ["dialect", "orm"],
+    ejectable: ejectable("prisma-schema"),
   },
 
   // ----- api --------------------------------------------------------------

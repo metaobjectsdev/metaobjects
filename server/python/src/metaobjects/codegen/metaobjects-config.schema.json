@@ -17,6 +17,11 @@
       "items": { "type": "string", "pattern": "^[^:]+:[^:]+$" },
       "description": "Consumer provider refs as 'module:symbol', resolved relative to this config file's directory (no PYTHONPATH needed)."
     },
+    "apiPrefix": {
+      "type": "string",
+      "pattern": "^(/.*)?$",
+      "description": "The path generated routers mount under, and the api docs name: '/api' (default) gives /api/authors, '/v1' gives /v1/authors, '' mounts at /authors."
+    },
     "templates": {
       "type": "string",
       "minLength": 1,

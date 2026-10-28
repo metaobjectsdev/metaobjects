@@ -166,3 +166,9 @@ resolve against the payload — empty list = no drift. Assert it is empty in a J
 test in the Maven `test` phase to fail the build on prompt/payload drift. The
 `metaobjects:verify` codegen-drift goal additionally catches a stale committed
 parser.
+
+**Mustache only (ADR-0061).** Jinja bodies are a Python and TypeScript engine. A ref whose
+only body is a `.jinja` / `.j2` / `.jinja2` file is refused here with
+`ERR_TEMPLATE_ENGINE_UNSUPPORTED` (by the filesystem provider, and as a drift line by
+`verify`), rather than reported as missing. Keep templates the JVM ports render in
+Mustache.

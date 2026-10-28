@@ -38,6 +38,7 @@ from .api_docs_model import (
     FieldShape,
 )
 from metaobjects.codegen import type_map
+from metaobjects.codegen.config import DEFAULT_API_PREFIX
 from metaobjects.codegen.model_walk import package_of
 from .m2m_codegen import (
     build_object_index,
@@ -93,6 +94,10 @@ def _is_email_kind(tmpl: MetaData) -> bool:
 
 class PythonApiModelBuilder:
     """Builds the :class:`ApiModel` SDK-surface IR from a loaded ``MetaRoot``."""
+
+    def __init__(self, api_prefix: str = DEFAULT_API_PREFIX) -> None:
+        #: The path the documented routes mount under (``apiPrefix``; ``""`` = at the root).
+        self.api_prefix = api_prefix
 
     def build(self, root: MetaData, project: str) -> ApiModel:
         objects = [
@@ -237,7 +242,7 @@ class PythonApiModelBuilder:
         item-verb refusals are 405s, not endpoints, so no write verb is documented;
         a keyless object has no item route and its seam no ``find_by_id``."""
         router_module = naming.router_module_name(obj.name)
-        base_path = "/api/" + naming.route_path(obj.name)
+        base_path = f"{self.api_prefix}/" + naming.route_path(obj.name)
         repo = naming.repository_class_name(obj.name)
         fields_const = naming.filter_fields_const(obj.name)
         item = has_item_route(obj)
@@ -289,7 +294,7 @@ class PythonApiModelBuilder:
         object_index: dict[str, MetaObject],
     ) -> None:
         router_module = naming.router_module_name(entity.name)
-        base_path = "/api/" + naming.route_path(entity.name)
+        base_path = f"{self.api_prefix}/" + naming.route_path(entity.name)
         # The router registers the item routes with a per-entity path param
         # (`/{<entity>_id}`, e.g. `/{customer_id}`) — document that exact name, not
         # a generic `{id}`, so the docs match the generated FastAPI routes.

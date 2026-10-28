@@ -31,6 +31,27 @@ or replaced (`<handEdits>overwrite</handEdits>`). `mvn metaobjects:eject -Dnames
 generator into your repo to own. Commit the manifest. Details:
 [Own your codegen](../features/own-your-codegen.md).
 
+## Undo an eject, strict loading, and diagnostics
+
+**Undo an eject.** `mvn metaobjects:eject -Dundo=true` deletes the owned copies under `codegen/`
+that are identical to the generator this plugin ships (the comparison `-Dlist` shows as
+`[owned — identical]`: the generator, the classes copied with it and its page templates, the
+`package` line and the other lines eject itself rewrites ignored). With `-Dnames=a,b` it removes
+those only, and a copy that differs is refused, with nothing removed, unless `-Dforce=true`; every
+name is checked before anything is deleted. It never edits `pom.xml`: for each generator removed it
+prints the `<classname>` to put back, owned to shipped. The shared support classes and helper
+runtime that eject also wrote stay (other owned generators may import them) and are named. While an
+identical copy exists, `mvn metaobjects:generate` logs one advisory line naming it and this command;
+it never changes the outcome of the build.
+
+**Strict loading.** `metaobjects:generate` already loads strictly, exactly as `metaobjects:verify`
+does (ADR-0023): an attribute no registered provider declares fails the goal with
+`ERR_UNKNOWN_ATTR` before any generator runs, and no file is written. `-Dmeta.lax=true` is the
+opt-out for both goals. There is no separate `-Dstrict` switch.
+
+**No `doctor` goal.** There is no `metaobjects:doctor`; `metaobjects:verify` (drift and the
+requirement gate) and `eject -Dlist` (owned-copy status) are the diagnostics the plugin has.
+
 ## Install
 
 Set `${metaobjects.version}` to the current Maven Central release (`8.1.4`) — both
@@ -171,6 +192,20 @@ Drop metadata under `src/main/metaobjects/`, for example `src/main/metaobjects/m
     ]
 }}
 ```
+
+### Consuming a shared model (`dependencies`)
+
+A project that declares `dependencies` in `.metaobjects/config.json` loads the committed
+snapshot under `.metaobjects/deps/` before its own files, at every rung of the plugin's source
+ladder (`<sourceDir>`/`<sources>` in the pom, the neutral config's `sources`, the default
+directory). `meta deps sync` (Node) is the only writer of the snapshot and `deps.lock.json`;
+the Maven build reads them offline and refuses a stale or hand-edited snapshot with
+`ERR_DEPENDENCY_SNAPSHOT_STALE`. Your own entities can `extends` and reference the imported
+ones; the generators emit nothing for an imported object unless `scope.include` names its
+package, and a new top-level node declared into a package a dependency owns fails with
+`ERR_DEPENDENCY_PACKAGE_NOT_OWNED`. Kotlin builds inherit all of this. See
+[`metadata-dependencies.md`](../features/metadata-dependencies.md). Spring runtime
+auto-load of the snapshot and `verify` drift for dependencies are separate, later slices.
 
 ### Custom providers (optional)
 
@@ -368,7 +403,7 @@ name in every port.
 | `report-export` | `SpringReportExportGenerator` | `metaobjects-codegen-spring` | Standalone export of a served report (`?format=csv\|json\|xml`, see [Report export](#report-export)): one `<R>Export` per served report beside its controller (columns in derived-field order, wire-form cells, `MAX_ROWS`, `csv(rows)` and `xml(rows)`) and one shared `ReportExportWriter` (CSV quoting, CRLF, the `EXPORT_CSV_BOM` constant, the formula-injection guard, XML over JDK StAX; no new dependency, Jackson is already there). Args: `outputDir` (required), `maxRows` (default `100000`), `xmlNulls` (`empty`, the default, or `nil`), `csvBom` (default `false`) and `writerPackage` (default: the package prefix the served reports share, else `export`). Never implied by a library. Ejectable. |
 | `trace-helper` | `LlmTraceHelperGenerator` | `metaobjects-codegen-spring` | One `<Entity>TraceHelper` per concrete entity that transitively `extends` `metaobjects::ai::LlmCallBase` **and** nests a `template.prompt` carrying `@responseRef` — a static `record<Entity>(...)` that extracts the typed response, builds the `LlmCallBase` trace row, and persists it. Emits nothing for any other entity. |
 | `template` | `TemplateScopeGenerator` | `metaobjects-codegen-base` | The generic Mustache primitive: walk the model by a named `scope`, render one shared template per walk result, write each file. The declarative alternative to writing a generator class — see [Declarative template-codegen](#declarative-template-codegen-templatescopegenerator) below. It renders through `render.templategen.TemplateGenerator`, the byte-pinned cross-port factory; that factory takes a walk callback and is not itself a `Generator`, so `TemplateScopeGenerator` is the class a pom names. |
-| `api-docs` | `JavaApiDocsGenerator` | `metaobjects-codegen-spring` | The Java SDK api reference: one page per entity, value object, projection, served report and template, an index and `AGENT-API.md`, under `<outputDir>/<apiSubDir>`. A `<generator>` entry like any other, run by `metaobjects:generate` and checked by `metaobjects:verify`. Args: `outputDir` (required; give it generated files only, since `verify` compares the whole tree), `apiSubDir` (default `api/java`), `layout` (`flat`, the default, or `package`), `projectName` (the agent page's header label, default `project`) and `modelBaseUrl` (absolute base for the links to the model pages; relative when unset). The `metaobjects:docs` goal was removed in 8.1.0 ([migration](../features/migrations/docs-are-generators.md#java-and-kotlin)). Ejectable: the copy takes the page IR, the builder, the renderer, the page paths and the page templates with it. |
+| `api-docs` | `JavaApiDocsGenerator` | `metaobjects-codegen-spring` | The Java SDK api reference: one page per entity, value object, projection, served report and template, an index and `AGENT-API.md`, under `<outputDir>/<apiSubDir>`. A `<generator>` entry like any other, run by `metaobjects:generate` and checked by `metaobjects:verify`. Args: `outputDir` (required; give it generated files only, since `verify` compares the whole tree), `apiSubDir` (default `api/java`), `layout` (`flat`, the default, or `package`), `projectName` (the agent page's header label, default `project`) and `modelBaseUrl` (absolute base for the links to the model pages; with none set the pages carry no `Model / metadata` link, since nothing writes a page for it to point at). The `metaobjects:docs` goal was removed in 8.1.0 ([migration](../features/migrations/docs-are-generators.md#java-and-kotlin)). Ejectable: the copy takes the page IR, the builder, the renderer, the page paths and the page templates with it. |
 | `plantuml` | `PlantUMLGenerator` | `metaobjects-codegen-plantuml` | One PlantUML class diagram of the object model (`outputDir`, `outputFilename`; `showAttrs`, `showFields`, `showAbstracts`, `drawKeys`, `drawRefs` choose what is drawn). Ejectable: the copy takes `PlantUMLWriter` with it. |
 | `html-docs` | `MetaDataHtmlDocumentationGenerator` | `metaobjects-codegen-base` | One HTML page describing the registered metamodel types (`outputDir`, `outputFilename`). It reads the type registry, not your model, so it documents the vocabulary your build loads, providers included. Ejectable: the copy takes `MetaDataHtmlDocumentationWriter` with it. |
 | `ai-docs` | `MetaDataAIDocumentationGenerator` | `metaobjects-codegen-base` | The same type reference as JSON, laid out for an AI reader (`outputDir`, `outputFilename`). Ejectable: the copy takes `MetaDataAIDocumentationWriter` with it. |
@@ -889,7 +924,7 @@ Node `meta` CLI.
 | Relationships + FK | Yes (via OMDB) |
 | Source kinds (table / view / storedProc) | Yes |
 | `field.currency` / `field.enum` / `field.object` + `@storage` | Yes |
-| Templates + render (FR-004) | Yes (`metaobjects-render`) |
+| Templates + render (FR-004) | Yes (`metaobjects-render`; Mustache only — a Jinja body is refused with `ERR_TEMPLATE_ENGINE_UNSUPPORTED`, ADR-0061) |
 | Payload-VO codegen | Yes — the payload IS the value object's own `record`, from `SpringValueObjectGenerator` (ADR-0056); no separate payload generator |
 | Output parser codegen (FR-006) | Yes — `SpringOutputParserGenerator` (in `metaobjects-codegen-spring`) — see usage below |
 | Migrations | TS-only (`@metaobjectsdev/cli migrate`) — the Java migration engine and the OMDB runtime auto-create path were both removed (ADR-0015); apply the TS-produced DDL to the database |

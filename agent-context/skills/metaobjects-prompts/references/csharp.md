@@ -142,3 +142,9 @@ template's tokens against the payload field tree — each `{{...}}` that doesn't
 yields a `VerifyError(Code, Path)` (empty list = no drift). Assert it is empty in an
 xUnit test to fail the build on prompt/payload drift; `dotnet meta verify` additionally
 catches a stale committed parser.
+
+**Mustache only (ADR-0061).** Jinja bodies are a Python and TypeScript engine. A ref whose
+only body is a `.jinja` / `.j2` / `.jinja2` file is refused here with
+`ERR_TEMPLATE_ENGINE_UNSUPPORTED` (by the filesystem provider, and as a drift line by
+`verify`), rather than reported as missing. Keep templates the C# port renders in
+Mustache.

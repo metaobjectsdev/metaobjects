@@ -31,7 +31,9 @@ public sealed class ApiDocsGenerator : IGenerator
     /// <summary>The label the agent page carries in its header.</summary>
     public string ProjectName { get; init; } = "project";
 
-    /// <summary>When set, the base URL the model pages' back-links federate to.</summary>
+    /// <summary>The base URL the model pages' back-links point at. The C# port writes no model pages of
+    /// its own, so the "Model / metadata" link is emitted only when this is set; without it the pages
+    /// carry no such link rather than one that resolves to nothing.</summary>
     public string? ModelBaseUrl { get; init; }
 
     public IEnumerable<EmittedFile> Generate(GenContext ctx)
@@ -43,7 +45,9 @@ public sealed class ApiDocsGenerator : IGenerator
         foreach (var unit in model.Units)
         {
             var pagePath = DocsPaths.DocPageOutputPath(layout, unit.Package, unit.Node);
-            var modelHref = DocsPaths.ModelCrossHref(ApiSubDir + "/" + pagePath, pagePath, ModelBaseUrl);
+            var modelHref = string.IsNullOrEmpty(ModelBaseUrl)
+                ? null
+                : DocsPaths.ModelCrossHref(ApiSubDir + "/" + pagePath, pagePath, ModelBaseUrl);
             yield return Page(pagePath, renderer.RenderUnitPage(unit, modelHref));
         }
         yield return Page("README.md", renderer.RenderIndex(model, layout));

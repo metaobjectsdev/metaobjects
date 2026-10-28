@@ -1,0 +1,1 @@
+{% for p in posts %}{{ loop.index }}{% if loop.first %}^{% endif %}{% if not loop.last %},{% endif %}{% endfor %}

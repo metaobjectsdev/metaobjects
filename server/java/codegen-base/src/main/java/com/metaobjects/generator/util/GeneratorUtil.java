@@ -15,7 +15,36 @@ import java.util.stream.Collectors;
 public class GeneratorUtil {
 
     public static Collection<MetaData> getFilteredMetaData(MetaDataLoader loader, MetaDataFilters filters ) {
-        return filterMetaData( loader.getChildren(), MetaData.class, filters );
+        List<MetaData> own = new ArrayList<>();
+        for (MetaData md : loader.getChildren()) {
+            if (!isImported(md)) own.add(md);
+        }
+        return filterMetaData( own, MetaData.class, filters );
+    }
+
+    /**
+     * FR-023 — true for an object a metadata DEPENDENCY owns: its package is one the project's
+     * dependency snapshot exports and {@code scope.include} does not name. Such an object stays in
+     * the loaded model (the project's own nodes {@code extends} and reference it), but it is
+     * another project's to generate: a generator emits nothing for it, exactly as the TypeScript
+     * and Python selection points do. False for anything that is not an object, and for every tree
+     * loaded without dependencies.
+     */
+    public static boolean isImported(MetaData md) {
+        if (!(md instanceof MetaObject)) return false;
+        MetaDataLoader loader = md.getLoader();
+        if (loader == null) return false;
+        com.metaobjects.config.DependencySet deps = loader.getRoot().getDependencySet();
+        return !deps.isEmpty() && !deps.inScope(md.getName());
+    }
+
+    /** {@code loader.getMetaObjects()} without the objects a dependency owns ({@link #isImported}). */
+    public static List<MetaObject> ownMetaObjects(MetaDataLoader loader) {
+        List<MetaObject> out = new ArrayList<>();
+        for (MetaObject mo : loader.getMetaObjects()) {
+            if (!isImported(mo)) out.add(mo);
+        }
+        return out;
     }
 
     public static <T extends MetaData> Collection<T> getFilteredMetaData(MetaDataLoader loader, Class<T> clazz, MetaDataFilters filters ) {
@@ -25,7 +54,7 @@ public class GeneratorUtil {
         // through this overload.
         List<T> generatable = new ArrayList<>();
         for (T md : loader.getMetaData( clazz )) {
-            if (!isReport(md)) generatable.add(md);
+            if (!isReport(md) && !isImported(md)) generatable.add(md);
         }
         return filterMetaData( generatable, clazz, filters );
     }

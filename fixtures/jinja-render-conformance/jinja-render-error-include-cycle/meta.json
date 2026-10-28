@@ -1,0 +1,4 @@
+{
+  "format": "text",
+  "note": "a cycle in the static include graph fails before rendering, with the Mustache path's message"
+}

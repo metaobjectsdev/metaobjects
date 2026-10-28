@@ -1,0 +1,4 @@
+{
+  "format": "text",
+  "note": "for over objects and scalars, loop.index / first / last, for-else on an empty list, nested loops"
+}

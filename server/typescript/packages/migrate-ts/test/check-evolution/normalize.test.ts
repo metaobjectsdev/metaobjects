@@ -27,7 +27,7 @@ describe("normalizeCheckExpr", () => {
       "status = ANY (ARRAY['OPEN'::text, 'CLOSED'::text])",
     )).toBe(true);
     expect(normalizeCheckExpr("status = ANY (ARRAY['OPEN'::text, 'CLOSED'::text])"))
-      .toBe("status in 'open','closed'");
+      .toBe("status in 'OPEN','CLOSED'");
     // different member sets remain distinct after the fold
     expect(checkExprEquals(
       "status IN ('OPEN', 'CLOSED')",
@@ -224,5 +224,86 @@ describe("regex check on a varchar/text column", () => {
   });
   test("a cast that is not before a regex operator survives", () => {
     expect(checkExprEquals("qty > 0", "((qty)::text > '0'::text)", new Set(["qty"]))).toBe(false);
+  });
+});
+
+describe("Postgres analyzer rewrites that text normalisation cannot undo", () => {
+  test("a one-value IN equals the `=` Postgres stores", () => {
+    expect(checkExprEquals(`"resource_kind" IN ('space')`, `(resource_kind = 'space'::text)`)).toBe(true);
+    expect(checkExprEquals(`"level" IN (3)`, `(level = 3)`)).toBe(true);
+    // the folded form still tells members apart
+    expect(checkExprEquals(`"kind" IN ('space')`, `(kind = 'other'::text)`)).toBe(false);
+    expect(checkExprEquals(`"level" IN (3)`, `(level = 4)`)).toBe(false);
+  });
+  test("a list is not folded, and neither is NOT IN", () => {
+    expect(normalizeCheckExpr(`k IN ('a', 'b')`)).toBe(`k in 'a','b'`);
+    expect(normalizeCheckExpr(`k IN ('a' , 'b')`)).toBe(`k in 'a','b'`);
+    expect(normalizeCheckExpr(`n IN (1, 2)`)).toBe(`n in 1,2`);
+    expect(normalizeCheckExpr(`n IN (1 , 2)`)).toBe(`n in 1,2`);
+    expect(normalizeCheckExpr(`k NOT IN ('a')`)).toBe(`k not in 'a'`);
+    expect(normalizeCheckExpr(`n NOT IN (1)`)).toBe(`n not in 1`);
+    expect(checkExprEquals(`k IN ('a')`, `k NOT IN ('a')`)).toBe(false);
+  });
+  test("IS NOT DISTINCT FROM equals the NOT (… IS DISTINCT FROM …) Postgres stores", () => {
+    expect(checkExprEquals(
+      `("principal_id" IS NOT NULL) = ("kind" IS NOT DISTINCT FROM 'principal')`,
+      `((principal_id IS NOT NULL) = (NOT (kind IS DISTINCT FROM 'principal'::text)))`,
+    )).toBe(true);
+    expect(checkExprEquals(
+      `("used_at" IS NOT NULL) = ("flag" IS NOT DISTINCT FROM TRUE)`,
+      `((used_at IS NOT NULL) = (NOT (flag IS DISTINCT FROM true)))`,
+    )).toBe(true);
+    // IS DISTINCT FROM (requiredWhen) is kept as written by Postgres and must not fold
+    expect(checkExprEquals(`"k" IS DISTINCT FROM 'p'`, `NOT (k IS DISTINCT FROM 'p'::text)`)).toBe(false);
+    // `(NOT x) IS DISTINCT FROM y` is not the negation of a comparison: the fold must not equate it
+    expect(checkExprEquals(`(NOT x) IS DISTINCT FROM y`, `x IS NOT DISTINCT FROM y`)).toBe(false);
+    expect(checkExprEquals(`(NOT x) IS DISTINCT FROM y`, `NOT (x IS DISTINCT FROM y)`)).toBe(false);
+    expect(checkExprEquals(`x IS NOT DISTINCT FROM y`, `NOT (x IS DISTINCT FROM y)`)).toBe(true);
+    // a negated group that is more than one comparison is not folded
+    expect(checkExprEquals(`NOT (a IS DISTINCT FROM b OR c)`, `a IS NOT DISTINCT FROM b OR c`)).toBe(false);
+    // only the depth-0 operator is rewritten: a nested comparison that comes first is not the one negated
+    expect(checkExprEquals(`NOT ((a IS DISTINCT FROM b) IS DISTINCT FROM c)`, `(a IS NOT DISTINCT FROM b) IS DISTINCT FROM c`)).toBe(false);
+    expect(checkExprEquals(`NOT ((a IS DISTINCT FROM b) IS DISTINCT FROM c)`, `(a IS DISTINCT FROM b) IS NOT DISTINCT FROM c`)).toBe(true);
+    // the phrase inside a literal is data, never the operator
+    expect(checkExprEquals(`NOT ('x is distinct from y' IS DISTINCT FROM z)`, `'x is not distinct from y' IS DISTINCT FROM z`)).toBe(false);
+    expect(checkExprEquals(`NOT ('x is distinct from y' IS DISTINCT FROM z)`, `'x is distinct from y' IS NOT DISTINCT FROM z`)).toBe(true);
+    // `IS NOT NULL` is not a left operand
+    expect(normalizeCheckExpr(`NOT (x IS NOT NULL IS DISTINCT FROM y)`)).toBe(`not x is not null is distinct from y`);
+  });
+  test("a varchar column's `(col)::text` cast is dropped wherever Postgres adds it", () => {
+    const cols = new Set(["region", "name_a", "name_b", "short_code"]);
+    expect(checkExprEquals(`length("short_code"::text) >= 2`, `(length((short_code)::text) >= 2)`, cols)).toBe(true);
+    expect(checkExprEquals(`length(lower(short_code)::text) >= 2`, `(length((short_code)::text) >= 2)`, cols)).toBe(false);
+    expect(checkExprEquals(`"region" IS NOT DISTINCT FROM 'eu'`, `NOT ((region)::text IS DISTINCT FROM 'eu'::text)`, cols)).toBe(true);
+    expect(checkExprEquals(`("region" IS DISTINCT FROM 'us') OR (x IS NOT NULL)`, `(((region)::text IS DISTINCT FROM 'us'::text) OR (x IS NOT NULL))`, cols)).toBe(true);
+    expect(checkExprEquals(`"name_a" < "name_b"`, `((name_a)::text < (name_b)::text)`, cols)).toBe(true);
+    expect(checkExprEquals(`length("short_code") >= 2`, `(length((short_code)::text) >= 2)`, cols)).toBe(true);
+  });
+  test("…but only for a named text-family column, and never a cast on a call", () => {
+    expect(checkExprEquals(`"name_a" < "name_b"`, `((name_a)::text < (name_b)::text)`)).toBe(false);
+    expect(checkExprEquals(`"name_a" < "name_b"`, `((name_a)::text < (name_b)::text)`, new Set(["other"]))).toBe(false);
+    // `length(code)::text` is a cast of the RESULT, not of the column
+    expect(checkExprEquals(`length("code") = '3'`, `(length(code))::text = '3'`, new Set(["code"]))).toBe(false);
+  });
+});
+
+describe("a quoted literal is data: a change inside it is drift", () => {
+  test("an enum member's case", () => {
+    expect(checkExprEquals(`"status" IN ('OPEN', 'CLOSED')`, `"status" IN ('open', 'closed')`)).toBe(false);
+    expect(checkExprEquals(`"status" IN ('OPEN')`, `(status = 'open'::text)`)).toBe(false);
+    expect(checkExprEquals(`"status" IN ('OPEN', 'CLOSED')`, `status = ANY (ARRAY['open'::text, 'closed'::text])`)).toBe(false);
+  });
+  test("a regex's case", () => {
+    expect(checkExprEquals(`"code" ~ '^[A-Z]+$'`, `"code" ~ '^[a-z]+$'`)).toBe(false);
+  });
+  test("brackets, parens, double quotes and runs of blanks inside a literal", () => {
+    expect(checkExprEquals(`slug ~ '^(a|b)$'`, `slug ~ '^a|b$'`)).toBe(false);
+    expect(checkExprEquals(`slug ~ '^[ab]$'`, `slug ~ '^ab$'`)).toBe(false);
+    expect(checkExprEquals(`slug ~ 'a"b"c'`, `slug ~ 'abc'`)).toBe(false);
+    expect(checkExprEquals(`k = 'a  b'`, `k = 'a b'`)).toBe(false);
+  });
+  test("the same literal still matches under Postgres's respelling of everything around it", () => {
+    expect(checkExprEquals(`("Code" ~ '^(A|b)$') AND (length("Code") >= 2)`, `((("Code" ~ '^(A|b)$'::text)) AND (length("Code") >= 2))`)).toBe(true);
+    expect(checkExprEquals(`"k" IN ('It''s')`, `(k = 'It''s'::text)`)).toBe(true);
   });
 });

@@ -58,7 +58,7 @@ public class TemplateScopeGenerator extends GeneratorBase {
         Provider provider = new FilesystemProvider(templatesRoot);
         File outDir = getOutputDir();
 
-        List<MetaObject> objects = loader.getMetaObjects();
+        List<MetaObject> objects = com.metaobjects.generator.util.GeneratorUtil.ownMetaObjects(loader);
         List<EmittedFile> files = TemplateGenerator.generate(
             scope,
             template,

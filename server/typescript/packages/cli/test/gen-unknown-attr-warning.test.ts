@@ -5,9 +5,10 @@
 // `gen` now names each finding — attribute, node and file — as a warning, and keeps its
 // exit code.
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { run } from "../src/index.js";
+import { ejectCommand } from "../src/commands/eject.js";
 
 const WORKSPACE_TMP = resolve(import.meta.dirname, "fixtures", "__tmp__");
 
@@ -116,6 +117,69 @@ describe("meta gen — unknown attributes are warned about, not swallowed", () =
     try {
       expect(await run(["gen", "--cwd", root])).toBe(0);
       expect(err.join("\n")).not.toContain("ERR_UNKNOWN_ATTR");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("meta gen --strict — an unknown attribute is an error", () => {
+  test("fails with the strict load's error and writes nothing", async () => {
+    const root = setupRepo({ typos: true });
+    try {
+      expect(await run(["gen", "--strict", "--cwd", root])).toBe(1);
+      const stderr = err.join("\n");
+      expect(stderr).toContain("ERR_UNKNOWN_ATTR");
+      expect(stderr).toContain("--strict");
+      expect(existsSync(join(root, "generated"))).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("a clean model generates exactly as without it", async () => {
+    const root = setupRepo({ typos: false });
+    try {
+      expect(await run(["gen", "--strict", "--cwd", root])).toBe(0);
+      expect(existsSync(join(root, "generated"))).toBe(true);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("without it the same model still generates, with the warning", async () => {
+    const root = setupRepo({ typos: true });
+    try {
+      expect(await run(["gen", "--cwd", root])).toBe(0);
+      expect(existsSync(join(root, "generated"))).toBe(true);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("meta gen — owned generator copies that are the shipped reference", () => {
+  test("names them once, with the command that removes them, and still exits 0", async () => {
+    const root = setupRepo({ typos: false });
+    try {
+      mkdirSync(join(root, "codegen/generators"), { recursive: true });
+      // `barrel` is the smallest reference generator; copied verbatim it is the stock one.
+      expect(await ejectCommand(["barrel"], root, "text")).toBe(0);
+      err = [];
+      expect(await run(["gen", "--cwd", root])).toBe(0);
+      const notice = err.filter((l) => l.includes("meta eject --undo"));
+      expect(notice).toHaveLength(1);
+      expect(notice[0]).toContain("barrel");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("says nothing when the project owns no generator copy", async () => {
+    const root = setupRepo({ typos: false });
+    try {
+      expect(await run(["gen", "--cwd", root])).toBe(0);
+      expect(err.join("\n")).not.toContain("meta eject --undo");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

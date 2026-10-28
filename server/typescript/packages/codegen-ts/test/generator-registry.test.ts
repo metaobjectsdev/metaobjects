@@ -16,6 +16,7 @@ import { REFERENCE_GENERATOR_NAMES } from "../src/reference-templates.js";
 const EXPECTED_NATIVE = [
   "entity",
   "queries",
+  "prisma-schema",
   "callable",
   "routes",
   "routes-hono",

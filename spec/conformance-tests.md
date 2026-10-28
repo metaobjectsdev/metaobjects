@@ -280,6 +280,9 @@ Each fixture is a directory under `fixtures/verify-conformance/`:
     `partials/` directory — an empty provider resolves nothing, so a
     `{{> ...}}` reference becomes `ERR_PARTIAL_UNRESOLVED`.
 
+- **Jinja bodies.** The `verify` corpus above is Mustache. The Jinja bodies (ADR-0061)
+  have their own corpus, `fixtures/jinja-verify-conformance/`, which uses the same
+  `payload.json` and `expected-drift.json` shape with a `template.jinja` entry.
 - **`expected-drift.json`** is a JSON array of `{ "code": "ERR_*", "path": "..." }`,
   where `code` is one of the three verify codes in
   [`ERROR-CODES.json`](../fixtures/conformance/ERROR-CODES.json)

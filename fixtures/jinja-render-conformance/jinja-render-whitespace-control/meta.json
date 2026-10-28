@@ -1,0 +1,4 @@
+{
+  "format": "text",
+  "note": "{%- -%} trims, a trailing newline is kept, block tags leave their own newline (no trim_blocks)"
+}

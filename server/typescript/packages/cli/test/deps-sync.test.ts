@@ -274,7 +274,7 @@ describe("meta deps sync — path transport (FR-023 Phase 1a Task 14)", () => {
     expect(existsSync(join(consumerRoot, ".metaobjects", "deps.lock.json"))).toBe(false);
   });
 
-  test("(g) an npm transport spec refuses — 'not supported by this toolchain yet'", async () => {
+  test("(g) an npm dependency that is not installed refuses and names the install command", async () => {
     const root = mkdtempSync(join(tmpdir(), "deps-sync-npm-"));
     dirs.push(root);
     mkdirSync(join(root, "metaobjects"), { recursive: true });
@@ -292,7 +292,8 @@ describe("meta deps sync — path transport (FR-023 Phase 1a Task 14)", () => {
 
     const exit = await run(["deps", "sync", "--format", "text", "--cwd", root]);
     expect(exit).toBe(1);
-    expect([...out, ...err].join("\n")).toContain("not supported by this toolchain yet");
+    const printed = [...out, ...err].join("\n");
+    expect(printed).toContain("npm install @acme/model");
   });
 
   test("(h) list after a sync prints one summary line per lock entry", async () => {

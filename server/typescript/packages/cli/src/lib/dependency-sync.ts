@@ -9,10 +9,10 @@
 // `planSync` composes them over every declared dependency (transport
 // resolution, per-dependency validation, the cross-dependency node-collision
 // check); `applySync` is the only function that touches the filesystem.
-import { existsSync, statSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import {
   codeSource,
   InMemoryStringSource,
@@ -39,6 +39,7 @@ import {
   type LockEntry,
 } from "@metaobjectsdev/sdk";
 import { describeError } from "./error-text.js";
+import { resolveTransport } from "./dependency-transports.js";
 
 /** `dependency-sync.ts`'s own `ParseError` factory for every
  *  `ERR_DEPENDENCY_MANIFEST_INVALID` case (DESIGN §4.1 step 2 and step 4):
@@ -76,30 +77,26 @@ function sameSortedArray(a: readonly string[], b: readonly string[]): boolean {
 }
 
 /**
- * DESIGN §4.1 step 1 — resolve a dependency spec's transport to a directory.
- * `npm` / `python` refuse by design (Phase 1a ships `path` only — DESIGN
- * §11.3's transports table); a `path` that does not resolve to a directory on
- * disk is the SAME code (`ERR_DEPENDENCY_UNRESOLVED`) with a different
- * detail, because both are "the transport could not locate a directory
- * holding metaobjects.pkg.json" — the manifest read is a separate step
- * (`readManifestDir`) that only runs once a directory is in hand.
+ * DESIGN §4.1 step 1 — resolve a dependency spec's transport (`path`, `npm` or
+ * `python`) to the directory that should hold its `metaobjects.pkg.json`. The
+ * transports live in `dependency-transports.ts`; a failure is
+ * `ERR_DEPENDENCY_UNRESOLVED` naming what was tried and the fix. The manifest
+ * read is a separate step (`readManifestDir`) that only runs once a directory
+ * is in hand.
  */
 export function resolveDependencyDir(configDir: string, spec: DependencySpec): string {
-  const name = dependencyName(spec);
-  if ("path" in spec) {
-    const dir = resolve(configDir, spec.path);
-    if (!existsSync(dir) || !statSync(dir).isDirectory()) {
-      throw new ParseError(
-        `dependency "${name}": the "path" transport resolved to ${dir}, but no directory exists there`,
-        { code: "ERR_DEPENDENCY_UNRESOLVED", source: codeSource("resolveDependencyDir") },
-      );
-    }
-    return dir;
-  }
-  const kind = "npm" in spec ? "npm" : "python";
-  throw new ParseError(
-    `dependency "${name}": transport \`${kind}\` is not supported by this toolchain yet; use \`path\``,
-    { code: "ERR_DEPENDENCY_UNRESOLVED", source: codeSource("resolveDependencyDir") },
+  return resolveTransport(configDir, spec).dir;
+}
+
+/** The fix for an installed package that holds no manifest where `dir` points. */
+function missingManifestFix(spec: DependencySpec | undefined): string {
+  if (spec === undefined || "path" in spec) return "";
+  const shipped = "npm" in spec ? `listed in package.json "files"` : "included as package data";
+  const where = spec.dir === undefined ? "the package root" : `"${spec.dir}"`;
+  return (
+    `. The package is installed, but ${where} holds no shared model: set "dir" in ` +
+    `.metaobjects/config.json to the directory the publisher's sharedModelFile() output ships in, ` +
+    `or ask the publisher to emit that output into the package (${shipped}) and release again`
   );
 }
 
@@ -117,13 +114,13 @@ export interface ManifestRead {
  * is caught here, before the (more expensive) standalone load in
  * {@link standaloneLoadCheck}.
  */
-export async function readManifestDir(dir: string, name: string): Promise<ManifestRead> {
+export async function readManifestDir(dir: string, name: string, spec?: DependencySpec): Promise<ManifestRead> {
   const manifestPath = join(dir, MANIFEST_FILE);
   let raw: string;
   try {
     raw = await readFile(manifestPath, "utf8");
   } catch {
-    manifestInvalid(name, "readManifestDir", `no ${MANIFEST_FILE} found at ${manifestPath}`);
+    manifestInvalid(name, "readManifestDir", `no ${MANIFEST_FILE} found at ${manifestPath}${missingManifestFix(spec)}`);
   }
 
   let parsed: unknown;
@@ -257,6 +254,64 @@ function resolvedFromOf(spec: DependencySpec): LockEntry["resolvedFrom"] {
   return spec.dir === undefined ? { python: spec.python } : { python: spec.python, dir: spec.dir };
 }
 
+const PEP440_PRE_LABEL: Readonly<Record<string, string>> = {
+  alpha: "a",
+  a: "a",
+  beta: "b",
+  b: "b",
+  c: "rc",
+  pre: "rc",
+  preview: "rc",
+  rc: "rc",
+};
+
+/** PEP 440 Appendix B `VERSION_PATTERN` (as in the `packaging` library),
+ *  anchored and case-insensitive. */
+const PEP440_VERSION =
+  /^\s*v?(?:(?:(?<epoch>[0-9]+)!)?(?<release>[0-9]+(?:\.[0-9]+)*)(?:[-_.]?(?<preL>alpha|a|beta|b|preview|pre|c|rc)[-_.]?(?<preN>[0-9]+)?)?(?:-(?<postN1>[0-9]+)|[-_.]?(?<postL>post|rev|r)[-_.]?(?<postN2>[0-9]+)?)?(?:[-_.]?(?<devL>dev)[-_.]?(?<devN>[0-9]+)?)?)(?:\+(?<local>[a-z0-9]+(?:[-_.][a-z0-9]+)*))?\s*$/i;
+
+const pep440Number = (n: string | undefined): string => (n ?? "0").replace(/^0+(?=\d)/, "");
+
+/** The PEP 440 normal form an installed distribution reports (`1.0.0-rc.1` →
+ *  `1.0.0rc1`, `1.0-1` → `1.0.post1`), or undefined when `version` is not
+ *  PEP 440. */
+function pep440Normalized(version: string): string | undefined {
+  const g = PEP440_VERSION.exec(version)?.groups;
+  if (g === undefined) return undefined;
+  const epoch = g.epoch !== undefined && pep440Number(g.epoch) !== "0" ? `${pep440Number(g.epoch)}!` : "";
+  const release = g.release!.split(".").map(pep440Number).join(".");
+  const pre = g.preL !== undefined ? `${PEP440_PRE_LABEL[g.preL.toLowerCase()]}${pep440Number(g.preN)}` : "";
+  const post =
+    g.postN1 !== undefined || g.postL !== undefined ? `.post${pep440Number(g.postN1 ?? g.postN2)}` : "";
+  const dev = g.devL !== undefined ? `.dev${pep440Number(g.devN)}` : "";
+  const local = g.local !== undefined ? `+${g.local.toLowerCase().replace(/[-_]/g, ".")}` : "";
+  return `${epoch}${release}${pre}${post}${dev}${local}`;
+}
+
+/** The installed package's own version should be the manifest's: `sharedModelFile()`
+ *  defaults the manifest version to the host package's. A difference means the
+ *  publisher bumped the package without regenerating the artifact (or set
+ *  `version` by hand). The lock records the manifest's version either way. */
+export function packageVersionWarning(
+  name: string,
+  spec: DependencySpec,
+  packageVersion: string | undefined,
+  manifestVersion: string,
+): string | undefined {
+  if (packageVersion === undefined) return undefined;
+  const same =
+    "python" in spec
+      ? (pep440Normalized(packageVersion) ?? packageVersion) === (pep440Normalized(manifestVersion) ?? manifestVersion)
+      : packageVersion === manifestVersion;
+  if (same) return undefined;
+  const pkg = "npm" in spec ? `npm package "${spec.npm}"` : "python" in spec ? `Python package "${spec.python}"` : "package";
+  return (
+    `dependency "${name}": the installed ${pkg} is ${packageVersion}, but its shared-model manifest ` +
+    `records ${manifestVersion} — the publisher likely released without regenerating the artifact. ` +
+    `The lock records ${manifestVersion}.`
+  );
+}
+
 /** One dependency this run will (re)sync — either brand new or a changed/
  *  unchanged re-sync of one already in the lock. */
 export interface SyncedDependencyPlan {
@@ -266,6 +321,9 @@ export interface SyncedDependencyPlan {
   readonly artifactContent: string;
   readonly resolvedFrom: LockEntry["resolvedFrom"];
   readonly oldEntry: LockEntry | undefined;
+  /** How the transport found it (e.g. the Python interpreter), appended to the
+   *  report line; never written to the lock (DESIGN §3.3: no host paths). */
+  readonly via?: string | undefined;
 }
 
 /** A lock entry whose dependency is no longer declared in config. */
@@ -299,6 +357,7 @@ export async function planSync(
   specs: readonly DependencySpec[],
   lock: Lock | undefined,
   filterNames: readonly string[] = [],
+  env: NodeJS.ProcessEnv = process.env,
 ): Promise<SyncPlan> {
   const allNames = specs.map(dependencyName);
   const declared = new Set(allNames);
@@ -340,10 +399,12 @@ export async function planSync(
   const plans: SyncedDependencyPlan[] = [];
   for (const spec of targets) {
     const name = dependencyName(spec);
-    const dir = resolveDependencyDir(configDir, spec);
-    const { manifest, artifactContent } = await readManifestDir(dir, name);
+    const resolved = resolveTransport(configDir, spec, env);
+    const { manifest, artifactContent } = await readManifestDir(resolved.dir, name, spec);
     const warning = validateAgainstSpec(manifest, spec);
     if (warning !== undefined) warnings.push(warning);
+    const versionWarning = packageVersionWarning(name, spec, resolved.packageVersion, manifest.version);
+    if (versionWarning !== undefined) warnings.push(versionWarning);
     await standaloneLoadCheck(manifest, artifactContent);
 
     for (const node of manifest.nodes) {
@@ -361,7 +422,15 @@ export async function planSync(
     const oldEntry = oldEntries[name];
     const action: "sync" | "unchanged" =
       oldEntry !== undefined && oldEntry.integrity === manifest.integrity ? "unchanged" : "sync";
-    plans.push({ name, action, manifest, artifactContent, resolvedFrom: resolvedFromOf(spec), oldEntry });
+    plans.push({
+      name,
+      action,
+      manifest,
+      artifactContent,
+      resolvedFrom: resolvedFromOf(spec),
+      oldEntry,
+      via: resolved.note,
+    });
   }
 
   const prunes: PrunedDependencyPlan[] = Object.entries(oldEntries)
@@ -419,8 +488,9 @@ export async function applySync(
     };
     dependencies[p.name] = newEntry;
 
+    const via = p.via !== undefined ? ` — ${p.via}` : "";
     if (p.action === "unchanged") {
-      report.push({ name: p.name, action: "unchanged", line: `unchanged ${p.name} ${p.manifest.version}` });
+      report.push({ name: p.name, action: "unchanged", line: `unchanged ${p.name} ${p.manifest.version}${via}` });
       continue;
     }
 
@@ -431,7 +501,7 @@ export async function applySync(
     report.push({
       name: p.name,
       action: "sync",
-      line: `${verb} ${p.name} ${oldVersion}→${p.manifest.version} (${oldHash}→${newHash})`,
+      line: `${verb} ${p.name} ${oldVersion}→${p.manifest.version} (${oldHash}→${newHash})${via}`,
     });
 
     if (!opts.dryRun) {
@@ -602,7 +672,7 @@ export async function checkDependencies(
 
     try {
       const dir = resolveDependencyDir(configDir, spec);
-      const { manifest, artifactContent } = await readManifestDir(dir, name);
+      const { manifest, artifactContent } = await readManifestDir(dir, name, spec);
       // Never trust the manifest's own `integrity` field for the comparison —
       // re-hash the bytes actually sitting on disk right now.
       //

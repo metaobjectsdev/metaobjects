@@ -218,8 +218,10 @@ describe("eject contract (typescript) — an owned generator owns what writes it
   }, 120_000);
 
   test("what a copy imports from outside the project is the packages and nothing else", () => {
+    // migrate-ts is core (schema migrations): prisma-schema builds its models from the same
+    // expected schema `meta verify --db` compares against, through its kysely-free subpath.
     const ALLOWED = new Set(["@metaobjectsdev/codegen-ts", "@metaobjectsdev/codegen-ts-react", "@metaobjectsdev/codegen-ts-tanstack",
-      "@metaobjectsdev/metadata", "@metaobjectsdev/render", "@toon-format/toon"]);
+      "@metaobjectsdev/metadata", "@metaobjectsdev/migrate-ts", "@metaobjectsdev/render", "@toon-format/toon"]);
     const found = new Set<string>();
     for (const { files } of owned.values()) {
       for (const file of files) {
