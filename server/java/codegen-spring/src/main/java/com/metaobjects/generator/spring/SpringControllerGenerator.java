@@ -36,6 +36,7 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import com.metaobjects.generator.util.GeneratedFileWriter;
@@ -342,7 +343,8 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("    public ResponseEntity<?> create(@RequestBody ").append(dtoName).append(" dto) {\n");
         // #484: a @formExclude / credential value is IGNORED (never rejected): the DTO is rebuilt
         // without it, so the column is left to the repository's default.
-        appendStripWriteDenied(src, dtoName, SpringGeneratorSupport.dtoComponentFields(entity));
+        List<MetaField> components = SpringGeneratorSupport.dtoComponentFields(entity);
+        appendStripWriteDenied(src, dtoName, components, SpringGeneratorSupport.writeDeniedNames(components));
         // A caller does not supply server-owned columns, so a @NotNull on one must not reject
         // the request. The DTO is BOTH the request and the response body, so `id` carries
         // @NotNull because it is @required in the RESPONSE — while being identity.primary
@@ -1196,7 +1198,10 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         for (MetaField f : TphPlan.collectSubtypeFields(base, loader)) {
             if (!(f instanceof com.metaobjects.field.ObjectField)) unionFields.add(f);
         }
-        List<String> hidden = SpringGeneratorSupport.credentialNames(unionFields);
+        List<MetaField> markFields = new ArrayList<>(unionFields);
+        markFields.addAll(TphPlan.everySubtypeField(base, loader));
+        List<String> hidden = SpringGeneratorSupport.credentialNames(markFields);
+        Set<String> writeDenied = SpringGeneratorSupport.writeDeniedNames(markFields);
         List<SpringM2mSupport.M2mNav> baseNavs = SpringM2mSupport.resolve(base, loader);
         boolean redacts = !hidden.isEmpty() || baseNavs.stream().anyMatch(n -> !targetCredentials(base, n).isEmpty())
             || plan.subtypes().stream().anyMatch(st -> SpringM2mSupport.resolve(st.entity(), loader).stream()
@@ -1362,7 +1367,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
             // OWN @autoSet column is a documented non-goal (uniform with the Kotlin and Python
             // ports, both base-scoped): the column is simply never stamped, not a compile break.
             // #484: ignore (never reject) a @formExclude / credential value in the body.
-            appendStripWriteDenied(src, dtoName, unionFields);
+            appendStripWriteDenied(src, dtoName, unionFields, writeDenied);
             String createArg = SpringGeneratorSupport.hasAutoSetFields(base)
                 ? dtoName + ".stampForInsert(dto)" : "dto";
             src.append("        try {\n");
@@ -1631,22 +1636,21 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
             // A TPH base target's rows are shared-table rows of every subtype, so a credential
             // declared on any subtype is hidden too.
             List<MetaField> fields = new ArrayList<>(SpringGeneratorSupport.dtoComponentFields(target));
-            for (MetaField f : TphPlan.collectSubtypeFields(target, source.getLoader())) {
-                if (!(f instanceof ObjectField)) fields.add(f);
-            }
+            fields.addAll(TphPlan.everySubtypeField(target, source.getLoader()));
             return SpringGeneratorSupport.credentialNames(fields);
         }
         return List.of();
     }
 
     /** The fields of a create body that a generated write route ignores (#484). */
-    private static void appendStripWriteDenied(StringBuilder src, String dtoName, List<MetaField> components) {
-        if (components.stream().noneMatch(SpringGeneratorSupport::isApiWriteDenied)) return;
+    private static void appendStripWriteDenied(StringBuilder src, String dtoName, List<MetaField> components,
+                                               Set<String> writeDenied) {
+        if (components.stream().noneMatch(f -> writeDenied.contains(f.getName()))) return;
         src.append("        dto = new ").append(dtoName).append("(");
         for (int i = 0; i < components.size(); i++) {
             MetaField f = components.get(i);
             if (i > 0) src.append(", ");
-            src.append(SpringGeneratorSupport.isApiWriteDenied(f)
+            src.append(writeDenied.contains(f.getName())
                 ? "null" : "dto." + SpringNaming.recordComponentName(f.getName()) + "()");
         }
         src.append(");\n");

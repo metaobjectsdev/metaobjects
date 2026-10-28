@@ -114,10 +114,17 @@ public final class SpringGeneratorSupport {
         return isCredentialField(field);
     }
 
-    /** #484 — the wire names of the credential fields among {@code fields}, in declared order. */
+    /** #484 — the distinct wire names of the credential fields among {@code fields}, in declared order. */
     public static List<String> credentialNames(java.util.Collection<? extends MetaField> fields) {
-        List<String> out = new ArrayList<>();
+        java.util.Set<String> out = new java.util.LinkedHashSet<>();
         for (MetaField f : fields) if (isCredentialField(f)) out.add(f.getName());
+        return new ArrayList<>(out);
+    }
+
+    /** #484 — the distinct wire names of the write-denied fields among {@code fields}. */
+    public static java.util.Set<String> writeDeniedNames(java.util.Collection<? extends MetaField> fields) {
+        java.util.Set<String> out = new java.util.LinkedHashSet<>();
+        for (MetaField f : fields) if (isApiWriteDenied(f)) out.add(f.getName());
         return out;
     }
 

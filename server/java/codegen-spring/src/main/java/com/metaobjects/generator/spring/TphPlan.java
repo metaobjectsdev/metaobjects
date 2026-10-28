@@ -126,6 +126,19 @@ public final class TphPlan {
     }
 
     /**
+     * #484 — every field of every subtype, base columns included and NOT deduplicated by name, so
+     * a credential or {@code @formExclude} on any one declaration of a shared column counts. Empty
+     * when {@code base} is not a TPH base.
+     */
+    public static List<MetaField> everySubtypeField(MetaObject base, MetaDataLoader loader) {
+        Plan plan = planFor(base, loader);
+        if (plan == null) return List.of();
+        List<MetaField> out = new ArrayList<>();
+        for (Subtype st : plan.subtypes()) out.addAll(st.entity().getMetaFields());
+        return out;
+    }
+
+    /**
      * The subtype-only fields folded into the base's single TPH table, deduplicated by name
      * across subtypes in name-sorted subtype order. Each is emitted by the caller as a nullable
      * (no-validation) column — a row of any other subtype stores NULL there, even when the field

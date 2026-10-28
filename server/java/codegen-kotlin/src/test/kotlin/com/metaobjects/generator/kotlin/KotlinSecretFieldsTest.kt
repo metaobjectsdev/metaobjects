@@ -61,6 +61,41 @@ class KotlinSecretFieldsTest {
         assertTrue("remove(listOf(\"pinHash\"))" in controller, controller)
     }
 
+    /** A TPH base whose subtypes share `token` and `memo`: plain on AThing (first in subtype order), marked on BThing. */
+    private val tphSharedColumn = """{
+      "metadata.root": { "package": "acme::secrets", "children": [
+        { "object.entity": { "name": "Thing", "@discriminator": "kind", "children": [
+            { "source.rdb": { "@table": "things" } },
+            { "field.long": { "name": "id" } },
+            { "field.enum": { "name": "kind", "@values": ["A", "B"] } },
+            { "identity.primary": { "@fields": "id", "@generation": "increment" } }
+        ] } },
+        { "object.entity": { "name": "AThing", "extends": "Thing", "@discriminatorValue": "A", "children": [
+            { "field.string": { "name": "token", "@maxLength": 100 } },
+            { "field.string": { "name": "memo", "@maxLength": 100 } }
+        ] } },
+        { "object.entity": { "name": "BThing", "extends": "Thing", "@discriminatorValue": "B", "children": [
+            { "field.string": { "name": "token", "@maxLength": 100, "children": [ { "view.password": {} } ] } },
+            { "field.string": { "name": "memo", "@maxLength": 100, "@formExclude": true } }
+        ] } }
+      ] }
+    }""".trimIndent()
+
+    @Test
+    fun `a TPH column marked on a later subtype is hidden and never bound on create`() {
+        val out = Files.createTempDirectory("ksecret-tph-")
+        try {
+            val loader = loadString("secret-fields-tph-shared", tphSharedColumn)
+            KotlinSpringControllerGenerator().apply { setArgs(mapOf("outputDir" to out.toString())) }.execute(loader)
+            val controller = Files.readString(out.resolve("acme/secrets/ThingController.kt"))
+            assertTrue("remove(listOf(\"token\"))" in controller, controller)
+            assertFalse("it[token] = dto.token" in controller, controller)
+            assertFalse("it[memo] = dto.memo" in controller, controller)
+        } finally {
+            out.toFile().deleteRecursively()
+        }
+    }
+
     @Test
     fun `a model with neither mark generates the plain write and read paths`() {
         val (controller, entity) = controllerAndEntity(marked = false)

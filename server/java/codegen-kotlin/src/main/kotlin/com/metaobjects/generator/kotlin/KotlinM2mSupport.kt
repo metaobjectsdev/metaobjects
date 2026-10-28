@@ -201,7 +201,7 @@ object KotlinM2mSupport {
                     targetDiscriminator = targetDiscriminator,
                     symmetric = rel.isSymmetric,
                     junctionPackage = junctionPkg,
-                    targetCredentialFields = (target.metaFields + KotlinTphPlan.collectSubtypeFields(target, loader))
+                    targetCredentialFields = (target.metaFields + KotlinTphPlan.everySubtypeField(target, loader))
                         .filter { KotlinGenUtil.isCredentialField(it) }.map { it.name }.toSet(),
                 )
             )

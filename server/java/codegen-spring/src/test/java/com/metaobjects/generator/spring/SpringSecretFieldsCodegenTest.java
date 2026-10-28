@@ -92,6 +92,41 @@ public class SpringSecretFieldsCodegenTest extends SharedRegistryTestBase {
         assertFalse(controller.contains("dto = new AccountDto("));
     }
 
+    /**
+     * A TPH base whose subtypes share the {@code token} and {@code memo} columns: plain on
+     * {@code AThing} (first in subtype order) and marked on {@code BThing}.
+     */
+    private static final String TPH_SHARED_COLUMN = """
+        {
+          "metadata.root": { "package": "acme::secrets", "children": [
+            { "object.entity": { "name": "Thing", "@discriminator": "kind", "children": [
+                { "source.rdb": { "@table": "things" } },
+                { "field.long": { "name": "id" } },
+                { "field.enum": { "name": "kind", "@values": ["A", "B"] } },
+                { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } }
+            ] } },
+            { "object.entity": { "name": "AThing", "extends": "Thing", "@discriminatorValue": "A", "children": [
+                { "field.string": { "name": "token" } },
+                { "field.string": { "name": "memo" } }
+            ] } },
+            { "object.entity": { "name": "BThing", "extends": "Thing", "@discriminatorValue": "B", "children": [
+                { "field.string": { "name": "token", "children": [ { "view.password": {} } ] } },
+                { "field.string": { "name": "memo", "@formExclude": true } }
+            ] } }
+          ] }
+        }
+        """;
+
+    @Test
+    public void tphSharedColumnMarkedOnALaterSubtypeIsHiddenAndIgnored() throws Exception {
+        String controller = generate("tphshared", TPH_SHARED_COLUMN, "ThingController.java", false);
+        assertTrue("the union list hides the credential; saw:\n" + controller,
+            controller.contains("redactAll(rows, \"token\")"));
+        assertTrue("every subtype create ignores both marked columns; saw:\n" + controller,
+            controller.contains("dto = new ThingDto(dto.id(), dto.kind(), null, null);"));
+        assertFalse("memo (@formExclude only) is still returned", controller.contains("\"memo\")"));
+    }
+
     private static final String PROJECTION_HEAD =
         "{ \"object.projection\": { \"name\": \"AccountView\", \"children\": [\n"
         + "  { \"source.rdb\": { \"@kind\": \"view\", \"@view\": \"v_account\" } },\n"

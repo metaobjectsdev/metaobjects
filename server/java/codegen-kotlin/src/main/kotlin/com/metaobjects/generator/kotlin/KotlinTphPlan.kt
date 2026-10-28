@@ -193,6 +193,19 @@ object KotlinTphPlan {
         return collectSubtypeFields(base, plan)
     }
 
+    /**
+     * #484: every field of every subtype, base columns included and NOT deduplicated by name, so a
+     * credential or `@formExclude` on any one declaration of a shared column counts. Empty when
+     * [base] is not a TPH base.
+     */
+    fun everySubtypeField(base: MetaObject, loader: MetaDataLoader): List<MetaField<*>> {
+        val plan = planFor(base, loader) ?: return emptyList()
+        return everySubtypeField(plan)
+    }
+
+    /** [everySubtypeField] from an already-resolved [Plan]. */
+    fun everySubtypeField(plan: Plan): List<MetaField<*>> = plan.subtypes.flatMap { it.entity.metaFields }
+
     /** [collectSubtypeFields] from an already-resolved [Plan] (the generators that hold one). */
     fun collectSubtypeFields(base: MetaObject, plan: Plan): List<MetaField<*>> {
         val baseNames = base.metaFields.map { it.name }.toHashSet()

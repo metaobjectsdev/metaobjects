@@ -233,7 +233,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
     }
 
     private fun credentialNames(fields: Collection<MetaField<*>>): List<String> =
-        fields.filter { KotlinGenUtil.isCredentialField(it) }.map { it.name }
+        fields.filter { KotlinGenUtil.isCredentialField(it) }.map { it.name }.distinct()
 
     protected open fun emit(entity: MetaObject, outRoot: Path, loader: MetaDataLoader) {
         val api = exposedApi()
@@ -788,11 +788,13 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             insertNowVal.getOrPut(KotlinTypeMapper.nowExpr(f)) { "autoSetNow${insertNowVal.size}" }
         }
 
+        // #484: a mark on ANY declaration of a union column (base or any subtype) counts.
+        val markFields = scalarFields + KotlinTphPlan.everySubtypeField(plan)
         // Non-discriminator, non-PK, non-@autoSet columns the create handler writes from the body.
         val writableFields = scalarFields.map { it.name }
             .filter { it != plan.discriminatorField && it != pkFieldName && it !in autoSetNames }
             // #484: @formExclude / credential columns are never bound from the request body.
-            .filter { name -> scalarFields.none { it.name == name && KotlinGenUtil.isApiWriteDenied(it) } }
+            .filter { name -> markFields.none { it.name == name && KotlinGenUtil.isApiWriteDenied(it) } }
 
         // FR-035/FR-036 Program B: the per-subtype settable columns = the subtype's EFFECTIVE scalar
         // fields (base + own, resolved via extends) minus the PK and the discriminator, EXCLUDING
@@ -826,7 +828,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         val anyPatchFields = plan.subtypes.any { subtypePatchFields(it).isNotEmpty() }
         // #484: credential columns (base or subtype-only) are removed from every response; the controller
         // then needs the ObjectMapper even when no subtype has a settable column.
-        val creds = credentialNames(scalarFields)
+        val creds = credentialNames(markFields)
         val needsMapper = anyPatchFields || creds.isNotEmpty() ||
             (listOf(baseM2mNavs) + plan.subtypes.map { subtypeM2mNavs(it) }).any { navs -> navs.any { it.targetCredentialFields.isNotEmpty() } }
 
