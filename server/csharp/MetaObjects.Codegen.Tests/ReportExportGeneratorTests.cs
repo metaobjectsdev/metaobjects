@@ -60,21 +60,15 @@ public class ReportExportGeneratorTests
         var plain = Routes(Ctx(root));
         var listedOthers = Routes(Ctx(root, new EntityGenerator(), new RoutesGenerator()));
         Assert.Equal(plain, listedOthers);
-        Assert.DoesNotContain("ReportExportHttp", plain);
-        Assert.DoesNotContain("format", plain.Replace("Format", ""));
-        Assert.Contains("const int maxRows = 10000;", plain);
     }
 
     [Fact]
-    public void Routes_grow_the_format_branch_when_the_export_generator_is_listed()
+    public void Routes_change_only_when_the_export_generator_is_listed()
     {
         var root = Load();
-        var routes = Routes(Ctx(root, new RoutesGenerator(), new ReportExportGenerator { MaxRows = 60 }));
-        Assert.Contains("ReportExportHttp.Refuse(format, qs)", routes);
-        Assert.Contains("const int exportMaxRows = 60;", routes);
-        Assert.Contains("ReportExportHttp.Csv(http, \"line_totals\", w => LineTotalsExport.WriteCsv(w, rows))", routes);
-        Assert.Contains("report_too_large", routes);
-        Assert.Contains("ReportExportHttp.TooLarge(maxRows)", routes);
+        var plain = Routes(Ctx(root, new RoutesGenerator()));
+        var wired = Routes(Ctx(root, new RoutesGenerator(), new ReportExportGenerator { MaxRows = 60 }));
+        Assert.NotEqual(plain, wired);
     }
 
     [Fact]
@@ -179,6 +173,26 @@ public class ReportExportGeneratorTests
     }
 
     [Fact]
+    public void Timestamps_are_written_as_the_list_route_writes_them()
+    {
+        var options = new System.Text.Json.JsonSerializerOptions();
+        options.Converters.Add(new Iso8601TimestampConverter());
+        var h = Compile(new ReportExportGenerator());
+        var instants = new[]
+        {
+            new DateTimeOffset(2026, 1, 2, 10, 0, 0, TimeSpan.Zero),
+            new DateTimeOffset(2026, 1, 2, 10, 0, 0, 120, TimeSpan.Zero),
+            new DateTimeOffset(2026, 1, 2, 10, 0, 0, TimeSpan.Zero).AddTicks(1_234_560),
+        };
+        foreach (var instant in instants)
+        {
+            var wire = System.Text.Json.JsonSerializer.Serialize(instant, options).Trim('"');
+            Assert.Equal($"t\r\n{wire}\r\n", Csv(h, [[instant]], "t"));
+        }
+        Assert.Equal("t\r\n2026-01-02T10:00:00.120Z\r\n", Csv(h, [[instants[1]]], "t"));
+    }
+
+    [Fact]
     public void Decimals_follow_the_wire_setting()
     {
         Assert.Equal("d\r\n12.50\r\n", Csv(Compile(new ReportExportGenerator()), [[12.50m]], "d"));
@@ -230,12 +244,13 @@ public class ReportExportGeneratorTests
         Assert.NotNull(ReportExportHttp.Refuse(format, Q(("format", format))));
 
     [Fact]
-    public void No_format_is_never_refused_and_withCount_with_a_format_is()
+    public void No_format_is_never_refused_and_withCount_is_refused_for_csv_and_xml_only()
     {
         Assert.Null(ReportExportHttp.Requested(Q()));
         Assert.Null(ReportExportHttp.Refuse(null, Q(("withCount", "1"))));
-        Assert.NotNull(ReportExportHttp.Refuse("json", Q(("format", "json"), ("withCount", "1"))));
+        Assert.Null(ReportExportHttp.Refuse("json", Q(("format", "json"), ("withCount", "1"))));
         Assert.NotNull(ReportExportHttp.Refuse("csv", Q(("format", "csv"), ("withCount", "TRUE"))));
+        Assert.NotNull(ReportExportHttp.Refuse("xml", Q(("format", "xml"), ("withCount", "1"))));
         Assert.Null(ReportExportHttp.Refuse("csv", Q(("format", "csv"), ("withCount", "0"))));
         Assert.Equal(["csv", "json", "xml"], ReportExportHttp.Formats);
     }

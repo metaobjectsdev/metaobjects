@@ -175,7 +175,8 @@ xml_nulls="empty", csv_bom=False)`. `xml_nulls` defaults to `"empty"` (an empty 
 is what Python's own XML serializers write for `None`; `"nil"` writes `xsi:nil="true"` and
 declares `xmlns:xsi` on the root. With `?format` set the export cap (`max_rows`,
 `export_too_large`) governs; without it the list route's `report_max_rows` cap
-(`report_too_large`) is unchanged. JSON export is the list route's array through the same
+(`report_too_large`) is unchanged. JSON export is the list route's body (the array, or
+`{rows, total}` with `withCount=1`) through the same
 `render_wire` and FastAPI encoder, so the `wire` setting applies. A column holding an array,
 map or object is written as compact JSON text in CSV and XML. `routes` imports the request
 helper `metaobjects.codegen.runtime.report_export` (an owned `routes` emits it under

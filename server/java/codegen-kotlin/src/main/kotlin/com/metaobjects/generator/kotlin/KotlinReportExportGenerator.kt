@@ -15,6 +15,8 @@ import com.metaobjects.field.MapField
 import com.metaobjects.field.MetaField
 import com.metaobjects.field.StringField
 import com.metaobjects.field.UriField
+import com.metaobjects.config.WireFormat
+import com.metaobjects.generator.EmitsReportExport
 import com.metaobjects.generator.GeneratorException
 import com.metaobjects.generator.GeneratorIOWriter
 import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase
@@ -45,8 +47,10 @@ import java.nio.file.Paths
  *    derived-field order, the wire-form conversion of each cell, the cap (`MAX_ROWS`) and
  *    `csv(rows)` / `xml(rows)` calling the shared writer.
  *
- * To turn the `format` branch on, give the `routes` generator the arg `reportExport=true`; its
- * handler reads `<R>Export.MAX_ROWS`, so the cap is set once, here.
+ * Being in the run is what turns the `format` branch on: the `routes` generator sees this
+ * generator through [EmitsReportExport] and its handler reads `<R>Export.MAX_ROWS`, so the cap
+ * is set once, here. A decimal cell is written as the project's `wire.decimals` setting spells
+ * it, the same as the list route and the JSON export.
  *
  * Args:
  *  - `outputDir` (required): output directory root.
@@ -63,7 +67,7 @@ import java.nio.file.Paths
  * Registered as the cross-port stable name `report-export`
  * (`fixtures/generator-registry-conformance/registry.json`).
  */
-open class KotlinReportExportGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
+open class KotlinReportExportGenerator : MultiFileDirectGeneratorBase<MetaObject>(), EmitsReportExport {
 
     override fun getFilterClass(): Class<MetaObject> = MetaObject::class.java
 
@@ -90,7 +94,8 @@ open class KotlinReportExportGenerator : MultiFileDirectGeneratorBase<MetaObject
         if (served.isEmpty()) return
 
         val writerPackage = getArg(ARG_WRITER_PACKAGE) ?: sharedPackage(served)
-        write(outRoot, writerPackage, WRITER_NAME, writerSource(writerPackage, xmlNulls, csvBom))
+        val decimalsAsString = WireFormat.of(loader.root).decimalsAsString()
+        write(outRoot, writerPackage, WRITER_NAME, writerSource(writerPackage, xmlNulls, csvBom, decimalsAsString))
         for (entity in served) {
             val (pkg, shortName) = PackageMapping.splitFqn(entity.name)
             write(outRoot, pkg, "${shortName}Export", exportSource(entity, pkg, shortName, writerPackage, maxRows))
@@ -141,7 +146,7 @@ open class KotlinReportExportGenerator : MultiFileDirectGeneratorBase<MetaObject
             append("    /** The derived fields, in order: the CSV header row and the XML element names. */\n")
             append("    val FIELDS: List<String> = listOf(${fields.joinToString(", ") { "\"${it.name}\"" }})\n\n")
             append("    /** One row's cells in wire form: currency as integer minor units, a date as YYYY-MM-DD,\n")
-            append("     *  a decimal in canonical plain notation, a boolean as true/false, null as null. */\n")
+            append("     *  a decimal as the wire setting writes it, a boolean as true/false, null as null. */\n")
             append("    fun cells(row: $shortName): List<$w.Cell> = listOf(\n")
             for (f in fields) append("        $w.${cellFactory(f)}(row.${f.name}),\n")
             append("    )\n\n")
@@ -155,7 +160,7 @@ open class KotlinReportExportGenerator : MultiFileDirectGeneratorBase<MetaObject
             append("    fun isTruthy(flag: String?): Boolean = $w.isTruthy(flag)\n\n")
             append("    /** The 400 body for a format this route does not wire. */\n")
             append("    fun invalidFormat(): Map<String, Any> = $w.invalidFormat()\n\n")
-            append("    /** The 400 body for withCount on an export. */\n")
+            append("    /** The 400 body for withCount on a CSV or XML export. */\n")
             append("    fun withCountRefused(): Map<String, Any> = $w.withCountRefused()\n\n")
             append("    /** The 400 body for an export of more than [MAX_ROWS] rows. */\n")
             append("    fun tooLarge(): Map<String, Any> = $w.tooLarge(MAX_ROWS)\n\n")
@@ -181,11 +186,12 @@ open class KotlinReportExportGenerator : MultiFileDirectGeneratorBase<MetaObject
     // The shared writer
     // -----------------------------------------------------------------------
 
-    private fun writerSource(pkg: String, xmlNulls: String, csvBom: Boolean): String =
+    private fun writerSource(pkg: String, xmlNulls: String, csvBom: Boolean, decimalsAsString: Boolean): String =
         WRITER_TEMPLATE
             .replace("@PACKAGE@", if (pkg.isEmpty()) "" else "package $pkg\n\n")
             .replace("@BOM@", csvBom.toString())
             .replace("@NIL@", (xmlNulls == XML_NULLS_NIL).toString())
+            .replace("@DECIMALS_AS_STRING@", decimalsAsString.toString())
 
     private companion object {
         const val ARG_MAX_ROWS = "maxRows"
@@ -203,13 +209,16 @@ open class KotlinReportExportGenerator : MultiFileDirectGeneratorBase<MetaObject
         const val WRITER_NAME = "ReportExportWriter"
 
         /**
-         * The shared writer, verbatim but for the three substitutions in [writerSource]. A raw
+         * The shared writer, verbatim but for the four substitutions in [writerSource]. A raw
          * string with no Kotlin templates: the emitted code concatenates with `+`.
          */
         const val WRITER_TEMPLATE: String = """@PACKAGE@import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.SerializationFeature
 import java.io.ByteArrayOutputStream
 import java.math.BigDecimal
+import java.time.LocalDateTime
+import java.time.LocalTime
+import java.time.format.DateTimeFormatter
 import javax.xml.stream.XMLOutputFactory
 
 /**
@@ -229,6 +238,10 @@ object ReportExportWriter {
 
     /** Write a null field as an empty element with xsi:nil="true" (true) or as an empty element (false). */
     const val EXPORT_XML_NIL: Boolean = @NIL@
+
+    /** The project's wire.decimals: the canonical string (true, "string") or as Jackson writes a
+     *  BigDecimal number (false, "native"), so a decimal cell matches the list route. */
+    const val DECIMALS_AS_STRING: Boolean = @DECIMALS_AS_STRING@
 
     private const val XSI_NS = "http://www.w3.org/2001/XMLSchema-instance"
 
@@ -256,10 +269,10 @@ object ReportExportWriter {
     /** The 400 body for a format this route does not wire. */
     fun invalidFormat(): Map<String, Any> = linkedMapOf("error" to "invalid_format", "expected" to FORMATS)
 
-    /** The 400 body for withCount on an export: it has no { rows, total } envelope. */
+    /** The 400 body for withCount on a CSV or XML export: only JSON carries the { rows, total } envelope. */
     fun withCountRefused(): Map<String, Any> = linkedMapOf(
         "error" to "export_with_count",
-        "message" to "withCount is not supported with format: an export has no { rows, total } envelope.",
+        "message" to "withCount is not supported with format=csv or format=xml: only JSON carries the { rows, total } envelope.",
     )
 
     /** The 400 body for an export of more than [maxRows] rows. */
@@ -289,12 +302,20 @@ object ReportExportWriter {
     /** A string-valued cell (string, enum symbol, uri): subject to the formula-injection guard. */
     fun text(value: Any?): Cell = if (value == null) NULL else Cell(value.toString(), true)
 
-    /** A cell that is never guarded (number, date, time, timestamp, uuid, boolean, currency). */
-    fun raw(value: Any?): Cell = if (value == null) NULL else Cell(value.toString(), false)
+    /** A cell that is never guarded (number, date, time, timestamp, uuid, boolean, currency).
+     *  A time and a zone-less timestamp keep their seconds, as Jackson's JSR-310 serializers write them. */
+    fun raw(value: Any?): Cell = when (value) {
+        null -> NULL
+        is LocalTime -> Cell(value.format(DateTimeFormatter.ISO_LOCAL_TIME), false)
+        is LocalDateTime -> Cell(value.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME), false)
+        else -> Cell(value.toString(), false)
+    }
 
-    /** A decimal in canonical plain notation: no exponent, no trailing fraction zeros, zero as 0. */
+    /** A decimal as the wire setting writes it: under "string" canonical plain notation (no
+     *  exponent, no trailing fraction zeros, zero as 0), under "native" as Jackson writes it. */
     fun decimal(value: BigDecimal?): Cell {
         if (value == null) return NULL
+        if (!DECIMALS_AS_STRING) return Cell(value.toString(), false)
         return Cell(if (value.signum() == 0) "0" else value.stripTrailingZeros().toPlainString(), false)
     }
 

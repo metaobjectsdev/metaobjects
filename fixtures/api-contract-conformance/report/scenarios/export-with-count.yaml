@@ -1,8 +1,10 @@
 name: report-export-with-count
 description: >
-  withCount asks for a { rows, total } envelope, which only JSON can carry, so it is refused
-  with every export format, JSON included, as 400 {"error": "export_with_count"}. The
-  message is free prose. Without ?format the existing withCount envelope is unchanged.
+  withCount asks for a { rows, total } envelope, which only JSON can carry. With format=csv or
+  format=xml it is refused as 400 {"error": "export_with_count"}; the message is free prose.
+  With format=json the body is the list route's own withCount envelope, with the export's
+  Content-Type and Content-Disposition. Without ?format the existing withCount envelope is
+  unchanged.
 requests:
   - id: r1
     method: GET
@@ -15,9 +17,13 @@ requests:
     method: GET
     path: /api/invoice_status_totals?format=json&withCount=1
     expect:
-      status: 400
+      status: 200
+      headers:
+        content-type: "application/json"
+        content-disposition: 'attachment; filename="invoice_status_totals.json"'
       body:
-        error: "export_with_count"
+        envelope: true
+        total: 3
   - id: r3
     method: GET
     path: /api/invoice_status_totals?format=xml&withCount=true

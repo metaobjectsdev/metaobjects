@@ -27,16 +27,20 @@ from metaobjects.codegen.runtime import report_export as rt
 _CORPUS = Path(__file__).parents[3].parent / "fixtures" / "api-contract-conformance" / "report"
 
 
-def _writer(**opts):
-    """The generated shared writer module, imported."""
-    src = ReportExportGenerator(**opts).render_writer()
-    path = Path(tempfile.mkdtemp()) / f"w_{uuid.uuid4().hex}.py"
+def _module(src: str):
+    """A generated module that imports none of its siblings, executed."""
+    path = Path(tempfile.mkdtemp()) / f"m_{uuid.uuid4().hex}.py"
     path.write_text(src, encoding="utf-8")
     spec = importlib.util.spec_from_file_location(path.stem, path)
     mod = importlib.util.module_from_spec(spec)
     sys.modules[path.stem] = mod  # dataclasses resolves annotations through sys.modules
     spec.loader.exec_module(mod)
     return mod
+
+
+def _writer(**opts):
+    """The generated shared writer module, imported."""
+    return _module(ReportExportGenerator(**opts).render_writer())
 
 
 # --- shared writer ---------------------------------------------------------------------
@@ -148,21 +152,21 @@ def test_unwired_routes_carry_no_export_branch() -> None:
     files = _gen(_BASE)
     assert "report_export_writer.py" not in files
     assert not any(f.endswith("_export.py") for f in files)
-    router = files["invoice_status_totals_router.py"]
-    assert "report_export" not in router and "jsonable_encoder" not in router
-    assert "format" not in router.replace("information", "")
+    # A run with an unrelated extra generator writes the same routers byte for byte.
+    with_other = _gen(_BASE | {"trace-helper"})
+    for name, text in files.items():
+        if name.endswith("_router.py"):
+            assert with_other[name] == text, name
 
 
 def test_wired_emits_one_writer_and_one_module_per_served_report() -> None:
     files = _gen(_BASE | {"report-export"}, max_rows=60, xml_nulls="nil")
-    assert "EXPORT_MAX_ROWS = 60" in files["report_export_writer.py"]
-    assert 'EXPORT_XML_NULLS = "nil"' in files["report_export_writer.py"]
+    writer = _module(files["report_export_writer.py"])
+    assert writer.EXPORT_MAX_ROWS == 60
+    assert writer.EXPORT_XML_NULLS == "nil"
     exports = sorted(f for f in files if f.endswith("_export.py"))
     assert "export_cells_export.py" in exports and "invoice_days_export.py" not in exports
-    cols = files["invoice_status_totals_export.py"]
-    assert cols.index('"status"') < cols.index('"invoices"') < cols.index('"totalCents"')
-    router = files["invoice_status_totals_router.py"]
-    assert "report_export_writer import EXPORT_MAX_ROWS" in router
-    assert "export_too_large_envelope" in router and "report_too_large" in router
-    # the entity (writable) routers are untouched by export
-    assert "format" not in files.get("invoice_router.py", "")
+    unwired = _gen(_BASE)
+    # only a served report's router changes; the entity (writable) routers are untouched
+    assert files["invoice_status_totals_router.py"] != unwired["invoice_status_totals_router.py"]
+    assert files["invoice_router.py"] == unwired["invoice_router.py"]

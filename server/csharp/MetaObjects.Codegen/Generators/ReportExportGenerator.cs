@@ -187,7 +187,7 @@ public static class ReportExportWriter
             case bool b: return new(b ? "true" : "false", false);
             case DateOnly d: return new(d.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), false);
             case TimeOnly t: return new(t.ToString("HH:mm:ss.FFFFFFF", CultureInfo.InvariantCulture), false);
-            case DateTimeOffset o: return new(o.UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss.FFFFFFF'Z'", CultureInfo.InvariantCulture), false);
+            case DateTimeOffset o: return new(Timestamp(o), false);
             case DateTime dt: return new(dt.ToString("yyyy-MM-dd'T'HH:mm:ss.FFFFFFF", CultureInfo.InvariantCulture), false);
             case Guid g: return new(g.ToString("D", CultureInfo.InvariantCulture), false);
             case decimal m: return new(DecimalsAsString ? Canonical(m) : m.ToString(CultureInfo.InvariantCulture), false);
@@ -198,6 +198,17 @@ public static class ReportExportWriter
             case IFormattable f: return new(f.ToString(null, CultureInfo.InvariantCulture), false);
             default: return new(Convert.ToString(value, CultureInfo.InvariantCulture), true);
         }
+    }
+
+    // A timestamp as the list route writes it (Iso8601TimestampConverter): UTC with Z, and
+    // milliseconds only when the instant has a fraction.
+    private static string Timestamp(DateTimeOffset value)
+    {
+        var utc = value.UtcDateTime;
+        var format = utc.Ticks % TimeSpan.TicksPerSecond == 0
+            ? "yyyy-MM-dd'T'HH:mm:ss'Z'"
+            : "yyyy-MM-dd'T'HH:mm:ss.fff'Z'";
+        return utc.ToString(format, CultureInfo.InvariantCulture);
     }
 
     // The canonical decimal string: plain notation, no trailing fraction zeros, zero as "0".

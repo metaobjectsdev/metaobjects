@@ -783,8 +783,9 @@ class RouterGenerator:
         absent ``limit`` is every row up to it (``cap + 1`` rows are fetched so the refusal
         comes before any body byte), an explicit ``limit`` above it is refused, and a smaller
         one pages. ``format`` is read from the raw query string (case-sensitive; ``Accept`` is
-        never consulted) and ``withCount`` is read as text so ``withCount=true`` with a format
-        is the ``export_with_count`` 400 and not FastAPI's own 422."""
+        never consulted) and ``withCount`` is read as text so ``withCount=true`` with ``csv`` or
+        ``xml`` is the ``export_with_count`` 400 and not FastAPI's own 422. A JSON export with
+        ``withCount=1`` is the list route's own ``{rows, total}`` envelope."""
         return [
             '@router.get("")',
             f"def list_{plural}(",
@@ -799,7 +800,7 @@ class RouterGenerator:
             "    if fmt is not None:",
             "        if fmt not in EXPORT_FORMATS:",
             "            return JSONResponse(status_code=400, content=invalid_format_envelope())",
-            "        if is_truthy_flag(with_count):",
+            '        if fmt != "json" and is_truthy_flag(with_count):',
             "            return JSONResponse(status_code=400, content=export_with_count_envelope())",
             "        max_rows = EXPORT_MAX_ROWS",
             "        too_large = JSONResponse(status_code=400, content=export_too_large_envelope(max_rows))",
@@ -855,15 +856,18 @@ class RouterGenerator:
             "    rows = repo.list(fetch_limit, actual_offset, sort_clause, predicates)",
             "    if requested_limit is None and len(rows) > max_rows:",
             "        return too_large",
+            "    # `withCount` keeps its meaning: 1 is the { rows, total } envelope, on a JSON export too.",
+            '    counted = with_count is not None and with_count.isascii() and with_count.isdigit() and int(with_count) == 1',
             "    if fmt is not None:",
             "        data = jsonable_encoder(render_wire(rows, _WIRE))",
             f'        headers = {{"Content-Disposition": content_disposition("{plural}", fmt)}}',
             '        if fmt == "json":',
+            "            if counted:",
+            '                data = {"rows": data, "total": repo.count(predicates)}',
             "            return JSONResponse(content=data, headers=headers)",
             '        body = export_csv(data) if fmt == "csv" else export_xml(data)',
             "        return Response(content=body, media_type=EXPORT_CONTENT_TYPES[fmt], headers=headers)",
-            "    # Without a format `withCount` keeps its meaning: 1 is the { rows, total } envelope.",
-            '    if with_count is not None and with_count.isascii() and with_count.isdigit() and int(with_count) == 1:',
+            "    if counted:",
             "        total = repo.count(predicates)",
             '        return {"rows": render_wire(rows, _WIRE), "total": total}',
             "    return render_wire(rows, _WIRE)",

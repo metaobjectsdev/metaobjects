@@ -371,7 +371,7 @@ new ReportExportGenerator { MaxRows = 50_000, XmlNulls = ReportExportXmlNulls.Ni
   declares `xmlns:xsi`. That is what `XmlSerializer` writes for a nullable value type and what
   `DataContractSerializer` writes for any null, and it keeps a null apart from an empty string. `Empty`
   writes a bare empty element and declares nothing.
-- **JSON** is the list route's array through the host's configured JSON options (so a `wire` setting and
+- **JSON** is the list route's body (the array, or `{ rows, total }` with `withCount`) through the host's configured JSON options (so a `wire` setting and
   a `JsonStringEnumConverter` apply as on the list route), served as `application/json`.
 - A character XML 1.0 cannot carry is written as U+FFFD rather than failing the export.
 

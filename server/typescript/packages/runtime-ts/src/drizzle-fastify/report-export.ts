@@ -70,10 +70,10 @@ export function readExportFormat(query: Record<string, unknown>, spec: ReportExp
 }
 
 /**
- * Whether `withCount` is set, for the `export_with_count` refusal. Wider than the list route's
- * own flag (`1`): the contract says "truthy", and a client that sends `withCount=true` to an export
- * must be told it cannot have a count rather than silently get the file. The list route's
- * flag is unchanged.
+ * Whether `withCount` is set, for the `export_with_count` refusal of a CSV or XML export. Wider
+ * than the list route's own flag (`1`): the contract says "truthy", and a client that sends
+ * `withCount=true` to a CSV export must be told it cannot have a count rather than silently get
+ * the file. The list route's flag is unchanged, and a JSON export reads that one.
  */
 export function isExportCountFlag(v: unknown): boolean {
   if (v === undefined || v === null) return false;
@@ -82,11 +82,11 @@ export function isExportCountFlag(v: unknown): boolean {
   return s === "1" || s === "true";
 }
 
-/** `export_with_count`: an export has no `{ rows, total }` envelope, JSON included. */
+/** `export_with_count`: a CSV or XML export has no `{ rows, total }` envelope. */
 export function exportWithCountError(): ReportExportError {
   return new ReportExportError(
-    { error: "export_with_count", message: "withCount cannot be combined with format; an export has no { rows, total } envelope." },
-    "withCount cannot be combined with format.",
+    { error: "export_with_count", message: "withCount cannot be combined with format=csv or format=xml; only JSON carries the { rows, total } envelope." },
+    "withCount cannot be combined with format=csv or format=xml.",
   );
 }
 
@@ -124,9 +124,12 @@ export function exportContentDisposition(path: string, format: ExportFormat): st
   return `attachment; filename="${segment}.${format}"`;
 }
 
-/** The response body of an export. JSON is the list route's array, serialized as `JSON.stringify` does. */
-export function renderExport(spec: ReportExportSpec, format: ExportFormat, rows: ExportRows): string {
-  if (format === "json") return JSON.stringify(rows);
+/**
+ * The response body of an export. JSON is the list route's own body, serialized as
+ * `JSON.stringify` does: the array, or `{ rows, total }` when the request asked for a count.
+ */
+export function renderExport(spec: ReportExportSpec, format: ExportFormat, rows: ExportRows, total?: number): string {
+  if (format === "json") return JSON.stringify(total === undefined ? rows : { rows, total });
   const write = spec[format];
   if (write === undefined) throw new Error(`report export: no ${format} writer is wired.`);
   return write(rows);

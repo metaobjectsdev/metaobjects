@@ -51,11 +51,11 @@ def invalid_format_envelope(formats: tuple[str, ...] = EXPORT_FORMATS) -> dict[s
 
 
 def export_with_count_envelope() -> dict[str, Any]:
-    """``400 {"error": "export_with_count"}``: an export has no ``{rows, total}`` envelope,
-    JSON included. ``message`` is free prose."""
+    """``400 {"error": "export_with_count"}``: a CSV or XML export has no ``{rows, total}``
+    envelope; only JSON carries it. ``message`` is free prose."""
     return {
         "error": "export_with_count",
-        "message": "withCount cannot be combined with format: an export has no { rows, total } envelope.",
+        "message": "withCount cannot be combined with format=csv or format=xml: only JSON carries the { rows, total } envelope.",
     }
 
 

@@ -101,14 +101,18 @@ public final class GeneratedReportControllerHarness implements AutoCloseable {
                 com.metaobjects.config.SourceResolver.discoverWireFormat(java.util.List.of((corpusRoot.getParent()).toUri()))
                         .orElse(com.metaobjects.config.WireFormat.DEFAULT));
 
-        // `reportExport` on the routes generator is what mounts the ?format branch; the
-        // report-export generator writes what it calls. The corpus pins maxRows 60 (ReadingLog
-        // has 61 rows) and xmlNulls "nil" (the null form the scenarios assert).
-        runGenerator(new SpringControllerGenerator(), loader, srcDir, Map.of("reportExport", "true"));
+        // A report-export generator in the run is what mounts the ?format branch (handed to the
+        // routes generator as the Maven plugin does, via setRun); the report-export generator
+        // writes what it calls. The corpus pins maxRows 60 (ReadingLog has 61 rows) and
+        // xmlNulls "nil" (the null form the scenarios assert).
+        SpringControllerGenerator controller = new SpringControllerGenerator();
+        SpringReportExportGenerator export = new SpringReportExportGenerator();
+        controller.setRun(List.of(controller, export));
+        runGenerator(controller, loader, srcDir, Map.of());
         runGenerator(new SpringDtoGenerator(), loader, srcDir, Map.of());
         runGenerator(new SpringRepositoryGenerator(), loader, srcDir, Map.of());
         runGenerator(new SpringFilterAllowlistGenerator(), loader, srcDir, Map.of());
-        runGenerator(new SpringReportExportGenerator(), loader, srcDir,
+        runGenerator(export, loader, srcDir,
             Map.of("maxRows", String.valueOf(MAX_ROWS), "xmlNulls", "nil"));
 
         Path pkgDir = srcDir.resolve(ENTITY_PKG.replace('.', '/'));

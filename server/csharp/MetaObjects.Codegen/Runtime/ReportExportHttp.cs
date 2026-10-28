@@ -33,20 +33,21 @@ public static class ReportExportHttp
     /// <summary>
     /// The refusal for a request that names a <paramref name="format"/>, or <c>null</c> when the export may
     /// proceed: <c>400 invalid_format</c> for anything but <c>csv</c>, <c>json</c>, <c>xml</c> (answered before any
-    /// query runs), then <c>400 export_with_count</c> when <c>withCount</c> is truthy, since an export has no
-    /// <c>{ rows, total }</c> envelope, JSON included. Always <c>null</c> for no format.
+    /// query runs), then <c>400 export_with_count</c> when a CSV or XML export sends a truthy <c>withCount</c>, since
+    /// only JSON carries the <c>{ rows, total }</c> envelope. Always <c>null</c> for no format.
     /// </summary>
     public static IResult? Refuse(string? format, IQueryCollection query)
     {
         if (format is null) return null;
         if (!Formats.Contains(format, StringComparer.Ordinal))
             return Results.BadRequest(new { error = "invalid_format", expected = Formats });
-        if (query.TryGetValue("withCount", out var wc)
+        if (format != "json"
+            && query.TryGetValue("withCount", out var wc)
             && (wc == "1" || string.Equals(wc, "true", StringComparison.OrdinalIgnoreCase)))
             return Results.BadRequest(new
             {
                 error = "export_with_count",
-                message = "withCount asks for a { rows, total } envelope, which an export cannot carry; drop withCount or drop format.",
+                message = "withCount asks for a { rows, total } envelope, which only a JSON export carries; drop withCount or use format=json.",
             });
         return null;
     }
@@ -56,10 +57,11 @@ public static class ReportExportHttp
         Results.BadRequest(new { error = "export_too_large", maxRows });
 
     /// <summary>
-    /// The JSON export: the list route's rows through the host's configured JSON options (so a <c>wire</c>
-    /// setting applies exactly as on the list route), as <c>application/json</c>, with the attachment header.
+    /// The JSON export: the list route's body (its rows, or its <c>{ rows, total }</c> envelope) through the host's
+    /// configured JSON options (so a <c>wire</c> setting applies exactly as on the list route), as
+    /// <c>application/json</c>, with the attachment header.
     /// </summary>
-    public static IResult Json<T>(HttpContext http, string segment, IReadOnlyList<T> rows)
+    public static IResult Json<T>(HttpContext http, string segment, T body)
     {
         Attach(http, segment, "json");
         var options = http.RequestServices
@@ -67,7 +69,7 @@ public static class ReportExportHttp
             is Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions> configured
             ? configured.Value.SerializerOptions
             : null;
-        return Results.Json(rows, options, "application/json");
+        return Results.Json(body, options, "application/json");
     }
 
     /// <summary>The CSV export: <paramref name="write"/> fills a UTF-8 (no BOM of the encoder's own) body.</summary>

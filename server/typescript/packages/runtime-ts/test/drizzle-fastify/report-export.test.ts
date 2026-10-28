@@ -113,6 +113,15 @@ describe("report export on the read-only mounts", () => {
         expect(j.headers("content-disposition")).toBe('attachment; filename="days.json"');
       });
 
+      test("json with withCount is the list route's { rows, total } envelope as a download", async () => {
+        const get = await boot(SPEC);
+        const wc = await get("/days?format=json&withCount=1&limit=2");
+        expect(wc.status).toBe(200);
+        expect(JSON.parse(wc.text)).toEqual({ rows: [{ id: 1, n: 1 }, { id: 2, n: 2 }], total: 6 });
+        expect(wc.headers("content-type")).toBe("application/json");
+        expect(wc.headers("content-disposition")).toBe('attachment; filename="days.json"');
+      });
+
       test("six rows against maxRows 5: export_too_large for every format, and for an explicit limit above it", async () => {
         const get = await boot(SPEC);
         for (const url of ["/days?format=csv", "/days?format=json", "/days?format=xml", "/days?format=csv&limit=6"]) {
@@ -130,10 +139,8 @@ describe("report export on the read-only mounts", () => {
         expect(bad.status).toBe(400);
         expect(JSON.parse(bad.text)).toEqual({ error: "invalid_format", expected: ["csv", "json", "xml"] });
         expect(JSON.parse((await get("/days?format=")).text).error).toBe("invalid_format");
-        const wc = await get("/days?format=json&withCount=1");
-        expect(wc.status).toBe(400);
-        expect(JSON.parse(wc.text).error).toBe("export_with_count");
         expect(JSON.parse((await get("/days?format=csv&withCount=true")).text).error).toBe("export_with_count");
+        expect(JSON.parse((await get("/days?format=xml&withCount=1")).text).error).toBe("export_with_count");
         const f = await get("/days?format=csv&filter[nope][eq]=1");
         expect(JSON.parse(f.text).error).toBe("invalid_filter_field");
       });

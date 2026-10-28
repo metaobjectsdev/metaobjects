@@ -19,10 +19,11 @@ here.**
   generator emit the `format` branch. Without `format`, or with no export generator wired, a
   response is byte-identical to before. CSV is RFC 4180 with CRLF, a header row of the derived
   field names, wire-form values and a formula-injection guard on every string cell (the render
-  escapers' rule); JSON is the list route's array plus `Content-Disposition`; XML is
-  `<{Report}><row><{field}>...` with a pinnable null form (`xmlNulls`). A format the route does not
-  wire answers `400 {"error":"invalid_format","expected":[...]}`, `withCount` with a format answers
-  `400 export_with_count`, and more rows than the generator option `maxRows` (default 100,000)
+  escapers' rule); JSON is the list route's body (the array, or the `withCount` envelope) plus
+  `Content-Disposition`; XML is `<{Report}><row><{field}>...` with a pinnable null form
+  (`xmlNulls`). A format the route does not wire answers
+  `400 {"error":"invalid_format","expected":[...]}`, `withCount` with `format=csv` or `format=xml`
+  answers `400 export_with_count`, and more rows than the generator option `maxRows` (default 100,000)
   answers `400 {"error":"export_too_large","maxRows":N}` before a byte is written; nothing is ever
   truncated. With `format` set `maxRows` governs and the list route's `report_too_large` cap does
   not. The export adds no dependency an adopter must install in any port, and `xlsx` is reserved

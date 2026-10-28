@@ -180,7 +180,7 @@ export function mountReadOnlyCrudRoutes(opts: MountReadOnlyOptions): void {
       const parsed = qs.parse(queryString) as Record<string, unknown>;
       const withCount = isTruthyFlag(parsed["withCount"]);
       const format = exportSpec ? readExportFormat(parsed, exportSpec) : undefined;
-      if (exportSpec && format !== undefined && isExportCountFlag(parsed["withCount"])) throw exportWithCountError();
+      if (format !== undefined && format !== "json" && isExportCountFlag(parsed["withCount"])) throw exportWithCountError();
       const reportPage = exportSpec && format !== undefined
         ? parseExportPage(parsed, exportSpec.maxRows)
         : isReport ? parseReportPage(parsed, reportMaxRows) : undefined;
@@ -216,19 +216,20 @@ export function mountReadOnlyCrudRoutes(opts: MountReadOnlyOptions): void {
       }
       const rows = fetched.map(toWire);
 
+      let total: number | undefined;
+      if (withCount) {
+        let cq = db.select({ c: count() }).from(view);
+        if (combinedWhere) cq = cq.where(combinedWhere);
+        const countRow = (await cq)[0] as { c: number } | undefined;
+        total = countRow?.c ?? 0;
+      }
       if (exportSpec && format !== undefined) {
-        return c.body(renderExport(exportSpec, format, rows as Record<string, unknown>[]), 200, {
+        return c.body(renderExport(exportSpec, format, rows as Record<string, unknown>[], total), 200, {
           "content-type": EXPORT_CONTENT_TYPES[format],
           "content-disposition": exportContentDisposition(path, format),
         });
       }
-      if (!withCount) return c.json(rows);
-
-      let cq = db.select({ c: count() }).from(view);
-      if (combinedWhere) cq = cq.where(combinedWhere);
-      const countRow = (await cq)[0] as { c: number } | undefined;
-      const total = countRow?.c ?? 0;
-      return c.json({ rows, total });
+      return c.json(total === undefined ? rows : { rows, total });
     } catch (err) {
       if (err instanceof ReportTooLargeError) {
         return c.json({ error: "report_too_large", maxRows: err.maxRows }, 400);

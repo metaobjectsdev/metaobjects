@@ -295,11 +295,11 @@ never consulted**: the selector is the query parameter, in every port.
 | Request | Answer |
 |---|---|
 | no `format` | Exactly the list route above: same body, same headers, same caps. |
-| `format=json` | The list route's JSON array, unchanged, plus `Content-Disposition`. `Content-Type: application/json`. |
+| `format=json` | The list route's JSON body, unchanged, plus `Content-Disposition`: the array, or with `withCount=1` the `{ rows, total }` envelope. `Content-Type: application/json`. |
 | `format=csv` | RFC 4180 CSV. `Content-Type: text/csv; charset=utf-8`. |
 | `format=xml` | `application/xml`, shape below. |
 | any other value (`xlsx`, `pdf`, `CSV`, empty) | `400 { "error": "invalid_format", "expected": ["csv", "json", "xml"] }`. `expected` lists the formats this route wires, in that order. `xlsx` is reserved for a later generator (`report-export-xlsx`) and is refused today like any unknown value. Matching is case-sensitive. |
-| `format` set and `withCount` truthy | `400 { "error": "export_with_count" }` (`message` is free prose). An export has no `{ rows, total }` envelope, JSON included. |
+| `format=csv` or `format=xml` and `withCount` truthy | `400 { "error": "export_with_count" }` (`message` is free prose). Only JSON carries the `{ rows, total }` envelope. |
 | more rows than `maxRows` | `400 { "error": "export_too_large", "maxRows": N }` before a byte of the body is written. |
 
 - **Header comparison.** Header names are case-insensitive. A runner compares `Content-Type` with the whitespace around `;` normalized (`text/csv;charset=utf-8` equals `text/csv; charset=utf-8`), because some servers re-spell it; every other header is compared exactly.

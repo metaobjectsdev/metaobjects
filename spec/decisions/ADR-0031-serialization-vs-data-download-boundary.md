@@ -81,8 +81,8 @@ would hold back the one export that has an adopter need today.
 **What changes.** For the first set only, the JSON and XML bodies come from **each port's standard
 serializer**, not from FR-030:
 
-- **JSON** is the report list route's own body, written by the serializer the list route already
-  uses in that port, so a project's `wire` setting ([ADR-0019 Amendment 2](ADR-0019-runtime-return-type-contract.md))
+- **JSON** is the report list route's own body (the array, or the `{ rows, total }` envelope when
+  the request sends `withCount=1`), written by the serializer the list route already uses in that port, so a project's `wire` setting ([ADR-0019 Amendment 2](ADR-0019-runtime-return-type-contract.md))
   applies to an exported JSON file exactly as it does to the list response.
 - **XML** is written by a small generated writer per project (TypeScript), or by `XmlWriter` (C#),
   JDK StAX (Java and Kotlin) or a generated writer over `xml.sax.saxutils` escaping (Python). No port takes a new dependency, and
@@ -91,7 +91,8 @@ serializer**, not from FR-030:
   `xmlNulls` pins `"nil"` (`xsi:nil="true"`) or `"empty"` where an adopter needs the same bytes in every
   port, and the export corpus pins `"nil"`.
 - **CSV** stays download-layer only, as Decision 2 says. The formula-injection guard is the render
-  escapers' rule.
+  escapers' rule. CSV and XML have no place for a total, so `withCount` with either is refused
+  (`export_with_count`).
 
 **What does not change.** Decisions 1, 3, 4 and 5 stand. The two layers keep separate invariants:
 an export is one-way and not round-trippable, and no round-trip claim attaches to the XML it writes.

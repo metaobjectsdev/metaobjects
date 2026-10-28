@@ -295,8 +295,8 @@ val GENERATOR_REGISTRY: Map<String, GeneratorInfo> = linkedMapOf(
         name = "report-export",
         description = "Per-served-report export module (<Report>Export: columns, wire-form cells, CSV and XML " +
             "writers) plus one shared ReportExportWriter; wires the ?format=csv|json|xml branch into the " +
-            "report list routes when the routes generator is given reportExport=true. Standalone, never " +
-            "implied by a library. [Give the `routes` generator <reportExport>true</reportExport>: it reads " +
+            "report list routes generated in the same run. Standalone, never implied by a library. " +
+            "[Being in the run is what mounts the ?format branch on the `routes` generator: it reads " +
             "the cap from <Report>Export.MAX_ROWS, the maxRows arg of this generator.]",
         tier = GeneratorTier.NATIVE,
         layer = GeneratorLayer.API,

@@ -31,7 +31,10 @@ import com.metaobjects.field.StringField
 import com.metaobjects.field.TimeField
 import com.metaobjects.field.TimestampField
 import com.metaobjects.field.UuidField
+import com.metaobjects.generator.EmitsReportExport
+import com.metaobjects.generator.Generator
 import com.metaobjects.generator.GeneratorIOWriter
+import com.metaobjects.generator.RunAware
 import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase
 import com.metaobjects.identity.MetaIdentity
 import com.metaobjects.loader.MetaDataLoader
@@ -99,7 +102,7 @@ import com.metaobjects.generator.util.GeneratedFileWriter
  *   <li>{@code outputDir} (required): output directory root.</li>
  * </ul>
  */
-open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
+open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaObject>(), RunAware {
 
     /**
      * Exposed output-API version (issue #390) — `0` (default) emits Exposed 0.x
@@ -117,17 +120,23 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
      */
     protected fun reportMaxRows(): Int = getArg(ARG_REPORT_MAX_ROWS)?.toInt() ?: DEFAULT_REPORT_MAX_ROWS
 
+    private var exportWired = false
+
+    override fun setRun(run: Collection<Generator>) {
+        exportWired = EmitsReportExport.includedIn(run)
+    }
+
     /**
-     * Generator arg `reportExport`: `true` when a `report-export` generator is wired for this
-     * project. A served report's list route then also answers `?format=csv|json|xml` (the
+     * Whether a `report-export` generator ([EmitsReportExport]) is in this run, as [setRun]
+     * reports it. A served report's list route then also answers `?format=csv|json|xml` (the
      * "Report export" section of `docs/features/api-contract.md`); the handler reads its cap from
      * the generated `<Report>Export.MAX_ROWS`, so the cap is set once, on `report-export`
-     * (`maxRows`). Default `false`: the generated routes are then byte-identical to a project
-     * without the feature. The two caps never both apply to one request: with `?format` the
-     * export cap governs and `report_too_large` never answers; without it [ARG_REPORT_MAX_ROWS]
-     * is untouched.
+     * (`maxRows`). Without one the generated routes are byte-identical to a project without the
+     * feature. The two caps never both apply to one request: with `?format` the export cap
+     * governs and `report_too_large` never answers; without it [ARG_REPORT_MAX_ROWS] is
+     * untouched.
      */
-    protected fun reportExport(): Boolean = getArg(ARG_REPORT_EXPORT)?.toBoolean() ?: false
+    protected fun reportExport(): Boolean = exportWired
 
     /**
      * FR-019: where a `@provided` enum is referenced from, read from the same two generator args
@@ -2362,8 +2371,8 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
      * more row is read to tell the cap from more than the cap, and the answer is
      * `export_too_large` before a byte is written); an explicit `limit` above the cap is the same
      * refusal, and one within it pages. With a format the export cap governs and
-     * `report_too_large` never answers. `withCount` is refused with every format, JSON included.
-     * `Accept` is never read.
+     * `report_too_large` never answers. `withCount` is refused with CSV and XML; a JSON export with
+     * `withCount=1` is the list route's `{ rows, total }` envelope. `Accept` is never read.
      */
     private fun appendReportExportHandler(
         sb: StringBuilder, shortName: String, readObj: String, sortFields: List<String>,
@@ -2375,7 +2384,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         append("    ): ResponseEntity<Any> = transaction {\n")
         append("        val maxRows = $x.MAX_ROWS\n")
         append("        if (!$x.isFormat(format)) return@transaction jsonBadRequest($x.invalidFormat())\n")
-        append("        if ($x.isTruthy(withCount)) return@transaction jsonBadRequest($x.withCountRefused())\n")
+        append("        if (format != \"json\" && $x.isTruthy(withCount)) return@transaction jsonBadRequest($x.withCountRefused())\n")
         append("        var requestedLimit: Int? = null\n")
         append("        if (limit != null) {\n")
         append("            val n = limit.toLongOrNull()?.takeIf { it >= 1 }\n")
@@ -2397,6 +2406,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         append("            val (field, dir) = parsed\n")
         append("            q = q.orderBy(${sortColumnExpr(readObj, shortName, sortFields, api)} to dir)\n")
         append("        }\n")
+        append("        val total: Long = if (withCount == \"1\") q.count() else -1L\n")
         append("        val effectiveLimit = requestedLimit ?: (maxRows + 1)\n")
         if (api == ExposedApi.V1) {
             append("        val rows = q.limit(effectiveLimit).offset(effectiveOffset).map { rowTo${shortName}(it) }\n")
@@ -2410,7 +2420,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         append("        when (format) {\n")
         append("            \"csv\" -> ok.body($x.csv(rows) as Any)\n")
         append("            \"xml\" -> ok.body($x.xml(rows) as Any)\n")
-        append("            else -> ok.body(rows as Any)\n")
+        append("            else -> if (withCount == \"1\") ok.body(mapOf(\"rows\" to rows, \"total\" to total) as Any) else ok.body(rows as Any)\n")
         append("        }\n")
         append("    }\n\n")
         append("    private fun jsonBadRequest(body: Any): ResponseEntity<Any> =\n")
@@ -2441,9 +2451,6 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
     private companion object {
         /** Generator arg: the row cap of a served report's list route. */
         const val ARG_REPORT_MAX_ROWS = "reportMaxRows"
-
-        /** Generator arg: mount the `?format` export branch on a served report's list route. */
-        const val ARG_REPORT_EXPORT = "reportExport"
 
         /** The most rows a report list answers when no [ARG_REPORT_MAX_ROWS] is given. */
         const val DEFAULT_REPORT_MAX_ROWS = 10_000

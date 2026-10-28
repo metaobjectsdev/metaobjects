@@ -784,7 +784,11 @@ guard, XML escaping).
 **The cap, once.** A report has two caps and they never both apply to one request. Without
 `format`, the list route's cap (`reportMaxRows` or its port's name, default 10,000, answers
 `report_too_large`) is untouched. With `format`, `maxRows` governs and `export_too_large` answers,
-including for `format=json`, so an export can be larger than the list. The route fetches
+including for `format=json`, so an export can be larger than the list.
+
+**`withCount`.** `format=json&withCount=1` downloads the list route's `{ rows, total }` envelope.
+CSV and XML have no place for a total, so `withCount` with `format=csv` or `format=xml` is
+refused with `400 export_with_count`. The route fetches
 `maxRows + 1` rows to tell exactly the cap from more than the cap before writing a byte. A report
 is materialised up to the cap; there is no streaming in this version.
 

@@ -211,7 +211,7 @@ export function mountReadOnlyCrudRoutes(opts: MountReadOnlyOptions): void {
       const withCount = isTruthyFlag(parsed["withCount"]);
       // Export mode: the selector is validated before any query runs, and the export cap governs.
       const format = exportSpec ? readExportFormat(parsed, exportSpec) : undefined;
-      if (exportSpec && format !== undefined && isExportCountFlag(parsed["withCount"])) throw exportWithCountError();
+      if (format !== undefined && format !== "json" && isExportCountFlag(parsed["withCount"])) throw exportWithCountError();
       const reportPage = exportSpec && format !== undefined
         ? parseExportPage(parsed, exportSpec.maxRows)
         : isReport ? parseReportPage(parsed, reportMaxRows) : undefined;
@@ -246,24 +246,25 @@ export function mountReadOnlyCrudRoutes(opts: MountReadOnlyOptions): void {
       }
       const rows = fetched.map(toWire);
 
+      let total: number | undefined;
+      if (withCount) {
+        // Count query: same WHERE, no limit/offset/orderBy.
+        let cq = db.select({ c: count() }).from(view);
+        if (combinedWhere) cq = cq.where(combinedWhere);
+        const countRow = (await cq)[0] as { c: number } | undefined;
+        total = countRow?.c ?? 0;
+      }
       if (exportSpec && format !== undefined) {
         // Render first: a writer that throws must not leave download headers on the 500.
         // A Buffer, not a string: Fastify appends "; charset=utf-8" to a string body's
         // application/json, and the contract pins the content type exactly.
-        const body = Buffer.from(renderExport(exportSpec, format, rows as Record<string, unknown>[]), "utf8");
+        const body = Buffer.from(renderExport(exportSpec, format, rows as Record<string, unknown>[], total), "utf8");
         reply
           .header("content-disposition", exportContentDisposition(path, format))
           .header("content-type", EXPORT_CONTENT_TYPES[format]);
         return body;
       }
-      if (!withCount) return rows;
-
-      // Count query: same WHERE, no limit/offset/orderBy.
-      let cq = db.select({ c: count() }).from(view);
-      if (combinedWhere) cq = cq.where(combinedWhere);
-      const countRow = (await cq)[0] as { c: number } | undefined;
-      const total = countRow?.c ?? 0;
-      return { rows, total };
+      return total === undefined ? rows : { rows, total };
     } catch (err) {
       if (err instanceof ReportTooLargeError) {
         reply.code(400).send({ error: "report_too_large", maxRows: err.maxRows });

@@ -14,6 +14,7 @@ import com.metaobjects.field.MapField;
 import com.metaobjects.field.MetaField;
 import com.metaobjects.field.StringField;
 import com.metaobjects.field.UriField;
+import com.metaobjects.generator.EmitsReportExport;
 import com.metaobjects.generator.GeneratorException;
 import com.metaobjects.generator.GeneratorIOWriter;
 import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase;
@@ -53,9 +54,11 @@ import java.util.TreeSet;
  *       ({@code MAX_ROWS}) and {@code csv(rows)} / {@code xml(rows)} calling the shared writer.</li>
  * </ul>
  *
- * <p>To turn the {@code format} branch on, give the {@code routes} generator the arg
- * {@code reportExport=true}; its handler reads {@code <R>Export.MAX_ROWS}, so the cap is set
- * once, here.</p>
+ * <p>Being in the run is what turns the {@code format} branch on: the {@code routes} generator
+ * sees this generator through {@link EmitsReportExport} and its handler reads
+ * {@code <R>Export.MAX_ROWS}, so the cap is set once, here. A decimal cell is written as the
+ * project's {@code wire.decimals} setting spells it, the same as the list route and the JSON
+ * export.</p>
  *
  * <p>Args:</p>
  * <ul>
@@ -75,7 +78,8 @@ import java.util.TreeSet;
  * <p>Registered as the cross-port stable name {@code report-export}
  * ({@code fixtures/generator-registry-conformance/registry.json}).</p>
  */
-public class SpringReportExportGenerator extends MultiFileDirectGeneratorBase<MetaObject> {
+public class SpringReportExportGenerator extends MultiFileDirectGeneratorBase<MetaObject>
+        implements EmitsReportExport {
 
     /** This generator's cross-port stable name. */
     public static final String STABLE_NAME = "report-export";
@@ -157,7 +161,8 @@ public class SpringReportExportGenerator extends MultiFileDirectGeneratorBase<Me
         if (served.isEmpty()) return;
 
         String writerPackage = getArg(ARG_WRITER_PACKAGE, sharedPackage(served));
-        write(outRoot, writerPackage, WRITER_NAME, writerSource(writerPackage, xmlNulls, csvBom));
+        boolean decimalsAsString = loader.getRoot().getWireFormat().decimalsAsString();
+        write(outRoot, writerPackage, WRITER_NAME, writerSource(writerPackage, xmlNulls, csvBom, decimalsAsString));
         for (MetaObject entity : served) {
             String[] split = SpringNaming.splitFqn(entity.getName());
             write(outRoot, split[0], split[1] + "Export",
@@ -226,7 +231,7 @@ public class SpringReportExportGenerator extends MultiFileDirectGeneratorBase<Me
         }
         src.append(");\n\n");
         src.append("    /** One row's cells in wire form: currency as integer minor units, a date as YYYY-MM-DD,\n");
-        src.append("     *  a decimal in canonical plain notation, a boolean as true/false, null as null. */\n");
+        src.append("     *  a decimal as the wire setting writes it, a boolean as true/false, null as null. */\n");
         src.append("    public static List<").append(WRITER_NAME).append(".Cell> cells(").append(dto).append(" row) {\n");
         src.append("        return List.of(");
         for (int i = 0; i < fields.size(); i++) {
@@ -266,21 +271,25 @@ public class SpringReportExportGenerator extends MultiFileDirectGeneratorBase<Me
     // The shared writer
     // -----------------------------------------------------------------------
 
-    private static String writerSource(String pkg, String xmlNulls, boolean csvBom) {
+    private static String writerSource(String pkg, String xmlNulls, boolean csvBom, boolean decimalsAsString) {
         String text = WRITER_TEMPLATE
             .replace("@PACKAGE@", pkg.isEmpty() ? "" : "package " + pkg + ";\n\n")
             .replace("@BOM@", String.valueOf(csvBom))
-            .replace("@NIL@", String.valueOf(XML_NULLS_NIL.equals(xmlNulls)));
+            .replace("@NIL@", String.valueOf(XML_NULLS_NIL.equals(xmlNulls)))
+            .replace("@DECIMALS_AS_STRING@", String.valueOf(decimalsAsString));
         return text;
     }
 
-    /** The shared writer, verbatim but for the three substitutions in {@link #writerSource}. */
+    /** The shared writer, verbatim but for the four substitutions in {@link #writerSource}. */
     private static final String WRITER_TEMPLATE = """
 @PACKAGE@import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import java.io.ByteArrayOutputStream;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 import javax.xml.stream.XMLOutputFactory;
 import javax.xml.stream.XMLStreamException;
@@ -304,6 +313,10 @@ public final class ReportExportWriter {
 
     /** Write a null field as an empty element with xsi:nil="true" (true) or as an empty element (false). */
     public static final boolean EXPORT_XML_NIL = @NIL@;
+
+    /** The project's wire.decimals: the canonical string (true, "string") or as Jackson writes a
+     *  BigDecimal number (false, "native"), so a decimal cell matches the list route. */
+    public static final boolean DECIMALS_AS_STRING = @DECIMALS_AS_STRING@;
 
     private static final String XSI_NS = "http://www.w3.org/2001/XMLSchema-instance";
 
@@ -337,14 +350,24 @@ public final class ReportExportWriter {
         return value == null ? NULL : new Cell(String.valueOf(value), true);
     }
 
-    /** A cell that is never guarded (number, date, time, timestamp, uuid, boolean, currency). */
+    /** A cell that is never guarded (number, date, time, timestamp, uuid, boolean, currency).
+     *  A time and a zone-less timestamp keep their seconds, as Jackson's JSR-310 serializers write them. */
     public static Cell raw(Object value) {
-        return value == null ? NULL : new Cell(String.valueOf(value), false);
+        if (value == null) return NULL;
+        if (value instanceof LocalTime) {
+            return new Cell(((LocalTime) value).format(DateTimeFormatter.ISO_LOCAL_TIME), false);
+        }
+        if (value instanceof LocalDateTime) {
+            return new Cell(((LocalDateTime) value).format(DateTimeFormatter.ISO_LOCAL_DATE_TIME), false);
+        }
+        return new Cell(String.valueOf(value), false);
     }
 
-    /** A decimal in canonical plain notation: no exponent, no trailing fraction zeros, zero as 0. */
+    /** A decimal as the wire setting writes it: under "string" canonical plain notation (no
+     *  exponent, no trailing fraction zeros, zero as 0), under "native" as Jackson writes it. */
     public static Cell decimal(BigDecimal value) {
         if (value == null) return NULL;
+        if (!DECIMALS_AS_STRING) return new Cell(value.toString(), false);
         return new Cell(value.signum() == 0 ? "0" : value.stripTrailingZeros().toPlainString(), false);
     }
 

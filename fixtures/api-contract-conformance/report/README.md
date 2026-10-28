@@ -134,7 +134,7 @@ report/
     ├── export-json.yaml                  # ?format=json: the list's array plus Content-Disposition; no format, no header
     ├── export-xml.yaml                   # ?format=xml with xmlNulls "nil", compared as an XML infoset
     ├── export-invalid-format.yaml        # invalid_format and its expected list; xlsx reserved; Accept ignored
-    ├── export-with-count.yaml            # withCount with a format -> export_with_count
+    ├── export-with-count.yaml            # withCount: csv/xml -> export_with_count, json -> envelope
     └── export-too-large.yaml             # export_too_large at maxRows 60; the list route's report_too_large unchanged
 ```
 

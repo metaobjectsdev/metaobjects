@@ -16,7 +16,7 @@ import java.util.Map;
  * refusal looks like. Accept headers are never consulted: the selector is the query parameter.
  *
  * <p>A route consults this only when a {@code report-export} generator is wired for the
- * project (the {@code reportExport} arg of the routes generator); otherwise the generated
+ * project (the routes generator sees it in the run); otherwise the generated
  * controller never mentions it and {@code ?format=} is ignored like any unknown parameter.
  */
 public final class ReportExport {
@@ -48,11 +48,12 @@ public final class ReportExport {
         return body;
     }
 
-    /** The {@code 400} body for {@code withCount} on an export: it has no {@code { rows, total }} envelope. */
+    /** The {@code 400} body for {@code withCount} on a CSV or XML export: only JSON carries the
+     *  {@code { rows, total }} envelope. */
     public static Map<String, Object> withCount() {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("error", "export_with_count");
-        body.put("message", "withCount is not supported with format: an export has no { rows, total } envelope.");
+        body.put("message", "withCount is not supported with format=csv or format=xml: only JSON carries the { rows, total } envelope.");
         return body;
     }
 

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.SerializationFeature
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
+import com.metaobjects.generator.RunAware
 import com.metaobjects.generator.kotlin.KotlinEntityGenerator
 import com.metaobjects.generator.kotlin.KotlinExposedTableGenerator
 import com.metaobjects.generator.kotlin.KotlinFilterAllowlistGenerator
@@ -88,24 +89,26 @@ class GeneratedReportControllerHarness(
 
         val srcDir = genDir.resolve("src")
         Files.createDirectories(srcDir)
-        // The `report/` lane wires report-export: `reportExport` on the routes generator mounts the
-        // ?format branch, and the report-export generator writes what it calls. The corpus pins
+        // The `report/` lane wires report-export: being in the run (handed to the routes generator
+        // via setRun, as the Maven plugin does) mounts the ?format branch, and the report-export
+        // generator writes what it calls. The corpus pins
         // maxRows 60 (ReadingLog has 61 rows) and xmlNulls "nil" (the null form the scenarios
         // assert). Other sub-corpora (`decimal`) wire nothing and so stay byte-identical.
         val exportWired = lane == "report"
         val exportArgs = if (exportWired) mapOf("maxRows" to MAX_ROWS.toString(), "xmlNulls" to "nil") else emptyMap()
-        for (g in listOfNotNull(
+        val run = listOfNotNull(
             KotlinEntityGenerator(),
             KotlinNamesGenerator(),
             KotlinExposedTableGenerator(),
             KotlinFilterAllowlistGenerator(),
             KotlinSpringControllerGenerator(),
             if (exportWired) KotlinReportExportGenerator() else null,
-        )) {
-            val extra = if (g is KotlinSpringControllerGenerator && exportWired) mapOf("reportExport" to "true") else emptyMap()
+        )
+        for (g in run) {
+            if (g is RunAware) g.setRun(run)
             g.setArgs(
                 mapOf("outputDir" to srcDir.toString(), "useNames" to "true", "reportMaxRows" to MAX_ROWS.toString()) +
-                    extra + (if (g is KotlinReportExportGenerator) exportArgs else emptyMap())
+                    (if (g is KotlinReportExportGenerator) exportArgs else emptyMap())
             )
             g.execute(loader)
         }

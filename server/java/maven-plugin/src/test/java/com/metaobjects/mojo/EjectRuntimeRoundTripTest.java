@@ -170,8 +170,8 @@ public class EjectRuntimeRoundTripTest {
             Set<String> used = all.stream().filter(i -> i.startsWith(probe + "."))
                     .map(i -> i.substring(probe.length() + 1)).collect(Collectors.toCollection(TreeSet::new));
             Set<String> declared = new TreeSet<>(e.runtime);
-            // ReportExport is imported only by a report's controller when the routes generator is
-            // given reportExport=true. This probe's corpus serves no report, so it is declared (an
+            // ReportExport is imported only by a report's controller when the run holds a
+            // report-export generator. This probe's corpus serves no report, so it is declared (an
             // owned routes generator needs the copy) and never used here.
             declared.removeAll(OPTIONAL_RUNTIME);
             // Imports alone under-count a closure (FilterParser uses FilterParseResult without

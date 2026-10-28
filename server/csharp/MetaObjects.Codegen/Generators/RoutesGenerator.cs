@@ -171,18 +171,16 @@ public class RoutesGenerator : PerEntityGenerator
     }
 
     // A report-export download: the rows are fetched exactly as the list route fetches them, then
-    // written as CSV, XML or JSON by the module the report-export generator emitted for this report.
+    // written as CSV or XML by the module the report-export generator emitted for this report. A JSON
+    // export is the list route's own body, written by the withCount tail below.
     private static void AppendReportExportBranch(StringBuilder sb, string cls, string route)
     {
         sb.AppendLine();
-        sb.AppendLine("            // Export (report-export): the same rows as a download. withCount was refused above.");
-        sb.AppendLine("            if (format is not null)");
-        sb.AppendLine("                return format switch");
-        sb.AppendLine("                {");
-        sb.AppendLine($"                    \"csv\" => ReportExportHttp.Csv(http, \"{route}\", w => {cls}Export.WriteCsv(w, rows)),");
-        sb.AppendLine($"                    \"xml\" => ReportExportHttp.Xml(http, \"{route}\", w => {cls}Export.WriteXml(w, rows)),");
-        sb.AppendLine($"                    _ => ReportExportHttp.Json(http, \"{route}\", rows),");
-        sb.AppendLine("                };");
+        sb.AppendLine("            // Export (report-export): the same rows as a download. withCount with csv or xml was refused above.");
+        sb.AppendLine("            if (format == \"csv\")");
+        sb.AppendLine($"                return ReportExportHttp.Csv(http, \"{route}\", w => {cls}Export.WriteCsv(w, rows));");
+        sb.AppendLine("            if (format == \"xml\")");
+        sb.AppendLine($"                return ReportExportHttp.Xml(http, \"{route}\", w => {cls}Export.WriteXml(w, rows));");
     }
 
     protected virtual EmittedFile GenerateStandardRoutes(MetaObject entity, GenContext ctx)
@@ -309,7 +307,7 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine("            var qs = http.Request.Query;");
         if (export is not null)
         {
-            sb.AppendLine("            // Export (report-export): ?format=csv|json|xml. An unknown format, or withCount with a format, is refused before any query runs.");
+            sb.AppendLine("            // Export (report-export): ?format=csv|json|xml. An unknown format, or withCount with csv or xml, is refused before any query runs.");
             sb.AppendLine("            var format = ReportExportHttp.Requested(qs);");
             sb.AppendLine("            if (ReportExportHttp.Refuse(format, qs) is { } exportRefusal) return exportRefusal;");
         }
@@ -360,10 +358,16 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine();
         sb.AppendLine("            // withCount=1 → { rows, total } envelope; otherwise bare row array.");
         sb.AppendLine("            var withCount = qs.TryGetValue(\"withCount\", out var wc) && (wc == \"1\" || string.Equals(wc, \"true\", System.StringComparison.OrdinalIgnoreCase));");
-        sb.AppendLine("            if (!withCount) return Results.Ok(rows);");
+        if (export is null)
+            sb.AppendLine("            if (!withCount) return Results.Ok(rows);");
+        else
+            sb.AppendLine($"            if (!withCount) return format is null ? Results.Ok(rows) : ReportExportHttp.Json(http, \"{route}\", rows);");
         sb.AppendLine($"            var totalQ = EfCoreFilterDispatch.ApplyFilter(db.{readDbSet}.AsNoTracking(), filter.Predicates);");
         sb.AppendLine("            var total = await totalQ.CountAsync();");
-        sb.AppendLine("            return Results.Ok(new { rows, total });");
+        if (export is null)
+            sb.AppendLine("            return Results.Ok(new { rows, total });");
+        else
+            sb.AppendLine($"            return format is null ? Results.Ok(new {{ rows, total }}) : ReportExportHttp.Json(http, \"{route}\", new {{ rows, total }});");
         sb.AppendLine("        });");
 
         if (hasItem)

@@ -1,5 +1,7 @@
 package com.metaobjects.generator.spring;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.metaobjects.config.WireFormat;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.registry.SharedRegistryTestBase;
 import org.junit.Rule;
@@ -18,6 +20,9 @@ import java.net.URLClassLoader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -25,6 +30,7 @@ import java.util.stream.Stream;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertTrue;
 
 /**
@@ -47,8 +53,14 @@ public class GeneratedReportExportCompileRunTest extends SharedRegistryTestBase 
 
     /** Generate DTOs and the export modules with {@code exportArgs}, compile, and load. */
     private Loaded generate(Map<String, String> exportArgs) throws Exception {
+        return generate(exportArgs, WireFormat.DEFAULT);
+    }
+
+    /** As {@link #generate(Map)}, under the project wire setting {@code wire}. */
+    private Loaded generate(Map<String, String> exportArgs, WireFormat wire) throws Exception {
         String json = Files.readString(corpusMeta(), StandardCharsets.UTF_8);
         MetaDataLoader loader = SpringTestFixtures.loadFixture(tmp.newFolder().toPath(), "report-export", json);
+        loader.getRoot().setWireFormat(wire);
         Path src = tmp.newFolder().toPath();
         Path classes = tmp.newFolder().toPath();
         run(new SpringDtoGenerator(), loader, src, Map.of());
@@ -105,13 +117,11 @@ public class GeneratedReportExportCompileRunTest extends SharedRegistryTestBase 
     public void theExportModuleAndTheSharedWriterAreGeneratedForEveryServedReport() throws Exception {
         Loaded l = generate(Map.of("maxRows", "60"));
         assertTrue(Files.exists(l.src().resolve("acme/sales/ReportExportWriter.java")));
-        String exportSrc = Files.readString(l.src().resolve("acme/sales/ExportCellsExport.java"));
-        assertTrue(exportSrc, exportSrc.contains("public static final int MAX_ROWS = 60;"));
-        assertTrue(exportSrc, exportSrc.contains("List.of(\"label\", \"cells\", \"totalCents\")"));
+        Class<?> export = l.cl().loadClass(PKG + ".ExportCellsExport");
+        assertEquals(List.of("label", "cells", "totalCents"), export.getField("FIELDS").get(null));
         // a report with no view source is not served and gets nothing
         assertFalse(Files.exists(l.src().resolve("acme/sales/InvoiceDaysExport.java")));
-        Object max = l.cl().loadClass(PKG + ".ExportCellsExport").getField("MAX_ROWS").get(null);
-        assertEquals(60, max);
+        assertEquals(60, export.getField("MAX_ROWS").get(null));
     }
 
     @Test
@@ -148,15 +158,36 @@ public class GeneratedReportExportCompileRunTest extends SharedRegistryTestBase 
             + "\"say \"\"hi\"\"\",1\r\n"
             + "\"line one\nline two\",1\r\n"
             + ",-5\r\n"
-            + ",-12.5\r\n", csv);
+            + ",-12.500\r\n", csv);
     }
 
     @Test
-    public void numbersAreNeverGuardedAndDecimalsArePlain() throws Exception {
+    public void numbersAreNeverGuardedAndStringWireDecimalsAreCanonical() throws Exception {
+        Loaded l = generate(Map.of(), new WireFormat(WireFormat.Decimals.STRING, WireFormat.NullMembers.OMIT));
+        String csv = l.csv(List.of("a", "b", "c", "d"), List.of(List.of(l.cell("raw", -7),
+            l.cell("decimal", new BigDecimal("0.0")), l.cell("decimal", new BigDecimal("1E+3")),
+            l.cell("decimal", new BigDecimal("12.50")))));
+        assertEquals("a,b,c,d\r\n-7,0,1000,12.5\r\n", csv);
+    }
+
+    @Test
+    public void nativeWireDecimalsAreWhatJacksonWritesForTheListRoute() throws Exception {
         Loaded l = generate(Map.of());
-        String csv = l.csv(List.of("a", "b", "c"), List.of(List.of(
-            l.cell("raw", -7), l.cell("decimal", new BigDecimal("0.0")), l.cell("decimal", new BigDecimal("1E+3")))));
-        assertEquals("a,b,c\r\n-7,0,1000\r\n", csv);
+        BigDecimal value = new BigDecimal("12.50");
+        String jackson = new ObjectMapper().writeValueAsString(value);
+        assertEquals("12.50", jackson);
+        assertEquals("a\r\n" + jackson + "\r\n", l.csv(List.of("a"), List.of(List.of(l.cell("decimal", value)))));
+    }
+
+    @Test
+    public void temporalCellsKeepTheirSecondsAsTheJsonWireDoes() throws Exception {
+        Loaded l = generate(Map.of());
+        String csv = l.csv(List.of("d", "t", "ldt", "frac"), List.of(List.of(
+            l.cell("raw", LocalDate.of(2026, 1, 1)),
+            l.cell("raw", LocalTime.of(10, 0)),
+            l.cell("raw", LocalDateTime.of(2026, 1, 1, 10, 0)),
+            l.cell("raw", LocalTime.of(10, 0, 0, 120_000_000)))));
+        assertEquals("d,t,ldt,frac\r\n2026-01-01,10:00:00,2026-01-01T10:00:00,10:00:00.12\r\n", csv);
     }
 
     @Test
@@ -210,22 +241,24 @@ public class GeneratedReportExportCompileRunTest extends SharedRegistryTestBase 
     }
 
     @Test
-    public void theFormatBranchIsEmittedOnlyWhenTheRoutesGeneratorIsToldExportIsWired() throws Exception {
+    public void theReportControllerChangesOnlyWhenTheRunHoldsAReportExportGenerator() throws Exception {
         String json = Files.readString(corpusMeta(), StandardCharsets.UTF_8);
         MetaDataLoader loader = SpringTestFixtures.loadFixture(tmp.newFolder().toPath(), "report-export", json);
+        Path bare = tmp.newFolder().toPath();
         Path plain = tmp.newFolder().toPath();
         Path wired = tmp.newFolder().toPath();
-        run(new SpringControllerGenerator(), loader, plain, Map.of());
-        run(new SpringControllerGenerator(), loader, wired, Map.of("reportExport", "true"));
-        String off = Files.readString(plain.resolve("acme/sales/ExportCellsController.java"));
-        String on = Files.readString(wired.resolve("acme/sales/ExportCellsController.java"));
-        assertFalse(off, off.contains("ReportExport") || off.contains("format"));
-        assertTrue(on, on.contains("ExportCellsExport.MAX_ROWS"));
-        assertTrue(on, on.contains("ReportExport.invalidFormat()"));
-        assertTrue(on, on.contains("ReportExport.withCount()"));
-        // Accept is never consulted: every body of the list route names its own media type
-        assertTrue(on, on.contains("contentType(MediaType.APPLICATION_JSON)"));
+        run(new SpringControllerGenerator(), loader, bare, Map.of());
+        SpringControllerGenerator withoutExport = new SpringControllerGenerator();
+        withoutExport.setRun(List.of(withoutExport, new SpringDtoGenerator()));
+        run(withoutExport, loader, plain, Map.of());
+        SpringControllerGenerator withExport = new SpringControllerGenerator();
+        withExport.setRun(List.of(withExport, new SpringReportExportGenerator()));
+        run(withExport, loader, wired, Map.of());
+        String report = "acme/sales/ExportCellsController.java";
+        assertEquals(Files.readString(bare.resolve(report)), Files.readString(plain.resolve(report)));
+        assertNotEquals(Files.readString(plain.resolve(report)), Files.readString(wired.resolve(report)));
         // an entity's controller never gains the branch
-        assertFalse(Files.readString(wired.resolve("acme/sales/InvoiceController.java")).contains("ReportExport"));
+        String entity = "acme/sales/InvoiceController.java";
+        assertEquals(Files.readString(plain.resolve(entity)), Files.readString(wired.resolve(entity)));
     }
 }

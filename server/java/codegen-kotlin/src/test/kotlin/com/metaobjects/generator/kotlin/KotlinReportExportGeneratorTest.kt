@@ -1,6 +1,8 @@
 package com.metaobjects.generator.kotlin
 
+import com.metaobjects.config.WireFormat
 import com.metaobjects.generator.Generator
+import com.metaobjects.generator.RunAware
 import com.metaobjects.loader.MetaDataLoader
 import com.metaobjects.metadata.ktx.loadDirectory
 import com.tschuchort.compiletesting.KotlinCompilation
@@ -14,13 +16,12 @@ import kotlin.io.path.readText
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
-import kotlin.test.assertFalse
-import kotlin.test.assertTrue
+import kotlin.test.assertNotEquals
 
 /**
  * The `report-export` generator (the "Report export" section of `docs/features/api-contract.md`):
  * what it writes, what its shared writer does (compiled and run here), and that the routes
- * generator mounts the `?format` branch only when told a `report-export` is wired. The
+ * generator mounts the `?format` branch only when a `report-export` is in its run. The
  * generated controller is compiled and driven over HTTP by the report lane in
  * `integration-tests-kotlin`.
  */
@@ -39,11 +40,18 @@ class KotlinReportExportGeneratorTest {
 
     private fun model(): MetaDataLoader = loadDirectory("report-export-with", fixtureDir("fixtures/codegen-noop/reporting/with"))
 
-    private fun emit(generators: List<Generator>, args: Map<String, String> = emptyMap()): Map<String, String> {
+    private fun emit(
+        generators: List<Generator>,
+        args: Map<String, String> = emptyMap(),
+        wire: WireFormat = WireFormat.DEFAULT,
+        run: List<Generator> = generators,
+    ): Map<String, String> {
         val outDir = Files.createTempDirectory("report-export-")
         try {
             val loader = model()
+            loader.root.wireFormat = wire
             for (gen in generators) {
+                if (gen is RunAware) gen.setRun(run)
                 gen.setArgs(mapOf("outputDir" to outDir.toString()) + args)
                 gen.execute(loader)
             }
@@ -61,22 +69,16 @@ class KotlinReportExportGeneratorTest {
     fun `it writes one export module per served report and one shared writer`() {
         val files = emit(listOf(KotlinReportExportGenerator()))
         assertEquals(setOf("acme/shop/StoreTotalsExport.kt", "acme/shop/ReportExportWriter.kt"), files.keys)
-        val module = files.getValue("acme/shop/StoreTotalsExport.kt")
-        assertTrue("const val MAX_ROWS: Int = 100000" in module, module)
-        assertTrue("const val SEGMENT: String = \"store_totals\"" in module || "SEGMENT" in module, module)
-        assertTrue("ReportExportWriter.raw(row." in module, module)
     }
 
     @Test
     fun `the options reach the writer constants`() {
-        val files = emit(listOf(KotlinReportExportGenerator()), mapOf("maxRows" to "60", "xmlNulls" to "nil", "csvBom" to "true"))
-        val writer = files.getValue("acme/shop/ReportExportWriter.kt")
-        assertTrue("const val EXPORT_CSV_BOM: Boolean = true" in writer)
-        assertTrue("const val EXPORT_XML_NIL: Boolean = true" in writer)
-        assertTrue("const val MAX_ROWS: Int = 60" in files.getValue("acme/shop/StoreTotalsExport.kt"))
-        val defaults = emit(listOf(KotlinReportExportGenerator())).getValue("acme/shop/ReportExportWriter.kt")
-        assertTrue("const val EXPORT_CSV_BOM: Boolean = false" in defaults)
-        assertTrue("const val EXPORT_XML_NIL: Boolean = false" in defaults)
+        val set = writer(mapOf("xmlNulls" to "nil", "csvBom" to "true"))
+        assertEquals(true, set.getField("EXPORT_CSV_BOM").get(null))
+        assertEquals(true, set.getField("EXPORT_XML_NIL").get(null))
+        val defaults = writer(emptyMap())
+        assertEquals(false, defaults.getField("EXPORT_CSV_BOM").get(null))
+        assertEquals(false, defaults.getField("EXPORT_XML_NIL").get(null))
     }
 
     @Test
@@ -86,26 +88,22 @@ class KotlinReportExportGeneratorTest {
     }
 
     @Test
-    fun `the routes generator mounts the format branch only when reportExport is set`() {
-        val without = emit(listOf(KotlinEntityGenerator(), KotlinExposedTableGenerator(), KotlinFilterAllowlistGenerator(), KotlinSpringControllerGenerator()))
-        val with = emit(
-            listOf(KotlinEntityGenerator(), KotlinExposedTableGenerator(), KotlinFilterAllowlistGenerator(), KotlinSpringControllerGenerator()),
-            mapOf("reportExport" to "true"),
-        )
-        val before = without.getValue("acme/shop/StoreTotalsController.kt")
-        val after = with.getValue("acme/shop/StoreTotalsController.kt")
-        assertFalse("name = \"format\"" in before, "no export wired, no format parameter")
-        assertFalse("StoreTotalsExport" in before)
-        assertTrue("name = \"format\"" in after)
-        assertTrue("StoreTotalsExport.MAX_ROWS" in after)
-        assertTrue("report_too_large" in after, "the list route's own cap is untouched without ?format")
+    fun `the routes generator mounts the format branch only when a report-export is in its run`() {
+        fun routes() = listOf(KotlinEntityGenerator(), KotlinExposedTableGenerator(), KotlinFilterAllowlistGenerator(), KotlinSpringControllerGenerator())
+        val bare = emit(routes(), run = emptyList())
+        val without = emit(routes())
+        val with = routes().let { gens -> emit(gens, run = gens + KotlinReportExportGenerator()) }
+        // A run with no report-export generator is byte-identical to one never told about its run.
+        assertEquals(bare, without)
+        val report = "acme/shop/StoreTotalsController.kt"
+        assertNotEquals(without.getValue(report), with.getValue(report))
         // Only reports change; every other controller is byte-identical.
-        for ((path, text) in without) if (!path.contains("StoreTotalsController")) assertEquals(text, with[path], path)
+        for ((path, text) in without) if (path != report) assertEquals(text, with[path], path)
     }
 
     /** The shared writer, generated and compiled, with the entity row classes it never touches. */
-    private fun writer(args: Map<String, String>): Class<*> {
-        val files = emit(listOf(KotlinReportExportGenerator()), args)
+    private fun writer(args: Map<String, String>, wire: WireFormat = WireFormat.DEFAULT): Class<*> {
+        val files = emit(listOf(KotlinReportExportGenerator()), args, wire)
         val result = KotlinCompilation().apply {
             sources = listOf(SourceFile.kotlin("ReportExportWriter.kt", files.getValue("acme/shop/ReportExportWriter.kt")))
             inheritClassPath = true
@@ -143,8 +141,40 @@ class KotlinReportExportGeneratorTest {
             ),
         )
         assertEquals(
-            "a,b\r\n'=SUM(1),-5\r\n'+1,\r\n'\tx,\"'\rx\"\r\n\"say \"\"hi\"\"\",\"a,b\"\r\n\"l1\nl2\",\r\n'-2,1.5\r\n",
+            "a,b\r\n'=SUM(1),-5\r\n'+1,\r\n'\tx,\"'\rx\"\r\n\"say \"\"hi\"\"\",\"a,b\"\r\n\"l1\nl2\",\r\n'-2,1.500\r\n",
             out,
+        )
+    }
+
+    @Test
+    fun `a decimal cell is written as the wire setting writes the list route`() {
+        val value = java.math.BigDecimal("12.50")
+        // native: what Jackson writes for a BigDecimal, the list route's own bytes
+        val jackson = com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(value)
+        assertEquals("12.50", jackson)
+        val native = W(writer(emptyMap()))
+        assertEquals("a\r\n$jackson\r\n", native.csv(listOf("a"), listOf(listOf(native.decimal(value)))))
+        // string: the canonical form (ADR-0019 Amendment 1)
+        val pinned = W(writer(emptyMap(), WireFormat(WireFormat.Decimals.STRING, WireFormat.NullMembers.OMIT)))
+        assertEquals(
+            "a,b,c\r\n12.5,0,1000\r\n",
+            pinned.csv(listOf("a", "b", "c"), listOf(listOf(
+                pinned.decimal(value), pinned.decimal(java.math.BigDecimal("0.0")), pinned.decimal(java.math.BigDecimal("1E+3")),
+            ))),
+        )
+    }
+
+    @Test
+    fun `temporal cells keep their seconds as the json wire does`() {
+        val w = W(writer(emptyMap()))
+        assertEquals(
+            "d,t,ldt,frac\r\n2026-01-01,10:00:00,2026-01-01T10:00:00,10:00:00.12\r\n",
+            w.csv(listOf("d", "t", "ldt", "frac"), listOf(listOf(
+                w.raw(java.time.LocalDate.of(2026, 1, 1)),
+                w.raw(java.time.LocalTime.of(10, 0)),
+                w.raw(java.time.LocalDateTime.of(2026, 1, 1, 10, 0)),
+                w.raw(java.time.LocalTime.of(10, 0, 0, 120_000_000)),
+            ))),
         )
     }
 

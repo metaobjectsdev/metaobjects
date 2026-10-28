@@ -14,7 +14,10 @@ import com.metaobjects.generator.spring.TphPlan;
 import com.metaobjects.field.MetaField;
 import com.metaobjects.field.ObjectField;
 import com.metaobjects.query.FilterOps;
+import com.metaobjects.generator.EmitsReportExport;
+import com.metaobjects.generator.Generator;
 import com.metaobjects.generator.GeneratorException;
+import com.metaobjects.generator.RunAware;
 import com.metaobjects.generator.GeneratorIOWriter;
 import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase;
 import com.metaobjects.loader.MetaDataLoader;
@@ -96,7 +99,7 @@ import com.metaobjects.generator.util.GeneratedFileWriter;
  *       from; defaults to {@link #RUNTIME_PACKAGE}.</li>
  * </ul>
  */
-public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<MetaObject> {
+public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<MetaObject> implements RunAware {
 
     /**
      * The package the emitted code imports its helper runtime from ({@code FilterParser},
@@ -125,18 +128,22 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
     private int reportMaxRows = DEFAULT_REPORT_MAX_ROWS;
 
     /**
-     * Generator arg: {@code true} when a {@code report-export} generator is wired for this
-     * project. A served report's list route then also answers {@code ?format=csv|json|xml}
-     * (the "Report export" section of {@code docs/features/api-contract.md}); the handler
-     * reads its cap from the generated {@code <Report>Export.MAX_ROWS}, so the cap is set once,
-     * on {@code report-export} ({@code maxRows}). Default {@code false}: the generated routes
-     * are then byte-identical to a project without the feature. The two caps never both apply
-     * to one request: with {@code ?format} the export cap governs and {@code report_too_large}
-     * never answers; without it {@link #ARG_REPORT_MAX_ROWS} is untouched.
+     * Whether a {@code report-export} generator ({@link EmitsReportExport}) is in this run, as
+     * {@link #setRun} reports it. A served report's list route then also answers
+     * {@code ?format=csv|json|xml} (the "Report export" section of
+     * {@code docs/features/api-contract.md}); the handler reads its cap from the generated
+     * {@code <Report>Export.MAX_ROWS}, so the cap is set once, on {@code report-export}
+     * ({@code maxRows}). Without one the generated routes are byte-identical to a project
+     * without the feature. The two caps never both apply to one request: with {@code ?format}
+     * the export cap governs and {@code report_too_large} never answers; without it
+     * {@link #ARG_REPORT_MAX_ROWS} is untouched.
      */
-    public static final String ARG_REPORT_EXPORT = "reportExport";
-
     private boolean reportExport = false;
+
+    @Override
+    public void setRun(Collection<? extends Generator> run) {
+        reportExport = EmitsReportExport.includedIn(run);
+    }
 
     /** The runtime package this run's output imports ({@link #ARG_RUNTIME_PACKAGE}). */
     private String runtimePackage = RUNTIME_PACKAGE;
@@ -155,7 +162,6 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         parseArgs();
         runtimePackage = getArg(ARG_RUNTIME_PACKAGE, RUNTIME_PACKAGE);
         reportMaxRows = Integer.parseInt(getArg(ARG_REPORT_MAX_ROWS, String.valueOf(DEFAULT_REPORT_MAX_ROWS)));
-        reportExport = Boolean.parseBoolean(getArg(ARG_REPORT_EXPORT, "false"));
         this.loader = loader;
         Path outRoot = Paths.get(outDir.getAbsolutePath());
         for (MetaObject declared : loader.getMetaObjects()) {
@@ -936,7 +942,8 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
      * cap, and the answer is {@code export_too_large} before a byte is written); an explicit
      * {@code limit} above the cap is the same refusal, and one within it pages. With a format the
      * export cap governs and {@code report_too_large} never answers. {@code withCount} is refused
-     * with every format, JSON included. {@code Accept} is never read.
+     * with CSV and XML; a JSON export with {@code withCount=1} is the list route's
+     * {@code { rows, total }} envelope. {@code Accept} is never read.
      */
     private static void appendReportExportHandler(StringBuilder src, String shortName, String dtoName,
                                                   String repoName, String routeBase) {
@@ -948,7 +955,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("        if (!ReportExport.isFormat(format)) {\n");
         src.append("            return ResponseEntity.badRequest().body(ReportExport.invalidFormat());\n");
         src.append("        }\n");
-        src.append("        if (ReportExport.isTruthy(withCount)) {\n");
+        src.append("        if (!ReportExport.JSON.equals(format) && ReportExport.isTruthy(withCount)) {\n");
         src.append("            return ResponseEntity.badRequest().body(ReportExport.withCount());\n");
         src.append("        }\n");
         src.append("        Integer requestedLimit = null;\n");
@@ -998,6 +1005,9 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("            case ReportExport.XML:\n");
         src.append("                return ok.body(").append(exportName).append(".xml(rows));\n");
         src.append("            default:\n");
+        src.append("                if (\"1\".equals(withCount)) {\n");
+        src.append("                    return ok.body(Map.of(\"rows\", rows, \"total\", repository.count(filter.predicates())));\n");
+        src.append("                }\n");
         src.append("                return ok.body(rows);\n");
         src.append("        }\n");
         src.append("    }\n\n");

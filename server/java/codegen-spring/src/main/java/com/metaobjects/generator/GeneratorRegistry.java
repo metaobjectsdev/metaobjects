@@ -455,15 +455,14 @@ public final class GeneratorRegistry {
         register(m, "report-export", SpringReportExportGenerator.class.getName(),
                 "Per-served-report export module (<Report>Export: columns, wire-form cells, CSV and XML "
                     + "writers) plus one shared ReportExportWriter; wires the ?format=csv|json|xml branch "
-                    + "into the report list routes when the routes generator is given reportExport=true. "
+                    + "into the report list routes generated in the same run. "
                     + "Standalone, never implied by a library.",
                 Tier.NATIVE, Layer.API, ejectPath(SpringReportExportGenerator.class), List.of(),
                 "report-export: add <generator><classname>{owned}</classname></generator> with an outputDir "
-                    + "(and the same outputDir as your dto and routes generators), and give the `routes` "
-                    + "generator <reportExport>true</reportExport> in its <args>: that is what mounts the "
-                    + "?format branch, and it reads the cap from <Report>Export.MAX_ROWS (the maxRows arg of "
-                    + "this generator). The branch also imports ReportExport from your runtime package, which "
-                    + "an owned routes generator copies with it.", List.of());
+                    + "(and the same outputDir as your dto and routes generators): being in the run is what "
+                    + "mounts the ?format branch on the `routes` generator, and it reads the cap from "
+                    + "<Report>Export.MAX_ROWS (the maxRows arg of this generator). The branch also imports "
+                    + "ReportExport from your runtime package, which an owned routes generator copies with it.", List.of());
         register(m, "requirement-tests", JUnitRequirementTestsGenerator.class.getName(),
                 "Per-package JUnit Jupiter tests, one per tested requirement, each calling a project-owned "
                     + "witness class through a generated interface; a live test with no witness fails and a "
