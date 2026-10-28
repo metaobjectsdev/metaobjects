@@ -79,7 +79,9 @@ it is accepted.
   without a reason does not block.
 
 If the people involved cannot agree, the core maintainers decide by majority. If the core
-maintainers are split evenly, the creator decides.
+maintainers are split evenly, the creator breaks the tie only on the model format, ADRs and
+releases (see below). On any other subject, an even split leaves the proposal unaccepted and the
+status quo stands.
 
 ### Changes that need a core maintainer
 
@@ -136,8 +138,9 @@ reviewed or answered on the project for 6 months.
 
 When that happens:
 
-1. The remaining core maintainers run the project, and the tie-break passes to a majority vote
-   among them.
+1. The remaining core maintainers run the project and decide by majority vote. The creator's
+   tie-break does not pass to anyone, so an even split leaves the proposal unaccepted and the
+   status quo stands.
 2. Doug Mealing LLC gives the remaining core maintainers admin access to the GitHub organization
    and owner access to every registry package, so that releases can continue.
 3. If there is no other core maintainer, the port maintainers choose one or more of themselves as
