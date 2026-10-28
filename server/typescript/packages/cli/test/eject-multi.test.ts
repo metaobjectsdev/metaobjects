@@ -228,6 +228,32 @@ describe("meta eject takes many names", () => {
     }
   });
 
+  test("prisma-schema ejects with its mapping and renderers, and the schema needs nothing installed", async () => {
+    // #479: the owned part is which objects get a model, the file layout and the blocks above
+    // the models, with buildPrismaSchema and the renderers copied beside it (Amendment 8).
+    const dir = tmp();
+    try {
+      expect(await ejectCommand(["prisma-schema"], dir, "json")).toBe(0);
+      const source = readFileSync(join(dir, "codegen/generators/prisma-schema.ts"), "utf8");
+      expect(source).toContain("export function prismaSchemaFile(");
+      expect(source).toContain('from "../templates/prisma/build-prisma-schema.js"');
+      for (const f of ["build-prisma-schema.ts", "prisma-errors.ts", "render-prisma-schema.ts"]) {
+        expect(existsSync(join(dir, "codegen/templates/prisma", f))).toBe(true);
+      }
+      const [row] = payload().ejected;
+      expect(row?.wire.entry).toBe("prismaSchemaFile()");
+      expect(row?.wire.import).toBe('import { prismaSchemaFile } from "./codegen/generators/prisma-schema.js";');
+      // A Prisma schema imports no package. The copy reads the expected schema `meta verify --db`
+      // compares against, so migrate-ts is a dev install beside the engine.
+      const { install } = payload();
+      expect(install.runtime).toEqual([]);
+      expect(install.dev.some((d) => d.startsWith("@metaobjectsdev/codegen-ts@"))).toBe(true);
+      expect(install.dev.some((d) => d.startsWith("@metaobjectsdev/migrate-ts@"))).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test("a repeated name is a usage error, not a silent second write", async () => {
     const dir = tmp();
     try {

@@ -37,6 +37,12 @@ describe("hole 1 — a quoted literal is a literal, even with parens in it", () 
       .toEqual({ kind: "expr", value: "(lower(hex(randomblob(16))))" });
   });
 
+  test("the bare keywords TRUE and FALSE are 1 and 0; a quoted 'true' stays a string", () => {
+    expect(parseSqliteDefault("true")).toEqual({ kind: "literal", value: "1" });
+    expect(parseSqliteDefault("FALSE")).toEqual({ kind: "literal", value: "0" });
+    expect(parseSqliteDefault("'true'")).toEqual({ kind: "literal", value: "true" });
+  });
+
   test("a bare NULL is NO default (the D1 runner stringifies SQL NULL to \"null\")", () => {
     // `DEFAULT NULL` ≡ no default. A no-default column on D1 arrives as the string
     // "null" — it must NOT become a literal-"null" default (permanent false drift).

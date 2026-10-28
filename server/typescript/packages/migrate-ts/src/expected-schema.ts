@@ -1085,6 +1085,13 @@ function flattenObjectField(
   return cols;
 }
 
+/**
+ * `@default: "now"`: the current time. Not a literal, because Postgres converts the literal
+ * `'now'` to a timestamp once, when the column's DEFAULT is created, and every row then gets the
+ * table's creation time.
+ */
+const BARE_NOW_DEFAULT = /^now$/i;
+
 const EXPR_DEFAULT_PATTERNS = [
   /^current_timestamp$/i,
   /^now\(\)$/i,
@@ -1131,8 +1138,14 @@ function buildColumn(
       // codegen emits `.default("")` and the DB gets `DEFAULT ''`, so dropping it here
       // (a falsy `.length > 0` check) made the column drift forever on sqlite/d1 and
       // disagree with codegen. Keep it as a literal; only `undefined` means "no default".
-      const isExpr = defaultRaw.length > 0 && EXPR_DEFAULT_PATTERNS.some((re) => re.test(defaultRaw));
-      col.default = { kind: isExpr ? "expr" : "literal", value: defaultRaw };
+      if (BARE_NOW_DEFAULT.test(defaultRaw)) {
+        // The current time, as `@autoSet` spells it and codegen's column mapper reads it.
+        // As a literal, Postgres would turn `DEFAULT 'now'` into the table's creation time.
+        col.default = { kind: "expr", value: "now()" };
+      } else {
+        const isExpr = defaultRaw.length > 0 && EXPR_DEFAULT_PATTERNS.some((re) => re.test(defaultRaw));
+        col.default = { kind: isExpr ? "expr" : "literal", value: defaultRaw };
+      }
     }
   } else if (typeof defaultRaw === "boolean" || typeof defaultRaw === "number") {
     col.default = { kind: "literal", value: String(defaultRaw) };

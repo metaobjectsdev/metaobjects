@@ -186,3 +186,51 @@ describe("SQLite/D1 hand-migrated verify — non-physical annotations", () => {
     expect(result.changes.map((c) => c.kind)).toContain("drop-check");
   });
 });
+
+// Another tool's spelling of the same columns (Prisma's `db push` writes these): BOOLEAN with
+// `DEFAULT true` where the expected schema writes INTEGER with 1, and DECIMAL where it writes
+// NUMERIC(10,2). SQLite stores both pairs identically: it has no boolean storage class, reads
+// TRUE as 1, and ignores a NUMERIC column's precision.
+const METADATA_OTHER_SPELLINGS = JSON.stringify({
+  "metadata.root": {
+    package: "test",
+    children: [
+      {
+        "object.entity": {
+          name: "Order",
+          children: [
+            { "source.rdb": { "@table": "orders" } },
+            { "field.string": { name: "id", "@required": true } },
+            { "field.boolean": { name: "paid", "@required": true, "@default": true } },
+            { "field.decimal": { name: "total", "@precision": 10, "@scale": 2 } },
+            { "identity.primary": { "@fields": ["id"] } },
+          ],
+        },
+      },
+    ],
+  },
+});
+
+describe("SQLite/D1 verify — another tool's spelling of the same storage", () => {
+  test("BOOLEAN DEFAULT true and DECIMAL verify clean against field.boolean and a sized field.decimal", async () => {
+    const metadata = (await new MetaDataLoader().load([new InMemoryStringSource(METADATA_OTHER_SPELLINGS)])).root;
+    const expected = buildExpectedSchema(metadata, { dialect: "sqlite" });
+    await sql
+      .raw('CREATE TABLE orders (id TEXT PRIMARY KEY NOT NULL, paid BOOLEAN NOT NULL DEFAULT true, total DECIMAL)')
+      .execute(k);
+    const actual = await introspectSqlite(k);
+    const result = await diff({ expected, actual, dialect: "sqlite" });
+    expect(result.changes).toEqual([]);
+  });
+
+  test("a changed boolean default is still drift", async () => {
+    const metadata = (await new MetaDataLoader().load([new InMemoryStringSource(METADATA_OTHER_SPELLINGS)])).root;
+    const expected = buildExpectedSchema(metadata, { dialect: "sqlite" });
+    await sql
+      .raw('CREATE TABLE orders (id TEXT PRIMARY KEY NOT NULL, paid BOOLEAN NOT NULL DEFAULT false, total DECIMAL)')
+      .execute(k);
+    const actual = await introspectSqlite(k);
+    const result = await diff({ expected, actual, dialect: "sqlite" });
+    expect(result.changes.map((c) => c.kind)).toEqual(["change-column-default"]);
+  });
+});

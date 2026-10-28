@@ -19,7 +19,7 @@ generator (`entityFile()`) writes a Drizzle table binding only for a target that
 runtime bindings, which is the default. Point it at a **contract-only target**
 (`runtime: false`) and it writes Zod schemas and inferred TypeScript types, with no
 `drizzle-orm` and no `@metaobjectsdev/runtime-ts` import, for entities, value objects and
-projections alike. Your Prisma (or other ORM) models stay hand-written beside them.
+projections alike. Your ORM's models stay hand-written beside them, except Prisma's (below).
 
 ```ts
 export default defineConfig({
@@ -27,6 +27,26 @@ export default defineConfig({
   dialect: "postgres",
   targets: { contract: { outDir: "src/contract", runtime: false } },
   generators: [entityFile({ target: "contract" })],   // Zod + types only
+});
+```
+
+**Prisma.** Set `orm: "prisma"`, and the model also writes your `schema.prisma`, so each field
+is declared once. Every target defaults to `runtime: false`, the generators that write Drizzle
+code (`queries`, `routes`, `routes-hono`, `callable`) are refused, and `prismaSchemaFile()`
+writes the schema for Postgres, MySQL or SQLite, plus a `schema.checks.sql` holding the CHECK
+constraints a Prisma schema cannot declare. Prisma creates the tables. `meta verify --codegen`
+fails on a hand-edited or stale schema, and `meta verify --db` fails when the database Prisma
+pushed differs from the model. What a Prisma schema cannot express (a view, an expression or
+partial index, a CHECK on SQLite) is refused with an `ERR_PRISMA_*` code, not dropped. See
+[the Prisma recipe](../recipes/prisma.md).
+
+```ts
+export default defineConfig({
+  orm: "prisma",
+  dialect: "postgres",
+  outDir: "src/generated",
+  targets: { prisma: { outDir: "prisma" } },
+  generators: ["entity", prismaSchemaFile({ target: "prisma" })],
 });
 ```
 

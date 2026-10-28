@@ -105,7 +105,7 @@ Confidence: high | medium | low (and what would change it)
 Why, in three facts: <fact, cited file:line or commit>, <fact>, <fact>
 Seams where it would pay off: <seam — both sides, cited — the gate that would close it>
    (or "none found" — which is itself the finding for a single app)
-Where it would not pay off: <e.g. "the ORM layer: Prisma, which no generator targets">
+Where it would not pay off: <e.g. "the ORM layer: TypeORM, which no generator targets">
 What you would not get: <the two or three § Capability sheet limits that bite here>
 Next step: <"stop here" | "run the full assessment on <scope>" | the first-week wedge>
 ```
@@ -333,7 +333,7 @@ invalid output). Each row rules out *scopes*, not MetaObjects wholesale:
 | Backend language outside TS/Java/Kotlin/C#/Python | no codegen or runtime for that side; a seam to a supported-language consumer can still take a contract, generated for that side only |
 | No relational store (MongoDB, Cassandra, Neo4j, a remote API) | schema pillar N/A; model the stored records as sourceless entities (`identity.primary`, no `source.*`) — types, create/PATCH schemas, filter allowlists, `verify` and prompts IN; data access is a generator the adopter owns (`docs/recipes/document-graph-and-wide-column-stores.md`) |
 | DB not Postgres/SQLite/D1 (MySQL, ClickHouse, SQL Server, …) | `meta migrate` / `verify --db` OUT for that database — say so; types and data access unaffected. MySQL is a supported codegen + runtime dialect (`dialect: "mysql"`; `docs/recipes/mysql.md`) |
-| ORM no reference generator targets (Prisma, TypeORM, Sequelize, SQLAlchemy ORM, Django ORM, Hibernate-only entities on the Java lane) | FULL means replacing the data layer — price it as such; CONTRACT SPINE and PARTIAL leave it untouched |
+| ORM no reference generator targets (TypeORM, Sequelize, SQLAlchemy ORM, Django ORM, Hibernate-only entities on the Java lane; Prisma on TypeScript IS targeted: `orm: "prisma"` generates `schema.prisma`, so FULL keeps Prisma) | FULL means replacing the data layer — price it as such; CONTRACT SPINE and PARTIAL leave it untouched |
 | No seam (single app, no second consumer of any shape) | CONTRACT SPINE has nothing to protect |
 | Seams already gated (OpenAPI generation + check, shared-types package, schema registry) | that seam is not an opportunity; do not count it |
 | Few entities today (< ~5) | **not a flat verdict — the M8 trap.** Done at this size → NOT WORTH IT; expected to grow → FULL (adopt early); unanswered → both branches |
