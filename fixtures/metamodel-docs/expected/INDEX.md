@@ -4,13 +4,13 @@
 
 # MetaObjects Metamodel — Index
 
-This documents the **metamodel itself** — the type / subtype / attribute
-vocabulary the loader accepts — generated from the strict registry. It is
-NOT documentation of a user's entities (that is the `docs` generator, `docsFile()`).
+This page documents the **metamodel itself**: the type, subtype and attribute
+vocabulary the loader accepts, generated from the strict registry. Your own
+entities are documented by the `docs` generator (`docsFile()`).
 
-Follow a link into `types/<family>.md` for the full attribute table, allowed
-children, and cardinality of a subtype. Universal documentation attributes
-(`@description`/`@title`/…) apply to every node and are listed once in
+Each row links to its type page, which has the full attribute table, the allowed
+children and the cardinality of that subtype. Documentation attributes
+(`@description`, `@title` and the rest) apply to every node and are listed once in
 [providers.md](providers.md) under `metaobjects-documentation`.
 
 | Type.subType | Description | Page |

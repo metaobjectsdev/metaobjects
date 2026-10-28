@@ -230,6 +230,26 @@ at `-Dmeta.verify.templateRoot`). The one goal covers BOTH Java (`codegen-spring
 migrate engine, ADR-0015"); an unknown mode fails listing the valid ones. (Schema `--db` remains
 Node-only by the ADR-0015 design — see below.)
 
+## Owned generators: the unchanged-copy notice, `eject --undo`, and `gen --strict`
+
+You are expected to own generators, but not to carry a copy that never changed. An ejected copy
+that is still the shipped reference stays at the release it was copied from, so `gen` names
+those copies in one line and a flag takes them back. A copy you changed is never touched
+unless you name it and pass the force flag.
+
+| Port | Notice | Take unchanged copies back | Unknown attribute in `gen` |
+| --- | --- | --- | --- |
+| TypeScript | `meta gen` | `meta eject --undo [<name>...] [--force]` | warns; `meta gen --strict` is an error |
+| Python | `metaobjects gen` | `metaobjects eject --undo [<name>...] [--force]` | warns; `metaobjects gen --strict` is an error |
+| Java / Kotlin | `metaobjects:generate` | `mvn metaobjects:eject -Dundo=true [-Dnames=a,b] [-Dforce=true]` | already an error (as `verify`); `-Dmeta.lax=true` relaxes both goals |
+| C# | `dotnet meta gen` | `dotnet meta eject --undo [<name>...] [--force]` | warns; `dotnet meta gen --strict` is an error |
+
+Undo with no names removes every copy that is the shipped reference; with names, any named copy
+that differs refuses the whole call and removes nothing. It never edits your generator list
+(`metaobjects.config.ts`, `codegen/Generators.cs`, `pom.xml`, `metaobjects.config.yaml`): it prints the
+edit that points each entry back at the shipped generator. `--strict` exits 1 and writes
+nothing. No port has a `doctor` command: `eject --list` (or the matching goal) is the report.
+
 ## `gen` refuses rather than guesses — and `--baseline` is how you answer it
 
 Every port's `gen` decides per file whether it may overwrite, from a committed hash

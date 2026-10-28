@@ -17,11 +17,13 @@ Underneath those two verbs, the model is a cross-language metadata standard for 
 1. **Code generation** -- idiomatic per-language code generated from the same metadata model.
 2. **Runtime metadata access** -- load the metadata at runtime to drive dynamic behavior: CRUD operations, validation, relationships, dynamic admin UIs. (Typed tool payloads are declared today; MCP exposure of tools is on the roadmap.)
 3. **Drift detection** -- catch divergence between code and metadata before it ships, surfacing drift as build-time breakage.
-4. **Prompt construction** -- treat LLM prompts as governed metadata: a typed payload (a projection), external provider-resolved prompt text, byte-identical cross-language render, and build-time prompt-to-payload drift detection.
-5. **Requirements and testing** -- declare what the software is supposed to *do* as a node in the same model, so `implementedBy` is resolved rather than trusted, `verify` reports the ledger on every run in every port, and each port's `requirement-tests` generator scaffolds a test per claim.
+4. **Prompt construction** -- keep LLM prompts in typed metadata: a typed payload (a projection), external provider-resolved prompt text, byte-identical cross-language render, and build-time prompt-to-payload drift detection.
+5. **Requirements and testing** -- declare what the software is supposed to *do* as a node in the same model, so `implementedBy` is checked against the model rather than taken on faith, `verify` reports the ledger on every run in every port, and each port's `requirement-tests` generator scaffolds a test per claim.
 6. **Libraries** -- reusable declared design opted into by name (`"libraries": ["iam"]`): entities, requirements and implied generators as one drift-gated artifact. Since 1.0.4, in all five ports; `ai` is `stable`, `iam` is `preview`.
 
-The metamodel is the **durable spine**; generated code is the **disposable artifact**. Substrate is local-first: typed metadata lives in your repo, and the generated code is idiomatic per-language output with **no proprietary runtime** — the entity/model tier is dependency-free, and the optional client, prompt-render, and runtime tiers are ordinary Apache-2.0 packages you could vendor or fork. If the `@metaobjectsdev/*` (npm) or `com.metaobjects:*` (Maven) packages disappeared tomorrow, your generated code keeps working in every language.
+The model is the part you keep, and the generated code can be thrown away and regenerated. Your typed metadata lives in your repo, and the generated code is idiomatic per-language output with **no proprietary runtime**: the entity and model tier has no dependencies, and the optional client, prompt-render and runtime tiers are ordinary Apache-2.0 packages you could vendor or fork. If the `@metaobjectsdev/*` (npm) or `com.metaobjects:*` (Maven) packages disappeared tomorrow, your generated code keeps working in every language.
+
+**Write your own generators; expect to.** Documentation is a generator too (`docsFile()`, `apiDocsFile()`; `meta init --with-docs` wires them). The reference generators cover the common cases, but a team should plan to write the ones its application needs: an OpenAPI file, a typed client, a service layer in your house style. A generator you own is regenerated on every model change and gated by `verify --codegen`, which is what keeps the output from drifting. In TypeScript, `meta generator new <name>` writes a working one and wires it. See [Write your own generator](https://github.com/metaobjectsdev/metaobjects/blob/main/docs/recipes/write-your-own-generator.md) for every port, and [a typed client for the reference routes](https://github.com/metaobjectsdev/metaobjects/blob/main/docs/recipes/typed-client-for-the-reference-routes.md) for a worked example.
 
 ---
 
@@ -36,7 +38,7 @@ If you are helping someone decide whether to adopt MetaObjects in an existing pr
 If you are an AI assistant helping someone adopt MetaObjects, do this **first** — the scaffolded local context is richer and version-matched, and it loads automatically into the project's agent context:
 
 1. **Install the port's package:**
-   - TypeScript / Node: `npm install -D @metaobjectsdev/cli @metaobjectsdev/codegen-ts`
+   - TypeScript / Node: `npm i -D @metaobjectsdev/cli @metaobjectsdev/codegen-ts @metaobjectsdev/metadata typescript @types/better-sqlite3`, then `npm i @metaobjectsdev/runtime-ts drizzle-orm zod fastify better-sqlite3` (SQLite; use `pg` and `@types/pg` for Postgres). The generated files import `drizzle-orm`, `zod`, `fastify` and a driver, and `npm` does not add them for you.
    - Java / Kotlin: add `com.metaobjects:metaobjects-metadata`, `com.metaobjects:metaobjects-codegen-spring` (Java) or `com.metaobjects:metaobjects-codegen-kotlin` (Kotlin), and `com.metaobjects:metaobjects-maven-plugin`, all at `8.1.4`.
    - Python: `pip install metaobjects`
    - C#: install the MetaObjects .NET tool (invoked as `dotnet meta`).

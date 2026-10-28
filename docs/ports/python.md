@@ -157,6 +157,38 @@ config is refused. Column naming is not a Python setting at all: it is `naming` 
 ([physical-naming.md](../features/migrations/physical-naming.md)). See [the migration section](../features/migrations/docs-are-generators.md#python)
 and the [config reference](../features/cli.md).
 
+**Start a project.** `metaobjects init` writes `metaobjects.config.yaml` (one `app` target
+with no generators) and an empty, loadable `metaobjects/meta.app.yaml`, and reports what it
+wrote. It never overwrites a file it finds; it says it kept it. `metaobjects init --with-docs`
+also adds a `docs` target running `api-docs`; without the flag no documentation generator is
+wired. Nothing writes docs until the config lists `api-docs`. The "Model / metadata" link on
+each api page is emitted only when `apiDocs.modelBaseUrl` is set (the Python port writes no
+model page, so a relative link would be dead).
+
+**Where routes mount.** `apiPrefix` at the top level of `metaobjects.config.yaml` (the same
+key name as the TypeScript config, whose home is `metaobjects.config.ts`) sets the path the
+generated FastAPI routers mount under and the api docs name. The default is `/api`, so
+existing output is unchanged: `/api/authors`. `apiPrefix: /v1` gives `/v1/authors`;
+`apiPrefix: ""` mounts at `/authors`. It must be `""` or start with `/`; a trailing `/` is
+dropped. `gen` and `verify --codegen` read the same value.
+
+**Strict load.** `metaobjects gen` loads leniently and warns about an unknown attribute.
+`metaobjects gen --strict` uses the load `verify` uses (ADR-0023): an unknown attribute is an
+error with `verify`'s message and a gen-specific hint (drop `--strict`), the exit code is non-zero, and no file is written.
+
+**Owned copies.** When `gen` runs and an owned generator copy (`codegen/generators/`) is
+identical to the shipped one, it prints one `note:` line on stderr naming it and
+`metaobjects eject --undo`; the exit code is unchanged and a project with no owned copies pays
+nothing. `metaobjects eject --undo` removes every owned copy whose file and companion runtime
+modules are identical to the shipped ones (formatting is ignored); `--undo <name>...` removes
+only those names, and a copy that differs is refused with exit 2, nothing removed, and the
+`diff` command, unless `--force`. Names are validated before anything is deleted. A runtime
+copy in `codegen/runtime/` goes only when it matches the package and no remaining owned
+generator reads it. The config is never edited: `--undo` prints the entry to put back
+(`replace codegen.generators.entity:entity_model with "entity"`). The Python port has no
+`doctor` command; the `gen` notice and `metaobjects gen --list` (which marks each owned copy
+`identical` or `DIFFERS`) are where stale or identical copies show.
+
 ### Reports
 
 A concrete `object.report` whose read source is a `source.rdb` of `@kind: view` is served

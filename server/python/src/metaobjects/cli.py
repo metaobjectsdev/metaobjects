@@ -89,7 +89,7 @@ from metaobjects.requirement_check import (
     scan_requirements,
     summarise_requirements,
 )
-from metaobjects.codegen.config import GenConfig
+from metaobjects.codegen.config import DEFAULT_API_PREFIX, GenConfig
 from metaobjects.codegen.overwrite_policy import (
     has_hash_manifest,
     is_pristine_generated,
@@ -609,12 +609,13 @@ def _load_root_from_collection(
     return result.root, []
 
 
-#: Trailing advice after ``gen``'s unknown-attribute warnings. ``gen`` has no strict
-#: flag of its own; ``verify`` is the strict door (ADR-0023), so that is what it names.
+#: Trailing advice after ``gen``'s unknown-attribute warnings. ``gen`` loads leniently
+#: unless ``--strict``; ``verify`` is strict by default (ADR-0023), so the line names both.
 UNKNOWN_ATTR_GEN_ADVICE = (
     "metaobjects gen loads leniently and generated anyway, but `metaobjects verify` "
     "rejects this metadata (ADR-0023): fix or remove the attribute - a typo'd one "
-    "(`isAbstrakt`, `requird`) silently changes what is generated."
+    "(`isAbstrakt`, `requird`) silently changes what is generated. "
+    "Pass `--strict` to make `gen` refuse it too."
 )
 
 
@@ -648,13 +649,35 @@ def _print_unknown_attr_warnings(findings: list[str]) -> None:
     print(f"warning: {UNKNOWN_ATTR_GEN_ADVICE}", file=sys.stderr)
 
 
-def _strict_load_hint() -> str:
-    """Actionable next-steps when strict verify rejects an undeclared @attr."""
+def _print_identical_owned_notice(root: Path) -> None:
+    """ONE advisory line when owned generator copies are identical to the shipped ones: an
+    owned copy that was never edited only costs the adopter upgrades. Advisory: the exit
+    code is unchanged, and a project with no owned copies reads no file."""
+    try:
+        names = [e.name for e in owned.identical_owned(root)]
+    except Exception:  # noqa: BLE001 — advisory; a packaged module that cannot be read says nothing
+        return
+    if names:
+        print(
+            f"note: owned generator copy identical to the shipped one: {', '.join(names)}. "
+            "Run `metaobjects eject --undo` to drop the copies and track the shipped "
+            "generators again.",
+            file=sys.stderr,
+        )
+
+
+def _strict_load_hint(strict_flag: str = "verify") -> str:
+    """Actionable next-steps when a strict load rejects an undeclared @attr."""
+    opt_out = (
+        "OR drop `--strict` to keep the lenient load"
+        if strict_flag == "--strict"
+        else "OR re-run with `--lax` to keep the legacy open-attr load"
+    )
+    who = "gen --strict" if strict_flag == "--strict" else "verify"
     return (
-        "verify is strict (ADR-0023): every authored @attr must be declared. Fix: "
+        f"{who} is strict (ADR-0023): every authored @attr must be declared. Fix: "
         "register the attr on a metadata provider, OR move arbitrary author-supplied "
-        "properties into an `attr.properties` bag, OR re-run with `--lax` to keep the "
-        "legacy open-attr load."
+        f"properties into an `attr.properties` bag, {opt_out}."
     )
 
 
@@ -876,6 +899,7 @@ def _run_suite(
     baseline: str = "default",
     refused_out: list[str] | None = None,
     select: Callable[[str], bool] | None = None,
+    api_prefix: str = DEFAULT_API_PREFIX,
     overwrite_hand_edits: frozenset[str] = frozenset(),
     overwrite_paths_out: set[str] | None = None,
 ) -> list[str]:
@@ -918,6 +942,7 @@ def _run_suite(
         emit_package_init=emit_package_init,
         gen_state_dir=gen_state_dir,
         column_naming=column_naming,
+        api_prefix=api_prefix,
         # Manifest keys are relative to the PROJECT, which is what the manifest is
         # anchored on — not to ``--out``, which varies per run while the manifest does
         # not. Passed alongside gen_state_dir because the two are one decision: state
@@ -1249,14 +1274,73 @@ def _cmd_fmt(args: argparse.Namespace) -> int:
 
 
 def _cmd_eject(args: argparse.Namespace) -> int:
-    """Copy reference generators into ``codegen/generators/`` to own (ADR-0034 Am. 3)."""
+    """Copy reference generators into ``codegen/generators/`` to own (ADR-0034 Am. 3), or
+    with ``--undo`` drop the copies that are identical to the shipped ones."""
     root = Path(args.root) if args.root else Path.cwd()
-    result = owned.eject(args.names, root, force=args.force)
+    if args.undo:
+        result = owned.undo(args.names, root, force=args.force)
+    elif not args.names:
+        print("error: name at least one generator to eject (`metaobjects gen --list` shows "
+              "them), or pass --undo", file=sys.stderr)
+        return 2
+    else:
+        result = owned.eject(args.names, root, force=args.force)
     for line in result.out:
         print(line)
     for line in result.err:
         print(f"error: {line}", file=sys.stderr)
     return result.code
+
+
+#: The metadata a fresh ``init`` writes: a loadable, empty model to author into.
+_INIT_METADATA = "metadata:\n  package: app\n  children: []\n"
+
+_INIT_CONFIG = """\
+# What `metaobjects gen` generates: each target names its outDir and its generators.
+# `metaobjects gen --list` shows the catalog.
+metadata: metaobjects
+targets:
+  app:
+    outDir: generated
+    generators: []
+"""
+
+_INIT_DOCS_CONFIG = """\
+  docs:
+    outDir: docs
+    generators: [api-docs]
+"""
+
+
+def _cmd_init(args: argparse.Namespace) -> int:
+    """Scaffold ``metaobjects.config.yaml`` and the ``metaobjects/`` metadata directory.
+
+    Never overwrites: a file that exists is reported and left alone. ``--with-docs`` adds a
+    ``docs`` target running ``api-docs``; without it no documentation generator is wired.
+    """
+    root = Path(args.root) if args.root else Path.cwd()
+    config = _INIT_CONFIG + (_INIT_DOCS_CONFIG if args.with_docs else "")
+    wrote: list[str] = []
+    kept: list[str] = []
+    for rel, text in (
+        (_CONFIG_NAME, config),
+        ("metaobjects/meta.app.yaml", _INIT_METADATA),
+    ):
+        path = root / rel
+        if path.exists():
+            kept.append(rel)
+            continue
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+        wrote.append(rel)
+    for rel in wrote:
+        print(f"wrote {rel}")
+    for rel in kept:
+        print(f"kept {rel} (already exists)")
+    if args.with_docs and _CONFIG_NAME in kept:
+        print("note: add the docs target yourself: `docs: {outDir: docs, generators: [api-docs]}`")
+    print("next: describe your entities in metaobjects/, then run `metaobjects gen`.")
+    return 0
 
 
 def _warn_if_agent_context_stale() -> None:
@@ -1535,7 +1619,7 @@ def _run_gen_targets(
                 written = _run_suite(
                     root, out_dir, gens, t.entities, gen_state_dir=gen_state_dir,
                     column_naming=column_naming, project_root=project_root, baseline=baseline,
-                    refused_out=refused_out, select=select,
+                    refused_out=refused_out, select=select, api_prefix=config.api_prefix,
                     overwrite_hand_edits=overwrite, overwrite_paths_out=overwrite_paths_out,
                 )
             if spec_gens:
@@ -1543,7 +1627,7 @@ def _run_gen_targets(
                     root, out_dir, spec_gens, t.entities, emit_package_init=False,
                     gen_state_dir=gen_state_dir, column_naming=column_naming,
                     project_root=project_root, baseline=baseline, refused_out=refused_out,
-                    select=select,
+                    select=select, api_prefix=config.api_prefix,
                 )
         except ValueError as exc:  # intra-target run_gen collision → clean error
             errors.append(f"target '{t.name}': {exc}")
@@ -1609,17 +1693,23 @@ def _cmd_gen_config(args: argparse.Namespace) -> int:
     if collection is None:
         return 1
 
+    # `--strict` is the load `verify` uses (ADR-0023): an unknown attribute is an error and
+    # nothing is written. Without it `gen` loads leniently and only warns.
+    strict = bool(getattr(args, "strict", False))
     unknown_attrs: list[str] = []
     root, load_errors = _load_root_from_collection(
-        collection, providers=providers, libraries=config.libraries,
+        collection, strict=strict, providers=providers, libraries=config.libraries,
         unknown_attr_out=unknown_attrs,
     )
     if root is None:
         print("error: failed to load metadata:", file=sys.stderr)
         for msg in load_errors:
             print(f"  {msg}", file=sys.stderr)
+        if strict and any("ERR_UNKNOWN_ATTR" in m for m in load_errors):
+            print(_strict_load_hint(strict_flag="--strict"), file=sys.stderr)
         return 1
     _print_unknown_attr_warnings(unknown_attrs)
+    _print_identical_owned_notice(config.config_dir)
 
     template_root, templates_refusal = _template_root_for_config(args, config)
     if templates_refusal is not None:
@@ -2816,6 +2906,14 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     gen.add_argument(
+        "--strict",
+        action="store_true",
+        help=(
+            "strict-attr load, the one `verify` uses (ADR-0023): an undeclared attribute is "
+            "an error and nothing is written. Without it gen loads leniently and warns."
+        ),
+    )
+    gen.add_argument(
         "--templates",
         default=None,
         help=(
@@ -3025,11 +3123,27 @@ def _build_parser() -> argparse.ArgumentParser:
         "eject",
         help="copy reference generators into codegen/generators/ to own and edit",
     )
-    eject_p.add_argument("names", nargs="+", metavar="NAME", help="stable generator names")
+    eject_p.add_argument("names", nargs="*", metavar="NAME", help="stable generator names")
     eject_p.add_argument("--force", action="store_true",
-                         help="replace an existing owned copy with the reference")
+                         help="replace an existing owned copy with the reference "
+                              "(with --undo: remove a copy that differs from it)")
+    eject_p.add_argument(
+        "--undo", action="store_true",
+        help="drop owned copies identical to the shipped generator (all of them, or the "
+             "names given); a copy that differs is refused unless --force; prints the "
+             "config edit, never makes it",
+    )
     eject_p.add_argument("--root", default=None, help="project root (default: cwd)")
     eject_p.set_defaults(func=_cmd_eject)
+
+    init_p = sub.add_parser(
+        "init",
+        help="scaffold metaobjects.config.yaml and metaobjects/ (never overwrites a file)",
+    )
+    init_p.add_argument("--with-docs", action="store_true",
+                        help="also wire the api-docs generator (a `docs` target)")
+    init_p.add_argument("--root", default=None, help="project root (default: cwd)")
+    init_p.set_defaults(func=_cmd_init)
 
     agent_docs = sub.add_parser(
         "agent-docs",

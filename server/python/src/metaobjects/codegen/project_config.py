@@ -28,6 +28,7 @@ from pathlib import Path
 
 import yaml  # type: ignore[import-untyped]  # PyYAML ships no type stubs
 
+from metaobjects.codegen.config import DEFAULT_API_PREFIX
 from metaobjects.naming import removed_naming_source_message
 
 #: Config filename looked up in the cwd when ``--config`` is not given.
@@ -43,6 +44,10 @@ DEFAULT_METADATA_DIR = "metaobjects"
 #: followed the rc.3 guide and added it gets the naming-migration message, not "unknown key".
 _REMOVED_COLUMN_NAMING_KEY = "columnNaming"
 
+#: A mount path the generated router can carry verbatim inside a string literal: a leading
+#: ``/`` then path characters only, so a quote or backslash cannot break the emitted source.
+_API_PREFIX_RE = re.compile(r"/[A-Za-z0-9._/-]*")
+
 #: Every key this loader reads at the top level, and the ONLY ones it accepts.
 #: ``metaobjects-config.schema.json`` declares ``additionalProperties: false``, so the
 #: shipped schema has always said an unknown key is invalid; naming the set here is what
@@ -50,7 +55,7 @@ _REMOVED_COLUMN_NAMING_KEY = "columnNaming"
 #: schema by ``test_schema_and_loader_accept_EXACTLY_the_same_keys``.
 TOP_LEVEL_KEYS: tuple[str, ...] = (
     "metadata", "providers", "libraries", "targets", "requirementTests", "apiDocs",
-    "templates",
+    "templates", "apiPrefix",
 )
 
 
@@ -198,6 +203,9 @@ class ProjectConfig:
     #: absolute). ``None`` => ``--templates`` / ``--prompts``, else ``prompts/`` when it exists,
     #: else ``templates/``.
     templates: str | None = None
+    #: ``apiPrefix``: the path generated routers mount under, and the api docs name. Same key
+    #: as the TypeScript config; here the default is ``/api`` and ``""`` mounts at the root.
+    api_prefix: str = DEFAULT_API_PREFIX
 
     def metadata_dir(self) -> str:
         """The metadata dir resolved against ``config_dir`` (absolute path string)."""
@@ -460,6 +468,15 @@ def load_project_config(path: Path) -> ProjectConfig:
     if templates is not None and (not isinstance(templates, str) or not templates):
         raise ConfigError(f"{path}: 'templates' must be a non-empty string (a directory path).")
 
+    api_prefix = raw.get("apiPrefix", DEFAULT_API_PREFIX)
+    if not isinstance(api_prefix, str) or (api_prefix and not _API_PREFIX_RE.fullmatch(api_prefix)):
+        raise ConfigError(
+            f"{path}: 'apiPrefix' must be \"\" (mount at the root) or a path starting with "
+            f"'/' made of letters, digits, '.', '_', '-' and '/', e.g. \"/api\" or \"/v1\"; "
+            f"got {api_prefix!r}."
+        )
+    api_prefix = api_prefix.rstrip("/")
+
     return ProjectConfig(
         config_dir=path.parent.resolve(),
         metadata=metadata,
@@ -471,4 +488,5 @@ def load_project_config(path: Path) -> ProjectConfig:
         api_docs=api_docs,
         legacy_docs=legacy_docs,
         templates=templates,
+        api_prefix=api_prefix,
     )

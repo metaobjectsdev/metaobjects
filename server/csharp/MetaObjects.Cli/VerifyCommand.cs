@@ -66,11 +66,7 @@ public static class VerifyCommand
     /// Actionable hint (#96 / ADR-0023) printed when a strict load rejects an
     /// undeclared own <c>@attr</c> (<c>ERR_UNKNOWN_ATTR</c>) — names the three exits.
     /// </summary>
-    public const string UNKNOWN_ATTR_HINT =
-        "verify loads strict by default (ADR-0023): an unregistered or typo'd @attr is " +
-        "ERR_UNKNOWN_ATTR. To fix: register the attr on a metadata provider, OR move " +
-        "arbitrary author-supplied properties into an `attr.properties` bag, OR run " +
-        "'dotnet meta verify --lax' to keep the legacy open-attr load.";
+    public const string UNKNOWN_ATTR_HINT = MetaObjects.Codegen.CodegenCli.UnknownAttrHint;
 
     /// <summary>The one-line note bare <c>verify</c> prints advertising the subverbs.</summary>
     public const string SUBVERB_NOTE =

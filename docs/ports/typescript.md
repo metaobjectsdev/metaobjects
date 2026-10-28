@@ -120,6 +120,19 @@ model walks, the naming and type-mapping tables), which the copies import from
 `meta eject docs-site` copies instead
 ([what the copy holds](../features/own-your-codegen.md#what-the-copy-holds)).
 
+A copy that never changed is a cost: it stays at the release it was copied from and misses
+every later fix. `meta gen` prints one line naming the owned copies that are still
+the shipped reference, unchanged, and `meta eject --undo` takes them back: with no names it
+removes every such copy (and the template modules only it used), and with names it removes
+those, refusing the whole call, and removing nothing, if a named copy differs (`--force`
+removes it anyway). It never edits `metaobjects.config.ts`; it prints the import to swap
+back to the package's. There is no `meta doctor`: `meta eject --list` is the report.
+A copy you changed stays yours.
+
+`meta gen` loads leniently, so an attribute the registry does not know (a typo such as
+`@sensitve`) is a warning and the run goes on. `meta gen --strict` makes it an error, as
+`meta verify` does: it exits 1 and writes nothing.
+
 Documentation is generated the same way, from the same list: there is no docs command
 (ADR-0034 Amendment 9). `docsFile()`, `apiDocsFile()`, `requirementsFile()`,
 `agentDocsFile()`, `metamodelDocsFile()` and `docsSiteFile()` write to the target named
@@ -472,6 +485,33 @@ them; the route mounts in `@metaobjectsdev/runtime-ts` write the response and re
 operands by those options. `meta migrate` warns for a decimal declared with `@precision` above 15
 on SQLite or D1. `meta verify --codegen` names the `wire` block that reproduces committed output
 generated under another setting.
+
+### Types exported per entity
+
+Code that talks to a generated entity imports these names, so they are a contract. Each
+entity module (`<Entity>.ts`) exports six types. `entityTypeNames(obj)`, exported from
+`@metaobjectsdev/codegen-ts`, returns the same six spellings for an owned generator, so it
+need not rebuild them from the entity name.
+
+| Type | Derived from | Use it for |
+| --- | --- | --- |
+| `<Entity>` | the Drizzle table, `InferSelectModel` | a row read back from the database: what `find<Entity>ById` and `create<Entity>` return |
+| `<Entity>Insert` | the Drizzle table, `InferInsertModel` | a row as the database accepts it, before validation |
+| `<Entity>Update` | `Partial<<Entity>Insert>` | the same, every column optional |
+| `<Entity>Create` | `z.input` of `<Entity>InsertSchema` | **the argument of `create<Entity>`**, and what a client posts |
+| `<Entity>Patch` | `z.input` of `<Entity>UpdateSchema` | **the argument of `update<Entity>`**, and what a client patches |
+| `<Entity>Filter` | the `@filterable` and `@sortable` fields | the `filter`, `sort`, `limit` and `offset` options of `list<Entity>` and the generated hooks |
+
+`Create` and `Patch` are the pair to use at a call site. They come from the Zod schemas the
+functions validate with, so a renamed or dropped field is a compile error at every call.
+`Insert` and `Update` come from the table and describe what the database takes. They are
+looser than the validators, so prefer `Create` and `Patch` at the API boundary.
+
+When the entity is a TPH discriminator base, the row type is `<Entity>Row`, because
+`<Entity>` is the discriminated union over its subtypes. A read-only projection has no
+table to insert into, so do not expect `Create` or `Patch` there; read its generated module
+for what it exports. `test/entity-type-names.test.ts` in `codegen-ts` checks the table
+against the golden `Subscriber` module.
 
 ### `<Entity>Names` — the physical names, as constants
 
