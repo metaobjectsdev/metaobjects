@@ -11,6 +11,9 @@ conformance corpora. This guide covers how to propose changes.
   label for low-barrier, well-scoped starting points.
 - This is a primarily one-person, part-time project — issues and PRs are welcome, but
   expect reviews on the order of days, not hours.
+- Want to maintain a port or an area? [GOVERNANCE.md](GOVERNANCE.md) sets out the roles,
+  how merge and publish rights are earned, and how decisions are made.
+  [MAINTAINERS.md](MAINTAINERS.md) lists who maintains what today; every port is open.
 - For anything non-trivial (new metamodel behavior, a new generator, a cross-language
   change), **open an issue first** to discuss the approach. Small, obvious fixes can go
   straight to a PR.
@@ -30,7 +33,9 @@ conformance corpora. This guide covers how to propose changes.
    release tags, so your local run is the only check of the rest before merge — see the
    *Local CI* section below.
 4. Open a **pull request** against `main` and fill out the PR template.
-5. A maintainer reviews the change and the checks on the pull request before merge.
+5. A maintainer reviews the change and the checks on the pull request before merge. Who can
+   approve what, and which changes need a core maintainer, is in
+   [GOVERNANCE.md](GOVERNANCE.md#how-decisions-are-made).
 
 ## The cardinal rule: the metamodel is the spine
 
