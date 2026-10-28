@@ -90,11 +90,6 @@ public final class DependencySet {
         return new DependencySet(resolved, include, migrate);
     }
 
-    /** The dependencies attached to a loaded tree ({@link MetaRoot#getDependencySet()}); never {@code null}. */
-    public static DependencySet forRoot(MetaRoot root) {
-        return root.getDependencySet();
-    }
-
     /** The resolved dependencies, in dependency-NAME order. */
     public List<Dependencies.ResolvedDependency> dependencies() {
         return dependencies;

@@ -55,7 +55,9 @@ public class MetaDataGeneratorMojo extends AbstractMetaDataMojo
         // only the post-loop registerGeneratedSourceRoots() logic below with no real
         // metadata — nothing to collide-check in that case.
         if (loader != null) {
-            RouteNaming.assertNoCollectionNameCollisions(loader.getMetaObjects());
+            // FR-023: an object a dependency owns gets no route here, so it cannot collide with one.
+            RouteNaming.assertNoCollectionNameCollisions(
+                    com.metaobjects.generator.util.GeneratorUtil.ownMetaObjects(loader));
         }
 
         // Where this EXECUTION's codegen hash manifest lives: anchored on the module
