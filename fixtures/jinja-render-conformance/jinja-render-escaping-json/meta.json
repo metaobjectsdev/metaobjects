@@ -1,0 +1,4 @@
+{
+  "format": "json",
+  "note": "json format: values are JSON-string escaped, so a template can build a JSON document"
+}

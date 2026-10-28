@@ -1,0 +1,4 @@
+[
+  { "code": "ERR_VAR_NOT_ON_PAYLOAD", "path": "ghost" },
+  { "code": "ERR_VAR_NOT_ON_PAYLOAD", "path": "user.zz" }
+]

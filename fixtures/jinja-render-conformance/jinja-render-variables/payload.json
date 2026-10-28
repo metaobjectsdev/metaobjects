@@ -1,0 +1,16 @@
+{
+  "user": {
+    "name": "Ada",
+    "email": "ada@example.com"
+  },
+  "count": 3,
+  "ratio": 2.5,
+  "whole": 2.0,
+  "active": true,
+  "off": false,
+  "nothing": null,
+  "tags": [
+    "math",
+    "engines"
+  ]
+}

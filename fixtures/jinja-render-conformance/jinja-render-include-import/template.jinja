@@ -1,0 +1,4 @@
+{% import "partials/macros" as m %}{% from "partials/macros" import shout %}{% include "partials/header" %}
+{{ m.line(user.name) }}
+{{ shout("done") }}
+{% include "partials/footer.jinja" %}

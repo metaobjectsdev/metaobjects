@@ -1,0 +1,4 @@
+{
+  "format": "json",
+  "note": "json format: | escape, | e and | forceescape JSON-string escape, so a template written with the Jinja escape idiom still builds a valid JSON document"
+}

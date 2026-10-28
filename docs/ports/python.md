@@ -740,6 +740,31 @@ out = render(RenderRequest(
 `@payloadRef`. The Python renderer is conformance-gated to render byte-identical
 output against the shared `fixtures/render-conformance/` corpus.
 
+### Jinja templates
+
+A body may also be a Jinja file (ADR-0061): `prompts/lobby/welcome.jinja` (or `.j2`,
+`.jinja2`) in place of `welcome.mustache`, with the same `ref`. Install the extra,
+`pip install "metaobjects[jinja]"`; jinja2 is imported only when a Jinja body is rendered
+or checked. `FilesystemProvider` reads `.mustache` first, then the Jinja extensions, and
+`render` and `metaobjects verify` take the engine from the file it found
+(`engine_of(ref)`). An explicit `RenderRequest(engine="jinja")`, `verify(..., engine="jinja")`
+or `InMemoryProvider(templates, engine="jinja")` names it directly.
+
+```jinja
+Welcome back, {{ displayName }}. You have written {{ postCount }} posts.
+{% for p in posts %}- {{ p.title }}
+{% endfor %}
+```
+
+`metaobjects verify` and the render-helper generator check a Jinja body against the payload
+exactly as they check Mustache, walking the parsed template; `ERR_TEMPLATE_NOT_STATIC` marks
+a reference they cannot settle without running it, and `ERR_TEMPLATE_SYNTAX` a body that does
+not parse. A render helper over a Jinja body also passes the payload field tree to `render`,
+so the check runs again at runtime. The output matches the TypeScript port (nunjucks) on the
+shared `fixtures/jinja-render-conformance/` corpus; the findings match on
+`fixtures/jinja-verify-conformance/`. The engine differences outside that corpus are listed in
+`docs/features/templates-and-payloads.md`.
+
 ## FR-006 — output parsing
 
 A template declares no payload type of its own (ADR-0056). Its request and response
@@ -913,7 +938,7 @@ import lines are stable.
 | Relationships + FK | Loader-level yes; relationship-navigation codegen is on the roadmap |
 | Source kinds (table / view / storedProc) | Loader-level yes; codegen for non-`table` kinds is in progress |
 | `field.currency` / `field.enum` / `field.object` + `@storage` | Loader-level yes; codegen for `field.object` `flattened` storage is in progress |
-| Templates + render (FR-004) | Yes (`metaobjects.render`) |
+| Templates + render (FR-004) | Yes (`metaobjects.render`; Mustache, and Jinja with the `jinja` extra) |
 | Payload-VO codegen | Yes — the `entity` generator's model for each value object IS the payload type (ADR-0056); no separate payload generator |
 | Output parser codegen (FR-006) | Yes (`output_parser_generator` — Pydantic throw-only; imports the `@responseRef` value object's model) |
 | Declarative template-codegen | Yes — a target's `templateSpec` in `metaobjects.config.yaml` (scope perEntity/perPackage/perModel + outputPattern; the cross-port JSON contract shared with C#) |

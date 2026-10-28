@@ -1,0 +1,4 @@
+{
+  "format": "text",
+  "note": "attribute and subscript access, scalar printing (bool, whole float, null, missing)"
+}

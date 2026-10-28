@@ -204,7 +204,15 @@ public final class Verify {
                 case PartialTok p -> {
                     if (ctx.provider() == null) break;   // can't resolve without a provider
                     if (seen.contains(p.value()) || seen.size() >= MAX_DEPTH) break;
-                    String text = ctx.provider().resolve(p.value());
+                    String text;
+                    try {
+                        text = ctx.provider().resolve(p.value());
+                    } catch (RenderException e) {
+                        if (!TemplateEngines.isEngineRefusal(e)) throw e;
+                        // The partial exists only as a Jinja file (ADR-0061): a finding, not a crash.
+                        ctx.errors().add(new VerifyError(TemplateEngines.ERR_TEMPLATE_ENGINE_UNSUPPORTED, p.value()));
+                        break;
+                    }
                     if (text == null) {
                         ctx.errors().add(new VerifyError(ERR_PARTIAL_UNRESOLVED, p.value()));
                         break;

@@ -1,0 +1,6 @@
+[
+  { "code": "ERR_VAR_NOT_ON_PAYLOAD", "path": "nope" },
+  { "code": "ERR_VAR_NOT_ON_PAYLOAD", "path": "posts[0].author.zz" },
+  { "code": "ERR_VAR_NOT_ON_PAYLOAD", "path": "user.nmae" },
+  { "code": "ERR_VAR_NOT_ON_PAYLOAD", "path": "user.nope" }
+]
