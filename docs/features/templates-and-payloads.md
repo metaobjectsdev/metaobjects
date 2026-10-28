@@ -427,7 +427,8 @@ string output = Renderer.Render(new RenderRequest
 
 ### Python
 
-`metaobjects.render` ships the Mustache engine + `Verify`. The Python loader
+`metaobjects.render` ships the Mustache engine, Jinja through the `jinja` extra
+([Jinja templates](#jinja-templates-python-and-typescript)), and `Verify`. The Python loader
 recognizes `template.*` + `origin.*`. The payload is the value object's own Pydantic
 `BaseModel`, emitted by the `entity` generator as `<Name>.py` (ADR-0056), so a consumer
 can render from that model or from a plain `dict` — the engine reads a model through its
