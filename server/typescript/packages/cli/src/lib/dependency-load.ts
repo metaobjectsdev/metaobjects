@@ -17,18 +17,21 @@
 // `dep:<name>/<artifact>` ids, the ownership sets), which still catches a
 // collision between two dependencies and an artifact that does not load, and says
 // plainly that the port's own `verify` is the full check. Only the two causes
-// above fall back; any other failure is a real one and is raised unchanged.
+// above fall back, and the second only when EVERY load error is one of them in the
+// project's own files; any other failure is a real one and is raised unchanged.
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import {
   DEFAULT_METAOBJECTS_DIR,
   importedNodesOf,
   importedPackagesOf,
   loadConfig,
+  loadErrors,
   loadMemory,
   readLock,
   resolveCollection,
   verifySnapshot,
+  type Collection,
   type ResolvedDependency,
 } from "@metaobjectsdev/sdk";
 import { collectionLoadOptions } from "./collection-load-options.js";
@@ -63,6 +66,20 @@ export class DependencyLoadFailure extends Error {
 function codeOf(err: unknown): string | undefined {
   const code = (err as { code?: unknown } | null)?.code;
   return typeof code === "string" ? code : undefined;
+}
+
+/** The source ids the loader names the project's own files by (a file loads under its
+ *  basename unless the collection gives it an id). */
+function ownSourceIds(collection: Collection): ReadonlySet<string> {
+  return new Set(collection.ownFiles.map((f) => collection.fileIds.get(f) ?? basename(f)));
+}
+
+/** True when the error is port-only vocabulary and every file it names is the project's own. */
+function isOwnPortOnlyVocabulary(err: unknown, ownIds: ReadonlySet<string>): boolean {
+  const code = codeOf(err);
+  if (code === undefined || !PORT_ONLY_VOCABULARY_CODES.has(code)) return false;
+  const files = (err as { source?: { files?: unknown } }).source?.files;
+  return Array.isArray(files) && files.length > 0 && files.every((f) => ownIds.has(f as string));
 }
 
 /** Load only the given locked dependency snapshots, together. */
@@ -113,21 +130,23 @@ export async function proveDependencySetLoads(configDir: string): Promise<Depend
     };
   }
 
+  const loadOptions = collectionLoadOptions(collection);
   try {
-    await loadMemory(collection.configDir, collectionLoadOptions(collection));
+    await loadMemory(collection.configDir, loadOptions);
     return { scope: "full" };
   } catch (err) {
-    const code = codeOf(err);
-    if (code === undefined || !PORT_ONLY_VOCABULARY_CODES.has(code)) {
-      throw new DependencyLoadFailure("load", err);
-    }
+    const ownIds = ownSourceIds(collection);
+    if (!isOwnPortOnlyVocabulary(err, ownIds)) throw new DependencyLoadFailure("load", err);
+    const errors = await loadErrors(collection.configDir, loadOptions);
+    const real = errors.find((e) => !isOwnPortOnlyVocabulary(e, ownIds));
+    if (real !== undefined) throw new DependencyLoadFailure("load", real);
     // The snapshot was already verified by resolveCollection; reuse it.
     await loadSnapshotsOnly(collection.configDir, collection.dependencies);
     return {
       scope: "dependencies-only",
       note:
         "the project's own metadata uses vocabulary this toolchain does not register " +
-        `(${code}: ${err instanceof Error ? err.message : String(err)}), so only the locked ` +
+        `(${codeOf(err)}: ${err instanceof Error ? err.message : String(err)}), so only the locked ` +
         "dependencies were loaded together.",
     };
   }

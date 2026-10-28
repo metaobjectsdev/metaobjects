@@ -660,6 +660,50 @@ describe("meta deps sync — a project whose own metadata this toolchain does no
     expect(output).toContain("uses vocabulary this toolchain does not register");
     expect(output).toContain("Run the project's own `verify` for the full check.");
   });
+
+  test("port-only vocabulary does not hide a broken extends onto a dependency node: exit 1, nothing kept", async () => {
+    const { consumerRoot } = setupProject();
+    writeFileSync(
+      join(consumerRoot, "metaobjects", "meta.portonly.json"),
+      JSON.stringify({
+        "metadata.root": {
+          package: "app",
+          children: [{ "object.portonly": { name: "Gadget" } }],
+        },
+      }),
+      "utf8",
+    );
+    writeFileSync(
+      join(consumerRoot, "metaobjects", "meta.invoice.json"),
+      JSON.stringify({
+        "metadata.root": {
+          package: "app",
+          children: [
+            {
+              "object.entity": {
+                name: "Invoice",
+                extends: "acme::common::Removed",
+                children: [
+                  { "source.rdb": { "@table": "invoices" } },
+                  { "field.long": { name: "id" } },
+                  { "identity.primary": { name: "pk", "@fields": ["id"] } },
+                ],
+              },
+            },
+          ],
+        },
+      }),
+      "utf8",
+    );
+
+    const exit = await run(["deps", "sync", "--format", "text", "--cwd", consumerRoot]);
+    expect(exit).toBe(1);
+    expect(existsSync(join(consumerRoot, ".metaobjects", "deps.lock.json"))).toBe(false);
+    expect(existsSync(join(consumerRoot, ".metaobjects", "deps", DEP_NAME))).toBe(false);
+    const output = [...out, ...err].join("\n");
+    expect(output).toContain("acme::common::Removed");
+    expect(output).not.toContain("only the locked dependencies were loaded together");
+  });
 });
 
 describe("meta deps check — a snapshot that cannot load is not green", () => {
