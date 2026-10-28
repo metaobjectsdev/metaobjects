@@ -247,12 +247,14 @@ export function mountReadOnlyCrudRoutes(opts: MountReadOnlyOptions): void {
       const rows = fetched.map(toWire);
 
       if (exportSpec && format !== undefined) {
+        // Render first: a writer that throws must not leave download headers on the 500.
+        // A Buffer, not a string: Fastify appends "; charset=utf-8" to a string body's
+        // application/json, and the contract pins the content type exactly.
+        const body = Buffer.from(renderExport(exportSpec, format, rows as Record<string, unknown>[]), "utf8");
         reply
           .header("content-disposition", exportContentDisposition(path, format))
           .header("content-type", EXPORT_CONTENT_TYPES[format]);
-        // A Buffer, not a string: Fastify appends "; charset=utf-8" to a string body's
-        // application/json, and the contract pins the content type exactly.
-        return Buffer.from(renderExport(exportSpec, format, rows as Record<string, unknown>[]), "utf8");
+        return body;
       }
       if (!withCount) return rows;
 

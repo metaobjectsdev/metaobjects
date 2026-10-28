@@ -10,8 +10,6 @@ here.**
 
 ## [Unreleased]
 
-## [Unreleased]
-
 ### Added
 
 - **Report export: `GET /<segment>?format=csv|json|xml` on a served report, in all five ports.**
