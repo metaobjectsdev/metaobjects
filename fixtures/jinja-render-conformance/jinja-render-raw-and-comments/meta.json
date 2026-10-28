@@ -1,0 +1,4 @@
+{
+  "format": "text",
+  "note": "comments render nothing; raw blocks print Jinja syntax verbatim"
+}

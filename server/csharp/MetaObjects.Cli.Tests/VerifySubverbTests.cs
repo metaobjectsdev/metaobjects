@@ -1,6 +1,7 @@
 using MetaObjects.Cli;
 using MetaObjects.Codegen;
 using MetaObjects.Meta;
+using MetaObjects.Render;
 using Xunit;
 
 namespace MetaObjects.Cli.Tests;
@@ -94,6 +95,20 @@ public sealed class VerifySubverbTests : IDisposable
         WriteTemplate("Hi {{name}}, you have {{notAField}}.");
         var r = VerifyCommand.RunSubverbs(TemplatesOpts());
         Assert.NotEqual(0, r.ExitCode);
+    }
+
+    // ADR-0061: Jinja bodies are a Python/TypeScript engine. Here a Jinja-only body is
+    // refused by name instead of being reported as an unresolved ref.
+    [Fact]
+    public void Templates_jinja_only_body_is_refused_by_code()
+    {
+        var dir = Path.Combine(TplDir, "t");
+        Directory.CreateDirectory(dir);
+        File.WriteAllText(Path.Combine(dir, "main.jinja"), "Hi {{ name }}.");
+        var outcome = VerifyCommand.Run(MetaDir, TplDir);
+        Assert.Contains(outcome.Errors, d => d.Code == TemplateEngines.ErrTemplateEngineUnsupported && d.Path == "t/main");
+        Assert.Empty(outcome.UnresolvedText);
+        Assert.NotEqual(0, VerifyCommand.RunSubverbs(TemplatesOpts()).ExitCode);
     }
 
     // An ejected project's `verify --codegen` runs in its owned runner, so the in-process

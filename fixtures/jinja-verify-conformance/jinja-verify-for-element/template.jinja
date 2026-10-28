@@ -1,0 +1,2 @@
+{% for p in posts %}{{ p.title }} {{ p.author.name }} {{ p.nope }}{% for t in p.tags %}{{ t }}{{ t.x }}{% endfor %}{% endfor %}
+{% for l in labels %}{{ l }}{{ l.x }}{% endfor %}

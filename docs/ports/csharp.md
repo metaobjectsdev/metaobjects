@@ -790,7 +790,7 @@ generated code), and no `migrate` surface (schema is TypeScript-owned).
 | Relationships + FK | Yes (EF Core + Postgres FK clause) |
 | Source kinds (table / view / storedProc) | `table` + `view` fully shipped; `storedProc` / `tableFunction` / `materializedView` partial |
 | `field.currency` / `field.enum` / `field.object` + `@storage` | Yes (incl. EF Core `OwnsOne` for `flattened`; `OwnsMany(...).ToJson(...)` for `@isArray` array-of-VO jsonb) |
-| Templates + render (FR-004) | Yes (`MetaObjects.Render`) |
+| Templates + render (FR-004) | Yes (`MetaObjects.Render`; Mustache only — a Jinja body is refused with `ERR_TEMPLATE_ENGINE_UNSUPPORTED`, ADR-0061) |
 | Output parser codegen (FR-006) | Yes (`OutputParserGenerator` — `Parse`/`TryParse` BCL pattern) |
 | Payload-VO codegen | Yes — the payload IS the value object's own POCO from `EntityGenerator` (ADR-0056); no separate payload generator |
 | Declarative template-codegen | Yes — a `TemplateSpecGenerator` entry in `codegen/Generators.cs` (scope perEntity/perPackage/perModel + outputPattern; the cross-port JSON contract shared with Python) |

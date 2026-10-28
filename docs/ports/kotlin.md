@@ -877,7 +877,7 @@ the contract is universal.
 | Source kinds (table / view / storedProc) | Yes — storedProc has its own generator |
 | REST controllers (Spring `@RestController`) | Yes — `KotlinSpringControllerGenerator` per writable entity; cross-port API contract |
 | `field.currency` / `field.enum` / `field.object` + `@storage` | Yes (incl. `flattened` per-sub-field columns) |
-| Templates + render (FR-004) | Yes (wraps the Java engine) |
+| Templates + render (FR-004) | Yes (wraps the Java engine; Mustache only — a Jinja body is refused with `ERR_TEMPLATE_ENGINE_UNSUPPORTED`, ADR-0061) |
 | Output parser codegen (FR-006) | Yes (`KotlinOutputParserGenerator` — Jackson + `Result<T>` dual API) |
 | Payload-VO codegen | Yes — the payload IS the value object's own data class, from `KotlinEntityGenerator` (ADR-0056); no separate payload generator |
 | Migrations | Via the TS toolchain (`@metaobjectsdev/cli migrate`) |

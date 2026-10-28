@@ -278,6 +278,15 @@ public enum ErrorCode {
      */
     ERR_OUTPUT_TAG_MISSING,
 
+    /** Build-time verify (ADR-0061, Jinja, Python and TypeScript only): a reference the check cannot settle statically. */
+    ERR_TEMPLATE_NOT_STATIC,
+
+    /** Build-time verify (ADR-0061, Jinja, Python and TypeScript only): the template body does not parse. */
+    ERR_TEMPLATE_SYNTAX,
+
+    /** Verify and render (ADR-0061): a body written for an engine this port does not ship (Jinja, here). */
+    ERR_TEMPLATE_ENGINE_UNSUPPORTED,
+
     /** A dataGrid @filter references a non-filterable field or uses a disallowed op. */
     ERR_BAD_ATTR_FILTER,
 

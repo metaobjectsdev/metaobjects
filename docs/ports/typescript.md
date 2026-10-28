@@ -770,6 +770,24 @@ Hono idioms rather than contract drift:
    Hono has no prefix-wrapping primitive at the verb level, and string
    concatenation produces the same URL grammar.
 
+## Jinja templates
+
+`@metaobjectsdev/render` renders Mustache by default and Jinja through nunjucks (ADR-0061),
+which the package depends on. A body is Jinja when its file is `<group>/<source>.jinja` (or
+`.j2`, `.jinja2`); `@textRef` does not change. `FilesystemProvider` reads `.mustache` first,
+then the Jinja extensions, and `engineOf(ref)` reports the engine of the file it found. For
+an `InMemoryProvider`, pass `{ engine: "jinja" }` to its constructor, or pass
+`engine: "jinja"` to `render` and `verify`.
+
+`meta verify --templates` and the `renderHelper()` generator check a Jinja
+body against the payload as they check Mustache, walking the parsed template, and the drift
+line names the `.jinja` file and line. `ERR_TEMPLATE_NOT_STATIC` marks a reference they
+cannot settle without running the template; `ERR_TEMPLATE_SYNTAX` a body that does not parse.
+A generated helper over a Jinja body passes `engine: "jinja"` to `render`, so it renders as
+Jinja through any provider, and the runtime check runs on it. Output matches the Python port
+(jinja2) on `fixtures/jinja-render-conformance/`; the engine differences outside it are in
+`docs/features/templates-and-payloads.md`.
+
 ## FR-006 — response parsing
 
 For every `template.prompt` declaring `@responseRef`, `outputParser()` (from
@@ -910,7 +928,7 @@ their own pages: [C#](csharp.md), [Java](java.md#known-gaps),
 | Relationships + FK | Yes |
 | Source kinds (table / view / storedProc) | Yes |
 | `field.currency` / `field.enum` / `field.object` + `@storage` | Yes |
-| Templates + render (FR-004) | Yes |
+| Templates + render (FR-004) | Yes (Mustache, and Jinja via nunjucks: a `.jinja` / `.j2` / `.jinja2` body, ADR-0061) |
 | Output parser codegen (FR-006) | Yes (`outputParser()` — Zod dual API) |
 | Requirement gate + requirement tests | Yes (`meta verify`; `requirementTests()`, ejectable) |
 | Cube export (FR-044) | Yes (`cubeModel()`, ejectable; TypeScript only) |
@@ -918,7 +936,7 @@ their own pages: [C#](csharp.md), [Java](java.md#known-gaps),
 | Migrations | `meta migrate` (Postgres / SQLite / D1) |
 | Drift verify | `meta verify` (`--codegen` generated code and docs, `--db` schema, `--templates` prompts) |
 | Documentation | Yes (`docsFile()`, `apiDocsFile()`, `requirementsFile()`, `agentDocsFile()`, `metamodelDocsFile()`, `docsSiteFile()`; generators like the rest) |
-| Prompt-drift verify | Yes (`@metaobjectsdev/render`) |
+| Prompt-drift verify | Yes (`@metaobjectsdev/render`; Mustache and Jinja bodies) |
 | Web client packages | Yes (`@metaobjectsdev/react`, `@metaobjectsdev/tanstack`) |
 
 ## Client-side

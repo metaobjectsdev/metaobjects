@@ -1,0 +1,3 @@
+{{ nope | upper }} {{ count | default(missing) }} {{ displayName | fancyfilter }}
+{{ posts | join(", ", "title") }} {{ posts | join(", ", "nah") }} {{ posts | map(attribute="author.name") | join(", ") }} {{ posts | map(attribute="author.zz") | list }}
+{{ posts | selectattr("title") | list }} {{ posts | rejectattr("bogus") | list }} {{ posts | sort(false, false, "title") | first }}

@@ -26,6 +26,7 @@ public final class ClasspathResourceProvider implements Provider {
         this.classLoader = Objects.requireNonNull(classLoader, "classLoader");
         this.basePrefix = basePrefix == null ? "" : basePrefix;
         this.extension = Objects.requireNonNull(extension, "extension");
+        TemplateEngines.refuseJinjaExtension(extension);
     }
 
     @Override
@@ -35,7 +36,12 @@ public final class ClasspathResourceProvider implements Provider {
 
         String resourcePath = basePrefix + reference + extension;
         try (InputStream in = classLoader.getResourceAsStream(resourcePath)) {
-            if (in == null) return null;
+            if (in == null) {
+                // ADR-0061: a Jinja-only body is refused by name rather than reported missing.
+                TemplateEngines.refuseJinjaSibling(reference,
+                    ext -> classLoader.getResource(basePrefix + reference + ext) != null);
+                return null;
+            }
             return new String(in.readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException e) {
             return null;

@@ -1,0 +1,4 @@
+{{ name | upper }} {{ name | lower }} {{ tags | length }}
+{{ tags | join(", ") }} / {{ people | join(" & ", "name") }}
+{{ tags | first }} {{ tags | last }} {{ (people | first).name }}
+{{ phrase | replace("cat", "dog") }} [{{ padded | trim }}] {{ absent | default("fallback") }}

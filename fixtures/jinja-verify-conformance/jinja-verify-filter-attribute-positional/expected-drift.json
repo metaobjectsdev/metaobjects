@@ -1,0 +1,6 @@
+[
+  { "code": "ERR_VAR_NOT_ON_PAYLOAD", "path": "posts.prise" },
+  { "code": "ERR_VAR_NOT_ON_PAYLOAD", "path": "posts.prise" },
+  { "code": "ERR_VAR_NOT_ON_PAYLOAD", "path": "posts.titel" },
+  { "code": "ERR_VAR_NOT_ON_PAYLOAD", "path": "posts.zz" }
+]

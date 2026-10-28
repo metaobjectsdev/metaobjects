@@ -1,0 +1,4 @@
+{
+  "format": "html",
+  "note": "html format: every {{ }} value is XML-escaped by the port's escaper; | safe bypasses it; template text is never escaped"
+}

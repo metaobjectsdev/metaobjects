@@ -7,10 +7,19 @@
 // provider without touching the engine.
 
 import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
-import type { Provider } from "@metaobjectsdev/render";
+import { extname, join } from "node:path";
+import {
+  JINJA_EXTENSIONS,
+  MUSTACHE_EXTENSION,
+  engineForExtension,
+  jinjaReferenceLine,
+  TEMPLATE_ENGINE_JINJA,
+  type Provider,
+  type TemplateEngine,
+} from "@metaobjectsdev/render";
 
-const EXTENSIONS = [".mustache", ".txt", ""] as const;
+// Mustache first, then Jinja (ADR-0061): when both files exist, the Mustache one wins.
+const EXTENSIONS = [MUSTACHE_EXTENSION, ...JINJA_EXTENSIONS, ".txt", ""] as const;
 
 export class FileProvider implements Provider {
   constructor(private readonly baseDir: string) {}
@@ -18,6 +27,12 @@ export class FileProvider implements Provider {
   resolve(ref: string): string | undefined {
     const path = this.pathOf(ref);
     return path === undefined ? undefined : readFileSync(path, "utf8");
+  }
+
+  /** The engine the file `ref` resolves to is written for: Jinja for `.jinja` / `.j2` / `.jinja2`. */
+  engineOf(ref: string): TemplateEngine | undefined {
+    const path = this.pathOf(ref);
+    return path === undefined ? undefined : engineForExtension(extname(path));
   }
 
   /**
@@ -40,6 +55,15 @@ export class FileProvider implements Provider {
     }
     return undefined;
   }
+}
+
+/** The 1-based line `path` is first referenced on in a body written for `engine`. */
+export function templateReferenceLine(
+  text: string,
+  path: string,
+  engine: TemplateEngine,
+): number | undefined {
+  return engine === TEMPLATE_ENGINE_JINJA ? jinjaReferenceLine(text, path) : mustacheTagLine(text, path);
 }
 
 /**

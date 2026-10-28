@@ -1,0 +1,7 @@
+[
+  { "code": "ERR_VAR_NOT_ON_PAYLOAD", "path": "missing" },
+  { "code": "ERR_VAR_NOT_ON_PAYLOAD", "path": "nope" },
+  { "code": "ERR_VAR_NOT_ON_PAYLOAD", "path": "posts.author.zz" },
+  { "code": "ERR_VAR_NOT_ON_PAYLOAD", "path": "posts.bogus" },
+  { "code": "ERR_VAR_NOT_ON_PAYLOAD", "path": "posts.nah" }
+]

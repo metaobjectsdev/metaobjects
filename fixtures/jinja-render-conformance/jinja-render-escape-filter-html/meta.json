@@ -1,0 +1,4 @@
+{
+  "format": "html",
+  "note": "| escape, | e and | forceescape use the format's escaper, not the engine's own HTML escaper; an escaped value is not escaped again, and | forceescape escapes a value marked | safe"
+}

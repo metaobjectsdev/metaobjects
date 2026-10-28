@@ -1,0 +1,10 @@
+{
+  "requiredSlots": [
+    "posts",
+    "displayName"
+  ],
+  "requiredTags": [
+    "answer",
+    "reasoning"
+  ]
+}

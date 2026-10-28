@@ -33,7 +33,7 @@ import {
   TYPE_TEMPLATE,
   TEMPLATE_SUBTYPE_OUTPUT,
 } from "@metaobjectsdev/metadata";
-import type { Provider } from "@metaobjectsdev/render";
+import { TEMPLATE_ENGINE_JINJA, templateEngineOf, type Provider } from "@metaobjectsdev/render";
 import { GENERATED_HEADER } from "../constants.js";
 import type { OutputLayout } from "../import-path.js";
 import { docPageHref, docPageNode, type DocPageNode } from "../docs-paths.js";
@@ -264,6 +264,15 @@ function buildTemplateSourceSection(args: BuildSectionArgs): string | undefined 
   for (const spec of refs) {
     const source = provider.resolve(spec.ref);
     if (source === undefined) continue; // missing source → skip this part.
+    if (templateEngineOf(provider, spec.ref) === TEMPLATE_ENGINE_JINJA) {
+      // A Jinja body (ADR-0061) is shown as source only: the variable table and the
+      // linked rendering come from the Mustache annotator, which does not read Jinja.
+      const parts: string[] = [];
+      if (isMultipart && spec.label !== undefined) parts.push(`### ${spec.label}`);
+      parts.push("```jinja\n" + source + "\n```");
+      blocks.push(parts.join("\n\n"));
+      continue;
+    }
     const tokens = annotateTemplate(source, tree, {
       ownerVoName: payloadName,
       resolvePartialHref,

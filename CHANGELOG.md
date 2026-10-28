@@ -16,6 +16,26 @@ here.**
 
 ### Added
 
+- **Jinja templates in Python and TypeScript, held to the same payload check (ADR-0061, closes #483).**
+  A `template.prompt` or `template.output` body may be a Jinja file —
+  `<group>/<source>.jinja`, `.j2` or `.jinja2` — instead of a `.mustache` one. Nothing in the
+  metadata changes: `@textRef` is the same `group/source`, and the engine comes from the file
+  (or from an explicit `engine` option on `render`, `verify` and `InMemoryProvider`).
+  Python renders with jinja2, an optional extra (`pip install "metaobjects[jinja]"`);
+  TypeScript renders with nunjucks, now a dependency of `@metaobjectsdev/render`. `verify`
+  (every CLI's template gate) and the render-helper generator check every payload reference a
+  Jinja body makes, walking the parsed template: paths, loop targets, filter arguments and
+  literal includes, imports and `extends`. A drift is `ERR_VAR_NOT_ON_PAYLOAD` as before. A
+  reference the check cannot settle statically is `ERR_TEMPLATE_NOT_STATIC`, and a body that
+  does not parse is `ERR_TEMPLATE_SYNTAX`. A generated helper over a Jinja body passes the
+  engine and the payload field tree to `render`, so the check runs again at runtime. Two new
+  corpora, `fixtures/jinja-render-conformance/` (15) and `fixtures/jinja-verify-conformance/`
+  (31), hold the two ports to identical output and findings. Java, Kotlin and C# render
+  Mustache only: their providers and `verify` now refuse a Jinja-only body with
+  `ERR_TEMPLATE_ENGINE_UNSUPPORTED` instead of reporting the ref as unresolved. Mustache stays
+  the default, generated Mustache helpers are byte-identical, and `metamodelVersion` does not
+  move.
+
 - **Prisma as the ORM, declared once in the model (TypeScript, #479).** Set `orm: "prisma"` in
   `metaobjects.config.ts` and wire the new `prisma-schema` generator (`prismaSchemaFile()`), and
   `meta gen` writes `schema.prisma` from the model for the `postgresql`, `mysql` or `sqlite`

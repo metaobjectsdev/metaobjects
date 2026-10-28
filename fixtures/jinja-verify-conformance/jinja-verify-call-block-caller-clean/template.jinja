@@ -1,0 +1,1 @@
+{% macro box(title) %}[{{ title }}: {{ caller() }}]{% endmacro %}{% call box(displayName) %}{{ user.name }}{% endcall %}

@@ -1,0 +1,5 @@
+B
+admin
+has math
+no nickname
+an empty list tested by its length

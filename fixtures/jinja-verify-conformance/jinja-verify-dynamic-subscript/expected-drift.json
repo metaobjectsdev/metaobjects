@@ -1,0 +1,4 @@
+[
+  { "code": "ERR_TEMPLATE_NOT_STATIC", "path": "user[*]" },
+  { "code": "ERR_VAR_NOT_ON_PAYLOAD", "path": "posts[*].nope" }
+]

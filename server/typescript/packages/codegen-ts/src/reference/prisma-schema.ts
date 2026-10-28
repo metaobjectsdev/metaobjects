@@ -17,9 +17,10 @@
 //                (enum membership, numeric and length validators), when the model implies any.
 //                Apply it after `prisma db push` or a migration: `prisma db execute --file`.
 // customize:     which objects get a model (the `filter` option, ANDed with "has a table"),
-//                where the files land (`fileName`, `prismaChecksFileName`), and the generator and
-//                datasource blocks (`header`; `false` for a multi-file schema whose blocks live
-//                in a file you own). Copied beside it, so yours too: `buildPrismaSchema`, which
+//                where the files land (`target`, and `fileName`, from which the checks file
+//                takes its name), whether the checks file is written (`checks: "omit"` leaves
+//                it out), the datasource `provider`, and the generator and datasource blocks
+//                (`header`; `false` for a multi-file schema whose blocks live in a file you own). Copied beside it, so yours too: `buildPrismaSchema`, which
 //                maps the model's tables to Prisma models and raises every refusal
 //                (`PrismaSchemaError`), and the renderers in `render-prisma-schema`. Change the
 //                type or name mapping only if you mean to stop agreeing with `meta verify --db`,
