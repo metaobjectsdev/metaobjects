@@ -60,7 +60,10 @@ public final class Scope {
     /** Regex metacharacters escaped for literal matching; mirrors the reference's class. */
     private static final String METACHARACTERS = ".*+?^${}()|[]\\";
 
-    /** A compiled scope. Both arrays are already anchored to the whole name. */
+    /**
+     * A compiled scope. The patterns carry no anchors: match them with
+     * {@code Matcher.matches()} (as {@link #matchesScope} does), never {@code find()}.
+     */
     public static final class Compiled {
         private final List<Pattern> include;
         private final List<Pattern> exclude;
