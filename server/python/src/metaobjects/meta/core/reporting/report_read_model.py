@@ -30,7 +30,7 @@ from __future__ import annotations
 
 from weakref import WeakKeyDictionary
 
-from ....shared.base_types import TYPE_FIELD
+from ....shared.base_types import TYPE_FIELD, TYPE_VIEW
 from ...meta_root import MetaRoot
 from ...persistence.db.db_constants import FIELD_ATTR_DB_COLUMN_TYPE, FIELD_ATTR_LOCAL_TIME
 from ...persistence.source.meta_source import MetaSource
@@ -47,6 +47,9 @@ from ..field.field_constants import (
     FIELD_ATTR_STORAGE,
     FIELD_ATTR_VALUES,
 )
+from ...presentation.view.meta_view import MetaView
+from ...presentation.view.view_constants import VIEW_SUBTYPE_PASSWORD
+from ..field.credential import is_credential_field
 from ..field.meta_field import MetaField
 from ..object.meta_object import MetaObject
 from .report_shape import ReportField, report_shape
@@ -94,6 +97,11 @@ def _derived_field(f: ReportField) -> MetaField:
         # ``is_array`` is a native flag, not an attr; ``resolved_is_array()`` is its resolving read.
         if src.resolved_is_array():
             field.is_array = True
+        # #484: a credential stays one through derivation (resolving read: an inherited
+        # ``view.password`` counts), so every generator and runtime that reads this model
+        # hides the column like an entity credential.
+        if is_credential_field(src):
+            field.add_child(MetaView(TYPE_VIEW, VIEW_SUBTYPE_PASSWORD, VIEW_SUBTYPE_PASSWORD))
     # Table C (Plan 3): a report author has no node to put @filterable on, so every
     # derived field that has a filter band is filterable. Set on this detached model
     # only; no vocabulary is added and the declared tree is not touched. Imported here

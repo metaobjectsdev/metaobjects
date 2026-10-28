@@ -176,7 +176,9 @@ here.**
   `@formExclude`, or a credential (a field that declares a `view.password`), is now **ignored** by
   the generated create, PATCH and PUT in every port: the value is dropped, not rejected, so
   an edit form that submits every field still saves, and a present `null` no longer clears it. A credential is
-  also never returned: not by list, get, or the echo of a write. Before this, `@formExclude` kept
+  also never returned: not by list, get, or the echo of a write, or by a served report that groups by
+  it or takes its `min` or `max` (a report column is derived from its `@of` field, and it keeps the
+  credential mark; a report export names no column for it). Before this, `@formExclude` kept
   a field out of the generated form while the route still wrote it, and a generated read returned password
   hashes. Generated forms (React, Angular) and the api docs omit credentials too. Your own code is unaffected:
   the entity, DTO and generated queries still carry the field, so you keep writing a hash or token yourself.

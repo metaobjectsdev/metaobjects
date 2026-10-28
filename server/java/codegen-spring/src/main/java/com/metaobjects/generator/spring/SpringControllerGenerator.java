@@ -680,8 +680,8 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         // #484: a projection field that inherits a credential (view.password) is hidden from its
         // rows. Redaction needs the ObjectMapper, so it is injected ONLY then; otherwise the
         // constructor and the whole controller stay as they were.
-        List<String> hidden = com.metaobjects.generator.util.GeneratorUtil.isReport(entity)
-            ? List.of() : SpringGeneratorSupport.credentialNames(entity);
+        // A served report is covered too: a derived column over a credential is a credential.
+        List<String> hidden = SpringGeneratorSupport.credentialNames(entity);
         src.append("    private final ").append(repoName).append(" repository;\n");
         if (hidden.isEmpty()) {
             src.append("\n");
@@ -698,7 +698,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         if (!hidden.isEmpty()) appendRedactHelpers(src);
 
         if (com.metaobjects.generator.util.GeneratorUtil.isReport(entity)) {
-            appendReportListHandler(src, shortName, dtoName, repoName, reportMaxRows, reportExport, routeBase);
+            appendReportListHandler(src, shortName, dtoName, repoName, reportMaxRows, reportExport, routeBase, hidden);
         } else {
             appendListHandler(src, shortName, dtoName, repoName, hidden);
         }
@@ -860,9 +860,9 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
      */
     private static void appendReportListHandler(StringBuilder out, String shortName, String dtoName,
                                                 String repoName, int maxRows, boolean export,
-                                                String routeBase) {
+                                                String routeBase, List<String> hidden) {
         StringBuilder src = new StringBuilder();
-        appendReportListHandlerBody(src, shortName, dtoName, repoName, maxRows, export, routeBase);
+        appendReportListHandlerBody(src, shortName, dtoName, repoName, maxRows, export, routeBase, hidden);
         String handler = src.toString();
         if (export) {
             // With the export branch wired, no answer of the list route consults Accept (the
@@ -884,7 +884,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
 
     private static void appendReportListHandlerBody(StringBuilder src, String shortName, String dtoName,
                                                 String repoName, int maxRows, boolean export,
-                                                String routeBase) {
+                                                String routeBase, List<String> hidden) {
         String allowlistName = SpringNaming.filterAllowlistName(shortName);
         src.append("    @GetMapping\n");
         src.append("    public ResponseEntity<?> list(\n");
@@ -950,12 +950,13 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
             src.append("        if (withCount != null && withCount == 1) {\n");
         }
         src.append("            long total = repository.count(filters);\n");
-        src.append("            return ResponseEntity.ok(Map.of(\"rows\", rows, \"total\", total));\n");
+        src.append("            return ResponseEntity.ok(Map.of(\"rows\", ").append(redactAll("rows", hidden))
+           .append(", \"total\", total));\n");
         src.append("        }\n");
-        src.append("        return ResponseEntity.ok(rows);\n");
+        src.append("        return ResponseEntity.ok(").append(redactAll("rows", hidden)).append(");\n");
         src.append("    }\n\n");
         if (export) {
-            appendReportExportHandler(src, shortName, dtoName, repoName, routeBase);
+            appendReportExportHandler(src, shortName, dtoName, repoName, routeBase, hidden);
         }
         src.append("    /** A page bound as an integer of at least {@code min}, or null when it is not one. */\n");
         src.append("    private static Long parseBound(String raw, long min) {\n");
@@ -980,7 +981,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
      * {@code { rows, total }} envelope. {@code Accept} is never read.
      */
     private static void appendReportExportHandler(StringBuilder src, String shortName, String dtoName,
-                                                  String repoName, String routeBase) {
+                                                  String repoName, String routeBase, List<String> hidden) {
         String allowlistName = SpringNaming.filterAllowlistName(shortName);
         String exportName = shortName + "Export";
         src.append("    private ResponseEntity<?> export(String format, String limit, String offset, String sort,\n");
@@ -1040,9 +1041,10 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("                return ok.body(").append(exportName).append(".xml(rows));\n");
         src.append("            default:\n");
         src.append("                if (\"1\".equals(withCount)) {\n");
-        src.append("                    return ok.body(Map.of(\"rows\", rows, \"total\", repository.count(filter.predicates())));\n");
+        src.append("                    return ok.body(Map.of(\"rows\", ").append(redactAll("rows", hidden))
+           .append(", \"total\", repository.count(filter.predicates())));\n");
         src.append("                }\n");
-        src.append("                return ok.body(rows);\n");
+        src.append("                return ok.body(").append(redactAll("rows", hidden)).append(");\n");
         src.append("        }\n");
         src.append("    }\n\n");
     }

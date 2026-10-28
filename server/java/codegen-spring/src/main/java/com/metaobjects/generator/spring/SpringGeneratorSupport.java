@@ -145,6 +145,17 @@ public final class SpringGeneratorSupport {
 
     /** #484 — the credential wire names of {@code entity}'s DTO components. */
     public static List<String> credentialNames(MetaObject entity) {
+        // A served report's columns are DERIVED from their @of fields and carry only type-shaping
+        // attrs, so a view.password on the source does not reach the derived field. The column is a
+        // credential when its type source is (resolving, ADR-0039).
+        if (entity instanceof com.metaobjects.reporting.ReportReadModel model) {
+            List<String> out = new ArrayList<>();
+            for (com.metaobjects.reporting.ReportShape.Field f
+                    : com.metaobjects.reporting.ReportShape.of(model.report()).fields()) {
+                if (f.typeSource() != null && isCredentialField(f.typeSource())) out.add(f.name());
+            }
+            return out;
+        }
         return credentialNames(dtoComponentFields(entity));
     }
 

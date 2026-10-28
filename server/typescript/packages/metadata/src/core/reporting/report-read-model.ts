@@ -23,7 +23,7 @@
 // holding it can still tell it is a report (no identity, read-only).
 
 import { TypeId } from "../../registry.js";
-import { TYPE_FIELD } from "../../shared/base-types.js";
+import { TYPE_FIELD, TYPE_VIEW } from "../../shared/base-types.js";
 import type { MetaRoot } from "../../shared/meta-root.js";
 import { isReadOnlySource } from "../../shared/node-guards.js";
 import { MetaSource } from "../../persistence/source/meta-source.js";
@@ -31,6 +31,8 @@ import { SOURCE_ATTR_ROLE, SOURCE_ROLE_PRIMARY } from "../../persistence/source/
 import { FIELD_ATTR_DB_COLUMN_TYPE, FIELD_ATTR_LOCAL_TIME } from "../../persistence/db/db-constants.js";
 import { MetaObject } from "../object/meta-object.js";
 import { MetaField } from "../field/meta-field.js";
+import { MetaView } from "../../presentation/view/meta-view.js";
+import { VIEW_SUBTYPE_PASSWORD } from "../../presentation/view/view-constants.js";
 import {
   FIELD_ATTR_CURRENCY,
   FIELD_ATTR_FILTERABLE,
@@ -51,7 +53,7 @@ import { reportShape, type ReportField } from "./report-shape.js";
  * read with the RESOLVING accessor (ADR-0039) so a value the `@of` field inherits
  * through `extends` is carried too. `@dbColumnType` and `isArray` are handled
  * separately below. Nothing else is carried: no `@column`, `@required`,
- * `@default`, validators or views.
+ * `@default` or validators. A view is carried only for a credential (below).
  */
 const CARRIED_ATTRS = [
   FIELD_ATTR_CURRENCY,
@@ -91,6 +93,13 @@ function derivedField(f: ReportField): MetaField {
     if (dbColumnType !== undefined) field.setAttr(FIELD_ATTR_DB_COLUMN_TYPE, dbColumnType);
     // `isArray` is a native flag, not an attr; resolvedIsArray() is its resolving read.
     if (src.resolvedIsArray()) field.setIsArray(true);
+    // #484: a derived field is a copy of its source's value, so a credential (`view.password`,
+    // ADR-0039: resolving, it may be inherited) stays one. The read model is the only place a
+    // report's fields exist, so this is what hides a grouped or min/max-ed secret from the
+    // report's list route in every generator and runtime that reads the model.
+    if (src.views().some((v) => v.subType === VIEW_SUBTYPE_PASSWORD)) {
+      field.addChild(new MetaView(new TypeId(TYPE_VIEW, VIEW_SUBTYPE_PASSWORD), VIEW_SUBTYPE_PASSWORD));
+    }
   }
   // Table C (Plan 3): a report author has no node to put @filterable on, so every
   // derived field that has a filter band is filterable, and (the sort allowlist follows

@@ -550,6 +550,11 @@ filterable or sortable only if you wrote `@filterable` or `@sortable` on it, so 
 (a filter on a secret answers whether a guess is right). To return a credential from a route, hand-write that
 route; the generated one will not. Generated forms and the api docs omit both kinds of field as well.
 
+A served report is covered too. A report column is derived from its `@of` field, and a derived column keeps
+that field's credential mark, so a report that groups by a credential (or takes its `min` or `max`) never
+returns the column, and its `report-export` output has no column for it. `count` over a credential is a
+number and is returned.
+
 `fixtures/api-contract-conformance/secret-fields/` pins this in the generated lane of every port.
 
 ## Read-only projections

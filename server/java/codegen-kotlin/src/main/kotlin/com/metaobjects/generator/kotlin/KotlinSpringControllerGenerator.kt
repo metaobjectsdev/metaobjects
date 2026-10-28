@@ -2099,8 +2099,9 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         // "report" or "projection", for generated prose only.
         val noun = KotlinNaming.readOnlyNoun(entity)
 
-        // #484: a read-only row is redacted the same way (a report row is an aggregate and is left alone).
-        val creds = if (GeneratorUtil.isReport(entity)) emptyList() else credentialNames(entity.metaFields)
+        // #484: a read-only row is redacted the same way. A report's credential columns are the ones derived
+        // from a credential source field (the derived field itself carries no `view.password`).
+        val creds = if (GeneratorUtil.isReport(entity)) KotlinGenUtil.reportCredentialNames(entity) else credentialNames(entity.metaFields)
         val source = buildString {
             if (pkg.isNotEmpty()) {
                 append("package $pkg\n\n")
@@ -2188,7 +2189,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             else append("class ${shortName}Controller {\n\n")
 
             if (GeneratorUtil.isReport(entity)) {
-                appendReportListHandler(this, shortName, readObj, sortFields, reportMaxRows(), reportExport())
+                appendReportListHandler(this, shortName, readObj, sortFields, reportMaxRows(), reportExport(), creds)
             } else {
                 appendListHandler(this, shortName, readObj, sortFields, creds)
             }
@@ -2352,7 +2353,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
      */
     private fun appendReportListHandler(
         sb: StringBuilder, shortName: String, readObj: String, sortFields: List<String>, maxRows: Int,
-        export: Boolean,
+        export: Boolean, creds: Collection<String> = emptyList(),
     ) = with(sb) {
         val api = exposedApi()
         // With the export branch wired, no answer of the list route consults Accept (the selector
@@ -2412,15 +2413,15 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         append("        val total: Long = if ($withCountOne) q.count() else -1L\n")
         append("        val effectiveLimit = requestedLimit ?: (maxRows + 1)\n")
         if (api == ExposedApi.V1) {
-            append("        val rows = q.limit(effectiveLimit).offset(effectiveOffset).map { rowTo${shortName}(it) }\n")
+            append("        val rows = q.limit(effectiveLimit).offset(effectiveOffset).map { ${wireRow(shortName, creds, "it")} }\n")
         } else {
-            append("        val rows = q.limit(effectiveLimit, effectiveOffset).map { rowTo${shortName}(it) }\n")
+            append("        val rows = q.limit(effectiveLimit, effectiveOffset).map { ${wireRow(shortName, creds, "it")} }\n")
         }
         append("        if (requestedLimit == null && rows.size > maxRows) return@transaction tooLarge\n")
         append("        if ($withCountOne) ${okBody}mapOf(\"rows\" to rows, \"total\" to total) as Any)\n")
         append("        else ${okBody}rows as Any)\n")
         append("    }\n\n")
-        if (export) appendReportExportHandler(this, shortName, readObj, sortFields)
+        if (export) appendReportExportHandler(this, shortName, readObj, sortFields, creds)
     }
 
     /**
@@ -2435,6 +2436,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
      */
     private fun appendReportExportHandler(
         sb: StringBuilder, shortName: String, readObj: String, sortFields: List<String>,
+        creds: Collection<String> = emptyList(),
     ) = with(sb) {
         val api = exposedApi()
         val x = "${shortName}Export"
@@ -2473,13 +2475,15 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             append("        val rows = q.limit(effectiveLimit, effectiveOffset).map { rowTo${shortName}(it) }\n")
         }
         append("        if (requestedLimit == null && rows.size > maxRows) return@transaction jsonBadRequest($x.tooLarge())\n")
+        // #484: csv and xml name no credential column (the export's own FIELDS); the json body drops the key.
+        val jsonRows = if (creds.isEmpty()) "rows" else "rows.map { redact$shortName(objectMapper, it) }"
         append("        val ok = ResponseEntity.ok()\n")
         append("            .header(\"Content-Disposition\", $x.contentDisposition(format))\n")
         append("            .header(\"Content-Type\", $x.contentType(format))\n")
         append("        when (format) {\n")
         append("            \"csv\" -> ok.body($x.csv(rows) as Any)\n")
         append("            \"xml\" -> ok.body($x.xml(rows) as Any)\n")
-        append("            else -> if (withCount == \"1\") ok.body(mapOf(\"rows\" to rows, \"total\" to total) as Any) else ok.body(rows as Any)\n")
+        append("            else -> if (withCount == \"1\") ok.body(mapOf(\"rows\" to $jsonRows, \"total\" to total) as Any) else ok.body($jsonRows as Any)\n")
         append("        }\n")
         append("    }\n\n")
         append("    private fun jsonBadRequest(body: Any): ResponseEntity<Any> =\n")

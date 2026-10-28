@@ -364,13 +364,13 @@ public class RoutesGenerator : PerEntityGenerator
         if (export is null)
             sb.AppendLine($"            if (!withCount) return {OkResult("rows", credentials)};");
         else
-            sb.AppendLine($"            if (!withCount) return format is null ? Results.Ok(rows) : ReportExportHttp.Json(http, \"{route}\", rows);");
+            sb.AppendLine($"            if (!withCount) return format is null ? {OkResult("rows", credentials)} : ReportExportHttp.Json(http, \"{route}\", rows{ExportOmit(credentials, false)});");
         sb.AppendLine($"            var totalQ = EfCoreFilterDispatch.ApplyFilter(db.{readDbSet}.AsNoTracking(), filter.Predicates);");
         sb.AppendLine("            var total = await totalQ.CountAsync();");
         if (export is null)
             sb.AppendLine($"            return {OkResult("new { rows, total }", credentials, envelope: true)};");
         else
-            sb.AppendLine($"            return format is null ? Results.Ok(new {{ rows, total }}) : ReportExportHttp.Json(http, \"{route}\", new {{ rows, total }});");
+            sb.AppendLine($"            return format is null ? {OkResult("new { rows, total }", credentials, envelope: true)} : ReportExportHttp.Json(http, \"{route}\", new {{ rows, total }}{ExportOmit(credentials, true)});");
         sb.AppendLine("        });");
 
         if (hasItem)
@@ -766,7 +766,7 @@ public class RoutesGenerator : PerEntityGenerator
 
     // #484 — a credential is a field that declares (or inherits, ADR-0039) a view.password child.
     // A credential is never returned by a generated route; it is also never written by one.
-    private static bool IsCredentialField(MetaField f) =>
+    public static bool IsCredentialField(MetaField f) =>
         f.Views().Any(v => v.SubType == MetaObjects.Presentation.View.ViewConstants.VIEW_SUBTYPE_PASSWORD);
 
     // #484 — write-denied: the generated create / PATCH / PUT IGNORE the key (never a 400): the
@@ -814,6 +814,10 @@ public class RoutesGenerator : PerEntityGenerator
         credentials.Count == 0
             ? $"Results.Ok({value})"
             : $"(IResult)new CredentialOmittingResult({value}, {NamesLiteral(credentials)}{(envelope ? ", envelope: true" : "")})";
+
+    // The credential arguments of a JSON report export (ReportExportHttp.Json), "" without a credential.
+    private static string ExportOmit(IReadOnlyList<string> credentials, bool envelope) =>
+        credentials.Count == 0 ? "" : $", {NamesLiteral(credentials)}{(envelope ? ", envelope: true" : "")}";
 
     private static string CreatedResult(string location, string value, IReadOnlyList<string> credentials) =>
         credentials.Count == 0

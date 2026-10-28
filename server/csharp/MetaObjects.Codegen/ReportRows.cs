@@ -173,6 +173,13 @@ public static class ReportRows
             // `isArray` is a native flag, not an attr; ResolvedIsArray() is its resolving read.
             if (src.ResolvedIsArray()) field.SetIsArray(true);
         }
+        // A credential stays a credential when read through a report: a derived field whose type
+        // source declares or inherits a view.password carries one, so every generator and runtime
+        // that reads the row model (routes, export) hides it exactly as it hides an entity's.
+        // ADR-0039: resolving (Views()), an inherited view.password counts.
+        if (f.TypeSource is { } cred
+            && cred.Views().Any(v => v.SubType == MetaObjects.Presentation.View.ViewConstants.VIEW_SUBTYPE_PASSWORD))
+            field.AddChild(new MetaView(new TypeId(TYPE_VIEW, MetaObjects.Presentation.View.ViewConstants.VIEW_SUBTYPE_PASSWORD), "password"));
         // Table C: every derived field whose type has a filter band is filterable. Asked
         // last, of the finished field, because an int-backed enum's band depends on a
         // carried attr. A report author cannot narrow this set: there is no node to put

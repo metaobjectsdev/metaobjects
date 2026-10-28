@@ -42,6 +42,7 @@ from metaobjects.codegen.format import ruff_format
 from metaobjects.codegen.generator import EmittedFile, GenContext, Generator
 from metaobjects.codegen.instance_artifacts import is_served_report
 from metaobjects.codegen.type_map import field_is_array
+from metaobjects.meta.core.field.credential import is_credential_field
 from metaobjects.meta.core.field import field_constants as fc
 from metaobjects.meta.core.field.meta_field import MetaField
 from metaobjects.meta.core.object.meta_object import MetaObject
@@ -191,6 +192,7 @@ class ReportExportGenerator:
         """The export module of one served report: its columns in derived-field order."""
         cols = ",\n".join(
             f'    ExportColumn("{f.name}", "{_column_kind(f)}")' for f in report.fields()
+            if not is_credential_field(f)  # #484: an export names no credential column
         )
         return (
             generated_header(report.name, report.resolution_key())

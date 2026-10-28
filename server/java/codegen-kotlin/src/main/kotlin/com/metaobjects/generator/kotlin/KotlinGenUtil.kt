@@ -768,6 +768,20 @@ public object KotlinGenUtil {
         field.getChildren(com.metaobjects.view.MetaView::class.java, true)
             .any { it.subType == com.metaobjects.view.PresentationView.SUBTYPE_PASSWORD }
 
+    /**
+     * #484 — the field names of a served report that are credentials. A report column is DERIVED from its
+     * `@of` field (a dimension attribute, or a min/max measure over it), and the derived field carries
+     * only type-shaping attrs, so it loses the source's `view.password`; the credential is read off the
+     * type source instead ([com.metaobjects.reporting.ReportShape.Field.typeSource], resolving accessors).
+     * Takes the declared `object.report` or its read model.
+     */
+    fun reportCredentialNames(report: MetaObject): List<String> {
+        val declared = (report as? com.metaobjects.reporting.ReportReadModel)?.report() ?: report
+        return com.metaobjects.reporting.ReportShape.of(declared).fields()
+            .filter { it.typeSource() != null && isCredentialField(it.typeSource()) }
+            .map { it.name() }
+    }
+
     /** #484 — `@formExclude: true` (resolving read): the field is not part of the write shape. */
     fun isFormExcluded(field: MetaField<*>): Boolean = resolvedBooleanAttr(field, ATTR_FORM_EXCLUDE)
 

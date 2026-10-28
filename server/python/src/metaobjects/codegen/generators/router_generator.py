@@ -58,6 +58,7 @@ from metaobjects.loader.validate_field_mutability import (
     is_read_only_mutability,
     is_write_once_mutability,
 )
+from metaobjects.meta.core.field.credential import is_credential_field
 from metaobjects.meta.core.field.meta_field import MetaField
 from metaobjects.meta.persistence.db import db_constants as dbc
 from metaobjects.meta.core.identity.identity_constants import (
@@ -73,8 +74,7 @@ from metaobjects.meta.persistence.source.source_constants import (
 from metaobjects.naming import DEFAULT_COLUMN_NAMING
 from metaobjects.naming_refs import ref_target
 from metaobjects.wire import WIRE_NATIVE, WireFormat, wire_of
-from metaobjects.meta.presentation.view.view_constants import VIEW_SUBTYPE_PASSWORD
-from metaobjects.shared.base_types import TYPE_IDENTITY, TYPE_VIEW
+from metaobjects.shared.base_types import TYPE_IDENTITY
 
 from ..runtime.fr010_field_mapping import is_required
 from ..runtime.m2m_codegen import (
@@ -379,7 +379,7 @@ def _is_credential(field: MetaField) -> bool:
     """#484 — a field declaring (or inheriting) a ``view.password`` child is a credential:
     never returned by a generated route, never written by one. RESOLVING ``children()``
     (ADR-0039), so an inherited ``view.password`` counts."""
-    return any(c.type == TYPE_VIEW and c.sub_type == VIEW_SUBTYPE_PASSWORD for c in field.children())
+    return is_credential_field(field)
 
 
 def _denied_names(entity: MetaObject) -> list[str]:
