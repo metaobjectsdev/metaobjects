@@ -614,10 +614,18 @@ describe("meta deps sync — a failed post-sync load leaves the previous state i
       "utf8",
     );
 
+    out = [];
+    err = [];
     const exit = await run(["deps", "sync", "--format", "text", "--cwd", consumerRoot]);
     expect(exit).toBe(1);
     expect(readFileSync(lockPath)).toEqual(lockBefore);
     expect(readFileSync(snapPath)).toEqual(snapBefore);
+    // The failure output reports the rollback and the load error, and never a
+    // "synced" line for a sync that was reverted.
+    const output = [...out, ...err].join("\n");
+    expect(output).toContain("rolled back");
+    expect(output).toContain("does not load");
+    expect(output).not.toContain("synced");
   });
 });
 

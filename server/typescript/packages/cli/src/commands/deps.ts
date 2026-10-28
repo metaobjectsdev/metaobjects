@@ -71,7 +71,10 @@ async function runSync(configDir: string, specs: readonly DependencySpec[], flag
   const backup = flags.dryRun ? undefined : await backupSyncState(configDir);
   const fail = async (message: () => void): Promise<number> => {
     message();
-    await backup?.restore();
+    if (backup) {
+      await backup.restore();
+      log.error("meta deps sync: rolled back — the previous lock and snapshot are restored.");
+    }
     return 1;
   };
 
@@ -82,26 +85,33 @@ async function runSync(configDir: string, specs: readonly DependencySpec[], flag
     return fail(() => log.error(describeError(err)));
   }
 
-  if (fmt === "text") {
-    for (const w of plan.warnings) log.info(w);
-    if (applied.report.length === 0) {
-      log.info("meta deps sync: nothing to do — no dependencies declared.");
+  // The per-dependency report is printed only once the sync is known good: a
+  // report of "synced" for a sync that is then rolled back would lie.
+  const printReport = (): void => {
+    if (fmt === "text") {
+      for (const w of plan.warnings) log.info(w);
+      if (applied.report.length === 0) {
+        log.info("meta deps sync: nothing to do — no dependencies declared.");
+      } else {
+        for (const r of applied.report) log.info(r.line);
+      }
     } else {
-      for (const r of applied.report) log.info(r.line);
+      emitStructured(
+        {
+          warnings: plan.warnings,
+          dependencies: applied.report.map((r) => ({ name: r.name, action: r.action, message: r.line })),
+        },
+        fmt,
+      );
     }
-  } else {
-    emitStructured(
-      {
-        warnings: plan.warnings,
-        dependencies: applied.report.map((r) => ({ name: r.name, action: r.action, message: r.line })),
-      },
-      fmt,
-    );
-  }
+  };
 
   // A dry run wrote nothing to validate — the plan already stands for what
   // WOULD load.
-  if (flags.dryRun) return 0;
+  if (flags.dryRun) {
+    printReport();
+    return 0;
+  }
 
   // DESIGN §4.1's closing sentence: load the full collection once, so a sync
   // that produces an unloadable model (a collision the plan missed because it
@@ -123,6 +133,7 @@ async function runSync(configDir: string, specs: readonly DependencySpec[], flag
   }
 
   await backup?.discard();
+  printReport();
   return 0;
 }
 
