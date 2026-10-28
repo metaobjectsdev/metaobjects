@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "name": "acme-common",
+  "version": "1.0.0",
+  "metamodelVersion": "@@METAMODEL_VERSION@@",
+  "artifact": "acme-common.metaobjects.json",
+  "integrity": "sha256-08040faf22809a38a621ca47fd2b242f0721328402e3c3976934cef9bbd44e5a",
+  "packages": [
+    "acme::common"
+  ],
+  "nodes": [
+    "acme::common::Address",
+    "acme::common::Audited"
+  ]
+}

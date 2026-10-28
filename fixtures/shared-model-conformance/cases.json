@@ -1,0 +1,214 @@
+{
+  "cases": [
+    {
+      "name": "publishes-the-pinned-acme-common-artifact",
+      "input": {
+        "name": "acme-common",
+        "files": [
+          "source/meta.base.json",
+          "source/meta.customer.json"
+        ],
+        "include": [
+          "acme::common::**"
+        ],
+        "exclude": [
+          "acme::common::Secret"
+        ],
+        "version": "1.0.0"
+      },
+      "expectArtifact": "../dependency-conformance/artifacts/acme-common-v1.json",
+      "expectManifest": "expected/acme-common-v1/metaobjects.pkg.json"
+    },
+    {
+      "name": "the-order-of-files-does-not-change-the-bytes",
+      "input": {
+        "name": "acme-common",
+        "files": [
+          "source/meta.customer.json",
+          "source/meta.base.json"
+        ],
+        "include": [
+          "acme::common::**"
+        ],
+        "exclude": [
+          "acme::common::Secret"
+        ],
+        "version": "1.0.0"
+      },
+      "expectArtifact": "../dependency-conformance/artifacts/acme-common-v1.json",
+      "expectManifest": "expected/acme-common-v1/metaobjects.pkg.json"
+    },
+    {
+      "name": "include-names-the-nodes-to-publish",
+      "input": {
+        "name": "acme-common",
+        "files": [
+          "source/meta.base.json",
+          "source/meta.customer.json"
+        ],
+        "include": [
+          "acme::common::Address",
+          "acme::common::Audited"
+        ],
+        "version": "1.0.0"
+      },
+      "expectArtifact": "expected/address-audited/acme-common.metaobjects.json",
+      "expectManifest": "expected/address-audited/metaobjects.pkg.json"
+    },
+    {
+      "name": "exclude-is-applied-after-include",
+      "input": {
+        "name": "acme-common",
+        "files": [
+          "source/meta.base.json",
+          "source/meta.customer.json"
+        ],
+        "include": [
+          "acme::common::**"
+        ],
+        "exclude": [
+          "acme::common::Customer",
+          "acme::common::Secret"
+        ],
+        "version": "1.0.0"
+      },
+      "expectArtifact": "expected/address-audited/acme-common.metaobjects.json",
+      "expectManifest": "expected/address-audited/metaobjects.pkg.json"
+    },
+    {
+      "name": "files-narrows-what-may-contribute",
+      "input": {
+        "name": "acme-common",
+        "files": [
+          "source/meta.base.json"
+        ],
+        "include": [
+          "acme::common::**"
+        ],
+        "version": "1.0.0"
+      },
+      "expectArtifact": "expected/address-audited/acme-common.metaobjects.json",
+      "expectManifest": "expected/address-audited/metaobjects.pkg.json"
+    },
+    {
+      "name": "requirements-and-templates-are-always-dropped",
+      "input": {
+        "name": "acme-common",
+        "files": [
+          "source/meta.base.json",
+          "source/meta.prompts.json"
+        ],
+        "include": [
+          "acme::common::**"
+        ],
+        "version": "0.4.0"
+      },
+      "expectArtifact": "expected/with-payloads/acme-common.metaobjects.json",
+      "expectManifest": "expected/with-payloads/metaobjects.pkg.json"
+    },
+    {
+      "name": "a-selection-spanning-two-packages-lists-both-sorted",
+      "input": {
+        "name": "acme-platform",
+        "files": [
+          "source/meta.billing.json",
+          "source/meta.base.json"
+        ],
+        "include": [
+          "acme::**"
+        ],
+        "version": "2.3.1-rc.1"
+      },
+      "expectArtifact": "expected/two-packages/acme-platform.metaobjects.json",
+      "expectManifest": "expected/two-packages/metaobjects.pkg.json"
+    },
+    {
+      "name": "an-empty-selection-is-refused",
+      "input": {
+        "name": "acme-common",
+        "files": [
+          "source/meta.base.json",
+          "source/meta.customer.json"
+        ],
+        "include": [
+          "nothing::**"
+        ],
+        "version": "1.0.0"
+      },
+      "expectRefusal": {
+        "reason": "empty-selection"
+      }
+    },
+    {
+      "name": "a-reference-outside-the-selection-is-refused-naming-the-pair",
+      "input": {
+        "name": "acme-common",
+        "files": [
+          "source/meta.base.json",
+          "source/meta.customer.json"
+        ],
+        "include": [
+          "acme::common::Secret"
+        ],
+        "version": "1.0.0"
+      },
+      "expectRefusal": {
+        "reason": "not-closed",
+        "pairs": [
+          {
+            "referrer": "acme::common::Secret",
+            "target": "acme::common::Address"
+          }
+        ]
+      }
+    },
+    {
+      "name": "an-extends-outside-the-selection-is-refused-naming-every-pair",
+      "input": {
+        "name": "acme-platform",
+        "files": [
+          "source/meta.billing.json",
+          "source/meta.base.json"
+        ],
+        "include": [
+          "acme::billing::Invoice"
+        ],
+        "version": "1.0.0"
+      },
+      "expectRefusal": {
+        "reason": "not-closed",
+        "pairs": [
+          {
+            "referrer": "acme::billing::Invoice",
+            "target": "acme::common::Address"
+          },
+          {
+            "referrer": "acme::billing::Invoice",
+            "target": "acme::common::Audited"
+          }
+        ]
+      }
+    },
+    {
+      "name": "vocabulary-only-a-consumer-provider-registers-is-refused",
+      "input": {
+        "name": "acme-common",
+        "files": [
+          "source/meta.base.json",
+          "source/meta.vault.json"
+        ],
+        "include": [
+          "acme::common::Address",
+          "acme::common::Vault"
+        ],
+        "version": "1.0.0",
+        "providers": [
+          "secret-handling"
+        ]
+      },
+      "expectRefusal": {
+        "reason": "non-core-vocabulary"
+      }
+    }
+  ]
+}

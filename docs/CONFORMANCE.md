@@ -1,6 +1,6 @@
 # Conformance coverage
 
-The MetaObjects standard ships **31 shared conformance corpora** under
+The MetaObjects standard ships **32 shared conformance corpora** under
 [`fixtures/`](../fixtures/). Every port runs every corpus that is *applicable to
 it* and asserts the same expected behaviour against the same fixtures. **This page
 is the inverse index**: fixture → feature doc + per-port pass status, and it is the
@@ -46,7 +46,8 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 | [`fixtures/provider-composition-conformance/`](../fixtures/provider-composition-conformance/) | 9 (5 error-shape + 4 compose-load) | ✓ | ✓ | — (JVM registry via Java) | ✓ | ✓ |
 | [`fixtures/source-resolution-conformance/`](../fixtures/source-resolution-conformance/) | 25 cases | ✓ (reference implementation) | ✓ | inherits via Java | ✓ | ✓ |
 | [`fixtures/scope-conformance/`](../fixtures/scope-conformance/) | 10 cases | ✓ (reference implementation) | ✓ | inherits via Java | ✓ | ✓ |
-| [`fixtures/dependency-conformance/`](../fixtures/dependency-conformance/) | 23 cases | ✓ (reference implementation) | — (Phase 2) | — (Phase 2) | — (Phase 2) | ✓ (2 of 23 assert a documented Python-only vocabulary gap instead of the corpus's full contract — see below) |
+| [`fixtures/dependency-conformance/`](../fixtures/dependency-conformance/) | 35 cases (24 resolution + 11 check) | ✓ (reference implementation; both arms) | — (Phase 2) | — (Phase 2) | — (Phase 2) | ✓ (resolution arm, all 24 identically; no check yet, so the 11 check cases are not run) |
+| [`fixtures/shared-model-conformance/`](../fixtures/shared-model-conformance/) | 11 cases (7 publish + 4 refusal) | ✓ (reference implementation) | — (Phase 2) | — (Phase 2) | — (Phase 2) | ✓ (serializer arm: the 7 publish cases' document bytes; no publisher) |
 | [`fixtures/agent-context-conformance/`](../fixtures/agent-context-conformance/) | 4 | ✓ (the emitter is TS-owned) | — | — | — | — |
 | [`fixtures/metamodel-docs/`](../fixtures/metamodel-docs/) | 1 | ✓ (docs emit is TS-owned) | — | — | — | — |
 | [`fixtures/fmt-conformance/`](../fixtures/fmt-conformance/) (#304 — `meta fmt`) | 12 | ✓ (reference) | ✓ | inherits via Java | ✓ | ✓ |
@@ -73,6 +74,7 @@ the corpora above do two different jobs. Only the first is a promise to adopters
 - **Core — the contract.** `conformance/`, `yaml-conformance/`, `registry-conformance/`,
   `validation-conformance/`, `provider-composition-conformance/`,
   `source-resolution-conformance/`, `scope-conformance/`, `dependency-conformance/`,
+  `shared-model-conformance/` (the artifact and manifest bytes a consumer verifies),
   `object-model-conformance/`, `render-conformance/`, `template-codegen-conformance/` (the
   Mustache engine), `template-output-render-conformance/`, `output-prompt-conformance/`,
   `extract-conformance/`, `verify-conformance/`, `verify-strict-conformance/`,
@@ -438,22 +440,46 @@ also matches before a trailing newline. Kotlin has no runner of its own: it inhe
 the Java loader. Each of those two guards is pinned by a test beside the corpus, since
 the corpus asserts matches only and carries no invalid-pattern case.
 
-### `fixtures/dependency-conformance/` (23 cases)
+### `fixtures/dependency-conformance/` (35 cases)
 
-All 23 cases → [features/metadata-dependencies.md](features/metadata-dependencies.md)
+All 35 cases → [features/metadata-dependencies.md](features/metadata-dependencies.md)
 (declaring a dependency, `meta deps sync`, the committed snapshot + lock, default
-exclusion of imported metadata, overlay/extends across the boundary, and every load-
-and resolution-time failure). File-shaped like `scope-conformance/` above: one
-committed `cases.json`, no per-port fixture, no ledger.
+exclusion of imported metadata, overlay/extends across the boundary, every load-
+and resolution-time failure, and the upstream check). File-shaped like `scope-conformance/`
+above: one committed `cases.json`, no per-port fixture, no ledger. The corpus has two arms:
 
-**TypeScript (the reference implementation) and Python both run all 23 cases,
-identically** — every case's `expectFiles`/`expectImported`/`expectSelected`/
-`expectMigrateGoverned`/`expectLoadError` assertions apply to both runners with no
-exemption. The two overlay cases that need a view child as incidental content use
-`view.currency` (the one concrete `view.*` subtype registered cross-port), not
-`view.text` — a prior revision used `view.text`, which Python did not register then, and
-carried a since-discharged allowlist for it. Java, Kotlin and C# have no runner —
+- **Resolution (24 cases).** Every case's `expectFiles`/`expectImported`/`expectSelected`/
+  `expectMigrateGoverned`/`expectLoadError` assertions. **TypeScript (the reference
+  implementation) and Python both run all 24, identically**, with no exemption. The two
+  overlay cases that need a view child as incidental content use `view.currency` (the one
+  concrete `view.*` subtype registered cross-port), not `view.text` — a prior revision used
+  `view.text`, which Python did not register then, and carried a since-discharged allowlist
+  for it.
+- **Check (11 cases, `expectCheck`).** For each declared dependency, `current`, `drifted` or
+  `unresolved` (a missing path, a bad manifest, a hash mismatch, or not yet in the lock). Run
+  by TypeScript only, in `cli/test/dependency-check-conformance.test.ts`; Python has no
+  `deps check` yet and filters these cases out. The arm exists so that each port's check is
+  written against the same edge cases (Phase 2, #482).
+
+Java, Kotlin and C# have no runner —
 Phase 1a is TypeScript + Python only; those three ports arrive in Phase 2.
+
+### `fixtures/shared-model-conformance/` (11 cases)
+
+→ [features/metadata-dependencies.md](features/metadata-dependencies.md) (the publisher's
+`sharedModelFile()`). A source tree under `source/`, plus `files` / `include` / `exclude` /
+`version`, must produce **exactly** the pinned artifact and manifest bytes (seven cases), or be
+refused for the pinned reason (four: an empty selection, a reference or `extends` outside the
+selection with the `referrer → target` pairs named, and vocabulary only a consumer provider
+registers). `requirement.*` and `template.*` nodes are always dropped, and the order of `files`
+does not change the bytes. The manifest goldens carry the token `@@METAMODEL_VERSION@@` where
+the manifest records the toolchain's `metamodelVersion`, so they do not move with it.
+
+**TypeScript runs all 11**, in `codegen-ts/test/shared-model-conformance.test.ts`. **Python runs
+the serializer arm**: for each publish case it loads `files`, takes the nodes the pinned manifest
+lists, and `serialize_shared_document` must reproduce the artifact byte for byte (and the sha256
+the manifest records). Python has no publisher, so selection and the refusals are TypeScript's.
+Java, Kotlin and C# have no runner (Phase 2).
 
 > **ADR-0055 (deferred overlay application) — SHIPPED in every port.** The nine cases added
 > for it (`overlay-mixed-file-base-in-later-file`, `overlay-mixed-file-base-in-earlier-file`,
@@ -561,7 +587,7 @@ files into a real Cube.
 
 The fixtures in the nine corpora mapped above (metamodel 413 + yaml 16 + verify 37
 + render 16 + persistence 59 + api-contract 117 + source-resolution 25 + scope 10 +
-dependency 23) each map to a feature doc, and so do the two requirement corpora and the
+dependency 35) each map to a feature doc, and so do the two requirement corpora, `shared-model-conformance` and the
 `cube-model` corpus, whose case lists live in their own READMEs. None are orphaned today. The remaining
 corpora in the totals table gate tooling contracts (registry manifests, provider
 composition, agent context, docs emit) rather than user-facing metamodel behaviour,

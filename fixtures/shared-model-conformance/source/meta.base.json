@@ -1,0 +1,37 @@
+{
+  "metadata.root": {
+    "package": "acme::common",
+    "children": [
+      {
+        "object.value": {
+          "name": "Address",
+          "children": [
+            {
+              "field.string": {
+                "name": "city"
+              }
+            },
+            {
+              "field.string": {
+                "name": "street"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Audited",
+          "abstract": true,
+          "children": [
+            {
+              "field.timestamp": {
+                "name": "createdAt"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

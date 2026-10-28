@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "name": "acme-platform",
+  "version": "2.3.1-rc.1",
+  "metamodelVersion": "@@METAMODEL_VERSION@@",
+  "artifact": "acme-platform.metaobjects.json",
+  "integrity": "sha256-5d52232cd7a0ed6475813cdfd62193dca825c744a4495253d783c6ffe0ea5c15",
+  "packages": [
+    "acme::billing",
+    "acme::common"
+  ],
+  "nodes": [
+    "acme::billing::Invoice",
+    "acme::common::Address",
+    "acme::common::Audited"
+  ]
+}
