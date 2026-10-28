@@ -18,6 +18,7 @@ silently drift.
 - Recommended LLM caller (bring-your-own)
 - Consumer dependency
 - Drift gate
+- Jinja templates
 
 ## Wire the generators
 
@@ -188,4 +189,27 @@ required_slots=None, required_tags=None) -> list[VerifyError]` walks a Mustache
 template's tokens against the payload field tree — each `{{...}}` reference that
 doesn't resolve yields a `VerifyError` (empty list = no drift). Assert it is empty in a
 pytest test to fail the build on prompt/payload drift; `metaobjects verify`
-additionally catches a stale committed parser.
+additionally catches a stale committed parser. Pass `engine="jinja"` to check a Jinja body.
+
+## Jinja templates
+
+Existing Jinja prompt templates adopt the gate as they are (ADR-0061). Install the extra,
+`pip install "metaobjects[jinja]"`, and keep the file as `<group>/<source>.jinja` (or `.j2`,
+`.jinja2`) under the template root; `@textRef` stays `group/source`. `FilesystemProvider`
+reads `.mustache` first, then the Jinja extensions, and `engine_of(ref)` reports which one it
+found; `render` and `metaobjects verify` pick the engine from it. For an
+`InMemoryProvider`, pass `InMemoryProvider(templates, engine="jinja")`, or pass `engine="jinja"`
+to `RenderRequest` / `verify` directly.
+
+- `verify` walks the parsed jinja2 template: paths per segment, `for` targets bound to element
+  fields, `set` / macro parameters as locals, filter arguments, and literal `include` /
+  `import` / `extends` through the provider. `ERR_TEMPLATE_NOT_STATIC` marks what it cannot
+  settle; `ERR_TEMPLATE_SYNTAX` a body that does not parse.
+- The generated render helper over a Jinja body passes `engine="jinja"` and the payload field
+  tree (`verify=[PayloadField(...)]`) to `render`, so a body that drifted after the build is
+  refused at runtime with `RenderError("render verify failed: ERR_… (path)")`.
+- A Pydantic payload renders as its JSON-mode dump, as with Mustache. Printed values follow
+  the Mustache renderer: `true` / `false`, a whole float as an integer, `None` as empty.
+- To render the same in TypeScript (nunjucks), stay inside the shared vocabulary in
+  `fixtures/jinja-render-conformance/`: test a list with `| length`, avoid `{% with %}`,
+  Python methods and printing whole lists or dicts.
