@@ -173,7 +173,7 @@ d("migrate-ts lifecycle against real Postgres", () => {
     // too, so a check that vanished cannot hide behind two that matched.
     expect(orders1.checks).toHaveLength(2);
     expect(hasCheck(orders1, "qty >= 1")).toBe(true);
-    expect(hasCheck(orders1, "status in 'open','closed'")).toBe(true);
+    expect(hasCheck(orders1, "status in 'OPEN','CLOSED'")).toBe(true);
     // Proves `hasCheck` can convict: if the comparator ever normalized everything to one
     // value, every assertion above would pass while proving nothing, and this is the line
     // that would say so.
@@ -205,7 +205,7 @@ d("migrate-ts lifecycle against real Postgres", () => {
     expect(colNames(orders2)).toEqual(["customer_id", "email", "id", "note", "qty", "status"]);
     expect(orders2.foreignKeys.some((f) => f.refTable === "lc_customers")).toBe(true);
     // evolved checks
-    expect(hasCheck(orders2, "status in 'open','closed','cancelled'")).toBe(true);
+    expect(hasCheck(orders2, "status in 'OPEN','CLOSED','CANCELLED'")).toBe(true);
     expect(hasCheck(orders2, "qty >= 1 and qty <= 1000")).toBe(true);
     // The pre-evolution bound is GONE, not merely joined by a second check.
     expect(hasCheck(orders2, "qty >= 1")).toBe(false);
@@ -224,7 +224,7 @@ d("migrate-ts lifecycle against real Postgres", () => {
     // constraint behind alongside the restored one still fails here.
     expect(ordersBack.checks).toHaveLength(2);
     expect(hasCheck(ordersBack, "qty >= 1")).toBe(true);
-    expect(hasCheck(ordersBack, "status in 'open','closed'")).toBe(true);
+    expect(hasCheck(ordersBack, "status in 'OPEN','CLOSED'")).toBe(true);
 
     // ---- idempotency: re-diff v1 against the live (rolled-back) DB ----------
     const liveSnap = await introspectPostgres(db);
@@ -346,7 +346,7 @@ d("migrate-ts lifecycle against real Postgres", () => {
       expect(posts.foreignKeys.some((f) => f.refTable === "gf_users")).toBe(true);
       expect(comments.foreignKeys.map((f) => f.refTable).sort()).toEqual(["gf_posts", "gf_users"]);
       // enum + numeric checks + unique indexes survived the round-trip
-      expect(hasCheck(gf.find((t) => t.name === "gf_users")!, "role in 'admin','editor','viewer'")).toBe(true);
+      expect(hasCheck(gf.find((t) => t.name === "gf_users")!, "role in 'ADMIN','EDITOR','VIEWER'")).toBe(true);
       expect(hasCheck(posts, "views >= 0")).toBe(true);
       expect(gf.find((t) => t.name === "gf_tags")!.indexes.some((i) => i.unique && i.columns.includes("name"))).toBe(true);
 

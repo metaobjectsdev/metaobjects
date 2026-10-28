@@ -283,7 +283,10 @@ export async function diff(
   // Pass 3: column renames (table renames were resolved in Pass 1c).
   await detectColumnRenames(changes, args.onAmbiguous, args.renames);
   // Pass 3b: a renamed column carries the constraints and indexes named after it.
-  carryThroughColumnRenames(changes, args.dialect);
+  carryThroughColumnRenames(changes, args.dialect, (id) => {
+    const live = predecessors.get(id) ?? actualTables.get(id);
+    return live === undefined ? NO_TEXT_COLUMNS : textColumnsOf(live);
+  });
 
   // Strip the rename-detection side-channel fields before status assignment / return.
   for (const c of changes) {
@@ -369,7 +372,7 @@ function diffRenamedTables(
     const carried = withRenamedRefTables({ ...actual, name: r.to }, renamed);
     const tableChanges: Change[] = [];
     diffTablePair(expected, carried, tableChanges, dialect);
-    changes.push(...(dialect === "postgres" ? foldNameOnlyChanges(r, tableChanges) : tableChanges));
+    changes.push(...(dialect === "postgres" ? foldNameOnlyChanges(r, tableChanges, textColumnsOf(actual)) : tableChanges));
   }
   return { renamed, predecessors };
 }
@@ -422,7 +425,11 @@ function withRenamedRefTables(t: TableDescriptor, renamed: ReadonlyMap<string, s
  * sits in the always-allowed status bucket, so a fold over a pair that differed in shape
  * would silently bypass the gate.
  */
-function foldNameOnlyChanges(r: Extract<Change, { kind: "rename-table" }>, tableChanges: Change[]): Change[] {
+function foldNameOnlyChanges(
+  r: Extract<Change, { kind: "rename-table" }>,
+  tableChanges: Change[],
+  textColumns: ReadonlySet<string>,
+): Change[] {
   const constraintRenames: NameChange[] = [];
   const indexRenames: NameChange[] = [];
   const folded = new Set<Change>();
@@ -436,7 +443,7 @@ function foldNameOnlyChanges(r: Extract<Change, { kind: "rename-table" }>, table
     } else if (d.kind === "drop-check" && d.restore !== undefined) {
       const restore = d.restore;
       const a = tableChanges.find((c): c is Extract<Change, { kind: "add-check" }> =>
-        c.kind === "add-check" && !folded.has(c) && checkExprEquals(c.check.expression, restore.expression));
+        c.kind === "add-check" && !folded.has(c) && checkExprEquals(c.check.expression, restore.expression, textColumns));
       if (a) { folded.add(d).add(a); constraintRenames.push({ from: d.check, to: a.check.name }); }
     } else if (d.kind === "drop-index" && d.restore !== undefined) {
       const restore = d.restore;
@@ -474,7 +481,11 @@ function foldNameOnlyChanges(r: Extract<Change, { kind: "rename-table" }>, table
  *
  * Anything that is not EXACTLY the old rule under the new names stays a gated drop+add.
  */
-function carryThroughColumnRenames(changes: Change[], dialect: Dialect | undefined): void {
+function carryThroughColumnRenames(
+  changes: Change[],
+  dialect: Dialect | undefined,
+  textColumnsOfTable: (tableId: string) => ReadonlySet<string>,
+): void {
   const renamesByTable = new Map<string, Map<string, string>>();
   const renameChangeByTable = new Map<string, Extract<Change, { kind: "rename-column" }>>();
   for (const c of changes) {
@@ -503,8 +514,10 @@ function carryThroughColumnRenames(changes: Change[], dialect: Dialect | undefin
     const sameTable = (c: Change): boolean => !paired.has(c) && idOf(c) === table;
     if (d.kind === "drop-check" && d.restore !== undefined) {
       const want = renameExprIdentifiers(d.restore.expression, renames);
+      const lowerRenames = new Map([...renames].map(([from, to]) => [from.toLowerCase(), to.toLowerCase()]));
+      const textColumns = new Set([...textColumnsOfTable(table)].map((col) => lowerRenames.get(col) ?? col));
       const a = changes.find((c): c is Extract<Change, { kind: "add-check" }> =>
-        c.kind === "add-check" && sameTable(c) && checkExprEquals(c.check.expression, want));
+        c.kind === "add-check" && sameTable(c) && checkExprEquals(c.check.expression, want, textColumns));
       if (a) { paired.add(d).add(a); pairs.push({ drop: d, add: a, from: d.check, to: a.check.name, index: false, table }); }
     } else if (d.kind === "drop-fk" && d.restore !== undefined) {
       const want: FkDescriptor = { ...d.restore, columns: mapCols(d.restore.columns, renames) };
@@ -809,7 +822,15 @@ function respelledSpread(expected: CheckDescriptor, actual: CheckDescriptor): { 
   return checkExprRespelledNullSafe(expected.expression, actual.expression) ? { respelled: true } : {};
 }
 
-const PG_TEXT_FAMILY_UDTS: ReadonlySet<string> = new Set(["text", "varchar", "bpchar"]);
+const PG_TEXT_FAMILY_UDTS: ReadonlySet<string> = new Set(["text", "varchar"]);
+
+const NO_TEXT_COLUMNS: ReadonlySet<string> = new Set();
+
+function textColumnsOf(table: TableDescriptor): Set<string> {
+  return new Set(
+    table.columns.filter((c) => c.udtName !== undefined && PG_TEXT_FAMILY_UDTS.has(c.udtName)).map((c) => c.name.toLowerCase()),
+  );
+}
 
 function diffTableChecks(
   expected: TableDescriptor,
@@ -831,9 +852,7 @@ function diffTableChecks(
   const exprFallback = dialect === "sqlite" || dialect === "d1";
   const actualByName = new Map(actual.checks.filter((c) => c.name !== "").map((c) => [c.name, c]));
   const consumed = new Set<CheckDescriptor>();
-  const textColumns = new Set(
-    actual.columns.filter((c) => c.udtName !== undefined && PG_TEXT_FAMILY_UDTS.has(c.udtName)).map((c) => c.name.toLowerCase()),
-  );
+  const textColumns = textColumnsOf(actual);
 
   for (const ec of expected.checks) {
     const ac = actualByName.get(ec.name);
