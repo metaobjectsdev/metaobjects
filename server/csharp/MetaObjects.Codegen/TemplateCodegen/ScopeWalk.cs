@@ -26,7 +26,8 @@ public static class ScopeWalk
                 $"unknown template scope '{scope}' (expected {string.Join(" | ", Scopes)})");
         return root =>
         {
-            var objects = root.Objects();
+            // FR-023: an object a metadata dependency owns is not this project's to render a template for.
+            var objects = root.Objects().Where(root.InScope).ToList();
             var concrete = objects.Where(TemplateData.IsConcrete).ToList();
             switch (scope)
             {

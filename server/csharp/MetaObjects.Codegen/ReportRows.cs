@@ -199,9 +199,13 @@ public static class ReportRows
         return copy;
     }
 
-    /// <summary>The row model of every view-backed report in the model, in declaration order.</summary>
+    /// <summary>
+    /// The row model of every view-backed report in the model, in declaration order. A report a metadata
+    /// dependency owns is not this project's to serve, so it has no row model here (FR-023,
+    /// <see cref="MetaRoot.InScope"/>).
+    /// </summary>
     public static IReadOnlyList<MetaObject> For(MetaRoot root) =>
-        root.Objects().Where(IsViewBacked).Select(r => RowModel(r, root)).ToList();
+        root.Objects().Where(r => IsViewBacked(r) && root.InScope(r)).Select(r => RowModel(r, root)).ToList();
 
     /// <summary>
     /// The objects a report-aware generator iterates: the run's entity set with every

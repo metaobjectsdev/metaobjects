@@ -183,6 +183,9 @@ public static class FmtCommand
         List<IMetaDataSource> BuildSources(string? overridePath = null, string? overrideText = null)
         {
             var sources = new List<IMetaDataSource>(LibrarySources.Resolve(resolved.Libraries));
+            // FR-023: a dependency's snapshot is loaded so the project's `extends` onto it resolves, but it is
+            // never a fmt TARGET: `allFiles` is the project's own metadata and the snapshot is not that.
+            if (resolved.Imports is { } imports) sources.AddRange(imports.Sources());
             foreach (var p in allFiles)
             {
                 sources.Add(overridePath is not null && p == overridePath

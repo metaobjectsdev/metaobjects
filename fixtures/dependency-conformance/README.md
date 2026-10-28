@@ -199,7 +199,13 @@ corpus expectation to update.
   `sdk/test/dependency-conformance.test.ts`).
 - **Python** — resolution, load-time failure, lock/snapshot integrity. Not the check arm: Python
   has no `deps check` yet, so its runner filters the `expectCheck` cases out.
-- **Java / C# / Kotlin** — Phase 2 (these ports do not read `dependencies` yet). Each runs the
+- **C#** — the resolution arm: resolution, load-time failure, lock/snapshot integrity, on the
+  neutral source ladder and again through the explicit metadata directory (C# has no native
+  config surface, so `.metaobjects/config.json` is where a dependency is declared at every
+  rung). `inScope` is Python's formula, not TypeScript's. Not the check arm: C# has no
+  `deps check` yet (that is `verify --deps`), so its runner skips the `expectCheck` cases. The
+  runner is `server/csharp/MetaObjects.Conformance.Tests/DependencyConformanceTests.cs`.
+- **Java / Kotlin** — Phase 2 (these ports do not read `dependencies` yet). Each runs the
   resolution arm when it consumes, and the check arm when it gains a check.
 
 ## Reference implementation

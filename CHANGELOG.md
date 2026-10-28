@@ -16,6 +16,19 @@ here.**
 
 ### Added
 
+- **C# consumes a shared model at build time (FR-023 Phase 2).** `dotnet meta` now reads
+  `dependencies` from `.metaobjects/config.json` at every rung of its source ladder, verifies the
+  committed snapshot against `deps.lock.json` offline, and loads the snapshots ahead of the
+  project's own files, so an `extends`, `overlay: true` or plain FQN reference onto a dependency's
+  node resolves. Errors carry the same codes as TypeScript and Python
+  (`ERR_DEPENDENCY_SNAPSHOT_STALE`, `_METAMODEL_INCOMPATIBLE`, `_NODE_COLLISION`,
+  `_PACKAGE_NOT_OWNED`), and a load error in a dependency's file names `dep:<name>/<artifact>`.
+  Imported nodes load but are not generated: every C# generator, the `verify --codegen`
+  regeneration and the requirement gate's coverage denominator leave them out unless
+  `scope.include` names their package. C# runs all 23 cases of `fixtures/dependency-conformance/`.
+  The Node `meta deps sync` stays the only writer of the lock and the snapshot.
+  See [docs/features/metadata-dependencies.md](docs/features/metadata-dependencies.md).
+
 - **Java, Kotlin and C# can compile and match `scope` patterns.** `com.metaobjects.config.Scope`
   (Java; Kotlin inherits it) and `MetaObjects.Config.Scope` (C#) port the scope-pattern grammar from
   TypeScript (`compilePattern` / `compileScope` / `matchesScope`), and both run the shared

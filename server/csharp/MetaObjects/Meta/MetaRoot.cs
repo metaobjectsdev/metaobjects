@@ -27,6 +27,21 @@ public class MetaRoot(TypeId typeId, string name) : MetaData(typeId, name)
     /// </summary>
     public WireFormat WireFormat { get; set; } = WireFormat.Default;
 
+    /// <summary>
+    /// FR-023 — what the project imports from metadata dependencies, set by the same project-aware load
+    /// as <see cref="PhysicalNaming"/>. Null for a tree loaded with no project (nothing is imported).
+    /// Imported objects load so the project's own model resolves against them, but
+    /// <see cref="InScope"/> drops them from every action surface unless the project names their package.
+    /// </summary>
+    public MetaObjects.Config.ImportScope? ImportScope { get; set; }
+
+    /// <summary>
+    /// Does <paramref name="obj"/> belong to this project's own action surface (codegen, the requirement
+    /// ledger's denominator)? False for an object a dependency owns, unless the project's
+    /// <c>scope.include</c> names its package. Always true when nothing is imported.
+    /// </summary>
+    public bool InScope(MetaObject obj) => ImportScope?.InScope(obj.ResolutionKey()) ?? true;
+
     /// <summary>Object entities defined at this root level.</summary>
     public IReadOnlyList<MetaObject> Objects()
     {

@@ -46,7 +46,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 | [`fixtures/provider-composition-conformance/`](../fixtures/provider-composition-conformance/) | 9 (5 error-shape + 4 compose-load) | ✓ | ✓ | — (JVM registry via Java) | ✓ | ✓ |
 | [`fixtures/source-resolution-conformance/`](../fixtures/source-resolution-conformance/) | 25 cases | ✓ (reference implementation) | ✓ | inherits via Java | ✓ | ✓ |
 | [`fixtures/scope-conformance/`](../fixtures/scope-conformance/) | 10 cases | ✓ (reference implementation) | ✓ | inherits via Java | ✓ | ✓ |
-| [`fixtures/dependency-conformance/`](../fixtures/dependency-conformance/) | 35 cases (24 resolution + 11 check) | ✓ (reference implementation; both arms) | — (Phase 2) | — (Phase 2) | — (Phase 2) | ✓ (resolution arm, all 24 identically; no check yet, so the 11 check cases are not run) |
+| [`fixtures/dependency-conformance/`](../fixtures/dependency-conformance/) | 35 cases (24 resolution + 11 check) | ✓ (reference implementation; both arms) | ✓ (resolution arm, all 24; no check yet, so the 11 check cases are not run) | — (Phase 2) | — (Phase 2) | ✓ (resolution arm, all 24 identically; no check yet, so the 11 check cases are not run) |
 | [`fixtures/shared-model-conformance/`](../fixtures/shared-model-conformance/) | 11 cases (7 publish + 4 refusal) | ✓ (reference implementation) | — (Phase 2) | — (Phase 2) | — (Phase 2) | ✓ (serializer arm: the 7 publish cases' document bytes; no publisher) |
 | [`fixtures/agent-context-conformance/`](../fixtures/agent-context-conformance/) | 4 | ✓ (the emitter is TS-owned) | — | — | — | — |
 | [`fixtures/metamodel-docs/`](../fixtures/metamodel-docs/) | 1 | ✓ (docs emit is TS-owned) | — | — | — | — |
@@ -450,7 +450,7 @@ above: one committed `cases.json`, no per-port fixture, no ledger. The corpus ha
 
 - **Resolution (24 cases).** Every case's `expectFiles`/`expectImported`/`expectSelected`/
   `expectMigrateGoverned`/`expectLoadError` assertions. **TypeScript (the reference
-  implementation) and Python both run all 24, identically**, with no exemption. The two
+  implementation), Python and C# all run all 24, identically**, with no exemption. The two
   overlay cases that need a view child as incidental content use `view.currency` (the one
   concrete `view.*` subtype registered cross-port), not `view.text` — a prior revision used
   `view.text`, which Python did not register then, and carried a since-discharged allowlist
@@ -461,8 +461,11 @@ above: one committed `cases.json`, no per-port fixture, no ledger. The corpus ha
   `deps check` yet and filters these cases out. The arm exists so that each port's check is
   written against the same edge cases (Phase 2, #482).
 
-Java, Kotlin and C# have no runner —
-Phase 1a is TypeScript + Python only; those three ports arrive in Phase 2.
+**C#** (S6 of FR-023 Phase 2) runs the resolution arm on two rungs of the source ladder: the
+neutral one (`Resolve(null, dir)`), and the explicit metadata directory a
+`dotnet meta gen <metadataDir>` takes, where the case has one. Its runner is
+`DependencyConformanceTests`; it skips the 11 check cases (C# has no `deps check` yet).
+Java and Kotlin have no runner yet — they arrive in Phase 2.
 
 ### `fixtures/shared-model-conformance/` (11 cases)
 

@@ -390,15 +390,28 @@ publishes the same bytes as the packaged generator, and a test has a consumer sy
 verify what an ejected copy published. See
 [own-your-codegen](own-your-codegen.md#shared-model-you-own-the-inputs-the-package-owns-the-artifact).
 
-**Only TypeScript publishes in Phase 1a — and only TypeScript and Python consume.**
-TypeScript and Python are the only two ports that can *consume* a dependency at all
-today (load its snapshot, extend it, overlay it) — Java, Kotlin, and C# don't read
-`dependencies` yet (Phase 2). Of those two, only the TypeScript toolchain can
-*publish*: it alone can generate the artifact a publisher ships. A Python project
-that wants to publish a shared model runs a TypeScript `sharedModelFile()`
-generator against its own metadata the same way any TypeScript consumer would; a
-Java, C#, or Kotlin project cannot yet participate as either a publisher or a
-consumer.
+**Only TypeScript publishes — and TypeScript, Python and C# consume.**
+TypeScript, Python and C# are the ports that can *consume* a dependency today (load its
+snapshot, extend it, overlay it) — Java and Kotlin don't read `dependencies` yet (Phase 2).
+Of those, only the TypeScript toolchain can *publish*: it alone can generate the artifact a
+publisher ships, and the Node `meta deps sync` is the only writer of the lock and the snapshot.
+A Python or C# project that wants to publish a shared model runs a TypeScript
+`sharedModelFile()` generator against its own metadata the same way any TypeScript consumer
+would; a Java or Kotlin project cannot yet participate as either a publisher or a consumer.
+
+**C#.** `dotnet meta` reads `dependencies` from `.metaobjects/config.json` at every rung of its
+source ladder — C# has no native config surface, so the explicit `<metadataDir>` form reads the
+project's file too — verifies the committed snapshot against `deps.lock.json` offline, and loads
+the snapshots first under `dep:<name>/<artifact>` source ids. It never writes either: run
+`meta deps sync` (the Node CLI) to refresh them, and a stale snapshot fails every command with
+`ERR_DEPENDENCY_SNAPSHOT_STALE`. An imported node is excluded from every C# generator, the
+`verify --codegen` regeneration and the requirement gate's entity-coverage denominator unless
+`scope.include` names its package; the one thing C# still emits from an imported package is the
+POCO of a *value object* (and the shared enums it uses) that a generated entity holds, because the
+entity's property type needs it to compile. `inScope` is Python's formula (no `matchesScope` on the
+project's own objects), and C# has no entity-name positional on `gen`, so the TypeScript
+"refuse an explicitly named imported object" check has no C# surface. Known edge: a local entity
+that `extends` an imported concrete entity in a table-per-hierarchy mapping is not specially handled.
 
 ## Vendoring vs. depending
 
@@ -495,8 +508,9 @@ but **not** built in Phase 1a — do not assume any of the following exists:
 - **A runtime `ObjectManager` scope predicate.** Nothing at runtime refuses to serve
   an imported entity — "what's imported" is a load-time/codegen concept today, not a
   runtime one.
-- **Java, Kotlin, and C# as dependency consumers or publishers** — Phase 1a is
-  TypeScript + Python only; the other three ports arrive in Phase 2.
+- **Java and Kotlin as dependency consumers, and Java, Kotlin, Python and C# as
+  publishers** — consuming is TypeScript, Python and C#; publishing is TypeScript only.
+  The JVM ports arrive in Phase 2.
 
 ## Verified by
 

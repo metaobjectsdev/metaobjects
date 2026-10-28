@@ -947,11 +947,17 @@ public class EntityGenerator : IGenerator
     {
         // Surface a missing ProvidedEnumNamespace for any consumed @provided enum as a
         // codegen-time error (ADR-0026), even though @provided emits no file content.
-        foreach (var shared in Fr019SharedEnum.CollectSharedEnums(ctx.Root))
+        // FR-023: an imported value object a generated entity holds is emitted as a POCO (the entity's
+        // property type needs it), so the enums IT uses are part of the output too.
+        var importedShapes = ctx.Root.ImportScope is { HasImports: true }
+            ? ReferencedValueObjects(ctx.Entities, ctx).Where(vo => !ctx.Root.InScope(vo)).ToList()
+            : null;
+
+        foreach (var shared in Fr019SharedEnum.CollectSharedEnums(ctx.Root, importedShapes))
             if (shared.Provided)
                 _ = Fr019SharedEnum.SharedEnumTypeReference(shared, ctx.Config);
 
-        var materialized = Fr019SharedEnum.MaterializedSharedEnums(ctx.Root);
+        var materialized = Fr019SharedEnum.MaterializedSharedEnums(ctx.Root, importedShapes);
         if (materialized.Count == 0) return null;
 
         var sb = new StringBuilder();

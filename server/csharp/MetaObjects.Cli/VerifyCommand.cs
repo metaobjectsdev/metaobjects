@@ -102,6 +102,13 @@ public static class VerifyCommand
         /// </summary>
         public IReadOnlyList<string> Libraries { get; init; } = Array.Empty<string>();
         /// <summary>
+        /// FR-023 — the project's resolved metadata dependencies, from the same
+        /// <c>.metaobjects/config.json</c> as <see cref="Libraries"/>. Their committed snapshots load
+        /// first, so an <c>extends</c> onto an imported node resolves, and the loaded root records what
+        /// was imported so the <c>--codegen</c> gate regenerates exactly what <c>gen</c> wrote. Null: none.
+        /// </summary>
+        public MetaObjects.Config.ImportScope? Imports { get; init; }
+        /// <summary>
         /// ADR-0058 — the project's physical-naming rules, read from the SAME
         /// <c>.metaobjects/config.json</c> as <see cref="Libraries"/> (<c>Program.cs</c>'s
         /// <c>ResolveMetadataDirOrExit</c>). Set on the loaded root by <see cref="LoadMetadata"/>
@@ -259,13 +266,11 @@ public static class VerifyCommand
     /// </summary>
     private static LoadResult LoadMetadata(Options opts)
     {
-        var result = opts.MetadataFiles is { } files
-            ? MetaDataLoader.FromUris(files.Select(f => new Uri(f)).ToList(), opts.Libraries, opts.Strict)
-            : MetaDataLoader.FromDirectory(opts.MetadataDir, opts.Libraries, strict: opts.Strict);
-        // ADR-0058 — every resolver reads naming.columns/naming.tables from the root.
-        result.Root.PhysicalNaming = opts.Naming;
-        result.Root.WireFormat = opts.Wire;
-        return result;
+        // The same load `gen` runs (ResolvedMetadata.Load): libraries, then the dependency snapshots, then the
+        // project's own files; ADR-0058 naming and the wire format set on the root; the imports recorded on it.
+        return new MetaObjects.Config.ResolvedMetadata(
+            opts.MetadataDir, opts.MetadataFiles, opts.Libraries, opts.Naming, opts.Wire, null, opts.Imports)
+            .Load(opts.Strict);
     }
 
     // ------------------------------------------------------------------------
