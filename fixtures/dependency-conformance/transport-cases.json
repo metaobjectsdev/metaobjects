@@ -1,0 +1,522 @@
+{
+  "cases": [
+    {
+      "name": "npm-resolves-the-installed-package-root",
+      "tree": {
+        "app/metaobjects/meta.app.json": "{\"metadata.root\":{\"package\":\"app\",\"children\":[{\"object.entity\":{\"name\":\"Order\",\"children\":[{\"source.rdb\":{\"@table\":\"orders\"}},{\"field.long\":{\"name\":\"id\"}},{\"identity.primary\":{\"name\":\"pk\",\"@fields\":[\"id\"]}}]}}]}}",
+        "app/node_modules/@acme/common-model/metaobjects.pkg.json": "{\n  \"schema_version\": 1,\n  \"name\": \"acme-common\",\n  \"version\": \"1.0.0\",\n  \"metamodelVersion\": \"1.0\",\n  \"artifact\": \"acme-common.metaobjects.json\",\n  \"integrity\": \"sha256-10fbf886e22faceca32c56e5e647c3ff1c82f503e638cba3bd3aa9390f7c409d\",\n  \"packages\": [\n    \"acme::common\"\n  ],\n  \"nodes\": [\n    \"acme::common::Address\",\n    \"acme::common::Audited\",\n    \"acme::common::Customer\"\n  ]\n}\n",
+        "app/node_modules/@acme/common-model/package.json": "{\n  \"name\": \"@acme/common-model\",\n  \"version\": \"1.0.0\"\n}\n"
+      },
+      "treeFiles": {
+        "app/node_modules/@acme/common-model/acme-common.metaobjects.json": "artifacts/acme-common-v1.json"
+      },
+      "config": {
+        "schema_version": 1,
+        "sources": [],
+        "dependencies": [
+          {
+            "name": "acme-common",
+            "npm": "@acme/common-model"
+          }
+        ]
+      },
+      "resolveFrom": "app",
+      "expectDirs": {
+        "acme-common": "app/node_modules/@acme/common-model"
+      },
+      "expectLock": {
+        "schema_version": 1,
+        "dependencies": {
+          "acme-common": {
+            "version": "1.0.0",
+            "metamodelVersion": "1.0",
+            "resolvedFrom": {
+              "npm": "@acme/common-model"
+            },
+            "artifact": "acme-common.metaobjects.json",
+            "integrity": "sha256-10fbf886e22faceca32c56e5e647c3ff1c82f503e638cba3bd3aa9390f7c409d",
+            "packages": [
+              "acme::common"
+            ],
+            "nodes": [
+              "acme::common::Address",
+              "acme::common::Audited",
+              "acme::common::Customer"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "npm-applies-dir-inside-the-package",
+      "tree": {
+        "app/metaobjects/meta.app.json": "{\"metadata.root\":{\"package\":\"app\",\"children\":[{\"object.entity\":{\"name\":\"Order\",\"children\":[{\"source.rdb\":{\"@table\":\"orders\"}},{\"field.long\":{\"name\":\"id\"}},{\"identity.primary\":{\"name\":\"pk\",\"@fields\":[\"id\"]}}]}}]}}",
+        "app/node_modules/@acme/common-model/metaobjects/metaobjects.pkg.json": "{\n  \"schema_version\": 1,\n  \"name\": \"acme-common\",\n  \"version\": \"1.0.0\",\n  \"metamodelVersion\": \"1.0\",\n  \"artifact\": \"acme-common.metaobjects.json\",\n  \"integrity\": \"sha256-10fbf886e22faceca32c56e5e647c3ff1c82f503e638cba3bd3aa9390f7c409d\",\n  \"packages\": [\n    \"acme::common\"\n  ],\n  \"nodes\": [\n    \"acme::common::Address\",\n    \"acme::common::Audited\",\n    \"acme::common::Customer\"\n  ]\n}\n",
+        "app/node_modules/@acme/common-model/package.json": "{\n  \"name\": \"@acme/common-model\",\n  \"version\": \"1.0.0\"\n}\n"
+      },
+      "treeFiles": {
+        "app/node_modules/@acme/common-model/metaobjects/acme-common.metaobjects.json": "artifacts/acme-common-v1.json"
+      },
+      "config": {
+        "schema_version": 1,
+        "sources": [],
+        "dependencies": [
+          {
+            "name": "acme-common",
+            "npm": "@acme/common-model",
+            "dir": "metaobjects"
+          }
+        ]
+      },
+      "resolveFrom": "app",
+      "expectDirs": {
+        "acme-common": "app/node_modules/@acme/common-model/metaobjects"
+      },
+      "expectLock": {
+        "schema_version": 1,
+        "dependencies": {
+          "acme-common": {
+            "version": "1.0.0",
+            "metamodelVersion": "1.0",
+            "resolvedFrom": {
+              "npm": "@acme/common-model",
+              "dir": "metaobjects"
+            },
+            "artifact": "acme-common.metaobjects.json",
+            "integrity": "sha256-10fbf886e22faceca32c56e5e647c3ff1c82f503e638cba3bd3aa9390f7c409d",
+            "packages": [
+              "acme::common"
+            ],
+            "nodes": [
+              "acme::common::Address",
+              "acme::common::Audited",
+              "acme::common::Customer"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "npm-resolves-a-package-hoisted-above-the-config-dir",
+      "tree": {
+        "app/metaobjects/meta.app.json": "{\"metadata.root\":{\"package\":\"app\",\"children\":[{\"object.entity\":{\"name\":\"Order\",\"children\":[{\"source.rdb\":{\"@table\":\"orders\"}},{\"field.long\":{\"name\":\"id\"}},{\"identity.primary\":{\"name\":\"pk\",\"@fields\":[\"id\"]}}]}}]}}",
+        "node_modules/@acme/common-model/metaobjects/metaobjects.pkg.json": "{\n  \"schema_version\": 1,\n  \"name\": \"acme-common\",\n  \"version\": \"1.0.0\",\n  \"metamodelVersion\": \"1.0\",\n  \"artifact\": \"acme-common.metaobjects.json\",\n  \"integrity\": \"sha256-10fbf886e22faceca32c56e5e647c3ff1c82f503e638cba3bd3aa9390f7c409d\",\n  \"packages\": [\n    \"acme::common\"\n  ],\n  \"nodes\": [\n    \"acme::common::Address\",\n    \"acme::common::Audited\",\n    \"acme::common::Customer\"\n  ]\n}\n",
+        "node_modules/@acme/common-model/package.json": "{\n  \"name\": \"@acme/common-model\",\n  \"version\": \"1.0.0\"\n}\n"
+      },
+      "treeFiles": {
+        "node_modules/@acme/common-model/metaobjects/acme-common.metaobjects.json": "artifacts/acme-common-v1.json"
+      },
+      "config": {
+        "schema_version": 1,
+        "sources": [],
+        "dependencies": [
+          {
+            "name": "acme-common",
+            "npm": "@acme/common-model",
+            "dir": "metaobjects"
+          }
+        ]
+      },
+      "resolveFrom": "app",
+      "expectDirs": {
+        "acme-common": "node_modules/@acme/common-model/metaobjects"
+      },
+      "expectLock": {
+        "schema_version": 1,
+        "dependencies": {
+          "acme-common": {
+            "version": "1.0.0",
+            "metamodelVersion": "1.0",
+            "resolvedFrom": {
+              "npm": "@acme/common-model",
+              "dir": "metaobjects"
+            },
+            "artifact": "acme-common.metaobjects.json",
+            "integrity": "sha256-10fbf886e22faceca32c56e5e647c3ff1c82f503e638cba3bd3aa9390f7c409d",
+            "packages": [
+              "acme::common"
+            ],
+            "nodes": [
+              "acme::common::Address",
+              "acme::common::Audited",
+              "acme::common::Customer"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "npm-resolves-a-package-whose-exports-hide-package-json",
+      "tree": {
+        "app/metaobjects/meta.app.json": "{\"metadata.root\":{\"package\":\"app\",\"children\":[{\"object.entity\":{\"name\":\"Order\",\"children\":[{\"source.rdb\":{\"@table\":\"orders\"}},{\"field.long\":{\"name\":\"id\"}},{\"identity.primary\":{\"name\":\"pk\",\"@fields\":[\"id\"]}}]}}]}}",
+        "app/node_modules/@acme/common-model/metaobjects/metaobjects.pkg.json": "{\n  \"schema_version\": 1,\n  \"name\": \"acme-common\",\n  \"version\": \"1.0.0\",\n  \"metamodelVersion\": \"1.0\",\n  \"artifact\": \"acme-common.metaobjects.json\",\n  \"integrity\": \"sha256-10fbf886e22faceca32c56e5e647c3ff1c82f503e638cba3bd3aa9390f7c409d\",\n  \"packages\": [\n    \"acme::common\"\n  ],\n  \"nodes\": [\n    \"acme::common::Address\",\n    \"acme::common::Audited\",\n    \"acme::common::Customer\"\n  ]\n}\n",
+        "app/node_modules/@acme/common-model/package.json": "{\n  \"name\": \"@acme/common-model\",\n  \"version\": \"1.0.0\",\n  \"type\": \"module\",\n  \"exports\": {\n    \".\": \"./index.js\"\n  }\n}\n",
+        "app/node_modules/@acme/common-model/index.js": "export {};\n"
+      },
+      "treeFiles": {
+        "app/node_modules/@acme/common-model/metaobjects/acme-common.metaobjects.json": "artifacts/acme-common-v1.json"
+      },
+      "config": {
+        "schema_version": 1,
+        "sources": [],
+        "dependencies": [
+          {
+            "name": "acme-common",
+            "npm": "@acme/common-model",
+            "dir": "metaobjects"
+          }
+        ]
+      },
+      "resolveFrom": "app",
+      "expectDirs": {
+        "acme-common": "app/node_modules/@acme/common-model/metaobjects"
+      },
+      "expectLock": {
+        "schema_version": 1,
+        "dependencies": {
+          "acme-common": {
+            "version": "1.0.0",
+            "metamodelVersion": "1.0",
+            "resolvedFrom": {
+              "npm": "@acme/common-model",
+              "dir": "metaobjects"
+            },
+            "artifact": "acme-common.metaobjects.json",
+            "integrity": "sha256-10fbf886e22faceca32c56e5e647c3ff1c82f503e638cba3bd3aa9390f7c409d",
+            "packages": [
+              "acme::common"
+            ],
+            "nodes": [
+              "acme::common::Address",
+              "acme::common::Audited",
+              "acme::common::Customer"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "npm-a-package-that-is-not-installed-is-unresolved",
+      "tree": {
+        "app/metaobjects/meta.app.json": "{\"metadata.root\":{\"package\":\"app\",\"children\":[{\"object.entity\":{\"name\":\"Order\",\"children\":[{\"source.rdb\":{\"@table\":\"orders\"}},{\"field.long\":{\"name\":\"id\"}},{\"identity.primary\":{\"name\":\"pk\",\"@fields\":[\"id\"]}}]}}]}}"
+      },
+      "treeFiles": {},
+      "config": {
+        "schema_version": 1,
+        "sources": [],
+        "dependencies": [
+          {
+            "name": "acme-common",
+            "npm": "@acme/common-model",
+            "dir": "metaobjects"
+          }
+        ]
+      },
+      "resolveFrom": "app",
+      "expectError": "ERR_DEPENDENCY_UNRESOLVED"
+    },
+    {
+      "name": "npm-a-dir-the-package-does-not-ship-is-unresolved",
+      "tree": {
+        "app/metaobjects/meta.app.json": "{\"metadata.root\":{\"package\":\"app\",\"children\":[{\"object.entity\":{\"name\":\"Order\",\"children\":[{\"source.rdb\":{\"@table\":\"orders\"}},{\"field.long\":{\"name\":\"id\"}},{\"identity.primary\":{\"name\":\"pk\",\"@fields\":[\"id\"]}}]}}]}}",
+        "app/node_modules/@acme/common-model/shared/metaobjects.pkg.json": "{\n  \"schema_version\": 1,\n  \"name\": \"acme-common\",\n  \"version\": \"1.0.0\",\n  \"metamodelVersion\": \"1.0\",\n  \"artifact\": \"acme-common.metaobjects.json\",\n  \"integrity\": \"sha256-10fbf886e22faceca32c56e5e647c3ff1c82f503e638cba3bd3aa9390f7c409d\",\n  \"packages\": [\n    \"acme::common\"\n  ],\n  \"nodes\": [\n    \"acme::common::Address\",\n    \"acme::common::Audited\",\n    \"acme::common::Customer\"\n  ]\n}\n",
+        "app/node_modules/@acme/common-model/package.json": "{\n  \"name\": \"@acme/common-model\",\n  \"version\": \"1.0.0\"\n}\n"
+      },
+      "treeFiles": {
+        "app/node_modules/@acme/common-model/shared/acme-common.metaobjects.json": "artifacts/acme-common-v1.json"
+      },
+      "config": {
+        "schema_version": 1,
+        "sources": [],
+        "dependencies": [
+          {
+            "name": "acme-common",
+            "npm": "@acme/common-model",
+            "dir": "metaobjects"
+          }
+        ]
+      },
+      "resolveFrom": "app",
+      "expectError": "ERR_DEPENDENCY_UNRESOLVED"
+    },
+    {
+      "name": "npm-a-dir-without-a-manifest-is-an-invalid-manifest",
+      "tree": {
+        "app/metaobjects/meta.app.json": "{\"metadata.root\":{\"package\":\"app\",\"children\":[{\"object.entity\":{\"name\":\"Order\",\"children\":[{\"source.rdb\":{\"@table\":\"orders\"}},{\"field.long\":{\"name\":\"id\"}},{\"identity.primary\":{\"name\":\"pk\",\"@fields\":[\"id\"]}}]}}]}}",
+        "app/node_modules/@acme/common-model/package.json": "{\n  \"name\": \"@acme/common-model\",\n  \"version\": \"1.0.0\"\n}\n",
+        "app/node_modules/@acme/common-model/metaobjects/README.md": "no manifest here\n"
+      },
+      "treeFiles": {},
+      "config": {
+        "schema_version": 1,
+        "sources": [],
+        "dependencies": [
+          {
+            "name": "acme-common",
+            "npm": "@acme/common-model",
+            "dir": "metaobjects"
+          }
+        ]
+      },
+      "resolveFrom": "app",
+      "expectDirs": {
+        "acme-common": "app/node_modules/@acme/common-model/metaobjects"
+      },
+      "expectError": "ERR_DEPENDENCY_MANIFEST_INVALID"
+    },
+    {
+      "name": "npm-a-dir-that-climbs-out-of-the-package-is-unresolved",
+      "tree": {
+        "app/metaobjects/meta.app.json": "{\"metadata.root\":{\"package\":\"app\",\"children\":[{\"object.entity\":{\"name\":\"Order\",\"children\":[{\"source.rdb\":{\"@table\":\"orders\"}},{\"field.long\":{\"name\":\"id\"}},{\"identity.primary\":{\"name\":\"pk\",\"@fields\":[\"id\"]}}]}}]}}",
+        "app/node_modules/@acme/common-model/metaobjects.pkg.json": "{\n  \"schema_version\": 1,\n  \"name\": \"acme-common\",\n  \"version\": \"1.0.0\",\n  \"metamodelVersion\": \"1.0\",\n  \"artifact\": \"acme-common.metaobjects.json\",\n  \"integrity\": \"sha256-10fbf886e22faceca32c56e5e647c3ff1c82f503e638cba3bd3aa9390f7c409d\",\n  \"packages\": [\n    \"acme::common\"\n  ],\n  \"nodes\": [\n    \"acme::common::Address\",\n    \"acme::common::Audited\",\n    \"acme::common::Customer\"\n  ]\n}\n",
+        "app/node_modules/@acme/common-model/package.json": "{\n  \"name\": \"@acme/common-model\",\n  \"version\": \"1.0.0\"\n}\n"
+      },
+      "treeFiles": {
+        "app/node_modules/@acme/common-model/acme-common.metaobjects.json": "artifacts/acme-common-v1.json"
+      },
+      "config": {
+        "schema_version": 1,
+        "sources": [],
+        "dependencies": [
+          {
+            "name": "acme-common",
+            "npm": "@acme/common-model",
+            "dir": "../.."
+          }
+        ]
+      },
+      "resolveFrom": "app",
+      "expectError": "ERR_DEPENDENCY_UNRESOLVED"
+    },
+    {
+      "name": "python-resolves-the-package-find-spec-reports",
+      "tree": {
+        "app/metaobjects/meta.app.json": "{\"metadata.root\":{\"package\":\"app\",\"children\":[{\"object.entity\":{\"name\":\"Order\",\"children\":[{\"source.rdb\":{\"@table\":\"orders\"}},{\"field.long\":{\"name\":\"id\"}},{\"identity.primary\":{\"name\":\"pk\",\"@fields\":[\"id\"]}}]}}]}}",
+        "site/acme_common/metaobjects/metaobjects.pkg.json": "{\n  \"schema_version\": 1,\n  \"name\": \"acme-common\",\n  \"version\": \"1.0.0\",\n  \"metamodelVersion\": \"1.0\",\n  \"artifact\": \"acme-common.metaobjects.json\",\n  \"integrity\": \"sha256-10fbf886e22faceca32c56e5e647c3ff1c82f503e638cba3bd3aa9390f7c409d\",\n  \"packages\": [\n    \"acme::common\"\n  ],\n  \"nodes\": [\n    \"acme::common::Address\",\n    \"acme::common::Audited\",\n    \"acme::common::Customer\"\n  ]\n}\n",
+        "site/acme_common/__init__.py": ""
+      },
+      "treeFiles": {
+        "site/acme_common/metaobjects/acme-common.metaobjects.json": "artifacts/acme-common-v1.json"
+      },
+      "config": {
+        "schema_version": 1,
+        "sources": [],
+        "dependencies": [
+          {
+            "name": "acme-common",
+            "python": "acme_common",
+            "dir": "metaobjects"
+          }
+        ]
+      },
+      "resolveFrom": "app",
+      "pythonPath": [
+        "site"
+      ],
+      "expectDirs": {
+        "acme-common": "site/acme_common/metaobjects"
+      },
+      "expectLock": {
+        "schema_version": 1,
+        "dependencies": {
+          "acme-common": {
+            "version": "1.0.0",
+            "metamodelVersion": "1.0",
+            "resolvedFrom": {
+              "python": "acme_common",
+              "dir": "metaobjects"
+            },
+            "artifact": "acme-common.metaobjects.json",
+            "integrity": "sha256-10fbf886e22faceca32c56e5e647c3ff1c82f503e638cba3bd3aa9390f7c409d",
+            "packages": [
+              "acme::common"
+            ],
+            "nodes": [
+              "acme::common::Address",
+              "acme::common::Audited",
+              "acme::common::Customer"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "python-resolves-a-dotted-subpackage",
+      "tree": {
+        "app/metaobjects/meta.app.json": "{\"metadata.root\":{\"package\":\"app\",\"children\":[{\"object.entity\":{\"name\":\"Order\",\"children\":[{\"source.rdb\":{\"@table\":\"orders\"}},{\"field.long\":{\"name\":\"id\"}},{\"identity.primary\":{\"name\":\"pk\",\"@fields\":[\"id\"]}}]}}]}}",
+        "site/acme/common/metaobjects/metaobjects.pkg.json": "{\n  \"schema_version\": 1,\n  \"name\": \"acme-common\",\n  \"version\": \"1.0.0\",\n  \"metamodelVersion\": \"1.0\",\n  \"artifact\": \"acme-common.metaobjects.json\",\n  \"integrity\": \"sha256-10fbf886e22faceca32c56e5e647c3ff1c82f503e638cba3bd3aa9390f7c409d\",\n  \"packages\": [\n    \"acme::common\"\n  ],\n  \"nodes\": [\n    \"acme::common::Address\",\n    \"acme::common::Audited\",\n    \"acme::common::Customer\"\n  ]\n}\n",
+        "site/acme/__init__.py": "",
+        "site/acme/common/__init__.py": ""
+      },
+      "treeFiles": {
+        "site/acme/common/metaobjects/acme-common.metaobjects.json": "artifacts/acme-common-v1.json"
+      },
+      "config": {
+        "schema_version": 1,
+        "sources": [],
+        "dependencies": [
+          {
+            "name": "acme-common",
+            "python": "acme.common",
+            "dir": "metaobjects"
+          }
+        ]
+      },
+      "resolveFrom": "app",
+      "pythonPath": [
+        "site"
+      ],
+      "expectDirs": {
+        "acme-common": "site/acme/common/metaobjects"
+      },
+      "expectLock": {
+        "schema_version": 1,
+        "dependencies": {
+          "acme-common": {
+            "version": "1.0.0",
+            "metamodelVersion": "1.0",
+            "resolvedFrom": {
+              "python": "acme.common",
+              "dir": "metaobjects"
+            },
+            "artifact": "acme-common.metaobjects.json",
+            "integrity": "sha256-10fbf886e22faceca32c56e5e647c3ff1c82f503e638cba3bd3aa9390f7c409d",
+            "packages": [
+              "acme::common"
+            ],
+            "nodes": [
+              "acme::common::Address",
+              "acme::common::Audited",
+              "acme::common::Customer"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "python-without-dir-resolves-the-package-directory",
+      "tree": {
+        "app/metaobjects/meta.app.json": "{\"metadata.root\":{\"package\":\"app\",\"children\":[{\"object.entity\":{\"name\":\"Order\",\"children\":[{\"source.rdb\":{\"@table\":\"orders\"}},{\"field.long\":{\"name\":\"id\"}},{\"identity.primary\":{\"name\":\"pk\",\"@fields\":[\"id\"]}}]}}]}}",
+        "site/acme_common/metaobjects.pkg.json": "{\n  \"schema_version\": 1,\n  \"name\": \"acme-common\",\n  \"version\": \"1.0.0\",\n  \"metamodelVersion\": \"1.0\",\n  \"artifact\": \"acme-common.metaobjects.json\",\n  \"integrity\": \"sha256-10fbf886e22faceca32c56e5e647c3ff1c82f503e638cba3bd3aa9390f7c409d\",\n  \"packages\": [\n    \"acme::common\"\n  ],\n  \"nodes\": [\n    \"acme::common::Address\",\n    \"acme::common::Audited\",\n    \"acme::common::Customer\"\n  ]\n}\n",
+        "site/acme_common/__init__.py": ""
+      },
+      "treeFiles": {
+        "site/acme_common/acme-common.metaobjects.json": "artifacts/acme-common-v1.json"
+      },
+      "config": {
+        "schema_version": 1,
+        "sources": [],
+        "dependencies": [
+          {
+            "name": "acme-common",
+            "python": "acme_common"
+          }
+        ]
+      },
+      "resolveFrom": "app",
+      "pythonPath": [
+        "site"
+      ],
+      "expectDirs": {
+        "acme-common": "site/acme_common"
+      },
+      "expectLock": {
+        "schema_version": 1,
+        "dependencies": {
+          "acme-common": {
+            "version": "1.0.0",
+            "metamodelVersion": "1.0",
+            "resolvedFrom": {
+              "python": "acme_common"
+            },
+            "artifact": "acme-common.metaobjects.json",
+            "integrity": "sha256-10fbf886e22faceca32c56e5e647c3ff1c82f503e638cba3bd3aa9390f7c409d",
+            "packages": [
+              "acme::common"
+            ],
+            "nodes": [
+              "acme::common::Address",
+              "acme::common::Audited",
+              "acme::common::Customer"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "python-a-package-that-is-not-installed-is-unresolved",
+      "tree": {
+        "app/metaobjects/meta.app.json": "{\"metadata.root\":{\"package\":\"app\",\"children\":[{\"object.entity\":{\"name\":\"Order\",\"children\":[{\"source.rdb\":{\"@table\":\"orders\"}},{\"field.long\":{\"name\":\"id\"}},{\"identity.primary\":{\"name\":\"pk\",\"@fields\":[\"id\"]}}]}}]}}",
+        "site/.keep": ""
+      },
+      "treeFiles": {},
+      "config": {
+        "schema_version": 1,
+        "sources": [],
+        "dependencies": [
+          {
+            "name": "acme-common",
+            "python": "acme_common",
+            "dir": "metaobjects"
+          }
+        ]
+      },
+      "resolveFrom": "app",
+      "pythonPath": [
+        "site"
+      ],
+      "expectError": "ERR_DEPENDENCY_UNRESOLVED"
+    },
+    {
+      "name": "python-a-plain-module-is-not-a-package",
+      "tree": {
+        "app/metaobjects/meta.app.json": "{\"metadata.root\":{\"package\":\"app\",\"children\":[{\"object.entity\":{\"name\":\"Order\",\"children\":[{\"source.rdb\":{\"@table\":\"orders\"}},{\"field.long\":{\"name\":\"id\"}},{\"identity.primary\":{\"name\":\"pk\",\"@fields\":[\"id\"]}}]}}]}}",
+        "site/acme_common.py": ""
+      },
+      "treeFiles": {},
+      "config": {
+        "schema_version": 1,
+        "sources": [],
+        "dependencies": [
+          {
+            "name": "acme-common",
+            "python": "acme_common",
+            "dir": "metaobjects"
+          }
+        ]
+      },
+      "resolveFrom": "app",
+      "pythonPath": [
+        "site"
+      ],
+      "expectError": "ERR_DEPENDENCY_UNRESOLVED"
+    },
+    {
+      "name": "python-a-dir-the-package-does-not-ship-is-unresolved",
+      "tree": {
+        "app/metaobjects/meta.app.json": "{\"metadata.root\":{\"package\":\"app\",\"children\":[{\"object.entity\":{\"name\":\"Order\",\"children\":[{\"source.rdb\":{\"@table\":\"orders\"}},{\"field.long\":{\"name\":\"id\"}},{\"identity.primary\":{\"name\":\"pk\",\"@fields\":[\"id\"]}}]}}]}}",
+        "site/acme_common/shared/metaobjects.pkg.json": "{\n  \"schema_version\": 1,\n  \"name\": \"acme-common\",\n  \"version\": \"1.0.0\",\n  \"metamodelVersion\": \"1.0\",\n  \"artifact\": \"acme-common.metaobjects.json\",\n  \"integrity\": \"sha256-10fbf886e22faceca32c56e5e647c3ff1c82f503e638cba3bd3aa9390f7c409d\",\n  \"packages\": [\n    \"acme::common\"\n  ],\n  \"nodes\": [\n    \"acme::common::Address\",\n    \"acme::common::Audited\",\n    \"acme::common::Customer\"\n  ]\n}\n",
+        "site/acme_common/__init__.py": ""
+      },
+      "treeFiles": {
+        "site/acme_common/shared/acme-common.metaobjects.json": "artifacts/acme-common-v1.json"
+      },
+      "config": {
+        "schema_version": 1,
+        "sources": [],
+        "dependencies": [
+          {
+            "name": "acme-common",
+            "python": "acme_common",
+            "dir": "metaobjects"
+          }
+        ]
+      },
+      "resolveFrom": "app",
+      "pythonPath": [
+        "site"
+      ],
+      "expectError": "ERR_DEPENDENCY_UNRESOLVED"
+    }
+  ]
+}

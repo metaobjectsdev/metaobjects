@@ -16,7 +16,7 @@ COMMANDS:
                         way to get any output MetaObjects does not ship (OpenAPI, JSON Schema, …)
   eject <generator>     Copy a reference generator into codegen/generators/ to own it (any time after init)
   eject --list          List every ejectable generator name, grouped by package
-  deps sync [<name>...] Resolve declared dependencies (path transport): sync the committed
+  deps sync [<name>...] Resolve declared dependencies (path, npm, python): sync the committed
                         snapshot + sha256 lock (.metaobjects/deps/, .metaobjects/deps.lock.json)
   deps list             One line per locked dependency: name, version, hash, node/package summary
   types [query]         Search the metadata vocabulary (types, subtypes, @attrs) by name or description

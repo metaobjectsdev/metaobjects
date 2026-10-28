@@ -56,15 +56,16 @@ export interface SharedModelFileOpts {
   /** Which of the publisher's own source files may contribute. Default: the run's
    *  own source files (`ctx.sourceFiles`). */
   files?: readonly string[];
-  /** The published version. Default: the nearest `package.json` `version` walking
-   *  up from the project (`ctx.inputRoot`). */
+  /** The published version. Default: the nearest `package.json` `version` (or a
+   *  `pyproject.toml` `[project]` version) walking up from the project (`ctx.inputRoot`). */
   version?: string;
   /** Named output target, as on every other generator. */
   target?: string;
 }
 
 /** OWNED: where the published version comes from when the `version` option is absent.
- *  Walks up from `startDir` for the nearest `package.json` carrying a string `version`. */
+ *  Walks up from `startDir` for the nearest `package.json` carrying a string `version`,
+ *  or a `pyproject.toml` with a static `[project]` version (a Python package). */
 function nearestPackageVersion(startDir: string): string | undefined {
   let dir = startDir;
   for (let i = 0; i < 64; i++) {
@@ -77,9 +78,30 @@ function nearestPackageVersion(startDir: string): string | undefined {
         // An unparsable package.json is not a version source — keep walking up.
       }
     }
+    const pyprojectPath = join(dir, "pyproject.toml");
+    if (existsSync(pyprojectPath)) {
+      const version = pyprojectVersion(readFileSync(pyprojectPath, "utf-8"));
+      if (version !== undefined) return version;
+    }
     const parent = dirname(dir);
     if (parent === dir) return undefined;
     dir = parent;
+  }
+  return undefined;
+}
+
+/** A static `version = "…"` in `pyproject.toml`'s `[project]` table, or undefined
+ *  (no table, or a `dynamic` version a build backend computes). */
+function pyprojectVersion(toml: string): string | undefined {
+  let inProject = false;
+  for (const raw of toml.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (line.startsWith("[")) {
+      inProject = line.replace(/#.*$/, "").trim() === "[project]";
+      continue;
+    }
+    const m = inProject ? /^version\s*=\s*(?:"([^"]*)"|'([^']*)')/.exec(line) : null;
+    if (m) return m[1] ?? m[2];
   }
   return undefined;
 }
@@ -110,7 +132,7 @@ export function sharedModelFile(opts: SharedModelFileOpts): Generator {
       const version = opts.version ?? nearestPackageVersion(ctx.inputRoot ?? ctx.projectRoot ?? process.cwd());
       if (version === undefined) {
         throw new Error(
-          `sharedModelFile("${opts.name}"): no version available — pass \`version\` explicitly, or run inside a project with a package.json version at or above the project root.`,
+          `sharedModelFile("${opts.name}"): no version available — pass \`version\` explicitly, or run inside a project with a package.json or pyproject.toml version at or above the project root.`,
         );
       }
 

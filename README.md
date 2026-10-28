@@ -172,7 +172,7 @@ first-week wedge plan — and `meta init` picks up from there.
 | Capability requirements (`requirement.*`) | `meta verify` gate + authoring lint; `requirementTests()` stubs | `mvn metaobjects:verify` gate; JUnit Jupiter `requirement-tests` | Gate via the Java Maven goal; JUnit Jupiter `requirement-tests` | `dotnet meta verify` gate; xUnit `requirement-tests` | `metaobjects verify` gate; pytest `requirement-tests` |
 | Reporting vocabulary (`dimension` / `measure` / `segment` / `object.report`, FR-044) | Registered; a view-backed report becomes a SQL view in `meta migrate`, is read by `ObjectManager`, and gets generated read-only list routes and a TanStack list hook (no grid or form); the `cube-model` generator writes the vocabulary as Cube data-model files | Registered; OMDB reads a view-backed report; generates a read-only Spring controller, DTO, repository and filter allowlist | Registered (via Java); generates an Exposed table object, a row data class, a filter allowlist and a read-only Spring controller per view-backed report | Registered; generates a keyless EF Core row type, read-only routes and a filter allowlist per view-backed report | Registered; `ObjectManager` reads a view-backed report; generates a Pydantic row model, a read-only FastAPI router and a filter allowlist |
 | Libraries (`libraries: [...]`) | Yes | Yes | Yes (via Java) | Yes | Yes |
-| Metadata dependencies (`dependencies`) | Yes (`meta deps sync`, `path` transport) | Phase 2 | Phase 2 | Phase 2 | Yes (loads the synced snapshot) |
+| Metadata dependencies (`dependencies`) | Yes (`meta deps sync`: `path`, `npm` and `python` transports) | Phase 2 | Phase 2 | Phase 2 | Yes (loads the synced snapshot) |
 | Runtime metadata (ObjectManager-style) | Yes (`runtime-ts`) | Yes (OMDB) | Yes (via Java OMDB + Exposed) | Roadmap | Yes (ObjectManager) |
 | React / Angular UI client (browser) | React: **published** (`@metaobjectsdev/react` + `@metaobjectsdev/tanstack`), codegen + runtime. Angular 18: **source-only by decision** ([ADR-0048](spec/decisions/ADR-0048-angular-tier-source-only.md)) — `@metaobjectsdev/angular` + `@metaobjectsdev/codegen-ts-angular` build in-repo on their own `0.6.x` line but are deliberately not on npm (`npm i @metaobjectsdev/angular` will 404) until they meet the ADR's promotion bar. Consume them from source. | Consumes TS client via REST | Consumes TS client via REST | Consumes TS client via REST | Consumes TS client via REST |
 | Own a generator (`eject`) | Yes (`meta eject`) | Yes (`mvn metaobjects:eject`) | Yes (`mvn metaobjects:eject`) | Yes (`dotnet meta eject`) | Yes (`metaobjects eject`) |
@@ -262,8 +262,8 @@ sixth ships two libraries at their own stability labels:
    `meta eject <library>`. See [`docs/features/libraries.md`](docs/features/libraries.md).
 
 **Sharing a model across your own projects** *(the TypeScript toolchain publishes;
-TypeScript, Python, Java and Kotlin projects consume, over a `path` dependency such as a sibling
-checkout or submodule; C# arrives in Phase 2)* — one project publishes
+TypeScript, Python, Java and Kotlin projects consume, from an installed npm or Python
+package or over a `path` dependency such as a sibling checkout; C# arrives in Phase 2)* — one project publishes
 part of its model (a common `Customer`, an audited base, a set of enums) with
 `sharedModelFile()`, and another declares it in `dependencies`, syncs it into a
 committed, hash-locked snapshot and builds on it with `extends` and references. When the
