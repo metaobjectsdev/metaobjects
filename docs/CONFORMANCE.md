@@ -45,7 +45,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 | [`fixtures/generator-registry-conformance/`](../fixtures/generator-registry-conformance/) | 1 canonical manifest | ✓ | ✓ | ✓ | ✓ | ✓ |
 | [`fixtures/provider-composition-conformance/`](../fixtures/provider-composition-conformance/) | 9 (5 error-shape + 4 compose-load) | ✓ | ✓ | — (JVM registry via Java) | ✓ | ✓ |
 | [`fixtures/source-resolution-conformance/`](../fixtures/source-resolution-conformance/) | 25 cases | ✓ (reference implementation) | ✓ | inherits via Java | ✓ | ✓ |
-| [`fixtures/scope-conformance/`](../fixtures/scope-conformance/) | 10 cases | ✓ (reference implementation) | — | — | — | ✓ |
+| [`fixtures/scope-conformance/`](../fixtures/scope-conformance/) | 10 cases | ✓ (reference implementation) | ✓ | inherits via Java | ✓ | ✓ |
 | [`fixtures/dependency-conformance/`](../fixtures/dependency-conformance/) | 23 cases | ✓ (reference implementation) | — (Phase 2) | — (Phase 2) | — (Phase 2) | ✓ (2 of 23 assert a documented Python-only vocabulary gap instead of the corpus's full contract — see below) |
 | [`fixtures/agent-context-conformance/`](../fixtures/agent-context-conformance/) | 4 | ✓ (the emitter is TS-owned) | — | — | — | — |
 | [`fixtures/metamodel-docs/`](../fixtures/metamodel-docs/) | 1 | ✓ (docs emit is TS-owned) | — | — | — | — |
@@ -423,15 +423,20 @@ matching is case-sensitive.** These are exactly the rules four independent
 implementations would otherwise each get slightly wrong — the failure mode that
 produced the cross-port `LIKE`/`ILIKE` divergence fixed in 0.21.6.
 
-**TypeScript and Python run it today.** The reference implementation is
+**TypeScript, Java, Kotlin, C# and Python run it.** The reference implementation is
 [`server/typescript/packages/metadata/src/scope.ts`](../server/typescript/packages/metadata/src/scope.ts)
 (`compilePattern` / `compileScope` / `matchesScope`; `@metaobjectsdev/sdk` re-exports
 it unchanged, since it moved there from `sdk` when FR-023 needed it from
 `codegen-ts` without a `sdk` dependency), and the corpus was authored against it.
 Python's port (`server/python/src/metaobjects/scope.py`, `matches_scope` using
-`re.fullmatch`) runs the same corpus. Java, Kotlin and C# have no runner yet; when
-each gains one, this corpus is what it implements against — it exists now precisely
-so those three land on one grammar rather than three.
+`re.fullmatch`) runs the same corpus. Java's (`com.metaobjects.config.Scope`, run by
+`ScopeConformanceTest`) matches with `Matcher.matches()` and splits patterns with a
+`-1` limit, because `String.split` would otherwise drop a trailing empty segment and
+let `acme::` compile instead of failing. C#'s (`MetaObjects.Config.Scope`, run by
+`ScopeConformanceTests`) anchors with `\A…\z` rather than `^…$`, since .NET's `$`
+also matches before a trailing newline. Kotlin has no runner of its own: it inherits
+the Java loader. Each of those two guards is pinned by a test beside the corpus, since
+the corpus asserts matches only and carries no invalid-pattern case.
 
 ### `fixtures/dependency-conformance/` (23 cases)
 

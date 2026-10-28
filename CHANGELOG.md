@@ -16,6 +16,14 @@ here.**
 
 ### Added
 
+- **Java, Kotlin and C# can compile and match `scope` patterns.** `com.metaobjects.config.Scope`
+  (Java; Kotlin inherits it) and `MetaObjects.Config.Scope` (C#) port the scope-pattern grammar from
+  TypeScript (`compilePattern` / `compileScope` / `matchesScope`), and both run the shared
+  `fixtures/scope-conformance/` corpus. This is the grammar the cross-repo dependency work needs in
+  these ports (FR-023 Phase 2, #482); nothing reads `scope` from `.metaobjects/config.json` in either
+  port yet, so no command's behavior changes. A pattern with an empty segment, a trailing `::` or an
+  odd run of `:` is refused with `ERR_SCOPE_PATTERN_INVALID`.
+
 - **C# reads its generated-code directory from `.metaobjects/config.json`, so a plain
   `dotnet meta verify` runs the codegen gate.** Set `"csharp": { "outDir": "Generated" }`
   (relative to the directory holding `.metaobjects/`). `dotnet meta gen` writes there and
