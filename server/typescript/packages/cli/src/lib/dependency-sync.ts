@@ -265,17 +265,27 @@ const PEP440_PRE_LABEL: Readonly<Record<string, string>> = {
   rc: "rc",
 };
 
-/** PEP 440 normalization of the spellings a `pyproject.toml` may carry but an
- *  installed distribution reports normalized (`1.0.0-rc.1` → `1.0.0rc1`,
- *  `1.0-post1` → `1.0.post1`, `v1.0.DEV` → `1.0.dev0`). */
-function pep440Normalized(version: string): string {
-  return version
-    .trim()
-    .toLowerCase()
-    .replace(/^v/, "")
-    .replace(/[-_.]?(alpha|beta|preview|pre|rc|a|b|c)[-_.]?(\d*)/, (_m, label: string, n: string) => `${PEP440_PRE_LABEL[label]}${n || "0"}`)
-    .replace(/[-_.]?(post|rev|r)[-_.]?(\d*)/, (_m, _label: string, n: string) => `.post${n || "0"}`)
-    .replace(/[-_.]?dev[-_.]?(\d*)/, (_m, n: string) => `.dev${n || "0"}`);
+/** PEP 440 Appendix B `VERSION_PATTERN` (as in the `packaging` library),
+ *  anchored and case-insensitive. */
+const PEP440_VERSION =
+  /^\s*v?(?:(?:(?<epoch>[0-9]+)!)?(?<release>[0-9]+(?:\.[0-9]+)*)(?:[-_.]?(?<preL>alpha|a|beta|b|preview|pre|c|rc)[-_.]?(?<preN>[0-9]+)?)?(?:-(?<postN1>[0-9]+)|[-_.]?(?<postL>post|rev|r)[-_.]?(?<postN2>[0-9]+)?)?(?:[-_.]?(?<devL>dev)[-_.]?(?<devN>[0-9]+)?)?)(?:\+(?<local>[a-z0-9]+(?:[-_.][a-z0-9]+)*))?\s*$/i;
+
+const pep440Number = (n: string | undefined): string => (n ?? "0").replace(/^0+(?=\d)/, "");
+
+/** The PEP 440 normal form an installed distribution reports (`1.0.0-rc.1` →
+ *  `1.0.0rc1`, `1.0-1` → `1.0.post1`), or undefined when `version` is not
+ *  PEP 440. */
+function pep440Normalized(version: string): string | undefined {
+  const g = PEP440_VERSION.exec(version)?.groups;
+  if (g === undefined) return undefined;
+  const epoch = g.epoch !== undefined && pep440Number(g.epoch) !== "0" ? `${pep440Number(g.epoch)}!` : "";
+  const release = g.release!.split(".").map(pep440Number).join(".");
+  const pre = g.preL !== undefined ? `${PEP440_PRE_LABEL[g.preL.toLowerCase()]}${pep440Number(g.preN)}` : "";
+  const post =
+    g.postN1 !== undefined || g.postL !== undefined ? `.post${pep440Number(g.postN1 ?? g.postN2)}` : "";
+  const dev = g.devL !== undefined ? `.dev${pep440Number(g.devN)}` : "";
+  const local = g.local !== undefined ? `+${g.local.toLowerCase().replace(/[-_]/g, ".")}` : "";
+  return `${epoch}${release}${pre}${post}${dev}${local}`;
 }
 
 /** The installed package's own version should be the manifest's: `sharedModelFile()`
@@ -291,7 +301,7 @@ export function packageVersionWarning(
   if (packageVersion === undefined) return undefined;
   const same =
     "python" in spec
-      ? pep440Normalized(packageVersion) === pep440Normalized(manifestVersion)
+      ? (pep440Normalized(packageVersion) ?? packageVersion) === (pep440Normalized(manifestVersion) ?? manifestVersion)
       : packageVersion === manifestVersion;
   if (same) return undefined;
   const pkg = "npm" in spec ? `npm package "${spec.npm}"` : "python" in spec ? `Python package "${spec.python}"` : "package";

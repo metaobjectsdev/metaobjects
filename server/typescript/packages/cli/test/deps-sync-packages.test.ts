@@ -321,6 +321,12 @@ describe("the installed-vs-manifest version warning", () => {
   test.each([
     ["1.0.0rc1", "1.0.0-rc.1"],
     ["1.0.0rc1", "1.0.0.RC1"],
+    ["1.0.0rc1.post2", "1.0.0-rc1-post2"],
+    ["1.0.0+abc", "1.0.0+abc"],
+    ["1.0.post1", "1.0-1"],
+    ["1.0.0+ubuntu.1", "1.0.0+Ubuntu-1"],
+    ["1!2.0", "1!2.0"],
+    ["2.0", "0!2.0"],
     ["1.0a0", "1.0-alpha"],
     ["1.0b2", "1.0.beta.2"],
     ["1.0rc2", "1.0c2"],
@@ -338,6 +344,9 @@ describe("the installed-vs-manifest version warning", () => {
 
   test("python: a genuinely different version still warns", () => {
     expect(packageVersionWarning(DEP, py, "1.0.0rc2", "1.0.0-rc.1")).toContain("records 1.0.0-rc.1");
+    expect(packageVersionWarning(DEP, py, "1.0.0rc1", "1.0.0rc2")).toContain("records 1.0.0rc2");
+    expect(packageVersionWarning(DEP, py, "1.0.0rc1.post2", "1.0.0rc1")).toContain("records 1.0.0rc1");
+    expect(packageVersionWarning(DEP, py, "1.0", "1.0.0")).toContain("records 1.0.0");
     expect(packageVersionWarning(DEP, py, "1.1.0", "1.0.0")).toContain("is 1.1.0");
   });
 
