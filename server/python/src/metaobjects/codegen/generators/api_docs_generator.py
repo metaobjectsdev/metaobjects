@@ -49,7 +49,7 @@ class ApiDocsGenerator:
     def generate(self, ctx: GenContext) -> list[EmittedFile]:
         if ctx.loaded_root is None:
             return []
-        model = PythonApiModelBuilder().build(ctx.loaded_root, self.project_name)
+        model = PythonApiModelBuilder(ctx.config.api_prefix).build(ctx.loaded_root, self.project_name)
         renderer = PythonApiDocsRenderer()
         layout = Layout.PACKAGE
 
@@ -59,8 +59,12 @@ class ApiDocsGenerator:
         files: list[EmittedFile] = []
         for unit in model.units:
             page_path = doc_page_output_path(layout, unit.package, unit.node)
-            href = model_cross_href(
-                f"{self.api_subdir}/{page_path}", page_path, self.model_base_url
+            # The model page is written by no Python generator, so a relative link would be
+            # dead: link only when `modelBaseUrl` says where the model pages are published.
+            href = (
+                model_cross_href(f"{self.api_subdir}/{page_path}", page_path, self.model_base_url)
+                if self.model_base_url
+                else None
             )
             files.append(page(page_path, renderer.render_unit_page(unit, href)))
         files.append(page("README.md", renderer.render_index(model, layout)))

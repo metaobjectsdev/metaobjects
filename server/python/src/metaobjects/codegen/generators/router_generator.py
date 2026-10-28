@@ -10,7 +10,8 @@ GET list + GET by id, with every write verb answering the cross-port
 FR-008 §2.3. Conforms to the cross-port REST API contract
 (see ``docs/features/api-contract.md``):
 
-* Routes: ``/api/<entity-plural-lowercase>`` (e.g. ``/api/authors``).
+* Routes: ``<apiPrefix>/<entity-plural-lowercase>`` (e.g. ``/api/authors``; the prefix
+  is ``apiPrefix`` in ``metaobjects.config.yaml``, default ``/api``).
 * 5 CRUD verbs: GET list, GET by id, POST create, PATCH+PUT update, DELETE.
 * ``?withCount=1`` switches list response to ``{"rows", "total"}``.
 * ``?sort=field:asc|desc`` parsed via a static per-entity allowlist
@@ -70,6 +71,7 @@ from metaobjects.meta.core.object.object_constants import OBJECT_SUBTYPE_REPORT
 from metaobjects.meta.persistence.source.source_constants import (
     SOURCE_KIND_TABLE,
 )
+from metaobjects.codegen.config import DEFAULT_API_PREFIX
 from metaobjects.naming import DEFAULT_COLUMN_NAMING
 from metaobjects.naming_refs import ref_target
 from metaobjects.wire import WIRE_NATIVE, WireFormat, wire_of
@@ -1204,6 +1206,7 @@ class RouterGenerator:
         object_index: dict[str, MetaObject],
         column_naming: str = DEFAULT_COLUMN_NAMING,
         wire: WireFormat = WireFormat(),
+        api_prefix: str = DEFAULT_API_PREFIX,
     ) -> str:
         """FR-017 TPH: emit the discriminator base's router — a polymorphic collection
         at the base path + a full per-subtype CRUD set at /<base>/<segment>. The repo
@@ -1377,7 +1380,7 @@ class RouterGenerator:
             sub = st.entity.name
             parts.append(f"from .{sub} import {sub}Create, {sub}Patch")
         parts.append("")
-        parts.append(f'router = APIRouter(prefix="/api/{plural}", tags=["{plural}"])')
+        parts.append(f'router = APIRouter(prefix="{api_prefix}/{plural}", tags=["{plural}"])')
         parts.append("")
         parts.append("")
         parts.extend(_sort_type_and_tables_lines(sort_field_nodes))
@@ -1606,6 +1609,7 @@ class RouterGenerator:
         column_naming: str = DEFAULT_COLUMN_NAMING,
         wire: WireFormat | None = None,
         report_export: bool = False,
+        api_prefix: str = DEFAULT_API_PREFIX,
     ) -> str | None:
         """Render an entity as a FastAPI ``APIRouter`` module.
 
@@ -1656,7 +1660,9 @@ class RouterGenerator:
             # answering the cross-port 405 envelope. Gated by
             # fixtures/api-contract-conformance/projection/.
             if is_read_only_routed(entity):
-                return self._render_readonly_router(entity, column_naming, wire, report_export)
+                return self._render_readonly_router(
+                    entity, column_naming, wire, report_export, api_prefix
+                )
             return None
 
         # FR-017 TPH: a discriminator base emits a polymorphic collection at the base
@@ -1664,7 +1670,9 @@ class RouterGenerator:
         if object_index is not None:
             plan = tph_plan_for(entity, object_index)
             if plan is not None:
-                return self._render_tph_router(entity, plan, object_index, column_naming, wire)
+                return self._render_tph_router(
+                    entity, plan, object_index, column_naming, wire, api_prefix
+                )
 
         m2m: list[M2mDescriptor] = (
             resolve_m2m_descriptors(entity, object_index, column_naming)
@@ -1758,7 +1766,7 @@ class RouterGenerator:
         # both keyed by field.name), NOT the read/entity-shape model.
         parts.append(f"from .{short_name} import {short_name}Create, {short_name}Patch")
         parts.append("")
-        parts.append(f'router = APIRouter(prefix="/api/{plural}", tags=["{plural}"])')
+        parts.append(f'router = APIRouter(prefix="{api_prefix}/{plural}", tags=["{plural}"])')
         parts.append("")
         parts.append("")
         # Sort allowlist + parse helper — per-entity, closed over the allowlist set so
@@ -1889,6 +1897,7 @@ class RouterGenerator:
         column_naming: str = DEFAULT_COLUMN_NAMING,
         wire: WireFormat = WireFormat(),
         report_export: bool = False,
+        api_prefix: str = DEFAULT_API_PREFIX,
     ) -> str:
         """Render a read-only (`@kind: view` / `materializedView`) object as a FastAPI
         ``APIRouter``: GET list + GET by id, and the four write verbs answering 405. An
@@ -1983,7 +1992,7 @@ class RouterGenerator:
             parts.append(f"from .{snake}_export import export_csv, export_xml")
             parts.append(f"from .{EXPORT_WRITER_MODULE} import EXPORT_MAX_ROWS")
         parts.append("")
-        parts.append(f'router = APIRouter(prefix="/api/{plural}", tags=["{plural}"])')
+        parts.append(f'router = APIRouter(prefix="{api_prefix}/{plural}", tags=["{plural}"])')
         parts.append("")
         parts.append("")
         parts.extend(_sort_type_and_tables_lines(sort_field_nodes))
@@ -2064,7 +2073,8 @@ class RouterGenerator:
             # column name within one run.
             wire = wire_of(c.loaded_root) if c.loaded_root is not None else None
             source = self.render_router(
-                entity, index, c.config.column_naming, wire, REPORT_EXPORT_GENERATOR in c.generators
+                entity, index, c.config.column_naming, wire, REPORT_EXPORT_GENERATOR in c.generators,
+                c.config.api_prefix,
             )
             if source is None:
                 return []
@@ -2086,11 +2096,14 @@ def render_router(
     entity: MetaObject,
     object_index: dict[str, MetaObject] | None = None,
     column_naming: str = DEFAULT_COLUMN_NAMING,
+    api_prefix: str = DEFAULT_API_PREFIX,
 ) -> str | None:
     """Module-level back-compat wrapper. Delegates to a default
     :class:`RouterGenerator` instance so existing callers (and tests) are
     unaffected. Subclass :class:`RouterGenerator` to customize."""
-    return RouterGenerator().render_router(entity, object_index, column_naming)
+    return RouterGenerator().render_router(
+        entity, object_index, column_naming, api_prefix=api_prefix
+    )
 
 
 def router_generator(report_max_rows: int = DEFAULT_REPORT_MAX_ROWS) -> Generator:

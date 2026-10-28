@@ -115,3 +115,25 @@ def test_unit_page_carries_the_contract_back_link() -> None:
     assert "**Model / metadata:** [Order](../../../../acme/shop/Order.md)" in page
     assert "## Model" in page
     assert "## REST" in page
+
+
+def test_api_prefix_is_the_documented_base_path() -> None:
+    case = _repo_root() / "fixtures" / "conformance" / "api-docs-cross-port" / "input"
+    root = MetaDataLoader.from_directory(str(case)).root
+
+    def order_page(prefix: str | None) -> str:
+        builder = PythonApiModelBuilder() if prefix is None else PythonApiModelBuilder(prefix)
+        model = builder.build(root, "p")
+        return render_unit_page(next(u for u in model.units if u.node == "Order"), None)
+
+    assert "/api/orders" in order_page(None)
+    assert "/v1/orders" in order_page("/v1") and "/api/orders" not in order_page("/v1")
+    bare = order_page("")
+    assert "`/orders" in bare or " /orders" in bare
+    assert "/api/" not in bare
+
+
+def test_unit_page_omits_the_back_link_when_nothing_resolves() -> None:
+    model = _model()
+    order = next(u for u in model.units if u.node == "Order")
+    assert "Model / metadata" not in render_unit_page(order, None)

@@ -28,6 +28,7 @@ from pathlib import Path
 
 import yaml  # type: ignore[import-untyped]  # PyYAML ships no type stubs
 
+from metaobjects.codegen.config import DEFAULT_API_PREFIX
 from metaobjects.naming import removed_naming_source_message
 
 #: Config filename looked up in the cwd when ``--config`` is not given.
@@ -50,7 +51,7 @@ _REMOVED_COLUMN_NAMING_KEY = "columnNaming"
 #: schema by ``test_schema_and_loader_accept_EXACTLY_the_same_keys``.
 TOP_LEVEL_KEYS: tuple[str, ...] = (
     "metadata", "providers", "libraries", "targets", "requirementTests", "apiDocs",
-    "templates",
+    "templates", "apiPrefix",
 )
 
 
@@ -198,6 +199,9 @@ class ProjectConfig:
     #: absolute). ``None`` => ``--templates`` / ``--prompts``, else ``prompts/`` when it exists,
     #: else ``templates/``.
     templates: str | None = None
+    #: ``apiPrefix``: the path generated routers mount under, and the api docs name. Same key
+    #: as the TypeScript config; here the default is ``/api`` and ``""`` mounts at the root.
+    api_prefix: str = DEFAULT_API_PREFIX
 
     def metadata_dir(self) -> str:
         """The metadata dir resolved against ``config_dir`` (absolute path string)."""
@@ -460,6 +464,14 @@ def load_project_config(path: Path) -> ProjectConfig:
     if templates is not None and (not isinstance(templates, str) or not templates):
         raise ConfigError(f"{path}: 'templates' must be a non-empty string (a directory path).")
 
+    api_prefix = raw.get("apiPrefix", DEFAULT_API_PREFIX)
+    if not isinstance(api_prefix, str) or (api_prefix and not api_prefix.startswith("/")):
+        raise ConfigError(
+            f"{path}: 'apiPrefix' must be \"\" (mount at the root) or a path starting with "
+            f"'/', e.g. \"/api\" or \"/v1\"; got {api_prefix!r}."
+        )
+    api_prefix = api_prefix.rstrip("/")
+
     return ProjectConfig(
         config_dir=path.parent.resolve(),
         metadata=metadata,
@@ -471,4 +483,5 @@ def load_project_config(path: Path) -> ProjectConfig:
         api_docs=api_docs,
         legacy_docs=legacy_docs,
         templates=templates,
+        api_prefix=api_prefix,
     )
