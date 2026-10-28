@@ -174,7 +174,7 @@ dropped. `gen` and `verify --codegen` read the same value.
 
 **Strict load.** `metaobjects gen` loads leniently and warns about an unknown attribute.
 `metaobjects gen --strict` uses the load `verify` uses (ADR-0023): an unknown attribute is an
-error with `verify`'s message and hint, the exit code is non-zero, and no file is written.
+error with `verify`'s message and a gen-specific hint (drop `--strict`), the exit code is non-zero, and no file is written.
 
 **Owned copies.** When `gen` runs and an owned generator copy (`codegen/generators/`) is
 identical to the shipped one, it prints one `note:` line on stderr naming it and

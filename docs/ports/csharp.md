@@ -232,7 +232,7 @@ or identical copies show.
 
 **Strictness.** `dotnet meta gen` loads leniently: an unknown `@attribute` is a warning naming
 the attribute, node and file, and gen generates anyway. `dotnet meta gen --strict` loads as
-`verify` does (ADR-0023): the same `ERR_UNKNOWN_ATTR` lines and hint, exit 1, before any file is
+`verify` does (ADR-0023): the same `ERR_UNKNOWN_ATTR` lines with a gen-specific hint (drop `--strict`), exit 1, before any file is
 written. `verify` itself stays strict unless you pass `--lax`.
 
 ## Write your own generator
