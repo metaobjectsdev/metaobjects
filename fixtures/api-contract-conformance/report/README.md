@@ -69,8 +69,7 @@ object uses (`InvoicesByMonth` is `/api/invoices_by_months`).
 
 ## The model
 
-Four entities (`Invoice`; `Category`, `Product` and their child `Sale`) and ten reports,
-nine served and one sourceless on purpose.
+Entities `Invoice`; `Category`, `Product` and their child `Sale`; `Reading`; `ExportLine`, and the reports over them. Ten reports of the original set (nine served and one sourceless on purpose), plus `ReadingLog` and `ExportCells`.
 
 | Report | Route | View | Derived fields |
 |---|---|---|---|
@@ -84,6 +83,7 @@ nine served and one sourceless on purpose.
 | `SalesByCategory` | `/api/sales_by_categories` | `v_sales_by_category` | `categoryName` (through `Sale.fkProduct.fkCategory`), `sales`, `revenueCents`, `maxCents`, `largeSales` |
 | `SalesBySku` | `/api/sales_by_skus` | `v_sales_by_sku` | `productSku` (a uuid, through `Sale.fkProduct`), `sales`, `revenueCents` |
 | `ProductRefunds` | `/api/product_refunds` | `v_product_refunds` | `productId`, `productName`, `sales`, `hasRefund` (a boolean `any`), `hasRefundOrFalse` (the same with `@default: 0`) |
+| `ExportCells` | `/api/export_cells` | `v_export_cells` | `label` (a nullable string, with values chosen to need CSV guarding and quoting), `cells`, `totalCents` |
 
 `ProductRevenue` is `@from: Sale` with `@spine: "Sale.fkProduct"`: its view reads FROM
 `products` and LEFT JOINs `sales`, so its spine key `productId` and `productName` are never
@@ -129,7 +129,13 @@ report/
     ├── filter-uuid-dimension.yaml        # a uuid dimension: eq, ne, in, and its wire spelling
     ├── list-boolean-measure.yaml         # @agg any: true, false, null with no facts, and its @default
     ├── filter-on-boolean-measure.yaml    # eq and isNull on a boolean measure, plain and defaulted
-    └── sort-on-boolean-measure.yaml      # a defaulted boolean measure sorts false before true
+    ├── sort-on-boolean-measure.yaml      # a defaulted boolean measure sorts false before true
+    ├── export-csv.yaml                   # ?format=csv: header, CRLF, guard, quoting, null, Content-Disposition
+    ├── export-json.yaml                  # ?format=json: the list's array plus Content-Disposition; no format, no header
+    ├── export-xml.yaml                   # ?format=xml with xmlNulls "nil", compared as an XML infoset
+    ├── export-invalid-format.yaml        # invalid_format and its expected list; xlsx reserved; Accept ignored
+    ├── export-with-count.yaml            # withCount: csv/xml -> export_with_count, json -> envelope
+    └── export-too-large.yaml             # export_too_large at maxRows 60; the list route's report_too_large unchanged
 ```
 
 ### Why `seed.json` has two halves
@@ -162,11 +168,29 @@ hand-rolled reference server would answer every scenario by construction.
 
 | Port | Generated lane | Note |
 |---|---|---|
-| TypeScript | wired | `server/typescript/packages/integration-tests/test/api-contract-report.test.ts` (30 scenarios + a seed-vs-view check). Full stack: generated Fastify routes over the real views on Testcontainers Postgres. `api-contract-report-sqlite.test.ts` runs the same 30 on SQLite, `api-contract-report-mysql.test.ts` on MySQL 8.4, and the SQLite test file also runs them through local D1 (Miniflare) |
+| TypeScript | wired | `server/typescript/packages/integration-tests/test/api-contract-report.test.ts` (37 scenarios + a seed-vs-view check). Full stack: generated Fastify routes over the real views on Testcontainers Postgres. `api-contract-report-sqlite.test.ts` runs the same 37 on SQLite, `api-contract-report-mysql.test.ts` on MySQL 8.4, and the SQLite test file also runs them through local D1 (Miniflare) |
 | C# | wired | `server/csharp/MetaObjects.IntegrationTests/Api/ApiContractReportConformanceTest.cs`. Full stack: generated routes and EF Core over `schema.postgres.sql` on Testcontainers Postgres, over `schema.sqlite.sql` on SQLite, and over `schema.mysql.sql` on MySQL 8.4 |
-| Java | wired | `server/java/integration-tests/src/test/java/com/metaobjects/integration/api/ReportOmdb{Postgres,Sqlite,MySql}ApiContractConformanceTest.java` (30 scenarios + a scenario-count check, on each engine). Full stack: generated controllers over OMDB reading the real views |
-| Kotlin | wired | `server/java/integration-tests-kotlin/src/test/kotlin/com/metaobjects/integration/kotlin/api/report/ReportGeneratedApiContractConformanceTest.kt` (30 scenarios, the count check, and a check that the sourceless report generated nothing). Full stack: generated controllers over the generated Exposed table objects, reading the real views on Postgres, SQLite and MySQL |
-| Python | wired | `server/python/tests/integration/test_api_contract_report.py` (30 scenarios, a check that exactly the served reports are generated, a views-vs-seed check, and `/api/invoice_days` is `404`). Full stack: generated FastAPI routers over `ObjectManager`, reading the real views on Postgres, SQLite and MySQL |
+| Java | wired | `server/java/integration-tests/src/test/java/com/metaobjects/integration/api/ReportOmdb{Postgres,Sqlite,MySql}ApiContractConformanceTest.java` (37 scenarios + a scenario-count check, on each engine). Full stack: generated controllers over OMDB reading the real views |
+| Kotlin | wired | `server/java/integration-tests-kotlin/src/test/kotlin/com/metaobjects/integration/kotlin/api/report/ReportGeneratedApiContractConformanceTest.kt` (37 scenarios, the count check, and a check that the sourceless report generated nothing). Full stack: generated controllers over the generated Exposed table objects, reading the real views on Postgres, SQLite and MySQL |
+| Python | wired | `server/python/tests/integration/test_api_contract_report.py` (37 scenarios, a check that exactly the served reports are generated, a views-vs-seed check, and `/api/invoice_days` is `404`). Full stack: generated FastAPI routers over `ObjectManager`, reading the real views on Postgres, SQLite and MySQL |
 
 The scenarios use only assertion keys every runner already has (`equals`,
 `length`, `envelope`, `error` with `field`, and a status with no `body`).
+
+## Report export (`export-*.yaml`)
+
+Contract: [api-contract.md, "Report export"](../../../docs/features/api-contract.md#report-export).
+Every lane wires the `report-export` generator with **`maxRows` 60** (so `ReadingLog`'s 61 rows
+trip `export_too_large` exactly as they trip the list cap) and **`xmlNulls: "nil"`**, so the corpus
+pins the one cross-port null form without touching any port's default. `ExportCells` is the
+report whose labels are chosen to exercise the CSV rules: four leading-character guards (`=`, `+`,
+`-`, `@`), a comma, an embedded quote, an embedded line feed, an XML-special `<&>`, and a null.
+
+The scenarios use three assertion keys the rest of the corpus does not, so a runner adds them:
+
+| Key | Where | Meaning |
+|---|---|---|
+| `headers` | `expect` | Lower-cased header name to its exact value (`content-type` ignores whitespace around `;`); `null` means the header is absent. |
+| `text` | `expect.body` | The exact body, compared as UTF-8 text (CSV). |
+| `xml` | `expect.body` | The body compared as an XML infoset: element names, attributes, text and order; the XML declaration and whitespace between elements are ignored. |
+| `headers` | a request | Headers to send with the request (`export-invalid-format` r5 sends `Accept: text/csv`). |

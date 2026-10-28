@@ -119,7 +119,13 @@ public class ReportingInertTests
         // page arrives through the runner too; Api_docs_add_one_page_for_the_served_report_and_change_nothing_else
         // pins its content.
         (ApiDocsGeneratorName, ApiDocsReportPage),
+        // report-export is standalone and writes one shared writer plus a module per served report.
+        ("report-export", ExportWriterFile),
+        ("report-export", ExportModuleFile),
     ];
+
+    private const string ExportWriterFile = "ReportExportWriter.g.cs";
+    private const string ExportModuleFile = "StoreTotalsExport.g.cs";
 
     private const string ApiDocsGeneratorName = "api-docs";
     private const string ApiDocsReportPage = "api/csharp/acme/shop/StoreTotals.md";
@@ -311,7 +317,7 @@ public class ReportingInertTests
         // The view-backed report: its row, its allowlist and its routes file; nothing in the
         // names tier.
         Assert.Equal(
-            [RowFile, AllowlistFile, RoutesFile, ApiDocsReportPage],
+            [RowFile, ExportModuleFile, AllowlistFile, RoutesFile, ApiDocsReportPage],
             files.Keys.Where(k => k.Contains("StoreTotals", StringComparison.Ordinal)).ToList());
         // A sourceless report: no file at all, and no mention in any file.
         foreach (var sourceless in SourcelessReports)
@@ -323,7 +329,7 @@ public class ReportingInertTests
         var mentions = files.Where(f => f.Value.Contains("StoreTotals", StringComparison.Ordinal))
             .Select(f => f.Key).OrderBy(k => k, StringComparer.Ordinal).ToList();
         Assert.Equal(
-            ((string[])[DbContextFile, RowFile, AllowlistFile, RoutesFile, ApiDocsReportPage, .. ApiDocsSharedPages])
+            ((string[])[DbContextFile, RowFile, AllowlistFile, RoutesFile, ExportModuleFile, ApiDocsReportPage, .. ApiDocsSharedPages])
                 .OrderBy(k => k, StringComparer.Ordinal).ToList(),
             mentions);
     }

@@ -73,6 +73,9 @@ public class ReportingInertTest extends SharedRegistryTestBase {
         "repository", "acme/shop/StoreTotalsRepository.java",
         "filter-allowlist", "acme/shop/StoreTotalsFilterAllowlist.java",
         "routes", "acme/shop/StoreTotalsController.java",
+        // report-export (opt-in, standalone) writes the report's export module and the one shared
+        // writer: two files, "|"-separated.
+        "report-export", "acme/shop/StoreTotalsExport.java|acme/shop/ReportExportWriter.java",
         // The api reference documents the served report as one more unit.
         "api-docs", "api/java/StoreTotals.md");
 
@@ -198,7 +201,7 @@ public class ReportingInertTest extends SharedRegistryTestBase {
                     without.remove(listing);
                     with.remove(listing);
                 }
-                assertSameBut(info.stableName(), without, with, extra == null ? List.of() : List.of(extra));
+                assertSameBut(info.stableName(), without, with, extra == null ? List.of() : List.of(extra.split("\\|")));
             } catch (AssertionError e) {
                 leaks.add(e.getMessage());
             }
@@ -251,7 +254,8 @@ public class ReportingInertTest extends SharedRegistryTestBase {
             assertFalse(tier + " threw: " + expected.get(THREW), expected.containsKey(THREW));
             assertTrue(tier + ": only " + expected.size() + " files — the suite barely ran", expected.size() >= 3);
             List<String> extras = tier.stream().map(SERVED_REPORT_FILES::get)
-                .filter(java.util.Objects::nonNull).collect(Collectors.toList());
+                .filter(java.util.Objects::nonNull).flatMap(e -> java.util.Arrays.stream(e.split("\\|")))
+                .collect(Collectors.toList());
             assertSameBut(tier.toString(), expected, emit("with", suite), extras);
         }
     }

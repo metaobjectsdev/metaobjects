@@ -15,6 +15,9 @@ import { fileURLToPath } from "node:url";
 /** Basenames (no extension) of the copyable reference generators shipped in `src/reference/`. */
 export const REFERENCE_GENERATOR_NAMES = [
   "entity", "queries", "routes", "routes-hono", "barrel", "names",
+  // The report export (`?format=csv|json|xml` on a served report): which reports get a module, the
+  // column list and the CSV/XML writers, handed over as one file.
+  "report-export",
   // The prompt tier (ADR-0034 Amendment 3): an adopter owns WHICH prompts get a module and
   // where it lands, and (Amendment 8) the `render*` composer that writes the module.
   "prompt-render", "output-parser", "extractor", "output-prompt", "render-helper",

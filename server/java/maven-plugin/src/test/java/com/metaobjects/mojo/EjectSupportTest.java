@@ -60,8 +60,9 @@ public class EjectSupportTest {
         for (EjectSupport.Entry e : EjectSupport.allEntries()) {
             boolean javaExtractor = e.port == EjectSupport.Port.JAVA && e.stableName.equals("extractor");
             boolean apiDocs = e.stableName.equals("api-docs");
+            boolean javaReportExport = e.port == EjectSupport.Port.JAVA && e.stableName.equals("report-export");
             String note = e.wiringNote("com.acme.codegen");
-            if (!javaExtractor && !apiDocs) {
+            if (!javaExtractor && !apiDocs && !javaReportExport) {
                 assertNull(e.port.id + " " + e.stableName, note);
                 continue;
             }
@@ -72,7 +73,7 @@ public class EjectSupportTest {
             // The goal that runs it is the one that runs every generator, on either port.
             if (apiDocs) assertTrue(note, note.contains("`mvn metaobjects:generate` runs this generator"));
         }
-        assertEquals("the Java extractor, and api-docs on each port", 3, noted);
+        assertEquals("the Java extractor, the Java report-export, and api-docs on each port", 4, noted);
     }
 
     @Test

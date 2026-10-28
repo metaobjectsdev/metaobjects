@@ -21,6 +21,7 @@ const EXPECTED_NATIVE = [
   "routes-hono",
   "barrel",
   "names",
+  "report-export",
   "prompt-render",
   "output-parser",
   "extractor",

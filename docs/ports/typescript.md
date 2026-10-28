@@ -347,6 +347,28 @@ A report with no view
 source, or an abstract one, generates nothing. The contract is in
 [reporting](../features/reporting.md#how-a-report-is-served).
 
+### Report export
+
+Wire `reportExport()` and a served report's list route also answers `?format=csv|json|xml`
+(the contract is "Report export" in [api-contract](../features/api-contract.md)). The
+wiring is the generator's presence: it carries the `emitsReportExport` marker, the runner turns
+that into `includeReportExport` for the routes generators, and only then does a report's routes
+file import `<R>.export` and pass `export: <R>Export` to the mount. Without `reportExport()` the
+routes are byte-identical to before and `?format=` is ignored like any unknown parameter.
+
+| Generator | File | Holds |
+|---|---|---|
+| `reportExport()` | `<R>.export.ts` | the report's columns in derived-field order and the `<R>Export` spec: `maxRows`, CSV and XML writers |
+| `reportExport()` | `report-export-writers.ts` | one per project: CSV quoting, CRLF, the formula-injection guard, XML escaping and the root/row writer |
+
+Options: `maxRows` (default 100000; with `?format` set it replaces the route's `reportMaxRows`,
+so `report_too_large` never answers an export), `xmlNulls` (`"empty"`, the default, or
+`"nil"` for `xsi:nil="true"`) and `csvBom` (default `false`; the generated constant
+`EXPORT_CSV_BOM`). TypeScript has no XML convention of its own, so the default is the empty
+element, which is also what a CSV null cell is. The writers import nothing, and
+`meta eject report-export` copies them to own. The mounts take the spec through the
+`export` option of `mountReadOnlyCrudRoutes` (Fastify and Hono).
+
 ### Cube export
 
 `cubeModel()` writes the reporting vocabulary as Cube data-model files, one

@@ -45,6 +45,12 @@ CREATE TABLE `readings` (
   `seq` INT NOT NULL
 );
 
+CREATE TABLE `export_cells` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `label` VARCHAR(40),
+  `amountCents` BIGINT NOT NULL
+);
+
 CREATE VIEW `v_invoice_status_totals` AS
   SELECT
     i.`status` AS `status`,
@@ -143,3 +149,11 @@ CREATE VIEW `v_reading_log` AS
     COUNT(r.`id`) AS `readings`
   FROM `readings` r
   GROUP BY r.`seq`;
+
+CREATE VIEW `v_export_cells` AS
+  SELECT
+    e.`label` AS `label`,
+    COUNT(e.`id`) AS `cells`,
+    CAST(SUM(e.`amountCents`) AS SIGNED) AS `totalCents`
+  FROM `export_cells` e
+  GROUP BY e.`label`;

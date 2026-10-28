@@ -16,7 +16,11 @@ public sealed record ApiRequest(
     string Path,                                   // includes query string
     object? Body,                                  // JSON-shaped (Dictionary | List | scalar) or null
     int ExpectStatus,
-    Dictionary<string, object?>? ExpectBody);      // assertion vocabulary keys
+    Dictionary<string, object?>? ExpectBody,       // assertion vocabulary keys
+    // Report export (docs/features/api-contract.md, "Report export"): headers SENT with the request,
+    // and `expect.headers` — lower-cased name -> exact value, null = the header is absent.
+    IReadOnlyDictionary<string, string>? Headers = null,
+    IReadOnlyDictionary<string, string?>? ExpectHeaders = null);
 
 /// <summary>A scenario file (one <c>*.yaml</c> under <c>scenarios/</c>).</summary>
 public sealed record ApiScenario(
@@ -132,13 +136,22 @@ public static class ApiContractScenarioLoader
 
         r.TryGetValue("body", out var reqBody);
 
+        IReadOnlyDictionary<string, string>? sentHeaders = null;
+        if (r.TryGetValue("headers", out var hdrObj) && hdrObj is Dictionary<string, object?> hm)
+            sentHeaders = hm.ToDictionary(k => k.Key.ToLowerInvariant(), k => k.Value?.ToString() ?? "", StringComparer.Ordinal);
+        IReadOnlyDictionary<string, string?>? expectHeaders = null;
+        if (expect.TryGetValue("headers", out var ehObj) && ehObj is Dictionary<string, object?> ehm)
+            expectHeaders = ehm.ToDictionary(k => k.Key.ToLowerInvariant(), k => k.Value?.ToString(), StringComparer.Ordinal);
+
         return new ApiRequest(
             Id: AsString(r, "id", "?"),
             Method: method.ToUpperInvariant(),
             Path: path,
             Body: reqBody,
             ExpectStatus: status,
-            ExpectBody: expectBody);
+            ExpectBody: expectBody,
+            Headers: sentHeaders,
+            ExpectHeaders: expectHeaders);
     }
 
     /// <summary>

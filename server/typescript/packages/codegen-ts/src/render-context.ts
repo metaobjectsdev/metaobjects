@@ -76,6 +76,10 @@ export interface RenderContext {
    * caller (unit tests, generators invoked outside runGen).
    */
   includeNames: boolean;
+  /** Whether the `report-export` generator is wired for this target. A report's route file mounts
+   *  the `?format=` branch and imports `<Report>.export` only when true; false keeps the output
+   *  byte-identical to a project that wires none. */
+  includeReportExport: boolean;
   /**
    * Resolve an entity name to its Drizzle collection (table) variable name,
    * applying the project's pluralization config + per-entity overrides. Every
@@ -128,7 +132,7 @@ export interface RenderContext {
 }
 
 /** Optional shape — `extStyle`, `omImport`, `columnNamingStrategy`, `apiPrefix`, `outputLayout`, and `packageOf` default if omitted. `packageOf` defaults to an empty Map (correct for flat layout; `runGen` always provides the real map). `collectionName` is built from `pluralizeCollections` + `collectionNameOverrides` (both default to always-pluralize). */
-export type RenderContextInput = Omit<RenderContext, "extStyle" | "omImport" | "columnNamingStrategy" | "timestampMode" | "clientDirective" | "apiPrefix" | "emitAbstractShapes" | "outputLayout" | "includeNames" | "packageOf" | "valueObjectNames" | "valueObjectEmittedName" | "resolveValueObjectName" | "selfTarget" | "entityModuleTarget" | "collectionName"> & {
+export type RenderContextInput = Omit<RenderContext, "extStyle" | "omImport" | "columnNamingStrategy" | "timestampMode" | "clientDirective" | "apiPrefix" | "emitAbstractShapes" | "outputLayout" | "includeNames" | "includeReportExport" | "packageOf" | "valueObjectNames" | "valueObjectEmittedName" | "resolveValueObjectName" | "selfTarget" | "entityModuleTarget" | "collectionName"> & {
   extStyle?: ExtStyle;
   omImport?: string;
   columnNamingStrategy?: ColumnNamingStrategy;
@@ -138,6 +142,7 @@ export type RenderContextInput = Omit<RenderContext, "extStyle" | "omImport" | "
   emitAbstractShapes?: boolean;
   outputLayout?: OutputLayout;
   includeNames?: boolean;
+  includeReportExport?: boolean;
   packageOf?: Map<string, string | undefined>;
   /** ADR-0044/#228 value-object emitted-name map (resolutionKey → emitted name).
    *  Defaults to an empty Map — bare names, byte-identical to pre-#228 output.
@@ -207,6 +212,7 @@ export function makeRenderContext(opts: RenderContextInput): RenderContext {
     emitAbstractShapes: opts.emitAbstractShapes ?? true,
     outputLayout,
     includeNames: opts.includeNames ?? false,
+    includeReportExport: opts.includeReportExport ?? false,
     packageOf: opts.packageOf ?? new Map(),
     valueObjectNames,
     valueObjectEmittedName: (obj: MetaData) => valueObjectNames.get(obj.resolutionKey()) ?? obj.name,

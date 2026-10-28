@@ -13,7 +13,7 @@ import { join } from "node:path";
 describe("reference-templates reader", () => {
   test("exposes the copyable generator names, entity first (reader sentinel)", () => {
     expect([...REFERENCE_GENERATOR_NAMES]).toEqual([
-      "entity", "queries", "routes", "routes-hono", "barrel", "names",
+      "entity", "queries", "routes", "routes-hono", "barrel", "names", "report-export",
       "prompt-render", "output-parser", "extractor", "output-prompt", "render-helper",
       "requirement-tests", "cube-model", "callable", "trace-helper",
       "shared-model", "docs", "api-docs", "requirements", "agent-docs", "metamodel-docs",

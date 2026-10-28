@@ -1,0 +1,59 @@
+name: report-export-too-large
+description: >
+  An export is never truncated. Every lane wires the export generator with maxRows 60 (the
+  generator default is 100,000), and ReadingLog has 61 rows, so an export of all of them is
+  refused with 400 {"error": "export_too_large", "maxRows": 60} before any body is written,
+  in every format. With ?format set the export cap governs and the plain list's report cap
+  (report_too_large) does not: an explicit limit above maxRows is refused with the same
+  envelope, and a limit within it pages. Without ?format the list route still answers
+  report_too_large.
+requests:
+  - id: r1
+    method: GET
+    path: /api/reading_logs?format=csv
+    expect:
+      status: 400
+      body:
+        equals: { error: "export_too_large", maxRows: 60 }
+  - id: r2
+    method: GET
+    path: /api/reading_logs?format=json
+    expect:
+      status: 400
+      body:
+        equals: { error: "export_too_large", maxRows: 60 }
+  - id: r3
+    method: GET
+    path: /api/reading_logs?format=xml
+    expect:
+      status: 400
+      body:
+        equals: { error: "export_too_large", maxRows: 60 }
+  - id: r4
+    method: GET
+    path: /api/reading_logs?format=csv&limit=61
+    expect:
+      status: 400
+      body:
+        equals: { error: "export_too_large", maxRows: 60 }
+  - id: r5
+    method: GET
+    path: /api/reading_logs?format=csv&sort=seq:asc&limit=2&offset=59
+    expect:
+      status: 200
+      body:
+        text: "seq,readings\r\n60,1\r\n61,1\r\n"
+  - id: r6
+    method: GET
+    path: /api/reading_logs?format=csv&filter[seq][lte]=60&sort=seq:asc&limit=1
+    expect:
+      status: 200
+      body:
+        text: "seq,readings\r\n1,1\r\n"
+  - id: r7
+    method: GET
+    path: /api/reading_logs
+    expect:
+      status: 400
+      body:
+        equals: { error: "report_too_large", maxRows: 60 }

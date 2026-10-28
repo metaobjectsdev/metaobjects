@@ -73,6 +73,10 @@ export interface ResolvedGenConfig {
    *  Undefined ⇒ false. Templates read the same fact off `RenderContext.includeNames`,
    *  which the runner sets from this same aggregation. */
   includeNames?: boolean;
+  /** Whether the `report-export` generator is active in the route file's target (aggregated from
+   *  the suite's `emitsReportExport` markers). A report's routes mount the `?format=` branch, and
+   *  import the `<Report>.export` module, only when this is true. Undefined => false. */
+  includeReportExport?: boolean;
   /** Whether any CLIENT UI generator (form, hook, grid, columns) is active in the
    *  run — aggregated by the runner from the suite's `emitsUiTier` markers.
    *  `agent/ui.md` reads this to decide whether a UI tier exists to describe;

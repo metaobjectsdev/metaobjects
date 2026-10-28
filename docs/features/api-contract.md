@@ -266,6 +266,9 @@ each handler they register instead; an `HTTPException` is rethrown to your
   A `limit` below 1, a negative `offset` or a value that is not an integer is
   `400 { "error": "pagination.invalid_value", "param": "limit" | "offset", "value", "expected" }` on
   a report in every port. See [reporting.md](reporting.md#how-a-report-is-served).
+- **A report list can be exported: `?format=csv|json|xml`.** See
+  [Report export](#report-export) below. Without `format` the response is byte-identical to the list
+  route described here.
 - **No page-size maximum on an entity, and the default is per port.** The contract pins what
   an explicit `limit`/`offset` returns (`list-with-pagination`); it does not pin a
   default or a ceiling, and the ports differ. With `limit` **omitted**, the
@@ -280,6 +283,63 @@ each handler they register instead; an `HTTPException` is rethrown to your
 - `withCount=1` — opt-in flag that switches the list response from
   `[<row>...]` to `{ rows: [<row>...], total: <N> }` (needed for grid
   pagination). The grid hook always sends `withCount=1`.
+
+### Report export
+
+One selector on the existing report list route: `GET <apiPrefix>/<segment>?format=csv|json|xml`.
+The route accepts `format` only when a `report-export` generator is wired for the project (see
+[reporting.md](reporting.md#exporting-a-report)); a project that wires none sees no change at all,
+and `?format=` is then ignored exactly as any unknown query parameter is today. **Accept headers are
+never consulted**: the selector is the query parameter, in every port.
+
+| Request | Answer |
+|---|---|
+| no `format` | Exactly the list route above: same body, same headers, same caps. |
+| `format=json` | The list route's JSON body, unchanged, plus `Content-Disposition`: the array, or with `withCount=1` the `{ rows, total }` envelope. `Content-Type: application/json`. |
+| `format=csv` | RFC 4180 CSV. `Content-Type: text/csv; charset=utf-8`. |
+| `format=xml` | `application/xml`, shape below. |
+| any other value (`xlsx`, `pdf`, `CSV`, empty) | `400 { "error": "invalid_format", "expected": ["csv", "json", "xml"] }`. `expected` lists the formats this route wires, in that order. `xlsx` is reserved for a later generator (`report-export-xlsx`) and is refused today like any unknown value. Matching is case-sensitive. |
+| `format=csv` or `format=xml` and `withCount` truthy | `400 { "error": "export_with_count" }` (`message` is free prose). Only JSON carries the `{ rows, total }` envelope. |
+| more rows than `maxRows` | `400 { "error": "export_too_large", "maxRows": N }` before a byte of the body is written. |
+
+- **Header comparison.** Header names are case-insensitive. A runner compares `Content-Type` with the whitespace around `;` normalized (`text/csv;charset=utf-8` equals `text/csv; charset=utf-8`), because some servers re-spell it; every other header is compared exactly.
+- **Headers.** Every successful export carries
+  `Content-Disposition: attachment; filename="<segment>.<ext>"` with `<ext>` one of `csv`, `json`,
+  `xml`. A response without `format` carries none.
+- **Filters, sort, `limit` and `offset`** use the list route's parser, allowlists and 400 envelopes
+  unchanged. In export mode an absent `limit` means every row up to `maxRows`; an explicit `limit` or
+  `offset` is honoured.
+- **One cap, two names.** `maxRows` is an option of the `report-export` generator, default 100,000.
+  The route fetches `maxRows + 1` rows and refuses with `export_too_large` rather than truncate, and
+  an explicit `limit` above `maxRows` is refused the same way. With `?format` set the export cap
+  governs and `report_too_large` never answers; without it the list route's own cap
+  (`report_too_large`, default 10,000) is untouched. A report is materialised up to the cap; there is
+  no streaming in this version.
+- **CSV.** UTF-8, no BOM unless the generated constant `EXPORT_CSV_BOM` is flipped to true, CRLF after
+  every record including the last. One header row with the report's derived field names, in derived-field
+  order (dimensions, then measures, as `reportShape` lists them). A value is written in its wire
+  form: currency as integer minor units, a date as `YYYY-MM-DD`, a decimal as the `wire` setting spells
+  it, a boolean as `true`/`false`, null as an empty cell. A cell containing `"`, `,`, CR or LF is
+  quoted with embedded quotes doubled. **The formula-injection guard applies to every string-valued
+  cell** (`field.string`, an enum symbol, a uri): a value starting with `=`, `+`, `-`, `@`, TAB or CR is
+  prefixed with `'` before quoting. This is the render escapers' rule
+  (`render-csv-injection` fixture). Numbers, decimals, dates and booleans are never guarded, so a
+  negative number stays a number.
+- **XML.** `<{ReportName}><row><{field}>value</{field}>...</row>...</{ReportName}>`, no XML declaration,
+  no indentation, UTF-8, values in the same wire form as CSV, text and attribute content escaped
+  (`&amp; &lt; &gt;`). There is no injection guard in XML. A null follows the generator option
+  `xmlNulls`: `"nil"` writes the field as an empty element with `xsi:nil="true"` and declares
+  `xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"` on the root; `"empty"` writes an empty element
+  and declares nothing. **The default is each port's own standard** (ADR-0019 Amendment 2): see the
+  per-port table in [reporting.md](reporting.md#exporting-a-report). The corpus pins `"nil"` in every lane
+  and compares the body as an XML infoset (names, attributes, text, order), not byte for byte.
+- **JSON** is whatever the list route's standard serializer writes in that port, so a `wire` setting
+  applies to it exactly as it does to the list route.
+
+The report-export scenarios (`report/scenarios/export-*.yaml`) use three assertion keys the rest of the
+corpus does not: `headers` on `expect` (a map of lower-cased header name to its exact value, or `null` for
+"the header is absent"), `text` on the body (the exact body, compared as UTF-8 text), and `xml` on the body
+(compared as an XML infoset). A request may also carry `headers` (a map sent with the request).
 
 ### Base-URL policy
 
@@ -544,7 +604,7 @@ the empty rows, `isNull=true` matches nothing, and a sort on it orders the same 
 engine.
 
 Gated by [`fixtures/api-contract-conformance/report/`](../../fixtures/api-contract-conformance/report/)
-(30 scenarios), **generated lane only, on all five ports**, for the reason `projection/`
+(37 scenarios), **generated lane only, on all five ports**, for the reason `projection/`
 gives. The columns, their types and the per-port generated files are in
 [reporting.md](reporting.md#how-a-report-is-served).
 

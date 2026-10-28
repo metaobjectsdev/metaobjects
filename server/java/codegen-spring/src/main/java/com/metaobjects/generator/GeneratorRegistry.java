@@ -29,6 +29,7 @@ import com.metaobjects.generator.direct.object.javacode.ValueObjectCodeWriter;
 import com.metaobjects.generator.spring.Fr019SharedEnum;
 import com.metaobjects.generator.spring.JUnitRequirementTestsGenerator;
 import com.metaobjects.generator.spring.LlmTraceHelperGenerator;
+import com.metaobjects.generator.spring.SpringReportExportGenerator;
 import com.metaobjects.generator.spring.OutputFormatSpecEmitter;
 import com.metaobjects.generator.spring.SpringControllerGenerator;
 import com.metaobjects.generator.spring.SpringDtoGenerator;
@@ -273,7 +274,7 @@ public final class GeneratorRegistry {
      *  {@code REGISTRY}: static initializers run in order. */
     private static final List<String> ROUTES_RUNTIME = List.of(
             "CanonicalDecimal", "ConstraintErrors", "FilterParseResult", "FilterParser", "FilterPredicate",
-            "PatchValidationException", "RecordComponentNames", "UnreadableBody");
+            "PatchValidationException", "RecordComponentNames", "ReportExport", "UnreadableBody");
 
     /** The writer a generated type's package and class name are read from, and its base. */
     private static final List<String> OBJECT_NAMING = List.of(
@@ -329,6 +330,7 @@ public final class GeneratorRegistry {
      */
     private static final Map<String, List<String>> REQUIRES = Map.of(
             "routes", List.of("dto", "repository", "filter-allowlist"),
+            "report-export", List.of("dto"),
             "dto", List.of("value-object"),
             "repository", List.of("dto"),
             "output-parser", List.of("value-object"),
@@ -450,6 +452,17 @@ public final class GeneratorRegistry {
                 "Per-entity typed record<Entity> LLM-trace helper (extract + buildLlmCallRow + persist; "
                     + "LlmCallBase-derived entities only).", Tier.NATIVE, Layer.CAPABILITY,
                 ejectPath(LlmTraceHelperGenerator.class));
+        register(m, "report-export", SpringReportExportGenerator.class.getName(),
+                "Per-served-report export module (<Report>Export: columns, wire-form cells, CSV and XML "
+                    + "writers) plus one shared ReportExportWriter; wires the ?format=csv|json|xml branch "
+                    + "into the report list routes generated in the same run. "
+                    + "Standalone, never implied by a library.",
+                Tier.NATIVE, Layer.API, ejectPath(SpringReportExportGenerator.class), List.of(),
+                "report-export: add <generator><classname>{owned}</classname></generator> with an outputDir "
+                    + "(and the same outputDir as your dto and routes generators): being in the run is what "
+                    + "mounts the ?format branch on the `routes` generator, and it reads the cap from "
+                    + "<Report>Export.MAX_ROWS (the maxRows arg of this generator). The branch also imports "
+                    + "ReportExport from your runtime package, which an owned routes generator copies with it.", List.of());
         register(m, "requirement-tests", JUnitRequirementTestsGenerator.class.getName(),
                 "Per-package JUnit Jupiter tests, one per tested requirement, each calling a project-owned "
                     + "witness class through a generated interface; a live test with no witness fails and a "

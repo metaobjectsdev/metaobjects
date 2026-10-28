@@ -10,6 +10,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { load as yamlLoad } from "js-yaml";
+import { xmlInfosetEqual } from "./xml-infoset.ts";
 
 export type HttpMethod = "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
 
@@ -39,10 +40,17 @@ export interface ExpectBody {
   error?: string;
   field?: string;
   empty?: boolean;
+  /** The exact response text (UTF-8), for a CSV export. */
+  text?: string;
+  /** The response as an XML infoset: names, attributes, text and order; the declaration and
+   *  whitespace between elements are not significant. */
+  xml?: string;
 }
 
 export interface ExpectBlock {
   status: number;
+  /** Lower-cased header name to its exact value; `null` means the header is absent. */
+  headers?: Record<string, string | null>;
   body?: ExpectBody;
 }
 
@@ -51,6 +59,8 @@ export interface ApiRequest {
   method: HttpMethod;
   path: string;
   body?: unknown;
+  /** Headers sent with the request. */
+  headers?: Record<string, string>;
   expect: ExpectBlock;
 }
 
@@ -87,6 +97,7 @@ function parseScenario(file: string): ApiScenario {
       method: String(r["method"]).toUpperCase() as HttpMethod,
       path: String(r["path"]),
       body: r["body"],
+      ...(r["headers"] !== undefined && { headers: r["headers"] as Record<string, string> }),
       expect: r["expect"] as ExpectBlock,
     })),
     sourcePath: file,
@@ -101,17 +112,39 @@ function parseScenario(file: string): ApiScenario {
 export async function runScenario(scenario: ApiScenario, baseUrl: string): Promise<void> {
   for (const req of scenario.requests) {
     const init: RequestInit = { method: req.method };
+    const headers: Record<string, string> = { ...req.headers };
     if (req.body !== undefined) {
       init.body = JSON.stringify(req.body);
-      init.headers = { "content-type": "application/json" };
+      headers["content-type"] = "application/json";
     }
+    if (Object.keys(headers).length > 0) init.headers = headers;
     const res = await fetch(baseUrl + req.path, init);
     const bodyText = await res.text();
-    let body: unknown = null;
-    if (bodyText.length > 0) {
-      try { body = parseBodyExact(bodyText); } catch { body = bodyText; }
+    assertResponseFull(scenario.name, req, res.status, bodyText, (name) => res.headers.get(name));
+  }
+}
+
+/**
+ * Assert one response from its raw parts: status, then headers, then the body (JSON-parsed
+ * exactly, or kept as text when it is not JSON). `header` reads a response header by name.
+ */
+export function assertResponseFull(
+  scenarioName: string,
+  req: ApiRequest,
+  status: number,
+  bodyText: string,
+  header: (name: string) => string | null,
+): void {
+  let body: unknown = null;
+  if (bodyText.length > 0) {
+    try { body = parseBodyExact(bodyText); } catch { body = bodyText; }
+  }
+  assertResponse(scenarioName, req, status, body, bodyText);
+  for (const [name, want] of Object.entries(req.expect.headers ?? {})) {
+    const got = header(name.toLowerCase());
+    if (got !== want) {
+      throw new Error(`${scenarioName} / ${req.id}: expected header ${name}=${JSON.stringify(want)}, got ${JSON.stringify(got)}`);
     }
-    assertResponse(scenario.name, req, res.status, body);
   }
 }
 
@@ -155,6 +188,7 @@ export function assertResponse(
   request: ApiRequest,
   status: number,
   body: unknown,
+  bodyText?: string,
 ): void {
   if (status !== request.expect.status) {
     throw new Error(
@@ -163,6 +197,17 @@ export function assertResponse(
   }
   const want = request.expect.body;
   if (!want) return;
+
+  if (want.text !== undefined) {
+    if (bodyText !== want.text)
+      throw new Error(`${scenarioName} / ${request.id}: text mismatch\n  expected: ${JSON.stringify(want.text)}\n  actual:   ${JSON.stringify(bodyText)}`);
+    return;
+  }
+  if (want.xml !== undefined) {
+    if (bodyText === undefined || !xmlInfosetEqual(bodyText, want.xml))
+      throw new Error(`${scenarioName} / ${request.id}: xml mismatch\n  expected: ${want.xml}\n  actual:   ${bodyText}`);
+    return;
+  }
 
   if (want.empty) {
     if (body !== null && body !== undefined && body !== "" && !(typeof body === "object" && Object.keys(body as object).length === 0))

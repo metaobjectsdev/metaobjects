@@ -424,4 +424,5 @@ export function mountDeleteRoute(opts: VerbOptions): void {
 }
 
 export { mountReadOnlyCrudRoutes, type MountReadOnlyOptions } from "./mount-read-only.js";
+export { EXPORT_FORMATS, type ExportFormat, type ReportExportSpec } from "./report-export.js";
 export { mountM2mRoute, type M2mRouteOptions } from "./mount-m2m.js";

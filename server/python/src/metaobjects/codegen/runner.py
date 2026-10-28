@@ -147,6 +147,7 @@ def run_gen(
             matches=_matcher(gen),
             config=config,
             warn=_warn_collector(gen.name, result.warnings),
+            generators=tuple(g.name for g in generators),
         )
         for f in gen.generate(ctx):
             full = os.path.join(config.out_dir, f.path)

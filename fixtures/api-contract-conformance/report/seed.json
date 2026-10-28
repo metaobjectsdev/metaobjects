@@ -83,6 +83,18 @@
     { "id": 60, "seq": 60 },
     { "id": 61, "seq": 61 }
   ],
+  "export_cells": [
+    { "id": 1, "label": "=SUM(1+1)", "amountCents": 100 },
+    { "id": 2, "label": "+1", "amountCents": 200 },
+    { "id": 3, "label": "-2", "amountCents": 300 },
+    { "id": 4, "label": "@cmd", "amountCents": 400 },
+    { "id": 5, "label": "plain", "amountCents": 500 },
+    { "id": 6, "label": "a,b", "amountCents": 600 },
+    { "id": 7, "label": "say \"hi\"", "amountCents": 700 },
+    { "id": 8, "label": "line one\nline two", "amountCents": 800 },
+    { "id": 9, "label": "<&>", "amountCents": 900 },
+    { "id": 10, "label": null, "amountCents": 1000 }
+  ],
   "reports": {
     "InvoiceStatusTotals": [
       { "status": "OPEN", "invoices": 2, "totalCents": 130500, "paidCents": null },
@@ -188,6 +200,18 @@
       { "seq": 59, "readings": 1 },
       { "seq": 60, "readings": 1 },
       { "seq": 61, "readings": 1 }
+    ],
+    "ExportCells": [
+      { "label": "=SUM(1+1)", "cells": 1, "totalCents": 100 },
+      { "label": "+1", "cells": 1, "totalCents": 200 },
+      { "label": "-2", "cells": 1, "totalCents": 300 },
+      { "label": "@cmd", "cells": 1, "totalCents": 400 },
+      { "label": "plain", "cells": 1, "totalCents": 500 },
+      { "label": "a,b", "cells": 1, "totalCents": 600 },
+      { "label": "say \"hi\"", "cells": 1, "totalCents": 700 },
+      { "label": "line one\nline two", "cells": 1, "totalCents": 800 },
+      { "label": "<&>", "cells": 1, "totalCents": 900 },
+      { "label": null, "cells": 1, "totalCents": 1000 }
     ]
   }
 }

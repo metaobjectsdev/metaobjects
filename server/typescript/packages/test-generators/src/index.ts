@@ -39,3 +39,5 @@ export function entityFile(opts?: EntityFileOpts): Generator {
 export function routesFile(opts?: RoutesFileOpts): Generator {
   return ownedRoutesFile({ runtimeImport: HTTP_RUNTIME_PACKAGE, ...opts });
 }
+
+export { reportExport, type ReportExportOpts } from "./generators/report-export.js";

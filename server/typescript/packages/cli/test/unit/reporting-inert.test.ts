@@ -128,6 +128,8 @@ const SERVED_REPORT_FILES: Readonly<Record<string, readonly string[]>> = {
   "routes-hono": [`${OUT}/StoreTotals.routes.hono.ts`],
   // The list hook, and the DB-free descriptor module it imports.
   hooks: [`${OUT}/StoreTotals.hooks.ts`, `${OUT}/StoreTotals.meta.ts`],
+  // The export spec for the report's list route, and the project's one shared writer module.
+  "report-export": [`${OUT}/StoreTotals.export.ts`, `${OUT}/report-export-writers.ts`],
 };
 /**
  * FR-044 Plan 4: the files `cube-model` writes for `with/`, and none for `without/`. It writes

@@ -17,6 +17,10 @@ object ApiContractScenarios {
         val body: Any? = null,        // JSON-shaped (Map | List | scalar) or null
         val expectStatus: Int,
         val expectBody: Map<String, Any?>? = null,
+        /** Request headers to send; empty when none. */
+        val headers: Map<String, String> = emptyMap(),
+        /** `expect.headers`: lower-cased name to its exact value, `null` = the header is absent. */
+        val expectHeaders: Map<String, Any?> = emptyMap(),
     )
 
     /** A scenario file (one `.yaml` under `scenarios/`). */

@@ -29,6 +29,7 @@ export { barrel, type BarrelOpts } from "./barrel.js";
 export { callableFile, type CallableFileOpts } from "./callable-file.js";
 export { routesFileHono, type RoutesFileHonoOpts } from "./routes-file-hono.js";
 export { namesFile } from "./names-file.js";
+export { reportExport, type ReportExportOpts } from "./report-export-file.js";
 export { promptRender, type PromptRenderOpts } from "./prompt-render-file.js";
 export { outputParser, type OutputParserOpts } from "./output-parser-file.js";
 export { extractor, type ExtractorOpts } from "./extractor-file.js";

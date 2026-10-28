@@ -71,8 +71,21 @@ public sealed class ApiContractReportConformanceTest(MySqlServer mysqlServer)
                 string json = JsonSerializer.Serialize(req.Body, JsonOpts);
                 request.Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
             }
+            foreach (var (name, value) in req.Headers ?? new Dictionary<string, string>())
+                request.Headers.TryAddWithoutValidation(name, value);
             var response = await client.SendAsync(request);
-            string bodyText = await response.Content.ReadAsStringAsync();
+            // Report export: the body is read as UTF-8 text, never through the response's own charset sniffing,
+            // so a BOM or a missing charset cannot change what is compared.
+            string bodyText = System.Text.Encoding.UTF8.GetString(await response.Content.ReadAsByteArrayAsync());
+            ApiContractExportAssertions.AssertHeaders(scenario.Name, req, response);
+            if (ApiContractExportAssertions.IsRawBody(req))
+            {
+                if ((int)response.StatusCode != req.ExpectStatus)
+                    throw new Xunit.Sdk.XunitException(
+                        $"{scenario.Name} / {req.Id}: expected status {req.ExpectStatus}, got {(int)response.StatusCode}; body: {bodyText}");
+                ApiContractExportAssertions.AssertRawBody(scenario.Name, req, bodyText);
+                continue;
+            }
             object? parsed = string.IsNullOrEmpty(bodyText) ? null : ToObject(JsonNode.Parse(bodyText));
             ApiContractAssertions.AssertResponse(scenario.Name, req, (int)response.StatusCode, parsed);
         }

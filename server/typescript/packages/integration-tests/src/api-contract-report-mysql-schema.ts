@@ -57,6 +57,11 @@ const TABLES = [
   \`id\` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
   \`seq\` INT NOT NULL
 )`,
+  `CREATE TABLE \`export_cells\` (
+  \`id\` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  \`label\` VARCHAR(40),
+  \`amountCents\` BIGINT NOT NULL
+)`,
 ];
 
 

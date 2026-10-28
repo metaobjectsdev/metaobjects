@@ -119,7 +119,7 @@ class ReportingInertTest {
     private val codeGenerators get() = GENERATOR_REGISTRY.values.filter { it.name != "api-docs" }
 
     /** What a generator may add for the with-model: one file of the view-backed report, from five generators. */
-    private fun allowedFor(info: GeneratorInfo): Set<String> = setOfNotNull(STORE_TOTALS_FILES[info.name])
+    private fun allowedFor(info: GeneratorInfo): Set<String> = STORE_TOTALS_FILES[info.name]?.split('|')?.toSet() ?: emptySet()
 
     @Test
     fun `the with-model really carries the vocabulary`() {
@@ -156,7 +156,7 @@ class ReportingInertTest {
         for ((name, path) in STORE_TOTALS_FILES) {
             val info = GENERATOR_REGISTRY.getValue(name)
             val added = emit("with", listOf(info)).keys - emit("without", listOf(info)).keys
-            assertEquals(setOf(path), added, name)
+            assertEquals(path.split('|').toSet(), added, name)
         }
     }
 
@@ -170,7 +170,8 @@ class ReportingInertTest {
         }
         // The view-backed report is named by its five files and by nothing else.
         val hits = files.filter { (path, text) -> "StoreTotals" in path || "StoreTotals" in text }.keys
-        assertEquals(STORE_TOTALS_FILES.values.toSet(), hits)
+        // report-export's shared writer names no report, so it is not among the hits.
+        assertEquals(STORE_TOTALS_FILES.values.map { it.substringBefore('|') }.toSet(), hits)
     }
 
     @Test
@@ -188,7 +189,7 @@ class ReportingInertTest {
         val expected = emit("without", runnable)
         assertFalse(THREW in expected, "the combined suite threw: ${expected[THREW]}")
         assertTrue(expected.size > 10, "only ${expected.size} files — the suite barely ran")
-        val leak = sameOrLeak("combined", expected, emit("with", runnable), STORE_TOTALS_FILES.values.toSet())
+        val leak = sameOrLeak("combined", expected, emit("with", runnable), STORE_TOTALS_FILES.values.flatMap { it.split('|') }.toSet())
         assertTrue(leak == null, leak)
     }
 
@@ -259,6 +260,9 @@ class ReportingInertTest {
             "routes" to "acme/shop/StoreTotalsController.kt",
             // D7: the served report's view and derived columns get names constants too.
             "names" to "acme/shop/StoreTotalsNames.kt",
+            // report-export (opt-in, standalone): the report's export module and the one shared
+            // writer, "|"-separated. The writer names no report.
+            "report-export" to "acme/shop/StoreTotalsExport.kt|acme/shop/ReportExportWriter.kt",
         )
 
         /** `StoreTotals`: three measures over `Purchase` — two counts and a sum of a currency. */

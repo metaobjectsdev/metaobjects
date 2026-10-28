@@ -121,7 +121,7 @@ your own `<groupId>`, `<artifactId>` and `<version>`:
 
 ## Configure
 
-The 16 generators registered in `codegen-kotlin` (`GeneratorRegistry.kt`):
+The 17 generators registered in `codegen-kotlin` (`GeneratorRegistry.kt`):
 
 | Generator | Output | Per |
 |---|---|---|
@@ -140,6 +140,7 @@ The 16 generators registered in `codegen-kotlin` (`GeneratorRegistry.kt`):
 | `KotlinStoredProcGenerator` | Stored-procedure call wrappers | entities with `source.rdb @kind="storedProc"` |
 | `KotlinSpringControllerGenerator` | `<Entity>Controller.kt` — Spring `@RestController` (5 CRUD endpoints; cross-port API contract). **Select `KotlinRelationsGenerator` with it** when the model has a M:N relationship: the traversal routes call the `<rel>Query` helpers only that generator emits, and without it the controller does not compile | entities with `source.rdb @kind="table"` |
 | `KotlinRequirementTestsGenerator` | Per metamodel package that holds a tested requirement, two files in `testPackage`: `Requirements_<pkgKey>_Witnesses.kt` (an interface whose default members fail with `unimplemented requirement: ...`) and `Requirements_<pkgKey>_Test.kt` (one JUnit Jupiter `@Test` per requirement, calling a project-owned witness). See "Requirement tests" below | every tested `requirement.*` (functional, level 4 or above by default) |
+| `KotlinReportExportGenerator` | Standalone export of a served report (`?format=csv\|json\|xml`, see [Report export](#report-export)): one `<Report>Export.kt` per served report beside its controller and one shared `ReportExportWriter.kt`. Args: `outputDir` (required), `maxRows` (default `100000`), `xmlNulls` (`empty`, the default, or `nil`), `csvBom` (default `false`) and `writerPackage` (default: the package prefix the served reports share, else `export`). Never implied by a library. Ejectable | every served report |
 | `KotlinApiDocsGenerator` | The Kotlin SDK api reference, under `<outputDir>/<apiSubDir>`: `<Unit>.md` per entity, value object, projection, served report and template, a `README.md` index and `AGENT-API.md`. A `<generator>` entry like any other, run by `metaobjects:generate` and checked by `metaobjects:verify`. Args: `outputDir` (required, generated files only), `apiSubDir` (default `api/kotlin`), `layout` (`flat` or `package`), `projectName` and `modelBaseUrl`, as for the Java `api-docs`. The `metaobjects:docs` goal was removed in 8.1.0 ([migration](../features/migrations/docs-are-generators.md#java-and-kotlin)). Ejectable, with the page model, builder, renderer and path math | the whole model, once |
 
 Maven wiring. The plugin bundles `metaobjects-codegen-kotlin`, so it is not a dependency of your
@@ -254,7 +255,7 @@ A requirement that becomes live adds a failing member (a red test, no compile br
 
 ### Declarative template-codegen (`TemplateScopeGenerator`)
 
-The 16 generators above are a starting point, not the ceiling. When you need a shape
+The 17 generators above are a starting point, not the ceiling. When you need a shape
 none of them emits, Kotlin has **both** authoring paths — and which to reach for is a
 real decision (tradeoff table: [`codegen-concepts.md` §3](../features/codegen-concepts.md)).
 
@@ -543,6 +544,38 @@ A column property whose name is a member of Exposed's `Table` gets a `Column` su
 (`source` becomes `sourceColumn`); the physical column name does not change. The reserved set
 follows the output mode: `options` and `storageParameters` are `Table` members only in Exposed
 1.x, so they are suffixed only with `exposedApi=1`.
+
+### Report export
+
+`GET <apiPrefix>/<segment>?format=csv|json|xml` downloads a served report's rows (the contract is
+[api-contract](../features/api-contract.md#report-export), the how-to
+[reporting](../features/reporting.md#exporting-a-report)). Wire `KotlinReportExportGenerator`
+(`report-export`) to turn it on. The Maven plugin hands the whole configured generator list to
+`KotlinSpringControllerGenerator` (`com.metaobjects.generator.RunAware`), which mounts the `format`
+branch in each report `<Report>Controller` when that list holds a `report-export` generator
+(`EmitsReportExport`, so an ejected copy counts too). The branch reads its cap from
+`<Report>Export.MAX_ROWS`, so the cap is set once, as `maxRows` on `report-export`. Without it the
+controllers are byte-identical to today and `?format=` is ignored like any unknown parameter.
+
+The Kotlin controllers import nothing from MetaObjects, so the request side (format parsing, the three
+400 envelopes, the `Content-Disposition` and `Content-Type` values) is generated into the shared
+`ReportExportWriter` and reached through `<Report>Export`; there is no runtime class to copy. Writers
+use Jackson (already present) and the JDK's StAX, so nothing new is on the classpath. With `?format`
+set the export cap (`maxRows`, default 100,000) governs and `report_too_large` never answers; without
+it `reportMaxRows` (default 10,000) is untouched. The handler reads `maxRows + 1` rows and answers
+`export_too_large` before writing a byte. With the branch mounted, every answer of the list route
+carries an explicit `application/json`, so `Accept` is never consulted, and `withCount` is read as text:
+`1` or `true` with `csv` or `xml` is `export_with_count`, and `format=json&withCount=1` is the list
+route's `{ rows, total }` envelope. CSV and XML are written as `ByteArray`, for which every Spring MVC setup has a converter.
+
+`xmlNulls` defaults to `empty`: a null field is an empty element, which is what Jackson's XML mapper
+writes for a null, the JVM standard (ADR-0019 Amendment 2, the same default as the Java port). `nil`
+writes `xsi:nil="true"` and declares `xmlns:xsi` on the root. A decimal cell is written as the `wire`
+setting writes the list route: under `decimals: string` its canonical plain string (`12.5`), under the
+default `native` what Jackson writes for a `BigDecimal` (`12.50`). A time or a zone-less timestamp keeps
+its seconds (`10:00:00`), as Jackson's JSR-310 serializers write it, and an array or map dimension is
+its compact JSON text. The JSON export is the list route's body through the application's
+`ObjectMapper`. `csvBom` flips the generated constant `EXPORT_CSV_BOM`.
 
 ### Decimals and null members on the wire
 
