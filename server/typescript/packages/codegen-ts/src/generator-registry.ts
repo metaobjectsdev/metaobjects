@@ -250,7 +250,7 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
     tier: "native",
     factory: () => prismaSchemaFile(),
     factoryExport: "prismaSchemaFile",
-    options: "provider?, fileName?, header?, checks?, handEdits?, filter?, target?",
+    options: "provider?, fileName?, header?, checks?, filter?, target?",
     // The schema imports nothing; Prisma itself is the project's own dependency.
     requires: [],
     runtimePackages: [],

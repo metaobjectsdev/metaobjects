@@ -9,9 +9,10 @@
 // names (the entity and field names of the model), the scalar and native type per provider, and
 // the relation fields Prisma needs on both ends of every foreign key.
 //
-// What Prisma cannot declare is refused, never dropped: a read-only source (a view, stored
-// procedure or table function), an expression or partial index, an array column outside Postgres,
-// a CHECK constraint on SQLite. Every refusal is a PrismaSchemaError naming the node and the fix.
+// What Prisma cannot declare is refused, never dropped: a view `meta verify --db` expects (a
+// projection's, a write-through entity's read view, a served report's), an expression or partial
+// index, a CHECK constraint on SQLite, a database schema outside Postgres. Every refusal is a
+// PrismaSchemaError naming the node and the fix.
 
 import {
   FIELD_SUBTYPE_BOOLEAN,
@@ -22,14 +23,18 @@ import {
   FIELD_SUBTYPE_FLOAT,
   FIELD_SUBTYPE_INET,
   FIELD_SUBTYPE_INT,
+  FIELD_SUBTYPE_OBJECT,
   FIELD_SUBTYPE_TIME,
   FIELD_SUBTYPE_TIMESTAMP,
   FIELD_SUBTYPE_UUID,
+  FIELD_ATTR_OBJECT_REF,
+  FIELD_ATTR_STORAGE,
   FIELD_ATTR_VALUES,
+  STORAGE_FLATTENED,
   isMetaObject,
-  isMetaSource,
   physicalNamingOf,
   pluralize,
+  refTarget,
   resolveColumnName,
   type MetaField,
   type MetaObject,
@@ -46,7 +51,7 @@ import {
   type SqlType,
   type TableDescriptor,
 } from "@metaobjectsdev/migrate-ts/expected";
-import { hasAnyRdbSource, hasWritableRdbSource } from "../source-detect.js";
+import { buildProjectionViews, type ExpectedView } from "../projection/build-projection-views.js";
 import { tphStorageObject } from "../tph.js";
 import {
   ERR_PRISMA_NAME_COLLISION,
@@ -55,6 +60,7 @@ import {
   ERR_PRISMA_UNMAPPABLE_RELATION,
   ERR_PRISMA_UNSUPPORTED_CHECK,
   ERR_PRISMA_UNSUPPORTED_INDEX,
+  ERR_PRISMA_UNSUPPORTED_SCHEMA,
   PrismaSchemaError,
 } from "./prisma-errors.js";
 
@@ -136,13 +142,19 @@ interface ColumnType {
   native?: string;
 }
 
+/** The field a column holds, and its Prisma field name. */
+interface ColumnField {
+  field: MetaField;
+  name: string;
+}
+
 /** A table on its way to a model: the descriptor, the object that declared it and its fields by column. */
 interface TableEntry {
   table: TableDescriptor;
   key: string;
   object: MetaObject;
   modelName: string;
-  fieldByColumn: Map<string, MetaField>;
+  fieldByColumn: Map<string, ColumnField>;
   /** Prisma field name per column. */
   fieldName: Map<string, string>;
   columnType: Map<string, ColumnType>;
@@ -177,32 +189,49 @@ function objectsByKey(root: MetaRoot): Map<string, MetaObject> {
   return out;
 }
 
-/** True when the object is backed only by read-only sources and not one of them is `@unmanaged`. */
-function isManagedReadOnly(obj: MetaObject): boolean {
-  if (!hasAnyRdbSource(obj) || hasWritableRdbSource(obj)) return false;
-  // ADR-0039: resolving — the source may be inherited.
-  return !obj.children().some((c) => isMetaSource(c) && c.isUnmanaged);
-}
-
-function refuseReadOnly(obj: MetaObject): PrismaSchemaError {
+function refuseView(obj: MetaObject, view: ExpectedView): PrismaSchemaError {
   return new PrismaSchemaError(
     ERR_PRISMA_READ_ONLY_SOURCE,
-    `'${obj.resolutionKey()}' is read from a view, stored procedure or table function, and a Prisma schema ` +
-      `cannot create one: \`prisma db push\` and \`prisma migrate\` would leave it out, and \`meta verify --db\` ` +
-      `would report it missing. Create it in a Prisma migration (\`prisma migrate dev --create-only\`, then add the ` +
-      `SQL) and mark its source.rdb \`@unmanaged: true\`, or leave it out of this generator with its \`filter\` option.`,
+    `'${obj.resolutionKey()}' declares view '${view.name}', and a Prisma schema cannot create a view: ` +
+      `\`prisma db push\` and \`prisma migrate\` would leave it out, and \`meta verify --db\` would report it ` +
+      `missing. Create it in a Prisma migration (\`prisma migrate dev --create-only\`, then add the SQL) and mark ` +
+      `its read source.rdb \`@unmanaged: true\`, or leave '${obj.resolutionKey()}' out of this generator with its ` +
+      `\`filter\` option.`,
   );
 }
 
-/** The fields whose column lands in the table: the declaring object's, then each TPH subtype's. */
-function fieldsByColumn(obj: MetaObject, all: Iterable<MetaObject>, strategy: ReturnType<typeof physicalNamingOf>["columns"]): Map<string, MetaField> {
+function refuseSchema(obj: MetaObject, schema: string, provider: PrismaProvider): PrismaSchemaError {
+  return new PrismaSchemaError(
+    ERR_PRISMA_UNSUPPORTED_SCHEMA,
+    `'${obj.resolutionKey()}' declares @schema '${schema}' on its source.rdb, and a Prisma schema places a model ` +
+      `in a database schema (\`@@schema\`) only on postgresql; on ${provider} every model lives in the database ` +
+      `the connection names. Remove the @schema, or use the postgresql provider.`,
+  );
+}
+
+/**
+ * The fields whose column lands in the table: the declaring object's, then each TPH subtype's. A
+ * `field.object @storage: flattened` holds one column per field of its value object,
+ * `<parent_col>_<nested_col>`, which is Prisma field `<parent><Nested>`.
+ */
+function fieldsByColumn(obj: MetaObject, all: Iterable<MetaObject>, strategy: ReturnType<typeof physicalNamingOf>["columns"]): Map<string, ColumnField> {
   const members = [obj, ...[...all].filter((o) => o !== obj && tphStorageObject(o) === obj)];
-  const out = new Map<string, MetaField>();
+  const out = new Map<string, ColumnField>();
+  const add = (col: string, field: MetaField, name: string): void => {
+    if (!out.has(col)) out.set(col, { field, name });
+  };
   for (const member of members) {
     // ADR-0039: effective fields — inherited columns live on the parent.
     for (const field of member.fields()) {
-      const col = resolveColumnName(field, strategy);
-      if (!out.has(col)) out.set(col, field);
+      // ADR-0039: resolving — @storage and @objectRef may be inherited via extends.
+      if (field.subType === FIELD_SUBTYPE_OBJECT && field.attr(FIELD_ATTR_STORAGE) === STORAGE_FLATTENED) {
+        const value = refTarget(field, FIELD_ATTR_OBJECT_REF);
+        if (value === undefined || !isMetaObject(value)) continue;
+        const prefix = `${resolveColumnName(field, strategy)}_`;
+        for (const nested of value.fields()) add(prefix + resolveColumnName(nested, strategy), nested, field.name + upperFirst(nested.name));
+        continue;
+      }
+      add(resolveColumnName(field, strategy), field, field.name);
     }
   }
   return out;
@@ -597,7 +626,7 @@ function checksOf(entry: TableEntry, provider: PrismaProvider, omit: boolean): P
     let expression = check.expression;
     if (provider === "mysql") {
       const enumColumn = [...entry.fieldByColumn].find(
-        ([c, f]) => f.subType === FIELD_SUBTYPE_ENUM && check.name === `${entry.table.name}_${c}_chk`,
+        ([c, { field: f }]) => f.subType === FIELD_SUBTYPE_ENUM && check.name === `${entry.table.name}_${c}_chk`,
       );
       if (enumColumn === undefined) continue;
       expression = `\`${enumColumn[0]}\`${check.expression.slice(check.expression.indexOf(" IN ("))}`;
@@ -633,11 +662,13 @@ export function buildPrismaSchema(root: MetaRoot, options: BuildPrismaSchemaOpti
   const matches = options.matches ?? (() => true);
   const objects = objectsByKey(root);
 
-  for (const obj of objects.values()) {
-    if (matches(obj) && isManagedReadOnly(obj)) throw refuseReadOnly(obj);
+  const dialect = migrateDialect(provider);
+  // MySQL has no view dialect; the set of views verify expects is the same under any of them.
+  for (const view of buildProjectionViews(root, { dialect: dialect ?? "postgres" })) {
+    const obj = objects.get(view.fqn);
+    if (obj !== undefined && matches(obj)) throw refuseView(obj, view);
   }
 
-  const dialect = migrateDialect(provider);
   const { snapshot, provenance } = buildExpectedSchemaWithProvenance(root, dialect === undefined ? {} : { dialect });
   const strategy = physicalNamingOf(root).columns;
 
@@ -649,6 +680,7 @@ export function buildPrismaSchema(root: MetaRoot, options: BuildPrismaSchemaOpti
     const object = fqn === undefined ? undefined : objects.get(fqn);
     if (object === undefined) throw new Error(`prisma-schema: no object declares table '${key}'.`);
     if (!matches(object)) continue;
+    if (provider !== "postgresql" && table.schema !== undefined) throw refuseSchema(object, table.schema, provider);
     if (table.primaryKey.length === 0) {
       throw new PrismaSchemaError(
         ERR_PRISMA_NO_PRIMARY_KEY,
@@ -672,17 +704,18 @@ export function buildPrismaSchema(root: MetaRoot, options: BuildPrismaSchemaOpti
     };
     const keyed = provider === "mysql" ? mysqlKeyedColumns(table) : new Set<string>();
     for (const col of table.columns) {
-      const field = fieldByColumn.get(col.name);
-      if (field === undefined) throw new Error(`prisma-schema: no field of '${object.resolutionKey()}' maps to column '${col.name}'.`);
-      if (entry.takenNames.has(field.name)) {
+      const mapped = fieldByColumn.get(col.name);
+      if (mapped === undefined) throw new Error(`prisma-schema: no field of '${object.resolutionKey()}' maps to column '${col.name}'.`);
+      const { field, name } = mapped;
+      if (entry.takenNames.has(name)) {
         throw new PrismaSchemaError(
           ERR_PRISMA_NAME_COLLISION,
-          `two columns of '${object.resolutionKey()}' come from fields named '${field.name}' (a TPH subtype redeclares ` +
-            `it with another column). Rename one of them.`,
+          `two columns of '${object.resolutionKey()}' would both be Prisma field '${name}' (a TPH subtype redeclares ` +
+            `a field with another column, or a flattened field.object's column takes the name of a field). Rename one of them.`,
         );
       }
-      entry.takenNames.add(field.name);
-      entry.fieldName.set(col.name, field.name);
+      entry.takenNames.add(name);
+      entry.fieldName.set(col.name, name);
       const type =
         provider === "postgresql" ? pgColumnType(col.sqlType, field)
         : provider === "sqlite" ? sqliteColumnType(col.sqlType, field)

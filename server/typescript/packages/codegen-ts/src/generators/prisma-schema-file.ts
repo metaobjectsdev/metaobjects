@@ -49,8 +49,6 @@ export interface PrismaSchemaFileOptions {
    * them out, which is the only way to take a model with checks to SQLite.
    */
   readonly checks?: "file" | "omit";
-  /** What a hand edit gets. Default `"overwrite"`: see the header. */
-  readonly handEdits?: Generator["handEdits"];
   /** Which objects the schema covers, ANDed with "has a table". */
   readonly filter?: (obj: MetaObject) => boolean;
   /** Named output target: the files land at its outDir. */
@@ -129,7 +127,7 @@ export function prismaSchemaFile(options: PrismaSchemaFileOptions = {}): Generat
   const generator: Generator = {
     name: PRISMA_SCHEMA_GENERATOR_NAME,
     generate: (ctx) => generatePrismaFiles(ctx, options),
-    handEdits: options.handEdits ?? "overwrite",
+    handEdits: "overwrite",
     // The checks file is written only while the model implies a CHECK; when the last one goes,
     // the file it left behind is removed (when it is still what was written).
     orphanPolicy: { owns: (rel) => rel === checksFile || rel === fileName },

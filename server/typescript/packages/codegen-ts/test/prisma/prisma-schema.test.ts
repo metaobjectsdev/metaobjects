@@ -19,6 +19,7 @@ import {
   ERR_PRISMA_UNSUPPORTED_CHECK,
   ERR_PRISMA_UNSUPPORTED_INDEX,
   ERR_PRISMA_UNSUPPORTED_PROVIDER,
+  ERR_PRISMA_UNSUPPORTED_SCHEMA,
   ERR_PRISMA_NO_PRIMARY_KEY,
   PrismaSchemaError,
 } from "../../src/prisma/prisma-errors.js";
@@ -175,6 +176,41 @@ describe("prisma-schema — what the schema says", () => {
     expect(spec.schemas).toEqual(["audit", "public"]);
     expect(spec.models.find((m) => m.name === "Audit")!.blockAttributes).toContain('@@schema("audit")');
   });
+
+  test("a flattened field.object is one field per column of its value object", async () => {
+    const root = await loadJson(model([
+      { "object.value": { name: "Address", children: [
+        { "field.string": { name: "street", "@required": true } },
+        { "field.string": { name: "postalCode", "@maxLength": 10 } },
+      ] } },
+      entity("Customer", [
+        { "source.rdb": {} },
+        longId,
+        { "field.object": { name: "homeAddress", "@objectRef": "Address", "@storage": "flattened" } },
+        pk,
+      ]),
+    ]));
+    for (const provider of ["postgresql", "mysql", "sqlite"] as const) {
+      const fields = buildPrismaSchema(root, { provider }).models.find((m) => m.name === "Customer")!.fields;
+      expect(fields.map((f) => f.name)).toEqual(["id", "homeAddressStreet", "homeAddressPostalCode"]);
+      expect(fields[1]).toMatchObject({ type: "String", optional: false });
+      expect(fields[1]!.attributes).toContain('@map("home_address_street")');
+      expect(fields[2]!.attributes).toContain('@map("home_address_postal_code")');
+    }
+    const pgPostal = buildPrismaSchema(root, { provider: "postgresql" }).models[0]!.fields[2]!;
+    expect(pgPostal.attributes).toContain("@db.VarChar(10)");
+  });
+
+  test("a stored procedure is not a model, and not refused: meta migrate does not create it either", async () => {
+    const root = await loadJson(model([
+      entity("Fresh", [{ "source.rdb": {} }, longId, pk]),
+      { "object.projection": { name: "TopCustomers", children: [
+        { "source.rdb": { "@kind": "storedProc", "@proc": "top_customers" } },
+        { "field.long": { name: "id" } },
+      ] } },
+    ]));
+    expect(buildPrismaSchema(root, { provider: "postgresql" }).models.map((m) => m.name)).toEqual(["Fresh"]);
+  });
 });
 
 describe("prisma-schema — refusals", () => {
@@ -192,6 +228,40 @@ describe("prisma-schema — refusals", () => {
     expect(e.code).toBe(ERR_PRISMA_READ_ONLY_SOURCE);
     expect(e.message).toContain("ProgramTitle");
     expect(e.message).toContain("@unmanaged");
+  });
+
+  test("a write-through entity's read view, though the entity has a table", async () => {
+    const root = await loadJson(model([
+      entity("Customer", [{ "source.rdb": {} }, longId, { "field.string": { name: "name" } }, pk]),
+      entity("Order", [
+        { "source.rdb": { "@role": "primary", "@table": "orders" } },
+        { "source.rdb": { "@role": "replica", "@kind": "view", "@view": "v_order_with_customer" } },
+        longId,
+        { "field.long": { name: "customerId", "@required": true } },
+        { "field.string": { name: "customerName", children: [
+          { "origin.passthrough": { "@from": "Customer.name", "@via": "Order.customer" } },
+        ] } },
+        { "relationship.association": { name: "customer", "@objectRef": "Customer", "@cardinality": "one" } },
+        pk,
+        { "identity.reference": { name: "refCustomer", "@fields": ["customerId"], "@references": "Customer" } },
+      ]),
+    ]));
+    for (const provider of ["postgresql", "mysql", "sqlite"] as const) {
+      const e = refusal(() => buildPrismaSchema(root, { provider, checks: "omit" }));
+      expect(e.code).toBe(ERR_PRISMA_READ_ONLY_SOURCE);
+      expect(e.message).toContain("v_order_with_customer");
+    }
+    const narrowed = buildPrismaSchema(root, { provider: "postgresql", matches: (o) => o.name === "Customer" });
+    expect(narrowed.models.map((m) => m.name)).toEqual(["Customer"]);
+  });
+
+  test("a @schema outside Postgres", async () => {
+    const root = await loadJson(model([
+      entity("Audit", [{ "source.rdb": { "@schema": "audit" } }, longId, pk]),
+    ]));
+    const e = refusal(() => buildPrismaSchema(root, { provider: "mysql" }));
+    expect(e.code).toBe(ERR_PRISMA_UNSUPPORTED_SCHEMA);
+    expect(e.message).toContain("audit");
   });
 
   test("an expression index", async () => {

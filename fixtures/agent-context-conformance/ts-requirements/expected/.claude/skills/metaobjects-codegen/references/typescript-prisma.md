@@ -108,6 +108,7 @@ the gate.
 | `field.uuid` | `String @db.Uuid` (Postgres), `@db.VarChar(36)` (MySQL) |
 | `field.enum` | `String` plus a CHECK in `schema.checks.sql` (not a Prisma `enum`, so the column matches `meta migrate`'s) |
 | `field.object`, `field.map`, `@storage: jsonb` | `Json` |
+| `field.object @storage: flattened` | one field per field of the value object, `<field><Nested>` with `@map("<column>_<nested_column>")` |
 | `isArray` scalar | a list (`String[]`) on Postgres; `Json` on MySQL; `String` holding JSON text on SQLite |
 | `identity.primary` | `@id` or `@@id([...])`; `@generation: increment` is `@default(autoincrement())`; `@generation: uuid` is `gen_random_uuid()` on Postgres, `uuid()` elsewhere |
 | `@default` | `@default(...)` for a literal; `"now"` and other expressions are `dbgenerated(...)`, so the default text matches what `verify --db` expects (a MySQL `DateTime` takes `now()`) |
@@ -124,16 +125,18 @@ to change.
 
 | Code | When | What to do |
 |---|---|---|
-| `ERR_PRISMA_READ_ONLY_SOURCE` | an object is read from a view, stored procedure or table function (a projection, or a served report) | create the view in a Prisma migration and mark its `source.rdb` `@unmanaged: true`, or leave it out with `filter` |
-| `ERR_PRISMA_UNSUPPORTED_INDEX` | an index has `@expr` or `@where`, or a `@using` method other than Postgres `hash`, `gin`, `gist`, `brin` or `spgist` | create it in a Prisma migration, or drop the attribute |
+| `ERR_PRISMA_READ_ONLY_SOURCE` | an object declares a view that `meta migrate` creates and `meta verify --db` expects (a projection, a write-through entity's read view, or a served report) | create the view in a Prisma migration and mark its read `source.rdb` `@unmanaged: true`, or leave the object out with `filter` |
+| `ERR_PRISMA_UNSUPPORTED_INDEX` | an index has `@expr` or `@where`, or a `@using` method other than `btree` or, on Postgres, `hash`, `gin`, `gist`, `brin` or `spgist` | create it in a Prisma migration, or drop the attribute |
+| `ERR_PRISMA_UNSUPPORTED_SCHEMA` | a `source.rdb` declares `@schema` and the provider is not `postgresql`, where Prisma has no `@@schema` | remove the `@schema`, or use the `postgresql` provider |
 | `ERR_PRISMA_UNSUPPORTED_CHECK` | the provider is SQLite and the model implies a CHECK | pass `checks: "omit"` |
 | `ERR_PRISMA_NO_PRIMARY_KEY` | a table has no primary key | declare an `identity.primary` |
 | `ERR_PRISMA_UNMAPPABLE_RELATION` | a foreign key points at a table with no model, at a non-unique key, or at a column of another type | include the table, reference a key, or match the subtype |
 | `ERR_PRISMA_NAME_COLLISION` | two objects, or two fields, would get the same Prisma name | rename one, or narrow `filter` |
 | `ERR_PRISMA_UNSUPPORTED_PROVIDER` | the dialect or `provider` is not `postgresql`, `mysql` or `sqlite` | pass `provider` |
 
-A model with projections or served reports therefore needs one of those two fixes before the
-generator runs. Read the view's rows with Prisma's `$queryRaw`, and validate them with the
+A model with projections, write-through read views or served reports therefore needs one of
+those two fixes before the generator runs. A stored procedure, table function or materialized
+view is not refused: `meta migrate` does not create it, so neither does Prisma. Read the view's rows with Prisma's `$queryRaw`, and validate them with the
 generated Zod schema.
 
 ## SQLite and MySQL
