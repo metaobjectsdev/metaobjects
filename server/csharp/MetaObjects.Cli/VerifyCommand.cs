@@ -564,7 +564,7 @@ public static class VerifyCommand
                 {
                     text = provider.Resolve(reference);
                 }
-                catch (RenderException e) when (e.Message.StartsWith(TemplateEngines.ErrTemplateEngineUnsupported, StringComparison.Ordinal))
+                catch (RenderException e) when (TemplateEngines.IsEngineRefusal(e))
                 {
                     // ADR-0061: a Jinja-only body is refused by name (this port renders Mustache only).
                     errors.Add(new Drift(tmpl.Name, kind, TemplateEngines.ErrTemplateEngineUnsupported, reference));

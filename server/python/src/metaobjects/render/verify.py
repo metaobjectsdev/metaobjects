@@ -23,7 +23,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol
 
-from .engine import TEMPLATE_ENGINE_JINJA
+from .engine import TEMPLATE_ENGINE_JINJA, TEMPLATE_ENGINE_MUSTACHE, partial_engine_mismatch
 from .payload_accessors import is_boolean_accessor, is_positional_accessor
 
 #: A ``{{var}}`` references a field the (contextual) payload does not declare.
@@ -317,6 +317,9 @@ def verify(
                 body = provider.resolve(tok.value)
                 if body is None:
                     errors.append(VerifyError(ERR_PARTIAL_UNRESOLVED, tok.value))
+                    continue
+                if partial_engine_mismatch(provider, tok.value, TEMPLATE_ENGINE_MUSTACHE):
+                    errors.append(VerifyError(ERR_TEMPLATE_ENGINE_UNSUPPORTED, tok.value))
                     continue
                 static_texts.append(body)
                 walk(_tokenize(body), stack, [*seen, tok.value], in_element)

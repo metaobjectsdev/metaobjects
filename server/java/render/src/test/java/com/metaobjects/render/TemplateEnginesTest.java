@@ -5,6 +5,7 @@ import org.junit.Test;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
@@ -32,6 +33,16 @@ public class TemplateEnginesTest {
         Files.writeString(root.resolve("g/s.jinja"), "J");
         assertEquals("M", new FilesystemProvider(root).resolve("g/s"));
         assertNull(new FilesystemProvider(root).resolve("g/none"));
+    }
+
+    @Test
+    public void aMustachePartialThatIsJinjaOnlyIsAFindingNotACrash() throws IOException {
+        Path root = Files.createTempDirectory("fp-jinja-");
+        Files.createDirectories(root.resolve("g"));
+        Files.writeString(root.resolve("g/footer.jinja"), "{{ name }}");
+        List<VerifyError> errors = Verify.check("{{> g/footer}}", List.of(PayloadField.scalar("name")),
+            new VerifyOptions(new FilesystemProvider(root), null, null));
+        assertEquals(List.of(new VerifyError(TemplateEngines.ERR_TEMPLATE_ENGINE_UNSUPPORTED, "g/footer")), errors);
     }
 
     @Test

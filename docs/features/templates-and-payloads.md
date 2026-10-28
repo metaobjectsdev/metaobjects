@@ -210,7 +210,12 @@ with jinja2 (`pip install "metaobjects[jinja]"`), TypeScript with nunjucks, whic
   payload field tree to `render`, so a body that drifted after the build is refused when it
   is rendered.
 - **Escaping.** `@format` drives escaping exactly as for Mustache: every `{{ … }}` value goes
-  through that format's escaper, and `| safe` bypasses it.
+  through that format's escaper, and `| safe` bypasses it. What a macro, a `call` block or a
+  block `set` renders is already escaped, and printing it does not escape it again.
+- **One engine per include chain.** A Mustache body includes Mustache partials, and a Jinja
+  body includes Jinja templates. A partial whose file is the other engine's is refused with
+  `ERR_TEMPLATE_ENGINE_UNSUPPORTED`, in `verify` and at render time, rather than spliced in
+  as text the including engine would misread.
 - **Java, Kotlin and C# do not render Jinja.** Their providers refuse a Jinja-only body with
   `ERR_TEMPLATE_ENGINE_UNSUPPORTED`, and their `verify` reports it on that template, so a
   model that needs those ports keeps its bodies in Mustache.
@@ -226,7 +231,10 @@ Python and TypeScript render the shared Jinja vocabulary identically
 (`fixtures/jinja-render-conformance/`). Outside it the two engines differ: an empty list is
 false in jinja2 and true in nunjucks (write `{% if items | length %}`), a printed list or dict
 is engine-specific text, and Python-only syntax (`{% with %}`, `name.upper()`, `True`) does
-not run in nunjucks. The Mustache-only accessors (`has<Field>`, `-first`, `-last`) are not
+not run in nunjucks. Looping over a null value renders nothing in nunjucks and fails the
+render in jinja2 (guard it with `{% if items %}`). A string filter such as `upper` over
+already-escaped text (a `{% filter upper %}` block in an html render) keeps it escaped once in
+jinja2 and escapes it again in nunjucks. The Mustache-only accessors (`has<Field>`, `-first`, `-last`) are not
 added for a Jinja body; use `{% if field %}` and `loop.first` / `loop.last`.
 
 ## The rendered output
@@ -780,8 +788,8 @@ for the per-port pass/skip ledger.
 
 **Jinja bodies (Python and TypeScript, ADR-0061)**
 
-- [`fixtures/jinja-render-conformance/`](../../fixtures/jinja-render-conformance/) — 12 cases: variables, loops, conditionals, `set` and macros, `include` and `import`, filters, html and json escaping, whitespace control, `raw` and comments, plus an include cycle and an unresolved include. Byte-identical output from jinja2 and nunjucks.
-- [`fixtures/jinja-verify-conformance/`](../../fixtures/jinja-verify-conformance/) — 30 cases: the payload check over the parsed template (paths, loop targets, locals, filters, includes, imports, `extends` blocks, `ERR_TEMPLATE_NOT_STATIC`, `ERR_TEMPLATE_SYNTAX`, required slots and tags).
+- [`fixtures/jinja-render-conformance/`](../../fixtures/jinja-render-conformance/) — 13 cases: variables, loops, conditionals, `set` and macros, `include` and `import`, filters, html and json escaping, whitespace control, `raw` and comments, plus an include cycle and an unresolved include. Byte-identical output from jinja2 and nunjucks.
+- [`fixtures/jinja-verify-conformance/`](../../fixtures/jinja-verify-conformance/) — 31 cases: the payload check over the parsed template (paths, loop targets, locals, filters, includes, imports, `extends` blocks, `ERR_TEMPLATE_NOT_STATIC`, `ERR_TEMPLATE_SYNTAX`, required slots and tags).
 
 ## See also
 

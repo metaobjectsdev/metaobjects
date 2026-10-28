@@ -7,11 +7,13 @@ Mirrors ``server/typescript/packages/render/test/jinja-engine.test.ts``.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
 
 from metaobjects.render import (
+    ERR_TEMPLATE_ENGINE_UNSUPPORTED,
     ERR_VAR_NOT_ON_PAYLOAD,
     FilesystemProvider,
     InMemoryProvider,
@@ -34,6 +36,8 @@ def root(tmp_path: Path) -> Path:
     (p / "plain.mustache").write_text("{{name}}")
     (p / "inc.jinja").write_text('{% include "p/part" %}!')
     (p / "part.jinja2").write_text("<{{ name }}>")
+    (p / "mix-m.mustache").write_text("{{> p/only}}")
+    (p / "mix-j.jinja").write_text('{% include "p/plain" %}')
     return tmp_path
 
 
@@ -136,3 +140,57 @@ def test_reference_line_prefers_the_exact_path() -> None:
     assert jinja_reference_line(text, "p.nope") == 3
     assert jinja_reference_line("{{ a }}", "b") is None
     assert jinja_reference_line("{{ broken", "a") is None
+
+
+_MIX_FIELDS = [PayloadField("name"), PayloadField("tags", is_array=True)]
+
+
+def test_mustache_partial_that_is_jinja_is_refused(root: Path) -> None:
+    provider = FilesystemProvider(root)
+    with pytest.raises(RenderError, match=ERR_TEMPLATE_ENGINE_UNSUPPORTED):
+        render(RenderRequest(payload={"tags": []}, provider=provider, ref="p/mix-m"))
+    errors = verify("{{> p/only}}", _MIX_FIELDS, provider=provider)
+    assert [(e.code, e.path) for e in errors] == [(ERR_TEMPLATE_ENGINE_UNSUPPORTED, "p/only")]
+
+
+def test_jinja_include_that_is_mustache_is_refused(root: Path) -> None:
+    provider = FilesystemProvider(root)
+    with pytest.raises(RenderError, match=ERR_TEMPLATE_ENGINE_UNSUPPORTED):
+        render(RenderRequest(payload={"name": "x"}, provider=provider, ref="p/mix-j"))
+    errors = verify('{% include "p/plain" %}', _MIX_FIELDS, provider=provider, engine="jinja")
+    assert [(e.code, e.path) for e in errors] == [(ERR_TEMPLATE_ENGINE_UNSUPPORTED, "p/plain")]
+
+
+def _jinja(template: str, payload: object, fmt: str = "text") -> str:
+    return render(
+        RenderRequest(payload=payload, provider=InMemoryProvider({}), template=template, format=fmt, engine="jinja")
+    )
+
+
+@dataclass
+class _Greeting:
+    name: str
+
+
+def test_dataclass_and_object_payloads_are_read_by_field() -> None:
+    assert _jinja("[{{ name }}]", _Greeting("Ada")) == "[Ada]"
+
+    class Plain:
+        def __init__(self) -> None:
+            self.name = "Bo"
+
+    assert _jinja("[{{ name }}]", Plain()) == "[Bo]"
+
+
+def test_a_payload_with_no_fields_is_refused() -> None:
+    with pytest.raises(RenderError, match="a Jinja payload must be a mapping or an object"):
+        _jinja("{{ x }}", 5)
+
+
+def test_a_missing_key_renders_empty_at_any_depth() -> None:
+    assert _jinja("[{{ v.x.y }}]", {"v": {}}) == "[]"
+
+
+def test_an_engine_failure_is_a_render_error() -> None:
+    with pytest.raises(RenderError, match="jinja render failed"):
+        _jinja("{% for i in items %}{{ i }}{% endfor %}", {"items": None})

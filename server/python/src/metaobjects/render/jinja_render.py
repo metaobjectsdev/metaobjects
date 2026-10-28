@@ -2,11 +2,15 @@
 format-driven escapers as the Mustache path.
 
 Output matches the TypeScript port (nunjucks) for the shared Jinja vocabulary — gated by
-``fixtures/jinja-render-conformance/``. Three settings make that hold:
+``fixtures/jinja-render-conformance/``. These settings make that hold:
 
 * every ``{{ … }}`` value is printed the way the Mustache renderer prints it (``True`` →
   ``true``, ``1.0`` → ``1``, ``None`` → empty) and then escaped for the request's format;
   ``| safe`` marks a value as already-escaped and bypasses the escaper, as in nunjucks;
+* what a macro, a ``call`` block or a block ``set`` renders is already escaped, so printing
+  it does not escape it again (nunjucks returns those as safe strings);
+* a lookup on a missing key renders empty however deep it chains (``v.x.y``), as in
+  nunjucks; every engine failure surfaces as ``JinjaRenderError``;
 * a trailing newline is kept (jinja2 drops it by default; nunjucks and Mustache keep it);
 * the static template graph is checked first, so a cycle or a missing template fails with
   the Mustache path's messages (``partial cycle:``, ``unresolved partial:``).
@@ -14,9 +18,12 @@ Output matches the TypeScript port (nunjucks) for the shared Jinja vocabulary �
 
 from __future__ import annotations
 
+import dataclasses
+from collections.abc import Mapping
 from typing import Any
 
 from . import escapers
+from .engine import TEMPLATE_ENGINE_JINJA, partial_engine_message, partial_engine_mismatch
 from .jinja_verify import jinja2_module, parse_jinja, ref_of_template_name
 from .renderer import _stringify
 from .verify import MAX_DEPTH, Provider
@@ -26,13 +33,30 @@ class JinjaRenderError(Exception):
     """A Jinja render failed before or during template evaluation."""
 
 
-def _normalize(payload: Any) -> Any:
-    """A Pydantic model (a generated payload model, ADR-0056) is rendered as its JSON-mode
-    dump, as the Mustache path does: field names as keys, enums as their wire values."""
+class _Rendered(str):
+    """Text a template already rendered (a macro, a ``call`` body, a block ``set``): its
+    values were escaped as they were printed, so printing it again must not escape twice."""
+
+
+def _concat(parts: Any) -> _Rendered:
+    return _Rendered("".join(parts))
+
+
+def _context(payload: Any) -> dict[str, Any]:
+    """The template's top-level names. A Pydantic model (a generated payload model,
+    ADR-0056) is its JSON-mode dump, as on the Mustache path: field names as keys, enums as
+    their wire values. A mapping, a dataclass or a plain object is read by its fields;
+    anything else has no names a template could address, and is refused."""
     dump = getattr(payload, "model_dump", None)
     if callable(dump) and not isinstance(payload, type):
-        return dump(mode="json")
-    return payload
+        payload = dump(mode="json")
+    if isinstance(payload, Mapping):
+        return dict(payload)
+    if dataclasses.is_dataclass(payload) and not isinstance(payload, type):
+        return {f.name: getattr(payload, f.name) for f in dataclasses.fields(payload)}
+    if hasattr(payload, "__dict__") and not isinstance(payload, type):
+        return {k: v for k, v in vars(payload).items() if not k.startswith("_")}
+    raise JinjaRenderError(f"a Jinja payload must be a mapping or an object, not {type(payload).__name__}")
 
 
 def _template_refs(text: str) -> list[tuple[str, bool]]:
@@ -57,6 +81,8 @@ def _check_template_graph(text: str, provider: Provider, path: list[str]) -> Non
             if optional:
                 continue
             raise JinjaRenderError(f"unresolved partial: {ref}")
+        if partial_engine_mismatch(provider, ref, TEMPLATE_ENGINE_JINJA):
+            raise JinjaRenderError(partial_engine_message(ref, TEMPLATE_ENGINE_JINJA))
         _check_template_graph(body, provider, [*path, ref])
 
 
@@ -71,7 +97,7 @@ def render_jinja(body: str, ref: str | None, payload: Any, provider: Provider, f
         raise JinjaRenderError(f"template syntax error: {e.message}") from e
 
     def finalize(value: Any) -> str:
-        if isinstance(value, Markup):
+        if isinstance(value, (Markup, _Rendered)):
             return str(value)
         if value is None or isinstance(value, jinja2.Undefined):
             return ""
@@ -86,12 +112,16 @@ def render_jinja(body: str, ref: str | None, payload: Any, provider: Provider, f
         autoescape=False,
         keep_trailing_newline=True,
         finalize=finalize,
-        undefined=jinja2.Undefined,
+        undefined=jinja2.ChainableUndefined,
     )
-    context = _normalize(payload)
-    if not isinstance(context, dict):
-        context = {}
-    return str(env.from_string(body).render(**context))
+    env.concat = _concat
+    context = _context(payload)
+    try:
+        return str(env.from_string(body).render(**context))
+    except jinja2.TemplateSyntaxError as e:
+        raise JinjaRenderError(f"template syntax error: {e.message}") from e
+    except (jinja2.TemplateError, TypeError, ValueError, AttributeError, KeyError) as e:
+        raise JinjaRenderError(f"jinja render failed: {type(e).__name__}: {e}") from e
 
 
 __all__ = ["JinjaRenderError", "render_jinja"]

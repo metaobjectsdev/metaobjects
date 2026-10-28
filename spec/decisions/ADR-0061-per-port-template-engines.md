@@ -38,7 +38,10 @@ language specific templating is fine."
    port understands and another does not. A filesystem provider looks for `<ref>.mustache`
    first, then the Jinja extensions in the order above; a provider given one explicit extension
    reads only that extension. A provider that cannot tell (an in-memory map) reports nothing,
-   and the body is Mustache unless the caller names the engine.
+   and the body is Mustache unless the caller names the engine. An include chain stays in one
+   engine: a Mustache `{{> ref}}` whose file is Jinja, or a Jinja `include` / `import` /
+   `extends` whose file is Mustache, is refused with `ERR_TEMPLATE_ENGINE_UNSUPPORTED` by
+   `verify` and by `render`.
 
 3. **The same payload check, at codegen time and at runtime.** The Jinja check walks the
    parsed template (the nunjucks AST in TypeScript, the jinja2 AST in Python), never the text:
@@ -95,12 +98,19 @@ that must render the same in both ports should stay inside the corpus vocabulary
   methods (`name.upper()`) and `True`/`False`/`None`; nunjucks accepts `true`/`false`/`none`
   and JavaScript methods. The checker accepts a method call on a payload value and checks the
   receiver.
+- **Looping over a null.** nunjucks renders nothing; jinja2 fails the render (a
+  `RenderError`). Guard it with `{% if items %}`.
+- **A string filter over escaped text.** What a macro, a `call` block or a block `set`
+  renders is safe in both engines and is not escaped again. A filter that rebuilds the
+  string (`upper`, `lower`, `replace`) keeps it safe in jinja2 but not in nunjucks, so a
+  `{% filter upper %}` block in an html render escapes its values twice in TypeScript.
 - **The Mustache-only payload accessors** (the injected `has<Field>` and `-first`/`-last` list
   flags) are not added for a Jinja body. Jinja has its own forms (`{% if field %}`, `loop.first`,
   `loop.last`).
 
 Printed scalars are normalized in both ports to the Mustache renderer's form: `true`/`false`,
-a whole float as an integer, and `None`/`undefined` as empty text.
+a whole float as an integer, and `None`/`undefined` as empty text. A lookup on a missing key
+renders empty however deep it chains (`v.x.y`).
 
 ## Consequences
 

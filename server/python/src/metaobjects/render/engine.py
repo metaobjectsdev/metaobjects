@@ -30,6 +30,26 @@ def engine_for_extension(extension: str) -> str:
     return TEMPLATE_ENGINE_JINJA if extension.lower() in JINJA_EXTENSIONS else TEMPLATE_ENGINE_MUSTACHE
 
 
+def partial_engine_mismatch(provider: Any, ref: str, including: str) -> bool:
+    """A partial written for the other engine. A Mustache body includes Mustache partials
+    and a Jinja body includes Jinja templates; when the provider reports that ``ref`` is the
+    other engine's file, the include is refused (``ERR_TEMPLATE_ENGINE_UNSUPPORTED``) rather
+    than spliced in as text the including engine would misread."""
+    engine_of = getattr(provider, "engine_of", None)
+    if not callable(engine_of):
+        return False
+    known = engine_of(ref)
+    return known is not None and known != including
+
+
+def partial_engine_message(ref: str, including: str) -> str:
+    """The message a refused cross-engine partial raises at render time."""
+    return (
+        f"ERR_TEMPLATE_ENGINE_UNSUPPORTED: partial {ref} is not a {including} template; "
+        f"a {including} body includes only {including} partials"
+    )
+
+
 def template_engine_of(provider: Any, ref: str | None, explicit: str | None = None) -> str:
     """The engine for ``ref`` resolved through ``provider``: an explicit choice wins, then
     what the provider knows about the ref (its ``engine_of``, from the file extension), then
@@ -53,5 +73,7 @@ __all__ = [
     "TEMPLATE_ENGINE_JINJA",
     "TEMPLATE_ENGINE_MUSTACHE",
     "engine_for_extension",
+    "partial_engine_message",
+    "partial_engine_mismatch",
     "template_engine_of",
 ]

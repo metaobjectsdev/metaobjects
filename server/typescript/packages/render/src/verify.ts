@@ -11,11 +11,12 @@
 
 import Mustache from "mustache";
 import { HAS_PREFIX, LAST_ACCESSOR, hasAccessorName } from "./payload-accessors.js";
-import { TEMPLATE_ENGINE_JINJA } from "./engine.js";
+import { TEMPLATE_ENGINE_JINJA, TEMPLATE_ENGINE_MUSTACHE, partialEngineMismatch } from "./engine.js";
 import { verifyJinja } from "./jinja/verify.js";
 import {
   ERR_VAR_NOT_ON_PAYLOAD,
   ERR_PARTIAL_UNRESOLVED,
+  ERR_TEMPLATE_ENGINE_UNSUPPORTED,
   MAX_DEPTH,
   slotAndTagFindings,
   type PayloadField,
@@ -213,6 +214,10 @@ export function verify(
           const text = provider.resolve(value);
           if (text === undefined) {
             errors.push({ code: ERR_PARTIAL_UNRESOLVED, path: value });
+            break;
+          }
+          if (partialEngineMismatch(provider, value, TEMPLATE_ENGINE_MUSTACHE)) {
+            errors.push({ code: ERR_TEMPLATE_ENGINE_UNSUPPORTED, path: value });
             break;
           }
           staticTexts.push(text);

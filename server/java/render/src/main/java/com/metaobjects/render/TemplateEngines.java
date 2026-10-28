@@ -27,6 +27,11 @@ public final class TemplateEngines {
         return JINJA_EXTENSIONS.contains(extension.toLowerCase(Locale.ROOT));
     }
 
+    /** True when {@code e} is this refusal (its message starts with the code). */
+    public static boolean isEngineRefusal(RenderException e) {
+        return e.getMessage() != null && e.getMessage().startsWith(ERR_TEMPLATE_ENGINE_UNSUPPORTED);
+    }
+
     /** Refuse a provider configured to read Jinja files. */
     static void refuseJinjaExtension(String extension) {
         if (isJinjaExtension(extension)) {

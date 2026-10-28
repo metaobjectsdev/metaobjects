@@ -34,6 +34,15 @@ public sealed class TemplateEngineTests : IDisposable
     }
 
     [Fact]
+    public void A_mustache_partial_that_is_jinja_only_is_a_finding_not_a_crash()
+    {
+        Write("g/footer.jinja", "{{ name }}");
+        var errors = Verify.Check("{{> g/footer}}", [new PayloadField("name")],
+            new VerifyOptions { Provider = new FilesystemProvider(_root) });
+        Assert.Equal([new VerifyError(TemplateEngines.ErrTemplateEngineUnsupported, "g/footer")], errors);
+    }
+
+    [Fact]
     public void A_jinja_extension_is_refused()
     {
         var e = Assert.Throws<RenderException>(() => new FilesystemProvider(_root, ".Jinja2"));

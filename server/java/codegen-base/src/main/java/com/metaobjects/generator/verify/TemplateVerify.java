@@ -159,7 +159,7 @@ public final class TemplateVerify {
                     text = provider.resolve(ref);
                 } catch (RenderException e) {
                     // ADR-0061: a Jinja-only body is refused by name (this port renders Mustache only).
-                    if (!e.getMessage().startsWith(TemplateEngines.ERR_TEMPLATE_ENGINE_UNSUPPORTED)) throw e;
+                    if (!TemplateEngines.isEngineRefusal(e)) throw e;
                     errors.add(new Drift(tmpl.getName(), kind, TemplateEngines.ERR_TEMPLATE_ENGINE_UNSUPPORTED, ref));
                     continue;
                 }

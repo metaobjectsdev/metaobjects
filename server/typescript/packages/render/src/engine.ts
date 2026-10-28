@@ -30,6 +30,26 @@ export function engineForExtension(extension: string): TemplateEngine {
 }
 
 /**
+ * A partial written for the other engine. A Mustache body includes Mustache partials and
+ * a Jinja body includes Jinja templates; when the provider reports that `ref` is the
+ * other engine's file, the include is refused (`ERR_TEMPLATE_ENGINE_UNSUPPORTED`) rather
+ * than spliced in as text the including engine would misread.
+ */
+export function partialEngineMismatch(
+  provider: Provider,
+  ref: string,
+  including: TemplateEngine,
+): boolean {
+  const known = provider.engineOf?.(ref);
+  return known !== undefined && known !== including;
+}
+
+/** The message a refused cross-engine partial raises at render time. */
+export function partialEngineMessage(ref: string, including: TemplateEngine): string {
+  return `ERR_TEMPLATE_ENGINE_UNSUPPORTED: partial ${ref} is not a ${including} template; a ${including} body includes only ${including} partials`;
+}
+
+/**
  * The engine for `ref` resolved through `provider`: an explicit choice wins, then
  * what the provider knows about the ref (its file extension), then Mustache.
  */
@@ -38,7 +58,12 @@ export function templateEngineOf(
   ref: string | undefined,
   explicit?: TemplateEngine,
 ): TemplateEngine {
-  if (explicit !== undefined) return explicit;
+  if (explicit !== undefined) {
+    if (!(TEMPLATE_ENGINES as readonly string[]).includes(explicit)) {
+      throw new Error(`unknown template engine ${JSON.stringify(explicit)}; expected one of ${TEMPLATE_ENGINES.join(", ")}`);
+    }
+    return explicit;
+  }
   if (provider !== undefined && ref !== undefined) {
     const known = provider.engineOf?.(ref);
     if (known !== undefined) return known;

@@ -10,6 +10,7 @@ import {
   engineForExtension,
   jinjaReferenceLine,
   ERR_VAR_NOT_ON_PAYLOAD,
+  ERR_TEMPLATE_ENGINE_UNSUPPORTED,
 } from "../src/index.js";
 import { FilesystemProvider } from "../src/providers.js";
 
@@ -27,6 +28,8 @@ beforeAll(() => {
   writeFileSync(join(root, "p", "plain.mustache"), "{{name}}");
   writeFileSync(join(root, "p", "inc.jinja"), '{% include "p/part" %}!');
   writeFileSync(join(root, "p", "part.jinja2"), "<{{ name }}>");
+  writeFileSync(join(root, "p", "mix-m.mustache"), "{{> p/only}}");
+  writeFileSync(join(root, "p", "mix-j.jinja"), '{% include "p/plain" %}');
 });
 afterAll(() => rmSync(root, { recursive: true, force: true }));
 
@@ -99,6 +102,34 @@ describe("render", () => {
     const provider = new InMemoryProvider({});
     render({ template: "{{ a }}", payload: { a: "<" }, provider, engine: "jinja", format: "html" });
     expect(render({ template: "{{ a }}", payload: { a: "<" }, provider, engine: "jinja", format: "text" })).toBe("<");
+  });
+});
+
+describe("an include chain stays in one engine", () => {
+  const fields = [{ name: "name" }, { name: "tags", isArray: true }];
+
+  test("a Mustache partial whose file is Jinja is refused, in render and in verify", () => {
+    const provider = new FilesystemProvider(root);
+    expect(() => render({ ref: "p/mix-m", payload: { tags: [] }, provider })).toThrow(ERR_TEMPLATE_ENGINE_UNSUPPORTED);
+    expect(verify("{{> p/only}}", fields, { provider })).toEqual([
+      { code: ERR_TEMPLATE_ENGINE_UNSUPPORTED, path: "p/only" },
+    ]);
+  });
+
+  test("a Jinja include whose file is Mustache is refused, in render and in verify", () => {
+    const provider = new FilesystemProvider(root);
+    expect(() => render({ ref: "p/mix-j", payload: { name: "x" }, provider })).toThrow(ERR_TEMPLATE_ENGINE_UNSUPPORTED);
+    expect(verify('{% include "p/plain" %}', fields, { provider, engine: "jinja" })).toEqual([
+      { code: ERR_TEMPLATE_ENGINE_UNSUPPORTED, path: "p/plain" },
+    ]);
+  });
+});
+
+describe("explicit engine", () => {
+  test("an unknown engine is refused, not read as Mustache", () => {
+    expect(() =>
+      render({ template: "{{ a }}", payload: {}, provider: new InMemoryProvider({}), engine: "Jinja" as never }),
+    ).toThrow('unknown template engine "Jinja"');
   });
 });
 

@@ -26,9 +26,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 from typing import Any
 
-from .engine import JINJA_EXTENSIONS
+from .engine import JINJA_EXTENSIONS, TEMPLATE_ENGINE_JINJA, partial_engine_mismatch
 from .verify import (
     ERR_PARTIAL_UNRESOLVED,
+    ERR_TEMPLATE_ENGINE_UNSUPPORTED,
     ERR_TEMPLATE_NOT_STATIC,
     ERR_TEMPLATE_SYNTAX,
     ERR_VAR_NOT_ON_PAYLOAD,
@@ -51,8 +52,18 @@ _SAME_SHAPE_FILTERS = frozenset(
 )
 #: Filters with a positional argument that names an element attribute, and its index among
 #: the arguments after the subject (``join(", ", "name")``, ``sort(false, false, "name")``).
-#: The same positions in jinja2 and nunjucks.
-_ATTRIBUTE_ARG_INDEX = {"selectattr": 0, "rejectattr": 0, "groupby": 0, "join": 1, "sort": 2}
+#: The same positions in jinja2 and nunjucks; ``min``, ``max`` and ``unique`` are jinja2's.
+_ATTRIBUTE_ARG_INDEX = {
+    "selectattr": 0,
+    "rejectattr": 0,
+    "groupby": 0,
+    "sum": 0,
+    "join": 1,
+    "min": 1,
+    "max": 1,
+    "unique": 1,
+    "sort": 2,
+}
 _ATTRIBUTE_KWARG = "attribute"
 
 
@@ -312,6 +323,9 @@ def verify_jinja(
         if text is None:
             if not ignore_missing:
                 report(ERR_PARTIAL_UNRESOLVED, ref)
+            return
+        if partial_engine_mismatch(provider, ref, TEMPLATE_ENGINE_JINJA):
+            report(ERR_TEMPLATE_ENGINE_UNSUPPORTED, ref)
             return
         static_texts.append(text)
         try:

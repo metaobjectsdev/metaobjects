@@ -1,0 +1,2 @@
+{{ posts | sum("title") }} {{ posts | sum("prise") }} {{ posts | sum(attribute="prise") }}
+{{ posts | unique(false, "titel") | list }} {{ posts | min(false, "title") }} {{ posts | max(false, "zz") }}

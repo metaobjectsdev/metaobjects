@@ -19,6 +19,10 @@ public static class TemplateEngines
     public static bool IsJinjaExtension(string extension) =>
         JinjaExtensions.Contains(extension.ToLowerInvariant());
 
+    /// <summary>True when <paramref name="e"/> is this refusal (its message starts with the code).</summary>
+    public static bool IsEngineRefusal(RenderException e) =>
+        e.Message.StartsWith(ErrTemplateEngineUnsupported, StringComparison.Ordinal);
+
     internal static void RefuseJinjaExtension(string extension)
     {
         if (IsJinjaExtension(extension))

@@ -8,6 +8,7 @@
 
 import type { Provider } from "../provider.js";
 import { MAX_DEPTH } from "../verify-shared.js";
+import { TEMPLATE_ENGINE_JINJA, partialEngineMessage, partialEngineMismatch } from "../engine.js";
 import { childNodes, parseJinja, refOfTemplateName, renderJinjaText, type NjNode } from "./nunjucks.js";
 
 const TEMPLATE_REF_NODES: ReadonlySet<string> = new Set(["Include", "Import", "FromImport", "Extends"]);
@@ -32,6 +33,9 @@ function checkTemplateGraph(text: string, provider: Provider, path: readonly str
     if (body === undefined) {
       if (optional) continue;
       throw new Error(`unresolved partial: ${ref}`);
+    }
+    if (partialEngineMismatch(provider, ref, TEMPLATE_ENGINE_JINJA)) {
+      throw new Error(partialEngineMessage(ref, TEMPLATE_ENGINE_JINJA));
     }
     checkTemplateGraph(body, provider, [...path, ref]);
   }

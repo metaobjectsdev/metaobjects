@@ -1,0 +1,4 @@
+{% macro badge(x) %}<b>{{ x }}</b>{% endmacro %}{% macro wrap() %}<i>{{ caller() }}</i>{% endmacro %}{% set line %}<span>{{ note }}</span>{% endset %}
+{{ badge(name) }}
+{% call wrap() %}{{ note }}{% endcall %}
+{{ line }}

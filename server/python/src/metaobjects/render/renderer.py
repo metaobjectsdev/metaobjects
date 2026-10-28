@@ -23,7 +23,13 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from . import escapers
-from .engine import TEMPLATE_ENGINE_JINJA, template_engine_of
+from .engine import (
+    TEMPLATE_ENGINE_JINJA,
+    TEMPLATE_ENGINE_MUSTACHE,
+    partial_engine_message,
+    partial_engine_mismatch,
+    template_engine_of,
+)
 from .payload_accessors import with_derived_accessors
 from .verify import (
     ERR_REQUIRED_SLOT_UNUSED,
@@ -147,6 +153,8 @@ def _pre_expand_partials(text: str, provider: Provider, stack: list[str]) -> str
         body = provider.resolve(ref)
         if body is None:
             raise RenderError(f"unresolved partial: {ref}")
+        if partial_engine_mismatch(provider, ref, TEMPLATE_ENGINE_MUSTACHE):
+            raise RenderError(partial_engine_message(ref, TEMPLATE_ENGINE_MUSTACHE))
         stack.append(ref)
         try:
             return _pre_expand_partials(body, provider, stack)

@@ -17,9 +17,15 @@ export interface NjNode {
   readonly [field: string]: unknown;
 }
 
+interface CaptureCompiler {
+  compileCapture(this: CaptureCompiler, node: unknown, frame: unknown): void;
+  _emit(code: string): void;
+}
+
 interface NunjucksInternals {
   parser: { parse(src: string): NjNode };
   lib: { escape(value: string): string };
+  compiler: { Compiler: { prototype: CaptureCompiler } };
 }
 
 const internals = nunjucks as unknown as NunjucksInternals;
@@ -60,6 +66,21 @@ export function refOfTemplateName(name: string): string {
 }
 
 /**
+ * nunjucks compiles a block `{% set x %}…{% endset %}` (and a `{% filter %}` body) to a
+ * plain string, so printing it escapes its already-escaped values a second time. Jinja
+ * marks that capture safe, and so does this render: the capture is wrapped in
+ * `runtime.markSafe` while `renderJinjaText` compiles. Macro and `call` output is already
+ * a safe string in nunjucks.
+ */
+function safeCapture(original: CaptureCompiler["compileCapture"]): CaptureCompiler["compileCapture"] {
+  return function (this: CaptureCompiler, node: unknown, frame: unknown): void {
+    this._emit("runtime.markSafe(");
+    original.call(this, node, frame);
+    this._emit(")");
+  };
+}
+
+/**
  * A nunjucks environment whose loader is `provider` and whose escaping is
  * `escaper`. `autoescape` is on so every `{{ … }}` goes through the escape hook —
  * which `renderJinja` points at the format's escaper for the duration of one
@@ -88,11 +109,19 @@ export function renderJinjaText(
   escaper: (s: string) => string,
 ): string {
   const env = environment(provider);
-  const prev = internals.lib.escape;
+  // nunjucks has no per-environment escape or compile hook, so both are swapped on the
+  // module for the length of this call. The render is synchronous (no async loader or
+  // filter is registered, and every template compiles inside `renderString` because the
+  // loader returns `noCache`), so nothing else can observe the swap.
+  const compiler = internals.compiler.Compiler.prototype;
+  const prevEscape = internals.lib.escape;
+  const prevCapture = compiler.compileCapture;
   internals.lib.escape = (v: unknown) => escaper(typeof v === "string" ? v : String(v));
+  compiler.compileCapture = safeCapture(prevCapture);
   try {
     return env.renderString(text, context);
   } finally {
-    internals.lib.escape = prev;
+    internals.lib.escape = prevEscape;
+    compiler.compileCapture = prevCapture;
   }
 }

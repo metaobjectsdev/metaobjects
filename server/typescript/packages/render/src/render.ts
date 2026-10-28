@@ -3,7 +3,14 @@ import type { Provider } from "./provider.js";
 import { ESCAPERS, type RenderFormat } from "./escapers.js";
 import { verify, ERR_REQUIRED_SLOT_UNUSED, type PayloadField } from "./verify.js";
 import { withDerivedAccessors } from "./payload-accessors.js";
-import { TEMPLATE_ENGINE_JINJA, templateEngineOf, type TemplateEngine } from "./engine.js";
+import {
+  TEMPLATE_ENGINE_JINJA,
+  TEMPLATE_ENGINE_MUSTACHE,
+  partialEngineMessage,
+  partialEngineMismatch,
+  templateEngineOf,
+  type TemplateEngine,
+} from "./engine.js";
 import { renderJinja } from "./jinja/render.js";
 import { MAX_DEPTH } from "./verify-shared.js";
 
@@ -20,6 +27,9 @@ function expand(text: string, provider: Provider, path: readonly string[]): stri
     if (path.length >= MAX_DEPTH) throw new Error(`partial depth exceeded ${MAX_DEPTH}: ${ref}`);
     const t = provider.resolve(ref);
     if (t === undefined) throw new Error(`unresolved partial: ${ref}`);
+    if (partialEngineMismatch(provider, ref, TEMPLATE_ENGINE_MUSTACHE)) {
+      throw new Error(partialEngineMessage(ref, TEMPLATE_ENGINE_MUSTACHE));
+    }
     return expand(t, provider, [...path, ref]);
   });
 }

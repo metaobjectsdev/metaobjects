@@ -21,12 +21,14 @@ import {
   ERR_PARTIAL_UNRESOLVED,
   ERR_TEMPLATE_NOT_STATIC,
   ERR_TEMPLATE_SYNTAX,
+  ERR_TEMPLATE_ENGINE_UNSUPPORTED,
   MAX_DEPTH,
   slotAndTagFindings,
   type PayloadField,
   type VerifyError,
   type VerifyOptions,
 } from "../verify-shared.js";
+import { TEMPLATE_ENGINE_JINJA, partialEngineMismatch } from "../engine.js";
 import { childNodes, isNode, parseJinja, refOfTemplateName, type NjNode } from "./nunjucks.js";
 
 /** A value whose shape the payload declares. `path` is the expression as written. */
@@ -61,10 +63,12 @@ const SAME_SHAPE_FILTERS: ReadonlySet<string> = new Set([
 /**
  * Filters with a positional argument that names an element attribute, and its index
  * among the arguments after the subject (`join(", ", "name")`, `sort(false, false, "name")`).
- * The same positions in jinja2 and nunjucks.
+ * The same positions in jinja2 and nunjucks; `min`, `max` and `unique` are jinja2's,
+ * kept so the two ports' checks agree.
  */
 const ATTRIBUTE_ARG_INDEX: ReadonlyMap<string, number> = new Map([
-  ["selectattr", 0], ["rejectattr", 0], ["groupby", 0], ["join", 1], ["sort", 2],
+  ["selectattr", 0], ["rejectattr", 0], ["groupby", 0], ["sum", 0],
+  ["join", 1], ["min", 1], ["max", 1], ["unique", 1], ["sort", 2],
 ]);
 /** The keyword argument that names an element attribute (`map(attribute="x")`). */
 const ATTRIBUTE_KWARG = "attribute";
@@ -316,6 +320,10 @@ export function verifyJinja(
     const text = provider.resolve(ref);
     if (text === undefined) {
       if (!ignoreMissing) report(ERR_PARTIAL_UNRESOLVED, ref);
+      return;
+    }
+    if (partialEngineMismatch(provider, ref, TEMPLATE_ENGINE_JINJA)) {
+      report(ERR_TEMPLATE_ENGINE_UNSUPPORTED, ref);
       return;
     }
     staticTexts.push(text);
