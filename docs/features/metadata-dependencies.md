@@ -82,7 +82,7 @@ installed. CI, `meta gen`, `meta migrate` and every other port load the snapshot
 
 **Which Python interpreter.** `python` runs one interpreter, the first of:
 `$METAOBJECTS_PYTHON`; the active virtualenv (`$VIRTUAL_ENV`); a `.venv` beside
-`.metaobjects/`; `python3` on `PATH`. A set `$METAOBJECTS_PYTHON` or `$VIRTUAL_ENV`
+`.metaobjects/`; `python3` on `PATH` (`python` on Windows). A set `$METAOBJECTS_PYTHON` or `$VIRTUAL_ENV`
 whose interpreter is missing is refused rather than skipped, because falling through
 would read a different environment. `sync` prints the interpreter it used:
 
@@ -112,6 +112,9 @@ $METAOBJECTS_PYTHON). Install Python, activate the project's virtualenv, or poin
 $METAOBJECTS_PYTHON at the interpreter that has "acme_scheduling" installed.
 ```
 
+If importing a dotted name's parent package raises, `sync` reports that error and asks
+you to fix the environment; the package is not missing.
+
 The package is installed but `dir` names a directory it does not ship: also
 `ERR_DEPENDENCY_UNRESOLVED`, telling you to check `dir` or ask the publisher to ship the
 output. The directory exists but holds no `metaobjects.pkg.json`:
@@ -119,7 +122,8 @@ output. The directory exists but holds no `metaobjects.pkg.json`:
 
 **The installed version should match the manifest.** The publisher's generator stamps
 the host package's version into the manifest. When the installed package's own version
-(`package.json`, or the Python distribution's metadata) differs, `sync` warns: the
+(`package.json`, or the Python distribution's metadata) differs, `sync` warns (Python
+versions compare in PEP 440 normalized form, so `1.0.0-rc.1` equals `1.0.0rc1`): the
 publisher most likely released without regenerating the shared model. The lock records
 the manifest's version.
 
