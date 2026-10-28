@@ -10,6 +10,13 @@ here.**
 
 ## [Unreleased]
 
+### Documentation
+
+- **The fit-assessment prompt's capability sheet is re-checked against 1.1.4 / Maven 8.1.4**
+  (it read 1.0.8, last checked 2026-09-26): reporting, the requirements gate and
+  `--require-implementers`, the `wire` setting and eject in every port are now listed. The hosted
+  `/assess.md` picks this up when the site's pinned release moves to a release containing it.
+
 ## [1.1.4] — 2026-10-26
 
 _npm `1.1.4` (full lockstep across all 14 `@metaobjectsdev/*` publish candidates), PyPI `1.1.4`, NuGet `1.1.4` and Maven Central `8.1.4`._

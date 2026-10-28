@@ -1,9 +1,10 @@
-# Capability sheet — what each port ships at 1.0.8 (never promise across these lines)
+# Capability sheet — what each port ships at 1.1.4 / Maven 8.1.4 (never promise across these lines)
 
 ## Contents
 - Contract-only generation, per port
 - What contract-only does not do
 - Full-stack caps per port
+- Reporting, requirements and the wire setting (1.1)
 - Not shipped, never promise
 
 Paths are relative to the MetaObjects repository on GitHub.
@@ -62,6 +63,24 @@ code from the shapes.
 - promise byte-identical JSON from type-only output: field-name casing on the wire follows each
   consumer's serializer settings (the byte-identical REST wire is a property of the *generated
   routes*, gated by `fixtures/api-contract-conformance/`). Check it in the wedge.
+
+- **Reporting** (`docs/features/reporting.md`, metamodel 1.1; relative `startOf` windows 1.2): `dimension.*`,
+  `measure.*`, `segment.filter` and `object.report` load and validate in all five ports. A report with
+  a read-only `source.rdb @kind: view` is lowered to a SQL view by `meta migrate` (Postgres, SQLite,
+  D1; MySQL SQL from `buildReportViews`) and every port's generators serve it as one read-only list
+  route (rows past a 10,000 cap answer `report_too_large`). The TypeScript `cube-model` reference
+  generator exports it to Cube. TanStack gets a list hook only: no grid or form for a report.
+- **Requirements** (`docs/features/requirements.md`): `requirement.functional` / `.architectural`
+  load in all five ports and the `verify` gate runs in each. The strict form is
+  `--require-implementers` (TS, Python, C#), `-Dmeta.verify.requireImplementers=true` (Java/Kotlin),
+  or `META_REQUIRE_IMPLEMENTERS=1`. A green run proves links resolve, not that a claim is true.
+- **Wire setting**: `"wire": {"decimals", "nullMembers"}` in `.metaobjects/config.json`, read by every
+  port's codegen. Default `native`: each language's standard JSON (C#/Java/Kotlin decimals as numbers,
+  Python/TypeScript as strings). `decimals: "string"` + `nullMembers: "omit"` gives the identical
+  cross-port form (`docs/features/api-contract.md`, "The wire setting"). Physical names default to
+  `snake_case` in every port via `naming` (`literal` keeps field names).
+- **Eject** works in every port (`meta eject`, `metaobjects eject`, `mvn metaobjects:eject`,
+  `dotnet meta eject`); documentation pages are generators in the generator list in every port.
 
 **Full-stack caps per port:**
 - **Schema pillar** (`meta migrate`, `verify --db`): Node `meta` CLI only; Postgres, SQLite, D1
