@@ -155,6 +155,15 @@ name = sys.argv[1]
 out = {"executable": sys.executable}
 try:
     spec = importlib.util.find_spec(name)
+except ModuleNotFoundError as e:
+    # A parent of a dotted name that is itself absent is "not installed"; any
+    # other missing module was raised by a parent's own import.
+    if e.name and (name == e.name or name.startswith(e.name + ".")):
+        out["error"] = "missing"
+    else:
+        out["error"] = "import"
+        out["detail"] = type(e).__name__ + ": " + str(e)
+    spec = None
 except Exception as e:
     out["error"] = "import"
     out["detail"] = type(e).__name__ + ": " + str(e)

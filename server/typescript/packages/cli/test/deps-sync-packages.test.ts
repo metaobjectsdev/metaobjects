@@ -266,6 +266,17 @@ describe.skipIf(!hasPython)("meta deps sync — the python transport", () => {
     );
   });
 
+  test("a dotted name whose parent package is not installed is 'not installed', with the pip hint", async () => {
+    const root = consumer({ python: "acme.model", dir: "metaobjects" });
+    process.env.PYTHONPATH = join(root, "site");
+
+    expect(await sync(root)).toBe(1);
+    const printed = out.join("\n");
+    expect(printed).toContain('the Python package "acme.model" is not installed');
+    expect(printed).toContain("pip install acme");
+    expect(printed).not.toContain("importing the parent package");
+  });
+
   test("a parent package that fails to import is reported as such, without a pip install hint", async () => {
     const root = consumer({ python: "acme.model", dir: "metaobjects" });
     const site = join(root, "site");
