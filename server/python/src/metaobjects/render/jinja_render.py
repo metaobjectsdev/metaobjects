@@ -6,7 +6,8 @@ Output matches the TypeScript port (nunjucks) for the shared Jinja vocabulary �
 
 * every ``{{ … }}`` value is printed the way the Mustache renderer prints it (``True`` →
   ``true``, ``1.0`` → ``1``, ``None`` → empty) and then escaped for the request's format;
-  ``| safe`` marks a value as already-escaped and bypasses the escaper, as in nunjucks;
+  ``| safe`` marks a value as already-escaped and bypasses the escaper, and ``| escape`` /
+  ``| e`` / ``| forceescape`` escape with that same escaper, as in nunjucks;
 * what a macro, a ``call`` block or a block ``set`` renders is already escaped, so printing
   it does not escape it again (nunjucks returns those as safe strings);
 * a lookup on a missing key renders empty however deep it chains (``v.x.y``), as in
@@ -96,12 +97,16 @@ def render_jinja(body: str, ref: str | None, payload: Any, provider: Provider, f
     except jinja2.TemplateSyntaxError as e:
         raise JinjaRenderError(f"template syntax error: {e.message}") from e
 
-    def finalize(value: Any) -> str:
-        if isinstance(value, (Markup, _Rendered)):
-            return str(value)
+    def forceescape(value: Any) -> Markup:
         if value is None or isinstance(value, jinja2.Undefined):
-            return ""
-        return escapers.escape(format_, _stringify(value))
+            return Markup("")
+        return Markup(escapers.escape(format_, _stringify(value)))
+
+    def escape(value: Any) -> Any:
+        return value if isinstance(value, (Markup, _Rendered)) else forceescape(value)
+
+    def finalize(value: Any) -> str:
+        return str(escape(value))
 
     def load(name: str) -> tuple[str, None, Any] | None:
         src = provider.resolve(ref_of_template_name(name))
@@ -115,6 +120,7 @@ def render_jinja(body: str, ref: str | None, payload: Any, provider: Provider, f
         undefined=jinja2.ChainableUndefined,
     )
     env.concat = _concat
+    env.filters.update(escape=escape, e=escape, forceescape=forceescape)
     context = _context(payload)
     try:
         return str(env.from_string(body).render(**context))

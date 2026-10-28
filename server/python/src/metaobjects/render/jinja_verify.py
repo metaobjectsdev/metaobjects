@@ -497,60 +497,9 @@ class _LocalMarker:
 _LOCAL: Any = _LocalMarker()
 
 
-def _spelling_of(node: Any, nodes: Any) -> str | None:
-    """The static spelling of a name or member chain (``p.title``, ``posts[0]``,
-    ``user[*]``), or ``None``."""
-    if isinstance(node, nodes.Name):
-        return str(node.name)
-    if isinstance(node, nodes.Getattr):
-        target = _spelling_of(node.node, nodes)
-        return None if target is None else f"{target}.{node.attr}"
-    if isinstance(node, nodes.Getitem) and not isinstance(node.arg, nodes.Slice):
-        target = _spelling_of(node.node, nodes)
-        if target is None:
-            return None
-        arg = node.arg
-        if isinstance(arg, nodes.Const) and isinstance(arg.value, str):
-            return f"{target}.{arg.value}"
-        if isinstance(arg, nodes.Const) and isinstance(arg.value, int) and not isinstance(arg.value, bool):
-            return f"{target}[{arg.value}]"
-        return f"{target}[*]"
-    return None
-
-
-def jinja_reference_line(text: str, path: str) -> int | None:
-    """The 1-based line ``path`` is first referenced on in Jinja ``text``, for a
-    diagnostic's location: the first expression spelled exactly ``path``, else the first
-    use of its head name. ``None`` when it does not parse or is not named here."""
-    jinja2 = jinja2_module()
-    nodes = jinja2.nodes
-    head = path.split(".")[0].split("[")[0].split("|")[0]
-    try:
-        ast = parse_jinja(text)
-    except jinja2.TemplateSyntaxError:
-        return None
-    by_head: int | None = None
-
-    def visit(node: Any) -> int | None:
-        nonlocal by_head
-        spelled = _spelling_of(node, nodes)
-        if spelled == path:
-            return int(node.lineno)
-        if by_head is None and isinstance(node, nodes.Name) and spelled == head:
-            by_head = int(node.lineno)
-        for child in node.iter_child_nodes():
-            hit = visit(child)
-            if hit is not None:
-                return hit
-        return None
-
-    return visit(ast) or by_head
-
-
 __all__ = [
     "JINJA_GLOBALS",
     "jinja2_module",
-    "jinja_reference_line",
     "parse_jinja",
     "ref_of_template_name",
     "verify_jinja",

@@ -788,7 +788,7 @@ for the per-port pass/skip ledger.
 
 **Jinja bodies (Python and TypeScript, ADR-0061)**
 
-- [`fixtures/jinja-render-conformance/`](../../fixtures/jinja-render-conformance/) — 13 cases: variables, loops, conditionals, `set` and macros, `include` and `import`, filters, html and json escaping, whitespace control, `raw` and comments, plus an include cycle and an unresolved include. Byte-identical output from jinja2 and nunjucks.
+- [`fixtures/jinja-render-conformance/`](../../fixtures/jinja-render-conformance/) — 15 cases: variables, loops, conditionals, `set` and macros, `include` and `import`, filters, html and json escaping (with and without `| escape`), whitespace control, `raw` and comments, plus an include cycle and an unresolved include. Byte-identical output from jinja2 and nunjucks.
 - [`fixtures/jinja-verify-conformance/`](../../fixtures/jinja-verify-conformance/) — 31 cases: the payload check over the parsed template (paths, loop targets, locals, filters, includes, imports, `extends` blocks, `ERR_TEMPLATE_NOT_STATIC`, `ERR_TEMPLATE_SYNTAX`, required slots and tags).
 
 ## See also

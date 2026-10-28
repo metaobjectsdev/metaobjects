@@ -22,7 +22,6 @@ from metaobjects.render import (
     template_engine_of,
     verify,
 )
-from metaobjects.render.jinja_verify import jinja_reference_line
 from metaobjects.render.renderer import RenderError, RenderRequest, render
 
 
@@ -55,6 +54,18 @@ def test_filesystem_provider_prefers_mustache_and_reports_engine(root: Path) -> 
     assert fs.engine_of("p/both") == "mustache"
     assert fs.engine_of("p/only") == "jinja"
     assert fs.engine_of("p/missing") is None
+
+
+def test_engine_follows_the_matched_extension_not_a_symlink_target(root: Path) -> None:
+    shared = root / "shared"
+    shared.mkdir()
+    (shared / "welcome.txt").write_text("{{ name | upper }}")
+    (shared / "plain.j2").write_text("{{name}}")
+    (root / "p" / "welcome.jinja").symlink_to(shared / "welcome.txt")
+    (root / "p" / "linked.mustache").symlink_to(shared / "plain.j2")
+    fs = FilesystemProvider(root)
+    assert fs.engine_of("p/welcome") == "jinja"
+    assert fs.engine_of("p/linked") == "mustache"
 
 
 def test_explicit_extension_reads_only_that_extension(root: Path) -> None:
@@ -133,13 +144,6 @@ def test_verify_engine_jinja_and_default_mustache() -> None:
     found = verify("{{ user.nope }}", fields, engine="jinja")
     assert [(e.code, e.path) for e in found] == [(ERR_VAR_NOT_ON_PAYLOAD, "user.nope")]
     assert verify("{{user.name}}", fields) == []
-
-
-def test_reference_line_prefers_the_exact_path() -> None:
-    text = "a\n{% for p in posts %}\n{{ p.nope }}\n{% endfor %}"
-    assert jinja_reference_line(text, "p.nope") == 3
-    assert jinja_reference_line("{{ a }}", "b") is None
-    assert jinja_reference_line("{{ broken", "a") is None
 
 
 _MIX_FIELDS = [PayloadField("name"), PayloadField("tags", is_array=True)]

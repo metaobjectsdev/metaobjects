@@ -31,7 +31,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 | [`fixtures/verify-conformance/`](../fixtures/verify-conformance/) | 37 | ✓ | ✓ | inherits via Java | ✓ | ✓ |
 | [`fixtures/verify-strict-conformance/`](../fixtures/verify-strict-conformance/) | 1 | ✓ | — | — | — | ✓ |
 | [`fixtures/render-conformance/`](../fixtures/render-conformance/) | 16 | ✓ | ✓ | inherits via Java | ✓ | ✓ |
-| [`fixtures/jinja-render-conformance/`](../fixtures/jinja-render-conformance/) (ADR-0061 — Jinja bodies render the same in jinja2 and nunjucks) | 13 | ✓ (nunjucks) | refuses Jinja (`ERR_TEMPLATE_ENGINE_UNSUPPORTED`) | refuses, via Java | refuses Jinja (`ERR_TEMPLATE_ENGINE_UNSUPPORTED`) | ✓ (jinja2) |
+| [`fixtures/jinja-render-conformance/`](../fixtures/jinja-render-conformance/) (ADR-0061 — Jinja bodies render the same in jinja2 and nunjucks) | 15 | ✓ (nunjucks) | refuses Jinja (`ERR_TEMPLATE_ENGINE_UNSUPPORTED`) | refuses, via Java | refuses Jinja (`ERR_TEMPLATE_ENGINE_UNSUPPORTED`) | ✓ (jinja2) |
 | [`fixtures/jinja-verify-conformance/`](../fixtures/jinja-verify-conformance/) (ADR-0061 — the payload check over a Jinja body) | 31 | ✓ | refuses Jinja | refuses, via Java | refuses Jinja | ✓ |
 | [`fixtures/extract-conformance/`](../fixtures/extract-conformance/) | 48 | ✓ | ✓ | inherits the shared JVM engine | ✓ | ✓ |
 | [`fixtures/output-prompt-conformance/`](../fixtures/output-prompt-conformance/) | 17 | ✓ | ✓ | ✓ | ✓ | ✓ |
@@ -328,12 +328,12 @@ lookup, parent-context fallthrough, falsy/empty-array section behavior, inverted
 sections, nested partials, standalone-tag whitespace stripping, raw-HTML bypass,
 trailing-newline preservation, unicode multibyte handling, and the `-last` list-separator accessor.
 
-### `fixtures/jinja-render-conformance/` (13) and `fixtures/jinja-verify-conformance/` (31)
+### `fixtures/jinja-render-conformance/` (15) and `fixtures/jinja-verify-conformance/` (31)
 
 Both → [features/templates-and-payloads.md](features/templates-and-payloads.md) (Jinja
 templates section, [ADR-0061](../spec/decisions/ADR-0061-per-port-template-engines.md)). Run by
 Python (jinja2) and TypeScript (nunjucks) only; Java, Kotlin and C# refuse a Jinja body with
-`ERR_TEMPLATE_ENGINE_UNSUPPORTED` instead. The render corpus holds 10 output cases and 2 error
+`ERR_TEMPLATE_ENGINE_UNSUPPORTED` instead. The render corpus holds 13 output cases and 2 error
 cases (an include cycle and an unresolved include), each with the same Mustache-path message.
 The verify corpus reuses `verify-conformance/`'s `payload.json` field-tree shape; an
 `ERR_TEMPLATE_SYNTAX` finding's path is the parser's own message, so runners compare it as

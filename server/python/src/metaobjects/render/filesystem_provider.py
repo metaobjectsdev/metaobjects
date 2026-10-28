@@ -39,16 +39,16 @@ class FilesystemProvider:
         if found is None:
             return None
         try:
-            return found.read_text(encoding="utf-8")
+            return found[0].read_text(encoding="utf-8")
         except OSError:
             return None
 
     def engine_of(self, ref: str) -> str | None:
         """The engine the file ``ref`` resolves to is written for, from its extension."""
         found = self._find(ref)
-        return None if found is None else engine_for_extension(found.suffix)
+        return None if found is None else engine_for_extension(found[1])
 
-    def _find(self, ref: str | None) -> Path | None:
+    def _find(self, ref: str | None) -> tuple[Path, str] | None:
         # Build <root>/<seg>/<seg> from the slash-separated ref, dropping empties.
         if not ref:
             return None
@@ -66,5 +66,5 @@ class FilesystemProvider:
             if resolved != self._root and self._root not in resolved.parents:
                 continue
             if resolved.is_file():
-                return resolved
+                return resolved, extension
         return None

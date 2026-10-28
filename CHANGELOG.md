@@ -29,7 +29,7 @@ here.**
   reference the check cannot settle statically is `ERR_TEMPLATE_NOT_STATIC`, and a body that
   does not parse is `ERR_TEMPLATE_SYNTAX`. A generated helper over a Jinja body passes the
   engine and the payload field tree to `render`, so the check runs again at runtime. Two new
-  corpora, `fixtures/jinja-render-conformance/` (13) and `fixtures/jinja-verify-conformance/`
+  corpora, `fixtures/jinja-render-conformance/` (15) and `fixtures/jinja-verify-conformance/`
   (31), hold the two ports to identical output and findings. Java, Kotlin and C# render
   Mustache only: their providers and `verify` now refuse a Jinja-only body with
   `ERR_TEMPLATE_ENGINE_UNSUPPORTED` instead of reporting the ref as unresolved. Mustache stays

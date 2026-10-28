@@ -1,4 +1,5 @@
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
+import nunjucks from "nunjucks";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -100,8 +101,8 @@ describe("render", () => {
 
   test("a render leaves the engine's own escape function as it found it", () => {
     const provider = new InMemoryProvider({});
-    render({ template: "{{ a }}", payload: { a: "<" }, provider, engine: "jinja", format: "html" });
-    expect(render({ template: "{{ a }}", payload: { a: "<" }, provider, engine: "jinja", format: "text" })).toBe("<");
+    render({ template: "{{ a }}", payload: { a: "<" }, provider, engine: "jinja", format: "text" });
+    expect(new nunjucks.Environment(null, { autoescape: true }).renderString("{{ a }}", { a: "<" })).toBe("&lt;");
   });
 });
 
