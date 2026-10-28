@@ -258,10 +258,14 @@ describe("prisma-schema — refusals", () => {
   test("a @schema outside Postgres", async () => {
     const root = await loadJson(model([
       entity("Audit", [{ "source.rdb": { "@schema": "audit" } }, longId, pk]),
+      entity("Fresh", [{ "source.rdb": {} }, longId, pk]),
     ]));
-    const e = refusal(() => buildPrismaSchema(root, { provider: "mysql" }));
-    expect(e.code).toBe(ERR_PRISMA_UNSUPPORTED_SCHEMA);
-    expect(e.message).toContain("audit");
+    for (const provider of ["mysql", "sqlite"] as const) {
+      const e = refusal(() => buildPrismaSchema(root, { provider, checks: "omit" }));
+      expect(e.code).toBe(ERR_PRISMA_UNSUPPORTED_SCHEMA);
+      expect(e.message).toContain("audit");
+    }
+    expect(buildPrismaSchema(root, { provider: "mysql", matches: (o) => o.name !== "Audit" }).models.map((m) => m.name)).toEqual(["Fresh"]);
   });
 
   test("an expression index", async () => {

@@ -32,10 +32,12 @@ import {
   FIELD_ATTR_VALUES,
   STORAGE_FLATTENED,
   isMetaObject,
+  isWritableSource,
   physicalNamingOf,
   pluralize,
   refTarget,
   resolveColumnName,
+  resolveTableSchema,
   type MetaField,
   type MetaObject,
   type MetaRoot,
@@ -669,6 +671,16 @@ export function buildPrismaSchema(root: MetaRoot, options: BuildPrismaSchemaOpti
     if (obj !== undefined && matches(obj)) throw refuseView(obj, view);
   }
 
+  if (provider !== "postgresql") {
+    for (const obj of objects.values()) {
+      // SQLite's expected schema rejects a @schema anywhere in the model, so its check cannot honour the filter.
+      if ((provider !== "sqlite" && !matches(obj)) || obj.isAbstract || !obj.children().some(isWritableSource)) continue;
+      // ADR-0039: own — mirrors the expected schema's @unmanaged test on the declared source.
+      if (obj.ownChildren().find(isWritableSource)?.isUnmanaged) continue;
+      const schema = resolveTableSchema(obj);
+      if (schema !== undefined) throw refuseSchema(obj, schema, provider);
+    }
+  }
   const { snapshot, provenance } = buildExpectedSchemaWithProvenance(root, dialect === undefined ? {} : { dialect });
   const strategy = physicalNamingOf(root).columns;
 
@@ -680,7 +692,6 @@ export function buildPrismaSchema(root: MetaRoot, options: BuildPrismaSchemaOpti
     const object = fqn === undefined ? undefined : objects.get(fqn);
     if (object === undefined) throw new Error(`prisma-schema: no object declares table '${key}'.`);
     if (!matches(object)) continue;
-    if (provider !== "postgresql" && table.schema !== undefined) throw refuseSchema(object, table.schema, provider);
     if (table.primaryKey.length === 0) {
       throw new PrismaSchemaError(
         ERR_PRISMA_NO_PRIMARY_KEY,
