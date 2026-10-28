@@ -12,7 +12,8 @@ no per-port fixture.
 cases.json          # { cases: [ { name, tree, treeFiles?, config, lock?,
                      #             resolveFrom?, expectFiles?, expectImported?,
                      #             expectSelected?, expectMigrateGoverned?,
-                     #             expectLoadError?, expectErrorFiles?, expectError? } ] }
+                     #             expectLoadError?, expectErrorFiles?, expectError?,
+                     #             expectCheck? } ] }
 README.md
 artifacts/           # pinned dependency artifacts, referenced by cases via `treeFiles`
   acme-common-v1.json
@@ -40,12 +41,14 @@ artifacts/           # pinned dependency artifacts, referenced by cases via `tre
                                      // (undefined inMigrateScope admits everything)
   "expectLoadError": "ERR_*",        // OPTIONAL: the collection resolves, then LOADING it fails with this code
   "expectErrorFiles": ["dep:…"],     // OPTIONAL with expectLoadError: source.files[0] of the first error
-  "expectError": "ERR_*"             // resolution itself fails with this code
+  "expectError": "ERR_*",            // resolution itself fails with this code
+  "expectCheck": { "<name>": "current" | "drifted" | "unresolved" }  // the CHECK arm
 } ] }
 ```
 
-Exactly one of `expectFiles`, `expectError` is present per case; `expectLoadError` rides
-with `expectFiles`.
+Exactly one of `expectFiles`, `expectError`, `expectCheck` is present per case;
+`expectLoadError` rides with `expectFiles`. A runner for one arm skips the cases that
+belong to the other.
 
 - **`tree`** — a map of project-root-relative path → file content, materialized in a fresh
   temporary directory (same shape as `source-resolution-conformance`).
@@ -91,6 +94,25 @@ with `expectFiles`.
   (`dep:<name>/<artifact>`) rather than a local one.
 - **`expectError`** — the resolution-failure arm: `resolveCollection` itself must reject
   with this exact code.
+
+- **`expectCheck`** — the check arm (`meta deps check` / `verify --deps`): for each declared
+  dependency, resolve its `path` against the config's directory, read and validate the
+  publisher's `metaobjects.pkg.json`, hash the artifact beside it, and compare with the lock.
+  The map is EXHAUSTIVE (one entry per declared dependency, by name):
+  - `current` — the artifact resolves and hashes to the lock's `integrity` (a different
+    `version` over the same bytes is still `current`).
+  - `drifted` — it resolves, but hashes to something else.
+  - `unresolved` — the check cannot compare: the `path` is not a directory, the manifest is
+    absent, not JSON or fails its schema, the manifest names an artifact that is missing,
+    the artifact does not hash to the manifest's own `integrity`, or the dependency is
+    declared but has no entry in the lock (including no lock file at all). A check that cannot
+    check must not pass.
+
+  The check is a pure function of the config, the lock and the publisher's directory: no
+  snapshot and no loader is involved, so a check case carries no `.metaobjects/deps/` tree.
+  The publisher's directory sits beside the project in `tree` / `treeFiles` (the config's
+  `path` is `../<name>/metaobjects` and `resolveFrom` is `app`). The status is the contract;
+  the detail text is not, and differs by port.
 
 ## Pinned artifacts
 
@@ -172,10 +194,13 @@ corpus expectation to update.
 
 ## Which arms each port runs
 
-- **TypeScript** — resolution, load-time failure, lock/snapshot integrity.
-- **Python** — resolution, load-time failure, lock/snapshot integrity.
-- **Java / C# / Kotlin** — Phase 2 (out of scope for this plan; these ports do not read
-  `dependencies` yet).
+- **TypeScript** — resolution, load-time failure, lock/snapshot integrity, and the check arm
+  (`cli/test/dependency-check-conformance.test.ts`; the resolution arm is
+  `sdk/test/dependency-conformance.test.ts`).
+- **Python** — resolution, load-time failure, lock/snapshot integrity. Not the check arm: Python
+  has no `deps check` yet, so its runner filters the `expectCheck` cases out.
+- **Java / C# / Kotlin** — Phase 2 (these ports do not read `dependencies` yet). Each runs the
+  resolution arm when it consumes, and the check arm when it gains a check.
 
 ## Reference implementation
 

@@ -430,13 +430,58 @@ than reading it live off the classpath at build time — the classpath-at-build-
 read is recorded as a Phase 2 JVM option, not gone, but the committed snapshot is the
 cross-port contract every consumer gets today.
 
+## Phase 2: Java, Kotlin and C#
+
+Tracked in [#482](https://github.com/metaobjectsdev/metaobjects/issues/482). Today only
+TypeScript and Python consume a dependency; Java, Kotlin and C# ignore the `dependencies` key,
+and a model there that references a node a dependency would supply fails loudly
+(`ERR_UNRESOLVED_OBJECT_REF`), never silently. Phase 2 adds no new contract. The manifest, the
+lock, the committed snapshot and the 24-case resolution corpus are plain files that every port
+already has the pieces to read; what is missing is each port *loading* the snapshot.
+
+Two rulings shape it:
+
+- **Node `meta deps sync` stays the only writer of the lock and the snapshot.** The other ports
+  load and check; a Java or C# project needs Node to sync, as a schema-owning project already
+  needs it for `meta migrate`. Because the lock is then written by one tool, its byte format
+  never becomes a cross-port contract.
+- **The Java Spring runtime loads the snapshot automatically** when
+  `.metaobjects/deps.lock.json` is on the classpath, so a Spring app whose entity `extends` a
+  dependency's node does not fail at boot for want of one line of configuration.
+
+**`meta deps sync` and `check` on a Maven- or C#-shaped project (shipped).** Both commands read
+only `.metaobjects/config.json`, and finish with a proof that the dependency set loads. A project
+whose own metadata is in a build-tool directory (`src/main/resources/metadata`, a C# project's
+metadata directory) declares no neutral `sources`, and a project may use vocabulary only its own
+port registers. Neither case can be loaded by the Node toolchain, and neither is a fault in the
+dependencies. In those two cases (and only those: no `sources` and no default directory, or
+a load whose every error is an `ERR_UNKNOWN_TYPE` / `ERR_UNKNOWN_SUBTYPE`) the
+proof loads the locked snapshots together instead, prints which it did, and says that the port's
+own `verify` is the full check. A misspelt type in a project this toolchain does read takes the
+same path, which is why the fallback is announced. A load that also has any other error, such as
+an unresolved `extends` onto a removed dependency node, still fails the command and, for `sync`,
+rolls the lock and snapshot back.
+
+**Packaged transports: Maven and NuGet (design only, not built).** The `path` transport needs the
+publisher's directory on disk. A JVM or .NET consumer that cannot reach it can instead resolve a
+published model from the package manager's own store: a Maven artifact (a JAR in the local
+repository, or on the classpath) and a NuGet package (in the global packages folder), each
+carrying the same `metaobjects.pkg.json` and artifact pair that `sharedModelFile()` writes. Per the
+single-writer ruling it is Node `meta deps sync` that reads the pair out of the JAR or the package
+and writes the same snapshot and lock entry a `path` sync writes, so everything downstream
+(`check`, load, scope, the corpus) is unchanged; nothing in a port's own build resolves a
+dependency. This generalizes the resources-JAR pattern described above, and it is a later slice
+than consume and check. A JVM *classpath read with no committed snapshot* (the legacy behaviour)
+stays a separate, deferred option.
+
 ## Deferred
 
 Designed (see `docs/superpowers/specs/2026-09-11-fr-023-metadata-dependencies-design.md`)
 but **not** built in Phase 1a — do not assume any of the following exists:
 
-- **The `npm` and `python` transports** (and `maven`/`nuget` in a later phase). Only
-  `path` resolves; the others are refused with `ERR_DEPENDENCY_UNRESOLVED`.
+- **The `npm` and `python` transports** (and `maven`/`nuget`, see
+  [Phase 2](#phase-2-java-kotlin-and-c)). Only `path` resolves; the others are refused with
+  `ERR_DEPENDENCY_UNRESOLVED`.
 - **A local co-development override** (`deps.local.json`) that would point `sync` at
   an unpublished local checkout without editing the committed config.
 - **A usage-aware breaking-change classifier** at sync/check time. Nothing
@@ -455,18 +500,24 @@ but **not** built in Phase 1a — do not assume any of the following exists:
 
 ## Verified by
 
-- [`fixtures/dependency-conformance/`](../../fixtures/dependency-conformance/) — 23
-  cases pinning resolution, the exhaustive `imported`/`inScope`/`inMigrateScope` sets,
+- [`fixtures/dependency-conformance/`](../../fixtures/dependency-conformance/) — 35
+  cases. 24 pin resolution, the exhaustive `imported`/`inScope`/`inMigrateScope` sets,
   overlay/extends/reference behavior against a synced snapshot, and every load- and
   resolution-time error above, run by TypeScript (the reference implementation) and
-  Python. Three artifacts under `fixtures/dependency-conformance/artifacts/` are
+  Python. 11 pin the upstream check (`current`, `drifted`, `unresolved`), run by TypeScript;
+  Python has no check yet. Three artifacts under `fixtures/dependency-conformance/artifacts/` are
   pinned by sha256 in the README so the corpus itself can never silently drift.
-  Python's runner asserts all 23 cases identically to TypeScript's, with no
+  Python's runner asserts all 24 resolution cases identically to TypeScript's, with no
   exemptions — the two overlay cases that need a view child as incidental content
   use `view.currency` (the one concrete `view.*` subtype registered cross-port,
   per `fixtures/registry-conformance/expected-registry.json`), not `view.text`,
   so they exercise the full imported/selected/governed assertions like every
   other case.
+- [`fixtures/shared-model-conformance/`](../../fixtures/shared-model-conformance/) — 11 cases
+  pinning what a publisher writes: the exact artifact and manifest bytes for a source tree and
+  `include` / `exclude` / `files`, and the refusals (an empty selection, a closure failure naming
+  every `referrer → target` pair, vocabulary a consumer's toolchain does not ship). TypeScript runs
+  all of it; Python runs the serializer arm.
 
 ## See also
 
