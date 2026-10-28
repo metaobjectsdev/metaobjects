@@ -42,7 +42,40 @@ describe("api contract secret fields (#484) — GENERATED routes lane", () => {
       }
     }, { timeout: 60_000 });
   }
+
+  // The corpus README contract (a credential is never returned) on the two read paths the
+  // corpus's Account routes do not reach: a projection field that extends `Account.pinHash`, and
+  // an M:N traversal onto a TPH base whose subtype declares a credential.
+  test("projection and M:N-onto-TPH reads never return an inherited credential", async () => {
+    const pg = await startPostgres();
+    let server: GeneratedSecretFieldsServerHandle | null = null;
+    try {
+      server = await startGeneratedSecretFieldsServer(pg.connectionUri, META_PATH);
+      await server.applySeed(SEED);
+
+      const list = await getJson(server, "/api/account_views");
+      expect(list.map((r) => r.name)).toEqual(["Ada Lovelace", "Alan Turing"]);
+      for (const row of list) expect(Object.keys(row)).not.toContain("pinHash");
+      const one = (await getJson(server, "/api/account_views/1")) as unknown as Record<string, unknown>;
+      expect(one.name).toBe("Ada Lovelace");
+      expect(Object.keys(one)).not.toContain("pinHash");
+
+      const auths = await getJson(server, "/api/payers/1/auths");
+      expect(auths.map((r) => [r.id, r.type]).sort()).toEqual([[1, "Bridge"], [2, "Copay"]]);
+      for (const row of auths) expect(Object.keys(row)).not.toContain("pinHash");
+    } finally {
+      if (server) await server.close();
+      await pg.stop();
+    }
+  }, { timeout: 60_000 });
 });
+
+async function getJson(server: GeneratedSecretFieldsServerHandle, path: string): Promise<Array<Record<string, unknown>>> {
+  const res = await fetch(server.baseUrl + path);
+  const text = await res.text();
+  expect(res.status, text).toBe(200);
+  return JSON.parse(text) as Array<Record<string, unknown>>;
+}
 
 async function runScenario(scenario: ApiScenario, server: GeneratedSecretFieldsServerHandle): Promise<void> {
   for (const req of scenario.requests) {
