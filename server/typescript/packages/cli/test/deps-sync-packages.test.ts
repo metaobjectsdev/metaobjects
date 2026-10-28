@@ -11,6 +11,7 @@ import { join, resolve } from "node:path";
 import { METAMODEL_VERSION } from "@metaobjectsdev/metadata";
 import { sha256Integrity } from "@metaobjectsdev/sdk";
 import { run } from "../src/index.js";
+import { packageVersionWarning } from "../src/lib/dependency-sync.js";
 import { METAOBJECTS_PYTHON_ENV, resolveTransport } from "../src/lib/dependency-transports.js";
 
 const DEP = "acme-common";
@@ -247,6 +248,49 @@ describe.skipIf(!hasPython)("meta deps sync — the python transport", () => {
     expect(resolveTransport(root, spec, base).note).toContain("(from PATH)");
   });
 
+  test("a $VIRTUAL_ENV with no interpreter is refused, not skipped for a working ./.venv", () => {
+    const root = consumer({ python: "acme_common", dir: "metaobjects" });
+    const site = join(root, "site");
+    pyInstall(site, "1.0.0");
+    const real = spawnSync(PYTHON, ["-c", "import sys; print(sys.executable)"], { encoding: "utf8" }).stdout.trim();
+    mkdirSync(join(root, ".venv", "bin"), { recursive: true });
+    symlinkSync(real, join(root, ".venv", "bin", "python"));
+    const empty = join(root, "empty-venv");
+    mkdirSync(empty);
+    const spec = { name: DEP, python: "acme_common", dir: "metaobjects" } as const;
+    const base = { ...process.env, PYTHONPATH: site };
+    expect(resolveTransport(root, spec, base).note).toContain("(from .venv)");
+
+    expect(() => resolveTransport(root, spec, { ...base, VIRTUAL_ENV: empty })).toThrow(
+      expect.objectContaining({ code: "ERR_DEPENDENCY_UNRESOLVED", message: expect.stringContaining("has no python interpreter") }),
+    );
+  });
+
+  test("a parent package that fails to import is reported as such, without a pip install hint", async () => {
+    const root = consumer({ python: "acme.model", dir: "metaobjects" });
+    const site = join(root, "site");
+    mkdirSync(join(site, "acme", "model"), { recursive: true });
+    writeFileSync(join(site, "acme", "__init__.py"), "import acme_missing_optional_dependency\n");
+    writeFileSync(join(site, "acme", "model", "__init__.py"), "");
+    process.env.PYTHONPATH = site;
+
+    expect(await sync(root)).toBe(1);
+    const printed = out.join("\n");
+    expect(printed).toContain('importing the parent package of "acme.model"');
+    expect(printed).toContain("ModuleNotFoundError");
+    expect(printed).not.toContain("pip install");
+    expect(printed).not.toContain("is not installed");
+  });
+
+  test("a PEP 440-equivalent manifest version does not warn", async () => {
+    const root = consumer({ python: "acme_common", dir: "metaobjects" });
+    pyInstall(join(root, "site"), "1.0.0-rc.1", { distVersion: "1.0.0rc1" });
+    process.env.PYTHONPATH = join(root, "site");
+
+    expect(await sync(root)).toBe(0);
+    expect(out.join("\n")).not.toContain("shared-model manifest records");
+  });
+
   test("a package installed into a real virtualenv resolves through $VIRTUAL_ENV", async () => {
     const root = consumer({ python: "acme_common", dir: "metaobjects" });
     const venv = join(root, "venv");
@@ -265,5 +309,40 @@ describe.skipIf(!hasPython)("meta deps sync — the python transport", () => {
     expect(await sync(root)).toBe(0);
     expect(out.join("\n")).toContain("(from $VIRTUAL_ENV)");
     expect(readFileSync(join(root, ".metaobjects", "deps", DEP, ARTIFACT))).toEqual(V1);
+  });
+});
+
+// Oracle: PEP 440 "Normalization" (packaging.python.org, version specifiers) —
+// each pair spells the same version, as `importlib.metadata` reports it.
+describe("the installed-vs-manifest version warning", () => {
+  const py = { name: DEP, python: "acme_common" } as const;
+  const npm = { name: DEP, npm: "@acme/common-model" } as const;
+
+  test.each([
+    ["1.0.0rc1", "1.0.0-rc.1"],
+    ["1.0.0rc1", "1.0.0.RC1"],
+    ["1.0a0", "1.0-alpha"],
+    ["1.0b2", "1.0.beta.2"],
+    ["1.0rc2", "1.0c2"],
+    ["1.0rc1", "1.0-preview1"],
+    ["1.0rc1", "1.0pre1"],
+    ["1.0.post1", "1.0-post1"],
+    ["1.0.post0", "1.0post"],
+    ["1.0.post2", "1.0-rev2"],
+    ["1.0.dev0", "1.0-dev"],
+    ["1.0.dev3", "1.0_dev3"],
+    ["1.0.0", "v1.0.0"],
+  ])("python: installed %s matches manifest %s", (installed, manifest) => {
+    expect(packageVersionWarning(DEP, py, installed, manifest)).toBeUndefined();
+  });
+
+  test("python: a genuinely different version still warns", () => {
+    expect(packageVersionWarning(DEP, py, "1.0.0rc2", "1.0.0-rc.1")).toContain("records 1.0.0-rc.1");
+    expect(packageVersionWarning(DEP, py, "1.1.0", "1.0.0")).toContain("is 1.1.0");
+  });
+
+  test("npm: the comparison stays exact", () => {
+    expect(packageVersionWarning(DEP, npm, "1.0.0", "1.0.0")).toBeUndefined();
+    expect(packageVersionWarning(DEP, npm, "1.0.0-rc.1", "1.0.0rc1")).toContain("is 1.0.0-rc.1");
   });
 });

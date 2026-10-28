@@ -254,17 +254,46 @@ function resolvedFromOf(spec: DependencySpec): LockEntry["resolvedFrom"] {
   return spec.dir === undefined ? { python: spec.python } : { python: spec.python, dir: spec.dir };
 }
 
+const PEP440_PRE_LABEL: Readonly<Record<string, string>> = {
+  alpha: "a",
+  a: "a",
+  beta: "b",
+  b: "b",
+  c: "rc",
+  pre: "rc",
+  preview: "rc",
+  rc: "rc",
+};
+
+/** PEP 440 normalization of the spellings a `pyproject.toml` may carry but an
+ *  installed distribution reports normalized (`1.0.0-rc.1` → `1.0.0rc1`,
+ *  `1.0-post1` → `1.0.post1`, `v1.0.DEV` → `1.0.dev0`). */
+function pep440Normalized(version: string): string {
+  return version
+    .trim()
+    .toLowerCase()
+    .replace(/^v/, "")
+    .replace(/[-_.]?(alpha|beta|preview|pre|rc|a|b|c)[-_.]?(\d*)/, (_m, label: string, n: string) => `${PEP440_PRE_LABEL[label]}${n || "0"}`)
+    .replace(/[-_.]?(post|rev|r)[-_.]?(\d*)/, (_m, _label: string, n: string) => `.post${n || "0"}`)
+    .replace(/[-_.]?dev[-_.]?(\d*)/, (_m, n: string) => `.dev${n || "0"}`);
+}
+
 /** The installed package's own version should be the manifest's: `sharedModelFile()`
  *  defaults the manifest version to the host package's. A difference means the
  *  publisher bumped the package without regenerating the artifact (or set
  *  `version` by hand). The lock records the manifest's version either way. */
-function packageVersionWarning(
+export function packageVersionWarning(
   name: string,
   spec: DependencySpec,
   packageVersion: string | undefined,
   manifestVersion: string,
 ): string | undefined {
-  if (packageVersion === undefined || packageVersion === manifestVersion) return undefined;
+  if (packageVersion === undefined) return undefined;
+  const same =
+    "python" in spec
+      ? pep440Normalized(packageVersion) === pep440Normalized(manifestVersion)
+      : packageVersion === manifestVersion;
+  if (same) return undefined;
   const pkg = "npm" in spec ? `npm package "${spec.npm}"` : "python" in spec ? `Python package "${spec.python}"` : "package";
   return (
     `dependency "${name}": the installed ${pkg} is ${packageVersion}, but its shared-model manifest ` +

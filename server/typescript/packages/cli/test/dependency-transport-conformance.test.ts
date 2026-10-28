@@ -6,9 +6,9 @@
 // Node `meta deps sync` is the only writer of snapshots and the lock, so only
 // this runner executes the transport arm; every port then loads the snapshot
 // (the `cases.json` arm, which carries npm and python cases too).
-import { describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { copyFile, mkdir, mkdtemp, readFile, realpath, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join, relative, resolve } from "node:path";
 import { DEFAULT_METAOBJECTS_DIR, LOCK_FILE, dependencyName, loadConfig } from "@metaobjectsdev/sdk";
@@ -32,8 +32,14 @@ const cases: Case[] = JSON.parse(await readFile(join(CORPUS_DIR, "transport-case
 const PYTHON = process.platform === "win32" ? "python" : "python3";
 const hasPython = spawnSync(PYTHON, ["--version"]).status === 0;
 
+const roots: string[] = [];
+afterAll(async () => {
+  await Promise.all(roots.map((d) => rm(d, { recursive: true, force: true })));
+});
+
 async function materialize(c: Case): Promise<{ root: string; configDir: string }> {
   const root = await realpath(await mkdtemp(join(tmpdir(), "mo-dep-transport-")));
+  roots.push(root);
   for (const [rel, content] of Object.entries(c.tree)) {
     const abs = join(root, rel);
     await mkdir(dirname(abs), { recursive: true });

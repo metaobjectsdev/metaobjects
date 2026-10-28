@@ -225,12 +225,17 @@ function resolvePython(
     );
   }
   const used = result.executable ?? interp.exe;
-  if (result.error === "missing" || result.error === "import") {
+  if (result.error === "import") {
     unresolved(
       name,
-      `the Python package "${module}" is not installed in ${used} (from ${interp.from})` +
-        (result.error === "import" && result.detail !== undefined ? ` — ${result.detail}` : "") +
-        `. Install the distribution that provides it into that environment (for example ` +
+      `importing the parent package of "${module}" in ${used} (from ${interp.from}) raised ` +
+        `${result.detail ?? "an error"}. Fix that environment so the import succeeds, then re-run.`,
+    );
+  }
+  if (result.error === "missing") {
+    unresolved(
+      name,
+      `the Python package "${module}" is not installed in ${used} (from ${interp.from}). Install the distribution that provides it into that environment (for example ` +
         `\`pip install ${module.split(".")[0]!.replace(/_/g, "-")}\`), or point ` +
         `$${METAOBJECTS_PYTHON_ENV} at the interpreter that has it.`,
     );
