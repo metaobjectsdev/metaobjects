@@ -9,8 +9,8 @@ description: >
   The ordinary `name` rides in each body DELIBERATELY: it is applied, and that pairing is
   what makes the assertion about the field and not about the request being ignored whole.
   `tokenHash` is the observable one (it is still returned); `pinHash` is hidden on read,
-  so its write is pinned by the read side (`read-omits-credential`) together with the
-  per-port codegen tests of the generated write path.
+  so each port's runner pins its write by reading the stored rows back after this
+  scenario (seeded values unchanged, null on the created row).
 requests:
   - id: r1
     method: PATCH

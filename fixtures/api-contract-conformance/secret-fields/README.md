@@ -27,11 +27,12 @@ The model is one `Account`:
 - The application still writes these fields through its own code (the generated queries, the
   repository, the ORM). Only the generated HTTP boundary refuses them.
 
-## Why `pinHash` is not asserted on the way in
+## How `pinHash`'s write is asserted
 
-A credential is never read, so no scenario can observe whether a write reached it. Its write
-path is the same predicate as `tokenHash`'s (`@formExclude` or credential), and each port's
-codegen tests pin that the generated create and update paths name both fields.
+A credential is never read, so no scenario can observe over HTTP whether a write reached it.
+Instead, each port's runner reads the stored rows back after `write-ignores-excluded` (from the
+database, or from the in-memory repository behind the generated controller): the seeded rows
+still hold their seeded `tokenHash` and `pinHash`, and the created row holds `null` in both.
 
 ## Files
 

@@ -28,7 +28,8 @@ schema file that exports them. `meta migrate` never has to run.
 
    ```ts
    // src/db/schema.ts
-   export { customers, orders } from "../generated/Customer.js";   // name the tables you want migrated
+   export { customers } from "../generated/Customer.js";   // name the tables you want migrated
+   export { orders } from "../generated/Order.js";
    // or, to follow the model as it grows:
    // export * from "../generated/index.js";
    export * from "./hand-written-tables.js";
