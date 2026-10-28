@@ -713,8 +713,8 @@ Design rationale and the full phase plan:
 
 - [`fixtures/scope-conformance/`](../../fixtures/scope-conformance/) — 10 cases
   pinning `*` / `**`, include-union, exclude-after-include, literal metacharacters,
-  and case sensitivity. TypeScript runs it today; the other four ports have no runner
-  yet, because `scope` itself stays Node-CLI-only (see "Port support" above). See
+  and case sensitivity. All five ports run it (Kotlin inherits Java's); only the Node CLI
+  reads `scope` from the config (see "Port support" above). See
   [`CONFORMANCE.md`](../CONFORMANCE.md).
 
 **TypeScript gates**

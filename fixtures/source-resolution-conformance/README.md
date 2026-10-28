@@ -4,7 +4,7 @@ Pins how a consumer's `sources` set in `.metaobjects/config.json` resolves to a
 set of metadata files. Every port's CLI must resolve the SAME FILES from the
 same declaration — that is the cross-port promise this corpus exists to keep.
 
-Companion to `scope-conformance/`, which pins the (currently TypeScript-only)
+Companion to `scope-conformance/`, which pins the
 `scope` pattern grammar. The two are independent: `sources` decides which files
 are read, `scope` filters what is emitted from them.
 
