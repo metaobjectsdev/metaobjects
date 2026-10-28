@@ -32,14 +32,12 @@ from .verify import (
     ERR_TEMPLATE_NOT_STATIC,
     ERR_TEMPLATE_SYNTAX,
     ERR_VAR_NOT_ON_PAYLOAD,
+    MAX_DEPTH,
     PayloadField,
     Provider,
     VerifyError,
     slot_and_tag_findings,
 )
-
-#: How deep include / import / extends resolution recurses before it stops.
-_MAX_DEPTH = 32
 
 #: Names a template may use without the payload declaring them: the engines' own globals
 #: and block helpers. Shared with the TypeScript port.
@@ -308,7 +306,7 @@ def verify_jinja(
         if provider is None:
             return
         ref = ref_of_template_name(template_node.value)
-        if ref in scope.seen or len(scope.seen) >= _MAX_DEPTH:
+        if ref in scope.seen or len(scope.seen) >= MAX_DEPTH:
             return
         text = provider.resolve(ref)
         if text is None:

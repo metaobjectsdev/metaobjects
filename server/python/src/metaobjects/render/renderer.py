@@ -27,13 +27,12 @@ from .engine import TEMPLATE_ENGINE_JINJA, template_engine_of
 from .payload_accessors import with_derived_accessors
 from .verify import (
     ERR_REQUIRED_SLOT_UNUSED,
+    MAX_DEPTH,
     InMemoryProvider,
     PayloadField,
     Provider,
 )
 from .verify import verify as verify_template
-
-MAX_DEPTH = 32
 
 # {{> name }} — captures the reference between the marker and the closing }}.
 _PARTIAL_PATTERN = re.compile(r"\{\{>\s*([^\s}]+)\s*\}\}")

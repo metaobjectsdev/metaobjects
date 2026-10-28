@@ -59,6 +59,13 @@ def test_explicit_extension_reads_only_that_extension(root: Path) -> None:
     assert fs.resolve("p/plain") is None
 
 
+def test_explicit_mustache_does_not_fall_back_to_jinja(root: Path) -> None:
+    fs = FilesystemProvider(root, extension=".mustache")
+    assert fs.resolve("p/only") is None
+    assert fs.engine_of("p/only") is None
+    assert fs.resolve("p/both") == "M {{name}}"
+
+
 def test_explicit_engine_wins_and_unknown_is_refused(root: Path) -> None:
     fs = FilesystemProvider(root)
     assert template_engine_of(fs, "p/only", "mustache") == "mustache"

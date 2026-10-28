@@ -27,13 +27,13 @@ export class FilesystemProvider implements Provider {
   private readonly extensions: readonly string[];
 
   /**
-   * @param extension the one extension to read. Left at the default, the provider
-   *        reads `<ref>.mustache` and falls back to the Jinja extensions; given
-   *        explicitly, it reads only that extension.
+   * @param extension the one extension to read. Omitted, the provider reads
+   *        `<ref>.mustache` and falls back to the Jinja extensions; given — even as
+   *        `.mustache` — it reads only that extension.
    */
-  constructor(root: string, extension: string = DEFAULT_TEMPLATE_EXTENSION) {
+  constructor(root: string, extension?: string) {
     this.root = resolve(root);
-    this.extensions = extension === DEFAULT_TEMPLATE_EXTENSION
+    this.extensions = extension === undefined
       ? [DEFAULT_TEMPLATE_EXTENSION, ...JINJA_EXTENSIONS]
       : [extension];
   }

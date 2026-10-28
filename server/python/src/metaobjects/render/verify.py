@@ -23,6 +23,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol
 
+from .engine import TEMPLATE_ENGINE_JINJA
 from .payload_accessors import is_boolean_accessor, is_positional_accessor
 
 #: A ``{{var}}`` references a field the (contextual) payload does not declare.
@@ -44,7 +45,9 @@ ERR_TEMPLATE_SYNTAX = "ERR_TEMPLATE_SYNTAX"
 #: Mustache only, so a ``.jinja`` template there is refused with this code).
 ERR_TEMPLATE_ENGINE_UNSUPPORTED = "ERR_TEMPLATE_ENGINE_UNSUPPORTED"
 
-_MAX_DEPTH = 32
+#: How deep partial / include / import / extends resolution recurses before it stops.
+#: Shared by the Mustache and Jinja walks, and by both renderers.
+MAX_DEPTH = 32
 #: An opening tag is ``<tag`` immediately followed by ``>`` or XML whitespace, so
 #: attributes are allowed (``<answer foo="1">``) but a longer name is not over-matched
 #: (``<answers>`` does not satisfy ``answer``).
@@ -233,7 +236,7 @@ def verify(
     Mustache is context-sensitive: a section ``{{#posts}}…{{/posts}}`` over a container
     field checks its body against that field's element type.
     """
-    if engine == "jinja":
+    if engine == TEMPLATE_ENGINE_JINJA:
         from .jinja_verify import verify_jinja
 
         return verify_jinja(
@@ -309,7 +312,7 @@ def verify(
             else:  # _Partial
                 if provider is None:
                     continue  # can't resolve without a provider
-                if tok.value in seen or len(seen) >= _MAX_DEPTH:
+                if tok.value in seen or len(seen) >= MAX_DEPTH:
                     continue  # cycle/depth guard
                 body = provider.resolve(tok.value)
                 if body is None:

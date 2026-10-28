@@ -53,6 +53,13 @@ describe("engine selection", () => {
     expect(fs.resolve("p/plain")).toBeUndefined();
   });
 
+  test("an explicit .mustache does not fall back to a Jinja file", () => {
+    const fs = new FilesystemProvider(root, ".mustache");
+    expect(fs.resolve("p/only")).toBeUndefined();
+    expect(fs.engineOf("p/only")).toBeUndefined();
+    expect(fs.resolve("p/both")).toBe("M {{name}}");
+  });
+
   test("an explicit engine wins over the provider; no provider knowledge means Mustache", () => {
     const fs = new FilesystemProvider(root);
     expect(templateEngineOf(fs, "p/only", "mustache")).toBe("mustache");

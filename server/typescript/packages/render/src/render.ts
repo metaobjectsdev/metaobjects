@@ -5,8 +5,8 @@ import { verify, ERR_REQUIRED_SLOT_UNUSED, type PayloadField } from "./verify.js
 import { withDerivedAccessors } from "./payload-accessors.js";
 import { TEMPLATE_ENGINE_JINJA, templateEngineOf, type TemplateEngine } from "./engine.js";
 import { renderJinja } from "./jinja/render.js";
+import { MAX_DEPTH } from "./verify-shared.js";
 
-const MAX_DEPTH = 32;
 const PARTIAL = /\{\{>\s*([^}\s]+)\s*\}\}/g;
 
 // Resolve `{{> group/source }}` partials by inlining their text, recursively,

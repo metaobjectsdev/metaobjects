@@ -18,21 +18,12 @@ from typing import Any
 
 from . import escapers
 from .jinja_verify import jinja2_module, parse_jinja, ref_of_template_name
-from .verify import Provider
-
-_MAX_DEPTH = 32
+from .renderer import _stringify
+from .verify import MAX_DEPTH, Provider
 
 
 class JinjaRenderError(Exception):
     """A Jinja render failed before or during template evaluation."""
-
-
-def _stringify(value: Any) -> str:
-    if isinstance(value, bool):
-        return "true" if value else "false"
-    if isinstance(value, float) and value.is_integer():
-        return str(int(value))
-    return str(value)
 
 
 def _normalize(payload: Any) -> Any:
@@ -59,8 +50,8 @@ def _check_template_graph(text: str, provider: Provider, path: list[str]) -> Non
     for ref, optional in _template_refs(text):
         if ref in path:
             raise JinjaRenderError(f"partial cycle: {' -> '.join([*path, ref])}")
-        if len(path) >= _MAX_DEPTH:
-            raise JinjaRenderError(f"partial depth exceeded {_MAX_DEPTH}: {ref}")
+        if len(path) >= MAX_DEPTH:
+            raise JinjaRenderError(f"partial depth exceeded {MAX_DEPTH}: {ref}")
         body = provider.resolve(ref)
         if body is None:
             if optional:
