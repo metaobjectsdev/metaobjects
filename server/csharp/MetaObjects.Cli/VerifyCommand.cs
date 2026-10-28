@@ -559,7 +559,17 @@ public static class VerifyCommand
             };
             foreach (var reference in refs)
             {
-                var text = provider.Resolve(reference);
+                string? text;
+                try
+                {
+                    text = provider.Resolve(reference);
+                }
+                catch (RenderException e) when (e.Message.StartsWith(TemplateEngines.ErrTemplateEngineUnsupported, StringComparison.Ordinal))
+                {
+                    // ADR-0061: a Jinja-only body is refused by name (this port renders Mustache only).
+                    errors.Add(new Drift(tmpl.Name, kind, TemplateEngines.ErrTemplateEngineUnsupported, reference));
+                    continue;
+                }
                 if (text is null)
                 {
                     unresolved.Add($"template \"{tmpl.Name}\": ref \"{reference}\" did not resolve under {templatesRoot}");

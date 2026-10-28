@@ -141,6 +141,7 @@ from metaobjects.naming import (
     package_of_resolution_key,
     removed_naming_source_message,
 )
+from metaobjects.render.engine import template_engine_of
 from metaobjects.render.filesystem_provider import FilesystemProvider
 from metaobjects.render.verify import (
     ERR_REQUIRED_SLOT_UNUSED,
@@ -2401,6 +2402,7 @@ def _verify_templates(args: argparse.Namespace) -> int:
             for e in render_verify(
                 text, fields, provider=provider,
                 required_slots=req_slots, required_tags=req_tags,
+                engine=template_engine_of(provider, ref),
             ):
                 if e.code == ERR_REQUIRED_SLOT_UNUSED:
                     continue  # an unused required slot is a warning, not drift

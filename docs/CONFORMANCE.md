@@ -1,6 +1,6 @@
 # Conformance coverage
 
-The MetaObjects standard ships **31 shared conformance corpora** under
+The MetaObjects standard ships **33 shared conformance corpora** under
 [`fixtures/`](../fixtures/). Every port runs every corpus that is *applicable to
 it* and asserts the same expected behaviour against the same fixtures. **This page
 is the inverse index**: fixture → feature doc + per-port pass status, and it is the
@@ -31,6 +31,8 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 | [`fixtures/verify-conformance/`](../fixtures/verify-conformance/) | 37 | ✓ | ✓ | inherits via Java | ✓ | ✓ |
 | [`fixtures/verify-strict-conformance/`](../fixtures/verify-strict-conformance/) | 1 | ✓ | — | — | — | ✓ |
 | [`fixtures/render-conformance/`](../fixtures/render-conformance/) | 16 | ✓ | ✓ | inherits via Java | ✓ | ✓ |
+| [`fixtures/jinja-render-conformance/`](../fixtures/jinja-render-conformance/) (ADR-0061 — Jinja bodies render the same in jinja2 and nunjucks) | 12 | ✓ (nunjucks) | refuses Jinja (`ERR_TEMPLATE_ENGINE_UNSUPPORTED`) | refuses, via Java | refuses Jinja (`ERR_TEMPLATE_ENGINE_UNSUPPORTED`) | ✓ (jinja2) |
+| [`fixtures/jinja-verify-conformance/`](../fixtures/jinja-verify-conformance/) (ADR-0061 — the payload check over a Jinja body) | 30 | ✓ | refuses Jinja | refuses, via Java | refuses Jinja | ✓ |
 | [`fixtures/extract-conformance/`](../fixtures/extract-conformance/) | 48 | ✓ | ✓ | inherits the shared JVM engine | ✓ | ✓ |
 | [`fixtures/output-prompt-conformance/`](../fixtures/output-prompt-conformance/) | 17 | ✓ | ✓ | ✓ | ✓ | ✓ |
 | [`fixtures/persistence-conformance/`](../fixtures/persistence-conformance/) | 59 (53 query + 6 migration) | all 59; the 24 `report-*` and the `-15` decimal scenarios also on SQLite, MySQL and D1, `decimal-exact` also on MySQL (a scenario's `engines:` key is exact) | 53 query (migrations TS-only, ADR-0015); the `report-*` and `engines:` scenarios also on SQLite and MySQL | 53 query (via Exposed); the `report-*` and `engines:` scenarios also on SQLite and MySQL | 53 query; the `report-*` and `engines:` scenarios also on SQLite and MySQL | 53 query (pg8000); the `report-*` and `engines:` scenarios also on SQLite (`sqlite3`) and MySQL (PyMySQL) |
@@ -76,6 +78,8 @@ the corpora above do two different jobs. Only the first is a promise to adopters
   `object-model-conformance/`, `render-conformance/`, `template-codegen-conformance/` (the
   Mustache engine), `template-output-render-conformance/`, `output-prompt-conformance/`,
   `extract-conformance/`, `verify-conformance/`, `verify-strict-conformance/`,
+  `jinja-render-conformance/` and `jinja-verify-conformance/` (the Jinja engine and its
+  payload check, Python and TypeScript only, ADR-0061),
   `persistence-conformance/` (runtime reads and writes, and the TS-owned migration
   scenarios), `agent-context-conformance/`, `metamodel-docs/`, `fmt-conformance/`
   (the canonical serializer, surfaced per-file — ADR-0034's "canonical format" is core),
@@ -321,6 +325,17 @@ spreadsheet / CSV-injection escape); 11 pin Mustache-engine semantics — dotted
 lookup, parent-context fallthrough, falsy/empty-array section behavior, inverted
 sections, nested partials, standalone-tag whitespace stripping, raw-HTML bypass,
 trailing-newline preservation, unicode multibyte handling, and the `-last` list-separator accessor.
+
+### `fixtures/jinja-render-conformance/` (12) and `fixtures/jinja-verify-conformance/` (30)
+
+Both → [features/templates-and-payloads.md](features/templates-and-payloads.md) (Jinja
+templates section, [ADR-0061](../spec/decisions/ADR-0061-per-port-template-engines.md)). Run by
+Python (jinja2) and TypeScript (nunjucks) only; Java, Kotlin and C# refuse a Jinja body with
+`ERR_TEMPLATE_ENGINE_UNSUPPORTED` instead. The render corpus holds 10 output cases and 2 error
+cases (an include cycle and an unresolved include), each with the same Mustache-path message.
+The verify corpus reuses `verify-conformance/`'s `payload.json` field-tree shape; an
+`ERR_TEMPLATE_SYNTAX` finding's path is the parser's own message, so runners compare it as
+empty.
 
 ### `fixtures/verify-conformance/` (37)
 

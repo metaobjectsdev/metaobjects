@@ -889,7 +889,7 @@ Node `meta` CLI.
 | Relationships + FK | Yes (via OMDB) |
 | Source kinds (table / view / storedProc) | Yes |
 | `field.currency` / `field.enum` / `field.object` + `@storage` | Yes |
-| Templates + render (FR-004) | Yes (`metaobjects-render`) |
+| Templates + render (FR-004) | Yes (`metaobjects-render`; Mustache only — a Jinja body is refused with `ERR_TEMPLATE_ENGINE_UNSUPPORTED`, ADR-0061) |
 | Payload-VO codegen | Yes — the payload IS the value object's own `record`, from `SpringValueObjectGenerator` (ADR-0056); no separate payload generator |
 | Output parser codegen (FR-006) | Yes — `SpringOutputParserGenerator` (in `metaobjects-codegen-spring`) — see usage below |
 | Migrations | TS-only (`@metaobjectsdev/cli migrate`) — the Java migration engine and the OMDB runtime auto-create path were both removed (ADR-0015); apply the TS-produced DDL to the database |

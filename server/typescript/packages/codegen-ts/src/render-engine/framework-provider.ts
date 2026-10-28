@@ -12,7 +12,8 @@
 // `templates/` directory is included in the published tarball via
 // package.json `files: ["dist", "src", "templates", ...]`.
 
-import type { Provider } from "@metaobjectsdev/render";
+import { templateEngineOf, type Provider, type TemplateEngine } from "@metaobjectsdev/render";
+import { FilesystemProvider } from "@metaobjectsdev/render/providers";
 import { existsSync, readFileSync } from "node:fs";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -73,14 +74,19 @@ function frameworkTemplatesDir(): string | undefined {
 }
 
 /** Provider backed by an arbitrary on-disk template directory. References
- *  resolve as `<dir>/<ref>.mustache`. Used by both the framework default
- *  and adopter override paths. */
+ *  resolve as `<dir>/<ref>.mustache`, or — when there is no Mustache file — as a
+ *  Jinja file beside it (`.jinja` / `.j2` / `.jinja2`, ADR-0061), whose engine
+ *  `engineOf` reports. The adopter override path. */
 export class FileSystemProvider implements Provider {
-  constructor(private readonly root: string) {}
+  private readonly files: FilesystemProvider;
+  constructor(root: string) {
+    this.files = new FilesystemProvider(root);
+  }
   resolve(ref: string): string | undefined {
-    const path = join(this.root, `${ref}.mustache`);
-    if (!existsSync(path)) return undefined;
-    return readFileSync(path, "utf-8");
+    return this.files.resolve(ref);
+  }
+  engineOf(ref: string): TemplateEngine | undefined {
+    return this.files.engineOf(ref);
   }
 }
 
@@ -126,6 +132,13 @@ export class ProviderChain implements Provider {
     for (const p of this.providers) {
       const text = p.resolve(ref);
       if (text !== undefined) return text;
+    }
+    return undefined;
+  }
+  /** The engine of the body `resolve` returns: the one the answering provider reports. */
+  engineOf(ref: string): TemplateEngine | undefined {
+    for (const p of this.providers) {
+      if (p.resolve(ref) !== undefined) return templateEngineOf(p, ref);
     }
     return undefined;
   }

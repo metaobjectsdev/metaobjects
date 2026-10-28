@@ -10,51 +10,31 @@
 // passes it in — keeping this engine a standalone, byte-portable module.
 
 import Mustache from "mustache";
-import type { Provider } from "./provider.js";
 import { HAS_PREFIX, LAST_ACCESSOR, hasAccessorName } from "./payload-accessors.js";
+import { TEMPLATE_ENGINE_JINJA } from "./engine.js";
+import { verifyJinja } from "./jinja/verify.js";
+import {
+  ERR_VAR_NOT_ON_PAYLOAD,
+  ERR_PARTIAL_UNRESOLVED,
+  MAX_DEPTH,
+  slotAndTagFindings,
+  type PayloadField,
+  type VerifyError,
+  type VerifyOptions,
+} from "./verify-shared.js";
 
-/** A `{{var}}` references a field the (contextual) payload does not declare. */
-export const ERR_VAR_NOT_ON_PAYLOAD = "ERR_VAR_NOT_ON_PAYLOAD";
-/** A `{{> ref}}` partial does not resolve in the provider. */
-export const ERR_PARTIAL_UNRESOLVED = "ERR_PARTIAL_UNRESOLVED";
-/** A declared @requiredSlots slot is never referenced by the template (warning). */
-export const ERR_REQUIRED_SLOT_UNUSED = "ERR_REQUIRED_SLOT_UNUSED";
-/** A declared @requiredTags output tag is absent from the template text. */
-export const ERR_OUTPUT_TAG_MISSING = "ERR_OUTPUT_TAG_MISSING";
-
-/**
- * A plain field-tree node mirroring an `object.value` view-object's field walk.
- * `fields` present → a context-pushing field (object / array-of-object); absent
- * → a scalar (string/number/boolean/scalar-array). `isArray` is the field's
- * effective array-ness: with `fields` it is a list of objects, without it a list
- * of scalars.
- */
-export interface PayloadField {
-  name: string;
-  fields?: PayloadField[];
-  isArray?: boolean;
-}
-
-export interface VerifyError {
-  code: string;
-  /** The offending variable path, partial ref, or slot name. */
-  path: string;
-}
-
-export interface VerifyOptions {
-  /** When given, `{{> ref}}` partials are resolved + their bodies recursed. */
-  provider?: Provider;
-  /** Slots that MUST be referenced; an unused one is reported as a warning. */
-  requiredSlots?: string[];
-  /**
-   * Output tags the rendered text is contracted to contain. Each must appear as
-   * both an opening form (`<tag` followed by `>` or whitespace, so attributes are
-   * allowed) and a closing `</tag>` — across the body AND resolved partials.
-   */
-  requiredTags?: string[];
-}
-
-const MAX_DEPTH = 32;
+export {
+  ERR_VAR_NOT_ON_PAYLOAD,
+  ERR_PARTIAL_UNRESOLVED,
+  ERR_REQUIRED_SLOT_UNUSED,
+  ERR_OUTPUT_TAG_MISSING,
+  ERR_TEMPLATE_NOT_STATIC,
+  ERR_TEMPLATE_SYNTAX,
+  ERR_TEMPLATE_ENGINE_UNSUPPORTED,
+  type PayloadField,
+  type VerifyError,
+  type VerifyOptions,
+} from "./verify-shared.js";
 
 // A Mustache parse token: [type, value, start, end, subTokens?, ...].
 type Token = readonly unknown[];
@@ -147,36 +127,20 @@ export function parseTemplate(text: string): readonly (readonly unknown[])[] {
   return parse(text);
 }
 
-// An opening tag is `<tag` immediately followed by `>` or XML whitespace, so
-// attributes are allowed (`<answer foo="1">`) but a longer name is not over-matched
-// (`<answers>` does not satisfy `answer`).
-const TAG_OPEN_DELIMS = new Set([">", " ", "\t", "\n", "\r"]);
-
-function hasOpenTag(text: string, tag: string): boolean {
-  const needle = `<${tag}`;
-  for (let i = text.indexOf(needle); i !== -1; i = text.indexOf(needle, i + 1)) {
-    const next = text[i + needle.length];
-    if (next !== undefined && TAG_OPEN_DELIMS.has(next)) return true;
-  }
-  return false;
-}
-
-// A closing tag is the exact literal `</tag>`. A self-closing `<tag/>` has no such
-// form, so it never satisfies a required tag — these wrap content a parser reads.
-function hasCloseTag(text: string, tag: string): boolean {
-  return text.includes(`</${tag}>`);
-}
-
 /**
- * Walk a Mustache template's tokens against a payload field tree, returning a
- * list of drift errors. Context-sensitive: a section `{{#posts}}…{{/posts}}`
- * over a container field checks its body against that field's element type.
+ * Check a template's references against a payload field tree, returning a list of
+ * drift errors. Mustache by default; `opts.engine: "jinja"` walks the Jinja AST
+ * instead (jinja/verify.ts) and reports the same codes.
+ *
+ * Mustache is context-sensitive: a section `{{#posts}}…{{/posts}}` over a
+ * container field checks its body against that field's element type.
  */
 export function verify(
   templateText: string,
   fields: PayloadField[],
   opts?: VerifyOptions,
 ): VerifyError[] {
+  if (opts?.engine === TEMPLATE_ENGINE_JINJA) return verifyJinja(templateText, fields, opts);
   const errors: VerifyError[] = [];
   const provider = opts?.provider;
   const root = fields;
@@ -263,23 +227,6 @@ export function verify(
 
   walk(parse(templateText), [root], []);
 
-  for (const slot of opts?.requiredSlots ?? []) {
-    if (!referencedAtRoot.has(slot)) errors.push({ code: ERR_REQUIRED_SLOT_UNUSED, path: slot });
-  }
-
-  const requiredTags = opts?.requiredTags ?? [];
-  if (requiredTags.length > 0) {
-    // Scan body + resolved partials as one joined string: the open and close
-    // forms are located independently, so a tag may legitimately straddle the
-    // boundary. The "\n" separator only blocks a spurious tag spliced together
-    // from two fragments (a real tag is always contiguous within one body).
-    const haystack = staticTexts.join("\n");
-    for (const tag of requiredTags) {
-      if (!hasOpenTag(haystack, tag) || !hasCloseTag(haystack, tag)) {
-        errors.push({ code: ERR_OUTPUT_TAG_MISSING, path: tag });
-      }
-    }
-  }
-
+  errors.push(...slotAndTagFindings(referencedAtRoot, staticTexts, opts));
   return errors;
 }

@@ -27,12 +27,22 @@ from .payload_accessors import is_boolean_accessor, is_positional_accessor
 
 #: A ``{{var}}`` references a field the (contextual) payload does not declare.
 ERR_VAR_NOT_ON_PAYLOAD = "ERR_VAR_NOT_ON_PAYLOAD"
-#: A ``{{> ref}}`` partial does not resolve in the provider.
+#: A ``{{> ref}}`` partial (or a Jinja ``include`` / ``import`` / ``extends``) does not
+#: resolve in the provider.
 ERR_PARTIAL_UNRESOLVED = "ERR_PARTIAL_UNRESOLVED"
 #: A declared @requiredSlots slot is never referenced by the template (warning).
 ERR_REQUIRED_SLOT_UNUSED = "ERR_REQUIRED_SLOT_UNUSED"
 #: A declared @requiredTags output tag is absent from the template text.
 ERR_OUTPUT_TAG_MISSING = "ERR_OUTPUT_TAG_MISSING"
+#: Jinja: a payload reference the check cannot resolve without running the template — a
+#: dynamic key on an object (``user[key]``), a computed ``attribute=`` argument, or a
+#: template name that is an expression (``{% include name %}``). Reported, never passed.
+ERR_TEMPLATE_NOT_STATIC = "ERR_TEMPLATE_NOT_STATIC"
+#: Jinja: the template text does not parse. path = the parser's message.
+ERR_TEMPLATE_SYNTAX = "ERR_TEMPLATE_SYNTAX"
+#: A body is written for an engine this port does not run (Java, Kotlin and C# run
+#: Mustache only, so a ``.jinja`` template there is refused with this code).
+ERR_TEMPLATE_ENGINE_UNSUPPORTED = "ERR_TEMPLATE_ENGINE_UNSUPPORTED"
 
 _MAX_DEPTH = 32
 #: An opening tag is ``<tag`` immediately followed by ``>`` or XML whitespace, so
@@ -70,19 +80,31 @@ class VerifyError:
 
 
 class Provider(Protocol):
-    """Resolves a ``{{> group/source}}`` partial ref to its body text, or ``None``."""
+    """Resolves a ``{{> group/source}}`` partial ref to its body text, or ``None``.
+
+    A provider MAY also define ``engine_of(ref) -> str | None`` — the engine the ref's
+    text is written for (a filesystem provider knows from the file extension it found).
+    Without it, a body is Mustache unless the caller passes ``engine`` (ADR-0061).
+    """
 
     def resolve(self, ref: str) -> str | None: ...
 
 
 class InMemoryProvider:
-    """A :class:`Provider` backed by a dict of ref → body text."""
+    """A :class:`Provider` backed by a dict of ref → body text.
 
-    def __init__(self, partials: dict[str, str] | None = None) -> None:
+    ``engine`` (optional) is the engine every body in this provider is written for.
+    """
+
+    def __init__(self, partials: dict[str, str] | None = None, engine: str | None = None) -> None:
         self._partials = dict(partials or {})
+        self._engine = engine
 
     def resolve(self, ref: str) -> str | None:
         return self._partials.get(ref)
+
+    def engine_of(self, ref: str) -> str | None:
+        return self._engine if ref in self._partials else None
 
 
 # --- Mustache tag token model (rendering-agnostic; only tag structure) ---
@@ -202,11 +224,22 @@ def verify(
     provider: Provider | None = None,
     required_slots: list[str] | None = None,
     required_tags: list[str] | None = None,
+    engine: str | None = None,
 ) -> list[VerifyError]:
-    """Walk a Mustache template's tokens against a payload field tree, returning a
-    list of drift findings. Context-sensitive: a section ``{{#posts}}…{{/posts}}``
-    over a container field checks its body against that field's element type.
+    """Check a template's references against a payload field tree, returning a list of
+    drift findings. Mustache by default; ``engine="jinja"`` walks the jinja2 AST instead
+    (:mod:`metaobjects.render.jinja_verify`) and reports the same codes.
+
+    Mustache is context-sensitive: a section ``{{#posts}}…{{/posts}}`` over a container
+    field checks its body against that field's element type.
     """
+    if engine == "jinja":
+        from .jinja_verify import verify_jinja
+
+        return verify_jinja(
+            template_text, fields, provider=provider,
+            required_slots=required_slots, required_tags=required_tags,
+        )
     errors: list[VerifyError] = []
     root = fields
     referenced_at_root: set[str] = set()
@@ -287,10 +320,23 @@ def verify(
 
     walk(_tokenize(template_text), [root], [])
 
+    errors.extend(slot_and_tag_findings(referenced_at_root, static_texts, required_slots, required_tags))
+    return errors
+
+
+def slot_and_tag_findings(
+    referenced_at_root: set[str],
+    static_texts: list[str],
+    required_slots: list[str] | None,
+    required_tags: list[str] | None,
+) -> list[VerifyError]:
+    """The checks that run after either engine's walk: every required slot must have been
+    referenced at the payload root, and every required tag must appear (open and close) in
+    the body plus its resolved partials."""
+    errors: list[VerifyError] = []
     for slot in required_slots or []:
         if slot not in referenced_at_root:
             errors.append(VerifyError(ERR_REQUIRED_SLOT_UNUSED, slot))
-
     if required_tags:
         # Scan body + resolved partials as one joined string: the open and close
         # forms are located independently, so a tag may legitimately straddle the
@@ -300,5 +346,4 @@ def verify(
         for tag in required_tags:
             if not _has_open_tag(haystack, tag) or not _has_close_tag(haystack, tag):
                 errors.append(VerifyError(ERR_OUTPUT_TAG_MISSING, tag))
-
     return errors

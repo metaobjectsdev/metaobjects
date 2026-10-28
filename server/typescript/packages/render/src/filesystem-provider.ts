@@ -1,5 +1,7 @@
 // Filesystem-backed provider: resolves a `group/source` reference to
-// <root>/<group>/<source>.mustache. NODE-ONLY — it is reachable solely through
+// <root>/<group>/<source>.mustache — or, when no Mustache file exists, to a Jinja
+// file beside it (`.jinja`, `.j2`, `.jinja2`; ADR-0061), whose extension then
+// selects the Jinja engine. NODE-ONLY — it is reachable solely through
 // the `@metaobjectsdev/render/providers` subpath so the package's root entry
 // stays importable in a browser bundle.
 //
@@ -12,33 +14,59 @@
 import { readFileSync, statSync } from "node:fs";
 import { resolve, sep } from "node:path";
 import type { Provider } from "./provider.js";
+import { JINJA_EXTENSIONS, MUSTACHE_EXTENSION, engineForExtension, type TemplateEngine } from "./engine.js";
 
 /** The default template file extension, shared with every other port. */
-export const DEFAULT_TEMPLATE_EXTENSION = ".mustache";
+export const DEFAULT_TEMPLATE_EXTENSION = MUSTACHE_EXTENSION;
 
 const REF_SEPARATOR = "/";
 const PARENT_SEGMENT = "..";
 
 export class FilesystemProvider implements Provider {
   private readonly root: string;
+  private readonly extensions: readonly string[];
 
-  constructor(root: string, private readonly extension: string = DEFAULT_TEMPLATE_EXTENSION) {
+  /**
+   * @param extension the one extension to read. Left at the default, the provider
+   *        reads `<ref>.mustache` and falls back to the Jinja extensions; given
+   *        explicitly, it reads only that extension.
+   */
+  constructor(root: string, extension: string = DEFAULT_TEMPLATE_EXTENSION) {
     this.root = resolve(root);
+    this.extensions = extension === DEFAULT_TEMPLATE_EXTENSION
+      ? [DEFAULT_TEMPLATE_EXTENSION, ...JINJA_EXTENSIONS]
+      : [extension];
   }
 
   resolve(ref: string): string | undefined {
-    const segments = ref.split(REF_SEPARATOR).filter((s) => s.length > 0);
-    if (segments.length === 0 || segments.includes(PARENT_SEGMENT)) return undefined;
-
-    const candidate = resolve(this.root, ...segments) + this.extension;
-    // Path-traversal guard (belt-and-suspenders after the `..` check).
-    if (!candidate.startsWith(this.root + sep)) return undefined;
-
+    const found = this.find(ref);
+    if (found === undefined) return undefined;
     try {
-      if (!statSync(candidate).isFile()) return undefined;
-      return readFileSync(candidate, "utf8");
+      return readFileSync(found.path, "utf8");
     } catch {
       return undefined;
     }
+  }
+
+  engineOf(ref: string): TemplateEngine | undefined {
+    const found = this.find(ref);
+    return found === undefined ? undefined : engineForExtension(found.extension);
+  }
+
+  private find(ref: string): { path: string; extension: string } | undefined {
+    const segments = ref.split(REF_SEPARATOR).filter((s) => s.length > 0);
+    if (segments.length === 0 || segments.includes(PARENT_SEGMENT)) return undefined;
+    const base = resolve(this.root, ...segments);
+    // Path-traversal guard (belt-and-suspenders after the `..` check).
+    if (!base.startsWith(this.root + sep)) return undefined;
+    for (const extension of this.extensions) {
+      const path = base + extension;
+      try {
+        if (statSync(path).isFile()) return { path, extension };
+      } catch {
+        // absent — try the next extension
+      }
+    }
+    return undefined;
   }
 }

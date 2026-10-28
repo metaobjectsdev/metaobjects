@@ -1,0 +1,3 @@
+Hi, Ada Lovelace!
+[info:Ada] [warn:x]
+<inside Lovelace>

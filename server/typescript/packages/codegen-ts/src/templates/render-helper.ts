@@ -46,7 +46,10 @@ import {
 } from "@metaobjectsdev/metadata";
 import {
   verify,
+  templateEngineOf,
+  TEMPLATE_ENGINE_JINJA,
   ERR_REQUIRED_SLOT_UNUSED,
+  ERR_VAR_NOT_ON_PAYLOAD,
   type Provider,
   type PayloadField,
   type VerifyError,
@@ -123,22 +126,28 @@ function gateRef(
   ref: string,
   provider: Provider,
   fields: PayloadField[],
-): void {
+): string {
   const text = provider.resolve(ref);
   if (text === undefined) {
     throw new Error(
       `render-helper drift: template "${templateName}" ref "${ref}" — unresolved (provider returned no text)`,
     );
   }
-  const errors: VerifyError[] = verify(text, fields, { provider }).filter(
+  const engine = templateEngineOf(provider, ref);
+  const errors: VerifyError[] = verify(text, fields, { provider, engine }).filter(
     (e) => e.code !== ERR_REQUIRED_SLOT_UNUSED,
   );
   if (errors.length > 0) {
     const e = errors[0]!;
     throw new Error(
-      `render-helper drift: template "${templateName}" ref "${ref}" — ${e.code}: {{${e.path}}} not on payload VO`,
+      `render-helper drift: template "${templateName}" ref "${ref}" — ${e.code}: ` +
+        (e.code === ERR_VAR_NOT_ON_PAYLOAD ? `{{${e.path}}} not on payload VO` : e.path),
     );
   }
+  // The emitted render() call names a Jinja body's engine (ADR-0061), so a runtime
+  // provider that cannot tell — an in-memory one — still renders it as Jinja. A
+  // Mustache body adds nothing, so a Mustache helper is byte-identical to before.
+  return engine === TEMPLATE_ENGINE_JINJA ? `, engine: ${JSON.stringify(TEMPLATE_ENGINE_JINJA)}` : "";
 }
 
 /**
@@ -221,15 +230,14 @@ export function renderRenderHelper(
     }
 
     // BUILD-TIME drift gate — every email part-ref is resolved + verified.
-    gateRef(templateName, subjectRef, provider, fields);
-    gateRef(templateName, htmlBodyRef, provider, fields);
-    if (typeof textBodyRef === "string") {
-      gateRef(templateName, textBodyRef, provider, fields);
-    }
+    const subjectEngine = gateRef(templateName, subjectRef, provider, fields);
+    const htmlEngine = gateRef(templateName, htmlBodyRef, provider, fields);
+    const textEngine =
+      typeof textBodyRef === "string" ? gateRef(templateName, textBodyRef, provider, fields) : "";
 
     const textBodyLine =
       typeof textBodyRef === "string"
-        ? `\n    textBody: render({ ref: ${JSON.stringify(textBodyRef)}, payload, format: "text", provider, verify: ${ft} }),`
+        ? `\n    textBody: render({ ref: ${JSON.stringify(textBodyRef)}, payload, format: "text", provider, verify: ${ft}${textEngine} }),`
         : "";
 
     return `${renderHelperHeader("Provider, EmailDocument", payloadTypeName, payloadSpecifier)}
@@ -241,8 +249,8 @@ export function renderRenderHelper(
  */
 export function ${fnName}(payload: ${payloadTypeName}, provider: Provider): EmailDocument {
   return {
-    subject: render({ ref: ${JSON.stringify(subjectRef)}, payload, format: "text", provider, verify: ${ft} }),
-    htmlBody: render({ ref: ${JSON.stringify(htmlBodyRef)}, payload, format: "html", provider, verify: ${ft} }),${textBodyLine}
+    subject: render({ ref: ${JSON.stringify(subjectRef)}, payload, format: "text", provider, verify: ${ft}${subjectEngine} }),
+    htmlBody: render({ ref: ${JSON.stringify(htmlBodyRef)}, payload, format: "html", provider, verify: ${ft}${htmlEngine} }),${textBodyLine}
   };
 }
 `;
@@ -265,7 +273,7 @@ export function ${fnName}(payload: ${payloadTypeName}, provider: Provider): Emai
         : undefined;
 
   // BUILD-TIME drift gate.
-  gateRef(templateName, textRef, provider, fields);
+  const engineArg = gateRef(templateName, textRef, provider, fields);
 
   const maxCharsArg =
     maxChars !== undefined && Number.isFinite(maxChars) ? `, maxChars: ${maxChars}` : "";
@@ -278,7 +286,7 @@ export function ${fnName}(payload: ${payloadTypeName}, provider: Provider): Emai
  * check matches the build-time gate enforced when this file was generated.
  */
 export function ${fnName}(payload: ${payloadTypeName}, provider: Provider): string {
-  return render({ ref: ${JSON.stringify(textRef)}, payload, format: ${JSON.stringify(format)}, provider, verify: ${ft}${maxCharsArg} });
+  return render({ ref: ${JSON.stringify(textRef)}, payload, format: ${JSON.stringify(format)}, provider, verify: ${ft}${maxCharsArg}${engineArg} });
 }
 `;
 }

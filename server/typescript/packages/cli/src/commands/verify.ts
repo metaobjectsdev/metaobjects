@@ -29,7 +29,7 @@ import { scanSourceForAntiPatterns } from "../lib/anti-patterns.js";
 import { scanForMissingBaseUrl, type BaseUrlFinding } from "../lib/base-url-advisory.js";
 import { scanForRemovedProps, type RemovedPropFinding } from "../lib/removed-prop-advisory.js";
 import { replayRemedy } from "../lib/replay-remedy.js";
-import { FileProvider, mustacheTagLine } from "../lib/file-provider.js";
+import { FileProvider, templateReferenceLine } from "../lib/file-provider.js";
 import { derivePayloadFieldTree } from "../lib/payload-field-tree.js";
 import { loadMemoryOptionsFrom, loadMetaobjectsConfig, RemovedNamingConfigError, resolveGenCollection, resolveGenConfigDir } from "../lib/load-metaobjects-config.js";
 import { collectionLoadOptions } from "../lib/collection-load-options.js";
@@ -120,7 +120,12 @@ import {
   WIRE_KEY_NULL_MEMBERS,
   type WireFormat,
 } from "@metaobjectsdev/metadata";
-import { verify, ERR_REQUIRED_SLOT_UNUSED, ERR_PARTIAL_UNRESOLVED } from "@metaobjectsdev/render";
+import {
+  verify,
+  templateEngineOf,
+  ERR_REQUIRED_SLOT_UNUSED,
+  ERR_PARTIAL_UNRESOLVED,
+} from "@metaobjectsdev/render";
 import { describeLoadError, reportLoadError } from "../lib/load-error.js";
 import { describeError } from "../lib/error-text.js";
 
@@ -1217,18 +1222,20 @@ export async function verifyCommand(
       let anyBodyChecked = false;
       let anyErrorHere = false;
       for (const { label, ref } of refs) {
-        // Render-engine drift check: mustache variables ↔ payload field names.
+        // Render-engine drift check: template variables ↔ payload field names. The
+        // engine comes from the file the ref resolved to (`.mustache` or `.jinja`/`.j2`).
         const text = provider.resolve(ref);
         if (text === undefined) {
           log.error(
             `[${tmpl.name}] (${label}) ${ERR_PARTIAL_UNRESOLVED}: ref "${ref}" did not resolve under ${promptsDir}` +
-              ` — create ${join(promptsDir, `${ref}.mustache`)} (or .txt), or point --prompts at the directory that holds it`,
+              ` — create ${join(promptsDir, `${ref}.mustache`)} (or .jinja, .j2, .txt), or point --prompts at the directory that holds it`,
           );
           errorCount++;
           anyErrorHere = true;
           continue;
         }
-        const drift = verify(text, fieldTree, { provider, requiredSlots, requiredTags });
+        const engine = templateEngineOf(provider, ref);
+        const drift = verify(text, fieldTree, { provider, requiredSlots, requiredTags, engine });
         anyBodyChecked = true;
         // WHERE to look. The {code, path} diagnostic is pinned by the cross-port verify
         // corpus, so the location is added here, in the display only: the body's file
@@ -1237,7 +1244,7 @@ export async function verifyCommand(
         const bodyFile = provider.pathOf(ref);
         const where = (varPath: string): string => {
           if (bodyFile === undefined) return "";
-          const line = mustacheTagLine(text, varPath);
+          const line = templateReferenceLine(text, varPath, engine);
           return ` (${relative(projectRoot, bodyFile)}${line !== undefined ? `:${line}` : ""})`;
         };
         for (const e of drift) {

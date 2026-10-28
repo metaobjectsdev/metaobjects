@@ -1,7 +1,17 @@
 """Render-tier engine: the build-time template drift-check ``verify`` (FR-004), the
-FR-010 tolerant ``extract`` parser, and the FR-010 output-format prompt renderer."""
+FR-010 tolerant ``extract`` parser, and the FR-010 output-format prompt renderer.
+Templates are Mustache by default; Jinja is the Python port's second engine (ADR-0061)."""
 
 from metaobjects.render.email_document import EmailDocument
+from metaobjects.render.engine import (
+    JINJA_EXTENSIONS,
+    MUSTACHE_EXTENSION,
+    TEMPLATE_ENGINE_JINJA,
+    TEMPLATE_ENGINE_MUSTACHE,
+    TEMPLATE_ENGINES,
+    engine_for_extension,
+    template_engine_of,
+)
 from metaobjects.render.filesystem_provider import FilesystemProvider
 from metaobjects.render.prompt import (
     PROMPT_OVERRIDES_NONE,
@@ -31,6 +41,9 @@ from metaobjects.render.verify import (
     ERR_OUTPUT_TAG_MISSING,
     ERR_PARTIAL_UNRESOLVED,
     ERR_REQUIRED_SLOT_UNUSED,
+    ERR_TEMPLATE_ENGINE_UNSUPPORTED,
+    ERR_TEMPLATE_NOT_STATIC,
+    ERR_TEMPLATE_SYNTAX,
     ERR_VAR_NOT_ON_PAYLOAD,
     InMemoryProvider,
     PayloadField,
@@ -43,7 +56,17 @@ __all__ = [
     "ERR_OUTPUT_TAG_MISSING",
     "ERR_PARTIAL_UNRESOLVED",
     "ERR_REQUIRED_SLOT_UNUSED",
+    "ERR_TEMPLATE_ENGINE_UNSUPPORTED",
+    "ERR_TEMPLATE_NOT_STATIC",
+    "ERR_TEMPLATE_SYNTAX",
     "ERR_VAR_NOT_ON_PAYLOAD",
+    "JINJA_EXTENSIONS",
+    "MUSTACHE_EXTENSION",
+    "TEMPLATE_ENGINES",
+    "TEMPLATE_ENGINE_JINJA",
+    "TEMPLATE_ENGINE_MUSTACHE",
+    "engine_for_extension",
+    "template_engine_of",
     "PROMPT_OVERRIDES_NONE",
     "EmailDocument",
     "FieldKind",
