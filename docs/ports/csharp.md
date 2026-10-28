@@ -164,7 +164,8 @@ return CodegenCli.Run(args, Generators.All);
 ```
 
 Replace the empty list `dotnet meta init` wrote with the one above before the first `gen`: with
-an empty list `gen` writes nothing, and `--out` is required.
+an empty list `gen` writes nothing, and it needs an output directory (`--out`, or `csharp.outDir`
+in `.metaobjects/config.json`, below).
 
 ```bash
 # Run the list: EF Core entities + AppDbContext + CRUD minimal-API routes
