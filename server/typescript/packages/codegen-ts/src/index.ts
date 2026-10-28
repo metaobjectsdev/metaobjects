@@ -490,6 +490,7 @@ export {
   ERR_PRISMA_UNSUPPORTED_CHECK,
   ERR_PRISMA_UNSUPPORTED_INDEX,
   ERR_PRISMA_UNSUPPORTED_PROVIDER,
+  ERR_PRISMA_UNSUPPORTED_SCHEMA,
 } from "./prisma/prisma-errors.js";
 export type { PrismaErrorCode } from "./prisma/prisma-errors.js";
 export type {

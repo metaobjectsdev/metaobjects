@@ -27,10 +27,11 @@ here.**
   created by `prisma db push` with the checks file applied passes `meta verify --db`, and a
   change to it fails. On SQLite, which cannot take the checks file, the gate reports each
   missing CHECK and nothing else, and a change to the database fails it.
-  What a Prisma schema cannot express is refused with an `ERR_PRISMA_*` code, never dropped: a
+  Most of what a Prisma schema cannot express is refused with an `ERR_PRISMA_*` code, never dropped: a
   view `meta verify --db` expects, an expression or partial index, a CHECK on SQLite, a `@schema`
   outside Postgres, a table with no primary key, a relation Prisma cannot model, a name
-  collision, or an unsupported provider. A model with projections, write-through read views or
+  collision, or an unsupported provider. The exception is MySQL, which gets the enum CHECKs only:
+  the other checks are Postgres SQL and are left out. A model with projections, write-through read views or
   served reports therefore needs each of those views marked `@unmanaged` or its object left out
   by the generator's `filter`. A flattened `field.object` maps to one Prisma field per column.
   `orm: "prisma"` also makes every target default to `runtime: false`. It refuses a target set to
