@@ -1,7 +1,7 @@
 package com.metaobjects.integration.api.generated;
 
 /**
- * The Java SOURCE for an in-memory {@code acme.sales.<Projection>Repository} impl: ONE generic
+ * The Java SOURCE for an in-memory {@code <pkg>.<Projection>Repository} impl: ONE generic
  * template, instantiated once per mounted projection by substituting its name. Emitted
  * alongside the GENERATED controller / DTO / interface so it compiles against them, then
  * loaded and instantiated reflectively by {@link GeneratedProjectionControllerHarness}.
@@ -38,7 +38,12 @@ final class InMemoryProjectionRepositorySource {
 
     /** Fully-qualified name of the emitted impl for {@code projection}. */
     static String fqcn(String projection) {
-        return PKG + "." + simpleName(projection);
+        return fqcn(PKG, projection);
+    }
+
+    /** Fully-qualified name of the emitted impl for {@code projection} in package {@code pkg}. */
+    static String fqcn(String pkg, String projection) {
+        return pkg + "." + simpleName(projection);
     }
 
     /**
@@ -47,6 +52,11 @@ final class InMemoryProjectionRepositorySource {
      * for a keyless projection, whose repository has no {@code findById} to implement.
      */
     static String source(String projection, String keyComponent, String keyType) {
+        return source(PKG, projection, keyComponent, keyType);
+    }
+
+    /** {@link #source(String, String, String)} for a projection generated into package {@code pkg}. */
+    static String source(String pkg, String projection, String keyComponent, String keyType) {
         String findById = keyComponent == null ? "" : """
 
             @Override
@@ -55,11 +65,11 @@ final class InMemoryProjectionRepositorySource {
                 return Optional.empty();
             }
 """.replace("__KEY__", keyComponent).replace("__KEY_TYPE__", keyType);
-        return TEMPLATE.replace(FIND_BY_ID, findById).replace(NAME, projection);
+        return TEMPLATE.replace(FIND_BY_ID, findById).replace(NAME, projection).replace("__PKG__", pkg);
     }
 
     private static final String TEMPLATE = """
-        package acme.sales;
+        package __PKG__;
 
         import com.metaobjects.generator.spring.runtime.FilterPredicate;
 

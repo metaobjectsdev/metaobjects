@@ -7,6 +7,7 @@ import com.metaobjects.integration.api.generated.GeneratedAccountControllerHarne
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -20,6 +21,8 @@ import java.util.Map;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 /**
  * #484 — the Java GENERATED-controller lane for the {@code secret-fields} api-contract
@@ -78,6 +81,28 @@ final class SecretFieldsGeneratedApiContractConformanceTest {
             }
             assertDeniedColumnsNeverWritten(scenario.name());
         });
+    }
+
+    /**
+     * A read-only projection field that extends {@code Account.pinHash} inherits the credential, so
+     * the projection's generated list and get never return it either (the corpus README: a
+     * credential is never returned). The other fields still are.
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void projectionInheritingACredentialNeverReturnsIt() throws Exception {
+        HARNESS.reset();
+        GeneratedAccountControllerHarness.Response list = HARNESS.exchange("GET", "/api/account_views", null);
+        assertEquals(200, list.status(), list.body());
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) HARNESS.parseBody(list.body());
+        assertEquals(List.of("Ada Lovelace", "Alan Turing"), rows.stream().map(r -> r.get("name")).toList());
+        for (Map<String, Object> row : rows) assertFalse(row.containsKey("pinHash"), list.body());
+
+        GeneratedAccountControllerHarness.Response one = HARNESS.exchange("GET", "/api/account_views/1", null);
+        assertEquals(200, one.status(), one.body());
+        Map<String, Object> row = (Map<String, Object>) HARNESS.parseBody(one.body());
+        assertEquals("Ada Lovelace", row.get("name"));
+        assertFalse(row.containsKey("pinHash"), one.body());
     }
 
     /**

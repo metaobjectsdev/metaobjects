@@ -42,21 +42,6 @@ describe("api contract secret fields (#484) — GENERATED routes lane", () => {
       }
     }, { timeout: 60_000 });
   }
-
-  // Supplements the stored-row read-back above: both marked fields are denied on write, only the
-  // credential is hidden on read.
-  test("generated route names the denied and hidden columns", async () => {
-    const pg = await startPostgres();
-    let server: GeneratedSecretFieldsServerHandle | null = null;
-    try {
-      server = await startGeneratedSecretFieldsServer(pg.connectionUri, META_PATH);
-      expect(server.routesSource).toContain('writeDeniedColumns: ["tokenHash", "pinHash"]');
-      expect(server.routesSource).toContain('hiddenColumns: ["pinHash"]');
-    } finally {
-      if (server) await server.close();
-      await pg.stop();
-    }
-  }, { timeout: 60_000 });
 });
 
 async function runScenario(scenario: ApiScenario, server: GeneratedSecretFieldsServerHandle): Promise<void> {

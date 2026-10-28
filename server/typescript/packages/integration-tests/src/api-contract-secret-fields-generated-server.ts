@@ -24,8 +24,6 @@ export interface SecretFieldsSeed {
 
 export interface GeneratedSecretFieldsServerHandle {
   baseUrl: string;
-  /** The generated source of Account.routes.ts, for codegen assertions. */
-  routesSource: string;
   applySeed(seed: SecretFieldsSeed): Promise<void>;
   /** The stored accounts, read straight from the table (the HTTP API never returns a credential). */
   storedRows(): Promise<Array<{ id: number; tokenHash: string | null; pinHash: string | null }>>;
@@ -87,7 +85,6 @@ export const db = drizzle(pool);
     accountRoutes: (f: FastifyInstance) => Promise<void>;
   };
   const dbMod = (await import(pathToFileURL(join(tmp, "db.ts")).href)) as { pool: pg.Pool };
-  const routesSource = (await import("node:fs")).readFileSync(routesPath, "utf8");
 
   const fastify = Fastify();
   await fastify.register(accountRoutes.accountRoutes);
@@ -96,7 +93,6 @@ export const db = drizzle(pool);
 
   return {
     baseUrl,
-    routesSource,
     applySeed: async (seed: SecretFieldsSeed) => {
       await executeSql(connectionUri, `TRUNCATE TABLE "accounts" RESTART IDENTITY;`);
       for (const r of seed.rows)

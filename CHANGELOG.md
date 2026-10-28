@@ -107,7 +107,10 @@ here.**
   hashes. Generated forms (React, Angular) and the api docs omit credentials too. Your own code is unaffected:
   the entity, DTO and generated queries still carry the field, so you keep writing a hash or token yourself.
   A project with neither mark generates byte-identical output. If you relied on a route writing a
-  `@formExclude` field, write it from your own code. Gated by the new `secret-fields/` sub-corpus
+  `@formExclude` field, write it from your own code. A field that is `@required` and also
+  `@formExclude` or a credential now makes the generated create route fail, because the route
+  can no longer supply its value: make the field optional, or create that entity from your own
+  code (see "Credentials and excluded fields" in `docs/features/api-contract.md`). Gated by the new `secret-fields/` sub-corpus
   of the api-contract conformance corpus, in the generated lane of all five ports.
 
 - **`meta gen` and `meta verify --codegen` refuse an unknown codegen `dialect`** instead of silently

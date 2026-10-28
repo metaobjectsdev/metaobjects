@@ -55,7 +55,7 @@ export {
 } from "./catalog-gates.js";
 
 export type { MetaobjectsGenConfig, NormalizedMetaobjectsGenConfig, ResolvedGenConfig, Dialect, ExtStyle, ColumnNamingStrategy, MetaDataTypeProvider, GeneratorSpec, ApiSurface, VerifyConfig } from "./metaobjects-config.js";
-export { defineConfig, normalizeConfig, assertCodegenDialect, CODEGEN_DIALECTS, resolveGenerators, removedGeneratorMessage } from "./metaobjects-config.js";
+export { defineConfig, normalizeConfig, resolveGenerators, removedGeneratorMessage } from "./metaobjects-config.js";
 // The dialect every generator falls back to when a config declares none, and where a
 // project's documentation goes when it has not chosen (`targets.docs`).
 export { DEFAULT_DIALECT, DEFAULT_DOCS_DIR } from "./metaobjects-config.js";
@@ -142,7 +142,7 @@ export { renderAgentApi, renderApiIndex, renderEntityApiPage } from "./generator
 export { isProjection, isWriteThrough } from "./projection/projection-detector.js";
 export { isAbstract, emitsInstanceArtifacts, emitsWriteArtifacts } from "./instance-artifacts.js";
 // The UI tier asks THESE — "is there an endpoint?" — never the storage predicates.
-export { hasGeneratedForm, hasItemRoute, decimalColumnsLine, writeDeniedColumnsLine, isCredentialField, isApiWriteDenied, credentialFieldNames, apiWriteDeniedFieldNames, decimalFieldNames, itemRouteField, restPath, servesClientHooks, servesClientTier, servesReadApi, servesWriteApi } from "./api-surface.js";
+export { hasGeneratedForm, hasItemRoute, decimalColumnsLine, writeDeniedColumnsLine, isCredentialField, decimalFieldNames, itemRouteField, restPath, servesClientHooks, servesClientTier, servesReadApi, servesWriteApi } from "./api-surface.js";
 // #356 — every emitter selects a field's view by the SURFACE it renders, never by
 // declaration position. An owned generator (FR-040) composing the render layer must
 // use this too, or it reinstates the order-dependence in its own copy.

@@ -36,18 +36,39 @@ import java.util.stream.Stream;
 /**
  * #484 — host the GENERATED Spring {@code AccountController} of the {@code secret-fields}
  * sub-corpus over real HTTP (embedded Tomcat) and drive its scenarios. Sibling of
- * {@link GeneratedAuthorControllerHarness}; the only hand-written piece is
- * {@link InMemoryAccountRepositorySource}, the consumer seam.
+ * {@link GeneratedAuthorControllerHarness}; the only hand-written pieces are
+ * {@link InMemoryAccountRepositorySource} and {@link InMemoryProjectionRepositorySource}, the consumer seams.
+ *
+ * <p>Beside the corpus model it loads {@link #ACCOUNT_VIEW}, a read-only projection whose
+ * {@code pinHash} extends {@code Account.pinHash}, and mounts its generated controller too, so the
+ * read-only path's credential redaction is driven over HTTP as well.</p>
  */
 public final class GeneratedAccountControllerHarness implements AutoCloseable {
 
     private static final String ENTITY_PKG = "acme.secrets";
+    private static final String VIEW_NAME = "AccountView";
+
+    /** A view-backed projection of {@code Account} that inherits the credential. */
+    private static final String ACCOUNT_VIEW = """
+        { "metadata.root": { "package": "acme::secrets", "children": [
+          { "object.projection": { "name": "AccountView", "children": [
+            { "source.rdb":       { "@kind": "view", "@view": "v_account" } },
+            { "field.long":       { "name": "id", "extends": "Account.id" } },
+            { "field.string":     { "name": "name", "extends": "Account.name" } },
+            { "field.string":     { "name": "pinHash", "extends": "Account.pinHash" } },
+            { "identity.primary": { "name": "id", "extends": "Account.id" } }
+          ] } }
+        ] } }
+        """;
 
     private final ObjectMapper mapper = new ObjectMapper();
     private final URLClassLoader classLoader;
     private final Class<?> dtoClass;
     private final Constructor<?> controllerCtor;
     private final Constructor<?> repoCtor;
+    private final Class<?> viewDtoClass;
+    private final Constructor<?> viewControllerCtor;
+    private final Constructor<?> viewRepoCtor;
     private final List<Map<String, Object>> seedRows;
     private final Validator validator = Validation.buildDefaultValidatorFactory().getValidator();
 
@@ -66,7 +87,9 @@ public final class GeneratedAccountControllerHarness implements AutoCloseable {
         Files.createDirectories(srcDir);
         Files.createDirectories(classesDir);
 
-        MetaDataLoader loader = loadCorpus(corpusRoot.resolve("meta.json"));
+        Path viewModel = genDir.resolve("account-view.json");
+        Files.writeString(viewModel, ACCOUNT_VIEW);
+        MetaDataLoader loader = loadCorpus(corpusRoot.resolve("meta.json"), viewModel);
         loader.getRoot().setPhysicalNaming(
                 com.metaobjects.config.SourceResolver.resolvePhysicalNaming(configRoot));
         loader.getRoot().setWireFormat(
@@ -81,6 +104,8 @@ public final class GeneratedAccountControllerHarness implements AutoCloseable {
         Path repoImpl = srcDir.resolve(ENTITY_PKG.replace('.', '/')).resolve("InMemoryAccountRepository.java");
         Files.createDirectories(repoImpl.getParent());
         Files.writeString(repoImpl, InMemoryAccountRepositorySource.SOURCE);
+        Files.writeString(repoImpl.resolveSibling(InMemoryProjectionRepositorySource.simpleName(VIEW_NAME) + ".java"),
+            InMemoryProjectionRepositorySource.source(ENTITY_PKG, VIEW_NAME, "id", "Long"));
 
         compile(srcDir, classesDir);
 
@@ -92,6 +117,11 @@ public final class GeneratedAccountControllerHarness implements AutoCloseable {
             .getDeclaredConstructor(repoInterface, ObjectMapper.class, Validator.class);
         this.repoCtor = classLoader.loadClass(InMemoryAccountRepositorySource.FQCN)
             .getDeclaredConstructor(List.class);
+        this.viewDtoClass = classLoader.loadClass(ENTITY_PKG + "." + VIEW_NAME + "Dto");
+        this.viewControllerCtor = classLoader.loadClass(ENTITY_PKG + "." + VIEW_NAME + "Controller")
+            .getDeclaredConstructors()[0];
+        this.viewRepoCtor = classLoader.loadClass(InMemoryProjectionRepositorySource.fqcn(ENTITY_PKG, VIEW_NAME))
+            .getDeclaredConstructor(List.class);
     }
 
     /** Re-seed for a scenario: a fresh repository, controller and Tomcat. */
@@ -100,8 +130,18 @@ public final class GeneratedAccountControllerHarness implements AutoCloseable {
         for (Map<String, Object> row : seedRows) dtos.add(mapper.convertValue(row, dtoClass));
         this.repo = repoCtor.newInstance(dtos);
         Object controller = controllerCtor.newInstance(repo, mapper, validator);
+        List<Object> viewDtos = new ArrayList<>();
+        for (Map<String, Object> row : seedRows) {
+            Map<String, Object> view = new java.util.LinkedHashMap<>();
+            for (String col : List.of("id", "name", "pinHash")) view.put(col, row.get(col));
+            viewDtos.add(mapper.convertValue(view, viewDtoClass));
+        }
+        Object viewRepo = viewRepoCtor.newInstance(viewDtos);
+        Object viewController = viewControllerCtor.getParameterCount() == 1
+            ? viewControllerCtor.newInstance(viewRepo)
+            : viewControllerCtor.newInstance(viewRepo, mapper);
         if (host != null) host.close();
-        this.host = TomcatHost.start(mapper, controller);
+        this.host = TomcatHost.start(mapper, controller, viewController);
     }
 
     public Response exchange(String method, String path, Object jsonBody) throws Exception {
@@ -143,14 +183,16 @@ public final class GeneratedAccountControllerHarness implements AutoCloseable {
 
     public record Response(int status, String body) {}
 
-    private static MetaDataLoader loadCorpus(Path metaJson) {
-        URI uri = URIHelper.toURI(
-            "model:file:" + metaJson.toAbsolutePath().toString().replace('\\', '/'));
+    private static MetaDataLoader loadCorpus(Path... metaJsons) {
+        List<URI> uris = new ArrayList<>();
+        for (Path metaJson : metaJsons) {
+            uris.add(URIHelper.toURI("model:file:" + metaJson.toAbsolutePath().toString().replace('\\', '/')));
+        }
         MetaDataLoader loader = new MetaDataLoader(
             LoaderOptions.create(false, false, true),
             MetaDataLoader.SUBTYPE_MANUAL,
             "api-contract-secret-fields-generated");
-        loader.setSourceURIs(List.of(uri));
+        loader.setSourceURIs(uris);
         loader.init();
         return loader;
     }

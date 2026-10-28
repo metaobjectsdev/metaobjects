@@ -110,18 +110,6 @@ public class SpringSecretFieldsCodegenTest extends SharedRegistryTestBase {
     }
 
     @Test
-    public void projectionInheritingACredentialHidesItOnListAndGet() throws Exception {
-        String controller = generate("proj", projection(
-            "{ \"field.string\": { \"name\": \"pinHash\", \"extends\": \"Account.pinHash\" } },"),
-            "AccountViewController.java", false);
-        assertTrue("list hides the credential; saw:\n" + controller,
-            controller.contains("redactAll(rows, \"pinHash\")"));
-        assertTrue("get hides the credential", controller.contains("redact(r, \"pinHash\")"));
-        assertTrue("the mapper is injected only for this case",
-            controller.contains("ObjectMapper objectMapper) {"));
-    }
-
-    @Test
     public void projectionWithoutACredentialIsUnchanged() throws Exception {
         String controller = generate("projplain", projection(
             "{ \"field.string\": { \"name\": \"tokenHash\", \"extends\": \"Account.tokenHash\" } },"),
