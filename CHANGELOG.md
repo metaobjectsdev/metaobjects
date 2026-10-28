@@ -35,6 +35,30 @@ here.**
   Phase 2 ([#482](https://github.com/metaobjectsdev/metaobjects/issues/482)) are written against.
   The feature doc records the Maven and NuGet packaged transports as a design for a later slice.
 
+- **`meta deps sync` installs a shared model from an npm or Python package, not only from a
+  folder path.** A dependency can now be `{ "name": "x", "npm": "@acme/model", "dir":
+  "metaobjects" }` or `{ "name": "x", "python": "acme_model", "dir": "metaobjects" }`: install
+  the publisher's package with your own package manager, then `meta deps sync` finds it (the
+  way Node resolves `@acme/model` from the directory holding `.metaobjects/`, or where
+  `importlib.util.find_spec` puts `acme_model` in your interpreter), applies `dir`, and
+  snapshots and locks it exactly as a `path` dependency. `meta deps check` and `verify --deps`
+  resolve the same way. The Python interpreter is the first of `$METAOBJECTS_PYTHON`, the
+  active virtualenv, a `.venv` beside `.metaobjects/`, and `python3`, and `sync` prints the
+  one it used. Before this both transports were accepted in config and refused by `sync` with
+  "not supported by this toolchain yet". Now a package that is not installed, a missing
+  interpreter, or a `dir` the package does not ship is `ERR_DEPENDENCY_UNRESOLVED` naming the
+  `npm install` / `pip install` fix, and a `dir` holding no manifest is
+  `ERR_DEPENDENCY_MANIFEST_INVALID`. `sync` warns when the installed package's version differs
+  from its manifest's (a release without regenerating the shared model). The lock format is
+  unchanged and records no host path or interpreter. Python already loaded such a dependency
+  from its committed snapshot; two new `dependency-conformance` cases prove both ports do, and
+  a new `transport-cases.json` arm (14 cases, Node only) pins the transports. On the publisher
+  side `sharedModelFile()`'s default version now also reads a `pyproject.toml` `[project]`
+  version, so a Python package stamps the version consumers install.
+  [docs/features/metadata-dependencies.md](docs/features/metadata-dependencies.md) gains the
+  two-step publish path for an npm and a Python package and a private-registry recipe (Gitea
+  and similar). `maven` / `nuget` stay Phase 2.
+
 - **C# reads its generated-code directory from `.metaobjects/config.json`, so a plain
   `dotnet meta verify` runs the codegen gate.** Set `"csharp": { "outDir": "Generated" }`
   (relative to the directory holding `.metaobjects/`). `dotnet meta gen` writes there and

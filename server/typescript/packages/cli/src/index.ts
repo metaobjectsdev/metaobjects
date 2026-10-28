@@ -36,7 +36,7 @@ COMMANDS:
                         way to get any output MetaObjects does not ship (OpenAPI, JSON Schema, …)
   eject <generator>     Copy a reference generator into codegen/generators/ to own it (any time after init)
   eject --list          List every ejectable generator name, grouped by package
-  deps sync [<name>...] Resolve declared dependencies (path transport): sync the committed
+  deps sync [<name>...] Resolve declared dependencies (path, npm, python): sync the committed
                         snapshot + sha256 lock (.metaobjects/deps/, .metaobjects/deps.lock.json)
   deps list             One line per locked dependency: name, version, hash, node/package summary
   types [query]         Search the metadata vocabulary (types, subtypes, @attrs) by name or description
@@ -258,16 +258,15 @@ emit for your model.
   deps: `meta deps — sync a declared metadata dependency's committed snapshot
 
 USAGE:
-  meta deps sync [<name>...]   Resolve each declared dependency (path transport only in
-                                this release — npm/python refuse by name), validate its
-                                manifest + artifact, copy it into .metaobjects/deps/<name>/,
+  meta deps sync [<name>...]   Resolve each declared dependency (path, npm or python
+                                transport), validate its manifest + artifact, copy it into .metaobjects/deps/<name>/,
                                 and pin it in .metaobjects/deps.lock.json. Naming one or more
                                 <name>s syncs only those; bare 'sync' syncs everything
                                 declared. A dependency removed from config is PRUNED from
                                 the lock and its snapshot dir deleted, every run.
   meta deps list                One line per locked dependency: name, version, hash8,
                                 node count, packages.
-  meta deps check                Re-resolve each declared dependency (path transport, same
+  meta deps check                Re-resolve each declared dependency (any transport, same
                                 as sync steps 1-2) and compare its INSTALLED artifact's hash
                                 against .metaobjects/deps.lock.json. Read-only — never
                                 touches the lock or the snapshot. Exits 1 if any dependency
@@ -278,9 +277,13 @@ FLAGS:
   --format <toon|json|text>   Output format (global flag; default toon off-TTY)
   --help, -h              Print this help
 
-Only the "path" transport resolves in this release — a "npm"/"python" dependency spec is
-valid config (reserved for a future toolchain) but 'meta deps sync' refuses it by name:
-"transport \`npm\` is not supported by this toolchain yet; use \`path\`".
+Transports: "path" is a directory relative to the config's directory; "npm" is an installed
+npm package, resolved from the config's directory the way Node resolves it; "python" is an
+installed Python package, found with importlib.util.find_spec by the project's interpreter
+($METAOBJECTS_PYTHON, else $VIRTUAL_ENV, else ./.venv, else python3 — the interpreter used is
+printed). "dir" names the shared-model directory inside an npm or python package (default:
+the package root). Install the package with your package manager first; sync copies its
+shared model into the committed snapshot, so nothing else needs it installed.
 
 The lock is the ONLY thing 'meta deps sync' writes to besides the snapshot directory —
 sync never touches your own metadata files. 'meta deps check' compares the lock against
