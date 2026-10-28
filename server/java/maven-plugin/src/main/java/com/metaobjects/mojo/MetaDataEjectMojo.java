@@ -123,7 +123,7 @@ public class MetaDataEjectMojo extends AbstractMojo {
     @Parameter(property = "undo", defaultValue = "false")
     boolean undo;
 
-    private static final String CODEGEN_DIR = "codegen";
+    static final String CODEGEN_DIR = "codegen";
 
     @Override
     public void execute() throws MojoExecutionException, MojoFailureException {
@@ -881,7 +881,7 @@ public class MetaDataEjectMojo extends AbstractMojo {
 
     /** The owned copy named {@code filename} under {@code codegen/src/main/<lang>}, or
      *  {@code null}. It may live under ANY package the adopter chose. */
-    private static Path findOwned(Path codegenRoot, String langDir, String filename) throws IOException {
+    static Path findOwned(Path codegenRoot, String langDir, String filename) throws IOException {
         if (codegenRoot == null) return null;
         Path srcRoot = codegenRoot.resolve("src/main/" + langDir);
         if (!Files.isDirectory(srcRoot)) return null;

@@ -137,7 +137,7 @@ public class MetaDataGeneratorMojo extends AbstractMetaDataMojo
         if (project == null || project.getBasedir() == null) return;
         try {
             String line = OwnedStock.notice(OwnedStock.find(
-                    project.getBasedir().toPath().resolve("codegen"),
+                    project.getBasedir().toPath().resolve(MetaDataEjectMojo.CODEGEN_DIR),
                     OwnedStock.classpath(getClass().getClassLoader())));
             if (line != null) getLog().info("MetaData Mojo > " + line);
         } catch (IOException | RuntimeException ignored) {

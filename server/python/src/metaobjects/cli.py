@@ -1322,7 +1322,7 @@ def _cmd_init(args: argparse.Namespace) -> int:
     wrote: list[str] = []
     kept: list[str] = []
     for rel, text in (
-        ("metaobjects.config.yaml", config),
+        (_CONFIG_NAME, config),
         ("metaobjects/meta.app.yaml", _INIT_METADATA),
     ):
         path = root / rel
@@ -1336,7 +1336,7 @@ def _cmd_init(args: argparse.Namespace) -> int:
         print(f"wrote {rel}")
     for rel in kept:
         print(f"kept {rel} (already exists)")
-    if args.with_docs and "metaobjects.config.yaml" in kept:
+    if args.with_docs and _CONFIG_NAME in kept:
         print("note: add the docs target yourself: `docs: {outDir: docs, generators: [api-docs]}`")
     print("next: describe your entities in metaobjects/, then run `metaobjects gen`.")
     return 0

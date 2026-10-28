@@ -83,7 +83,7 @@ final class OwnedStock {
         for (EjectSupport.Entry e : EjectSupport.allEntries()) {
             if (e.resourcePath == null) continue;
             String langDir = e.port == EjectSupport.Port.KOTLIN ? "kotlin" : "java";
-            Path found = findOwned(codegenRoot, langDir, e.simpleName() + "." + e.port.extension);
+            Path found = MetaDataEjectMojo.findOwned(codegenRoot, langDir, e.simpleName() + "." + e.port.extension);
             if (found == null) continue;
             Path srcRoot = codegenRoot.resolve("src/main/" + langDir);
             String ownedPackage = srcRoot.relativize(found.getParent()).toString()
@@ -131,7 +131,7 @@ final class OwnedStock {
         if (e.port == EjectSupport.Port.JAVA) {
             for (String source : e.sources()) {
                 for (String simple : EjectSupport.supportFor(reader.read(e.resourceOf(source)))) {
-                    if (findOwned(codegenRoot, "java", simple + ".java") != null) out.add(simple);
+                    if (MetaDataEjectMojo.findOwned(codegenRoot, "java", simple + ".java") != null) out.add(simple);
                 }
             }
             out.addAll(e.runtime);
@@ -155,14 +155,6 @@ final class OwnedStock {
         return "Owned generator copies under codegen/ identical to the shipped ones: " + names
                 + ". They add nothing to what the plugin runs; drop them with "
                 + "`mvn metaobjects:eject -Dundo=true`.";
-    }
-
-    private static Path findOwned(Path codegenRoot, String langDir, String filename) throws IOException {
-        Path srcRoot = codegenRoot.resolve("src/main/" + langDir);
-        if (!Files.isDirectory(srcRoot)) return null;
-        try (var walk = Files.walk(srcRoot)) {
-            return walk.filter(p -> p.getFileName().toString().equals(filename)).findFirst().orElse(null);
-        }
     }
 
     private static void fold(int[] totals, List<String> differing, String name, EjectSupport.Comparison cmp) {

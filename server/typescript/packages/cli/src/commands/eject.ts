@@ -719,14 +719,13 @@ async function undoCommand(names: readonly string[], force: boolean, cwd: string
   const stillReached = new Set(remaining.flatMap((r) => closureOf(r.name).templates.map((f) => f.path)));
   const removed: string[] = [];
   const keptCompanions: string[] = [];
-  const toRemove: string[] = [];
 
-  for (const r of targets) toRemove.push(`${OWNED_GENERATORS_DIR}/${r.name}.ts`);
+  for (const r of targets) removed.push(`${OWNED_GENERATORS_DIR}/${r.name}.ts`);
   const templateRows = await templateCopyStatus(cwd, packagedTemplates());
   const dropTemplates = new Set(targets.flatMap((r) => (r.templates ?? []).map((t) => t.path)));
   for (const row of templateRows) {
     if (!dropTemplates.has(row.path) || stillReached.has(row.path)) continue;
-    if (row.verdict === "identical" || row.verdict === "reformatted") toRemove.push(row.path);
+    if (row.verdict === "identical" || row.verdict === "reformatted") removed.push(row.path);
     else keptCompanions.push(row.path);
   }
   // The adapter source is one shared tree: it goes only when nothing left in the project emits
@@ -734,14 +733,11 @@ async function undoCommand(names: readonly string[], force: boolean, cwd: string
   const adapterDropped = targets.some((r) => ejectsRuntime(r.name)) && !remaining.some((r) => ejectsRuntime(r.name));
   if (adapterDropped) {
     for (const row of await runtimeCopyStatus(cwd)) {
-      if (row.verdict === "identical" || row.verdict === "reformatted") toRemove.push(row.path);
+      if (row.verdict === "identical" || row.verdict === "reformatted") removed.push(row.path);
       else keptCompanions.push(row.path);
     }
   }
-  for (const rel of toRemove) {
-    await rm(join(cwd, rel), { force: true });
-    removed.push(rel);
-  }
+  for (const rel of removed) await rm(join(cwd, rel), { force: true });
   await pruneEmptyDirs(cwd, [OWNED_TEMPLATES_DIR, OWNED_RUNTIME_DIR, OWNED_GENERATORS_DIR]);
 
   const undone: UndoneRow[] = targets.map((r) => {

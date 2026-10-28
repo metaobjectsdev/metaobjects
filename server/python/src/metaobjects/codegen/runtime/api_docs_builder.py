@@ -38,6 +38,7 @@ from .api_docs_model import (
     FieldShape,
 )
 from metaobjects.codegen import type_map
+from metaobjects.codegen.config import DEFAULT_API_PREFIX
 from metaobjects.codegen.model_walk import package_of
 from .m2m_codegen import (
     build_object_index,
@@ -94,7 +95,7 @@ def _is_email_kind(tmpl: MetaData) -> bool:
 class PythonApiModelBuilder:
     """Builds the :class:`ApiModel` SDK-surface IR from a loaded ``MetaRoot``."""
 
-    def __init__(self, api_prefix: str = "/api") -> None:
+    def __init__(self, api_prefix: str = DEFAULT_API_PREFIX) -> None:
         #: The path the documented routes mount under (``apiPrefix``; ``""`` = at the root).
         self.api_prefix = api_prefix
 

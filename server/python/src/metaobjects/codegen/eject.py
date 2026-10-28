@@ -79,10 +79,7 @@ def owned_token(entry: GeneratorEntry) -> str:
 
 
 def packaged_source(entry: GeneratorEntry) -> str:
-    assert entry.source_module is not None
-    module = importlib.import_module(entry.source_module)
-    assert module.__file__ is not None
-    return Path(module.__file__).read_text(encoding="utf-8")
+    return packaged_module_path(entry).read_text(encoding="utf-8")
 
 
 def ejected_source(entry: GeneratorEntry) -> str:
@@ -211,7 +208,8 @@ def undo(names: list[str], root: Path, *, force: bool = False) -> EjectResult:
 
     if names:
         chosen = [known[n] for n in names]
-        differing = [e for e in chosen if e not in identical_owned(root)]
+        identical = identical_owned(root)
+        differing = [e for e in chosen if e not in identical]
         if differing and not force:
             return EjectResult(2, [], [
                 f"{e.name} differs from the shipped generator; nothing removed. Inspect: "
