@@ -121,11 +121,21 @@ public static class CodegenScaffold
 /// <summary>The init command's pure logic: write what is missing and report it.</summary>
 public static class InitCommand
 {
-    public static IReadOnlyList<string> Run(string root)
+    /// <summary>The docs directory and the entry <c>init --with-docs</c> lists.</summary>
+    public const string DocsOutDir = "docs/csharp";
+
+    private static string DocsEntry(string root) =>
+        "new MetaObjects.Codegen.Generators.ApiDocsGenerator { OutDir = \"" + DocsOutDir + "\", ProjectName = \"" +
+        (Path.GetFileName(Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)) is { Length: > 0 } n
+            ? n.Replace("\\", "").Replace("\"", "") : "project") + "\" }";
+
+    public static IReadOnlyList<string> Run(string root, bool withDocs = false)
     {
         var csprojPath = Path.Combine(root, "codegen", "Codegen.csproj");
         var csprojExisted = File.Exists(csprojPath);
-        var written = CodegenScaffold.WriteMissing(root, []);
+        var docsEntry = DocsEntry(root);
+        var listExisted = File.Exists(Path.Combine(root, "codegen", "Generators.cs"));
+        var written = CodegenScaffold.WriteMissing(root, withDocs ? [docsEntry] : []);
         var lines = new List<string>();
         foreach (var rel in CodegenScaffold.Files)
             lines.Add(written.Contains(rel) ? $"  wrote {rel}" : $"  kept {rel} (already yours)");
@@ -136,6 +146,21 @@ public static class InitCommand
             lines.Add(
                 "codegen/Generators.cs is the generator list `dotnet meta gen` runs. It declares nothing yet, " +
                 "so gen writes nothing until you add entries: `dotnet meta gen --list` is the catalog.");
+        if (withDocs)
+        {
+            if (listExisted)
+            {
+                lines.Add("codegen/Generators.cs already exists and is yours — init never edits it. Add:");
+                lines.Add($"  {docsEntry},");
+                lines.Add("to the list there.");
+            }
+            else
+                lines.Add($"codegen/Generators.cs lists the api-docs generator, which writes {DocsOutDir}/api/csharp/.");
+            lines.Add(
+                $"`dotnet meta gen` writes {DocsOutDir}/; `dotnet meta verify` drift-checks it once " +
+                "\"csharp\": { \"outDir\": \"<dir>\" } is set in .metaobjects/config.json (init does not write that " +
+                $"file); keep {DocsOutDir}/ generated files only, verify compares the whole tree.");
+        }
         if (csprojExisted) lines.AddRange(EjectCommand.OlderPinWarning(csprojPath, "init"));
         return lines;
     }

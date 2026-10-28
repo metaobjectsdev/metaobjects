@@ -216,6 +216,23 @@ describe("sharedModelFile()", () => {
     });
   });
 
+  test("version defaults to a Python package's pyproject.toml [project] version", async () => {
+    writeFileSync(
+      join(tmp, "pyproject.toml"),
+      '[build-system]\nrequires = ["hatchling"]\nversion = "0.0.0"\n\n[project]  # the distribution\n' +
+        'name = "acme-common"\nversion = "2.3.4"\n\n[tool.hatch]\nversion = "9.9.9"\n',
+    );
+    await gen(sharedModelFile({ name: "acme-common", include: ["acme::common::**"], exclude: ["acme::common::Secret"] }), tmp);
+    expect(JSON.parse(readFileSync(join(tmp, "metaobjects.pkg.json"), "utf-8")).version).toBe("2.3.4");
+  });
+
+  test("a package.json version in the same directory wins over pyproject.toml", async () => {
+    writeFileSync(join(tmp, "pyproject.toml"), '[project]\nname = "acme-common"\nversion = "2.3.4"\n');
+    writeFileSync(join(tmp, "package.json"), JSON.stringify({ name: "acme-common", version: "1.5.0" }));
+    await gen(sharedModelFile({ name: "acme-common", include: ["acme::common::**"], exclude: ["acme::common::Secret"] }), tmp);
+    expect(JSON.parse(readFileSync(join(tmp, "metaobjects.pkg.json"), "utf-8")).version).toBe("1.5.0");
+  });
+
   test("(c) determinism — two runs produce identical bytes", async () => {
     const opts = () =>
       sharedModelFile({

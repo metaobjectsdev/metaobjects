@@ -1,0 +1,4 @@
+{
+  "format": "text",
+  "note": "if / elif / else, and / or / not, comparisons, in, is defined, inline if. An empty list is tested with | length: nunjucks follows JavaScript, where [] is truthy, and jinja2 follows Python, where it is not"
+}

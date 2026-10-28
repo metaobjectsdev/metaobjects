@@ -29,6 +29,7 @@ USAGE:
 COMMANDS:
   init                  Scaffold a MetaObjects project in the current repo
   init --refresh-docs   Refresh .metaobjects/AGENTS.md + CLAUDE.md after CLI upgrades
+  init --with-docs      Scaffold with documentation wired (docsFile(), apiDocsFile()) so the first \`meta gen\` writes it
   init --config-only    Write only .metaobjects/config.json — for a Maven- or pip-rooted project
   agent-docs            Scaffold only the agent-context (.metaobjects/ + .claude/skills/) — canonical redirect target for all language ports
   gen [<entity>...]     Codegen TS targets from your declared metadata
@@ -36,7 +37,8 @@ COMMANDS:
                         way to get any output MetaObjects does not ship (OpenAPI, JSON Schema, …)
   eject <generator>     Copy a reference generator into codegen/generators/ to own it (any time after init)
   eject --list          List every ejectable generator name, grouped by package
-  deps sync [<name>...] Resolve declared dependencies (path transport): sync the committed
+  eject --undo          Remove owned generator copies that are the shipped reference
+  deps sync [<name>...] Resolve declared dependencies (path, npm, python): sync the committed
                         snapshot + sha256 lock (.metaobjects/deps/, .metaobjects/deps.lock.json)
   deps list             One line per locked dependency: name, version, hash, node/package summary
   types [query]         Search the metadata vocabulary (types, subtypes, @attrs) by name or description
@@ -209,6 +211,9 @@ FLAGS:
   --generators <names>  Narrow the run to these DECLARED generators, by stable name, comma-
                         separated (e.g. docs,api-docs to write only the documentation). A
                         name metaobjects.config.ts does not declare is refused: it never adds one.
+  --strict              Load the model strictly, as \`meta verify\` does (ADR-0023): an
+                        unknown attribute (a typo'd \`@requird\`) is an error and nothing is
+                        written, instead of a warning over output that silently changed.
   --format <toon|json|text>   Output format (global flag; default toon off-TTY)
   <entity> [<entity>]   Positional filter on entity names
   --help, -h            Print this help
@@ -231,6 +236,8 @@ NOTE: outDir, dialect, dbImport, extStyle are read from metaobjects.config.ts
 USAGE:
   meta eject <name>...   Copy each generator into codegen/generators/<name>.ts
   meta eject --list      List every ejectable generator name, grouped by package
+  meta eject --undo [<name>...]
+                         Take back owned copies that are the shipped reference
 
 Eject a generator to CHANGE what it emits. To run one as shipped, import its factory
 from its package instead — \`meta gen --list\` prints the import line — and copy
@@ -240,7 +247,15 @@ refuses the whole call and copies nothing.
 
 FLAGS:
   --list                 List ejectable generators instead of copying one
-  --force                Overwrite an already-ejected file (default: never clobber)
+  --force                Overwrite an already-ejected file (default: never clobber).
+                         With --undo: remove a named copy even if you changed it
+  --undo                 Remove owned generator copies that are the shipped reference,
+                         unchanged: with no names every such copy, with names those. A
+                         copy you changed is kept (with no names) or refused (named, unless
+                         --force). Their copied renderers and adapter source go too when
+                         no remaining copy uses them. It never edits metaobjects.config.ts:
+                         it prints the import to swap back. \`meta gen\` says when copies
+                         qualify. There is no \`meta doctor\`; \`--list\` is the report.
   --format <toon|json|text>   Output format (global flag). The structured form carries
                          each file's wire lines, the consolidated install set and the
                          config keys the ejected generators read.
@@ -258,16 +273,15 @@ emit for your model.
   deps: `meta deps — sync a declared metadata dependency's committed snapshot
 
 USAGE:
-  meta deps sync [<name>...]   Resolve each declared dependency (path transport only in
-                                this release — npm/python refuse by name), validate its
-                                manifest + artifact, copy it into .metaobjects/deps/<name>/,
+  meta deps sync [<name>...]   Resolve each declared dependency (path, npm or python
+                                transport), validate its manifest + artifact, copy it into .metaobjects/deps/<name>/,
                                 and pin it in .metaobjects/deps.lock.json. Naming one or more
                                 <name>s syncs only those; bare 'sync' syncs everything
                                 declared. A dependency removed from config is PRUNED from
                                 the lock and its snapshot dir deleted, every run.
   meta deps list                One line per locked dependency: name, version, hash8,
                                 node count, packages.
-  meta deps check                Re-resolve each declared dependency (path transport, same
+  meta deps check                Re-resolve each declared dependency (any transport, same
                                 as sync steps 1-2) and compare its INSTALLED artifact's hash
                                 against .metaobjects/deps.lock.json. Read-only — never
                                 touches the lock or the snapshot. Exits 1 if any dependency
@@ -278,9 +292,13 @@ FLAGS:
   --format <toon|json|text>   Output format (global flag; default toon off-TTY)
   --help, -h              Print this help
 
-Only the "path" transport resolves in this release — a "npm"/"python" dependency spec is
-valid config (reserved for a future toolchain) but 'meta deps sync' refuses it by name:
-"transport \`npm\` is not supported by this toolchain yet; use \`path\`".
+Transports: "path" is a directory relative to the config's directory; "npm" is an installed
+npm package, resolved from the config's directory the way Node resolves it; "python" is an
+installed Python package, found with importlib.util.find_spec by the project's interpreter
+($METAOBJECTS_PYTHON, else $VIRTUAL_ENV, else ./.venv, else python3 — the interpreter used is
+printed). "dir" names the shared-model directory inside an npm or python package (default:
+the package root). Install the package with your package manager first; sync copies its
+shared model into the committed snapshot, so nothing else needs it installed.
 
 The lock is the ONLY thing 'meta deps sync' writes to besides the snapshot directory —
 sync never touches your own metadata files. 'meta deps check' compares the lock against
@@ -478,6 +496,8 @@ FLAGS:
   --no-wire-root        Skip wiring root metaobjects.config.ts
   --config-only         Write only .metaobjects/config.json (no TS scaffold) — declares
                         metadata sources for the Node CLI from a Maven- or pip-rooted project
+  --with-docs           Wire docsFile() and apiDocsFile() and a docs target in the scaffolded
+                        config, so the first \`meta gen\` writes documentation
   --help, -h            Print this help
 `,
   "agent-docs": `meta agent-docs — scaffold the agent-context (.metaobjects/ always-on files + .claude/skills/)

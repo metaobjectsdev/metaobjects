@@ -1,6 +1,6 @@
 # Conformance coverage
 
-The MetaObjects standard ships **32 shared conformance corpora** under
+The MetaObjects standard ships **34 shared conformance corpora** under
 [`fixtures/`](../fixtures/). Every port runs every corpus that is *applicable to
 it* and asserts the same expected behaviour against the same fixtures. **This page
 is the inverse index**: fixture → feature doc + per-port pass status, and it is the
@@ -31,6 +31,8 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 | [`fixtures/verify-conformance/`](../fixtures/verify-conformance/) | 37 | ✓ | ✓ | inherits via Java | ✓ | ✓ |
 | [`fixtures/verify-strict-conformance/`](../fixtures/verify-strict-conformance/) | 1 | ✓ | — | — | — | ✓ |
 | [`fixtures/render-conformance/`](../fixtures/render-conformance/) | 16 | ✓ | ✓ | inherits via Java | ✓ | ✓ |
+| [`fixtures/jinja-render-conformance/`](../fixtures/jinja-render-conformance/) (ADR-0061 — Jinja bodies render the same in jinja2 and nunjucks) | 15 | ✓ (nunjucks) | refuses Jinja (`ERR_TEMPLATE_ENGINE_UNSUPPORTED`) | refuses, via Java | refuses Jinja (`ERR_TEMPLATE_ENGINE_UNSUPPORTED`) | ✓ (jinja2) |
+| [`fixtures/jinja-verify-conformance/`](../fixtures/jinja-verify-conformance/) (ADR-0061 — the payload check over a Jinja body) | 31 | ✓ | refuses Jinja | refuses, via Java | refuses Jinja | ✓ |
 | [`fixtures/extract-conformance/`](../fixtures/extract-conformance/) | 48 | ✓ | ✓ | inherits the shared JVM engine | ✓ | ✓ |
 | [`fixtures/output-prompt-conformance/`](../fixtures/output-prompt-conformance/) | 17 | ✓ | ✓ | ✓ | ✓ | ✓ |
 | [`fixtures/persistence-conformance/`](../fixtures/persistence-conformance/) | 59 (53 query + 6 migration) | all 59; the 24 `report-*` and the `-15` decimal scenarios also on SQLite, MySQL and D1, `decimal-exact` also on MySQL (a scenario's `engines:` key is exact) | 53 query (migrations TS-only, ADR-0015); the `report-*` and `engines:` scenarios also on SQLite and MySQL | 53 query (via Exposed); the `report-*` and `engines:` scenarios also on SQLite and MySQL | 53 query; the `report-*` and `engines:` scenarios also on SQLite and MySQL | 53 query (pg8000); the `report-*` and `engines:` scenarios also on SQLite (`sqlite3`) and MySQL (PyMySQL) |
@@ -46,7 +48,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 | [`fixtures/provider-composition-conformance/`](../fixtures/provider-composition-conformance/) | 9 (5 error-shape + 4 compose-load) | ✓ | ✓ | — (JVM registry via Java) | ✓ | ✓ |
 | [`fixtures/source-resolution-conformance/`](../fixtures/source-resolution-conformance/) | 25 cases | ✓ (reference implementation) | ✓ | inherits via Java | ✓ | ✓ |
 | [`fixtures/scope-conformance/`](../fixtures/scope-conformance/) | 10 cases | ✓ (reference implementation) | ✓ | inherits via Java | ✓ | ✓ |
-| [`fixtures/dependency-conformance/`](../fixtures/dependency-conformance/) | 35 cases (24 resolution + 11 check) | ✓ (reference implementation; both arms) | ✓ (resolution arm, all 24; no check yet, so the 11 check cases are not run) | — (Phase 2) | — (Phase 2) | ✓ (resolution arm, all 24 identically; no check yet, so the 11 check cases are not run) |
+| [`fixtures/dependency-conformance/`](../fixtures/dependency-conformance/) | 37 cases (26 resolution + 11 check) + 14 transport cases | ✓ (reference implementation; all three arms) | ✓ (resolution arm, all 26; no check, so the 11 check cases are not run) | inherits via Java | ✓ (resolution arm, all 26; no check, so the 11 check cases are not run) | ✓ (resolution arm, all 26 identically; no check yet, so the 11 check cases are not run; the transport arm is Node-only) |
 | [`fixtures/shared-model-conformance/`](../fixtures/shared-model-conformance/) | 11 cases (7 publish + 4 refusal) | ✓ (reference implementation) | — (Phase 2) | — (Phase 2) | — (Phase 2) | ✓ (serializer arm: the 7 publish cases' document bytes; no publisher) |
 | [`fixtures/agent-context-conformance/`](../fixtures/agent-context-conformance/) | 4 | ✓ (the emitter is TS-owned) | — | — | — | — |
 | [`fixtures/metamodel-docs/`](../fixtures/metamodel-docs/) | 1 | ✓ (docs emit is TS-owned) | — | — | — | — |
@@ -78,6 +80,8 @@ the corpora above do two different jobs. Only the first is a promise to adopters
   `object-model-conformance/`, `render-conformance/`, `template-codegen-conformance/` (the
   Mustache engine), `template-output-render-conformance/`, `output-prompt-conformance/`,
   `extract-conformance/`, `verify-conformance/`, `verify-strict-conformance/`,
+  `jinja-render-conformance/` and `jinja-verify-conformance/` (the Jinja engine and its
+  payload check, Python and TypeScript only, ADR-0061),
   `persistence-conformance/` (runtime reads and writes, and the TS-owned migration
   scenarios), `agent-context-conformance/`, `metamodel-docs/`, `fmt-conformance/`
   (the canonical serializer, surfaced per-file — ADR-0034's "canonical format" is core),
@@ -324,6 +328,17 @@ lookup, parent-context fallthrough, falsy/empty-array section behavior, inverted
 sections, nested partials, standalone-tag whitespace stripping, raw-HTML bypass,
 trailing-newline preservation, unicode multibyte handling, and the `-last` list-separator accessor.
 
+### `fixtures/jinja-render-conformance/` (15) and `fixtures/jinja-verify-conformance/` (31)
+
+Both → [features/templates-and-payloads.md](features/templates-and-payloads.md) (Jinja
+templates section, [ADR-0061](../spec/decisions/ADR-0061-per-port-template-engines.md)). Run by
+Python (jinja2) and TypeScript (nunjucks) only; Java, Kotlin and C# refuse a Jinja body with
+`ERR_TEMPLATE_ENGINE_UNSUPPORTED` instead. The render corpus holds 13 output cases and 2 error
+cases (an include cycle and an unresolved include), each with the same Mustache-path message.
+The verify corpus reuses `verify-conformance/`'s `payload.json` field-tree shape; an
+`ERR_TEMPLATE_SYNTAX` finding's path is the parser's own message, so runners compare it as
+empty.
+
 ### `fixtures/verify-conformance/` (37)
 
 All 37 fixtures → [features/migrations-and-drift.md](features/migrations-and-drift.md)
@@ -440,32 +455,38 @@ also matches before a trailing newline. Kotlin has no runner of its own: it inhe
 the Java loader. Each of those two guards is pinned by a test beside the corpus, since
 the corpus asserts matches only and carries no invalid-pattern case.
 
-### `fixtures/dependency-conformance/` (35 cases)
+### `fixtures/dependency-conformance/` (37 cases + 14 transport cases)
 
-All 35 cases → [features/metadata-dependencies.md](features/metadata-dependencies.md)
+All 37 cases → [features/metadata-dependencies.md](features/metadata-dependencies.md)
 (declaring a dependency, `meta deps sync`, the committed snapshot + lock, default
 exclusion of imported metadata, overlay/extends across the boundary, every load-
 and resolution-time failure, and the upstream check). File-shaped like `scope-conformance/`
-above: one committed `cases.json`, no per-port fixture, no ledger. The corpus has two arms:
+above: one committed `cases.json`, no per-port fixture, no ledger. The corpus has three arms:
 
-- **Resolution (24 cases).** Every case's `expectFiles`/`expectImported`/`expectSelected`/
+- **Resolution (26 cases).** Every case's `expectFiles`/`expectImported`/`expectSelected`/
   `expectMigrateGoverned`/`expectLoadError` assertions. **TypeScript (the reference
-  implementation), Python and C# all run all 24, identically**, with no exemption. The two
+  implementation), Python, Java and C# all run all 26, identically**, with no exemption. The two
   overlay cases that need a view child as incidental content use `view.currency` (the one
   concrete `view.*` subtype registered cross-port), not `view.text` — a prior revision used
   `view.text`, which Python did not register then, and carried a since-discharged allowlist
-  for it.
+  for it. Kotlin inherits the Java run through the same loader and Maven plugin.
 - **Check (11 cases, `expectCheck`).** For each declared dependency, `current`, `drifted` or
   `unresolved` (a missing path, a bad manifest, a hash mismatch, or not yet in the lock). Run
-  by TypeScript only, in `cli/test/dependency-check-conformance.test.ts`; Python has no
-  `deps check` yet and filters these cases out. The arm exists so that each port's check is
+  by TypeScript only, in `cli/test/dependency-check-conformance.test.ts`; Python and Java have no
+  `deps check` yet and filter these cases out. The arm exists so that each port's check is
   written against the same edge cases (Phase 2, #482).
+- **Transport (14 cases, `transport-cases.json`).** The `npm` and `python` transports `meta deps sync`
+  uses to find an installed package: npm packages under a temp `node_modules`, Python packages on a
+  temp import path, the directory each resolves to, the exact lock written, and each refusal. Run by
+  Node only, in `cli/test/dependency-transport-conformance.test.ts`, because Node `meta deps sync` is
+  the only writer of snapshots and the lock. `cases.json` also carries an `npm` and a `python`
+  dependency loading from their committed snapshot with nothing installed, which both ports run.
 
 **C#** (S6 of FR-023 Phase 2) runs the resolution arm on two rungs of the source ladder: the
 neutral one (`Resolve(null, dir)`), and the explicit metadata directory a
 `dotnet meta gen <metadataDir>` takes, where the case has one. Its runner is
-`DependencyConformanceTests`; it skips the 11 check cases (C# has no `deps check` yet).
-Java and Kotlin have no runner yet — they arrive in Phase 2.
+`DependencyConformanceTests`; it skips the 11 check cases (C# has no `deps check` yet) and the
+transport cases (C# never syncs).
 
 ### `fixtures/shared-model-conformance/` (11 cases)
 
@@ -590,7 +611,7 @@ files into a real Cube.
 
 The fixtures in the nine corpora mapped above (metamodel 413 + yaml 16 + verify 37
 + render 16 + persistence 59 + api-contract 117 + source-resolution 25 + scope 10 +
-dependency 35) each map to a feature doc, and so do the two requirement corpora, `shared-model-conformance` and the
+dependency 37) each map to a feature doc, and so do the two requirement corpora, `shared-model-conformance` and the
 `cube-model` corpus, whose case lists live in their own READMEs. None are orphaned today. The remaining
 corpora in the totals table gate tooling contracts (registry manifests, provider
 composition, agent context, docs emit) rather than user-facing metamodel behaviour,

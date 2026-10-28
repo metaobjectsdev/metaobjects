@@ -57,6 +57,7 @@ Write one when a decision is **cross-cutting** (affects more than one language p
 - [ADR-0058 — One physical-naming setting, read by every port](ADR-0058-one-physical-naming-setting.md) — *Accepted* (one `naming` block in `.metaobjects/config.json` replaces the per-port column-naming flags, pom args, config keys and runtime setters)
 - [ADR-0059 — References resolve once, after the tree](ADR-0059-references-resolve-once-after-the-tree.md) — *Accepted* (sources keep references as written; one resolver per port binds them before freeze and the serializer writes them canonical; supersedes ADR-0032 §3–§4, amends ADR-0042)
 - [ADR-0060 — Java and Kotlin codegen decide overwrites from the committed hash manifest](ADR-0060-jvm-codegen-hash-manifest.md) — *Accepted* (the JVM plugin records each file it writes in `.metaobjects/.gen-state/.hashes.json`, refuses an edited one, and deletes an untouched orphan, owned per generator and output directory)
+- [ADR-0061 — A template body may use a per-port engine, chosen by its file](ADR-0061-per-port-template-engines.md) — *Accepted* (Python and TypeScript render and check Jinja bodies — `.jinja` / `.j2` / `.jinja2` — against the same payload check; the metadata never names an engine; Java, Kotlin and C# refuse Jinja with `ERR_TEMPLATE_ENGINE_UNSUPPORTED`)
 
 > **Index gap — ADR-0031 through ADR-0051 are on disk but not listed above.** The index stopped
 > being maintained after ADR-0030; the files are authoritative, this list is not. Read

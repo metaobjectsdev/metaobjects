@@ -1,0 +1,3 @@
+<p title="Tom &amp; &quot;Jerry&quot;">&lt;script&gt;alert(&#39;x&#39;)&lt;/script&gt;</p>
+<div><b>bold</b></div>
+<li>a &lt; b</li><li>it&#39;s</li>

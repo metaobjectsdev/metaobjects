@@ -2,8 +2,10 @@ import { describe, test, expect, expectTypeOf } from "bun:test";
 import { guideUrl } from "@metaobjectsdev/metadata/release-docs";
 // The guide links name the tag of the running release (a prerelease keeps main).
 const BLOB = guideUrl("");
-import { defineConfig, normalizeConfig, resolveTargets, DEFAULT_TARGET_NAME, type MetaobjectsGenConfig, type ResolvedGenConfig, type Dialect, type ExtStyle } from "../src/metaobjects-config.js";
+import { defineConfig, normalizeConfig, resolveTargets, DEFAULT_TARGET_NAME, DRIZZLE_BOUND_GENERATORS, type MetaobjectsGenConfig, type ResolvedGenConfig, type Dialect, type ExtStyle } from "../src/metaobjects-config.js";
 import type { Generator } from "../src/generator.js";
+import { generatorRegistry } from "../src/generator-registry.js";
+import { callableFile } from "../src/generators/callable-file.js";
 
 describe("resolveTargets", () => {
   const base = { outDir: "db/gen", extStyle: "none" as const, dbImport: "../index", dialect: "sqlite" as const, generators: [] };
@@ -73,7 +75,7 @@ describe("defineConfig", () => {
   test("type-level: MetaobjectsGenConfig embeds ResolvedGenConfig's non-DB fields exactly (#194 — dbImport/dialect are OPTIONAL here, filled by the runner)", () => {
     // Everything except dbImport/dialect matches ResolvedGenConfig field-for-field.
     expectTypeOf<Pick<MetaobjectsGenConfig, "outDir" | "outputLayout" | "includeHonoRoutes" | "includeNames" | "includeReportExport" | "includeUiTier" | "providedEnumModule">>()
-      .toEqualTypeOf<Omit<ResolvedGenConfig, "dbImport" | "dialect" | "extStyle" | "routesExpose" | "includeUiTierExplicit">>();
+      .toEqualTypeOf<Omit<ResolvedGenConfig, "dbImport" | "dialect" | "extStyle" | "routesExpose" | "includeUiTierExplicit" | "includeEntityModule" | "includeQueries" | "includeRestRoutes">>();
     // extStyle is OPTIONAL too: the config `meta init` scaffolds omits it and must still
     // typecheck; the runner fills DEFAULT_EXT_STYLE.
     expectTypeOf<MetaobjectsGenConfig["extStyle"]>().toEqualTypeOf<ExtStyle | undefined>();
@@ -134,3 +136,41 @@ describe("columnNamingStrategy is refused (ADR-0058)", () => {
   });
 });
 
+
+// #479 — `orm: "prisma"`: the schema is schema.prisma, so no target carries Drizzle bindings and
+// the generators that write Drizzle code are refused.
+describe("orm: prisma", () => {
+  const base = { outDir: "db/gen", dialect: "postgres" as const, generators: [] };
+
+  test("every target is contract-only by default; drizzle keeps runtime on", () => {
+    const prisma = resolveTargets({ ...base, orm: "prisma", targets: { web: { outDir: "web/gen" } } });
+    expect(prisma[DEFAULT_TARGET_NAME]!.runtime).toBe(false);
+    expect(prisma.web!.runtime).toBe(false);
+    const drizzle = resolveTargets({ ...base, orm: "drizzle", targets: { web: { outDir: "web/gen" } } });
+    expect(drizzle[DEFAULT_TARGET_NAME]!.runtime).toBe(true);
+    expect(resolveTargets(base)[DEFAULT_TARGET_NAME]!.runtime).toBe(true);
+  });
+
+  test("a target that asks for runtime bindings is refused", () => {
+    expect(() =>
+      normalizeConfig({ ...base, orm: "prisma", targets: { server: { outDir: "s", runtime: true } } }),
+    ).toThrow('target "server" sets runtime: true');
+  });
+
+  test("the generators that write Drizzle code are refused, by name and as factories", () => {
+    expect(() => normalizeConfig({ ...base, orm: "prisma", generators: ["entity", "queries", "routes"] })).toThrow(
+      'orm: "prisma" refuses "queries", "routes"',
+    );
+    expect(() => normalizeConfig({ ...base, orm: "prisma", generators: [callableFile()] })).toThrow('refuses "callable"');
+    const ok = normalizeConfig({ ...base, orm: "prisma", generators: ["entity", "prisma-schema", "barrel"] });
+    expect(ok.generators.map((g) => g.name)).toContain("prisma-schema");
+  });
+
+  test("an orm that is not one is refused", () => {
+    expect(() => normalizeConfig({ ...base, orm: "typeorm" as "prisma" })).toThrow('orm "typeorm" is not one of');
+  });
+
+  test("every Drizzle-bound name is a registered generator", () => {
+    for (const n of DRIZZLE_BOUND_GENERATORS) expect(generatorRegistry[n]).toBeDefined();
+  });
+});

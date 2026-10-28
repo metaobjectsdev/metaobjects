@@ -10,7 +10,8 @@ import type { ErrorSource, LoaderError, NodeContext } from "./source.js";
 // Cross-language conformance consumers should not expect these codes from the TS adapter.
 //
 // FR-004 build-time `verify` codes (ERR_VAR_NOT_ON_PAYLOAD, ERR_PARTIAL_UNRESOLVED,
-// ERR_REQUIRED_SLOT_UNUSED, ERR_OUTPUT_TAG_MISSING) are emitted by `meta verify` / the
+// ERR_REQUIRED_SLOT_UNUSED, ERR_OUTPUT_TAG_MISSING, and ADR-0061's ERR_TEMPLATE_NOT_STATIC,
+// ERR_TEMPLATE_SYNTAX, ERR_TEMPLATE_ENGINE_UNSUPPORTED) are emitted by `meta verify` / the
 // zero-core-dependency @metaobjectsdev/render engine — NOT by the loader. They are
 // registered here (and in fixtures/conformance/ERROR-CODES.json) only to keep the code
 // vocabulary single-sourced across languages; render re-declares them locally to avoid
@@ -141,6 +142,9 @@ export const ERROR_CODES = [
   "ERR_PARTIAL_UNRESOLVED",
   "ERR_REQUIRED_SLOT_UNUSED",
   "ERR_OUTPUT_TAG_MISSING",
+  "ERR_TEMPLATE_NOT_STATIC",
+  "ERR_TEMPLATE_SYNTAX",
+  "ERR_TEMPLATE_ENGINE_UNSUPPORTED",
   "ERR_BAD_ATTR_FILTER",
   "ERR_STORAGE_FLATTENED_ARRAY",
   "ERR_STORAGE_WITHOUT_OBJECT_REF",

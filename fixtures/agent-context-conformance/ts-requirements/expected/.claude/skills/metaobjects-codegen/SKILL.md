@@ -44,6 +44,7 @@ exact config, generator names and commands for this project; read it. The other 
 | `references/dependencies-and-shared-models.md` | the project consumes or publishes metadata across projects |
 | `references/typescript-document-store.md` | a TypeScript project on MongoDB, or any store MetaObjects does not manage, wanting a tested repository generator |
 | `references/typescript-mysql.md` | a TypeScript project on a MySQL database |
+| `references/typescript-prisma.md` | a TypeScript project that keeps Prisma as its ORM |
 | `references/typescript-retargeting.md` | a TypeScript project on a framework other than Fastify, Hono or React |
 | `references/typescript-templates.md` | declarative Mustache template-codegen in a TypeScript project |
 | `references/typescript-docs.md` | the docs generators (`docsFile`, `apiDocsFile`, `agentDocsFile`, `requirementsFile`, `metamodelDocsFile`, `docsSiteFile`) in a TypeScript project |

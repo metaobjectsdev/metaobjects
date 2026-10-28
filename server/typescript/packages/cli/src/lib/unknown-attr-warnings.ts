@@ -2,14 +2,19 @@ import { relative, isAbsolute } from "node:path";
 import { unknownAttributeFindings, type LoadMemoryOptions } from "@metaobjectsdev/sdk";
 
 /**
- * The trailing advice on every unknown-attribute warning `meta gen` prints. `gen` has no
- * `--strict` flag of its own — `meta verify` is the strict door (ADR-0023), so that is what
- * the warning names.
+ * The trailing advice on every unknown-attribute warning `meta gen` prints. `meta verify`
+ * and `meta gen --strict` are the strict doors (ADR-0023); a plain `gen` stays lenient.
  */
 export const UNKNOWN_ATTR_GEN_ADVICE =
   "meta gen loads leniently and generated anyway, but `meta verify` rejects this metadata " +
   "(ADR-0023): fix or remove the attribute — a typo'd one (`isAbstrakt`, `@requird`) " +
-  "silently changes what is generated.";
+  "silently changes what is generated. `meta gen --strict` stops the run instead.";
+
+/** What `meta gen --strict` adds when the strict load rejects the model. Nothing was written. */
+export const STRICT_GEN_HINT =
+  "meta gen --strict loads strictly, as `meta verify` does (ADR-0023): every authored @attr must " +
+  "be declared, and nothing was written. Fix: register the attr on a metadata provider, OR move " +
+  "arbitrary author-supplied properties into an `attr.properties` bag, OR drop `--strict`.";
 
 /**
  * `meta gen`'s unknown-attribute warnings: one line per ADR-0023 finding a STRICT load of

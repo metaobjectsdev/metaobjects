@@ -99,7 +99,7 @@ open class KotlinNamesGenerator :
         val strategy = com.metaobjects.database.PhysicalNaming.of(loader.root).columns()
         // Pass 1 — every object that participates in the database (#248).
         val emitted = mutableSetOf<String>()
-        for (entity in loader.metaObjects) {
+        for (entity in GeneratorUtil.ownMetaObjects(loader)) {
             // FR-044: a served report (a view-backed one) gets a names artifact built from its
             // READ MODEL, so the derived columns have constants for hand-written SQL over the
             // view to use; its Exposed table still binds by literal. A report that is not
@@ -118,7 +118,7 @@ open class KotlinNamesGenerator :
         // what keeps #248 intact. A sourceless object nothing persistable extends — an
         // `object.value`, say — is not reached, so it acquires no artifact and no phantom
         // participation.
-        for (entity in loader.metaObjects) {
+        for (entity in GeneratorUtil.ownMetaObjects(loader)) {
             if (entity.name !in emitted) continue
             var sup = KotlinGenUtil.namesArtifactSuperOf(entity)
             while (sup != null) {

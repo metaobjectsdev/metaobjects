@@ -105,8 +105,24 @@ public static class CodegenCli
             : $"{command}: FAILED (metadata did not load cleanly)");
     }
 
-    /// <summary>Trailing advice after <c>gen</c>'s unknown-attribute warnings. <c>gen</c> has
-    /// no strict flag of its own; <c>verify</c> is the strict door (ADR-0023).</summary>
+    /// <summary>The hint <c>verify</c> and <c>gen --strict</c> print after an ERR_UNKNOWN_ATTR: the three
+    /// exits (ADR-0023).</summary>
+    public const string UnknownAttrHint =
+        "verify loads strict by default (ADR-0023): an unregistered or typo'd @attr is " +
+        "ERR_UNKNOWN_ATTR. To fix: register the attr on a metadata provider, OR move " +
+        "arbitrary author-supplied properties into an `attr.properties` bag, OR run " +
+        "'dotnet meta verify --lax' to keep the legacy open-attr load.";
+
+    /// <summary>The hint <c>gen --strict</c> prints after an ERR_UNKNOWN_ATTR: <c>gen</c>'s own way out is
+    /// to drop the flag, not <c>verify --lax</c> (ADR-0023).</summary>
+    public const string GenStrictHint =
+        "gen --strict loads strictly, as verify does (ADR-0023): an unregistered or typo'd @attr is " +
+        "ERR_UNKNOWN_ATTR and nothing was written. To fix: register the attr on a metadata provider, " +
+        "OR move arbitrary author-supplied properties into an `attr.properties` bag, " +
+        "OR drop --strict.";
+
+    /// <summary>Trailing advice after <c>gen</c>'s unknown-attribute warnings. Without <c>--strict</c>
+    /// <c>gen</c> loads leniently; <c>gen --strict</c> and <c>verify</c> are the strict doors (ADR-0023).</summary>
     public const string UnknownAttrGenAdvice =
         "gen loads leniently and generated anyway, but `dotnet meta verify` rejects this metadata " +
         "(ADR-0023): fix or remove the attribute - a typo'd one (`isAbstrakt`, `requird`) silently " +
@@ -441,7 +457,7 @@ public static class CodegenCli
         {
             Console.Error.WriteLine(
                 "usage: gen [<metadataDir>] --out <dir> [--namespace <ns>] [--generators <a,b,c>]\n" +
-                "           [--emit-abstract-shapes] [--baseline default|adopt] [--template-root <dir>]\n" +
+                "           [--emit-abstract-shapes] [--strict] [--baseline default|adopt] [--template-root <dir>]\n" +
                 "     | verify --codegen [<metadataDir>] --out <dir> [--namespace <ns>] [--generators <a,b,c>]\n" +
                 "           [--template-root <dir>] [--lax]\n" +
                 "   (column/table naming: \"naming\" in .metaobjects/config.json — ADR-0058)");
@@ -521,7 +537,7 @@ public static class CodegenCli
 
     private static readonly string[] GenValueFlags =
         ["--out", "--namespace", "--generators", "--template-root", "--template-spec", "--column-naming", "--baseline"];
-    private static readonly string[] GenBoolFlags = ["--emit-abstract-shapes"];
+    private static readonly string[] GenBoolFlags = ["--emit-abstract-shapes", "--strict"];
     private static readonly string[] VerifyValueFlags =
         ["--out", "--namespace", "--generators", "--template-root", "--column-naming"];
     private static readonly string[] VerifyBoolFlags = ["--codegen", "--lax"];
@@ -532,7 +548,7 @@ public static class CodegenCli
         public string? MetadataDir, OutDir, TemplateRoot, TemplateSpecPath, ColumnNamingRaw, GeneratorsCsv;
         public string Namespace = "Generated";
         public string Baseline = "default";
-        public bool NamespaceExplicit, EmitAbstractShapes, Codegen, Lax;
+        public bool NamespaceExplicit, EmitAbstractShapes, Codegen, Lax, Strict;
         /// <summary>1.0 docs flags given (<see cref="LegacyDocsFlags"/>), in order.</summary>
         public List<string> LegacyDocs = [];
         /// <summary>The usage error the arguments earn, or <c>null</c>.</summary>
@@ -581,6 +597,7 @@ public static class CodegenCli
                     if (flag == "--emit-abstract-shapes") a.EmitAbstractShapes = true;
                     else if (flag == "--codegen") a.Codegen = true;
                     else if (flag == "--lax") a.Lax = true;
+                    else if (flag == "--strict") a.Strict = true;
                 }
                 else
                 {
@@ -725,8 +742,26 @@ public static class CodegenCli
             Console.Error.WriteLine($"warning: {w}");
 
         // ADR-0023: gen loads leniently; name what `verify` would reject instead of staying silent.
-        WarnUnknownAttrs(meta);
-        var outcome = RunGen(meta.Load(), a.OutDir, a.Namespace, a.EmitAbstractShapes, suite, projectRoot, a.Baseline,
+        // With --strict it loads as verify does and refuses before any file is written.
+        LoadResult genLoad;
+        if (a.Strict)
+        {
+            genLoad = meta.Load(strict: true);
+            if (genLoad.Errors.Count > 0)
+            {
+                foreach (var e in genLoad.Errors) Console.Error.WriteLine($"  load error: {e.Code}: {e.Message}");
+                if (genLoad.Errors.Any(e => e.Code == ErrorCode.ERR_UNKNOWN_ATTR))
+                    Console.Error.WriteLine($"  hint: {GenStrictHint}");
+                Console.Error.WriteLine($"{GenCommandName}: FAILED (metadata did not load cleanly; --strict)");
+                return 1;
+            }
+        }
+        else
+        {
+            WarnUnknownAttrs(meta);
+            genLoad = meta.Load();
+        }
+        var outcome = RunGen(genLoad, a.OutDir, a.Namespace, a.EmitAbstractShapes, suite, projectRoot, a.Baseline,
             includeNames: declared.Any(g => g.Name == "names"),
             // Only a run of the whole declared list can tell a stale file from one the
             // narrowing left out.

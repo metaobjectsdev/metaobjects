@@ -40,19 +40,32 @@ import { mkdtempSync, mkdirSync, copyFileSync, rmSync, readFileSync, readdirSync
 import { tmpdir } from "node:os";
 import { join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
-import { loadUris, OBJECT_SUBTYPE_REPORT, type MetaRoot } from "@metaobjectsdev/metadata";
+import { isMetaSource, isReadOnlySource, loadUris, OBJECT_SUBTYPE_REPORT, type MetaObject, type MetaRoot } from "@metaobjectsdev/metadata";
 import {
   runGen, makeRenderContext, buildPkMap, buildRelationMap, buildProjectionViews,
   type AgentSchemaInput, type GenContext, type Generator, type MetaobjectsGenConfig,
   type SchemaColumnLike,
 } from "@metaobjectsdev/codegen-ts";
-import { agentDocsFile, apiDocsFile } from "@metaobjectsdev/codegen-ts/generators";
+import { agentDocsFile, apiDocsFile, prismaSchemaFile } from "@metaobjectsdev/codegen-ts/generators";
 import {
   buildExpectedSchema, buildExpectedSchemaWithProvenance, columnTypeSql, diff, qualifiedDbName,
   type SchemaSnapshot,
 } from "@metaobjectsdev/migrate-ts";
 import { composeCatalog } from "../../src/lib/catalog.js";
 import { run as runCli } from "../../src/index.js";
+
+/** Whether `o` is read from a view (a served report is). */
+const readsAView = (o: MetaObject): boolean => o.children().some((c) => isMetaSource(c) && isReadOnlySource(c));
+
+/**
+ * The generator a catalog entry stands for, as this file runs it. `prisma-schema` refuses a
+ * served report (ERR_PRISMA_READ_ONLY_SOURCE): a Prisma schema cannot create its view, which a
+ * Prisma app creates in a Prisma migration. So it runs here as such an app wires it, over the
+ * table-backed objects; the refusal itself is asserted on its own below.
+ */
+function factoryOf(name: string, entry: { factory: () => Generator }): Generator {
+  return name === "prisma-schema" ? prismaSchemaFile({ filter: (o) => !readsAView(o) }) : entry.factory();
+}
 
 // test/unit → cli → packages → typescript → server → repo root
 const REPO_ROOT = resolve(import.meta.dir, "..", "..", "..", "..", "..", "..");
@@ -209,8 +222,8 @@ describe("FR-044 a sourceless report is inert; a served report emits exactly its
 
   for (const [name, entry] of codeCatalog) {
     test(`generator "${name}" adds exactly the served report's files and changes nothing else`, async () => {
-      const expected = await emit(withoutReporting, [entry.factory()]);
-      const actual = await emit(withReporting, [entry.factory()]);
+      const expected = await emit(withoutReporting, [factoryOf(name, entry)]);
+      const actual = await emit(withReporting, [factoryOf(name, entry)]);
       if ("<threw>" in expected) {
         // Cannot run from a bare model (pinned by name below): the same throw both ways.
         expect(actual).toEqual(expected);
@@ -294,13 +307,24 @@ describe("FR-044 a sourceless report is inert; a served report emits exactly its
     });
   });
 
+  test("prisma-schema refuses a served report, and a sourceless one changes nothing", async () => {
+    const refused = await emit(withReporting, [prismaSchemaFile()]);
+    expect(refused["<threw>"]).toContain("ERR_PRISMA_READ_ONLY_SOURCE");
+    expect(refused["<threw>"]).toContain("StoreTotals");
+    // Without the served report the sourceless ones are inert: the same schema, byte for byte.
+    const onlySourceless = (o: MetaObject): boolean => o.subType !== OBJECT_SUBTYPE_REPORT || !readsAView(o);
+    const without = await emit(withoutReporting, [prismaSchemaFile({ filter: onlySourceless })]);
+    const withSourceless = await emit(withReporting, [prismaSchemaFile({ filter: onlySourceless })]);
+    expect(withSourceless).toEqual(without);
+  });
+
   test("exactly these generators cannot run from a bare model — the list may only shrink", async () => {
     // Each is compared above on its error message alone, which proves nothing about its
     // output. Pinned by name so a generator that starts throwing cannot drop out silently.
     //   shared-model  needs a `files` selection `meta gen` supplies at run time
     const threw: string[] = [];
     for (const [name, entry] of codeCatalog) {
-      if ("<threw>" in (await emit(withoutReporting, [entry.factory()]))) threw.push(name);
+      if ("<threw>" in (await emit(withoutReporting, [factoryOf(name, entry)]))) threw.push(name);
     }
     expect(threw.sort()).toEqual(["shared-model"]);
   });
@@ -316,10 +340,10 @@ describe("FR-044 a sourceless report is inert; a served report emits exactly its
     const runnable: string[] = [];
     for (const [name, entry] of Object.entries(catalog)) {
       if (entry.layer === "docs" && name !== "agent-docs") continue;
-      const alone = await emit(withoutReporting, [entry.factory()]);
+      const alone = await emit(withoutReporting, [factoryOf(name, entry)]);
       if (!("<threw>" in alone)) runnable.push(name);
     }
-    const suite = (): Generator[] => runnable.map((n) => catalog[n]!.factory());
+    const suite = (): Generator[] => runnable.map((n) => factoryOf(n, catalog[n]!));
     const expected = await emit(withoutReporting, suite());
     const actual = await emit(withReporting, suite());
     expect(expected["<threw>"]).toBeUndefined();
@@ -347,7 +371,7 @@ describe("FR-044 a selection of only reports", () => {
   const allGenerators = (): Generator[] =>
     Object.values(composeCatalog())
       .filter((e) => e.name !== "shared-model" && e.layer !== "docs")
-      .map((e) => e.factory());
+      .map((e) => factoryOf(e.name, e));
   const run = async (entityFilter: string[]) => {
     const root = mkdtempSync(join(tmpdir(), "reporting-inert-only-"));
     try {

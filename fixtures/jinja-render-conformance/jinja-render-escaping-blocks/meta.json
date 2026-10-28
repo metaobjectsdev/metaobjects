@@ -1,0 +1,4 @@
+{
+  "format": "html",
+  "note": "html format: what a macro, a call block or a block set renders is already escaped, so printing it does not escape it again"
+}

@@ -160,6 +160,9 @@ export const queriesFile = function queriesFile(opts?: QueriesFileOpts): Generat
 
   const generator: Generator = {
     name: "queries-file",
+    // Read by the api reference (`apiDocsFile()`): it documents the query helpers only when
+    // a generator in the run writes them.
+    emitsQueries: true,
     filter,
     generate: perEntity(async (entity, ctx) => {
       if (!ctx.renderContext) {

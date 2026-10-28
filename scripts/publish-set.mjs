@@ -41,7 +41,7 @@ const WORKSPACE_ROOTS = ["server/typescript/packages", "client/web/packages"];
 // one explicit decision here, not an omission that still "works".
 export const TIER_ORDER = [
   "metadata", "render", "docs-site",
-  "codegen-ts", "runtime-ts", "migrate-ts", "sdk",
+  "migrate-ts", "codegen-ts", "runtime-ts", "sdk",
   "runtime-web",
   "codegen-ts-react", "codegen-ts-tanstack", "react",
   "tanstack",

@@ -14,6 +14,7 @@ cases.json          # { cases: [ { name, tree, treeFiles?, config, lock?,
                      #             expectSelected?, expectMigrateGoverned?,
                      #             expectLoadError?, expectErrorFiles?, expectError?,
                      #             expectCheck? } ] }
+transport-cases.json # the npm / python transport arm (Node `meta deps sync` only — see below)
 README.md
 artifacts/           # pinned dependency artifacts, referenced by cases via `treeFiles`
   acme-common-v1.json
@@ -192,21 +193,67 @@ source — so `ERR_OVERLAY_NO_TARGET` wins. If this case ever reports
 `ERR_DEPENDENCY_PACKAGE_NOT_OWNED` instead, that is an ordering regression to fix, not a
 corpus expectation to update.
 
+## The transport arm — `transport-cases.json`
+
+`meta deps sync` / `check` find a dependency's manifest directory through its transport
+(DESIGN §2.1). Node `meta` is the only writer of snapshots and the lock, so only Node runs
+this arm; every port then loads the snapshot, and `cases.json` carries an `npm` and a
+`python` dependency (`an-npm-dependency-loads-from-its-committed-snapshot`,
+`a-python-dependency-loads-from-its-committed-snapshot`) to prove those load with nothing
+installed.
+
+```jsonc
+{ "cases": [ {
+  "name": "…",
+  "tree": { … }, "treeFiles": { … },   // as in cases.json: what an install leaves on disk
+  "config": { … },                     // written to <resolveFrom>/.metaobjects/config.json
+  "resolveFrom": "app",
+  "pythonPath": ["site"],              // OPTIONAL: project-root-relative directories put on the
+                                       // interpreter's import path (PYTHONPATH), standing in for
+                                       // an installed site-packages
+  "expectDirs": { "<name>": "<dir>" }, // OPTIONAL: the project-root-relative directory each
+                                       // dependency's transport resolves to (EXHAUSTIVE)
+  "expectLock": { … },                 // the lock `sync` writes, exactly, or
+  "expectError": "ERR_*"               // the code `sync` fails with
+} ] }
+```
+
+Exactly one of `expectLock`, `expectError` per case. An `npm` package is laid out under a
+`node_modules` directory (beside the config, or hoisted above it); a `python` package under
+a `pythonPath` directory. The runner clears `$METAOBJECTS_PYTHON` and `$VIRTUAL_ENV`, so the
+interpreter is `python3` on `PATH`; the interpreter ladder itself is a unit test
+(`cli/test/deps-sync-packages.test.ts`), because it depends on the machine. No case
+touches a network or a package manager.
+
+The refusals: a package not installed, a `dir` the package does not ship, a `dir` that
+climbs out of the package, and a Python module that is not a package are
+`ERR_DEPENDENCY_UNRESOLVED`; a `dir` that exists but holds no `metaobjects.pkg.json` is
+`ERR_DEPENDENCY_MANIFEST_INVALID`.
+
 ## Which arms each port runs
 
-- **TypeScript** — resolution, load-time failure, lock/snapshot integrity, and the check arm
-  (`cli/test/dependency-check-conformance.test.ts`; the resolution arm is
-  `sdk/test/dependency-conformance.test.ts`).
+- **TypeScript** — resolution, load-time failure, lock/snapshot integrity
+  (`sdk/test/dependency-conformance.test.ts`), the check arm
+  (`cli/test/dependency-check-conformance.test.ts`), and the transport arm
+  (`cli/test/dependency-transport-conformance.test.ts`).
 - **Python** — resolution, load-time failure, lock/snapshot integrity. Not the check arm: Python
-  has no `deps check` yet, so its runner filters the `expectCheck` cases out.
+  has no `deps check` yet, so its runner filters the `expectCheck` cases out. Not the transport
+  arm: Python never syncs.
+- **Java** — resolution, load-time failure, lock/snapshot integrity
+  (`DependencyConformanceTest`). Not the check arm: Java has no `deps check`, so its runner
+  skips the `expectCheck` cases. Not the transport arm: Java never syncs.
+  `refuseUnownedPackages` runs after the loader's own errors,
+  as the ordering note above requires. Java's `inScope` is the import-exclusion conjunct only,
+  like Python's.
+- **Kotlin** — inherits via Java: it loads through the same loader and Maven plugin. The
+  Kotlin generators are covered by a codegen test that an imported entity emits nothing.
 - **C#** — the resolution arm: resolution, load-time failure, lock/snapshot integrity, on the
   neutral source ladder and again through the explicit metadata directory (C# has no native
   config surface, so `.metaobjects/config.json` is where a dependency is declared at every
   rung). `inScope` is Python's formula, not TypeScript's. Not the check arm: C# has no
-  `deps check` yet (that is `verify --deps`), so its runner skips the `expectCheck` cases. The
-  runner is `server/csharp/MetaObjects.Conformance.Tests/DependencyConformanceTests.cs`.
-- **Java / Kotlin** — Phase 2 (these ports do not read `dependencies` yet). Each runs the
-  resolution arm when it consumes, and the check arm when it gains a check.
+  `deps check` yet (that is `verify --deps`), so its runner skips the `expectCheck` cases. Not the
+  transport arm: C# never syncs. The runner is
+  `server/csharp/MetaObjects.Conformance.Tests/DependencyConformanceTests.cs`.
 
 ## Reference implementation
 

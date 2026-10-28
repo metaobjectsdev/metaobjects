@@ -1,0 +1,50 @@
+[
+  {
+    "name": "displayName"
+  },
+  {
+    "name": "count"
+  },
+  {
+    "name": "user",
+    "fields": [
+      {
+        "name": "name"
+      },
+      {
+        "name": "email"
+      }
+    ]
+  },
+  {
+    "name": "posts",
+    "isArray": true,
+    "fields": [
+      {
+        "name": "title"
+      },
+      {
+        "name": "tags",
+        "isArray": true
+      },
+      {
+        "name": "author",
+        "fields": [
+          {
+            "name": "name"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "labels",
+    "isArray": true
+  },
+  {
+    "name": "key"
+  },
+  {
+    "name": "which"
+  }
+]

@@ -71,7 +71,8 @@ public class ApiDocsGeneratorEntryTest {
         assertTrue(Files.exists(kotlin.resolve("AGENT-API.md")));
         String kotlinPage = Files.readString(kotlin.resolve("Basket.md"));
         assertTrue(kotlinPage, kotlinPage.contains("```kotlin"));
-        assertTrue(kotlinPage, kotlinPage.contains("**Model / metadata:**"));
+        assertFalse("no <modelBaseUrl>: the model link would be dead, so it is omitted: " + kotlinPage,
+                kotlinPage.contains("**Model / metadata:**"));
     }
 
     @Test

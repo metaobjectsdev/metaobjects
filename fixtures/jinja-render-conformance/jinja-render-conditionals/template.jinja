@@ -1,0 +1,5 @@
+{% if score > 90 %}A{% elif score > 80 %}B{% else %}C{% endif %}
+{% if admin and not banned %}admin{% endif %}{% if banned or guest %}restricted{% endif %}
+{{ "has math" if "math" in tags else "no math" }}
+{% if nickname is defined %}{{ nickname }}{% else %}no nickname{% endif %}
+{% if empty | length %}nonempty{% else %}an empty list tested by its length{% endif %}

@@ -24,6 +24,23 @@ export type GeneratorSpec = Generator | string;
  * does not own a MySQL schema (ADR-0015), so the adopter writes the DDL.
  */
 export type Dialect = "sqlite" | "postgres" | "mysql";
+/**
+ * The ORM the application uses (#479). `drizzle` (the default): the entity module carries the
+ * Drizzle tables and the DB layer. `prisma`: the schema is `schema.prisma`, written by the
+ * `prisma-schema` generator, so every target is contract-only by default (Zod schemas and
+ * types, the `runtime: false` path) and the generators that write Drizzle code are refused.
+ */
+export const ORMS = ["drizzle", "prisma"] as const;
+export type Orm = (typeof ORMS)[number];
+export const ORM_DRIZZLE: Orm = "drizzle";
+export const ORM_PRISMA: Orm = "prisma";
+
+/**
+ * The generators whose output is Drizzle code: the queries, the routes over them and the
+ * stored-procedure wrappers. `orm: "prisma"` refuses them by these stable names.
+ */
+export const DRIZZLE_BOUND_GENERATORS = ["queries", "routes", "routes-hono", "callable"] as const;
+
 /** Re-exported from metadata so codegen-ts consumers see one canonical type. */
 export type { ColumnNamingStrategy, MetaDataTypeProvider } from "@metaobjectsdev/metadata";
 export type { ExtStyle };
@@ -44,7 +61,8 @@ export interface TargetConfig {
    * server package: Drizzle tables/views + the DB layer). Set `false` for a
    * contract-only target — Zod schemas + inferred TS types only, no `drizzle-orm`
    * / `runtime-ts` import — e.g. a shared wire-contract package consumed by a web
-   * client with no database. See {@link ResolvedTarget.runtime}.
+   * client with no database. See {@link ResolvedTarget.runtime}. Under `orm: "prisma"` it
+   * defaults to `false`, and `true` is refused.
    */
   runtime?: boolean;
 }
@@ -62,6 +80,18 @@ export interface ResolvedGenConfig {
    *  api-docs reads this to AUTO-DETECT whether to document the Hono CRUD surface
    *  (it otherwise mirrors the default Fastify-only suite). Undefined ⇒ false. */
   includeHonoRoutes?: boolean;
+  /** Whether a generator in the run writes the `<Entity>.ts` entity modules (the suite's
+   *  `emitsEntityModule` markers, or an `entity-file` by name). api-docs documents the model,
+   *  its Zod schemas and its `relations()` only then. Undefined ⇒ documented. */
+  includeEntityModule?: boolean;
+  /** Whether a generator in the run writes the `<Entity>.queries.ts` modules (the suite's
+   *  `emitsQueries` markers, or a `queries-file` by name). api-docs documents the query
+   *  helpers only then. Undefined ⇒ documented, which is what a caller that is not a run
+   *  (a thin docs entrypoint) wants. */
+  includeQueries?: boolean;
+  /** Likewise for the Fastify REST routes: a routes generator that mounts them (`mountsRoutes`
+   *  on a non-Hono generator, or a `routes-file` by name). Undefined ⇒ documented. */
+  includeRestRoutes?: boolean;
   /** The `expose` option the run's routes generators were built with (`runRoutesExpose`), per
    *  routes surface, for the api reference to document only the verbs they mount. Absent documents all five. */
   routesExpose?: RoutesExpose;
@@ -212,6 +242,8 @@ export interface MetaobjectsGenConfig extends Omit<ResolvedGenConfig, "dbImport"
   targets?: Record<string, TargetConfig>;
   /** importBase for the default target (top-level outDir). */
   importBase?: string;
+  /** The application's ORM. Default `"drizzle"`. See {@link ORMS}. */
+  orm?: Orm;
   /**
    * Consumer-supplied {@link MetaDataTypeProvider}s. Threaded to `loadMemory`
    * by the CLI's gen/migrate commands so a project can register its own
@@ -294,6 +326,8 @@ export function defineConfig(config: MetaobjectsGenConfig): MetaobjectsGenConfig
  *  importBase does NOT inherit — it is a per-target identity). */
 export function resolveTargets(config: MetaobjectsGenConfig): Record<string, ResolvedTarget> {
   const layout: OutputLayout = config.outputLayout ?? "flat";
+  // Under Prisma no target carries Drizzle bindings: Prisma owns the client and the schema.
+  const runtime = resolveOrm(config) !== ORM_PRISMA;
   const out: Record<string, ResolvedTarget> = {
     [DEFAULT_TARGET_NAME]: {
       name: DEFAULT_TARGET_NAME,
@@ -301,8 +335,8 @@ export function resolveTargets(config: MetaobjectsGenConfig): Record<string, Res
       importBase: config.importBase,
       outputLayout: layout,
       dbImport: config.dbImport ?? DEFAULT_DB_IMPORT,
-      // The default target is the server package — runtime bindings on.
-      runtime: true,
+      // The default target is the server package: runtime bindings on, unless Prisma is the ORM.
+      runtime,
     },
   };
   for (const [name, t] of Object.entries(config.targets ?? {})) {
@@ -312,7 +346,7 @@ export function resolveTargets(config: MetaobjectsGenConfig): Record<string, Res
       importBase: t.importBase,
       outputLayout: t.outputLayout ?? layout,
       dbImport: t.dbImport ?? config.dbImport ?? DEFAULT_DB_IMPORT,
-      runtime: t.runtime ?? true,
+      runtime: t.runtime ?? runtime,
     };
   }
   return out;
@@ -369,6 +403,43 @@ export function resolveGenerators(specs: readonly GeneratorSpec[]): Generator[] 
   });
 }
 
+/** The config's ORM, refusing a value that is not one (a JavaScript config can carry anything). */
+export function resolveOrm(config: Pick<MetaobjectsGenConfig, "orm">): Orm {
+  const orm: unknown = config.orm ?? ORM_DRIZZLE;
+  if (!(ORMS as readonly unknown[]).includes(orm)) {
+    throw new Error(`orm "${String(orm)}" is not one of ${ORMS.map((o) => `"${o}"`).join(", ")}.`);
+  }
+  return orm as Orm;
+}
+
+/**
+ * Refuse what `orm: "prisma"` cannot run: a target that asks for Drizzle bindings, and a
+ * generator that writes Drizzle code. Both would compile against tables nothing creates.
+ */
+function checkPrismaConfig(config: MetaobjectsGenConfig, generators: readonly Generator[]): void {
+  for (const [name, t] of Object.entries(config.targets ?? {})) {
+    if (t.runtime === true) {
+      throw new Error(
+        `orm: "prisma" writes no Drizzle bindings, and target "${name}" sets runtime: true. ` +
+          "Remove it: under Prisma every target is contract-only (Zod schemas and types), and the " +
+          "schema is schema.prisma, written by the prisma-schema generator.",
+      );
+    }
+  }
+  const bound = new Map<string, string>(
+    DRIZZLE_BOUND_GENERATORS.map((n) => [generatorRegistry[n]!.factory().name, n]),
+  );
+  const refused = [...new Set(generators.map((g) => bound.get(g.name)).filter((n): n is string => n !== undefined))];
+  if (refused.length > 0) {
+    throw new Error(
+      `orm: "prisma" refuses ${refused.map((n) => `"${n}"`).join(", ")}: ${refused.length === 1 ? "it writes" : "they write"} ` +
+        "Drizzle code, over tables Prisma owns. Remove " + (refused.length === 1 ? "it" : "them") +
+        " from `generators`, and query through the Prisma client. The entity generator still " +
+        "writes the Zod schemas and types; prisma-schema writes schema.prisma.",
+    );
+  }
+}
+
 /** Apply defaults to a MetaobjectsGenConfig, returning a NormalizedMetaobjectsGenConfig. */
 export function normalizeConfig(config: MetaobjectsGenConfig): NormalizedMetaobjectsGenConfig {
   // ADR-0058: column naming is `naming` in .metaobjects/config.json, read by every port. A
@@ -379,12 +450,14 @@ export function normalizeConfig(config: MetaobjectsGenConfig): NormalizedMetaobj
     throw new Error(physicalNamingRemovedMessage("columnNamingStrategy in metaobjects.config.ts", String(removedNaming), physicalNamingGuideUrl()));
   }
   const dialect = config.dialect ?? DEFAULT_DIALECT;
+  const generators = resolveGenerators(config.generators);
+  if (resolveOrm(config) === ORM_PRISMA) checkPrismaConfig(config, generators);
   return {
     ...config,
     dbImport: config.dbImport ?? DEFAULT_DB_IMPORT,
     dialect,
     extStyle: config.extStyle ?? DEFAULT_EXT_STYLE,
-    generators: resolveGenerators(config.generators),
+    generators,
     pluralizeCollections: config.pluralizeCollections ?? true,
     collectionNameOverrides: config.collectionNameOverrides ?? {},
     // "date" mode is Postgres-only (see the doc comment on timestampMode above) —

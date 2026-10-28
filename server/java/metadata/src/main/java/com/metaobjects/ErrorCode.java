@@ -278,6 +278,15 @@ public enum ErrorCode {
      */
     ERR_OUTPUT_TAG_MISSING,
 
+    /** Build-time verify (ADR-0061, Jinja, Python and TypeScript only): a reference the check cannot settle statically. */
+    ERR_TEMPLATE_NOT_STATIC,
+
+    /** Build-time verify (ADR-0061, Jinja, Python and TypeScript only): the template body does not parse. */
+    ERR_TEMPLATE_SYNTAX,
+
+    /** Verify and render (ADR-0061): a body written for an engine this port does not ship (Jinja, here). */
+    ERR_TEMPLATE_ENGINE_UNSUPPORTED,
+
     /** A dataGrid @filter references a non-filterable field or uses a disallowed op. */
     ERR_BAD_ATTR_FILTER,
 
@@ -344,6 +353,27 @@ public enum ErrorCode {
      * the documented amendment door and is untouched.
      */
     ERR_LIBRARY_PACKAGE_NOT_OWNED,
+
+    /** FR-023: a declared dependency's transport could not locate a directory holding {@code metaobjects.pkg.json}. Raised by {@code meta deps sync}/{@code check}; registered here so the shared list stays one set. */
+    ERR_DEPENDENCY_UNRESOLVED,
+
+    /** FR-023: a dependency's {@code metaobjects.pkg.json} fails its schema, names a different dependency, or points at a missing or hash-mismatched artifact. */
+    ERR_DEPENDENCY_MANIFEST_INVALID,
+
+    /** FR-023: the committed snapshot does not match {@code .metaobjects/deps.lock.json} (lock missing, entry missing or extra, artifact missing, or hash mismatch) — run {@code meta deps sync}. */
+    ERR_DEPENDENCY_SNAPSHOT_STALE,
+
+    /** FR-023: two dependencies export the same fully-qualified node. */
+    ERR_DEPENDENCY_NODE_COLLISION,
+
+    /** FR-023: a local top-level node is declared into a package owned by a dependency. */
+    ERR_DEPENDENCY_PACKAGE_NOT_OWNED,
+
+    /** FR-023: a dependency's {@code metamodelVersion} major differs from this toolchain's. */
+    ERR_DEPENDENCY_METAMODEL_INCOMPATIBLE,
+
+    /** FR-023: {@code meta deps check} found the installed dependency differs from the committed snapshot. Raised by the check command; registered so the shared list stays one set. */
+    ERR_DEPENDENCY_UPSTREAM_DRIFT,
 
     /**
      * FR-016 / ADR-0018: a {@code source.rdb} declares a kind-aware physical-name

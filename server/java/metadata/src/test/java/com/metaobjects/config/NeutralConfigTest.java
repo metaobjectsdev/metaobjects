@@ -108,4 +108,47 @@ public class NeutralConfigTest {
             "{\"schema_version\":1,\"someFutureKey\":{\"x\":1},\"naming\":{\"columns\":\"literal\"}}", "test");
         assertEquals("literal", cfg.getPhysicalNaming().columns());
     }
+
+    // FR-023 — `dependencies`, `scope.include` and `migrate.scope` are validated as in TS/Python.
+
+    private static NeutralConfig dep(String dependenciesJson) {
+        return NeutralConfig.parse("{\"schema_version\":1,\"dependencies\":" + dependenciesJson + "}", "test");
+    }
+
+    private static void assertBadAttr(String dependenciesJson) {
+        MetaDataException e = assertThrows(MetaDataException.class, () -> dep(dependenciesJson));
+        assertEquals(ErrorCode.ERR_BAD_ATTR_VALUE, e.getCode().orElse(null));
+    }
+
+    @Test
+    public void readsADeclaredPathDependency() {
+        NeutralConfig cfg = dep("[{\"name\":\"acme-common\",\"path\":\"../acme/metaobjects\"}]");
+        assertEquals(1, cfg.getDependencies().size());
+        assertEquals("acme-common", cfg.getDependencies().get(0).get("name"));
+    }
+
+    @Test
+    public void refusesABadDependencyName() {
+        assertBadAttr("[{\"name\":\"Acme Common\",\"path\":\"../a\"}]");
+    }
+
+    @Test
+    public void refusesADependencyWithTwoTransports() {
+        assertBadAttr("[{\"name\":\"a\",\"path\":\"../a\",\"npm\":\"@x/y\"}]");
+    }
+
+    @Test
+    public void refusesADuplicateDependencyName() {
+        assertBadAttr("[{\"name\":\"a\",\"path\":\"../a\"},{\"name\":\"a\",\"path\":\"../b\"}]");
+    }
+
+    @Test
+    public void refusesAnUnknownDependencyKey() {
+        assertBadAttr("[{\"name\":\"a\",\"path\":\"../a\",\"bogus\":1}]");
+    }
+
+    @Test
+    public void refusesDirBesideAPathTransport() {
+        assertBadAttr("[{\"name\":\"a\",\"path\":\"../a\",\"dir\":\"x\"}]");
+    }
 }

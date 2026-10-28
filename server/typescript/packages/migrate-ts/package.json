@@ -10,6 +10,11 @@
       "bun": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./expected": {
+      "bun": "./src/expected.ts",
+      "types": "./dist/expected.d.ts",
+      "default": "./dist/expected.js"
     }
   },
   "files": [

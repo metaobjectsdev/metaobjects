@@ -1,0 +1,4 @@
+{
+  "format": "text",
+  "note": "the filters both engines implement alike: upper, lower, length, join (with and without an attribute), first, last, replace, trim, default"
+}

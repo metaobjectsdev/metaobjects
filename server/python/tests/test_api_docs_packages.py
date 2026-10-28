@@ -53,12 +53,13 @@ def test_pages_and_back_links_are_filed_under_each_package() -> None:
         config=GenConfig(out_dir="/tmp/out"),
         warn=lambda _m: None,
     )
-    files = {f.path: f.content for f in ApiDocsGenerator(api_subdir="api").generate(ctx)}
+    files = {f.path: f.content for f in ApiDocsGenerator(api_subdir="api", model_base_url="https://docs.example.test").generate(ctx)}
 
     assert "api/alpha/lib/Widget.md" in files
     assert "api/beta/app/Order.md" in files
     assert not [p for p in files if p.endswith("Order.md") and "alpha" in p], sorted(files)
     # The back-link to the model page stays in the page's own package.
-    assert "alpha/lib/Widget.md" in files["api/alpha/lib/Widget.md"]
-    assert "beta/app/Order.md" in files["api/beta/app/Order.md"]
+    # (The link is emitted only when `modelBaseUrl` says where the model pages live.)
+    assert "https://docs.example.test/alpha/lib/Widget.md" in files["api/alpha/lib/Widget.md"]
+    assert "https://docs.example.test/beta/app/Order.md" in files["api/beta/app/Order.md"]
     assert "alpha" not in files["api/beta/app/Order.md"]

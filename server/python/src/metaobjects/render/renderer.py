@@ -23,10 +23,22 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from . import escapers
+from .engine import (
+    TEMPLATE_ENGINE_JINJA,
+    TEMPLATE_ENGINE_MUSTACHE,
+    partial_engine_message,
+    partial_engine_mismatch,
+    template_engine_of,
+)
 from .payload_accessors import with_derived_accessors
-from .verify import InMemoryProvider, Provider
-
-MAX_DEPTH = 32
+from .verify import (
+    ERR_REQUIRED_SLOT_UNUSED,
+    MAX_DEPTH,
+    InMemoryProvider,
+    PayloadField,
+    Provider,
+)
+from .verify import verify as verify_template
 
 # {{> name }} — captures the reference between the marker and the closing }}.
 _PARTIAL_PATTERN = re.compile(r"\{\{>\s*([^\s}]+)\s*\}\}")
@@ -46,6 +58,13 @@ class RenderRequest:
     template body. ``format`` defaults to ``"text"`` (no escaping). ``max_chars``
     is an optional fail-closed budget: if the final output exceeds it, render
     RAISES (never truncates).
+
+    ``engine`` is the engine the body is written for (ADR-0061): default is what
+    the provider reports for ``ref`` (a ``.jinja`` / ``.j2`` file is Jinja), else
+    Mustache. Inline ``template`` text has no file, so it is Mustache unless this
+    says otherwise. ``verify`` (optional) is the payload field tree: when given,
+    the template is drift-checked before it renders and a finding RAISES — the
+    runtime half of the build-time check.
     """
 
     payload: Any
@@ -54,21 +73,47 @@ class RenderRequest:
     ref: str | None = None
     format: str = escapers.FORMAT_TEXT
     max_chars: int | None = None
+    engine: str | None = None
+    verify: list[PayloadField] | None = None
 
 
 def render(req: RenderRequest) -> str:
     _validate(req)
     body = req.template if req.template is not None else _resolve_or_raise(req.provider, req.ref)
+    own_ref = req.ref if req.template is None else None
+    engine = template_engine_of(req.provider, own_ref, req.engine)
+    if req.verify is not None:
+        drift = [
+            e
+            for e in verify_template(body, req.verify, provider=req.provider, engine=engine)
+            if e.code != ERR_REQUIRED_SLOT_UNUSED
+        ]
+        if drift:
+            raise RenderError(
+                "render verify failed: " + ", ".join(f"{e.code} ({e.path})" for e in drift)
+            )
+    if engine == TEMPLATE_ENGINE_JINJA:
+        from .jinja_render import JinjaRenderError, render_jinja
+
+        try:
+            out = render_jinja(body, own_ref, req.payload, req.provider, req.format)
+        except JinjaRenderError as e:
+            raise RenderError(str(e)) from e
+        return _check_budget(out, req.max_chars)
     expanded = _pre_expand_partials(body, req.provider, [])
     # Derived `has<Field>` accessors are part of the payload contract, not of the
     # caller's object — see payload_accessors. Injected here so a `{{#hasFoo}}` section
     # resolves the same way it does against a generated JVM payload record.
     out = _interpret(expanded, with_derived_accessors(req.payload), req.format)
+    return _check_budget(out, req.max_chars)
+
+
+def _check_budget(out: str, max_chars: int | None) -> str:
     # @maxChars is a fail-closed render budget: over-budget output RAISES (never
     # silently truncates). Canonical cross-port behavior — message shape matches
     # TS/C#/Java: "render exceeded maxChars budget: <len> > <cap>".
-    if req.max_chars is not None and len(out) > req.max_chars:
-        raise RenderError(f"render exceeded maxChars budget: {len(out)} > {req.max_chars}")
+    if max_chars is not None and len(out) > max_chars:
+        raise RenderError(f"render exceeded maxChars budget: {len(out)} > {max_chars}")
     return out
 
 
@@ -108,6 +153,8 @@ def _pre_expand_partials(text: str, provider: Provider, stack: list[str]) -> str
         body = provider.resolve(ref)
         if body is None:
             raise RenderError(f"unresolved partial: {ref}")
+        if partial_engine_mismatch(provider, ref, TEMPLATE_ENGINE_MUSTACHE):
+            raise RenderError(partial_engine_message(ref, TEMPLATE_ENGINE_MUSTACHE))
         stack.append(ref)
         try:
             return _pre_expand_partials(body, provider, stack)

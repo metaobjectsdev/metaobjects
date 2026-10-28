@@ -12,9 +12,74 @@ here.**
 
 ### Docs
 
+- **Writing your own generator is documented as the normal path.** `llms.txt`, `llms-full.txt`
+  and the README now say a team should expect to write generators, and that documentation is a
+  generator. New recipe, [a typed client for the reference routes](docs/recipes/typed-client-for-the-reference-routes.md),
+  with a worked generator that fails `verify --codegen` when the routes move. The generator recipes
+  advise `handEdits: "overwrite"` for output that carries a safety rule (the default `"keep"`
+  merges a hand edit that removes it). One install pair that compiles the stock generated
+  TypeScript replaces the lines that disagreed. The `llms.txt` copy no longer repeats the homepage
+  lede or leans on "spine" and "substrate", and its longest sentences are split.
+
 - **Port docs and `llms-full.txt` now say what a fresh reader got wrong.** Each port page opens with its keep-your-ORM path (TypeScript `runtime: false`, Java and Kotlin records and data classes, sourceless C# POCOs as DTOs, Pydantic in Python); three-way merge is scoped to TypeScript everywhere it was claimed unscoped, with what the other ports do instead (committed hash manifest, refusal by name, eject); framework baselines are stated (Java 21 rather than the contradictory 17, Spring Boot 3.x with Boot 2 unsupported, .NET 8, Python 3.11, Node first and Bun second); and each port page carries its known gaps with absolute links.
 
 ### Added
+
+- **Jinja templates in Python and TypeScript, held to the same payload check (ADR-0061, closes #483).**
+  A `template.prompt` or `template.output` body may be a Jinja file —
+  `<group>/<source>.jinja`, `.j2` or `.jinja2` — instead of a `.mustache` one. Nothing in the
+  metadata changes: `@textRef` is the same `group/source`, and the engine comes from the file
+  (or from an explicit `engine` option on `render`, `verify` and `InMemoryProvider`).
+  Python renders with jinja2, an optional extra (`pip install "metaobjects[jinja]"`);
+  TypeScript renders with nunjucks, now a dependency of `@metaobjectsdev/render`. `verify`
+  (every CLI's template gate) and the render-helper generator check every payload reference a
+  Jinja body makes, walking the parsed template: paths, loop targets, filter arguments and
+  literal includes, imports and `extends`. A drift is `ERR_VAR_NOT_ON_PAYLOAD` as before. A
+  reference the check cannot settle statically is `ERR_TEMPLATE_NOT_STATIC`, and a body that
+  does not parse is `ERR_TEMPLATE_SYNTAX`. A generated helper over a Jinja body passes the
+  engine and the payload field tree to `render`, so the check runs again at runtime. Two new
+  corpora, `fixtures/jinja-render-conformance/` (15) and `fixtures/jinja-verify-conformance/`
+  (31), hold the two ports to identical output and findings. Java, Kotlin and C# render
+  Mustache only: their providers and `verify` now refuse a Jinja-only body with
+  `ERR_TEMPLATE_ENGINE_UNSUPPORTED` instead of reporting the ref as unresolved. Mustache stays
+  the default, generated Mustache helpers are byte-identical, and `metamodelVersion` does not
+  move.
+
+- **Prisma as the ORM, declared once in the model (TypeScript, #479).** Set `orm: "prisma"` in
+  `metaobjects.config.ts` and wire the new `prisma-schema` generator (`prismaSchemaFile()`), and
+  `meta gen` writes `schema.prisma` from the model for the `postgresql`, `mysql` or `sqlite`
+  provider. It maps types, ids and their generation, defaults, nullability, enums, relations,
+  unique keys, indexes and `@map`/`@@map`, and Postgres `@schema` maps to `@@schema`. Prisma cannot
+  declare CHECK constraints, so the ones the model implies go in `schema.checks.sql`, which you
+  apply with `prisma db execute --file`. `meta verify --codegen` fails on a hand-edited or stale
+  schema; the generator overwrites hand edits rather than merging them. On Postgres, a database
+  created by `prisma db push` with the checks file applied passes `meta verify --db`, and a
+  change to it fails. On SQLite, which cannot take the checks file, the gate reports each
+  missing CHECK and nothing else, and a change to the database fails it.
+  Most of what a Prisma schema cannot express is refused with an `ERR_PRISMA_*` code, never dropped: a
+  view `meta verify --db` expects, an expression or partial index, a CHECK on SQLite, a `@schema`
+  outside Postgres, a table with no primary key, a relation Prisma cannot model, a name
+  collision, or an unsupported provider. The exception is MySQL, which gets the enum CHECKs only:
+  the other checks are Postgres SQL and are left out. A model with projections, write-through read views or
+  served reports therefore needs each of those views marked `@unmanaged` or its object left out
+  by the generator's `filter`. A flattened `field.object` maps to one Prisma field per column.
+  `orm: "prisma"` also makes every target default to `runtime: false`. It refuses a target set to
+  `runtime: true`, and the generators that write Drizzle code (`queries`, `routes`,
+  `routes-hono`, `callable`). The default, `orm: "drizzle"`, changes nothing. The generator is
+  ejectable (`meta eject prisma-schema`). `@metaobjectsdev/codegen-ts` now depends on
+  `@metaobjectsdev/migrate-ts` for the expected schema, through the new
+  `@metaobjectsdev/migrate-ts/expected` subpath, which does not load kysely. Recipe:
+  `docs/recipes/prisma.md`.
+
+- **Java and Kotlin consume a shared model (FR-023 Phase 2).** A project that declares
+  `dependencies` in `.metaobjects/config.json` loads its committed `.metaobjects/deps/` snapshot
+  ahead of its own files, in the Maven plugin (every rung of the source ladder) and the Java
+  loader. The lock is checked as in TypeScript and Python (`ERR_DEPENDENCY_SNAPSHOT_STALE`,
+  `_METAMODEL_INCOMPATIBLE`, `_NODE_COLLISION`), a local node declared into a dependency's package
+  fails with `ERR_DEPENDENCY_PACKAGE_NOT_OWNED`, and the Java and Kotlin generators emit nothing for
+  an imported object unless `scope.include` names its package. Runs all 24 resolution cases of
+  `fixtures/dependency-conformance/` (the 11 check cases pin the Node `meta deps check`); Kotlin loads through the same loader and adds a codegen test.
+  Spring runtime auto-load and `verify` drift for dependencies are later slices.
 
 - **C# consumes a shared model at build time (FR-023 Phase 2).** `dotnet meta` now reads
   `dependencies` from `.metaobjects/config.json` at every rung of its source ladder, verifies the
@@ -25,9 +90,43 @@ here.**
   `_PACKAGE_NOT_OWNED`), and a load error in a dependency's file names `dep:<name>/<artifact>`.
   Imported nodes load but are not generated: every C# generator, the `verify --codegen`
   regeneration and the requirement gate's coverage denominator leave them out unless
-  `scope.include` names their package. C# runs the 24 resolution cases of `fixtures/dependency-conformance/`.
+  `scope.include` names their package. C# runs the 26 resolution cases (the 11 check cases pin the Node `meta deps check`) of `fixtures/dependency-conformance/`.
   The Node `meta deps sync` stays the only writer of the lock and the snapshot.
   See [docs/features/metadata-dependencies.md](docs/features/metadata-dependencies.md).
+
+- **Own your generators, and give back the ones you did not change.** A team is expected to
+  write generators of its own, because a generator it owns is what keeps output from drifting.
+  Two things now help it carry fewer copies than it needs. `meta gen` prints one line naming
+  every owned generator copy that is still the shipped reference, unchanged. `meta eject --undo
+  [<name>...] [--force]` removes them: with no names, every unchanged copy (and the template
+  modules only they used); with names, those, refusing the whole call and removing nothing if a
+  named copy differs. It never edits `metaobjects.config.ts`; it prints the import to swap back.
+  The other ports have the same switch: `metaobjects eject --undo` (Python), `mvn
+  metaobjects:eject -Dundo=true` (Java and Kotlin) and `dotnet meta eject --undo` (C#). There is no
+  `doctor` command in any port; `eject --list` is the report. See
+  [the CLI notes](docs/features/cli.md#owned-generators-the-unchanged-copy-notice-eject---undo-and-gen---strict).
+
+- **`gen --strict`: an unknown attribute is an error, as it is in `verify`.** `gen` has always
+  loaded leniently, so a typo such as `@sensitve` was a warning and the run went on with changed
+  output. `meta gen --strict` (TypeScript), `metaobjects gen --strict` (Python) and `dotnet meta gen
+  --strict` (C#) exit 1 and write nothing. `mvn metaobjects:generate` already loaded strictly
+  (`-Dmeta.lax=true` relaxes it), so Java and Kotlin needed no new switch.
+
+- **`meta init --with-docs` (TypeScript, C#) and a new `metaobjects init [--with-docs]`
+  (Python).** The scaffold wires the documentation generators and their `docs` target, so the
+  first `gen` writes documentation. The default scaffold is unchanged: nothing is generated until
+  you choose it. In C# it adds `ApiDocsGenerator` to the new `codegen/Generators.cs`.
+
+- **`entityTypeNames(obj)` is exported from `@metaobjectsdev/codegen-ts`.** It returns the six
+  type names the entity module exports (`<Entity>`, `Insert`, `Update`, `Create`, `Patch`,
+  `Filter`; `<Entity>Row` for a TPH base), and the templates that emit them now call it, so an
+  owned generator that refers to them cannot fall behind a rename. `docs/ports/typescript.md`
+  has the table and says which to pass to `create<Entity>` and `update<Entity>` (#490).
+
+- **Python generated routers take an `apiPrefix` setting.** It is a top-level key of
+  `metaobjects.config.yaml`, the counterpart of the TypeScript key of the same name. It defaults
+  to `/api`, so existing output is byte-identical, and `""` mounts routers at `/<plural>`. The generated API docs use
+  the same prefix (#488).
 
 - **Java, Kotlin and C# can compile and match `scope` patterns.** `com.metaobjects.config.Scope`
   (Java; Kotlin inherits it) and `MetaObjects.Config.Scope` (C#) port the scope-pattern grammar from
@@ -47,6 +146,30 @@ here.**
   it and Python runs the serializer arm. These are the reference the Java, Kotlin and C# slices of
   Phase 2 ([#482](https://github.com/metaobjectsdev/metaobjects/issues/482)) are written against.
   The feature doc records the Maven and NuGet packaged transports as a design for a later slice.
+
+- **`meta deps sync` installs a shared model from an npm or Python package, not only from a
+  folder path.** A dependency can now be `{ "name": "x", "npm": "@acme/model", "dir":
+  "metaobjects" }` or `{ "name": "x", "python": "acme_model", "dir": "metaobjects" }`: install
+  the publisher's package with your own package manager, then `meta deps sync` finds it (the
+  way Node resolves `@acme/model` from the directory holding `.metaobjects/`, or where
+  `importlib.util.find_spec` puts `acme_model` in your interpreter), applies `dir`, and
+  snapshots and locks it exactly as a `path` dependency. `meta deps check` and `verify --deps`
+  resolve the same way. The Python interpreter is the first of `$METAOBJECTS_PYTHON`, the
+  active virtualenv, a `.venv` beside `.metaobjects/`, and `python3`, and `sync` prints the
+  one it used. Before this both transports were accepted in config and refused by `sync` with
+  "not supported by this toolchain yet". Now a package that is not installed, a missing
+  interpreter, or a `dir` the package does not ship is `ERR_DEPENDENCY_UNRESOLVED` naming the
+  `npm install` / `pip install` fix, and a `dir` holding no manifest is
+  `ERR_DEPENDENCY_MANIFEST_INVALID`. `sync` warns when the installed package's version differs
+  from its manifest's (a release without regenerating the shared model). The lock format is
+  unchanged and records no host path or interpreter. Python already loaded such a dependency
+  from its committed snapshot; two new `dependency-conformance` cases prove both ports do, and
+  a new `transport-cases.json` arm (14 cases, Node only) pins the transports. On the publisher
+  side `sharedModelFile()`'s default version now also reads a `pyproject.toml` `[project]`
+  version, so a Python package stamps the version consumers install.
+  [docs/features/metadata-dependencies.md](docs/features/metadata-dependencies.md) gains the
+  two-step publish path for an npm and a Python package and a private-registry recipe (Gitea
+  and similar). `maven` / `nuget` stay Phase 2.
 
 - **C# reads its generated-code directory from `.metaobjects/config.json`, so a plain
   `dotnet meta verify` runs the codegen gate.** Set `"csharp": { "outDir": "Generated" }`
@@ -102,6 +225,20 @@ here.**
 
 ### Fixed
 
+- **`@default: "now"` is the current time on Postgres, not the table's creation time.** The
+  expected schema stored it as the literal `'now'`, and Postgres converts that literal to a
+  timestamp once, when it creates the column's `DEFAULT`, so every row got the same value. It
+  is now the expression `now()`, which is what `@autoSet` and the generated Drizzle column
+  already used. On a database `meta migrate` created from such a field, the next `meta migrate`
+  proposes a change-column-default, and `meta verify --db` reports the old default until it is
+  applied.
+
+- **`meta verify --db` on SQLite accepts how other tools spell the same storage.** A column
+  declared `BOOLEAN` now matches the model's `INTEGER`, `DECIMAL(p,s)` matches `NUMERIC`, and an
+  unquoted `TRUE`/`FALSE` default matches `1`/`0`. SQLite stores each pair identically. Prisma
+  writes the first of each, so before this fix a database pushed by Prisma reported drift on
+  every boolean and decimal column.
+
 - **`meta deps sync` and `meta deps check` finish cleanly on a project whose own metadata the
   Node toolchain cannot read.** A Maven project (`src/main/resources/metadata`), a C# project, or a
   model using vocabulary only another port registers declares no neutral `sources`, so the closing
@@ -111,6 +248,21 @@ here.**
   the command and rolls the sync back. A stale `docs/CONFORMANCE.md` cell that claimed Python passed
   only 2 of the dependency corpus's cases is corrected.
 
+- **The "Model / metadata" link in the Python, C#, Java and Kotlin API docs no longer points at
+  a page that does not exist.** Those ports write no model pages, so the relative link was dead.
+  It is now written only when `modelBaseUrl` is set.
+
+- **TypeScript API docs describe only what the run writes.** The `api-docs` pages listed the
+  stock entity module (the model, its Zod schemas and `relations()`), queries and Fastify routes
+  for every entity, whatever the generator list held. A project that wires none of them, such as
+  the `meta init --with-docs` scaffold, now gets pages without them. An owned generator that
+  writes one counts when it carries the `emitsEntityModule`, `emitsQueries` or `mountsRoutes`
+  marker.
+
+- **The metamodel reference index reads as prose.** The generated index said "NOT documentation"
+  in capitals and told a reader of an HTML page to "follow a link into `types/<family>.md`". It
+  now says what the page covers and that each row links to its type page.
+
 - **A failed `meta deps sync` no longer leaves a lock and snapshot that cannot load.** The
   command wrote `deps.lock.json` and the `.metaobjects/deps/` snapshot before loading the
   combined model, and on a load failure it exited 1 but kept the new files. Because the lock
@@ -118,6 +270,26 @@ here.**
   command failed to load. The sync now saves the previous lock and snapshot and restores both
   on any failure, so the previous state is intact. `meta deps check` also loads the model once
   its hashes match and exits 1 with the load error when it does not load.
+
+- **`meta verify --db` no longer reports false CHECK drift on Postgres for a one-value enum, a
+  `presentIff` validator, or a validator on a `varchar(n)` column; a changed enum-member case
+  or regex case no longer reads as clean.** Postgres stores `"k" IN ('x')` as `k = 'x'` and
+  `a IS NOT DISTINCT FROM b` as `NOT (a IS DISTINCT FROM b)`, and casts a `varchar` column to
+  text (`(region)::text`) in a comparison, a `length()` and a null-safe test. The comparison now
+  folds all three back, so a database `migrate` just built verifies clean. The same false drift
+  reached `meta migrate --from-db`, which proposed a drop-check and add-check on every run, and
+  the offline `migrate --dry-run` after a `baseline --from-db`. It has done so since 1.0.x. In
+  the other direction, the comparison lower-cased quoted literals and deleted every bracket,
+  quote and run of blanks inside them, so `IN ('OPEN')` against `IN ('open')` and `~ '^[A-Z]+$'`
+  against `~ '^[a-z]+$'` compared as equal. Literals are now compared as written. A check
+  stored in a different case than the model declares therefore shows as drift once: run
+  `meta migrate` to bring it back. Separately, `char(n)` is no longer treated as a text column
+  for the `(col)::text` fold: its own regex operator sees the blank padding the cast trims, and
+  Postgres never adds the cast there, so an explicit `(col)::text ~ '…'` on a `char(n)` column
+  now reads as drift. A precedence change (`(a OR b) AND c` against `a OR (b AND c)`) is still
+  not detected; that needs Postgres to canonicalise the expected side. A new Postgres test
+  migrates, applies and verifies every CHECK shape `migrate` generates. Schema comparison is
+  TypeScript-owned, so no other port carries this comparison.
 
 ### Documentation
 

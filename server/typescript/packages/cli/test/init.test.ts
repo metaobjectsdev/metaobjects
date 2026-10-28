@@ -242,6 +242,37 @@ describe("init() — the owned-codegen tier is empty on purpose", () => {
     expect(configSrc).toContain("meta eject");
   });
 
+  test("--with-docs wires the docs generators and their target, and still copies no generator", async () => {
+    await init({ cwd, withDocs: true });
+    const configSrc = readFileSync(join(cwd, "metaobjects.config.ts"), "utf8");
+    expect(configSrc).toContain('import { docsFile, apiDocsFile } from "@metaobjectsdev/codegen-ts/generators";');
+    expect(configSrc).toContain("generators: [docsFile(), apiDocsFile()]");
+    expect(configSrc).toMatch(/targets: \{ docs: \{ outDir: "[^"]+" \} \}/);
+    expect(readdirSync(join(cwd, "codegen", "generators"))).toEqual([]);
+  });
+
+  test("--with-docs on a project that already has a config leaves it alone and says what to add", async () => {
+    writeFileSync(join(cwd, "metaobjects.config.ts"), "export default {};\n", "utf8");
+    const result = await init({ cwd, withDocs: true });
+    expect(readFileSync(join(cwd, "metaobjects.config.ts"), "utf8")).toBe("export default {};\n");
+    expect(result.warnings.join("\n")).toContain("docsFile()");
+  });
+
+  test("--with-docs writes documentation on the first `meta gen`", async () => {
+    const dir = mkGenProjectDir("with-docs-");
+    try {
+      await init({ cwd: dir, withDocs: true, quiet: true });
+      mkdirSync(join(dir, "metaobjects"), { recursive: true });
+      writeFileSync(join(dir, "metaobjects", "meta.probe.json"), PROBE_ENTITY, "utf8");
+      const { genCommand } = await import("../src/commands/gen.js");
+      expect(await genCommand([], dir)).toBe(0);
+      expect(existsSync(join(dir, "docs", "generated"))).toBe(true);
+      expect(readdirSync(join(dir, "docs", "generated")).length).toBeGreaterThan(0);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test("--print-only forecasts the same: the tier, not files in it", async () => {
     const result = await init({ cwd, printOnly: true });
     expect(result.created).toContain("codegen/generators");

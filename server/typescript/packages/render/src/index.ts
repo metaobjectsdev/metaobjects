@@ -1,5 +1,16 @@
 export { render, type RenderOptions } from "./render.js";
-export { type Provider, InMemoryProvider } from "./provider.js";
+export { type Provider, type InMemoryProviderOptions, InMemoryProvider } from "./provider.js";
+export {
+  TEMPLATE_ENGINES,
+  TEMPLATE_ENGINE_MUSTACHE,
+  TEMPLATE_ENGINE_JINJA,
+  MUSTACHE_EXTENSION,
+  JINJA_EXTENSIONS,
+  engineForExtension,
+  templateEngineOf,
+  type TemplateEngine,
+} from "./engine.js";
+export { jinjaReferenceLine } from "./jinja/verify.js";
 export { ESCAPERS, type RenderFormat } from "./escapers.js";
 export {
   verify,
@@ -9,6 +20,9 @@ export {
   ERR_PARTIAL_UNRESOLVED,
   ERR_REQUIRED_SLOT_UNUSED,
   ERR_OUTPUT_TAG_MISSING,
+  ERR_TEMPLATE_NOT_STATIC,
+  ERR_TEMPLATE_SYNTAX,
+  ERR_TEMPLATE_ENGINE_UNSUPPORTED,
   type PayloadField,
   type ResolveStack,
   type VerifyError,

@@ -1,0 +1,9 @@
+{
+  "title": "Tom & \"Jerry\"",
+  "body": "<script>alert('x')</script>",
+  "markup": "<b>bold</b>",
+  "comments": [
+    "a < b",
+    "it's"
+  ]
+}

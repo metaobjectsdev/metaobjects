@@ -72,7 +72,7 @@ export { describeSqlType, isWidening, sqlTypeEquals } from "./sql-type.js";
 export type { SqlType } from "./sql-type.js";
 export type {
   SchemaSnapshot, SnapshotMeta,
-  TableDescriptor, ColumnDescriptor, IndexDescriptor, FkDescriptor, ColumnDefault,
+  TableDescriptor, ColumnDescriptor, IndexDescriptor, FkDescriptor, CheckDescriptor, ColumnDefault,
   ViewDescriptor, ViewChangeReason, FkAction, NameChange,
   Change, ChangeKind, ChangeStatus,
   AllowOptions, AmbiguousChange, AmbiguousResolution, AmbiguousCallback,

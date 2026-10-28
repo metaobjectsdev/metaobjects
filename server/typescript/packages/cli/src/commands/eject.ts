@@ -15,9 +15,9 @@
 // config-array edit has regressed across at least four filed issues). The primary
 // consumer performs two file edits and one install trivially when told exactly what
 // they are. `meta gen` plus `tsc` is the audit.
-import { existsSync } from "node:fs";
-import { mkdir, writeFile, stat, readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { existsSync, readdirSync } from "node:fs";
+import { mkdir, writeFile, stat, readFile, rm, rmdir } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { cliVersion } from "../lib/version.js";
 import * as coreTpl from "@metaobjectsdev/codegen-ts";
 import * as reactTpl from "@metaobjectsdev/codegen-ts-react";
@@ -427,6 +427,13 @@ interface GeneratorListRow {
    * Absent when the project owns none of its renderers.
    */
   templates?: GeneratorTemplateRow[];
+  /**
+   * The files under `codegen/runtime/` that differ from the installed adapter package, for a
+   * generator whose output imports that adapter. Any makes `status` `differs`: the shipped
+   * generator imports the package, so undoing this copy would drop the adapter edit unseen.
+   * Absent when none differ.
+   */
+  runtime?: string[];
 }
 
 interface GeneratorTemplateRow {
@@ -447,6 +454,7 @@ async function generatorListGroups(cwd: string): Promise<GeneratorListGroup[]> {
   // Every renderer the project holds, against the package: attributed to a generator by what
   // that generator imports, so a renderer another generator owns never flags this one.
   const templateStatus = await templateCopyStatus(cwd, packagedTemplates());
+  const changedRuntime = (await runtimeCopyStatus(cwd)).filter((r) => !isStockVerdict(r.verdict)).map((r) => r.path);
   for (const source of SOURCES) {
     const rows: GeneratorListRow[] = [];
     groups.push({ packageName: source.packageName, rows });
@@ -483,6 +491,10 @@ async function generatorListGroups(cwd: string): Promise<GeneratorListGroup[]> {
       }
       if (renderers.length > 0) row.templates = renderers;
       if (renderers.some((r) => r.status === "differs")) row.status = "differs";
+      if (ejectsRuntime(name) && changedRuntime.length > 0) {
+        row.runtime = changedRuntime;
+        row.status = "differs";
+      }
     }
   }
   return groups;
@@ -517,14 +529,19 @@ async function listOutput(cwd: string): Promise<string> {
       else if (r.status === "reformatted") lines.push(`  ${r.name}  [owned — same content as the reference, your formatting]`);
       else {
         const differing = (r.templates ?? []).filter((t) => t.status === "differs");
+        const companions = [
+          ...(differing.length > 0 ? [`${differing.length} renderer(s)`] : []),
+          ...(r.runtime ? [`${r.runtime.length} runtime adapter file(s)`] : []),
+        ];
         lines.push(
           generatorFileDiffers(r)
             ? `  ${r.name}  [owned — DIFFERS: ${r.behind} line(s) behind, ${r.own} line(s) of your own]`
-            : `  ${r.name}  [owned — DIFFERS: generator identical, ${differing.length} renderer(s) differ]`,
+            : `  ${r.name}  [owned — DIFFERS: generator identical, ${companions.join(" and ")} differ]`,
         );
         for (const t of differing) {
           lines.push(`    renderer ${t.path}  [DIFFERS: ${t.behind} line(s) behind, ${t.own} line(s) of your own]`);
         }
+        for (const path of r.runtime ?? []) lines.push(`    runtime ${path}  [DIFFERS]`);
       }
     }
     lines.push("");
@@ -592,6 +609,208 @@ async function listOutput(cwd: string): Promise<string> {
 
   lines.push("Run: meta eject <name>");
   return lines.join("\n");
+}
+
+// ---------------------------------------------------------------------------
+// --undo: take back an owned copy that is the shipped reference
+// ---------------------------------------------------------------------------
+
+/** A copy comparison that found the shipped content, whatever the formatting. */
+function isStockVerdict(verdict: string): boolean {
+  return verdict === "identical" || verdict === "reformatted";
+}
+
+/** A generator row whose file, every renderer it reaches and its runtime adapter, are the shipped reference. */
+function isStockRow(r: GeneratorListRow): boolean {
+  return isStockVerdict(r.status);
+}
+
+/**
+ * The advisory `meta gen` prints when owned generator copies are the shipped reference.
+ *
+ * An owned copy that never changed buys nothing: it freezes at the release it was copied
+ * from and misses every later fix, while the same generator imports from its package. Most
+ * were ejected while the stock generators could not be imported, and nothing noticed once
+ * they could. Undefined when there are none, and free when the project owns no copy.
+ */
+export async function stockCopyNotice(cwd: string): Promise<string | undefined> {
+  if (!existsSync(join(cwd, OWNED_GENERATORS_DIR))) return undefined;
+  const stock = (await generatorListGroups(cwd)).flatMap((g) => g.rows).filter(isStockRow).map((r) => r.name);
+  if (stock.length === 0) return undefined;
+  const one = stock.length === 1;
+  return (
+    `${stock.length} owned generator cop${one ? "y is" : "ies are"} the shipped reference, unchanged ` +
+    `(${stock.join(", ")}): ${one ? "it" : "they"} will miss the fixes later releases make. ` +
+    `\`meta eject --undo\` removes ${one ? "it" : "them"} and prints the import to restore.`
+  );
+}
+
+/** One owned copy `--undo` took back. */
+interface UndoneRow {
+  name: string;
+  path: string;
+  /** The edit in `metaobjects.config.ts` that runs the generator as shipped again. */
+  wire: { import: string; replaces: string };
+}
+
+interface UndoKept {
+  name: string;
+  path: string;
+  reason: string;
+}
+
+interface UndoPayload {
+  undone: UndoneRow[];
+  /** Every file removed: the generators, their copied renderers and adapter source. */
+  removed: string[];
+  kept: UndoKept[];
+  /** Files under `codegen/` that were left because they differ from the package. */
+  keptCompanions: string[];
+}
+
+function diffCommand(name: string, packageName: string, path: string): string {
+  return `diff -u node_modules/${packageName}/src/reference/${name}.ts ${path}`;
+}
+
+async function pruneEmptyDirs(cwd: string, dirs: readonly string[]): Promise<void> {
+  for (const d of dirs) {
+    let dir = join(cwd, d);
+    // Stop at `codegen/`'s children: `codegen/` itself may hold the adopter's own files.
+    while (existsSync(dir) && readdirSync(dir).length === 0 && dir !== join(cwd, "codegen")) {
+      await rmdir(dir);
+      dir = dirname(dir);
+    }
+  }
+}
+
+/**
+ * `meta eject --undo [<name>...]`. Removes owned generator copies that are the shipped
+ * reference (file and every renderer it reaches), plus the renderer and adapter copies no
+ * remaining owned generator uses. It never edits `metaobjects.config.ts`, as eject never
+ * does: it names the import to swap back.
+ *
+ * Names are validated, and a customised copy refused, before anything is removed. With no
+ * names a customised copy is simply kept and said so.
+ */
+async function undoCommand(names: readonly string[], force: boolean, cwd: string, fmt: OutputFormat): Promise<number> {
+  const bad = names.filter((n) => resolveSource(n) === undefined);
+  if (bad.length > 0) {
+    log.error(
+      `meta eject --undo takes generator names; not a generator: ${bad.join(", ")}. Nothing was removed. ` +
+        "A library or the docs-site theme is your own data once ejected, so it is never undone. " +
+        "Run `meta eject --list` to see what you own.",
+    );
+    return 2;
+  }
+  const owned = (await generatorListGroups(cwd)).flatMap((g) => g.rows).filter((r) => r.status !== "available");
+  const named = names.length > 0;
+  const targets = named ? owned.filter((r) => names.includes(r.name)) : owned.filter(isStockRow);
+  const kept: UndoKept[] = [];
+  const notOwned = names.filter((n) => !owned.some((r) => r.name === n));
+  if (notOwned.length > 0) {
+    log.error(
+      `not an owned copy (nothing at ${OWNED_GENERATORS_DIR}/): ${notOwned.join(", ")}. Nothing was removed. ` +
+        "Run `meta eject --list` to see what you own.",
+    );
+    return 2;
+  }
+  const refused = named && !force ? targets.filter((r) => !isStockRow(r)) : [];
+  if (refused.length > 0) {
+    for (const r of refused) {
+      const path = `${OWNED_GENERATORS_DIR}/${r.name}.ts`;
+      const changed = [
+        ...(r.templates ?? []).filter((t) => t.status === "differs").map((t) => t.path),
+        ...(r.runtime ?? []),
+      ];
+      log.error(
+        `${path} differs from the ${r.package} reference (${r.behind} line(s) behind it, ${r.own} of your own` +
+          `${changed.length > 0 ? `; changed with it: ${changed.join(", ")}` : ""}), ` +
+          `so undoing it would discard your changes. See them: ${diffCommand(r.name, r.package, path)}`,
+      );
+    }
+    log.error("Nothing was removed. Pass --force to remove a customised copy anyway.");
+    return 2;
+  }
+  if (!named) {
+    for (const r of owned.filter((o) => !isStockRow(o))) {
+      kept.push({
+        name: r.name,
+        path: `${OWNED_GENERATORS_DIR}/${r.name}.ts`,
+        reason: r.status === "owned" ? "owned, reference unreadable" : "customised — differs from the reference",
+      });
+    }
+  }
+
+  const gone = new Set(targets.map((r) => r.name));
+  const remaining = owned.filter((r) => !gone.has(r.name));
+  const stillReached = new Set(remaining.flatMap((r) => closureOf(r.name).templates.map((f) => f.path)));
+  const removed: string[] = [];
+  const keptCompanions: string[] = [];
+
+  for (const r of targets) removed.push(`${OWNED_GENERATORS_DIR}/${r.name}.ts`);
+  const templateRows = await templateCopyStatus(cwd, packagedTemplates());
+  const dropTemplates = new Set(targets.flatMap((r) => (r.templates ?? []).map((t) => t.path)));
+  for (const row of templateRows) {
+    if (!dropTemplates.has(row.path) || stillReached.has(row.path)) continue;
+    if (isStockVerdict(row.verdict)) removed.push(row.path);
+    else keptCompanions.push(row.path);
+  }
+  // The adapter source is one shared tree: it goes only when nothing left in the project emits
+  // code that imports it, and goes whole or not at all, so a forced undo never leaves half of it.
+  const adapterDropped = targets.some((r) => ejectsRuntime(r.name)) && !remaining.some((r) => ejectsRuntime(r.name));
+  if (adapterDropped) {
+    const rows = await runtimeCopyStatus(cwd);
+    const changed = rows.filter((row) => !isStockVerdict(row.verdict)).map((row) => row.path);
+    if (changed.length === 0) removed.push(...rows.map((row) => row.path));
+    else keptCompanions.push(...changed);
+  }
+  for (const rel of removed) await rm(join(cwd, rel), { force: true });
+  await pruneEmptyDirs(cwd, [OWNED_TEMPLATES_DIR, OWNED_RUNTIME_DIR, OWNED_GENERATORS_DIR]);
+
+  const undone: UndoneRow[] = targets.map((r) => {
+    const closure = closureOf(r.name);
+    const exportName = extractExportName(extractImportLine(closure.generator.content, r.name), r.name);
+    return {
+      name: r.name,
+      path: `${OWNED_GENERATORS_DIR}/${r.name}.ts`,
+      wire: {
+        import: `import { ${exportName} } from "${factoryModuleOf(r.name) ?? r.package}";`,
+        replaces: `import { ${exportName} } from "./${OWNED_GENERATORS_DIR}/${r.name}.js";`,
+      },
+    };
+  });
+
+  if (fmt !== "text") {
+    const payload: UndoPayload = { undone, removed, kept, keptCompanions };
+    emitStructured(payload, fmt);
+    return 0;
+  }
+  if (undone.length === 0) {
+    log.info(
+      owned.length === 0
+        ? "No owned generator copies: nothing to undo."
+        : "Nothing to undo: every owned copy differs from the shipped reference.",
+    );
+  } else {
+    log.info(`Removed ${removed.length} file(s); ${undone.length} generator(s) run as shipped again:`);
+    for (const f of removed) log.info(`  ${f}`);
+    log.info("In metaobjects.config.ts, REPLACE each import below (`meta gen` fails on the old one until you do):");
+    for (const u of undone) log.info(`  ${u.wire.replaces}\n    -> ${u.wire.import}`);
+    if (adapterDropped && keptCompanions.length === 0) {
+      log.info(
+        `The shipped routes generator imports its HTTP adapter from ${HTTP_RUNTIME_PACKAGE} rather than ` +
+          `${OWNED_RUNTIME_DIR}/: install it, then re-run \`meta gen\`.`,
+      );
+    }
+  }
+  for (const k of kept) log.info(`Kept ${k.path}: ${k.reason}.`);
+  if (keptCompanions.length > 0) {
+    log.info(
+      `Kept ${keptCompanions.length} file(s) under codegen/ that differ from the package: ` +
+        `${keptCompanions.join(", ")}. \`meta eject --list\` compares each.`,
+    );
+  }
+  return 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -849,6 +1068,14 @@ export async function ejectCommand(
   } catch (err) {
     log.error(describeError(err));
     return 2;
+  }
+
+  if (flags.undo) {
+    if (flags.list) {
+      log.error("meta eject: --undo does not combine with --list.");
+      return 2;
+    }
+    return undoCommand(flags.names, flags.force, cwd, fmt);
   }
 
   if (flags.list) {
