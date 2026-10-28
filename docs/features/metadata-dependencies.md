@@ -81,8 +81,11 @@ here). It then writes the committed snapshot
 (`.metaobjects/deps/<name>/<name>.metaobjects.json`) and the lock
 (`.metaobjects/deps.lock.json`), and finally loads the whole updated collection once
 — so a sync that produces an unloadable model fails in `sync` itself, with the
-loader's own error, rather than surfacing on the next unrelated `meta gen`. Narrow to
-one or more names as positionals; `--dry-run` reports the plan and writes nothing.
+loader's own error, rather than surfacing on the next unrelated `meta gen`. A failed
+sync is atomic: it restores the previous lock and snapshot, prints the rollback and
+the load error, and exits 1. The per-dependency `synced` / `unchanged` / `pruned`
+lines print only after the load succeeds. Narrow to one or more names as positionals;
+`--dry-run` reports the plan and writes nothing.
 
 ```
 $ meta deps sync
@@ -91,7 +94,9 @@ synced acme-common 1.0.0→1.1.0 (10fbf886→a1b2c3d4)
 
 **`meta deps check`** re-resolves each declared dependency exactly as `sync`'s first
 two steps do, and compares the artifact's *currently installed* hash against what the
-lock recorded — read-only, it never touches the lock or the snapshot. It needs the
+lock recorded. Once the hashes match, it also loads the committed snapshot and exits 1
+with the load error if the model does not load: matching hashes do not prove the model
+loads. It never writes the lock or the snapshot. It needs the
 publisher's `path` reachable right now, which is why it is a separate command from
 loading (below): CI running against a committed snapshot does not need the publisher
 checked out, but a `check` run does.
