@@ -62,7 +62,9 @@ import java.util.TreeSet;
  * is parameter-driven — exposes a {@code mode} parameter
  * ({@code -Dmeta.verify.mode=...}):
  * <ul>
- *   <li>{@code codegen} (DEFAULT, back-compat, byte-identical to the historical goal) —
+ *   <li>unset (DEFAULT) — the cross-port default gate set: {@code codegen}, then
+ *       {@code templates} when {@code templateRoot} is set (skipped with a note otherwise).</li>
+ *   <li>{@code codegen} (codegen only, byte-identical to the historical goal) —
  *       the regenerate-to-temp + diff-against-committed drift gate described above; covers
  *       {@code codegen-spring} AND {@code codegen-kotlin} via the shared meta:gen SPI.</li>
  *   <li>{@code templates} — template/prompt {@code {{field}}}↔payload drift, run via the

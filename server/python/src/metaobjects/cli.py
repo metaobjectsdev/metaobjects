@@ -2865,7 +2865,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "verify",
         help=(
             "drift gate — explicit subverbs --codegen / --templates / --db "
-            "(ADR-0021 D2); bare verify defaults to --codegen"
+            "(ADR-0021 D2); bare verify runs --codegen and --templates"
         ),
     )
     verify.add_argument(
