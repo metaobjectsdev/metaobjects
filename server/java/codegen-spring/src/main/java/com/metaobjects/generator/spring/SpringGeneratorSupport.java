@@ -8,6 +8,7 @@ import com.metaobjects.generator.spring.AutoSetSupport;
 import com.metaobjects.generator.spring.SpringM2mSupport;
 import com.metaobjects.generator.spring.SpringNaming;
 import com.metaobjects.generator.spring.SpringTypeMapper;
+import com.metaobjects.generator.spring.TphPlan;
 
 import com.metaobjects.MetaData;
 import com.metaobjects.config.WireFormat;
