@@ -90,9 +90,14 @@ dist/
 *.tsbuildinfo
 `;
 
-function buildMetaobjectsConfigBody(dialect: "sqlite" | "postgres" | "d1" = "sqlite"): string {
+function buildMetaobjectsConfigBody(dialect: "sqlite" | "postgres" | "d1" = "sqlite", withDocs = false): string {
+  const docsImport = withDocs
+    ? `import { docsFile, apiDocsFile } from "@metaobjectsdev/codegen-ts/generators";\n`
+    : "";
+  const docsTarget = withDocs ? `  targets: { docs: { outDir: "${DEFAULT_DOCS_DIR}" } },\n` : "";
+  const generators = withDocs ? "[docsFile(), apiDocsFile()]" : "[]";
   return `import { defineConfig } from "@metaobjectsdev/cli";
-
+${docsImport}
 export default defineConfig({
   outDir:  "${SCAFFOLD_OUT_DIR}",
   dialect: "${dialect}",
@@ -138,7 +143,7 @@ export default defineConfig({
   //   meta generator new openapi --scope model
   //
   // writes a working, commented generator into ./codegen/generators/ and adds it here.
-  generators: [],
+${docsTarget}  generators: ${generators},
 });
 `;
 }
@@ -190,6 +195,12 @@ export interface InitOptions {
    * without acquiring a TypeScript project it will never use.
    */
   configOnly?: boolean;
+  /**
+   * Wire the documentation generators (`docsFile()`, `apiDocsFile()`) and the `docs`
+   * target they write to, so the first `meta gen` produces documentation. Documentation
+   * is a generator like any other; this only chooses the two that need no further setup.
+   */
+  withDocs?: boolean;
 }
 
 export interface InitResult {
@@ -682,7 +693,7 @@ export async function init(opts: InitOptions): Promise<InitResult> {
   // Scaffold metaobjects.config.ts at the project root. Never overwrite if it exists.
   const forgeConfigPath = join(opts.cwd, "metaobjects.config.ts");
   if (!(await fileExists(forgeConfigPath))) {
-    await writeFile(forgeConfigPath, buildMetaobjectsConfigBody(opts.d1 ? "d1" : "sqlite"), "utf8");
+    await writeFile(forgeConfigPath, buildMetaobjectsConfigBody(opts.d1 ? "d1" : "sqlite", opts.withDocs === true), "utf8");
     result.created.push("metaobjects.config.ts");
   }
 
@@ -914,6 +925,7 @@ export async function initCommand(args: string[], cwd: string): Promise<number> 
       wireRoot: flags.wireRoot,
       docsOnly: flags.docsOnly,
       configOnly: flags.configOnly,
+      withDocs: flags.withDocs,
     });
 
     if (result.alreadyInitialized) {

@@ -9,7 +9,10 @@
 // targets:       Markdown. The pages describe the code the stock TypeScript generators
 //                emit (the entity module, queries, the Fastify routes and, when
 //                `routesFileHono` is wired, the Hono ones, the prompt and output helpers);
-//                they import nothing.
+//                they import nothing. The queries and the routes are described only when a
+//                generator in the run writes them (`emitsQueries`, `mountsRoutes`, or a
+//                copy of the stock one by name); a generator of your own that writes them
+//                under another name needs the marker, or its surface is left out.
 // use-when:      you want to change the API reference: which units get a page, where the
 //                pages land, or which of the three forms are written. The packaged
 //                `apiDocsFile()` writes these pages without this file; eject it only to

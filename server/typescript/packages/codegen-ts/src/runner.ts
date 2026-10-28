@@ -1,6 +1,6 @@
 import { join, relative, resolve, isAbsolute, dirname } from "node:path";
 import { warnMissingPromptGenerators } from "./prompt-generator-gate.js";
-import { runEmitsHonoRoutes, runEmitsUiTier, runRoutesExpose, warnUnmarkedRoutesGenerators, warnUnmarkedUiGenerators } from "./ui-tier-gate.js";
+import { runEmitsHonoRoutes, runEmitsQueries, runEmitsRestRoutes, runEmitsUiTier, runRoutesExpose, warnUnmarkedRoutesGenerators, warnUnmarkedUiGenerators } from "./ui-tier-gate.js";
 import { warnRetiredCodegenAttrs } from "./retired-codegen-attrs.js";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
@@ -664,6 +664,10 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   // `MetaobjectsGenConfig extends Omit<ResolvedGenConfig,…>`, and it is the escape hatch for
   // an owned generator whose marker was dropped.
   const includeHonoRoutes = config.includeHonoRoutes ?? runEmitsHonoRoutes(config.generators);
+  // The api reference documents the query helpers and the REST routes only when something in
+  // the run writes them. Run-scoped, like the Hono flag, and settable the same way.
+  const includeQueries = config.includeQueries ?? runEmitsQueries(config.generators);
+  const includeRestRoutes = config.includeRestRoutes ?? runEmitsRestRoutes(config.generators);
 
   // Same auto-detection for the CLIENT UI tier. `agent/ui.md` describes forms, grids
   // and the endpoints their hooks call; whether any of that is emitted is a generator
@@ -875,6 +879,8 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
         dialect: config.dialect,
         outputLayout: selfTarget.outputLayout,
         includeHonoRoutes,
+        includeQueries,
+        includeRestRoutes,
         includeNames: namesTargets.has(selfTarget.name),
         includeReportExport: reportExportTargets.has(selfTarget.name),
         includeUiTier,

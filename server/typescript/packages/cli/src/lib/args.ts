@@ -18,6 +18,7 @@ export interface InitFlags {
   wireRoot: boolean;
   docsOnly: boolean;
   configOnly: boolean;
+  withDocs: boolean;
 }
 
 /** The flag table `parseInitArgs` parses. Exported so the help text can be gated against it. */
@@ -33,6 +34,7 @@ export const INIT_OPTIONS = {
   "no-wire-root": { type: "boolean", default: false },
   "docs-only": { type: "boolean", default: false },
   "config-only": { type: "boolean", default: false },
+  "with-docs": { type: "boolean", default: false },
 } as const;
 
 export function parseInitArgs(argv: string[]): InitFlags {
@@ -54,6 +56,7 @@ export function parseInitArgs(argv: string[]): InitFlags {
     wireRoot: !values["no-wire-root"],
     docsOnly: !!values["docs-only"],
     configOnly: !!values["config-only"],
+    withDocs: !!values["with-docs"],
   };
 }
 
@@ -128,6 +131,12 @@ export interface GenFlags {
    * config does not declare is refused; a narrowing never adds a generator.
    */
   generators?: string[];
+  /**
+   * `--strict`: load the model strictly, as `meta verify` does (ADR-0023), so an unknown
+   * attribute is an error and nothing is written. Without it `gen` loads leniently and
+   * only warns.
+   */
+  strict: boolean;
 }
 
 /** The flag table `parseGenArgs` parses. Exported so the help text can be gated against it. */
@@ -139,6 +148,7 @@ export const GEN_OPTIONS = {
   "no-antipatterns": { type: "boolean", default: false },
   "limit": { type: "string" },
   "generators": { type: "string" },
+  "strict": { type: "boolean", default: false },
 } as const;
 
 export function parseGenArgs(argv: string[]): GenFlags {
@@ -166,6 +176,7 @@ export function parseGenArgs(argv: string[]): GenFlags {
     list: !!values.list,
     probe: !!values.probe,
     noAntipatterns: !!values["no-antipatterns"],
+    strict: !!values.strict,
     // Throws on a bad value; the command layer reports it and exits 2, exactly as
     // it does for --baseline above.
     limit: parseAdvisoryLimit(values.limit as string | undefined),
@@ -795,12 +806,18 @@ export interface EjectFlags {
   list: boolean;
   /** Overwrite an already-ejected file; default false — eject never clobbers. */
   force: boolean;
+  /**
+   * `--undo`: take back owned copies that are the shipped reference. With no names, every
+   * such copy; with names, those, and a copy that differs is refused unless `force`.
+   */
+  undo: boolean;
 }
 
 /** The flag table `parseEjectArgs` parses. Exported so the help text can be gated against it. */
 export const EJECT_OPTIONS = {
   "list": { type: "boolean", default: false },
   "force": { type: "boolean", default: false },
+  "undo": { type: "boolean", default: false },
 } as const;
 
 export function parseEjectArgs(argv: string[]): EjectFlags {
@@ -829,6 +846,7 @@ export function parseEjectArgs(argv: string[]): EjectFlags {
     names: positionals,
     list: !!values.list,
     force: !!values.force,
+    undo: !!values.undo,
   };
 }
 

@@ -80,6 +80,25 @@ export function runEmitsHonoRoutes(generators: readonly Generator[]): boolean {
 }
 
 /**
+ * Does this run write the query modules? The api reference documents the query helpers only
+ * when it does: it used to describe the stock queries whatever the generator list held, so a
+ * project that wired none, or its own, got pages naming functions nothing exports.
+ *
+ * The marker, or the name `queriesFile()` carries: an owned copy keeps its name through
+ * `meta eject`, so a copy ejected before `emitsQueries` existed is still found.
+ */
+export function runEmitsQueries(generators: readonly Generator[]): boolean {
+  return generators.some((g) => g.emitsQueries === true || g.name === "queries-file");
+}
+
+/** Does this run mount the Fastify REST routes? Same reasoning, and same name fallback, as {@link runEmitsQueries}. */
+export function runEmitsRestRoutes(generators: readonly Generator[]): boolean {
+  return generators.some(
+    (g) => g.emitsHonoRoutes !== true && (g.mountsRoutes !== undefined || g.name === "routes-file"),
+  );
+}
+
+/**
  * The `expose` option of each routes surface the run mounts, for the api reference to apply (a docs
  * page that lists DELETE for a route the adopter does not mount is a lie).
  *

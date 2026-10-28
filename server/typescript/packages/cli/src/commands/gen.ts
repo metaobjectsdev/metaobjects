@@ -22,7 +22,8 @@ import { packageOfResolutionKey } from "@metaobjectsdev/metadata";
 import type { MetaRoot } from "@metaobjectsdev/metadata";
 import type { Collection } from "@metaobjectsdev/sdk";
 import { reportLoadError } from "../lib/load-error.js";
-import { UNKNOWN_ATTR_GEN_ADVICE, unknownAttrWarnings } from "../lib/unknown-attr-warnings.js";
+import { STRICT_GEN_HINT, UNKNOWN_ATTR_GEN_ADVICE, unknownAttrWarnings } from "../lib/unknown-attr-warnings.js";
+import { stockCopyNotice } from "./eject.js";
 import {
   buildCatalogListing, renderCatalogText, wiredGeneratorNames, ownedGeneratorNames,
   declaredDepsOf,
@@ -143,6 +144,10 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
   // projectRoot, not cwd, for the same reason its neighbour is — the manifest belongs to
   // whichever directory `resolveCollection` decided the metadata lives in.
   advise(warnIfManifestIgnored(projectRoot));
+  // Owned generator copies that are the shipped reference, unchanged: they miss every later fix.
+  // Says nothing when the project owns none, and never affects the exit code.
+  const stockNotice = await stockCopyNotice(projectRoot);
+  if (stockNotice !== undefined) { log.warn(stockNotice); advise(stockNotice); }
 
   // ADR-0034 Amendment 9: the config IS the list. With none there is nothing to generate,
   // documentation included, and a run that wrote nothing silently would read as a pass.
@@ -186,9 +191,12 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
     ...loadMemoryOptionsFrom(forgeConfig),
   };
   try {
-    metadata = await loadMemory(genCollection.configDir, loadOptions);
+    // `--strict` is the load `meta verify` makes (ADR-0023): an unknown attribute stops the
+    // run before anything is written, instead of being warned about and generated anyway.
+    metadata = await loadMemory(genCollection.configDir, flags.strict ? { ...loadOptions, strict: true } : loadOptions);
   } catch (err) {
     reportLoadError(log, "failed to load metadata", err);
+    if (flags.strict) log.error(STRICT_GEN_HINT);
     return 1;
   }
 

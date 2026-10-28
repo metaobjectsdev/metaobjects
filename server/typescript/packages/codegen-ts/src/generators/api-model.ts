@@ -290,6 +290,11 @@ export interface ApiModelContext {
    *  run didn't configure). The Fastify REST surface is always documented (it is
    *  the default-suite routes generator). Defaults to false. */
   includeHonoRoutes?: boolean;
+  /** Whether a generator in the run writes the query modules. The query helpers are documented
+   *  only when it does; a caller that is not a run leaves it out and gets them. Default true. */
+  includeQueries?: boolean;
+  /** Likewise for the Fastify REST routes. Default true. */
+  includeRestRoutes?: boolean;
   /** The project's `apiPrefix`. Every generated route is mounted inside
    *  `fastify.register(…, { prefix: apiPrefix })`, so it is part of the address a
    *  documented endpoint is served at — a page that omits it is one path segment
@@ -315,6 +320,7 @@ export function buildApiModel(root: MetaRoot, ctx: ApiModelContext): ApiModel {
   const apiPrefix = ctx.apiPrefix ?? "";
   const relationMap = ctx.relationMap ?? buildRelationMap(root);
   const includeHono = ctx.includeHonoRoutes ?? false;
+  const surfaces = { queries: ctx.includeQueries ?? true, rest: ctx.includeRestRoutes ?? true };
   const expose = ctx.expose ?? {};
 
   const units: ApiUnitDoc[] = [];
@@ -324,7 +330,7 @@ export function buildApiModel(root: MetaRoot, ctx: ApiModelContext): ApiModel {
   // every symbol documents is the derived one. `generatableObjects` is the same swap
   // `runGen` hands the generators, so the units are the objects code was emitted for.
   for (const obj of generatableObjects(root.objects(), root)) {
-    units.push(buildEntityUnit(obj, pkCtx, root, layout, relationMap, includeHono, apiPrefix, expose));
+    units.push(buildEntityUnit(obj, pkCtx, root, layout, relationMap, includeHono, surfaces, apiPrefix, expose));
   }
 
   for (const tmpl of templateOutputs(root)) {
@@ -437,6 +443,7 @@ function buildEntityUnit(
   layout: OutputLayout,
   relationMap: RelationMap,
   includeHono: boolean,
+  surfaces: { queries: boolean; rest: boolean },
   apiPrefix: string,
   expose: RoutesExpose,
 ): ApiUnitDoc {
@@ -460,7 +467,7 @@ function buildEntityUnit(
   });
 
   if (isQueryable(obj)) {
-    symbols.push(...dataAccessSymbols(obj, ctx, root, layout));
+    if (surfaces.queries) symbols.push(...dataAccessSymbols(obj, ctx, root, layout));
     // A read-only object's entity module exports a read schema only: no insert or update
     // schema exists to document.
     if (!isReadOnlySurface(obj)) symbols.push(...validationSymbols(obj, entityMod));
@@ -469,7 +476,7 @@ function buildEntityUnit(
     // object gets routes. (Its `filter` option can narrow that further; this builder
     // reads the model, not the wired generator set, and cannot see it. See the module
     // header.)
-    if (expose.restMounted?.(obj) !== false) symbols.push(...restSymbols(obj, layout, root, apiPrefix, expose.rest));
+    if (surfaces.rest && expose.restMounted?.(obj) !== false) symbols.push(...restSymbols(obj, layout, root, apiPrefix, expose.rest));
     // The OPT-IN Hono variant mounts the SAME CRUD verbs under the same rules —
     // documented only when the adopter wired it.
     if (includeHono && expose.restHonoMounted?.(obj) !== false) {
@@ -1282,6 +1289,8 @@ export function buildApiModelForRun(ctx: GenContext): ApiModel {
     loadedRoot: ctx.loadedRoot,
     outputLayout: ctx.config.outputLayout ?? "flat",
     includeHonoRoutes: ctx.config.includeHonoRoutes ?? false,
+    ...(ctx.config.includeQueries !== undefined && { includeQueries: ctx.config.includeQueries }),
+    ...(ctx.config.includeRestRoutes !== undefined && { includeRestRoutes: ctx.config.includeRestRoutes }),
     // The verbs the routes generators actually mount (`expose`), so a page never lists a
     // route the project does not serve.
     ...(ctx.config.routesExpose !== undefined && { expose: ctx.config.routesExpose }),
