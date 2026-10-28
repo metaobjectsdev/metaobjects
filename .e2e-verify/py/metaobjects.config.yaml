@@ -1,5 +1,0 @@
-metadata: metaobjects
-targets:
-  models:
-    outDir: gen/models
-    generators: [entity]

@@ -1,1 +1,0 @@
-bun /home/doug/.no-mistakes/worktrees/5b8c6c97e760/01M60ACBQ0AW2S5NR7VRE7FNYS/server/typescript/packages/cli/bin/meta.ts
