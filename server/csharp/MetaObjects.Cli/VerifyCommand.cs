@@ -199,7 +199,7 @@ public static class VerifyCommand
     /// </summary>
     public static SubverbResult RunSubverbs(Options opts)
     {
-        // Bare verify defaults to templates (back-compat) + a one-line subverb note.
+        // Bare verify runs the templates gate (the codegen gate joins it in Program.cs when it can run) + a one-line subverb note.
         var defaulted = opts.NoExplicitSubverb;
         var runTemplates = opts.Templates || defaulted;
         var runCodegen = opts.Codegen;

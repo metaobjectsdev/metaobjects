@@ -1,0 +1,1 @@
+{"metadata.root":{"package":"app","children":[{"object.entity":{"name":"Order","children":[{"source.rdb":{"@table":"orders"}},{"field.long":{"name":"id"}},{"identity.primary":{"name":"pk","@fields":["id"]}}]}}]}}

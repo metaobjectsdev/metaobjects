@@ -65,7 +65,8 @@ Rules of the contract:
 - **Bare `verify` runs the same default gate set in every port: codegen drift,
   prompt templates and the requirement ledger.** `--db`, `--deps` and `--replay`
   stay opt-in. A gate the run has no configuration for is skipped with a one-line
-  note, never failed: Node `meta` needs a `metaobjects.config.ts` for codegen;
+  note, never failed: Node `meta` needs a `metaobjects.config.ts` for codegen (a config that
+  exists but fails to load is not a missing config: it exits 2 with the load error);
   `metaobjects verify` needs a `metaobjects.config.yaml` or `--prompts <dir>` for
   templates; `dotnet meta verify` needs `--out <dir>` and `codegen/Generators.cs`
   for codegen; `mvn metaobjects:verify` needs `-Dmeta.verify.templateRoot` for

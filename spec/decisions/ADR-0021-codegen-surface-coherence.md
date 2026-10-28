@@ -57,6 +57,10 @@ A bare `verify` keeps a documented default per port (back-compat) but the
 explicit subverbs are the contract. C#'s current `verify` (template drift)
 becomes `verify --templates`; ports add `--codegen` for parity over time.
 
+*Amendment (unreleased): a bare `verify` no longer has a per-port default. Every port runs the
+same set (codegen drift, templates, the requirement ledger) and skips a gate it has no
+configuration for, with a note. See [cli.md](../../docs/features/cli.md).*
+
 ### D3 — Uniform generator selection by STABLE NAME + a registry + `--list`
 Generators are selected by a **stable string id** (e.g. `entity`, `routes`,
 `render-helper`, `extractor`), not by language-specific factory imports / FQNs /
