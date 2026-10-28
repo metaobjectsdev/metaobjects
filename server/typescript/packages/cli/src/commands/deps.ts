@@ -19,6 +19,7 @@ import { reportLoadError } from "../lib/load-error.js";
 import { collectionLoadOptions } from "../lib/collection-load-options.js";
 import {
   applySync,
+  backupSyncState,
   checkDependencies,
   ERR_DEPENDENCY_UPSTREAM_DRIFT,
   formatCheckLine,
@@ -63,34 +64,54 @@ async function runSync(configDir: string, specs: readonly DependencySpec[], flag
     return 1;
   }
 
+  // A real sync is atomic: keep a copy of the lock and snapshot, and put them
+  // back if the sync or the load that proves it fails, so a failed sync leaves
+  // the previous (loadable) state in place rather than one that checks green
+  // and loads nowhere.
+  const backup = flags.dryRun ? undefined : await backupSyncState(configDir);
+  const fail = async (message: () => void): Promise<number> => {
+    message();
+    if (backup) {
+      await backup.restore();
+      log.error("meta deps sync: rolled back — the previous lock and snapshot are restored.");
+    }
+    return 1;
+  };
+
   let applied;
   try {
     applied = await applySync(configDir, plan, { dryRun: flags.dryRun });
   } catch (err) {
-    log.error(describeError(err));
-    return 1;
+    return fail(() => log.error(describeError(err)));
   }
 
-  if (fmt === "text") {
-    for (const w of plan.warnings) log.info(w);
-    if (applied.report.length === 0) {
-      log.info("meta deps sync: nothing to do — no dependencies declared.");
+  // The per-dependency report is printed only once the sync is known good: a
+  // report of "synced" for a sync that is then rolled back would lie.
+  const printReport = (): void => {
+    if (fmt === "text") {
+      for (const w of plan.warnings) log.info(w);
+      if (applied.report.length === 0) {
+        log.info("meta deps sync: nothing to do — no dependencies declared.");
+      } else {
+        for (const r of applied.report) log.info(r.line);
+      }
     } else {
-      for (const r of applied.report) log.info(r.line);
+      emitStructured(
+        {
+          warnings: plan.warnings,
+          dependencies: applied.report.map((r) => ({ name: r.name, action: r.action, message: r.line })),
+        },
+        fmt,
+      );
     }
-  } else {
-    emitStructured(
-      {
-        warnings: plan.warnings,
-        dependencies: applied.report.map((r) => ({ name: r.name, action: r.action, message: r.line })),
-      },
-      fmt,
-    );
-  }
+  };
 
   // A dry run wrote nothing to validate — the plan already stands for what
   // WOULD load.
-  if (flags.dryRun) return 0;
+  if (flags.dryRun) {
+    printReport();
+    return 0;
+  }
 
   // DESIGN §4.1's closing sentence: load the full collection once, so a sync
   // that produces an unloadable model (a collision the plan missed because it
@@ -101,16 +122,18 @@ async function runSync(configDir: string, specs: readonly DependencySpec[], flag
   try {
     collection = await resolveCollection(configDir);
   } catch (err) {
-    log.error(`meta deps sync: the updated dependency set does not resolve: ${describeError(err)}`);
-    return 1;
+    return fail(() =>
+      log.error(`meta deps sync: the updated dependency set does not resolve: ${describeError(err)}`),
+    );
   }
   try {
     await loadMemory(collection.configDir, collectionLoadOptions(collection));
   } catch (err) {
-    reportLoadError(log, "meta deps sync: the updated dependency set does not load", err);
-    return 1;
+    return fail(() => reportLoadError(log, "meta deps sync: the updated dependency set does not load", err));
   }
 
+  await backup?.discard();
+  printReport();
   return 0;
 }
 
@@ -176,6 +199,18 @@ async function runCheck(
   const results = await checkDependencies(configDir, specs, lock);
   const failing = results.filter((r) => r.status !== "current");
 
+  // Matching hashes only prove the snapshot is the locked one, not that the
+  // model still loads with it. A check that cannot load must not pass.
+  let loadFailure: string | undefined;
+  if (failing.length === 0) {
+    try {
+      const collection = await resolveCollection(configDir);
+      await loadMemory(collection.configDir, collectionLoadOptions(collection));
+    } catch (err) {
+      loadFailure = describeError(err);
+    }
+  }
+
   if (fmt === "text") {
     for (const r of results) log.info(formatCheckLine(r));
     if (failing.length > 0) {
@@ -184,17 +219,21 @@ async function runCheck(
           `${results.length === 1 ? "y" : "ies"} drifted or unresolved (${ERR_DEPENDENCY_UPSTREAM_DRIFT}).`,
       );
     }
+    if (loadFailure !== undefined) {
+      log.error(`meta deps check: the locked dependency set does not load: ${loadFailure}`);
+    }
   } else {
     emitStructured(
       {
         dependencies: results.map((r) => ({ ...r, line: formatCheckLine(r) })),
         ...(failing.length > 0 ? { code: ERR_DEPENDENCY_UPSTREAM_DRIFT } : {}),
+        ...(loadFailure !== undefined ? { loadError: loadFailure } : {}),
       },
       fmt,
     );
   }
 
-  return failing.length > 0 ? 1 : 0;
+  return failing.length > 0 || loadFailure !== undefined ? 1 : 0;
 }
 
 export async function depsCommand(args: string[], cwd: string, fmt: OutputFormat): Promise<number> {

@@ -7,11 +7,26 @@ runners are all Java; Kotlin emits idiomatic Kotlin (`data class`,
 Exposed `Table` objects, extension-fn relationship helpers, Spring `@Configuration`
 wiring) via KotlinPoet.
 
+**Baselines.** JVM 21 (the published artifacts target JVM 21), Kotlin 2.0, and Spring Boot 3.x
+for the generated controllers (`jakarta.*`; Spring Boot 2 is not supported).
+
+**Keep your ORM.** `KotlinEntityGenerator` (with `KotlinValidatorGenerator`) writes plain
+Jackson-compatible data classes per entity and value object. Wire `entity` without `exposed-table` and your own JPA, Exposed or JDBC mapping stays hand-written beside the generated
+classes.
+
 Two modules:
 
 - **`metaobjects-codegen-kotlin`** — 16 KotlinPoet-based generators.
 - **`metaobjects-metadata-ktx`** — thin Kotlin facade over the Java loader + render
   engine for idiomatic Kotlin runtime use.
+
+## Regeneration and hand edits
+
+There is no three-way merge on the JVM (that is TypeScript-only). Kotlin runs through the same
+`mvn metaobjects:generate` write path as Java: a file that still matches the committed hash
+manifest (`.metaobjects/.gen-state/.hashes.json`) is overwritten, and an edited one is refused by
+name (or replaced with `<handEdits>overwrite</handEdits>`). `mvn metaobjects:eject -Dnames=<name>`
+copies a generator into your repo to own.
 
 ## Install
 
@@ -803,8 +818,11 @@ dependencies {
 No kotlinx-serialization plugin is needed for the template tier: the value objects' data
 classes carry no `@Serializable` (it was decorative — no build enabled the compiler plugin
 it needs). See
-[`codegen-kotlin/KNOWN_GAPS.md`](../../server/java/codegen-kotlin/KNOWN_GAPS.md)
-for the full consumer-wiring contract. Cross-port design is at
+[KNOWN_GAPS.md](https://github.com/metaobjectsdev/metaobjects/blob/main/server/java/codegen-kotlin/src/main/kotlin/com/metaobjects/generator/kotlin/KNOWN_GAPS.md)
+for the full consumer-wiring contract and the known gaps (single-field `Long` primary keys
+only, one `<Entity>` data class for request and response, composite-FK relationships not
+emitted, `ObjectField` skipped in the sort allowlist, and a Jackson dependency for typed jsonb
+and parsers). Cross-port design is at
 [ADR-0010](../../spec/decisions/ADR-0010-template-output-parser-codegen.md);
 the feature reference is at
 [`features/templates-and-payloads.md`](../features/templates-and-payloads.md#response-parsing-fr-006).

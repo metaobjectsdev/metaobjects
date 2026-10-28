@@ -57,13 +57,13 @@ Reference generators you own, ejectable in every port. They emit per-language co
 
 **What is guaranteed, and what is yours** (ADR-0034 Amendment 3). The core is the promise: the metamodel, loader, canonical format and registry; runtime metadata access (the `ObjectManager`, not the HTTP adapters that mount it); schema migrations (`meta migrate`); the drift gates (`meta verify`); prompt render and the reply parser. Every generator that writes application code into the repo is a reference helper — a starting point that compiles and passes its reference fixtures, which the adopter copies with `meta eject` and owns. A defect in the core is a MetaObjects bug; a defect in a generator is fixed in the reference, and the adopter's copy is theirs. The test is mechanical: what the tool guarantees is core; what it writes into your repo is a helper.
 
-- TypeScript: Drizzle + Zod + Fastify integration (and React / TanStack on the client side)
-- Java: Spring REST + DTO + repository interfaces (the persistence impl is consumer-supplied) via `codegen-spring`
-- Kotlin: KotlinPoet + Exposed + Spring via `codegen-kotlin`
-- C#: EF Core + ASP.NET
-- Python: Pydantic + FastAPI
+- TypeScript: Drizzle + Zod + Fastify integration (and React / TanStack on the client side). **Keep your ORM:** a target with `runtime: false` makes the `entity` generator write Zod schemas and inferred types only, with no Drizzle and no `runtime-ts` import
+- Java: Spring REST + DTO + repository interfaces (the persistence impl is consumer-supplied) via `codegen-spring`. **Keep your ORM:** `SpringDtoGenerator` and `SpringValueObjectGenerator` write records (jakarta validation) and your JPA entity stays hand-written. Baseline Java 21, Spring Boot 3.x (Boot 2 is not supported)
+- Kotlin: KotlinPoet + Exposed + Spring via `codegen-kotlin`. **Keep your ORM:** `KotlinEntityGenerator` alone writes plain data classes; JVM 21, Spring Boot 3.x
+- C#: EF Core + ASP.NET (.NET 8). **Keep your EF model:** an object declared with no `source.rdb` generates a POCO with DataAnnotations and no EF mapping, a contract separate from your entities
+- Python: Pydantic + FastAPI (Python 3.11+). **Keep your ORM:** the `entity` generator writes Pydantic models with no ORM of any kind
 
-Hand-edit-preserving regeneration uses a three-way merge so engineers can extend generated entities without losing their work when metadata changes. M:N relationship codegen (FR-018) ships in all five ports: entity navigation, idiomatic ORM wiring (Drizzle m2m / EF Core `UsingEntity` / Spring repo interface / Exposed / Pydantic), and REST traversal (`GET /<source-plural>/{id}/<relation>`).
+Hand-edit-preserving regeneration is **TypeScript-only**: `meta gen` three-way-merges your edits into regenerated output on the machine that generated the file. C#, Python, Java and Kotlin do not merge. Each decides from a committed hash manifest (`.metaobjects/.gen-state/.hashes.json`): a file that still matches what the generator wrote is overwritten, an edited one is refused by name (Java and Kotlin can be told to replace it with `handEdits=overwrite`), and `eject` hands you the generator to own instead. M:N relationship codegen (FR-018) ships in all five ports: entity navigation, idiomatic ORM wiring (Drizzle m2m / EF Core `UsingEntity` / Spring repo interface / Exposed / Pydantic), and REST traversal (`GET /<source-plural>/{id}/<relation>`).
 
 ### Runtime metadata
 

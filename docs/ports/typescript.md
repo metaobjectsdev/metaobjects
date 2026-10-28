@@ -2,7 +2,38 @@
 
 The reference implementation. Published to npm at `1.1.4` as 14
 `@metaobjectsdev/*` packages on the `latest` tag. Targets Node-compatible
-runtimes; Bun-first dev workflow.
+runtimes: the generated code and the CLI run on stock Node (via `tsx` or after a `tsc`
+build), and Bun is simply the fastest dev workflow in this repo.
+
+## Regeneration and hand edits
+
+Three-way merge is a TypeScript feature: on the machine that generated a file, `meta gen`
+merges your edits into regenerated output. On a fresh clone or in CI the snapshot bodies are
+not present, so an edited file is refused by name rather than merged (commit
+`.metaobjects/.gen-state/.hashes.json`). The other ports do not merge at all.
+
+## Keep your ORM (Prisma, TypeORM, Drizzle you already have)
+
+Adopting the TypeScript port does not mean replacing your data layer. The `entity`
+generator (`entityFile()`) writes a Drizzle table binding only for a target that has server
+runtime bindings, which is the default. Point it at a **contract-only target**
+(`runtime: false`) and it writes Zod schemas and inferred TypeScript types, with no
+`drizzle-orm` and no `@metaobjectsdev/runtime-ts` import, for entities, value objects and
+projections alike. Your Prisma (or other ORM) models stay hand-written beside them.
+
+```ts
+export default defineConfig({
+  outDir: "src/generated",
+  dialect: "postgres",
+  targets: { contract: { outDir: "src/contract", runtime: false } },
+  generators: [entityFile({ target: "contract" })],   // Zod + types only
+});
+```
+
+A model of only value objects and sourceless projections needs no `dialect`. A sourceless
+object generates its type and nothing else: no table, no migration, no routes. See
+[Own your codegen](../features/own-your-codegen.md) for ejecting a generator, and the
+[fit assessment](https://metaobjects.dev/assess.md) for deciding which pieces to adopt.
 
 ## Install
 
@@ -837,6 +868,19 @@ See [Generated requirement tests and witnesses](../features/requirements.md#gene
 `WARN_REQUIREMENT_NOTHING_IMPLEMENTS` to an error; once the ledger is clean, put it in the
 project's verify script or pre-push hook. See
 [Requiring implementers](../features/requirements.md#requiring-implementers).
+
+## Known gaps
+
+TypeScript is the reference port and has no separate gaps file; the capability snapshot below is
+its list. The limits worth knowing before you commit: `meta migrate` and `meta verify --db`
+cover Postgres, SQLite and D1 only (MySQL gets codegen and runtime, not migrations). Oracle and
+SQL Server are not supported targets: `meta migrate` will not manage their schema, and the generated
+Drizzle tier does not target them. The contract-only output of the other ports (Java records, sourceless
+C# POCOs, Pydantic models) never touches the database, so a team on Oracle or SQL Server can
+still use it, and manages its schema itself. Hand edits survive regeneration through the
+three-way merge only on the machine that generated the file. The other ports' gaps are listed on
+their own pages: [C#](csharp.md), [Java](java.md#known-gaps),
+[Kotlin](kotlin.md), [Python](python.md).
 
 ## Capability snapshot
 

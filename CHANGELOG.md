@@ -10,6 +10,10 @@ here.**
 
 ## [Unreleased]
 
+### Docs
+
+- **Port docs and `llms-full.txt` now say what a fresh reader got wrong.** Each port page opens with its keep-your-ORM path (TypeScript `runtime: false`, Java and Kotlin records and data classes, sourceless C# POCOs as DTOs, Pydantic in Python); three-way merge is scoped to TypeScript everywhere it was claimed unscoped, with what the other ports do instead (committed hash manifest, refusal by name, eject); framework baselines are stated (Java 21 rather than the contradictory 17, Spring Boot 3.x with Boot 2 unsupported, .NET 8, Python 3.11, Node first and Bun second); and each port page carries its known gaps with absolute links.
+
 ### Added
 
 - **Report export: `GET /<segment>?format=csv|json|xml` on a served report, in all five ports.**
@@ -53,6 +57,16 @@ here.**
   old scope, name the gate: `meta verify --templates`, `dotnet meta verify --templates`,
   `metaobjects verify --codegen`, `mvn metaobjects:verify -Dmeta.verify.mode=codegen`. The Maven
   `meta.verify.mode` parameter no longer defaults to `codegen`; unset means both gates.
+
+### Fixed
+
+- **A failed `meta deps sync` no longer leaves a lock and snapshot that cannot load.** The
+  command wrote `deps.lock.json` and the `.metaobjects/deps/` snapshot before loading the
+  combined model, and on a load failure it exited 1 but kept the new files. Because the lock
+  and snapshot agreed with each other, `meta deps check` then reported green while every other
+  command failed to load. The sync now saves the previous lock and snapshot and restores both
+  on any failure, so the previous state is intact. `meta deps check` also loads the model once
+  its hashes match and exits 1 with the load error when it does not load.
 
 ### Documentation
 

@@ -563,3 +563,103 @@ describe("meta deps sync <name> — the name filter (FR-023 Phase 1a Task 14, fi
     expect(after.dependencies[SECOND_NAME]).toEqual(baseline.dependencies[SECOND_NAME]);
   });
 });
+
+describe("meta deps sync — a failed post-sync load leaves the previous state intact", () => {
+  /** A consumer file redeclaring a node the dependency exports: the plan
+   *  (which compares declared node LISTS) passes, the full-collection load
+   *  does not. */
+  const COLLIDING = JSON.stringify({
+    "metadata.root": {
+      package: "acme::common",
+      children: [
+        {
+          "object.entity": {
+            name: "Customer",
+            children: [
+              { "source.rdb": { "@table": "customers" } },
+              { "field.long": { name: "id" } },
+              { "identity.primary": { name: "pk", "@fields": ["id"] } },
+            ],
+          },
+        },
+      ],
+    },
+  });
+
+  test("a first sync whose load fails exits 1 and leaves no lock and no snapshot", async () => {
+    const { consumerRoot } = setupProject();
+    writeFileSync(join(consumerRoot, "metaobjects", "meta.clash.json"), COLLIDING, "utf8");
+
+    const exit = await run(["deps", "sync", "--format", "text", "--cwd", consumerRoot]);
+    expect(exit).toBe(1);
+    expect(existsSync(join(consumerRoot, ".metaobjects", "deps.lock.json"))).toBe(false);
+    expect(existsSync(join(consumerRoot, ".metaobjects", "deps", DEP_NAME))).toBe(false);
+  });
+
+  test("a re-sync whose load fails restores the previous lock and snapshot byte for byte", async () => {
+    const { consumerRoot, publisherDir } = setupProject();
+    expect(await run(["deps", "sync", "--format", "text", "--cwd", consumerRoot])).toBe(0);
+    const lockPath = join(consumerRoot, ".metaobjects", "deps.lock.json");
+    const snapPath = join(consumerRoot, ".metaobjects", "deps", DEP_NAME, ARTIFACT_BASENAME);
+    const lockBefore = readFileSync(lockPath);
+    const snapBefore = readFileSync(snapPath);
+
+    // The consumer's model now clashes with the dependency, and the publisher
+    // ships a new version: the sync must fail without touching the old state.
+    writeFileSync(join(consumerRoot, "metaobjects", "meta.clash.json"), COLLIDING, "utf8");
+    writeFileSync(join(publisherDir, ARTIFACT_BASENAME), WIDENED_BYTES);
+    writeFileSync(
+      join(publisherDir, MANIFEST_BASENAME),
+      manifestJson({ version: "1.1.0", integrity: WIDENED_HASH, nodes: NODES }),
+      "utf8",
+    );
+
+    out = [];
+    err = [];
+    const exit = await run(["deps", "sync", "--format", "text", "--cwd", consumerRoot]);
+    expect(exit).toBe(1);
+    expect(readFileSync(lockPath)).toEqual(lockBefore);
+    expect(readFileSync(snapPath)).toEqual(snapBefore);
+    // The failure output reports the rollback and the load error, and never a
+    // "synced" line for a sync that was reverted.
+    const output = [...out, ...err].join("\n");
+    expect(output).toContain("rolled back");
+    expect(output).toContain("does not load");
+    expect(output).not.toContain("synced");
+  });
+});
+
+describe("meta deps check — a snapshot that cannot load is not green", () => {
+  test("hashes match the lock but the model no longer loads: exit 1 with the load error", async () => {
+    const { consumerRoot } = setupProject();
+    expect(await run(["deps", "sync", "--format", "text", "--cwd", consumerRoot])).toBe(0);
+    expect(await run(["deps", "check", "--format", "text", "--cwd", consumerRoot])).toBe(0);
+
+    writeFileSync(
+      join(consumerRoot, "metaobjects", "meta.clash.json"),
+      JSON.stringify({
+        "metadata.root": {
+          package: "acme::common",
+          children: [
+            {
+              "object.entity": {
+                name: "Customer",
+                children: [
+                  { "source.rdb": { "@table": "customers" } },
+                  { "field.long": { name: "id" } },
+                  { "identity.primary": { name: "pk", "@fields": ["id"] } },
+                ],
+              },
+            },
+          ],
+        },
+      }),
+      "utf8",
+    );
+
+    out = [];
+    err = [];
+    expect(await run(["deps", "check", "--format", "text", "--cwd", consumerRoot])).toBe(1);
+    expect([...out, ...err].join("\n")).toContain("does not load");
+  });
+});

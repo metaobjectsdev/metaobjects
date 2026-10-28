@@ -430,7 +430,7 @@ survive depends on what the toolchain can see, and it is worth knowing which cas
 are in:
 
 - **On the machine that generated the file**, `.metaobjects/.gen-state/` holds a full
-  snapshot of what was last written, and `meta gen` does a real three-way merge: your
+  snapshot of what was last written, and the TypeScript `meta gen` does a real three-way merge (C#, Python, Java and Kotlin do not merge; see below): your
   edit and the new generated content are combined, and you only see a conflict when
   they touch the same lines.
 - **Anywhere else** — a fresh clone, a teammate's checkout, CI — the snapshot bodies are

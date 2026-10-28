@@ -10,7 +10,8 @@
 // resolution, per-dependency validation, the cross-dependency node-collision
 // check); `applySync` is the only function that touches the filesystem.
 import { existsSync, statSync } from "node:fs";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import {
   codeSource,
@@ -465,6 +466,42 @@ export async function applySync(
   }
 
   return { lock, report };
+}
+
+/**
+ * A copy of everything `applySync` writes — `deps.lock.json` and the
+ * `.metaobjects/deps/` snapshot tree — so a sync that fails AFTER writing
+ * (the full-collection load in `deps.ts`) can put the previous state back.
+ * Without it a failed sync leaves a lock and snapshot that agree with each
+ * other (so `meta deps check` is green) but do not load.
+ */
+export interface SyncBackup {
+  /** Put the lock and snapshot tree back exactly as `backupSyncState` saw them. */
+  restore(): Promise<void>;
+  /** Drop the saved copy; call once the sync is known good. */
+  discard(): Promise<void>;
+}
+
+export async function backupSyncState(configDir: string): Promise<SyncBackup> {
+  const lockPath = join(configDir, DEFAULT_METAOBJECTS_DIR, LOCK_FILE);
+  const depsPath = join(configDir, DEFAULT_METAOBJECTS_DIR, DEPS_DIR);
+  const hadLock = existsSync(lockPath);
+  const hadDeps = existsSync(depsPath);
+  const saved = await mkdtemp(join(tmpdir(), "meta-deps-backup-"));
+  if (hadLock) await cp(lockPath, join(saved, "lock"));
+  if (hadDeps) await cp(depsPath, join(saved, "deps"), { recursive: true });
+  return {
+    async restore() {
+      await rm(lockPath, { force: true });
+      await rm(depsPath, { recursive: true, force: true });
+      if (hadDeps) await cp(join(saved, "deps"), depsPath, { recursive: true });
+      if (hadLock) await cp(join(saved, "lock"), lockPath);
+      await rm(saved, { recursive: true, force: true });
+    },
+    async discard() {
+      await rm(saved, { recursive: true, force: true });
+    },
+  };
 }
 
 // ---------------------------------------------------------------------------
