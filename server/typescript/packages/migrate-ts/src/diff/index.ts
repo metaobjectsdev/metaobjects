@@ -608,6 +608,12 @@ function canonTypeForDialect(t: SqlType, dialect: Dialect | undefined): SqlType 
   if (dialect !== "sqlite" && dialect !== "d1") return t;
   if (t.kind === "json") return { kind: "text" };
   if (t.kind === "text" && t.maxLength !== undefined) return { kind: "text" };
+  // SQLite has no boolean storage class: a BOOLEAN column stores integers, which is the
+  // INTEGER the expected schema writes. And it ignores a NUMERIC column's precision and
+  // scale, so DECIMAL and NUMERIC(10,2) are one column. Another tool's DDL writes the
+  // first spelling of each (Prisma does).
+  if (t.kind === "boolean") return { kind: "integer", bits: 64 };
+  if (t.kind === "numeric") return { kind: "numeric" };
   return t;
 }
 

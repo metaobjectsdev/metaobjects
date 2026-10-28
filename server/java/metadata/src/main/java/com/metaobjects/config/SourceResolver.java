@@ -156,6 +156,40 @@ public final class SourceResolver {
     }
 
     /**
+     * FR-023 — the resolved collection: the project's own files plus the dependency snapshot that
+     * leads the load.
+     *
+     * @param ownFiles     the project's own metadata files, as {@link #resolveCollection} returns them
+     * @param dependencies the verified dependencies and the predicates over them; {@link DependencySet#EMPTY}
+     *                     when the project declares none
+     */
+    public record ResolvedCollection(List<Path> ownFiles, DependencySet dependencies) {
+
+        /**
+         * Every file the load reads, in order: dependency artifacts (in dependency-NAME order)
+         * first, then the project's own files. Equal to {@link #ownFiles()} when nothing is imported.
+         */
+        public List<Path> files() {
+            List<Path> out = new ArrayList<>();
+            for (Dependencies.ResolvedDependency d : dependencies.dependencies()) out.add(d.artifactPath());
+            out.addAll(ownFiles);
+            return out;
+        }
+    }
+
+    /**
+     * {@link #resolveCollection(Path)} plus the project's metadata dependencies (FR-023): the
+     * neutral config's {@code dependencies} are read and the committed snapshot is verified against
+     * {@code .metaobjects/deps.lock.json}, offline. A project declaring none resolves exactly as
+     * {@link #resolveCollection(Path)} does.
+     */
+    public static ResolvedCollection resolveCollectionWithDependencies(Path root) {
+        Path base = root.toAbsolutePath().normalize();
+        List<Path> own = resolveCollection(base);
+        return new ResolvedCollection(own, DependencySet.resolve(base));
+    }
+
+    /**
      * ADR-0058 — the project's physical-naming rules declared in {@code root}'s
      * {@code .metaobjects/config.json}, or {@link PhysicalNaming#DEFAULT} when the file is
      * absent. A caller that resolves a collection for project {@code root} (whether or not

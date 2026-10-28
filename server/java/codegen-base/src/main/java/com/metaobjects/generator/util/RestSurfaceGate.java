@@ -159,6 +159,9 @@ public final class RestSurfaceGate {
      *         stops rather than emitting a row it cannot bind
      */
     public static MetaObject restShapeOf(MetaObject obj) {
+        // FR-023: an object a metadata dependency owns is that project's to serve. Every caller is
+        // an emission loop, so this one test keeps the whole REST tier off an imported object.
+        if (GeneratorUtil.isImported(obj)) return null;
         if (obj == null || !MetaObject.SUBTYPE_REPORT.equals(obj.getSubType())) return obj;
         return isServedReport(obj) ? ReportReadModel.of(obj) : null;
     }

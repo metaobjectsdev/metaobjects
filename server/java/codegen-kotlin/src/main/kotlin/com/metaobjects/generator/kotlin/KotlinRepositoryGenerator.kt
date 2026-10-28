@@ -5,6 +5,7 @@ package com.metaobjects.generator.kotlin
 // `mvn metaobjects:eject` and its own package is renamed — an explicit import, not
 // same-package bare-name resolution, is what keeps the ejected copy compiling.
 import com.metaobjects.generator.kotlin.ExposedApi
+import com.metaobjects.generator.util.GeneratorUtil
 import com.metaobjects.generator.kotlin.ExposedImports
 import com.metaobjects.generator.kotlin.KotlinGenUtil
 import com.metaobjects.generator.kotlin.KotlinNaming
@@ -82,7 +83,7 @@ open class KotlinRepositoryGenerator : MultiFileDirectGeneratorBase<MetaObject>(
         parseArgs()
         val outRoot = Paths.get(outDir.absolutePath)
 
-        for (entity in loader.metaObjects) {
+        for (entity in GeneratorUtil.ownMetaObjects(loader)) {
             if (entity.subType != MetaObject.SUBTYPE_ENTITY) continue
             if (KotlinGenUtil.isAbstractEntity(entity)) continue
             // TODO(FR-035 Phase 2): a TPH subtype folds into its base's table — the base's

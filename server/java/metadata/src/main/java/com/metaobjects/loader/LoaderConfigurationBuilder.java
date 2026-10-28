@@ -32,6 +32,7 @@ public class LoaderConfigurationBuilder {
     private List<String> sources = new ArrayList<>();
     private List<String> libraries = new ArrayList<>();
     private Map<String, String> arguments = new HashMap<>();
+    private com.metaobjects.config.DependencySet dependencies = com.metaobjects.config.DependencySet.EMPTY;
     
     public LoaderConfigurationBuilder() {
     }
@@ -72,6 +73,18 @@ public class LoaderConfigurationBuilder {
         return this;
     }
 
+    /**
+     * FR-023 — the project's resolved metadata dependencies, whose snapshot artifacts load first —
+     * see {@link LoaderConfigurable.LoaderConfiguration#getDependencies()}.
+     *
+     * @param dependencies the resolved set; null restores the empty set
+     * @return this builder
+     */
+    public LoaderConfigurationBuilder dependencies(com.metaobjects.config.DependencySet dependencies) {
+        this.dependencies = dependencies == null ? com.metaobjects.config.DependencySet.EMPTY : dependencies;
+        return this;
+    }
+
     public LoaderConfigurationBuilder argument(String key, String value) {
         this.arguments.put(key, value);
         return this;
@@ -98,7 +111,7 @@ public class LoaderConfigurationBuilder {
     
     public LoaderConfigurable.LoaderConfiguration build() {
         return new LoaderConfigurationImpl(sourceDir, classLoader, new ArrayList<>(sources),
-                new ArrayList<>(libraries), new HashMap<>(arguments));
+                new ArrayList<>(libraries), new HashMap<>(arguments), dependencies);
     }
     
     /**
@@ -110,15 +123,18 @@ public class LoaderConfigurationBuilder {
         private final List<String> sources;
         private final List<String> libraries;
         private final Map<String, String> arguments;
+        private final com.metaobjects.config.DependencySet dependencies;
 
         public LoaderConfigurationImpl(String sourceDir, ClassLoader classLoader,
                                      List<String> sources, List<String> libraries,
-                                     Map<String, String> arguments) {
+                                     Map<String, String> arguments,
+                                     com.metaobjects.config.DependencySet dependencies) {
             this.sourceDir = sourceDir;
             this.classLoader = classLoader;
             this.sources = sources;
             this.libraries = libraries;
             this.arguments = arguments;
+            this.dependencies = dependencies;
         }
         
         @Override
@@ -139,6 +155,11 @@ public class LoaderConfigurationBuilder {
         @Override
         public List<String> getLibraries() {
             return libraries;
+        }
+
+        @Override
+        public com.metaobjects.config.DependencySet getDependencies() {
+            return dependencies;
         }
 
         @Override

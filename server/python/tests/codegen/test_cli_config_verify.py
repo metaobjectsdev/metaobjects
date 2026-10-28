@@ -2,19 +2,15 @@
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 
 from metaobjects.cli import main
 from tests.codegen.gen_suite import GEN_SUITE
 from tests.codegen.config_helpers import as_config
 
-FITNESS = (
-    Path(__file__).parents[4]
-    / "fixtures"
-    / "persistence-conformance"
-    / "canonical"
-    / "meta.fitness.json"
-)
+CANONICAL = Path(__file__).parents[4] / "fixtures" / "persistence-conformance" / "canonical"
+FITNESS = CANONICAL / "meta.fitness.json"
 
 TWO_TARGETS = """
 targets:
@@ -59,6 +55,9 @@ def test_verify_codegen_no_args_in_sync(tmp_path: Path) -> None:
 
 def test_verify_codegen_bare_defaults_to_codegen(tmp_path: Path, monkeypatch) -> None:
     _project(tmp_path)
+    # Bare verify also runs the template gate against `prompts/` (the default root), and the
+    # fitness model's `template.prompt` refs resolve there.
+    shutil.copytree(CANONICAL / "prompts", tmp_path / "prompts")
     monkeypatch.chdir(tmp_path)
     assert main(["gen"]) == 0
     assert main(["verify"]) == 0  # bare verify → --codegen (config-driven), plus --templates

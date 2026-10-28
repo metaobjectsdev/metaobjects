@@ -1,0 +1,57 @@
+{ "metadata.root": { "package": "acme::shop", "children": [
+  { "object.entity": { "name": "Customer", "children": [
+    { "source.rdb": {} },
+    { "field.long": { "name": "id" } },
+    { "field.string": { "name": "email", "@required": true, "@maxLength": 200 } },
+    { "field.string": { "name": "displayName", "@column": "display_name", "children": [
+      { "validator.length": { "@min": 1, "@max": 80 } }
+    ]}},
+    { "field.enum": { "name": "tier", "@required": true, "@values": ["FREE", "PRO"], "@default": "FREE" } },
+    { "field.boolean": { "name": "active", "@required": true, "@default": true } },
+    { "field.double": { "name": "score" } },
+    { "field.timestamp": { "name": "createdAt", "@required": true, "@default": "now" } },
+    { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } },
+    { "identity.secondary": { "name": "byEmail", "@fields": ["email"] } }
+  ]}},
+  { "object.entity": { "name": "Employee", "children": [
+    { "source.rdb": {} },
+    { "field.long": { "name": "id" } },
+    { "field.string": { "name": "name", "@required": true } },
+    { "field.long": { "name": "managerId" } },
+    { "field.long": { "name": "mentorId" } },
+    { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } },
+    { "identity.reference": { "name": "manager", "@fields": ["managerId"], "@references": "Employee", "@onDelete": "set-null" } },
+    { "identity.reference": { "name": "mentor", "@fields": ["mentorId"], "@references": "Employee" } }
+  ]}},
+  { "object.entity": { "name": "Order", "children": [
+    { "source.rdb": {} },
+    { "field.uuid": { "name": "id" } },
+    { "field.long": { "name": "customerId", "@required": true } },
+    { "field.decimal": { "name": "total", "@required": true, "@precision": 10, "@scale": 2, "children": [
+      { "validator.numeric": { "@min": 0 } }
+    ]}},
+    { "field.date": { "name": "placedOn" } },
+    { "field.time": { "name": "slot" } },
+    { "field.string": { "name": "meta", "@dbColumnType": "jsonb" } },
+    { "field.string": { "name": "notes", "isArray": true } },
+    { "field.int": { "name": "qty", "@required": true, "@default": 1 } },
+    { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "uuid" } },
+    { "identity.reference": { "name": "customer", "@fields": ["customerId"], "@references": "Customer", "@onDelete": "cascade" } },
+    { "index.lookup": { "name": "byPlaced", "@fields": ["customerId", "placedOn"], "@orders": ["asc", "desc"] } }
+  ]}},
+  { "object.entity": { "name": "Tag", "children": [
+    { "source.rdb": {} },
+    { "field.long": { "name": "id" } },
+    { "field.string": { "name": "label", "@required": true, "@maxLength": 40 } },
+    { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } },
+    { "relationship.association": { "name": "orders", "@cardinality": "many", "@objectRef": "Order", "@through": "OrderTag" } }
+  ]}},
+  { "object.entity": { "name": "OrderTag", "children": [
+    { "source.rdb": {} },
+    { "field.uuid": { "name": "orderId", "@required": true } },
+    { "field.long": { "name": "tagId", "@required": true } },
+    { "identity.primary": { "name": "pk", "@fields": ["orderId", "tagId"] } },
+    { "identity.reference": { "name": "order", "@fields": ["orderId"], "@references": "Order", "@onDelete": "cascade" } },
+    { "identity.reference": { "name": "tag", "@fields": ["tagId"], "@references": "Tag", "@onDelete": "cascade" } }
+  ]}}
+]}}

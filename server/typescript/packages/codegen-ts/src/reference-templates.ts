@@ -29,6 +29,9 @@ export const REFERENCE_GENERATOR_NAMES = [
   // The Cube exporter (FR-044 Plan 4): which entities get a cube, the file layout and the YAML,
   // with `buildCubeModel` and `renderCubeYaml` handed over beside it.
   "cube-model",
+  // The Prisma schema (#479): which objects get a model, the file layout and the blocks above
+  // the models, with `buildPrismaSchema` and the renderers handed over beside it.
+  "prisma-schema",
   // The stored-procedure / table-function wrapper and the LLM-call trace helper.
   "callable", "trace-helper",
   // The publisher's shared-model artifact: which source files may contribute and which version

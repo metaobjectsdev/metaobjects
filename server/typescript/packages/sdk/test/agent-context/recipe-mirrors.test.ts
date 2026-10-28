@@ -1,6 +1,6 @@
 // test/agent-context/recipe-mirrors.test.ts
 //
-// Two recipes are shipped INSIDE the scaffolded codegen skill, because an agent in an
+// Three recipes are shipped INSIDE the scaffolded codegen skill, because an agent in an
 // adopter's project has no copy of this repository's docs/: it only has what `meta init`
 // wrote. The copies must not drift from the originals, which are the tested ones —
 // docs/recipes/generators/typescript/mongo-repository.ts is copied into a fresh project and
@@ -24,6 +24,14 @@ test("the shipped MySQL guide carries the recipe's setup, DDL and behaviour sect
   const MARK = "## TypeScript setup";
   const shipped = readFileSync(join(REFS, "typescript-mysql.md"), "utf8");
   const original = readFileSync(join(REPO, "docs/recipes/mysql.md"), "utf8");
+  expect(shipped.includes(MARK)).toBe(true);
+  expect(shipped.slice(shipped.indexOf(MARK))).toBe(original.slice(original.indexOf(MARK)));
+});
+
+test("the shipped Prisma guide carries the recipe's setup, workflow, mapping and refusal sections unchanged", () => {
+  const MARK = "## TypeScript setup";
+  const shipped = readFileSync(join(REFS, "typescript-prisma.md"), "utf8");
+  const original = readFileSync(join(REPO, "docs/recipes/prisma.md"), "utf8");
   expect(shipped.includes(MARK)).toBe(true);
   expect(shipped.slice(shipped.indexOf(MARK))).toBe(original.slice(original.indexOf(MARK)));
 });

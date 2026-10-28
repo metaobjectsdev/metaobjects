@@ -68,6 +68,14 @@
       "eject": "full",
       "ports": ["typescript"]
     },
+    "prisma-schema": {
+      "concept": "A Prisma schema (schema.prisma) for the model's tables, with the CHECK constraints Prisma cannot declare in a companion SQL file.",
+      "tier": "native",
+      "layer": "persistence",
+      "note": "TYPESCRIPT ONLY by design (#479): Prisma is a TypeScript ORM, and the generator is a reference helper (ADR-0034 Amendment 3) writing a schema that imports nothing.",
+      "eject": "full",
+      "ports": ["typescript"]
+    },
     "callable": {
       "concept": "Per-entity callable wrapper for a callable source (storedProc / tableFunction); in TS it also covers the service surface wrapping the query helpers.",
       "tier": "native",
@@ -350,6 +358,7 @@
           "codegen-ts/src/naming.ts",
           "codegen-ts/src/owned-runtime.ts",
           "codegen-ts/src/pk-resolver.ts",
+          "codegen-ts/src/projection/build-projection-views.ts",
           "codegen-ts/src/projection/extract-view-spec.ts",
           "codegen-ts/src/projection/projection-detector.ts",
           "codegen-ts/src/projection/report-resolve.ts",

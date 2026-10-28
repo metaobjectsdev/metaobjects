@@ -15,8 +15,9 @@ packages. Codegen runs through the Node `meta` CLI (`@metaobjectsdev/cli`, binar
 - Field subtype → column mapping
 
 Topic files beside this one, to open when they come up:
-`typescript-mysql.md` (a MySQL database), `typescript-document-store.md` (MongoDB or any
-store MetaObjects does not manage, with a tested repository generator),
+`typescript-mysql.md` (a MySQL database), `typescript-prisma.md` (Prisma as the ORM),
+`typescript-document-store.md` (MongoDB or any store MetaObjects does not manage, with a
+tested repository generator),
 `typescript-retargeting.md` (a framework other than Fastify, Hono or React),
 `typescript-templates.md` (declarative Mustache template-codegen) and `typescript-docs.md`
 (the docs generators). The procedure for any unsupported stack is `any-stack.md`.
@@ -85,6 +86,7 @@ import { tanstackQuery, tanstackGrid } from "@metaobjectsdev/codegen-ts-tanstack
 export default defineConfig({
   outDir: "src/generated",
   dialect: "postgres",                 // "postgres" | "sqlite" | "d1" | "mysql" (mysql: codegen + runtime; migrate does not own it)
+  // orm: "prisma",                    // keep Prisma: contract-only targets + prismaSchemaFile(); see `typescript-prisma.md`
   extStyle: "js",                      // "js" (default) for Node ESM / plain tsc; "none" for a bundler-resolution toolchain — see `owning-generators.md` "Your framework isn't the default"
   apiPrefix: "/api",                   // flows to routes AND client fetch URLs
   timestampMode: "string",             // "string" (default, ISO-8601 wire contract) | "date" (Drizzle native Date)

@@ -33,6 +33,7 @@ export * from "./names.js";
 export * from "./naming.js";
 export * from "./owned-runtime.js";
 export * from "./pk-resolver.js";
+export * from "./projection/build-projection-views.js";
 export * from "./projection/extract-view-spec.js";
 export * from "./projection/projection-detector.js";
 export * from "./projection/report-resolve.js";
