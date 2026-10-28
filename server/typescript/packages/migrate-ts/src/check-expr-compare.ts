@@ -1,8 +1,16 @@
 // src/check-expr-compare.ts
 //
-// CHECK-expression comparison. Postgres rewrites a stored CHECK body so the raw
-// text we generate and the introspected text differ textually but mean the same
-// thing. This reduces both to ONE canonical form for comparison.
+// CHECK-expression comparison — the STRING normaliser. Postgres rewrites a stored CHECK so the
+// raw text we generate and the introspected text differ textually but mean the same thing. This
+// reduces both to ONE canonical form for comparison.
+//
+// It is the comparison of last resort. On a live Postgres the planner asks the server instead
+// (expr-canon-probe.ts: the expected expression is added to a rolled-back scratch table and
+// Postgres's own stored text is compared with the live one), and this module decides only where
+// that cannot be asked: SQLite and D1 (which store text as written), the offline plan (no
+// database), a read-only connection or a role without TEMP, and an expression that does not
+// compile against the live columns. Do NOT add another Postgres-shaped rewrite here for a shape
+// the live comparison already settles; the probe takes it.
 //
 // It was written when every expression reaching it was machine-derived with a simple,
 // known shape (comparison / IN / length / regex), and the header said there was "no
@@ -17,15 +25,16 @@
 //   - parenthesizes a cast OPERAND: `x::integer`        →  `(x)::integer`
 //   - respells a cast TARGET canonically: `x::int`      →  `(x)::integer`
 // All five are canonicalized below so an enum/range CHECK introspected from PG
-// compares equal to the one we generate (idempotency on the --from-db / verify paths).
+// compares equal to the one we generate (idempotency on the offline and fallback paths).
 // Three more are folded back by foldPgAnalyzerRewrites and COLUMN_TEXT_CAST: a
 // one-element `x IN (v)` stored as `x = v`, `a IS NOT DISTINCT FROM b` stored as
 // `NOT (a IS DISTINCT FROM b)`, and `(varchar_col)::text` stored for a text operator.
 //
 // Everything textual runs OUTSIDE single-quoted literals (mapOutsideLiterals). One thing is
-// still NOT canonicalized: dropping every bracket erases precedence, so `(a OR b) AND c` and
-// `a OR (b AND c)` compare equal. Fixing that takes the server's own canonical form, not more
-// string rules.
+// still NOT canonicalized, and cannot be by string rules: dropping every bracket erases
+// precedence, so `(a OR b) AND c` and `a OR (b AND c)` compare equal HERE. On a live Postgres
+// the probe tells them apart; on the fallback paths above they stay equal (a real change reads
+// as clean, the worse direction, which is why the live comparison no longer uses this module).
 //
 // The last two are why a cast-bearing `@expr` used to drift FOREVER. The paren-strip
 // turns PG's added parens into a space, so `(x)::integer` reduced to `x ::integer` while

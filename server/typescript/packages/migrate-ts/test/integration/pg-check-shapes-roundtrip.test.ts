@@ -20,7 +20,8 @@ import { Kysely, PostgresDialect, sql } from "kysely";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { buildExpectedSchema } from "../../src/expected-schema.js";
 import { introspectPostgres } from "../../src/introspect/postgres.js";
-import { computeDrift } from "../../src/drift/drift.js";
+import { computeDrift, computeDriftFromActual } from "../../src/drift/drift.js";
+import { postgresExprCanonProbe } from "../../src/expr-canon-probe.js";
 import { diff } from "../../src/diff/index.js";
 import { emit } from "../../src/emit/index.js";
 
@@ -173,5 +174,18 @@ describe("every generated CHECK shape round-trips clean on live Postgres", () =>
     }
     expect(checkDrift).toEqual([]);
     expect(drift.changes).toEqual([]);
+
+    // The probe is what answered, for every shape: Postgres's own stored text equals the live one.
+    const live = await introspectPostgres(kysely);
+    const liveTable = live.tables.find((t) => t.name === TABLE)!;
+    const answer = await postgresExprCanonProbe(kysely)(liveTable, expected.tables.find((t) => t.name === TABLE)!);
+    expect(answer?.checks.size).toBe(checks.length);
+    for (const [check, stored] of answer!.checks) {
+      expect(stored).toBe(liveTable.checks.find((c) => c.name === check.name)!.expression);
+    }
+
+    // The fallback lane (SQLite-style comparison: no probe) reads the same shapes as clean too.
+    const unprobed = await computeDriftFromActual(live, "postgres", loaded.root);
+    expect(unprobed.changes.filter((c) => c.kind.endsWith("-check"))).toEqual([]);
   });
 });

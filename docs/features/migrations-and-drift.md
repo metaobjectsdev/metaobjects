@@ -370,6 +370,42 @@ opened by an older SQLite (Python 3.10's stdlib, Ubuntu 22.04's `sqlite3`). The 
 behind `--allow drop-check` and raises no data hazard, because the rule is the same — and
 the re-diff is empty afterwards. Postgres keeps `IS [NOT] DISTINCT FROM`.
 
+## How CHECK constraints and expression indexes are compared
+
+Postgres rewrites an expression before it stores it (`"k" IN ('x')` becomes `k = 'x'::text`,
+`a IS NOT DISTINCT FROM b` becomes `NOT (a IS DISTINCT FROM b)`, an `IN` list becomes
+`= ANY (ARRAY[…])`, and casts and brackets are added), so the text `meta migrate` generates never
+comes back from the database as written. On Postgres, a plan against the database
+(`meta verify --db`, `meta migrate --from-db` and `--apply`) therefore **asks Postgres** instead of
+guessing. For each table it creates a **temporary table with the live table's columns** inside a
+transaction it rolls back (a savepoint, when the connection is already in one), adds the expected
+CHECK to it, creates each expected expression or partial-index predicate as a temporary index,
+and reads back `pg_get_constraintdef` / `pg_get_indexdef` / `pg_get_expr`. Those are compared with
+the live definitions as plain strings. Nothing persists, and nothing is written to your table.
+Two expressions that mean different things never compare equal: a precedence change
+(`(a OR b) AND c` against `a OR (b AND c)`), a regrouped `NOT`, and a changed enum-member or regex
+literal are all drift.
+
+Where the question cannot be asked, the comparison falls back to a **string normaliser**
+(`check-expr-compare.ts`), which rewrites both texts toward one shape. The fallback applies to:
+
+- SQLite and D1, which store the text as written;
+- the default **offline** `meta migrate`, which diffs the committed snapshot and has no database;
+- a read-only connection or a hot standby, and a role without the `TEMP` privilege;
+- an expected expression that does not compile against the live columns (the column diff reports
+  that case);
+- an expression containing a `;` outside a quoted literal, which is never sent to the database.
+
+The normaliser cannot tell a precedence change from a bracket-only change (it deletes every
+bracket), so on the fallback path `(a OR b) AND c` and `a OR (b AND c)` compare as equal. A fallback
+never reports drift of its own: a probe that fails changes nothing about the answer.
+
+`meta migrate baseline --from-db` on Postgres closes the offline gap. Where the live database
+proves a CHECK, or an expression index's key or predicate, is what the metadata would generate, the
+snapshot records the **generated** text rather than Postgres's spelling, so the offline plan
+compares like with like and a baselined project starts clean. Anything it cannot prove keeps
+Postgres's text. If the metadata does not load, the baseline is written as before.
+
 ## Drift verify commands per port
 
 | Port | Command | What it does |
