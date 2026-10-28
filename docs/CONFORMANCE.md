@@ -450,19 +450,18 @@ above: one committed `cases.json`, no per-port fixture, no ledger. The corpus ha
 
 - **Resolution (24 cases).** Every case's `expectFiles`/`expectImported`/`expectSelected`/
   `expectMigrateGoverned`/`expectLoadError` assertions. **TypeScript (the reference
-  implementation) and Python both run all 24, identically**, with no exemption. The two
+  implementation), Python and Java all run all 24, identically**, with no exemption. The two
   overlay cases that need a view child as incidental content use `view.currency` (the one
   concrete `view.*` subtype registered cross-port), not `view.text` — a prior revision used
   `view.text`, which Python did not register then, and carried a since-discharged allowlist
-  for it.
+  for it. Kotlin inherits the Java run through the same loader and Maven plugin.
 - **Check (11 cases, `expectCheck`).** For each declared dependency, `current`, `drifted` or
   `unresolved` (a missing path, a bad manifest, a hash mismatch, or not yet in the lock). Run
-  by TypeScript only, in `cli/test/dependency-check-conformance.test.ts`; Python has no
-  `deps check` yet and filters these cases out. The arm exists so that each port's check is
+  by TypeScript only, in `cli/test/dependency-check-conformance.test.ts`; Python and Java have no
+  `deps check` yet and filter these cases out. The arm exists so that each port's check is
   written against the same edge cases (Phase 2, #482).
 
-Java, Kotlin and C# have no runner —
-Phase 1a is TypeScript + Python only; those three ports arrive in Phase 2.
+C# has no runner yet; it arrives in a later Phase 2 slice.
 
 ### `fixtures/shared-model-conformance/` (11 cases)
 
