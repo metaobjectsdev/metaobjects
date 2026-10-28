@@ -125,7 +125,7 @@ to change.
 | Code | When | What to do |
 |---|---|---|
 | `ERR_PRISMA_READ_ONLY_SOURCE` | an object is read from a view, stored procedure or table function (a projection, or a served report) | create the view in a Prisma migration and mark its `source.rdb` `@unmanaged: true`, or leave it out with `filter` |
-| `ERR_PRISMA_UNSUPPORTED_INDEX` | an index has `@expr`, `@where` or `@using` | create it in a Prisma migration, or drop the attribute |
+| `ERR_PRISMA_UNSUPPORTED_INDEX` | an index has `@expr` or `@where`, or a `@using` method other than Postgres `hash`, `gin`, `gist`, `brin` or `spgist` | create it in a Prisma migration, or drop the attribute |
 | `ERR_PRISMA_UNSUPPORTED_CHECK` | the provider is SQLite and the model implies a CHECK | pass `checks: "omit"` |
 | `ERR_PRISMA_NO_PRIMARY_KEY` | a table has no primary key | declare an `identity.primary` |
 | `ERR_PRISMA_UNMAPPABLE_RELATION` | a foreign key points at a table with no model, at a non-unique key, or at a column of another type | include the table, reference a key, or match the subtype |

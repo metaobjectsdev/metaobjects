@@ -23,8 +23,10 @@ here.**
   unique keys, indexes and `@map`/`@@map`, and Postgres `@schema` maps to `@@schema`. Prisma cannot
   declare CHECK constraints, so the ones the model implies go in `schema.checks.sql`, which you
   apply with `prisma db execute --file`. `meta verify --codegen` fails on a hand-edited or stale
-  schema; the generator overwrites hand edits rather than merging them. A database created by
-  `prisma db push` passes `meta verify --db`, and a change to it fails, on Postgres and SQLite.
+  schema; the generator overwrites hand edits rather than merging them. On Postgres, a database
+  created by `prisma db push` with the checks file applied passes `meta verify --db`, and a
+  change to it fails. On SQLite, which cannot take the checks file, the gate reports each
+  missing CHECK and nothing else, and a change to the database fails it.
   What a Prisma schema cannot express is refused with an `ERR_PRISMA_*` code, never dropped: a
   view or other read-only source, an expression or partial index, a CHECK on SQLite, a table
   with no primary key, a relation Prisma cannot model, a name collision, or an unsupported
