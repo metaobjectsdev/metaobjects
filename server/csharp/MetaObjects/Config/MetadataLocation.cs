@@ -30,9 +30,13 @@ namespace MetaObjects.Config;
 /// ADR-0019 Amendment 2 — the project's wire-format setting from the same file (null: the
 /// native default). <see cref="Load"/> sets it on the loaded root for codegen.
 /// </param>
+/// <param name="OutDir">
+/// The generated-code directory the project declared (<c>csharp.outDir</c> in the same
+/// file), absolute; null when it declared none. An explicit <c>--out</c> takes precedence.
+/// </param>
 public sealed record ResolvedMetadata(
     string Directory, IReadOnlyList<string>? Files, IReadOnlyList<string> Libraries, PhysicalNaming Naming,
-    WireFormat? Wire = null)
+    WireFormat? Wire = null, string? OutDir = null)
 {
     /// <summary>Load this metadata, with the project's <c>libraries</c>, and set the loaded
     /// root's <see cref="MetaRoot.PhysicalNaming"/> from <see cref="Naming"/> (ADR-0058) and its
@@ -94,7 +98,7 @@ public static class MetadataLocation
             var explicitCfg = ConfigFor(metadataDir);
             var explicitLibs = explicitCfg?.Libraries ?? Array.Empty<string>();
             var explicitNaming = explicitCfg?.Naming ?? PhysicalNaming.Default;
-            return new ResolvedMetadata(metadataDir, null, explicitLibs, explicitNaming, explicitCfg?.Wire);
+            return new ResolvedMetadata(metadataDir, null, explicitLibs, explicitNaming, explicitCfg?.Wire, explicitCfg?.OutDir);
         }
 
         var cfg = NeutralConfig.Read(cwd);
@@ -108,7 +112,7 @@ public static class MetadataLocation
             // No declared sources: resolve the DEFAULT directory through the same ladder
             // the shared conformance corpus gates (ERR_COLLECTION_NOT_FOUND when absent).
             var defaultFiles = SourceResolver.ResolveCollection(cwd);
-            return new ResolvedMetadata(Path.Combine(cwd, NeutralConfig.DefaultMetadataDir), defaultFiles, libraries, naming, wire);
+            return new ResolvedMetadata(Path.Combine(cwd, NeutralConfig.DefaultMetadataDir), defaultFiles, libraries, naming, wire, cfg?.OutDir);
         }
 
         if (specs.Count > 1)
@@ -138,6 +142,6 @@ public static class MetadataLocation
                 "\"sources\" at the file's containing directory.");
         }
 
-        return new ResolvedMetadata(resolved, files, libraries, naming, wire);
+        return new ResolvedMetadata(resolved, files, libraries, naming, wire, cfg?.OutDir);
     }
 }

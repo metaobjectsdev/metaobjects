@@ -594,6 +594,28 @@ public static class CodegenCli
         }
     }
 
+    /// <summary>The project's declared <c>csharp.outDir</c> into <paramref name="outDir"/>, null when
+    /// it declares none or has no metadata collection yet (the caller then reports usage, which
+    /// names the setting). Returns false, after printing the error, when the location or config is
+    /// malformed, so the real cause is shown instead of a usage line.</summary>
+    private static bool TryConfiguredOutDir(string? metadataDir, out string? outDir)
+    {
+        outDir = null;
+        try
+        {
+            outDir = MetadataLocation.Resolve(metadataDir, Directory.GetCurrentDirectory()).OutDir;
+            return true;
+        }
+        catch (MetaModelException e) when (e.Code == ErrorCode.ERR_COLLECTION_NOT_FOUND)
+        {
+            return true;
+        }
+        catch (Exception e) when (e is MetaModelException or MetadataLocationException)
+        {
+            return ResolveOrReport(metadataDir) is not null;
+        }
+    }
+
     /// <summary>Resolve the metadata location through the same ladder as <c>dotnet meta</c>,
     /// or print why not. <c>null</c> means the caller exits 2.</summary>
     private static ResolvedMetadata? ResolveOrReport(string? metadataDir)
@@ -654,9 +676,17 @@ public static class CodegenCli
         }
         // Usage-first: a missing --out is a plain usage error, and must win over the metadata
         // ladder's own possible ERR_COLLECTION_NOT_FOUND below.
+        // An omitted --out falls back to the project's declared `csharp.outDir`, the same
+        // directory `dotnet meta verify` diffs, so gen and verify cannot disagree.
+        if (a.OutDir is null)
+        {
+            if (!TryConfiguredOutDir(a.MetadataDir, out var configuredOut)) return 2;
+            a.OutDir = configuredOut;
+        }
         if (a.OutDir is null)
         {
             Console.Error.WriteLine("usage: dotnet meta gen [<metadataDir>] --out <dir> [--namespace <ns>] [--generators <a,b,c>] [...]");
+            Console.Error.WriteLine("  (or set \"csharp\": { \"outDir\": \"<dir>\" } in .metaobjects/config.json)");
             return 2;
         }
         if (ResolveOrReport(a.MetadataDir) is not { } meta) return 2;
@@ -841,7 +871,13 @@ public static class CodegenCli
         }
         if (a.OutDir is null)
         {
+            if (!TryConfiguredOutDir(a.MetadataDir, out var configuredOut)) return 2;
+            a.OutDir = configuredOut;
+        }
+        if (a.OutDir is null)
+        {
             Console.Error.WriteLine("usage: verify --codegen [<metadataDir>] --out <dir> [--namespace <ns>] [--generators <a,b,c>]");
+            Console.Error.WriteLine("  (or set \"csharp\": { \"outDir\": \"<dir>\" } in .metaobjects/config.json)");
             return 2;
         }
         if (ResolveOrReport(a.MetadataDir) is not { } meta) return 2;

@@ -434,6 +434,46 @@ public sealed class OneGeneratorListTests : IDisposable
         Assert.Contains("Requirements_acme_Tests.g.cs", drift.Stderr);
     }
 
+    // ---- the project's csharp.outDir drives gen and verify; --out wins ---------------------------
+
+    [Fact]
+    public void A_configured_out_dir_is_where_gen_writes_and_verify_checks_and_out_overrides_it()
+    {
+        Directory.CreateDirectory(Path.Combine(_tmp, ".metaobjects"));
+        File.WriteAllText(Path.Combine(_tmp, ".metaobjects", "config.json"),
+            """{ "schema_version": 1, "csharp": { "outDir": "generated" } }""");
+        IReadOnlyList<IGenerator> declared = [new EntityGenerator()];
+
+        var gen = OwnedRunner.Run(_tmp, declared, "gen");
+        Assert.True(gen.ExitCode == 0, $"exit={gen.ExitCode}\nstdout={gen.Stdout}\nstderr={gen.Stderr}");
+        Assert.Equal(["Subscriber.g.cs"], FilesUnder(OutDir));
+
+        var clean = OwnedRunner.Run(_tmp, declared, "verify", "--codegen");
+        Assert.True(clean.ExitCode == 0, $"exit={clean.ExitCode}\nstdout={clean.Stdout}\nstderr={clean.Stderr}");
+
+        File.AppendAllText(Path.Combine(OutDir, "Subscriber.g.cs"), "// edited\n");
+        var drift = OwnedRunner.Run(_tmp, declared, "verify", "--codegen");
+        Assert.Equal(1, drift.ExitCode);
+        Assert.Contains("Subscriber.g.cs", drift.Stderr);
+
+        // --out beats the config: gen writes there and leaves the configured directory alone.
+        var other = Path.Combine(_tmp, "elsewhere");
+        var genOther = OwnedRunner.Run(_tmp, declared, "gen", "--out", other);
+        Assert.True(genOther.ExitCode == 0, $"exit={genOther.ExitCode}\n{genOther.Stdout}{genOther.Stderr}");
+        Assert.Equal(["Subscriber.g.cs"], FilesUnder(other));
+        var cleanOther = OwnedRunner.Run(_tmp, declared, "verify", "--codegen", "--out", other);
+        Assert.True(cleanOther.ExitCode == 0, $"exit={cleanOther.ExitCode}\n{cleanOther.Stdout}{cleanOther.Stderr}");
+    }
+
+    [Fact]
+    public void Without_a_configured_out_dir_or_out_flag_gen_asks_for_the_setting()
+    {
+        var gen = OwnedRunner.Run(_tmp, [new EntityGenerator()], "gen");
+        Assert.Equal(2, gen.ExitCode);
+        Assert.Contains("csharp", gen.Stderr);
+        Assert.Contains("outDir", gen.Stderr);
+    }
+
     // ---- a narrowed verify checks only what the narrowed run produces ---------------------------
 
     [Fact]

@@ -41,6 +41,8 @@ if (args.Length == 0 || helpRequested)
         "                                                                    root and must exist; with none it reads\n" +
         "                                                                    prompts/ if present, else templates/\n" +
         "                                                       --codegen    regen-to-temp vs committed --out\n" +
+        "                                                                    (--out defaults to csharp.outDir in\n" +
+        "                                                                    .metaobjects/config.json, as for gen)\n" +
         "                                                       --namespace  codegen regen namespace; inferred\n" +
         "                                                                    from the committed --out when omitted\n" +
         "                                                       --db         NOT supported in C# (migrate engine)\n" +
@@ -424,6 +426,8 @@ static int RunVerify(string[] rest)
     // Rung 1 (explicit positional) is honored as-is; an omitted metadataDir
     // falls back to the port-neutral .metaobjects/config.json ladder.
     var resolvedMeta = ResolveMetadataDirOrExit(metadataDir);
+    // --out wins; otherwise the project's declared `csharp.outDir`, the directory gen writes.
+    outDir ??= resolvedMeta.OutDir;
 
     // The templates gate needs a root, and it must exist: a typo'd or absent directory used
     // to verify clean, because nothing in an empty root can drift. With none named (bare
@@ -466,7 +470,7 @@ static int RunVerify(string[] rest)
     if (bare)
     {
         if (outDir is null)
-            Console.WriteLine("dotnet meta verify — codegen gate skipped: pass --out <dir> (the committed generated output to diff against) and have codegen/Generators.cs to run it");
+            Console.WriteLine("dotnet meta verify — codegen gate skipped: set \"csharp\": { \"outDir\": \"<dir>\" } in .metaobjects/config.json (or pass --out <dir>) naming the committed generated output to diff against, and have codegen/Generators.cs to run it");
         else if (!CodegenHandoff.HasGeneratorList(projectRoot))
             Console.WriteLine("dotnet meta verify — codegen gate skipped: no codegen/Generators.cs (the generator list) to regenerate from");
         else

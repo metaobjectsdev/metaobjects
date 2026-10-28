@@ -226,6 +226,12 @@ export const ConfigSchema = z.object({
         : iss.code === "invalid_type" ? `"wire" must be an object` : undefined,
     })
     .optional(),
+  /**
+   * C#-scoped settings. `outDir` is where `dotnet meta gen` writes and a bare `dotnet meta
+   * verify` diffs, relative to the directory holding `.metaobjects/`. Only the C# port reads
+   * it; it is declared here so the shared file validates and this reader does not warn on it.
+   */
+  csharp: z.strictObject({ outDir: z.string().min(1).optional() }).optional(),
 }).strict();
 
 export type Config = z.infer<typeof ConfigSchema>;

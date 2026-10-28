@@ -128,7 +128,8 @@ public sealed class CliSurfaceTests : IDisposable
         Directory.CreateDirectory(Path.Combine(_tmp, "prompts"));
         var (exit, stdout, stderr) = CliProcess.Run(_tmp, "verify", model);
         Assert.True(exit == 0, $"exit={exit}\nstderr={stderr}");
-        Assert.Contains("codegen gate skipped: pass --out <dir>", stdout);
+        Assert.Contains("codegen gate skipped: set \"csharp\": { \"outDir\"", stdout);
+        Assert.Contains(".metaobjects/config.json", stdout);
     }
 
     [Fact]
@@ -137,6 +138,40 @@ public sealed class CliSurfaceTests : IDisposable
         var model = WriteBlogModel();
         Directory.CreateDirectory(Path.Combine(_tmp, "prompts"));
         var (exit, stdout, stderr) = CliProcess.Run(_tmp, "verify", model, "--out", Path.Combine(_tmp, "generated"));
+        Assert.True(exit == 0, $"exit={exit}\nstderr={stderr}");
+        Assert.Contains("codegen gate skipped: no codegen/Generators.cs", stdout);
+    }
+
+    private void WriteOutDirConfig(string outDir)
+    {
+        Directory.CreateDirectory(Path.Combine(_tmp, ".metaobjects"));
+        File.WriteAllText(Path.Combine(_tmp, ".metaobjects", "config.json"),
+            "{ \"schema_version\": 1, \"csharp\": { \"outDir\": \"" + outDir + "\" } }");
+    }
+
+    [Fact]
+    public void A_bare_verify_with_a_configured_out_dir_reaches_the_codegen_gate()
+    {
+        // No --out: the directory comes from csharp.outDir, so the gate is attempted (and refuses
+        // here only because the project has a generator list but no codegen project to compile it).
+        var model = WriteBlogModel();
+        Directory.CreateDirectory(Path.Combine(_tmp, "prompts"));
+        Directory.CreateDirectory(Path.Combine(_tmp, "codegen"));
+        File.WriteAllText(Path.Combine(_tmp, "codegen", "Generators.cs"), "// list");
+        WriteOutDirConfig("generated");
+        var (exit, stdout, stderr) = CliProcess.Run(_tmp, "verify", model);
+        Assert.Equal(2, exit);
+        Assert.DoesNotContain("codegen gate skipped", stdout);
+        Assert.Contains("no codegen/Codegen.csproj", stderr);
+    }
+
+    [Fact]
+    public void A_bare_verify_with_a_configured_out_dir_and_no_generator_list_says_what_is_missing()
+    {
+        var model = WriteBlogModel();
+        Directory.CreateDirectory(Path.Combine(_tmp, "prompts"));
+        WriteOutDirConfig("generated");
+        var (exit, stdout, stderr) = CliProcess.Run(_tmp, "verify", model);
         Assert.True(exit == 0, $"exit={exit}\nstderr={stderr}");
         Assert.Contains("codegen gate skipped: no codegen/Generators.cs", stdout);
     }
