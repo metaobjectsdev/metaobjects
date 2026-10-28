@@ -10,6 +10,10 @@ here.**
 
 ## [Unreleased]
 
+### Docs
+
+- **Port docs and `llms-full.txt` now say what a fresh reader got wrong.** Each port page opens with its keep-your-ORM path (TypeScript `runtime: false`, Java and Kotlin records and data classes, sourceless C# POCOs as DTOs, Pydantic in Python); three-way merge is scoped to TypeScript everywhere it was claimed unscoped, with what the other ports do instead (committed hash manifest, refusal by name, eject); framework baselines are stated (Java 21 rather than the contradictory 17, Spring Boot 3.x with Boot 2 unsupported, .NET 8, Python 3.11, Node first and Bun second); and each port page carries its known gaps with absolute links.
+
 ### Added
 
 - **Report export: `GET /<segment>?format=csv|json|xml` on a served report, in all five ports.**

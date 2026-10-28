@@ -3,9 +3,18 @@
 Targets Python 3.11+ on the FastAPI / Pydantic stack. Ships the
 metadata loader (canonical JSON + sigil-free YAML), conformance runner over the
 shared corpora, the FR-004 render engine, and the entity / payload / router
-codegen. Schema migrations are owned by the Node `meta` CLI (ADR-0015) — the
+codegen. **Keep your ORM:** the `entity` generator writes Pydantic models with no ORM of any
+kind, so your SQLAlchemy or Django models stay hand-written beside them. Schema migrations are owned by the Node `meta` CLI (ADR-0015) — the
 Python port has no `migrate` command by design; it consumes the canonical
 `schema.postgres.sql` artifact verbatim.
+
+## Regeneration and hand edits
+
+`metaobjects gen` has no three-way merge (that is TypeScript-only). It decides per file from a
+committed hash manifest, `.metaobjects/.gen-state/.hashes.json`: a file that still matches what
+the generator wrote is overwritten, and an edited one is refused by name. To change what a
+generator emits, `metaobjects eject <name>` copies it into `codegen/generators/` for you to own.
+Commit the manifest.
 
 ## Install
 
@@ -267,8 +276,12 @@ The router conforms to the cross-port API contract
 a static per-entity allowlist (HTTP 400 envelope on unknown field); 404
 envelope is `{"error": "not_found"}`. Filter operators (`eq` / `ne` / …) **do** ship —
 a per-entity filter allowlist is generated and the router parses `filter[field][op]`
-into typed predicates. Remaining gaps are tracked in
-[`server/python/src/metaobjects/codegen/KNOWN_GAPS.md`](../../server/python/src/metaobjects/codegen/KNOWN_GAPS.md).
+into typed predicates. Remaining gaps are listed in
+[KNOWN_GAPS.md](https://github.com/metaobjectsdev/metaobjects/blob/main/server/python/src/metaobjects/codegen/KNOWN_GAPS.md); in short: the generated
+router assumes a single-field `int` primary key (other types generate but need a hand edit to the
+`: int` typing), the router's request and response types are `dict[str, Any]` rather than
+per-entity Pydantic models, and there is no stored-procedure callable generator (FR-015 ships in
+TypeScript, C# and Kotlin only).
 
 Wire the router into your consumer FastAPI app:
 

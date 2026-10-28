@@ -2,7 +2,43 @@
 
 A first-class full-stack target on .NET 8. Loader + conformance + EF Core codegen
 + render engine + the `meta` CLI all ship. Targets EF Core + ASP.NET Core +
-Postgres + Npgsql.
+Postgres + Npgsql. The baseline is **.NET 8** (`net8.0`); the tool and the packages are not
+built for earlier runtimes.
+
+## Regeneration and hand edits
+
+`dotnet meta gen` has no three-way merge (that is TypeScript-only). It decides per file from a
+committed hash manifest, `.metaobjects/.gen-state/.hashes.json`: a file that still matches what
+the generator wrote is overwritten, and an edited one is refused by name. To change what a
+generator emits, `dotnet meta eject <name>` copies it into `codegen/generators/` for you to own.
+Commit the manifest.
+
+## Keep your EF Core model: contracts as plain DTOs
+
+Contracts and entities are not forced into one type. Declare an object with **no
+`source.rdb`** (a *sourceless* object) and `EntityGenerator` writes a POCO with DataAnnotations
+and **no EF mapping**: no `[Table]`, no `DbSet<>`, no `AppDbContext` entry, no CRUD routes, no
+filter allowlist. A sourced entity gets `[Table]`/`[Key]`/`[Column]` and the full EF Core
+surface. So the same model can hold sourceless request/response contracts that you hand to your
+own controllers and sourced entities where you want MetaObjects to own the mapping; your
+existing hand-written EF entities are not touched.
+
+A declaration with no `source.rdb` (this one is a plain DTO POCO):
+
+```json
+{ "object.entity": {
+    "name": "AuthorSummary",
+    "children": [
+      { "field.long":   { "name": "id" } },
+      { "field.string": { "name": "name", "@required": true, "@maxLength": 200 } },
+      { "identity.primary": { "@fields": "id" } }
+    ]
+}}
+```
+
+Wire only the generators you want in `codegen/Generators.cs`. Note that the generated CRUD
+routes use the *entity* POCO, as described under [Use](#use); the DTO shape above is for
+objects you keep sourceless.
 
 ## Install
 
@@ -720,8 +756,17 @@ ship too — the generated `<Entity>FilterAllowlist` (`FilterAllowlistGenerator`
 feeds `FilterParser.Parse` + `EfCoreFilterDispatch.ApplyFilter`, both wired
 directly into the generated list handler. A read-only projection
 (`source.rdb @kind: view`) and a view-backed report get the same filter and sort
-on their list route, against an allowlist of their own fields. Remaining gaps are in
-[`server/csharp/MetaObjects.Codegen/Generators/KNOWN_GAPS.md`](../../server/csharp/MetaObjects.Codegen/Generators/KNOWN_GAPS.md).
+on their list route, against an allowlist of their own fields.
+
+**Known gaps** (full list with workarounds in
+[KNOWN_GAPS.md](https://github.com/metaobjectsdev/metaobjects/blob/main/server/csharp/MetaObjects.Codegen/Generators/KNOWN_GAPS.md)):
+no `filter[or]` / `filter[and]` boolean grouping and a single sort key only (both outside the
+cross-port contract today); the `<Entity>View` / `<Entity>Views` names are reserved for a
+write-through entity's generated read model; an `EmitMappedClass` override does not reach that
+read model; M:N traversal on a write-through entity is not routed through the replica view; the
+ordered-comparison filter fallback in `EfCoreFilterDispatch` needs a hand-written typed
+dispatcher for some column types; there is no metadata-driven runtime tier (EF Core output is
+generated code), and no `migrate` surface (schema is TypeScript-owned).
 
 ## Capability snapshot
 

@@ -14,7 +14,7 @@ MetaObjects **major** release; deprecations are announced before removal.
 |---|---|---|
 | **Data extraction** | per-port walker (TS / C# / Python / Java / Kotlin) | typed data dict |
 | **Template rendering** | shared Mustache via `@metaobjectsdev/render` | Mustache spec |
-| **File emission** | the runner + overwrite policy | three-way merge |
+| **File emission** | the runner + overwrite policy | hash manifest (refuse an edited file); three-way merge in TypeScript only |
 
 The middle layer is **language-agnostic**: the same Mustache template that
 renders `<Entity>.md` from TypeScript walks identically from C# or Python.

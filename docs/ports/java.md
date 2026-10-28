@@ -4,17 +4,38 @@ The Java port targets Spring-Boot consumers on Maven. It ships the full metamode
 + loader + conformance + OMDB runtime persistence engine + the FR-004 render engine,
 plus the `metaobjects-maven-plugin` for build-time codegen (`mvn metaobjects:generate` / `metaobjects:editor`).
 
+**Baselines.** Java 21 (the published artifacts are compiled with `--release 21`, so they do
+not load on 17) and Spring Boot 3.x (the generated code uses `jakarta.*` and Spring Web MVC 6;
+Spring Boot 2 and `javax.*` are not supported).
+
+**Keep your ORM (JPA, Hibernate, jOOQ, JDBC).** You do not have to adopt the OMDB runtime or
+replace your entities. `SpringDtoGenerator` (`dto`) writes a record per concrete entity or
+projection, whatever its source, with jakarta validation annotations, and
+`SpringValueObjectGenerator` (`value-object`) writes a record per value object. Your JPA entity
+stays hand-written, and the generated `<Entity>Repository` is an interface *you* implement
+with Spring Data JPA, jOOQ or plain JDBC. Wire only the generators you want in
+`<generators>`.
+
 Schema migrations are owned by the TypeScript toolchain (`@metaobjectsdev/cli migrate`);
 the Java diff-and-converge migration engine and its `meta:migrate` / live-DB-drift
 `metaobjects:verify` Maven goals were removed. Per ADR-0015 the OMDB runtime auto-create
 path was also removed — OMDB is pure data-access (CRUD/query/codec/transactions).
 Prompt / template drift is still checked via the `metaobjects-render` `Verify` API.
 
+## Regeneration and hand edits
+
+There is no three-way merge on the JVM (that is TypeScript-only). `mvn metaobjects:generate`
+records each file it writes in `.metaobjects/.gen-state/.hashes.json`: a file that still matches
+is overwritten, and an edited one is refused by name (`<handEdits>keep</handEdits>`, the default)
+or replaced (`<handEdits>overwrite</handEdits>`). `mvn metaobjects:eject -Dnames=<name>` copies a
+generator into your repo to own. Commit the manifest. Details:
+[Own your codegen](../features/own-your-codegen.md).
+
 ## Install
 
 Set `${metaobjects.version}` to the current Maven Central release (`8.1.4`) — both
 the dependency and plugin blocks below resolve it from one `<properties>` entry. The
-generated records need Java 17 or newer, so set the compiler level here too (Maven
+artifacts and the generated records need Java 21, so set the compiler level here too (Maven
 defaults to Java 8, where `mvn compile` fails with "records are not supported in -source 8"):
 
 ```xml
@@ -847,6 +868,18 @@ controllers (or a global `WebMvcConfigurer` `addCorsMappings(...)` registration
 in the consumer's `@Configuration`). The generated controllers do not emit
 `@CrossOrigin` — adding it cross-port would require a CORS-policy
 configuration model that has not yet been specced.
+
+## Known gaps
+
+The full list is in
+[KNOWN_GAPS.md](https://github.com/metaobjectsdev/metaobjects/blob/main/server/java/codegen-spring/src/main/java/com/metaobjects/generator/spring/KNOWN_GAPS.md).
+In short: the generated controller assumes a single-field `Long` primary key (a `UUID` key
+generates but the `@PathVariable Long id` typing needs a hand edit; composite keys are not
+supported), request and response share one `<Entity>Dto` (no separate insert or update types),
+generated output parsers throw on bad input (there is no try-style variant) and need Jackson on
+the runtime classpath, and no stored-procedure callable generator exists (FR-015 ships in
+TypeScript, C# and Kotlin only). OMDB is data access only; schema migrations are owned by the
+Node `meta` CLI.
 
 ## Capability snapshot
 
