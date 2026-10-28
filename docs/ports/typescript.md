@@ -877,7 +877,7 @@ cover Postgres, SQLite and D1 only (MySQL gets codegen and runtime, not migratio
 SQL Server are not supported targets: `meta migrate` will not manage their schema, and the generated
 Drizzle tier does not target them. The contract-only output of the other ports (Java records, sourceless
 C# POCOs, Pydantic models) never touches the database, so a team on Oracle or SQL Server can
-still use it, and manages its schema itself. and hand edits survive regeneration through the
+still use it, and manages its schema itself. Hand edits survive regeneration through the
 three-way merge only on the machine that generated the file. The other ports' gaps are listed on
 their own pages: [C#](csharp.md), [Java](java.md#known-gaps),
 [Kotlin](kotlin.md), [Python](python.md).
