@@ -40,11 +40,6 @@ def requested_format(query_params: Mapping[str, str]) -> str | None:
     return query_params.get("format")
 
 
-def is_wired_format(value: str, formats: tuple[str, ...] = EXPORT_FORMATS) -> bool:
-    """Whether *value* is one of the wired *formats* (exact, case-sensitive match)."""
-    return value in formats
-
-
 def is_truthy_flag(value: str | None) -> bool:
     """Whether a ``withCount`` query value is truthy: ``1`` or ``true`` (any case)."""
     return value is not None and value.lower() in _TRUTHY_FLAGS

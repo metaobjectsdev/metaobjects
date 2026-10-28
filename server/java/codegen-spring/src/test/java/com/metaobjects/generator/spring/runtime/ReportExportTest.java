@@ -47,8 +47,6 @@ public class ReportExportTest {
 
     @Test
     public void theHeaders() {
-        assertEquals("export_cells", ReportExport.segment("/api/export_cells"));
-        assertEquals("export_cells", ReportExport.segment("export_cells"));
         assertEquals("attachment; filename=\"export_cells.csv\"",
             ReportExport.contentDisposition("export_cells", "csv"));
         assertEquals("text/csv; charset=utf-8", ReportExport.contentType("csv"));

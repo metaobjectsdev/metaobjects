@@ -112,7 +112,6 @@ def test_options_are_validated() -> None:
 def test_request_helper() -> None:
     assert rt.requested_format({}) is None
     assert rt.requested_format({"format": ""}) == ""
-    assert rt.is_wired_format("csv") and not rt.is_wired_format("CSV") and not rt.is_wired_format("")
     assert rt.invalid_format_envelope() == {"error": "invalid_format", "expected": ["csv", "json", "xml"]}
     assert rt.export_too_large_envelope(60) == {"error": "export_too_large", "maxRows": 60}
     assert rt.export_with_count_envelope()["error"] == "export_with_count"

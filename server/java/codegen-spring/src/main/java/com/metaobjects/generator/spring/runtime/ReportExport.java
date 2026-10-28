@@ -64,12 +64,6 @@ public final class ReportExport {
         return body;
     }
 
-    /** The last path segment of a route base such as {@code /api/export_cells}. */
-    public static String segment(String routeBase) {
-        int slash = routeBase.lastIndexOf('/');
-        return slash < 0 ? routeBase : routeBase.substring(slash + 1);
-    }
-
     /** {@code attachment; filename="<segment>.<format>"}. */
     public static String contentDisposition(String segment, String format) {
         return "attachment; filename=\"" + segment + "." + format + "\"";

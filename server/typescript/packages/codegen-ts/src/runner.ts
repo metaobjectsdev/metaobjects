@@ -677,6 +677,11 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   // the verbs the routes files mount. Run-scoped, read off the whole declared list.
   const routesExpose = runRoutesExpose(config.generators);
 
+  // Per-target scoping for the report-export generator: the routes import `./<Report>.export`
+  // relative to themselves, so the module must land in the route file's own target.
+  const reportExportTargets = new Set(
+    config.generators.filter((g) => g.emitsReportExport === true).map((g) => targetOf(g).name),
+  );
   // §A6 — same auto-detection for the OPT-IN names generator. The entity tier may only
   // REFERENCE `<Entity>Names` when something in this run actually emits it; the names
   // generator is opt-in under ADR-0034 (meta gen runs the adopter's own copies), so an
@@ -691,11 +696,6 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   // names artifact is not a registered cross-target module (there is no importBase route
   // to it), so `entityFile({ target: "db" })` beside a default-target `namesFile()` would
   // otherwise emit `./<Entity>.names` from a directory that does not hold one.
-  // Same per-target scoping for the report-export generator: the routes import `./<Report>.export`
-  // relative to themselves, so the module must land in the route file's own target.
-  const reportExportTargets = new Set(
-    config.generators.filter((g) => g.emitsReportExport === true).map((g) => targetOf(g).name),
-  );
   const namesTargets = new Set(
     config.generators.filter((g) => g.emitsNames === true).map((g) => targetOf(g).name),
   );
