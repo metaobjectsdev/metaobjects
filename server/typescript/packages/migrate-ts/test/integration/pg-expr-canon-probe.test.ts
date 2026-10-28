@@ -176,6 +176,80 @@ describe("expression-canon probe (live PG)", () => {
     });
   });
 
+  describe("hostile expressions are never run", () => {
+    const answered = async (over: Parameters<typeof declared>[0]) => {
+      const { live, expected } = await declared(over);
+      const t = expected.tables.find((x) => x.name === TABLE)!;
+      const answer = await postgresExprCanonProbe(db)(live.tables.find((x) => x.name === TABLE)!, t);
+      const rows = await sql<{ n: string }>`SELECT count(*)::text AS n FROM ${sql.table(TABLE)}`.execute(db);
+      return { answer, t, survived: rows.rows[0]!.n === "0" };
+    };
+    test("an E-string escape cannot smuggle a statement past the guard", async () => {
+      const { answer, t, survived } = await answered({
+        checks: { canon_not_chk: `a = E'\\''; COMMIT; DROP TABLE ${TABLE}; --'` },
+      });
+      expect(answer?.checks.has(t.checks.find((c) => c.name === "canon_not_chk")!)).toBe(false);
+      expect(survived).toBe(true);
+    });
+    test("a dollar quote cannot smuggle a statement past the guard", async () => {
+      const { answer, t, survived } = await answered({
+        checks: { canon_not_chk: `a = 1 AND $a$'$a$ <> ''; COMMIT; DROP TABLE ${TABLE}; --'` },
+      });
+      expect(answer?.checks.has(t.checks.find((c) => c.name === "canon_not_chk")!)).toBe(false);
+      expect(survived).toBe(true);
+    });
+    test("an index @using that is not an access-method name is not run", async () => {
+      const { live, expected } = await declared({ indexes: { canon_expr_idx: { expr: "lower(status)" } } });
+      const t = expected.tables.find((x) => x.name === TABLE)!;
+      const ix = t.indexes.find((i) => i.name === "canon_expr_idx")!;
+      ix.using = `btree (id); COMMIT; DROP TABLE ${TABLE}; CREATE INDEX x ON ${TABLE} USING btree`;
+      const answer = await postgresExprCanonProbe(db)(live.tables.find((x) => x.name === TABLE)!, t);
+      expect(answer?.indexes.has(ix)).toBe(false);
+      const rows = await sql<{ n: string }>`SELECT count(*)::text AS n FROM ${sql.table(TABLE)}`.execute(db);
+      expect(rows.rows[0]!.n).toBe("0");
+    });
+  });
+
+  describe("a refusal for one table does not switch the probe off for the others", () => {
+    const OTHER = "canon_probe_locked";
+    const ROLE = "canon_probe_nosel";
+    test("a role without SELECT on one table gets no answer there, and is still probed on the next", async () => {
+      await sql.raw(`DROP TABLE IF EXISTS ${OTHER}`).execute(db);
+      await sql.raw(`DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${ROLE}') THEN CREATE ROLE ${ROLE}; END IF; END $$`).execute(db);
+      await sql.raw(`CREATE TABLE ${OTHER} (id int, a int, CONSTRAINT canon_locked_chk CHECK (a > 0))`).execute(db);
+      await sql.raw(`GRANT USAGE ON SCHEMA public TO ${ROLE}`).execute(db);
+      await sql.raw(`GRANT SELECT ON ${TABLE} TO ${ROLE}`).execute(db);
+      const restricted = connect();
+      try {
+        const live = await introspectPostgres(db);
+        const expected = structuredClone(live);
+        const lockedLive = live.tables.find((x) => x.name === OTHER)!;
+        const lockedWant = expected.tables.find((x) => x.name === OTHER)!;
+        const t = live.tables.find((x) => x.name === TABLE)!;
+        const tWant = expected.tables.find((x) => x.name === TABLE)!;
+        const asRole = async (work: (q: Db) => Promise<void>) => {
+          await restricted.db.transaction().execute(async (trx) => {
+            await sql.raw(`SET LOCAL ROLE ${ROLE}`).execute(trx);
+            await work(trx);
+          });
+        };
+        await asRole(async (trx) => {
+          const p = postgresExprCanonProbe(trx);
+          expect(await p(lockedLive, lockedWant)).toBeUndefined();
+          const next = await p(t, tWant);
+          expect(next?.checks.has(tWant.checks.find((c) => c.name === "canon_not_chk")!)).toBe(true);
+        });
+      } finally {
+        await restricted.pool.end();
+        await sql.raw(`DROP TABLE IF EXISTS ${OTHER}`).execute(db);
+        await sql.raw(`REVOKE ALL ON ${TABLE} FROM ${ROLE}`).execute(db).catch(() => {});
+        await sql.raw(`REVOKE USAGE ON SCHEMA public FROM ${ROLE}`).execute(db).catch(() => {});
+        await sql.raw(`DROP OWNED BY ${ROLE}`).execute(db).catch(() => {});
+        await sql.raw(`DROP ROLE IF EXISTS ${ROLE}`).execute(db).catch(() => {});
+      }
+    });
+  });
+
   describe("leaves nothing behind", () => {
     test("inside the caller's own transaction the probe uses a savepoint and the transaction stays usable", async () => {
       const { live, expected } = await declared({ checks: { canon_prec_chk: "no_such_column = 1" } });

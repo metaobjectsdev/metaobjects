@@ -20,25 +20,20 @@ const CONSTRAINT = "mo_check_probe_c";
 const INDEX = "mo_check_probe_i";
 const SAVEPOINT = "mo_check_probe_sp";
 
-/** SQLSTATEs that mean no table will ever probe on this connection: read-only, no TEMP privilege. */
-const UNAVAILABLE_SQLSTATES: ReadonlySet<string> = new Set(["25006", "42501"]);
+/** SQLSTATE that means no table will ever probe on this connection: the transaction is read-only. */
+const READ_ONLY_SQLSTATE = "25006";
+
+const ACCESS_METHOD = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 /**
- * True when `text` holds a `;` outside a quoted literal or identifier. The probe runs an
- * author's expression inside DDL over the simple query protocol, where a second statement
- * would run too; a verify run must not execute one, so such an expression is not probed
- * (it falls back to the string comparison).
+ * True when `text` can be sent to the server as part of one DDL statement. The probe runs an
+ * author's expression over the simple query protocol, where a second statement would run too,
+ * and Postgres has more ways to quote than a scanner here can track (`E'..'`, dollar quotes,
+ * comments). So an expression holding a `;` anywhere is not probed; it falls back to the
+ * string comparison.
  */
-function hasStatementSeparator(text: string): boolean {
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i]!;
-    if (ch === "'" || ch === '"') {
-      const quoteChar = ch;
-      i++;
-      while (i < text.length && !(text[i] === quoteChar && text[i + 1] !== quoteChar)) i += text[i] === quoteChar ? 2 : 1;
-    } else if (ch === ";") return true;
-  }
-  return false;
+function probeable(text: string | undefined): boolean {
+  return text === undefined || !text.includes(";");
 }
 
 /** Run `work` inside a savepoint it always rolls back, resolving `undefined` when it throws. */
@@ -66,15 +61,16 @@ function indexKeys(ix: IndexDescriptor): string {
  * does not compile against that table's live columns, simply has no entry in the answer.
  */
 export function postgresExprCanonProbe(db: Kysely<Record<string, unknown>>): ExprCanonProbe {
-  // Set once the server refuses a scratch table outright, so a read-only standby is asked
-  // once rather than once per table.
+  // Set once the server refuses a scratch table because it is read-only, so a standby is asked
+  // once rather than once per table. Any other refusal (such as no SELECT on one table) is per table.
   let unavailable = false;
   return async (live, expected) => {
     if (unavailable) return undefined;
-    const checks = expected.checks.filter((c) => !hasStatementSeparator(c.expression));
+    const checks = expected.checks.filter((c) => probeable(c.expression));
     const indexes = expected.indexes.filter(
       (ix) => (ix.expr !== undefined || ix.where !== undefined)
-        && !hasStatementSeparator(ix.expr ?? "") && !hasStatementSeparator(ix.where ?? ""),
+        && probeable(ix.expr) && probeable(ix.where)
+        && (ix.using === undefined || ACCESS_METHOD.test(ix.using)),
     );
     if (checks.length === 0 && indexes.length === 0) return undefined;
     const liveTable = `${quote(live.schema ?? DEFAULT_DB_SCHEMA_POSTGRES)}.${quote(live.name)}`;
@@ -85,7 +81,7 @@ export function postgresExprCanonProbe(db: Kysely<Record<string, unknown>>): Exp
           await sql.raw(`CREATE TEMPORARY TABLE ${quote(TABLE)} (LIKE ${liveTable})`).execute(q);
         } catch (err) {
           const code = (err as { code?: unknown }).code;
-          if (typeof code === "string" && UNAVAILABLE_SQLSTATES.has(code)) unavailable = true;
+          if (code === READ_ONLY_SQLSTATE) unavailable = true;
           throw err;
         }
         const checkAnswers = new Map<CheckDescriptor, string>();
