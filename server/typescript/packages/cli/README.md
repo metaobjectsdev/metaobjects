@@ -401,7 +401,6 @@ See `.metaobjects/AGENTS.md` (scaffolded by `meta init`) for the metaobjects met
 ## Not yet shipped
 
 - `meta gen --watch` (dropped) — re-run on demand
-- True 3-way merge in `meta gen` — codegen-ts has overwrite/skip-existing only
 - Module-reference DB connections — URL-only
 - Reified SDK APIs for adding/promoting descriptive records — hand-edit JSON for now
 
