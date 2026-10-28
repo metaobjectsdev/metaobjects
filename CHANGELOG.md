@@ -12,6 +12,15 @@ here.**
 
 ### Docs
 
+- **Writing your own generator is documented as the normal path.** `llms.txt`, `llms-full.txt`
+  and the README now say a team should expect to write generators, and that documentation is a
+  generator. New recipe, [a typed client for the reference routes](docs/recipes/typed-client-for-the-reference-routes.md),
+  with a worked generator that fails `verify --codegen` when the routes move. The generator recipes
+  advise `handEdits: "overwrite"` for output that carries a safety rule (the default `"keep"`
+  merges a hand edit that removes it). One install pair that compiles the stock generated
+  TypeScript replaces the lines that disagreed. The `llms.txt` copy no longer repeats the homepage
+  lede or leans on "spine" and "substrate", and its longest sentences are split.
+
 - **Port docs and `llms-full.txt` now say what a fresh reader got wrong.** Each port page opens with its keep-your-ORM path (TypeScript `runtime: false`, Java and Kotlin records and data classes, sourceless C# POCOs as DTOs, Pydantic in Python); three-way merge is scoped to TypeScript everywhere it was claimed unscoped, with what the other ports do instead (committed hash manifest, refusal by name, eject); framework baselines are stated (Java 21 rather than the contradictory 17, Spring Boot 3.x with Boot 2 unsupported, .NET 8, Python 3.11, Node first and Bun second); and each port page carries its known gaps with absolute links.
 
 ### Added
@@ -51,6 +60,40 @@ here.**
   an imported object unless `scope.include` names its package. Runs all 24 resolution cases of
   `fixtures/dependency-conformance/` (the 11 check cases pin the Node `meta deps check`); Kotlin loads through the same loader and adds a codegen test.
   Spring runtime auto-load and `verify` drift for dependencies are later slices.
+
+- **Own your generators, and give back the ones you did not change.** A team is expected to
+  write generators of its own, because a generator it owns is what keeps output from drifting.
+  Two things now help it carry fewer copies than it needs. `meta gen` prints one line naming
+  every owned generator copy that is still the shipped reference, unchanged. `meta eject --undo
+  [<name>...] [--force]` removes them: with no names, every unchanged copy (and the template
+  modules only they used); with names, those, refusing the whole call and removing nothing if a
+  named copy differs. It never edits `metaobjects.config.ts`; it prints the import to swap back.
+  The other ports have the same switch: `metaobjects eject --undo` (Python), `mvn
+  metaobjects:eject -Dundo=true` (Java and Kotlin) and `dotnet meta eject --undo` (C#). There is no
+  `doctor` command in any port; `eject --list` is the report. See
+  [the CLI notes](docs/features/cli.md#owned-generators-the-unchanged-copy-notice-eject---undo-and-gen---strict).
+
+- **`gen --strict`: an unknown attribute is an error, as it is in `verify`.** `gen` has always
+  loaded leniently, so a typo such as `@sensitve` was a warning and the run went on with changed
+  output. `meta gen --strict` (TypeScript), `metaobjects gen --strict` (Python) and `dotnet meta gen
+  --strict` (C#) exit 1 and write nothing. `mvn metaobjects:generate` already loaded strictly
+  (`-Dmeta.lax=true` relaxes it), so Java and Kotlin needed no new switch.
+
+- **`meta init --with-docs` (TypeScript, C#) and a new `metaobjects init [--with-docs]`
+  (Python).** The scaffold wires the documentation generators and their `docs` target, so the
+  first `gen` writes documentation. The default scaffold is unchanged: nothing is generated until
+  you choose it. In C# it adds `ApiDocsGenerator` to the new `codegen/Generators.cs`.
+
+- **`entityTypeNames(obj)` is exported from `@metaobjectsdev/codegen-ts`.** It returns the six
+  type names the entity module exports (`<Entity>`, `Insert`, `Update`, `Create`, `Patch`,
+  `Filter`; `<Entity>Row` for a TPH base), and the templates that emit them now call it, so an
+  owned generator that refers to them cannot fall behind a rename. `docs/ports/typescript.md`
+  has the table and says which to pass to `create<Entity>` and `update<Entity>` (#490).
+
+- **Python generated routers take an `apiPrefix` setting.** It is a top-level key of
+  `metaobjects.config.yaml`, the counterpart of the TypeScript key of the same name. It defaults
+  to `/api`, so existing output is byte-identical, and `""` mounts routers at `/<plural>`. The generated API docs use
+  the same prefix (#488).
 
 - **Java, Kotlin and C# can compile and match `scope` patterns.** `com.metaobjects.config.Scope`
   (Java; Kotlin inherits it) and `MetaObjects.Config.Scope` (C#) port the scope-pattern grammar from
@@ -171,6 +214,19 @@ here.**
   did, and says that the port's own `verify` is the full check. Any other load failure still fails
   the command and rolls the sync back. A stale `docs/CONFORMANCE.md` cell that claimed Python passed
   only 2 of the dependency corpus's cases is corrected.
+
+- **The "Model / metadata" link in the Python, C#, Java and Kotlin API docs no longer points at
+  a page that does not exist.** Those ports write no model pages, so the relative link was dead.
+  It is now written only when `modelBaseUrl` is set.
+
+- **TypeScript API docs describe only what the run writes.** The `api-docs` pages listed the
+  stock queries and Fastify routes for every entity, whatever the generator list held. A project
+  that wires neither now gets pages without them, and an owned generator that writes them
+  counts when it carries the `emitsQueries` or `mountsRoutes` marker.
+
+- **The metamodel reference index reads as prose.** The generated index said "NOT documentation"
+  in capitals and told a reader of an HTML page to "follow a link into `types/<family>.md`". It
+  now says what the page covers and that each row links to its type page.
 
 - **A failed `meta deps sync` no longer leaves a lock and snapshot that cannot load.** The
   command wrote `deps.lock.json` and the `.metaobjects/deps/` snapshot before loading the

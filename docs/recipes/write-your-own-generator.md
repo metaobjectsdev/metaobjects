@@ -44,6 +44,18 @@ its fields, inherited ones included.
 
 ### TypeScript — start with the scaffold
 
+Install once. This pair compiles what the stock `entity`, `queries` and `routes` generators
+emit (SQLite shown; for Postgres use `pg` and `@types/pg` in place of `better-sqlite3` and
+`@types/better-sqlite3`); the generated files import `drizzle-orm`, `zod`, `fastify` and a
+driver, and `npm` does not add optional peers for you:
+
+```bash
+npm i -D @metaobjectsdev/cli @metaobjectsdev/codegen-ts @metaobjectsdev/metadata typescript @types/better-sqlite3
+npm i @metaobjectsdev/runtime-ts drizzle-orm zod fastify better-sqlite3
+```
+
+Then:
+
 ```bash
 meta generator new field-list            # --scope entity (default) | package | model
 meta gen                                 # runs it
@@ -281,6 +293,35 @@ class KtFieldListGenerator : FileEmittingGenerator() {
 Wire it with `<classname>com.acme.codegen.KtFieldListGenerator</classname>` from a module
 built with `kotlin-maven-plugin`.
 
+## Safety-relevant output: set `handEdits: "overwrite"`
+
+A generator whose output enforces something (a redaction rule, an audit log, an auth check)
+needs one more setting. The default is `handEdits: "keep"`: someone can hand-edit the emitted
+file, `meta gen` merges that edit into fresh output, and `meta verify --codegen` still passes
+after the merge. Run on a scratch project, a line appended to a generated client survived
+`meta gen` (status `merged`) and `verify --codegen` exited 0. For a redaction rule that is a
+silent hole.
+
+Set `handEdits: "overwrite"` on that generator. A hand edit is then discarded and named in the
+run's warnings, and the committed file always equals fresh output. One line, on the entry in
+`metaobjects.config.ts`:
+
+```ts
+generators: [entityFile(), { ...redactionGenerator(), handEdits: "overwrite" }],
+```
+
+Seen: with it set, `meta verify --codegen` exits 1 on an edited file (`edited by hand; its
+generator sets handEdits: "overwrite", so 'meta gen' replaces it with fresh output`), and
+`meta gen` prints `overwrote hand-edited <path> with fresh output` and restores it.
+The setting is per generator, and an edited file is discarded only when it is one `gen` has a record of writing.
+
+The same trap exists one layer up, in the model. `meta gen` loads metadata **leniently**: an
+unknown attribute is a warning, and generation goes on. A typo'd `@sensitve` on a field
+silently changes what your generator sees, so a redaction keyed on `@sensitive` quietly stops
+applying. `meta gen --strict` makes an unknown attribute an error (exit 1, nothing written).
+`meta verify` always rejects it. Use `--strict` in CI for any project whose generators
+enforce something.
+
 ## Reading the model correctly — the one rule
 
 **Read through the resolving accessors.** `extends` is a reference to a parent, not a copy
@@ -344,6 +385,8 @@ component schema, and the reference CRUD paths for each object with a source.
 
 ## See also
 
+- [A typed fetch client for the reference routes](typed-client-for-the-reference-routes.md):
+  one owned TypeScript generator, run and drift-gated against the stock routes.
 - [Own your codegen](../features/own-your-codegen.md) — ejecting a reference generator,
   and how each port protects hand edits.
 - [Codegen concepts](../features/codegen-concepts.md) — scopes, programmatic vs Mustache
