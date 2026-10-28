@@ -17,7 +17,7 @@ building block. Every generator is a reference helper an adopter selects, ejects
 |---|---|---|---|
 | TypeScript | the `entity` reference generator in a target with `runtime: false` | Zod schemas + inferred TS types; no `drizzle-orm`, no `runtime-ts` import, for entities, value objects and projections alike | `server/typescript/packages/codegen-ts/src/metaobjects-config.ts` (`TargetConfig.runtime`), `.../src/templates/entity-file.ts` |
 | Java | `SpringDtoGenerator` (a record per concrete entity or projection, whatever its source, with jakarta validation annotations) and `SpringValueObjectGenerator` (a record per value object) | Java 21 records; your JPA/JDBC entity stays hand-written | `server/java/codegen-spring/src/main/java/com/metaobjects/generator/spring/` |
-| Kotlin | `KotlinEntityGenerator` (+ `KotlinValidatorGenerator`) | plain Jackson-compatible data classes per entity and value object | `server/java/codegen-kotlin/src/main/kotlin/com/metaobjects/generator/kotlin/` |
+| Kotlin | `KotlinEntityGenerator` | plain Jackson-compatible data classes per entity and value object | `server/java/codegen-kotlin/src/main/kotlin/com/metaobjects/generator/kotlin/` |
 | C# | `EntityGenerator`, with the contract declared **sourceless** | a POCO with DataAnnotations and no EF mapping (a sourced entity gets `[Table]`/`[Key]`/`[Column]`) | `server/csharp/MetaObjects.Codegen/Generators/EntityGenerator.cs` |
 | Python | the `entity` generator | Pydantic models (no ORM of any kind) | `server/python/src/metaobjects/codegen/generator_registry.py` |
 
@@ -92,7 +92,7 @@ code from the shapes.
   the existing ORM sits behind unchanged), payload records, output parsers. Entities stay
   hand-written on this lane. `mvn metaobjects:generate` / `:verify` (no live-DB mode).
 - **Kotlin/JVM**: entity + Exposed table + Spring controller + payload + relations + filter
-  allowlist + validators + output parsers.
+  allowlist + a startup validator that checks the Exposed tables against the model (not field validation) + output parsers.
 - **C#**: EF Core entities + `AppDbContext` + CRUD minimal-API routes + render/payload/verify via
   `dotnet meta`; no metadata-driven runtime tier; no migrate surface.
 - **Python**: Pydantic + router + payload/parsers + `ObjectManager` runtime; the consumer wires the
