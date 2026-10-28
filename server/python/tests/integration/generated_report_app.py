@@ -42,6 +42,7 @@ from metaobjects import MetaDataLoader
 from .corpus_config import attach_corpus_wire
 from metaobjects.codegen.config import GenConfig
 from metaobjects.codegen.generator_registry import GeneratorBuildContext, list_generators
+from metaobjects.codegen.generators.report_export_generator import report_export_generator
 from metaobjects.codegen.generators.router_generator import router_generator
 from metaobjects.codegen.runner import run_gen
 from metaobjects.codegen.runtime.filter_parser import FilterPredicate
@@ -62,14 +63,20 @@ SERVED_REPORTS: dict[str, str] = {
     "ProductRefunds": "product_refunds",
     "TicketsByTags": "tickets_by_tags",
     "ReadingLog": "reading_log",
+    "ExportCells": "export_cells",
 }
 #: The row cap every lane builds its report routers with: ``ReadingLog`` has one row more, so the
 #: cap scenarios tell "exactly the cap" from "past it" (``report/README.md``).
 REPORT_CORPUS_MAX_ROWS = 60
+#: The ``report-export`` options every lane wires (``report/README.md``, "Report export"): the
+#: same cap as the list route, and ``xsi:nil`` so the corpus pins the one cross-port null form
+#: without touching this port's own default (``"empty"``).
+REPORT_EXPORT_MAX_ROWS = 60
+REPORT_EXPORT_XML_NULLS = "nil"
 #: The sourceless report: generated nowhere, mounted nowhere.
 UNSERVED_REPORT = "InvoiceDays"
 
-_GENERATORS = ("entity", "filter-allowlist", "routes")
+_GENERATORS = ("entity", "filter-allowlist", "routes", "report-export")
 
 
 def _load_root(meta_json: Path):
@@ -128,6 +135,10 @@ def generate_reports(corpus_root: Path, model: LaneModel = REPORT_MODEL) -> Gene
     generators = [
         router_generator(REPORT_CORPUS_MAX_ROWS)
         if entry.name == "routes"
+        else report_export_generator(
+            max_rows=REPORT_EXPORT_MAX_ROWS, xml_nulls=REPORT_EXPORT_XML_NULLS
+        )
+        if entry.name == "report-export"
         else entry.factory(GeneratorBuildContext(template_root=str(templates)))
         for entry in list_generators()
         if entry.name in _GENERATORS

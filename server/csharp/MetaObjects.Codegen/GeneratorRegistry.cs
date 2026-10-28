@@ -302,6 +302,22 @@ public static class GeneratorRegistry
                 Factory = _ => new CallableGenerator(),
                 SourceFileName = "CallableGenerator.cs",
             },
+            // Report export — the CSV / JSON / XML download of a served report. Standalone: nothing
+            // implies it. Listing it is what wires `?format=` into the report list routes (the routes
+            // generator finds it in the run's generator list, GenContext.ReportExportMaxRows).
+            ["report-export"] = new()
+            {
+                Name = "report-export",
+                Description = "Per-report CSV and XML export modules plus one shared writer; wires ?format=csv|json|xml into the report list routes.",
+                Tier = GeneratorTier.Native,
+                Layer = GeneratorLayer.Api,
+                Factory = _ => new ReportExportGenerator(),
+                Options = "MaxRows (default 100000), XmlNulls (Nil | Empty; default Nil), CsvBom (default false): init properties on the entry in codegen/Generators.cs",
+                Note = "Needs `routes` (and the entity, db-context and filter-allowlist it needs) in the same run: it wires ?format= into the report list routes and emits the modules they call.",
+                SourceFileName = "ReportExportGenerator.cs",
+                // The modules are written over the report's row class and called from its routes file.
+                Requires = ["entity", "routes"],
+            },
             // ADR-0057 — one xUnit test per declared requirement, calling a project-owned witness.
             // Its six options (TestNamespace, WitnessClass, Grain, Filter, Renderer, WarnUncovered) are
             // public init properties: this port has no per-generator option channel, and a project sets

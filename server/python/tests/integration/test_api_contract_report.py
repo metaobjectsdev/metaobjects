@@ -20,6 +20,7 @@ Run on-demand:
 from __future__ import annotations
 
 import json
+import xml.etree.ElementTree as ET
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -102,11 +103,15 @@ def test_exactly_the_served_reports_are_generated() -> None:
     allowlist and router (and the names module is not a route concern, so it is not asked
     for here: only the three generators the lane runs)."""
     emitted = generate_reports(_CORPUS).emitted
-    assert len(SERVED_REPORTS) == 11
+    assert len(SERVED_REPORTS) == 12
     for report, stem in SERVED_REPORTS.items():
         assert f"{report}.py" in emitted
         assert f"{stem}_filter_allowlist.py" in emitted
         assert f"{stem}_router.py" in emitted
+    # `report-export` is wired in this lane: one shared writer, and an export module per report.
+    assert "report_export_writer.py" in emitted
+    for stem in SERVED_REPORTS.values():
+        assert f"{stem}_export.py" in emitted
     assert not any(UNSERVED_REPORT in f or "invoice_days" in f for f in emitted), emitted
     # The base entities were not asked for, so no writable router sits beside the reports.
     for base in ("category", "invoice", "product", "sale"):
@@ -147,19 +152,46 @@ def _run_request(client: TestClient, scenario_name: str, req: dict[str, Any]) ->
     path = str(req["path"])
     body = req.get("body")
     expect = req["expect"]
+    where = f"{scenario_name} / {req.get('id', '?')}"
 
     kwargs: dict[str, Any] = {}
     if body is not None:
         kwargs["json"] = body
+    if req.get("headers"):
+        kwargs["headers"] = {str(k): str(v) for k, v in req["headers"].items()}
     response = client.request(method, path, **kwargs)
+
+    expect_body = expect.get("body")
+    # `text` and `xml` are the report-export body keys (report/README.md): the exact UTF-8 text,
+    # and an XML infoset compare. Neither is JSON, so they are checked here, not by the
+    # shared assertion engine.
+    raw = expect_body if isinstance(expect_body, dict) and ("text" in expect_body or "xml" in expect_body) else None
     api_contract_assertions.assert_response(
         scenario_name=scenario_name,
         request_id=str(req.get("id", "?")),
         expect_status=int(expect["status"]),
-        expect_body=expect.get("body"),
+        expect_body=None if raw is not None else expect_body,
         status=response.status_code,
         body=_parse_response_body(response.text),
     )
+    for name, want in (expect.get("headers") or {}).items():
+        actual = response.headers.get(name)
+        assert actual == want, f"{where}: header {name!r}: expected {want!r}, got {actual!r}"
+    if raw is not None and "text" in raw:
+        assert response.content.decode("utf-8") == raw["text"], f"{where}: text body"
+    if raw is not None and "xml" in raw:
+        assert _infoset(ET.fromstring(response.content)) == _infoset(ET.fromstring(raw["xml"])), (
+            f"{where}: xml body {response.text!r}"
+        )
+
+
+def _infoset(el: ET.Element) -> tuple[Any, ...]:
+    """An XML element as (name, attributes, text, children): names, attributes, text and
+    order, with whitespace between elements ignored. ElementTree expands a namespaced name
+    (``xsi:nil``) to its URI form, so the prefix is not part of the compare."""
+    children = tuple(_infoset(c) for c in el)
+    text = el.text if not children else (el.text or "").strip() or None
+    return (el.tag, tuple(sorted(el.attrib.items())), text or None, children)
 
 
 def _parse_response_body(text: str | None) -> Any:

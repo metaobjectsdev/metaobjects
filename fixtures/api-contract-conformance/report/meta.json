@@ -176,6 +176,26 @@
         "@dimensions": ["seq"],
         "@measures": ["readings"],
         "children": [ { "source.rdb": { "@kind": "view", "@view": "v_reading_log" } } ]
+      }},
+      { "object.entity": {
+        "name": "ExportLine",
+        "children": [
+          { "source.rdb":       { "@table": "export_cells" } },
+          { "field.long":       { "name": "id" } },
+          { "field.string":     { "name": "label", "@maxLength": 40 } },
+          { "field.long":       { "name": "amountCents", "@required": true } },
+          { "identity.primary": { "name": "pk", "@fields": "id", "@generation": "increment" } },
+          { "dimension.attribute": { "name": "label", "@of": "ExportLine.label" } },
+          { "measure.aggregate":   { "name": "cells", "@agg": "count", "@of": "ExportLine.id" } },
+          { "measure.aggregate":   { "name": "totalCents", "@agg": "sum", "@of": "ExportLine.amountCents" } }
+        ]
+      }},
+      { "object.report": {
+        "name": "ExportCells",
+        "@from": "ExportLine",
+        "@dimensions": ["label"],
+        "@measures": ["cells", "totalCents"],
+        "children": [ { "source.rdb": { "@kind": "view", "@view": "v_export_cells" } } ]
       }}
     ]
   }

@@ -52,6 +52,9 @@ SERVED_REPORT_FILES: dict[str, list[str]] = {
     "filter-allowlist": ["store_totals_filter_allowlist.py"],
     "names": ["store_totals_names.py"],
     "routes": ["store_totals_router.py"],
+    # `report-export` emits nothing for a model with no served report; with one it writes the
+    # shared writer, the report's export module and the package marker the runner adds.
+    "report-export": ["__init__.py", "report_export_writer.py", "store_totals_export.py"],
 }
 
 
@@ -142,8 +145,9 @@ def test_every_runnable_generator_in_one_run_emits_the_same_files(tmp_path: Path
     actual = _emit("with", runnable, tmp_path / "b")
     assert THREW not in expected, expected.get(THREW)
     assert len(expected) > 10, f"only {len(expected)} files — the suite barely ran"
-    added = sorted(f for files in SERVED_REPORT_FILES.values() for f in files)
-    assert len(added) == 4
+    # `__init__.py` is already in `expected` once any other generator ran.
+    added = sorted({f for files in SERVED_REPORT_FILES.values() for f in files} - {"__init__.py"})
+    assert len(added) == 6
     assert sorted(set(actual) - set(expected)) == added
     assert set(expected) <= set(actual)
     assert {k: v for k, v in actual.items() if k in expected} == expected
@@ -224,5 +228,5 @@ def test_a_selection_of_only_reports_generates_only_the_served_one(tmp_path: Pat
     )
     names = sorted(Path(path).name for path, _ in result.files)
     assert names == sorted(
-        ["__init__.py", *(f for files in SERVED_REPORT_FILES.values() for f in files)]
+        {"__init__.py", *(f for files in SERVED_REPORT_FILES.values() for f in files)}
     )

@@ -28,6 +28,9 @@ class GenContext:
     matches: Callable[[MetaObject], bool]
     config: GenConfig
     warn: Callable[[str], None]
+    #: The stable names of every generator in this run, so one generator can tell that a
+    #: sibling is wired (the router emits the ``?format=`` branch only beside ``report-export``).
+    generators: tuple[str, ...] = ()
 
 
 class Generator(Protocol):

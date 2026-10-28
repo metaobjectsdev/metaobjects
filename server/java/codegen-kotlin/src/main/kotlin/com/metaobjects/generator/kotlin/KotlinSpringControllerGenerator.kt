@@ -31,7 +31,10 @@ import com.metaobjects.field.StringField
 import com.metaobjects.field.TimeField
 import com.metaobjects.field.TimestampField
 import com.metaobjects.field.UuidField
+import com.metaobjects.generator.EmitsReportExport
+import com.metaobjects.generator.Generator
 import com.metaobjects.generator.GeneratorIOWriter
+import com.metaobjects.generator.RunAware
 import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase
 import com.metaobjects.identity.MetaIdentity
 import com.metaobjects.loader.MetaDataLoader
@@ -99,7 +102,7 @@ import com.metaobjects.generator.util.GeneratedFileWriter
  *   <li>{@code outputDir} (required): output directory root.</li>
  * </ul>
  */
-open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
+open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaObject>(), RunAware {
 
     /**
      * Exposed output-API version (issue #390) — `0` (default) emits Exposed 0.x
@@ -116,6 +119,24 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
      * `400 {"error": "report_too_large", "maxRows": N}`. Reports only.
      */
     protected fun reportMaxRows(): Int = getArg(ARG_REPORT_MAX_ROWS)?.toInt() ?: DEFAULT_REPORT_MAX_ROWS
+
+    private var exportWired = false
+
+    override fun setRun(run: Collection<Generator>) {
+        exportWired = EmitsReportExport.includedIn(run)
+    }
+
+    /**
+     * Whether a `report-export` generator ([EmitsReportExport]) is in this run, as [setRun]
+     * reports it. A served report's list route then also answers `?format=csv|json|xml` (the
+     * "Report export" section of `docs/features/api-contract.md`); the handler reads its cap from
+     * the generated `<Report>Export.MAX_ROWS`, so the cap is set once, on `report-export`
+     * (`maxRows`). Without one the generated routes are byte-identical to a project without the
+     * feature. The two caps never both apply to one request: with `?format` the export cap
+     * governs and `report_too_large` never answers; without it [ARG_REPORT_MAX_ROWS] is
+     * untouched.
+     */
+    protected fun reportExport(): Boolean = exportWired
 
     /**
      * FR-019: where a `@provided` enum is referenced from, read from the same two generator args
@@ -2109,7 +2130,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             append("class ${shortName}Controller {\n\n")
 
             if (GeneratorUtil.isReport(entity)) {
-                appendReportListHandler(this, shortName, readObj, sortFields, reportMaxRows())
+                appendReportListHandler(this, shortName, readObj, sortFields, reportMaxRows(), reportExport())
             } else {
                 appendListHandler(this, shortName, readObj, sortFields)
             }
@@ -2271,41 +2292,65 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
      * mounts use. The bounds arrive as text so this handler, not Spring, decides what a bad one answers.
      */
     private fun appendReportListHandler(
-        sb: StringBuilder, shortName: String, readObj: String, sortFields: List<String>, maxRows: Int
+        sb: StringBuilder, shortName: String, readObj: String, sortFields: List<String>, maxRows: Int,
+        export: Boolean,
     ) = with(sb) {
         val api = exposedApi()
+        // With the export branch wired, no answer of the list route consults Accept (the selector
+        // is ?format): every body carries an explicit application/json, which Spring honours
+        // instead of negotiating against the request's Accept header. Without it the handler
+        // is byte-identical to a project that never wired the feature.
+        val bad = if (export) "jsonBadRequest(" else "ResponseEntity.badRequest().body("
+        val okBody = if (export) "jsonOk(" else "ResponseEntity.ok("
         append("    @GetMapping\n")
         append("    fun list(\n")
         append("        @RequestParam(required = false) limit: String?,\n")
         append("        @RequestParam(required = false) offset: String?,\n")
         append("        @RequestParam(required = false) sort: String?,\n")
-        append("        @RequestParam(required = false, name = \"withCount\") withCount: Int?,\n")
+        if (export) {
+            // Text, not Int: an export request spells the flag "true" as well as "1", and this
+            // handler, not Spring's conversion, decides what each answers.
+            append("        @RequestParam(required = false, name = \"withCount\") withCount: String?,\n")
+            append("        @RequestParam(required = false, name = \"format\") format: String?,\n")
+        } else {
+            append("        @RequestParam(required = false, name = \"withCount\") withCount: Int?,\n")
+        }
         append("        request: HttpServletRequest,\n")
-        append("    ): ResponseEntity<Any> = transaction {\n")
+        if (export) {
+            append("    ): ResponseEntity<Any> =\n")
+            append("        if (format != null) export(format, limit, offset, sort, withCount, request)\n")
+            append("        else listRows(limit, offset, sort, withCount, request)\n\n")
+            append("    private fun listRows(\n")
+            append("        limit: String?, offset: String?, sort: String?, withCount: String?, request: HttpServletRequest,\n")
+            append("    ): ResponseEntity<Any> = transaction {\n")
+        } else {
+            append("    ): ResponseEntity<Any> = transaction {\n")
+        }
+        val withCountOne = if (export) "withCount == \"1\"" else "withCount == 1"
         append("        val maxRows = $maxRows\n")
-        append("        val tooLarge = ResponseEntity.badRequest().body(mapOf(\"error\" to \"report_too_large\", \"maxRows\" to maxRows) as Any)\n")
+        append("        val tooLarge = ${bad}mapOf(\"error\" to \"report_too_large\", \"maxRows\" to maxRows) as Any)\n")
         append("        var requestedLimit: Int? = null\n")
         append("        if (limit != null) {\n")
         append("            val n = limit.toLongOrNull()?.takeIf { it >= 1 }\n")
-        append("                ?: return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"pagination.invalid_value\", \"param\" to \"limit\", \"value\" to limit, \"expected\" to \"an integer from 1 to \$maxRows\") as Any)\n")
+        append("                ?: return@transaction ${bad}mapOf(\"error\" to \"pagination.invalid_value\", \"param\" to \"limit\", \"value\" to limit, \"expected\" to \"an integer from 1 to \$maxRows\") as Any)\n")
         append("            if (n > maxRows) return@transaction tooLarge\n")
         append("            requestedLimit = n.toInt()\n")
         append("        }\n")
         append("        val effectiveOffset: Long = if (offset == null) 0L else offset.toLongOrNull()?.takeIf { it >= 0 }\n")
-        append("            ?: return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"pagination.invalid_value\", \"param\" to \"offset\", \"value\" to offset, \"expected\" to \"a non-negative integer (0 or more)\") as Any)\n")
+        append("            ?: return@transaction ${bad}mapOf(\"error\" to \"pagination.invalid_value\", \"param\" to \"offset\", \"value\" to offset, \"expected\" to \"a non-negative integer (0 or more)\") as Any)\n")
         append("        val filterResult = parse${shortName}Filter(request.queryString)\n")
         append("        if (filterResult.error != null) {\n")
-        append("            return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to filterResult.error, \"field\" to filterResult.field) as Any)\n")
+        append("            return@transaction ${bad}mapOf(\"error\" to filterResult.error, \"field\" to filterResult.field) as Any)\n")
         append("        }\n")
         append("        val whereOp = ${shortName}WhereOp(filterResult.predicates)\n")
         append("        var q = if (whereOp != null) ${readObj}.selectAll().where { whereOp } else ${readObj}.selectAll()\n")
         append("        if (sort != null) {\n")
         append("            val parsed = parse${shortName}Sort(sort)\n")
-        append("                ?: return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"invalid_sort\", \"field\" to sort.substringBefore(':')) as Any)\n")
+        append("                ?: return@transaction ${bad}mapOf(\"error\" to \"invalid_sort\", \"field\" to sort.substringBefore(':')) as Any)\n")
         append("            val (field, dir) = parsed\n")
         append("            q = q.orderBy(${sortColumnExpr(readObj, shortName, sortFields, api)} to dir)\n")
         append("        }\n")
-        append("        val total: Long = if (withCount == 1) q.count() else -1L\n")
+        append("        val total: Long = if ($withCountOne) q.count() else -1L\n")
         append("        val effectiveLimit = requestedLimit ?: (maxRows + 1)\n")
         if (api == ExposedApi.V1) {
             append("        val rows = q.limit(effectiveLimit).offset(effectiveOffset).map { rowTo${shortName}(it) }\n")
@@ -2313,9 +2358,75 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             append("        val rows = q.limit(effectiveLimit, effectiveOffset).map { rowTo${shortName}(it) }\n")
         }
         append("        if (requestedLimit == null && rows.size > maxRows) return@transaction tooLarge\n")
-        append("        if (withCount == 1) ResponseEntity.ok(mapOf(\"rows\" to rows, \"total\" to total) as Any)\n")
-        append("        else ResponseEntity.ok(rows as Any)\n")
+        append("        if ($withCountOne) ${okBody}mapOf(\"rows\" to rows, \"total\" to total) as Any)\n")
+        append("        else ${okBody}rows as Any)\n")
         append("    }\n\n")
+        if (export) appendReportExportHandler(this, shortName, readObj, sortFields)
+    }
+
+    /**
+     * `GET ?format=csv|json|xml` of a report, the `report-export` branch of the list route. The
+     * same sort and filter parsing, allowlists and 400 envelopes as the list; the differences are
+     * the cap and the body. An absent `limit` reads every row up to `<Report>Export.MAX_ROWS` (one
+     * more row is read to tell the cap from more than the cap, and the answer is
+     * `export_too_large` before a byte is written); an explicit `limit` above the cap is the same
+     * refusal, and one within it pages. With a format the export cap governs and
+     * `report_too_large` never answers. `withCount` is refused with CSV and XML; a JSON export with
+     * `withCount=1` is the list route's `{ rows, total }` envelope. `Accept` is never read.
+     */
+    private fun appendReportExportHandler(
+        sb: StringBuilder, shortName: String, readObj: String, sortFields: List<String>,
+    ) = with(sb) {
+        val api = exposedApi()
+        val x = "${shortName}Export"
+        append("    private fun export(\n")
+        append("        format: String, limit: String?, offset: String?, sort: String?, withCount: String?, request: HttpServletRequest,\n")
+        append("    ): ResponseEntity<Any> = transaction {\n")
+        append("        val maxRows = $x.MAX_ROWS\n")
+        append("        if (!$x.isFormat(format)) return@transaction jsonBadRequest($x.invalidFormat())\n")
+        append("        if (format != \"json\" && $x.isTruthy(withCount)) return@transaction jsonBadRequest($x.withCountRefused())\n")
+        append("        var requestedLimit: Int? = null\n")
+        append("        if (limit != null) {\n")
+        append("            val n = limit.toLongOrNull()?.takeIf { it >= 1 }\n")
+        append("                ?: return@transaction jsonBadRequest(mapOf(\"error\" to \"pagination.invalid_value\", \"param\" to \"limit\", \"value\" to limit, \"expected\" to \"an integer from 1 to \$maxRows\"))\n")
+        append("            if (n > maxRows) return@transaction jsonBadRequest($x.tooLarge())\n")
+        append("            requestedLimit = n.toInt()\n")
+        append("        }\n")
+        append("        val effectiveOffset: Long = if (offset == null) 0L else offset.toLongOrNull()?.takeIf { it >= 0 }\n")
+        append("            ?: return@transaction jsonBadRequest(mapOf(\"error\" to \"pagination.invalid_value\", \"param\" to \"offset\", \"value\" to offset, \"expected\" to \"a non-negative integer (0 or more)\"))\n")
+        append("        val filterResult = parse${shortName}Filter(request.queryString)\n")
+        append("        if (filterResult.error != null) {\n")
+        append("            return@transaction jsonBadRequest(mapOf(\"error\" to filterResult.error, \"field\" to filterResult.field))\n")
+        append("        }\n")
+        append("        val whereOp = ${shortName}WhereOp(filterResult.predicates)\n")
+        append("        var q = if (whereOp != null) ${readObj}.selectAll().where { whereOp } else ${readObj}.selectAll()\n")
+        append("        if (sort != null) {\n")
+        append("            val parsed = parse${shortName}Sort(sort)\n")
+        append("                ?: return@transaction jsonBadRequest(mapOf(\"error\" to \"invalid_sort\", \"field\" to sort.substringBefore(':')))\n")
+        append("            val (field, dir) = parsed\n")
+        append("            q = q.orderBy(${sortColumnExpr(readObj, shortName, sortFields, api)} to dir)\n")
+        append("        }\n")
+        append("        val total: Long = if (withCount == \"1\") q.count() else -1L\n")
+        append("        val effectiveLimit = requestedLimit ?: (maxRows + 1)\n")
+        if (api == ExposedApi.V1) {
+            append("        val rows = q.limit(effectiveLimit).offset(effectiveOffset).map { rowTo${shortName}(it) }\n")
+        } else {
+            append("        val rows = q.limit(effectiveLimit, effectiveOffset).map { rowTo${shortName}(it) }\n")
+        }
+        append("        if (requestedLimit == null && rows.size > maxRows) return@transaction jsonBadRequest($x.tooLarge())\n")
+        append("        val ok = ResponseEntity.ok()\n")
+        append("            .header(\"Content-Disposition\", $x.contentDisposition(format))\n")
+        append("            .header(\"Content-Type\", $x.contentType(format))\n")
+        append("        when (format) {\n")
+        append("            \"csv\" -> ok.body($x.csv(rows) as Any)\n")
+        append("            \"xml\" -> ok.body($x.xml(rows) as Any)\n")
+        append("            else -> if (withCount == \"1\") ok.body(mapOf(\"rows\" to rows, \"total\" to total) as Any) else ok.body(rows as Any)\n")
+        append("        }\n")
+        append("    }\n\n")
+        append("    private fun jsonBadRequest(body: Any): ResponseEntity<Any> =\n")
+        append("        ResponseEntity.badRequest().contentType(org.springframework.http.MediaType.APPLICATION_JSON).body(body)\n\n")
+        append("    private fun jsonOk(body: Any): ResponseEntity<Any> =\n")
+        append("        ResponseEntity.ok().contentType(org.springframework.http.MediaType.APPLICATION_JSON).body(body)\n\n")
     }
 
     /** GET /{id} — single row by primary key, 404 envelope on a miss. */

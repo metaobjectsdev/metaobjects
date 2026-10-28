@@ -146,6 +146,10 @@ describe("catalog declarations are resolved against what the generators emit", (
     //                   the inert test (reporting-inert.test.ts) runs it over a model that
     //                   does declare the vocabulary. (The one entry the list grew by since it
     //                   was pinned: the vocabulary is not added to this fixture on purpose.)
+    //   report-export   writes files only for an `object.report` served by a view; this fixture
+    //                   declares no report. Its files import nothing outside their own pair
+    //                   (`requires: []`, no runtime packages), and the reference byte-identical
+    //                   test runs it over the report corpus.
     const silent = [...emissions.entries()].filter(([, e]) => e.size === 0).map(([n]) => n).sort();
     expect(silent).toEqual([
       "agent-docs",
@@ -155,6 +159,7 @@ describe("catalog declarations are resolved against what the generators emit", (
       "docs-site",
       "metamodel-docs",
       "render-helper",
+      "report-export",
       "requirements",
       "shared-model",
       "template",

@@ -18,7 +18,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { runGen, defineConfig, buildReportViews } from "@metaobjectsdev/codegen-ts";
 import { DEFAULT_PHYSICAL_NAMING } from "@metaobjectsdev/metadata";
-import { entityFile, routesFile } from "@metaobjectsdev/test-generators";
+import { entityFile, reportExport, routesFile } from "@metaobjectsdev/test-generators";
 import { loadMetadataFile } from "./load-metadata.ts";
 import { REPORT_CORPUS_MAX_ROWS, seedInserts, SERVED_REPORTS, type ReportSeed } from "./api-contract-report-generated-server.ts";
 import { startLocalD1 } from "./query-scenario-d1.ts";
@@ -97,6 +97,15 @@ const BASE_TABLES: ReadonlyArray<{ name: string; ddl: string }> = [
       "seq" INTEGER NOT NULL
     )`,
   },
+  {
+    name: "export_cells",
+    ddl: `
+    CREATE TABLE "export_cells" (
+      "id" INTEGER PRIMARY KEY AUTOINCREMENT,
+      "label" TEXT,
+      "amount_cents" INTEGER NOT NULL
+    )`,
+  },
 ];
 
 export async function startSqliteReportServer(
@@ -120,7 +129,11 @@ export async function startSqliteReportServer(
       dbImport: "./db",
       dialect: "sqlite", // codegen has no d1 dialect: D1 is SQLite to Drizzle (only the db module differs)
       apiPrefix: "/api",
-      generators: [entityFile(), routesFile({ reportMaxRows: REPORT_CORPUS_MAX_ROWS })],
+      generators: [
+        entityFile(),
+        routesFile({ reportMaxRows: REPORT_CORPUS_MAX_ROWS }),
+        reportExport({ maxRows: REPORT_CORPUS_MAX_ROWS, xmlNulls: "nil" }),
+      ],
     }),
     metadata: root,
   });

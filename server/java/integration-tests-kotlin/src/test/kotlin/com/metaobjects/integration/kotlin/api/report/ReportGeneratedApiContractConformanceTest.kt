@@ -59,17 +59,20 @@ internal class ReportGeneratedApiContractConformanceTest {
         assertDoesNotThrow {
             HARNESS.reset(db)
             for (req in scenario.requests) {
-                val res = HARNESS.exchange(req.method, req.path, req.body)
+                val res = HARNESS.exchange(req.method, req.path, req.body, req.headers)
                 val parsed = HARNESS.parseBody(res.body)
-                ApiContractAssertions.assertResponse(scenario.name, req, res.status, parsed)
+                ApiContractAssertions.assertResponse(scenario.name, req, res.status, parsed, res.body, res.headers)
             }
         }
     }
 
     @Test
-    fun `the corpus has its thirty-one scenarios`() {
-        // A lane that silently ran fewer would still be green.
-        assertEquals(31, scenarios().count())
+    fun `the corpus has all its scenarios`() {
+        // A lane that silently ran fewer would still be green: count the directory, not the loader.
+        val dir = ApiContractScenarioLoader.findCorpusRoot().resolve("report/scenarios")
+        val onDisk = Files.list(dir).use { s -> s.filter { it.fileName.toString().endsWith(".yaml") }.count() }
+        assertEquals(onDisk, scenarios().count())
+        assertTrue(onDisk >= 37, "the corpus lost scenarios: $onDisk")
     }
 
     @Test
@@ -82,6 +85,7 @@ internal class ReportGeneratedApiContractConformanceTest {
             for (suffix in listOf("", "Table", "FilterAllowlist", "Controller")) {
                 assertTrue("acme/sales/$report$suffix.kt" in HARNESS.emittedFiles, "$report$suffix was not generated")
             }
+            assertTrue("acme/sales/${report}Export.kt" in HARNESS.emittedFiles, "${report}Export was not generated")
         }
     }
 

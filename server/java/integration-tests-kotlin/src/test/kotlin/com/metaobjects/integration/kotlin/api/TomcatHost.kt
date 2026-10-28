@@ -36,16 +36,21 @@ class TomcatHost private constructor(
     private val port: Int,
 ) : AutoCloseable {
 
-    /** HTTP status + raw body string. */
-    data class Response(val status: Int, val body: String)
+    /** HTTP status + raw body string + the response headers, keyed by lower-cased name. */
+    data class Response(val status: Int, val body: String, val headers: Map<String, String> = emptyMap())
 
-    /** Send one request exactly as [path] spells it; [jsonBody] may be null. */
-    fun exchange(method: String, path: String, jsonBody: String?): Response {
+    /**
+     * Send one request exactly as [path] spells it; [jsonBody] may be null. [requestHeaders]
+     * are sent too, and a name given twice replaces the default (e.g. `Accept`).
+     */
+    fun exchange(method: String, path: String, jsonBody: String?, requestHeaders: Map<String, String> = emptyMap()): Response {
         val body = jsonBody?.toByteArray(StandardCharsets.UTF_8)
+        val extra = requestHeaders.mapKeys { it.key.lowercase() }
         val head = buildString {
             append(method).append(' ').append(path).append(" HTTP/1.0\r\n")
             append("Host: 127.0.0.1:").append(port).append("\r\n")
-            append("Accept: application/json\r\n")
+            append("Accept: ").append(extra["accept"] ?: "application/json").append("\r\n")
+            extra.forEach { (k, v) -> if (k != "accept") append(k).append(": ").append(v).append("\r\n") }
             if (body != null) {
                 append("Content-Type: application/json\r\n")
                 append("Content-Length: ").append(body.size).append("\r\n")
@@ -72,6 +77,9 @@ class TomcatHost private constructor(
     @EnableWebMvc
     open class MvcConfig(private val corpusObjectMapper: ObjectMapper) : WebMvcConfigurer {
         override fun configureMessageConverters(converters: MutableList<HttpMessageConverter<*>>) {
+            // A ByteArray body (a generated report export's CSV or XML) is written as it is, under
+            // the Content-Type the controller set; a default Spring Boot application has this one.
+            converters.add(org.springframework.http.converter.ByteArrayHttpMessageConverter())
             converters.add(MappingJackson2HttpMessageConverter(corpusObjectMapper))
         }
     }
@@ -130,7 +138,12 @@ class TomcatHost private constructor(
             val statusLine = headers.lineSequence().firstOrNull().orEmpty()
             val parts = statusLine.split(' ', limit = 3)
             check(parts.size >= 2) { "no HTTP status line in response: $statusLine" }
-            return Response(parts[1].toInt(), body)
+            val responseHeaders = linkedMapOf<String, String>()
+            headers.lineSequence().drop(1).forEach { line ->
+                val colon = line.indexOf(':')
+                if (colon > 0) responseHeaders[line.substring(0, colon).trim().lowercase()] = line.substring(colon + 1).trim()
+            }
+            return Response(parts[1].toInt(), body, responseHeaders)
         }
     }
 }

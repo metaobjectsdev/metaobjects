@@ -62,6 +62,7 @@ public static class CodegenRunner
             Root = root,
             Config = config,
             Warn = warnings.Add,
+            Generators = generators,
         };
 
         // Refuse before any generator runs — the one choke point that sees the WHOLE

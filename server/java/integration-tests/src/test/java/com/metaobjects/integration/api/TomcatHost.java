@@ -40,8 +40,12 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
  */
 public final class TomcatHost implements AutoCloseable {
 
-    /** HTTP status + raw body string. */
-    public record Response(int status, String body) {}
+    /** HTTP status + raw body string + the response headers, keyed by lower-cased name. */
+    public record Response(int status, String body, java.util.Map<String, String> headers) {
+        public Response(int status, String body) {
+            this(status, body, java.util.Map.of());
+        }
+    }
 
     private final Tomcat tomcat;
     private final Path baseDir;
@@ -82,11 +86,20 @@ public final class TomcatHost implements AutoCloseable {
 
     /** Send one request exactly as {@code path} spells it; {@code jsonBody} may be null. */
     public Response exchange(String method, String path, String jsonBody) throws IOException {
+        return exchange(method, path, jsonBody, java.util.Map.of());
+    }
+
+    /** As above, with extra request headers (a name given twice replaces the default, e.g. {@code Accept}). */
+    public Response exchange(String method, String path, String jsonBody, java.util.Map<String, String> requestHeaders)
+            throws IOException {
+        java.util.Map<String, String> extra = new java.util.LinkedHashMap<>();
+        requestHeaders.forEach((k, v) -> extra.put(k.toLowerCase(java.util.Locale.ROOT), v));
         byte[] body = jsonBody == null ? null : jsonBody.getBytes(StandardCharsets.UTF_8);
         StringBuilder head = new StringBuilder()
             .append(method).append(' ').append(path).append(" HTTP/1.0\r\n")
             .append("Host: 127.0.0.1:").append(port).append("\r\n")
-            .append("Accept: application/json\r\n");
+            .append("Accept: ").append(extra.getOrDefault("accept", "application/json")).append("\r\n");
+        extra.forEach((k, v) -> { if (!k.equals("accept")) head.append(k).append(": ").append(v).append("\r\n"); });
         if (body != null) {
             head.append("Content-Type: application/json\r\n")
                 .append("Content-Length: ").append(body.length).append("\r\n");
@@ -133,7 +146,15 @@ public final class TomcatHost implements AutoCloseable {
         String statusLine = headers.lines().findFirst().orElse("");
         String[] parts = statusLine.split(" ", 3);
         if (parts.length < 2) throw new IllegalStateException("no HTTP status line in response: " + statusLine);
-        return new Response(Integer.parseInt(parts[1]), body);
+        java.util.Map<String, String> responseHeaders = new java.util.LinkedHashMap<>();
+        headers.lines().skip(1).forEach(line -> {
+            int colon = line.indexOf(':');
+            if (colon > 0) {
+                responseHeaders.put(line.substring(0, colon).trim().toLowerCase(java.util.Locale.ROOT),
+                    line.substring(colon + 1).trim());
+            }
+        });
+        return new Response(Integer.parseInt(parts[1]), body, responseHeaders);
     }
 
     @Override
@@ -157,6 +178,9 @@ public final class TomcatHost implements AutoCloseable {
 
         @Override
         public void configureMessageConverters(List<HttpMessageConverter<?>> converters) {
+            // A byte[] body (a generated report export's CSV or XML) is written as it is, under
+            // the Content-Type the controller set; a default Spring Boot application has this one.
+            converters.add(new org.springframework.http.converter.ByteArrayHttpMessageConverter());
             converters.add(new MappingJackson2HttpMessageConverter(mapper));
         }
     }

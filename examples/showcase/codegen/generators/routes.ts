@@ -75,6 +75,7 @@ import {
   effectivePackage,
   crossEntitySpecifier,
   entityModuleSpecifier,
+  siblingSpecifier,
   relativeModuleSpecifier,
   namesRef,
   columnExpr,
@@ -163,6 +164,7 @@ function renderRoutes(
       (keyless ? `\n${indent}itemRoutes: false,` : "") +
       (report ? `\n${indent}resource: "report",` : "") +
       (report && reportMaxRows !== undefined ? `\n${indent}reportMaxRows: ${reportMaxRows},` : "") +
+      (report && ctx.includeReportExport ? `\n${indent}export: ${entityName}Export,` : "") +
       decimalColumnsLine(entity, indent, ctx.loadedRoot);
     const FastifyInstanceSym = imp("t:FastifyInstance@fastify");
     const mountReadOnlyCrudRoutesSym = imp(`mountReadOnlyCrudRoutes@${runtimeSpec}`);
@@ -174,6 +176,14 @@ function renderRoutes(
       narrowable: false,
     });
 
+    // The report-export generator is wired for this target: mount its `?format=` branch with the
+    // module it emitted beside this file. Absent, the file is byte-identical to before export existed.
+    const exportImport =
+      report && ctx.includeReportExport
+        ? `import { ${entityName}Export } from ${JSON.stringify(
+            siblingSpecifier(ctx.selfTarget, entityPkg, `${entityName}.export`, ctx.extStyle),
+          )};\n`
+        : "";
     const literalImports = code`
 import { db } from ${JSON.stringify(dbImportSpec)};
 import {
@@ -230,7 +240,7 @@ export async function ${handlerName}(fastify: ${FastifyInstanceSym}) {
 }
 `;
 
-    return header + literalImports.toString() + body.toString();
+    return header + literalImports.toString() + exportImport + body.toString();
   }
 
   // --- Vanilla / write-through entity path: full CRUD routes ---

@@ -89,6 +89,8 @@ object ApiContractScenarioLoader {
             body = r["body"],
             expectStatus = status,
             expectBody = expectBody,
+            headers = (r["headers"] as? Map<*, *>)?.entries?.associate { it.key.toString() to it.value.toString() } ?: emptyMap(),
+            expectHeaders = (expect["headers"] as? Map<*, *>)?.entries?.associate { it.key.toString() to it.value } ?: emptyMap(),
         )
     }
 }

@@ -22,6 +22,8 @@ import { routesFile as refRoutes } from "../src/reference/routes.js";
 import { routesFileHono as refRoutesHono } from "../src/reference/routes-hono.js";
 import { barrel as refBarrel } from "../src/reference/barrel.js";
 import { namesFile as refNames } from "../src/reference/names.js";
+import { reportExport as builtinReportExport } from "../src/generators/report-export-file.js";
+import { reportExport as refReportExport } from "../src/reference/report-export.js";
 import { promptRender as builtinPromptRender } from "../src/generators/prompt-render-file.js";
 import { outputParser as builtinOutputParser } from "../src/generators/output-parser-file.js";
 import { extractor as builtinExtractor } from "../src/generators/extractor-file.js";
@@ -161,6 +163,9 @@ const PAIRS: Record<ReferenceGeneratorName, { builtin: () => Generator; ref: () 
   "routes-hono": { builtin: builtinRoutesHono, ref: () => refRoutesHono(PKG) },
   barrel: { builtin: builtinBarrel, ref: refBarrel },
   names: { builtin: builtinNames, ref: refNames },
+  // Emits nothing over the entity-shaped fixtures (none declares a served report); the
+  // describe after the route-composition one runs the pair, with the routes, over the report corpus.
+  "report-export": { builtin: builtinReportExport, ref: refReportExport },
   "prompt-render": { builtin: builtinPromptRender, ref: refPromptRender },
   "output-parser": { builtin: builtinOutputParser, ref: refOutputParser },
   extractor: { builtin: builtinExtractor, ref: refExtractor },
@@ -277,6 +282,43 @@ describe("ADR-0034 — the route composition, over every shape it dispatches on"
       }
     });
   }
+});
+
+describe("ADR-0034 — report-export and the routes it wires, over the report corpus", () => {
+  for (const options of [undefined, { maxRows: 60, xmlNulls: "nil", csvBom: true }] as const) {
+    test(`options ${JSON.stringify(options)}`, async () => {
+      const root = await loadFiles([join(REPO_FIXTURES, "api-contract-conformance", "report", "meta.json")]);
+      const aDir = mkdtempSync(join(tmpdir(), "codegen-builtin-"));
+      const bDir = mkdtempSync(join(tmpdir(), "codegen-reference-"));
+      try {
+        const a = await gen(aDir, [builtinEntity(), builtinRoutes(), builtinRoutesHono(), builtinReportExport(options)], root);
+        const b = await gen(bDir, [refEntity(PKG), refRoutes(PKG), refRoutesHono(PKG), refReportExport(options)], root);
+        const aKeys = Object.keys(a).sort();
+        expect(aKeys).toContain("ExportCells.export.ts");
+        expect(aKeys).toContain("report-export-writers.ts");
+        expect(a["ExportCells.routes.ts"]).toContain("export: ExportCellsExport,");
+        expect(a["ExportCells.routes.hono.ts"]).toContain("export: ExportCellsExport,");
+        expect(Object.keys(b).sort()).toEqual(aKeys);
+        for (const k of aKeys) expect(`${k}:\n${b[k]}`).toBe(`${k}:\n${a[k]}`);
+      } finally {
+        rmSync(aDir, { recursive: true, force: true });
+        rmSync(bDir, { recursive: true, force: true });
+      }
+    });
+  }
+
+  test("with no report-export wired, a report's routes carry no export branch", async () => {
+    const root = await loadFiles([join(REPO_FIXTURES, "api-contract-conformance", "report", "meta.json")]);
+    const dir = mkdtempSync(join(tmpdir(), "codegen-builtin-"));
+    try {
+      const out = await gen(dir, [builtinEntity(), builtinRoutes(), builtinRoutesHono()], root);
+      expect(out["ExportCells.routes.ts"]).not.toContain("ExportCellsExport");
+      expect(out["ExportCells.routes.hono.ts"]).not.toContain("ExportCellsExport");
+      expect(Object.keys(out).some((k) => k.includes(".export.") || k.startsWith("report-export"))).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("ADR-0034 Amendment 3 — an ejected generator's output imports the OWNED adapter copy", () => {

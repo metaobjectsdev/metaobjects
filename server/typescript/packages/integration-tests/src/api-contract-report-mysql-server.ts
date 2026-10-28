@@ -12,7 +12,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { runGen, defineConfig, buildReportViews } from "@metaobjectsdev/codegen-ts";
-import { entityFile, routesFile } from "@metaobjectsdev/test-generators";
+import { entityFile, reportExport, routesFile } from "@metaobjectsdev/test-generators";
 import mysql from "mysql2/promise";
 import { REPORT_CORPUS_MAX_ROWS, seedInserts, SERVED_REPORTS, type ReportSeed } from "./api-contract-report-generated-server.ts";
 import { DEFAULT_PHYSICAL_NAMING } from "@metaobjectsdev/metadata";
@@ -79,6 +79,14 @@ const BASE_TABLES: ReadonlyArray<{ name: string; ddl: string }> = [
       \`seq\` INT NOT NULL
     )`,
   },
+  {
+    name: "export_cells",
+    ddl: `CREATE TABLE \`export_cells\` (
+      \`id\` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+      \`label\` VARCHAR(40),
+      \`amount_cents\` BIGINT NOT NULL
+    )`,
+  },
 ];
 
 export async function startMysqlReportServer(mysqlUrl: string, metaPath: string): Promise<MysqlReportServerHandle> {
@@ -99,7 +107,11 @@ export async function startMysqlReportServer(mysqlUrl: string, metaPath: string)
       dbImport: "./db",
       dialect: "mysql",
       apiPrefix: "/api",
-      generators: [entityFile(), routesFile({ reportMaxRows: REPORT_CORPUS_MAX_ROWS })],
+      generators: [
+        entityFile(),
+        routesFile({ reportMaxRows: REPORT_CORPUS_MAX_ROWS }),
+        reportExport({ maxRows: REPORT_CORPUS_MAX_ROWS, xmlNulls: "nil" }),
+      ],
     }),
     metadata: root,
   });

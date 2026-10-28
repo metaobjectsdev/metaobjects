@@ -22,7 +22,7 @@ import { runGen, defineConfig, buildReportViews } from "@metaobjectsdev/codegen-
 import {
   DEFAULT_PHYSICAL_NAMING, resolveColumnName, resolveTableName, type MetaRoot,
 } from "@metaobjectsdev/metadata";
-import { entityFile, routesFile } from "@metaobjectsdev/test-generators";
+import { entityFile, reportExport, routesFile } from "@metaobjectsdev/test-generators";
 import pg from "pg";
 import { executeSql } from "./postgres-sql.ts";
 import { loadMetadataFile } from "./load-metadata.ts";
@@ -155,6 +155,15 @@ const BASE_TABLES: ReadonlyArray<{ name: string; ddl: string }> = [
       "seq" integer NOT NULL
     );`,
   },
+  {
+    name: "export_cells",
+    ddl: `
+    CREATE TABLE IF NOT EXISTS "export_cells" (
+      "id" bigserial PRIMARY KEY,
+      "label" varchar(40),
+      "amount_cents" bigint NOT NULL
+    );`,
+  },
 ];
 
 export interface GeneratedReportServerHandle {
@@ -177,6 +186,7 @@ export const SERVED_REPORTS = [
   { name: "ProductRefunds", registrar: "productRefundsRoutes" },
   { name: "TicketsByTags", registrar: "ticketsByTagsRoutes" },
   { name: "ReadingLog", registrar: "readingLogRoutes" },
+  { name: "ExportCells", registrar: "exportCellsRoutes" },
 ] as const;
 
 /** The row cap every lane builds its report routes with: ReadingLog has one row more than
@@ -205,7 +215,12 @@ export async function startGeneratedReportServer(
       dbImport: "./db",
       dialect: "postgres",
       apiPrefix: "/api",
-      generators: [entityFile(), routesFile({ reportMaxRows: REPORT_CORPUS_MAX_ROWS })],
+      generators: [
+        entityFile(),
+        routesFile({ reportMaxRows: REPORT_CORPUS_MAX_ROWS }),
+        // The export cap equals the list cap so the 61-row ReadingLog trips export_too_large; xsi:nil pins the nil spelling.
+        reportExport({ maxRows: REPORT_CORPUS_MAX_ROWS, xmlNulls: "nil" }),
+      ],
     }),
     metadata: root,
   });

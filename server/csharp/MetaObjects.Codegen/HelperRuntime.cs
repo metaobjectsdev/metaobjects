@@ -57,6 +57,8 @@ public static class HelperRuntime
     /// those routes the api contract's timestamp spelling — it serves the same wire, so
     /// the adopter owns it with them. <c>DecimalWire.cs</c> is the decimal wire form
     /// (ADR-0019 Amendment 1): the filter dispatcher parses decimal operands through it.
+    /// <c>ReportExportHttp.cs</c> is the HTTP side of report export: a report list route that
+    /// is built with a <c>report-export</c> generator wired calls it.
     /// </summary>
     public static readonly IReadOnlyList<string> Files =
     [
@@ -69,6 +71,7 @@ public static class HelperRuntime
         "Iso8601TimestampConverter.cs",
         "DecimalWire.cs",
         "DecimalRangeEndpointFilter.cs",
+        "ReportExportHttp.cs",
     ];
 
     /// <summary>Runtime/ files that are CORE and never copied (see the header).</summary>

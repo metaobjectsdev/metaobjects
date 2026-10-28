@@ -84,7 +84,7 @@ abstract class ReportOmdbApiContractLane {
         // The report read model's rows are generic value objects; bind every entity of the model.
         ObjectClassRegistry reg = new ObjectClassRegistry();
         Map<String, Class<?>> bindings = new HashMap<>();
-        for (String entity : List.of("Invoice", "Category", "Product", "Sale", "Ticket")) {
+        for (String entity : List.of("Invoice", "Category", "Product", "Sale", "Ticket", "Reading", "ExportLine")) {
             bindings.put("acme::sales::" + entity, ValueObject.class);
         }
         reg.register(() -> bindings);
@@ -111,9 +111,13 @@ abstract class ReportOmdbApiContractLane {
     }
 
     @Test
-    void theCorpusCarriesItsThirtyOneScenarios() {
-        // A scenarios directory that resolved to nothing would leave this lane green and empty.
-        assertEquals(31, SCENARIOS.size());
+    void theCorpusCarriesItsScenarios() throws Exception {
+        // A scenarios directory that resolved to nothing would leave this lane green and empty;
+        // the count is the files on disk, so a scenario the loader dropped fails here.
+        try (Stream<Path> files = Files.list(ReportCorpus.scenariosDir())) {
+            assertEquals(files.filter(p -> p.toString().endsWith(".yaml")).count(), SCENARIOS.size());
+        }
+        org.junit.jupiter.api.Assertions.assertTrue(SCENARIOS.size() > 0);
     }
 
     @ParameterizedTest(name = "{0}")
@@ -122,9 +126,10 @@ abstract class ReportOmdbApiContractLane {
         assertDoesNotThrow(() -> {
             for (ApiRequest req : scenario.requests()) {
                 GeneratedReportControllerHarness.Response res =
-                    harness.exchange(req.method(), req.path(), req.body());
+                    harness.exchange(req.method(), req.path(), req.body(), req.headers());
                 Object parsed = harness.parseBody(res.body());
-                ApiContractAssertions.assertResponse(scenario.name(), req, res.status(), parsed);
+                ApiContractAssertions.assertResponse(scenario.name(), req, res.status(), parsed,
+                    res.body(), res.headers());
             }
         });
     }

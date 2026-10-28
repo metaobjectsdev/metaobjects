@@ -42,10 +42,12 @@ from metaobjects.codegen.generators.output_prompt_generator import (
 from metaobjects.codegen.generators.render_helper_generator import (
     render_helper_generator,
 )
+from metaobjects.codegen.generators.report_export_generator import report_export_generator
 from metaobjects.codegen.generators.requirement_tests_generator import (
     requirement_tests_generator,
 )
 from metaobjects.codegen.generators.router_generator import (
+    EXPORT_RUNTIME_MODULE as _EXPORT_RUNTIME,
     RUNTIME_MODULES as _ROUTER_RUNTIME,
     router_generator,
 )
@@ -247,7 +249,19 @@ GENERATOR_REGISTRY: dict[str, GeneratorEntry] = {
         # generated package fails at import (ModuleNotFoundError).
         requires=("entity", "filter-allowlist"),
         source=router_generator,
-        runtime=_ROUTER_RUNTIME + _SHARED_PREDICATES + (_FR010_FIELD_MAPPING, _M2M_CODEGEN),
+        runtime=_ROUTER_RUNTIME + (_EXPORT_RUNTIME,) + _SHARED_PREDICATES + (_FR010_FIELD_MAPPING, _M2M_CODEGEN),
+    ),
+    "report-export": GeneratorEntry(
+        name="report-export",
+        description=(
+            "Per-report CSV and XML export writers over a served object.report plus one shared "
+            "writer module; wires the ?format=csv|json|xml branch into the report list routes "
+            "(options: max_rows, xml_nulls, csv_bom)."
+        ),
+        tier="native",
+        layer="api",
+        factory=lambda _ctx: report_export_generator(),
+        source=report_export_generator,
     ),
     "output-parser": GeneratorEntry(
         name="output-parser",

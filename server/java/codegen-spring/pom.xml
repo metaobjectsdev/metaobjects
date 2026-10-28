@@ -207,6 +207,7 @@
                                         <include>LlmTraceHelperGenerator.java</include>
                                         <include>SpringNamesGenerator.java</include>
                                         <include>JUnitRequirementTestsGenerator.java</include>
+                                        <include>SpringReportExportGenerator.java</include>
                                         <!-- The emit classes a generator above calls, handed over
                                              with it (GeneratorInfo.ejectWith()). -->
                                         <include>Fr019SharedEnum.java</include>
@@ -283,6 +284,7 @@
                                         <include>FilterPredicate.java</include>
                                         <include>PatchValidationException.java</include>
                                         <include>RecordComponentNames.java</include>
+                                        <include>ReportExport.java</include>
                                         <include>UnreadableBody.java</include>
                                     </includes>
                                 </resource>

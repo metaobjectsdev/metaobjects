@@ -8,6 +8,7 @@ import com.metaobjects.agentcontext.AgentContextScaffold;
 import com.metaobjects.generator.Generator;
 import com.metaobjects.generator.GeneratorBase;
 import com.metaobjects.generator.ProjectClassLoaderAware;
+import com.metaobjects.generator.RunAware;
 import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase;
 import com.metaobjects.generator.spring.SpringRenderHelperGenerator;
 import com.metaobjects.generator.template.TemplateScopeGenerator;
@@ -44,6 +45,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -505,6 +507,12 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
         for ( int i = 0; i < generatorImpls.size(); i++ ) {
             generatorImpls.get(i).setArgs(
                 EmitsPhysicalNameConstants.deriveUseNames( argsByGenerator.get(i), generatorImpls ) );
+        }
+        // A generator whose output depends on its siblings (the routes generator mounts a
+        // report's ?format branch only beside a report-export generator) is handed the suite.
+        List<Generator> run = Collections.unmodifiableList( generatorImpls );
+        for ( Generator impl : generatorImpls ) {
+            if ( impl instanceof RunAware ) ((RunAware) impl).setRun( run );
         }
 
         return generatorImpls;

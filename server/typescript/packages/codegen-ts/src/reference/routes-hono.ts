@@ -64,6 +64,7 @@ import {
   entityOutputPath,
   effectivePackage,
   entityModuleSpecifier,
+  siblingSpecifier,
   httpRuntimeSpecifier,
   ownedRuntimeImport,
   GENERATED_HEADER,
@@ -145,10 +146,19 @@ function renderRoutesHono(
       (keyless ? `\n${indent}itemRoutes: false,` : "") +
       (report ? `\n${indent}resource: "report",` : "") +
       (report && reportMaxRows !== undefined ? `\n${indent}reportMaxRows: ${reportMaxRows},` : "") +
+      (report && ctx.includeReportExport ? `\n${indent}export: ${entityName}Export,` : "") +
       decimalColumnsLine(entity, indent, ctx.loadedRoot);
     const HonoSym = imp("t:Hono@hono");
     const mountReadOnlyCrudRoutesSym = imp(`mountReadOnlyCrudRoutes@${runtimeSpec}`);
 
+    // The report-export generator is wired for this target: mount its `?format=` branch with the
+    // module it emitted beside this file. Absent, the file is byte-identical to before export existed.
+    const exportImport =
+      report && ctx.includeReportExport
+        ? `import { ${entityName}Export } from ${JSON.stringify(
+            siblingSpecifier(ctx.selfTarget, effectivePackage(entity), `${entityName}.export`, ctx.extStyle),
+          )};\n`
+        : "";
     const literalImports = code`
 import {
   ${entityName},
@@ -181,7 +191,7 @@ export function ${handlerName}(app: ${HonoSym}<any, any, any>, deps: { db: unkno
 }
 `;
 
-    return header + literalImports.toString() + body.toString();
+    return header + literalImports.toString() + exportImport + body.toString();
   }
 
   // --- Vanilla / write-through entity path: full CRUD routes ---

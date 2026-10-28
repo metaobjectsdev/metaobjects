@@ -677,6 +677,11 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   // the verbs the routes files mount. Run-scoped, read off the whole declared list.
   const routesExpose = runRoutesExpose(config.generators);
 
+  // Per-target scoping for the report-export generator: the routes import `./<Report>.export`
+  // relative to themselves, so the module must land in the route file's own target.
+  const reportExportTargets = new Set(
+    config.generators.filter((g) => g.emitsReportExport === true).map((g) => targetOf(g).name),
+  );
   // §A6 — same auto-detection for the OPT-IN names generator. The entity tier may only
   // REFERENCE `<Entity>Names` when something in this run actually emits it; the names
   // generator is opt-in under ADR-0034 (meta gen runs the adopter's own copies), so an
@@ -844,6 +849,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
       emitAbstractShapes: config.emitAbstractShapes,
       outputLayout: selfTarget.outputLayout,
       includeNames: namesTargets.has(selfTarget.name),
+      includeReportExport: reportExportTargets.has(selfTarget.name),
       pkMap,
       relationMap,
       packageOf,
@@ -870,6 +876,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
         outputLayout: selfTarget.outputLayout,
         includeHonoRoutes,
         includeNames: namesTargets.has(selfTarget.name),
+        includeReportExport: reportExportTargets.has(selfTarget.name),
         includeUiTier,
         includeUiTierExplicit,
         ...(routesExpose !== undefined && { routesExpose }),

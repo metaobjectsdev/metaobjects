@@ -26,20 +26,20 @@ describe("api-contract report corpus", () => {
     const reports = root.objects().filter((o) => o.subType === OBJECT_SUBTYPE_REPORT);
     expect(reports.map((r) => r.name)).toEqual(
       ["InvoiceStatusTotals", "InvoicesByMonth", "InvoiceTotals", "InvoiceCalendar", "InvoiceDisputes", "InvoiceDays",
-        "ProductRevenue", "SalesByCategory", "SalesBySku", "ProductRefunds", "TicketsByTags", "ReadingLog"]);
+        "ProductRevenue", "SalesByCategory", "SalesBySku", "ProductRefunds", "TicketsByTags", "ReadingLog", "ExportCells"]);
     expect(reports.filter((r) => reportReadSource(r) !== undefined).map((r) => r.name)).toEqual(
       ["InvoiceStatusTotals", "InvoicesByMonth", "InvoiceTotals", "InvoiceCalendar", "InvoiceDisputes",
-        "ProductRevenue", "SalesByCategory", "SalesBySku", "ProductRefunds", "TicketsByTags", "ReadingLog"]);
+        "ProductRevenue", "SalesByCategory", "SalesBySku", "ProductRefunds", "TicketsByTags", "ReadingLog", "ExportCells"]);
   });
 
   test("the route segments are the ones the scenarios call", async () => {
     const root = await loadMetadataFile(join(API_CONTRACT_REPORT_DIR, "meta.json"));
     const segment = (name: string): string => pluralize(toSnakeCase(name));
     expect(["InvoiceStatusTotals", "InvoicesByMonth", "InvoiceTotals", "InvoiceCalendar", "InvoiceDisputes",
-      "ProductRevenue", "SalesByCategory", "SalesBySku", "ProductRefunds", "TicketsByTags", "ReadingLog"].map(segment)).toEqual(
+      "ProductRevenue", "SalesByCategory", "SalesBySku", "ProductRefunds", "TicketsByTags", "ReadingLog", "ExportCells"].map(segment)).toEqual(
       ["invoice_status_totals", "invoices_by_months", "invoice_totals", "invoice_calendars", "invoice_disputes",
-        "product_revenues", "sales_by_categories", "sales_by_skus", "product_refunds", "tickets_by_tags", "reading_logs"]);
-    expect(root.objects().length).toBe(18);
+        "product_revenues", "sales_by_categories", "sales_by_skus", "product_refunds", "tickets_by_tags", "reading_logs", "export_cells"]);
+    expect(root.objects().length).toBe(20);
   });
 
   test("each seeded report row has exactly the report's derived fields", async () => {
@@ -52,7 +52,7 @@ describe("api-contract report corpus", () => {
     }
     expect(Object.keys(seedReports())).toEqual(
       ["InvoiceStatusTotals", "InvoicesByMonth", "InvoiceTotals", "InvoiceCalendar", "InvoiceDisputes",
-        "SalesByCategory", "SalesBySku", "ProductRevenue", "ProductRefunds", "ReadingLog"]);
+        "SalesByCategory", "SalesBySku", "ProductRevenue", "ProductRefunds", "ReadingLog", "ExportCells"]);
   });
 
   // A lane inserts every top-level key but `reports` in file order, so the order is the
@@ -60,9 +60,9 @@ describe("api-contract report corpus", () => {
   test("the base tables of seed.json are the model's tables, listed parents first", async () => {
     const root = await loadMetadataFile(join(API_CONTRACT_REPORT_DIR, "meta.json"));
     const tables = Object.keys(seed).filter((k) => k !== SEED_REPORTS_KEY);
-    expect(tables).toEqual(["invoices", "categories", "products", "sales", "readings"]);
+    expect(tables).toEqual(["invoices", "categories", "products", "sales", "readings", "export_cells"]);
     // Every key is an entity's table and every row key one of its fields (seedInserts throws otherwise).
-    expect(seedInserts(root, seed).length).toBe(5 + 2 + 3 + 3 + 61);
+    expect(seedInserts(root, seed).length).toBe(5 + 2 + 3 + 3 + 61 + 10);
     for (const [i, table] of tables.entries()) {
       const entity = root.objects().find((o) => o.isEntity() && resolveTableName(o) === table);
       if (entity === undefined) throw new Error(`no entity has table ${table}`);
@@ -77,9 +77,9 @@ describe("api-contract report corpus", () => {
     }
   });
 
-  test("every scenario parses, and there are thirty-one", () => {
+  test("every scenario parses, and there are thirty-seven", () => {
     const scenarios = loadScenarios(API_CONTRACT_REPORT_SCENARIOS_DIR);
-    expect(scenarios.length).toBe(31);
+    expect(scenarios.length).toBe(37);
     for (const s of scenarios) expect(s.requests.length).toBeGreaterThan(0);
   });
 

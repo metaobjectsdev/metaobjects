@@ -1143,6 +1143,17 @@ from which the goal infers it. `requirement-tests` is one such name:
 `KotlinRequirementTestsGenerator.kt`, each with its default rendering. The identity
 function, the digest and the renderer and filter hook types stay in the package.
 
+### `report-export` (all ports)
+
+`report-export` is a standalone catalog generator, never implied by a library, that adds the
+`?format=csv|json|xml` download to served report list routes. Every port ships it and ejects it
+with its own command (`meta eject report-export`, `metaobjects eject`, `mvn metaobjects:eject
+-Dnames=report-export`, `dotnet meta eject report-export`). The copy holds the CSV and XML writers,
+so the guard, quoting and null form are yours to change. The routes generator emits the `format`
+branch only when the generator is wired: every port's runner detects it from the generator list (on
+Java and Kotlin the Maven plugin hands that list to `routes`). Options and defaults:
+[reporting.md](reporting.md#exporting-a-report).
+
 ### Java `entity` and `extractor`
 
 ```bash

@@ -23,7 +23,7 @@ import {
   resolveColumnName,
 } from "@metaobjectsdev/metadata";
 import { type RenderContext } from "../render-context.js";
-import { crossEntitySpecifier, entityModuleSpecifier, relativeModuleSpecifier } from "../import-path.js";
+import { crossEntitySpecifier, entityModuleSpecifier, relativeModuleSpecifier, siblingSpecifier } from "../import-path.js";
 import { namesRef, columnExpr } from "../names.js";
 import { GENERATED_HEADER, GENERATED_EDIT_NOTE, sidecarLine } from "../constants.js";
 import { routesHandlerName } from "../naming.js";
@@ -102,6 +102,7 @@ export function renderRoutesFile(
       (keyless ? `\n${indent}itemRoutes: false,` : "") +
       (report ? `\n${indent}resource: "report",` : "") +
       (report && reportMaxRows !== undefined ? `\n${indent}reportMaxRows: ${reportMaxRows},` : "") +
+      (report && ctx.includeReportExport ? `\n${indent}export: ${entityName}Export,` : "") +
       decimalColumnsLine(entity, indent, ctx.loadedRoot);
     const FastifyInstanceSym = imp("t:FastifyInstance@fastify");
     const mountReadOnlyCrudRoutesSym = imp(`mountReadOnlyCrudRoutes@${runtimeSpec}`);
@@ -113,6 +114,14 @@ export function renderRoutesFile(
       narrowable: false,
     });
 
+    // The report-export generator is wired for this target: mount its `?format=` branch with the
+    // module it emitted beside this file. Absent, the file is byte-identical to before export existed.
+    const exportImport =
+      report && ctx.includeReportExport
+        ? `import { ${entityName}Export } from ${JSON.stringify(
+            siblingSpecifier(ctx.selfTarget, entityPkg, `${entityName}.export`, ctx.extStyle),
+          )};\n`
+        : "";
     const literalImports = code`
 import { db } from ${JSON.stringify(dbImportSpec)};
 import {
@@ -169,7 +178,7 @@ export async function ${handlerName}(fastify: ${FastifyInstanceSym}) {
 }
 `;
 
-    return header + literalImports.toString() + body.toString();
+    return header + literalImports.toString() + exportImport + body.toString();
   }
 
   // --- Vanilla / write-through entity path: full CRUD routes ---
