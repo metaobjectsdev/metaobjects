@@ -355,6 +355,12 @@ named-constants-for-metamodel-strings, no-`any` rule, cross-language porting
 contract, public-repo hygiene). For significant new features, open an issue
 first to discuss the approach.
 
+[`GOVERNANCE.md`](GOVERNANCE.md) sets out the roles (contributor, port maintainer, core
+maintainer), how merge and publish rights are earned, how decisions are made, and what
+happens if the creator steps away. [`MAINTAINERS.md`](MAINTAINERS.md) lists who maintains
+each port and area today, and who owns each registry package. Every port is looking for a
+maintainer.
+
 ## Roadmap
 
 Current + planned work is tracked as [GitHub issues labelled `FR`](https://github.com/metaobjectsdev/metaobjects/issues?q=is%3Aissue+label%3AFR), with [milestones](https://github.com/metaobjectsdev/metaobjects/milestones) for releases. [`spec/roadmap.md`](spec/roadmap.md) holds the release direction and the index of feature specs.
