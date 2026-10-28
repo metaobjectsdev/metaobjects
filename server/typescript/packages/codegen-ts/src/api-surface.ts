@@ -153,8 +153,9 @@ export function decimalFieldNames(entity: MetaObject): readonly string[] {
  *
  * A generated CRUD route can never be a correct writer of a credential (it has no hashing
  * seam), nor a safe reader of one, so a credential is never read or written through the
- * generated API and is neither filterable nor sortable (a filter on a secret is an oracle
- * for it). The application writes it itself, through its own code.
+ * generated API. Filter and sort allowlists are unchanged (`@filterable` and `@sortable` stay
+ * explicit opt-ins), so do not put them on a credential: a filter on a secret is an oracle for
+ * it. The application writes it itself, through its own code.
  */
 export function isCredentialField(field: MetaField): boolean {
   // ADR-0039: resolving. A view may be inherited via extends.

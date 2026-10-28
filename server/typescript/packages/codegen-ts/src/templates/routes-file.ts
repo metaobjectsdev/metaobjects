@@ -341,6 +341,15 @@ interface TphM2mSource {
 }
 
 /**
+ * The object a M:N mount reads rows of, plus the subtypes of a TPH base target: its rows are
+ * shared-table rows of every subtype, so a credential declared by any of them is hidden too.
+ */
+function m2mTargetObjects(target: MetaObject, ctx: RenderContext): MetaObject[] {
+  const plan = ctx.loadedRoot === undefined ? null : tphPlan(target, ctx.loadedRoot);
+  return plan === null ? [target] : [target, ...plan.subtypes.map((st) => st.entity)];
+}
+
+/**
  * Render one M:N traversal mount. The junction + target Drizzle table consts are
  * imported from their sibling entity files (imp() lets ts-poet track + emit the
  * import). The source/target FK columns + the target PK are resolved to PHYSICAL
@@ -422,7 +431,7 @@ function renderM2mMount(
     sourceColumn: ${sourceColumn},
     targetColumn: ${targetColumn},
     targetPkColumn: ${targetPkColumn},
-    symmetric: ${entry.symmetric ? "true" : "false"},${decimalColumnsLine(entry.target, "    ", ctx.loadedRoot)}${discriminatorLine}${sourceDiscriminatorLine}
+    symmetric: ${entry.symmetric ? "true" : "false"},${decimalColumnsLine(m2mTargetObjects(entry.target, ctx), "    ", ctx.loadedRoot)}${discriminatorLine}${sourceDiscriminatorLine}
   });`;
 }
 

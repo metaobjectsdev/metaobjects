@@ -1621,7 +1621,14 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
             if (!nav.relationName().equals(rel.getShortName())) continue;
             MetaObject target = com.metaobjects.loader.References.refTarget(
                 rel, com.metaobjects.relationship.MetaRelationship.ATTR_OBJECT_REF);
-            return target == null ? List.of() : SpringGeneratorSupport.credentialNames(target);
+            if (target == null) return List.of();
+            // A TPH base target's rows are shared-table rows of every subtype, so a credential
+            // declared on any subtype is hidden too.
+            List<MetaField> fields = new ArrayList<>(SpringGeneratorSupport.dtoComponentFields(target));
+            for (MetaField f : TphPlan.collectSubtypeFields(target, source.getLoader())) {
+                if (!(f instanceof ObjectField)) fields.add(f);
+            }
+            return SpringGeneratorSupport.credentialNames(fields);
         }
         return List.of();
     }

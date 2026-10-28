@@ -102,3 +102,19 @@ def test_render_wire_drops_hidden_key_not_nulls_it() -> None:
     wire = WireOutput(hidden=("pinHash",))
     assert render_wire({"id": 1, "pinHash": None}, wire) == {"id": 1}
     assert render_wire([{"id": 1, "pinHash": "x"}], wire) == [{"id": 1}]
+
+
+def test_render_wire_hides_a_credential_of_a_dataclass_or_mapping_row() -> None:
+    import dataclasses
+    from types import MappingProxyType
+
+    from metaobjects.codegen.runtime.decimal_wire import WireOutput, render_wire
+
+    @dataclasses.dataclass
+    class Row:
+        id: int
+        pinHash: str
+
+    wire = WireOutput(hidden=("pinHash",))
+    assert render_wire(Row(1, "x"), wire) == {"id": 1}
+    assert render_wire(MappingProxyType({"id": 1, "pinHash": "x"}), wire) == {"id": 1}

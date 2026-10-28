@@ -22,6 +22,7 @@ import dataclasses
 import json
 import re
 from decimal import Context, Decimal, InvalidOperation
+from collections.abc import Mapping
 from typing import Any, Callable, Iterable
 
 #: A string body value and a filter operand: the JSON-number grammar. An exponent is allowed on
@@ -309,6 +310,10 @@ def _drop_hidden(value: Any, hidden: tuple[str, ...]) -> Any:
     dump = getattr(value, "model_dump", None)
     if callable(dump):
         value = dump()
+    elif dataclasses.is_dataclass(value) and not isinstance(value, type):
+        value = dataclasses.asdict(value)
+    elif isinstance(value, Mapping):
+        value = dict(value)
     if not isinstance(value, dict):
         return value
     return {k: v for k, v in value.items() if k not in hidden}

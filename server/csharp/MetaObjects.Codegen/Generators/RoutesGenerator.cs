@@ -776,6 +776,17 @@ public class RoutesGenerator : PerEntityGenerator
     private static List<MetaField> WriteDeniedFields(MetaObject entity) =>
         entity.Fields().Where(IsApiWriteDenied).ToList();
 
+    /// <summary>
+    /// An entity's credential names plus, for a TPH base, those of every subtype: its rows are
+    /// shared-table rows of every subtype (#484).
+    /// </summary>
+    private static List<string> TphUnionCredentialNames(MetaObject entity, MetaRoot root) =>
+        CredentialNames(entity)
+            .Concat(TphPlanBuilder.For(entity, root) is { } tph
+                ? tph.Subtypes.SelectMany(st => CredentialNames(st.Entity))
+                : Enumerable.Empty<string>())
+            .Distinct(StringComparer.Ordinal).ToList();
+
     private static List<string> CredentialNames(MetaObject entity) =>
         entity.Fields().Where(IsCredentialField).Select(f => f.Name).ToList();
 
@@ -1555,7 +1566,7 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine($"            var rows = await {targetFrom}.AsNoTracking()");
         sb.AppendLine($"                .Where(t => relatedIds.Contains(EF.Property<{fkType}>(t, \"{targetPk}\")))");
         sb.AppendLine("                .ToListAsync();");
-        sb.AppendLine($"            return {OkResult("rows", CredentialNames(nav.Target))};");
+        sb.AppendLine($"            return {OkResult("rows", TphUnionCredentialNames(nav.Target, root))};");
         sb.AppendLine("        });");
     }
 
