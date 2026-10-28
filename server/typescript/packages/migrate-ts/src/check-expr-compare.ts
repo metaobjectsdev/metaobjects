@@ -18,7 +18,7 @@
 //   - respells a cast TARGET canonically: `x::int`      →  `(x)::integer`
 // All five are canonicalized below so an enum/range CHECK introspected from PG
 // compares equal to the one we generate (idempotency on the --from-db / verify paths).
-// Three more are folded back by foldPgAnalyzerRewrites and PAREN_COLUMN_TEXT_CAST: a
+// Three more are folded back by foldPgAnalyzerRewrites and COLUMN_TEXT_CAST: a
 // one-element `x IN (v)` stored as `x = v`, `a IS NOT DISTINCT FROM b` stored as
 // `NOT (a IS DISTINCT FROM b)`, and `(varchar_col)::text` stored for a text operator.
 //
@@ -54,13 +54,13 @@ const NO_COLUMNS: ReadonlySet<string> = new Set();
 /**
  * `(col)::text` — the form Postgres writes when it casts a `varchar` column to `text` to reach
  * a text operator or function (`length((code)::text)`, `(a)::text < (b)::text`,
- * `((region)::text IS DISTINCT FROM 'eu'::text)`). Matched BEFORE the brackets are stripped,
- * while `(col)` can still be told from a call `f(col)`: the opening bracket must not follow a
- * word character. It is dropped only for a column the caller names as text-family
+ * `((region)::text IS DISTINCT FROM 'eu'::text)`) — and the bare `col::text` an author writes
+ * for the same cast. Matched BEFORE the brackets are stripped, while `(col)` can still be told
+ * from a call `f(col)`: the match must not follow a word character or a dot. It is dropped only for a column the caller names as text-family
  * (`text` / `varchar`), where the cast changes nothing; on any other column it changes the
  * operator (citext) or the value (`char(n)` trims its padding), so it stays and reads as drift.
  */
-const PAREN_COLUMN_TEXT_CAST = /(?<!\w)\(\s*([a-z_]\w*)\s*\)\s*::\s*text\b/g;
+const COLUMN_TEXT_CAST = /(?<![\w.])(?:\(\s*([a-z_]\w*)\s*\)|([a-z_]\w*))\s*::\s*text\b/g;
 
 /** Split on single-quoted literals ('' escapes honored) and rewrite only the text between them. */
 function mapOutsideLiterals(s: string, fn: (part: string, index: number) => string): string {
@@ -184,7 +184,7 @@ function foldPgAnalyzerRewrites(s: string): string {
  * around commas, casts and SYMBOLIC operators (outside single-quoted literals).
  *
  * `textColumns` (lower-cased names of `text` / `varchar` columns) lets a `(col)::text` cast
- * fold away; see PAREN_COLUMN_TEXT_CAST and isElidableCast.
+ * fold away; see COLUMN_TEXT_CAST and isElidableCast.
  */
 export function normalizeCheckExpr(expr: string, textColumns: ReadonlySet<string> = NO_COLUMNS): string {
   // Every textual rewrite below runs OUTSIDE single-quoted literals. A literal is DATA: its
@@ -205,7 +205,10 @@ export function normalizeCheckExpr(expr: string, textColumns: ReadonlySet<string
       // makes the generated and introspected forms compare equal, and keeps a
       // legacy unquoted check matching its quoted re-emit.
       .replace(/"(\w+)"/g, "$1")
-      .replace(PAREN_COLUMN_TEXT_CAST, (whole, column: string) => (textColumns.has(column) ? column : whole))
+      .replace(COLUMN_TEXT_CAST, (whole, parenthesised: string | undefined, bare: string | undefined) => {
+        const column = parenthesised ?? bare!;
+        return textColumns.has(column) ? column : whole;
+      })
       .replace(/[()[\]]/g, " ")     // drop parens AND square brackets (ARRAY[…])
       .replace(/\s+/g, " ")
       // PG stores `col IN (…)` as `col = ANY (ARRAY[…])`; after the bracket strip above

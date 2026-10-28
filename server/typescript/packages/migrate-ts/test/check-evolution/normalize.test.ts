@@ -272,6 +272,8 @@ describe("Postgres analyzer rewrites that text normalisation cannot undo", () =>
   });
   test("a varchar column's `(col)::text` cast is dropped wherever Postgres adds it", () => {
     const cols = new Set(["region", "name_a", "name_b", "short_code"]);
+    expect(checkExprEquals(`length("short_code"::text) >= 2`, `(length((short_code)::text) >= 2)`, cols)).toBe(true);
+    expect(checkExprEquals(`length(lower(short_code)::text) >= 2`, `(length((short_code)::text) >= 2)`, cols)).toBe(false);
     expect(checkExprEquals(`"region" IS NOT DISTINCT FROM 'eu'`, `NOT ((region)::text IS DISTINCT FROM 'eu'::text)`, cols)).toBe(true);
     expect(checkExprEquals(`("region" IS DISTINCT FROM 'us') OR (x IS NOT NULL)`, `(((region)::text IS DISTINCT FROM 'us'::text) OR (x IS NOT NULL))`, cols)).toBe(true);
     expect(checkExprEquals(`"name_a" < "name_b"`, `((name_a)::text < (name_b)::text)`, cols)).toBe(true);
