@@ -454,10 +454,12 @@ only `.metaobjects/config.json`, and finish with a proof that the dependency set
 whose own metadata is in a build-tool directory (`src/main/resources/metadata`, a C# project's
 metadata directory) declares no neutral `sources`, and a project may use vocabulary only its own
 port registers. Neither case can be loaded by the Node toolchain, and neither is a fault in the
-dependencies. In those two cases (and only those: no `sources` and no default directory, or an
-`ERR_UNKNOWN_TYPE` / `ERR_UNKNOWN_SUBTYPE` from the project's own files) the
+dependencies. In those two cases (and only those: no `sources` and no default directory, or
+a load whose every error is an `ERR_UNKNOWN_TYPE` / `ERR_UNKNOWN_SUBTYPE`) the
 proof loads the locked snapshots together instead, prints which it did, and says that the port's
-own `verify` is the full check. A misspelt type in a project this toolchain does read takes the same path, which is why the fallback is announced. Any other load failure still fails the command and, for `sync`,
+own `verify` is the full check. A misspelt type in a project this toolchain does read takes the
+same path, which is why the fallback is announced. A load that also has any other error, such as
+an unresolved `extends` onto a removed dependency node, still fails the command and, for `sync`,
 rolls the lock and snapshot back.
 
 **Packaged transports: Maven and NuGet (design only, not built).** The `path` transport needs the
