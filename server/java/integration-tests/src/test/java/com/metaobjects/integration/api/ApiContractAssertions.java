@@ -20,14 +20,58 @@ import java.util.Map;
 final class ApiContractAssertions {
     private ApiContractAssertions() {}
 
+    private static String escapeText(String s) {
+        return s == null ? "null" : "\"" + s.replace("\r", "\\r").replace("\n", "\\n").replace("\t", "\\t") + "\"";
+    }
+
     static void assertResponse(String scenarioName, ApiRequest request, int status, Object body) {
+        assertResponse(scenarioName, request, status, body, null, Map.of());
+    }
+
+    /**
+     * As above for a lane that also keeps the raw body and the response headers: it checks
+     * {@code expect.headers} (lower-cased name to its exact value, {@code null} for absent) and the
+     * body keys {@code text} (the exact UTF-8 text) and {@code xml} (an XML infoset compare).
+     */
+    static void assertResponse(String scenarioName, ApiRequest request, int status, Object body,
+                               String rawBody, Map<String, String> headers) {
         if (status != request.expectStatus()) {
             throw new AssertionError(
                 scenarioName + " / " + request.id() + ": expected status "
                     + request.expectStatus() + ", got " + status + "; body: " + body);
         }
+        for (Map.Entry<String, Object> h : request.expectHeaders().entrySet()) {
+            String actualHeader = headers.get(h.getKey().toLowerCase(java.util.Locale.ROOT));
+            Object wantHeader = h.getValue();
+            // Content-Type: Tomcat (the servlet container this lane hosts the controllers on)
+            // re-spells a header it parses, "text/csv; charset=utf-8" as "text/csv;charset=utf-8",
+            // so the space after ";" is the container's choice, not the controller's. Compared
+            // without it; everything else is an exact compare.
+            if (h.getKey().equalsIgnoreCase("content-type")) {
+                if (wantHeader != null) wantHeader = wantHeader.toString().replace("; ", ";");
+                if (actualHeader != null) actualHeader = actualHeader.replace("; ", ";");
+            }
+            if (wantHeader == null ? actualHeader != null : !wantHeader.toString().equals(actualHeader))
+                throw new AssertionError(scenarioName + " / " + request.id() + ": expected header "
+                    + h.getKey() + "=" + (wantHeader == null ? "(absent)" : "\"" + wantHeader + "\"")
+                    + ", got " + (actualHeader == null ? "(absent)" : "\"" + actualHeader + "\""));
+        }
         Map<String, Object> want = request.expectBody();
         if (want == null) return;
+
+        if (want.get("text") instanceof String wantText) {
+            if (!wantText.equals(rawBody))
+                throw new AssertionError(scenarioName + " / " + request.id() + ": body text mismatch\n  expected: "
+                    + escapeText(wantText) + "\n  actual:   " + escapeText(rawBody));
+            return;
+        }
+        if (want.get("xml") instanceof String wantXml) {
+            String difference = XmlInfoset.difference(wantXml, rawBody);
+            if (difference != null)
+                throw new AssertionError(scenarioName + " / " + request.id() + ": body XML mismatch: "
+                    + difference + "\n  expected: " + wantXml + "\n  actual:   " + rawBody);
+            return;
+        }
 
         if (Boolean.TRUE.equals(want.get("empty"))) {
             if (!isEmpty(body))

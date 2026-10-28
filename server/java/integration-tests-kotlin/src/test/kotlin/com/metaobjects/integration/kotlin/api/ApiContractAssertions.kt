@@ -13,12 +13,70 @@ import com.metaobjects.integration.kotlin.api.ApiContractScenarios.ApiRequest
  */
 object ApiContractAssertions {
 
+    private fun escapeText(s: String?): String =
+        if (s == null) "null" else "\"" + s.replace("\r", "\\r").replace("\n", "\\n").replace("\t", "\\t") + "\""
+
+    /**
+     * As below for a lane that also keeps the raw body and the response headers: it checks
+     * `expect.headers` (lower-cased name to its exact value, `null` for absent) and the body keys
+     * `text` (the exact UTF-8 text) and `xml` (an XML infoset compare).
+     */
+    fun assertResponse(
+        scenarioName: String, request: ApiRequest, status: Int, body: Any?,
+        rawBody: String?, headers: Map<String, String>,
+    ) {
+        assertStatus(scenarioName, request, status, body)
+        for ((name, wantRaw) in request.expectHeaders) {
+            var want = wantRaw?.toString()
+            var actual = headers[name.lowercase()]
+            // Content-Type: Tomcat (the servlet container this lane hosts the controllers on)
+            // re-spells a header it parses, "text/csv; charset=utf-8" as "text/csv;charset=utf-8",
+            // so the space after ";" is the container's choice, not the controller's. Compared
+            // without it; everything else is an exact compare.
+            if (name.equals("content-type", ignoreCase = true)) {
+                want = want?.replace("; ", ";")
+                actual = actual?.replace("; ", ";")
+            }
+            if (want != actual)
+                throw AssertionError(
+                    "$scenarioName / ${request.id}: expected header $name=" +
+                        (if (want == null) "(absent)" else "\"$want\"") + ", got " +
+                        (if (actual == null) "(absent)" else "\"$actual\"")
+                )
+        }
+        val wantBody = request.expectBody
+        (wantBody?.get("text") as? String)?.let { wantText ->
+            if (wantText != rawBody)
+                throw AssertionError(
+                    "$scenarioName / ${request.id}: body text mismatch\n  expected: ${escapeText(wantText)}\n  actual:   ${escapeText(rawBody)}"
+                )
+            return
+        }
+        (wantBody?.get("xml") as? String)?.let { wantXml ->
+            val difference = XmlInfoset.difference(wantXml, rawBody)
+            if (difference != null)
+                throw AssertionError(
+                    "$scenarioName / ${request.id}: body XML mismatch: $difference\n  expected: $wantXml\n  actual:   $rawBody"
+                )
+            return
+        }
+        assertBody(scenarioName, request, body)
+    }
+
     fun assertResponse(scenarioName: String, request: ApiRequest, status: Int, body: Any?) {
+        assertStatus(scenarioName, request, status, body)
+        assertBody(scenarioName, request, body)
+    }
+
+    private fun assertStatus(scenarioName: String, request: ApiRequest, status: Int, body: Any?) {
         if (status != request.expectStatus) {
             throw AssertionError(
                 "$scenarioName / ${request.id}: expected status ${request.expectStatus}, got $status; body: $body"
             )
         }
+    }
+
+    private fun assertBody(scenarioName: String, request: ApiRequest, body: Any?) {
         val want = request.expectBody ?: return
 
         if (want["empty"] == true) {

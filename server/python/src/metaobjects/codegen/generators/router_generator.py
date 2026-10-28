@@ -98,6 +98,17 @@ OWNED_RUNTIME = False
 #: tier, not core). Listed on the registry entry too, which is what ``eject`` copies.
 RUNTIME_MODULES: tuple[str, ...] = ("constraint_errors", "decimal_wire", "filter_parser")
 
+#: The report-export request helper. A router imports it only when a ``report-export``
+#: generator is wired, and an owned router emits it only then, so a project without export
+#: gets the same output as before.
+EXPORT_RUNTIME_MODULE = "report_export"
+
+#: The shared module the ``report-export`` generator emits; the router imports its cap from it.
+EXPORT_WRITER_MODULE = "report_export_writer"
+
+#: The generator name whose presence in a run turns the ``?format=`` branch on.
+REPORT_EXPORT_GENERATOR = "report-export"
+
 #: The generated subpackage an owned router emits the runtime into.
 RUNTIME_SUBPACKAGE = "_runtime"
 
@@ -115,14 +126,14 @@ def _runtime_module(module: str) -> str:
     return f"metaobjects.codegen.runtime.{module}"
 
 
-def _owned_runtime_files() -> list[EmittedFile]:
+def _owned_runtime_files(export: bool = False) -> list[EmittedFile]:
     """The runtime source an owned router emits beside itself, marked as generated."""
     files = [EmittedFile(
         path=f"{RUNTIME_SUBPACKAGE}/__init__.py",
         content=f"# {GENERATED_MARKER} — DO NOT EDIT.\n"
         f"# Helper runtime for the generated routers. Its source is codegen/runtime/.\n",
     )]
-    for module in RUNTIME_MODULES:
+    for module in (*RUNTIME_MODULES, *((EXPORT_RUNTIME_MODULE,) if export else ())):
         src = RUNTIME_SOURCE_DIR / f"{module}.py"
         if not src.is_file():
             raise FileNotFoundError(
@@ -755,6 +766,109 @@ class RouterGenerator:
             )
         return lines
 
+    def _report_list_with_export(
+        self,
+        *,
+        plural: str,
+        repo_class: str,
+        fields_const: str,
+        ops_const: str,
+        report_max_rows: int,
+    ) -> list[str]:
+        """A served report's list handler when a ``report-export`` generator is wired.
+
+        One cap rule: without ``?format`` the list route's own cap governs (``report_max_rows``,
+        ``report_too_large``, exactly as before). With ``?format`` set the export cap governs
+        (``EXPORT_MAX_ROWS``, ``export_too_large``) and ``report_too_large`` never answers; an
+        absent ``limit`` is every row up to it (``cap + 1`` rows are fetched so the refusal
+        comes before any body byte), an explicit ``limit`` above it is refused, and a smaller
+        one pages. ``format`` is read from the raw query string (case-sensitive; ``Accept`` is
+        never consulted) and ``withCount`` is read as text so ``withCount=true`` with a format
+        is the ``export_with_count`` 400 and not FastAPI's own 422."""
+        return [
+            '@router.get("")',
+            f"def list_{plural}(",
+            "    request: Request,",
+            f"    repo: Annotated[{repo_class}, Depends(get_repository)],",
+            "    limit: str | None = Query(None),",
+            "    offset: str | None = Query(None),",
+            "    sort: str | None = Query(None),",
+            '    with_count: str | None = Query(None, alias="withCount"),',
+            ") -> Any:",
+            "    fmt = requested_format(request.query_params)",
+            "    if fmt is not None:",
+            "        if fmt not in EXPORT_FORMATS:",
+            "            return JSONResponse(status_code=400, content=invalid_format_envelope())",
+            "        if is_truthy_flag(with_count):",
+            "            return JSONResponse(status_code=400, content=export_with_count_envelope())",
+            "        max_rows = EXPORT_MAX_ROWS",
+            "        too_large = JSONResponse(status_code=400, content=export_too_large_envelope(max_rows))",
+            "    else:",
+            f"        max_rows = {report_max_rows}",
+            "        too_large = JSONResponse(",
+            '            status_code=400, content={"error": "report_too_large", "maxRows": max_rows}',
+            "        )",
+            "    requested_limit: int | None = None",
+            "    if limit is not None:",
+            "        if not (limit.isascii() and limit.isdigit()) or int(limit) < 1:",
+            "            return JSONResponse(",
+            "                status_code=400,",
+            "                content={",
+            '                    "error": "pagination.invalid_value",',
+            '                    "param": "limit",',
+            '                    "value": limit,',
+            '                    "expected": f"an integer from 1 to {max_rows}",',
+            "                },",
+            "            )",
+            "        requested_limit = int(limit)",
+            "        if requested_limit > max_rows:",
+            "            return too_large",
+            "    actual_offset = 0",
+            "    if offset is not None:",
+            "        if not (offset.isascii() and offset.isdigit()):",
+            "            return JSONResponse(",
+            "                status_code=400,",
+            "                content={",
+            '                    "error": "pagination.invalid_value",',
+            '                    "param": "offset",',
+            '                    "value": offset,',
+            '                    "expected": "a non-negative integer (0 or more)",',
+            "                },",
+            "            )",
+            "        actual_offset = int(offset)",
+            "    sort_clause: _SortClause | None = None",
+            "    if sort is not None:",
+            "        sort_clause = _parse_sort(sort)",
+            "        if sort_clause is None:",
+            '            return JSONResponse(status_code=400, content={"error": "invalid_sort", "field": sort.split(":", 1)[0]})',
+            f"    filter_result = parse_filter(request.query_params, {fields_const}, {ops_const})",
+            "    if filter_result.error_envelope is not None:",
+            "        return JSONResponse(status_code=400, content=filter_result.error_envelope)",
+            "    predicates, decimal_error = coerce_decimal_predicates(",
+            "        filter_result.predicates, _DECIMAL_FIELDS",
+            "    )",
+            "    if decimal_error is not None:",
+            "        return JSONResponse(status_code=400, content=decimal_error)",
+            "    # With no limit the repository is asked for one row past the cap, so the",
+            "    # refusal comes before any body is written.",
+            "    fetch_limit = requested_limit if requested_limit is not None else max_rows + 1",
+            "    rows = repo.list(fetch_limit, actual_offset, sort_clause, predicates)",
+            "    if requested_limit is None and len(rows) > max_rows:",
+            "        return too_large",
+            "    if fmt is not None:",
+            "        data = jsonable_encoder(render_wire(rows, _WIRE))",
+            f'        headers = {{"Content-Disposition": content_disposition("{plural}", fmt)}}',
+            '        if fmt == "json":',
+            "            return JSONResponse(content=data, headers=headers)",
+            '        body = export_csv(data) if fmt == "csv" else export_xml(data)',
+            "        return Response(content=body, media_type=EXPORT_CONTENT_TYPES[fmt], headers=headers)",
+            "    # Without a format `withCount` keeps its meaning: 1 is the { rows, total } envelope.",
+            '    if with_count is not None and with_count.isascii() and with_count.isdigit() and int(with_count) == 1:',
+            "        total = repo.count(predicates)",
+            '        return {"rows": render_wire(rows, _WIRE), "total": total}',
+            "    return render_wire(rows, _WIRE)",
+        ]
+
     def _emit_route_handler(
         self,
         name: str,
@@ -772,6 +886,7 @@ class RouterGenerator:
         update_autoset: list[str] = (),
         frozen_strip: list[str] = (),
         report_max_rows: int | None = None,
+        report_export: bool = False,
     ) -> list[str]:
         """One CRUD route handler block, dispatched by *name*
         (``list`` / ``get`` / ``create`` / ``update`` / ``delete``). Override to
@@ -779,6 +894,14 @@ class RouterGenerator:
         *patch_model* are the generated create + all-optional PATCH Pydantic models
         used to run field constraints on POST / PATCH (FR-036). *report_max_rows* is
         passed only for a served report's ``list``: every row up to that cap, refused above it."""
+        if name == "list" and report_max_rows is not None and report_export:
+            return self._report_list_with_export(
+                plural=plural,
+                repo_class=repo_class,
+                fields_const=fields_const,
+                ops_const=ops_const,
+                report_max_rows=report_max_rows,
+            )
         if name == "list" and report_max_rows is not None:
             return [
                 '@router.get("")',
@@ -1478,6 +1601,7 @@ class RouterGenerator:
         object_index: dict[str, MetaObject] | None = None,
         column_naming: str = DEFAULT_COLUMN_NAMING,
         wire: WireFormat | None = None,
+        report_export: bool = False,
     ) -> str | None:
         """Render an entity as a FastAPI ``APIRouter`` module.
 
@@ -1528,7 +1652,7 @@ class RouterGenerator:
             # answering the cross-port 405 envelope. Gated by
             # fixtures/api-contract-conformance/projection/.
             if is_read_only_routed(entity):
-                return self._render_readonly_router(entity, column_naming, wire)
+                return self._render_readonly_router(entity, column_naming, wire, report_export)
             return None
 
         # FR-017 TPH: a discriminator base emits a polymorphic collection at the base
@@ -1760,6 +1884,7 @@ class RouterGenerator:
         entity: MetaObject,
         column_naming: str = DEFAULT_COLUMN_NAMING,
         wire: WireFormat = WireFormat(),
+        report_export: bool = False,
     ) -> str:
         """Render a read-only (`@kind: view` / `materializedView`) object as a FastAPI
         ``APIRouter``: GET list + GET by id, and the four write verbs answering 405. An
@@ -1784,6 +1909,8 @@ class RouterGenerator:
         item_route = has_item_route(entity)
         is_report = entity.sub_type == OBJECT_SUBTYPE_REPORT
         noun = "report" if is_report else "projection"
+        # Only a served report can export, and only when a `report-export` generator is wired.
+        export = report_export and is_report
         pk = _pk_py_type(entity) if item_route else None
         pk_type = pk.expr if pk is not None else ""
         repo_class = f"{short_name}Repository"
@@ -1819,7 +1946,11 @@ class RouterGenerator:
         parts.append("from typing import Annotated, Any, Protocol")
         parts.append("")
         parts.append("from fastapi import APIRouter, Depends, Query, Request")
-        parts.append("from fastapi.responses import JSONResponse")
+        if export:
+            parts.append("from fastapi.encoders import jsonable_encoder")
+            parts.append("from fastapi.responses import JSONResponse, Response")
+        else:
+            parts.append("from fastapi.responses import JSONResponse")
         parts.append("from pydantic import BaseModel")
         parts.append("")
         parts.append(f"from {_runtime_module('decimal_wire')} import (")
@@ -1827,12 +1958,26 @@ class RouterGenerator:
         parts.append("    WireOutput,")
         parts.append("    render_wire,")
         parts.append(")")
+        if export:
+            parts.append(f"from {_runtime_module(EXPORT_RUNTIME_MODULE)} import (")
+            parts.append("    EXPORT_CONTENT_TYPES,")
+            parts.append("    EXPORT_FORMATS,")
+            parts.append("    content_disposition,")
+            parts.append("    export_too_large_envelope,")
+            parts.append("    export_with_count_envelope,")
+            parts.append("    invalid_format_envelope,")
+            parts.append("    is_truthy_flag,")
+            parts.append("    requested_format,")
+            parts.append(")")
         parts.append(f"from {_runtime_module('filter_parser')} import (")
         parts.append("    FilterPredicate,")
         parts.append("    parse_filter,")
         parts.append(")")
         parts.append("")
         parts.append(f"from .{allowlist_module} import {fields_const}, {ops_const}")
+        if export:
+            parts.append(f"from .{snake}_export import export_csv, export_xml")
+            parts.append(f"from .{EXPORT_WRITER_MODULE} import EXPORT_MAX_ROWS")
         parts.append("")
         parts.append(f'router = APIRouter(prefix="/api/{plural}", tags=["{plural}"])')
         parts.append("")
@@ -1888,6 +2033,7 @@ class RouterGenerator:
             # Only a report is capped; passed for it alone so an adopter's `_emit_route_handler`
             # override that does not take the keyword keeps working for a projection.
             **({"report_max_rows": self.report_max_rows} if is_report else {}),
+            **({"report_export": True} if export else {}),
         )
         for i, hname in enumerate(("list", "get") if item_route else ("list",)):
             if i > 0:
@@ -1913,7 +2059,9 @@ class RouterGenerator:
             # and the per-field constants built there can't disagree about a
             # column name within one run.
             wire = wire_of(c.loaded_root) if c.loaded_root is not None else None
-            source = self.render_router(entity, index, c.config.column_naming, wire)
+            source = self.render_router(
+                entity, index, c.config.column_naming, wire, REPORT_EXPORT_GENERATOR in c.generators
+            )
             if source is None:
                 return []
             snake = _snake_case(entity.name)
@@ -1926,7 +2074,7 @@ class RouterGenerator:
 
         files = per_entity(emit)(ctx)
         if OWNED_RUNTIME and files:
-            files.extend(_owned_runtime_files())
+            files.extend(_owned_runtime_files(REPORT_EXPORT_GENERATOR in ctx.generators))
         return files
 
 

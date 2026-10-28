@@ -3,6 +3,10 @@ import { quoteIdent, type SqlDialect } from "../sql-dialect.js";
 import { sql, eq, and, count } from "drizzle-orm";
 import qs from "qs";
 import { parseFilterParams, parsePageBound, parseReportPage, RAW_VIEW_MAX_LIMIT, REPORT_MAX_ROWS, ReportTooLargeError, FilterParseError } from "./filter-parser.js";
+import {
+  ReportExportError, assertExportWithinCap, exportContentDisposition, exportWithCountError, isExportCountFlag,
+  parseExportPage, readExportFormat, renderExport, EXPORT_CONTENT_TYPES, type ReportExportSpec,
+} from "./report-export.js";
 import type { FilterAllowlist, SortAllowlist } from "./filter-allowlist.js";
 import { isTruthyFlag, contractErrorCode, coerceIdForColumn, rawIdLiteral, viewBaseConfig } from "./util.js";
 import { timestampWire } from "../timestamp-wire.js";
@@ -57,6 +61,13 @@ export interface MountReadOnlyOptions extends WireOptions {
    * refused the same way. Default 10000, the same in every port.
    */
   readonly reportMaxRows?: number;
+  /**
+   * Report export (`resource: "report"` only; ignored otherwise). Present when the project wires
+   * the `report-export` generator: `?format=csv|json|xml` then answers the list in that shape,
+   * capped by `export.maxRows` (which replaces `reportMaxRows` whenever `format` is set).
+   * Absent: `?format=` is ignored like any unknown parameter.
+   */
+  readonly export?: ReportExportSpec;
 }
 
 const rejectMutation = (resource: string) => async (
@@ -157,6 +168,7 @@ export function mountReadOnlyCrudRoutes(opts: MountReadOnlyOptions): void {
   // A report answers every row up to a cap and refuses above it; every other mount pages as asked.
   const isReport = opts.resource === "report";
   const reportMaxRows = opts.reportMaxRows ?? REPORT_MAX_ROWS;
+  const exportSpec = isReport ? opts.export : undefined;
 
   const viewName = resolveViewName(view);
   const useRawSql = isEmptyColumnView(view) && !!viewName;
@@ -197,7 +209,12 @@ export function mountReadOnlyCrudRoutes(opts: MountReadOnlyOptions): void {
       const queryString = qIdx >= 0 ? url.slice(qIdx + 1) : "";
       const parsed = qs.parse(queryString) as Record<string, unknown>;
       const withCount = isTruthyFlag(parsed["withCount"]);
-      const reportPage = isReport ? parseReportPage(parsed, reportMaxRows) : undefined;
+      // Export mode: the selector is validated before any query runs, and the export cap governs.
+      const format = exportSpec ? readExportFormat(parsed, exportSpec) : undefined;
+      if (exportSpec && format !== undefined && isExportCountFlag(parsed["withCount"])) throw exportWithCountError();
+      const reportPage = exportSpec && format !== undefined
+        ? parseExportPage(parsed, exportSpec.maxRows)
+        : isReport ? parseReportPage(parsed, reportMaxRows) : undefined;
       const result = parseFilterParams({
         query: parsed,
         table: view,
@@ -222,9 +239,21 @@ export function mountReadOnlyCrudRoutes(opts: MountReadOnlyOptions): void {
       // db.all(sql.raw(...)) because that is the libsql raw-exec API, only
       // reachable for `.existing()` empty-column views which are sqlite-only.)
       const fetched = await q as unknown[];
-      if (reportPage?.unbounded && fetched.length > reportMaxRows) throw new ReportTooLargeError(reportMaxRows);
+      if (exportSpec && format !== undefined && reportPage) {
+        assertExportWithinCap(fetched.length, reportPage, exportSpec.maxRows);
+      } else if (reportPage?.unbounded && fetched.length > reportMaxRows) {
+        throw new ReportTooLargeError(reportMaxRows);
+      }
       const rows = fetched.map(toWire);
 
+      if (exportSpec && format !== undefined) {
+        reply
+          .header("content-disposition", exportContentDisposition(path, format))
+          .header("content-type", EXPORT_CONTENT_TYPES[format]);
+        // A Buffer, not a string: Fastify appends "; charset=utf-8" to a string body's
+        // application/json, and the contract pins the content type exactly.
+        return Buffer.from(renderExport(exportSpec, format, rows as Record<string, unknown>[]), "utf8");
+      }
       if (!withCount) return rows;
 
       // Count query: same WHERE, no limit/offset/orderBy.
@@ -236,6 +265,10 @@ export function mountReadOnlyCrudRoutes(opts: MountReadOnlyOptions): void {
     } catch (err) {
       if (err instanceof ReportTooLargeError) {
         reply.code(400).send({ error: "report_too_large", maxRows: err.maxRows });
+        return;
+      }
+      if (err instanceof ReportExportError) {
+        reply.code(err.status).send(err.body);
         return;
       }
       if (err instanceof FilterParseError) {

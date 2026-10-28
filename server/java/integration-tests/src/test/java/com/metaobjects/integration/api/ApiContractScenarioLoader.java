@@ -126,7 +126,15 @@ final class ApiContractScenarioLoader {
             path,
             r.get("body"),
             n.intValue(),
-            expectBody);
+            expectBody,
+            stringMap(r.get("headers")),
+            expect.get("headers") instanceof Map<?, ?> eh ? (Map<String, Object>) eh : Map.of());
+    }
+
+    private static Map<String, String> stringMap(Object raw) {
+        Map<String, String> out = new java.util.LinkedHashMap<>();
+        if (raw instanceof Map<?, ?> m) m.forEach((k, v) -> out.put(String.valueOf(k), String.valueOf(v)));
+        return out;
     }
 
     private static String asString(Object v, String fallback) {

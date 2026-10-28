@@ -163,6 +163,24 @@ row-model field that can be null is `T | None = None`; a measure with `@default`
 report with no view source, or an abstract one, generates nothing. The contract is in
 [reporting](../features/reporting.md#how-a-report-is-served).
 
+**Report export.** Add the standalone `report-export` generator to a target and the served
+report's list route answers `?format=csv|json|xml` ([contract](../features/api-contract.md#report-export)).
+It writes one shared `report_export_writer.py` (standard library only: `csv` quoting by hand,
+CRLF, the formula-injection guard, XML escaping through `xml.sax.saxutils`) holding the options
+as constants (`EXPORT_MAX_ROWS`, `EXPORT_CSV_BOM`, `EXPORT_XML_NULLS`), and a `<snake>_export.py`
+per report. The generator is wired by name: the `routes` generator emits the `format` branch
+only when a generator named `report-export` is in the run (so an ejected copy keeps it on), and
+without one the routers are unchanged. Options: `report_export_generator(max_rows=100000,
+xml_nulls="empty", csv_bom=False)`. `xml_nulls` defaults to `"empty"` (an empty element), which
+is what Python's own XML serializers write for `None`; `"nil"` writes `xsi:nil="true"` and
+declares `xmlns:xsi` on the root. With `?format` set the export cap (`max_rows`,
+`export_too_large`) governs; without it the list route's `report_max_rows` cap
+(`report_too_large`) is unchanged. JSON export is the list route's array through the same
+`render_wire` and FastAPI encoder, so the `wire` setting applies. A column holding an array,
+map or object is written as compact JSON text in CSV and XML. `routes` imports the request
+helper `metaobjects.codegen.runtime.report_export` (an owned `routes` emits it under
+`_runtime/` when export is wired).
+
 ### Taking one tier and not the rest
 
 A target lists exactly the generators it runs, from the catalog (`--list` names all of

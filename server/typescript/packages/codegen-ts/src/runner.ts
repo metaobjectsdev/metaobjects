@@ -691,6 +691,11 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   // names artifact is not a registered cross-target module (there is no importBase route
   // to it), so `entityFile({ target: "db" })` beside a default-target `namesFile()` would
   // otherwise emit `./<Entity>.names` from a directory that does not hold one.
+  // Same per-target scoping for the report-export generator: the routes import `./<Report>.export`
+  // relative to themselves, so the module must land in the route file's own target.
+  const reportExportTargets = new Set(
+    config.generators.filter((g) => g.emitsReportExport === true).map((g) => targetOf(g).name),
+  );
   const namesTargets = new Set(
     config.generators.filter((g) => g.emitsNames === true).map((g) => targetOf(g).name),
   );
@@ -844,6 +849,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
       emitAbstractShapes: config.emitAbstractShapes,
       outputLayout: selfTarget.outputLayout,
       includeNames: namesTargets.has(selfTarget.name),
+      includeReportExport: reportExportTargets.has(selfTarget.name),
       pkMap,
       relationMap,
       packageOf,
@@ -870,6 +876,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
         outputLayout: selfTarget.outputLayout,
         includeHonoRoutes,
         includeNames: namesTargets.has(selfTarget.name),
+        includeReportExport: reportExportTargets.has(selfTarget.name),
         includeUiTier,
         includeUiTierExplicit,
         ...(routesExpose !== undefined && { routesExpose }),

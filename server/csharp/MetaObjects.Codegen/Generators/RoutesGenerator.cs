@@ -125,11 +125,30 @@ public class RoutesGenerator : PerEntityGenerator
     // bound that is not usable (limit below 1, negative offset, not an integer) is refused with
     // the envelope the TypeScript mounts use, rather than ignored. The query fetches one row past
     // the cap when no limit was sent, so the refusal comes before any body is written.
-    private void AppendReportPaging(StringBuilder sb)
+    //
+    // ONE CAP RULE, TWO NAMES. Without ?format the cap is ReportMaxRows and the refusal is
+    // report_too_large. With a report-export generator wired and ?format set, the export cap
+    // (that generator's MaxRows) governs instead and the refusal is export_too_large;
+    // report_too_large never answers on an export. With no report-export generator wired the
+    // emitted text is the same as before export existed.
+    private void AppendReportPaging(StringBuilder sb, int? exportMaxRows)
     {
         var max = ReportMaxRows.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        var tooLarge = "Results.BadRequest(new { error = \"report_too_large\", maxRows })";
         sb.AppendLine("            // Pagination (report): every row up to the cap, refused above it.");
-        sb.AppendLine($"            const int maxRows = {max};");
+        if (exportMaxRows is not { } exportCap)
+        {
+            sb.AppendLine($"            const int maxRows = {max};");
+        }
+        else
+        {
+            var exportMax = exportCap.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            sb.AppendLine($"            const int listMaxRows = {max};");
+            sb.AppendLine($"            const int exportMaxRows = {exportMax};");
+            sb.AppendLine("            // With ?format the export cap governs and report_too_large never answers.");
+            sb.AppendLine("            var maxRows = format is null ? listMaxRows : exportMaxRows;");
+            tooLarge = "format is null ? " + tooLarge + " : ReportExportHttp.TooLarge(maxRows)";
+        }
         sb.AppendLine("            long? limit = null;");
         sb.AppendLine("            long offset = 0;");
         sb.AppendLine("            if (qs.TryGetValue(\"limit\", out var limitRaw))");
@@ -137,7 +156,7 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine("                if (!long.TryParse(limitRaw, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var parsedLimit) || parsedLimit < 1)");
         sb.AppendLine("                    return Results.BadRequest(new { error = \"pagination.invalid_value\", param = \"limit\", value = limitRaw.ToString(), expected = $\"an integer from 1 to {maxRows}\" });");
         sb.AppendLine("                if (parsedLimit > maxRows)");
-        sb.AppendLine("                    return Results.BadRequest(new { error = \"report_too_large\", maxRows });");
+        sb.AppendLine($"                    return {tooLarge};");
         sb.AppendLine("                limit = parsedLimit;");
         sb.AppendLine("            }");
         sb.AppendLine("            if (qs.TryGetValue(\"offset\", out var offsetRaw)");
@@ -148,7 +167,22 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine();
         sb.AppendLine("            var rows = await q.ToListAsync();");
         sb.AppendLine("            if (limit is null && rows.Count > maxRows)");
-        sb.AppendLine("                return Results.BadRequest(new { error = \"report_too_large\", maxRows });");
+        sb.AppendLine($"                return {tooLarge};");
+    }
+
+    // A report-export download: the rows are fetched exactly as the list route fetches them, then
+    // written as CSV, XML or JSON by the module the report-export generator emitted for this report.
+    private static void AppendReportExportBranch(StringBuilder sb, string cls, string route)
+    {
+        sb.AppendLine();
+        sb.AppendLine("            // Export (report-export): the same rows as a download. withCount was refused above.");
+        sb.AppendLine("            if (format is not null)");
+        sb.AppendLine("                return format switch");
+        sb.AppendLine("                {");
+        sb.AppendLine($"                    \"csv\" => ReportExportHttp.Csv(http, \"{route}\", w => {cls}Export.WriteCsv(w, rows)),");
+        sb.AppendLine($"                    \"xml\" => ReportExportHttp.Xml(http, \"{route}\", w => {cls}Export.WriteXml(w, rows)),");
+        sb.AppendLine($"                    _ => ReportExportHttp.Json(http, \"{route}\", rows),");
+        sb.AppendLine("                };");
     }
 
     protected virtual EmittedFile GenerateStandardRoutes(MetaObject entity, GenContext ctx)
@@ -207,6 +241,9 @@ public class RoutesGenerator : PerEntityGenerator
             : "\"id\"";
         // A report has no identity by definition, so "no primary key" is not a finding on one.
         bool isReport = entity.IsReport();
+        // The wired report-export generator, if the run lists one: only then does a report list
+        // route grow a `?format=` branch (and only a report's: an entity has no export in this version).
+        var export = isReport ? ctx.ReportExportMaxRows : null;
         if (!hasItem && !isReport)
             ctx.Warn($"{Name}: \"{entity.Name}\" has no single-column primary key — emitting collection GET only.");
 
@@ -270,6 +307,12 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine("        app.MapGet(prefix + \"/" + route + "\", async (HttpContext http, AppDbContext db) =>");
         sb.AppendLine("        {");
         sb.AppendLine("            var qs = http.Request.Query;");
+        if (export is not null)
+        {
+            sb.AppendLine("            // Export (report-export): ?format=csv|json|xml. An unknown format, or withCount with a format, is refused before any query runs.");
+            sb.AppendLine("            var format = ReportExportHttp.Requested(qs);");
+            sb.AppendLine("            if (ReportExportHttp.Refuse(format, qs) is { } exportRefusal) return exportRefusal;");
+        }
         sb.AppendLine($"            IQueryable<{readCls}> q = db." + readDbSet + ".AsNoTracking();");
         sb.AppendLine();
         sb.AppendLine("            // Filter: ?filter[<field>][<op>]=<value> against the per-entity allowlist.");
@@ -300,7 +343,10 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine("            }");
         sb.AppendLine();
         if (isReport)
-            AppendReportPaging(sb);
+        {
+            AppendReportPaging(sb, export);
+            if (export is not null) AppendReportExportBranch(sb, cls, route);
+        }
         else
         {
             sb.AppendLine("            // Pagination: ?offset=N first (skip), then ?limit=N (take).");

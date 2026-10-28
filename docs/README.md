@@ -72,6 +72,7 @@ this tree is documentation, not the source of truth.
 | Adopt a design MetaObjects already ships — users/groups/roles, an LLM trace envelope — instead of authoring it (`libraries`, `meta eject <library>`) | [`features/libraries.md`](features/libraries.md) |
 | Record what the system is supposed to do, and stop agents reviving retired features | [`features/requirements.md`](features/requirements.md) |
 | Declare what a dashboard groups by and counts (`dimension`, `measure`, `segment`, `object.report`; load-time checked; a view-backed report becomes a SQL view served by a generated read-only list route and a TypeScript list hook) | [`features/reporting.md`](features/reporting.md) |
+| Download a report as CSV, JSON or XML (`?format=`, the `report-export` generator, its cap and null forms) | [`features/reporting.md`](features/reporting.md#exporting-a-report) |
 | Export the reporting vocabulary to Cube (`cube-model`: cubes, joins, rollups; the `cube` lane that checks it against a real Cube) | [`features/cube-export.md`](features/cube-export.md) |
 | Wire prompt construction (FR-004) | [`features/templates-and-payloads.md`](features/templates-and-payloads.md) |
 | Share a metadata shape across multiple instances (abstracts, `extends:`) | [`features/abstracts-and-inheritance.md`](features/abstracts-and-inheritance.md) |

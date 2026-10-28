@@ -186,6 +186,11 @@ export interface Generator {
    *  entity generator reads to decide whether it may reference those constants.
    *  Same mechanism as emitsHonoRoutes/includeHonoRoutes. */
   emitsNames?: boolean;
+  /** Marks the `report-export` generator. The runner aggregates it, per target (as `emitsNames`),
+   *  into `ctx.config.includeReportExport` / `RenderContext.includeReportExport`, which the routes
+   *  generators read to emit the `format` branch on a report list route. Without a marked
+   *  generator in the route file's target the routes are byte-identical to before export existed. */
+  emitsReportExport?: boolean;
   /** Marks a generator that emits a CLIENT UI artifact — a form, a hook, a grid or
    *  its columns. The runner aggregates it across the suite into
    *  ResolvedGenConfig.includeUiTier, which `agent/ui.md` reads to decide whether

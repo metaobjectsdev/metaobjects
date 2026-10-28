@@ -7,6 +7,10 @@ import type { Hono } from "hono";
 import { sql, eq, and, count } from "drizzle-orm";
 import qs from "qs";
 import { parseFilterParams, parsePageBound, parseReportPage, RAW_VIEW_MAX_LIMIT, REPORT_MAX_ROWS, ReportTooLargeError, FilterParseError } from "../drizzle-fastify/filter-parser.js";
+import {
+  ReportExportError, assertExportWithinCap, exportContentDisposition, exportWithCountError, isExportCountFlag,
+  parseExportPage, readExportFormat, renderExport, EXPORT_CONTENT_TYPES, type ReportExportSpec,
+} from "../drizzle-fastify/report-export.js";
 import type {
   FilterAllowlist,
   SortAllowlist,
@@ -56,6 +60,8 @@ export interface MountReadOnlyOptions extends WireOptions {
    * refused the same way. Default 10000, the same in every port.
    */
   readonly reportMaxRows?: number;
+  /** Report export, as on the Fastify mount: `?format=csv|json|xml`, capped by `export.maxRows`. */
+  readonly export?: ReportExportSpec;
 }
 
 function resolveViewName(view: AnyView): string | undefined {
@@ -136,6 +142,7 @@ export function mountReadOnlyCrudRoutes(opts: MountReadOnlyOptions): void {
   // A report answers every row up to a cap and refuses above it; every other mount pages as asked.
   const isReport = opts.resource === "report";
   const reportMaxRows = opts.reportMaxRows ?? REPORT_MAX_ROWS;
+  const exportSpec = isReport ? opts.export : undefined;
 
   const viewName = resolveViewName(view);
   const useRawSql = isEmptyColumnView(view) && !!viewName;
@@ -172,7 +179,11 @@ export function mountReadOnlyCrudRoutes(opts: MountReadOnlyOptions): void {
       const queryString = qIdx >= 0 ? url.slice(qIdx + 1) : "";
       const parsed = qs.parse(queryString) as Record<string, unknown>;
       const withCount = isTruthyFlag(parsed["withCount"]);
-      const reportPage = isReport ? parseReportPage(parsed, reportMaxRows) : undefined;
+      const format = exportSpec ? readExportFormat(parsed, exportSpec) : undefined;
+      if (exportSpec && format !== undefined && isExportCountFlag(parsed["withCount"])) throw exportWithCountError();
+      const reportPage = exportSpec && format !== undefined
+        ? parseExportPage(parsed, exportSpec.maxRows)
+        : isReport ? parseReportPage(parsed, reportMaxRows) : undefined;
       const result = parseFilterParams({
         query: parsed,
         table: view,
@@ -198,9 +209,19 @@ export function mountReadOnlyCrudRoutes(opts: MountReadOnlyOptions): void {
       // makes the Hono helpers genuinely Postgres-capable, matching the Fastify
       // adapter, which carried this fix while Hono did not (#286).
       const fetched = await q as unknown[];
-      if (reportPage?.unbounded && fetched.length > reportMaxRows) throw new ReportTooLargeError(reportMaxRows);
+      if (exportSpec && format !== undefined && reportPage) {
+        assertExportWithinCap(fetched.length, reportPage, exportSpec.maxRows);
+      } else if (reportPage?.unbounded && fetched.length > reportMaxRows) {
+        throw new ReportTooLargeError(reportMaxRows);
+      }
       const rows = fetched.map(toWire);
 
+      if (exportSpec && format !== undefined) {
+        return c.body(renderExport(exportSpec, format, rows as Record<string, unknown>[]), 200, {
+          "content-type": EXPORT_CONTENT_TYPES[format],
+          "content-disposition": exportContentDisposition(path, format),
+        });
+      }
       if (!withCount) return c.json(rows);
 
       let cq = db.select({ c: count() }).from(view);
@@ -211,6 +232,9 @@ export function mountReadOnlyCrudRoutes(opts: MountReadOnlyOptions): void {
     } catch (err) {
       if (err instanceof ReportTooLargeError) {
         return c.json({ error: "report_too_large", maxRows: err.maxRows }, 400);
+      }
+      if (err instanceof ReportExportError) {
+        return c.json(err.body, 400);
       }
       if (err instanceof FilterParseError) {
         // Wire code + the details (so the cross-port-required `field` is present),

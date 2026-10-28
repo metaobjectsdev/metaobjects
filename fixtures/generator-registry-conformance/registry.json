@@ -224,6 +224,13 @@
       "eject": "full",
       "ports": ["typescript", "java", "kotlin", "python", "csharp"]
     },
+    "report-export": {
+      "concept": "Per-report export module (CSV, JSON and XML writers over a served object.report's derived fields) plus one shared writer module per project; wires the ?format= branch into the report list routes. Standalone catalog generator, never implied by a library (ADR-0034 Amendment 5).",
+      "tier": "native",
+      "layer": "api",
+      "eject": "full",
+      "ports": ["typescript", "csharp", "java", "kotlin", "python"]
+    },
     "cube-model": {
       "concept": "Cube data model files (model/cubes/*.yml, model/views/*.yml) exported from the reporting vocabulary.",
       "tier": "native",

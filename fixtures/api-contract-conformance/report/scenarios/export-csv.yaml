@@ -1,0 +1,58 @@
+name: report-export-csv
+description: >
+  GET /api/<segment>?format=csv answers the list route's rows as RFC 4180 CSV: UTF-8, CRLF
+  record separators (including after the last row), a header row of the derived field names in
+  derived-field order, no BOM, null as an empty cell, and Content-Disposition naming
+  <segment>.csv. A string cell whose value starts with = + - @ (or a tab or CR) is prefixed
+  with an apostrophe (the same rule as the render escapers and the render-csv-injection
+  fixture); a cell with a comma, quote or line break is quoted with embedded quotes doubled.
+  Numbers are never guarded. Filters, sort, limit and offset behave as on the list route.
+requests:
+  - id: r1
+    method: GET
+    path: /api/export_cells?format=csv&sort=totalCents:asc
+    expect:
+      status: 200
+      headers:
+        content-type: "text/csv; charset=utf-8"
+        content-disposition: 'attachment; filename="export_cells.csv"'
+      body:
+        text: "label,cells,totalCents\r\n'=SUM(1+1),1,100\r\n'+1,1,200\r\n'-2,1,300\r\n'@cmd,1,400\r\nplain,1,500\r\n\"a,b\",1,600\r\n\"say \"\"hi\"\"\",1,700\r\n\"line one\nline two\",1,800\r\n<&>,1,900\r\n,1,1000\r\n"
+  - id: r2
+    method: GET
+    path: /api/invoice_status_totals?format=csv&sort=status:asc
+    expect:
+      status: 200
+      headers:
+        content-type: "text/csv; charset=utf-8"
+        content-disposition: 'attachment; filename="invoice_status_totals.csv"'
+      body:
+        text: "status,invoices,totalCents,paidCents\r\nOPEN,2,130500,\r\nPAID,2,185000,185000\r\nVOID,1,0,\r\n"
+  - id: r3
+    method: GET
+    path: /api/invoice_status_totals?format=csv&sort=status:asc&filter[status][ne]=OPEN&limit=1&offset=1
+    expect:
+      status: 200
+      body:
+        text: "status,invoices,totalCents,paidCents\r\nVOID,1,0,\r\n"
+  - id: r4
+    method: GET
+    path: /api/invoices_by_months?format=csv&sort=issuedOnMonth:asc
+    expect:
+      status: 200
+      body:
+        text: "issuedOnMonth,invoices,totalCents\r\n2026-04-01,1,125000\r\n2026-05-01,3,130500\r\n2026-06-01,1,60000\r\n"
+  - id: r5
+    method: GET
+    path: /api/invoice_totals?format=csv
+    expect:
+      status: 200
+      body:
+        text: "invoices,totalCents,paidShare\r\n5,315500,0.4\r\n"
+  - id: r6
+    method: GET
+    path: /api/invoice_status_totals?format=csv&filter[invoices][gt]=99
+    expect:
+      status: 200
+      body:
+        text: "status,invoices,totalCents,paidCents\r\n"

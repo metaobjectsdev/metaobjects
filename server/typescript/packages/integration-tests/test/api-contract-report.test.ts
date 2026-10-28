@@ -9,7 +9,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { API_CONTRACT_REPORT_DIR, API_CONTRACT_REPORT_SCENARIOS_DIR } from "../src/paths.ts";
-import { loadScenarios, assertResponse, type ApiScenario, parseBodyExact } from "../src/api-contract-scenario.ts";
+import { loadScenarios, assertResponseFull, type ApiScenario } from "../src/api-contract-scenario.ts";
 import { startPostgres } from "../src/postgres-container.ts";
 import {
   startGeneratedReportServer,
@@ -98,16 +98,13 @@ async function runScenario(
 ): Promise<void> {
   for (const req of scenario.requests) {
     const init: RequestInit = { method: req.method };
+    const headers: Record<string, string> = { ...req.headers };
     if (req.body !== undefined) {
       init.body = JSON.stringify(req.body);
-      init.headers = { "content-type": "application/json" };
+      headers["content-type"] = "application/json";
     }
+    if (Object.keys(headers).length > 0) init.headers = headers;
     const res = await fetch(server.baseUrl + req.path, init);
-    const bodyText = await res.text();
-    let body: unknown = null;
-    if (bodyText.length > 0) {
-      try { body = parseBodyExact(bodyText); } catch { body = bodyText; }
-    }
-    assertResponse(scenario.name, req, res.status, body);
+    assertResponseFull(scenario.name, req, res.status, await res.text(), (name) => res.headers.get(name));
   }
 }

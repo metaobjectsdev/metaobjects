@@ -244,6 +244,7 @@
                     <include>KotlinStoredProcGenerator.kt</include>
                     <include>KotlinValidatorGenerator.kt</include>
                     <include>KotlinRequirementTestsGenerator.kt</include>
+                    <include>KotlinReportExportGenerator.kt</include>
                     <!-- The emitters a generator above writes through, handed over with it
                          (GeneratorInfo.ejectWith). -->
                     <include>KotlinEnumEmitter.kt</include>

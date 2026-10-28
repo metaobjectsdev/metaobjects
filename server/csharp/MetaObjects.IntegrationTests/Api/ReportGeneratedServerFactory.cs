@@ -43,7 +43,7 @@ internal sealed class ReportGeneratedServerFactory : IAsyncDisposable
 
     // Ordinal order. InvoiceDays is in the model and declares no source.
     private static readonly string[] ExpectedRoutedNames =
-        ["Category", "Invoice", "InvoiceCalendar", "InvoiceDisputes", "InvoiceStatusTotals", "InvoiceTotals",
+        ["Category", "ExportCells", "ExportLine", "Invoice", "InvoiceCalendar", "InvoiceDisputes", "InvoiceStatusTotals", "InvoiceTotals",
          "InvoicesByMonth", "Product", "ProductRefunds", "ProductRevenue", "Reading", "ReadingLog", "Sale", "SalesByCategory", "SalesBySku", "Ticket", "TicketsByTags"];
     private const string SourcelessReport = "InvoiceDays";
 
@@ -147,8 +147,14 @@ internal sealed class ReportGeneratedServerFactory : IAsyncDisposable
                 "expected routes for exactly " + string.Join(", ", ExpectedRoutedNames) +
                 ", got: " + string.Join(", ", routedNames));
 
+        // The report-export generator is WIRED for this lane: listing it is what puts the `?format=`
+        // branch into the report list routes. Its cap is the lane's row cap, so ReadingLog's 61 rows
+        // trip export_too_large, and its XML nulls are pinned to xsi:nil (the corpus compares that form).
+        var reportExport = new ReportExportGenerator { MaxRows = ReportCorpusMaxRows, XmlNulls = ReportExportXmlNulls.Nil };
+        var routes = new RoutesGenerator { ReportMaxRows = ReportCorpusMaxRows };
         var ctx = new GenContext
         {
+            Generators = [routes, reportExport],
             Entities = root.Objects(),
             Root = root,
             Config = new GenConfig
@@ -167,8 +173,9 @@ internal sealed class ReportGeneratedServerFactory : IAsyncDisposable
         var files = new EntityGenerator().Generate(ctx)
             .Concat(new DbContextGenerator().Generate(ctx))
             .Concat(new FilterAllowlistGenerator().Generate(ctx))
-            .Concat(new RoutesGenerator { ReportMaxRows = ReportCorpusMaxRows }.Generate(ctx))
+            .Concat(routes.Generate(ctx))
             .Concat(new NamesGenerator().Generate(ctx))
+            .Concat(reportExport.Generate(ctx))
             .ToList();
 
         // The emitted tree itself: a routes file for each expected name, and no file at
@@ -176,6 +183,16 @@ internal sealed class ReportGeneratedServerFactory : IAsyncDisposable
         foreach (var name in ExpectedRoutedNames)
             if (!files.Any(f => f.Path == name + "Routes.g.cs"))
                 throw new InvalidOperationException($"no {name}Routes.g.cs was generated");
+        // ...and an export module for each served report (the shared writer once), none for the sourceless one.
+        var servedReports = root.Objects().Where(o => o.IsReport() && RoutesGenerator.AppliesTo(o, root))
+            .Select(o => CSharpNaming.Pascal(o.Name)).ToList();
+        var exportFiles = files.Where(f => f.Path.EndsWith("Export.g.cs", StringComparison.Ordinal) || f.Path == "ReportExportWriter.g.cs")
+            .Select(f => f.Path).OrderBy(p => p, StringComparer.Ordinal).ToList();
+        var wantExport = servedReports.Select(n => n + "Export.g.cs").Append("ReportExportWriter.g.cs")
+            .OrderBy(p => p, StringComparer.Ordinal).ToList();
+        if (!exportFiles.SequenceEqual(wantExport))
+            throw new InvalidOperationException(
+                "expected export files " + string.Join(", ", wantExport) + ", got: " + string.Join(", ", exportFiles));
         if (files.FirstOrDefault(f => f.Path.Contains(SourcelessReport, StringComparison.Ordinal)) is { } leaked)
             throw new InvalidOperationException(
                 $"the sourceless report {SourcelessReport} must generate nothing, but {leaked.Path} was emitted");

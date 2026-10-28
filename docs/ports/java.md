@@ -344,6 +344,7 @@ name in every port.
 | `output-prompt` | `SpringOutputPromptGenerator` | `metaobjects-codegen-spring` | One `<Template>ResponseFormat` per responding `template.prompt` — a static `renderFormat()` / `renderFormat(PromptOverrides)` pair emitting the output-format prompt fragment (FR-010). The reply's syntax comes from `@responseFormat`, never `@format` (which is the syntax of the rendered prompt BODY). |
 | `render-helper` | `SpringRenderHelperGenerator` | `metaobjects-codegen-spring` | One `<Template>RenderHelper` per `template.output`, wrapping the JVM `Renderer` with a typed `render(payload, provider)`. `@kind: document` renders `@textRef` to a `String`; `@kind: email` renders subject + html (+ optional text) into an `EmailDocument`. **It also runs the mustache↔payload drift check at BUILD time** — an unresolvable text, or one with a non-warning `Verify` error, fails the build rather than emitting. |
 | `extractor` | `ExtractorCodeGenerator` | `metaobjects-codegen-base` | One `<Name>Extractor` per concrete object, wrapping the runtime tolerant extract and turning dirty LLM text into a fully-typed flavored object graph (nested objects + arrays-of-objects populated) in one call. Args: `outputDir`, and the `pkgPrefix` / `pkgSuffix` / `namePrefix` / `nameSuffix` your `entity` generator uses; give it the same `<filters>` too. Needs `entity` with a concrete `flavor` in the same run, since an extractor casts to the flavored class. It names `MetaObjectExtractor` (in `metaobjects-om`) by FQN string only, so `codegen-base` keeps no compile dependency on `om` — the reference resolves on the consumer's classpath. |
+| `report-export` | `SpringReportExportGenerator` | `metaobjects-codegen-spring` | Standalone export of a served report (`?format=csv\|json\|xml`, see [Report export](#report-export)): one `<R>Export` per served report beside its controller (columns in derived-field order, wire-form cells, `MAX_ROWS`, `csv(rows)` and `xml(rows)`) and one shared `ReportExportWriter` (CSV quoting, CRLF, the `EXPORT_CSV_BOM` constant, the formula-injection guard, XML over JDK StAX; no new dependency, Jackson is already there). Args: `outputDir` (required), `maxRows` (default `100000`), `xmlNulls` (`empty`, the default, or `nil`), `csvBom` (default `false`) and `writerPackage` (default: the package prefix the served reports share, else `export`). Never implied by a library. Ejectable. |
 | `trace-helper` | `LlmTraceHelperGenerator` | `metaobjects-codegen-spring` | One `<Entity>TraceHelper` per concrete entity that transitively `extends` `metaobjects::ai::LlmCallBase` **and** nests a `template.prompt` carrying `@responseRef` — a static `record<Entity>(...)` that extracts the typed response, builds the `LlmCallBase` trace row, and persists it. Emits nothing for any other entity. |
 | `template` | `TemplateScopeGenerator` | `metaobjects-codegen-base` | The generic Mustache primitive: walk the model by a named `scope`, render one shared template per walk result, write each file. The declarative alternative to writing a generator class — see [Declarative template-codegen](#declarative-template-codegen-templatescopegenerator) below. It renders through `render.templategen.TemplateGenerator`, the byte-pinned cross-port factory; that factory takes a walk callback and is not itself a `Generator`, so `TemplateScopeGenerator` is the class a pom names. |
 | `api-docs` | `JavaApiDocsGenerator` | `metaobjects-codegen-spring` | The Java SDK api reference: one page per entity, value object, projection, served report and template, an index and `AGENT-API.md`, under `<outputDir>/<apiSubDir>`. A `<generator>` entry like any other, run by `metaobjects:generate` and checked by `metaobjects:verify`. Args: `outputDir` (required; give it generated files only, since `verify` compares the whole tree), `apiSubDir` (default `api/java`), `layout` (`flat`, the default, or `package`), `projectName` (the agent page's header label, default `project`) and `modelBaseUrl` (absolute base for the links to the model pages; relative when unset). The `metaobjects:docs` goal was removed in 8.1.0 ([migration](../features/migrations/docs-are-generators.md#java-and-kotlin)). Ejectable: the copy takes the page IR, the builder, the renderer, the page paths and the page templates with it. |
@@ -441,6 +442,34 @@ class, no entity class. `gen` fails, naming the report and the dimension or meas
 derived field reads a `field.object`. A report with no view source, or an abstract one,
 generates nothing. The contract is in
 [reporting](../features/reporting.md#how-a-report-is-served).
+
+### Report export
+
+`GET <apiPrefix>/<segment>?format=csv|json|xml` downloads a served report's rows (the contract is
+[api-contract](../features/api-contract.md#report-export), the how-to
+[reporting](../features/reporting.md#exporting-a-report)). Two entries turn it on, and both are
+needed: wire the `report-export` generator, and give the `routes` generator the arg
+`<reportExport>true</reportExport>`. The routes arg is what mounts the `format` branch in each report
+`<R>Controller` (the generator list is not visible to a sibling generator, so the wiring is a
+visible arg, not a guess); the branch reads its cap from `<R>Export.MAX_ROWS`, so the cap is set
+once, as `maxRows` on `report-export`. A project with the arg unset gets controllers byte-identical to
+today, and `?format=` is ignored like any unknown parameter.
+
+With `?format` set the export cap (`maxRows`, default 100,000) governs and `report_too_large` never
+answers; without it `reportMaxRows` (default 10,000) is untouched. The handler reads `maxRows + 1`
+rows and answers `export_too_large` before writing a byte. The request side (format parsing, the
+three 400 envelopes, the `Content-Disposition` and `Content-Type` values) is
+`com.metaobjects.generator.spring.runtime.ReportExport`, a JDK-only class. (The Kotlin port generates its own copy of these helpers into its writer module.) With the branch mounted, the list route answers an explicit `application/json`, so a
+request's `Accept` header is never consulted (a client sending `Accept: text/csv` without `format`
+still gets JSON, not a 406). `withCount` is read as text on such a route (`1` or `true`).
+
+`xmlNulls` defaults to `empty`: a null field is an empty element, which is what Jackson's XML mapper
+writes for a null, the Java standard (ADR-0019 Amendment 2). `nil` writes `xsi:nil="true"` and declares
+`xmlns:xsi` on the root. A decimal cell is its canonical plain string (no exponent, no trailing zeros)
+under either `wire` setting, and an array or map dimension is its compact JSON text. The JSON export is
+the list route's array through the application's `ObjectMapper`, so a `wire` setting applies to it as
+it does to the list. CSV and XML are written as `byte[]`, which every Spring MVC setup has a converter
+for.
 
 ### Decimals and null members on the wire
 

@@ -36,6 +36,7 @@ import {
   callableFile,
   routesFileHono,
   namesFile,
+  reportExport,
   promptRender,
   outputParser,
   extractor,
@@ -272,6 +273,25 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
     runtimePeers: ["hono"],
     configKeys: ["dbImport", "apiPrefix", "dialect", "extStyle"],
     ejectable: ejectable("routes-hono"),
+  },
+
+  "report-export": {
+    name: "report-export",
+    kind: "generator",
+    layer: "api",
+    description:
+      "Per-report export module (CSV, JSON and XML writers over a served object.report's derived fields) plus one shared writer module per project; wires the ?format= branch into the report list routes.",
+    tier: "native",
+    factory: () => reportExport(),
+    factoryExport: "reportExport",
+    options: "maxRows?, xmlNulls?, csvBom?, filter?, target?",
+    // Imports nothing: the emitted modules import only each other. The route files import the
+    // per-report module, and the mount helper takes it, so a project wires this beside `routes`
+    // or `routes-hono`.
+    requires: [],
+    configKeys: ["extStyle", "outputLayout"],
+    ejectable: ejectable("report-export"),
+    note: "standalone, never implied by a library; routes emit the ?format= branch only when it is wired.",
   },
 
   // ----- docs -------------------------------------------------------------

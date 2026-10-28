@@ -1,0 +1,45 @@
+name: report-export-json
+description: >
+  ?format=json answers the list route's array unchanged, plus Content-Disposition naming
+  <segment>.json. Without ?format the response carries no Content-Disposition and is
+  byte-identical to the list route before export existed. An explicit limit and offset are
+  honoured, and filters and sort use the list route's parser and envelopes.
+requests:
+  - id: r1
+    method: GET
+    path: /api/invoice_status_totals?format=json&sort=status:asc
+    expect:
+      status: 200
+      headers:
+        content-type: "application/json"
+        content-disposition: 'attachment; filename="invoice_status_totals.json"'
+      body:
+        equals:
+          - { status: "OPEN", invoices: 2, totalCents: 130500, paidCents: null }
+          - { status: "PAID", invoices: 2, totalCents: 185000, paidCents: 185000 }
+          - { status: "VOID", invoices: 1, totalCents: 0, paidCents: null }
+  - id: r2
+    method: GET
+    path: /api/invoice_status_totals?format=json&sort=status:asc&limit=1&offset=1
+    expect:
+      status: 200
+      body:
+        equals:
+          - { status: "PAID", invoices: 2, totalCents: 185000, paidCents: 185000 }
+  - id: r3
+    method: GET
+    path: /api/invoice_status_totals?sort=status:asc
+    expect:
+      status: 200
+      headers:
+        content-disposition: null
+      body:
+        length: 3
+  - id: r4
+    method: GET
+    path: /api/invoice_status_totals?format=json&filter[nope][eq]=1
+    expect:
+      status: 400
+      body:
+        error: "invalid_filter_field"
+        field: "nope"

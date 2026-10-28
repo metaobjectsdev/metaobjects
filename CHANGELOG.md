@@ -10,6 +10,30 @@ here.**
 
 ## [Unreleased]
 
+## [Unreleased]
+
+### Added
+
+- **Report export: `GET /<segment>?format=csv|json|xml` on a served report, in all five ports.**
+  A new standalone `report-export` catalog generator (importable as shipped, ejectable in every
+  port, drift-checked by `verify --codegen`, never implied by a library) generates one export
+  module per served report plus one shared writer module per project, and makes the routes
+  generator emit the `format` branch. Without `format`, or with no export generator wired, a
+  response is byte-identical to before. CSV is RFC 4180 with CRLF, a header row of the derived
+  field names, wire-form values and a formula-injection guard on every string cell (the render
+  escapers' rule); JSON is the list route's array plus `Content-Disposition`; XML is
+  `<{Report}><row><{field}>...` with a pinnable null form (`xmlNulls`). A format the route does not
+  wire answers `400 {"error":"invalid_format","expected":[...]}`, `withCount` with a format answers
+  `400 export_with_count`, and more rows than the generator option `maxRows` (default 100,000)
+  answers `400 {"error":"export_too_large","maxRows":N}` before a byte is written; nothing is ever
+  truncated. With `format` set `maxRows` governs and the list route's `report_too_large` cap does
+  not. The export adds no dependency an adopter must install in any port, and `xlsx` is reserved
+  (refused today like any unwired format). Pinned by six `report/scenarios/export-*.yaml`
+  scenarios run by every port's generated report lane. See
+  [docs/features/reporting.md](docs/features/reporting.md#exporting-a-report),
+  [docs/features/api-contract.md](docs/features/api-contract.md#report-export) and
+  [ADR-0031 Amendment 1](spec/decisions/ADR-0031-serialization-vs-data-download-boundary.md).
+
 ## [1.1.4] — 2026-10-26
 
 _npm `1.1.4` (full lockstep across all 14 `@metaobjectsdev/*` publish candidates), PyPI `1.1.4`, NuGet `1.1.4` and Maven Central `8.1.4`._

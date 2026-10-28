@@ -344,6 +344,37 @@ when the committed output was generated with another rule, rather than telling y
 regenerate. See the "Column naming" section of
 [`features/field-types.md`](../features/field-types.md).
 
+### Report export
+
+A served report (a view-backed `object.report`) can be downloaded as a file:
+`GET /api/<segment>?format=csv|json|xml`, the contract in
+[api-contract.md](../features/api-contract.md#report-export). It is on when you list the
+`report-export` generator beside `routes` in `codegen/Generators.cs`, and not otherwise: with it
+unlisted, the generated routes are byte-identical to before.
+
+```csharp
+new ReportExportGenerator { MaxRows = 50_000, XmlNulls = ReportExportXmlNulls.Nil, CsvBom = false }
+```
+
+- **Wiring** is the generator list. `routes` asks the run (`GenContext.ReportExportMaxRows`) whether
+  a `report-export` entry is listed, so an ejected copy (`dotnet meta eject report-export`) wires the
+  routes exactly as the packaged one does. `dotnet meta gen --generators routes` alone leaves it off.
+- **Writes** one shared `ReportExportWriter.g.cs` per project (CSV quoting, CRLF, the injection guard,
+  the `ExportCsvBom` constant, `XmlWriter` output, wire-form conversion of a cell) and one
+  `<Report>Export.g.cs` per served report (its columns in derived-field order). The generated code uses
+  `TextWriter`, `XmlWriter` and `System.Text.Json` only and adds no package. The HTTP side (`?format=`,
+  the three 400 envelopes, `Content-Disposition`) is `ReportExportHttp`, one of the helper-runtime files
+  `dotnet meta eject routes` copies.
+- **`MaxRows`** (default 100,000) is the export cap. With `?format` set it governs and
+  `report_too_large` never answers; without it the list route's `ReportMaxRows` (10,000) is untouched.
+- **`XmlNulls`** defaults to `Nil`: a null field is an empty element with `xsi:nil="true"` and the root
+  declares `xmlns:xsi`. That is what `XmlSerializer` writes for a nullable value type and what
+  `DataContractSerializer` writes for any null, and it keeps a null apart from an empty string. `Empty`
+  writes a bare empty element and declares nothing.
+- **JSON** is the list route's array through the host's configured JSON options (so a `wire` setting and
+  a `JsonStringEnumConverter` apply as on the list route), served as `application/json`.
+- A character XML 1.0 cannot carry is written as U+FFFD rather than failing the export.
+
 ## Use
 
 ```csharp

@@ -170,6 +170,10 @@ public class EjectRuntimeRoundTripTest {
             Set<String> used = all.stream().filter(i -> i.startsWith(probe + "."))
                     .map(i -> i.substring(probe.length() + 1)).collect(Collectors.toCollection(TreeSet::new));
             Set<String> declared = new TreeSet<>(e.runtime);
+            // ReportExport is imported only by a report's controller when the routes generator is
+            // given reportExport=true. This probe's corpus serves no report, so it is declared (an
+            // owned routes generator needs the copy) and never used here.
+            declared.removeAll(OPTIONAL_RUNTIME);
             // Imports alone under-count a closure (FilterParser uses FilterParseResult without
             // importing it — same package), so compare the CLOSURE of what is imported.
             assertEquals(e.stableName + ": the runtime eject copies must be exactly what the output needs",
@@ -178,6 +182,9 @@ public class EjectRuntimeRoundTripTest {
         }
         assertEquals("routes, dto, repository and value-object carry runtime", 4, withRuntime);
     }
+
+    /** Runtime classes an entry declares that the probe's model cannot make its output import. */
+    private static final Set<String> OPTIONAL_RUNTIME = Set.of("ReportExport");
 
     private static final String DECIMAL_VALUE_OBJECT_MODEL = """
         {"metadata.root":{"package":"acme","children":[

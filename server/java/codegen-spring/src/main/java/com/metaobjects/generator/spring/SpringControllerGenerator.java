@@ -124,6 +124,20 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
 
     private int reportMaxRows = DEFAULT_REPORT_MAX_ROWS;
 
+    /**
+     * Generator arg: {@code true} when a {@code report-export} generator is wired for this
+     * project. A served report's list route then also answers {@code ?format=csv|json|xml}
+     * (the "Report export" section of {@code docs/features/api-contract.md}); the handler
+     * reads its cap from the generated {@code <Report>Export.MAX_ROWS}, so the cap is set once,
+     * on {@code report-export} ({@code maxRows}). Default {@code false}: the generated routes
+     * are then byte-identical to a project without the feature. The two caps never both apply
+     * to one request: with {@code ?format} the export cap governs and {@code report_too_large}
+     * never answers; without it {@link #ARG_REPORT_MAX_ROWS} is untouched.
+     */
+    public static final String ARG_REPORT_EXPORT = "reportExport";
+
+    private boolean reportExport = false;
+
     /** The runtime package this run's output imports ({@link #ARG_RUNTIME_PACKAGE}). */
     private String runtimePackage = RUNTIME_PACKAGE;
 
@@ -141,6 +155,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         parseArgs();
         runtimePackage = getArg(ARG_RUNTIME_PACKAGE, RUNTIME_PACKAGE);
         reportMaxRows = Integer.parseInt(getArg(ARG_REPORT_MAX_ROWS, String.valueOf(DEFAULT_REPORT_MAX_ROWS)));
+        reportExport = Boolean.parseBoolean(getArg(ARG_REPORT_EXPORT, "false"));
         this.loader = loader;
         Path outRoot = Paths.get(outDir.getAbsolutePath());
         for (MetaObject declared : loader.getMetaObjects()) {
@@ -601,6 +616,10 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("import ").append(runtimePackage).append(".FilterParseResult;\n");
         src.append("import ").append(runtimePackage).append(".FilterParser;\n");
         src.append("import ").append(runtimePackage).append(".FilterPredicate;\n");
+        if (reportExport && com.metaobjects.generator.util.GeneratorUtil.isReport(entity)) {
+            src.append("import ").append(runtimePackage).append(".ReportExport;\n");
+            src.append("import org.springframework.http.MediaType;\n");
+        }
         src.append("import jakarta.servlet.http.HttpServletRequest;\n");
         src.append("import java.util.List;\n");
         src.append("import java.util.Map;\n");
@@ -641,7 +660,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("    }\n\n");
 
         if (com.metaobjects.generator.util.GeneratorUtil.isReport(entity)) {
-            appendReportListHandler(src, shortName, dtoName, repoName, reportMaxRows);
+            appendReportListHandler(src, shortName, dtoName, repoName, reportMaxRows, reportExport, routeBase);
         } else {
             appendListHandler(src, shortName, dtoName, repoName);
         }
@@ -799,16 +818,53 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
      * ignored or answered by the framework's own conversion error. The bounds arrive as text so
      * this handler, not Spring, decides what a bad one answers.
      */
-    private static void appendReportListHandler(StringBuilder src, String shortName, String dtoName,
-                                                String repoName, int maxRows) {
+    private static void appendReportListHandler(StringBuilder out, String shortName, String dtoName,
+                                                String repoName, int maxRows, boolean export,
+                                                String routeBase) {
+        StringBuilder src = new StringBuilder();
+        appendReportListHandlerBody(src, shortName, dtoName, repoName, maxRows, export, routeBase);
+        String handler = src.toString();
+        if (export) {
+            // With the export branch wired, no answer of the list route consults Accept (the
+            // selector is ?format): every body carries an explicit application/json, which
+            // Spring then honours instead of negotiating against the request's Accept header.
+            handler = handler.replace("ResponseEntity.badRequest().body(", "badRequest(")
+                .replaceAll("ResponseEntity\\.ok\\((?!\\))", "ok(");
+        }
+        out.append(handler);
+        if (export) {
+            out.append("    private static ResponseEntity<Object> badRequest(Object body) {\n");
+            out.append("        return ResponseEntity.badRequest().contentType(MediaType.APPLICATION_JSON).body(body);\n");
+            out.append("    }\n\n");
+            out.append("    private static ResponseEntity<Object> ok(Object body) {\n");
+            out.append("        return ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON).body(body);\n");
+            out.append("    }\n\n");
+        }
+    }
+
+    private static void appendReportListHandlerBody(StringBuilder src, String shortName, String dtoName,
+                                                String repoName, int maxRows, boolean export,
+                                                String routeBase) {
         String allowlistName = SpringNaming.filterAllowlistName(shortName);
         src.append("    @GetMapping\n");
         src.append("    public ResponseEntity<?> list(\n");
         src.append("            @RequestParam(required = false) String limit,\n");
         src.append("            @RequestParam(required = false) String offset,\n");
         src.append("            @RequestParam(required = false) String sort,\n");
-        src.append("            @RequestParam(required = false, name = \"withCount\") Integer withCount,\n");
+        if (export) {
+            // Text, not Integer: an export request spells the flag "true" as well as "1", and
+            // this handler, not Spring's conversion, decides what each answers.
+            src.append("            @RequestParam(required = false, name = \"withCount\") String withCount,\n");
+            src.append("            @RequestParam(required = false, name = \"format\") String format,\n");
+        } else {
+            src.append("            @RequestParam(required = false, name = \"withCount\") Integer withCount,\n");
+        }
         src.append("            HttpServletRequest request) {\n");
+        if (export) {
+            src.append("        if (format != null) {\n");
+            src.append("            return export(format, limit, offset, sort, withCount, request);\n");
+            src.append("        }\n");
+        }
         src.append("        final int maxRows = ").append(maxRows).append(";\n");
         src.append("        Integer requestedLimit = null;\n");
         src.append("        if (limit != null) {\n");
@@ -848,12 +904,19 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("        if (requestedLimit == null && rows.size() > maxRows) {\n");
         src.append("            return ResponseEntity.badRequest().body(Map.of(\"error\", \"report_too_large\", \"maxRows\", maxRows));\n");
         src.append("        }\n");
-        src.append("        if (withCount != null && withCount == 1) {\n");
+        if (export) {
+            src.append("        if (\"1\".equals(withCount)) {\n");
+        } else {
+            src.append("        if (withCount != null && withCount == 1) {\n");
+        }
         src.append("            long total = repository.count(filters);\n");
         src.append("            return ResponseEntity.ok(Map.of(\"rows\", rows, \"total\", total));\n");
         src.append("        }\n");
         src.append("        return ResponseEntity.ok(rows);\n");
         src.append("    }\n\n");
+        if (export) {
+            appendReportExportHandler(src, shortName, dtoName, repoName, routeBase);
+        }
         src.append("    /** A page bound as an integer of at least {@code min}, or null when it is not one. */\n");
         src.append("    private static Long parseBound(String raw, long min) {\n");
         src.append("        try {\n");
@@ -861,6 +924,81 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("            return n >= min ? n : null;\n");
         src.append("        } catch (NumberFormatException e) {\n");
         src.append("            return null;\n");
+        src.append("        }\n");
+        src.append("    }\n\n");
+    }
+
+    /**
+     * {@code GET ?format=csv|json|xml} of a report, the {@code report-export} branch of the list
+     * route. The same sort and filter parsing, allowlists and 400 envelopes as the list; the
+     * differences are the cap and the body. An absent {@code limit} reads every row up to
+     * {@code <Report>Export.MAX_ROWS} (one more row is read to tell the cap from more than the
+     * cap, and the answer is {@code export_too_large} before a byte is written); an explicit
+     * {@code limit} above the cap is the same refusal, and one within it pages. With a format the
+     * export cap governs and {@code report_too_large} never answers. {@code withCount} is refused
+     * with every format, JSON included. {@code Accept} is never read.
+     */
+    private static void appendReportExportHandler(StringBuilder src, String shortName, String dtoName,
+                                                  String repoName, String routeBase) {
+        String allowlistName = SpringNaming.filterAllowlistName(shortName);
+        String exportName = shortName + "Export";
+        src.append("    private ResponseEntity<?> export(String format, String limit, String offset, String sort,\n");
+        src.append("            String withCount, HttpServletRequest request) {\n");
+        src.append("        final int maxRows = ").append(exportName).append(".MAX_ROWS;\n");
+        src.append("        if (!ReportExport.isFormat(format)) {\n");
+        src.append("            return ResponseEntity.badRequest().body(ReportExport.invalidFormat());\n");
+        src.append("        }\n");
+        src.append("        if (ReportExport.isTruthy(withCount)) {\n");
+        src.append("            return ResponseEntity.badRequest().body(ReportExport.withCount());\n");
+        src.append("        }\n");
+        src.append("        Integer requestedLimit = null;\n");
+        src.append("        if (limit != null) {\n");
+        src.append("            Long parsed = parseBound(limit, 1);\n");
+        src.append("            if (parsed == null) {\n");
+        src.append("                return ResponseEntity.badRequest().body(Map.of(\"error\", \"pagination.invalid_value\", \"param\", \"limit\", \"value\", limit, \"expected\", \"an integer from 1 to \" + maxRows));\n");
+        src.append("            }\n");
+        src.append("            if (parsed > maxRows) {\n");
+        src.append("                return ResponseEntity.badRequest().body(ReportExport.tooLarge(maxRows));\n");
+        src.append("            }\n");
+        src.append("            requestedLimit = parsed.intValue();\n");
+        src.append("        }\n");
+        src.append("        int actualOffset = 0;\n");
+        src.append("        if (offset != null) {\n");
+        src.append("            Long parsed = parseBound(offset, 0);\n");
+        src.append("            if (parsed == null) {\n");
+        src.append("                return ResponseEntity.badRequest().body(Map.of(\"error\", \"pagination.invalid_value\", \"param\", \"offset\", \"value\", offset, \"expected\", \"a non-negative integer (0 or more)\"));\n");
+        src.append("            }\n");
+        src.append("            actualOffset = (int) Math.min(parsed, Integer.MAX_VALUE);\n");
+        src.append("        }\n");
+        src.append("        ").append(repoName).append(".SortClause sortClause = null;\n");
+        src.append("        if (sort != null) {\n");
+        src.append("            sortClause = parseSort(sort);\n");
+        src.append("            if (sortClause == null) {\n");
+        src.append("                return ResponseEntity.badRequest().body(Map.of(\"error\", \"invalid_sort\", \"field\", sort.split(\":\", 2)[0]));\n");
+        src.append("            }\n");
+        src.append("        }\n");
+        src.append("        FilterParseResult filter = FilterParser.parse(\n");
+        src.append("                request.getQueryString(), ").append(allowlistName).append(".FIELDS, ")
+           .append(allowlistName).append(".OPS_BY_FIELD, ").append(allowlistName).append(".DECIMAL_FIELDS);\n");
+        src.append("        if (filter.error() != null) {\n");
+        src.append("            return ResponseEntity.badRequest().body(Map.of(\"error\", filter.error(), \"field\", filter.field()));\n");
+        src.append("        }\n");
+        src.append("        List<").append(dtoName)
+           .append("> rows = repository.list(requestedLimit != null ? requestedLimit : maxRows + 1, actualOffset, sortClause, filter.predicates());\n");
+        src.append("        if (requestedLimit == null && rows.size() > maxRows) {\n");
+        src.append("            return ResponseEntity.badRequest().body(ReportExport.tooLarge(maxRows));\n");
+        src.append("        }\n");
+        src.append("        ResponseEntity.BodyBuilder ok = ResponseEntity.ok()\n");
+        src.append("                .header(\"Content-Disposition\", ReportExport.contentDisposition(\"")
+           .append(routeBase.substring(routeBase.lastIndexOf('/') + 1)).append("\", format))\n");
+        src.append("                .header(\"Content-Type\", ReportExport.contentType(format));\n");
+        src.append("        switch (format) {\n");
+        src.append("            case ReportExport.CSV:\n");
+        src.append("                return ok.body(").append(exportName).append(".csv(rows));\n");
+        src.append("            case ReportExport.XML:\n");
+        src.append("                return ok.body(").append(exportName).append(".xml(rows));\n");
+        src.append("            default:\n");
+        src.append("                return ok.body(rows);\n");
         src.append("        }\n");
         src.append("    }\n\n");
     }

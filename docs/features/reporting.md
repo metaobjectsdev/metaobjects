@@ -555,6 +555,7 @@ rule every object uses ([api-contract.md](api-contract.md)).
 | `POST /<apiPrefix>/<segment>` | `405 {"error": "method_not_allowed"}`. `message` is free prose. |
 | any verb on `/<apiPrefix>/<segment>/{id}` | Not mounted. The framework answers its own `404`, whose body is outside the contract. A report has no identity, so a row of it has no address, even when a derived field happens to be named `id`. |
 | a filter or sort error | The four field-naming envelopes of [api-contract.md](api-contract.md), unchanged. |
+| `GET /<apiPrefix>/<segment>?format=csv\|json\|xml` | A download of the same rows when the `report-export` generator is wired; see [Exporting a report](#exporting-a-report). |
 
 The route lists the compiled view. No request parameter picks dimensions, measures or a
 grain.
@@ -753,6 +754,63 @@ report it finds fails. Every port runs the scenarios through its generated route
 real views on Postgres, SQLite and MySQL (`report/schema.sqlite.sql`, `report/schema.mysql.sql`),
 and TypeScript also through local D1. A report's decimal columns are asserted as canonical
 strings by the `decimal/` sub-corpus, which pins `"decimals": "string"`, on the same engines.
+
+## Exporting a report
+
+`GET /<apiPrefix>/<segment>?format=csv|json|xml` downloads a served report's rows as a file.
+It is the same list route with one more query parameter, so filters, sort, `limit` and `offset`
+mean what they mean there, and without `format` the response is byte-identical to today. The
+cross-port contract (the envelopes, headers, CSV rules and the XML shape) is
+[api-contract.md](api-contract.md#report-export); this section is the how-to.
+
+**Turn it on.** Wire the standalone `report-export` generator. It is in `meta gen --list` in every
+port, ships as a catalog generator you import as shipped or copy with the port's eject command
+(`meta eject report-export`, `metaobjects eject`, `mvn metaobjects:eject`, `dotnet meta eject`),
+and is drift-checked by `verify --codegen`. It is **not** implied by a library: a project that does
+not wire it gets no export module and no `format` branch in any route. The routes generator emits
+that branch only when the export generator is wired.
+
+| Option | Default | Meaning |
+|---|---|---|
+| `maxRows` | `100000` | The most rows one export answers. One more is refused with `400 export_too_large`; nothing is truncated. |
+| `xmlNulls` | the port's standard, below | `"nil"` writes a null field as `xsi:nil="true"`; `"empty"` writes an empty element. |
+| `csvBom` | `false` | Write a UTF-8 byte order mark first. Emitted as the generated constant `EXPORT_CSV_BOM`; Excel on Windows wants it, most tools do not. |
+
+**What is generated.** One `<Report>.export.*` module per served report (the column list in
+derived-field order, the labels, the wire-form conversion, and the CSV and XML writers) and one
+shared writer module per project (CSV quoting, CRLF, the BOM constant, the formula-injection
+guard, XML escaping).
+
+**The cap, once.** A report has two caps and they never both apply to one request. Without
+`format`, the list route's cap (`reportMaxRows` or its port's name, default 10,000, answers
+`report_too_large`) is untouched. With `format`, `maxRows` governs and `export_too_large` answers,
+including for `format=json`, so an export can be larger than the list. The route fetches
+`maxRows + 1` rows to tell exactly the cap from more than the cap before writing a byte. A report
+is materialised up to the cap; there is no streaming in this version.
+
+**Formula injection.** A CSV cell that is a string, an enum symbol or a uri and starts with `=`,
+`+`, `-`, `@`, TAB or CR gets a leading `'`, so a spreadsheet reads it as text. This is the
+render escapers' rule, one rule in every port. A number or a date is never changed, so `-5`
+stays a number.
+
+**Per-port XML null default.** The default follows the port's standard XML serializer (ADR-0019
+Amendment 2); the corpus pins `"nil"` in every lane.
+
+| Port | Default `xmlNulls` | Writer |
+|---|---|---|
+| TypeScript | `"empty"` (an empty element: TypeScript has no XML convention of its own, and it matches the empty CSV cell) | generated writer |
+| C# | `"nil"` (`XmlSerializer` and `DataContractSerializer` write `xsi:nil="true"` for a null, and it keeps null apart from an empty string) | `XmlWriter` |
+| Java | `"empty"` (an empty element, which is what Jackson's XML mapper writes) | JDK StAX |
+| Kotlin | `"empty"` (the JVM standard: Jackson's XML mapper writes a null as an empty element) | JDK StAX |
+| Python | `"empty"` (an empty element, which is what Python's XML serializers write for `None`) | `xml.sax.saxutils.XMLGenerator` |
+
+**Not in this version.** Excel: the name `xlsx` is reserved (it is refused with `invalid_format`
+today, like any unwired format) for a later `report-export-xlsx` generator. PDF is out. Export of
+an entity list route, with streaming, is FR-027 and follows; it reuses the selector, the envelopes
+and the generator shape. Per-request date ranges, totals and derived measures are not part of
+export. The XML body comes from each port's standard serializer, recorded as
+[ADR-0031 Amendment 1](../../spec/decisions/ADR-0031-serialization-vs-data-download-boundary.md#amendment-1-2026-10-27--report-export-ships-first-on-each-ports-standard-serializer);
+FR-030's serializer replaces the XML writer later without changing the route.
 
 ## Exporting to Cube
 

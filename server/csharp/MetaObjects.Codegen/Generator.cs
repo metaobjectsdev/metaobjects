@@ -291,6 +291,23 @@ public sealed class GenContext
     public Action<string> Warn { get; init; } = _ => { };
 
     /// <summary>
+    /// The generators of this run, in list order. A generator whose output depends on another
+    /// being listed asks here (see <see cref="ReportExportMaxRows"/>). Empty for a context nobody
+    /// filled in, which is what a hand-built context in a test gets.
+    /// </summary>
+    public IReadOnlyList<IGenerator> Generators { get; init; } = [];
+
+    /// <summary>
+    /// The row cap of the <c>report-export</c> generator wired into this run, or <c>null</c> when the
+    /// run lists none. The routes generator emits the <c>?format=</c> branch on a served report's list
+    /// route if and only if this is not <c>null</c>, and builds it with this cap. It reads the answer
+    /// from <see cref="IGenerator.ReportExportMaxRows"/>, so an ejected copy of the export generator
+    /// wires the routes exactly as the packaged one does.
+    /// </summary>
+    public int? ReportExportMaxRows =>
+        Generators.Select(g => g.ReportExportMaxRows).FirstOrDefault(m => m is not null);
+
+    /// <summary>
     /// What the api-docs generator asks of the generators it documents (see
     /// <see cref="GeneratorApplicability"/>): the packaged generators' answers.
     /// </summary>
@@ -317,6 +334,7 @@ public sealed class GenContext
             Root = Root,
             Config = Config,
             Warn = Warn,
+            Generators = Generators,
             Applicability = Applicability,
             Scope = Scope is null ? include : o => Scope(o) && include(o),
         };
@@ -346,6 +364,14 @@ public interface IGenerator
     /// <c>codegen/Generators.cs</c> with <see cref="GeneratorExtensions.WithHandEdits"/>.
     /// </summary>
     HandEdits HandEdits => HandEdits.Keep;
+
+    /// <summary>
+    /// The row cap of the report export this entry wires into the report list routes, or <c>null</c>
+    /// (the default, and the answer of every generator but <c>report-export</c>) when it wires none.
+    /// Listing a generator that answers a number is what makes the routes generator emit the
+    /// <c>?format=csv|json|xml</c> branch: see <see cref="GenContext.ReportExportMaxRows"/>.
+    /// </summary>
+    int? ReportExportMaxRows => null;
 }
 
 /// <summary>A generator entry's <c>handEdits</c> setting: what a run does with a hand-edited file.</summary>
@@ -377,6 +403,8 @@ internal sealed class HandEditsGenerator(IGenerator inner, HandEdits handEdits) 
     public string? OutDir => Inner.OutDir;
     /// <inheritdoc/>
     public HandEdits HandEdits { get; } = handEdits;
+    /// <inheritdoc/>
+    public int? ReportExportMaxRows => Inner.ReportExportMaxRows;
     /// <inheritdoc/>
     public IEnumerable<EmittedFile> Generate(GenContext ctx) => Inner.Generate(ctx);
 }

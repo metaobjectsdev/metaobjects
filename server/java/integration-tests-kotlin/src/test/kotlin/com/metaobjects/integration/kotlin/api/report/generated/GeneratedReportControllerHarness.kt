@@ -8,6 +8,7 @@ import com.metaobjects.generator.kotlin.KotlinEntityGenerator
 import com.metaobjects.generator.kotlin.KotlinExposedTableGenerator
 import com.metaobjects.generator.kotlin.KotlinFilterAllowlistGenerator
 import com.metaobjects.generator.kotlin.KotlinNamesGenerator
+import com.metaobjects.generator.kotlin.KotlinReportExportGenerator
 import com.metaobjects.generator.kotlin.KotlinSpringControllerGenerator
 import com.metaobjects.integration.kotlin.ScenarioEngine
 import com.metaobjects.integration.kotlin.ScenarioLoader
@@ -87,14 +88,25 @@ class GeneratedReportControllerHarness(
 
         val srcDir = genDir.resolve("src")
         Files.createDirectories(srcDir)
-        for (g in listOf(
+        // The `report/` lane wires report-export: `reportExport` on the routes generator mounts the
+        // ?format branch, and the report-export generator writes what it calls. The corpus pins
+        // maxRows 60 (ReadingLog has 61 rows) and xmlNulls "nil" (the null form the scenarios
+        // assert). Other sub-corpora (`decimal`) wire nothing and so stay byte-identical.
+        val exportWired = lane == "report"
+        val exportArgs = if (exportWired) mapOf("maxRows" to MAX_ROWS.toString(), "xmlNulls" to "nil") else emptyMap()
+        for (g in listOfNotNull(
             KotlinEntityGenerator(),
             KotlinNamesGenerator(),
             KotlinExposedTableGenerator(),
             KotlinFilterAllowlistGenerator(),
             KotlinSpringControllerGenerator(),
+            if (exportWired) KotlinReportExportGenerator() else null,
         )) {
-            g.setArgs(mapOf("outputDir" to srcDir.toString(), "useNames" to "true", "reportMaxRows" to MAX_ROWS.toString()))
+            val extra = if (g is KotlinSpringControllerGenerator && exportWired) mapOf("reportExport" to "true") else emptyMap()
+            g.setArgs(
+                mapOf("outputDir" to srcDir.toString(), "useNames" to "true", "reportMaxRows" to MAX_ROWS.toString()) +
+                    extra + (if (g is KotlinReportExportGenerator) exportArgs else emptyMap())
+            )
             g.execute(loader)
         }
 
@@ -197,10 +209,10 @@ class GeneratedReportControllerHarness(
         st.execute("SET FOREIGN_KEY_CHECKS = 1")
     }
 
-    fun exchange(method: String, path: String, jsonBody: Any?): Response {
+    fun exchange(method: String, path: String, jsonBody: Any?, requestHeaders: Map<String, String> = emptyMap()): Response {
         val server = host ?: error("reset() must be called before exchange(...)")
-        val res = server.exchange(method, path, jsonBody?.let { mapper.writeValueAsString(it) })
-        return Response(res.status, res.body)
+        val res = server.exchange(method, path, jsonBody?.let { mapper.writeValueAsString(it) }, requestHeaders)
+        return Response(res.status, res.body, res.headers)
     }
 
     fun parseBody(body: String?): Any? = TomcatHost.parseBody(mapper, body)
@@ -209,7 +221,7 @@ class GeneratedReportControllerHarness(
         host?.close()
     }
 
-    data class Response(val status: Int, val body: String)
+    data class Response(val status: Int, val body: String, val headers: Map<String, String> = emptyMap())
 
     /** A database the lane runs on: [baseUrl] is the engine's JDBC URL before [ScenarioEngine.jdbcUrl] adds its session policy. */
     data class ReportDb(val engine: ScenarioEngine, val baseUrl: String, val username: String, val password: String)
@@ -233,6 +245,7 @@ class GeneratedReportControllerHarness(
         val SERVED = listOf(
             "InvoiceStatusTotals", "InvoicesByMonth", "InvoiceTotals", "InvoiceCalendar", "InvoiceDisputes",
             "ProductRevenue", "SalesByCategory", "SalesBySku", "ProductRefunds", "TicketsByTags", "ReadingLog",
+            "ExportCells",
         )
 
         /** The row cap every lane builds its report routes with; `ReadingLog` has one row more. */

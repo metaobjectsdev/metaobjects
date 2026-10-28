@@ -1,0 +1,48 @@
+name: report-export-invalid-format
+description: >
+  A format the route does not wire is refused with 400 {"error": "invalid_format", "expected":
+  [the wired formats]} before any query runs. The corpus wires csv, json and xml, so those
+  three are listed, in that order. xlsx is reserved (docs and this list contract only) and is
+  not wired, so it is refused like any unknown format. Matching is case-sensitive and an empty
+  value is unknown. Accept headers are not consulted: asking for text/csv without ?format
+  still answers JSON.
+requests:
+  - id: r1
+    method: GET
+    path: /api/invoice_status_totals?format=pdf
+    expect:
+      status: 400
+      body:
+        equals: { error: "invalid_format", expected: ["csv", "json", "xml"] }
+  - id: r2
+    method: GET
+    path: /api/invoice_status_totals?format=xlsx
+    expect:
+      status: 400
+      body:
+        equals: { error: "invalid_format", expected: ["csv", "json", "xml"] }
+  - id: r3
+    method: GET
+    path: /api/invoice_status_totals?format=CSV
+    expect:
+      status: 400
+      body:
+        equals: { error: "invalid_format", expected: ["csv", "json", "xml"] }
+  - id: r4
+    method: GET
+    path: /api/invoice_status_totals?format=
+    expect:
+      status: 400
+      body:
+        equals: { error: "invalid_format", expected: ["csv", "json", "xml"] }
+  - id: r5
+    method: GET
+    path: /api/invoice_status_totals?sort=status:asc
+    headers:
+      accept: "text/csv"
+    expect:
+      status: 200
+      headers:
+        content-disposition: null
+      body:
+        length: 3

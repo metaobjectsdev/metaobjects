@@ -6,6 +6,7 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.metaobjects.generator.spring.SpringControllerGenerator;
 import com.metaobjects.generator.spring.SpringDtoGenerator;
 import com.metaobjects.generator.spring.SpringFilterAllowlistGenerator;
+import com.metaobjects.generator.spring.SpringReportExportGenerator;
 import com.metaobjects.generator.spring.SpringRepositoryGenerator;
 import com.metaobjects.integration.api.TomcatHost;
 import com.metaobjects.loader.LoaderOptions;
@@ -100,10 +101,15 @@ public final class GeneratedReportControllerHarness implements AutoCloseable {
                 com.metaobjects.config.SourceResolver.discoverWireFormat(java.util.List.of((corpusRoot.getParent()).toUri()))
                         .orElse(com.metaobjects.config.WireFormat.DEFAULT));
 
-        runGenerator(new SpringControllerGenerator(), loader, srcDir);
-        runGenerator(new SpringDtoGenerator(), loader, srcDir);
-        runGenerator(new SpringRepositoryGenerator(), loader, srcDir);
-        runGenerator(new SpringFilterAllowlistGenerator(), loader, srcDir);
+        // `reportExport` on the routes generator is what mounts the ?format branch; the
+        // report-export generator writes what it calls. The corpus pins maxRows 60 (ReadingLog
+        // has 61 rows) and xmlNulls "nil" (the null form the scenarios assert).
+        runGenerator(new SpringControllerGenerator(), loader, srcDir, Map.of("reportExport", "true"));
+        runGenerator(new SpringDtoGenerator(), loader, srcDir, Map.of());
+        runGenerator(new SpringRepositoryGenerator(), loader, srcDir, Map.of());
+        runGenerator(new SpringFilterAllowlistGenerator(), loader, srcDir, Map.of());
+        runGenerator(new SpringReportExportGenerator(), loader, srcDir,
+            Map.of("maxRows", String.valueOf(MAX_ROWS), "xmlNulls", "nil"));
 
         Path pkgDir = srcDir.resolve(ENTITY_PKG.replace('.', '/'));
 
@@ -112,6 +118,9 @@ public final class GeneratedReportControllerHarness implements AutoCloseable {
         // hint that codegen, not the harness, was the cause.
         for (String report : served) {
             Path emitted = pkgDir.resolve(report + "Controller.java");
+            if (!Files.exists(pkgDir.resolve(report + "Export.java"))) {
+                throw new IllegalStateException("no export module was generated for the served report " + report);
+            }
             if (!Files.exists(emitted)) {
                 throw new IllegalStateException(
                     "no controller was generated for the served report " + report + " at " + emitted
@@ -173,8 +182,13 @@ public final class GeneratedReportControllerHarness implements AutoCloseable {
     }
 
     public Response exchange(String method, String path, Object jsonBody) throws Exception {
-        TomcatHost.Response res = host.exchange(method, path, jsonBody == null ? null : mapper.writeValueAsString(jsonBody));
-        return new Response(res.status(), res.body());
+        return exchange(method, path, jsonBody, Map.of());
+    }
+
+    public Response exchange(String method, String path, Object jsonBody, Map<String, String> requestHeaders) throws Exception {
+        TomcatHost.Response res = host.exchange(method, path,
+            jsonBody == null ? null : mapper.writeValueAsString(jsonBody), requestHeaders);
+        return new Response(res.status(), res.body(), res.headers());
     }
 
     public Object parseBody(String body) {
@@ -187,7 +201,7 @@ public final class GeneratedReportControllerHarness implements AutoCloseable {
         classLoader.close();
     }
 
-    public record Response(int status, String body) {}
+    public record Response(int status, String body, Map<String, String> headers) {}
 
     // -----------------------------------------------------------------------
     // setup helpers (mirror GeneratedProjectionControllerHarness)
@@ -208,11 +222,11 @@ public final class GeneratedReportControllerHarness implements AutoCloseable {
     /** The row cap every lane builds its report routes with; {@code ReadingLog} has one row more. */
     public static final int MAX_ROWS = 60;
 
-    private static void runGenerator(Object generator, MetaDataLoader loader, Path outDir) {
-        Map<String, String> args = new HashMap<>();
+    private static void runGenerator(Object generator, MetaDataLoader loader, Path outDir, Map<String, String> extra) {
+        Map<String, String> args = new HashMap<>(extra);
         args.put("outputDir", outDir.toString());
         // The row cap of the corpus (report/README.md): ReadingLog has one row more.
-        args.put("reportMaxRows", String.valueOf(MAX_ROWS));
+        args.putIfAbsent("reportMaxRows", String.valueOf(MAX_ROWS));
         ((com.metaobjects.generator.direct.MultiFileDirectGeneratorBase<?>) generator).setArgs(args);
         ((com.metaobjects.generator.direct.MultiFileDirectGeneratorBase<?>) generator).execute(loader);
     }

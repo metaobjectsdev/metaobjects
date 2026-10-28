@@ -23,8 +23,15 @@ final class ApiContractScenarios {
         String path,                    // includes the query string
         Object body,                    // JSON-shaped (Map | List | scalar) or null
         int expectStatus,
-        Map<String, Object> expectBody  // nullable
-    ) {}
+        Map<String, Object> expectBody, // nullable
+        Map<String, String> headers,    // request headers; empty when none
+        Map<String, Object> expectHeaders // lower-cased name -> exact value, null = absent; empty when none
+    ) {
+        ApiRequest(String id, String method, String path, Object body, int expectStatus,
+                   Map<String, Object> expectBody) {
+            this(id, method, path, body, expectStatus, expectBody, Map.of(), Map.of());
+        }
+    }
 
     /** A scenario file (one {@code .yaml} under {@code scenarios/}). */
     record ApiScenario(

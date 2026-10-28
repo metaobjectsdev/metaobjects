@@ -372,6 +372,7 @@ export function mountDeleteRoute(opts: VerbOptions): void {
 }
 
 export { mountReadOnlyCrudRoutes, type MountReadOnlyOptions } from "./mount-read-only.js";
+export { EXPORT_FORMATS, type ExportFormat, type ReportExportSpec } from "../drizzle-fastify/report-export.js";
 
 // ---------------------------------------------------------------------------
 // Metadata endpoint

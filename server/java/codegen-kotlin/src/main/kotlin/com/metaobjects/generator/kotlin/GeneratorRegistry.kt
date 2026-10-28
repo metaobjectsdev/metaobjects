@@ -14,7 +14,7 @@
 // Stable names mirror the canonical manifest exactly for the kotlin slice:
 //   entity, routes, output-parser, output-prompt, render-helper, extractor,
 //   filter-allowlist, names, exposed-table, relations, spring-config,
-//   stored-proc, validator, requirement-tests. (Kotlin has NO `template` generator — the manifest
+//   stored-proc, validator, requirement-tests, report-export. (Kotlin has NO `template` generator — the manifest
 //   deliberately omits kotlin from it.)
 
 package com.metaobjects.generator.kotlin
@@ -290,6 +290,19 @@ val GENERATOR_REGISTRY: Map<String, GeneratorInfo> = linkedMapOf(
         factory = ::KotlinApiDocsGenerator,
         ejectResourcePath = ejectPath("KotlinApiDocsGenerator"),
         ejectWith = API_DOCS_EMIT,
+    ),
+    "report-export" to GeneratorInfo(
+        name = "report-export",
+        description = "Per-served-report export module (<Report>Export: columns, wire-form cells, CSV and XML " +
+            "writers) plus one shared ReportExportWriter; wires the ?format=csv|json|xml branch into the " +
+            "report list routes when the routes generator is given reportExport=true. Standalone, never " +
+            "implied by a library. [Give the `routes` generator <reportExport>true</reportExport>: it reads " +
+            "the cap from <Report>Export.MAX_ROWS, the maxRows arg of this generator.]",
+        tier = GeneratorTier.NATIVE,
+        layer = GeneratorLayer.API,
+        factory = ::KotlinReportExportGenerator,
+        ejectResourcePath = ejectPath("KotlinReportExportGenerator"),
+        requires = listOf("entity"),
     ),
     "requirement-tests" to GeneratorInfo(
         name = "requirement-tests",
