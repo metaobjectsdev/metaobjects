@@ -61,7 +61,7 @@ def test_verify_codegen_bare_defaults_to_codegen(tmp_path: Path, monkeypatch) ->
     _project(tmp_path)
     monkeypatch.chdir(tmp_path)
     assert main(["gen"]) == 0
-    assert main(["verify"]) == 0  # bare verify → --codegen default, config-driven
+    assert main(["verify"]) == 0  # bare verify → --codegen (config-driven), plus --templates
 
 
 def test_verify_codegen_detects_drift_in_one_target(tmp_path: Path, capsys) -> None:

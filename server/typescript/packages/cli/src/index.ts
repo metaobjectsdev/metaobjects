@@ -42,7 +42,7 @@ COMMANDS:
   types [query]         Search the metadata vocabulary (types, subtypes, @attrs) by name or description
   export                Flatten loaded metadata to one canonical JSON artifact
   fmt [<file>...]       Rewrite metadata files into canonical form; --check lists drift, exits non-zero
-  verify                Drift gate — subverbs: --templates / --db / --codegen / --deps (bare = --templates)
+  verify                Drift gate — subverbs: --templates / --db / --codegen / --deps (bare = --codegen --templates)
   upgrade               Rewrite retired metadata vocabulary (previews; --apply writes)
   prompt-snapshot       Snapshot rendered template.* output; --check gates drift
   migrate               Diff metadata vs live DB; emit migration SQL files

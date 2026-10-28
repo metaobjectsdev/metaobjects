@@ -357,7 +357,7 @@ static int AgentDocsRedirect()
 // `dotnet meta verify` — ADR-0021 D2 explicit subverbs. Parses --templates /
 // --codegen / --db, dispatches each requested gate via VerifyCommand.RunSubverbs
 // (pure logic), and aggregates the exit code (max; non-zero on any drift). A bare
-// `verify` keeps the historical default = templates + prints a one-line note.
+// `verify` runs the cross-port default set, templates + codegen, and prints a one-line note.
 static int RunVerify(string[] rest)
 {
     string? metadataDir = null;
@@ -429,7 +429,8 @@ static int RunVerify(string[] rest)
     // to verify clean, because nothing in an empty root can drift. With none named (bare
     // verify, or a bare --templates) it reads the same default `gen` does: prompts/ when that
     // directory exists, else templates/ — and neither existing fails the same way.
-    var wantsTemplates = templates || (!codegen && !db);
+    var bare = !templates && !codegen && !db;
+    var wantsTemplates = templates || bare;
     if (wantsTemplates)
     {
         templatesRoot ??= GenCommand.DefaultTemplateRoot();
@@ -456,11 +457,23 @@ static int RunVerify(string[] rest)
     // "no --out" usage message unchanged).
     var codegenHandedOff = false;
     var codegenHandoffExit = 0;
+    var projectRoot = metadataDir is not null
+        ? GenCommand.ProjectRootFor(metadataDir)
+        : Directory.GetCurrentDirectory();
+    // A bare verify also runs the codegen gate (the cross-port default set), but only when it
+    // has what the gate cannot do without: the committed output (--out) and a generator list.
+    // Lacking either it skips the gate with a note, where a named --codegen would refuse.
+    if (bare)
+    {
+        if (outDir is null)
+            Console.WriteLine("dotnet meta verify — codegen gate skipped: pass --out <dir> (the committed generated output to diff against) and have codegen/Generators.cs to run it");
+        else if (!CodegenHandoff.HasGeneratorList(projectRoot))
+            Console.WriteLine("dotnet meta verify — codegen gate skipped: no codegen/Generators.cs (the generator list) to regenerate from");
+        else
+            codegen = true;
+    }
     if (codegen && outDir is not null)
     {
-        var projectRoot = metadataDir is not null
-            ? GenCommand.ProjectRootFor(metadataDir)
-            : Directory.GetCurrentDirectory();
         // ADR-0034 Amendment 9: --codegen regenerates the list gen runs, so it needs that list.
         // A project without one fails this gate (exit 2) and only this gate: the requirement
         // gate below still runs, as it does on every verify.
@@ -506,6 +519,7 @@ static int RunVerify(string[] rest)
         Generators = generators,
         TemplateRoot = templateRoot,
         Templates = templates,
+        Bare = bare,
         Codegen = codegen && !codegenHandedOff,
         CodegenHandedOff = codegenHandedOff,
         Db = db,

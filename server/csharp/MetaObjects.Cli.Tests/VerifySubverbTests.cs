@@ -141,6 +141,29 @@ public sealed class VerifySubverbTests : IDisposable
         Assert.True(r.EmittedDefaultNote);    // one-line note that subverbs exist
     }
 
+    // The cross-port default set: a bare verify runs the codegen gate beside templates, so
+    // "run `dotnet meta verify` in CI" fails on generated output that fell behind the model.
+    [Fact]
+    public void Bare_verify_runs_the_codegen_gate_beside_templates_and_fails_on_drift()
+    {
+        File.WriteAllText(Path.Combine(MetaDir, "meta.ai.json"), TemplateMetadata + "\n");
+        WriteTemplate("Hi {{name}}.");
+        GenSuite.Run(MetaDir, OutDir, "Acme.Generated");
+        var bare = TemplatesOpts(templates: false, codegen: true) with { Bare = true };
+
+        var clean = VerifyCommand.RunSubverbs(bare);
+        Assert.Equal(0, clean.ExitCode);
+        Assert.True(clean.RanTemplates);
+        Assert.True(clean.RanCodegen);
+        Assert.True(clean.EmittedDefaultNote);
+
+        foreach (var f in Directory.EnumerateFiles(OutDir, "*.g.cs", SearchOption.AllDirectories).Take(1))
+            File.AppendAllText(f, "\n// drift\n");
+        var drifted = VerifyCommand.RunSubverbs(bare);
+        Assert.NotEqual(0, drifted.ExitCode);
+        Assert.True(drifted.RanTemplates);
+    }
+
     // -------------------- --db rejected in C# --------------------------------
 
     [Fact]

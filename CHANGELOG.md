@@ -37,6 +37,27 @@ here.**
   [docs/features/api-contract.md](docs/features/api-contract.md#report-export) and
   [ADR-0031 Amendment 1](spec/decisions/ADR-0031-serialization-vs-data-download-boundary.md).
 
+### Changed
+
+- **A bare `verify` runs the same default gate set in every port: codegen drift, prompt
+  templates and the requirement ledger.** Until now a bare run covered one gate: `meta verify`
+  and `dotnet meta verify` ran only templates, so "run `verify` in CI" did not catch generated
+  code that had fallen behind the model; `metaobjects verify` and `mvn metaobjects:verify` ran
+  only codegen, so prompt drift passed. `--db`, `--deps` and `--replay` stay opt-in, and naming a
+  subverb still runs only the gates named. A gate the run has no configuration for is skipped
+  with a one-line note instead of failing: `meta verify` without a `metaobjects.config.ts` (a config that exists but fails to load exits 2),
+  `metaobjects verify` with no `metaobjects.config.yaml` and no `--prompts`, `dotnet meta verify`
+  without `--out <dir>` and `codegen/Generators.cs` (C# has no config-resolved output directory:
+  pass `--out <dir>` in CI to get the codegen gate), `mvn metaobjects:verify` without
+  `-Dmeta.verify.templateRoot`. Pinned per port by tests that run a bare verify over drifted
+  input. **Behaviour change:** a CI step that ran a bare `verify` and relied on the narrower
+  default can now go red where it was green, because the gate it never ran now runs. Node
+  `meta` and C# gain the codegen gate (stale generated output fails), Python and Java/Kotlin
+  gain the template gate (prompt drift fails, when a template root is configured). To keep the
+  old scope, name the gate: `meta verify --templates`, `dotnet meta verify --templates`,
+  `metaobjects verify --codegen`, `mvn metaobjects:verify -Dmeta.verify.mode=codegen`. The Maven
+  `meta.verify.mode` parameter no longer defaults to `codegen`; unset means both gates.
+
 ### Fixed
 
 - **A failed `meta deps sync` no longer leaves a lock and snapshot that cannot load.** The
@@ -49,6 +70,9 @@ here.**
 
 ### Documentation
 
+- **Two doc errors corrected against the code.** `docs/recipes/mysql.md` said Python ships a
+  Postgres driver only; it ships SQLite and MySQL drivers beside it. `docs/features/api-contract.md`
+  said only TypeScript enforces the `in`-list cap of 100; every port does.
 - **The fit-assessment prompt's capability sheet is re-checked against 1.1.4 / Maven 8.1.4**
   (it read 1.0.8, last checked 2026-09-26): reporting, the requirements gate and
   `--require-implementers`, the `wire` setting and eject in every port are now listed. The hosted

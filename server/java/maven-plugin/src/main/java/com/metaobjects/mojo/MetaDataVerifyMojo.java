@@ -62,7 +62,9 @@ import java.util.TreeSet;
  * is parameter-driven — exposes a {@code mode} parameter
  * ({@code -Dmeta.verify.mode=...}):
  * <ul>
- *   <li>{@code codegen} (DEFAULT, back-compat, byte-identical to the historical goal) —
+ *   <li>unset (DEFAULT) — the cross-port default gate set: {@code codegen}, then
+ *       {@code templates} when {@code templateRoot} is set (skipped with a note otherwise).</li>
+ *   <li>{@code codegen} (codegen only, byte-identical to the historical goal) —
  *       the regenerate-to-temp + diff-against-committed drift gate described above; covers
  *       {@code codegen-spring} AND {@code codegen-kotlin} via the shared meta:gen SPI.</li>
  *   <li>{@code templates} — template/prompt {@code {{field}}}↔payload drift, run via the
@@ -105,18 +107,20 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
         return GEN_GOAL;
     }
 
-    /** Verify mode: {@code codegen} (default), {@code templates}. */
+    /** Verify mode: {@code codegen}, {@code templates}; unset runs both (the default gate set). */
     static final String MODE_CODEGEN = "codegen";
     static final String MODE_TEMPLATES = "templates";
     static final String MODE_DB = "db";
 
     /**
-     * Which verify mode to run (ADR-0021 D2). {@code codegen} (default) = codegen drift;
-     * {@code templates} = template/prompt {@code {{field}}}↔payload drift. {@code db} is
-     * rejected (schema drift is the migrate engine, not the Maven port).
+     * Which verify mode to run (ADR-0021 D2). Unset (the default) runs the cross-port default
+     * gate set: codegen drift, then template drift when {@code templateRoot} is set (skipped
+     * with a note when it is not). {@code codegen} = codegen drift only; {@code templates} =
+     * template/prompt {@code {{field}}}↔payload drift only. {@code db} is rejected (schema
+     * drift is the migrate engine, not the Maven port).
      */
-    @Parameter(property = "meta.verify.mode", defaultValue = "codegen")
-    private String mode = MODE_CODEGEN;
+    @Parameter(property = "meta.verify.mode")
+    private String mode = "";
 
     public void setMode(String mode) { this.mode = mode; }
     public String getMode() { return mode; }
@@ -124,7 +128,8 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
     /**
      * On-disk template root the {@code templates} mode resolves each {@code @textRef}
      * against (the mustache files referenced by {@code template.prompt} nodes). Required
-     * in {@code templates} mode; ignored in {@code codegen} mode.
+     * in {@code templates} mode; ignored in {@code codegen} mode; in the default gate set
+     * it selects the template gate, which is skipped (with a note) when it is not set.
      */
     @Parameter(property = "meta.verify.templateRoot")
     private String templateRoot;
@@ -173,7 +178,12 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
         }
         warnIfAgentContextStale();
 
-        String m = mode == null ? MODE_CODEGEN : mode.trim();
+        advisoriesDone = false;
+        String m = mode == null ? "" : mode.trim();
+        if (m.isEmpty()) {
+            verifyDefaultSet();
+            return;
+        }
         if (MODE_TEMPLATES.equalsIgnoreCase(m)) {
             verifyTemplates();
             return;
@@ -185,11 +195,46 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
         }
         if (!MODE_CODEGEN.equalsIgnoreCase(m)) {
             throw new MojoFailureException(
-                    "meta:verify: unknown mode '" + mode + "'. Valid modes: 'codegen' (default), 'templates'.");
+                    "meta:verify: unknown mode '" + mode + "'. Valid modes: 'codegen', 'templates' (or unset for both).");
         }
 
         refuseSharedGeneratorDirs();
         verifyCodegen();
+    }
+
+    /** Set once the field lint and requirement gate have run, so a two-gate run reports them once. */
+    private boolean advisoriesDone;
+
+    /**
+     * Mode unset: the cross-port default gate set. Codegen drift always; template drift when
+     * {@code templateRoot} is configured, else skipped with a note (there is no directory to
+     * resolve {@code @textRef}s against). Both gates run before the build fails, so one red gate
+     * does not hide the other.
+     */
+    private void verifyDefaultSet() throws MojoExecutionException, MojoFailureException {
+        refuseSharedGeneratorDirs();
+        MojoFailureException codegenFailure = null;
+        try {
+            verifyCodegen();
+        } catch (MojoFailureException e) {
+            codegenFailure = e;
+        }
+        MojoFailureException templatesFailure = null;
+        if (templateRoot == null || templateRoot.isEmpty()) {
+            getLog().info(PREFIX + "template gate skipped: no templateRoot "
+                    + "(-Dmeta.verify.templateRoot=...) to resolve @textRef against");
+        } else {
+            try {
+                verifyTemplates();
+            } catch (MojoFailureException e) {
+                templatesFailure = e;
+            }
+        }
+        if (codegenFailure != null && templatesFailure != null) {
+            throw new MojoFailureException(codegenFailure.getMessage() + "\n" + templatesFailure.getMessage());
+        }
+        if (codegenFailure != null) throw codegenFailure;
+        if (templatesFailure != null) throw templatesFailure;
     }
 
     // ------------------------------------------------------------------------
@@ -202,7 +247,7 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
      * Warnings ONLY: this never throws and never changes the build result.
      */
     private void runFieldLintAdvisory(MetaDataLoader loader) {
-        if (noFieldLint || "1".equals(System.getenv(FieldLint.ENV_OPT_OUT))) return;
+        if (advisoriesDone || noFieldLint || "1".equals(System.getenv(FieldLint.ENV_OPT_OUT))) return;
         List<FieldLint.Finding> findings = new ArrayList<>();
         try {
             findings.addAll(FieldLint.lintReferenceFields(loader));
@@ -245,6 +290,9 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
      * @return the number of errors found; the caller fails the build once its own gate has reported
      */
     private int runRequirementGate(MetaDataLoader loader) {
+        // A default-set run reaches here once per gate; the ledger is one report, not two.
+        if (advisoriesDone) return 0;
+        advisoriesDone = true;
         RequirementCheck.Scan scan = RequirementCheck.scan(loader.getRoot(),
                 new RequirementCheck.Options(null,
                         requireImplementers || "1".equals(getEnv(ENV_REQUIRE_IMPLEMENTERS))));
@@ -323,7 +371,7 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
     }
 
     // ------------------------------------------------------------------------
-    // mode=codegen (default) — regenerate-to-temp + diff vs committed (UNCHANGED)
+    // mode=codegen — regenerate-to-temp + diff vs committed (UNCHANGED)
     // ------------------------------------------------------------------------
 
     private void verifyCodegen() throws MojoExecutionException, MojoFailureException {

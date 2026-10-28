@@ -10,8 +10,10 @@
   verify --db        REJECTED in the Python port (exit 2): schema verify is the
                      migrate engine (ADR-0015), not this CLI.
 
-A bare `verify` keeps the historical default = codegen (back-compat) and prints
-a one-line note advertising the explicit subverbs. Combining flags runs each and
+A bare `verify` runs the cross-port default gate set, codegen + templates (the
+requirement ledger runs on every verify), and prints a one-line note advertising
+the explicit subverbs. `--templates` is skipped with a note when the run names no
+config and no template root. Combining flags runs each and
 aggregates the exit code (non-zero if ANY drift).
 """
 
@@ -270,6 +272,32 @@ def test_bare_verify_detects_codegen_drift(tmp_path: Path) -> None:
     assert main(as_config(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)])) == 0
     (out / "Program.py").unlink()
     assert main(as_config(["verify", "--generators", GEN_SUITE, meta_dir, "--out", str(out)])) != 0
+
+
+def test_bare_verify_runs_the_template_gate(tmp_path: Path, capsys) -> None:
+    """The headline gap: bare verify used to be codegen only, so prompt drift passed CI."""
+    meta_dir = _meta_dir_with(tmp_path, _META_CLEAN)
+    troot = _templates_dir(tmp_path, "Hello {{missing}}")
+    out = tmp_path / "out"
+    out.mkdir()
+    rc = main(as_config(["verify", "--generators", GEN_SUITE, meta_dir, "--out", str(out), "--templates-root", troot]))
+    assert rc != 0
+    assert "missing" in capsys.readouterr().err
+
+
+def test_bare_verify_template_gate_passes_when_clean(tmp_path: Path) -> None:
+    meta_dir = _meta_dir_with(tmp_path, _META_CLEAN)
+    troot = _templates_dir(tmp_path, "Hello {{name}}")
+    out = tmp_path / "out"
+    assert main(as_config(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)])) == 0
+    assert main(as_config(["verify", "--generators", GEN_SUITE, meta_dir, "--out", str(out), "--templates-root", troot])) == 0
+
+
+def test_bare_verify_skips_templates_with_a_note_when_no_root_is_known(tmp_path: Path, capsys) -> None:
+    """Named <metadata_dir> and no --prompts: nothing to resolve refs against, so skip, do not fail."""
+    meta_dir = _meta_dir_with(tmp_path, _META_CLEAN)
+    main(["verify", "--generators", GEN_SUITE, meta_dir, "--out", str(tmp_path / "out")])
+    assert "template gate skipped" in capsys.readouterr().err
 
 
 # --- 4. --db is rejected in the Python port (exit 2) ------------------------

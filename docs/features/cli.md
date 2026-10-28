@@ -30,15 +30,15 @@ command surface splits in two:
 | **Schema migrate** | **Node `meta`** | `meta migrate` | **any backend** — schema is Node-only (ADR-0015) |
 | **Schema drift** (`verify --db`) | **Node `meta`** | `meta verify --db` | **any backend** — live-DB drift, Node-only |
 | **Codegen drift** (`verify --codegen`) | **Node `meta`** | `meta verify --codegen` | TS reference (ADR-0021 D2) — regen-to-temp + diff committed output |
-| **Template/prompt drift** (`verify --templates`) | **Node `meta`** | `meta verify --templates` | TS reference (ADR-0021 D2) — `{{field}}`↔payload; the bare-`verify` default |
+| **Template/prompt drift** (`verify --templates`) | **Node `meta`** | `meta verify --templates` | TS reference (ADR-0021 D2) — `{{field}}`↔payload; part of the bare-`verify` default |
 | **Vocabulary upgrade** (`upgrade`) | **Node `meta`** | `meta upgrade [--to <version>] [--apply]` | **any backend** — rewrites RETIRED metadata vocabulary (`@violation` → `@counterexample`, `@readOnly` → `@mutability`, dropping `@verifiedBy`) and resolves ATTRIBUTE CONTRADICTIONS (`@fields` beside `@expr` on an index key). Node-only because it edits the metadata documents themselves, which every port shares; a non-TS project runs `npx meta upgrade` against its own `metaobjects/`. **Canonical JSON and YAML alike.** Previews by default. Retirements needing a human decision are refused and the run exits non-zero, so CI cannot record a partial migration as finished |
 | **Vocabulary search** (`types`) | **Node `meta`** | `meta types [query]` | **any backend** — apropos/`kubectl explain` over the live metamodel registry (names + descriptions + when-to-use); the vocabulary is cross-port identical (registry-conformance) |
 | **Dependency sync** (`deps`) | **Node `meta`** | `meta deps sync \| check \| list` | **any backend** — resolves a declared metadata dependency's `path` transport into a committed snapshot + lock (FR-023), so `sync`/`check`/`list` themselves stay Node-only regardless of your server language. TypeScript and Python then LOAD that snapshot at every rung of their own source ladder — the two ports that implement dependency resolution in Phase 1a; Java, Kotlin, and C# don't read `dependencies` yet (Phase 2). See [`metadata-dependencies.md`](metadata-dependencies.md) |
 | **Canonical format** (`fmt`) | every port | `meta fmt` / `dotnet meta fmt` / `mvn metaobjects:fmt` / `metaobjects fmt` | (#304) ships in **every** port — the canonical serializer already exists in all five, so formatting is local, not Node-only. `--check` lists non-canonical files and exits non-zero without changing anything. Formats each file STANDALONE — own-mode, declared-here layer only (ADR-0039); an `extends` onto another file's base is preserved as-is, never resolved or erred on; a file declaring `overlay: true` anywhere — whether or not a same-file base exists — is reported as skipped rather than merged (merging would drop the overlay marker, a structural change fmt never makes). A YAML file is always skipped — no canonical YAML emitter exists (ADR-0006). Before writing, every port reloads the whole project with the candidate swapped in and refuses the write unless the reloaded model's canonical form is byte-identical to the untouched baseline — fmt never changes meaning. See [Fixture corpus](#meta-fmt--canonical-formatting-304) below and `fixtures/fmt-conformance/README.md` |
 | TS codegen | Node `meta` | `meta gen` | TS projects. **No `--template-spec` flag, deliberately** — `metaobjects.config.ts` already takes generator VALUES, so a declarative template generator is declared there (`templateGenerator()`, or `templateSpecToGenerators(parseTemplateSpec(spec))` to reuse a C#/Python spec file). Keeping it in the config is what lets `meta verify --codegen` regenerate WITH it, since that gate re-runs the config's generator list; see [declarative template scopes](codegen-concepts.md#declarative-template-scopes) |
-| C# codegen | `dotnet meta` | `dotnet meta init` / `gen` / `verify --templates` / `verify --codegen` | a .NET tool (`ToolCommandName=dotnet-meta`); invoked `dotnet meta` so it never shadows the Node `meta`; ships the ADR-0021 D2 subverbs (`--db` rejected, exit 2; bare `verify` = `--templates`). **The generator list is `codegen/Generators.cs`** (ADR-0034 Amendment 9): `dotnet meta init` writes it with `codegen/Program.cs` (two lines that run it) and `codegen/Codegen.csproj`, and `gen` / `verify --codegen` always run it through `dotnet run --project codegen`. With no `codegen/Generators.cs` they exit 2 and write nothing; `--generators` only narrows the list to declared entries. Every entry may set its own output directory (`ApiDocsGenerator { OutDir = ... }`), and `verify --codegen` compares each one. A declarative Mustache template-spec (the cross-port JSON contract shared with Python) is one more entry, `TemplateSpecGenerator { Spec = "<json>", TemplateRoot = "<dir>" }`; `gen` no longer reads `--template-spec` or a project-root `template-spec.json`, and a run that finds either with no such entry fails before writing anything; see [declarative template scopes](codegen-concepts.md#declarative-template-scopes). `dotnet meta docs` was removed in 1.1.0: it prints the line that points at [the migration section](migrations/docs-are-generators.md#c) and exits 2 |
+| C# codegen | `dotnet meta` | `dotnet meta init` / `gen` / `verify --templates` / `verify --codegen` | a .NET tool (`ToolCommandName=dotnet-meta`); invoked `dotnet meta` so it never shadows the Node `meta`; ships the ADR-0021 D2 subverbs (`--db` rejected, exit 2; bare `verify` = `--templates` plus `--codegen` when `--out` and `codegen/Generators.cs` are present). **The generator list is `codegen/Generators.cs`** (ADR-0034 Amendment 9): `dotnet meta init` writes it with `codegen/Program.cs` (two lines that run it) and `codegen/Codegen.csproj`, and `gen` / `verify --codegen` always run it through `dotnet run --project codegen`. With no `codegen/Generators.cs` they exit 2 and write nothing; `--generators` only narrows the list to declared entries. Every entry may set its own output directory (`ApiDocsGenerator { OutDir = ... }`), and `verify --codegen` compares each one. A declarative Mustache template-spec (the cross-port JSON contract shared with Python) is one more entry, `TemplateSpecGenerator { Spec = "<json>", TemplateRoot = "<dir>" }`; `gen` no longer reads `--template-spec` or a project-root `template-spec.json`, and a run that finds either with no such entry fails before writing anything; see [declarative template scopes](codegen-concepts.md#declarative-template-scopes). `dotnet meta docs` was removed in 1.1.0: it prints the line that points at [the migration section](migrations/docs-are-generators.md#c) and exits 2 |
 | Java/Kotlin codegen | Maven plugin | `mvn metaobjects:generate` (`metaobjects:generate`) | Kotlin generators run through the same goal — see below. **No `--template-spec` flag, deliberately** — `<generator>` already loads a consumer class from the project classpath, so the declarative surface is `com.metaobjects.generator.template.TemplateScopeGenerator` wired as an ordinary `<generator>` with `<template>` / `<scope>` / `<outputPattern>` / `<templatesDir>` / `<format>` args (covers BOTH Java and Kotlin); see [declarative template scopes](codegen-concepts.md#declarative-template-scopes). The `generate` and `verify` goals are declared `threadSafe` and support parallel multi-module reactor builds (`mvn -T`) (#233) |
-| Java/Kotlin verify | Maven plugin | `mvn metaobjects:verify -Dmeta.verify.mode=codegen\|templates` (`metaobjects:verify`) | parameter-driven ADR-0021 D2 modes (one goal covers BOTH Java + Kotlin): `codegen` (default, back-compat — regen + fail on drift vs committed output, generator-neutral) / `templates` (`{{field}}`↔payload drift via the render `Verify` engine). `db` rejected ("schema verify is the migrate engine, ADR-0015") |
+| Java/Kotlin verify | Maven plugin | `mvn metaobjects:verify -Dmeta.verify.mode=codegen\|templates` (`metaobjects:verify`) | parameter-driven ADR-0021 D2 modes (one goal covers BOTH Java + Kotlin): unset (default — `codegen` and `templates`; the template gate is skipped with a note when `templateRoot` is unset) / `codegen` (regen + fail on drift vs committed output, generator-neutral) / `templates` (`{{field}}`↔payload drift via the render `Verify` engine). `db` rejected ("schema verify is the migrate engine, ADR-0015") |
 | Python codegen | console-script | `metaobjects gen` / `verify --codegen` / `verify --templates` | `[project.scripts] metaobjects` — **not** `meta` (that's the Node schema CLI); ships the ADR-0021 D2 subverbs (`--db` rejected, exit 2). **The generator list is `metaobjects.config.yaml`** (ADR-0034 Amendment 9, [below](#declarative-config-metaobjectsconfigyaml--python-codegen)): `gen` and `verify --codegen` run each target's `generators` (and its `templateSpec`, the declarative Mustache template-codegen surface shared with C#) into its `outDir`, and with no config they exit 2 and write nothing. `--generators` only narrows the list to declared entries. `metaobjects docs` was removed in 1.1.0: it prints the line that points at [the migration section](migrations/docs-are-generators.md#python) and exits 2 |
 
 ## `verify` is one verb with explicit subverbs (ADR-0021 D2)
@@ -62,9 +62,19 @@ Rules of the contract:
 - **Combinations aggregate.** Pass any mix (`verify --db --codegen --templates`);
   each selected mode runs and the **exit code is non-zero if *any* mode reports
   drift**.
-- **Bare `verify` = the port's documented back-compat default.** TS/C# default to
-  `--templates`; Java/Python default to `--codegen`. In every case bare `verify`
-  also prints a one-line note advertising the explicit subverbs.
+- **Bare `verify` runs the same default gate set in every port: codegen drift,
+  prompt templates and the requirement ledger.** `--db`, `--deps` and `--replay`
+  stay opt-in. A gate the run has no configuration for is skipped with a one-line
+  note, never failed: Node `meta` needs a `metaobjects.config.ts` for codegen (a config that
+  exists but fails to load is not a missing config: it exits 2 with the load error);
+  `metaobjects verify` needs a `metaobjects.config.yaml` or `--prompts <dir>` for
+  templates; `dotnet meta verify` needs `--out <dir>` and `codegen/Generators.cs`
+  for codegen; `mvn metaobjects:verify` needs `-Dmeta.verify.templateRoot` for
+  templates. Naming a subverb still runs only the gates named. Bare `verify` also
+  prints a one-line note advertising the explicit subverbs. *Before this, a bare
+  run covered one gate (TS/C#: templates; Java/Python: codegen), so a CI step that
+  said only "run `verify`" did not catch stale generated code in TS or C#, or
+  prompt drift in Python and Java.*
 - **`--codegen` needs to know where the committed output lives.** It diffs
   against the configured `outDir` (and any per-target `outDir`) from
   `metaobjects.config.ts`. With no config it errors clearly (exit 2) rather than
@@ -192,20 +202,22 @@ which is a stricter answer to the same question and stays as it is.
 
 **Port status (staged per ADR-0021):** the **TypeScript Node `meta` is the
 reference** and implements all three subverbs today. **Python `metaobjects`
-ships the subverbs**: `verify --codegen` (regen-to-temp + diff vs `--out`, the
-historical default), `verify --templates` (each `template.*` node's `{{field}}`
+ships the subverbs**: `verify --codegen` (regen-to-temp + diff vs `--out`), `verify --templates` (each `template.*` node's `{{field}}`
 ↔ payload-VO field tree via the render `verify()` gate, resolving refs through a
 filesystem provider rooted at `--prompts`), and `verify --db` which is
 **cleanly rejected with exit 2** ("schema verify is the migrate engine,
-ADR-0015"). Bare `verify` stays `--codegen` for back-compat. The **C# `dotnet
+ADR-0015"). Bare `verify` runs `--codegen` and `--templates` (the template gate is skipped
+with a note when the run names no config and no `--prompts`). The **C# `dotnet
 meta`** port likewise ships the codegen-side subverbs: `verify --templates` (its
-historical template/prompt drift gate, the C# back-compat default), `verify
+historical template/prompt drift gate), `verify
 --codegen` (regenerate the configured generators to a temp dir and diff against
 the committed `--out` tree, never touching it), and a **clean `--db` rejection
-(exit 2)** — bare `dotnet meta verify` keeps `--templates` and prints the subverb
-note. The **Java/Kotlin `mvn metaobjects:verify`** port expresses the same vocabulary as a
-`mode` parameter (Maven goals are parameter-driven, not flag-driven): `-Dmeta.verify.mode=codegen`
-(default, byte-identical to the historical goal — regen-to-temp + diff vs committed
+(exit 2)** — bare `dotnet meta verify` runs `--templates` and, when `--out` and
+`codegen/Generators.cs` are present, `--codegen` (C# has no config-resolved output dir, so a bare run without `--out <dir>` skips the codegen gate with a note — pass `--out` in CI), and prints the subverb note. The **Java/Kotlin `mvn metaobjects:verify`** port expresses the same vocabulary as a
+`mode` parameter (Maven goals are parameter-driven, not flag-driven). With `mode` unset the goal
+runs both gates below, skipping the template gate with a note when no `templateRoot` is set.
+`-Dmeta.verify.mode=codegen`
+(codegen only, byte-identical to the historical goal — regen-to-temp + diff vs committed
 output; drift is computed per **unique `outputDir`** over the whole `<generators>`
 selection, so several generators may share one `outputDir` without cross-flagging each
 other's committed files as stale) and `-Dmeta.verify.mode=templates` (each `template.*` node's `{{field}}`↔payload-VO
@@ -395,8 +407,8 @@ targets:
   `--target <name>` scopes the run to a single target; `--generators <names>` narrows it to
   the declared entries named (an owned entry matches its registry name too) and refuses a
   name no target declares. A target whose `generators` is empty writes nothing and says so.
-- **`metaobjects verify --codegen`** — including bare `verify`, since `--codegen` is the
-  Python default (see above) — regenerates the same list into a temp tree (the exact `gen`
+- **`metaobjects verify --codegen`** — also run by bare `verify`, which adds `--templates`
+  (see above) — regenerates the same list into a temp tree (the exact `gen`
   pipeline, including the cross-target duplicate-output-path guard) and diffs each **unique
   `outDir`** against the union of the co-resident targets' regen, aggregating the exit code
   (non-zero if *any* outDir has drifted). Targets sharing an `outDir` are verified together,

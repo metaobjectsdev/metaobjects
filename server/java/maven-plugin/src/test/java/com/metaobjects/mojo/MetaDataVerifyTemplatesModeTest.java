@@ -14,7 +14,7 @@ import static org.junit.Assert.fail;
 /**
  * Tests {@code meta:verify -Dmeta.verify.mode=templates} — the NEW template/prompt
  * drift mode (ADR-0021 D2 fan-out) — plus the {@code mode} dispatch itself
- * (unknown / {@code db} → clear failure; default stays {@code codegen}).
+ * (unknown / {@code db} → clear failure; unset runs the codegen and template gates).
  *
  * <p>The Mojo's {@code project}/{@code execution} fields are left null so
  * {@code createProjectClassLoader()} falls back to the test classloader (which can
@@ -124,6 +124,42 @@ public class MetaDataVerifyTemplatesModeTest {
             assertTrue(e.getMessage().contains("db"));
             assertTrue(e.getMessage().toLowerCase().contains("migrate"));
         }
+    }
+
+    // === the default gate set (mode unset) ==================================
+
+    @Test
+    public void defaultModeRunsTheTemplateGateWhenATemplateRootIsSet() throws Exception {
+        Path templateRoot = writeTemplate("ai/greeting", "Hello {{title}} — {{subject}}");
+
+        MetaDataVerifyMojo verify = new MetaDataVerifyMojo();
+        configureTemplates(verify, templateRoot);
+        verify.setMode("");
+        try {
+            verify.execute();
+            fail("expected the default gate set to fail on template drift");
+        } catch (MojoFailureException e) {
+            assertTrue(e.getMessage().contains("ERR_VAR_NOT_ON_PAYLOAD"));
+        }
+    }
+
+    @Test
+    public void defaultModePassesWhenBothGatesAreClean() throws Exception {
+        MetaDataVerifyMojo verify = new MetaDataVerifyMojo();
+        configureTemplates(verify, writeTemplate("ai/greeting", "Hello {{title}} — {{body}}"));
+        verify.setMode("");
+        verify.execute();
+    }
+
+    @Test
+    public void defaultModeSkipsTheTemplateGateWithoutATemplateRoot() throws Exception {
+        // Not configured is not failed: the codegen gate (no generators here) still runs and passes.
+        MetaDataVerifyMojo verify = new MetaDataVerifyMojo();
+        configureTemplates(verify, Files.createTempDirectory("verify-no-root"));
+        verify.setMode("");
+        verify.setTemplateRoot(null);
+        verify.execute();
+        assertTrue(new MetaDataVerifyMojo().getMode().isEmpty());
     }
 
     // === helpers ============================================================

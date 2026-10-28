@@ -3,7 +3,7 @@
  *
  * Asserts the explicit-subverb contract:
  *   - `verify --templates` runs the template/prompt drift gate (clean → 0, drift → 1).
- *   - bare `verify` is back-compat (= --templates) and prints the subverb note.
+ *   - bare `verify` runs the default gate set (--codegen --templates) and prints the subverb note.
  *   - `verify --codegen` regenerates to a temp dir and diffs the committed output:
  *       committed == fresh regen → 0; generated content that has gone STALE against
  *       the metadata → 1, naming the drifted file. A hand-edited generated file is
@@ -124,8 +124,8 @@ describe("meta verify — subverbs (ADR-0021 D2)", () => {
     }
   });
 
-  // 3. Bare verify = --templates (back-compat) + prints the subverb note.
-  test("bare verify behaves as --templates and prints the subverb note", async () => {
+  // 3. Bare verify = the default gate set + prints the subverb note.
+  test("bare verify runs the template gate and prints the subverb note", async () => {
     const tmp = setupTemplateRepo("Hi {{notARealField}}.");
     try {
       expect(await run(["verify", "--cwd", tmp])).toBe(1);

@@ -134,7 +134,7 @@ targets:
 
 ```bash
 metaobjects gen       # runs every target's generators into its outDir
-metaobjects verify    # drift gate; bare verify means --codegen, which regenerates the same list
+metaobjects verify    # drift gate; bare verify runs --codegen, which regenerates the same list, and --templates
 ```
 
 `verify --codegen` regenerates exactly the list `gen` runs and compares, so the two can

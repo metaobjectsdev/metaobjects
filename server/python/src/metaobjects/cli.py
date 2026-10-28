@@ -21,7 +21,7 @@ Two subcommands:
       across ports):
 
         --codegen    regenerate into a temp dir + diff against the committed
-                     ``--out`` tree (Python's historical default behavior).
+                     ``--out`` tree.
                      The column naming comes from ``naming.columns`` in
                      ``.metaobjects/config.json`` (ADR-0058), the same setting
                      ``gen`` reads, so the ``names`` generator's constants match
@@ -38,9 +38,9 @@ Two subcommands:
                      migrate engine (ADR-0015), not this CLI.
 
       Combining flags runs each requested mode and aggregates the exit code
-      (non-zero if ANY mode drifts). A bare ``verify`` keeps the historical
-      default = ``--codegen`` (back-compat) and prints a one-line note that the
-      explicit subverbs exist.
+      (non-zero if ANY mode drifts). A bare ``verify`` runs ``--codegen`` and
+      ``--templates`` (the cross-port default gate set) and prints a one-line
+      note that the explicit subverbs exist.
 
 Named ``metaobjects``, NOT ``meta``: ``meta`` is the Node schema CLI. This CLI
 intentionally has NO ``migrate`` subcommand — schema is owned by the Node
@@ -2668,8 +2668,11 @@ def _verify_requirements(args: argparse.Namespace, model: "_VerifyModel | None")
 
 def _cmd_verify(args: argparse.Namespace) -> int:
     """Subverb dispatch (ADR-0021 D2). Run each requested mode; aggregate exit =
-    max (non-zero if ANY mode drifts). Bare ``verify`` (no subverb) keeps the
-    historical default = ``--codegen`` + a one-line note advertising the subverbs.
+    max (non-zero if ANY mode drifts). Bare ``verify`` (no subverb) runs the
+    cross-port default gate set, ``--codegen`` + ``--templates`` (the requirement
+    ledger runs on every verify) + a one-line note advertising the subverbs.
+    ``--templates`` is skipped with a note when the run names no config and no
+    ``--prompts`` root, since there is then no template directory to resolve.
     """
     naming_refusal = _refuse_column_naming_flag(args)
     if naming_refusal is not None:
@@ -2684,12 +2687,24 @@ def _cmd_verify(args: argparse.Namespace) -> int:
 
     if not any_explicit:
         print(
-            "metaobjects verify — running --codegen (default). Explicit "
+            "metaobjects verify — running --codegen --templates (default). Explicit "
             "subverbs: --codegen (codegen drift), --templates (template/prompt "
             "drift), --db (schema drift — not supported in Python).",
             file=sys.stderr,
         )
         run_codegen = True
+        if args.metadata_dir is None:
+            has_template_root = _find_config(args) is not None
+        else:
+            has_template_root = bool(getattr(args, "templates_root", None))
+        if not has_template_root:
+            print(
+                "metaobjects verify — template gate skipped: no metaobjects.config.yaml "
+                "and no --prompts directory, so there is no template root to resolve against.",
+                file=sys.stderr,
+            )
+        else:
+            run_templates = True
 
     exit_code = 0
     gates_stderr = _RecordedStderr(sys.stderr)
@@ -2850,7 +2865,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "verify",
         help=(
             "drift gate — explicit subverbs --codegen / --templates / --db "
-            "(ADR-0021 D2); bare verify defaults to --codegen"
+            "(ADR-0021 D2); bare verify runs --codegen and --templates"
         ),
     )
     verify.add_argument(

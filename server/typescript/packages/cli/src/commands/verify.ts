@@ -7,6 +7,7 @@
 // silently break a prompt" guarantee, enforced at the last fixed point before
 // the text ships. Required-slot misses are warnings (don't fail the build).
 
+import { existsSync } from "node:fs";
 import { join, relative, resolve as resolvePath } from "node:path";
 import { parseVerifyArgs, type MigrateFlags } from "../lib/args.js";
 import { log } from "../lib/log.js";
@@ -199,20 +200,24 @@ export async function verifyCommand(
 
   // ADR-0021 D2 — explicit verify subverbs. Each flag selects one drift mode;
   // any combination runs each and the overall exit code is the MAX (non-zero on
-  // any drift). A bare `verify` (no explicit subverb) keeps its documented
-  // back-compat default: the template/prompt drift gate — plus a one-line note
-  // advertising the explicit subverbs.
+  // any drift). A bare `verify` (no explicit subverb) runs the cross-port default
+  // gate set: codegen drift, the template/prompt drift gate and the requirement
+  // ledger — plus a one-line note advertising the explicit subverbs. `--db`,
+  // `--deps` and `--replay` stay opt-in.
   const runTemplates = flags.templates || !flags.anyExplicit;
   // The schema gate is selected by the presence of --db, or --dialect d1 (#225 —
   // D1 has no URL connection); that check lives inside runSchemaVerify.
-  const runCodegen = flags.codegen;
+  // Selected by `--codegen`, or by a bare run that has a `metaobjects.config.ts` to
+  // regenerate from (decided below, once the config has been read). A bare run with no
+  // config skips the gate with a note instead of failing it.
+  let runCodegen = flags.codegen;
   // Task 15 — same shape as --codegen: selected ONLY by its own flag,
   // never folded into the bare-verify default (it needs the publisher
   // reachable, which CI may not have — see the VerifyFlags doc on `deps`).
   const runDeps = flags.deps;
   if (!flags.anyExplicit) {
     say(
-      "meta verify — running --templates (default). Explicit subverbs: " +
+      "meta verify — running --codegen --templates (default). Explicit subverbs: " +
         "--templates (prompt drift), --db/--dialect d1 (schema drift), " +
         "--codegen (drift of everything `generators` declares, documentation included), --deps (dependency drift), " +
         "--replay/--replay-snapshot (the committed migration chain replays from empty).",
@@ -280,6 +285,7 @@ export async function verifyCommand(
   // If absent/invalid we fall back to defaults; `--codegen` then reports a clear
   // error (it can't diff without knowing where the committed output lives).
   let forgeConfig: MetaobjectsGenConfig | undefined;
+  let configLoadError: unknown;
   try {
     forgeConfig = await loadMetaobjectsConfig(genConfigDir);
   } catch (e) {
@@ -290,11 +296,26 @@ export async function verifyCommand(
       return 2;
     }
     forgeConfig = undefined;
+    configLoadError = e;
   }
   // Both of the gen config's contributions to the load, together — see
   // `loadMemoryOptionsFrom`. Threading `providers` and forgetting `libraries` is how
   // a shipped library became unloadable through the CLI (#333).
   const configLoadOptions = loadMemoryOptionsFrom(forgeConfig);
+
+  // The bare run's codegen gate: on whenever there is a config to diff against. An
+  // adopter with metadata but no generators (nothing generated, nothing to go stale)
+  // keeps a passing bare verify; the note says what was skipped and why.
+  if (!flags.anyExplicit) {
+    if (forgeConfig !== undefined) runCodegen = true;
+    else if (existsSync(join(genConfigDir, "metaobjects.config.ts"))) {
+      log.error(
+        "meta verify: metaobjects.config.ts exists but failed to load, so the codegen gate cannot run: " +
+          (configLoadError instanceof Error ? configLoadError.message : String(configLoadError)),
+      );
+      return 2;
+    } else say("meta verify — codegen gate skipped: no metaobjects.config.ts found, so there is no generated output to diff against");
+  }
 
   // ADR-0023 strict-by-default (#96): verify loads strict unless --lax is passed,
   // so an undeclared/typo'd own @attr fails verify (matching Java's Maven goal).
@@ -1964,7 +1985,7 @@ export function notRunNote(
     return flag !== undefined ? `${g.gate} (${flag})` : g.gate;
   });
   const tail = opts.bare === true
-    ? " — a bare 'meta verify' runs only the template gate (plus the requirement ledger); " +
+    ? " — a bare 'meta verify' runs the codegen and template gates (plus the requirement ledger); " +
       "name each gate to run it"
     : "";
   return `meta verify — not run: ${named.join(", ")}${tail}`;

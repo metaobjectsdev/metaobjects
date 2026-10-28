@@ -180,7 +180,9 @@ dotnet meta verify ./metaobjects --codegen --out ./Generated
 (FR-004): it says nothing about generated code, and it fails with exit 2 when the directory it
 is given does not exist. A bare `dotnet meta verify ./metaobjects` runs that templates gate
 against `prompts/` when it exists, else `templates/`, and fails the same way when neither
-exists; pass both subverbs to run both.
+exists. It also runs the codegen gate when `--out <dir>` and `codegen/Generators.cs` are
+present, and skips it with a note otherwise (C# has no config-resolved output directory, so
+pass `--out` in CI); name both subverbs to require both.
 
 `dotnet meta gen --list` is the catalog, and it shows what each generator requires. `routes`
 requires `entity`, `db-context` and `filter-allowlist`, because the handlers it emits
