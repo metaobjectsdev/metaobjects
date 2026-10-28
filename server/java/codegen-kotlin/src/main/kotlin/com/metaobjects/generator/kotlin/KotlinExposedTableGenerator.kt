@@ -5,6 +5,7 @@ package com.metaobjects.generator.kotlin
 // `mvn metaobjects:eject` and its own package is renamed — an explicit import, not
 // same-package bare-name resolution, is what keeps the ejected copy compiling.
 import com.metaobjects.config.WireFormat
+import com.metaobjects.generator.util.GeneratorUtil
 import com.metaobjects.generator.kotlin.ExposedApi
 import com.metaobjects.generator.kotlin.ExposedImports
 import com.metaobjects.generator.kotlin.Fr019SharedEnum
@@ -175,7 +176,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         // an rdb view-kind source is queried through an Exposed Table exactly like
         // a view-kind entity was pre-FR-024 (read-only by construction; projections
         // carry no relationships/references, so passes 1+3 stay entity-only).
-        for (entity in loader.metaObjects) {
+        for (entity in GeneratorUtil.ownMetaObjects(loader)) {
             // FR-044: a report declares no fields, so it is emitted from its derived shape
             // rather than through the entity/projection path below.
             if (entity.subType == MetaObject.SUBTYPE_REPORT) {
@@ -2016,7 +2017,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         // Use list-per-entity so the emit order is deterministic (insertion-ordered).
         val acc = linkedMapOf<String, MutableList<FkColumnSpec>>()
 
-        for (entity in loader.metaObjects) {
+        for (entity in GeneratorUtil.ownMetaObjects(loader)) {
             if (entity.subType != MetaObject.SUBTYPE_ENTITY) continue
             // FR-017 TPH: a subtype shares its base's single table, so its INHERITED to-many
             // composition is already covered by the base's inverse FK — emitting one per subtype
@@ -2204,7 +2205,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         loader: MetaDataLoader,
     ): Map<String, Map<String, RefDecoration>> {
         val acc = linkedMapOf<String, MutableMap<String, RefDecoration>>()
-        for (entity in loader.metaObjects) {
+        for (entity in GeneratorUtil.ownMetaObjects(loader)) {
             if (entity.subType != MetaObject.SUBTYPE_ENTITY) continue
             // ADR-0039: identity.reference children are inheritable — RESOLVE via
             // getIdentities(true); entity.children (own-only) would miss inherited FK refs.

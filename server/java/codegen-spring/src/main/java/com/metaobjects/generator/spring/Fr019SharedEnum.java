@@ -164,7 +164,7 @@ public final class Fr019SharedEnum {
      */
     public static List<SharedEnum> collectSharedEnums(MetaDataLoader loader) {
         Map<String, SharedEnum> out = new LinkedHashMap<>();
-        for (MetaObject owner : loader.getMetaObjects()) {
+        for (MetaObject owner : GeneratorUtil.ownMetaObjects(loader)) {
             if (GeneratorUtil.isAbstract(owner)) continue;
             String subType = owner.getSubType();
             if (!MetaObject.SUBTYPE_ENTITY.equals(subType)

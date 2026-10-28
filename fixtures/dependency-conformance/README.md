@@ -199,8 +199,15 @@ corpus expectation to update.
   `sdk/test/dependency-conformance.test.ts`).
 - **Python** — resolution, load-time failure, lock/snapshot integrity. Not the check arm: Python
   has no `deps check` yet, so its runner filters the `expectCheck` cases out.
-- **Java / C# / Kotlin** — Phase 2 (these ports do not read `dependencies` yet). Each runs the
-  resolution arm when it consumes, and the check arm when it gains a check.
+- **Java** — resolution, load-time failure, lock/snapshot integrity
+  (`DependencyConformanceTest`). Not the check arm: Java has no `deps check`, so its runner
+  skips the `expectCheck` cases. `refuseUnownedPackages` runs after the loader's own errors,
+  as the ordering note above requires. Java's `inScope` is the import-exclusion conjunct only,
+  like Python's.
+- **Kotlin** — inherits via Java: it loads through the same loader and Maven plugin. The
+  Kotlin generators are covered by a codegen test that an imported entity emits nothing.
+- **C#** — Phase 2 (does not read `dependencies` yet). Runs the resolution arm when it consumes,
+  and the check arm when it gains a check.
 
 ## Reference implementation
 

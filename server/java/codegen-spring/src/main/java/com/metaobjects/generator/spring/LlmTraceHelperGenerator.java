@@ -133,7 +133,7 @@ public class LlmTraceHelperGenerator extends MultiFileDirectGeneratorBase<MetaOb
 
         // Stable name order — deterministic emission, matching the other generators.
         java.util.List<MetaObject> entities = new java.util.ArrayList<>();
-        for (MetaObject mo : loader.getMetaObjects()) {
+        for (MetaObject mo : GeneratorUtil.ownMetaObjects(loader)) {
             if (!appliesTo(mo)) continue;
             entities.add(mo);
         }

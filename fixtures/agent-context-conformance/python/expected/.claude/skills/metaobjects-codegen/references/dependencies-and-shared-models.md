@@ -38,8 +38,8 @@ artifact is a contract whose bytes a cross-port corpus pins and whose hash
 consumers verify, so everything a consumer checks stays in the package, in the two
 functions the copy calls (`buildSharedModel`, `renderSharedModelFiles`). Do not
 replace those calls: an unmodified copy publishes the same bytes as the packaged
-generator. Only TypeScript can run it in Phase 1a. **Phase 1a is TypeScript and Python
-only, full stop** — TypeScript and Python are the only two ports that can
-*consume* a dependency at all today, and only the TypeScript toolchain can
-*publish* one; Java, Kotlin, and C# do not read `dependencies` yet (Phase 2).
+generator. Only TypeScript can run it in Phase 1a. TypeScript, Python, Java and
+Kotlin (through Java's loader and Maven plugin) can *consume* a dependency, and
+only the TypeScript toolchain can *publish* one; C# does not read
+`dependencies` yet (Phase 2).
 Full detail: `docs/features/metadata-dependencies.md`.
