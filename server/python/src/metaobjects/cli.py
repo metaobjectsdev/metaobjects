@@ -21,7 +21,7 @@ Two subcommands:
       across ports):
 
         --codegen    regenerate into a temp dir + diff against the committed
-                     ``--out`` tree (Python's historical default behavior).
+                     ``--out`` tree.
                      The column naming comes from ``naming.columns`` in
                      ``.metaobjects/config.json`` (ADR-0058), the same setting
                      ``gen`` reads, so the ``names`` generator's constants match
@@ -38,9 +38,9 @@ Two subcommands:
                      migrate engine (ADR-0015), not this CLI.
 
       Combining flags runs each requested mode and aggregates the exit code
-      (non-zero if ANY mode drifts). A bare ``verify`` keeps the historical
-      default = ``--codegen`` (back-compat) and prints a one-line note that the
-      explicit subverbs exist.
+      (non-zero if ANY mode drifts). A bare ``verify`` runs ``--codegen`` and
+      ``--templates`` (the cross-port default gate set) and prints a one-line
+      note that the explicit subverbs exist.
 
 Named ``metaobjects``, NOT ``meta``: ``meta`` is the Node schema CLI. This CLI
 intentionally has NO ``migrate`` subcommand — schema is owned by the Node

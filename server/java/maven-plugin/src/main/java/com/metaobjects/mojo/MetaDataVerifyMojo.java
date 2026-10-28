@@ -371,7 +371,7 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
     }
 
     // ------------------------------------------------------------------------
-    // mode=codegen (default) — regenerate-to-temp + diff vs committed (UNCHANGED)
+    // mode=codegen — regenerate-to-temp + diff vs committed (UNCHANGED)
     // ------------------------------------------------------------------------
 
     private void verifyCodegen() throws MojoExecutionException, MojoFailureException {
