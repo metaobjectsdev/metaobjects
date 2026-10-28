@@ -445,9 +445,9 @@ cross-port contract every consumer gets today.
 
 ## Phase 2: Java, Kotlin and C#
 
-Tracked in [#482](https://github.com/metaobjectsdev/metaobjects/issues/482). Today only
-TypeScript and Python consume a dependency; Java, Kotlin and C# ignore the `dependencies` key,
-and a model there that references a node a dependency would supply fails loudly
+Tracked in [#482](https://github.com/metaobjectsdev/metaobjects/issues/482). Today
+TypeScript, Python and C# consume a dependency (C# since S6); Java and Kotlin ignore the
+`dependencies` key, and a model there that references a node a dependency would supply fails loudly
 (`ERR_UNRESOLVED_OBJECT_REF`), never silently. Phase 2 adds no new contract. The manifest, the
 lock, the committed snapshot and the 24-case resolution corpus are plain files that every port
 already has the pieces to read; what is missing is each port *loading* the snapshot.

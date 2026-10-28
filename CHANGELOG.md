@@ -25,7 +25,7 @@ here.**
   `_PACKAGE_NOT_OWNED`), and a load error in a dependency's file names `dep:<name>/<artifact>`.
   Imported nodes load but are not generated: every C# generator, the `verify --codegen`
   regeneration and the requirement gate's coverage denominator leave them out unless
-  `scope.include` names their package. C# runs all 23 cases of `fixtures/dependency-conformance/`.
+  `scope.include` names their package. C# runs the 24 resolution cases of `fixtures/dependency-conformance/`.
   The Node `meta deps sync` stays the only writer of the lock and the snapshot.
   See [docs/features/metadata-dependencies.md](docs/features/metadata-dependencies.md).
 

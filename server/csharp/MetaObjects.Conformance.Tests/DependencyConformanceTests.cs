@@ -42,7 +42,11 @@ public class DependencyConformanceTests : IDisposable
     private static JsonElement LoadCases()
     {
         using var doc = JsonDocument.Parse(File.ReadAllText(Path.Combine(FindCorpusDir(), "cases.json")));
-        return doc.RootElement.GetProperty("cases").Clone();
+        // The corpus has two arms. The resolution arm is this runner's; the check arm (`expectCheck`) is
+        // `deps check`'s, which this port does not have yet (that is `verify --deps`).
+        var resolution = doc.RootElement.GetProperty("cases").EnumerateArray()
+            .Where(c => !c.TryGetProperty("expectCheck", out _)).ToList();
+        return JsonSerializer.SerializeToElement(resolution);
     }
 
     public static TheoryData<string> CaseNames()
