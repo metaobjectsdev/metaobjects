@@ -255,6 +255,12 @@ describe("Postgres analyzer rewrites that text normalisation cannot undo", () =>
     )).toBe(true);
     // IS DISTINCT FROM (requiredWhen) is kept as written by Postgres and must not fold
     expect(checkExprEquals(`"k" IS DISTINCT FROM 'p'`, `NOT (k IS DISTINCT FROM 'p'::text)`)).toBe(false);
+    // `(NOT x) IS DISTINCT FROM y` is not the negation of a comparison: the fold must not equate it
+    expect(checkExprEquals(`(NOT x) IS DISTINCT FROM y`, `x IS NOT DISTINCT FROM y`)).toBe(false);
+    expect(checkExprEquals(`(NOT x) IS DISTINCT FROM y`, `NOT (x IS DISTINCT FROM y)`)).toBe(false);
+    expect(checkExprEquals(`x IS NOT DISTINCT FROM y`, `NOT (x IS DISTINCT FROM y)`)).toBe(true);
+    // a negated group that is more than one comparison is not folded
+    expect(checkExprEquals(`NOT (a IS DISTINCT FROM b OR c)`, `a IS NOT DISTINCT FROM b OR c`)).toBe(false);
     // `IS NOT NULL` is not a left operand
     expect(normalizeCheckExpr(`NOT (x IS NOT NULL IS DISTINCT FROM y)`)).toBe(`not x is not null is distinct from y`);
   });

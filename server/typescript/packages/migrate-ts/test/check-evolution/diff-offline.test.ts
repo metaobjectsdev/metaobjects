@@ -81,3 +81,36 @@ describe("diffTableChecks — regex check on a text-family column", () => {
     expect((await checkChanges("citext")).map((c) => c.kind).sort()).toEqual(["add-check", "drop-check"]);
   });
 });
+
+describe("renames keep the (col)::text fold", () => {
+  const col = (name: string) => ({ name, sqlType: { kind: "text" as const }, nullable: false, udtName: "varchar" });
+  const table = (name: string, column: string, check: CheckDescriptor): TableDescriptor =>
+    ({ name, columns: [col(column)], indexes: [], foreignKeys: [], checks: [check], primaryKey: [] });
+  const s = (t: TableDescriptor): SchemaSnapshot => ({ tables: [t], views: [] });
+
+  test("table rename: a varchar length check Postgres stores cast is folded into the rename", async () => {
+    const r = await diff({
+      expected: s(table("members", "code", CHK("members_code_chk", `length("code") >= 2`))),
+      actual: s(table("users", "code", CHK("users_code_chk", `(length((code)::text) >= 2)`))),
+      dialect: "postgres",
+      renames: [{ kind: "table", from: "users", to: "members" }],
+    });
+    expect(r.changes.filter((c) => c.kind.endsWith("-check"))).toEqual([]);
+    expect(r.changes).toEqual([expect.objectContaining({
+      kind: "rename-table", constraintRenames: [{ from: "users_code_chk", to: "members_code_chk" }],
+    })]);
+  });
+
+  test("column rename: the check follows the renamed varchar column without drop+add", async () => {
+    const r = await diff({
+      expected: s(table("users", "handle", CHK("users_handle_chk", `length("handle") >= 2`))),
+      actual: s(table("users", "code", CHK("users_code_chk", `(length((code)::text) >= 2)`))),
+      dialect: "postgres",
+      renames: [{ kind: "column", table: "users", from: "code", to: "handle" }],
+    });
+    expect(r.changes.filter((c) => c.kind.endsWith("-check"))).toEqual([]);
+    expect(r.changes).toEqual([expect.objectContaining({
+      kind: "rename-column", constraintRenames: [{ from: "users_code_chk", to: "users_handle_chk" }],
+    })]);
+  });
+});

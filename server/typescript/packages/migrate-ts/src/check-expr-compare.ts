@@ -71,26 +71,98 @@ function mapOutsideLiterals(s: string, fn: (part: string, index: number) => stri
 }
 
 /**
+ * Index of the `)` closing the `(` at `open`, skipping single-quoted literals and
+ * double-quoted identifiers; -1 when unbalanced.
+ */
+function matchingParen(s: string, open: number): number {
+  let depth = 0;
+  for (let i = open; i < s.length; i++) {
+    const ch = s[i]!;
+    if (ch === "'" || ch === '"') {
+      i++;
+      while (i < s.length && !(s[i] === ch && s[i + 1] !== ch)) i += s[i] === ch ? 2 : 1;
+    } else if (ch === "(") depth++;
+    else if (ch === ")" && --depth === 0) return i;
+  }
+  return -1;
+}
+
+/** `inner` with its depth-0 text (literals, quoted identifiers and bracketed groups blanked). */
+function topLevelText(inner: string): string {
+  let out = "";
+  let depth = 0;
+  for (let i = 0; i < inner.length; i++) {
+    const ch = inner[i]!;
+    if (ch === "'" || ch === '"') {
+      i++;
+      while (i < inner.length && !(inner[i] === ch && inner[i + 1] !== ch)) i += inner[i] === ch ? 2 : 1;
+      out += " ";
+    } else if (ch === "(" || ch === "[") { depth++; out += " "; }
+    else if (ch === ")" || ch === "]") { depth--; out += " "; }
+    else out += depth === 0 ? ch : " ";
+  }
+  return out;
+}
+
+/**
+ * `NOT (A IS DISTINCT FROM B)` → `(A IS NOT DISTINCT FROM B)`: Postgres has a node only for
+ * `IS DISTINCT FROM`, so it stores `a IS NOT DISTINCT FROM b` in the first spelling. Run on
+ * the RAW expression, while the brackets still show what `NOT` applies to: only `NOT`
+ * followed by one balanced bracketed operand that is exactly a single `IS DISTINCT FROM`
+ * comparison (no depth-0 `and` / `or` / `not`) is folded. `(NOT x) IS DISTINCT FROM y`
+ * has no such operand and stays as written, so the fold cannot invent an equality.
+ */
+function foldNotDistinctFrom(expr: string): string {
+  let out = "";
+  let i = 0;
+  while (i < expr.length) {
+    const ch = expr[i]!;
+    if (ch === "'" || ch === '"') {
+      const start = i++;
+      while (i < expr.length && !(expr[i] === ch && expr[i + 1] !== ch)) i += expr[i] === ch ? 2 : 1;
+      i++;
+      out += expr.slice(start, i);
+      continue;
+    }
+    const not = /^not\s*\(/i.exec(expr.slice(i));
+    if (not && !/[\w.]/.test(expr[i - 1] ?? " ")) {
+      const open = i + not[0].length - 1;
+      const close = matchingParen(expr, open);
+      if (close !== -1) {
+        const inner = expr.slice(open + 1, close);
+        const top = topLevelText(inner);
+        if (top.match(/\bis\s+distinct\s+from\b/gi)?.length === 1 && !/\b(?:and|or|not)\b/i.test(top)) {
+          out += `(${inner.replace(/\bis\s+distinct\s+from\b/i, "is not distinct from")})`;
+          i = close + 1;
+          continue;
+        }
+      }
+    }
+    out += ch;
+    i++;
+  }
+  return out;
+}
+
+/**
  * Two rewrites Postgres makes while ANALYZING an expression, which no textual normalisation
  * of its output can undo, so they are folded back to the spelling migrate emits:
  *
  *  - a ONE-element `x IN (v)` is stored as `x = v` (`IN` only becomes `= ANY (ARRAY[…])` from
  *    two elements, which the `any array` fold above already handles). A literal list is told
  *    apart by the comma after its first element, so `in 'a', 'b'` is left alone.
- *  - `a IS NOT DISTINCT FROM b` is stored as `NOT (a IS DISTINCT FROM b)` — only
- *    `IS DISTINCT FROM` has a node of its own. The left operand is matched as a bare (dotted)
- *    identifier, which is every shape migrate generates; a more complex operand reads as drift
- *    rather than risking a fold that changes the meaning.
+ *  - `a IS NOT DISTINCT FROM b` is stored as `NOT (a IS DISTINCT FROM b)`; see
+ *    foldNotDistinctFrom, which runs earlier because it needs the brackets.
  *
- * Both fire on text that SQLite and D1 never store, and both run outside literals. They sit on
- * the normalised string (brackets already gone), where each is a plain word pattern.
+ * The IN fold fires on text that SQLite and D1 never store and runs outside literals. It sits on
+ * the normalised string (brackets already gone), where it is a plain word pattern.
  */
 function foldPgAnalyzerRewrites(s: string): string {
   const parts = s.split(/('(?:[^']|'')*')/);
   return parts
     .map((part, i) => {
       if (i % 2 === 1) return part;
-      let p = part.replace(/(?<!\bis )\bnot (?!null\b)([a-z_][\w.]*) is distinct from\b/g, "$1 is not distinct from");
+      let p = part;
       // `<lhs> in 'v'` — the literal is the next part; a following comma means a list.
       if (/(?<!\bnot) in $/.test(p) && i + 1 < parts.length && !(parts[i + 2] ?? "").trimStart().startsWith(",")) {
         p = p.replace(/ in $/, "=");
@@ -114,7 +186,7 @@ export function normalizeCheckExpr(expr: string, textColumns: ReadonlySet<string
   // constraint accepts, so two checks differing only inside a literal (an enum member's
   // case, a regex's character class, a `(` in a pattern) must stay distinct. Reading them
   // as equal is this file's failure in the worse direction: a real change reported clean.
-  const stripped = mapOutsideLiterals(unwrapBacktickIdentifiers(expr), (part, index) =>
+  const stripped = mapOutsideLiterals(foldNotDistinctFrom(unwrapBacktickIdentifiers(expr)), (part, index) =>
     // Drop `::text` / `::"MyType"` type casts PG adds to literals. Only a cast that
     // immediately follows a CLOSING single quote (`'open'::text`) is one, which is exactly
     // the head of an outside part that follows a literal — so a `::` INSIDE a regex pattern
