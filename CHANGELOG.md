@@ -106,6 +106,26 @@ here.**
   on any failure, so the previous state is intact. `meta deps check` also loads the model once
   its hashes match and exits 1 with the load error when it does not load.
 
+- **`meta verify --db` no longer reports false CHECK drift on Postgres for a one-value enum, a
+  `presentIff` validator, or a validator on a `varchar(n)` column; a changed enum-member case
+  or regex case no longer reads as clean.** Postgres stores `"k" IN ('x')` as `k = 'x'` and
+  `a IS NOT DISTINCT FROM b` as `NOT (a IS DISTINCT FROM b)`, and casts a `varchar` column to
+  text (`(region)::text`) in a comparison, a `length()` and a null-safe test. The comparison now
+  folds all three back, so a database `migrate` just built verifies clean. The same false drift
+  reached `meta migrate --from-db`, which proposed a drop-check and add-check on every run, and
+  the offline `migrate --dry-run` after a `baseline --from-db`. It has done so since 1.0.x. In
+  the other direction, the comparison lower-cased quoted literals and deleted every bracket,
+  quote and run of blanks inside them, so `IN ('OPEN')` against `IN ('open')` and `~ '^[A-Z]+$'`
+  against `~ '^[a-z]+$'` compared as equal. Literals are now compared as written. A check
+  stored in a different case than the model declares therefore shows as drift once: run
+  `meta migrate` to bring it back. Separately, `char(n)` is no longer treated as a text column
+  for the `(col)::text` fold: its own regex operator sees the blank padding the cast trims, and
+  Postgres never adds the cast there, so an explicit `(col)::text ~ '…'` on a `char(n)` column
+  now reads as drift. A precedence change (`(a OR b) AND c` against `a OR (b AND c)`) is still
+  not detected; that needs Postgres to canonicalise the expected side. A new Postgres test
+  migrates, applies and verifies every CHECK shape `migrate` generates. Schema comparison is
+  TypeScript-owned, so no other port carries this comparison.
+
 ### Documentation
 
 - **Two doc errors corrected against the code.** `docs/recipes/mysql.md` said Python ships a

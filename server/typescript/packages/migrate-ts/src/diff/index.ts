@@ -809,7 +809,7 @@ function respelledSpread(expected: CheckDescriptor, actual: CheckDescriptor): { 
   return checkExprRespelledNullSafe(expected.expression, actual.expression) ? { respelled: true } : {};
 }
 
-const PG_TEXT_FAMILY_UDTS: ReadonlySet<string> = new Set(["text", "varchar", "bpchar"]);
+const PG_TEXT_FAMILY_UDTS: ReadonlySet<string> = new Set(["text", "varchar"]);
 
 function diffTableChecks(
   expected: TableDescriptor,

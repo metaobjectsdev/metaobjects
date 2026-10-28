@@ -91,6 +91,20 @@ describe("regex CHECK vs Postgres's stored rewrite (live PG)", () => {
     expect(r.kinds).toEqual(["add-check", "drop-check"]);
   });
 
+  // char(n) has its own regex operator (bpcharregexeq), which sees the blank padding that
+  // `(col)::text` trims — so an explicit cast is a different check, not Postgres's rewrite.
+  // Postgres itself never adds the column cast on a bpchar column.
+  test("char(n) column: Postgres stores the uncast check without a column cast", async () => {
+    const r = await checkChanges("char(8)");
+    expect(r.stored).not.toContain("(key)::text");
+    expect(r.kinds).toEqual([]);
+  });
+  test("char(n) column: a check stored with an explicit ::text cast is drift", async () => {
+    const r = await checkChanges("char(8)", `("key")::text ~ '${PATTERN}'`);
+    expect(r.stored).toContain("(key)::text");
+    expect(r.kinds).toEqual(["add-check", "drop-check"]);
+  });
+
   test("varchar column: a changed pattern still reads as drift", async () => {
     const r = await checkChanges("varchar(64)", `"key" ~ '^[a-z]+$'`);
     expect(r.kinds).toEqual(["add-check", "drop-check"]);

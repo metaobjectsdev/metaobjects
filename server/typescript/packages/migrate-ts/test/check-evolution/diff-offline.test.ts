@@ -63,8 +63,19 @@ describe("diffTableChecks — regex check on a text-family column", () => {
     const r = await diff({ expected: withKey(undefined, [generated]), actual: withKey(udtName, [stored]), dialect: "postgres" });
     return r.changes.filter((c) => c.kind.endsWith("-check"));
   };
-  test.each(["text", "varchar", "bpchar"])("%s column: Postgres's rewrite is no drift", async (udt) => {
+  test.each(["text", "varchar"])("%s column: Postgres's rewrite is no drift", async (udt) => {
     expect(await checkChanges(udt)).toEqual([]);
+  });
+  // char(n) is NOT in the family: `~(bpchar, text)` is bpcharregexeq, which sees the blank
+  // padding that `(col)::text` trims, so an explicit cast is a different constraint. Postgres
+  // never adds the cast on a bpchar column, so its own rewrite arrives uncast and stays clean.
+  test("bpchar column: an explicit ::text cast is drift against the uncast check", async () => {
+    expect((await checkChanges("bpchar")).map((c) => c.kind).sort()).toEqual(["add-check", "drop-check"]);
+  });
+  test("bpchar column: the uncast form Postgres stores is clean", async () => {
+    const uncast = CHK("spaces_key_regex_chk", `(key ~ '^[a-z0-9][a-z0-9-]*$'::text)`);
+    const r = await diff({ expected: withKey(undefined, [generated]), actual: withKey("bpchar", [uncast]), dialect: "postgres" });
+    expect(r.changes.filter((c) => c.kind.endsWith("-check"))).toEqual([]);
   });
   test("citext column: cast vs uncast is drift", async () => {
     expect((await checkChanges("citext")).map((c) => c.kind).sort()).toEqual(["add-check", "drop-check"]);
