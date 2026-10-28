@@ -802,7 +802,7 @@ Amendment 2); the corpus pins `"nil"` in every lane.
 | C# | `"nil"` (`XmlSerializer` and `DataContractSerializer` write `xsi:nil="true"` for a null, and it keeps null apart from an empty string) | `XmlWriter` |
 | Java | `"empty"` (an empty element, which is what Jackson's XML mapper writes) | JDK StAX |
 | Kotlin | `"empty"` (the JVM standard: Jackson's XML mapper writes a null as an empty element) | JDK StAX |
-| Python | `"empty"` (an empty element, which is what Python's XML serializers write for `None`) | `xml.sax.saxutils.XMLGenerator` |
+| Python | `"empty"` (an empty element, which is what Python's XML serializers write for `None`) | generated writer (`xml.sax.saxutils` escaping) |
 
 **Not in this version.** Excel: the name `xlsx` is reserved (it is refused with `invalid_format`
 today, like any unwired format) for a later `report-export-xlsx` generator. PDF is out. Export of

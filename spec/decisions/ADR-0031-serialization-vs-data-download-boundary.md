@@ -85,7 +85,7 @@ serializer**, not from FR-030:
   uses in that port, so a project's `wire` setting ([ADR-0019 Amendment 2](ADR-0019-runtime-return-type-contract.md))
   applies to an exported JSON file exactly as it does to the list response.
 - **XML** is written by a small generated writer per project (TypeScript), or by `XmlWriter` (C#),
-  JDK StAX (Java and Kotlin) or `XMLGenerator` (Python). No port takes a new dependency, and
+  JDK StAX (Java and Kotlin) or a generated writer over `xml.sax.saxutils` escaping (Python). No port takes a new dependency, and
   `jackson-dataformat-xml` in particular is not added: on Spring it switches content negotiation
   for the whole application. A null follows the port's standard form by default; the generator option
   `xmlNulls` pins `"nil"` (`xsi:nil="true"`) or `"empty"` where an adopter needs the same bytes in every
