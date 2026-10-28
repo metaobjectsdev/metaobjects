@@ -36,7 +36,7 @@ A declaration with no `source.rdb` (this one is a plain DTO POCO):
 }}
 ```
 
-Wire only the generators you want in `codegen/Generators.cs`. Note that the generated CRUD
+Wire only the generators you want in `codegen/Generators.cs`; leave `db-context` out if you keep your own `DbContext`, since the generated `AppDbContext` emits Postgres column types (`uuid`, `jsonb`, `timestamptz`) today. Note that the generated CRUD
 routes use the *entity* POCO, as described under [Use](#use); the DTO shape above is for
 objects you keep sourceless.
 

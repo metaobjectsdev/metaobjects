@@ -11,8 +11,7 @@ wiring) via KotlinPoet.
 for the generated controllers (`jakarta.*`; Spring Boot 2 is not supported).
 
 **Keep your ORM.** `KotlinEntityGenerator` (with `KotlinValidatorGenerator`) writes plain
-Jackson-compatible data classes per entity and value object. Wire it without the Exposed table
-generator and your own JPA, Exposed or JDBC mapping stays hand-written beside the generated
+Jackson-compatible data classes per entity and value object. Wire `entity` without `exposed-table` and your own JPA, Exposed or JDBC mapping stays hand-written beside the generated
 classes.
 
 Two modules:
