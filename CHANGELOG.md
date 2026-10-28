@@ -16,6 +16,17 @@ here.**
 
 ### Added
 
+- **C# reads its generated-code directory from `.metaobjects/config.json`, so a plain
+  `dotnet meta verify` runs the codegen gate.** Set `"csharp": { "outDir": "Generated" }`
+  (relative to the directory holding `.metaobjects/`). `dotnet meta gen` writes there and
+  `dotnet meta verify` (bare or `--codegen`) diffs against it, so the two cannot disagree; an
+  explicit `--out <dir>` still works and wins. Before this a bare `dotnet meta verify` skipped
+  the codegen gate unless `--out` was passed, and exited 0 on stale generated code. A project
+  with no setting still gets the skip note, which now names the setting. A present `csharp`
+  block that is not an object, has an unknown key, or has an empty or non-string `outDir` is
+  refused. The other ports ignore the block; the TypeScript config reader declares the key so
+  the shared file stays free of unknown-key warnings.
+
 - **Report export: `GET /<segment>?format=csv|json|xml` on a served report, in all five ports.**
   A new standalone `report-export` catalog generator (importable as shipped, ejectable in every
   port, drift-checked by `verify --codegen`, never implied by a library) generates one export
@@ -47,8 +58,7 @@ here.**
   subverb still runs only the gates named. A gate the run has no configuration for is skipped
   with a one-line note instead of failing: `meta verify` without a `metaobjects.config.ts` (a config that exists but fails to load exits 2),
   `metaobjects verify` with no `metaobjects.config.yaml` and no `--prompts`, `dotnet meta verify`
-  without `--out <dir>` and `codegen/Generators.cs` (C# has no config-resolved output directory:
-  pass `--out <dir>` in CI to get the codegen gate), `mvn metaobjects:verify` without
+  without an output directory (`csharp.outDir`, see Added) and `codegen/Generators.cs`, `mvn metaobjects:verify` without
   `-Dmeta.verify.templateRoot`. Pinned per port by tests that run a bare verify over drifted
   input. **Behaviour change:** a CI step that ran a bare `verify` and relied on the narrower
   default can now go red where it was green, because the gate it never ran now runs. Node

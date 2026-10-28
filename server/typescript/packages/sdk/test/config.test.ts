@@ -266,3 +266,12 @@ describe("ConfigSchema — dependencies (FR-023)", () => {
   });
   test("dependencies: absent means []", () => { expect(ConfigSchema.parse({ schema_version: 1 }).dependencies).toEqual([]); });
 });
+
+describe("csharp.outDir (the C# port's generated-code directory)", () => {
+  test("is a known, validated key", () => {
+    const ok = ConfigSchema.safeParse({ schema_version: 1, csharp: { outDir: "src/Generated" } });
+    expect(ok.success).toBe(true);
+    expect(ConfigSchema.safeParse({ schema_version: 1, csharp: { outdir: "x" } }).success).toBe(false);
+    expect(ConfigSchema.safeParse({ schema_version: 1, csharp: { outDir: "" } }).success).toBe(false);
+  });
+});

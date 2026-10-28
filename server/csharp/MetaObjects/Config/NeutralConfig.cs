@@ -19,6 +19,8 @@
 // or a non-object `naming` is refused (ERR_BAD_ATTR_VALUE), the same "present but
 // wrong-shaped raises" rule `sources`/`libraries` already follow.
 //
+// `csharp.outDir` is the C#-scoped generated-code directory; the other ports ignore the block.
+//
 // `wire` (ADR-0019 Amendment 2) is read here too — the output form of a generated REST surface
 // (`decimals`, `nullMembers`), refused exactly as `naming` is.
 using System.Text.Json;
@@ -60,10 +62,16 @@ public sealed class NeutralConfig
     /// absent key at its native default. Never null.
     public WireFormat Wire { get; }
 
+    /// The C# port's generated-code directory (`csharp.outDir` in config.json), resolved
+    /// against the directory holding `.metaobjects/` so it reads the same from any working
+    /// directory. Null when the key is absent. `--out` on the command line wins over it.
+    public string? OutDir { get; }
+
     private NeutralConfig(
         IReadOnlyList<IReadOnlyDictionary<string, string>> sources, IReadOnlyList<string> libraries,
-        PhysicalNaming naming, WireFormat wire)
+        PhysicalNaming naming, WireFormat wire, string? outDir)
     {
+        OutDir = outDir;
         Sources = sources;
         Libraries = libraries;
         Naming = naming;
@@ -220,8 +228,34 @@ public sealed class NeutralConfig
 
             // Unknown top-level keys (including `scope`/`migrate`) are IGNORED by
             // design — see the file header.
-            return new NeutralConfig(specs, libraries, new PhysicalNaming(columns, tables), ReadWire(root, path));
+            return new NeutralConfig(specs, libraries, new PhysicalNaming(columns, tables), ReadWire(root, path),
+                ReadOutDir(root, path, configDir));
         }
+    }
+
+    /// The `csharp` block: the one C#-scoped setting, `outDir`, where `dotnet meta gen` writes
+    /// and `dotnet meta verify` diffs. The other ports ignore the block, as they ignore any key
+    /// they do not own. An unknown key, a non-string or empty `outDir`, or a non-object block is
+    /// refused, the same rule as `naming`.
+    private static string? ReadOutDir(JsonElement root, string path, string configDir)
+    {
+        if (!root.TryGetProperty("csharp", out var block)) return null;
+        if (block.ValueKind != JsonValueKind.Object)
+            throw new MetaModelException($"{path}: \"csharp\" must be an object", ErrorCode.ERR_BAD_ATTR_VALUE);
+
+        string? outDir = null;
+        foreach (var p in block.EnumerateObject())
+        {
+            if (p.Name != "outDir")
+                throw new MetaModelException(
+                    $"{path}: \"csharp\" has an unknown key \"{p.Name}\" (expected \"outDir\")",
+                    ErrorCode.ERR_BAD_ATTR_VALUE);
+            if (p.Value.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(p.Value.GetString()))
+                throw new MetaModelException(
+                    $"{path}: \"csharp.outDir\" must be a non-empty string", ErrorCode.ERR_BAD_ATTR_VALUE);
+            outDir = Path.GetFullPath(p.Value.GetString()!, Path.GetFullPath(configDir));
+        }
+        return outDir;
     }
 
     /// The `wire` block (ADR-0019 Amendment 2): an unknown key, an unknown value, or a

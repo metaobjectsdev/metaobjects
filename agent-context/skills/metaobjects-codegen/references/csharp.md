@@ -91,7 +91,7 @@ build output (`codegen/bin/`, `codegen/obj/`) in `.gitignore`.
 
 A bare `dotnet meta verify` runs `--templates` (the FR-004 prompt/template drift
 gate, see the prompts reference) and `--codegen` (the codegen-output drift gate;
-skipped with a note unless `--out <dir>` and `codegen/Generators.cs` are present).
+skipped with a note unless an output directory, `csharp.outDir` in `.metaobjects/config.json` or `--out <dir>`, and `codegen/Generators.cs` are present).
 **Schema migration + live-DB drift are NOT `dotnet meta`** — they run through the
 Node `meta` tool (see the migration reference).
 

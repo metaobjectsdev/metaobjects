@@ -27,7 +27,7 @@ building block. Every generator is a reference helper an adopter selects, ejects
   (`server/typescript/packages/codegen-ts/src/db-emitting.ts`).
 - **The drift gate per port** — regenerate into a temp tree and diff: `meta verify --codegen`
   (TS); `mvn metaobjects:verify` (Java/Kotlin; `codegen` is the default mode); `dotnet meta
-  verify --codegen` (C#; bare `verify` runs it when `--out` and `codegen/Generators.cs` are present);
+  verify --codegen` (C#; bare `verify` runs it when `csharp.outDir` (or `--out`) and `codegen/Generators.cs` are present);
   `metaobjects verify` (Python; `--codegen` is part of the default). Source: `docs/features/cli.md`.
 - **Generated code compiles**: a codegen-compile gate compiles every port's emitted model tier
   with its real compiler in CI (`docs/CONFORMANCE.md`, "Split coverage").

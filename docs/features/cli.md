@@ -68,7 +68,8 @@ Rules of the contract:
   note, never failed: Node `meta` needs a `metaobjects.config.ts` for codegen (a config that
   exists but fails to load is not a missing config: it exits 2 with the load error);
   `metaobjects verify` needs a `metaobjects.config.yaml` or `--prompts <dir>` for
-  templates; `dotnet meta verify` needs `--out <dir>` and `codegen/Generators.cs`
+  templates; `dotnet meta verify` needs an output directory (`csharp.outDir` in
+  `.metaobjects/config.json`, or `--out <dir>`) and `codegen/Generators.cs`
   for codegen; `mvn metaobjects:verify` needs `-Dmeta.verify.templateRoot` for
   templates. Naming a subverb still runs only the gates named. Bare `verify` also
   prints a one-line note advertising the explicit subverbs. *Before this, a bare
@@ -212,8 +213,9 @@ meta`** port likewise ships the codegen-side subverbs: `verify --templates` (its
 historical template/prompt drift gate), `verify
 --codegen` (regenerate the configured generators to a temp dir and diff against
 the committed `--out` tree, never touching it), and a **clean `--db` rejection
-(exit 2)** — bare `dotnet meta verify` runs `--templates` and, when `--out` and
-`codegen/Generators.cs` are present, `--codegen` (C# has no config-resolved output dir, so a bare run without `--out <dir>` skips the codegen gate with a note — pass `--out` in CI), and prints the subverb note. The **Java/Kotlin `mvn metaobjects:verify`** port expresses the same vocabulary as a
+(exit 2)** — bare `dotnet meta verify` runs `--templates` and, when an output
+directory (`csharp.outDir` in `.metaobjects/config.json`, which `gen` also writes to; `--out <dir>` wins) and
+`codegen/Generators.cs` are present, `--codegen` (a bare run with no output directory skips the codegen gate with a note that names the setting), and prints the subverb note. The **Java/Kotlin `mvn metaobjects:verify`** port expresses the same vocabulary as a
 `mode` parameter (Maven goals are parameter-driven, not flag-driven). With `mode` unset the goal
 runs both gates below, skipping the template gate with a note when no `templateRoot` is set.
 `-Dmeta.verify.mode=codegen`

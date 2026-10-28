@@ -74,4 +74,50 @@ public sealed class NeutralConfigTests
             Directory.Delete(dir, recursive: true);
         }
     }
+
+    [Fact]
+    public void CSharpOutDir_IsResolvedAgainstTheDirectoryHoldingTheConfig()
+    {
+        var dir = WriteConfig("""{ "schema_version": 1, "csharp": { "outDir": "src/Generated" } }""");
+        try
+        {
+            Assert.Equal(Path.GetFullPath(Path.Combine(dir, "src", "Generated")), NeutralConfig.Read(dir)!.OutDir);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void CSharpOutDir_IsNullWhenAbsent()
+    {
+        var dir = WriteConfig("""{ "schema_version": 1 }""");
+        try
+        {
+            Assert.Null(NeutralConfig.Read(dir)!.OutDir);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Theory]
+    [InlineData("""{ "schema_version": 1, "csharp": "src" }""")]
+    [InlineData("""{ "schema_version": 1, "csharp": { "outDir": "" } }""")]
+    [InlineData("""{ "schema_version": 1, "csharp": { "outDir": 3 } }""")]
+    [InlineData("""{ "schema_version": 1, "csharp": { "outdir": "x" } }""")]
+    public void CSharpBlock_WrongShaped_Raises(string json)
+    {
+        var dir = WriteConfig(json);
+        try
+        {
+            Assert.ThrowsAny<MetaModelException>(() => NeutralConfig.Read(dir));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
 }

@@ -181,8 +181,19 @@ dotnet meta verify ./metaobjects --codegen --out ./Generated
 is given does not exist. A bare `dotnet meta verify ./metaobjects` runs that templates gate
 against `prompts/` when it exists, else `templates/`, and fails the same way when neither
 exists. It also runs the codegen gate when `--out <dir>` and `codegen/Generators.cs` are
-present, and skips it with a note otherwise (C# has no config-resolved output directory, so
-pass `--out` in CI); name both subverbs to require both.
+present, and skips it with a note otherwise; name both subverbs to require both.
+
+The output directory is a project setting, so `gen` and `verify` cannot disagree about it.
+Declare it once in `.metaobjects/config.json`, relative to the directory holding `.metaobjects/`:
+
+```json
+{ "schema_version": 1, "csharp": { "outDir": "Generated" } }
+```
+
+With that, `dotnet meta gen` writes there, `dotnet meta verify --codegen` diffs against it, and
+a plain `dotnet meta verify` in CI runs the codegen gate with no flags. `--out <dir>` still works
+and wins over the config. A project that sets neither gets the skip note, which names the setting.
+The other ports ignore the `csharp` block.
 
 `dotnet meta gen --list` is the catalog, and it shows what each generator requires. `routes`
 requires `entity`, `db-context` and `filter-allowlist`, because the handlers it emits
