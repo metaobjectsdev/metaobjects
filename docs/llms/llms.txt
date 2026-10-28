@@ -50,7 +50,7 @@ This `llms.txt` is the short index; the deep, version-matched how-to is the scaf
 
 ## The six pillars
 
-MetaObjects pillars are capabilities of the same metadata spine, not separate products. Each carries a maturity label — what ships, in which ports, at what stability:
+MetaObjects pillars are capabilities of one metadata model, not separate products. Each carries a maturity label — what ships, in which ports, at what stability:
 
 - **Codegen, Runtime metadata, Drift detection, Prompt construction** — shipped in all five ports (TS / Java / Kotlin / C# / Python), gated by the cross-port conformance corpora, though not uniformly deep: see the [capability matrix](https://github.com/metaobjectsdev/metaobjects#capability-matrix) for per-port coverage, and note the field ranking is drift > codegen > prompts > runtime metadata (the youngest of the four).
 - **Requirements and testing** — vocabulary, the `verify` checks and a `requirement-tests` generator in all five ports; the authoring lint is TypeScript-only; dogfooded on maintainer-owned projects, no outside adopter yet.
@@ -105,7 +105,7 @@ MetaObjects deliberately does **not** ship one universal binary. Schema operatio
 - `server/csharp/` — C# implementation (`MetaObjects`, `MetaObjects.Render`, `MetaObjects.Codegen`)
 - `server/python/` — Python implementation (`metaobjects`, `ObjectManager`)
 - `client/web/` — universal web client TypeScript packages consumed by all backends (`@metaobjectsdev/runtime-web`, `@metaobjectsdev/react`, `@metaobjectsdev/tanstack`)
-- `examples/advanced-modeling/` — a worked, runnable model exercising projections, value objects, TPH and prompt payloads on one spine (the non-toy reference for authoring)
+- `examples/advanced-modeling/` — a worked, runnable model exercising projections, value objects, TPH and prompt payloads together (the non-toy reference for authoring)
 
 ## TypeScript packages (npm)
 

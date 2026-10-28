@@ -11,6 +11,11 @@ public sealed class InitWithDocsTests : IDisposable
     private readonly string _root = Path.Combine(Path.GetTempPath(), "meta-init-docs-" + Guid.NewGuid().ToString("N"));
     private string List => File.ReadAllText(Path.Combine(_root, "codegen", "Generators.cs"));
 
+    private IEnumerable<string> ActiveEntries => List.Split('\n')
+        .Select(l => l.Trim())
+        .SkipWhile(l => !l.StartsWith("public static IReadOnlyList<IGenerator> All", StringComparison.Ordinal))
+        .Where(l => l.StartsWith("new ", StringComparison.Ordinal));
+
     public InitWithDocsTests() => Directory.CreateDirectory(_root);
     public void Dispose() { try { Directory.Delete(_root, recursive: true); } catch { } }
 
@@ -19,8 +24,7 @@ public sealed class InitWithDocsTests : IDisposable
     {
         var lines = InitCommand.Run(_root, withDocs: true);
 
-        Assert.Contains("new MetaObjects.Codegen.Generators.ApiDocsGenerator { OutDir = \"docs/csharp\"", List);
-        Assert.DoesNotContain("//   new MetaObjects.Codegen.Generators.ApiDocsGenerator { OutDir", List.Replace("//   new MetaObjects.Codegen.Generators.ApiDocsGenerator { OutDir = \"docs/csharp\", ProjectName = \"shop\" },", ""));
+        Assert.Contains(ActiveEntries, e => e.StartsWith("new MetaObjects.Codegen.Generators.ApiDocsGenerator { OutDir = \"docs/csharp\"", StringComparison.Ordinal));
         Assert.Contains("csharp", string.Join("\n", lines));
         Assert.Contains("outDir", string.Join("\n", lines));
     }
@@ -31,6 +35,7 @@ public sealed class InitWithDocsTests : IDisposable
         InitCommand.Run(_root);
 
         Assert.Equal(CodegenScaffold.GeneratorsCs([]), List);
+        Assert.Empty(ActiveEntries);
     }
 
     [Fact]
