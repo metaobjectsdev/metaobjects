@@ -35,6 +35,7 @@ describe("api contract secret fields (#484) — GENERATED routes lane", () => {
         server = await startGeneratedSecretFieldsServer(pg.connectionUri, META_PATH);
         await server.applySeed(SEED);
         await runScenario(scenario, server);
+        if (scenario.name === "write-ignores-excluded") await expectDeniedColumnsUntouched(server);
       } finally {
         if (server) await server.close();
         await pg.stop();
@@ -42,9 +43,8 @@ describe("api contract secret fields (#484) — GENERATED routes lane", () => {
     }, { timeout: 60_000 });
   }
 
-  // The credential's write path cannot be observed over HTTP (a credential is never read), so
-  // pin it on the emitted source: both marked fields are denied on write, only the credential
-  // is hidden on read.
+  // Supplements the stored-row read-back above: both marked fields are denied on write, only the
+  // credential is hidden on read.
   test("generated route names the denied and hidden columns", async () => {
     const pg = await startPostgres();
     let server: GeneratedSecretFieldsServerHandle | null = null;
@@ -74,4 +74,19 @@ async function runScenario(scenario: ApiScenario, server: GeneratedSecretFieldsS
     }
     assertResponse(scenario.name, req, res.status, body);
   }
+}
+
+/** A credential is never read over HTTP, so prove the write was ignored on the stored rows. */
+async function expectDeniedColumnsUntouched(server: GeneratedSecretFieldsServerHandle): Promise<void> {
+  const stored = await server.storedRows();
+  for (const seeded of SEED.rows) {
+    expect(stored.find((r) => r.id === seeded.id)).toEqual({
+      id: seeded.id,
+      tokenHash: seeded.tokenHash,
+      pinHash: seeded.pinHash,
+    });
+  }
+  const created = stored.filter((r) => !SEED.rows.some((s) => s.id === r.id));
+  expect(created.length).toBeGreaterThan(0);
+  for (const row of created) expect(row).toMatchObject({ tokenHash: null, pinHash: null });
 }

@@ -91,4 +91,43 @@ public class SpringSecretFieldsCodegenTest extends SharedRegistryTestBase {
         assertFalse(controller.contains("redact"));
         assertFalse(controller.contains("dto = new AccountDto("));
     }
+
+    private static final String PROJECTION_HEAD =
+        "{ \"object.projection\": { \"name\": \"AccountView\", \"children\": [\n"
+        + "  { \"source.rdb\": { \"@kind\": \"view\", \"@view\": \"v_account\" } },\n"
+        + "  { \"field.long\": { \"name\": \"id\", \"extends\": \"Account.id\" } },\n"
+        + "  { \"field.string\": { \"name\": \"name\", \"extends\": \"Account.name\" } },\n";
+    private static final String PROJECTION_TAIL =
+        "  { \"identity.primary\": { \"name\": \"pk\", \"extends\": \"Account.pk\" } }\n"
+        + "] } }";
+
+    /** MARKED plus an AccountView projection carrying {@code extra} (a field declaration). */
+    private static String projection(String extra) {
+        String body = PROJECTION_HEAD + "  " + extra + "\n" + PROJECTION_TAIL;
+        int end = MARKED.lastIndexOf("] }\n");
+        int entityEnd = MARKED.lastIndexOf("} }", end);
+        return MARKED.substring(0, entityEnd + 3) + ",\n" + body + "\n" + MARKED.substring(entityEnd + 3);
+    }
+
+    @Test
+    public void projectionInheritingACredentialHidesItOnListAndGet() throws Exception {
+        String controller = generate("proj", projection(
+            "{ \"field.string\": { \"name\": \"pinHash\", \"extends\": \"Account.pinHash\" } },"),
+            "AccountViewController.java", false);
+        assertTrue("list hides the credential; saw:\n" + controller,
+            controller.contains("redactAll(rows, \"pinHash\")"));
+        assertTrue("get hides the credential", controller.contains("redact(r, \"pinHash\")"));
+        assertTrue("the mapper is injected only for this case",
+            controller.contains("ObjectMapper objectMapper) {"));
+    }
+
+    @Test
+    public void projectionWithoutACredentialIsUnchanged() throws Exception {
+        String controller = generate("projplain", projection(
+            "{ \"field.string\": { \"name\": \"tokenHash\", \"extends\": \"Account.tokenHash\" } },"),
+            "AccountViewController.java", false);
+        assertFalse(controller.contains("redact"));
+        assertFalse(controller.contains("ObjectMapper"));
+        assertTrue(controller.contains("AccountViewController(AccountViewRepository repository) {"));
+    }
 }

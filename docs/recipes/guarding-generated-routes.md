@@ -37,6 +37,7 @@ Put middleware on the mount path **with a trailing `/*`**, before calling the ge
 register function:
 
 ```ts
+import { Note } from "./generated/Note.js";
 import { registerNoteRoutes } from "./generated/Note.routes.hono.js";
 
 app.use(`/api${Note.$path}/*`, requireAuth);   // `${apiPrefix}${Entity.$path}/*`

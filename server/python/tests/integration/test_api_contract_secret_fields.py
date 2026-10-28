@@ -68,3 +68,24 @@ def test_secret_fields_scenario(scenario_name: str, scenario: dict[str, Any]) ->
             status=response.status_code,
             body=_parse(response.text),
         )
+
+
+def test_denied_columns_never_reach_the_stored_rows() -> None:
+    """Behavioural proof for ``pinHash`` too: it is never readable over HTTP, so read the
+    rows the generated router left in the repository after the write scenarios ran."""
+    _REPO.reset()
+    _REPO.seed(_SEED_ROWS)
+    for _name, scenario in _SCENARIOS:
+        if scenario["name"] != "write-ignores-excluded":
+            continue
+        for req in scenario["requests"]:
+            _CLIENT.request(str(req["method"]).upper(), str(req["path"]), json=req.get("body"))
+    stored = {r["id"]: r for r in _REPO._rows}
+    for seed in _SEED_ROWS:
+        row = stored[seed["id"]]
+        assert row["pinHash"] == seed["pinHash"], f"pinHash written on row {seed['id']}"
+        assert row["tokenHash"] == seed["tokenHash"], f"tokenHash written on row {seed['id']}"
+    created = [r for r in _REPO._rows if r["id"] not in {s["id"] for s in _SEED_ROWS}]
+    assert [r["name"] for r in created] == ["Grace Hopper"]
+    assert created[0].get("pinHash") is None and created[0].get("tokenHash") is None
+    assert {r["name"] for r in _REPO._rows if r["id"] in (1, 2)} == {"Ada L. (probe 2)", "Alan T. (probe)"}

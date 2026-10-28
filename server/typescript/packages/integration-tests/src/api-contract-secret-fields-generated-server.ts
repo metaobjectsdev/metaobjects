@@ -27,6 +27,8 @@ export interface GeneratedSecretFieldsServerHandle {
   /** The generated source of Account.routes.ts, for codegen assertions. */
   routesSource: string;
   applySeed(seed: SecretFieldsSeed): Promise<void>;
+  /** The stored accounts, read straight from the table (the HTTP API never returns a credential). */
+  storedRows(): Promise<Array<{ id: number; tokenHash: string | null; pinHash: string | null }>>;
   close(): Promise<void>;
 }
 
@@ -104,6 +106,12 @@ export const db = drizzle(pool);
         );
       // The seed names ids explicitly; keep the sequence ahead of them for the POST scenarios.
       await executeSql(connectionUri, `SELECT setval(pg_get_serial_sequence('accounts','id'), (SELECT MAX("id") FROM "accounts"));`);
+    },
+    storedRows: async () => {
+      const res = await dbMod.pool.query<{ id: number; token_hash: string | null; pin_hash: string | null }>(
+        `SELECT "id", "token_hash", "pin_hash" FROM "accounts" ORDER BY "id"`,
+      );
+      return res.rows.map((r) => ({ id: Number(r.id), tokenHash: r.token_hash, pinHash: r.pin_hash }));
     },
     close: async () => {
       await fastify.close();

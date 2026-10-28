@@ -675,19 +675,33 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         // Repository wiring — constructor injection, the read-only seam only. No
         // ObjectMapper and no Validator: nothing here binds a request body, so injecting
         // either would make a consumer wire beans this controller can never use.
-        src.append("    private final ").append(repoName).append(" repository;\n\n");
-        src.append("    public ").append(controllerName).append("(").append(repoName)
-           .append(" repository) {\n");
+        // #484: a projection field that inherits a credential (view.password) is hidden from its
+        // rows. Redaction needs the ObjectMapper, so it is injected ONLY then; otherwise the
+        // constructor and the whole controller stay as they were.
+        List<String> hidden = com.metaobjects.generator.util.GeneratorUtil.isReport(entity)
+            ? List.of() : SpringGeneratorSupport.credentialNames(entity);
+        src.append("    private final ").append(repoName).append(" repository;\n");
+        if (hidden.isEmpty()) {
+            src.append("\n");
+            src.append("    public ").append(controllerName).append("(").append(repoName)
+               .append(" repository) {\n");
+        } else {
+            src.append("    private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;\n\n");
+            src.append("    public ").append(controllerName).append("(").append(repoName)
+               .append(" repository, com.fasterxml.jackson.databind.ObjectMapper objectMapper) {\n");
+            src.append("        this.objectMapper = objectMapper;\n");
+        }
         src.append("        this.repository = repository;\n");
         src.append("    }\n\n");
+        if (!hidden.isEmpty()) appendRedactHelpers(src);
 
         if (com.metaobjects.generator.util.GeneratorUtil.isReport(entity)) {
             appendReportListHandler(src, shortName, dtoName, repoName, reportMaxRows, reportExport, routeBase);
         } else {
-            appendListHandler(src, shortName, dtoName, repoName, List.of());
+            appendListHandler(src, shortName, dtoName, repoName, hidden);
         }
         if (hasItem) {
-            appendGetByIdHandler(src, pkType, List.of());
+            appendGetByIdHandler(src, pkType, hidden);
         }
 
         src.append("    @PostMapping\n");

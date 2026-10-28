@@ -52,6 +52,7 @@ public final class GeneratedAccountControllerHarness implements AutoCloseable {
     private final Validator validator = Validation.buildDefaultValidatorFactory().getValidator();
 
     private TomcatHost host;
+    private Object repo;
 
     /**
      * @param corpusRoot {@code fixtures/api-contract-conformance/secret-fields}
@@ -97,7 +98,8 @@ public final class GeneratedAccountControllerHarness implements AutoCloseable {
     public void reset() throws Exception {
         List<Object> dtos = new ArrayList<>();
         for (Map<String, Object> row : seedRows) dtos.add(mapper.convertValue(row, dtoClass));
-        Object controller = controllerCtor.newInstance(repoCtor.newInstance(dtos), mapper, validator);
+        this.repo = repoCtor.newInstance(dtos);
+        Object controller = controllerCtor.newInstance(repo, mapper, validator);
         if (host != null) host.close();
         this.host = TomcatHost.start(mapper, controller);
     }
@@ -106,6 +108,27 @@ public final class GeneratedAccountControllerHarness implements AutoCloseable {
         TomcatHost.Response res = host.exchange(
             method, path, jsonBody == null ? null : mapper.writeValueAsString(jsonBody));
         return new Response(res.status(), res.body());
+    }
+
+    /**
+     * The rows as the repository holds them now, read straight from the in-memory seam (not over
+     * HTTP, which hides {@code pinHash}): one map per row with every DTO component by name.
+     */
+    public List<Map<String, Object>> storedRows() throws Exception {
+        java.lang.reflect.Method list = null;
+        for (java.lang.reflect.Method m : repo.getClass().getMethods()) {
+            if (m.getName().equals("list") && m.getParameterCount() == 4) list = m;
+        }
+        List<?> rows = (List<?>) list.invoke(repo, 1000, 0, null, null);
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Object row : rows) {
+            Map<String, Object> m = new java.util.LinkedHashMap<>();
+            for (java.lang.reflect.RecordComponent c : dtoClass.getRecordComponents()) {
+                m.put(c.getName(), c.getAccessor().invoke(row));
+            }
+            out.add(m);
+        }
+        return out;
     }
 
     public Object parseBody(String body) {

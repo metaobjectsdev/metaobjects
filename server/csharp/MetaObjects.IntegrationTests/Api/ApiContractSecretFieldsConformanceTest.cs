@@ -23,6 +23,41 @@ public sealed class ApiContractSecretFieldsConformanceTest
         await using var server = await SecretFieldsGeneratedServerFactory.StartAsync(pg);
         await server.ApplySeedAsync();
         await RunAsync(scenario, server.BaseUrl);
+        await AssertStoredSecretsUntouchedAsync(pg.ConnectionString);
+    }
+
+    // Behavioural proof of write-denial, read straight from the database (not through the API):
+    // every seeded row keeps its seeded tokenHash and pinHash, and a row a scenario created holds
+    // null in both, so neither a forged value nor a present null ever reached a denied column.
+    private static async Task AssertStoredSecretsUntouchedAsync(string connString)
+    {
+        var seed = JsonNode.Parse(File.ReadAllText(ApiContractCorpusPaths.SecretFieldsSeedFile))!["rows"]!.AsArray()
+            .ToDictionary(r => r!["id"]!.GetValue<long>(), r => r!.AsObject());
+
+        await using var c = new Npgsql.NpgsqlConnection(connString);
+        await c.OpenAsync();
+        await using var cmd = c.CreateCommand();
+        cmd.CommandText = "SELECT \"id\", \"tokenHash\", \"pinHash\" FROM \"accounts\" ORDER BY \"id\"";
+        await using var reader = await cmd.ExecuteReaderAsync();
+        var seen = new HashSet<long>();
+        while (await reader.ReadAsync())
+        {
+            long id = reader.GetInt64(0);
+            string? token = reader.IsDBNull(1) ? null : reader.GetString(1);
+            string? pin = reader.IsDBNull(2) ? null : reader.GetString(2);
+            seen.Add(id);
+            if (seed.TryGetValue(id, out var row))
+            {
+                Assert.Equal(row["tokenHash"]!.GetValue<string>(), token);
+                Assert.Equal(row["pinHash"]!.GetValue<string>(), pin);
+            }
+            else
+            {
+                Assert.Null(token);
+                Assert.Null(pin);
+            }
+        }
+        Assert.True(seed.Keys.All(seen.Contains), "a seeded row went missing");
     }
 
     private static async Task RunAsync(ApiScenario scenario, string baseUrl)

@@ -33,6 +33,23 @@ internal class SecretFieldsGeneratedApiContractConformanceTest {
                 val parsed = HARNESS.parseBody(res.body)
                 ApiContractAssertions.assertResponse(scenario.name, req, res.status, parsed)
             }
+            assertDeniedColumnsUntouched(scenario.name)
+        }
+    }
+
+    /**
+     * The write side of #484, observed on the STORED row (the repository), not on the response: a seeded row's
+     * `tokenHash` and `pinHash` are exactly as seeded after every forged create / PATCH / PUT / present-null, and
+     * a row the scenario created holds null in both. This is the only place `pinHash`'s write path is observable.
+     */
+    private fun assertDeniedColumnsUntouched(scenarioName: String) {
+        val seeded = SEED.mapIndexed { i, r -> (i + 1).toLong() to r }.toMap()
+        for (row in HARNESS.storedRows()) {
+            val seed = seeded[row["id"] as Long]
+            for (col in listOf("tokenHash", "pinHash")) {
+                val expected = seed?.get(col)
+                kotlin.test.assertEquals(expected, row[col], "$scenarioName: stored $col of row ${row["id"]}")
+            }
         }
     }
 

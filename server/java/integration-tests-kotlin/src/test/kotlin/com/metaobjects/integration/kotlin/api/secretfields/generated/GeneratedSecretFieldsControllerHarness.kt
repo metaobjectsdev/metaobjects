@@ -45,6 +45,7 @@ class GeneratedSecretFieldsControllerHarness(
     private val accountTable: Table
     private val dbSeq = AtomicInteger(0)
     private var host: TomcatHost? = null
+    private var db: Database? = null
 
     init {
         val metaJson = corpusRoot.resolve("secret-fields/meta.json")
@@ -105,6 +106,7 @@ class GeneratedSecretFieldsControllerHarness(
     fun reset() {
         val dbName = "secret_fields_${dbSeq.incrementAndGet()}"
         val db = Database.connect("jdbc:h2:mem:$dbName;DB_CLOSE_DELAY=-1;MODE=PostgreSQL", driver = "org.h2.Driver")
+        this.db = db
         transaction(db) {
             SchemaUtils.create(accountTable)
             // Ids are assigned by the identity column in seed order (1, 2), so a later POST does not collide.
@@ -119,6 +121,20 @@ class GeneratedSecretFieldsControllerHarness(
             .newInstance(mapper, jakarta.validation.Validation.buildDefaultValidatorFactory().validator)
         host?.close()
         host = TomcatHost.start(mapper, controller)
+    }
+
+    /** The stored rows as the repository sees them (raw SQL, so the generated HTTP boundary is bypassed). */
+    fun storedRows(): List<Map<String, Any?>> {
+        val database = db ?: error("reset() must be called before storedRows()")
+        return transaction(database) {
+            val out = mutableListOf<Map<String, Any?>>()
+            exec("SELECT id, \"tokenHash\", \"pinHash\" FROM accounts ORDER BY id") { rs ->
+                while (rs.next()) {
+                    out += mapOf("id" to rs.getLong(1), "tokenHash" to rs.getString(2), "pinHash" to rs.getString(3))
+                }
+            }
+            out
+        }
     }
 
     fun exchange(method: String, path: String, jsonBody: Any?): Response {

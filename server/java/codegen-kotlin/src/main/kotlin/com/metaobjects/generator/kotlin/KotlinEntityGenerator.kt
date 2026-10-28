@@ -278,11 +278,7 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             // real models have. (A missing `Long` silently binds 0, which is how an increment key
             // hid it; a `UUID` cannot.) Same relaxation as a derived field on a write-through
             // entity: nullable, default null, no @field:NotNull. Rows read back always carry it.
-            // #484: a credential is never the caller's to send and is never returned, so it is nullable +
-            // defaulted like a server-owned field, and its property drops a null on the wire (the read
-            // routes pass null, which must read as an ABSENT key, not `"pin": null`).
-            val credential = KotlinGenUtil.isCredentialField(field)
-            val serverOwned = KotlinGenUtil.isServerOwnedOnCreate(field, obj) || credential
+            val serverOwned = KotlinGenUtil.isServerOwnedOnCreate(field, obj)
             val nullable = tphBase || derivedReadOnly || serverOwned || KotlinGenUtil.isNullableShapeProperty(field)
             val propType = if (nullable) baseType.copy(nullable = true) else baseType
             val propName = field.name
@@ -310,14 +306,6 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
                 if (field is ObjectField || (field is MapField && readObjectRef(field) != null)) {
                     propBuilder.addAnnotation(constraint(VALID))
                 }
-            }
-            if (credential) {
-                propBuilder.addAnnotation(
-                    AnnotationSpec.builder(ClassName("com.fasterxml.jackson.annotation", "JsonInclude"))
-                        .useSiteTarget(AnnotationSpec.UseSiteTarget.GET)
-                        .addMember("%T.Include.NON_NULL", ClassName("com.fasterxml.jackson.annotation", "JsonInclude"))
-                        .build(),
-                )
             }
             decimalWireAnnotations(field, pkg, declaredRange = obj.subType == MetaObject.SUBTYPE_VALUE)
                 .forEach { propBuilder.addAnnotation(it) }

@@ -76,6 +76,25 @@ final class SecretFieldsGeneratedApiContractConformanceTest {
                 Object parsed = HARNESS.parseBody(res.body());
                 ApiContractAssertions.assertResponse(scenario.name(), req, res.status(), parsed);
             }
+            assertDeniedColumnsNeverWritten(scenario.name());
         });
+    }
+
+    /**
+     * The stored rows, read from the repository seam: a seeded row still holds its seed
+     * {@code tokenHash} and {@code pinHash} (neither was writable), and a row the scenario created
+     * holds null in both. This is what pins {@code pinHash}'s write path, which no response shows.
+     */
+    private static void assertDeniedColumnsNeverWritten(String scenario) throws Exception {
+        Map<Object, Map<String, Object>> seeded = new java.util.HashMap<>();
+        for (Map<String, Object> row : seedRows()) seeded.put(((Number) row.get("id")).longValue(), row);
+        for (Map<String, Object> stored : HARNESS.storedRows()) {
+            Map<String, Object> seed = seeded.get(stored.get("id"));
+            for (String col : List.of("tokenHash", "pinHash")) {
+                Object want = seed == null ? null : seed.get(col);
+                org.junit.jupiter.api.Assertions.assertEquals(want, stored.get(col),
+                    scenario + ": stored " + col + " of row " + stored.get("id") + " must be untouched");
+            }
+        }
     }
 }
