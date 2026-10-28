@@ -166,6 +166,43 @@ describe("buildExpectedSchema — @autoSet timestamp default", () => {
 });
 
 // ---------------------------------------------------------------------------
+// `@default: "now"` is the current time, not the string 'now'.
+//
+// Regression: the bare token was not an expression pattern, so the column got the literal
+// `DEFAULT 'now'`. Postgres converts that literal to a timestamp ONCE, when the table is
+// created, so every row defaulted to the table's creation time. Codegen's column mapper
+// always read `now` as the current time (`.defaultNow()`), so the database disagreed with the
+// generated code. It now lowers to the same `now()` expression `@autoSet` uses.
+// ---------------------------------------------------------------------------
+
+describe("buildExpectedSchema — @default \"now\"", () => {
+  async function stampDefault(value: string, dialect?: "postgres" | "sqlite") {
+    const doc = { "metadata.root": { package: "acme", children: [
+      { "object.entity": { name: "Event", children: [
+        { "source.rdb": {} },
+        { "field.long": { name: "id" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } },
+        { "field.timestamp": { name: "stampedAt", "@required": true, "@default": value } },
+      ] } },
+    ] } };
+    const { root, errors } = await new MetaDataLoader().load([new InMemoryStringSource(JSON.stringify(doc))]);
+    expect(errors).toHaveLength(0);
+    const cols = buildExpectedSchema(root, dialect === undefined ? {} : { dialect }).tables[0]?.columns ?? [];
+    return cols.find((c) => c.name === "stamped_at")?.default;
+  }
+
+  test("lowers to the now() expression, in any case", async () => {
+    expect(await stampDefault("now")).toEqual({ kind: "expr", value: "now()" });
+    expect(await stampDefault("NOW")).toEqual({ kind: "expr", value: "now()" });
+  });
+
+  test("is the same default @autoSet gives, on Postgres and on SQLite", async () => {
+    expect(await stampDefault("now", "postgres")).toEqual({ kind: "expr", value: "now()" });
+    expect(await stampDefault("now", "sqlite")).toEqual(await stampDefault("now()", "sqlite"));
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Native SQL array columns are DERIVED from `isArray` (dbColumnType slim-and-derive
 // Phase 1): the array-ness already lives on the field's `isArray` axis, so the DDL
 // derives `text[]` / `uuid[]` directly — no `@dbColumnType` escape hatch. The

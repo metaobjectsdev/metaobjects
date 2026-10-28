@@ -54,8 +54,8 @@ export {
   stableNameIndex,
 } from "./catalog-gates.js";
 
-export type { MetaobjectsGenConfig, NormalizedMetaobjectsGenConfig, ResolvedGenConfig, Dialect, ExtStyle, ColumnNamingStrategy, MetaDataTypeProvider, GeneratorSpec, ApiSurface, VerifyConfig } from "./metaobjects-config.js";
-export { defineConfig, normalizeConfig, resolveGenerators, removedGeneratorMessage } from "./metaobjects-config.js";
+export type { MetaobjectsGenConfig, NormalizedMetaobjectsGenConfig, ResolvedGenConfig, Dialect, ExtStyle, ColumnNamingStrategy, MetaDataTypeProvider, GeneratorSpec, ApiSurface, VerifyConfig, Orm } from "./metaobjects-config.js";
+export { defineConfig, normalizeConfig, resolveGenerators, removedGeneratorMessage, resolveOrm, ORMS, ORM_DRIZZLE, ORM_PRISMA, DRIZZLE_BOUND_GENERATORS } from "./metaobjects-config.js";
 // The dialect every generator falls back to when a config declares none, and where a
 // project's documentation goes when it has not chosen (`targets.docs`).
 export { DEFAULT_DIALECT, DEFAULT_DOCS_DIR } from "./metaobjects-config.js";
@@ -452,6 +452,46 @@ export {
   ERR_CUBE_UNSUPPORTED_DIALECT,
 } from "./cube/cube-errors.js";
 export type { CubeErrorCode } from "./cube/cube-errors.js";
+
+// #479 — the Prisma schema. `prismaSchemaFile()` is the reference generator; the two pure stages
+// it wires are public so an owned (ejected) copy imports only this package and keeps only the
+// parts it owns: which objects get a model, the file layout and the blocks above the models.
+export {
+  prismaSchemaFile,
+  prismaChecksFileName,
+  DEFAULT_PRISMA_SCHEMA_FILE,
+  PRISMA_SCHEMA_GENERATOR_NAME,
+} from "./generators/prisma-schema-file.js";
+export type { PrismaSchemaFileOptions } from "./generators/prisma-schema-file.js";
+export { buildPrismaSchema, prismaString, PRISMA_PROVIDERS } from "./prisma/build-prisma-schema.js";
+export type {
+  BuildPrismaSchemaOptions,
+  PrismaCheckSpec,
+  PrismaFieldSpec,
+  PrismaModelSpec,
+  PrismaProvider,
+  PrismaSchemaSpec,
+} from "./prisma/build-prisma-schema.js";
+export {
+  DEFAULT_PRISMA_CLIENT_GENERATOR,
+  renderChecksSql,
+  renderDatasource,
+  renderModels,
+  renderPrismaSchema,
+} from "./prisma/render-prisma-schema.js";
+export type { RenderPrismaSchemaOptions } from "./prisma/render-prisma-schema.js";
+export {
+  PrismaSchemaError,
+  PRISMA_ERROR_CODES,
+  ERR_PRISMA_NAME_COLLISION,
+  ERR_PRISMA_NO_PRIMARY_KEY,
+  ERR_PRISMA_READ_ONLY_SOURCE,
+  ERR_PRISMA_UNMAPPABLE_RELATION,
+  ERR_PRISMA_UNSUPPORTED_CHECK,
+  ERR_PRISMA_UNSUPPORTED_INDEX,
+  ERR_PRISMA_UNSUPPORTED_PROVIDER,
+} from "./prisma/prisma-errors.js";
+export type { PrismaErrorCode } from "./prisma/prisma-errors.js";
 export type {
   CubeDialect,
   CubeDimensionMeta,

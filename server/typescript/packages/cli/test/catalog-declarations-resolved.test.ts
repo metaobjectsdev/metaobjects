@@ -150,6 +150,11 @@ describe("catalog declarations are resolved against what the generators emit", (
     //                   declares no report. Its files import nothing outside their own pair
     //                   (`requires: []`, no runtime packages), and the reference byte-identical
     //                   test runs it over the report corpus.
+    //   prisma-schema   refuses this fixture: OrderTotals is read from a view, which a Prisma
+    //                   schema cannot create (ERR_PRISMA_READ_ONLY_SOURCE). What it writes is a
+    //                   Prisma schema and SQL, which import nothing, and its entry declares no
+    //                   `requires` or runtime packages; its own tests run it over a model it
+    //                   maps (codegen-ts test/prisma/, cli test/integration/prisma-schema.test.ts).
     const silent = [...emissions.entries()].filter(([, e]) => e.size === 0).map(([n]) => n).sort();
     expect(silent).toEqual([
       "agent-docs",
@@ -158,6 +163,7 @@ describe("catalog declarations are resolved against what the generators emit", (
       "docs",
       "docs-site",
       "metamodel-docs",
+      "prisma-schema",
       "render-helper",
       "report-export",
       "requirements",

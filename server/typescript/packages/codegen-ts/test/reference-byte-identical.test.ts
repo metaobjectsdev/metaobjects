@@ -42,6 +42,8 @@ import {
 import { renderRequirementTest as builtinRenderRequirementTest } from "../src/templates/requirement-test.js";
 import { cubeModel as builtinCubeModel } from "../src/generators/cube-model.js";
 import { cubeModel as refCubeModel } from "../src/reference/cube-model.js";
+import { prismaSchemaFile as builtinPrismaSchema } from "../src/generators/prisma-schema-file.js";
+import { prismaSchemaFile as refPrismaSchema } from "../src/reference/prisma-schema.js";
 import { callableFile as builtinCallable } from "../src/generators/callable-file.js";
 import { callableFile as refCallable } from "../src/reference/callable.js";
 import { traceHelperFile as builtinTraceHelper } from "../src/generators/trace-helper-file.js";
@@ -71,7 +73,7 @@ import {
   readTree as readCubeTree,
 } from "../scripts/gen-cube-model-canonical.js";
 import type { RequirementTestArgs, RequirementTestsOpts } from "../src/index.js";
-import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
+import { MetaDataLoader, InMemoryStringSource, isMetaSource, isReadOnlySource, type MetaObject } from "@metaobjectsdev/metadata";
 import { FileSource } from "@metaobjectsdev/metadata/core";
 
 const FIXTURE_DIR = resolve(import.meta.dir, "fixtures");
@@ -156,6 +158,12 @@ const SHARED_MODEL_OPTS = {
   version: "1.2.3",
   files: [join(FIXTURE_DIR, "trainer-website-shape.json")],
 };
+/** The prisma-schema options for the loop over the entity-shaped fixtures (see its entry). */
+const PRISMA_LOOP_OPTS = {
+  checks: "omit",
+  filter: (o: MetaObject) => !o.children().some((c) => isMetaSource(c) && isReadOnlySource(c)),
+} as const;
+
 const PAIRS: Record<ReferenceGeneratorName, { builtin: () => Generator; ref: () => Generator }> = {
   entity: { builtin: builtinEntity, ref: () => refEntity(PKG) },
   queries: { builtin: builtinQueries, ref: refQueries },
@@ -176,6 +184,13 @@ const PAIRS: Record<ReferenceGeneratorName, { builtin: () => Generator; ref: () 
   // vocabulary), so the pair is compared over two empty sets there; the describe at the end
   // of this file runs both over models that DO, under both Cube dialects.
   "cube-model": { builtin: builtinCubeModel, ref: refCubeModel },
+  // These fixtures run under sqlite, where a CHECK is refused unless omitted, and some declare
+  // views, which a Prisma schema cannot create; the describe at the end of this file runs the
+  // pair over the Prisma fixture under each provider, checks and refusals included.
+  "prisma-schema": {
+    builtin: () => builtinPrismaSchema(PRISMA_LOOP_OPTS),
+    ref: () => refPrismaSchema(PRISMA_LOOP_OPTS),
+  },
   // Both emit nothing over the entity-shaped fixtures above (none declares a callable
   // source or a trace entity); the describe at the end of this file runs each pair over
   // a model that does.
@@ -1547,6 +1562,70 @@ describe("ADR-0034 Amendments 8 and 9 — the requirements and agent-docs refere
       const a = await run(root, builtinMetamodelDocs(opts));
       expect(await run(root, refMetamodelDocs(opts))).toEqual(a);
       expect(paths(a)).toContain(`${opts?.subDir === "" ? "" : `${(opts?.subDir ?? "metamodel").replace(/\/$/, "")}/`}INDEX.md`);
+    }
+  });
+});
+
+// The prisma-schema reference is the same GENERATOR as the built-in: over the Prisma fixture
+// (self relations, a junction with a composite key, a descending index, arrays and validator
+// checks) under each provider and each header form, both write the same files byte for byte,
+// and both refuse the same model with the same message.
+describe("ADR-0034 — the prisma-schema reference is byte-identical to the built-in", () => {
+  const SHOP = join(import.meta.dir, "prisma", "fixtures", "shop", "metaobjects", "meta.shop.json");
+  type PrismaOpts = Parameters<typeof builtinPrismaSchema>[0];
+  const CASES: ReadonlyArray<{ label: string; opts: PrismaOpts; files: string[] }> = [
+    { label: "postgresql", opts: { provider: "postgresql" }, files: ["schema.checks.sql", "schema.prisma"] },
+    { label: "mysql", opts: { provider: "mysql" }, files: ["schema.checks.sql", "schema.prisma"] },
+    { label: "sqlite, checks omitted", opts: { provider: "sqlite", checks: "omit" }, files: ["schema.prisma"] },
+    {
+      label: "a header of the project's own",
+      opts: { provider: "postgresql", header: 'datasource db {\n  provider = "postgresql"\n}' },
+      files: ["schema.checks.sql", "schema.prisma"],
+    },
+    {
+      label: "no header, another file name",
+      opts: { provider: "postgresql", header: false, fileName: "models.prisma" },
+      files: ["models.checks.sql", "models.prisma"],
+    },
+  ];
+
+  for (const c of CASES) {
+    test(c.label, async () => {
+      const root = await loadFiles([SHOP]);
+      const aDir = mkdtempSync(join(tmpdir(), "prisma-builtin-"));
+      const bDir = mkdtempSync(join(tmpdir(), "prisma-reference-"));
+      try {
+        const a = await gen(aDir, [builtinPrismaSchema(c.opts)], root);
+        const b = await gen(bDir, [refPrismaSchema(c.opts)], root);
+        const written = (t: Record<string, string>) => Object.keys(t).filter((k) => !k.startsWith(".")).sort();
+        expect(written(a)).toEqual(c.files);
+        expect(written(b)).toEqual(c.files);
+        for (const k of c.files) expect(`${k}:\n${b[k]}`).toBe(`${k}:\n${a[k]}`);
+      } finally {
+        rmSync(aDir, { recursive: true, force: true });
+        rmSync(bDir, { recursive: true, force: true });
+      }
+    });
+  }
+
+  test("both refuse a CHECK on sqlite with the same message", async () => {
+    const root = await loadFiles([SHOP]);
+    const dir = mkdtempSync(join(tmpdir(), "prisma-refuse-"));
+    try {
+      const message = async (g: Generator): Promise<string> => {
+        try {
+          await gen(dir, [g], root);
+        } catch (e) {
+          return e instanceof Error ? e.message : String(e);
+        }
+        return "no error";
+      };
+      const a = await message(builtinPrismaSchema({ provider: "sqlite" }));
+      const b = await message(refPrismaSchema({ provider: "sqlite" }));
+      expect(a).toContain("ERR_PRISMA_UNSUPPORTED_CHECK");
+      expect(b).toBe(a);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
     }
   });
 });

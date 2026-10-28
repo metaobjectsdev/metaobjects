@@ -16,6 +16,28 @@ here.**
 
 ### Added
 
+- **Prisma as the ORM, declared once in the model (TypeScript, #479).** Set `orm: "prisma"` in
+  `metaobjects.config.ts` and wire the new `prisma-schema` generator (`prismaSchemaFile()`), and
+  `meta gen` writes `schema.prisma` from the model for the `postgresql`, `mysql` or `sqlite`
+  provider. It maps types, ids and their generation, defaults, nullability, enums, relations,
+  unique keys, indexes and `@map`/`@@map`, and Postgres `@schema` maps to `@@schema`. Prisma cannot
+  declare CHECK constraints, so the ones the model implies go in `schema.checks.sql`, which you
+  apply with `prisma db execute --file`. `meta verify --codegen` fails on a hand-edited or stale
+  schema; the generator overwrites hand edits rather than merging them. A database created by
+  `prisma db push` passes `meta verify --db`, and a change to it fails, on Postgres and SQLite.
+  What a Prisma schema cannot express is refused with an `ERR_PRISMA_*` code, never dropped: a
+  view or other read-only source, an expression or partial index, a CHECK on SQLite, a table
+  with no primary key, a relation Prisma cannot model, a name collision, or an unsupported
+  provider. A model with projections or served reports therefore needs each of those objects
+  marked `@unmanaged` or left out by the generator's `filter`.
+  `orm: "prisma"` also makes every target default to `runtime: false`. It refuses a target set to
+  `runtime: true`, and the generators that write Drizzle code (`queries`, `routes`,
+  `routes-hono`, `callable`). The default, `orm: "drizzle"`, changes nothing. The generator is
+  ejectable (`meta eject prisma-schema`). `@metaobjectsdev/codegen-ts` now depends on
+  `@metaobjectsdev/migrate-ts` for the expected schema, through the new
+  `@metaobjectsdev/migrate-ts/expected` subpath, which does not load kysely. Recipe:
+  `docs/recipes/prisma.md`.
+
 - **Java, Kotlin and C# can compile and match `scope` patterns.** `com.metaobjects.config.Scope`
   (Java; Kotlin inherits it) and `MetaObjects.Config.Scope` (C#) port the scope-pattern grammar from
   TypeScript (`compilePattern` / `compileScope` / `matchesScope`), and both run the shared
@@ -77,6 +99,19 @@ here.**
   `meta.verify.mode` parameter no longer defaults to `codegen`; unset means both gates.
 
 ### Fixed
+
+- **`@default: "now"` is the current time on Postgres, not the table's creation time.** The
+  expected schema stored it as the literal `'now'`, and Postgres converts that literal to a
+  timestamp once, when it creates the column's `DEFAULT`, so every row got the same value. It
+  is now the expression `now()`, which is what `@autoSet` and the generated Drizzle column
+  already used. On a database `meta migrate` created from such a field, the next `meta migrate`
+  proposes a change-column-default, and `meta verify --db` reports the old default until it is
+  applied.
+- **`meta verify --db` on SQLite accepts how other tools spell the same storage.** A column
+  declared `BOOLEAN` now matches the model's `INTEGER`, `DECIMAL(p,s)` matches `NUMERIC`, and an
+  unquoted `TRUE`/`FALSE` default matches `1`/`0`. SQLite stores each pair identically. Prisma
+  writes the first of each, so before this fix a database pushed by Prisma reported drift on
+  every boolean and decimal column.
 
 - **A failed `meta deps sync` no longer leaves a lock and snapshot that cannot load.** The
   command wrote `deps.lock.json` and the `.metaobjects/deps/` snapshot before loading the

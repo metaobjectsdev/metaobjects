@@ -240,16 +240,19 @@ describe("--probe — what would this emit for MY model", () => {
     // `shared-model` needs a `files` selection `meta gen` supplies at run time. Both
     // report their own message. This is the whole reason each generator gets its own
     // isolated dry-run rather than one run over the suite — a suite-wide run would
-    // take the entire listing down with them.
+    // take the entire listing down with them. A third, `prisma-schema`, runs and REFUSES this
+    // model: it reads OrderTotals from a view, which a Prisma schema cannot create, and the
+    // probe carries that refusal (ERR_PRISMA_READ_ONLY_SOURCE) as its reason.
     const rows = await probeRows();
-    for (const name of ["render-helper", "shared-model"]) {
+    expect(String(rows.find((r) => r.name === "prisma-schema")!.project!.probeError)).toContain("ERR_PRISMA_READ_ONLY_SOURCE");
+    for (const name of ["render-helper", "shared-model", "prisma-schema"]) {
       const p = rows.find((r) => r.name === name)!.project!;
       expect(p.wouldEmit, `${name} should not report a count`).toBeNull();
       expect(String(p.probeError), `${name} should say why`).toContain(name);
     }
     // ...and everything else still answered with a count.
     expect(rows.filter((r) => typeof r.project!.wouldEmit === "number").length)
-      .toBeGreaterThan(rows.length - 4);
+      .toBeGreaterThan(rows.length - 5);
   });
 
   test("given the collection's own files, as `meta gen` supplies them, shared-model COUNTS", async () => {
