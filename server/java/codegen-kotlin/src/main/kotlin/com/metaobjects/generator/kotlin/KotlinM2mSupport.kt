@@ -86,7 +86,7 @@ object KotlinM2mSupport {
         val targetDiscriminator: TargetDiscriminator?,
         val symmetric: Boolean,
         val junctionPackage: String = "",
-        /** #484: target fields that are credentials, never returned (mapped to null). */
+        /** #484: target fields that are credentials, never returned (their keys are omitted from the serialized row). */
         val targetCredentialFields: Set<String> = emptySet(),
     )
 
