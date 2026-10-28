@@ -4,7 +4,7 @@
 // `meta deps check` both end on (DESIGN §4.1's closing sentence).
 //
 // The Node `meta deps` commands are the only writers of the lock and the snapshot
-// for EVERY port (the Phase 2 plan's decision 2), and they read nothing but
+// for EVERY port (Phase 2, #482), and they read nothing but
 // `.metaobjects/config.json`. A Maven or C# project does not keep its own
 // metadata where this toolchain looks (no neutral `sources`, the directory is
 // named by the pom or the CLI), and it may use vocabulary only its own port
@@ -18,6 +18,7 @@
 // collision between two dependencies and an artifact that does not load, and says
 // plainly that the port's own `verify` is the full check. Only the two causes
 // above fall back; any other failure is a real one and is raised unchanged.
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import {
   DEFAULT_METAOBJECTS_DIR,
@@ -34,13 +35,11 @@ import { collectionLoadOptions } from "./collection-load-options.js";
 /** `resolveCollection`'s code for "no `sources` declared and no default directory". */
 const ERR_COLLECTION_NOT_FOUND = "ERR_COLLECTION_NOT_FOUND";
 
-/** The loader codes for vocabulary this toolchain does not register: a type, a subtype
- *  or (under a strict load) an attribute that only another port's providers declare. */
-const PORT_ONLY_VOCABULARY_CODES: ReadonlySet<string> = new Set([
-  "ERR_UNKNOWN_TYPE",
-  "ERR_UNKNOWN_SUBTYPE",
-  "ERR_UNKNOWN_ATTR",
-]);
+/** The loader codes for vocabulary this toolchain does not register: a type or a subtype
+ *  that only another port's providers declare. (The proof's load is lenient, so an unknown
+ *  attribute loads and never reaches here.) A misspelt type in a project this toolchain
+ *  does read takes the same path, which is why the fallback is announced, not silent. */
+const PORT_ONLY_VOCABULARY_CODES: ReadonlySet<string> = new Set(["ERR_UNKNOWN_TYPE", "ERR_UNKNOWN_SUBTYPE"]);
 
 export interface DependencyLoadProof {
   /** What was loaded: the whole collection, or only the locked dependency snapshots. */
@@ -98,7 +97,11 @@ export async function proveDependencySetLoads(configDir: string): Promise<Depend
   try {
     collection = await resolveCollection(configDir);
   } catch (err) {
-    if (codeOf(err) !== ERR_COLLECTION_NOT_FOUND) throw new DependencyLoadFailure("resolve", err);
+    // Only a project that carries a config: without one there is no dependency set to
+    // prove, and the same code also reports "you passed a metadata directory".
+    if (codeOf(err) !== ERR_COLLECTION_NOT_FOUND || !existsSync(join(configDir, DEFAULT_METAOBJECTS_DIR, "config.json"))) {
+      throw new DependencyLoadFailure("resolve", err);
+    }
     await loadDependenciesOnly(configDir);
     return {
       scope: "dependencies-only",

@@ -459,7 +459,7 @@ above: one committed `cases.json`, no per-port fixture, no ledger. The corpus ha
   `unresolved` (a missing path, a bad manifest, a hash mismatch, or not yet in the lock). Run
   by TypeScript only, in `cli/test/dependency-check-conformance.test.ts`; Python has no
   `deps check` yet and filters these cases out. The arm exists so that each port's check is
-  written against the same edge cases (the Phase 2 plan's risk 4).
+  written against the same edge cases (Phase 2, #482).
 
 Java, Kotlin and C# have no runner —
 Phase 1a is TypeScript + Python only; those three ports arrive in Phase 2.

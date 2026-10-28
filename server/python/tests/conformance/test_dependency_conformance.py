@@ -27,7 +27,7 @@ _CORPUS_DIR = (
 )
 _CORPUS = _CORPUS_DIR / "cases.json"
 # The resolution arm only: a case carrying `expectCheck` belongs to the check arm, which
-# Python does not ship yet (it has no `deps check`; the Phase 2 plan's S2 adds it).
+# Python does not ship yet (it has no `deps check` yet; Phase 2, #482, adds it).
 _CASES = [c for c in json.loads(_CORPUS.read_text())["cases"] if "expectCheck" not in c]
 
 def test_corpus_is_non_empty() -> None:

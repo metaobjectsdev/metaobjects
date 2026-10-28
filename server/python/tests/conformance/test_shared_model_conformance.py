@@ -1,6 +1,6 @@
 """Runs the SERIALIZER arm of the shared publish corpus (FR-023 §4.3) in Python.
 
-Python ships no publisher yet (the Phase 2 plan defers it until a Python-only publisher
+Python ships no publisher yet (Phase 2, #482, defers it until a Python-only publisher
 appears), so it does not run selection, the closure check or the refusals. What it does own
 is the document's bytes: load a case's ``files``, take exactly the nodes the pinned manifest
 lists, and ``serialize_shared_document`` must reproduce the pinned artifact byte for byte, and

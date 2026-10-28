@@ -207,7 +207,10 @@ async function runCheck(
     try {
       proof = await proveDependencySetLoads(configDir);
     } catch (err) {
-      loadFailure = describeError(err instanceof DependencyLoadFailure ? err.cause : err);
+      loadFailure =
+        err instanceof DependencyLoadFailure && err.phase === "resolve"
+          ? `cannot be resolved: ${describeError(err.cause)}`
+          : describeError(err instanceof DependencyLoadFailure ? err.cause : err);
     }
   }
 
