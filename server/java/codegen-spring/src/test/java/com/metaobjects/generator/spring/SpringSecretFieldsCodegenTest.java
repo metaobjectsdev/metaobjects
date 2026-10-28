@@ -127,6 +127,16 @@ public class SpringSecretFieldsCodegenTest extends SharedRegistryTestBase {
         assertFalse("memo (@formExclude only) is still returned", controller.contains("\"memo\")"));
     }
 
+    @Test
+    public void tphSharedColumnMarkedOnALaterSubtypeIsLeftOutOfEverySubtypePatch() throws Exception {
+        String aPatch = generate("tphpatch", TPH_SHARED_COLUMN, "AThingPatch.java", true);
+        String bPatch = Files.readString(tmp.getRoot().toPath().resolve("gen-tphpatch/acme/secrets/BThingPatch.java"));
+        for (String patch : new String[] { aPatch, bPatch }) {
+            assertFalse("token is a credential on BThing; saw:\n" + patch, patch.contains("token"));
+            assertFalse("memo is @formExclude on BThing; saw:\n" + patch, patch.contains("memo"));
+        }
+    }
+
     private static final String PROJECTION_HEAD =
         "{ \"object.projection\": { \"name\": \"AccountView\", \"children\": [\n"
         + "  { \"source.rdb\": { \"@kind\": \"view\", \"@view\": \"v_account\" } },\n"

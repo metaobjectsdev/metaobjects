@@ -97,6 +97,22 @@ class KotlinSecretFieldsTest {
     }
 
     @Test
+    fun `a TPH column marked on a later subtype is never written by any subtype PATCH`() {
+        val out = Files.createTempDirectory("ksecret-tph-patch-")
+        try {
+            val loader = loadString("secret-fields-tph-patch", tphSharedColumn)
+            KotlinSpringControllerGenerator().apply { setArgs(mapOf("outputDir" to out.toString())) }.execute(loader)
+            val controller = Files.readString(out.resolve("acme/secrets/ThingController.kt"))
+            for (f in listOf("token", "memo")) {
+                assertFalse("body.has(\"$f\")" in controller, controller)
+                assertFalse("it[ThingTable.$f]" in controller, controller)
+            }
+        } finally {
+            out.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
     fun `a model with neither mark generates the plain write and read paths`() {
         val (controller, entity) = controllerAndEntity(marked = false)
         for (f in listOf("tokenHash", "pinHash")) {

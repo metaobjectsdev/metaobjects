@@ -1201,7 +1201,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         List<MetaField> markFields = new ArrayList<>(unionFields);
         markFields.addAll(TphPlan.everySubtypeField(base, loader));
         List<String> hidden = SpringGeneratorSupport.credentialNames(markFields);
-        Set<String> writeDenied = SpringGeneratorSupport.writeDeniedNames(markFields);
+        Set<String> writeDenied = SpringGeneratorSupport.hierarchyWriteDeniedNames(base);
         List<SpringM2mSupport.M2mNav> baseNavs = SpringM2mSupport.resolve(base, loader);
         boolean redacts = !hidden.isEmpty() || baseNavs.stream().anyMatch(n -> !targetCredentials(base, n).isEmpty())
             || plan.subtypes().stream().anyMatch(st -> SpringM2mSupport.resolve(st.entity(), loader).stream()
@@ -1590,12 +1590,13 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
             .map(com.metaobjects.identity.MetaIdentity::getFields)
             .orElse(List.of());
 
+        java.util.Set<String> denied = SpringGeneratorSupport.hierarchyWriteDeniedNames(entity);
         List<String> out = new ArrayList<>();
         for (MetaField f : SpringGeneratorSupport.scalarFields(entity)) {
             // #484: a write-denied field is IGNORED on create, so a @NotNull on it describes the
             // response shape and must not reject a body that (necessarily) omits it.
             if (pkFields.contains(f.getName()) || AutoSetSupport.isAutoSet(f)
-                    || SpringGeneratorSupport.isApiWriteDenied(f)) {
+                    || denied.contains(f.getName())) {
                 String component = SpringNaming.recordComponentName(f.getName());
                 if (!out.contains(component)) out.add(component);
             }

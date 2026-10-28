@@ -163,6 +163,7 @@ object KotlinTphPlan {
         val base = discriminatorBaseOf(subtype) ?: return emptyList()
         val discField = base.getMetaAttr(MetaObject.ATTR_DISCRIMINATOR, false).valueAsString
         val pk = primaryKeyFieldName(base)
+        val denied = hierarchyWriteDeniedNames(base, base.loader)
         return subtype.metaFields.filterNot {
             it is ObjectField || it is MapField || KotlinTypeMapper.isJsonbOpenBag(it)
         }.filter {
@@ -175,7 +176,7 @@ object KotlinTphPlan {
                 // the <Sub>Validation shape and the settable-name list all read it.
                 !KotlinGenUtil.isReadOnlyMutability(it) &&
                 !KotlinGenUtil.isWriteOnceMutability(it) &&
-                !KotlinGenUtil.isApiWriteDenied(it) // #484: @formExclude / credential, ignored on every write
+                it.name !in denied // #484: @formExclude / credential on any declaration, ignored on every write
         }
     }
 
@@ -205,6 +206,11 @@ object KotlinTphPlan {
 
     /** [everySubtypeField] from an already-resolved [Plan]. */
     fun everySubtypeField(plan: Plan): List<MetaField<*>> = plan.subtypes.flatMap { it.entity.metaFields }
+
+    /** #484: the names write-denied on ANY declaration in [base]'s hierarchy (the base and every subtype). */
+    fun hierarchyWriteDeniedNames(base: MetaObject, loader: MetaDataLoader): Set<String> =
+        (base.metaFields + everySubtypeField(base, loader))
+            .filter { KotlinGenUtil.isApiWriteDenied(it) }.map { it.name }.toSet()
 
     /** [collectSubtypeFields] from an already-resolved [Plan] (the generators that hold one). */
     fun collectSubtypeFields(base: MetaObject, plan: Plan): List<MetaField<*>> {

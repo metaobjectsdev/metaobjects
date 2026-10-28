@@ -128,6 +128,20 @@ public final class SpringGeneratorSupport {
         return out;
     }
 
+    /**
+     * #484 — the write-denied names of {@code entity}, widened to its whole TPH hierarchy (the base
+     * and every subtype) when it is in one: a mark on any declaration of a shared column counts.
+     */
+    public static java.util.Set<String> hierarchyWriteDeniedNames(MetaObject entity) {
+        List<MetaField> fields = new ArrayList<>(entity.getMetaFields());
+        MetaObject root = TphPlan.discriminatorRoot(entity);
+        if (root != null) {
+            fields.addAll(root.getMetaFields());
+            fields.addAll(TphPlan.everySubtypeField(root, root.getLoader()));
+        }
+        return writeDeniedNames(fields);
+    }
+
     /** #484 — the credential wire names of {@code entity}'s DTO components. */
     public static List<String> credentialNames(MetaObject entity) {
         return credentialNames(dtoComponentFields(entity));
@@ -159,6 +173,7 @@ public final class SpringGeneratorSupport {
      * validated from the body.</p>
      */
     public static List<MetaField> settableFields(MetaObject entity, String alsoExclude) {
+        java.util.Set<String> denied = hierarchyWriteDeniedNames(entity);
         List<MetaField> out = new ArrayList<>();
         for (MetaField field : minusPk(entity, scalarFields(entity), alsoExclude)) {
             // ADR-0045 (#203/#229): @autoSet is server-owned — never a caller-settable TPH
@@ -174,6 +189,8 @@ public final class SpringGeneratorSupport {
             // a separate code path (the 0.19.4 lesson), so it is stated here too rather
             // than assumed to fall out of the vanilla walk.
             if (isNonReadWriteMutability(field)) continue;
+            // #484: a @formExclude / credential column, marked on any declaration in the hierarchy.
+            if (denied.contains(field.getName())) continue;
             out.add(field);
         }
         return out;

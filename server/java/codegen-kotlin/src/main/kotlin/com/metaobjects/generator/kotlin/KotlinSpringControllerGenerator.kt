@@ -790,11 +790,12 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
 
         // #484: a mark on ANY declaration of a union column (base or any subtype) counts.
         val markFields = scalarFields + KotlinTphPlan.everySubtypeField(plan)
+        val writeDenied = KotlinTphPlan.hierarchyWriteDeniedNames(base, loader)
         // Non-discriminator, non-PK, non-@autoSet columns the create handler writes from the body.
         val writableFields = scalarFields.map { it.name }
             .filter { it != plan.discriminatorField && it != pkFieldName && it !in autoSetNames }
             // #484: @formExclude / credential columns are never bound from the request body.
-            .filter { name -> markFields.none { it.name == name && KotlinGenUtil.isApiWriteDenied(it) } }
+            .filter { it !in writeDenied }
 
         // FR-035/FR-036 Program B: the per-subtype settable columns = the subtype's EFFECTIVE scalar
         // fields (base + own, resolved via extends) minus the PK and the discriminator, EXCLUDING

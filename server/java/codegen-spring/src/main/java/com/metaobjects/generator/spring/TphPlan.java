@@ -51,7 +51,7 @@ public final class TphPlan {
      * {@code @discriminatorValue} are declaration-layer TPH markers (never inherited into
      * an effective form), so each hop is read own-only while the loop does the resolving.
      */
-    private static MetaObject discriminatorRoot(MetaObject obj) {
+    static MetaObject discriminatorRoot(MetaObject obj) {
         for (MetaObject cursor = obj; cursor != null; cursor = cursor.getSuperObject()) {
             if (cursor.hasMetaAttr(MetaObject.ATTR_DISCRIMINATOR, false)) return cursor;
         }
