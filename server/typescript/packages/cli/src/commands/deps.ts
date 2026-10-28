@@ -19,6 +19,7 @@ import { reportLoadError } from "../lib/load-error.js";
 import { collectionLoadOptions } from "../lib/collection-load-options.js";
 import {
   applySync,
+  backupSyncState,
   checkDependencies,
   ERR_DEPENDENCY_UPSTREAM_DRIFT,
   formatCheckLine,
@@ -63,12 +64,22 @@ async function runSync(configDir: string, specs: readonly DependencySpec[], flag
     return 1;
   }
 
+  // A real sync is atomic: keep a copy of the lock and snapshot, and put them
+  // back if the sync or the load that proves it fails, so a failed sync leaves
+  // the previous (loadable) state in place rather than one that checks green
+  // and loads nowhere.
+  const backup = flags.dryRun ? undefined : await backupSyncState(configDir);
+  const fail = async (message: () => void): Promise<number> => {
+    message();
+    await backup?.restore();
+    return 1;
+  };
+
   let applied;
   try {
     applied = await applySync(configDir, plan, { dryRun: flags.dryRun });
   } catch (err) {
-    log.error(describeError(err));
-    return 1;
+    return fail(() => log.error(describeError(err)));
   }
 
   if (fmt === "text") {
@@ -101,16 +112,17 @@ async function runSync(configDir: string, specs: readonly DependencySpec[], flag
   try {
     collection = await resolveCollection(configDir);
   } catch (err) {
-    log.error(`meta deps sync: the updated dependency set does not resolve: ${describeError(err)}`);
-    return 1;
+    return fail(() =>
+      log.error(`meta deps sync: the updated dependency set does not resolve: ${describeError(err)}`),
+    );
   }
   try {
     await loadMemory(collection.configDir, collectionLoadOptions(collection));
   } catch (err) {
-    reportLoadError(log, "meta deps sync: the updated dependency set does not load", err);
-    return 1;
+    return fail(() => reportLoadError(log, "meta deps sync: the updated dependency set does not load", err));
   }
 
+  await backup?.discard();
   return 0;
 }
 
@@ -176,6 +188,18 @@ async function runCheck(
   const results = await checkDependencies(configDir, specs, lock);
   const failing = results.filter((r) => r.status !== "current");
 
+  // Matching hashes only prove the snapshot is the locked one, not that the
+  // model still loads with it. A check that cannot load must not pass.
+  let loadFailure: string | undefined;
+  if (failing.length === 0) {
+    try {
+      const collection = await resolveCollection(configDir);
+      await loadMemory(collection.configDir, collectionLoadOptions(collection));
+    } catch (err) {
+      loadFailure = describeError(err);
+    }
+  }
+
   if (fmt === "text") {
     for (const r of results) log.info(formatCheckLine(r));
     if (failing.length > 0) {
@@ -184,17 +208,21 @@ async function runCheck(
           `${results.length === 1 ? "y" : "ies"} drifted or unresolved (${ERR_DEPENDENCY_UPSTREAM_DRIFT}).`,
       );
     }
+    if (loadFailure !== undefined) {
+      log.error(`meta deps check: the locked dependency set does not load: ${loadFailure}`);
+    }
   } else {
     emitStructured(
       {
         dependencies: results.map((r) => ({ ...r, line: formatCheckLine(r) })),
         ...(failing.length > 0 ? { code: ERR_DEPENDENCY_UPSTREAM_DRIFT } : {}),
+        ...(loadFailure !== undefined ? { loadError: loadFailure } : {}),
       },
       fmt,
     );
   }
 
-  return failing.length > 0 ? 1 : 0;
+  return failing.length > 0 || loadFailure !== undefined ? 1 : 0;
 }
 
 export async function depsCommand(args: string[], cwd: string, fmt: OutputFormat): Promise<number> {

@@ -33,6 +33,16 @@ here.**
   [docs/features/api-contract.md](docs/features/api-contract.md#report-export) and
   [ADR-0031 Amendment 1](spec/decisions/ADR-0031-serialization-vs-data-download-boundary.md).
 
+### Fixed
+
+- **A failed `meta deps sync` no longer leaves a lock and snapshot that cannot load.** The
+  command wrote `deps.lock.json` and the `.metaobjects/deps/` snapshot before loading the
+  combined model, and on a load failure it exited 1 but kept the new files. Because the lock
+  and snapshot agreed with each other, `meta deps check` then reported green while every other
+  command failed to load. The sync now saves the previous lock and snapshot and restores both
+  on any failure, so the previous state is intact. `meta deps check` also loads the model once
+  its hashes match and exits 1 with the load error when it does not load.
+
 ### Documentation
 
 - **The fit-assessment prompt's capability sheet is re-checked against 1.1.4 / Maven 8.1.4**
