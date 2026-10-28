@@ -468,7 +468,7 @@ carrying the same `metaobjects.pkg.json` and artifact pair that `sharedModelFile
 single-writer ruling it is Node `meta deps sync` that reads the pair out of the JAR or the package
 and writes the same snapshot and lock entry a `path` sync writes, so everything downstream
 (`check`, load, scope, the corpus) is unchanged; nothing in a port's own build resolves a
-dependency. This generalizes the resources-JAR pattern described below, and it is a later slice
+dependency. This generalizes the resources-JAR pattern described above, and it is a later slice
 than consume and check. A JVM *classpath read with no committed snapshot* (the legacy behaviour)
 stays a separate, deferred option.
 
