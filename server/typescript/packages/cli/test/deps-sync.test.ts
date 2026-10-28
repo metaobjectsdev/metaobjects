@@ -17,8 +17,9 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { METAMODEL_VERSION } from "@metaobjectsdev/metadata";
-import { INTEGRITY_PREFIX, sha256Integrity } from "@metaobjectsdev/sdk";
+import { sha256Integrity } from "@metaobjectsdev/sdk";
 import { run } from "../src/index.js";
+import { hash8 } from "../src/lib/dependency-sync.js";
 
 const DEP_NAME = "acme-common";
 const ARTIFACT_BASENAME = "acme-common.metaobjects.json";
@@ -37,14 +38,6 @@ const V1_BYTES = readFileSync(join(CORPUS_ARTIFACTS, "acme-common-v1.json"));
 const WIDENED_BYTES = readFileSync(join(CORPUS_ARTIFACTS, "acme-common-v1-widened.json"));
 const V1_HASH = sha256Integrity(V1_BYTES);
 const WIDENED_HASH = sha256Integrity(WIDENED_BYTES);
-
-/** First 8 hex chars after the `INTEGRITY_PREFIX` — `meta deps sync`'s report
- *  format. Mirrors (deliberately not imports — this is a CLI test, not a
- *  caller of `dependency-sync.ts`'s internals) the shared `hash8` helper
- *  exported from `src/lib/dependency-sync.ts`. */
-function hash8(integrity: string): string {
-  return integrity.slice(INTEGRITY_PREFIX.length, INTEGRITY_PREFIX.length + 8);
-}
 
 /** The consumer's own model: one entity it owns. Mirrors the shape
  *  `gen-imported-nodes.test.ts` / `verify-requirements-imported.test.ts` use —
@@ -75,16 +68,26 @@ const CONFIG_REF = JSON.stringify({
   dependencies: [{ name: DEP_NAME, path: "../acme-common/metaobjects" }],
 });
 
-function manifestJson(opts: { version: string; integrity: string; nodes: string[] }): string {
+/** The `acme-common` manifest by default; `name`, `artifact` and `packages` override it for
+ *  the publishers that need another shape (the colliding-manifest scenario declares
+ *  `acme::extra`'s package on a manifest that is not `acme-common`'s own). */
+function manifestJson(opts: {
+  version: string;
+  integrity: string;
+  nodes: string[];
+  name?: string;
+  artifact?: string;
+  packages?: string[];
+}): string {
   return JSON.stringify(
     {
       schema_version: 1,
-      name: DEP_NAME,
+      name: opts.name ?? DEP_NAME,
       version: opts.version,
       metamodelVersion: METAMODEL_VERSION,
-      artifact: ARTIFACT_BASENAME,
+      artifact: opts.artifact ?? ARTIFACT_BASENAME,
       integrity: opts.integrity,
-      packages: ["acme::common"],
+      packages: opts.packages ?? ["acme::common"],
       nodes: opts.nodes,
     },
     null,
@@ -343,36 +346,6 @@ describe("meta deps sync <name> — the name filter (FR-023 Phase 1a Task 14, fi
     ) + "\n";
   const SECOND_HASH = sha256Integrity(SECOND_ARTIFACT_CONTENT);
 
-  /** A manifest with fully overridable `name`/`artifact`/`packages`/`nodes` —
-   *  unlike the top-level `manifestJson`, which is hardcoded to `acme-common`
-   *  in package `acme::common`. Scoped to this describe block only: the
-   *  colliding-manifest scenario below needs `acme-common`'s OWN manifest to
-   *  (incorrectly) declare `acme::extra`'s package/node, which the shared
-   *  helper cannot express. */
-  function genericManifest(opts: {
-    name: string;
-    artifact: string;
-    version: string;
-    integrity: string;
-    nodes: string[];
-    packages: string[];
-  }): string {
-    return JSON.stringify(
-      {
-        schema_version: 1,
-        name: opts.name,
-        version: opts.version,
-        metamodelVersion: METAMODEL_VERSION,
-        artifact: opts.artifact,
-        integrity: opts.integrity,
-        packages: opts.packages,
-        nodes: opts.nodes,
-      },
-      null,
-      2,
-    );
-  }
-
   function setupTwoDependencyProject(): {
     consumerRoot: string;
     commonPublisherDir: string;
@@ -412,7 +385,7 @@ describe("meta deps sync <name> — the name filter (FR-023 Phase 1a Task 14, fi
     writeFileSync(join(extraPublisherDir, SECOND_ARTIFACT_BASENAME), SECOND_ARTIFACT_CONTENT, "utf8");
     writeFileSync(
       join(extraPublisherDir, MANIFEST_BASENAME),
-      genericManifest({
+      manifestJson({
         name: SECOND_NAME,
         artifact: SECOND_ARTIFACT_BASENAME,
         version: "1.0.0",
@@ -477,7 +450,7 @@ describe("meta deps sync <name> — the name filter (FR-023 Phase 1a Task 14, fi
     writeFileSync(join(commonPublisherDir, ARTIFACT_BASENAME), SECOND_ARTIFACT_CONTENT, "utf8");
     writeFileSync(
       join(commonPublisherDir, MANIFEST_BASENAME),
-      genericManifest({
+      manifestJson({
         name: DEP_NAME,
         artifact: ARTIFACT_BASENAME,
         version: "1.2.0",
@@ -626,6 +599,110 @@ describe("meta deps sync — a failed post-sync load leaves the previous state i
     expect(output).toContain("rolled back");
     expect(output).toContain("does not load");
     expect(output).not.toContain("synced");
+  });
+});
+
+describe("meta deps sync — a project whose own metadata this toolchain does not read", () => {
+  /** A Maven-shaped consumer: the model lives under the build tool's resource directory
+   *  and the neutral config declares no `sources`, so the source ladder finds nothing. */
+  function setupMavenShaped(): { consumerRoot: string } {
+    const { consumerRoot } = setupProject();
+    rmSync(join(consumerRoot, "metaobjects"), { recursive: true, force: true });
+    const resources = join(consumerRoot, "src", "main", "resources", "metadata");
+    mkdirSync(resources, { recursive: true });
+    writeFileSync(join(resources, "meta.app.json"), APP, "utf8");
+    return { consumerRoot };
+  }
+
+  test("a Maven-shaped layout syncs, exits 0, and says the port's own verify is the full check", async () => {
+    const { consumerRoot } = setupMavenShaped();
+
+    const exit = await run(["deps", "sync", "--format", "text", "--cwd", consumerRoot]);
+    expect(exit).toBe(0);
+    expect(existsSync(join(consumerRoot, ".metaobjects", "deps.lock.json"))).toBe(true);
+    expect(readFileSync(join(consumerRoot, ".metaobjects", "deps", DEP_NAME, ARTIFACT_BASENAME))).toEqual(
+      V1_BYTES,
+    );
+    const output = [...out, ...err].join("\n");
+    expect(output).toContain("synced");
+    expect(output).toContain("only the locked dependencies were loaded together");
+    expect(output).toContain("Run the project's own `verify` for the full check.");
+    expect(output).not.toContain("rolled back");
+  });
+
+  test("a Maven-shaped layout then checks green", async () => {
+    const { consumerRoot } = setupMavenShaped();
+    expect(await run(["deps", "sync", "--format", "text", "--cwd", consumerRoot])).toBe(0);
+
+    out = [];
+    err = [];
+    expect(await run(["deps", "check", "--format", "text", "--cwd", consumerRoot])).toBe(0);
+    expect([...out, ...err].join("\n")).toContain("current");
+  });
+
+  test("a model using vocabulary only another port registers syncs on its dependencies alone", async () => {
+    const { consumerRoot } = setupProject();
+    writeFileSync(
+      join(consumerRoot, "metaobjects", "meta.portonly.json"),
+      JSON.stringify({
+        "metadata.root": {
+          package: "app",
+          children: [{ "object.portonly": { name: "Gadget" } }],
+        },
+      }),
+      "utf8",
+    );
+
+    const exit = await run(["deps", "sync", "--format", "text", "--cwd", consumerRoot]);
+    expect(exit).toBe(0);
+    expect(existsSync(join(consumerRoot, ".metaobjects", "deps.lock.json"))).toBe(true);
+    const output = [...out, ...err].join("\n");
+    expect(output).toContain("uses vocabulary this toolchain does not register");
+    expect(output).toContain("Run the project's own `verify` for the full check.");
+  });
+
+  test("port-only vocabulary does not hide a broken extends onto a dependency node: exit 1, nothing kept", async () => {
+    const { consumerRoot } = setupProject();
+    writeFileSync(
+      join(consumerRoot, "metaobjects", "meta.portonly.json"),
+      JSON.stringify({
+        "metadata.root": {
+          package: "app",
+          children: [{ "object.portonly": { name: "Gadget" } }],
+        },
+      }),
+      "utf8",
+    );
+    writeFileSync(
+      join(consumerRoot, "metaobjects", "meta.invoice.json"),
+      JSON.stringify({
+        "metadata.root": {
+          package: "app",
+          children: [
+            {
+              "object.entity": {
+                name: "Invoice",
+                extends: "acme::common::Removed",
+                children: [
+                  { "source.rdb": { "@table": "invoices" } },
+                  { "field.long": { name: "id" } },
+                  { "identity.primary": { name: "pk", "@fields": ["id"] } },
+                ],
+              },
+            },
+          ],
+        },
+      }),
+      "utf8",
+    );
+
+    const exit = await run(["deps", "sync", "--format", "text", "--cwd", consumerRoot]);
+    expect(exit).toBe(1);
+    expect(existsSync(join(consumerRoot, ".metaobjects", "deps.lock.json"))).toBe(false);
+    expect(existsSync(join(consumerRoot, ".metaobjects", "deps", DEP_NAME))).toBe(false);
+    const output = [...out, ...err].join("\n");
+    expect(output).toContain("acme::common::Removed");
+    expect(output).not.toContain("only the locked dependencies were loaded together");
   });
 });
 

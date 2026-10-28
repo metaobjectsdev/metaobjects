@@ -7,8 +7,6 @@ import {
   DEFAULT_METAOBJECTS_DIR,
   discoverCollectionRoot,
   loadConfig,
-  loadMemory,
-  resolveCollection,
   type DependencySpec,
   type Lock,
 } from "@metaobjectsdev/sdk";
@@ -16,7 +14,7 @@ import { parseDepsArgs, type DepsFlags } from "../lib/args.js";
 import { log } from "../lib/log.js";
 import { emitStructured, type OutputFormat } from "../lib/format.js";
 import { reportLoadError } from "../lib/load-error.js";
-import { collectionLoadOptions } from "../lib/collection-load-options.js";
+import { DependencyLoadFailure, dependencyOnlyNotice, proveDependencySetLoads, type DependencyLoadProof } from "../lib/dependency-load.js";
 import {
   applySync,
   backupSyncState,
@@ -87,7 +85,7 @@ async function runSync(configDir: string, specs: readonly DependencySpec[], flag
 
   // The per-dependency report is printed only once the sync is known good: a
   // report of "synced" for a sync that is then rolled back would lie.
-  const printReport = (): void => {
+  const printReport = (proof?: DependencyLoadProof): void => {
     if (fmt === "text") {
       for (const w of plan.warnings) log.info(w);
       if (applied.report.length === 0) {
@@ -95,10 +93,12 @@ async function runSync(configDir: string, specs: readonly DependencySpec[], flag
       } else {
         for (const r of applied.report) log.info(r.line);
       }
+      if (proof?.scope === "dependencies-only") log.info(dependencyOnlyNotice("meta deps sync", proof.note));
     } else {
       emitStructured(
         {
           warnings: plan.warnings,
+          ...(proof?.scope === "dependencies-only" ? { loadScope: proof.scope, loadNote: proof.note } : {}),
           dependencies: applied.report.map((r) => ({ name: r.name, action: r.action, message: r.line })),
         },
         fmt,
@@ -117,23 +117,23 @@ async function runSync(configDir: string, specs: readonly DependencySpec[], flag
   // that produces an unloadable model (a collision the plan missed because it
   // only compares declared node LISTS, a scope that now excludes something
   // load-bearing, …) fails in THIS command with the loader's own error,
-  // rather than surfacing on the next unrelated `meta gen`/`verify`.
-  let collection;
+  // rather than surfacing on the next unrelated `meta gen`/`verify`. A project
+  // whose own metadata this toolchain cannot read (a build-tool source
+  // directory, another port's vocabulary) is proven on its dependencies alone.
+  let proof: DependencyLoadProof;
   try {
-    collection = await resolveCollection(configDir);
+    proof = await proveDependencySetLoads(configDir);
   } catch (err) {
+    if (!(err instanceof DependencyLoadFailure)) throw err;
     return fail(() =>
-      log.error(`meta deps sync: the updated dependency set does not resolve: ${describeError(err)}`),
+      err.phase === "resolve"
+        ? log.error(`meta deps sync: the updated dependency set does not resolve: ${describeError(err.cause)}`)
+        : reportLoadError(log, "meta deps sync: the updated dependency set does not load", err.cause),
     );
-  }
-  try {
-    await loadMemory(collection.configDir, collectionLoadOptions(collection));
-  } catch (err) {
-    return fail(() => reportLoadError(log, "meta deps sync: the updated dependency set does not load", err));
   }
 
   await backup?.discard();
-  printReport();
+  printReport(proof);
   return 0;
 }
 
@@ -202,12 +202,15 @@ async function runCheck(
   // Matching hashes only prove the snapshot is the locked one, not that the
   // model still loads with it. A check that cannot load must not pass.
   let loadFailure: string | undefined;
+  let proof: DependencyLoadProof | undefined;
   if (failing.length === 0) {
     try {
-      const collection = await resolveCollection(configDir);
-      await loadMemory(collection.configDir, collectionLoadOptions(collection));
+      proof = await proveDependencySetLoads(configDir);
     } catch (err) {
-      loadFailure = describeError(err);
+      loadFailure =
+        err instanceof DependencyLoadFailure && err.phase === "resolve"
+          ? `cannot be resolved: ${describeError(err.cause)}`
+          : describeError(err instanceof DependencyLoadFailure ? err.cause : err);
     }
   }
 
@@ -222,12 +225,14 @@ async function runCheck(
     if (loadFailure !== undefined) {
       log.error(`meta deps check: the locked dependency set does not load: ${loadFailure}`);
     }
+    if (proof?.scope === "dependencies-only") log.info(dependencyOnlyNotice("meta deps check", proof.note));
   } else {
     emitStructured(
       {
         dependencies: results.map((r) => ({ ...r, line: formatCheckLine(r) })),
         ...(failing.length > 0 ? { code: ERR_DEPENDENCY_UPSTREAM_DRIFT } : {}),
         ...(loadFailure !== undefined ? { loadError: loadFailure } : {}),
+        ...(proof?.scope === "dependencies-only" ? { loadScope: proof.scope, loadNote: proof.note } : {}),
       },
       fmt,
     );

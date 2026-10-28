@@ -43,6 +43,17 @@ here.**
   port yet, so no command's behavior changes. A pattern with an empty segment, a trailing `::` or an
   odd run of `:` is refused with `ERR_SCOPE_PATTERN_INVALID`.
 
+- **Two cross-port corpora for sharing a model across repositories (FR-023).**
+  `fixtures/dependency-conformance/` gains a check arm (`expectCheck`, 11 cases): for each declared
+  dependency, `current`, `drifted`, or `unresolved` (a missing path, a bad manifest, a hash
+  mismatch, or not yet in the lock), run in TypeScript. The new `fixtures/shared-model-conformance/`
+  (11 cases) pins what a publisher writes: the exact artifact and manifest bytes for a source tree and
+  `include` / `exclude` / `files`, and the refusals (an empty selection, a closure failure naming every
+  `referrer → target` pair, vocabulary a consumer's toolchain does not ship). TypeScript runs all of
+  it and Python runs the serializer arm. These are the reference the Java, Kotlin and C# slices of
+  Phase 2 ([#482](https://github.com/metaobjectsdev/metaobjects/issues/482)) are written against.
+  The feature doc records the Maven and NuGet packaged transports as a design for a later slice.
+
 - **C# reads its generated-code directory from `.metaobjects/config.json`, so a plain
   `dotnet meta verify` runs the codegen gate.** Set `"csharp": { "outDir": "Generated" }`
   (relative to the directory holding `.metaobjects/`). `dotnet meta gen` writes there and
@@ -115,6 +126,15 @@ here.**
   the command only points at `npx meta agent-docs --server python` and exits 1. The help now says
   so. The three flags it never read (`--server`, `--client`, `--out`) are still accepted but
   ignored and hidden from help, so the old invocation still reaches the pointer.
+
+- **`meta deps sync` and `meta deps check` finish cleanly on a project whose own metadata the
+  Node toolchain cannot read.** A Maven project (`src/main/resources/metadata`), a C# project, or a
+  model using vocabulary only another port registers declares no neutral `sources`, so the closing
+  "does the dependency set load?" proof failed, and `sync` exited 1 for a layout nothing was wrong
+  with. In those two cases only, the proof now loads the locked snapshots together, prints that it
+  did, and says that the port's own `verify` is the full check. Any other load failure still fails
+  the command and rolls the sync back. A stale `docs/CONFORMANCE.md` cell that claimed Python passed
+  only 2 of the dependency corpus's cases is corrected.
 
 - **A failed `meta deps sync` no longer leaves a lock and snapshot that cannot load.** The
   command wrote `deps.lock.json` and the `.metaobjects/deps/` snapshot before loading the

@@ -193,6 +193,20 @@ export async function loadMemory(
   return result.root;
 }
 
+/**
+ * Every error the same load as {@link loadMemory} records, in loader order, or none when
+ * it loads — for a caller that must judge the whole set, where `loadMemory` throws only
+ * the first. The ownership and library refusals `loadMemory` raises after a clean load
+ * are not included.
+ */
+export async function loadErrors(
+  repoRoot: string,
+  options?: LoadMemoryOptions,
+): Promise<readonly Error[]> {
+  const { result } = await loadCollectionRaw(repoRoot, options, options?.strict === true);
+  return result.errors;
+}
+
 /** The ADR-0009 code a strict load raises for an authored attribute no provider declares. */
 const ERR_UNKNOWN_ATTR = "ERR_UNKNOWN_ATTR";
 
