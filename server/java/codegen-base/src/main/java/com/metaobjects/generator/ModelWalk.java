@@ -45,7 +45,7 @@ public final class ModelWalk {
      *  contribute fields to what {@code extends} them. */
     public static List<MetaObject> concreteObjects(MetaDataLoader loader) {
         List<MetaObject> out = new ArrayList<>();
-        for (MetaObject o : loader.getMetaObjects()) {
+        for (MetaObject o : com.metaobjects.generator.util.GeneratorUtil.ownMetaObjects(loader)) {
             if (!isAbstract(o)) out.add(o);
         }
         return out;

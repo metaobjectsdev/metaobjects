@@ -40,13 +40,16 @@ import java.util.Optional;
 /**
  * The port-neutral subset of {@code .metaobjects/config.json}.
  *
- * <p>Reads only {@code schema_version}, {@code sources}, {@code naming} (ADR-0058, the
- * project's physical-naming rules) and {@code wire} (ADR-0019 Amendment 2, the output form of a
+ * <p>Reads only {@code schema_version}, {@code sources}, {@code dependencies} (FR-023, the
+ * declared cross-repo metadata dependencies), {@code scope.include} and {@code migrate.scope}
+ * (read only for the dependency-exclusion rules), {@code naming} (ADR-0058, the project's
+ * physical-naming rules) and {@code wire} (ADR-0019 Amendment 2, the output form of a
  * generated REST surface). The file also carries TypeScript-owned keys
- * ({@code pending_in_git}, {@code confidence_thresholds}, {@code extract}, {@code migrate},
- * {@code scope}); those are IGNORED rather than modeled, so a new TS-only key never becomes
- * a four-port change. {@code scope} in particular is entirely out of scope for this reader
- * — see {@code docs/superpowers/specs/2026-08-19-cross-port-metadata-sources-design.md} §4.
+ * ({@code pending_in_git}, {@code confidence_thresholds}, {@code extract}, the rest of
+ * {@code migrate} and {@code scope}); those are IGNORED rather than modeled, so a new TS-only
+ * key never becomes a five-port change. Like Python, this port never applies {@code scope} to
+ * its OWN generated output — {@code scope.include} is read for the explicit-include rule alone
+ * ({@link Dependencies#explicitlyIncludes}).
  */
 public final class NeutralConfig {
 
@@ -61,12 +64,19 @@ public final class NeutralConfig {
     private static final int SUPPORTED_SCHEMA_VERSION = 1;
 
     private final List<Map<String, String>> sources;
+    private final List<Map<String, String>> dependencies;
+    private final List<String> scopeInclude;
+    private final List<String> migrateScope;
     private final PhysicalNaming physicalNaming;
     private final WireFormat wireFormat;
 
-    private NeutralConfig(List<Map<String, String>> sources, PhysicalNaming physicalNaming,
-                          WireFormat wireFormat) {
+    private NeutralConfig(List<Map<String, String>> sources, List<Map<String, String>> dependencies,
+                          List<String> scopeInclude, List<String> migrateScope,
+                          PhysicalNaming physicalNaming, WireFormat wireFormat) {
         this.sources = List.copyOf(sources);
+        this.dependencies = List.copyOf(dependencies);
+        this.scopeInclude = List.copyOf(scopeInclude);
+        this.migrateScope = migrateScope == null ? null : List.copyOf(migrateScope);
         this.physicalNaming = physicalNaming;
         this.wireFormat = wireFormat;
     }
@@ -78,6 +88,34 @@ public final class NeutralConfig {
      */
     public List<Map<String, String>> getSources() {
         return sources;
+    }
+
+    /**
+     * FR-023 — the declared {@code dependencies}, each already validated (DESIGN §3.1): a
+     * {@code name}, exactly one transport key ({@code path} | {@code npm} | {@code python}),
+     * and {@code dir} only beside {@code npm}/{@code python}. Empty when the key is absent.
+     * Resolving a transport to bytes is the Node {@code meta deps sync}'s job; this port reads
+     * the committed snapshot instead.
+     */
+    public List<Map<String, String>> getDependencies() {
+        return dependencies;
+    }
+
+    /**
+     * FR-023 §11.1 item 2 — the declared {@code scope.include} patterns, read only for the
+     * explicit-include rule. Empty when {@code scope} or {@code scope.include} is absent.
+     */
+    public List<String> getScopeInclude() {
+        return scopeInclude;
+    }
+
+    /**
+     * FR-023 §11.1 item 2 — the declared {@code migrate.scope} patterns, or {@code null} when
+     * the key is absent (distinct from an empty list, which is a declared scope that matches
+     * nothing).
+     */
+    public List<String> getMigrateScope() {
+        return migrateScope;
     }
 
     /**
@@ -239,6 +277,10 @@ public final class NeutralConfig {
             }
         }
 
+        List<Map<String, String>> dependencies = parseDependencies(root.get("dependencies"), origin);
+        List<String> scopeInclude = parseScopeInclude(root.get("scope"), origin);
+        List<String> migrateScope = parseMigrateScope(root.get("migrate"), origin);
+
         // ADR-0058 — the project's physical-naming rules. An unknown key, an unknown value,
         // or a non-object `naming` is refused (never silently defaulted — a typo would
         // otherwise bind a whole schema to the wrong names and report success).
@@ -284,9 +326,104 @@ public final class NeutralConfig {
 
         WireFormat wireFormat = parseWire(root.get("wire"), origin);
 
-        // Unknown top-level keys (including `scope`/`migrate`) are IGNORED by
-        // design — see the class javadoc.
-        return new NeutralConfig(specs, physicalNaming, wireFormat);
+        // Unknown top-level keys, and every key of `scope`/`migrate` but the two read above,
+        // are IGNORED by design — see the class javadoc.
+        return new NeutralConfig(specs, dependencies, scopeInclude, migrateScope, physicalNaming,
+                wireFormat);
+    }
+
+    /** Mirrors the TS {@code DependencyName} regex (DESIGN §3.1). */
+    private static final java.util.regex.Pattern DEPENDENCY_NAME =
+            java.util.regex.Pattern.compile("^[a-z0-9][a-z0-9._-]*$");
+
+    private static final List<String> DEPENDENCY_TRANSPORTS = List.of("path", "npm", "python");
+
+    private static MetaDataException bad(String message) {
+        return new MetaDataException(message, ErrorCode.ERR_BAD_ATTR_VALUE);
+    }
+
+    /**
+     * FR-023 — validate the {@code dependencies} array exactly as the TS
+     * {@code DependencySpecSchema} and Python {@code _validate_dependency_spec} do. {@code mode} is
+     * removed (§11.3) and so is an ordinary unknown key.
+     */
+    private static List<Map<String, String>> parseDependencies(JsonElement raw, String origin) {
+        List<Map<String, String>> out = new ArrayList<>();
+        if (raw == null) return out;
+        if (!raw.isJsonArray()) throw bad(origin + ": \"dependencies\" must be an array");
+        java.util.Set<String> names = new java.util.HashSet<>();
+        for (JsonElement el : raw.getAsJsonArray()) {
+            String ctx = origin + ": invalid \"dependencies\" entry (";
+            if (!el.isJsonObject()) throw bad(ctx + "must be an object)");
+            JsonObject dep = el.getAsJsonObject();
+
+            JsonElement nameEl = dep.get("name");
+            if (nameEl == null || !nameEl.isJsonPrimitive() || !nameEl.getAsJsonPrimitive().isString()
+                    || !DEPENDENCY_NAME.matcher(nameEl.getAsString()).matches()) {
+                throw bad(ctx + "'name' must match ^[a-z0-9][a-z0-9._-]*$)");
+            }
+            List<String> transports = new ArrayList<>();
+            for (String t : DEPENDENCY_TRANSPORTS) if (dep.has(t)) transports.add(t);
+            if (transports.size() != 1) {
+                throw bad(ctx + "exactly one of 'path' / 'npm' / 'python' is required)");
+            }
+            String transport = transports.get(0);
+            Map<String, String> spec = new LinkedHashMap<>();
+            spec.put("name", nameEl.getAsString());
+            spec.put(transport, nonEmptyString(dep.get(transport), ctx + "'" + transport + "' must be a non-empty string)"));
+
+            java.util.Set<String> allowed = new java.util.HashSet<>(List.of("name", transport));
+            if (!transport.equals("path")) allowed.add("dir");
+            List<String> extra = new ArrayList<>();
+            for (String k : dep.keySet()) if (!allowed.contains(k)) extra.add(k);
+            if (!extra.isEmpty()) {
+                java.util.Collections.sort(extra);
+                throw bad(ctx + "unknown key(s): " + extra + ")");
+            }
+            if (dep.has("dir")) {
+                spec.put("dir", nonEmptyString(dep.get("dir"), ctx + "'dir' must be a non-empty string)"));
+            }
+            if (!names.add(spec.get("name"))) {
+                throw bad(origin + ": \"dependencies\" names must be unique");
+            }
+            out.add(spec);
+        }
+        return out;
+    }
+
+    private static String nonEmptyString(JsonElement el, String message) {
+        if (el == null || !el.isJsonPrimitive() || !el.getAsJsonPrimitive().isString()
+                || el.getAsString().strip().isEmpty()) {
+            throw bad(message);
+        }
+        return el.getAsString();
+    }
+
+    private static List<String> stringArray(JsonElement el, String field, String origin) {
+        if (!el.isJsonArray()) throw bad(origin + ": \"" + field + "\" must be an array of non-empty strings");
+        List<String> out = new ArrayList<>();
+        for (JsonElement v : el.getAsJsonArray()) {
+            out.add(nonEmptyString(v, origin + ": \"" + field + "\" must be an array of non-empty strings"));
+        }
+        return out;
+    }
+
+    /** {@code scope.include}; every other key inside {@code scope} is ignored. */
+    private static List<String> parseScopeInclude(JsonElement scope, String origin) {
+        if (scope == null || scope.isJsonNull()) return List.of();
+        if (!scope.isJsonObject()) throw bad(origin + ": \"scope\" must be an object");
+        JsonElement include = scope.getAsJsonObject().get("include");
+        if (include == null || include.isJsonNull()) return List.of();
+        return stringArray(include, "scope.include", origin);
+    }
+
+    /** {@code migrate.scope}, or {@code null} when absent; every other {@code migrate} key is ignored. */
+    private static List<String> parseMigrateScope(JsonElement migrate, String origin) {
+        if (migrate == null || migrate.isJsonNull()) return null;
+        if (!migrate.isJsonObject()) throw bad(origin + ": \"migrate\" must be an object");
+        JsonElement scope = migrate.getAsJsonObject().get("scope");
+        if (scope == null || scope.isJsonNull()) return null;
+        return stringArray(scope, "migrate.scope", origin);
     }
 
     /**

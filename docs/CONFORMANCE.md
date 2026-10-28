@@ -46,7 +46,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 | [`fixtures/provider-composition-conformance/`](../fixtures/provider-composition-conformance/) | 9 (5 error-shape + 4 compose-load) | ✓ | ✓ | — (JVM registry via Java) | ✓ | ✓ |
 | [`fixtures/source-resolution-conformance/`](../fixtures/source-resolution-conformance/) | 25 cases | ✓ (reference implementation) | ✓ | inherits via Java | ✓ | ✓ |
 | [`fixtures/scope-conformance/`](../fixtures/scope-conformance/) | 10 cases | ✓ (reference implementation) | ✓ | inherits via Java | ✓ | ✓ |
-| [`fixtures/dependency-conformance/`](../fixtures/dependency-conformance/) | 35 cases (24 resolution + 11 check) | ✓ (reference implementation; both arms) | — (Phase 2) | — (Phase 2) | — (Phase 2) | ✓ (resolution arm, all 24 identically; no check yet, so the 11 check cases are not run) |
+| [`fixtures/dependency-conformance/`](../fixtures/dependency-conformance/) | 35 cases (24 resolution + 11 check) | ✓ (reference implementation; both arms) | ✓ (resolution arm, all 24; no check, so the 11 check cases are not run) | inherits via Java | — (Phase 2) | ✓ (resolution arm, all 24 identically; no check yet, so the 11 check cases are not run) |
 | [`fixtures/shared-model-conformance/`](../fixtures/shared-model-conformance/) | 11 cases (7 publish + 4 refusal) | ✓ (reference implementation) | — (Phase 2) | — (Phase 2) | — (Phase 2) | ✓ (serializer arm: the 7 publish cases' document bytes; no publisher) |
 | [`fixtures/agent-context-conformance/`](../fixtures/agent-context-conformance/) | 4 | ✓ (the emitter is TS-owned) | — | — | — | — |
 | [`fixtures/metamodel-docs/`](../fixtures/metamodel-docs/) | 1 | ✓ (docs emit is TS-owned) | — | — | — | — |

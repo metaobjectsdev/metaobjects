@@ -224,6 +224,25 @@ public class MetaRoot extends MetaData implements com.metaobjects.database.Physi
     }
 
     /**
+     * FR-023 — what this project's metadata dependencies resolved to (the imported packages and the
+     * scope predicates). Set by the project-aware load; read by codegen through
+     * {@link com.metaobjects.config.DependencySet#forRoot(MetaRoot)} to exclude imported objects. A tree
+     * loaded with no project keeps the empty set, under which nothing is imported.
+     */
+    private transient com.metaobjects.config.DependencySet dependencySet =
+        com.metaobjects.config.DependencySet.EMPTY;
+
+    /** The project's resolved dependencies for this tree. Never {@code null}. */
+    public com.metaobjects.config.DependencySet getDependencySet() {
+        return dependencySet;
+    }
+
+    /** Sets the project's resolved dependencies on this root ({@code null} restores the empty set). */
+    public void setDependencySet(com.metaobjects.config.DependencySet dependencySet) {
+        this.dependencySet = (dependencySet != null) ? dependencySet : com.metaobjects.config.DependencySet.EMPTY;
+    }
+
+    /**
      * Returns all {@code object} children of this root node.
      *
      * @return list of MetaObject children; empty list if none

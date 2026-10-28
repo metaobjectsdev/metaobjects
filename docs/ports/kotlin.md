@@ -268,6 +268,14 @@ A requirement that becomes live adds a failing member (a red test, no compile br
 
 **Nothing else to hand over.** Unlike the Java `routes`/`dto`/`repository` output, no Kotlin generator's output imports helper runtime. The generated controller declares its filter parser, constraint mapping and patch handling inline, per file, and the rest imports only core: render and extract, the loader, and `metadata-ktx`. So an ejected Kotlin generator's output depends on nothing you do not own beyond the core. `EjectRuntimeRoundTripTest` in the Maven plugin checks this against every Kotlin generator's real output. `com.metaobjects.generator.kotlin.runtime.M2mJoinResolver` is a helper you may call from hand-written traversal code. No generated file imports it, so eject does not copy it; copy it yourself if you use it and want to own it.
 
+### Consuming a shared model (`dependencies`)
+
+Kotlin loads through the Java loader and the same Maven plugin, so a `dependencies` entry in
+`.metaobjects/config.json` works exactly as described in the [Java port
+doc](java.md#consuming-a-shared-model-dependencies): the committed snapshot loads first, your own
+entities can extend and reference it, and no Kotlin generator emits a file for an imported
+object (a `codegen-kotlin` test pins that) unless `scope.include` names its package.
+
 ### Declarative template-codegen (`TemplateScopeGenerator`)
 
 The 17 generators above are a starting point, not the ceiling. When you need a shape
