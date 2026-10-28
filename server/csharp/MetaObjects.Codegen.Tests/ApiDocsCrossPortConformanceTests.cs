@@ -38,6 +38,11 @@ public sealed class ApiDocsCrossPortConformanceTests
         return dir;
     }
 
+    // The C# port writes no model pages, so the back-link exists only federated to a base URL
+    // (ApiDocsGenerator.ModelBaseUrl); the manifest's relative apiCsharpToModel is the path math
+    // CSharpDocsPathsTests pins. Here the link is <base>/<modelPath>.
+    private const string ModelBase = "https://docs.example.com/model";
+
     private static string CaseDir() => Path.Combine(RepoRoot(), "fixtures", "conformance", CaseName);
 
     [Fact]
@@ -60,7 +65,7 @@ public sealed class ApiDocsCrossPortConformanceTests
             // ---- run the api-docs entry as gen runs it ----
             var outcome = CodegenCli.RunGen(
                 MetaObjects.Loader.MetaDataLoader.FromDirectory(inputDir), Path.Combine(tmp, "code"), "Generated", false,
-                [new MetaObjects.Codegen.Generators.ApiDocsGenerator { OutDir = outDir }], tmp);
+                [new MetaObjects.Codegen.Generators.ApiDocsGenerator { OutDir = outDir, ModelBaseUrl = ModelBase }], tmp);
             Assert.True(outcome.Ok, string.Join("\n", outcome.LoadErrors));
 
             // ---- per-unit: the api/csharp page must exist AND carry the model back-link ----
@@ -68,7 +73,7 @@ public sealed class ApiDocsCrossPortConformanceTests
             {
                 var node = unit.GetProperty("node").GetString()!;
                 var apiCsharpPath = unit.GetProperty("apiCsharpPath").GetString()!;
-                var apiCsharpToModel = unit.GetProperty("apiCsharpToModel").GetString()!;
+                var apiCsharpToModel = ModelBase + "/" + unit.GetProperty("modelPath").GetString()!;
 
                 var pageFile = Path.Combine(outDir, apiCsharpPath.Replace('/', Path.DirectorySeparatorChar));
 

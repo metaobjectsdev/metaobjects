@@ -127,4 +127,23 @@ public static class OwnedCopy
         }
         return clauses.Count == 0 ? "identical" : string.Join("; ", clauses);
     }
+
+    /// <summary>Every ejectable entry whose owned copy, and the emitters eject handed over with it,
+    /// is identical to the shipped one (<see cref="Status"/> reads <c>identical</c>).</summary>
+    public static IReadOnlyList<MetaObjects.Codegen.GeneratorRegistryEntry> IdenticalCopies(string root) =>
+        MetaObjects.Codegen.EjectableGenerators.Entries().Where(e => Status(root, e) == "identical").ToList();
+
+    /// <summary>
+    /// The one advisory line <c>dotnet meta gen</c> prints when owned copies identical to the shipped
+    /// generators exist (they carry no change, only the upkeep of owning them), naming them and the
+    /// command that drops them. <c>null</c> when there are none, so a project without them pays nothing.
+    /// </summary>
+    public static string? IdenticalNotice(string root)
+    {
+        var names = IdenticalCopies(root).Select(e => e.Name).ToList();
+        return names.Count == 0
+            ? null
+            : $"note: owned generator copies identical to the shipped ones: {string.Join(", ", names)}. " +
+              "`dotnet meta eject --undo` drops them (it prints the codegen/Generators.cs edit; it changes nothing else).";
+    }
 }

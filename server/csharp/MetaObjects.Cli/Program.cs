@@ -27,12 +27,15 @@ if (args.Length == 0 || helpRequested)
     (helpRequested ? Console.Out : Console.Error).WriteLine(
         "usage: dotnet meta <command> [options]\n" +
         "  commands:\n" +
-        "    init [--root <dir>]                              write codegen/Generators.cs (the generator list),\n" +
-        "                                                     codegen/Program.cs and codegen/Codegen.csproj\n" +
+        "    init [--root <dir>] [--with-docs]                write codegen/Generators.cs (the generator list),\n" +
+        "                                                     codegen/Program.cs and codegen/Codegen.csproj;\n" +
+        "                                                     --with-docs lists the api-docs generator in it\n" +
         "    gen [<metadataDir>] --out <dir> [--namespace <ns>] [--emit-abstract-shapes]\n" +
-        "        [--generators <a,b,c>] [--template-root <dir>]\n" +
+        "        [--generators <a,b,c>] [--template-root <dir>] [--strict]\n" +
         "                                                     run the generator list in codegen/Generators.cs;\n" +
-        "                                                     --generators narrows it to the entries named\n" +
+        "                                                     --generators narrows it to the entries named;\n" +
+        "                                                     --strict rejects an unknown @attr before writing\n" +
+        "                                                     (as verify does, ADR-0023; default is a warning)\n" +
         "    gen --list                                       list available generators (stable names) and exit\n" +
         "    verify <metadataDir> [--templates [--prompts <dir>]] [--codegen --out <dir> [--namespace <ns>]] [--db] [--lax]\n" +
         "                                                     drift gates (ADR-0021 D2 subverbs):\n" +
@@ -56,6 +59,13 @@ if (args.Length == 0 || helpRequested)
         "    eject <name>... [--force] [--root <dir>]        copy a reference generator into\n" +
         "                                                     codegen/generators/ to own (ADR-0034);\n" +
         "                                                     see `dotnet meta gen --list`\n" +
+        "    eject --undo [<name>...] [--force] [--root <dir>]\n" +
+        "                                                     drop owned copies identical to the shipped\n" +
+        "                                                     generators (all of them, or the names given;\n" +
+        "                                                     a copy that differs needs --force). It prints\n" +
+        "                                                     the Generators.cs edit and never makes it.\n" +
+        "                                                     There is no `doctor` command: gen's notice\n" +
+        "                                                     and `gen --list` show identical copies\n" +
         "    fmt [<metadataDir>] [--check]                    rewrite metadata into canonical form (#304);\n" +
         "                                                     --check lists drift, exits non-zero, changes nothing\n" +
         "    agent-docs                                           see `npx meta agent-docs`\n" +
@@ -131,6 +141,11 @@ static int RunGen(string[] rest)
         : Directory.GetCurrentDirectory();
     if (RequireGeneratorList(projectRoot, "dotnet meta gen") is { } refused) return refused;
 
+    // Advisory: owned copies identical to the shipped generators carry nothing of the adopter's.
+    // One line on stderr, free when there are none; never changes the exit code.
+    try { if (OwnedCopy.IdenticalNotice(projectRoot) is { } notice) Console.Error.WriteLine(notice); }
+    catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
+
     // Advisory: nudge a re-scaffold if the copied-in agent context predates this build.
     // Never throws, never changes the exit code (a missing/corrupt manifest is ignored).
     AgentContextStalenessCheck.WarnIfStale(Directory.GetCurrentDirectory());
@@ -179,12 +194,14 @@ static int RemovedDocs()
 static int RunInit(string[] rest)
 {
     string? root = null;
+    bool withDocs = false;
     for (int i = 0; i < rest.Length; i++)
     {
         if (rest[i] == "--root" && i + 1 < rest.Length) root = rest[++i];
-        else return RefuseFlag("init", rest[i], ["--root"], []);
+        else if (rest[i] == "--with-docs") withDocs = true;
+        else return RefuseFlag("init", rest[i], ["--root"], ["--with-docs"]);
     }
-    var result = InitCommand.Run(root ?? Directory.GetCurrentDirectory());
+    var result = InitCommand.Run(root ?? Directory.GetCurrentDirectory(), withDocs);
     foreach (var line in result) Console.WriteLine(line);
     return 0;
 }
@@ -273,17 +290,20 @@ static int RunFmt(string[] rest)
 static int RunEject(string[] rest)
 {
     var names = new List<string>();
-    bool force = false;
+    bool force = false, undo = false;
     string? root = null;
     for (int i = 0; i < rest.Length; i++)
     {
         if (rest[i] == "--force") force = true;
+        else if (rest[i] == "--undo") undo = true;
         else if (rest[i] == "--root" && i + 1 < rest.Length) root = rest[++i];
         else if (!rest[i].StartsWith('-')) names.Add(rest[i]);
-        else return RefuseFlag("eject", rest[i], ["--root"], ["--force"]);
+        else return RefuseFlag("eject", rest[i], ["--root"], ["--force", "--undo"]);
     }
 
-    var result = EjectCommand.Run(names, root ?? Directory.GetCurrentDirectory(), force);
+    var result = undo
+        ? EjectCommand.Undo(names, root ?? Directory.GetCurrentDirectory(), force)
+        : EjectCommand.Run(names, root ?? Directory.GetCurrentDirectory(), force);
     foreach (var line in result.Out) Console.WriteLine(line);
     foreach (var line in result.Err) Console.Error.WriteLine($"error: {line}");
     return result.ExitCode;
@@ -608,7 +628,7 @@ partial class Program
 {
     static readonly string[] GenValueFlags =
         ["--out", "--namespace", "--generators", "--template-root", "--template-spec", "--column-naming", "--baseline"];
-    static readonly string[] GenBoolFlags = ["--list", "--emit-abstract-shapes"];
+    static readonly string[] GenBoolFlags = ["--list", "--emit-abstract-shapes", "--strict"];
     static readonly string[] VerifyValueFlags =
         ["--prompts", "--out", "--namespace", "--generators", "--template-root", "--column-naming"];
     static readonly string[] VerifyBoolFlags = ["--templates", "--codegen", "--db", "--lax", "--no-field-lint", "--require-implementers"];
@@ -616,14 +636,23 @@ partial class Program
     /// <summary>Each command's usage, printed by <c>dotnet meta &lt;command&gt; --help</c>.</summary>
     static readonly Dictionary<string, string> CommandUsage = new()
     {
-        ["gen"] = "usage: dotnet meta gen [<metadataDir>] --out <dir> [--namespace <ns>] [--generators <a,b,c>] [--template-root <dir>] [--emit-abstract-shapes] [--baseline default|adopt]\n" +
+        ["gen"] = "usage: dotnet meta gen [<metadataDir>] --out <dir> [--namespace <ns>] [--generators <a,b,c>] [--template-root <dir>] [--emit-abstract-shapes] [--baseline default|adopt] [--strict]\n" +
                   "       dotnet meta gen --list\n" +
                   "  runs the generator list in codegen/Generators.cs (`dotnet meta init` writes it);\n" +
                   "  --generators narrows that list to the entries named, and never adds one.\n" +
+                  "  --strict: an unknown @attr is an error (exit 1, nothing written), as in verify (ADR-0023);\n" +
+                  "  without it gen warns and generates. Owned copies identical to the shipped generators\n" +
+                  "  get one advisory line naming `dotnet meta eject --undo`.\n" +
                   "  column/table naming: \"naming\" in .metaobjects/config.json (ADR-0058), not a flag here",
-        ["init"] = "usage: dotnet meta init [--root <dir>]",
+        ["init"] = "usage: dotnet meta init [--root <dir>] [--with-docs]\n" +
+                  "  --with-docs lists the api-docs generator in codegen/Generators.cs (written to docs/csharp)",
         ["verify"] = "usage: dotnet meta verify <metadataDir> [--templates [--prompts <dir>]] [--codegen --out <dir> [--namespace <ns>] [--generators <a,b,c>] [--template-root <dir>]] [--db] [--lax] [--no-field-lint] [--require-implementers]",
         ["fmt"] = "usage: dotnet meta fmt [<metadataDir>] [--check]",
-        ["eject"] = "usage: dotnet meta eject <name>... [--force] [--root <dir>]",
+        ["eject"] = "usage: dotnet meta eject <name>... [--force] [--root <dir>]\n" +
+                    "       dotnet meta eject --undo [<name>...] [--force] [--root <dir>]\n" +
+                    "  --undo drops owned copies identical to the shipped generators (every one, or the names given);\n" +
+                    "  a copy that differs is refused (exit 2) unless --force. It prints the codegen/Generators.cs edit\n" +
+                    "  that points the entry back at the shipped generator and never edits the project.\n" +
+                    "  There is no `doctor` command: gen's notice and `dotnet meta gen --list` show identical or stale copies.",
     };
 }

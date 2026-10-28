@@ -49,6 +49,27 @@ public sealed class GenUnknownAttrWarningTests : IDisposable
     }
 
     [Fact]
+    public void Strict_gen_rejects_an_unknown_attribute_before_writing_anything()
+    {
+        File.WriteAllText(Path.Combine(MetaDir, "meta.acme.json"), Typos);
+        var run = OwnedRunner.Run(_tmp, ["entity"], "gen", MetaDir, "--out", OutDir, "--namespace", "Acme", "--strict");
+        Assert.Equal(1, run.ExitCode);
+        Assert.Contains("ERR_UNKNOWN_ATTR", run.Stderr);
+        Assert.Contains("hint: " + VerifyCommand.UNKNOWN_ATTR_HINT, run.Stderr);
+        Assert.False(Directory.Exists(OutDir) && Directory.EnumerateFiles(OutDir, "*", SearchOption.AllDirectories).Any());
+    }
+
+    [Fact]
+    public void Strict_gen_on_a_clean_model_generates()
+    {
+        File.WriteAllText(Path.Combine(MetaDir, "meta.acme.json"),
+            Typos.Replace("\"@isAbstrakt\": true", "\"abstract\": true").Replace("@requird", "@required"));
+        var run = OwnedRunner.Run(_tmp, ["entity"], "gen", MetaDir, "--out", OutDir, "--namespace", "Acme", "--strict");
+        Assert.Equal(0, run.ExitCode);
+        Assert.NotEmpty(Directory.EnumerateFiles(OutDir, "*.cs", SearchOption.AllDirectories));
+    }
+
+    [Fact]
     public void A_clean_model_has_no_unknown_attribute_warnings()
     {
         File.WriteAllText(Path.Combine(MetaDir, "meta.acme.json"),
