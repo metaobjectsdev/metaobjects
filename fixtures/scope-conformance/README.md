@@ -64,5 +64,14 @@ segment matcher) as long as every case in this file passes.
   `re.fullmatch` — every compiled pattern is already anchored, but a `.match`
   would still let a trailing-newline-in-the-name case through, which
   `fullmatch` correctly refuses).
-- Java, Kotlin and C# have no runner yet — `scope` stays Node-CLI-only (see
-  [`docs/features/metadata-sources.md`](../../docs/features/metadata-sources.md)).
+- Java: `server/java/metadata/src/test/java/com/metaobjects/config/ScopeConformanceTest.java`
+  (against `com.metaobjects.config.Scope`, which matches with `Matcher.matches()` and
+  splits with a `-1` limit so a trailing `::` is refused, not dropped).
+- C#: `server/csharp/MetaObjects.Conformance.Tests/ScopeConformanceTests.cs` (against
+  `MetaObjects.Config.Scope`, anchored with `\A…\z` because .NET's `$` also matches
+  before a trailing newline).
+- Kotlin inherits the Java loader and has no runner of its own.
+
+The corpus asserts matches only. Each runner pins the invalid-pattern cases
+(`ERR_SCOPE_PATTERN_INVALID`: empty pattern, empty segment, trailing separator, odd
+colon run) in its own tests beside it.

@@ -91,7 +91,9 @@ exclusion and a `.[attr]` predicate that `scope` cannot express at all
 separator handling is wrong). Both are output filters over the same resolved
 file set, so they compete rather than layer, and reconciling them changes
 behavior for existing Java consumers — a separate, adopter-affecting decision
-rather than a mechanical port. No cross-port behavior depends on `scope`.
+rather than a mechanical port. No cross-port behavior depends on `scope`. (The pattern
+grammar itself is ported and corpus-gated in Java, Kotlin and C# as a library, ahead of the
+cross-repo dependency work; no command in those ports reads `scope` from the config yet.)
 
 **Two things are deliberately not cross-port contracts**, because the corpus
 that gates this feature says so explicitly:
@@ -711,8 +713,8 @@ Design rationale and the full phase plan:
 
 - [`fixtures/scope-conformance/`](../../fixtures/scope-conformance/) — 10 cases
   pinning `*` / `**`, include-union, exclude-after-include, literal metacharacters,
-  and case sensitivity. TypeScript runs it today; the other four ports have no runner
-  yet, because `scope` itself stays Node-CLI-only (see "Port support" above). See
+  and case sensitivity. All five ports run it (Kotlin inherits Java's); only the Node CLI
+  reads `scope` from the config (see "Port support" above). See
   [`CONFORMANCE.md`](../CONFORMANCE.md).
 
 **TypeScript gates**
