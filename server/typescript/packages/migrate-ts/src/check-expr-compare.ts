@@ -87,16 +87,20 @@ function matchingParen(s: string, open: number): number {
   return -1;
 }
 
-/** `inner` with its depth-0 text (literals, quoted identifiers and bracketed groups blanked). */
+/**
+ * `inner` with everything below depth 0 blanked (literals, quoted identifiers, bracketed
+ * groups). Same length as `inner`, so an offset found here is the same offset in `inner`.
+ */
 function topLevelText(inner: string): string {
   let out = "";
   let depth = 0;
   for (let i = 0; i < inner.length; i++) {
     const ch = inner[i]!;
     if (ch === "'" || ch === '"') {
-      i++;
+      const start = i++;
       while (i < inner.length && !(inner[i] === ch && inner[i + 1] !== ch)) i += inner[i] === ch ? 2 : 1;
-      out += " ";
+      i = Math.min(i, inner.length - 1);
+      out += " ".repeat(i - start + 1);
     } else if (ch === "(" || ch === "[") { depth++; out += " "; }
     else if (ch === ")" || ch === "]") { depth--; out += " "; }
     else out += depth === 0 ? ch : " ";
@@ -131,8 +135,10 @@ function foldNotDistinctFrom(expr: string): string {
       if (close !== -1) {
         const inner = expr.slice(open + 1, close);
         const top = topLevelText(inner);
-        if (top.match(/\bis\s+distinct\s+from\b/gi)?.length === 1 && !/\b(?:and|or|not)\b/i.test(top)) {
-          out += `(${inner.replace(/\bis\s+distinct\s+from\b/i, "is not distinct from")})`;
+        const operators = [...top.matchAll(/\bis\s+distinct\s+from\b/gi)];
+        if (operators.length === 1 && !/\b(?:and|or|not)\b/i.test(top)) {
+          const op = operators[0]!;
+          out += `(${inner.slice(0, op.index)}is not distinct from${inner.slice(op.index + op[0].length)})`;
           i = close + 1;
           continue;
         }

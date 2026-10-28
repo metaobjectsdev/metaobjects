@@ -261,6 +261,12 @@ describe("Postgres analyzer rewrites that text normalisation cannot undo", () =>
     expect(checkExprEquals(`x IS NOT DISTINCT FROM y`, `NOT (x IS DISTINCT FROM y)`)).toBe(true);
     // a negated group that is more than one comparison is not folded
     expect(checkExprEquals(`NOT (a IS DISTINCT FROM b OR c)`, `a IS NOT DISTINCT FROM b OR c`)).toBe(false);
+    // only the depth-0 operator is rewritten: a nested comparison that comes first is not the one negated
+    expect(checkExprEquals(`NOT ((a IS DISTINCT FROM b) IS DISTINCT FROM c)`, `(a IS NOT DISTINCT FROM b) IS DISTINCT FROM c`)).toBe(false);
+    expect(checkExprEquals(`NOT ((a IS DISTINCT FROM b) IS DISTINCT FROM c)`, `(a IS DISTINCT FROM b) IS NOT DISTINCT FROM c`)).toBe(true);
+    // the phrase inside a literal is data, never the operator
+    expect(checkExprEquals(`NOT ('x is distinct from y' IS DISTINCT FROM z)`, `'x is not distinct from y' IS DISTINCT FROM z`)).toBe(false);
+    expect(checkExprEquals(`NOT ('x is distinct from y' IS DISTINCT FROM z)`, `'x is distinct from y' IS NOT DISTINCT FROM z`)).toBe(true);
     // `IS NOT NULL` is not a left operand
     expect(normalizeCheckExpr(`NOT (x IS NOT NULL IS DISTINCT FROM y)`)).toBe(`not x is not null is distinct from y`);
   });
