@@ -41,7 +41,7 @@ public final class JavaApiDocsGenerator extends FileEmittingGenerator {
     /** Arg: the page layout, {@code flat} (one file per unit, the default) or {@code package}. */
     public static final String ARG_LAYOUT = "layout";
 
-    /** Arg: when set, the base URL the pages' links to the model pages are written against. */
+    /** Arg: the base URL the pages' links to the model pages are written against; with none set, the pages carry no such link. */
     public static final String ARG_MODEL_BASE_URL = "modelBaseUrl";
 
     /** The api-surface subdirectory of the cross-port docs contract. */
@@ -67,7 +67,10 @@ public final class JavaApiDocsGenerator extends FileEmittingGenerator {
         Set<String> paths = new HashSet<>();
         for (ApiUnit unit : model.units()) {
             String pagePath = DocsPaths.docPageOutputPath(layout, unit.pkg(), unit.node());
-            String modelHref = DocsPaths.modelCrossHref(subDir + "/" + pagePath, pagePath, modelBaseUrl);
+            // No model pages are written beside the api pages, so a relative link would be dead:
+            // the link is emitted only against a <modelBaseUrl> that hosts them.
+            String modelHref = modelBaseUrl == null || modelBaseUrl.isEmpty() ? null
+                    : DocsPaths.modelCrossHref(subDir + "/" + pagePath, pagePath, modelBaseUrl);
             add(pages, paths, subDir, pagePath, renderer.renderUnitPage(unit, modelHref));
         }
         add(pages, paths, subDir, "README.md", renderer.renderIndex(model, layout));

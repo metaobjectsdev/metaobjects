@@ -47,6 +47,7 @@ public class MetaDataGeneratorMojo extends AbstractMetaDataMojo
         // used to exit 0 on it.
         refuseUnmetRequires(generatorImpls);
         refuseSharedGeneratorDirs();
+        noteOwnedStock();
 
         // Refuse before any generator runs — the one choke point that sees the WHOLE
         // entity set every route-emitting generator below (Java's codegen-spring AND
@@ -126,6 +127,22 @@ public class MetaDataGeneratorMojo extends AbstractMetaDataMojo
         }
 
         registerGeneratedSourceRoots();
+    }
+
+    /**
+     * One advisory line when an owned generator copy under {@code codegen/} is identical to the
+     * shipped generator. Never changes the build outcome: a failed comparison says nothing.
+     */
+    private void noteOwnedStock() {
+        if (project == null || project.getBasedir() == null) return;
+        try {
+            String line = OwnedStock.notice(OwnedStock.find(
+                    project.getBasedir().toPath().resolve("codegen"),
+                    OwnedStock.classpath(getClass().getClassLoader())));
+            if (line != null) getLog().info("MetaData Mojo > " + line);
+        } catch (IOException | RuntimeException ignored) {
+            // advisory only
+        }
     }
 
     /**
