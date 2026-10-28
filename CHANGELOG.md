@@ -22,8 +22,8 @@ here.**
   loader. The lock is checked as in TypeScript and Python (`ERR_DEPENDENCY_SNAPSHOT_STALE`,
   `_METAMODEL_INCOMPATIBLE`, `_NODE_COLLISION`), a local node declared into a dependency's package
   fails with `ERR_DEPENDENCY_PACKAGE_NOT_OWNED`, and the Java and Kotlin generators emit nothing for
-  an imported object unless `scope.include` names its package. Runs all 23 cases of
-  `fixtures/dependency-conformance/`; Kotlin loads through the same loader and adds a codegen test.
+  an imported object unless `scope.include` names its package. Runs all 24 resolution cases of
+  `fixtures/dependency-conformance/` (the 11 check cases pin the Node `meta deps check`); Kotlin loads through the same loader and adds a codegen test.
   Spring runtime auto-load and `verify` drift for dependencies are later slices.
 - **Java, Kotlin and C# can compile and match `scope` patterns.** `com.metaobjects.config.Scope`
   (Java; Kotlin inherits it) and `MetaObjects.Config.Scope` (C#) port the scope-pattern grammar from
