@@ -77,6 +77,17 @@ describe("diffTableChecks — regex check on a text-family column", () => {
     const r = await diff({ expected: withKey(undefined, [generated]), actual: withKey("bpchar", [uncast]), dialect: "postgres" });
     expect(r.changes.filter((c) => c.kind.endsWith("-check"))).toEqual([]);
   });
+  test("bpchar column: a stored length((col)::text) is drift against the uncast length()", async () => {
+    const expected = CHK("spaces_key_length_chk", `length("key") >= 2`);
+    const cast = CHK("spaces_key_length_chk", `((length((key)::text) >= 2))`);
+    const uncast = CHK("spaces_key_length_chk", `(length(key) >= 2)`);
+    const kinds = async (udt: string, actual: CheckDescriptor) =>
+      (await diff({ expected: withKey(undefined, [expected]), actual: withKey(udt, [actual]), dialect: "postgres" }))
+        .changes.filter((c) => c.kind.endsWith("-check")).map((c) => c.kind).sort();
+    expect(await kinds("bpchar", cast)).toEqual(["add-check", "drop-check"]);
+    expect(await kinds("bpchar", uncast)).toEqual([]);
+    expect(await kinds("varchar", cast)).toEqual([]);
+  });
   test("citext column: cast vs uncast is drift", async () => {
     expect((await checkChanges("citext")).map((c) => c.kind).sort()).toEqual(["add-check", "drop-check"]);
   });
