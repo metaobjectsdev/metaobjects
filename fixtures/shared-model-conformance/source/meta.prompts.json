@@ -1,0 +1,50 @@
+{
+  "metadata.root": {
+    "package": "acme::common",
+    "children": [
+      {
+        "object.value": {
+          "name": "AskPayload",
+          "children": [
+            {
+              "field.string": {
+                "name": "question"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.value": {
+          "name": "AnswerPayload",
+          "children": [
+            {
+              "field.string": {
+                "name": "text"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "template.prompt": {
+          "name": "ask",
+          "@payloadRef": "AskPayload",
+          "@responseRef": "AnswerPayload",
+          "@textRef": "ai/ask",
+          "@format": "text",
+          "@promptStyle": "inline"
+        }
+      },
+      {
+        "requirement.functional": {
+          "name": "AnswersAreShort",
+          "@level": 5,
+          "@status": "live",
+          "@statement": "Every answer fits on one line.",
+          "@counterexample": "An answer that runs to three paragraphs."
+        }
+      }
+    ]
+  }
+}

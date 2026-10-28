@@ -58,6 +58,9 @@ interface Case {
   readonly expectLoadError?: string;
   readonly expectErrorFiles?: readonly string[];
   readonly expectError?: string;
+  /** The check arm (`expectCheck`): run by `cli/test/dependency-check-conformance.test.ts`,
+   *  because the check lives in the CLI's `dependency-sync` module. */
+  readonly expectCheck?: Record<string, string>;
 }
 
 const CORPUS_DIR = resolve(import.meta.dir, "../../../../../fixtures/dependency-conformance");
@@ -93,7 +96,10 @@ async function materialize(c: Case): Promise<{ root: string; resolveDir: string 
   return { root, resolveDir };
 }
 
-const cases: Case[] = JSON.parse(await readFile(CORPUS, "utf8")).cases;
+// The resolution arm only: a case carrying `expectCheck` is the check arm's, not this one's.
+const cases: Case[] = (JSON.parse(await readFile(CORPUS, "utf8")).cases as Case[]).filter(
+  (c) => c.expectCheck === undefined,
+);
 
 describe("dependency conformance", () => {
   test("corpus is non-empty (a silent zero-case run is a failed gate)", () => {

@@ -1,0 +1,71 @@
+{
+  "metadata.root": {
+    "children": [
+      {
+        "object.entity": {
+          "name": "Invoice",
+          "package": "acme::billing",
+          "extends": "acme::common::Audited",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "invoices"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.object": {
+                "name": "billingAddress",
+                "@objectRef": "acme::common::Address"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.value": {
+          "name": "Address",
+          "package": "acme::common",
+          "children": [
+            {
+              "field.string": {
+                "name": "city"
+              }
+            },
+            {
+              "field.string": {
+                "name": "street"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Audited",
+          "package": "acme::common",
+          "abstract": true,
+          "children": [
+            {
+              "field.timestamp": {
+                "name": "createdAt"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

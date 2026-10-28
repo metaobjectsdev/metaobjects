@@ -1,0 +1,78 @@
+{
+  "metadata.root": {
+    "package": "acme::common",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Customer",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "customers"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "email",
+                "@maxLength": 120
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Secret",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "secrets"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.object": {
+                "name": "billingAddress",
+                "@objectRef": "Address"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "requirement.functional": {
+          "name": "KeepSecretsSafe",
+          "@level": 5,
+          "@status": "live",
+          "@statement": "Every secret's billing address is stored encrypted at rest.",
+          "@counterexample": "A secret row with a plaintext billing address."
+        }
+      }
+    ]
+  }
+}

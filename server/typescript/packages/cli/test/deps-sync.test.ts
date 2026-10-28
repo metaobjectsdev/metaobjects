@@ -629,6 +629,66 @@ describe("meta deps sync — a failed post-sync load leaves the previous state i
   });
 });
 
+describe("meta deps sync — a project whose own metadata this toolchain does not read", () => {
+  /** A Maven-shaped consumer: the model lives under the build tool's resource directory
+   *  and the neutral config declares no `sources`, so the source ladder finds nothing. */
+  function setupMavenShaped(): { consumerRoot: string } {
+    const { consumerRoot } = setupProject();
+    rmSync(join(consumerRoot, "metaobjects"), { recursive: true, force: true });
+    const resources = join(consumerRoot, "src", "main", "resources", "metadata");
+    mkdirSync(resources, { recursive: true });
+    writeFileSync(join(resources, "meta.app.json"), APP, "utf8");
+    return { consumerRoot };
+  }
+
+  test("a Maven-shaped layout syncs, exits 0, and says the port's own verify is the full check", async () => {
+    const { consumerRoot } = setupMavenShaped();
+
+    const exit = await run(["deps", "sync", "--format", "text", "--cwd", consumerRoot]);
+    expect(exit).toBe(0);
+    expect(existsSync(join(consumerRoot, ".metaobjects", "deps.lock.json"))).toBe(true);
+    expect(readFileSync(join(consumerRoot, ".metaobjects", "deps", DEP_NAME, ARTIFACT_BASENAME))).toEqual(
+      V1_BYTES,
+    );
+    const output = [...out, ...err].join("\n");
+    expect(output).toContain("synced");
+    expect(output).toContain("only the locked dependencies were loaded together");
+    expect(output).toContain("Run the project's own `verify` for the full check.");
+    expect(output).not.toContain("rolled back");
+  });
+
+  test("a Maven-shaped layout then checks green", async () => {
+    const { consumerRoot } = setupMavenShaped();
+    expect(await run(["deps", "sync", "--format", "text", "--cwd", consumerRoot])).toBe(0);
+
+    out = [];
+    err = [];
+    expect(await run(["deps", "check", "--format", "text", "--cwd", consumerRoot])).toBe(0);
+    expect([...out, ...err].join("\n")).toContain("current");
+  });
+
+  test("a model using vocabulary only another port registers syncs on its dependencies alone", async () => {
+    const { consumerRoot } = setupProject();
+    writeFileSync(
+      join(consumerRoot, "metaobjects", "meta.portonly.json"),
+      JSON.stringify({
+        "metadata.root": {
+          package: "app",
+          children: [{ "object.portonly": { name: "Gadget" } }],
+        },
+      }),
+      "utf8",
+    );
+
+    const exit = await run(["deps", "sync", "--format", "text", "--cwd", consumerRoot]);
+    expect(exit).toBe(0);
+    expect(existsSync(join(consumerRoot, ".metaobjects", "deps.lock.json"))).toBe(true);
+    const output = [...out, ...err].join("\n");
+    expect(output).toContain("uses vocabulary this toolchain does not register");
+    expect(output).toContain("Run the project's own `verify` for the full check.");
+  });
+});
+
 describe("meta deps check — a snapshot that cannot load is not green", () => {
   test("hashes match the lock but the model no longer loads: exit 1 with the load error", async () => {
     const { consumerRoot } = setupProject();
