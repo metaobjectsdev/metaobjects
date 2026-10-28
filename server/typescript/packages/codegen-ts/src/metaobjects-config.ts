@@ -24,6 +24,25 @@ export type GeneratorSpec = Generator | string;
  * does not own a MySQL schema (ADR-0015), so the adopter writes the DDL.
  */
 export type Dialect = "sqlite" | "postgres" | "mysql";
+
+/** The closed set of codegen dialects. `d1` is deliberately absent: it is a `meta migrate` transport. */
+export const CODEGEN_DIALECTS = ["sqlite", "postgres", "mysql"] as const satisfies readonly Dialect[];
+
+/**
+ * Refuse a `dialect` that is not one of {@link CODEGEN_DIALECTS}. Without this an unknown value
+ * (most often `"d1"`) fell through to the Postgres branch of every dialect switch and emitted
+ * `pgTable` code that cannot run on the target database, with no diagnostic.
+ */
+export function assertCodegenDialect(dialect: unknown): asserts dialect is Dialect | undefined {
+  if (dialect === undefined || (CODEGEN_DIALECTS as readonly unknown[]).includes(dialect)) return;
+  const valid = CODEGEN_DIALECTS.map((d) => `"${d}"`).join(", ");
+  const shown = typeof dialect === "string" ? `"${dialect}"` : String(dialect);
+  const d1Hint =
+    dialect === "d1"
+      ? ` Cloudflare D1 is SQLite: set \`dialect: "sqlite"\` in metaobjects.config.ts. "d1" names only the \`meta migrate\` transport (\`migrate.dialect\` in .metaobjects/config.json, \`--dialect d1\`), which drives Wrangler; code generation has no separate D1 output, so a "d1" here would otherwise have been generated as Postgres.`
+      : "";
+  throw new Error(`invalid codegen dialect ${shown} in metaobjects.config.ts; expected one of: ${valid}.${d1Hint}`);
+}
 /** Re-exported from metadata so codegen-ts consumers see one canonical type. */
 export type { ColumnNamingStrategy, MetaDataTypeProvider } from "@metaobjectsdev/metadata";
 export type { ExtStyle };
@@ -378,6 +397,7 @@ export function normalizeConfig(config: MetaobjectsGenConfig): NormalizedMetaobj
   if (removedNaming !== undefined) {
     throw new Error(physicalNamingRemovedMessage("columnNamingStrategy in metaobjects.config.ts", String(removedNaming), physicalNamingGuideUrl()));
   }
+  assertCodegenDialect(config.dialect);
   const dialect = config.dialect ?? DEFAULT_DIALECT;
   return {
     ...config,

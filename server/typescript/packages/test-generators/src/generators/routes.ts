@@ -69,6 +69,7 @@ import {
   isReport,
   itemRouteField,
   decimalColumnsLine,
+  writeDeniedColumnsLine,
   servesReadApi,
   formatTs,
   entityOutputPath,
@@ -308,7 +309,7 @@ export async function ${handlerName}(fastify: ${FastifyInstanceSym}) {
       updateSchema: ${entityName}UpdateSchema,
       filterAllowlist: ${entityName}FilterAllowlist,
       sortAllowlist: ${entityName}SortAllowlist,
-      dialect: ${JSON.stringify(ctx.dialect)},${decimalColumnsLine(entity, "      ", ctx.loadedRoot)}${exposeLinePrefixed}
+      dialect: ${JSON.stringify(ctx.dialect)},${decimalColumnsLine(entity, "      ", ctx.loadedRoot)}${writeDeniedColumnsLine(entity, "      ")}${exposeLinePrefixed}
     });
 ${m2mMountsPrefixed}  }, { prefix: ${JSON.stringify(ctx.apiPrefix)} });
 }
@@ -333,7 +334,7 @@ export async function ${handlerName}(fastify: ${FastifyInstanceSym}) {
     updateSchema: ${entityName}UpdateSchema,
     filterAllowlist: ${entityName}FilterAllowlist,
     sortAllowlist: ${entityName}SortAllowlist,
-    dialect: ${JSON.stringify(ctx.dialect)},${decimalColumnsLine(entity, "    ", ctx.loadedRoot)}${exposeLineFlat}
+    dialect: ${JSON.stringify(ctx.dialect)},${decimalColumnsLine(entity, "    ", ctx.loadedRoot)}${writeDeniedColumnsLine(entity, "    ")}${exposeLineFlat}
   });
 ${m2mMountsFlat}}
 `;
@@ -633,7 +634,7 @@ function renderTphRoutes(
       updateSchema: ${subUpdateSym},
       filterAllowlist: ${subFilterSym},
       sortAllowlist: ${subSortSym},
-      dialect: ${dialectLit},${decimalColumnsLine(sub, "      ", ctx.loadedRoot)}
+      dialect: ${dialectLit},${decimalColumnsLine(sub, "      ", ctx.loadedRoot)}${writeDeniedColumnsLine(sub, "      ")}
       discriminator: { column: ${JSON.stringify(discField)}, value: ${JSON.stringify(value)} },${exposeLine(expose, "      ")}
     });`;
     // This subtype's own M:N navigations, mounted beneath its segment and gated on the

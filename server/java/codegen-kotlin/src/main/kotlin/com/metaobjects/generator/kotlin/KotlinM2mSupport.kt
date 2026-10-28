@@ -86,6 +86,8 @@ object KotlinM2mSupport {
         val targetDiscriminator: TargetDiscriminator?,
         val symmetric: Boolean,
         val junctionPackage: String = "",
+        /** #484: target fields that are credentials, never returned (mapped to null). */
+        val targetCredentialFields: Set<String> = emptySet(),
     )
 
     /**
@@ -199,6 +201,8 @@ object KotlinM2mSupport {
                     targetDiscriminator = targetDiscriminator,
                     symmetric = rel.isSymmetric,
                     junctionPackage = junctionPkg,
+                    targetCredentialFields = (target.metaFields + KotlinTphPlan.collectSubtypeFields(target, loader))
+                        .filter { KotlinGenUtil.isCredentialField(it) }.map { it.name }.toSet(),
                 )
             )
         }

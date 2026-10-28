@@ -98,6 +98,24 @@ here.**
   the command and rolls the sync back. A stale `docs/CONFORMANCE.md` cell that claimed Python passed
   only 2 of the dependency corpus's cases is corrected.
 
+- **Generated routes no longer accept or return fields they must not (#484).** A field marked
+  `@formExclude`, or a credential (a field that declares a `view.password`), is now **ignored** by
+  the generated create, PATCH and PUT in every port: the value is dropped, not rejected, so
+  an edit form that submits every field still saves, and a present `null` no longer clears it. A credential is
+  also never returned: not by list, get, or the echo of a write. Before this, `@formExclude` kept
+  a field out of the generated form while the route still wrote it, and a generated read returned password
+  hashes. Generated forms (React, Angular) and the api docs omit credentials too. Your own code is unaffected:
+  the entity, DTO and generated queries still carry the field, so you keep writing a hash or token yourself.
+  A project with neither mark generates byte-identical output. If you relied on a route writing a
+  `@formExclude` field, write it from your own code. Gated by the new `secret-fields/` sub-corpus
+  of the api-contract conformance corpus, in the generated lane of all five ports.
+
+- **`meta gen` and `meta verify --codegen` refuse an unknown codegen `dialect`** instead of silently
+  generating Postgres code. `dialect: "d1"` gets a message that says to use `"sqlite"` (D1 is
+  SQLite; `"d1"` names only the `meta migrate` transport). `meta init --d1` now scaffolds
+  `dialect: "sqlite"` in `metaobjects.config.ts`; it used to write `"d1"`. If your config has `dialect: "d1"`,
+  change it to `"sqlite"`.
+
 - **A failed `meta deps sync` no longer leaves a lock and snapshot that cannot load.** The
   command wrote `deps.lock.json` and the `.metaobjects/deps/` snapshot before loading the
   combined model, and on a load failure it exited 1 but kept the new files. Because the lock
@@ -127,6 +145,12 @@ here.**
   TypeScript-owned, so no other port carries this comparison.
 
 ### Documentation
+
+- **New recipes and a real D1 example.** `docs/recipes/` gains keeping drizzle-kit migrations
+  (`drizzle-kit-migrations.md`), guarding generated routes with your own auth
+  (`guarding-generated-routes.md`) and proving your `meta verify` gate can fail
+  (`prove-your-gate-fails.md`). The Cloudflare Workers recipe now has a per-request `drizzle(env.DB)`
+  example, and the `drizzle({} as never)` placeholder and the wrong `"d1"` codegen-dialect statements are corrected.
 
 - **Two doc errors corrected against the code.** `docs/recipes/mysql.md` said Python ships a
   Postgres driver only; it ships SQLite and MySQL drivers beside it. `docs/features/api-contract.md`

@@ -759,6 +759,34 @@ public object KotlinGenUtil {
     fun isNullableShapeProperty(field: MetaField<*>): Boolean =
         !isRequiredField(field) && !originGuaranteedNonNull(field) && !isAssignedPrimaryKeyField(field)
 
+    /**
+     * #484 — a credential: the field declares (or inherits, ADR-0039: resolving read) a child
+     * `view.password`. A credential is never returned by a generated read route and never
+     * written by a generated write route.
+     */
+    fun isCredentialField(field: MetaField<*>): Boolean =
+        field.getChildren(com.metaobjects.view.MetaView::class.java, true)
+            .any { it.subType == com.metaobjects.view.PresentationView.SUBTYPE_PASSWORD }
+
+    /** #484 — `@formExclude: true` (resolving read): the field is not part of the write shape. */
+    fun isFormExcluded(field: MetaField<*>): Boolean {
+        if (!field.hasMetaAttr(ATTR_FORM_EXCLUDE, true)) return false
+        val raw = runCatching { field.getMetaAttr(ATTR_FORM_EXCLUDE, true).value }.getOrNull()
+        return when (raw) {
+            is Boolean -> raw
+            is String -> raw.equals("true", ignoreCase = true)
+            else -> false
+        }
+    }
+
+    /**
+     * #484 — true when a generated create / PATCH / PUT route must IGNORE the field (strip it, never
+     * reject it): `@formExclude` or a credential. The application's own repository still writes it.
+     */
+    fun isApiWriteDenied(field: MetaField<*>): Boolean = isFormExcluded(field) || isCredentialField(field)
+
+    private const val ATTR_FORM_EXCLUDE = "formExclude"
+
     fun isRequiredField(field: MetaField<*>): Boolean {
         if (!field.hasMetaAttr(MetaField.ATTR_REQUIRED, true)) return false
         val raw = runCatching { field.getMetaAttr(MetaField.ATTR_REQUIRED, true).value }.getOrNull()

@@ -43,6 +43,37 @@ export interface WireOptions {
   readonly nullMembers?: NullMembersMode;
   /** The jsonb columns that hold a value object (or an array / map of them), by column name. */
   readonly valueObjects?: Readonly<Record<string, ValueObjectShape>>;
+  /**
+   * Credential fields (a `view.password` field): removed from every row sent, on list, get,
+   * the echo of a create or update, and an M:N traversal. The generated route passes them;
+   * absent, rows are sent as read.
+   */
+  readonly hiddenColumns?: readonly string[];
+}
+
+/** Remove `hidden` keys from a row. `undefined` when there is nothing to hide. */
+export function hiddenColumnsWire(hidden: readonly string[] | undefined): ((row: unknown) => unknown) | undefined {
+  if (hidden === undefined || hidden.length === 0) return undefined;
+  return (row) => {
+    if (!isPlainObject(row)) return row;
+    const out = { ...row };
+    for (const column of hidden) delete out[column];
+    return out;
+  };
+}
+
+/**
+ * Remove `denied` keys from a request body, before it is validated. The route's schema is the
+ * entity's shared `Insert`/`Update` schema, which app code writes through too, so the API
+ * boundary strips here and the schema stays whole. A key stripped is IGNORED, never rejected
+ * (the uniform rule for every key outside the settable set, `@mutability: writeOnce` on PATCH
+ * among them): a generated edit form submits every field it was given.
+ */
+export function stripDeniedColumns(body: unknown, denied: readonly string[] | undefined): unknown {
+  if (denied === undefined || denied.length === 0 || !isPlainObject(body)) return body;
+  const out = { ...body };
+  for (const column of denied) delete out[column];
+  return out;
 }
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
@@ -95,9 +126,11 @@ export function nullMembersWire(
   };
 }
 
-/** A wire mapper: `base` (timestamps), then the decimal rewrite, then the null-member rewrite. */
+/** A wire mapper: `base` (timestamps), then the decimal rewrite, the null-member rewrite, then the credential strip. */
 export function withWire(base: (row: unknown) => unknown, opts: WireOptions): (row: unknown) => unknown {
   const decimals = withDecimals(base, opts.decimalColumns, opts.decimalWire);
   const members = nullMembersWire(opts.valueObjects, opts.nullMembers);
-  return members === undefined ? decimals : (row) => members(decimals(row));
+  const hidden = hiddenColumnsWire(opts.hiddenColumns);
+  const shaped = members === undefined ? decimals : (row: unknown) => members(decimals(row));
+  return hidden === undefined ? shaped : (row) => hidden(shaped(row));
 }

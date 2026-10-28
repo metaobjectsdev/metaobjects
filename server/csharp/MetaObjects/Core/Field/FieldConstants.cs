@@ -121,6 +121,12 @@ public static class FieldConstants
     /// </summary>
     public const string FIELD_ATTR_MUTABILITY            = "mutability";
 
+    /// <summary>
+    /// <c>@formExclude</c> — the field is out of the generated form; the generated HTTP write
+    /// routes ignore it too (#484).
+    /// </summary>
+    public const string FIELD_ATTR_FORM_EXCLUDE          = "formExclude";
+
     /// <summary>readWrite — settable on create, changeable on update (the default).</summary>
     public const string MUTABILITY_READ_WRITE            = "readWrite";
 

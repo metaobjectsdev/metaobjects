@@ -17,13 +17,13 @@ is V8-isolate-safe. The table below is the authoritative split:
 | `@metaobjectsdev/codegen-ts` | Build-time only | Same. |
 | `@metaobjectsdev/migrate-ts` | Build-time only | Migrations emit SQL, then `wrangler d1 migrations apply` runs them. |
 | `@metaobjectsdev/render` | ✅ Runtime-safe | Pure JS, no Node-only deps. Used at request time. |
-| `@metaobjectsdev/runtime-ts` | ❌ Node-only | Fastify + Kysely drivers. Not for Workers. |
+| `@metaobjectsdev/runtime-ts` | ⚠️ Only the `/hono` entry | The Fastify and Kysely entry points are Node-only. The `/hono` entry is what generated Hono routes import. |
 | `@metaobjectsdev/runtime-web` | ✅ Runtime-safe | Pure browser/edge JS. |
 | `@metaobjectsdev/react` | ✅ Runtime-safe | Browser; works in Workers if you render React on the edge. |
 | `@metaobjectsdev/tanstack` | ✅ Runtime-safe | Browser-side. |
 | Generated `<Entity>.entity.ts` / `<Entity>.queries.ts` | ✅ Runtime-safe | The generated code is the runtime; uses `drizzle-orm/d1`. |
 | Generated `<Entity>.routes.ts` (Fastify, default) | ❌ Node-only | The handlers are Workers-safe but the Fastify adapter from `runtime-ts` is not. Use the Hono generator instead. |
-| Generated Hono routes (`routesFileHono()`) | ✅ Runtime-safe | The opt-in Workers routes generator — emits Hono handlers with no `runtime-ts` dependency. Wire it in `metaobjects.config.ts` in place of `routesFile()`. |
+| Generated Hono routes (`routesFileHono()`) | ✅ Runtime-safe | The opt-in Workers routes generator. It imports only the `@metaobjectsdev/runtime-ts/hono` entry point (Hono, Drizzle, Zod; no Fastify, Kysely or `node:` import in that module graph). Wire it in `metaobjects.config.ts` in place of `routesFile()`. |
 
 ## Project layout
 
@@ -123,42 +123,101 @@ agree (default `migrations/` matches Wrangler's expectation).
 For the full D1 dialect documentation, see the
 [`@metaobjectsdev/migrate-ts` README](../../server/typescript/packages/migrate-ts/README.md).
 
-## Skipping the routes generator
+## Codegen dialect is `sqlite`, not `d1`
 
-Workers consumers typically skip the routes generator entirely — Fastify-based
-routes don't run in V8 isolates. Hand-write your `fetch` handler against the
-generated queries:
+D1 is SQLite. In `metaobjects.config.ts` set `dialect: "sqlite"`: the generated tables are
+`sqliteTable`, timestamps are ISO strings, and the routes use SQLite `RETURNING`. `"d1"` names
+only the **`meta migrate` transport** (`migrate.dialect` in `.metaobjects/config.json`,
+`--dialect d1`), which shells out to Wrangler. `meta gen` and `meta verify --codegen` refuse any
+codegen dialect other than `sqlite`, `postgres` or `mysql`, and say so for `"d1"`, rather than
+quietly generating Postgres.
+
+## Generated routes and queries on a Worker, per request
+
+Use `routesFileHono()` (not the Fastify `routesFile()`) and `queriesFile()`:
+
+```ts
+// metaobjects.config.ts
+import { defineConfig } from "@metaobjectsdev/cli";
+import { entityFile, queriesFile, routesFileHono, barrel } from "@metaobjectsdev/codegen-ts/generators";
+
+export default defineConfig({
+  outDir: "src/generated",
+  dialect: "sqlite",            // D1 is SQLite
+  extStyle: "js",
+  apiPrefix: "/api",
+  generators: [entityFile(), queriesFile(), routesFileHono(), barrel()],
+});
+```
+
+Neither generated module imports a module-level `db`. Both take it as an argument:
+
+- `Note.queries.ts` exports `listNotes(db, opts?)`, `findNoteById(db, id)`, `createNote(db, ...)`
+  and so on, each with `db` as the first parameter.
+- `Note.routes.hono.ts` exports `registerNoteRoutes(app, { db })`. The `db` is captured when the
+  routes are **mounted**, not looked up per call.
+
+A D1 binding only exists on `env`, inside `fetch`, so build the Drizzle client there and mount
+the generated routes on a Hono app for that request:
 
 ```ts
 // src/worker.ts
+import { Hono } from "hono";
 import { drizzle } from "drizzle-orm/d1";
-import { findUserById, listUsers } from "./generated/User.queries";
-import * as schema from "./generated/schema";
-
-export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
-    const db = drizzle(env.DB, { schema });
-    const url = new URL(request.url);
-
-    if (url.pathname.startsWith("/api/users/")) {
-      const id = url.pathname.slice("/api/users/".length);
-      const user = await findUserById(db, id);
-      return Response.json(user);
-    }
-    if (url.pathname === "/api/users") {
-      return Response.json(await listUsers(db, {}));
-    }
-    // Static assets handled by Workers Static Assets binding.
-    return env.ASSETS.fetch(request);
-  },
-};
+import { registerNoteRoutes } from "./generated/Note.routes.hono.js";
+import { listNotes } from "./generated/Note.queries.js";
 
 interface Env {
-  DB: D1Database;
-  ASSETS: Fetcher;
+  DB: D1Database;          // from @cloudflare/workers-types
 }
+
+export default {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    const db = drizzle(env.DB);                       // one client per request
+
+    const url = new URL(request.url);
+    if (url.pathname === "/health") {
+      return Response.json({ notes: (await listNotes(db, {})).length });   // queries: plain calls
+    }
+
+    const app = new Hono<{ Bindings: Env }>();
+    registerNoteRoutes(app, { db });                  // routes: mounted with this request's db
+    return app.fetch(request, env, ctx);
+  },
+};
 ```
 
-> Note: `findUserById(db, id)` parameter-passing landing in 0.7.0 (FR2).
-> If you're on 0.6.x today, the generated queries import a module-level `db`
-> from `../db` instead — see the [0.6.0 release notes](../../CHANGELOG.md) for migration guidance.
+Registering the five routes is cheap, so doing it per request is fine. If you would rather mount
+once, build the app lazily on the first request (`let app: Hono | undefined`) and keep it for the
+isolate: the binding on `env` does not change for the life of the deployed version. Do not
+mount at module scope, where `env` does not exist yet, and do not pass a placeholder such as
+`drizzle({} as never)`: it type-checks and then fails on the first query.
+
+Add your guard before the mount: [Guarding generated routes](guarding-generated-routes.md).
+
+Wrangler needs only the binding the code reads:
+
+```toml
+# wrangler.toml
+name = "myapp"
+main = "./src/worker.ts"
+compatibility_date = "2026-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+[[d1_databases]]
+binding = "DB"                       # env.DB above
+database_name = "myapp-prod"
+database_id = "<your-database-id>"
+migrations_dir = "migrations"        # where `meta migrate --dialect d1` writes
+```
+
+### What was checked
+
+Generated from a one-entity model with `dialect: "sqlite"`, then compiled with `tsc --strict`
+(`module: nodenext`) together with the `worker.ts` above against the real `drizzle-orm/d1`,
+`hono` and `@metaobjectsdev/runtime-ts` types. `D1Database` and `ExecutionContext` came from a
+local stub in place of `@cloudflare/workers-types`, which that environment does not install.
+The same per-request mount (a new Hono app and `registerNoteRoutes` per request) was run against
+an in-memory libSQL database, which shares D1's SQLite dialect: `POST /api/notes` answered 201
+and `GET /api/notes` answered 200 with the row. D1 itself, `wrangler dev` and a deployed Worker
+were not exercised.

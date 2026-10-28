@@ -18,7 +18,7 @@ import { dbEmittingObjects, missingDialectMessage } from "./db-emitting.js";
 import { generatableObjects, hasAnyRdbSource } from "./source-detect.js";
 import type { Generator, GenContext, EmittedFile } from "./generator.js";
 import type { MetaobjectsGenConfig } from "./metaobjects-config.js";
-import { normalizeConfig, DEFAULT_TARGET_NAME } from "./metaobjects-config.js";
+import { normalizeConfig, assertCodegenDialect, DEFAULT_TARGET_NAME } from "./metaobjects-config.js";
 import type { ResolvedTarget } from "./import-path.js";
 import { buildPkMap } from "./pk-resolver.js";
 import { buildRelationMap } from "./relation-resolver.js";
@@ -515,6 +515,8 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   // projects — the error even told them their model "generates database code"
   // that in fact imported nothing. It is demanded below at the point of USE, by
   // the generator that reads it, which the runner names in the thrown message.
+  // An UNKNOWN dialect is refused before the missing-dialect check: it is present but wrong.
+  assertCodegenDialect(opts.config.dialect);
   const dbEmitting = dbEmittingObjects(safeEntities);
   if (dbEmitting.length > 0 && opts.config.dialect === undefined) {
     throw new Error(missingDialectMessage(dbEmitting));

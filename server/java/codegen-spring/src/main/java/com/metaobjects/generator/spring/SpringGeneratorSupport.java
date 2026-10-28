@@ -78,9 +78,52 @@ public final class SpringGeneratorSupport {
             // create. A value presented for one is STRIPPED (simply not in the settable
             // set), never 400'd — the uniform behaviour of every excluded key here.
             if (isNonReadWriteMutability(field)) continue;
+            // #484: a @formExclude / credential field is not writable through the HTTP boundary.
+            if (isApiWriteDenied(field)) continue;
             out.add(field);
         }
         return out;
+    }
+
+    /** The {@code @formExclude} attribute (boolean): the field is left out of generated forms. */
+    public static final String ATTR_FORM_EXCLUDE = "formExclude";
+
+    /**
+     * #484 — a credential: the field declares (or inherits, ADR-0039) a child {@code view.password}.
+     * A credential is never returned by a generated route and never written through one.
+     */
+    public static boolean isCredentialField(MetaField field) {
+        for (Object child : field.getViews()) {
+            com.metaobjects.view.MetaView view = (com.metaobjects.view.MetaView) child;
+            if (com.metaobjects.view.PresentationView.SUBTYPE_PASSWORD.equals(view.getSubType())) return true;
+        }
+        return false;
+    }
+
+    /**
+     * #484 — true when a generated create / PATCH / PUT route must IGNORE a value for this field
+     * (strip it, never reject it, so a form that submits every field still saves): its effective
+     * {@code @formExclude} is true, or it is a {@link #isCredentialField credential}. Resolving
+     * (ADR-0039): an inherited mark counts.
+     */
+    public static boolean isApiWriteDenied(MetaField field) {
+        if (field.hasMetaAttr(ATTR_FORM_EXCLUDE, true)
+                && "true".equalsIgnoreCase(field.getMetaAttr(ATTR_FORM_EXCLUDE, true).getValueAsString())) {
+            return true;
+        }
+        return isCredentialField(field);
+    }
+
+    /** #484 — the wire names of the credential fields among {@code fields}, in declared order. */
+    public static List<String> credentialNames(java.util.Collection<? extends MetaField> fields) {
+        List<String> out = new ArrayList<>();
+        for (MetaField f : fields) if (isCredentialField(f)) out.add(f.getName());
+        return out;
+    }
+
+    /** #484 — the credential wire names of {@code entity}'s DTO components. */
+    public static List<String> credentialNames(MetaObject entity) {
+        return credentialNames(dtoComponentFields(entity));
     }
 
     /**

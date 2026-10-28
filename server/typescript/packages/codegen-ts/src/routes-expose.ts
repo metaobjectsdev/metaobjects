@@ -103,6 +103,9 @@ export function exposeLine(verbs: readonly CrudVerb[] | undefined, indent: strin
 /**
  * The auth-seam paragraph in a generated routes handler's JSDoc.
  *
+ * The long-form version of this recipe, with `expose`, is docs/recipes/guarding-generated-routes.md;
+ * keep the two in step with `runtime-ts/test/route-auth-seam.test.ts`.
+ *
  * Stock CRUD is unauthenticated, and until #367 the only thing a generated routes file
  * said about that was a header line pointing at `<Entity>.extra.ts` "(e.g., auth)" — a
  * sibling module nothing imports. An agent building a real API read it, went looking for

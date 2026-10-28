@@ -90,7 +90,9 @@ dist/
 *.tsbuildinfo
 `;
 
-function buildMetaobjectsConfigBody(dialect: "sqlite" | "postgres" | "d1" = "sqlite"): string {
+// Codegen dialect only: Cloudflare D1 is SQLite, so `--d1` scaffolds "sqlite" here (the "d1" value
+// lives in `migrate.dialect` of .metaobjects/config.json, and codegen refuses it).
+function buildMetaobjectsConfigBody(dialect: "sqlite" | "postgres" = "sqlite"): string {
   return `import { defineConfig } from "@metaobjectsdev/cli";
 
 export default defineConfig({
@@ -682,7 +684,7 @@ export async function init(opts: InitOptions): Promise<InitResult> {
   // Scaffold metaobjects.config.ts at the project root. Never overwrite if it exists.
   const forgeConfigPath = join(opts.cwd, "metaobjects.config.ts");
   if (!(await fileExists(forgeConfigPath))) {
-    await writeFile(forgeConfigPath, buildMetaobjectsConfigBody(opts.d1 ? "d1" : "sqlite"), "utf8");
+    await writeFile(forgeConfigPath, buildMetaobjectsConfigBody("sqlite"), "utf8");
     result.created.push("metaobjects.config.ts");
   }
 

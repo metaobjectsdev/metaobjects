@@ -174,7 +174,8 @@ object KotlinTphPlan {
                 // code path (the 0.19.4 lesson), and this is its SSOT: the per-subtype patch shape,
                 // the <Sub>Validation shape and the settable-name list all read it.
                 !KotlinGenUtil.isReadOnlyMutability(it) &&
-                !KotlinGenUtil.isWriteOnceMutability(it)
+                !KotlinGenUtil.isWriteOnceMutability(it) &&
+                !KotlinGenUtil.isApiWriteDenied(it) // #484: @formExclude / credential, ignored on every write
         }
     }
 

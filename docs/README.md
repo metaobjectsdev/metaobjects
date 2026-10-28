@@ -83,6 +83,9 @@ this tree is documentation, not the source of truth.
 | See a worked, non-toy model end to end (projections, value objects, TPH, prompt payloads on one runnable spine) | [`../examples/advanced-modeling/`](../examples/advanced-modeling/) |
 | Read the canonical spec (target-agnostic) | [`../spec/`](../spec/) |
 | Find a release recipe (Cloudflare D1, etc.) | [`recipes/`](recipes/) |
+| Keep drizzle-kit migrations while MetaObjects owns the model | [`recipes/drizzle-kit-migrations.md`](recipes/drizzle-kit-migrations.md) |
+| Put generated routes behind your own auth (Fastify, Hono, `expose`) | [`recipes/guarding-generated-routes.md`](recipes/guarding-generated-routes.md) |
+| Show that your `meta verify` CI gate actually fails on drift | [`recipes/prove-your-gate-fails.md`](recipes/prove-your-gate-fails.md) |
 | See the deeper design rationale for a feature | [`superpowers/specs/`](superpowers/specs/) |
 
 ## Conventions used in these docs

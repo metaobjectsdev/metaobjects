@@ -288,14 +288,30 @@ class WireOutput:
     decimals: str = "native"
     null_members: str = "native"
     shapes: dict[str, Any] = dataclasses.field(default_factory=dict)
+    #: #484: credential fields, which no response carries (the key is absent, not null).
+    hidden: tuple[str, ...] = ()
 
 
 def render_wire(value: Any, wire: WireOutput) -> Any:
     """A response *value* (a row, a list of rows, a Pydantic model) in the form *wire* asks
     for. Input rules do not depend on *wire*."""
+    if wire.hidden:
+        value = _drop_hidden(value, wire.hidden)
     if wire.null_members != "native" and wire.shapes:
         value = _shape_members(value, wire)
     return to_wire(value) if wire.decimals == "string" else to_native(value)
+
+
+def _drop_hidden(value: Any, hidden: tuple[str, ...]) -> Any:
+    """*value* (a row, a list of rows, a Pydantic model) without the *hidden* keys."""
+    if isinstance(value, (list, tuple)):
+        return [_drop_hidden(v, hidden) for v in value]
+    dump = getattr(value, "model_dump", None)
+    if callable(dump):
+        value = dump()
+    if not isinstance(value, dict):
+        return value
+    return {k: v for k, v in value.items() if k not in hidden}
 
 
 def _shape_members(value: Any, wire: WireOutput) -> Any:

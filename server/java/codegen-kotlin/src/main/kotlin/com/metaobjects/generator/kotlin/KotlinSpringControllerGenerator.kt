@@ -274,7 +274,9 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                 // that is the uniform behaviour of every excluded key on this path, and the
                 // generated edit form submits every registered field.
                 !KotlinGenUtil.isReadOnlyMutability(it) &&
-                !KotlinGenUtil.isWriteOnceMutability(it)
+                !KotlinGenUtil.isWriteOnceMutability(it) &&
+                // #484: @formExclude / credential fields are stripped like the above, never 400'd.
+                !KotlinGenUtil.isApiWriteDenied(it)
         }
         val hasPatchFields = patchSettableFields.isNotEmpty()
 
@@ -504,6 +506,8 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                     append("            it[${field.name}] = ${insertNowVal[KotlinTypeMapper.nowExpr(field)]}\n")
                     continue
                 }
+                // #484: a @formExclude / credential column is never bound from the request body.
+                if (KotlinGenUtil.isApiWriteDenied(field)) continue
                 // NOTE: a `field.string @dbColumnType=jsonb` open bag IS written here (create
                 // binds it from the @Valid DTO's kotlinx JsonElement property, gated by the
                 // jsonb-open-bag-roundtrip corpus). PATCH cannot (the raw-JsonNode path can't bind
@@ -765,6 +769,8 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         // Non-discriminator, non-PK, non-@autoSet columns the create handler writes from the body.
         val writableFields = scalarFields.map { it.name }
             .filter { it != plan.discriminatorField && it != pkFieldName && it !in autoSetNames }
+            // #484: @formExclude / credential columns are never bound from the request body.
+            .filter { name -> scalarFields.none { it.name == name && KotlinGenUtil.isApiWriteDenied(it) } }
 
         // FR-035/FR-036 Program B: the per-subtype settable columns = the subtype's EFFECTIVE scalar
         // fields (base + own, resolved via extends) minus the PK and the discriminator, EXCLUDING
@@ -914,7 +920,11 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             // rowTo<Base>: union ResultRow → data class
             append("/** GENERATED — map an Exposed ResultRow to the union $shortName data class. */\n")
             append("private fun rowTo${shortName}(row: ResultRow): $shortName = $shortName(\n")
-            for (field in scalarFields) append("    ${field.name} = row[$table.${field.name}],\n")
+            for (field in scalarFields) {
+                // #484: a credential is never returned.
+                if (KotlinGenUtil.isCredentialField(field)) append("    ${field.name} = null,\n")
+                else append("    ${field.name} = row[$table.${field.name}],\n")
+            }
             append(")\n\n")
 
             append("/**\n")
@@ -1832,7 +1842,9 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         out.append("        val rows = $sourceTable.$queryFnName(id).map { row ->\n")
         out.append("            $targetType(\n")
         for (fname in nav.targetScalarFields) {
-            out.append("                $fname = row[${nav.targetTableObj}.$fname],\n")
+            // #484: a credential on the target is never returned.
+            if (fname in nav.targetCredentialFields) out.append("                $fname = null,\n")
+            else out.append("                $fname = row[${nav.targetTableObj}.$fname],\n")
         }
         out.append("            )\n")
         out.append("        }\n")
@@ -1883,7 +1895,9 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         out.append("        val rows = $table.$queryFnName(id).map { row ->\n")
         out.append("            $targetType(\n")
         for (fname in nav.targetScalarFields) {
-            out.append("                $fname = row[${nav.targetTableObj}.$fname],\n")
+            // #484: a credential on the target is never returned.
+            if (fname in nav.targetCredentialFields) out.append("                $fname = null,\n")
+            else out.append("                $fname = row[${nav.targetTableObj}.$fname],\n")
         }
         out.append("            )\n")
         out.append("        }\n")
@@ -2233,6 +2247,8 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             if ((field is MapField && !isVoMapColumn(field)) || (field is ObjectField && !isJsonbObjectColumn(field))) continue
             // The column PROPERTY, which the table generator renames when the field name is a
             // member of Exposed's Table (`source` is declared `sourceColumn`). Identity otherwise.
+            // #484: a credential is never returned (the property is nullable + omitted when null).
+            if (KotlinGenUtil.isCredentialField(field)) { append("    ${field.name} = null,\n"); continue }
             append("    ${field.name} = row[${readObj}.${KotlinNaming.safeColumnProperty(field.name, exposedApi())}],\n")
         }
         append(")\n\n")
