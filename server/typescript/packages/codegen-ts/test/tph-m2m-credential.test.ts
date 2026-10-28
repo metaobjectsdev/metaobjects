@@ -44,9 +44,32 @@ const MODEL = {
   },
 };
 
-async function loadModel(): Promise<MetaRoot> {
+// A TPH base whose subtypes share `token` and `memo`: plain on AThing, marked on BThing.
+const SHARED_COLUMN_MODEL = {
+  "metadata.root": {
+    package: "acme::things",
+    children: [
+      { "object.entity": { name: "Thing", "@discriminator": "kind", children: [
+        { "source.rdb": { "@table": "things" } },
+        { "field.long": { name: "id" } },
+        { "field.enum": { name: "kind", "@values": ["A", "B"] } },
+        { "identity.primary": { name: "pk", "@fields": "id", "@generation": "increment" } },
+      ]}},
+      { "object.entity": { name: "AThing", extends: "Thing", "@discriminatorValue": "A", children: [
+        { "field.string": { name: "token" } },
+        { "field.string": { name: "memo" } },
+      ]}},
+      { "object.entity": { name: "BThing", extends: "Thing", "@discriminatorValue": "B", children: [
+        { "field.string": { name: "token", children: [{ "view.password": {} }] } },
+        { "field.string": { name: "memo", "@formExclude": true } },
+      ]}},
+    ],
+  },
+};
+
+async function loadModel(model: object = MODEL): Promise<MetaRoot> {
   const result = await new MetaDataLoader({ strict: true }).load([
-    new InMemoryStringSource(JSON.stringify(MODEL), { id: "tph-m2m-credential.json" }),
+    new InMemoryStringSource(JSON.stringify(model), { id: "tph-m2m-credential.json" }),
   ]);
   expect(result.errors.map((e) => e.message)).toEqual([]);
   return result.root;
@@ -94,5 +117,18 @@ describe("M:N onto a TPH base target (#484)", () => {
   test("the traversal hides a credential declared on a subtype of the target", async () => {
     const routes = fileNamed(await generate(await loadModel()), "Payer.routes.ts");
     expect(m2mMount(routes, "auths")).toContain('hiddenColumns: ["pinHash"]');
+  });
+});
+
+describe("a TPH column marked on one subtype only (#484)", () => {
+  test("every subtype mount hides and ignores it", async () => {
+    const routes = fileNamed(await generate(await loadModel(SHARED_COLUMN_MODEL)), "Thing.routes.ts");
+    for (const segment of ["/a", "/b"]) {
+      const start = routes.indexOf(`path: Thing.$path + "${segment}"`);
+      expect(start).toBeGreaterThan(-1);
+      const mount = routes.slice(start, routes.indexOf("});", start));
+      expect(mount).toContain('hiddenColumns: ["token"]');
+      expect(mount).toContain('writeDeniedColumns: ["token", "memo"]');
+    }
   });
 });

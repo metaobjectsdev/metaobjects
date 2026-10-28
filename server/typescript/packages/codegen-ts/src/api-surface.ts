@@ -171,22 +171,27 @@ export function isApiWriteDenied(field: MetaField): boolean {
   return field.attr(FIELD_ATTR_FORM_EXCLUDE) === true || isCredentialField(field);
 }
 
-/** The names of an object's credential fields: removed from every row its generated routes send. */
-export function credentialFieldNames(entity: MetaObject): readonly string[] {
-  return entity.fields().filter(isCredentialField).map((f) => f.name);
-}
-
-/** The names of an object's fields its generated write routes strip from a create or update body. */
-export function apiWriteDeniedFieldNames(entity: MetaObject): readonly string[] {
-  return entity.fields().filter(isApiWriteDenied).map((f) => f.name);
+/**
+ * The names of the fields of `objects` that `isMarked` holds for on ANY declaration in
+ * `hierarchy`, in field order. A single-table (TPH) column declared by several subtypes is one
+ * column, so a credential or `@formExclude` on one declaration counts on every subtype that has it.
+ */
+function markedFieldNames(
+  objects: readonly MetaObject[],
+  hierarchy: readonly MetaObject[],
+  isMarked: (f: MetaField) => boolean,
+): string[] {
+  const marked = new Set(hierarchy.flatMap((o) => o.fields().filter(isMarked).map((f) => f.name)));
+  return [...new Set(objects.flatMap((o) => o.fields().map((f) => f.name)))].filter((n) => marked.has(n));
 }
 
 /**
  * The `writeDeniedColumns` line of a mount that accepts writes, or "" when no field is denied
  * (the output stays byte-identical for a model with no `@formExclude` or credential field).
+ * `hierarchy` is a TPH subtype's base and every subtype, when the mount serves one.
  */
-export function writeDeniedColumnsLine(entity: MetaObject, indent: string): string {
-  const names = apiWriteDeniedFieldNames(entity);
+export function writeDeniedColumnsLine(entity: MetaObject, indent: string, hierarchy: readonly MetaObject[] = [entity]): string {
+  const names = markedFieldNames([entity], hierarchy, isApiWriteDenied);
   return names.length === 0 ? "" : `\n${indent}writeDeniedColumns: ${JSON.stringify(names)},`;
 }
 
@@ -242,9 +247,15 @@ export function valueObjectShapes(entity: MetaObject): Record<string, ValueObjec
  * The setting is the project's, read from the root. Several objects share one mount when a
  * single-table (TPH) base's polymorphic route serves its subtypes' rows too: pass them all,
  * so a decimal or value object only a subtype declares is still covered. `root` is the loaded
- * root the setting is read from (`ctx.loadedRoot`).
+ * root the setting is read from (`ctx.loadedRoot`). `hierarchy` widens the credential marks to a
+ * TPH subtype's base and every subtype, when the mount serves one.
  */
-export function decimalColumnsLine(entity: MetaObject | readonly MetaObject[], indent: string, root?: MetaData): string {
+export function decimalColumnsLine(
+  entity: MetaObject | readonly MetaObject[],
+  indent: string,
+  root?: MetaData,
+  hierarchy?: readonly MetaObject[],
+): string {
   const objects: readonly MetaObject[] = Array.isArray(entity) ? entity : [entity as MetaObject];
   const first = objects[0];
   if (first === undefined) return "";
@@ -253,7 +264,7 @@ export function decimalColumnsLine(entity: MetaObject | readonly MetaObject[], i
   const wire = wireFormatOf(root ?? first);
   const names = [...new Set(objects.flatMap((o) => decimalFieldNames(o)))];
   let lines = "";
-  const hidden = [...new Set(objects.flatMap((o) => credentialFieldNames(o)))];
+  const hidden = markedFieldNames(objects, hierarchy ?? objects, isCredentialField);
   if (hidden.length > 0) lines += `\n${indent}hiddenColumns: ${JSON.stringify(hidden)},`;
   if (names.length > 0) {
     lines += `\n${indent}decimalColumns: ${JSON.stringify(names)},`;

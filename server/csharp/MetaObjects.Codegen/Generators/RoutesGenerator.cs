@@ -681,8 +681,9 @@ public class RoutesGenerator : PerEntityGenerator
                 AppendM2mRoute(sb, nav, baseRoute, pkType!, ctx.Root);
 
             // --- Per-subtype CRUD sets ---
+            var hierarchy = tph.Subtypes.Select(s => s.Entity).Prepend(baseEntity).ToList();
             foreach (var st in tph.Subtypes)
-                AppendTphSubtypeRoutes(sb, st, ctx.Root, baseRoute, baseCls, dbSet, pkType!, pkProp!, discProp, ctx.Warn);
+                AppendTphSubtypeRoutes(sb, st, hierarchy, ctx.Root, baseRoute, baseCls, dbSet, pkType!, pkProp!, discProp, ctx.Warn);
         }
 
         sb.AppendLine();
@@ -786,6 +787,19 @@ public class RoutesGenerator : PerEntityGenerator
                 ? tph.Subtypes.SelectMany(st => CredentialNames(st.Entity))
                 : Enumerable.Empty<string>())
             .Distinct(StringComparer.Ordinal).ToList();
+
+    /// <summary>
+    /// The fields of a TPH subtype that <paramref name="isMarked"/> holds for on ANY declaration in
+    /// its <paramref name="hierarchy"/> (the base and every subtype): a single-table column declared
+    /// by several subtypes is one column (#484).
+    /// </summary>
+    private static List<MetaField> HierarchyMarkedFields(
+        MetaObject subtype, IEnumerable<MetaObject> hierarchy, Func<MetaField, bool> isMarked)
+    {
+        var marked = hierarchy.SelectMany(o => o.Fields()).Where(isMarked)
+            .Select(f => f.Name).ToHashSet(StringComparer.Ordinal);
+        return subtype.Fields().Where(f => marked.Contains(f.Name)).ToList();
+    }
 
     private static List<string> CredentialNames(MetaObject entity) =>
         entity.Fields().Where(IsCredentialField).Select(f => f.Name).ToList();
@@ -1334,7 +1348,7 @@ public class RoutesGenerator : PerEntityGenerator
     // subtype CLR type (discriminator injected by EF on Add); update is a partial merge
     // that never touches the PK or the discriminator.
     private static void AppendTphSubtypeRoutes(
-        StringBuilder sb, TphSubtypePlan st, MetaRoot root, string baseRoute, string baseCls, string dbSet,
+        StringBuilder sb, TphSubtypePlan st, IReadOnlyList<MetaObject> hierarchy, MetaRoot root, string baseRoute, string baseCls, string dbSet,
         string pkType, string pkProp, string discProp, Action<string> onWarn)
     {
         // #362 — field.object columns on a TPH subtype stay out of scope (Program D §6), but a
@@ -1353,9 +1367,10 @@ public class RoutesGenerator : PerEntityGenerator
         // FR-037 R1 — readOnly / writeOnce on the SUBTYPE's effective fields (a shared
         // base's mode is inherited by every subtype), excluded from the PATCH merge.
         var frozenNavs = FrozenNavs(st.Entity);
-        // #484 — as on a plain entity: write-denied keys ignored, credentials omitted.
-        var deniedFields = WriteDeniedFields(st.Entity);
-        var credentials = CredentialNames(st.Entity);
+        // #484 — as on a plain entity: write-denied keys ignored, credentials omitted. One shared
+        // column may be declared by several subtypes, so a mark on any declaration counts.
+        var deniedFields = HierarchyMarkedFields(st.Entity, hierarchy, IsApiWriteDenied);
+        var credentials = HierarchyMarkedFields(st.Entity, hierarchy, IsCredentialField).Select(f => f.Name).ToList();
 
         // Per-subtype list: GET /<base>/<seg>
         sb.AppendLine();

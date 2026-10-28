@@ -54,7 +54,27 @@ public class SecretFieldsCodegenTests
     ]}}
     """;
 
-    private static string Routes(string model)
+    // A TPH base whose subtypes share the token and memo columns: plain on AThing, marked on BThing.
+    private const string TphSharedColumnModel = """
+    { "metadata.root": { "package": "acme::secrets", "children": [
+      { "object.entity": { "name": "Thing", "@discriminator": "kind", "children": [
+        { "source.rdb":       { "@table": "things" } },
+        { "field.long":       { "name": "id" } },
+        { "field.enum":       { "name": "kind", "@values": ["A", "B"] } },
+        { "identity.primary": { "@fields": "id", "@generation": "increment" } }
+      ]}},
+      { "object.entity": { "name": "AThing", "extends": "Thing", "@discriminatorValue": "A", "children": [
+        { "field.string": { "name": "token", "@maxLength": 100 } },
+        { "field.string": { "name": "memo", "@maxLength": 100 } }
+      ]}},
+      { "object.entity": { "name": "BThing", "extends": "Thing", "@discriminatorValue": "B", "children": [
+        { "field.string": { "name": "token", "@maxLength": 100, "children": [ { "view.password": {} } ] } },
+        { "field.string": { "name": "memo", "@maxLength": 100, "@formExclude": true } }
+      ]}}
+    ]}}
+    """;
+
+    private static string Routes(string model, string file = "AccountRoutes.g.cs")
     {
         var r = new MetaDataLoader().Load([new InMemoryStringSource(model, id: "secrets.json")]);
         Assert.Empty(r.Errors);
@@ -64,7 +84,24 @@ public class SecretFieldsCodegenTests
             Root = r.Root,
             Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated", ColumnNamingStrategy = ColumnNamingStrategy.Literal },
         };
-        return new RoutesGenerator().Generate(ctx).Single(f => f.Path == "AccountRoutes.g.cs").Content;
+        return new RoutesGenerator().Generate(ctx).Single(f => f.Path == file).Content;
+    }
+
+    [Fact]
+    public void A_tph_column_marked_on_another_subtype_is_hidden_and_ignored_on_this_one()
+    {
+        var src = Routes(TphSharedColumnModel, "ThingRoutes.g.cs");
+        var start = src.IndexOf("\"/things/a\"", StringComparison.Ordinal);
+        var end = src.IndexOf("\"/things/b\"", StringComparison.Ordinal);
+        Assert.True(start >= 0 && end > start, src);
+        var aRoutes = src[start..end];
+
+        Assert.Contains("new string[] { \"token\" }", aRoutes);
+        Assert.Contains("input.Token = default!;", aRoutes);
+        Assert.Contains("input.Memo = default!;", aRoutes);
+        Assert.Contains("string.Equals(prop.Name, \"token\", System.StringComparison.OrdinalIgnoreCase)) continue;", aRoutes);
+        Assert.Contains("string.Equals(prop.Name, \"memo\", System.StringComparison.OrdinalIgnoreCase)) continue;", aRoutes);
+        Assert.DoesNotContain("\"memo\" }", aRoutes);
     }
 
     [Theory]

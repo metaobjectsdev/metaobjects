@@ -519,6 +519,7 @@ function renderTphRoutesFile(
   // single writable shape — so an author-supplied `expose` intersects with that fixed set
   // rather than replacing it: it may narrow to just `list`, never widen to `create`.
   const polymorphicExposeLine = exposeLine(intersectExpose([...TPH_POLYMORPHIC_VERBS], expose), "      ");
+  const hierarchy = [base, ...plan.subtypes.map((st) => st.entity)];
   const polymorphic = code`
     ${mountCrudRoutesSym}({
       fastify: ${fastifyRef},
@@ -529,7 +530,7 @@ function renderTphRoutesFile(
       updateSchema: ${baseUpdateSym},
       filterAllowlist: ${baseFilterSym},
       sortAllowlist: ${baseSortSym},
-      dialect: ${dialectLit},${decimalColumnsLine([base, ...plan.subtypes.map((st) => st.entity)], "      ", ctx.loadedRoot)}${polymorphicExposeLine}
+      dialect: ${dialectLit},${decimalColumnsLine(hierarchy, "      ", ctx.loadedRoot)}${polymorphicExposeLine}
     });`;
 
   // FR-018 x FR-017 — M:N traversal inside a TPH hierarchy. This file never consulted
@@ -572,7 +573,7 @@ function renderTphRoutesFile(
       updateSchema: ${subUpdateSym},
       filterAllowlist: ${subFilterSym},
       sortAllowlist: ${subSortSym},
-      dialect: ${dialectLit},${decimalColumnsLine(sub, "      ", ctx.loadedRoot)}${writeDeniedColumnsLine(sub, "      ")}
+      dialect: ${dialectLit},${decimalColumnsLine(sub, "      ", ctx.loadedRoot, hierarchy)}${writeDeniedColumnsLine(sub, "      ", hierarchy)}
       discriminator: { column: ${JSON.stringify(discField)}, value: ${JSON.stringify(value)} },${exposeLine(expose, "      ")}
     });`;
     // This subtype's own M:N navigations, mounted beneath its segment and gated on the
