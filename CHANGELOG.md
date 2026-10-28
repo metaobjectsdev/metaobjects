@@ -41,9 +41,10 @@ here.**
   code that had fallen behind the model; `metaobjects verify` and `mvn metaobjects:verify` ran
   only codegen, so prompt drift passed. `--db`, `--deps` and `--replay` stay opt-in, and naming a
   subverb still runs only the gates named. A gate the run has no configuration for is skipped
-  with a one-line note instead of failing: `meta verify` without a `metaobjects.config.ts`,
+  with a one-line note instead of failing: `meta verify` without a `metaobjects.config.ts` (a config that exists but fails to load exits 2),
   `metaobjects verify` with no `metaobjects.config.yaml` and no `--prompts`, `dotnet meta verify`
-  without `--out <dir>` and `codegen/Generators.cs`, `mvn metaobjects:verify` without
+  without `--out <dir>` and `codegen/Generators.cs` (C# has no config-resolved output directory:
+  pass `--out <dir>` in CI to get the codegen gate), `mvn metaobjects:verify` without
   `-Dmeta.verify.templateRoot`. Pinned per port by tests that run a bare verify over drifted
   input. **Behaviour change:** a CI step that ran a bare `verify` and relied on the narrower
   default can now go red where it was green, because the gate it never ran now runs. Node

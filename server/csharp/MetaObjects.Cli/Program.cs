@@ -466,7 +466,7 @@ static int RunVerify(string[] rest)
     if (bare)
     {
         if (outDir is null)
-            Console.WriteLine("dotnet meta verify — codegen gate skipped: no --out <dir> to diff the generated output against");
+            Console.WriteLine("dotnet meta verify — codegen gate skipped: pass --out <dir> (the committed generated output to diff against) and have codegen/Generators.cs to run it");
         else if (!CodegenHandoff.HasGeneratorList(projectRoot))
             Console.WriteLine("dotnet meta verify — codegen gate skipped: no codegen/Generators.cs (the generator list) to regenerate from");
         else

@@ -7,6 +7,7 @@
 // silently break a prompt" guarantee, enforced at the last fixed point before
 // the text ships. Required-slot misses are warnings (don't fail the build).
 
+import { existsSync } from "node:fs";
 import { join, relative, resolve as resolvePath } from "node:path";
 import { parseVerifyArgs, type MigrateFlags } from "../lib/args.js";
 import { log } from "../lib/log.js";
@@ -284,6 +285,7 @@ export async function verifyCommand(
   // If absent/invalid we fall back to defaults; `--codegen` then reports a clear
   // error (it can't diff without knowing where the committed output lives).
   let forgeConfig: MetaobjectsGenConfig | undefined;
+  let configLoadError: unknown;
   try {
     forgeConfig = await loadMetaobjectsConfig(genConfigDir);
   } catch (e) {
@@ -294,6 +296,7 @@ export async function verifyCommand(
       return 2;
     }
     forgeConfig = undefined;
+    configLoadError = e;
   }
   // Both of the gen config's contributions to the load, together — see
   // `loadMemoryOptionsFrom`. Threading `providers` and forgetting `libraries` is how
@@ -305,7 +308,13 @@ export async function verifyCommand(
   // keeps a passing bare verify; the note says what was skipped and why.
   if (!flags.anyExplicit) {
     if (forgeConfig !== undefined) runCodegen = true;
-    else say("meta verify — codegen gate skipped: no metaobjects.config.ts found (or it is invalid), so there is no generated output to diff against");
+    else if (existsSync(join(genConfigDir, "metaobjects.config.ts"))) {
+      log.error(
+        "meta verify: metaobjects.config.ts exists but failed to load, so the codegen gate cannot run: " +
+          (configLoadError instanceof Error ? configLoadError.message : String(configLoadError)),
+      );
+      return 2;
+    } else say("meta verify — codegen gate skipped: no metaobjects.config.ts found, so there is no generated output to diff against");
   }
 
   // ADR-0023 strict-by-default (#96): verify loads strict unless --lax is passed,

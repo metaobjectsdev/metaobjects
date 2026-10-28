@@ -128,7 +128,7 @@ public sealed class CliSurfaceTests : IDisposable
         Directory.CreateDirectory(Path.Combine(_tmp, "prompts"));
         var (exit, stdout, stderr) = CliProcess.Run(_tmp, "verify", model);
         Assert.True(exit == 0, $"exit={exit}\nstderr={stderr}");
-        Assert.Contains("codegen gate skipped: no --out", stdout);
+        Assert.Contains("codegen gate skipped: pass --out <dir>", stdout);
     }
 
     [Fact]

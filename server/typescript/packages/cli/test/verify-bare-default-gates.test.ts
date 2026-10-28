@@ -110,4 +110,15 @@ describe("meta verify — the bare run's default gate set", () => {
       rmSync(root, { recursive: true, force: true });
     }
   });
+
+  test("a bare run with a metaobjects.config.ts that fails to load exits 2 with the load error", async () => {
+    const root = setupRepo({ withConfig: false });
+    try {
+      writeFileSync(join(root, "metaobjects.config.ts"), `export default { this is not valid typescript`, "utf8");
+      expect(await run(["verify", "--cwd", root])).toBe(2);
+      expect(out.join("\n")).toContain("failed to load");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 });

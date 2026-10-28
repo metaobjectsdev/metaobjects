@@ -213,7 +213,7 @@ historical template/prompt drift gate), `verify
 --codegen` (regenerate the configured generators to a temp dir and diff against
 the committed `--out` tree, never touching it), and a **clean `--db` rejection
 (exit 2)** — bare `dotnet meta verify` runs `--templates` and, when `--out` and
-`codegen/Generators.cs` are present, `--codegen`, and prints the subverb note. The **Java/Kotlin `mvn metaobjects:verify`** port expresses the same vocabulary as a
+`codegen/Generators.cs` are present, `--codegen` (C# has no config-resolved output dir, so a bare run without `--out <dir>` skips the codegen gate with a note — pass `--out` in CI), and prints the subverb note. The **Java/Kotlin `mvn metaobjects:verify`** port expresses the same vocabulary as a
 `mode` parameter (Maven goals are parameter-driven, not flag-driven). With `mode` unset the goal
 runs both gates below, skipping the template gate with a note when no `templateRoot` is set.
 `-Dmeta.verify.mode=codegen`
