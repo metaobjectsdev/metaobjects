@@ -594,8 +594,6 @@ public static class CodegenCli
         }
     }
 
-    /// <summary>Resolve the metadata location through the same ladder as <c>dotnet meta</c>,
-    /// or print why not. <c>null</c> means the caller exits 2.</summary>
     /// <summary>The project's declared <c>csharp.outDir</c>, or null when it declares none or
     /// the location cannot be resolved (the caller then reports usage, which names the setting).</summary>
     public static string? ConfiguredOutDir(string? metadataDir)
@@ -604,6 +602,8 @@ public static class CodegenCli
         catch (Exception e) when (e is MetaModelException or MetadataLocationException) { return null; }
     }
 
+    /// <summary>Resolve the metadata location through the same ladder as <c>dotnet meta</c>,
+    /// or print why not. <c>null</c> means the caller exits 2.</summary>
     private static ResolvedMetadata? ResolveOrReport(string? metadataDir)
     {
         try
