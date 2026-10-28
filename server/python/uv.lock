@@ -285,6 +285,7 @@ mysql = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "mypy" },
     { name = "pydantic" },
     { name = "pytest" },
     { name = "pytest-xdist" },
@@ -309,6 +310,7 @@ provides-extras = ["dev", "integration", "mysql"]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "mypy", specifier = ">=1.10" },
     { name = "pydantic", specifier = ">=2" },
     { name = "pytest", specifier = ">=9.0.3" },
     { name = "pytest-xdist", specifier = ">=3.6" },

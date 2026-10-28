@@ -3032,28 +3032,9 @@ def _build_parser() -> argparse.ArgumentParser:
     agent_docs = sub.add_parser(
         "agent-docs",
         help=(
-            "scaffold the slim MetaObjects Claude Code agent context "
-            "(.metaobjects/AGENTS.md + CLAUDE.md + the metaobjects-* skills)"
+            "moved to the Node CLI: run `npx meta agent-docs --server python` "
+            "(this command scaffolds nothing and exits 1)"
         ),
-    )
-    agent_docs.add_argument(
-        "--server",
-        action="append",
-        default=None,
-        metavar="LANG",
-        help="server language (repeatable): typescript|java|kotlin|csharp|python",
-    )
-    agent_docs.add_argument(
-        "--client",
-        action="append",
-        default=None,
-        metavar="FRAMEWORK",
-        help="client framework (repeatable): react|tanstack|angular",
-    )
-    agent_docs.add_argument(
-        "--out",
-        default=None,
-        help="output project root (default: cwd)",
     )
     agent_docs.set_defaults(func=_cmd_agent_docs)
 

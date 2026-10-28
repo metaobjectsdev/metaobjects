@@ -654,13 +654,17 @@ For every template, `verify` resolves the text, parses the `{{...}}` references,
 and checks each one exists on the payload VO. If a template references
 `{{authorName}}` but the payload only has `displayName`, the build fails.
 
-| Port | Command |
-|---|---|
-| TypeScript | `meta verify` (CLI) |
-| Java | `mvn metaobjects:verify` (Maven goal) |
-| Kotlin | `mvn metaobjects:verify` (same Maven goal) |
-| C# | `dotnet meta verify <metadataDir> --templates <root>` |
-| Python | `python -m metaobjects.render.verify` |
+A bare `verify` also checks generated code and the requirement ledger; name the template
+check to run it alone. A run with no template root configured skips this check with a note
+([cli.md](cli.md#verify-is-one-verb-with-explicit-subverbs-adr-0021-d2)).
+
+| Port | Bare command (runs this check) | This check alone |
+|---|---|---|
+| TypeScript | `meta verify` | `meta verify --templates` |
+| Java | `mvn metaobjects:verify` (needs `-Dmeta.verify.templateRoot`) | `-Dmeta.verify.mode=templates` |
+| Kotlin | `mvn metaobjects:verify` (same Maven goal) | `-Dmeta.verify.mode=templates` |
+| C# | `dotnet meta verify` | `dotnet meta verify --templates <root>` |
+| Python | `metaobjects verify` (needs `metaobjects.config.yaml` or `--prompts <dir>`) | `metaobjects verify --templates` |
 
 ## Determinism contract
 

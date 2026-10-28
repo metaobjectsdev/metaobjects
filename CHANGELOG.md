@@ -12,9 +12,28 @@ here.**
 
 ### Docs
 
+- **Verify tables, the capability matrix and the entity samples now match what the ports emit.**
+  The per-port drift tables in `migrations-and-drift.md` and `templates-and-payloads.md` give
+  each port's real bare command (`meta verify`, `mvn metaobjects:verify`, `dotnet meta verify`,
+  `metaobjects verify`), what a bare run checks, the config each check needs and how to run one
+  alone; `python -m metaobjects.render.verify` (a module with no entry point) and the Node `meta`
+  as the C# binary are gone from every copy. The README capability matrix splits "DB-drift
+  verify" (TypeScript-only, the other four ports go through the TypeScript CLI) from
+  "Codegen-drift verify". The C# entity is a mutable `class`, not a `record`, and the Python
+  entity is a Pydantic `BaseModel`, not a `@dataclass`: the entity, field-type, source-kind and
+  relationship pages now show output generated from the example models. The Python
+  relationship section no longer calls reverse-finder and M:N codegen pending.
+
 - **Port docs and `llms-full.txt` now say what a fresh reader got wrong.** Each port page opens with its keep-your-ORM path (TypeScript `runtime: false`, Java and Kotlin records and data classes, sourceless C# POCOs as DTOs, Pydantic in Python); three-way merge is scoped to TypeScript everywhere it was claimed unscoped, with what the other ports do instead (committed hash manifest, refusal by name, eject); framework baselines are stated (Java 21 rather than the contradictory 17, Spring Boot 3.x with Boot 2 unsupported, .NET 8, Python 3.11, Node first and Bun second); and each port page carries its known gaps with absolute links.
 
 ### Added
+
+- **`docsSiteFile({ assetBase })` loads the docs site's CSS and JS from a base you choose.** The
+  page chrome loads daisyUI, Tailwind's browser build, Mermaid and svg-pan-zoom from jsDelivr, so a
+  site opened without network access rendered unstyled with dead diagrams. `assetBase` (also an
+  option of `generateSite`) replaces `https://cdn.jsdelivr.net/npm` in those five tags; the default
+  is unchanged and the default output is byte-identical. The `@metaobjectsdev/docs-site` README
+  lists the five files and how to serve them. Copying them into the output is not done for you.
 
 - **Java, Kotlin and C# can compile and match `scope` patterns.** `com.metaobjects.config.Scope`
   (Java; Kotlin inherits it) and `MetaObjects.Config.Scope` (C#) port the scope-pattern grammar from
@@ -77,6 +96,24 @@ here.**
   `meta.verify.mode` parameter no longer defaults to `codegen`; unset means both gates.
 
 ### Fixed
+
+- **Generated Python routers pass `mypy --strict`.** The repository `Protocol` declares a method
+  named `list`, so every later `list[...]` annotation in its body resolved to that method
+  (`valid-type`, 81 errors on the fitness corpus); the annotations now use an
+  `from builtins import list as _list` alias, and the method keeps its name. The delete handlers
+  returned a `JSONResponse` from `-> None` and the M:N traversal handlers returned `Any` from
+  `-> list[Any]` (`return-value`, `no-any-return`); delete is now `-> Response` and returns the same
+  204, and the traversal handlers bind the rows to a typed local. HTTP behavior is unchanged
+  (the generated api-contract lane passes). A new test runs `mypy --strict` over the routers
+  generated from the fitness corpus. `mypy` joins the Python dev group.
+
+- **`buildFilterQs({ withCount: true })` sends `withCount=1`.** It sent `withCount=true`, which
+  every server's list route ignores (the cross-port contract is `withCount=1`), so the caller got
+  a bare array instead of `{ rows, total }`. `false` and `0` now send nothing.
+
+- **`metaobjects agent-docs` says what it does.** Its help claimed to scaffold the agent context;
+  the command only points at `npx meta agent-docs --server python` and exits 1. The help now says
+  so, and the three flags it never read (`--server`, `--client`, `--out`) are removed.
 
 - **A failed `meta deps sync` no longer leaves a lock and snapshot that cannot load.** The
   command wrote `deps.lock.json` and the `.metaobjects/deps/` snapshot before loading the

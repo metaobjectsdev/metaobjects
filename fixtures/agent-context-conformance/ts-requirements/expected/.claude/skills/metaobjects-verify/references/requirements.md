@@ -26,7 +26,7 @@ text (a shared corpus pins them). Run the one for the project's server language:
 | TypeScript | `meta verify` |
 | Python | `metaobjects verify` |
 | Java, Kotlin | `mvn metaobjects:verify` (one goal for both) |
-| C# | `dotnet meta verify <metadataDir> --templates <dir>` (or `--codegen --out <dir>`) |
+| C# | `dotnet meta verify` |
 
 The gate is core: it is not a generator and cannot be ejected or replaced. What differs
 by port is the **authoring lint** further down this page, which only the Node `meta verify`

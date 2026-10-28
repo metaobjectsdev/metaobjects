@@ -225,8 +225,8 @@ def test_router_repository_protocol_declares_related_finders() -> None:
     out = render_router(_ENTITIES["Person"], _INDEX)
     assert out is not None
     # The consumer seam grows a typed finder per M:N navigation.
-    assert "def find_related_following(self, id: int) -> list[Any]: ..." in out
-    assert "def find_related_friends(self, id: int) -> list[Any]: ..." in out
+    assert "def find_related_following(self, id: int) -> _list[Any]: ..." in out
+    assert "def find_related_friends(self, id: int) -> _list[Any]: ..." in out
 
 
 def test_router_without_object_index_is_crud_only() -> None:

@@ -212,9 +212,9 @@ def test_router_reverse_finder_name_unaffected_by_dotted_references() -> None:
     index = build_object_index(list(entities.values()))
     src = render_router(entities["Match"], index)
     assert src is not None
-    assert "def find_matches_by_team_fk(self, team_fk: Any) -> list[Any]: ..." in src
+    assert "def find_matches_by_team_fk(self, team_fk: Any) -> _list[Any]: ..." in src
     assert (
-        "def find_matches_by_team_fk_in(self, team_fk_values: list[Any]) -> list[Any]: ..."
+        "def find_matches_by_team_fk_in(self, team_fk_values: _list[Any]) -> _list[Any]: ..."
         in src
     )
 
@@ -261,7 +261,7 @@ def test_player_fk_also_gets_a_finder_pair() -> None:
 def test_single_finder_signature_shape() -> None:
     src = _game_session_router()
     assert (
-        "def find_game_sessions_by_current_scene(self, current_scene_id: Any) -> list[Any]: ..."
+        "def find_game_sessions_by_current_scene(self, current_scene_id: Any) -> _list[Any]: ..."
         in src
     )
 
@@ -269,7 +269,7 @@ def test_single_finder_signature_shape() -> None:
 def test_batched_finder_signature_shape() -> None:
     src = _game_session_router()
     assert (
-        "def find_game_sessions_by_current_scene_in(self, current_scene_id_values: list[Any]) -> list[Any]: ..."
+        "def find_game_sessions_by_current_scene_in(self, current_scene_id_values: _list[Any]) -> _list[Any]: ..."
         in src
     )
 

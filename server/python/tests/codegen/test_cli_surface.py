@@ -74,3 +74,26 @@ def test_metadata_that_does_not_load_exits_1(argv: list[str], tmp_path: Path) ->
     args = [a.replace("OUT", str(out)) for a in argv]
     argv = [args[0], str(meta), *args[1:]]
     assert main(argv if args[0] == "fmt" else as_config(argv)) == 1
+
+
+def test_agent_docs_redirects_to_the_node_cli_and_exits_non_zero(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert main(["agent-docs"]) != 0
+    assert "npx meta agent-docs" in capsys.readouterr().err
+
+
+def test_agent_docs_help_says_it_moved_and_does_not_claim_to_scaffold(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        main(["--help"])
+    assert exit_info.value.code == 0
+    top_level = capsys.readouterr().out
+    assert "npx meta agent-docs" in top_level
+    assert "scaffold the slim" not in top_level
+    with pytest.raises(SystemExit):
+        main(["agent-docs", "--help"])
+    sub_help = capsys.readouterr().out
+    for dead_flag in ("--server", "--client", "--out"):
+        assert dead_flag not in sub_help
