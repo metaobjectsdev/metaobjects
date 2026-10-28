@@ -173,11 +173,14 @@ describe("meta eject --undo", () => {
     }
   });
 
-  test("a named generator that was never ejected is reported, not an error", async () => {
+  test("a named generator that was never ejected refuses, as a typo would, and removes nothing", async () => {
     const dir = tmp();
     try {
-      expect(await ejectCommand(["--undo", "barrel"], dir, "text")).toBe(0);
-      expect(text()).toMatch(/not ejected|nothing to undo/i);
+      await ejectCommand(["entity"], dir, "text");
+      logged = []; erred = [];
+      expect(await ejectCommand(["--undo", "barrel"], dir, "text")).toBe(2);
+      expect(text()).toContain("not an owned copy");
+      expect(existsSync(gen(dir, "entity"))).toBe(true);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

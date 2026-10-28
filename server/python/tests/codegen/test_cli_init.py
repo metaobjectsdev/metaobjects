@@ -58,3 +58,12 @@ def test_api_prefix_must_be_empty_or_a_path(tmp_path: Path, capsys) -> None:
     cfg.write_text(cfg.read_text() + "apiPrefix: v1\n")
     assert main(["gen", "--config", str(cfg)]) != 0
     assert "apiPrefix" in capsys.readouterr().err
+
+
+def test_api_prefix_with_a_quote_or_backslash_is_refused(tmp_path: Path, capsys) -> None:
+    # The prefix is written into the generated router's source, so it may only hold path characters.
+    assert main(["init", "--root", str(tmp_path)]) == 0
+    cfg = tmp_path / "metaobjects.config.yaml"
+    cfg.write_text(cfg.read_text() + "apiPrefix: '/v1\"x'\n")
+    assert main(["gen", "--config", str(cfg)]) != 0
+    assert "apiPrefix" in capsys.readouterr().err

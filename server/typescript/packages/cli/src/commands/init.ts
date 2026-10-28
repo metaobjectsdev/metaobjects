@@ -695,6 +695,11 @@ export async function init(opts: InitOptions): Promise<InitResult> {
   if (!(await fileExists(forgeConfigPath))) {
     await writeFile(forgeConfigPath, buildMetaobjectsConfigBody(opts.d1 ? "d1" : "sqlite", opts.withDocs === true), "utf8");
     result.created.push("metaobjects.config.ts");
+  } else if (opts.withDocs === true) {
+    result.warnings.push(
+      "--with-docs: metaobjects.config.ts already exists and was left alone. To write the docs, add " +
+        "`docsFile()` and `apiDocsFile()` from @metaobjectsdev/codegen-ts/generators to its `generators` list.",
+    );
   }
 
   // Scaffold a minimal root .gitignore ONLY when the project has none — never

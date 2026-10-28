@@ -113,6 +113,14 @@ public static class CodegenCli
         "arbitrary author-supplied properties into an `attr.properties` bag, OR run " +
         "'dotnet meta verify --lax' to keep the legacy open-attr load.";
 
+    /// <summary>The hint <c>gen --strict</c> prints after an ERR_UNKNOWN_ATTR: <c>gen</c>'s own way out is
+    /// to drop the flag, not <c>verify --lax</c> (ADR-0023).</summary>
+    public const string GenStrictHint =
+        "gen --strict loads strictly, as verify does (ADR-0023): an unregistered or typo'd @attr is " +
+        "ERR_UNKNOWN_ATTR and nothing was written. To fix: register the attr on a metadata provider, " +
+        "OR move arbitrary author-supplied properties into an `attr.properties` bag, " +
+        "OR drop --strict.";
+
     /// <summary>Trailing advice after <c>gen</c>'s unknown-attribute warnings. Without <c>--strict</c>
     /// <c>gen</c> loads leniently; <c>gen --strict</c> and <c>verify</c> are the strict doors (ADR-0023).</summary>
     public const string UnknownAttrGenAdvice =
@@ -735,20 +743,25 @@ public static class CodegenCli
 
         // ADR-0023: gen loads leniently; name what `verify` would reject instead of staying silent.
         // With --strict it loads as verify does and refuses before any file is written.
+        LoadResult genLoad;
         if (a.Strict)
         {
-            var strictLoad = meta.Load(strict: true);
-            if (strictLoad.Errors.Count > 0)
+            genLoad = meta.Load(strict: true);
+            if (genLoad.Errors.Count > 0)
             {
-                foreach (var e in strictLoad.Errors) Console.Error.WriteLine($"  load error: {e.Code}: {e.Message}");
-                if (strictLoad.Errors.Any(e => e.Code == ErrorCode.ERR_UNKNOWN_ATTR))
-                    Console.Error.WriteLine($"  hint: {UnknownAttrHint}");
+                foreach (var e in genLoad.Errors) Console.Error.WriteLine($"  load error: {e.Code}: {e.Message}");
+                if (genLoad.Errors.Any(e => e.Code == ErrorCode.ERR_UNKNOWN_ATTR))
+                    Console.Error.WriteLine($"  hint: {GenStrictHint}");
                 Console.Error.WriteLine($"{GenCommandName}: FAILED (metadata did not load cleanly; --strict)");
                 return 1;
             }
         }
-        else WarnUnknownAttrs(meta);
-        var outcome = RunGen(meta.Load(), a.OutDir, a.Namespace, a.EmitAbstractShapes, suite, projectRoot, a.Baseline,
+        else
+        {
+            WarnUnknownAttrs(meta);
+            genLoad = meta.Load();
+        }
+        var outcome = RunGen(genLoad, a.OutDir, a.Namespace, a.EmitAbstractShapes, suite, projectRoot, a.Baseline,
             includeNames: declared.Any(g => g.Name == "names"),
             // Only a run of the whole declared list can tell a stale file from one the
             // narrowing left out.

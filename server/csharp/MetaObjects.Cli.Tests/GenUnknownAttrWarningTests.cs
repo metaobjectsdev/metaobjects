@@ -55,7 +55,8 @@ public sealed class GenUnknownAttrWarningTests : IDisposable
         var run = OwnedRunner.Run(_tmp, ["entity"], "gen", MetaDir, "--out", OutDir, "--namespace", "Acme", "--strict");
         Assert.Equal(1, run.ExitCode);
         Assert.Contains("ERR_UNKNOWN_ATTR", run.Stderr);
-        Assert.Contains("hint: " + VerifyCommand.UNKNOWN_ATTR_HINT, run.Stderr);
+        Assert.Contains("hint: " + CodegenCli.GenStrictHint, run.Stderr);
+        Assert.DoesNotContain("verify --lax", run.Stderr);
         Assert.False(Directory.Exists(OutDir) && Directory.EnumerateFiles(OutDir, "*", SearchOption.AllDirectories).Any());
     }
 

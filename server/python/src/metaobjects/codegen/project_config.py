@@ -44,6 +44,10 @@ DEFAULT_METADATA_DIR = "metaobjects"
 #: followed the rc.3 guide and added it gets the naming-migration message, not "unknown key".
 _REMOVED_COLUMN_NAMING_KEY = "columnNaming"
 
+#: A mount path the generated router can carry verbatim inside a string literal: a leading
+#: ``/`` then path characters only, so a quote or backslash cannot break the emitted source.
+_API_PREFIX_RE = re.compile(r"/[A-Za-z0-9._/-]*")
+
 #: Every key this loader reads at the top level, and the ONLY ones it accepts.
 #: ``metaobjects-config.schema.json`` declares ``additionalProperties: false``, so the
 #: shipped schema has always said an unknown key is invalid; naming the set here is what
@@ -465,10 +469,11 @@ def load_project_config(path: Path) -> ProjectConfig:
         raise ConfigError(f"{path}: 'templates' must be a non-empty string (a directory path).")
 
     api_prefix = raw.get("apiPrefix", DEFAULT_API_PREFIX)
-    if not isinstance(api_prefix, str) or (api_prefix and not api_prefix.startswith("/")):
+    if not isinstance(api_prefix, str) or (api_prefix and not _API_PREFIX_RE.fullmatch(api_prefix)):
         raise ConfigError(
             f"{path}: 'apiPrefix' must be \"\" (mount at the root) or a path starting with "
-            f"'/', e.g. \"/api\" or \"/v1\"; got {api_prefix!r}."
+            f"'/' made of letters, digits, '.', '_', '-' and '/', e.g. \"/api\" or \"/v1\"; "
+            f"got {api_prefix!r}."
         )
     api_prefix = api_prefix.rstrip("/")
 

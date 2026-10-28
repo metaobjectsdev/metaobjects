@@ -144,7 +144,7 @@ static int RunGen(string[] rest)
     // Advisory: owned copies identical to the shipped generators carry nothing of the adopter's.
     // One line on stderr, free when there are none; never changes the exit code.
     try { if (OwnedCopy.IdenticalNotice(projectRoot) is { } notice) Console.Error.WriteLine(notice); }
-    catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
+    catch (Exception) { /* advisory only: never fail a gen over the notice */ }
 
     // Advisory: nudge a re-scaffold if the copied-in agent context predates this build.
     // Never throws, never changes the exit code (a missing/corrupt manifest is ignored).

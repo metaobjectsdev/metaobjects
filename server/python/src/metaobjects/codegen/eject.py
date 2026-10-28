@@ -125,6 +125,7 @@ class EjectResult:
 
 def eject(names: list[str], root: Path, *, force: bool = False) -> EjectResult:
     """Copy each named generator. Every name is checked before any file is written."""
+    names = list(dict.fromkeys(names))
     known = {e.name: e for e in ejectable()}
     unknown = [n for n in names if n not in known]
     if unknown:
@@ -195,6 +196,7 @@ def undo(names: list[str], root: Path, *, force: bool = False) -> EjectResult:
     removed. The config is never edited: the entry that points back at the shipped generator
     is printed instead. A companion runtime copy goes only when it matches the package and
     no remaining owned generator reads it."""
+    names = list(dict.fromkeys(names))
     known = {e.name: e for e in ejectable()}
     unknown = [n for n in names if n not in known]
     if unknown:

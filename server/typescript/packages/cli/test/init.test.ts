@@ -251,6 +251,13 @@ describe("init() — the owned-codegen tier is empty on purpose", () => {
     expect(readdirSync(join(cwd, "codegen", "generators"))).toEqual([]);
   });
 
+  test("--with-docs on a project that already has a config leaves it alone and says what to add", async () => {
+    writeFileSync(join(cwd, "metaobjects.config.ts"), "export default {};\n", "utf8");
+    const result = await init({ cwd, withDocs: true });
+    expect(readFileSync(join(cwd, "metaobjects.config.ts"), "utf8")).toBe("export default {};\n");
+    expect(result.warnings.join("\n")).toContain("docsFile()");
+  });
+
   test("--with-docs writes documentation on the first `meta gen`", async () => {
     const dir = mkGenProjectDir("with-docs-");
     try {

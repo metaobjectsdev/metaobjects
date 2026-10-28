@@ -684,10 +684,13 @@ async function undoCommand(names: readonly string[], force: boolean, cwd: string
   const named = names.length > 0;
   const targets = named ? owned.filter((r) => names.includes(r.name)) : owned.filter(isStockRow);
   const kept: UndoKept[] = [];
-  for (const n of names) {
-    if (!owned.some((r) => r.name === n)) {
-      kept.push({ name: n, path: `${OWNED_GENERATORS_DIR}/${n}.ts`, reason: "not ejected — nothing to undo" });
-    }
+  const notOwned = names.filter((n) => !owned.some((r) => r.name === n));
+  if (notOwned.length > 0) {
+    log.error(
+      `not an owned copy (nothing at ${OWNED_GENERATORS_DIR}/): ${notOwned.join(", ")}. Nothing was removed. ` +
+        "Run `meta eject --list` to see what you own.",
+    );
+    return 2;
   }
   const refused = named && !force ? targets.filter((r) => !isStockRow(r)) : [];
   if (refused.length > 0) {

@@ -21,7 +21,7 @@ import type { WriteStatus } from "@metaobjectsdev/codegen-ts";
 import { packageOfResolutionKey } from "@metaobjectsdev/metadata";
 import type { MetaRoot } from "@metaobjectsdev/metadata";
 import type { Collection } from "@metaobjectsdev/sdk";
-import { reportLoadError } from "../lib/load-error.js";
+import { describeLoadError, reportLoadError } from "../lib/load-error.js";
 import { STRICT_GEN_HINT, UNKNOWN_ATTR_GEN_ADVICE, unknownAttrWarnings } from "../lib/unknown-attr-warnings.js";
 import { stockCopyNotice } from "./eject.js";
 import {
@@ -146,7 +146,7 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
   advise(warnIfManifestIgnored(projectRoot));
   // Owned generator copies that are the shipped reference, unchanged: they miss every later fix.
   // Says nothing when the project owns none, and never affects the exit code.
-  const stockNotice = await stockCopyNotice(projectRoot);
+  const stockNotice = await stockCopyNotice(projectRoot).catch(() => undefined);
   if (stockNotice !== undefined) { log.warn(stockNotice); advise(stockNotice); }
 
   // ADR-0034 Amendment 9: the config IS the list. With none there is nothing to generate,
@@ -196,7 +196,11 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
     metadata = await loadMemory(genCollection.configDir, flags.strict ? { ...loadOptions, strict: true } : loadOptions);
   } catch (err) {
     reportLoadError(log, "failed to load metadata", err);
-    if (flags.strict) log.error(STRICT_GEN_HINT);
+    // The hint explains the strict-only rejection (an undeclared attribute); any other load
+    // failure is not something `--strict` caused, so it gets no hint.
+    if (flags.strict && describeLoadError(err).code === "ERR_UNKNOWN_ATTR") {
+      log.error(STRICT_GEN_HINT);
+    }
     return 1;
   }
 

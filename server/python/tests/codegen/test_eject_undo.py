@@ -135,3 +135,11 @@ def test_gen_without_owned_copies_prints_no_notice(tmp_path: Path, capsys) -> No
     cfg = _gen_cfg(tmp_path, "entity")
     assert main(["gen", "--config", str(cfg)]) == 0
     assert "identical to the shipped" not in capsys.readouterr().err
+
+
+def test_undo_with_a_repeated_name_removes_it_once(tmp_path: Path, monkeypatch, capsys) -> None:
+    monkeypatch.chdir(tmp_path)
+    assert main(["eject", "entity"]) == 0
+    capsys.readouterr()
+    assert main(["eject", "--undo", "entity", "entity"]) == 0
+    assert not (tmp_path / GEN / "entity.py").exists()
