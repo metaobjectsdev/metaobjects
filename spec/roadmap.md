@@ -142,7 +142,7 @@ under **Shipped**; planned FRs under **Planned** + the **Release plan**. ✅ shi
 | FR-020 | `@inheritance` joined strategy | 📋 | 1.x | [#6](https://github.com/metaobjectsdev/metaobjects/issues/6) |
 | FR-021 | api metadata + contract projections | 📋 | 1.3 | [#7](https://github.com/metaobjectsdev/metaobjects/issues/7) |
 | FR-022 | Contract emitters (JSON Schema/OpenAPI/protobuf) | 📋 | 1.3 | [#8](https://github.com/metaobjectsdev/metaobjects/issues/8) |
-| FR-023 | Metadata dependencies (cross-repo sharing: generated shared-model artifact, `meta deps sync`, committed snapshot + lock, default exclusion of imported metadata, consumer extend/overlay across the boundary) | 🟢 Phase 1a (TS + Python) **shipped** per DESIGN §11 — the usage-aware breaking-change classifier and the `npm`/`python` transports are deferred (§11.4); Java/Kotlin/C# consumers are Phase 2 | 1.1 | [#9](https://github.com/metaobjectsdev/metaobjects/issues/9) |
+| FR-023 | Metadata dependencies (cross-repo sharing: generated shared-model artifact, `meta deps sync`, committed snapshot + lock, default exclusion of imported metadata, consumer extend/overlay across the boundary) | 🟢 Phase 1a (TS + Python) **shipped** per DESIGN §11, Java/Kotlin consume (Phase 2 S3) — the usage-aware breaking-change classifier and the `npm`/`python` transports are deferred (§11.4); C# consumer is Phase 2 | 1.1 | [#9](https://github.com/metaobjectsdev/metaobjects/issues/9) |
 | FR-024 | Entity surfaces (projection/value + declared API) | 🟢 taxonomy + B3/B4a/B4b/B5/B6 validation parity + projection codegen **shipped 5 ports (1.0)**; declared-API surface (`api.operational`/`operation`/`binding.rest`) **deferred to a later 1.x** (not in 1.1.0; foundation for FR-034) | 1.0 · 1.x (later) | [#10](https://github.com/metaobjectsdev/metaobjects/issues/10) |
 | FR-025 | Cross-port package-binding codegen config | 📋 | 1.1 | [#11](https://github.com/metaobjectsdev/metaobjects/issues/11) |
 | FR-026 | Forms completeness (edit forms + view parity) | 🟢 edit forms + view-kind control dispatch **shipped**; renderer parity / validator wiring / `layout.form` **deferred to a later 1.x** (not in 1.1.0) | 1.x (later) | [#12](https://github.com/metaobjectsdev/metaobjects/issues/12) |
@@ -414,8 +414,8 @@ _(FR-032 was developed under the working number "FR-026" — see commit history;
   `.metaobjects/config.json`, `meta deps sync` copies the artifact into a committed
   snapshot + `.metaobjects/deps.lock.json`, and TypeScript's and Python's collection
   resolvers — the two ports that consume dependencies in Phase 1a — load the
-  snapshot at every rung of their own source ladder (Java, Kotlin, and C# don't
-  read `dependencies` yet). Imported metadata is load-only by default —
+  snapshot at every rung of their own source ladder (Java and Kotlin followed in
+  Phase 2 slice S3; C# doesn't read `dependencies` yet). Imported metadata is load-only by default —
   excluded from codegen, schema, and the requirements ledger unless the consumer's
   own `scope.include` / `migrate.scope` names the package — with a loud refusal
   (`ERR_DEPENDENCY_PACKAGE_NOT_OWNED`) rather than a silent drop when a consumer
@@ -692,7 +692,7 @@ the breaking half at `1.1`.
 #### 1.x / later
 
 - **FR-023 — metadata dependencies, remaining phases** (Phase 1a — TS + Python —
-  shipped; Phase 1b bindings/docs-badge, and Phase 2 — Java/Kotlin/C# + the
+  shipped, Java/Kotlin consume (Phase 2 S3); Phase 1b bindings/docs-badge, and the rest of Phase 2 — C# + the
   `npm`/`python`/`maven`/`nuget` transports — remain).
 - **FR-020 — `@inheritance` joined strategy** (additive; pairs with a persistence release).
 - **MCP exposure** (if not pulled earlier — see below).

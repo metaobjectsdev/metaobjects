@@ -5,6 +5,7 @@ package com.metaobjects.generator.kotlin
 // `mvn metaobjects:eject` and its own package is renamed — an explicit import, not
 // same-package bare-name resolution, is what keeps the ejected copy compiling.
 import com.metaobjects.generator.kotlin.ExposedApi
+import com.metaobjects.generator.util.GeneratorUtil
 import com.metaobjects.generator.kotlin.ExposedImports
 import com.metaobjects.generator.kotlin.KotlinGenUtil
 import com.metaobjects.generator.kotlin.KotlinNaming
@@ -114,7 +115,7 @@ open class KotlinStoredProcGenerator : MultiFileDirectGeneratorBase<MetaObject>(
         }
         val outRoot = Paths.get(outDir.absolutePath)
 
-        for (entity in loader.metaObjects) {
+        for (entity in GeneratorUtil.ownMetaObjects(loader)) {
             // FR-024: a stored-proc binding is gated on the SOURCE @kind, not the object
             // subtype — a proc-backed object.projection (the post-B4b spelling) emits a
             // callable just like the legacy proc-backed entity did.

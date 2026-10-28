@@ -5,6 +5,7 @@ package com.metaobjects.generator.kotlin
 // `mvn metaobjects:eject` and its own package is renamed — an explicit import, not
 // same-package bare-name resolution, is what keeps the ejected copy compiling.
 import com.metaobjects.generator.kotlin.ExposedApi
+import com.metaobjects.generator.util.GeneratorUtil
 import com.metaobjects.generator.kotlin.ExposedImports
 import com.metaobjects.generator.kotlin.Fr019SharedEnum
 import com.metaobjects.generator.kotlin.KotlinGenUtil
@@ -92,7 +93,7 @@ open class KotlinRelationsGenerator : MultiFileDirectGeneratorBase<MetaObject>()
         parseArgs()
         val outRoot = Paths.get(outDir.absolutePath)
 
-        for (entity in loader.metaObjects) {
+        for (entity in GeneratorUtil.ownMetaObjects(loader)) {
             if (entity.subType != MetaObject.SUBTYPE_ENTITY) continue
             // Abstract entities are inheritance scaffolding — never emit relation helpers.
             if (KotlinGenUtil.isAbstractEntity(entity)) continue

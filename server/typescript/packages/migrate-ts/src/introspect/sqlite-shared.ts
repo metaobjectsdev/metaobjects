@@ -45,6 +45,12 @@ export function parseSqliteDefault(raw: string | null): ColumnDefault | undefine
     return { kind: "literal", value: quoted[1]!.replace(/''/g, "'") };
   }
 
+  // The unquoted keywords TRUE and FALSE are SQLite's spellings of 1 and 0 (a quoted 'true'
+  // is a string, matched above). Another tool's DDL writes `BOOLEAN DEFAULT true` (Prisma
+  // does); the expected schema spells the same default 1 or 0.
+  const bool = raw.trim().toLowerCase();
+  if (bool === "true" || bool === "false") return { kind: "literal", value: bool === "true" ? "1" : "0" };
+
   const isExpr = SQLITE_EXPR_DEFAULT_PATTERNS.some((re) => re.test(raw));
   if (isExpr) return { kind: "expr", value: raw };
   return { kind: "literal", value: raw };

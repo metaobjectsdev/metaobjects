@@ -61,6 +61,7 @@ import { execSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { mavenVersion } from "./maven-coordinate.mjs";
+import { TIER_ORDER } from "./publish-set.mjs";
 import {
   changelogVersions, collectPages, decideBase, installRestoreHandlers, releasedVersion, run as runStep,
 } from "./prerelease-version.mjs";
@@ -334,9 +335,10 @@ if (wants("npm")) {
   writeFileSync(join(home, ".npmrc"),
     `@metaobjectsdev:registry=${NPM_REG}\n${NPM_REG.replace(/^https?:/, "")}:_authToken=${TOKEN}\n`);
 
-  const TIERS = ["metadata", "render", "codegen-ts", "runtime-ts", "migrate-ts", "sdk", "docs-site",
-                 "runtime-web", "codegen-ts-react", "codegen-ts-tanstack", "react", "tanstack", "cli", "ai-runtime"];
-  const ordered = [...set].sort((a, b) => TIERS.indexOf(a.short) - TIERS.indexOf(b.short));
+  // The one publish order (scripts/publish-set.mjs): a dependency never lands after its dependent.
+  const untiered = set.filter((p) => !TIER_ORDER.includes(p.short));
+  if (untiered.length) die(`no publish tier for ${untiered.map((p) => p.short).join(", ")}: add it to TIER_ORDER in scripts/publish-set.mjs`);
+  const ordered = [...set].sort((a, b) => TIER_ORDER.indexOf(a.short) - TIER_ORDER.indexOf(b.short));
 
   // GATE 3 — ask bun where it would actually publish, and believe only that.
   const probe = await run("bun publish --dry-run",

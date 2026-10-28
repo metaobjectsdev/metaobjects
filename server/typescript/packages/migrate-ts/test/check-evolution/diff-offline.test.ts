@@ -63,10 +63,65 @@ describe("diffTableChecks — regex check on a text-family column", () => {
     const r = await diff({ expected: withKey(undefined, [generated]), actual: withKey(udtName, [stored]), dialect: "postgres" });
     return r.changes.filter((c) => c.kind.endsWith("-check"));
   };
-  test.each(["text", "varchar", "bpchar"])("%s column: Postgres's rewrite is no drift", async (udt) => {
+  test.each(["text", "varchar"])("%s column: Postgres's rewrite is no drift", async (udt) => {
     expect(await checkChanges(udt)).toEqual([]);
+  });
+  // char(n) is NOT in the family: `~(bpchar, text)` is bpcharregexeq, which sees the blank
+  // padding that `(col)::text` trims, so an explicit cast is a different constraint. Postgres
+  // never adds the cast on a bpchar column, so its own rewrite arrives uncast and stays clean.
+  test("bpchar column: an explicit ::text cast is drift against the uncast check", async () => {
+    expect((await checkChanges("bpchar")).map((c) => c.kind).sort()).toEqual(["add-check", "drop-check"]);
+  });
+  test("bpchar column: the uncast form Postgres stores is clean", async () => {
+    const uncast = CHK("spaces_key_regex_chk", `(key ~ '^[a-z0-9][a-z0-9-]*$'::text)`);
+    const r = await diff({ expected: withKey(undefined, [generated]), actual: withKey("bpchar", [uncast]), dialect: "postgres" });
+    expect(r.changes.filter((c) => c.kind.endsWith("-check"))).toEqual([]);
+  });
+  test("bpchar column: a stored length((col)::text) is drift against the uncast length()", async () => {
+    const expected = CHK("spaces_key_length_chk", `length("key") >= 2`);
+    const cast = CHK("spaces_key_length_chk", `((length((key)::text) >= 2))`);
+    const uncast = CHK("spaces_key_length_chk", `(length(key) >= 2)`);
+    const kinds = async (udt: string, actual: CheckDescriptor) =>
+      (await diff({ expected: withKey(undefined, [expected]), actual: withKey(udt, [actual]), dialect: "postgres" }))
+        .changes.filter((c) => c.kind.endsWith("-check")).map((c) => c.kind).sort();
+    expect(await kinds("bpchar", cast)).toEqual(["add-check", "drop-check"]);
+    expect(await kinds("bpchar", uncast)).toEqual([]);
+    expect(await kinds("varchar", cast)).toEqual([]);
   });
   test("citext column: cast vs uncast is drift", async () => {
     expect((await checkChanges("citext")).map((c) => c.kind).sort()).toEqual(["add-check", "drop-check"]);
+  });
+});
+
+describe("renames keep the (col)::text fold", () => {
+  const col = (name: string) => ({ name, sqlType: { kind: "text" as const }, nullable: false, udtName: "varchar" });
+  const table = (name: string, column: string, check: CheckDescriptor): TableDescriptor =>
+    ({ name, columns: [col(column)], indexes: [], foreignKeys: [], checks: [check], primaryKey: [] });
+  const s = (t: TableDescriptor): SchemaSnapshot => ({ tables: [t], views: [] });
+
+  test("table rename: a varchar length check Postgres stores cast is folded into the rename", async () => {
+    const r = await diff({
+      expected: s(table("members", "code", CHK("members_code_chk", `length("code") >= 2`))),
+      actual: s(table("users", "code", CHK("users_code_chk", `(length((code)::text) >= 2)`))),
+      dialect: "postgres",
+      renames: [{ kind: "table", from: "users", to: "members" }],
+    });
+    expect(r.changes.filter((c) => c.kind.endsWith("-check"))).toEqual([]);
+    expect(r.changes).toEqual([expect.objectContaining({
+      kind: "rename-table", constraintRenames: [{ from: "users_code_chk", to: "members_code_chk" }],
+    })]);
+  });
+
+  test("column rename: the check follows the renamed varchar column without drop+add", async () => {
+    const r = await diff({
+      expected: s(table("users", "handle", CHK("users_handle_chk", `length("handle") >= 2`))),
+      actual: s(table("users", "code", CHK("users_code_chk", `(length((code)::text) >= 2)`))),
+      dialect: "postgres",
+      renames: [{ kind: "column", table: "users", from: "code", to: "handle" }],
+    });
+    expect(r.changes.filter((c) => c.kind.endsWith("-check"))).toEqual([]);
+    expect(r.changes).toEqual([expect.objectContaining({
+      kind: "rename-column", constraintRenames: [{ from: "users_code_chk", to: "users_handle_chk" }],
+    })]);
   });
 });

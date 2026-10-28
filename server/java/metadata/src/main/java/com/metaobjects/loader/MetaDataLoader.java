@@ -140,6 +140,10 @@ public class MetaDataLoader implements LoaderConfigurable {
     // in its model.
     private List<String> libraries = null;
 
+    // FR-023: the project's resolved metadata dependencies. Their snapshot artifacts load before
+    // the project's own sources. Empty (nothing imported) by default.
+    private com.metaobjects.config.DependencySet dependencies = com.metaobjects.config.DependencySet.EMPTY;
+
     // Validation-phase warnings accumulator.
     //
     // Mirrors the TS/C#/Python warning surfaces (a per-load list of human-readable
@@ -1383,6 +1387,9 @@ public class MetaDataLoader implements LoaderConfigurable {
             setLibraries(config.getLibraries());
         }
 
+        // FR-023: the snapshot artifacts load FIRST, in the same batch as the sources.
+        setDependencies(config.getDependencies());
+
         processArguments(config.getArguments());
         init();
     }
@@ -1586,13 +1593,34 @@ public class MetaDataLoader implements LoaderConfigurable {
     }
 
     private void loadSourceURIsIfPresent() {
-        if (sourceURIs == null || sourceURIs.isEmpty()) return;
+        boolean hasSources = sourceURIs != null && !sourceURIs.isEmpty();
+        if (!hasSources && dependencies.isEmpty()) return;
 
-        List<MetaDataSource> sources = new ArrayList<>();
-        for (URI uri : sourceURIs) {
-            sources.add(new UriSource(uri));
+        // FR-023: a dependency's snapshot artifacts LEAD the batch, in dependency-name order, so
+        // the project's own files overlay and extend them. They share the batch rather than loading
+        // before it, because each load() resets the recorded-error accumulators and an error in the
+        // snapshot must survive to be reported.
+        List<MetaDataSource> sources = new ArrayList<>(dependencies.sources());
+        if (hasSources) {
+            for (URI uri : sourceURIs) {
+                sources.add(new UriSource(uri));
+            }
         }
         load(sources);
+    }
+
+    /**
+     * FR-023 — the project's resolved metadata dependencies, attached to the root so codegen can
+     * exclude what they own. Must be set BEFORE {@code init()}: the snapshot artifacts are read
+     * once during initialization, ahead of the sources.
+     *
+     * @param dependencies the resolved set; {@code null} restores the empty set
+     * @return this loader, for chaining
+     */
+    public MetaDataLoader setDependencies(com.metaobjects.config.DependencySet dependencies) {
+        this.dependencies = (dependencies == null) ? com.metaobjects.config.DependencySet.EMPTY : dependencies;
+        getRoot().setDependencySet(this.dependencies);
+        return this;
     }
 
     private void validateAndTransitionToInitializing() {

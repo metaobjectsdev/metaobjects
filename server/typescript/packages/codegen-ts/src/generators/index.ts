@@ -92,3 +92,7 @@ export type {
 // FR-044 Plan 4 — the Cube exporter: Cube data-model files (model/cubes/*.yml and, for a served
 // @spine report, model/views/*.yml) for the reporting vocabulary. A reference helper; its pure stages are exported from the package root.
 export { cubeModel, type CubeModelGeneratorOptions } from "./cube-model.js";
+
+// #479 — the Prisma schema: the model's tables as `schema.prisma`, for a project that keeps Prisma
+// as its ORM. A reference helper; its pure stages are exported from the package root.
+export { prismaSchemaFile, type PrismaSchemaFileOptions } from "./prisma-schema-file.js";

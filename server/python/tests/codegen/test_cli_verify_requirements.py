@@ -434,9 +434,12 @@ def test_a_model_with_no_requirement_and_no_generators_selected_still_exits_0_an
     assert _verify_with_nothing_selected(tmp_path, meta_dir) == 0
     captured = capsys.readouterr()
     assert captured.out == _NOTHING_TO_CHECK_OUT
-    # stderr holds the one line a bare `verify` has always printed, and nothing else.
-    (note,) = captured.err.splitlines()
-    assert note.startswith("metaobjects verify — running --codegen (default).")
+    # stderr holds the two lines a bare `verify` over a named <metadata_dir> prints (the default
+    # gate-set note, then the template gate's skip note, since no --prompts root is named), and
+    # nothing else.
+    note, skipped = captured.err.splitlines()
+    assert note.startswith("metaobjects verify — running --codegen --templates (default).")
+    assert skipped.startswith("metaobjects verify — template gate skipped:")
 
 
 # ---------------------------------------------------------------------------

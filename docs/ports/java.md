@@ -172,6 +172,20 @@ Drop metadata under `src/main/metaobjects/`, for example `src/main/metaobjects/m
 }}
 ```
 
+### Consuming a shared model (`dependencies`)
+
+A project that declares `dependencies` in `.metaobjects/config.json` loads the committed
+snapshot under `.metaobjects/deps/` before its own files, at every rung of the plugin's source
+ladder (`<sourceDir>`/`<sources>` in the pom, the neutral config's `sources`, the default
+directory). `meta deps sync` (Node) is the only writer of the snapshot and `deps.lock.json`;
+the Maven build reads them offline and refuses a stale or hand-edited snapshot with
+`ERR_DEPENDENCY_SNAPSHOT_STALE`. Your own entities can `extends` and reference the imported
+ones; the generators emit nothing for an imported object unless `scope.include` names its
+package, and a new top-level node declared into a package a dependency owns fails with
+`ERR_DEPENDENCY_PACKAGE_NOT_OWNED`. Kotlin builds inherit all of this. See
+[`metadata-dependencies.md`](../features/metadata-dependencies.md). Spring runtime
+auto-load of the snapshot and `verify` drift for dependencies are separate, later slices.
+
 ### Custom providers (optional)
 
 Java uses **SPI auto-discovery** for type providers — drop your provider

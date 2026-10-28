@@ -590,6 +590,15 @@ gate_runtime_ts_pg() {
     test/dialect-matrix-pg.test.ts test/read-only-raw-sql-pg.test.ts test/timestamp-wire-pg.test.ts )
 }
 
+# Prisma as the ORM, against a real Postgres (#479): `prisma db push` from the generated
+# schema.prisma, the CHECK file applied, then `meta verify --db` passes and fails on a
+# deliberate drift. The cli suite runs in ts-unit, which has no database, so this file's
+# Postgres half runs only here; MIGRATE_TS_PG_EXPECT=1 makes it fail rather than skip when
+# the sidecar URL is missing. Each run creates and drops a database of its own.
+gate_prisma_pg() {
+  bun_install && ( cd server/typescript/packages/cli && bun test test/integration/prisma-schema.test.ts )
+}
+
 # ── conformance.yml — per-port conformance corpora (exact CI commands) ────────
 gate_conf_ts() {
   bun_install || return 1
@@ -1087,6 +1096,7 @@ lane_ts_integ() {
   use_pg_sidecar
   step_if bun "migrate-ts real-PG suite"          gate_migrate_ts_pg
   step_if bun "runtime-ts real-PG dialect matrix" gate_runtime_ts_pg
+  step_if bun "prisma real-PG round trip"         gate_prisma_pg
   step "integration-tests (ts)" gate_integration_port ts
 }
 lane_cube() { [ "$NO_INTEG" -eq 0 ] && run_cube_lane; return 0; }
@@ -1235,6 +1245,7 @@ if [ "$PARALLEL" -eq 0 ]; then
       if in_lane_any ts ts-slow && docker info >/dev/null 2>&1; then ensure_pg_sidecar; fi
       in_lane_any ts ts-slow     && step_if bun "migrate-ts real-PG suite" gate_migrate_ts_pg
       in_lane_any ts ts-slow     && step_if bun "runtime-ts real-PG dialect matrix" gate_runtime_ts_pg
+      in_lane_any ts ts-slow     && step_if bun "prisma real-PG round trip" gate_prisma_pg
       in_lane_any ts ts-slow     && run_integration_for ts     ts
       in_lane_any java java-slow && run_integration_for java   java kotlin
       in_lane python             && run_integration_for python python

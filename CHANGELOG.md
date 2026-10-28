@@ -36,6 +36,42 @@ here.**
   the default, generated Mustache helpers are byte-identical, and `metamodelVersion` does not
   move.
 
+- **Prisma as the ORM, declared once in the model (TypeScript, #479).** Set `orm: "prisma"` in
+  `metaobjects.config.ts` and wire the new `prisma-schema` generator (`prismaSchemaFile()`), and
+  `meta gen` writes `schema.prisma` from the model for the `postgresql`, `mysql` or `sqlite`
+  provider. It maps types, ids and their generation, defaults, nullability, enums, relations,
+  unique keys, indexes and `@map`/`@@map`, and Postgres `@schema` maps to `@@schema`. Prisma cannot
+  declare CHECK constraints, so the ones the model implies go in `schema.checks.sql`, which you
+  apply with `prisma db execute --file`. `meta verify --codegen` fails on a hand-edited or stale
+  schema; the generator overwrites hand edits rather than merging them. On Postgres, a database
+  created by `prisma db push` with the checks file applied passes `meta verify --db`, and a
+  change to it fails. On SQLite, which cannot take the checks file, the gate reports each
+  missing CHECK and nothing else, and a change to the database fails it.
+  Most of what a Prisma schema cannot express is refused with an `ERR_PRISMA_*` code, never dropped: a
+  view `meta verify --db` expects, an expression or partial index, a CHECK on SQLite, a `@schema`
+  outside Postgres, a table with no primary key, a relation Prisma cannot model, a name
+  collision, or an unsupported provider. The exception is MySQL, which gets the enum CHECKs only:
+  the other checks are Postgres SQL and are left out. A model with projections, write-through read views or
+  served reports therefore needs each of those views marked `@unmanaged` or its object left out
+  by the generator's `filter`. A flattened `field.object` maps to one Prisma field per column.
+  `orm: "prisma"` also makes every target default to `runtime: false`. It refuses a target set to
+  `runtime: true`, and the generators that write Drizzle code (`queries`, `routes`,
+  `routes-hono`, `callable`). The default, `orm: "drizzle"`, changes nothing. The generator is
+  ejectable (`meta eject prisma-schema`). `@metaobjectsdev/codegen-ts` now depends on
+  `@metaobjectsdev/migrate-ts` for the expected schema, through the new
+  `@metaobjectsdev/migrate-ts/expected` subpath, which does not load kysely. Recipe:
+  `docs/recipes/prisma.md`.
+
+- **Java and Kotlin consume a shared model (FR-023 Phase 2).** A project that declares
+  `dependencies` in `.metaobjects/config.json` loads its committed `.metaobjects/deps/` snapshot
+  ahead of its own files, in the Maven plugin (every rung of the source ladder) and the Java
+  loader. The lock is checked as in TypeScript and Python (`ERR_DEPENDENCY_SNAPSHOT_STALE`,
+  `_METAMODEL_INCOMPATIBLE`, `_NODE_COLLISION`), a local node declared into a dependency's package
+  fails with `ERR_DEPENDENCY_PACKAGE_NOT_OWNED`, and the Java and Kotlin generators emit nothing for
+  an imported object unless `scope.include` names its package. Runs all 24 resolution cases of
+  `fixtures/dependency-conformance/` (the 11 check cases pin the Node `meta deps check`); Kotlin loads through the same loader and adds a codegen test.
+  Spring runtime auto-load and `verify` drift for dependencies are later slices.
+
 - **Java, Kotlin and C# can compile and match `scope` patterns.** `com.metaobjects.config.Scope`
   (Java; Kotlin inherits it) and `MetaObjects.Config.Scope` (C#) port the scope-pattern grammar from
   TypeScript (`compilePattern` / `compileScope` / `matchesScope`), and both run the shared
@@ -109,6 +145,20 @@ here.**
 
 ### Fixed
 
+- **`@default: "now"` is the current time on Postgres, not the table's creation time.** The
+  expected schema stored it as the literal `'now'`, and Postgres converts that literal to a
+  timestamp once, when it creates the column's `DEFAULT`, so every row got the same value. It
+  is now the expression `now()`, which is what `@autoSet` and the generated Drizzle column
+  already used. On a database `meta migrate` created from such a field, the next `meta migrate`
+  proposes a change-column-default, and `meta verify --db` reports the old default until it is
+  applied.
+
+- **`meta verify --db` on SQLite accepts how other tools spell the same storage.** A column
+  declared `BOOLEAN` now matches the model's `INTEGER`, `DECIMAL(p,s)` matches `NUMERIC`, and an
+  unquoted `TRUE`/`FALSE` default matches `1`/`0`. SQLite stores each pair identically. Prisma
+  writes the first of each, so before this fix a database pushed by Prisma reported drift on
+  every boolean and decimal column.
+
 - **`meta deps sync` and `meta deps check` finish cleanly on a project whose own metadata the
   Node toolchain cannot read.** A Maven project (`src/main/resources/metadata`), a C# project, or a
   model using vocabulary only another port registers declares no neutral `sources`, so the closing
@@ -125,6 +175,26 @@ here.**
   command failed to load. The sync now saves the previous lock and snapshot and restores both
   on any failure, so the previous state is intact. `meta deps check` also loads the model once
   its hashes match and exits 1 with the load error when it does not load.
+
+- **`meta verify --db` no longer reports false CHECK drift on Postgres for a one-value enum, a
+  `presentIff` validator, or a validator on a `varchar(n)` column; a changed enum-member case
+  or regex case no longer reads as clean.** Postgres stores `"k" IN ('x')` as `k = 'x'` and
+  `a IS NOT DISTINCT FROM b` as `NOT (a IS DISTINCT FROM b)`, and casts a `varchar` column to
+  text (`(region)::text`) in a comparison, a `length()` and a null-safe test. The comparison now
+  folds all three back, so a database `migrate` just built verifies clean. The same false drift
+  reached `meta migrate --from-db`, which proposed a drop-check and add-check on every run, and
+  the offline `migrate --dry-run` after a `baseline --from-db`. It has done so since 1.0.x. In
+  the other direction, the comparison lower-cased quoted literals and deleted every bracket,
+  quote and run of blanks inside them, so `IN ('OPEN')` against `IN ('open')` and `~ '^[A-Z]+$'`
+  against `~ '^[a-z]+$'` compared as equal. Literals are now compared as written. A check
+  stored in a different case than the model declares therefore shows as drift once: run
+  `meta migrate` to bring it back. Separately, `char(n)` is no longer treated as a text column
+  for the `(col)::text` fold: its own regex operator sees the blank padding the cast trims, and
+  Postgres never adds the cast there, so an explicit `(col)::text ~ '…'` on a `char(n)` column
+  now reads as drift. A precedence change (`(a OR b) AND c` against `a OR (b AND c)`) is still
+  not detected; that needs Postgres to canonicalise the expected side. A new Postgres test
+  migrates, applies and verifies every CHECK shape `migrate` generates. Schema comparison is
+  TypeScript-owned, so no other port carries this comparison.
 
 ### Documentation
 
