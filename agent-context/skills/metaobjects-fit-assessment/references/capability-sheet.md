@@ -1,9 +1,10 @@
-# Capability sheet — what each port ships at 1.0.8 (never promise across these lines)
+# Capability sheet — what each port ships at 1.1.4 / Maven 8.1.4 (never promise across these lines)
 
 ## Contents
 - Contract-only generation, per port
 - What contract-only does not do
 - Full-stack caps per port
+- Reporting, requirements and the wire setting (1.1)
 - Not shipped, never promise
 
 Paths are relative to the MetaObjects repository on GitHub.
@@ -16,7 +17,7 @@ building block. Every generator is a reference helper an adopter selects, ejects
 |---|---|---|---|
 | TypeScript | the `entity` reference generator in a target with `runtime: false` | Zod schemas + inferred TS types; no `drizzle-orm`, no `runtime-ts` import, for entities, value objects and projections alike | `server/typescript/packages/codegen-ts/src/metaobjects-config.ts` (`TargetConfig.runtime`), `.../src/templates/entity-file.ts` |
 | Java | `SpringDtoGenerator` (a record per concrete entity or projection, whatever its source, with jakarta validation annotations) and `SpringValueObjectGenerator` (a record per value object) | Java 21 records; your JPA/JDBC entity stays hand-written | `server/java/codegen-spring/src/main/java/com/metaobjects/generator/spring/` |
-| Kotlin | `KotlinEntityGenerator` (+ `KotlinValidatorGenerator`) | plain Jackson-compatible data classes per entity and value object | `server/java/codegen-kotlin/src/main/kotlin/com/metaobjects/generator/kotlin/` |
+| Kotlin | `KotlinEntityGenerator` | plain Jackson-compatible data classes per entity and value object | `server/java/codegen-kotlin/src/main/kotlin/com/metaobjects/generator/kotlin/` |
 | C# | `EntityGenerator`, with the contract declared **sourceless** | a POCO with DataAnnotations and no EF mapping (a sourced entity gets `[Table]`/`[Key]`/`[Column]`) | `server/csharp/MetaObjects.Codegen/Generators/EntityGenerator.cs` |
 | Python | the `entity` generator | Pydantic models (no ORM of any kind) | `server/python/src/metaobjects/codegen/generator_registry.py` |
 
@@ -63,6 +64,24 @@ code from the shapes.
   consumer's serializer settings (the byte-identical REST wire is a property of the *generated
   routes*, gated by `fixtures/api-contract-conformance/`). Check it in the wedge.
 
+- **Reporting** (`docs/features/reporting.md`, metamodel 1.1; relative `startOf` windows 1.2): `dimension.*`,
+  `measure.*`, `segment.filter` and `object.report` load and validate in all five ports. A report with
+  a read-only `source.rdb @kind: view` is lowered to a SQL view by `meta migrate` (Postgres, SQLite,
+  D1; MySQL SQL from `buildReportViews`) and every port's generators serve it as one read-only list
+  route (rows past a 10,000 cap answer `report_too_large`). The TypeScript `cube-model` reference
+  generator exports it to Cube. TanStack gets a list hook only: no grid or form for a report.
+- **Requirements** (`docs/features/requirements.md`): `requirement.functional` / `.architectural`
+  load in all five ports and the `verify` gate runs in each. The strict form is
+  `--require-implementers` (TS, Python, C#), `-Dmeta.verify.requireImplementers=true` (Java/Kotlin),
+  or `META_REQUIRE_IMPLEMENTERS=1`. A green run proves links resolve, not that a claim is true.
+- **Wire setting**: `"wire": {"decimals", "nullMembers"}` in `.metaobjects/config.json`, read by every
+  port's codegen. Default `native`: each language's standard JSON (C#/Java/Kotlin decimals as numbers,
+  Python/TypeScript as strings). `decimals: "string"` + `nullMembers: "omit"` gives the identical
+  cross-port form (`docs/features/api-contract.md`, "The wire setting"). Physical names default to
+  `snake_case` in every port via `naming` (`literal` keeps field names).
+- **Eject** works in every port (`meta eject`, `metaobjects eject`, `mvn metaobjects:eject`,
+  `dotnet meta eject`); documentation pages are generators in the generator list in every port.
+
 **Full-stack caps per port:**
 - **Schema pillar** (`meta migrate`, `verify --db`): Node `meta` CLI only; Postgres, SQLite, D1
   only. Any other database: out for that database; data access unaffected.
@@ -73,7 +92,7 @@ code from the shapes.
   the existing ORM sits behind unchanged), payload records, output parsers. Entities stay
   hand-written on this lane. `mvn metaobjects:generate` / `:verify` (no live-DB mode).
 - **Kotlin/JVM**: entity + Exposed table + Spring controller + payload + relations + filter
-  allowlist + validators + output parsers.
+  allowlist + a startup validator that checks the Exposed tables against the model (not field validation) + output parsers.
 - **C#**: EF Core entities + `AppDbContext` + CRUD minimal-API routes + render/payload/verify via
   `dotnet meta`; no metadata-driven runtime tier; no migrate surface.
 - **Python**: Pydantic + router + payload/parsers + `ObjectManager` runtime; the consumer wires the

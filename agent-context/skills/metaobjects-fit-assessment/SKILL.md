@@ -8,7 +8,7 @@ metadata:
 # MetaObjects Fit & Migration Assessment
 
 _Assessment prompt v2. The § Capability sheet was last checked against the MetaObjects source
-on 2026-09-26 (the 1.0.8 / 1.0.9 line). A later release may add capabilities the sheet does not
+on 2026-10-28 (1.1.4 / Maven 8.1.4). A later release may add capabilities the sheet does not
 list yet: check anything load-bearing against the published sources named in M3._
 
 <!-- skill-form-only:start -->
@@ -458,7 +458,7 @@ Read `references/json-contract.md` before you write `fit-assessment.json`, and k
 
 ---
 
-## Capability sheet — what each port ships at 1.0.8 (never promise across these lines)
+## Capability sheet — what each port ships at 1.1.4 (never promise across these lines)
 
 Read `references/capability-sheet.md` before you state what any port can do; every capability claim in the assessment traces to it or to a published source (M3). <!-- inline: references/capability-sheet.md -->
 
