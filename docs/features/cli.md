@@ -53,7 +53,7 @@ vocabulary everywhere, each port implementing the modes it supports.
 |---|---|---|
 | `verify --db` | **Schema drift** — does the live database (or snapshot) match the metadata? (migrate engine, ADR-0015) | yes |
 | `verify --codegen` | **Codegen drift** — regenerate from metadata into a temp dir and fail if it differs from the committed generated output. Catches "metadata changed but `meta gen` wasn't re-run". A hand-edited generated file is NOT drift — `meta gen` three-way-merges hand edits by design, so the gate compares the *generated contribution* against the committed `.gen-state/.hashes.json` rather than the file byte-for-byte. It still LISTS every generated file carrying a hand edit (count + paths, and how to see the edit) as a notice that does not change the exit code; `--forbid-hand-edits` makes any hand edit fail the build, for teams that want generated code untouchable (Node `meta` only). | no |
-| `verify --templates` | **Template/prompt drift** — `Renderer.verify` checks each `template.*` node's `{{field}}` references against its payload VO (FR-004). | no |
+| `verify --templates` | **Template/prompt drift** — `Renderer.verify` checks each `template.*` node's `{{field}}` references against its payload VO (FR-004). A Jinja body (Python and TypeScript, ADR-0061) is checked the same way. | no |
 | `verify --docs` | **Removed in 1.1.0** (ADR-0034 Amendment 9). It prints where the check went and exits 2: documentation is written by entries in `generators`, so `verify --codegen` checks it with the rest of the declared output. | — |
 | `verify --deps` | **Dependency drift** (FR-023) — re-resolves each declared dependency (its `path`, or its installed `npm` / `python` package) and compares its installed artifact's hash against `.metaobjects/deps.lock.json`, same comparison as `meta deps check`. Needs the publisher reachable, so it is never part of the bare-`verify` default. A `drifted` or `unresolved` dependency fails with `ERR_DEPENDENCY_UPSTREAM_DRIFT`. **Node `meta` only.** See [`metadata-dependencies.md`](metadata-dependencies.md). | no |
 
@@ -229,6 +229,26 @@ at `-Dmeta.verify.templateRoot`). The one goal covers BOTH Java (`codegen-spring
 (`codegen-kotlin`) since they share it. `mode=db` is **cleanly rejected** ("schema verify is the
 migrate engine, ADR-0015"); an unknown mode fails listing the valid ones. (Schema `--db` remains
 Node-only by the ADR-0015 design — see below.)
+
+## Owned generators: the unchanged-copy notice, `eject --undo`, and `gen --strict`
+
+You are expected to own generators, but not to carry a copy that never changed. An ejected copy
+that is still the shipped reference stays at the release it was copied from, so `gen` names
+those copies in one line and a flag takes them back. A copy you changed is never touched
+unless you name it and pass the force flag.
+
+| Port | Notice | Take unchanged copies back | Unknown attribute in `gen` |
+| --- | --- | --- | --- |
+| TypeScript | `meta gen` | `meta eject --undo [<name>...] [--force]` | warns; `meta gen --strict` is an error |
+| Python | `metaobjects gen` | `metaobjects eject --undo [<name>...] [--force]` | warns; `metaobjects gen --strict` is an error |
+| Java / Kotlin | `metaobjects:generate` | `mvn metaobjects:eject -Dundo=true [-Dnames=a,b] [-Dforce=true]` | already an error (as `verify`); `-Dmeta.lax=true` relaxes both goals |
+| C# | `dotnet meta gen` | `dotnet meta eject --undo [<name>...] [--force]` | warns; `dotnet meta gen --strict` is an error |
+
+Undo with no names removes every copy that is the shipped reference; with names, any named copy
+that differs refuses the whole call and removes nothing. It never edits your generator list
+(`metaobjects.config.ts`, `codegen/Generators.cs`, `pom.xml`, `metaobjects.config.yaml`): it prints the
+edit that points each entry back at the shipped generator. `--strict` exits 1 and writes
+nothing. No port has a `doctor` command: `eject --list` (or the matching goal) is the report.
 
 ## `gen` refuses rather than guesses — and `--baseline` is how you answer it
 

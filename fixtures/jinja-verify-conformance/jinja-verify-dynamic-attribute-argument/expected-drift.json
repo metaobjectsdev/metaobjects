@@ -1,0 +1,3 @@
+[
+  { "code": "ERR_TEMPLATE_NOT_STATIC", "path": "posts[*]" }
+]

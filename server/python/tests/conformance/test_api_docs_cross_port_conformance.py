@@ -37,13 +37,14 @@ _ROOT = _repo_root()
 _CASE_DIR = _ROOT / "fixtures" / "conformance" / "api-docs-cross-port"
 
 
-def _drive_python_docs(input_dir: Path, out_dir: Path) -> None:
+def _drive_python_docs(input_dir: Path, out_dir: Path, model_base_url: str | None = None) -> None:
     """Run the Python api reference end-to-end: ``api-docs`` declared in a config target whose
     ``outDir`` is *out_dir*, run by ``metaobjects gen``."""
     config = out_dir.parent / "metaobjects.config.yaml"
     config.write_text(
         f"metadata: {json.dumps(str(input_dir))}\n"
-        f"targets:\n  docs:\n    outDir: {json.dumps(str(out_dir))}\n    generators: [api-docs]\n",
+        + (f"apiDocs:\n  modelBaseUrl: {json.dumps(model_base_url)}\n" if model_base_url else "")
+        + f"targets:\n  docs:\n    outDir: {json.dumps(str(out_dir))}\n    generators: [api-docs]\n",
         encoding="utf-8",
     )
     assert cli.main(["gen", "--config", str(config)]) == 0
@@ -64,24 +65,30 @@ def test_python_api_docs_paths_and_back_links_match_shared_manifest(tmp_path: Pa
     out_dir = tmp_path / "docs-out"
     _drive_python_docs(input_dir, out_dir)
 
-    # ---- per-unit: the api/python page exists AND carries the contract back-link ----
+    # ---- per-unit: the api/python page exists. Python writes no model page, so a relative
+    # back-link would be dead: the page carries none until `modelBaseUrl` says where the
+    # model pages are published (then the link is that base plus the manifest's modelPath).
     units = manifest["units"]
     assert units, "manifest must declare at least one unit"
 
     for unit in units:
         node = unit["node"]
-        api_python_path = unit["apiPythonPath"]
-        api_python_to_model = unit["apiPythonToModel"]
-
-        page = out_dir / api_python_path
+        page = out_dir / unit["apiPythonPath"]
         assert page.is_file(), (
-            f"Python api-docs surface did not produce '{api_python_path}' for unit "
+            f"Python api-docs surface did not produce '{unit['apiPythonPath']}' for unit "
             f"'{node}'. Searched under: {out_dir}"
         )
-
-        contents = page.read_text(encoding="utf-8")
-        expected_back_link = f"**Model / metadata:** [{node}]({api_python_to_model})"
-        assert expected_back_link in contents, (
-            f"rendered api/python page for '{node}' must carry the contract back-link:\n"
-            f"  {expected_back_link}\nactual page:\n{contents}"
+        assert "Model / metadata" not in page.read_text(encoding="utf-8"), (
+            f"api/python page for '{node}' links a model page nothing writes"
         )
+
+    federated = tmp_path / "federated" / "docs-out"
+    federated.parent.mkdir()
+    _drive_python_docs(input_dir, federated, "https://docs.example.test/model/")
+    for unit in units:
+        contents = (federated / unit["apiPythonPath"]).read_text(encoding="utf-8")
+        expected = (
+            f"**Model / metadata:** [{unit['node']}]"
+            f"(https://docs.example.test/model/{unit['modelPath']})"
+        )
+        assert expected in contents, contents

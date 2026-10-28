@@ -1,0 +1,4 @@
+{
+  "format": "text",
+  "note": "include sees the including context; import and from-import bring macros; a .jinja suffix on the name is dropped"
+}

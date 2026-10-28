@@ -113,6 +113,7 @@ export { toCamelCase, toPascalCase, toSnakeCase } from "./naming.js";
 export { enumValues } from "./enum-meta.js";
 export { objectRefTarget } from "./model-walk.js";
 export { servedPath } from "./api-surface.js";
+export { entityTypeNames, type EntityTypeNames, type EntityTypeNamesOpts } from "./entity-type-names.js";
 // routesHandlerName is public for the same reason the routes-expose members below are: the
 // routes reference template tells an adopter retargeting to another HTTP framework to copy
 // `renderRoutesFile`'s body out of the package source, and that body names this. See the

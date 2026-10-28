@@ -450,3 +450,27 @@ def test_templates_payload_ref_fqn_collision_binds_correct_package_not_load_firs
     # drift. The fix must report CLEAN (exit 0) regardless of load order.
     rc = main(["verify", "--generators", GEN_SUITE, "--templates", str(d), "--templates-root", str(troot)])
     assert rc == 0
+
+
+# ADR-0061: a body may be a Jinja file beside the Mustache ones; the same gate checks it.
+def _jinja_templates_dir(tmp_path: Path, body: str, ext: str = ".jinja") -> str:
+    root = tmp_path / "templates"
+    (root / "pages").mkdir(parents=True)
+    (root / "pages" / f"welcome{ext}").write_text(body)
+    return str(root)
+
+
+def test_templates_jinja_clean_returns_zero(tmp_path: Path) -> None:
+    meta_dir = _meta_dir_with(tmp_path, _META_CLEAN)
+    troot = _jinja_templates_dir(tmp_path, "{% set n = name %}Hello {{ n | title }}")
+    rc = main(["verify", "--generators", GEN_SUITE, "--templates", meta_dir, "--templates-root", troot])
+    assert rc == 0
+
+
+def test_templates_jinja_drift_is_caught(tmp_path: Path, capsys) -> None:
+    meta_dir = _meta_dir_with(tmp_path, _META_CLEAN)
+    troot = _jinja_templates_dir(tmp_path, "{% if nickname %}{{ nickname }}{% endif %}", ".j2")
+    rc = main(["verify", "--generators", GEN_SUITE, "--templates", meta_dir, "--templates-root", troot])
+    assert rc != 0
+    err = capsys.readouterr().err
+    assert "ERR_VAR_NOT_ON_PAYLOAD: nickname" in err

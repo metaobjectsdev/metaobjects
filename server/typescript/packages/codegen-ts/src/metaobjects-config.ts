@@ -100,6 +100,18 @@ export interface ResolvedGenConfig {
    *  api-docs reads this to AUTO-DETECT whether to document the Hono CRUD surface
    *  (it otherwise mirrors the default Fastify-only suite). Undefined ⇒ false. */
   includeHonoRoutes?: boolean;
+  /** Whether a generator in the run writes the `<Entity>.ts` entity modules (the suite's
+   *  `emitsEntityModule` markers, or an `entity-file` by name). api-docs documents the model,
+   *  its Zod schemas and its `relations()` only then. Undefined ⇒ documented. */
+  includeEntityModule?: boolean;
+  /** Whether a generator in the run writes the `<Entity>.queries.ts` modules (the suite's
+   *  `emitsQueries` markers, or a `queries-file` by name). api-docs documents the query
+   *  helpers only then. Undefined ⇒ documented, which is what a caller that is not a run
+   *  (a thin docs entrypoint) wants. */
+  includeQueries?: boolean;
+  /** Likewise for the Fastify REST routes: a routes generator that mounts them (`mountsRoutes`
+   *  on a non-Hono generator, or a `routes-file` by name). Undefined ⇒ documented. */
+  includeRestRoutes?: boolean;
   /** The `expose` option the run's routes generators were built with (`runRoutesExpose`), per
    *  routes surface, for the api reference to document only the verbs they mount. Absent documents all five. */
   routesExpose?: RoutesExpose;

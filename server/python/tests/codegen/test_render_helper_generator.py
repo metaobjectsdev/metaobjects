@@ -11,10 +11,10 @@ Two shapes keyed off ``@kind``:
   * email              → render subject (text) + html body (html) + optional text
                          body (text) → an ``EmailDocument``.
 
-Python divergence (documented in the generator): Python's ``RenderRequest`` has no
-``verify`` field (the render engine does not run a runtime drift pass the way TS /
-Java / C# do), so the emitted helper does NOT pass a runtime ``verify`` field-tree.
-The BUILD-TIME drift gate below is the only — and a complete — drift guarantee.
+Python divergence: a helper over a MUSTACHE body passes no runtime ``verify`` field
+tree (the BUILD-TIME drift gate below is its guarantee). A helper over a JINJA body
+(ADR-0061) names the engine and passes the field tree, so ``render`` checks the body
+again at runtime — see the Jinja tests at the end of this file.
 """
 from __future__ import annotations
 
@@ -471,3 +471,116 @@ def test_resolve_payload_vo_bare_value_does_not_bind_a_packaged_object() -> None
     ]).root
     assert resolve_payload_vo(root, "acme::blog::WelcomePayload", "") is not None
     assert resolve_payload_vo(root, "WelcomePayload", "acme::blog") is None
+
+
+# ---------------------------------------------------------------------------
+# Jinja bodies (ADR-0061)
+# ---------------------------------------------------------------------------
+
+
+def _write_jinja(tmp_path, rel: str, body: str, ext: str = ".jinja") -> None:
+    import os
+
+    full = os.path.join(str(tmp_path), *rel.split("/")) + ext
+    os.makedirs(os.path.dirname(full), exist_ok=True)
+    with open(full, "w") as fh:
+        fh.write(body)
+
+
+def test_jinja_body_renders_through_the_helper_and_names_its_engine(tmp_path, monkeypatch) -> None:
+    _write_jinja(tmp_path, "pages/welcome", "Hello {{ name | upper }}")
+    payload = _payload_vo("Welcome", [_field("name")])
+    tmpl = _document_template("WelcomePage", "Welcome", text_ref="pages/welcome")
+    root = _root([payload, tmpl])
+
+    files = RenderHelperGenerator(str(tmp_path)).generate(_ctx(root))
+    src = files[0].content
+    assert 'engine="jinja"' in src
+    assert 'verify=[PayloadField("name")]' in src
+    _materialize_and_import([*files, *_models(root)], tmp_path, monkeypatch)
+    helper = import_module("_rh_pkg.welcome_page_render_helper")
+
+    from metaobjects.render.verify import InMemoryProvider
+
+    # The runtime provider knows nothing about engines; the helper's own engine decides.
+    runtime = InMemoryProvider({"pages/welcome": "Hello {{ name | upper }}"})
+    assert helper.render_welcome_page({"name": "Ada"}, runtime) == "Hello ADA"
+
+
+def test_jinja_helper_rechecks_at_runtime(tmp_path, monkeypatch) -> None:
+    _write_jinja(tmp_path, "pages/welcome", "Hello {{ name }}")
+    payload = _payload_vo("Welcome", [_field("name")])
+    tmpl = _document_template("WelcomePage", "Welcome", text_ref="pages/welcome")
+    root = _root([payload, tmpl])
+    files = RenderHelperGenerator(str(tmp_path)).generate(_ctx(root))
+    _materialize_and_import([*files, *_models(root)], tmp_path, monkeypatch)
+    helper = import_module("_rh_pkg.welcome_page_render_helper")
+
+    from metaobjects.render.renderer import RenderError
+    from metaobjects.render.verify import InMemoryProvider
+
+    # A runtime provider serving a body that drifted after the build.
+    drifted = InMemoryProvider({"pages/welcome": "Hello {{ nickname }}"})
+    try:
+        helper.render_welcome_page({"name": "Ada"}, drifted)
+    except RenderError as e:
+        assert "ERR_VAR_NOT_ON_PAYLOAD (nickname)" in str(e)
+        return
+    raise AssertionError("expected the runtime check to refuse the drifted body")
+
+
+def test_jinja_drift_gate_fails_codegen(tmp_path) -> None:
+    _write_jinja(tmp_path, "pages/welcome", "{% for x in nope %}{{ x }}{% endfor %}", ".j2")
+    payload = _payload_vo("Welcome", [_field("name")])
+    tmpl = _document_template("WelcomePage", "Welcome", text_ref="pages/welcome")
+    root = _root([payload, tmpl])
+    try:
+        RenderHelperGenerator(str(tmp_path)).generate(_ctx(root))
+    except ValueError as e:
+        assert "ERR_VAR_NOT_ON_PAYLOAD: {{nope}}" in str(e)
+        return
+    raise AssertionError("expected the Jinja drift gate to fail codegen")
+
+
+def test_jinja_not_static_fails_codegen(tmp_path) -> None:
+    _write_jinja(tmp_path, "pages/welcome", "{% include name %}")
+    payload = _payload_vo("Welcome", [_field("name")])
+    tmpl = _document_template("WelcomePage", "Welcome", text_ref="pages/welcome")
+    root = _root([payload, tmpl])
+    try:
+        RenderHelperGenerator(str(tmp_path)).generate(_ctx(root))
+    except ValueError as e:
+        assert "ERR_TEMPLATE_NOT_STATIC: include" in str(e)
+        return
+    raise AssertionError("expected ERR_TEMPLATE_NOT_STATIC to fail codegen")
+
+
+def test_mustache_helper_has_no_engine_or_runtime_tree(tmp_path) -> None:
+    _write_mustache(tmp_path, "pages/welcome", "Hi {{name}}")
+    payload = _payload_vo("Welcome", [_field("name")])
+    tmpl = _document_template("WelcomePage", "Welcome", text_ref="pages/welcome")
+    root = _root([payload, tmpl])
+    src = RenderHelperGenerator(str(tmp_path)).generate(_ctx(root))[0].content
+    assert "engine=" not in src
+    assert "verify=" not in src
+    assert "PayloadField" not in src
+
+
+def test_email_parts_may_mix_engines(tmp_path, monkeypatch) -> None:
+    _write_mustache(tmp_path, "mail/subject", "Welcome {{name}}")
+    _write_jinja(tmp_path, "mail/html", "<p>Hi {{ name }}</p>")
+    _write_jinja(tmp_path, "mail/text", "Hi {{ name | upper }}", ".j2")
+    payload = _payload_vo("Welcome", [_field("name")])
+    tmpl = _email_template("WelcomeEmail", "Welcome")
+    root = _root([payload, tmpl])
+    files = RenderHelperGenerator(str(tmp_path)).generate(_ctx(root))
+    assert files[0].content.count('engine="jinja"') == 2
+    _materialize_and_import([*files, *_models(root)], tmp_path, monkeypatch)
+    helper = import_module("_rh_pkg.welcome_email_render_helper")
+
+    from metaobjects.render.filesystem_provider import FilesystemProvider
+
+    doc = helper.render_welcome_email({"name": "A&B"}, FilesystemProvider(str(tmp_path)))
+    assert doc.subject == "Welcome A&B"
+    assert doc.html_body == "<p>Hi A&amp;B</p>"
+    assert doc.text_body == "Hi A&B"

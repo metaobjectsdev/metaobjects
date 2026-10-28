@@ -6,6 +6,8 @@ import com.metaobjects.object.MetaObject;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.render.FilesystemProvider;
 import com.metaobjects.render.PayloadField;
+import com.metaobjects.render.RenderException;
+import com.metaobjects.render.TemplateEngines;
 import com.metaobjects.render.Verify;
 import com.metaobjects.render.VerifyError;
 import com.metaobjects.render.VerifyOptions;
@@ -152,7 +154,15 @@ public final class TemplateVerify {
             VerifyOptions opts = new VerifyOptions(provider, requiredSlots, requiredTags);
             for (String ref : refs) {
                 // Render-engine drift check: mustache variables ↔ payload field names.
-                String text = provider.resolve(ref);
+                String text;
+                try {
+                    text = provider.resolve(ref);
+                } catch (RenderException e) {
+                    // ADR-0061: a Jinja-only body is refused by name (this port renders Mustache only).
+                    if (!TemplateEngines.isEngineRefusal(e)) throw e;
+                    errors.add(new Drift(tmpl.getName(), kind, TemplateEngines.ERR_TEMPLATE_ENGINE_UNSUPPORTED, ref));
+                    continue;
+                }
                 if (text == null) {
                     unresolved.add("template \"" + tmpl.getName() + "\": ref \"" + ref
                             + "\" did not resolve under " + templateRoot);

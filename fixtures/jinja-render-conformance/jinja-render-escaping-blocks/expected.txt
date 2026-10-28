@@ -1,0 +1,4 @@
+
+<b>Tom &amp; &lt;Jerry&gt;</b>
+<i>a &lt; b</i>
+<span>a &lt; b</span>

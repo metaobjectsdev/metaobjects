@@ -118,12 +118,21 @@ public class MetaDataEjectMojo extends AbstractMojo {
     @Parameter(property = "runtimeDir")
     String runtimeDir;
 
-    private static final String CODEGEN_DIR = "codegen";
+    /** Remove owned copies identical to the shipped generator instead of ejecting (see
+     *  {@link #undo()}). With {@code -Dnames} only those; without, every identical copy. */
+    @Parameter(property = "undo", defaultValue = "false")
+    boolean undo;
+
+    static final String CODEGEN_DIR = "codegen";
 
     @Override
     public void execute() throws MojoExecutionException, MojoFailureException {
         if (list) {
             getLog().info(buildListOutput());
+            return;
+        }
+        if (undo) {
+            undo();
             return;
         }
 
@@ -240,6 +249,107 @@ public class MetaDataEjectMojo extends AbstractMojo {
         }
         if (!runtime.isEmpty()) {
             printRuntimeWiring(runtimeRoot, runtimePkg, requested, codegenRoot);
+        }
+    }
+
+    // ------------------------------------------------------------------------------------
+    // undo
+    // ------------------------------------------------------------------------------------
+
+    /**
+     * {@code -Dundo=true}: delete the owned copies that are identical to the shipped generator, so
+     * the build runs the stock one again. Without {@code -Dnames} that is every identical copy;
+     * with names, those only, and a copy that differs is refused with nothing removed unless
+     * {@code -Dforce=true}. Every name is validated before anything is deleted. It never edits
+     * {@code pom.xml}: it prints the {@code <classname>} to put back. The shared support and
+     * runtime copies stay (other owned generators import them) and are named.
+     */
+    private void undo() throws MojoExecutionException, MojoFailureException {
+        Path codegenRoot = project.getBasedir().toPath().resolve(CODEGEN_DIR);
+        List<OwnedStock.Copy> all;
+        try {
+            all = OwnedStock.find(codegenRoot,
+                    OwnedStock.runtimeRoots(project.getBasedir().toPath(), project.getModules()),
+                    OwnedStock.classpath(getClass().getClassLoader()));
+        } catch (IOException ex) {
+            throw new MojoExecutionException("Could not compare the owned copies under " + codegenRoot, ex);
+        }
+        EjectSupport.Port explicitPort = port == null || port.isBlank() ? null : EjectSupport.Port.parse(port);
+
+        List<OwnedStock.Copy> chosen = new ArrayList<>();
+        if (names == null || names.isBlank()) {
+            chosen.addAll(OwnedStock.identical(all));
+            if (chosen.isEmpty()) {
+                getLog().info("No owned generator copy under " + codegenRoot
+                        + " is identical to the shipped one; nothing removed.");
+                return;
+            }
+        } else {
+            Map<String, List<EjectSupport.Entry>> catalog = EjectSupport.ejectableByStableName();
+            List<String> errors = new ArrayList<>();
+            for (String n : List.of(names.split(",")).stream().map(String::trim)
+                    .filter(s -> !s.isEmpty()).distinct().collect(Collectors.toList())) {
+                if (!catalog.containsKey(n)) {
+                    errors.add("  unknown generator \"" + n + "\"");
+                    continue;
+                }
+                List<OwnedStock.Copy> found = all.stream()
+                        .filter(c -> c.entry.stableName.equals(n)
+                                && (explicitPort == null || c.entry.port == explicitPort))
+                        .collect(Collectors.toList());
+                if (found.isEmpty()) {
+                    errors.add("  \"" + n + "\" has no owned copy under " + codegenRoot);
+                    continue;
+                }
+                for (OwnedStock.Copy c : found) {
+                    if (!c.identical() && !force) {
+                        errors.add("  \"" + n + "\" differs from the shipped generator ("
+                                + c.behind + " line(s) behind, " + c.ownedOnly + " line(s) of your own; differing: "
+                                + String.join(", ", c.differing) + "); -Dforce=true removes it anyway");
+                    } else {
+                        chosen.add(c);
+                    }
+                }
+            }
+            if (!errors.isEmpty()) {
+                throw new MojoFailureException("Nothing was removed:\n" + String.join("\n", errors));
+            }
+        }
+
+        // A class copied with two generators (the extractor, with entity) goes only when no
+        // generator that stays still owns it.
+        Set<Path> kept = new LinkedHashSet<>();
+        for (OwnedStock.Copy c : all) if (!chosen.contains(c)) kept.addAll(c.files);
+        Set<Path> remove = new LinkedHashSet<>();
+        for (OwnedStock.Copy c : chosen) for (Path f : c.files) if (!kept.contains(f)) remove.add(f);
+        try {
+            for (Path f : remove) {
+                Files.deleteIfExists(f);
+                for (Path dir = f.getParent(); dir != null && !dir.equals(codegenRoot)
+                        && Files.isDirectory(dir); dir = dir.getParent()) {
+                    try (var s = Files.list(dir)) {
+                        if (s.findAny().isPresent()) break;
+                    }
+                    Files.delete(dir);
+                }
+            }
+        } catch (IOException ex) {
+            throw new MojoExecutionException("Could not remove an owned copy under " + codegenRoot, ex);
+        }
+
+        Set<String> shared = new LinkedHashSet<>();
+        for (OwnedStock.Copy c : chosen) {
+            getLog().info("Removed owned \"" + c.entry.stableName + "\" ("
+                    + c.files.stream().map(f -> f.getFileName().toString()).collect(Collectors.joining(", "))
+                    + ")" + (c.identical() ? "." : ", which differed (-Dforce=true)."));
+            getLog().info("  edit your pom.xml: <classname>" + c.ownedClassname() + "</classname>  ->  <classname>"
+                    + c.stockClassname() + "</classname>");
+            shared.addAll(c.shared);
+        }
+        getLog().info("This goal never edits pom.xml; make the edit above for each generator removed.");
+        if (!shared.isEmpty()) {
+            getLog().info("Left in place, since other owned generators may import them (delete by hand if "
+                    + "none does): " + String.join(", ", shared));
         }
     }
 
@@ -773,7 +883,7 @@ public class MetaDataEjectMojo extends AbstractMojo {
 
     /** The owned copy named {@code filename} under {@code codegen/src/main/<lang>}, or
      *  {@code null}. It may live under ANY package the adopter chose. */
-    private static Path findOwned(Path codegenRoot, String langDir, String filename) throws IOException {
+    static Path findOwned(Path codegenRoot, String langDir, String filename) throws IOException {
         if (codegenRoot == null) return null;
         Path srcRoot = codegenRoot.resolve("src/main/" + langDir);
         if (!Files.isDirectory(srcRoot)) return null;
@@ -880,21 +990,8 @@ public class MetaDataEjectMojo extends AbstractMojo {
     /** The owned runtime copy of {@code simple} in this module or one of its children, or {@code null}. */
     private Path findOwnedRuntime(String simple) throws IOException {
         if (project == null || project.getBasedir() == null) return null;
-        Path base = project.getBasedir().toPath();
-        List<Path> roots = new ArrayList<>();
-        roots.add(base.resolve("src/main/java"));
-        if (project.getModules() != null) {
-            for (String module : project.getModules()) roots.add(base.resolve(module).resolve("src/main/java"));
-        }
-        for (Path root : roots) {
-            if (!Files.isDirectory(root)) continue;
-            try (var walk = Files.walk(root)) {
-                for (Path p : (Iterable<Path>) walk.filter(f -> f.getFileName().toString().equals(simple + ".java"))::iterator) {
-                    if (EjectSupport.isOwnedRuntime(Files.readString(p, StandardCharsets.UTF_8))) return p;
-                }
-            }
-        }
-        return null;
+        return OwnedStock.findOwnedRuntime(
+                OwnedStock.runtimeRoots(project.getBasedir().toPath(), project.getModules()), simple);
     }
 
     // ------------------------------------------------------------------------------------

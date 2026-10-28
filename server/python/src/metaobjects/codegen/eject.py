@@ -79,10 +79,7 @@ def owned_token(entry: GeneratorEntry) -> str:
 
 
 def packaged_source(entry: GeneratorEntry) -> str:
-    assert entry.source_module is not None
-    module = importlib.import_module(entry.source_module)
-    assert module.__file__ is not None
-    return Path(module.__file__).read_text(encoding="utf-8")
+    return packaged_module_path(entry).read_text(encoding="utf-8")
 
 
 def ejected_source(entry: GeneratorEntry) -> str:
@@ -125,6 +122,7 @@ class EjectResult:
 
 def eject(names: list[str], root: Path, *, force: bool = False) -> EjectResult:
     """Copy each named generator. Every name is checked before any file is written."""
+    names = list(dict.fromkeys(names))
     known = {e.name: e for e in ejectable()}
     unknown = [n for n in names if n not in known]
     if unknown:
@@ -173,6 +171,92 @@ def eject(names: list[str], root: Path, *, force: bool = False) -> EjectResult:
         "copy in `generators` — wiring both runs both, and they write the same files."
     )
     return EjectResult(0, out, [])
+
+
+def identical_owned(root: Path) -> list[GeneratorEntry]:
+    """The owned generator copies that are identical to the shipped one, generator file and
+    companion runtime both. ``gen`` names them and ``eject --undo`` drops them."""
+    found: list[GeneratorEntry] = []
+    for entry in ejectable():
+        if owned_path(root, entry.name).exists():
+            verdict = owned_verdict(root, entry)
+            if verdict is not None and verdict[0] == "identical":
+                found.append(entry)
+    return found
+
+
+def undo(names: list[str], root: Path, *, force: bool = False) -> EjectResult:
+    """Drop owned generator copies identical to the shipped ones (``eject --undo``).
+
+    With no *names*, every identical copy goes. With names, only those; a copy that differs
+    is refused (nothing removed) unless *force*. Every name is checked before any file is
+    removed. The config is never edited: the entry that points back at the shipped generator
+    is printed instead. A companion runtime copy goes only when it matches the package and
+    no remaining owned generator reads it."""
+    names = list(dict.fromkeys(names))
+    known = {e.name: e for e in ejectable()}
+    unknown = [n for n in names if n not in known]
+    if unknown:
+        return EjectResult(2, [], [
+            f"unknown or non-ejectable generator(s): {', '.join(unknown)}; "
+            f"ejectable: {', '.join(sorted(known))}",
+        ])
+    not_owned = [n for n in names if not owned_path(root, n).exists()]
+    if not_owned:
+        return EjectResult(2, [], [f"not an owned copy (nothing at {OWNED_DIR.as_posix()}): "
+                                   f"{', '.join(not_owned)}"])
+
+    if names:
+        chosen = [known[n] for n in names]
+        identical = identical_owned(root)
+        differing = [e for e in chosen if e not in identical]
+        if differing and not force:
+            return EjectResult(2, [], [
+                f"{e.name} differs from the shipped generator; nothing removed. Inspect: "
+                f'diff -u "{owned_path(root, e.name)}" "{packaged_module_path(e)}" '
+                "(pass --force to remove it anyway)"
+                for e in differing
+            ])
+    else:
+        chosen = identical_owned(root)
+        if not chosen:
+            return EjectResult(0, [
+                "nothing to undo: no owned generator copy is identical to the shipped one."
+            ], [])
+
+    removing = {e.name for e in chosen}
+    out: list[str] = []
+    wiring: list[str] = []
+    for entry in chosen:
+        path = owned_path(root, entry.name)
+        path.unlink()
+        out.append(f"removed {path.relative_to(root).as_posix()}")
+        wiring.append(f"  replace {owned_token(entry)} with \"{entry.name}\"")
+        for module in entry.runtime:
+            rt = runtime_path(root, module)
+            if not rt.exists():
+                continue
+            rel = rt.relative_to(root).as_posix()
+            if any(owned_path(root, o.name).exists() and o.name not in removing and module in o.runtime
+                   for o in ejectable()):
+                out.append(f"  kept {rel}: another owned generator still reads it")
+            elif _compare(rt.read_text(encoding="utf-8"),
+                          packaged_runtime_path(module).read_text(encoding="utf-8")) != "identical":
+                out.append(f"  kept {rel}: it differs from the package")
+            else:
+                rt.unlink()
+                out.append(f"  removed {rel}")
+    out.append("")
+    out.append("metaobjects.config.yaml is not edited. In `generators`:")
+    out.extend(wiring)
+    return EjectResult(0, out, [])
+
+
+def packaged_module_path(entry: GeneratorEntry) -> Path:
+    assert entry.source_module is not None
+    module = importlib.import_module(entry.source_module)
+    assert module.__file__ is not None
+    return Path(module.__file__)
 
 
 def _normalised(text: str) -> Counter[str]:

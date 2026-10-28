@@ -69,3 +69,30 @@ def test_gen_clean_model_prints_no_unknown_attr_warning(tmp_path: Path, capsys) 
     rc = main(as_config(["gen", "--generators", "entity", meta_dir, "--out", str(tmp_path / "out")]))
     assert rc == 0
     assert "ERR_UNKNOWN_ATTR" not in capsys.readouterr().err
+
+
+def test_gen_strict_refuses_an_unknown_attribute_and_writes_nothing(tmp_path: Path, capsys) -> None:
+    _meta(tmp_path, TYPO_YAML)
+    cfg = tmp_path / "metaobjects.config.yaml"
+    cfg.write_text("targets:\n  models:\n    outDir: gen/models\n    generators: [entity]\n")
+    rc = main(["gen", "--strict", "--config", str(cfg)])
+    assert rc != 0
+    err = capsys.readouterr().err
+    assert "ERR_UNKNOWN_ATTR" in err and "requird" in err
+    assert "gen --strict is strict (ADR-0023)" in err
+    assert not (tmp_path / "gen").exists()
+
+
+def test_gen_strict_passes_a_clean_model(tmp_path: Path) -> None:
+    _meta(tmp_path, CLEAN_YAML)
+    cfg = tmp_path / "metaobjects.config.yaml"
+    cfg.write_text("targets:\n  models:\n    outDir: gen/models\n    generators: [entity]\n")
+    assert main(["gen", "--strict", "--config", str(cfg)]) == 0
+
+
+def test_lenient_advice_names_the_strict_flag(tmp_path: Path, capsys) -> None:
+    _meta(tmp_path, TYPO_YAML)
+    cfg = tmp_path / "metaobjects.config.yaml"
+    cfg.write_text("targets:\n  models:\n    outDir: gen/models\n    generators: [entity]\n")
+    assert main(["gen", "--config", str(cfg)]) == 0
+    assert "--strict" in capsys.readouterr().err

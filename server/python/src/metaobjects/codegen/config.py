@@ -5,6 +5,9 @@ from dataclasses import dataclass, field
 
 from metaobjects.naming import DEFAULT_COLUMN_NAMING
 
+#: What generated routers mount under when no ``apiPrefix`` is configured.
+DEFAULT_API_PREFIX = "/api"
+
 
 @dataclass
 class GenConfig:
@@ -54,6 +57,11 @@ class GenConfig:
     # constant this generator emits names a different column than the one a row
     # actually lands in.
     column_naming: str = DEFAULT_COLUMN_NAMING
+    # The path the generated routers mount under (and the api docs name): ``/api/authors``
+    # by default, ``/v1/authors`` for ``/v1``, ``/authors`` for ``""``. The CLI fills it from
+    # ``apiPrefix`` in ``metaobjects.config.yaml``, the Python spelling of the TypeScript
+    # config's key of the same name.
+    api_prefix: str = DEFAULT_API_PREFIX
     # First-time-on-existing-file behaviour. "default" refuses a file that cannot be
     # proved to be generated output; "adopt" records what is on disk as the baseline and
     # writes nothing — the one run a project with no committed manifest can perform (the

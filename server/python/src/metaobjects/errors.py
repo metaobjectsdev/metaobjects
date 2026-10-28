@@ -219,6 +219,11 @@ class ErrorCode(str, Enum):
     # letting one entity's route win.
     ERR_COLLECTION_NAME_COLLISION = "ERR_COLLECTION_NAME_COLLISION"
     ERR_OUTPUT_TAG_MISSING = "ERR_OUTPUT_TAG_MISSING"
+    # ADR-0061 template engines: a Jinja reference the check cannot settle statically, a
+    # body that does not parse, and a body written for an engine a port does not ship.
+    ERR_TEMPLATE_NOT_STATIC = "ERR_TEMPLATE_NOT_STATIC"
+    ERR_TEMPLATE_SYNTAX = "ERR_TEMPLATE_SYNTAX"
+    ERR_TEMPLATE_ENGINE_UNSUPPORTED = "ERR_TEMPLATE_ENGINE_UNSUPPORTED"
     # SP-H Unit9 — @filterable: true on a field subtype with no filter-operator
     # band (e.g. field.object). Would silently generate an empty-ops filter.
     ERR_FILTERABLE_UNSUPPORTED_SUBTYPE = "ERR_FILTERABLE_UNSUPPORTED_SUBTYPE"

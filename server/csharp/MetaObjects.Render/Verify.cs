@@ -221,7 +221,14 @@ public static class Verify
                     case PartialTok p:
                         if (provider is null) break;
                         if (seen.Contains(p.Value) || seen.Count >= MaxDepth) break;
-                        var text = provider.Resolve(p.Value);
+                        string? text;
+                        try { text = provider.Resolve(p.Value); }
+                        catch (RenderException e) when (TemplateEngines.IsEngineRefusal(e))
+                        {
+                            // The partial exists only as a Jinja file (ADR-0061): a finding, not a crash.
+                            errors.Add(new VerifyError(TemplateEngines.ErrTemplateEngineUnsupported, p.Value));
+                            break;
+                        }
                         if (text is null)
                         {
                             errors.Add(new VerifyError(ERR_PARTIAL_UNRESOLVED, p.Value));

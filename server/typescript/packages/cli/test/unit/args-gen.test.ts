@@ -10,8 +10,13 @@ describe("parseGenArgs", () => {
       baseline: "default",
       list: false, probe: false,
       noAntipatterns: false,
+      strict: false,
       limit: DEFAULT_ADVISORY_LIMIT,
     });
+  });
+
+  test("--strict", () => {
+    expect(parseGenArgs(["--strict"]).strict).toBe(true);
   });
 
   test("--list", () => {

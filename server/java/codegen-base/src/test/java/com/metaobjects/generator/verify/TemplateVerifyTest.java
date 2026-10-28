@@ -100,6 +100,23 @@ public class TemplateVerifyTest {
         assertEquals("subject", d.path());
     }
 
+    /** ADR-0061: a Jinja-only body is refused by name, not reported as an unresolved ref. */
+    @Test
+    public void jinjaOnlyBodyIsRefusedByCode() throws Exception {
+        Path templateRoot = Files.createTempDirectory("tv-jinja-templates");
+        Path file = templateRoot.resolve("ai/greeting.jinja");
+        Files.createDirectories(file.getParent());
+        Files.writeString(file, "Hello {{ title }}");
+
+        TemplateVerify.Outcome out = TemplateVerify.run(loadFixture("jinja", CLEAN_FIXTURE), templateRoot);
+
+        assertFalse(out.ok());
+        assertTrue(out.unresolvedText().isEmpty());
+        assertEquals(1, out.errors().size());
+        assertEquals("ERR_TEMPLATE_ENGINE_UNSUPPORTED", out.errors().get(0).code());
+        assertEquals("ai/greeting", out.errors().get(0).path());
+    }
+
     @Test
     public void unresolvedTextRefIsReported() throws Exception {
         Path templateRoot = Files.createTempDirectory("tv-missing-templates");

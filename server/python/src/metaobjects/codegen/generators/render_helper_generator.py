@@ -63,9 +63,15 @@ from metaobjects.meta.core.object.meta_object import MetaObject
 from metaobjects.meta.core.object.object_constants import OBJECT_SUBTYPE_VALUE
 from metaobjects.meta.meta_data import MetaData
 from metaobjects.meta.template import template_constants as tc
+from metaobjects.render.engine import (
+    TEMPLATE_ENGINE_JINJA,
+    TEMPLATE_ENGINE_MUSTACHE,
+    template_engine_of,
+)
 from metaobjects.render.filesystem_provider import FilesystemProvider
 from metaobjects.render.verify import (
     ERR_REQUIRED_SLOT_UNUSED,
+    ERR_VAR_NOT_ON_PAYLOAD,
     PayloadField,
     verify,
 )
@@ -251,24 +257,29 @@ class RenderHelperGenerator:
 
     def _gate_ref(
         self, template_name: str, reference: str, fields: list[PayloadField]
-    ) -> None:
-        """Run the build-time drift gate for one referenced mustache. RAISES (fails
+    ) -> str:
+        """Run the build-time drift gate for one referenced template body. RAISES (fails
         codegen) when the ref is unresolvable OR ``verify`` reports a non-warning error.
         Warnings (``ERR_REQUIRED_SLOT_UNUSED``) are tolerated. Matches the cross-port
-        message style exactly."""
+        message style exactly. Returns the engine the body is written for (ADR-0061)."""
         text = self._provider.resolve(reference)
         if text is None:
             raise ValueError(
                 f'render-helper drift: template "{template_name}" ref "{reference}" '
                 "— unresolved (provider returned no text)"
             )
-        for e in verify(text, fields, provider=self._provider):
+        engine = template_engine_of(self._provider, reference)
+        for e in verify(text, fields, provider=self._provider, engine=engine):
             if e.code == ERR_REQUIRED_SLOT_UNUSED:
                 continue  # warning
+            detail = (
+                f"{{{{{e.path}}}}} not on payload VO" if e.code == ERR_VAR_NOT_ON_PAYLOAD else e.path
+            )
             raise ValueError(
                 f'render-helper drift: template "{template_name}" ref "{reference}" '
-                f"— {e.code}: {{{{{e.path}}}}} not on payload VO"
+                f"— {e.code}: {detail}"
             )
+        return engine
 
     # -- emission --------------------------------------------------------------
 
@@ -324,7 +335,7 @@ class RenderHelperGenerator:
         max_chars = _max_chars_of(tmpl)
 
         # BUILD-TIME drift gate (THE headline) — raises on drift.
-        self._gate_ref(template_name, text_ref, fields)
+        engine = self._gate_ref(template_name, text_ref, fields)
 
         request_lines = [
             "        RenderRequest(",
@@ -335,6 +346,7 @@ class RenderHelperGenerator:
         ]
         if max_chars is not None:
             request_lines.append(f"            max_chars={max_chars},")
+        request_lines.extend(_jinja_request_lines(engine, fields, "            "))
         request_lines.append("        )")
 
         lines = [
@@ -342,6 +354,7 @@ class RenderHelperGenerator:
             "from __future__ import annotations",
             "",
             "from metaobjects.render.renderer import render, RenderRequest",
+            *_jinja_imports(engine),
             "",
             f"from .{payload_class} import {payload_class}",
             "",
@@ -384,26 +397,30 @@ class RenderHelperGenerator:
             raise ValueError(
                 f'template.output "{template_name}" (email) missing @htmlBodyRef'
             )
-        has_text = isinstance(text_body_ref, str) and bool(text_body_ref)
+        text_ref = text_body_ref if isinstance(text_body_ref, str) and text_body_ref else None
+        has_text = text_ref is not None
 
         # BUILD-TIME drift gate — every email part-ref is resolved + verified.
-        self._gate_ref(template_name, subject_ref, fields)
-        self._gate_ref(template_name, html_body_ref, fields)
-        if has_text:
-            self._gate_ref(template_name, text_body_ref, fields)
-
+        subject_engine = self._gate_ref(template_name, subject_ref, fields)
+        html_engine = self._gate_ref(template_name, html_body_ref, fields)
+        text_engine = (
+            self._gate_ref(template_name, text_ref, fields) if text_ref is not None else TEMPLATE_ENGINE_MUSTACHE
+        )
+        pad = "                "
         text_body_expr = (
             "render(\n"
             "            RenderRequest(\n"
             "                payload=payload,\n"
             "                provider=provider,\n"
-            f"                ref={_py_str(text_body_ref)},\n"
+            f"                ref={_py_str(text_ref or '')},\n"
             '                format="text",\n'
-            "            )\n"
+            + "".join(f"{line}\n" for line in _jinja_request_lines(text_engine, fields, pad))
+            + "            )\n"
             "        )"
             if has_text
             else "None"
         )
+        any_jinja = TEMPLATE_ENGINE_JINJA in (subject_engine, html_engine, text_engine)
 
         lines = [
             header,
@@ -411,6 +428,7 @@ class RenderHelperGenerator:
             "",
             "from metaobjects.render.email_document import EmailDocument",
             "from metaobjects.render.renderer import render, RenderRequest",
+            *_jinja_imports(TEMPLATE_ENGINE_JINJA if any_jinja else TEMPLATE_ENGINE_MUSTACHE),
             "",
             f"from .{payload_class} import {payload_class}",
             "",
@@ -428,6 +446,7 @@ class RenderHelperGenerator:
             "                provider=provider,",
             f"                ref={_py_str(subject_ref)},",
             '                format="text",',
+            *_jinja_request_lines(subject_engine, fields, pad),
             "            )",
             "        ),",
             "        html_body=render(",
@@ -436,6 +455,7 @@ class RenderHelperGenerator:
             "                provider=provider,",
             f"                ref={_py_str(html_body_ref)},",
             '                format="html",',
+            *_jinja_request_lines(html_engine, fields, pad),
             "            )",
             "        ),",
             f"        text_body={text_body_expr},",
@@ -456,3 +476,23 @@ def render_helper_generator(
     """Factory mirroring the TS ``renderHelper()`` / C# ``RenderHelperGenerator`` /
     Java ``SpringRenderHelperGenerator`` constructors."""
     return RenderHelperGenerator(template_root, filter=filter)
+
+
+def _jinja_imports(engine: str) -> list[str]:
+    """The import a helper needs when it renders a Jinja body (ADR-0061); none for Mustache,
+    so a Mustache helper is byte-identical to what it was before Jinja existed."""
+    if engine != TEMPLATE_ENGINE_JINJA:
+        return []
+    return ["from metaobjects.render.verify import PayloadField"]
+
+
+def _jinja_request_lines(engine: str, fields: list[PayloadField], pad: str) -> list[str]:
+    """For a Jinja body: name the engine (so a runtime provider that cannot tell, such as an
+    in-memory one, still renders it as Jinja) and run the payload check again at render
+    time against the field tree the build gate used."""
+    if engine != TEMPLATE_ENGINE_JINJA:
+        return []
+    return [
+        f"{pad}engine={_py_str(TEMPLATE_ENGINE_JINJA)},",
+        f"{pad}verify={_field_tree_literal(fields)},",
+    ]

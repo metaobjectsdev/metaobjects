@@ -1,0 +1,3 @@
+{% for p in posts %}{{ loop.index }}. {{ p.title }}{% if loop.first %} (first){% endif %}{% if not loop.last %}, {% endif %}{% endfor %}
+{% for p in posts %}{{ p.title }}:{% for t in p.tags %} {{ t }}{% endfor %}
+{% endfor %}{% for x in empty %}{{ x }}{% else %}nothing here{% endfor %}

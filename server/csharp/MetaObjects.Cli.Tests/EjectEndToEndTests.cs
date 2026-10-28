@@ -76,6 +76,12 @@ public sealed class EjectEndToEndTests : IDisposable
         psi.Environment["MSBUILDDISABLENODEREUSE"] = "1";
         psi.Environment["DOTNET_CLI_USE_MSBUILD_SERVER"] = "0";
         psi.Environment["UseSharedCompilation"] = "false";
+        // The generated web app's default host builder watches appsettings.json with an inotify
+        // instance, and the per-user limit (128 by default) is shared with every other process the
+        // user runs, including other test lanes. When it is spent the app dies in
+        // WebApplication.CreateBuilder with an IOException (exit 134) that has nothing to do with
+        // the code under test; polling needs no inotify instance.
+        psi.Environment["DOTNET_USE_POLLING_FILE_WATCHER"] = "1";
         psi.ArgumentList.Add("run");
         psi.ArgumentList.Add("--project");
         psi.ArgumentList.Add(project);

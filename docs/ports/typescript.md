@@ -123,6 +123,19 @@ model walks, the naming and type-mapping tables), which the copies import from
 `meta eject docs-site` copies instead
 ([what the copy holds](../features/own-your-codegen.md#what-the-copy-holds)).
 
+A copy that never changed is a cost: it stays at the release it was copied from and misses
+every later fix. `meta gen` prints one line naming the owned copies that are still
+the shipped reference, unchanged, and `meta eject --undo` takes them back: with no names it
+removes every such copy (and the template modules only it used), and with names it removes
+those, refusing the whole call, and removing nothing, if a named copy differs (`--force`
+removes it anyway). It never edits `metaobjects.config.ts`; it prints the import to swap
+back to the package's. There is no `meta doctor`: `meta eject --list` is the report.
+A copy you changed stays yours.
+
+`meta gen` loads leniently, so an attribute the registry does not know (a typo such as
+`@sensitve`) is a warning and the run goes on. `meta gen --strict` makes it an error, as
+`meta verify` does: it exits 1 and writes nothing.
+
 Documentation is generated the same way, from the same list: there is no docs command
 (ADR-0034 Amendment 9). `docsFile()`, `apiDocsFile()`, `requirementsFile()`,
 `agentDocsFile()`, `metamodelDocsFile()` and `docsSiteFile()` write to the target named
@@ -476,6 +489,33 @@ operands by those options. `meta migrate` warns for a decimal declared with `@pr
 on SQLite or D1. `meta verify --codegen` names the `wire` block that reproduces committed output
 generated under another setting.
 
+### Types exported per entity
+
+Code that talks to a generated entity imports these names, so they are a contract. Each
+entity module (`<Entity>.ts`) exports six types. `entityTypeNames(obj)`, exported from
+`@metaobjectsdev/codegen-ts`, returns the same six spellings for an owned generator, so it
+need not rebuild them from the entity name.
+
+| Type | Derived from | Use it for |
+| --- | --- | --- |
+| `<Entity>` | the Drizzle table, `InferSelectModel` | a row read back from the database: what `find<Entity>ById` and `create<Entity>` return |
+| `<Entity>Insert` | the Drizzle table, `InferInsertModel` | a row as the database accepts it, before validation |
+| `<Entity>Update` | `Partial<<Entity>Insert>` | the same, every column optional |
+| `<Entity>Create` | `z.input` of `<Entity>InsertSchema` | **the argument of `create<Entity>`**, and what a client posts |
+| `<Entity>Patch` | `z.input` of `<Entity>UpdateSchema` | **the argument of `update<Entity>`**, and what a client patches |
+| `<Entity>Filter` | the `@filterable` and `@sortable` fields | the `filter`, `sort`, `limit` and `offset` options of `list<Entity>` and the generated hooks |
+
+`Create` and `Patch` are the pair to use at a call site. They come from the Zod schemas the
+functions validate with, so a renamed or dropped field is a compile error at every call.
+`Insert` and `Update` come from the table and describe what the database takes. They are
+looser than the validators, so prefer `Create` and `Patch` at the API boundary.
+
+When the entity is a TPH discriminator base, the row type is `<Entity>Row`, because
+`<Entity>` is the discriminated union over its subtypes. A read-only projection has no
+table to insert into, so do not expect `Create` or `Patch` there; read its generated module
+for what it exports. `test/entity-type-names.test.ts` in `codegen-ts` checks the table
+against the golden `Subscriber` module.
+
 ### `<Entity>Names` — the physical names, as constants
 
 `meta init` scaffolds a `names` generator, so a new project gets `<Entity>.names.ts`
@@ -783,6 +823,24 @@ Hono idioms rather than contract drift:
    Hono has no prefix-wrapping primitive at the verb level, and string
    concatenation produces the same URL grammar.
 
+## Jinja templates
+
+`@metaobjectsdev/render` renders Mustache by default and Jinja through nunjucks (ADR-0061),
+which the package depends on. A body is Jinja when its file is `<group>/<source>.jinja` (or
+`.j2`, `.jinja2`); `@textRef` does not change. `FilesystemProvider` reads `.mustache` first,
+then the Jinja extensions, and `engineOf(ref)` reports the engine of the file it found. For
+an `InMemoryProvider`, pass `{ engine: "jinja" }` to its constructor, or pass
+`engine: "jinja"` to `render` and `verify`.
+
+`meta verify --templates` and the `renderHelper()` generator check a Jinja
+body against the payload as they check Mustache, walking the parsed template, and the drift
+line names the `.jinja` file and line. `ERR_TEMPLATE_NOT_STATIC` marks a reference they
+cannot settle without running the template; `ERR_TEMPLATE_SYNTAX` a body that does not parse.
+A generated helper over a Jinja body passes `engine: "jinja"` to `render`, so it renders as
+Jinja through any provider, and the runtime check runs on it. Output matches the Python port
+(jinja2) on `fixtures/jinja-render-conformance/`; the engine differences outside it are in
+`docs/features/templates-and-payloads.md`.
+
 ## FR-006 — response parsing
 
 For every `template.prompt` declaring `@responseRef`, `outputParser()` (from
@@ -923,7 +981,7 @@ their own pages: [C#](csharp.md), [Java](java.md#known-gaps),
 | Relationships + FK | Yes |
 | Source kinds (table / view / storedProc) | Yes |
 | `field.currency` / `field.enum` / `field.object` + `@storage` | Yes |
-| Templates + render (FR-004) | Yes |
+| Templates + render (FR-004) | Yes (Mustache, and Jinja via nunjucks: a `.jinja` / `.j2` / `.jinja2` body, ADR-0061) |
 | Output parser codegen (FR-006) | Yes (`outputParser()` — Zod dual API) |
 | Requirement gate + requirement tests | Yes (`meta verify`; `requirementTests()`, ejectable) |
 | Cube export (FR-044) | Yes (`cubeModel()`, ejectable; TypeScript only) |
@@ -931,7 +989,7 @@ their own pages: [C#](csharp.md), [Java](java.md#known-gaps),
 | Migrations | `meta migrate` (Postgres / SQLite / D1) |
 | Drift verify | `meta verify` (`--codegen` generated code and docs, `--db` schema, `--templates` prompts) |
 | Documentation | Yes (`docsFile()`, `apiDocsFile()`, `requirementsFile()`, `agentDocsFile()`, `metamodelDocsFile()`, `docsSiteFile()`; generators like the rest) |
-| Prompt-drift verify | Yes (`@metaobjectsdev/render`) |
+| Prompt-drift verify | Yes (`@metaobjectsdev/render`; Mustache and Jinja bodies) |
 | Web client packages | Yes (`@metaobjectsdev/react`, `@metaobjectsdev/tanstack`) |
 
 ## Client-side

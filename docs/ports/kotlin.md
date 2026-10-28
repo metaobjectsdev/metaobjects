@@ -28,6 +28,27 @@ manifest (`.metaobjects/.gen-state/.hashes.json`) is overwritten, and an edited 
 name (or replaced with `<handEdits>overwrite</handEdits>`). `mvn metaobjects:eject -Dnames=<name>`
 copies a generator into your repo to own.
 
+## Undo an eject, strict loading, and diagnostics
+
+**Undo an eject.** `mvn metaobjects:eject -Dundo=true` deletes the owned copies under `codegen/`
+that are identical to the generator this plugin ships (the comparison `-Dlist` shows as
+`[owned — identical]`: the generator, the classes copied with it and its page templates, the
+`package` line and the other lines eject itself rewrites ignored). With `-Dnames=a,b` it removes
+those only, and a copy that differs is refused, with nothing removed, unless `-Dforce=true`; every
+name is checked before anything is deleted. It never edits `pom.xml`: for each generator removed it
+prints the `<classname>` to put back, owned to shipped. The shared support classes and helper
+runtime that eject also wrote stay (other owned generators may import them) and are named. While an
+identical copy exists, `mvn metaobjects:generate` logs one advisory line naming it and this command;
+it never changes the outcome of the build.
+
+**Strict loading.** `metaobjects:generate` already loads strictly, exactly as `metaobjects:verify`
+does (ADR-0023): an attribute no registered provider declares fails the goal with
+`ERR_UNKNOWN_ATTR` before any generator runs, and no file is written. `-Dmeta.lax=true` is the
+opt-out for both goals. There is no separate `-Dstrict` switch.
+
+**No `doctor` goal.** There is no `metaobjects:doctor`; `metaobjects:verify` (drift and the
+requirement gate) and `eject -Dlist` (owned-copy status) are the diagnostics the plugin has.
+
 ## Install
 
 Every version below comes from one `<properties>` entry. Set the Java level (Maven defaults to
@@ -156,7 +177,7 @@ The 17 generators registered in `codegen-kotlin` (`GeneratorRegistry.kt`):
 | `KotlinSpringControllerGenerator` | `<Entity>Controller.kt` — Spring `@RestController` (5 CRUD endpoints; cross-port API contract). **Select `KotlinRelationsGenerator` with it** when the model has a M:N relationship: the traversal routes call the `<rel>Query` helpers only that generator emits, and without it the controller does not compile | entities with `source.rdb @kind="table"` |
 | `KotlinRequirementTestsGenerator` | Per metamodel package that holds a tested requirement, two files in `testPackage`: `Requirements_<pkgKey>_Witnesses.kt` (an interface whose default members fail with `unimplemented requirement: ...`) and `Requirements_<pkgKey>_Test.kt` (one JUnit Jupiter `@Test` per requirement, calling a project-owned witness). See "Requirement tests" below | every tested `requirement.*` (functional, level 4 or above by default) |
 | `KotlinReportExportGenerator` | Standalone export of a served report (`?format=csv\|json\|xml`, see [Report export](#report-export)): one `<Report>Export.kt` per served report beside its controller and one shared `ReportExportWriter.kt`. Args: `outputDir` (required), `maxRows` (default `100000`), `xmlNulls` (`empty`, the default, or `nil`), `csvBom` (default `false`) and `writerPackage` (default: the package prefix the served reports share, else `export`). Never implied by a library. Ejectable | every served report |
-| `KotlinApiDocsGenerator` | The Kotlin SDK api reference, under `<outputDir>/<apiSubDir>`: `<Unit>.md` per entity, value object, projection, served report and template, a `README.md` index and `AGENT-API.md`. A `<generator>` entry like any other, run by `metaobjects:generate` and checked by `metaobjects:verify`. Args: `outputDir` (required, generated files only), `apiSubDir` (default `api/kotlin`), `layout` (`flat` or `package`), `projectName` and `modelBaseUrl`, as for the Java `api-docs`. The `metaobjects:docs` goal was removed in 8.1.0 ([migration](../features/migrations/docs-are-generators.md#java-and-kotlin)). Ejectable, with the page model, builder, renderer and path math | the whole model, once |
+| `KotlinApiDocsGenerator` | The Kotlin SDK api reference, under `<outputDir>/<apiSubDir>`: `<Unit>.md` per entity, value object, projection, served report and template, a `README.md` index and `AGENT-API.md`. A `<generator>` entry like any other, run by `metaobjects:generate` and checked by `metaobjects:verify`. Args: `outputDir` (required, generated files only), `apiSubDir` (default `api/kotlin`), `layout` (`flat` or `package`), `projectName` and `modelBaseUrl`, as for the Java `api-docs` (with no `modelBaseUrl` the pages carry no `Model / metadata` link). The `metaobjects:docs` goal was removed in 8.1.0 ([migration](../features/migrations/docs-are-generators.md#java-and-kotlin)). Ejectable, with the page model, builder, renderer and path math | the whole model, once |
 
 Maven wiring. The plugin bundles `metaobjects-codegen-kotlin`, so it is not a dependency of your
 project. Keep `<configuration>` at plugin level and bind the goal in `<executions>`: without the
@@ -877,7 +898,7 @@ the contract is universal.
 | Source kinds (table / view / storedProc) | Yes — storedProc has its own generator |
 | REST controllers (Spring `@RestController`) | Yes — `KotlinSpringControllerGenerator` per writable entity; cross-port API contract |
 | `field.currency` / `field.enum` / `field.object` + `@storage` | Yes (incl. `flattened` per-sub-field columns) |
-| Templates + render (FR-004) | Yes (wraps the Java engine) |
+| Templates + render (FR-004) | Yes (wraps the Java engine; Mustache only — a Jinja body is refused with `ERR_TEMPLATE_ENGINE_UNSUPPORTED`, ADR-0061) |
 | Output parser codegen (FR-006) | Yes (`KotlinOutputParserGenerator` — Jackson + `Result<T>` dual API) |
 | Payload-VO codegen | Yes — the payload IS the value object's own data class, from `KotlinEntityGenerator` (ADR-0056); no separate payload generator |
 | Migrations | Via the TS toolchain (`@metaobjectsdev/cli migrate`) |

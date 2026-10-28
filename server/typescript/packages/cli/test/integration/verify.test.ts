@@ -293,3 +293,37 @@ describe("meta verify", () => {
     }
   });
 });
+
+// ADR-0061: a template body may be a Jinja file beside the Mustache ones. The same gate
+// checks it, walking the Jinja syntax, and the diagnostic names the .jinja file and line.
+describe("meta verify — Jinja template bodies", () => {
+  function scaffoldJinja(text: string, ext = ".jinja"): string {
+    const tmp = scaffold(undefined);
+    mkdirSync(join(tmp, "prompts", "prompt"), { recursive: true });
+    writeFileSync(join(tmp, "prompts", "prompt", `strategy${ext}`), text, "utf8");
+    return tmp;
+  }
+
+  test("exit 0 for a clean Jinja body", async () => {
+    const tmp = scaffoldJinja(
+      "Hi {{ displayName | title }} ({{ postCount }}).\n{% for p in posts %}- {{ p.title }}\n{% endfor %}",
+    );
+    try {
+      expect(await run(["verify", "--cwd", tmp])).toBe(0);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  test("exit 1 naming the .j2 file and line for a drifted loop member", async () => {
+    const tmp = scaffoldJinja("Hi {{ displayName }}\n{% for p in posts %}\n{{ p.subtitle }}\n{% endfor %}", ".j2");
+    try {
+      expect(await run(["verify", "--cwd", tmp])).toBe(1);
+      const line = [...out, ...err].find((l) => l.includes("ERR_VAR_NOT_ON_PAYLOAD"));
+      expect(line).toContain("p.subtitle");
+      expect(line).toContain(join("prompts", "prompt", "strategy.j2") + ":3");
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+});

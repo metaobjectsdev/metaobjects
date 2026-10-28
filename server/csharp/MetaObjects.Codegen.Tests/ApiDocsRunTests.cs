@@ -89,6 +89,19 @@ public sealed class ApiDocsRunTests : IDisposable
     }
 
     [Fact]
+    public void Without_a_model_base_url_the_pages_carry_no_model_link()
+    {
+        // The C# port writes no model pages, so a relative link would resolve to nothing.
+        var outcome = Gen(new ApiDocsGenerator { OutDir = Docs });
+
+        Assert.True(outcome.Ok, string.Join("\n", outcome.LoadErrors));
+        var pages = FilesUnder(Docs).Where(p => p.StartsWith("api/csharp/") && !p.EndsWith("README.md") && !p.EndsWith("AGENT-API.md")).ToList();
+        Assert.NotEmpty(pages);
+        Assert.All(pages, p => Assert.DoesNotContain("Model / metadata",
+            File.ReadAllText(Path.Combine(Docs, p.Replace('/', Path.DirectorySeparatorChar)))));
+    }
+
+    [Fact]
     public void Code_and_documentation_in_one_list_each_land_in_their_own_directory()
     {
         var outcome = Gen(new EntityGenerator(), new ApiDocsGenerator { OutDir = Docs });

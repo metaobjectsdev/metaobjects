@@ -40,6 +40,20 @@ npx meta eject entity queries names barrel           # copy them in; add the lin
 npx meta gen && npx meta verify --codegen            # generate, then fail if generated code has drifted
 ```
 
+The generated TypeScript imports `drizzle-orm`, `zod`, `fastify` and a database driver, which
+`npm` does not add for you. This pair installs everything the stock `entity`, `queries` and `routes`
+output needs to compile (SQLite shown; swap in `pg` and `@types/pg` for Postgres):
+
+```bash
+npm i -D @metaobjectsdev/cli @metaobjectsdev/codegen-ts @metaobjectsdev/metadata typescript @types/better-sqlite3
+npm i @metaobjectsdev/runtime-ts drizzle-orm zod fastify better-sqlite3
+```
+
+Expect to write generators of your own. The reference ones cover the common cases, and a
+generator you own (`npx meta generator new <name>`) is regenerated on every model change and
+gated by `meta verify --codegen`, which is what keeps output from drifting. See
+[write your own generator](docs/recipes/write-your-own-generator.md).
+
 Java, Kotlin, C# and Python start the same way from their own package: see
 [`docs/ports/`](docs/ports/).
 

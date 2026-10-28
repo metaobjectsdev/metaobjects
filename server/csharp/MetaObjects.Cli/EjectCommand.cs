@@ -248,6 +248,117 @@ public static class EjectCommand
     }
 
     /// <summary>
+    /// <c>eject --undo</c>: drop owned generator copies that are identical to the shipped ones. With no
+    /// <paramref name="names"/> every identical owned copy goes; with names only those, and a copy that
+    /// DIFFERS is refused (exit 2, nothing removed) unless <paramref name="force"/>. Every name is
+    /// validated before anything is deleted. Companion emitters go only when identical (or forced) and
+    /// no remaining owned generator is handed them. The helper runtime counts toward a copy being
+    /// identical, so it goes whole when no remaining owned generator's output imports it. It never edits
+    /// codegen/Generators.cs or the project: it prints the edit that points each entry back at the
+    /// shipped generator.
+    /// </summary>
+    public static Outcome Undo(IReadOnlyList<string> names, string root, bool force)
+    {
+        var all = EjectableGenerators.Entries();
+        List<GeneratorRegistryEntry> targets;
+        if (names.Count == 0)
+        {
+            targets = OwnedCopy.IdenticalCopies(root).ToList();
+            if (targets.Count == 0)
+            {
+                var owned = all.Where(e => OwnedCopy.Status(root, e) is not null).ToList();
+                return new Outcome(0, [owned.Count == 0
+                    ? "no owned generator copies under codegen/generators/; nothing to undo."
+                    : "no owned copy is identical to its shipped generator, so nothing was removed: " +
+                      string.Join("; ", owned.Select(e => $"{e.Name} {OwnedCopy.UndoStatus(root, e)}")) + "."], []);
+            }
+        }
+        else
+        {
+            var known = all.ToDictionary(e => e.Name, e => e, StringComparer.Ordinal);
+            var unknown = names.Where(n => !known.ContainsKey(n)).ToList();
+            if (unknown.Count > 0)
+                return Outcome.Usage(
+                    $"unknown or non-ejectable generator(s): {string.Join(", ", unknown)}. " +
+                    $"Nothing was removed. Ejectable: {string.Join(", ", EjectableNames())}.");
+            targets = names.Distinct(StringComparer.Ordinal).Select(n => known[n]).ToList();
+            var notOwned = targets.Where(e => OwnedCopy.Status(root, e) is null).Select(e => e.Name).ToList();
+            if (notOwned.Count > 0)
+                return Outcome.Usage(
+                    $"no owned copy of: {string.Join(", ", notOwned)} under codegen/generators/. Nothing was removed.");
+            var differs = targets.Where(e => OwnedCopy.UndoStatus(root, e) != "identical").ToList();
+            if (differs.Count > 0 && !force)
+                return Outcome.Usage(
+                    "not removed (nothing was changed): " +
+                    string.Join("; ", differs.Select(e => $"{e.Name} {OwnedCopy.UndoStatus(root, e)}")) +
+                    ". Undo drops only copies identical to the shipped generator; `dotnet meta gen --list` " +
+                    "shows how each one differs. Pass --force to discard your edits.");
+        }
+
+        var generatorsDir = Path.Combine(root, "codegen", "generators");
+        var gone = targets.Select(t => t.Name).ToHashSet(StringComparer.Ordinal);
+        var remaining = all.Where(e => !gone.Contains(e.Name) && OwnedCopy.Status(root, e) is not null).ToList();
+        var lines = new List<string>();
+
+        foreach (var t in targets)
+        {
+            File.Delete(Path.Combine(generatorsDir, t.SourceFileName!));
+            lines.Add($"removed codegen/generators/{t.SourceFileName} (\"{t.Name}\")");
+        }
+        foreach (var sourcePath in targets.SelectMany(t => t.Companions).Distinct(StringComparer.Ordinal))
+        {
+            var relative = EjectableGenerators.OwnedRelativePath(sourcePath);
+            var path = Path.Combine(root, relative.Replace('/', Path.DirectorySeparatorChar));
+            if (!File.Exists(path)) continue;
+            if (remaining.FirstOrDefault(e => e.Companions.Contains(sourcePath)) is { } user)
+                lines.Add($"  kept {relative} — \"{user.Name}\" is still owned and uses it");
+            else if (!force && OwnedCopy.Compare(File.ReadAllText(path),
+                         EjectableGenerators.RewriteForEject(EjectableGenerators.ReadSourcePath(sourcePath))).Verdict
+                     != OwnedCopy.Verdict.Identical)
+                lines.Add($"  kept {relative} — it differs from the shipped one, so it is yours");
+            else
+            {
+                File.Delete(path);
+                lines.Add($"  removed {relative}");
+            }
+        }
+
+        var runtimeUsers = targets.Where(t => HelperRuntime.UsedBy(EjectableGenerators.ReadSource(t.Name)!)).ToList();
+        var runtimeDir = Path.Combine(root, HelperRuntime.OwnedDirectory.Replace('/', Path.DirectorySeparatorChar));
+        var runtimeRemoved = false;
+        if (runtimeUsers.Count > 0 && Directory.Exists(runtimeDir))
+        {
+            if (remaining.FirstOrDefault(e => HelperRuntime.UsedBy(EjectableGenerators.ReadSource(e.Name)!)) is { } user)
+                lines.Add($"  kept {HelperRuntime.OwnedDirectory}/ — \"{user.Name}\" is still owned and uses it");
+            else
+            {
+                foreach (var file in HelperRuntime.Files)
+                {
+                    var path = Path.Combine(runtimeDir, file);
+                    if (!File.Exists(path)) continue;
+                    File.Delete(path);
+                    lines.Add($"  removed {HelperRuntime.OwnedDirectory}/{file}");
+                    runtimeRemoved = true;
+                }
+                if (!Directory.EnumerateFileSystemEntries(runtimeDir).Any()) Directory.Delete(runtimeDir);
+            }
+        }
+        if (Directory.Exists(generatorsDir) && !Directory.EnumerateFileSystemEntries(generatorsDir).Any())
+            Directory.Delete(generatorsDir);
+
+        lines.Add("");
+        lines.Add("codegen/Generators.cs is yours — undo never edits it. Point each entry back at the shipped " +
+                  "generator (the project does not compile until you do):");
+        foreach (var t in targets)
+            lines.Add($"  replace  {EjectableGenerators.OwnedListEntry(t)}  with  {GeneratorRegistry.ListEntry(t)}");
+        if (runtimeRemoved)
+            lines.Add($"The helper runtime copy is gone: drop the `<Compile Include=\".../{HelperRuntime.OwnedDirectory}/**/*.cs\" />` " +
+                      $"line from the project that compiled it, and register the timestamp converter from " +
+                      $"`{HelperRuntime.PackagedNamespace}` again.");
+        return new Outcome(0, lines, []);
+    }
+
+    /// <summary>
     /// Copy the emitters the ejected <paramref name="entries"/> write their output through
     /// (<see cref="GeneratorRegistryEntry.Companions"/>) next to the generators, each once however
     /// many of them call it. A file that already exists is the adopter's and is kept — possibly

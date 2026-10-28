@@ -1,0 +1,3 @@
+{% set greeting = "Hi" %}{% set full %}{{ user.first }} {{ user.last }}{% endset %}{{ greeting }}, {{ full }}!
+{% macro badge(label, kind="info") %}[{{ kind }}:{{ label }}]{% endmacro %}{{ badge(user.first) }} {{ badge("x", "warn") }}
+{% macro box() %}<{{ caller() }}>{% endmacro %}{% call box() %}inside {{ user.last }}{% endcall %}
