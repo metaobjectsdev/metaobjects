@@ -72,8 +72,7 @@ function resolveProvider(ctx: GenContext, options: PrismaSchemaFileOptions): Pri
     const source = options.provider !== undefined ? `provider '${String(options.provider)}'` : `dialect '${ctx.config.dialect}'`;
     throw new PrismaSchemaError(
       ERR_PRISMA_UNSUPPORTED_PROVIDER,
-      `prisma-schema writes a schema for the postgresql, mysql and sqlite providers, and the ${source} is none of ` +
-        `them. Pass the provider of the database Prisma connects to: prismaSchemaFile({ provider: "postgresql" }).`,
+      `prisma-schema writes a schema for the postgresql, mysql and sqlite providers, and the ${source} is none of them. Pass the provider of the database Prisma connects to: prismaSchemaFile({ provider: "postgresql" }).`,
     );
   }
   return provider;
