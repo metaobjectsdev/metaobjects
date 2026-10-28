@@ -89,8 +89,9 @@ in, and C# ejects land in its `codegen/generators/` beside the `.ts` copies. The
 `Codegen.csproj` compiles only `*.cs` and `tsconfig.codegen.json` only `*.ts`. Ignore the
 build output (`codegen/bin/`, `codegen/obj/`) in `.gitignore`.
 
-`dotnet meta verify` defaults to `--templates` (the FR-004 prompt/template drift
-gate, see the prompts reference); `--codegen` is the codegen-output drift gate.
+A bare `dotnet meta verify` runs `--templates` (the FR-004 prompt/template drift
+gate, see the prompts reference) and `--codegen` (the codegen-output drift gate;
+skipped with a note unless `--out <dir>` and `codegen/Generators.cs` are present).
 **Schema migration + live-DB drift are NOT `dotnet meta`** — they run through the
 Node `meta` tool (see the migration reference).
 

@@ -74,7 +74,7 @@ public static class VerifyCommand
 
     /// <summary>The one-line note bare <c>verify</c> prints advertising the subverbs.</summary>
     public const string SUBVERB_NOTE =
-        "dotnet meta verify — running --templates (default). Explicit subverbs: " +
+        "dotnet meta verify — running --templates --codegen (default). Explicit subverbs: " +
         "--templates (prompt drift), --codegen (regen-vs-committed drift); " +
         "--db is not supported in the C# port.";
 
@@ -154,7 +154,12 @@ public static class VerifyCommand
         public bool CodegenHandedOff { get; init; }
 
         /// <summary>True when no explicit subverb flag was passed (bare verify).</summary>
-        public bool NoExplicitSubverb => !Templates && !Codegen && !Db && !CodegenHandedOff;
+        public bool NoExplicitSubverb => Bare || (!Templates && !Codegen && !Db && !CodegenHandedOff);
+
+        /// <summary>True when the user named no subverb. A bare verify runs the codegen gate too, in
+        /// the owned runner or here, so <see cref="Codegen"/>/<see cref="CodegenHandedOff"/> may be
+        /// set without the run having stopped being bare.</summary>
+        public bool Bare { get; init; }
     }
 
     /// <summary>The aggregate outcome of a subverb dispatch (pure; no console I/O).</summary>
@@ -187,8 +192,8 @@ public static class VerifyCommand
     /// <summary>
     /// Dispatch the requested verify subverbs and aggregate the exit code (ADR-0021 D2).
     /// Each selected mode runs; the overall exit is the MAX (non-zero on any drift).
-    /// A bare <c>verify</c> (no explicit flag) defaults to <c>--templates</c> (back-compat)
-    /// and flags <see cref="SubverbResult.EmittedDefaultNote"/> so the caller prints the
+    /// A bare <c>verify</c> (no explicit flag) runs the default gate set, <c>--templates</c> plus
+    /// <c>--codegen</c> when the caller could configure it, and flags <see cref="SubverbResult.EmittedDefaultNote"/> so the caller prints the
     /// subverb note. <c>--db</c> is rejected with exit 2 (schema verify = the migrate engine).
     /// Pure logic — no console I/O — so it is testable.
     /// </summary>

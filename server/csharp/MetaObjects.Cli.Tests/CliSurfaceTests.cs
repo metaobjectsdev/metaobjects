@@ -118,6 +118,26 @@ public sealed class CliSurfaceTests : IDisposable
         Directory.CreateDirectory(Path.Combine(_tmp, "prompts"));
         var (exit, stdout, stderr) = CliProcess.Run(_tmp, "verify", model);
         Assert.True(exit == 0, $"exit={exit}\nstderr={stderr}");
-        Assert.Contains("running --templates (default)", stdout);
+        Assert.Contains("running --templates --codegen (default)", stdout);
+    }
+
+    [Fact]
+    public void A_bare_verify_skips_the_codegen_gate_with_a_note_when_it_has_no_out_dir()
+    {
+        var model = WriteBlogModel();
+        Directory.CreateDirectory(Path.Combine(_tmp, "prompts"));
+        var (exit, stdout, stderr) = CliProcess.Run(_tmp, "verify", model);
+        Assert.True(exit == 0, $"exit={exit}\nstderr={stderr}");
+        Assert.Contains("codegen gate skipped: no --out", stdout);
+    }
+
+    [Fact]
+    public void A_bare_verify_skips_the_codegen_gate_with_a_note_when_there_is_no_generator_list()
+    {
+        var model = WriteBlogModel();
+        Directory.CreateDirectory(Path.Combine(_tmp, "prompts"));
+        var (exit, stdout, stderr) = CliProcess.Run(_tmp, "verify", model, "--out", Path.Combine(_tmp, "generated"));
+        Assert.True(exit == 0, $"exit={exit}\nstderr={stderr}");
+        Assert.Contains("codegen gate skipped: no codegen/Generators.cs", stdout);
     }
 }

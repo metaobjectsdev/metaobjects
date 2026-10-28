@@ -2668,8 +2668,11 @@ def _verify_requirements(args: argparse.Namespace, model: "_VerifyModel | None")
 
 def _cmd_verify(args: argparse.Namespace) -> int:
     """Subverb dispatch (ADR-0021 D2). Run each requested mode; aggregate exit =
-    max (non-zero if ANY mode drifts). Bare ``verify`` (no subverb) keeps the
-    historical default = ``--codegen`` + a one-line note advertising the subverbs.
+    max (non-zero if ANY mode drifts). Bare ``verify`` (no subverb) runs the
+    cross-port default gate set, ``--codegen`` + ``--templates`` (the requirement
+    ledger runs on every verify) + a one-line note advertising the subverbs.
+    ``--templates`` is skipped with a note when the run names no config and no
+    ``--prompts`` root, since there is then no template directory to resolve.
     """
     naming_refusal = _refuse_column_naming_flag(args)
     if naming_refusal is not None:
@@ -2684,12 +2687,24 @@ def _cmd_verify(args: argparse.Namespace) -> int:
 
     if not any_explicit:
         print(
-            "metaobjects verify — running --codegen (default). Explicit "
+            "metaobjects verify — running --codegen --templates (default). Explicit "
             "subverbs: --codegen (codegen drift), --templates (template/prompt "
             "drift), --db (schema drift — not supported in Python).",
             file=sys.stderr,
         )
         run_codegen = True
+        if args.metadata_dir is None:
+            has_template_root = _find_config(args) is not None
+        else:
+            has_template_root = bool(getattr(args, "templates_root", None))
+        if not has_template_root:
+            print(
+                "metaobjects verify — template gate skipped: no metaobjects.config.yaml "
+                "and no --prompts directory, so there is no template root to resolve against.",
+                file=sys.stderr,
+            )
+        else:
+            run_templates = True
 
     exit_code = 0
     gates_stderr = _RecordedStderr(sys.stderr)

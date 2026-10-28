@@ -41,7 +41,7 @@ meta gen                        # render → 3-way merge → write (overwrites @
 meta gen --dry-run              # preview without writing
 meta gen Author Post            # scope to named entities
 meta verify --codegen           # regenerate to temp, diff vs committed output
-meta verify --templates         # check {{field}} refs vs payload VO (bare `meta verify` default)
+meta verify --templates         # check {{field}} refs vs payload VO (a bare `meta verify` runs this and `--codegen`)
 meta verify --db                # schema drift — live DB vs metadata (requires DB connection)
 meta verify --codegen --templates --db   # all three drift checks in one pass
 ```

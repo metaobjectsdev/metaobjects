@@ -197,9 +197,10 @@ ports accept leading wildcards, which is exactly why it is listed here as a
 TS-only extension).
 
 The **`in`-list size cap** (reject an `in` list longer than 100 → HTTP 400) is a
-safety limit, not a feature — TS enforces it, the other ports currently do not.
-Unifying that cap cross-port is the one item here worth doing regardless of
-feature demand (it is a consistency/safety divergence, not a capability).
+safety limit, not a feature, and every port enforces it: TypeScript
+(`DEFAULT_MAX_IN_LIST` in the `runtime-ts` filter parser), Python (`MAX_IN_LIST`),
+Java (`FilterParser.MAX_IN_LIST`), C# (`FilterParser.MaxInList`) and Kotlin (a generated
+file-private constant that matches the TypeScript default).
 
 ### TS-only error responses (not part of the cross-port contract)
 

@@ -84,6 +84,6 @@ describe("meta verify — a partial run names the gates that did not run", () =>
     for (const gate of ["codegen (--codegen)", "schema (--db <url>)", "deps (--deps)", "replay (--replay)"]) {
       expect(line).toContain(gate);
     }
-    expect(line).toContain("a bare 'meta verify' runs only the template gate");
+    expect(line).toContain("a bare 'meta verify' runs the codegen and template gates");
   });
 });

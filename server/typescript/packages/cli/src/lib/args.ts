@@ -357,7 +357,7 @@ export interface VerifyFlags {
   // ADR-0021 D2 — explicit verify subverbs. Each selects one drift mode; any
   // combination may be passed and the exit code aggregates (non-zero on any
   // drift). The boolean flags record which modes were explicitly requested; the
-  // command layer applies the bare-verify default (= --templates) when none are.
+  // command layer applies the bare-verify default (= --codegen --templates) when none are.
   /** Run the template/prompt {{field}}↔payload drift gate. */
   templates: boolean;
   /** Run the codegen-drift gate: is the GENERATED contribution of each file current? */

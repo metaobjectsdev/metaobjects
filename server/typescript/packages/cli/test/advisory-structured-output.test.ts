@@ -112,6 +112,18 @@ async function capture(argv: string[]): Promise<{ exit: number; out: string; err
   return { exit, out: outLines.join("\n"), err: errLines.join("\n") };
 }
 
+/**
+ * `project()` with its generated output on disk. A bare `meta verify` diffs that output
+ * against a fresh regen, so a verify test that is about the advisory sections needs the
+ * codegen gate to find nothing stale.
+ */
+async function generatedProject(extraConfig = "", baseUrlSites = 0): Promise<string> {
+  const dir = project(extraConfig, baseUrlSites);
+  const { exit } = await capture(["gen", "--cwd", dir]);
+  if (exit !== 0) throw new Error(`fixture gen failed with exit ${exit}`);
+  return dir;
+}
+
 interface FindingRow {
   file: string; line: number; rule: string; construct: string; message: string;
 }
@@ -179,7 +191,7 @@ describe("meta gen --format json carries the advisory findings", () => {
 
 describe("meta verify --format json emits a structured result", () => {
   test("stdout is one JSON document — gates, findings, and what is NOT represented", async () => {
-    const dir = project();
+    const dir = await generatedProject();
     try {
       const { exit, out, err } = await capture(["verify", "--format", "json", "--cwd", dir]);
 
@@ -217,14 +229,14 @@ describe("meta verify --format json emits a structured result", () => {
 
       // Narration moved to stderr so it cannot corrupt the document.
       expect(err).toContain("meta verify");
-      expect(out).not.toContain("running --templates");
+      expect(out).not.toContain("running --codegen --templates");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   }, TIMEOUT_MS);
 
   test("--format toon emits a TOON document with a tabular findings block", async () => {
-    const dir = project();
+    const dir = await generatedProject();
     try {
       const { exit, out } = await capture(["verify", "--format", "toon", "--cwd", dir]);
       expect(exit).toBe(0);
@@ -257,7 +269,7 @@ describe("text mode caps, --limit raises it, and every site honors one constant"
   }, TIMEOUT_MS);
 
   test("meta verify text output caps at the same default — one constant, not one per site", async () => {
-    const dir = project();
+    const dir = await generatedProject();
     try {
       const { exit, err } = await capture(["verify", "--format", "text", "--cwd", dir]);
       expect(exit).toBe(0);
@@ -300,7 +312,7 @@ describe("text mode caps, --limit raises it, and every site honors one constant"
     // one that silently drops the API prefix from every generated hook. Starving the small
     // list is the worse failure, so each list gets its own budget and the section total can
     // reach a multiple of the cap.
-    const dir = project(`\n  apiPrefix: "/api",`, 5);
+    const dir = await generatedProject(`\n  apiPrefix: "/api",`, 5);
     try {
       const { exit, err } = await capture(["verify", "--format", "text", "--limit", "3", "--cwd", dir]);
       expect(exit).toBe(0);
@@ -318,7 +330,7 @@ describe("text mode caps, --limit raises it, and every site honors one constant"
   }, TIMEOUT_MS);
 
   test("...and the structured payload still carries both lists in ONE section, uncapped", async () => {
-    const dir = project(`\n  apiPrefix: "/api",`, 5);
+    const dir = await generatedProject(`\n  apiPrefix: "/api",`, 5);
     try {
       const { exit, out } = await capture(["verify", "--format", "json", "--limit", "1", "--cwd", dir]);
       expect(exit).toBe(0);
@@ -333,7 +345,7 @@ describe("text mode caps, --limit raises it, and every site honors one constant"
   }, TIMEOUT_MS);
 
   test("--limit never truncates a structured payload, whatever it is set to", async () => {
-    const dir = project();
+    const dir = await generatedProject();
     try {
       const { exit, out } = await capture(["verify", "--format", "json", "--limit", "1", "--cwd", dir]);
       expect(exit).toBe(0);
@@ -597,14 +609,14 @@ describe("verify.antiPatternIgnore reaches the scan from metaobjects.config.ts",
 describe("verify wires the base-URL advisory", () => {
   const PROVIDER = `<EntityFetcherProvider fetcher={fetcher}>\n  <App />\n</EntityFetcherProvider>\n`;
 
-  function withProvider(apiPrefix: string): string {
-    const dir = project(`\n  apiPrefix: ${JSON.stringify(apiPrefix)},`);
+  async function withProvider(apiPrefix: string): Promise<string> {
+    const dir = await generatedProject(`\n  apiPrefix: ${JSON.stringify(apiPrefix)},`);
     writeFileSync(join(dir, "src", "main.tsx"), PROVIDER);
     return dir;
   }
 
   test("a non-empty apiPrefix + a provider with no baseUrl reaches the payload", async () => {
-    const dir = withProvider("/api");
+    const dir = await withProvider("/api");
     try {
       const { exit, out } = await capture(["verify", "--cwd", dir, "--format", "json"]);
       const payload = JSON.parse(out) as { antiPatterns: AdvisoryBlock };
@@ -619,7 +631,7 @@ describe("verify wires the base-URL advisory", () => {
   });
 
   test("the text header names the count and the prefix", async () => {
-    const dir = withProvider("/api");
+    const dir = await withProvider("/api");
     try {
       const { err } = await capture(["verify", "--cwd", dir]);
       expect(err).toContain("entity-fetcher provider(s) mounted with no baseUrl");
@@ -628,7 +640,7 @@ describe("verify wires the base-URL advisory", () => {
   });
 
   test("an empty apiPrefix emits nothing — the meta init scaffold is not nagged", async () => {
-    const dir = withProvider("");
+    const dir = await withProvider("");
     try {
       const { out } = await capture(["verify", "--cwd", dir, "--format", "json"]);
       const payload = JSON.parse(out) as { antiPatterns: AdvisoryBlock };
@@ -637,7 +649,7 @@ describe("verify wires the base-URL advisory", () => {
   });
 
   test("--no-antipatterns suppresses it, which is why the migration note says so", async () => {
-    const dir = withProvider("/api");
+    const dir = await withProvider("/api");
     try {
       const { out } = await capture(["verify", "--cwd", dir, "--format", "json", "--no-antipatterns"]);
       const payload = JSON.parse(out) as { antiPatterns: AdvisoryBlock };
