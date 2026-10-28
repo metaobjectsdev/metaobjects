@@ -5,6 +5,7 @@ package com.metaobjects.generator.kotlin
 // `mvn metaobjects:eject` and its own package is renamed — an explicit import, not
 // same-package bare-name resolution, is what keeps the ejected copy compiling.
 import com.metaobjects.generator.kotlin.ExposedApi
+import com.metaobjects.generator.util.GeneratorUtil
 import com.metaobjects.generator.kotlin.ExposedImports
 import com.metaobjects.generator.kotlin.KotlinGenUtil
 import com.metaobjects.generator.kotlin.KotlinTphPlan
@@ -51,7 +52,7 @@ open class KotlinValidatorGenerator : MultiFileDirectGeneratorBase<MetaObject>()
             ?: throw GeneratorException("KotlinValidatorGenerator (\"validator\"): packageName is required")
         val outRoot = Paths.get(outDir.absolutePath)
 
-        val entries = loader.metaObjects
+        val entries = GeneratorUtil.ownMetaObjects(loader)
             .filter { it.subType == MetaObject.SUBTYPE_ENTITY }
             // Abstract entities are inheritance scaffolding — never register a validator for them.
             .filter { !KotlinGenUtil.isAbstractEntity(it) }

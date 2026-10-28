@@ -16,6 +16,15 @@ here.**
 
 ### Added
 
+- **Java and Kotlin consume a shared model (FR-023 Phase 2).** A project that declares
+  `dependencies` in `.metaobjects/config.json` loads its committed `.metaobjects/deps/` snapshot
+  ahead of its own files, in the Maven plugin (every rung of the source ladder) and the Java
+  loader. The lock is checked as in TypeScript and Python (`ERR_DEPENDENCY_SNAPSHOT_STALE`,
+  `_METAMODEL_INCOMPATIBLE`, `_NODE_COLLISION`), a local node declared into a dependency's package
+  fails with `ERR_DEPENDENCY_PACKAGE_NOT_OWNED`, and the Java and Kotlin generators emit nothing for
+  an imported object unless `scope.include` names its package. Runs all 24 resolution cases of
+  `fixtures/dependency-conformance/` (the 11 check cases pin the Node `meta deps check`); Kotlin loads through the same loader and adds a codegen test.
+  Spring runtime auto-load and `verify` drift for dependencies are later slices.
 - **Java, Kotlin and C# can compile and match `scope` patterns.** `com.metaobjects.config.Scope`
   (Java; Kotlin inherits it) and `MetaObjects.Config.Scope` (C#) port the scope-pattern grammar from
   TypeScript (`compilePattern` / `compileScope` / `matchesScope`), and both run the shared
@@ -129,6 +138,26 @@ here.**
   command failed to load. The sync now saves the previous lock and snapshot and restores both
   on any failure, so the previous state is intact. `meta deps check` also loads the model once
   its hashes match and exits 1 with the load error when it does not load.
+
+- **`meta verify --db` no longer reports false CHECK drift on Postgres for a one-value enum, a
+  `presentIff` validator, or a validator on a `varchar(n)` column; a changed enum-member case
+  or regex case no longer reads as clean.** Postgres stores `"k" IN ('x')` as `k = 'x'` and
+  `a IS NOT DISTINCT FROM b` as `NOT (a IS DISTINCT FROM b)`, and casts a `varchar` column to
+  text (`(region)::text`) in a comparison, a `length()` and a null-safe test. The comparison now
+  folds all three back, so a database `migrate` just built verifies clean. The same false drift
+  reached `meta migrate --from-db`, which proposed a drop-check and add-check on every run, and
+  the offline `migrate --dry-run` after a `baseline --from-db`. It has done so since 1.0.x. In
+  the other direction, the comparison lower-cased quoted literals and deleted every bracket,
+  quote and run of blanks inside them, so `IN ('OPEN')` against `IN ('open')` and `~ '^[A-Z]+$'`
+  against `~ '^[a-z]+$'` compared as equal. Literals are now compared as written. A check
+  stored in a different case than the model declares therefore shows as drift once: run
+  `meta migrate` to bring it back. Separately, `char(n)` is no longer treated as a text column
+  for the `(col)::text` fold: its own regex operator sees the blank padding the cast trims, and
+  Postgres never adds the cast there, so an explicit `(col)::text ~ '…'` on a `char(n)` column
+  now reads as drift. A precedence change (`(a OR b) AND c` against `a OR (b AND c)`) is still
+  not detected; that needs Postgres to canonicalise the expected side. A new Postgres test
+  migrates, applies and verifies every CHECK shape `migrate` generates. Schema comparison is
+  TypeScript-owned, so no other port carries this comparison.
 
 ### Documentation
 

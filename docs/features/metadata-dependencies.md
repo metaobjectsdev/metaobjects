@@ -169,8 +169,8 @@ owned packages — with no resolution at all; it just reads
 
 ## Every dependency-aware port loads the committed snapshot, never the live path
 
-Once synced, TypeScript's and Python's collection resolvers — the two ports that
-implement dependencies in Phase 1a — load dependency artifacts from the committed
+Once synced, TypeScript's, Python's and Java's collection resolvers (Kotlin loads through
+Java's) load dependency artifacts from the committed
 snapshot **first**, then your own project files, offline, with no transport
 involved. At load time it checks the snapshot against the lock and refuses
 (`ERR_DEPENDENCY_SNAPSHOT_STALE`) when they disagree — a missing lock for a declared
@@ -304,8 +304,10 @@ inScope(fqn) = !imported(fqn) || explicitlyIncluded(packageOf(fqn), scope.includ
 ```
 
 So `scope.include` narrows a Python project's *own* codegen output not at all — it
-only ever widens which imported package is let back in. Do not read the TypeScript
-formula above as describing both ports.
+only ever widens which imported package is let back in. **Java and Kotlin follow Python**
+(`DependencySet.inScope`, read by `GeneratorUtil`'s selection points and `RestSurfaceGate`):
+the import-exclusion conjunct only, because those generators have never scoped the project's
+own objects either. Do not read the TypeScript formula above as describing every port.
 
 `migrate`, `verify --db`, and offline generate compose the schema-side twin, which
 also removes an excluded import from the *expected* schema before drift is computed
@@ -567,15 +569,16 @@ Then `meta deps sync` as for any other installed package. Nothing about the regi
 reaches `.metaobjects/`: the lock records the transport (`npm`/`python` + `dir`), never a
 URL.
 
-**Only TypeScript publishes in Phase 1a — and only TypeScript and Python consume.**
-TypeScript and Python are the only two ports that can *consume* a dependency at all
-today (load its snapshot, extend it, overlay it) — Java, Kotlin, and C# don't read
-`dependencies` yet (Phase 2). Of those two, only the TypeScript toolchain can
-*publish*: it alone can generate the artifact a publisher ships. A Python project
-that wants to publish a shared model runs a TypeScript `sharedModelFile()`
-generator against its own metadata the same way any TypeScript consumer would; a
-Java, C#, or Kotlin project cannot yet participate as either a publisher or a
-consumer.
+**Only TypeScript publishes in Phase 1a — TypeScript, Python, Java and Kotlin consume.**
+TypeScript, Python, Java and Kotlin can *consume* a dependency (load its snapshot, extend
+it, overlay it); C# doesn't read `dependencies` yet (Phase 2). Java reads it at every rung
+of the Maven plugin's source ladder (`<sourceDir>`/`<sources>`, the neutral config, the default
+directory), and Kotlin inherits that through the same plugin and loader, so a Spring
+or Kotlin build consumes a shared model with no extra configuration. Only the TypeScript
+toolchain can *publish*: it alone can generate the artifact a publisher ships. A Python,
+Java or Kotlin project that wants to publish a shared model runs a TypeScript
+`sharedModelFile()` generator against its own metadata the same way any TypeScript consumer
+would; a C# project cannot yet participate as either a publisher or a consumer.
 
 ## Vendoring vs. depending
 
@@ -609,10 +612,10 @@ cross-port contract every consumer gets today.
 
 ## Phase 2: Java, Kotlin and C#
 
-Tracked in [#482](https://github.com/metaobjectsdev/metaobjects/issues/482). Today only
-TypeScript and Python consume a dependency; Java, Kotlin and C# ignore the `dependencies` key,
-and a model there that references a node a dependency would supply fails loudly
-(`ERR_UNRESOLVED_OBJECT_REF`), never silently. Phase 2 adds no new contract. The manifest, the
+Tracked in [#482](https://github.com/metaobjectsdev/metaobjects/issues/482). Today TypeScript,
+Python, Java and Kotlin consume a dependency (Java and Kotlin shipped in slice S3); C# ignores the
+`dependencies` key, and a model there that references a node a dependency would supply fails
+loudly (`ERR_UNRESOLVED_OBJECT_REF`), never silently. Phase 2 adds no new contract. The manifest, the
 lock, the committed snapshot and the 24-case resolution corpus are plain files that every port
 already has the pieces to read; what is missing is each port *loading* the snapshot.
 
@@ -672,8 +675,9 @@ but **not** built yet — do not assume any of the following exists:
 - **A runtime `ObjectManager` scope predicate.** Nothing at runtime refuses to serve
   an imported entity — "what's imported" is a load-time/codegen concept today, not a
   runtime one.
-- **Java, Kotlin, and C# as dependency consumers or publishers** — Phase 1a is
-  TypeScript + Python only; the other three ports arrive in Phase 2.
+- **C# as a dependency consumer, and Java, Kotlin and C# as publishers** — Java and
+  Kotlin consume from Phase 2 slice S3; C# arrives in a later slice. Spring apps do not yet
+  auto-load the snapshot at runtime (S4).
 
 ## Verified by
 
@@ -681,9 +685,11 @@ but **not** built yet — do not assume any of the following exists:
   cases. 26 pin resolution (including `npm` and `python` dependencies loading from their
   committed snapshot with nothing installed), the exhaustive `imported`/`inScope`/`inMigrateScope` sets,
   overlay/extends/reference behavior against a synced snapshot, and every load- and
-  resolution-time error above, run by TypeScript (the reference implementation) and
-  Python. 11 pin the upstream check (`current`, `drifted`, `unresolved`), run by TypeScript;
-  Python has no check yet. Three artifacts under `fixtures/dependency-conformance/artifacts/` are
+  resolution-time error above, run by TypeScript (the reference implementation),
+  Python and Java (Kotlin loads through the Java loader and Maven plugin, so it inherits the
+  corpus run and adds a codegen test that an imported entity emits nothing). 11 pin the upstream
+  check (`current`, `drifted`, `unresolved`), run by TypeScript; Python and Java have no check yet.
+  Three artifacts under `fixtures/dependency-conformance/artifacts/` are
   pinned by sha256 in the README so the corpus itself can never silently drift.
   Python's runner asserts all 26 resolution cases identically to TypeScript's, with no
   exemptions — the two overlay cases that need a view child as incidental content

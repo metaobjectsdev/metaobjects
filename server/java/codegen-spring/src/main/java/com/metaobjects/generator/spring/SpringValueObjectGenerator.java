@@ -114,7 +114,7 @@ public class SpringValueObjectGenerator extends MultiFileDirectGeneratorBase<Met
      */
     static List<MetaObject> valueShapes(MetaDataLoader loader) {
         List<MetaObject> out = new ArrayList<>();
-        for (MetaObject obj : loader.getMetaObjects()) {
+        for (MetaObject obj : GeneratorUtil.ownMetaObjects(loader)) {
             if (GeneratorUtil.isAbstract(obj)) continue;
             // #210 — value, or SOURCELESS projection (ADR-0039: a source anywhere in the
             // extends chain binds it to a backing store, and then its type is the entity

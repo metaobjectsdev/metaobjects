@@ -40,6 +40,25 @@ const meta = JSON.stringify({
   },
 });
 
+const lengthMeta = JSON.stringify({
+  "metadata.root": {
+    package: "acme",
+    children: [
+      {
+        "object.entity": {
+          name: "Space",
+          children: [
+            { "source.rdb": { "@table": "spaces" } },
+            { "field.long": { name: "id" } },
+            { "field.string": { name: "key", "@column": "key", children: [{ "validator.length": { name: "len", "@min": 2 } }] } },
+            { "identity.primary": { name: "pk", "@fields": ["id"], "@generation": "increment" } },
+          ],
+        },
+      },
+    ],
+  },
+});
+
 describe("regex CHECK vs Postgres's stored rewrite (live PG)", () => {
   if (!PG_URL) {
     test.skip("skipped — MIGRATE_TS_PG_URL not set", () => {});
@@ -89,6 +108,52 @@ describe("regex CHECK vs Postgres's stored rewrite (live PG)", () => {
   test("citext column: a check stored with an explicit ::text cast is a different (case-sensitive) check, so drift", async () => {
     const r = await checkChanges("citext", `("key")::text ~ '${PATTERN}'`);
     expect(r.kinds).toEqual(["add-check", "drop-check"]);
+  });
+
+  // char(n) has its own regex operator (bpcharregexeq), which sees the blank padding that
+  // `(col)::text` trims — so an explicit cast is a different check, not Postgres's rewrite.
+  // Postgres itself never adds the column cast on a bpchar column.
+  test("char(n) column: Postgres stores the uncast check without a column cast", async () => {
+    const r = await checkChanges("char(8)");
+    expect(r.stored).not.toContain("(key)::text");
+    expect(r.kinds).toEqual([]);
+  });
+  test("char(n) column: a check stored with an explicit ::text cast is drift", async () => {
+    const r = await checkChanges("char(8)", `("key")::text ~ '${PATTERN}'`);
+    expect(r.stored).toContain("(key)::text");
+    expect(r.kinds).toEqual(["add-check", "drop-check"]);
+  });
+
+  // The same holds off the regex operator: `length(bpchar)` is its own function, so a stored
+  // `length((key)::text)` is a different constraint from the uncast `length("key")`, while a
+  // varchar column's cast is Postgres's own rewrite.
+  const lengthChanges = async (colType: string, authoredCheck: string) => {
+    await sql.raw("DROP TABLE IF EXISTS spaces CASCADE").execute(kysely);
+    await sql
+      .raw(`CREATE TABLE spaces (id bigserial PRIMARY KEY, "key" ${colType} NOT NULL,
+            CONSTRAINT spaces_key_length_chk CHECK (${authoredCheck}))`)
+      .execute(kysely);
+    const actual = await introspectPostgres(kysely);
+    const stored = actual.tables.find((t) => t.name === "spaces")?.checks.find((c) => c.name === "spaces_key_length_chk");
+    const loaded = await new MetaDataLoader().load([new InMemoryStringSource(lengthMeta)]);
+    expect(loaded.errors).toEqual([]);
+    const d = await diff({ expected: buildExpectedSchema(loaded.root, { dialect: "postgres" }), actual, dialect: "postgres" });
+    return { stored: stored?.expression, kinds: d.changes.filter((c) => c.kind.endsWith("-check")).map((c) => c.kind).sort() };
+  };
+  test("char(n) column: Postgres stores length() uncast and it is clean", async () => {
+    const r = await lengthChanges("char(8)", `length("key") >= 2`);
+    expect(r.stored).not.toContain("::text");
+    expect(r.kinds).toEqual([]);
+  });
+  test("char(n) column: a stored length((col)::text) is drift against the uncast length()", async () => {
+    const r = await lengthChanges("char(8)", `length(("key")::text) >= 2`);
+    expect(r.stored).toContain("(key)::text");
+    expect(r.kinds).toEqual(["add-check", "drop-check"]);
+  });
+  test("varchar column: Postgres's length((col)::text) rewrite is no drift", async () => {
+    const r = await lengthChanges("varchar(8)", `length("key") >= 2`);
+    expect(r.stored).toContain("(key)::text");
+    expect(r.kinds).toEqual([]);
   });
 
   test("varchar column: a changed pattern still reads as drift", async () => {

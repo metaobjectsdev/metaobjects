@@ -18,6 +18,14 @@
 //   - respells a cast TARGET canonically: `x::int`      →  `(x)::integer`
 // All five are canonicalized below so an enum/range CHECK introspected from PG
 // compares equal to the one we generate (idempotency on the --from-db / verify paths).
+// Three more are folded back by foldPgAnalyzerRewrites and COLUMN_TEXT_CAST: a
+// one-element `x IN (v)` stored as `x = v`, `a IS NOT DISTINCT FROM b` stored as
+// `NOT (a IS DISTINCT FROM b)`, and `(varchar_col)::text` stored for a text operator.
+//
+// Everything textual runs OUTSIDE single-quoted literals (mapOutsideLiterals). One thing is
+// still NOT canonicalized: dropping every bracket erases precedence, so `(a OR b) AND c` and
+// `a OR (b AND c)` compare equal. Fixing that takes the server's own canonical form, not more
+// string rules.
 //
 // The last two are why a cast-bearing `@expr` used to drift FOREVER. The paren-strip
 // turns PG's added parens into a space, so `(x)::integer` reduced to `x ::integer` while
@@ -44,37 +52,170 @@ function unwrapBacktickIdentifiers(expr: string): string {
 const NO_COLUMNS: ReadonlySet<string> = new Set();
 
 /**
+ * `(col)::text` — the form Postgres writes when it casts a `varchar` column to `text` to reach
+ * a text operator or function (`length((code)::text)`, `(a)::text < (b)::text`,
+ * `((region)::text IS DISTINCT FROM 'eu'::text)`) — and the bare `col::text` an author writes
+ * for the same cast. Matched BEFORE the brackets are stripped, while `(col)` can still be told
+ * from a call `f(col)`: the match must not follow a word character or a dot. It is dropped only for a column the caller names as text-family
+ * (`text` / `varchar`), where the cast changes nothing; on any other column it changes the
+ * operator (citext) or the value (`char(n)` trims its padding), so it stays and reads as drift.
+ */
+const COLUMN_TEXT_CAST = /(?<![\w.])(?:\(\s*([a-z_]\w*)\s*\)|([a-z_]\w*))\s*::\s*text\b/g;
+
+/** Split on single-quoted literals ('' escapes honored) and rewrite only the text between them. */
+function mapOutsideLiterals(s: string, fn: (part: string, index: number) => string): string {
+  return s
+    .split(/('(?:[^']|'')*')/)
+    .map((part, i) => (i % 2 === 1 ? part : fn(part, i)))
+    .join("");
+}
+
+/**
+ * Index of the `)` closing the `(` at `open`, skipping single-quoted literals and
+ * double-quoted identifiers; -1 when unbalanced.
+ */
+function matchingParen(s: string, open: number): number {
+  let depth = 0;
+  for (let i = open; i < s.length; i++) {
+    const ch = s[i]!;
+    if (ch === "'" || ch === '"') {
+      i++;
+      while (i < s.length && !(s[i] === ch && s[i + 1] !== ch)) i += s[i] === ch ? 2 : 1;
+    } else if (ch === "(") depth++;
+    else if (ch === ")" && --depth === 0) return i;
+  }
+  return -1;
+}
+
+/**
+ * `inner` with everything below depth 0 blanked (literals, quoted identifiers, bracketed
+ * groups). Same length as `inner`, so an offset found here is the same offset in `inner`.
+ */
+function topLevelText(inner: string): string {
+  let out = "";
+  let depth = 0;
+  for (let i = 0; i < inner.length; i++) {
+    const ch = inner[i]!;
+    if (ch === "'" || ch === '"') {
+      const start = i++;
+      while (i < inner.length && !(inner[i] === ch && inner[i + 1] !== ch)) i += inner[i] === ch ? 2 : 1;
+      i = Math.min(i, inner.length - 1);
+      out += " ".repeat(i - start + 1);
+    } else if (ch === "(" || ch === "[") { depth++; out += " "; }
+    else if (ch === ")" || ch === "]") { depth--; out += " "; }
+    else out += depth === 0 ? ch : " ";
+  }
+  return out;
+}
+
+/**
+ * `NOT (A IS DISTINCT FROM B)` → `(A IS NOT DISTINCT FROM B)`: Postgres has a node only for
+ * `IS DISTINCT FROM`, so it stores `a IS NOT DISTINCT FROM b` in the first spelling. Run on
+ * the RAW expression, while the brackets still show what `NOT` applies to: only `NOT`
+ * followed by one balanced bracketed operand that is exactly a single `IS DISTINCT FROM`
+ * comparison (no depth-0 `and` / `or` / `not`) is folded. `(NOT x) IS DISTINCT FROM y`
+ * has no such operand and stays as written, so the fold cannot invent an equality.
+ */
+function foldNotDistinctFrom(expr: string): string {
+  let out = "";
+  let i = 0;
+  while (i < expr.length) {
+    const ch = expr[i]!;
+    if (ch === "'" || ch === '"') {
+      const start = i++;
+      while (i < expr.length && !(expr[i] === ch && expr[i + 1] !== ch)) i += expr[i] === ch ? 2 : 1;
+      i++;
+      out += expr.slice(start, i);
+      continue;
+    }
+    const not = /^not\s*\(/i.exec(expr.slice(i));
+    if (not && !/[\w.]/.test(expr[i - 1] ?? " ")) {
+      const open = i + not[0].length - 1;
+      const close = matchingParen(expr, open);
+      if (close !== -1) {
+        const inner = expr.slice(open + 1, close);
+        const top = topLevelText(inner);
+        const operators = [...top.matchAll(/\bis\s+distinct\s+from\b/gi)];
+        if (operators.length === 1 && !/\b(?:and|or|not)\b/i.test(top)) {
+          const op = operators[0]!;
+          out += `(${inner.slice(0, op.index)}is not distinct from${inner.slice(op.index + op[0].length)})`;
+          i = close + 1;
+          continue;
+        }
+      }
+    }
+    out += ch;
+    i++;
+  }
+  return out;
+}
+
+/**
+ * Two rewrites Postgres makes while ANALYZING an expression, which no textual normalisation
+ * of its output can undo, so they are folded back to the spelling migrate emits:
+ *
+ *  - a ONE-element `x IN (v)` is stored as `x = v` (`IN` only becomes `= ANY (ARRAY[…])` from
+ *    two elements, which the `any array` fold above already handles). A literal list is told
+ *    apart by the comma after its first element, so `in 'a', 'b'` is left alone.
+ *  - `a IS NOT DISTINCT FROM b` is stored as `NOT (a IS DISTINCT FROM b)`; see
+ *    foldNotDistinctFrom, which runs earlier because it needs the brackets.
+ *
+ * The IN fold fires on text that SQLite and D1 never store and runs outside literals. It sits on
+ * the normalised string (brackets already gone), where it is a plain word pattern.
+ */
+function foldPgAnalyzerRewrites(s: string): string {
+  const parts = s.split(/('(?:[^']|'')*')/);
+  return parts
+    .map((part, i) => {
+      if (i % 2 === 1) return part;
+      let p = part;
+      // `<lhs> in 'v'` — the literal is the next part; a following comma means a list.
+      if (/(?<!\bnot) in $/.test(p) && i + 1 < parts.length && !(parts[i + 2] ?? "").trimStart().startsWith(",")) {
+        p = p.replace(/ in $/, "=");
+      }
+      return p.replace(/(?<!\bnot) in (-?\d+(?:\.\d+)?)(?![\w.]|\s*,)/g, "=$1");
+    })
+    .join("");
+}
+
+/**
  * Canonical form: drop casts/brackets/parens, fold `= ANY (ARRAY[…])` back to `IN`,
  * lower-case, collapse whitespace, canonicalize cast target types, and collapse spacing
  * around commas, casts and SYMBOLIC operators (outside single-quoted literals).
  *
- * `textColumns` (lower-cased names of text-family columns) lets a `(col)::text` cast before
- * a regex operator fold away; see isElidableCast.
+ * `textColumns` (lower-cased names of `text` / `varchar` columns) lets a `(col)::text` cast
+ * fold away; see COLUMN_TEXT_CAST and isElidableCast.
  */
 export function normalizeCheckExpr(expr: string, textColumns: ReadonlySet<string> = NO_COLUMNS): string {
-  const stripped = unwrapBacktickIdentifiers(expr)
-    .toLowerCase()
-    // Drop `::text` / `::"MyType"` type casts PG adds to literals. The lookbehind
-    // restricts the strip to a cast that immediately follows a CLOSING single
-    // quote (`'open'::text`), so a `::` appearing INSIDE a regex pattern literal
-    // (`slug ~ 'a::foo'`) is preserved — otherwise two distinct regex CHECKs would
-    // normalize equal and a pattern change would be silently missed.
-    .replace(/(?<=')::\s*"?\w+"?/g, "")
-    // Unwrap double-quoted IDENTIFIERS only (`"enumval"` → `enumval`). We emit a
-    // quoted column (`"enumVal" IN (...)`) so a mixed-case column is valid SQL;
-    // PG's introspected definition quotes mixed-case identifiers too. Unwrapping
-    // makes the generated and introspected forms compare equal, and keeps a
-    // legacy unquoted check matching its quoted re-emit. The pattern matches only
-    // a quote-pair wrapping a bare identifier (word chars), so a `"` INSIDE a
-    // single-quoted string/regex literal (`slug ~ 'a"b'`) is preserved — two
-    // distinct patterns must not normalize equal.
-    .replace(/"(\w+)"/g, "$1")
-    .replace(/[()[\]]/g, " ")     // drop parens AND square brackets (ARRAY[…])
-    .replace(/\s+/g, " ")
-    .trim();
-  // PG stores `col IN (…)` as `col = ANY (ARRAY[…])`; after the bracket strip above
-  // that reads `col = any array …`. Fold it back to the `col in …` form we emit.
-  const folded = stripped.replace(/=\s*any\s+array/g, "in").replace(/\s+/g, " ").trim();
+  // Every textual rewrite below runs OUTSIDE single-quoted literals. A literal is DATA: its
+  // case, its brackets, its `"quoted"` words and its runs of spaces all change what the
+  // constraint accepts, so two checks differing only inside a literal (an enum member's
+  // case, a regex's character class, a `(` in a pattern) must stay distinct. Reading them
+  // as equal is this file's failure in the worse direction: a real change reported clean.
+  const stripped = mapOutsideLiterals(foldNotDistinctFrom(unwrapBacktickIdentifiers(expr)), (part, index) =>
+    // Drop `::text` / `::"MyType"` type casts PG adds to literals. Only a cast that
+    // immediately follows a CLOSING single quote (`'open'::text`) is one, which is exactly
+    // the head of an outside part that follows a literal — so a `::` INSIDE a regex pattern
+    // literal (`slug ~ 'a::foo'`) is never seen here.
+    (index > 0 ? part.replace(/^::\s*"?\w+"?/, "") : part)
+      .toLowerCase()
+      // Unwrap double-quoted IDENTIFIERS only (`"enumval"` → `enumval`). We emit a
+      // quoted column (`"enumVal" IN (...)`) so a mixed-case column is valid SQL;
+      // PG's introspected definition quotes mixed-case identifiers too. Unwrapping
+      // makes the generated and introspected forms compare equal, and keeps a
+      // legacy unquoted check matching its quoted re-emit.
+      .replace(/"(\w+)"/g, "$1")
+      .replace(COLUMN_TEXT_CAST, (whole, parenthesised: string | undefined, bare: string | undefined) => {
+        const column = parenthesised ?? bare!;
+        return textColumns.has(column) ? column : whole;
+      })
+      .replace(/[()[\]]/g, " ")     // drop parens AND square brackets (ARRAY[…])
+      .replace(/\s+/g, " ")
+      // PG stores `col IN (…)` as `col = ANY (ARRAY[…])`; after the bracket strip above
+      // that reads `col = any array …`. Fold it back to the `col in …` form we emit.
+      .replace(/=\s*any\s+array/g, "in"),
+  ).trim();
+  const folded = foldPgAnalyzerRewrites(stripped);
   // Normalize spacing around COMMAS and SYMBOLIC OPERATORS, so the spelling a human
   // writes compares equal to the one Postgres hands back.
   //
@@ -199,8 +340,9 @@ function readCastTarget(s: string, i: number): { type: string; consumed: number 
  */
 function isElidableCast(type: string, lhs: string, rest: string, textColumns: ReadonlySet<string>): boolean {
   // `::text` on a COLUMN directly before a regex-match operator (`~`, `~*`, `!~`, `!~*`),
-  // and only when the caller names that column as text-family (text, character varying,
-  // character). On such a column PG adds the cast itself (`"key" ~ '…'` comes back
+  // and only when the caller names that column as text-family (text, character varying;
+  // NOT char(n), whose own operator sees the blank padding the cast trims). On such a
+  // column PG adds the cast itself (`"key" ~ '…'` comes back
   // `((key)::text ~ '…'::text)`). On any other column, citext included, the cast changes
   // the operator (`col::text ~ 'A'` is case-sensitive, `col ~ 'A'` on citext is not), so it
   // survives. With no set supplied nothing is elided.

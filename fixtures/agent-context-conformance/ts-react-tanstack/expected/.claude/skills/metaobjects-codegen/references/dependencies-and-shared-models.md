@@ -44,8 +44,8 @@ as package data), run `meta gen`, then release the package as usual; consumers
 declare an `npm` or `python` dependency on it. With no `version` option the
 manifest takes the nearest `package.json` version, else a `pyproject.toml`
 `[project]` version — pass `version` when neither is the package consumers install.
-Only TypeScript can run it in Phase 1a. **Phase 1a is TypeScript and Python
-only, full stop** — TypeScript and Python are the only two ports that can
-*consume* a dependency at all today, and only the TypeScript toolchain can
-*publish* one; Java, Kotlin, and C# do not read `dependencies` yet (Phase 2).
+Only TypeScript can run it in Phase 1a. TypeScript, Python, Java and
+Kotlin (through Java's loader and Maven plugin) can *consume* a dependency, and
+only the TypeScript toolchain can *publish* one; C# does not read
+`dependencies` yet (Phase 2).
 Full detail: `docs/features/metadata-dependencies.md`.
