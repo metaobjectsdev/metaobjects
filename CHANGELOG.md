@@ -113,7 +113,8 @@ here.**
 
 - **`metaobjects agent-docs` says what it does.** Its help claimed to scaffold the agent context;
   the command only points at `npx meta agent-docs --server python` and exits 1. The help now says
-  so, and the three flags it never read (`--server`, `--client`, `--out`) are removed.
+  so. The three flags it never read (`--server`, `--client`, `--out`) are still accepted but
+  ignored and hidden from help, so the old invocation still reaches the pointer.
 
 - **A failed `meta deps sync` no longer leaves a lock and snapshot that cannot load.** The
   command wrote `deps.lock.json` and the `.metaobjects/deps/` snapshot before loading the

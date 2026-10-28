@@ -83,6 +83,15 @@ def test_agent_docs_redirects_to_the_node_cli_and_exits_non_zero(
     assert "npx meta agent-docs" in capsys.readouterr().err
 
 
+def test_agent_docs_old_invocation_with_ignored_flags_still_reaches_the_redirect(
+    capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    out_dir = str(tmp_path / "ctx")
+    assert main(["agent-docs", "--server", "python", "--client", "react", "--out", out_dir]) == 1
+    assert "npx meta agent-docs --server python" in capsys.readouterr().err
+    assert not (tmp_path / "ctx").exists()
+
+
 def test_agent_docs_help_says_it_moved_and_does_not_claim_to_scaffold(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -95,5 +104,5 @@ def test_agent_docs_help_says_it_moved_and_does_not_claim_to_scaffold(
     with pytest.raises(SystemExit):
         main(["agent-docs", "--help"])
     sub_help = capsys.readouterr().out
-    for dead_flag in ("--server", "--client", "--out"):
-        assert dead_flag not in sub_help
+    for ignored_flag in ("--server", "--client", "--out"):
+        assert ignored_flag not in sub_help

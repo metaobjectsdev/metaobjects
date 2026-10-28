@@ -3036,6 +3036,8 @@ def _build_parser() -> argparse.ArgumentParser:
             "(this command scaffolds nothing and exits 1)"
         ),
     )
+    for ignored_flag in ("--server", "--client", "--out"):
+        agent_docs.add_argument(ignored_flag, help=argparse.SUPPRESS)
     agent_docs.set_defaults(func=_cmd_agent_docs)
 
     return parser
