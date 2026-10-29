@@ -349,7 +349,8 @@ message text of each diagnostic, and the summary counts.
 | Java, Kotlin | `mvn metaobjects:verify` (one goal for both, in either mode) | `metaobjects:verify — requirements:` |
 | C# | `dotnet meta verify` | `dotnet meta verify — requirements:` |
 
-A bare `dotnet meta verify` runs the requirement gate with the other default gates; naming
+A bare `dotnet meta verify` runs the requirement gate with the other default gates, and needs a
+`prompts/` or `templates/` directory (else it exits 2 before any gate runs); naming
 one of them (`--templates <dir>`, or `--codegen --out <dir>`) runs that gate and the
 requirement gate beside it. Maven logs
 the summary at `info`, warnings as warnings and errors as errors.

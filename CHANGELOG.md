@@ -23,7 +23,8 @@ here.**
   The per-port drift tables in `migrations-and-drift.md` and `templates-and-payloads.md` give
   each port's real bare command (`meta verify`, `mvn metaobjects:verify`, `dotnet meta verify`,
   `metaobjects verify`), what a bare run checks, the config each check needs and how to run one
-  alone; `python -m metaobjects.render.verify` (a module with no entry point) and the Node `meta`
+  alone, and where a bare run skips a check versus fails (a bare `dotnet meta verify` with no
+  `prompts/` or `templates/` directory exits 2); `python -m metaobjects.render.verify` (a module with no entry point) and the Node `meta`
   as the C# binary are gone from every copy. The README capability matrix splits "DB-drift
   verify" (TypeScript-only, the other four ports go through the TypeScript CLI) from
   "Codegen-drift verify". The C# entity is a mutable `class`, not a `record`, and the Python
