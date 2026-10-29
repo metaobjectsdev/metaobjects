@@ -588,8 +588,9 @@ the snapshots first under `dep:<name>/<artifact>` source ids. It never writes ei
 `ERR_DEPENDENCY_SNAPSHOT_STALE`. An imported node is excluded from every C# generator, the
 `verify --codegen` regeneration and the requirement gate's entity-coverage denominator unless
 `scope.include` names its package; the one thing C# still emits from an imported package is the
-POCO of a *value object* (and the shared enums it uses) that a generated entity holds, because the
-entity's property type needs it to compile. `inScope` is Python's formula (no `matchesScope` on the
+POCO of a *value object* (and the shared enums it uses) that a generated type reaches — an entity
+or local value object that holds it, or a local template whose `@payloadRef` / `@responseRef` names
+it — because that generated type needs it to compile. `inScope` is Python's formula (no `matchesScope` on the
 project's own objects), and C# has no entity-name positional on `gen`, so the TypeScript
 "refuse an explicitly named imported object" check has no C# surface. Known edge: a local entity
 that `extends` an imported concrete entity in a table-per-hierarchy mapping is not specially handled.
