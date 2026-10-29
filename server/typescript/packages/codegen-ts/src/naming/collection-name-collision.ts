@@ -16,7 +16,9 @@
 // WHOLE set, with a message naming both entities and the colliding name.
 
 import { type ErrorCode, OBJECT_SUBTYPE_VALUE, type MetaObject } from "@metaobjectsdev/metadata";
-import { pluralize } from "@metaobjectsdev/metadata";
+import { pluralize, toSnakeCase } from "@metaobjectsdev/metadata";
+import { emitsInstanceArtifacts } from "../instance-artifacts.js";
+import { isTphSubtype } from "../tph.js";
 
 // Already promoted to the shared cross-language error-code ledger
 // (fixtures/conformance/ERROR-CODES.json) and to TS's own ERROR_CODES array
@@ -58,5 +60,31 @@ export function assertNoCollectionNameCollisions(entities: readonly MetaObject[]
       );
     }
     if (existing === undefined) ownerOfPlural.set(plural, obj);
+  }
+  assertNoRouteSegmentCollisions(entities);
+}
+
+/**
+ * The route half. The REST collection segment is the entity NAME snake_cased and then
+ * pluralized (`entity-ui-descriptor.ts`), so `ApiKey` and `APIKey` both serve `/api_keys`
+ * while their pluralized PascalCase names differ and pass the check above. Counts only
+ * objects that actually get a route: not a value object, not abstract, not sourceless,
+ * not a TPH subtype (folded into its base's table and served under the base's route).
+ */
+function assertNoRouteSegmentCollisions(entities: readonly MetaObject[]): void {
+  const ownerOfSegment = new Map<string, MetaObject>();
+  for (const obj of entities) {
+    if (obj.subType === OBJECT_SUBTYPE_VALUE) continue;
+    if (!emitsInstanceArtifacts(obj) || isTphSubtype(obj)) continue;
+    const segment = pluralize(toSnakeCase(obj.name));
+    const existing = ownerOfSegment.get(segment);
+    if (existing !== undefined && existing.resolutionKey() !== obj.resolutionKey()) {
+      throw new Error(
+        `${ERR_COLLECTION_NAME_COLLISION}: "${existing.name}" and "${obj.name}" both resolve ` +
+        `to the REST collection segment "${segment}" — rename one entity so its snake_cased, ` +
+        `pluralized route segment is distinct.`,
+      );
+    }
+    if (existing === undefined) ownerOfSegment.set(segment, obj);
   }
 }

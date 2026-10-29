@@ -21,6 +21,9 @@
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="8.0.10" />
+    <!-- Syntax-tree reads of C# source (CSharpSource.cs): the namespace a committed tree declares and
+         whether codegen/Program.cs runs Generators.All. Same version the test projects pin. -->
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.11.0" />
   </ItemGroup>
   <!--
     ADR-0034 Amendment 3 — eject: each EJECTABLE generator's own .cs source is embedded

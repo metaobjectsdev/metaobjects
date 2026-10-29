@@ -39,4 +39,27 @@ public sealed class CodegenHandoffTests : IDisposable
 
         Assert.False(CodegenHandoff.HasOwnedCodegen(_root));
     }
+
+    private bool Ignores(string program)
+    {
+        Directory.CreateDirectory(Path.Combine(_root, "codegen"));
+        File.WriteAllText(Path.Combine(_root, "codegen", "Program.cs"), program);
+        return CodegenHandoff.ProgramIgnoresList(_root);
+    }
+
+    [Fact]
+    public void Program_running_Generators_All_does_not_ignore_the_list()
+    {
+        Assert.False(Ignores("return CodegenCli.Run(args, Generators.All);"));
+        Assert.False(Ignores("return Run(args, My.Codegen.Generators.All);"));
+        Assert.False(Ignores("using static Acme.Generators;\nreturn Run(args, All);"));
+    }
+
+    [Fact]
+    public void Generators_All_in_a_comment_or_string_does_not_count()
+    {
+        Assert.True(Ignores("// uses Generators.All\nreturn Run(args, new IGenerator[0]);"));
+        Assert.True(Ignores("/* Generators.All */ Console.WriteLine(\"Generators.All\");"));
+        Assert.True(Ignores("return Run(args, MyGenerators.AllOfThem);"));
+    }
 }

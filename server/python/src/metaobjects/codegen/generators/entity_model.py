@@ -8,6 +8,7 @@ one too. A value object's emitted name comes from
 another object shares its short name)."""
 from __future__ import annotations
 
+import re
 
 from metaobjects.meta.core.field.meta_field import MetaField
 from metaobjects.meta.core.object.meta_object import MetaObject
@@ -94,6 +95,36 @@ def _first_attr(field: MetaField, sub_type: str, attr_name: str) -> object | Non
     return None
 
 
+class _AsciiPattern(str):
+    """A ``validator.regex`` / hostname expression emitted as ``re.compile(..., re.ASCII)``.
+
+    Pydantic's default ``pattern=`` string runs on pydantic-core's Rust regex, where ``\\d``
+    ``\\w`` ``\\s`` are Unicode (Arabic-Indic digits pass) and lookaround is unsupported. A
+    COMPILED pattern is run on Python ``re`` instead, so ``re.ASCII`` can pin the classes to
+    ASCII like the TS and Java ports and like the runtime validator (validator_runner.py)."""
+
+
+def _full_match_pattern(raw: str, field: MetaField) -> _AsciiPattern:
+    """FR-036 Pin 2 — a validator.regex is a FULL match. A compiled pydantic pattern is a
+    ``search``, so anchor the authored expression in a non-capturing group (alternation
+    still spans the whole value). ``\\Z`` not ``$``: ``$`` would also accept a trailing
+    newline.
+
+    Fails at generation when Python ``re`` cannot compile the expression (for example a
+    Java/ICU ``\\p{L}`` property class, which Python lacks), instead of emitting a module
+    that raises at import. The runtime validator reports the same pattern as invalid."""
+    anchored = f"^(?:{raw})\\Z"
+    try:
+        re.compile(anchored, re.ASCII)
+    except re.error as exc:
+        raise ValueError(
+            f"field '{field.name}': validator pattern {raw!r} is not valid in Python's re "
+            f"({exc}); Unicode property classes such as \\p{{L}} are not supported by the "
+            "Python port, spell the character class out"
+        ) from exc
+    return _AsciiPattern(anchored)
+
+
 def _validator_constraints(field: MetaField, *, wire: bool) -> dict[str, object]:
     """Map the field's ``validator.*`` children + field attrs to Pydantic ``Field``
     kwargs. Cross-port-canonical semantics (TS is the reference):
@@ -160,7 +191,7 @@ def _validator_constraints(field: MetaField, *, wire: bool) -> dict[str, object]
             # is search/partial (un-anchored), so wrap the authored expression in an
             # anchored non-capturing group so alternation still spans the whole value
             # (a redundant anchor on an already-anchored pattern matches identically).
-            kwargs["pattern"] = f"^(?:{pattern})$"
+            kwargs["pattern"] = _full_match_pattern(pattern, field)
             break
 
     # ADR-0036/0037 Wave 3 — @stringFormat: hostname -> a codegen-owned canonical
@@ -168,7 +199,7 @@ def _validator_constraints(field: MetaField, *, wire: bool) -> dict[str, object]
     # every port replicates the byte-identical form). @stringFormat: email is bound
     # as EmailStr in _field_line (a type, not a pattern), so it is not handled here.
     if field.attrs().get(fc.FIELD_ATTR_STRING_FORMAT) == fc.STRING_FORMAT_HOSTNAME:
-        kwargs["pattern"] = _HOSTNAME_REGEX
+        kwargs["pattern"] = _full_match_pattern(_HOSTNAME_REGEX, field)
 
     # FR-036 Pin 1 (#224 — WIRE TIER ONLY) — a @required non-array string is
     # non-empty by default: reject null / "" but ACCEPT whitespace-only. Emit an
@@ -201,7 +232,13 @@ _CONSTRAINT_ORDER = ("pattern", "ge", "le", "min_length", "max_length")
 
 def _constraint_parts(constraints: dict[str, object]) -> list[str]:
     """The ``Field(...)`` constraint kwargs rendered in the stable, deterministic order."""
-    return [f"{k}={constraints[k]!r}" for k in _CONSTRAINT_ORDER if k in constraints]
+    return [_constraint_source(k, constraints[k]) for k in _CONSTRAINT_ORDER if k in constraints]
+
+
+def _constraint_source(key: str, value: object) -> str:
+    if isinstance(value, _AsciiPattern):
+        return f"{key}=re.compile({str(value)!r}, re.ASCII)"
+    return f"{key}={value!r}"
 
 
 def _type_expr_for_field(
@@ -750,6 +787,8 @@ class EntityModelGenerator:
         # The base-class import is subtracted back out: when an entity BOTH extends a
         # target and navigates to it, the base class is needed at class-creation time and
         # deferring it would break the module for a different reason.
+        if any("re.compile(" in line for line in (*body, *create_lines, *patch_lines)):
+            imports.add("import re")
         deferred = self._deferred_nav_imports(
             entity, object_index, config if config is not None else GenConfig(out_dir="")
         ) - {

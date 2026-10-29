@@ -180,6 +180,16 @@ public class RouteNamingTest {
     }
 
     @Test
+    public void assertNoCollectionNameCollisionsThrowsForRouteSegmentTwins() {
+        // ApiKey / APIKey both snake_case to api_key and serve /api_keys.
+        GeneratorException ex = assertThrows(GeneratorException.class,
+            () -> RouteNaming.assertNoCollectionNameCollisions(List.of(entity("ApiKey"), entity("APIKey"))));
+        assertTrue(ex.getMessage().contains("\"ApiKey\""));
+        assertTrue(ex.getMessage().contains("\"APIKey\""));
+        assertTrue(ex.getMessage().contains("api_keys"));
+    }
+
+    @Test
     public void assertNoCollectionNameCollisionsExcludesValueObjects() {
         // "Address" (entity) resolves to /addresses; an unrelated object.value named
         // "Addresses" never gets a route, so it must not trip this.

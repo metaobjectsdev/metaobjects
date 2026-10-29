@@ -193,6 +193,25 @@ public sealed class CodegenDriftTests : IDisposable
         Assert.Null(CodegenDrift.InferNamespace(OutDir));
     }
 
+    [Fact]
+    public void InferNamespace_ignores_a_namespace_in_a_comment_or_string()
+    {
+        Directory.CreateDirectory(OutDir);
+        File.WriteAllText(Path.Combine(OutDir, "A.g.cs"),
+            "// namespace Fake.Comment;\n/*\nnamespace Fake.Block {}\n*/\n" +
+            "public static class K { public const string S = @\"\nnamespace Fake.Str;\n\"; }\n");
+        File.WriteAllText(Path.Combine(OutDir, "B.g.cs"), "namespace Real.Ns;\n");
+        Assert.Equal("Real.Ns", CodegenDrift.InferNamespace(OutDir));
+    }
+
+    [Fact]
+    public void InferNamespace_returns_null_when_only_comments_and_strings_mention_one()
+    {
+        Directory.CreateDirectory(OutDir);
+        File.WriteAllText(Path.Combine(OutDir, "A.g.cs"), "// namespace Fake.Comment;\nvar s = \"namespace Fake.Str;\";\n");
+        Assert.Null(CodegenDrift.InferNamespace(OutDir));
+    }
+
     private static Dictionary<string, string> SnapshotDir(string dir)
     {
         var snap = new Dictionary<string, string>(StringComparer.Ordinal);

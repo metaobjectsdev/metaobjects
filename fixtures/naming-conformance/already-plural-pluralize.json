@@ -63,6 +63,12 @@
       "entityB": "Orders",
       "collidesOn": "Orders",
       "note": "same shape as Address/Addresses — Order legacy-pluralizes to Orders; Orders is already-plural and stays Orders"
+    },
+    {
+      "entityA": "ApiKey",
+      "entityB": "APIKey",
+      "collidesOn": "api_keys",
+      "note": "route-segment twins — the pluralized PascalCase names differ (ApiKeys / APIKeys) but both snake_case to api_key and serve /api_keys"
     }
   ]
 }

@@ -11,7 +11,6 @@
 // SAFETY: the regen is written ONLY under a fresh temp dir; the real OutDir is
 // read but never written. On any outcome the temp tree is removed.
 
-using System.Text.RegularExpressions;
 using MetaObjects.Meta;
 
 namespace MetaObjects.Codegen;
@@ -19,12 +18,6 @@ namespace MetaObjects.Codegen;
 /// <summary>Regenerate-to-temp + diff vs committed output (ADR-0021 D2).</summary>
 public static class CodegenDrift
 {
-    // Matches the FIRST top-level namespace declaration in a C# source file:
-    // file-scoped `namespace X.Y;` or block `namespace X.Y {` / `namespace X.Y`.
-    // Multiline so `^` anchors each line; we scan line-leading declarations only.
-    private static readonly Regex NamespaceDecl =
-        new(@"^\s*namespace\s+([A-Za-z_][\w.]*)\s*;?", RegexOptions.Multiline | RegexOptions.Compiled);
-
     /// <summary>
     /// Infer the C# namespace embedded in the committed generated output under
     /// <paramref name="outDir"/>. Scans the FIRST <c>.cs</c> file (ordinal-sorted)
@@ -48,8 +41,8 @@ public static class CodegenDrift
             try { text = File.ReadAllText(file); }
             catch { continue; }
 
-            var m = NamespaceDecl.Match(text);
-            if (m.Success) return m.Groups[1].Value;
+            var ns = CSharpSource.TopLevelNamespace(text);
+            if (ns is not null) return ns;
         }
         return null;
     }

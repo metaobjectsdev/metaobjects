@@ -27,7 +27,7 @@ public static class CodegenHandoff
     public static bool ProgramIgnoresList(string projectRoot)
     {
         var program = Path.Combine(projectRoot, "codegen", "Program.cs");
-        return File.Exists(program) && !File.ReadAllText(program).Contains("Generators.All", StringComparison.Ordinal);
+        return File.Exists(program) && !MetaObjects.Codegen.CSharpSource.ReferencesMember(File.ReadAllText(program), "Generators", "All");
     }
 
     /// <summary>
