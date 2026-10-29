@@ -216,8 +216,9 @@ def _coerce_int(
         return MALFORMED
     # Integer parse first (matches Java Long.parseLong / C# long.TryParse), then a
     # float fallback (matches Java's Double.parseDouble fallback).
+    # The int stays an int: float() would round a long above 2**53.
     try:
-        return _clamp(float(int(trimmed)), spec, path, report, as_long=True, lenient=lenient)
+        return _clamp(int(trimmed), spec, path, report, as_long=True, lenient=lenient)
     except ValueError:
         pass
     try:
@@ -241,7 +242,7 @@ def _coerce_double(
 
 
 def _clamp(
-    n: float, spec: FieldSpec, path: str, report: ExtractionReport, as_long: bool, lenient: bool
+    n: float | int, spec: FieldSpec, path: str, report: ExtractionReport, as_long: bool, lenient: bool
 ) -> object:
     """Apply the field's @min/@max range (sourced from its numeric validator). Under LENIENT
     tolerance an out-of-range value is CLAMPED to the bound (recorded as a "clamp" coercion);

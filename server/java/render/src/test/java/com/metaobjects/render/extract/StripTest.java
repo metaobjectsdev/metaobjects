@@ -34,4 +34,26 @@ public class StripTest {
     public void nullSafe() {
         assertEquals("", Strip.strip(null));
     }
+
+    @Test
+    public void backticksInsideAJsonStringDoNotCloseTheFence() {
+        assertEquals("{\"summary\": \"run ```make``` first\", \"score\": 7}",
+                Strip.strip("```json\n{\"summary\": \"run ```make``` first\", \"score\": 7}\n```"));
+    }
+
+    @Test
+    public void longerOpeningFenceClosesOnlyOnAnEqualOrLongerRun() {
+        assertEquals("before\n```\ninner\n```\nafter\ntail",
+                Strip.strip("````md\nbefore\n```\ninner\n```\nafter\n````\ntail"));
+    }
+
+    @Test
+    public void closingFenceOnThePayloadLineIsAcceptedAtTheEnd() {
+        assertEquals("{\"a\":1}", Strip.strip("```json\n{\"a\":1}```"));
+    }
+
+    @Test
+    public void unclosedFenceIsNotAFence() {
+        assertEquals("```json\n{\"a\":1}", Strip.strip("```json\n{\"a\":1}"));
+    }
 }

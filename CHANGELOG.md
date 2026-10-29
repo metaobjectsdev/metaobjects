@@ -429,6 +429,25 @@ here.**
     no longer warns that Python `1.0` differs from `1.0.0`; `DirectorySource` excludes containing
     `/` match the relative path.
 
+- **The reply parser no longer corrupts escaped JSON strings or cuts a fenced reply short, in
+  every port (Kotlin through the Java render module).** The forgiving JSON reader decoded only
+  `\n`, `\t` and `\r`, so `"caf\u00e9"` came back as `cafu00e9` and was reported `EXTRACTED`; it
+  now reads the full JSON escape grammar (`\uXXXX` with surrogate pairs, `\b`, `\f`, `\/`). The
+  fence matcher closed at the first triple backtick inside the payload, so
+  `{"summary": "run ```make``` first"}` extracted as `run `; a fence now closes only at a line
+  that starts with a backtick run at least as long as the opening one. Python `LONG` coercion
+  also no longer rounds a value above 2^53 through `float`. Three new `extract-conformance`
+  cases (`json-string-escapes`, `json-fence-inner-backticks`, `json-fence-inner-block`) gate all
+  five ports.
+
+- **`eject --undo` no longer deletes a copy whose only edit is a reordering (TypeScript, Python,
+  C#).** "Untouched" was decided from a sorted multiset of lines, so swapping two statements read
+  as the stock file and `--undo` removed it without `--force`. A copy is now stock only when its
+  text matches the reference in order (TypeScript keeps formatter-insensitivity, and import runs
+  stay order-insensitive; Python and C# compare exact text, line endings aside). The "N behind,
+  M of your own" counts are unchanged. #505 is unreleased, so this ships with the first release
+  of `--undo`.
+
 - **`@default: "now"` is the current time on Postgres, not the table's creation time.** The
   expected schema stored it as the literal `'now'`, and Postgres converts that literal to a
   timestamp once, when it creates the column's `DEFAULT`, so every row got the same value. It

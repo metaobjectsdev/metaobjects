@@ -1,8 +1,10 @@
 // ADR-0034 Amendment 3 — eject. How an OWNED generator copy (codegen/generators/<file>)
 // compares to the reference `dotnet meta eject` would write today. Line-multiset
-// comparison, the same shape as the Python port's owned_status (Counter subtraction) —
+// counts, the same shape as the Python port's owned_status (Counter subtraction) —
 // NOT the formatter-canonicalized comparison TS's owned-copy.ts does, since this port
-// has no bundled C# formatter to normalise through. "behind" counts reference lines the
+// has no bundled C# formatter to normalise through. The VERDICT is the exact text (line
+// endings aside): `eject --undo` deletes an identical copy, so an edit that only reorders
+// lines must read as an edit. "behind" counts reference lines the
 // copy lacks (upstream moved); "of your own" counts copy lines the reference lacks
 // (your edit). The comparison is against the REWRITTEN reference (EjectableGenerators.
 // RewriteForEject applied) — the namespace/using lines eject itself changes are not
@@ -36,10 +38,12 @@ public static class OwnedCopy
         return counts;
     }
 
-    /// <summary>Line-multiset compare <paramref name="owned"/> against <paramref
-    /// name="reference"/>.</summary>
+    /// <summary>Compare <paramref name="owned"/> against <paramref name="reference"/>:
+    /// <c>Identical</c> only for the exact text, CRLF aside; the line counts are order-blind.</summary>
     public static Comparison Compare(string owned, string reference)
     {
+        if (owned.Replace("\r\n", "\n") == reference.Replace("\r\n", "\n"))
+            return new Comparison(Verdict.Identical, 0, 0);
         var mine = LineCounts(owned);
         var theirs = LineCounts(reference);
         int behind = 0, ofYourOwn = 0;
@@ -50,8 +54,15 @@ public static class OwnedCopy
             if (r > m) behind += r - m;
             if (m > r) ofYourOwn += m - r;
         }
-        return new Comparison(behind == 0 && ofYourOwn == 0 ? Verdict.Identical : Verdict.Differs, behind, ofYourOwn);
+        return new Comparison(Verdict.Differs, behind, ofYourOwn);
     }
+
+    /// <summary><c>"N behind, M of your own"</c>; a copy with the same lines in another order
+    /// (0 and 0) says so.</summary>
+    private static string Counts(Comparison c) =>
+        c.Behind == 0 && c.OfYourOwn == 0
+            ? "0 behind, 0 of your own, reordered"
+            : $"{c.Behind} behind, {c.OfYourOwn} of your own";
 
     /// <summary>
     /// <c>"identical"</c> / <c>"DIFFERS: N behind, M of your own"</c>, or <c>null</c> when
@@ -78,7 +89,7 @@ public static class OwnedCopy
         var cmp = Compare(mine, reference);
         var clauses = new List<string>();
         if (cmp.Verdict == Verdict.Differs)
-            clauses.Add($"DIFFERS: {cmp.Behind} behind, {cmp.OfYourOwn} of your own");
+            clauses.Add($"DIFFERS: {Counts(cmp)}");
 
         foreach (var sourcePath in entry.Companions)
         {
@@ -94,7 +105,7 @@ public static class OwnedCopy
                 MetaObjects.Codegen.EjectableGenerators.RewriteForEject(
                     MetaObjects.Codegen.EjectableGenerators.ReadSourcePath(sourcePath)));
             if (c.Verdict == Verdict.Differs)
-                clauses.Add($"{name} DIFFERS: {c.Behind} behind, {c.OfYourOwn} of your own");
+                clauses.Add($"{name} DIFFERS: {Counts(c)}");
         }
         return clauses.Count == 0 ? "identical" : string.Join("; ", clauses);
     }
@@ -123,7 +134,7 @@ public static class OwnedCopy
             }
             var cmp = Compare(File.ReadAllText(path), MetaObjects.Codegen.HelperRuntime.OwnedReference(file));
             if (cmp.Verdict == Verdict.Differs)
-                clauses.Add($"{file} DIFFERS: {cmp.Behind} behind, {cmp.OfYourOwn} of your own");
+                clauses.Add($"{file} DIFFERS: {Counts(cmp)}");
         }
         return clauses.Count == 0 ? "identical" : string.Join("; ", clauses);
     }

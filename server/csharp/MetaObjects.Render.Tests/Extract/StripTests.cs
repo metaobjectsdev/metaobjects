@@ -43,4 +43,30 @@ public class StripTests
     {
         Assert.Equal("", Strip.Apply(null));
     }
+
+    [Fact]
+    public void BackticksInsideAJsonStringDoNotCloseTheFence()
+    {
+        Assert.Equal("{\"summary\": \"run ```make``` first\", \"score\": 7}",
+            Strip.Apply("```json\n{\"summary\": \"run ```make``` first\", \"score\": 7}\n```"));
+    }
+
+    [Fact]
+    public void LongerOpeningFenceClosesOnlyOnAnEqualOrLongerRun()
+    {
+        Assert.Equal("before\n```\ninner\n```\nafter\ntail",
+            Strip.Apply("````md\nbefore\n```\ninner\n```\nafter\n````\ntail"));
+    }
+
+    [Fact]
+    public void ClosingFenceOnThePayloadLineIsAcceptedAtTheEnd()
+    {
+        Assert.Equal("{\"a\":1}", Strip.Apply("```json\n{\"a\":1}```"));
+    }
+
+    [Fact]
+    public void UnclosedFenceIsNotAFence()
+    {
+        Assert.Equal("```json\n{\"a\":1}", Strip.Apply("```json\n{\"a\":1}"));
+    }
 }

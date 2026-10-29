@@ -28,12 +28,20 @@ public sealed class OwnedCopyTests : IDisposable
     }
 
     [Fact]
-    public void Compare_is_blind_to_blank_lines_and_line_order()
+    public void Compare_is_blind_to_line_endings_only()
     {
-        // Line-multiset, not a sequence diff — matches the Python port exactly (it is
-        // NOT formatter-canonicalized like TS's Biome-based comparison).
-        var cmp = OwnedCopy.Compare("b\n\na\n\nc\n", "a\nb\nc\n");
-        Assert.Equal(OwnedCopy.Verdict.Identical, cmp.Verdict);
+        Assert.Equal(OwnedCopy.Verdict.Identical, OwnedCopy.Compare("a\r\nb\r\nc\r\n", "a\nb\nc\n").Verdict);
+    }
+
+    [Fact]
+    public void Compare_reads_a_reordering_as_an_edit()
+    {
+        // The same lines in another order are a different program; `eject --undo` deletes an
+        // identical copy, so this must not read identical. The counts stay order-blind.
+        var cmp = OwnedCopy.Compare("b\na\nc\n", "a\nb\nc\n");
+        Assert.Equal(OwnedCopy.Verdict.Differs, cmp.Verdict);
+        Assert.Equal(0, cmp.Behind);
+        Assert.Equal(0, cmp.OfYourOwn);
     }
 
     [Fact]

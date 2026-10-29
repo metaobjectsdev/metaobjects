@@ -23,11 +23,10 @@
 //                                                     a list moves which member is last)
 //   import statement AND specifier order            → exploded one per line, then sorted
 //
-// The cost is deliberate and stated: sorting lines also makes the comparison blind to
-// a pure REORDERING of real code. That is the right trade for a report line whose job
-// is "have you fallen behind upstream" — a reorder with no content change is not
-// staleness — and every message that carries this verdict also prints the `diff`
-// command, which is not blind to anything.
+// The sorted lines feed only the "N behind, M of your own" COUNTS, which are information.
+// The VERDICT is decided on the same canonical lines in their original ORDER: a pure
+// reordering of real code (swapping two statements) changes behaviour, and `eject --undo`
+// deletes a copy whose verdict is stock, so it must read `differs` and need `--force`.
 //
 // Fail-safe: if the formatter is unavailable or rejects the input (an adopter's copy is
 // theirs and may not even parse), canonicalization degrades to trimmed raw lines. The
@@ -73,9 +72,35 @@ function getBiome(): Promise<Biome | undefined> {
   return _biome;
 }
 
-/** The canonical line multiset of one file, sorted. Exported for the tests that pin
- *  each formatter-insensitivity claim above against real reformatted input. */
-export async function canonicalLines(src: string): Promise<string[]> {
+/**
+ * Sort each run of import statements in place. The order of imports and of their specifiers
+ * is layout, not behaviour (formatters and organize-imports rewrite it), so it stays
+ * insensitive; the order of everything else is kept.
+ */
+function sortImportRuns(lines: string[]): string[] {
+  const out: string[] = [];
+  let run: string[] = [];
+  let inImport = false;
+  const flush = (): void => {
+    out.push(...run.sort());
+    run = [];
+  };
+  for (const l of lines) {
+    if (!inImport && !l.startsWith("import ")) {
+      flush();
+      out.push(l);
+      continue;
+    }
+    run.push(l);
+    // An exploded import is `import {`, one specifier per line, then `} from "x";`.
+    inImport = !l.endsWith(";");
+  }
+  flush();
+  return out;
+}
+
+/** The canonical lines of one file, in file order apart from each run of imports. */
+async function orderedLines(src: string): Promise<string[]> {
   let text = src;
   const biome = await getBiome();
   if (biome !== undefined) {
@@ -86,14 +111,19 @@ export async function canonicalLines(src: string): Promise<string[]> {
       /* keep the raw text — see the fail-safe note above */
     }
   }
-  return text
+  return sortImportRuns(text
     .split("\n")
     // The trailing-comma strip is per LINE and only meaningful because every construct
     // is already on its own line: reordering an import list changes which specifier is
     // last, and only the last one lacks a comma.
     .map((l) => l.trim().replace(/,$/, ""))
-    .filter((l) => l !== "")
-    .sort();
+    .filter((l) => l !== ""));
+}
+
+/** The canonical line multiset of one file, sorted. Exported for the tests that pin
+ *  each formatter-insensitivity claim above against real reformatted input. */
+export async function canonicalLines(src: string): Promise<string[]> {
+  return (await orderedLines(src)).sort();
 }
 
 /** How many members of `a` are not in `b`, counting duplicates. */
@@ -111,11 +141,14 @@ function countMissing(a: string[], b: string[]): number {
 
 export async function compareOwnedCopy(owned: string, reference: string): Promise<OwnedComparison> {
   if (owned === reference) return { verdict: "identical", localOnly: 0, referenceOnly: 0 };
-  const [a, b] = await Promise.all([canonicalLines(owned), canonicalLines(reference)]);
+  const [ordA, ordB] = await Promise.all([orderedLines(owned), orderedLines(reference)]);
+  const a = [...ordA].sort();
+  const b = [...ordB].sort();
   const localOnly = countMissing(a, b);
   const referenceOnly = countMissing(b, a);
+  const sameOrder = ordA.length === ordB.length && ordA.every((l, i) => l === ordB[i]);
   return {
-    verdict: localOnly === 0 && referenceOnly === 0 ? "reformatted" : "differs",
+    verdict: sameOrder ? "reformatted" : "differs",
     localOnly,
     referenceOnly,
   };

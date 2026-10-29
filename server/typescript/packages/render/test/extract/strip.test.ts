@@ -28,3 +28,23 @@ describe("strip", () => {
     expect(strip(undefined)).toBe("");
   });
 });
+
+describe("strip: fence closing", () => {
+  test("backticks inside a JSON string do not close the fence", () => {
+    const out = strip('```json\n{"summary": "run ```make``` first", "score": 7}\n```');
+    expect(out).toBe('{"summary": "run ```make``` first", "score": 7}');
+  });
+
+  test("a longer opening fence is closed only by an equal-or-longer run", () => {
+    const out = strip('````md\nbefore\n```\ninner\n```\nafter\n````\ntail');
+    expect(out).toBe("before\n```\ninner\n```\nafter\ntail");
+  });
+
+  test("a closing fence on the payload's own line is accepted at the end of the text", () => {
+    expect(strip('```json\n{"a":1}```')).toBe('{"a":1}');
+  });
+
+  test("an unclosed fence is not a fence", () => {
+    expect(strip('```json\n{"a":1}')).toBe('```json\n{"a":1}');
+  });
+});

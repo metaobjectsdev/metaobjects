@@ -113,4 +113,11 @@ public class JsonForgivingReaderTests
         Assert.Same(JsonForgivingReader.Truncated, m["a"]);
         Assert.Equal("2", m["b"]);
     }
+
+    [Fact]
+    public void FullJsonEscapeGrammar()
+    {
+        var m = Read("{\"a\":\"caf\\u00e9 \\ud83d\\ude00 a\\/b\\bx\\fy \\\"q\\\" \\\\ \\u12\"}");
+        Assert.Equal("caf\u00e9 \ud83d\ude00 a/b\bx\fy \"q\" \\ u12", m["a"]);
+    }
 }

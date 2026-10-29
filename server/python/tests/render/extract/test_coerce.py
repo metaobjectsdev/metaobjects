@@ -239,3 +239,9 @@ def test_enum_coerce_default_ignored_when_not_a_member() -> None:
         "s", True, ["IN_PROGRESS", "DONE"], {}, coerce_default="BOGUS", normalize="none"
     )
     assert _coerce.value("banana", f, _normal(), "s", rep) is MALFORMED
+
+
+def test_long_above_two_pow_53_keeps_its_precision() -> None:
+    f = FieldSpec("id", FieldKind.LONG, True)
+    rep = ExtractionReport()
+    assert _coerce.value("9007199254740993", f, _normal(), "id", rep) == 9007199254740993

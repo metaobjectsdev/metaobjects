@@ -155,8 +155,9 @@ def eject(names: list[str], root: Path, *, force: bool = False) -> EjectResult:
             packaged = packaged_runtime_path(module)
             reference = packaged.read_text(encoding="utf-8")
             if rt.exists():
-                behind, own = _line_diff(rt.read_text(encoding="utf-8"), reference)
-                out.append(f"  runtime {rel}: kept your copy — {_status(behind, own)} "
+                mine = rt.read_text(encoding="utf-8")
+                behind, _own = _line_diff(mine, reference)
+                out.append(f"  runtime {rel}: kept your copy — {_compare(mine, reference)} "
                            "(eject never overwrites runtime)")
                 if behind:
                     out.append(f'    {n} may need the newer copy: diff -u "{rt}" "{packaged}"; '
@@ -266,8 +267,10 @@ def _normalised(text: str) -> Counter[str]:
 def owned_status(root: Path, entry: GeneratorEntry) -> str | None:
     """``identical`` / ``DIFFERS: N behind, M of your own``, or ``None`` if not owned.
 
-    Line-multiset comparison, the same shape as TS ``owned-copy.ts``: *behind* counts
-    reference lines the copy lacks, *of your own* counts copy lines the reference lacks.
+    ``identical`` means the exact text (line endings aside): an edit that only reorders
+    lines is a customisation, because ``--undo`` deletes an ``identical`` copy. *behind*
+    counts reference lines the copy lacks, *of your own* counts copy lines the reference
+    lacks, as in TS ``owned-copy.ts``.
     """
     path = owned_path(root, entry.name)
     if entry.source is None or not path.exists():
@@ -312,13 +315,17 @@ def _line_diff(mine_text: str, ref_text: str) -> tuple[int, int]:
 
 
 def _status(behind: int, own: int) -> str:
-    if behind == 0 and own == 0:
-        return "identical"
     return f"DIFFERS: {behind} behind, {own} of your own"
 
 
 def _compare(mine_text: str, ref_text: str) -> str:
-    return _status(*_line_diff(mine_text, ref_text))
+    """``identical`` only for the exact reference text, line endings aside. The line counts
+    ignore order, so a reorder reads ``DIFFERS: 0 behind, 0 of your own, reordered``."""
+    if mine_text.replace("\r\n", "\n") == ref_text.replace("\r\n", "\n"):
+        return "identical"
+    behind, own = _line_diff(mine_text, ref_text)
+    status = _status(behind, own)
+    return f"{status}, reordered" if behind == 0 and own == 0 else status
 
 
 def runtime_status(root: Path) -> list[tuple[Path, str]]:

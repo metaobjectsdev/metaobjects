@@ -162,20 +162,49 @@ class JsonForgivingReader:
     def _read_string(self, quote: str) -> str:
         self._i += 1  # opening quote
         out: list[str] = []
-        esc = False
         while self._i < len(self._s):
             c = self._s[self._i]
             self._i += 1
-            if esc:
-                out.append(_unescape(c))
-                esc = False
-            elif c == "\\":
-                esc = True
+            if c == "\\":
+                out.append(self._read_escape())
             elif c == quote:
                 return "".join(out)
             else:
                 out.append(c)
         return "".join(out)  # unterminated string → return what we have
+
+    def _read_escape(self) -> str:
+        """The escape after a consumed backslash: the full JSON grammar. A ``\\uXXXX`` high
+        surrogate followed by a ``\\uXXXX`` low surrogate is one code point; a lone surrogate
+        or an unknown escape keeps its character, and a truncated ``\\u`` keeps its text, so a
+        cut-off reply still yields what it has."""
+        if self._i >= len(self._s):
+            return ""
+        c = self._s[self._i]
+        self._i += 1
+        simple = {"n": "\n", "t": "\t", "r": "\r", "b": "\b", "f": "\f"}
+        if c in simple:
+            return simple[c]
+        if c != "u":
+            return c  # \" \\ \/ and any unknown escape
+        unit = self._hex4()
+        if unit is None:
+            return "u"
+        if 0xD800 <= unit < 0xDC00 and self._s.startswith("\\u", self._i):
+            save = self._i
+            self._i += 2
+            low = self._hex4()
+            if low is not None and 0xDC00 <= low < 0xE000:
+                return chr(0x10000 + ((unit - 0xD800) << 10) + (low - 0xDC00))
+            self._i = save
+        return chr(unit)
+
+    def _hex4(self) -> int | None:
+        digits = self._s[self._i : self._i + 4]
+        if len(digits) == 4 and all(d in "0123456789abcdefABCDEF" for d in digits):
+            self._i += 4
+            return int(digits, 16)
+        return None
 
     def _read_bare_scalar(self) -> object | None:
         start = self._i
@@ -227,13 +256,3 @@ def comment_end(s: str, i: int) -> int:
         return j
     close = s.find("*/", i + 2)
     return len(s) if close < 0 else close + 2
-
-
-def _unescape(c: str) -> str:
-    if c == "n":
-        return "\n"
-    if c == "t":
-        return "\t"
-    if c == "r":
-        return "\r"
-    return c
