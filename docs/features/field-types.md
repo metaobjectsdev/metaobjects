@@ -25,7 +25,7 @@ across ports — a `field.currency` is integer minor units everywhere; a
 | `field.uri` | `string` | `java.net.URI` | `java.net.URI` | `Uri` | `AnyUrl` | `text` |
 | `field.inet` | `string` | `InetAddress` | `InetAddress` | `IPAddress` | `IPvAnyAddress` | `inet` |
 | `field.enum` | union + `z.enum` | `Enum` | `enum class` | `enum` | `Enum` | `varchar` + `CHECK` |
-| `field.object` | nested type | nested class | nested data class | nested record | nested dataclass | per `@storage` |
+| `field.object` | nested type | nested class | nested data class | nested class | nested Pydantic model | per `@storage` |
 | `field.map` | `Record<string, V>` | `Map<String, V>` | `Map<String, V>` | `Dictionary<string, V>` | `dict[str, V]` | `jsonb` |
 
 That is the whole registered vocabulary — 17 concrete subtypes. `field.base` is an
