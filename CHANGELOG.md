@@ -52,6 +52,13 @@ here.**
   is unchanged and the default output is byte-identical. The `@metaobjectsdev/docs-site` README
   lists the five files and how to serve them. Copying them into the output is not done for you.
 
+- **`ERR_ENUM_NORMALIZE_COLLISION`.** Loading refuses an enum, in all five ports, when two declared
+  members fold to the same key under the default `@normalize: strip` (`READ_ONLY` and `READONLY`,
+  `X_1` and `X1`), because a reply naming one could not be told from the other. Set
+  `@normalize: collapse` or `none`, or rename a member. Collapse and none are unaffected and no
+  accepted reply changes. Fixtures `error-enum-normalize-collision`, `enum-normalize-no-collision`
+  and `enum-normalize-collision-collapse-ok`.
+
 - **`ERR_COLUMN_NAME_COLLISION`.** Two fields of one stored object that resolve to the same
   physical column (`userId` and `userID` under snake_case, or two fields sharing `@column`) are a
   load error in every port, naming both fields. A model that loaded before with a duplicate column
@@ -265,6 +272,20 @@ here.**
   TypeScript-owned, so no other port carries this comparison. MySQL, SQL Server and Oracle are not
   migrate dialects, so they have no probe.
 
+- **Java and Kotlin `<filters>` name globs now use the same grammar as `scope`.** `*` matches
+  within one `::` segment and no longer crosses `::`; a whole segment `**` matches one or more
+  segments; `@` and `?` are ordinary characters, no longer wildcards. `!` still excludes and the
+  `.[attr:...]` predicate is unchanged. A filter that now selects fewer objects than before fails
+  generation, naming the pattern, an object it no longer selects and the `**` replacement; before,
+  those objects vanished from the output silently. To update, in every `<filters>` list in your
+  pom (and every generator entry that repeats them, such as `entity` and `extractor`):
+  1. Run `mvn metaobjects:generate`; the error lists each affected pattern with its replacement.
+  2. Replace a segment that is only `*` with `**` (`acme::*` becomes `acme::**`).
+  3. Replace a mixed segment such as `*Store` with `**::*Store` (`acme::*Store` becomes
+     `acme::**::*Store`).
+  4. Replace `@` (one segment) with `*`; replace each `?` with an explicit name or a `*`.
+  5. Run `mvn metaobjects:generate` again; the generated file set should be unchanged.
+
 - **A bare `verify` runs the same default gate set in every port: codegen drift, prompt
   templates and the requirement ledger.** Until now a bare run covered one gate: `meta verify`
   and `dotnet meta verify` ran only templates, so "run `verify` in CI" did not catch generated
@@ -396,6 +417,9 @@ here.**
     compared only the pluralized PascalCase name. Java and Kotlin already refused it.
   - The Spring and Kotlin filter-allowlist generators import their support class explicitly, so an
     ejected, package-renamed copy compiles again (broken since #503).
+  - The CSV and spreadsheet formula-injection guard no longer prefixes `'` to strict numeric
+    literals (`-5`, `-5.25`) in all four render ports; every other value starting with
+    `= + - @ TAB CR` is still guarded. Fixture `render-csv-numeric-exempt`.
   - Smaller instances: Java `<filters>` glob no longer throws on metacharacters; Java and C#
     generated string literals escape newlines and control characters; `library.json` is read with
     Gson; the Kotlin relations helper imports its primary-key type; `eject` reads `pom.xml` with

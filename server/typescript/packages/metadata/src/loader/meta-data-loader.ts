@@ -33,7 +33,7 @@ import { validateSourceEscapes } from "../persistence/source/validate-source-esc
 import { validateSourcePhysicalNames } from "../persistence/source/validate-source-physical-names.js";
 import { validateSourceParameterRef } from "../persistence/source/validate-source-parameter-ref.js";
 import { validateFieldMutability } from "../core/field/validate-field-mutability.js";
-import { validateEnumNormalizeAmbiguity } from "../core/field/validate-enum-normalize-ambiguity.js";
+import { validateEnumNormalizeAmbiguity, validateEnumNormalizeCollision } from "../core/field/validate-enum-normalize-ambiguity.js";
 import { validateDiscriminator } from "../core/object/validate-discriminator.js";
 import { resolveDeferredSupers, EXTENDS_TARGET_MISMATCH_RULE } from "../super-resolve.js";
 import { resolveReferences } from "./resolve-references.js";
@@ -755,6 +755,8 @@ export class MetaDataLoader {
       // others), which would silently coerce delimited input to a wrong-but-valid
       // member. WARN_ENUM_NORMALIZE_AMBIGUOUS.
       envelopeWarnings.push(...validateEnumNormalizeAmbiguity(root).warnings);
+      // Two members folding to the same key under `strip` — ERR_ENUM_NORMALIZE_COLLISION.
+      errors.push(...validateEnumNormalizeCollision(root));
 
       // FR-015 — source.rdb @parameterRef typed-input validation.
       errors.push(...validateSourceParameterRef(root));

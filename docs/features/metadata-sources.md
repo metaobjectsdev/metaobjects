@@ -84,17 +84,20 @@ become a four-port concern. The Node CLI remains the file's only writer;
 `meta init --config-only` writes it into a Maven- or pip-rooted project without
 adding a TypeScript scaffold.
 
-**`scope` and `migrate.scope` remain Node-CLI-only.** Java's shipped `<filters>`
-grammar uses `*` to cross the `::` package separator and `@` to match one
-segment — respectively `scope`'s `**` and `*`, **inverted** — plus `!`-prefix
-exclusion and a `.[attr]` predicate that `scope` cannot express at all
-(`GeneratorUtil.createRegexFromGlob` even carries a `TODO` conceding its own
-separator handling is wrong). Both are output filters over the same resolved
-file set, so they compete rather than layer, and reconciling them changes
-behavior for existing Java consumers — a separate, adopter-affecting decision
-rather than a mechanical port. No cross-port behavior depends on `scope`. (The pattern
-grammar itself is ported and corpus-gated in Java, Kotlin and C# as a library, ahead of the
-cross-repo dependency work; no command in those ports reads `scope` from the config yet.)
+**`scope` and `migrate.scope` remain Node-CLI-only, but Java's `<filters>` name glob is
+the same grammar.** Since 8.2.0 the Maven plugin's `<filters>` patterns use `scope`'s
+pattern grammar: `*` inside a segment never crosses `::`, a segment that is exactly `**`
+spans one or more segments, and every other character (`@` and `?` included) is literal.
+The pre-8.2.0 rule let `*` cross `::` and gave `@` and `?` wildcard meaning. A filter that
+the old rule matched and the new one does not fails generation with an error naming the
+pattern and its `**` replacement (for example `acme::*` becomes `acme::**`), so output
+never drops silently. `<filters>` keeps what `scope` cannot express: `!`-prefix exclusion
+and a `.[attr]` predicate. Both are output filters over the same resolved file set, so
+they compete rather than layer. No cross-port behavior depends on `scope`; the TypeScript,
+C#, Python and Kotlin ports have no separate generator-filter glob (Kotlin runs through the
+same Maven plugin and so the same `<filters>`). (The pattern grammar itself is ported and
+corpus-gated in Java, Kotlin and C# as a library, ahead of the cross-repo dependency work;
+no command in those ports reads `scope` from the config yet.)
 
 **Two things are deliberately not cross-port contracts**, because the corpus
 that gates this feature says so explicitly:

@@ -27,6 +27,7 @@
 // can merge tokens across a delimiter like "|" — both are skipped.
 
 import type { MetaData } from "../../shared/meta-data.js";
+import { ParseError } from "../../errors.js";
 import type { LoaderWarning } from "../../source.js";
 import { TYPE_FIELD } from "../../shared/base-types.js";
 import { TYPE_OBJECT } from "../../shared/base-types.js";
@@ -162,4 +163,56 @@ export function validateEnumNormalizeAmbiguity(root: MetaData): EnumNormalizeAmb
 
   visit(root);
   return { warnings };
+}
+
+/**
+ * ERR_ENUM_NORMALIZE_COLLISION — two declared members of one enum fold to the SAME key
+ * under `@normalize: strip` (e.g. `READ_ONLY` and `READONLY`). The extract engine can
+ * only resolve a reply to one of them, so the other becomes unreachable and a reply
+ * naming it is coerced to the wrong member (wrong-and-green). An ERROR, unlike the
+ * concatenation advisory above: the vocabulary itself is ambiguous, whatever the input.
+ * `collapse` / `none` are not gated (they keep the separators that distinguish members).
+ */
+export function validateEnumNormalizeCollision(root: MetaData): ParseError[] {
+  const errors: ParseError[] = [];
+  const visit = (node: MetaData): void => {
+    if (node.type === TYPE_FIELD && node.subType === FIELD_SUBTYPE_ENUM) {
+      // ADR-0039: own — the vocabulary DECLARED here; an inheriting enum shares the
+      // super's set, already checked there (one hazard, one error).
+      const rawValues = node.ownAttrs().get(FIELD_ATTR_VALUES);
+      if (Array.isArray(rawValues) && rawValues.length > 1) {
+        const normalize = effectiveNormalize(node);
+        if (normalize.mode === NORMALIZE_DEFAULT) {
+          const byKey = new Map<string, string[]>();
+          for (const m of rawValues) {
+            const member = String(m);
+            const key = stripNormalize(member);
+            if (key.length === 0) continue;
+            byKey.set(key, [...(byKey.get(key) ?? []), member]);
+          }
+          for (const [key, members] of byKey) {
+            // Distinct declared members only: an exact duplicate is ERR_BAD_ATTR_VALUE's job.
+            const distinct = [...new Set(members)];
+            if (distinct.length < 2) continue;
+            errors.push(
+              new ParseError(
+                `field.enum "${node.name}" members ${distinct.map((d) => `'${d}'`).join(", ")} all ` +
+                  `normalize to '${key}' under @${FIELD_ATTR_NORMALIZE}: '${NORMALIZE_DEFAULT}'` +
+                  `${normalize.explicit ? "" : " (the default)"}, which upper-cases and deletes ` +
+                  `everything outside A-Z0-9, so a reply naming one of them is indistinguishable ` +
+                  `from the others. Rename the members so they differ after that fold, or set ` +
+                  `@${FIELD_ATTR_NORMALIZE}: 'collapse' (keeps '_' distinct) or 'none' (exact ` +
+                  `match) on this field.`,
+                { code: "ERR_ENUM_NORMALIZE_COLLISION", source: node.source },
+              ),
+            );
+            break; // one error per declaring node — the first collision is enough to act on
+          }
+        }
+      }
+    }
+    for (const child of node.ownChildren()) visit(child);
+  };
+  visit(root);
+  return errors;
 }

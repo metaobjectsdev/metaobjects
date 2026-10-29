@@ -72,9 +72,22 @@ public final class Escapers {
         char first = s.charAt(0);
         if (first == '=' || first == '+' || first == '-' || first == '@'
                 || first == '\t' || first == '\r') {
-            return "'" + s;
+            return isStrictNumeric(s) ? s : "'" + s;
         }
         return s;
+    }
+
+    // ^-?[0-9]+(\.[0-9]+)?$ over ASCII digits, whole string.
+    private static boolean isStrictNumeric(String s) {
+        int i = !s.isEmpty() && s.charAt(0) == '-' ? 1 : 0;
+        int intStart = i;
+        while (i < s.length() && s.charAt(i) >= '0' && s.charAt(i) <= '9') i++;
+        if (i == intStart) return false;
+        if (i == s.length()) return true;
+        if (s.charAt(i) != '.') return false;
+        int fracStart = ++i;
+        while (i < s.length() && s.charAt(i) >= '0' && s.charAt(i) <= '9') i++;
+        return i > fracStart && i == s.length();
     }
 
     static String escapeCsv(String s) {

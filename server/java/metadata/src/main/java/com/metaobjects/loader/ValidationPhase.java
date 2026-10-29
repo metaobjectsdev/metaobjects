@@ -191,6 +191,8 @@ public final class ValidationPhase {
         // Authoring guard — a field.enum vocabulary ambiguous under the default
         // @normalize: strip. WARN_ENUM_NORMALIZE_AMBIGUOUS.
         pass(collected, () -> validateEnumNormalizeAmbiguity(root, loader));
+        // Two members folding to one key under `strip` -- ERR_ENUM_NORMALIZE_COLLISION.
+        validateEnumNormalizeCollision(root, collected);
         // FR-014 — TPH discriminator cross-attribute rules.
         pass(collected, () -> validateDiscriminator(root));
         // FR-015 — source.rdb @parameterRef typed-input rules.
@@ -589,6 +591,64 @@ public final class ValidationPhase {
 
     static void validateEnumNormalizeAmbiguity(MetaRoot root, MetaDataLoader loader) {
         walkEnumNormalizeAmbiguity(root, loader);
+    }
+
+    /**
+     * ERR_ENUM_NORMALIZE_COLLISION -- two declared members of one enum fold to the SAME key
+     * under {@code @normalize: strip} (e.g. READ_ONLY and READONLY), so one is unreachable
+     * and a reply naming it coerces to the other. An ERROR (the vocabulary itself is
+     * ambiguous); {@code collapse} / {@code none} are not gated. Mirrors the TS reference.
+     */
+    static void validateEnumNormalizeCollision(MetaData node, List<MetaDataException> out) {
+        checkEnumNormalizeCollision(node, out);
+        // Own children only -- inherited children are checked on their declaring nodes.
+        for (MetaData child : node.getChildren(MetaData.class, false)) {
+            validateEnumNormalizeCollision(child, out);
+        }
+    }
+
+    private static void checkEnumNormalizeCollision(MetaData node, List<MetaDataException> out) {
+        if (!EnumField.TYPE_FIELD.equals(node.getType())
+                || !EnumField.SUBTYPE_ENUM.equals(node.getSubType())) {
+            return;
+        }
+        // Own-attrs-only (ADR-0039): the vocabulary DECLARED here; an inheriting enum
+        // shares the super's set, already checked there.
+        if (!node.hasMetaAttr(EnumField.ATTR_VALUES, false)) return;
+        Object raw = node.getMetaAttr(EnumField.ATTR_VALUES, false).getValue();
+        if (!(raw instanceof List) || ((List<?>) raw).size() < 2) return;
+        String[] normalize = effectiveNormalizeMode(node);
+        if (!EnumField.NORMALIZE_DEFAULT.equals(normalize[0])) return;
+        boolean modeIsExplicit = "true".equals(normalize[1]);
+
+        java.util.Map<String, java.util.LinkedHashSet<String>> byKey = new java.util.LinkedHashMap<>();
+        for (Object o : (List<?>) raw) {
+            String member = String.valueOf(o);
+            String key = stripNormalize(member);
+            if (key.isEmpty()) continue;
+            byKey.computeIfAbsent(key, k -> new java.util.LinkedHashSet<>()).add(member);
+        }
+        for (java.util.Map.Entry<String, java.util.LinkedHashSet<String>> e : byKey.entrySet()) {
+            // Distinct members only: an exact duplicate is ERR_BAD_ATTR_VALUE's job.
+            if (e.getValue().size() < 2) continue;
+            StringBuilder listed = new StringBuilder();
+            for (String m : e.getValue()) {
+                if (listed.length() > 0) listed.append(", ");
+                listed.append('\'').append(m).append('\'');
+            }
+            out.add(new MetaDataException(
+                ErrorMessageConstants.ERR_ENUM_NORMALIZE_COLLISION
+                    + ": field.enum \"" + shortNameOf(node) + "\" members " + listed
+                    + " all normalize to '" + e.getKey() + "' under @" + EnumField.ATTR_NORMALIZE
+                    + ": '" + EnumField.NORMALIZE_DEFAULT + "'"
+                    + (modeIsExplicit ? "" : " (the default)")
+                    + ", which upper-cases and deletes everything outside A-Z0-9, so a reply"
+                    + " naming one of them is indistinguishable from the others. Rename the"
+                    + " members so they differ after that fold, or set @" + EnumField.ATTR_NORMALIZE
+                    + ": 'collapse' (keeps '_' distinct) or 'none' (exact match) on this field.",
+                ErrorCode.ERR_ENUM_NORMALIZE_COLLISION, node.getSource()));
+            return; // one error per declaring node
+        }
     }
 
     private static void walkEnumNormalizeAmbiguity(MetaData node, MetaDataLoader loader) {

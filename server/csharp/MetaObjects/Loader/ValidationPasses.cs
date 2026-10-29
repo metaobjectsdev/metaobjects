@@ -3842,6 +3842,70 @@ public static partial class ValidationPasses
         foreach (var child in node.OwnChildren()) VisitEnumNormalizeAmbiguity(child, warnings);
     }
 
+    /// <summary>
+    /// ERR_ENUM_NORMALIZE_COLLISION — two declared members of one enum fold to the SAME key
+    /// under <c>@normalize: strip</c> (e.g. READ_ONLY and READONLY), so one is unreachable and a
+    /// reply naming it coerces to the other. An ERROR (the vocabulary itself is ambiguous);
+    /// <c>collapse</c> / <c>none</c> are not gated. Mirrors the TS reference.
+    /// </summary>
+    public static IReadOnlyList<MetaError> ValidateEnumNormalizeCollision(MetaData root)
+    {
+        var errors = new List<MetaError>();
+        VisitEnumNormalizeCollision(root, errors);
+        return errors;
+    }
+
+    private static void VisitEnumNormalizeCollision(MetaData node, List<MetaError> errors)
+    {
+        if (node.Type == TYPE_FIELD && node.SubType == FIELD_SUBTYPE_ENUM)
+        {
+            // ADR-0039 sanctioned own: the vocabulary DECLARED here; an inheriting enum
+            // shares the super's set, already checked there.
+            var ownValues = node.OwnAttr(FIELD_ATTR_VALUES);
+            if (ownValues is System.Collections.IEnumerable rawEnum && ownValues is not string)
+            {
+                var members = new List<string>();
+                foreach (var o in rawEnum) members.Add(o?.ToString() ?? string.Empty);
+                var normalize = EffectiveNormalizeMode(node);
+                if (members.Count > 1 && normalize.Mode == NORMALIZE_DEFAULT)
+                {
+                    var byKey = new Dictionary<string, List<string>>();
+                    var order = new List<string>();
+                    foreach (var m in members)
+                    {
+                        var key = StripNormalize(m);
+                        if (key.Length == 0) continue;
+                        if (!byKey.TryGetValue(key, out var list))
+                        {
+                            byKey[key] = list = new List<string>();
+                            order.Add(key);
+                        }
+                        // Distinct members only: an exact duplicate is ERR_BAD_ATTR_VALUE's job.
+                        if (!list.Contains(m)) list.Add(m);
+                    }
+                    foreach (var key in order)
+                    {
+                        var distinct = byKey[key];
+                        if (distinct.Count < 2) continue;
+                        var listed = string.Join(", ", distinct.Select(d => $"'{d}'"));
+                        errors.Add(new MetaError(
+                            $"field.enum \"{node.Name}\" members {listed} all normalize to '{key}' under " +
+                            $"@{FIELD_ATTR_NORMALIZE}: '{NORMALIZE_DEFAULT}'{(normalize.Explicit ? "" : " (the default)")}, " +
+                            "which upper-cases and deletes everything outside A-Z0-9, so a reply naming one of " +
+                            "them is indistinguishable from the others. Rename the members so they differ after " +
+                            $"that fold, or set @{FIELD_ATTR_NORMALIZE}: 'collapse' (keeps '_' distinct) or " +
+                            "'none' (exact match) on this field.",
+                            ErrorCode.ERR_ENUM_NORMALIZE_COLLISION,
+                            Envelope: node.Source));
+                        break; // one error per declaring node
+                    }
+                }
+            }
+        }
+        // ADR-0039 sanctioned own: structural walk of what each node declares.
+        foreach (var child in node.OwnChildren()) VisitEnumNormalizeCollision(child, errors);
+    }
+
     // =========================================================================
     // FR-037 R1 — field-level @mutability cross-attribute rules.
     //   ERR_MUTABILITY_AUTOSET_CONFLICT / ERR_MUTABILITY_DOWNGRADE /

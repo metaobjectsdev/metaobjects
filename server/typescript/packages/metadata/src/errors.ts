@@ -278,6 +278,11 @@ export const ERROR_CODES = [
   // an integer array. An array-of-enum stays string-backed: drop @intValueMap,
   // or make the field scalar.
   "ERR_ENUM_INT_VALUE_MAP_ARRAY",
+  // Two declared members of one field.enum normalize to the same key under the
+  // default `@normalize: strip` (upper-case, delete everything outside A-Z0-9), so
+  // one is unreachable and a reply naming it coerces to the other. Rename a member,
+  // or set `@normalize: collapse` / `none`.
+  "ERR_ENUM_NORMALIZE_COLLISION",
   // Phase-1 metadata-source-resolution — a path source declared in
   // .metaobjects/config.json does not exist on disk.
   "ERR_SOURCE_UNRESOLVED",

@@ -565,6 +565,12 @@ public enum ErrorCode {
     ERR_ENUM_INT_VALUE_MAP_ARRAY,
 
     /**
+     * Two declared members of one {@code field.enum} normalize to the same key under the
+     * default {@code @normalize: strip}; rename a member or set {@code collapse} / {@code none}.
+     */
+    ERR_ENUM_NORMALIZE_COLLISION,
+
+    /**
      * FR-044: a {@code dimension.*} is invalid: {@code @of} is not Entity.field on the
      * owning entity (or, with {@code @via}, on the {@code @via} terminal) or names no
      * field (D1); {@code @via} does not start at the owning entity, names an unknown hop,

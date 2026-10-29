@@ -42,9 +42,12 @@ import java.util.regex.Pattern;
  *       after it. Matching is case-sensitive.</li>
  * </ul>
  *
- * <p>This is deliberately NOT the {@code <filters>} glob of the Maven plugin
- * ({@code GeneratorUtil.createRegexFromGlob}), whose {@code *} and {@code @} are the
- * inverse of {@code **} and {@code *} here. The two are separate surfaces.
+ * <p>The Maven plugin's {@code <filters>} name glob uses this same grammar
+ * ({@code GeneratorUtil.filterByName} compiles with {@link #compilePattern}), so a name that
+ * is in {@code scope} reads the same in a filter. A filter pattern that the pre-8.2.0 rule
+ * ({@code *} crossing {@code ::}, {@code @} one segment, {@code ?} one character) matched
+ * and this one does not fails generation with an error naming its {@code **} replacement,
+ * rather than dropping objects from the output.
  */
 public final class Scope {
 

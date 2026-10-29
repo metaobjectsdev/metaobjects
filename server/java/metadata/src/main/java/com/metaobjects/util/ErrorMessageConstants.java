@@ -309,6 +309,9 @@ public final class ErrorMessageConstants {
      */
     public static final String ERR_ENUM_INT_VALUE_MAP_ARRAY = "ERR_ENUM_INT_VALUE_MAP_ARRAY";
 
+    /** Cross-language contract: {@code ERR_ENUM_NORMALIZE_COLLISION}. */
+    public static final String ERR_ENUM_NORMALIZE_COLLISION = "ERR_ENUM_NORMALIZE_COLLISION";
+
     /**
      * #208 (design doc §5 R6) warning: an {@code origin.*}-bearing (derived) own
      * field lives under a host object that declares an {@code @unmanaged} source.

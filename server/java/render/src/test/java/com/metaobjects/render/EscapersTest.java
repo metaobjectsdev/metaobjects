@@ -25,7 +25,8 @@ public class EscapersTest {
     @Test public void csvFormulaInjectionGuard() {
         assertEquals("'=SUM(A1:A5)", Escapers.escape("csv", "=SUM(A1:A5)"));
         assertEquals("'+1+1", Escapers.escape("csv", "+1+1"));
-        assertEquals("'-1", Escapers.escape("csv", "-1"));
+        assertEquals("-1", Escapers.escape("csv", "-1"));
+        assertEquals("'-1a", Escapers.escape("csv", "-1a"));
         assertEquals("'@cmd", Escapers.escape("csv", "@cmd"));
         assertEquals("'\tTAB", Escapers.escape("csv", "\tTAB"));
     }

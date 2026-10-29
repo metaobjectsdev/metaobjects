@@ -425,6 +425,14 @@ extractor lands beside its class. A pom with more than one `entity` entry lists 
 `extractor` was listed; that was output no entry declared, and 8.1.0 removed it
 (ADR-0034 Amendment 9).
 
+**`<filters>` name globs.** A generator's `<filters>` take the `scope` pattern grammar:
+`*` stays inside one `::` segment, a whole segment `**` spans packages, anything else is
+literal (`@` and `?` were wildcards through 8.1.x and no longer are). A `!` prefix excludes.
+A pattern that selected objects before 8.2.0 and now selects fewer fails generation naming
+the pattern and its `**` replacement, so output cannot vanish silently. Upgrade:
+`acme::*` becomes `acme::**` wherever it must reach nested packages; `acme::*Store`
+becomes `acme::**::*Store`; `@` becomes `*`.
+
 ### Shared and `@provided` enums
 
 A package-level abstract `field.enum` that fields extend is one top-level Java `enum`,

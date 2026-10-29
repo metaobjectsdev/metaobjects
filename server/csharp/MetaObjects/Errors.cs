@@ -299,6 +299,9 @@ public enum ErrorCode
     // an integer array. An array-of-enum stays string-backed: drop @intValueMap,
     // or make the field scalar.
     ERR_ENUM_INT_VALUE_MAP_ARRAY,
+    // Two declared members of one field.enum normalize to the same key under the
+    // default @normalize: strip; rename a member or set collapse / none.
+    ERR_ENUM_NORMALIZE_COLLISION,
     ERR_UNKNOWN,
 }
 

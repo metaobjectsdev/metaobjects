@@ -102,7 +102,7 @@ public class PlantUMLTest extends GeneratorTestBase {
                 .outputDir(getGeneratedTestSourcesPath())
                 .withFilters(Arrays.asList(new String[] {
                         "produce::v1::fruit::*",
-                        "produce::v1::container::@"
+                        "produce::v1::container::*"
                 }))
                 .build();
 
@@ -121,7 +121,7 @@ public class PlantUMLTest extends GeneratorTestBase {
         drawUML( args, Arrays.asList( new String[] {
                 "produce::v1::fruit::*",
                 "produce::v1::vegetable::*",
-                "produce::v1::container::@"
+                "produce::v1::container::*"
         } ));
     }
 
@@ -137,7 +137,7 @@ public class PlantUMLTest extends GeneratorTestBase {
         drawUML( args, Arrays.asList( new String[] {
                 "produce::v1::fruit::*",
                 "produce::v1::vegetable::*",
-                "produce::v1::container::@"
+                "produce::v1::container::*"
         } ));
     }
 

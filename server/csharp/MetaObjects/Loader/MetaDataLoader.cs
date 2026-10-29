@@ -606,6 +606,9 @@ public class MetaDataLoader
                 }
             }
 
+            // Two members folding to one key under `strip` — ERR_ENUM_NORMALIZE_COLLISION.
+            errors.AddRange(ValidationPasses.ValidateEnumNormalizeCollision(root));
+
             // FR-014: TPH discriminator cross-attribute rules.
             errors.AddRange(ValidationPasses.ValidateDiscriminator(root));
 
