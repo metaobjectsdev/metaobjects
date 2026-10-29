@@ -3,7 +3,7 @@ import type {
   ViewDescriptor, ViewChangeReason,
   DependentRelation,
   Change, ChangeStatus, DiffResult, AllowOptions, AmbiguousCallback, Dialect,
-  CheckDescriptor, NameChange, DeclaredRename,
+  CheckDescriptor, ColumnDefault, NameChange, DeclaredRename, ExprCanonPath,
 } from "../types.js";
 import type { SqlType } from "../sql-type.js";
 import { sqlTypeEquals } from "../sql-type.js";
@@ -13,8 +13,9 @@ import { detectColumnRenames, detectTableRenames } from "./rename-heuristic.js";
 import { firstViewSqlDifference, viewSqlEquals } from "../view-sql-compare.js";
 import { viewReplaceIsLegal, type ViewReplaceProbe } from "../view-replace.js";
 import { liveViewReadsTable, sqlNamesIdentifier } from "../view-reads.js";
+import { expectedFromShadow, shadowIdentityProbe, type ShadowSchemaSource } from "../shadow-expected.js";
 import { checkExprEquals, checkExprRespelledNullSafe, renameExprIdentifiers } from "../check-expr-compare.js";
-import { checkMatchesLive, indexExprMatchesLive, NO_EXPR_CANON, type ExprCanon, type ExprCanonProbe, type IndexExprCanon } from "../expr-canon.js";
+import { checkMatchesLive, columnDefaultMatchesLive, indexExprMatchesLive, NO_EXPR_CANON, type ExprCanon, type ExprCanonProbe, type IndexExprCanon } from "../expr-canon.js";
 import { isPgAutoSequenceDefault } from "../pg-identity-default.js";
 import { DEFAULT_DB_SCHEMA_POSTGRES } from "@metaobjectsdev/metadata";
 import { qualifiedDbName } from "../qualified-name.js";
@@ -90,6 +91,13 @@ export interface DiffArgs {
    */
   exprCanonProbe?: ExprCanonProbe;
   /**
+   * Postgres: the primary path. A scratch (shadow) database the expected schema is applied to;
+   * when it resolves a catalog, drift is the diff of that catalog against `actual` (see
+   * shadow-expected.ts) and `exprCanonProbe` is not consulted. When it resolves none,
+   * `exprCanonProbe` answers, and without one the string normaliser does.
+   */
+  shadowSchema?: ShadowSchemaSource;
+  /**
    * #258 — refuse (throw {@link PrimaryKeyChangeError}) when an existing table's live
    * PRIMARY KEY differs from the metadata identity. There is no primary-key change kind
    * in the emitter, so such a move would silently degrade into add-column + drop-column
@@ -157,9 +165,15 @@ export async function diff(
   optsMaybe?: Omit<DiffArgs, "expected" | "actual">,
 ): Promise<DiffResult> {
   // Normalize args.
-  const args: DiffArgs = isDiffArgs(argsOrExpected)
+  const given: DiffArgs = isDiffArgs(argsOrExpected)
     ? argsOrExpected
     : { expected: argsOrExpected, actual: actualMaybe!, ...(optsMaybe ?? {}) };
+  // Postgres, primary path: the expected side becomes the shadow database's own catalog.
+  const shadowAnswer = given.dialect === "postgres" && given.shadowSchema !== undefined
+    ? await given.shadowSchema(given.expected)
+    : undefined;
+  const shadow = shadowAnswer !== undefined && "catalog" in shadowAnswer ? shadowAnswer.catalog : undefined;
+  const args: DiffArgs = shadow !== undefined ? { ...given, expected: expectedFromShadow(shadow, given.expected) } : given;
 
   const changes: Change[] = [];
 
@@ -254,7 +268,16 @@ export async function diff(
   // any table present on both sides (diffRenamedTables), and its columns are never
   // scanned as orphaned drop/add pairs by the column heuristic in Pass 3.
   await detectTableRenames(changes, args.onAmbiguous, args.renames);
-  const canon = await probeExprCanon(args.exprCanonProbe, args.dialect, changes, expectedTables, actualTables);
+  let exprCanonPath: ExprCanonPath = "normaliser";
+  let canonProbe: ExprCanonProbe | undefined;
+  if (args.dialect === "postgres") {
+    if (shadow !== undefined) { canonProbe = shadowIdentityProbe; exprCanonPath = "shadow"; }
+    else if (args.exprCanonProbe !== undefined) { canonProbe = args.exprCanonProbe; exprCanonPath = "probe"; }
+  }
+  const probed = await probeExprCanon(canonProbe, args.dialect, changes, expectedTables, actualTables);
+  // A snapshot older than formatVersion 4 never recorded identity or comments: unknown, not absent.
+  const catalog = shadow !== undefined && given.expected.meta?.identityAndCommentsUnknown !== true;
+  const canon: ExprCanon = catalog ? { ...probed, catalog: true } : probed;
   const { renamed, predecessors } = diffRenamedTables(changes, expectedTables, actualTables, args.dialect, canon);
 
   // Pass 2: tables in both → compare columns/indexes/FKs
@@ -273,7 +296,10 @@ export async function diff(
   const actualViewsInScope = args.actual.views.filter(
     (v) => inScope(v.schema) && !unmanaged.has(viewIdentity(v)),
   );
-  await diffViews(expectedViewsInScope, actualViewsInScope, changes, args.dialect, args.viewReplaceProbe);
+  // On the shadow path a view's body is Postgres's deparse of the shadow's copy, compared
+  // with the deparse of the live one.
+  const catalogBodies = new Map((shadow?.views ?? []).flatMap((v) => (v.sql !== undefined ? [[viewIdentity(v), v.sql] as const] : [])));
+  await diffViews(expectedViewsInScope, actualViewsInScope, changes, args.dialect, args.viewReplaceProbe, catalogBodies);
 
   // Pass 2c: a change that disturbs the table under a view forces the view to be
   // dropped before and recreated after — postgres blocks ALTER on a column a view
@@ -294,9 +320,13 @@ export async function diff(
   // Pass 3: column renames (table renames were resolved in Pass 1c).
   await detectColumnRenames(changes, args.onAmbiguous, args.renames);
   // Pass 3b: a renamed column carries the constraints and indexes named after it.
-  carryThroughColumnRenames(changes, args.dialect, (id) => {
+  await carryThroughColumnRenames(changes, args.dialect, (id) => {
     const live = predecessors.get(id) ?? actualTables.get(id);
     return live === undefined ? NO_TEXT_COLUMNS : textColumnsOf(live);
+  }, canonProbe === undefined ? undefined : {
+    probe: canonProbe,
+    liveOf: (id) => predecessors.get(id) ?? actualTables.get(id),
+    expectedOf: (id) => expectedTables.get(id),
   });
 
   // Strip the rename-detection side-channel fields before status assignment / return.
@@ -328,6 +358,8 @@ export async function diff(
     changes,
     blocked: changes.filter((c) => c.status.state === "blocked"),
     hazards: changes.flatMap((c) => dataHazardOf(c) ?? []),
+    ...(args.dialect === "postgres" ? { exprCanonPath } : {}),
+    ...(shadowAnswer !== undefined && "unavailable" in shadowAnswer ? { shadowUnavailable: shadowAnswer.unavailable } : {}),
   };
 }
 
@@ -413,12 +445,14 @@ async function probeExprCanon(
   }
   const checks = new Map<CheckDescriptor, string>();
   const indexes = new Map<IndexDescriptor, IndexExprCanon>();
+  const defaults = new Map<ColumnDescriptor, ColumnDefault>();
   for (const [id, expected] of expectedTables) {
     const live = actualTables.get(id) ?? liveOf.get(id);
     if (live === undefined) continue;
     const liveChecks = new Map(live.checks.map((c) => [c.name, c.expression]));
     const liveIndexes = new Map(live.indexes.map((ix) => [ix.name, ix]));
-    // Both lookups are by expected descriptor, so the probe is asked only about those the
+    const liveColumns = new Map(live.columns.map((c) => [c.name, c]));
+    // Every lookup is by expected descriptor, so the probe is asked only about those the
     // comparison could not settle by identical text.
     const unsettled: TableDescriptor = {
       ...expected,
@@ -427,14 +461,21 @@ async function probeExprCanon(
         const l = liveIndexes.get(ix.name);
         return l === undefined || ix.expr !== l.expr || ix.where !== l.where;
       }),
+      // A default is only a spelling question when both sides have one; a missing side is
+      // a real add or drop.
+      columns: expected.columns.filter((c) => {
+        const l = liveColumns.get(c.name)?.default;
+        return c.default !== undefined && l !== undefined && !columnDefaultsEqual(c.default, l);
+      }),
     };
-    if (unsettled.checks.length === 0 && unsettled.indexes.length === 0) continue;
+    if (unsettled.checks.length === 0 && unsettled.indexes.length === 0 && unsettled.columns.length === 0) continue;
     const answer = await probe(live, unsettled);
     if (answer === undefined) continue;
     for (const [c, text] of answer.checks) checks.set(c, text);
     for (const [ix, text] of answer.indexes) indexes.set(ix, text);
+    for (const [c, d] of answer.defaults) defaults.set(c, d);
   }
-  return { checks, indexes };
+  return { checks, indexes, defaults };
 }
 
 /**
@@ -451,7 +492,14 @@ function diffTablePair(
   dialect: Dialect | undefined,
   canon: ExprCanon,
 ): void {
-  diffTableColumns(expected, actual, changes, dialect);
+  diffTableColumns(expected, actual, changes, dialect, canon);
+  if (canon.catalog === true && expected.description !== actual.description) {
+    changes.push({
+      kind: "change-comment", table: expected.name, ...schemaSpread(expected.schema), status: ALLOWED,
+      ...(actual.description !== undefined ? { from: actual.description } : {}),
+      ...(expected.description !== undefined ? { to: expected.description } : {}),
+    });
+  }
   diffTableIndexes(expected, actual, changes, canon);
   diffTableForeignKeys(expected, actual, changes, dialect);
   // CHECK constraints on existing tables are evolved whenever a dialect is
@@ -525,6 +573,12 @@ function foldNameOnlyChanges(
   return tableChanges.filter((c) => !folded.has(c));
 }
 
+function idOfChange(c: Change): string | undefined {
+  return "table" in c && typeof c.table === "string"
+    ? tableIdentity({ name: c.table, ...schemaSpread(c.schema) })
+    : undefined;
+}
+
 /**
  * Pair each drop+add of a CHECK / FK / index that a `rename-column` in the same table
  * explains — the add is the drop with the renamed columns respelled — and mark it carried.
@@ -543,11 +597,16 @@ function foldNameOnlyChanges(
  *
  * Anything that is not EXACTLY the old rule under the new names stays a gated drop+add.
  */
-function carryThroughColumnRenames(
+async function carryThroughColumnRenames(
   changes: Change[],
   dialect: Dialect | undefined,
   textColumnsOfTable: (tableId: string) => ReadonlySet<string>,
-): void {
+  postgres?: {
+    probe: ExprCanonProbe;
+    liveOf: (tableId: string) => TableDescriptor | undefined;
+    expectedOf: (tableId: string) => TableDescriptor | undefined;
+  },
+): Promise<void> {
   const renamesByTable = new Map<string, Map<string, string>>();
   const renameChangeByTable = new Map<string, Extract<Change, { kind: "rename-column" }>>();
   for (const c of changes) {
@@ -559,12 +618,27 @@ function carryThroughColumnRenames(
   }
   if (renamesByTable.size === 0) return;
 
-  const idOf = (c: Change): string | undefined =>
-    "table" in c && typeof c.table === "string"
-      ? tableIdentity({ name: c.table, ...schemaSpread(c.schema) })
-      : undefined;
+  const idOf = idOfChange;
   const mapCols = (cols: readonly string[], m: ReadonlyMap<string, string>): string[] =>
     cols.map((col) => m.get(col) ?? col);
+
+  // Postgres: the add half of a CHECK pair mentions the NEW column name, which the live table
+  // does not have yet, so the Pass 1 probe could not compile it. Ask again on a scratch copy
+  // whose columns are renamed first, so the comparison below is Postgres's spelling against
+  // Postgres's (the live body respelled for the rename) rather than two strings.
+  const checkCanon = new Map<CheckDescriptor, string>();
+  if (postgres !== undefined && dialect === "postgres") {
+    for (const [table, renames] of renamesByTable) {
+      const live = postgres.liveOf(table);
+      const expected = postgres.expectedOf(table);
+      if (live === undefined || expected === undefined) continue;
+      const adds = changes.flatMap((c) => (c.kind === "add-check" && idOfChange(c) === table ? [c.check] : []));
+      if (adds.length === 0) continue;
+      const answer = await postgres.probe(live, { ...expected, checks: adds, indexes: [], columns: [] }, renames);
+      for (const [c, text] of answer?.checks ?? []) checkCanon.set(c, text);
+    }
+  }
+  const canon: ExprCanon = { ...NO_EXPR_CANON, checks: checkCanon };
 
   const paired = new Set<Change>();
   const pairs: { drop: Change; add: Change; from: string; to: string; index: boolean; table: string }[] = [];
@@ -579,7 +653,8 @@ function carryThroughColumnRenames(
       const lowerRenames = new Map([...renames].map(([from, to]) => [from.toLowerCase(), to.toLowerCase()]));
       const textColumns = new Set([...textColumnsOfTable(table)].map((col) => lowerRenames.get(col) ?? col));
       const a = changes.find((c): c is Extract<Change, { kind: "add-check" }> =>
-        c.kind === "add-check" && sameTable(c) && checkExprEquals(c.check.expression, want, textColumns));
+        c.kind === "add-check" && sameTable(c)
+        && checkMatchesLive(canon, c.check, { ...d.restore!, expression: want }, textColumns));
       if (a) { paired.add(d).add(a); pairs.push({ drop: d, add: a, from: d.check, to: a.check.name, index: false, table }); }
     } else if (d.kind === "drop-fk" && d.restore !== undefined) {
       const want: FkDescriptor = { ...d.restore, columns: mapCols(d.restore.columns, renames) };
@@ -688,6 +763,7 @@ function diffTableColumns(
   actual: TableDescriptor,
   changes: Change[],
   dialect?: Dialect,
+  canon: ExprCanon = NO_EXPR_CANON,
 ): void {
   const table = expected.name;
   const sx = schemaSpread(expected.schema);
@@ -755,7 +831,7 @@ function diffTableColumns(
       const toDefault = skipIdentityDefaultDiff ? ac.default : ec.default;
       if (ac.default !== undefined) typeChange.fromDefault = ac.default;
       if (toDefault !== undefined) typeChange.toDefault = toDefault;
-    } else if (!skipIdentityDefaultDiff && !columnDefaultsEqual(ec.default, ac.default)) {
+    } else if (!skipIdentityDefaultDiff && !columnDefaultMatchesLive(canon, ec, ac)) {
       const change: Change = {
         kind: "change-column-default", table, ...sx, column: name,
         status: ALLOWED,
@@ -763,6 +839,25 @@ function diffTableColumns(
         ...(ec.default !== undefined ? { to: ec.default } : {}),
       };
       changes.push(change);
+    }
+    if (canon.catalog === true) {
+      // Both sides read `increment` off a GENERATED identity (attidentity) or a legacy serial's
+      // nextval default; a serial losing its sequence is the default change above, not this.
+      const from = ac.identity === "increment" ? "increment" : undefined;
+      const to = ec.identity === "increment" ? "increment" : undefined;
+      if (from !== to && !(from !== undefined && liveIsAutoSequenceDefault)) {
+        changes.push({
+          kind: "change-column-identity", table, ...sx, column: name, status: ALLOWED,
+          ...(from !== undefined ? { from } : {}), ...(to !== undefined ? { to } : {}),
+        });
+      }
+      if (ec.description !== ac.description) {
+        changes.push({
+          kind: "change-comment", table, ...sx, column: name, status: ALLOWED,
+          ...(ac.description !== undefined ? { from: ac.description } : {}),
+          ...(ec.description !== undefined ? { to: ec.description } : {}),
+        });
+      }
     }
   }
   for (const [name, ac] of actualCols) {
@@ -936,7 +1031,7 @@ function diffTableChecks(
       continue;
     }
     if (exprFallback) {
-      const match = actual.checks.find((a) => !consumed.has(a) && checkExprEquals(ec.expression, a.expression));
+      const match = actual.checks.find((a) => !consumed.has(a) && checkMatchesLive(canon, ec, a));
       if (match) { consumed.add(match); continue; }
       // An anonymous/name-mismatched check in the pre-1.0.9 null-safe spelling: the same
       // rule, re-spelled once so an older SQLite can open the database.
@@ -982,6 +1077,7 @@ async function diffViews(
   expected: ViewDescriptor[], actual: ViewDescriptor[], changes: Change[],
   dialect: Dialect | undefined,
   probe: ViewReplaceProbe | undefined,
+  catalogBodies: ReadonlyMap<string, string> = new Map(),
 ): Promise<void> {
   const exp = new Map(expected.map((v) => [viewIdentity(v), v] as const));
   const act = new Map(actual.map((v) => [viewIdentity(v), v] as const));
@@ -996,6 +1092,17 @@ async function diffViews(
     }
 
     if (dialect === "postgres") {
+      // Shadow path: the view applied to the scratch database, so Postgres's deparse of it
+      // is compared with its deparse of the live one, catalog to catalog.
+      const body = catalogBodies.get(id);
+      if (body !== undefined) {
+        if (a.sql === body) continue;
+        const firstDifference = a.sql !== undefined ? firstViewSqlDifference(body, a.sql) : undefined;
+        await pushViewUpdate(v, a, changes, probe, a.fingerprint === undefined, {
+          kind: "definition", compared: "text", ...(firstDifference !== undefined ? { firstDifference } : {}),
+        });
+        continue;
+      }
       // No expected fingerprint (an unresolvable projection body) → we cannot prove a
       // change. Leave it alone rather than propose a spurious replace.
       if (v.fingerprint === undefined) continue;
@@ -1072,13 +1179,15 @@ async function pushViewUpdate(
   // stamp the adopt-view gate (`unmanagedActual`) onto whichever change we emit so
   // status.ts fails closed on `allow.adoptView`, legal-replace and drop+create alike.
   unmanaged = false,
+  // Shadow path: the deparsed bodies were compared, and this says where they differ.
+  catalogReason?: ViewChangeReason,
 ): Promise<void> {
   const sx = schemaSpread(expected.schema);
   const adopt = unmanaged ? { unmanagedActual: true as const } : {};
-  // Postgres compares fingerprints, never text: an unstamped view cannot be compared at all.
+  // Off the shadow path Postgres compares fingerprints, never text: an unstamped view cannot be compared at all.
   const reason: ViewChangeReason = unmanaged
     ? { kind: "unfingerprinted" }
-    : { kind: "definition", compared: "fingerprint" };
+    : catalogReason ?? { kind: "definition", compared: "fingerprint" };
   const evidence = probe === undefined || planMayChangeWhatBodyReads(expected, actual, changes)
     ? undefined
     : await probe(expected, actual);

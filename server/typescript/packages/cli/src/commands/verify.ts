@@ -46,6 +46,7 @@ import { lintNodeNames } from "../lib/name-lint.js";
 import { lintDeprecatedReferences } from "../lib/deprecation-lint.js";
 import { lintDuplicateFields, lintReferenceFields } from "../lib/field-lint.js";
 import { FileSource } from "@metaobjectsdev/metadata/core";
+import { describeExprCanonPath, shadowSession, type ShadowSession } from "../lib/shadow.js";
 import { resolveD1Config, resolveMigrateConfig, type ResolvedMigrateConfig } from "../lib/config.js";
 import {
   buildWranglerExecuteArgs,
@@ -88,6 +89,7 @@ import {
   type ExprCanonProbe,
   postgresViewReplaceProbe,
   postgresExprCanonProbe,
+  type ShadowSchemaSource,
   withoutFlywayHistory,
 } from "@metaobjectsdev/migrate-ts";
 import {
@@ -203,7 +205,9 @@ export async function verifyCommand(
     log.error(REMOVED_VERIFY_DOCS);
     return 2;
   }
-  const migrateFlags: MigrateFlags = { ...EMPTY_MIGRATE_FLAGS, format: flags.migrationFormat };
+  const migrateFlags: MigrateFlags = {
+    ...EMPTY_MIGRATE_FLAGS, format: flags.migrationFormat, shadowDb: flags.shadowDb,
+  };
 
   // ADR-0021 D2 — explicit verify subverbs. Each flag selects one drift mode;
   // any combination runs each and the overall exit code is the MAX (non-zero on
@@ -1339,6 +1343,7 @@ export async function verifyCommand(
       return 1;
     }
 
+    let shadow: ShadowSession | undefined;
     try {
       const allow = tokensToAllowOptions(flags.allow);
       // Resolve the migrate config once for this whole path: `tryLoadConfig` is uncached,
@@ -1351,6 +1356,12 @@ export async function verifyCommand(
       const expectedViews = buildProjectionViews(root, { dialect: kysely.dialect });
       // One probe for the whole run, so a server that refuses scratch tables is asked once.
       const exprCanonProbe = kysely.dialect === "postgres" ? postgresExprCanonProbe(kysely.db) : undefined;
+      // ...but a scratch database answers first, when one can be opened (see lib/shadow.ts):
+      // one for the run, shared by the drift diff and the committed-snapshot diff.
+      shadow = kysely.dialect === "postgres"
+        ? shadowSession(migrateConfig.shadowDatabaseUrl, flags.db as string)
+        : undefined;
+      const shadowSchema = shadow?.schema;
       let driftResult;
       let actual: SchemaSnapshot;
       try {
@@ -1369,6 +1380,7 @@ export async function verifyCommand(
           ...(kysely.dialect === "postgres" ? { viewReplaceProbe: postgresViewReplaceProbe(kysely.db) } : {}),
           // ...and asks Postgres, not a string rewrite, how it stores each expected CHECK and index expression.
           ...(exprCanonProbe !== undefined ? { exprCanonProbe } : {}),
+          ...(shadowSchema !== undefined ? { shadowSchema } : {}),
           ...(schemaScope !== undefined ? { inScope: schemaScope } : {}),
           // The import exclusion reaches scopeExpectedSchema through this option bag —
           // there is no direct call on this path to attach it to.
@@ -1380,13 +1392,24 @@ export async function verifyCommand(
         return 1;
       }
 
-      const snapshotDrift =
-        driftResult.changes.length === 0
-          ? await checkCommittedSnapshot(actual, kysely.dialect, kysely.displayUrl, driftResult, migrateConfig, exprCanonProbe)
+      if (driftResult.exprCanonPath !== undefined) {
+        say(describeExprCanonPath(driftResult.exprCanonPath, driftResult.shadowUnavailable));
+      }
+
+      let snapshotDrift: string[];
+      try {
+        snapshotDrift = driftResult.changes.length === 0
+          ? await checkCommittedSnapshot(actual, kysely.dialect, kysely.displayUrl, driftResult, migrateConfig, exprCanonProbe, shadowSchema)
           : [];
+      } catch (err) {
+        schemaRunError = describeError(err);
+        log.error(`verify: ${schemaRunError}`);
+        return 1;
+      }
 
       return reportSchemaDrift(driftResult, [...ledgerDrift, ...snapshotDrift], kysely.displayUrl);
     } finally {
+      await shadow?.close();
       try {
         await kysely.close();
       } catch (err) {
@@ -1512,6 +1535,8 @@ export async function verifyCommand(
     // Postgres: the snapshot may hold either spelling of an expression (generated, or
     // Postgres's own from a `baseline --from-db`); the database settles which is equal.
     exprCanonProbe?: ExprCanonProbe,
+    // ...and a scratch database, when the run has one, settles it first (the probe is the fallback).
+    shadowSchema?: ShadowSchemaSource,
   ): Promise<string[]> {
     if (dialect === "d1") return []; // d1 keeps migrations Wrangler-native; no offline snapshot
     // The migrations dir comes from migrate's OWN precedence (flag > config > default)
@@ -1551,6 +1576,7 @@ export async function verifyCommand(
       // MERGED with the out-of-scope set, and a second key would silently drop that half.
       dialect,
       ...(exprCanonProbe !== undefined ? { exprCanonProbe } : {}),
+      ...(shadowSchema !== undefined ? { shadowSchema } : {}),
     });
     // A view recreated only around a table change matches the snapshot (D3) — not a difference.
     const changes = withoutViewRecreates(result.changes);
@@ -1854,6 +1880,8 @@ const DRIFT_PRESENTATION: Record<Change["kind"], { glyph: string; noun: string }
   "change-column-type": { glyph: "~", noun: "column" },
   "change-column-nullable": { glyph: "~", noun: "column" },
   "change-column-default": { glyph: "~", noun: "column" },
+  "change-column-identity": { glyph: "~", noun: "column" },
+  "change-comment": { glyph: "~", noun: "comment" },
   "add-index": { glyph: "+", noun: "index" },
   "drop-index": { glyph: "-", noun: "index" },
   "add-fk": { glyph: "+", noun: "fk" },

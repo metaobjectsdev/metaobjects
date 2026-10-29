@@ -49,6 +49,7 @@ export const AllowTokenEnum = z.enum([
   "nullable-to-not-null",
   "drop-identity-default",
   "drop-unmanaged",
+  "drop-comment",
 ]);
 
 // .strict(), like every other object in this schema: `.partial()` alone leaves
@@ -67,6 +68,8 @@ const MigrateFormatEnum = z.enum(["default", "flyway"]);
 const MigrateBlock = z.object({
   outDir: z.string(),
   databaseUrl: z.string(),
+  /** Postgres: a scratch database `meta verify --db` and `meta migrate` apply the expected schema to. */
+  shadowDatabaseUrl: z.string(),
   dialect: DialectEnum,
   format: MigrateFormatEnum,
   onAmbiguous: OnAmbiguousEnum,

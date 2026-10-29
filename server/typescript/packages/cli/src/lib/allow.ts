@@ -39,6 +39,8 @@ export const ALLOW_TOKEN_MAP: Record<string, keyof AllowOptions> = {
   // migrate's generation-time provenance guard, not by diff()'s status pass — see
   // AllowOptions.dropUnmanaged for why it still belongs in that shape.
   "drop-unmanaged": "dropUnmanaged",
+  // Gates clearing a live table/column comment the metadata does not declare (shadow path only).
+  "drop-comment": "dropComment",
 };
 
 /** Translate parsed `--allow` tokens into the migrate-ts `AllowOptions` shape. */
@@ -75,6 +77,8 @@ export function describeChange(c: Change): string {
     }
     case "change-column-nullable": return `${c.table}.${c.column} (${c.from ? "NULL" : "NOT NULL"} → ${c.to ? "NULL" : "NOT NULL"})`;
     case "change-column-default": return `${c.table}.${c.column}`;
+    case "change-column-identity": return `${c.table}.${c.column} (identity ${c.from ?? "none"} → ${c.to ?? "none"})`;
+    case "change-comment": return `${c.column !== undefined ? `${c.table}.${c.column}` : c.table} (comment)`;
     case "add-index": return `${c.table} idx ${c.index.name}`;
     case "drop-index": return `${c.table} idx ${c.index}`;
     case "add-fk": return `${c.table} fk ${c.fk.name}`;

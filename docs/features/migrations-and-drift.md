@@ -13,7 +13,7 @@ There are **7 drift sources**, and the toolchain has a guard for each.
 |---|---|---|
 | **Code-vs-DB** | Codegen — the generated SQL DDL is emitted from the same metadata as the entity / table code. | Build time |
 | **Code-vs-API-doc** | Cross-port codegen from the same metadata. | Build time |
-| **DB-vs-metadata** | `meta verify --db` (TS CLI) — introspects the live DB and fails if it has drifted from metadata. Includes modeled projection **view bodies** (a changed `CREATE VIEW` is drift, reported with what differs: the first differing excerpt of the text on SQLite/D1, a fingerprint mismatch on Postgres). A view `meta migrate` drops and recreates only because the migration alters a table it reads, with its definition unchanged, is not drift and is not reported; a hand-authored *unmodeled* view is unmanaged and never flagged. A schema concern owned by the Node toolchain regardless of server language; on the JVM ports the runtime auto-create/validator path was removed (ADR-0015) and the `metaobjects:verify` Maven goal is not available. Cloudflare D1 has no client wire protocol, so it can't go through `--db`'s Kysely-driver introspection — use `meta verify --dialect d1 [--d1 <binding>] [--remote]` instead (the same wrangler-shelled-out path `meta migrate --dialect d1` uses); `--remote` is required to check the *deployed* database, not the local `wrangler dev` shadow copy. Pointing `--db file:` at wrangler's local D1 state directory (`.wrangler/state/**/d1/**`) still runs, but only verifies that local copy — `verify` warns when it detects this. | CI on every PR |
+| **DB-vs-metadata** | `meta verify --db` (TS CLI) — introspects the live DB and fails if it has drifted from metadata. Includes modeled projection **view bodies** (a changed `CREATE VIEW` is drift, reported with what differs: the first differing excerpt of the text on SQLite/D1, the deparsed body on Postgres's scratch-database path, a fingerprint mismatch otherwise). A view `meta migrate` drops and recreates only because the migration alters a table it reads, with its definition unchanged, is not drift and is not reported; a hand-authored *unmodeled* view is unmanaged and never flagged. A schema concern owned by the Node toolchain regardless of server language; on the JVM ports the runtime auto-create/validator path was removed (ADR-0015) and the `metaobjects:verify` Maven goal is not available. Cloudflare D1 has no client wire protocol, so it can't go through `--db`'s Kysely-driver introspection — use `meta verify --dialect d1 [--d1 <binding>] [--remote]` instead (the same wrangler-shelled-out path `meta migrate --dialect d1` uses); `--remote` is required to check the *deployed* database, not the local `wrangler dev` shadow copy. Pointing `--db file:` at wrangler's local D1 state directory (`.wrangler/state/**/d1/**`) still runs, but only verifies that local copy — `verify` warns when it detects this. | CI on every PR |
 | **Migration-vs-metadata** | The Node `meta migrate` emits migrations FROM metadata diffs — they cannot drift from metadata by construction. Schema migrations for **every** port are owned by this Node toolchain (`@metaobjectsdev/cli migrate`, ADR-0015); the C# and Python migrate surfaces were removed. | Build time |
 | **Generated-edited** | `@generated` headers in emitted code + a committed hash manifest that refuses an edited file by name; in TypeScript only, a three-way merge also preserves hand-edits on the machine that generated the file. | Code review |
 | **Prompt-vs-payload** | FR-004 `Renderer.verify` parses `{{...}}` references in templates and checks each one exists on the payload VO. | Build time + runtime |
@@ -377,17 +377,65 @@ Postgres rewrites an expression before it stores it (`"k" IN ('x')` becomes `k =
 `= ANY (ARRAY[…])`, and casts and brackets are added), so the text `meta migrate` generates never
 comes back from the database as written. On Postgres, a plan against the database
 (`meta verify --db`, `meta migrate --from-db` and `--apply`) therefore **asks Postgres** instead of
-guessing. For each table it creates a **temporary table with the live table's columns** inside a
-transaction it rolls back (a savepoint, when the connection is already in one), adds the expected
+guessing. There are three ways it asks, tried in this order, and every Postgres run of
+`meta verify --db`, `meta migrate` and `meta migrate baseline --from-db` says which one ran.
+
+**1. A scratch (shadow) database, the primary path.** The practice Atlas, Prisma and migra share:
+the model's full expected schema (the DDL `meta migrate` emits for an empty database) is applied to
+a throwaway Postgres database, in one transaction that is always rolled back, and read with the same
+introspector that reads your live database. Drift is then the **same diff run on two catalogs**,
+`introspect(shadow)` as the expected side against `introspect(live)`, for every object in the run's
+scope: tables, columns and types, nullability, defaults, identity, CHECKs, primary/foreign/unique
+constraints and their actions, indexes, view bodies and comments. Both sides are Postgres's own
+spelling, so a shape nobody wrote a rule for (`int4` against `integer`, `ON DELETE SET NULL`, a
+view body written differently from Postgres's deparse) needs none. Model-only knowledge stays an
+input to that diff, not a second comparison: renames, `@unmanaged` and scope are applied as always.
+Identity is read from `pg_attribute.attidentity` on both sides (a legacy `serial` column also reads
+as an `increment` key, so it is not drift against one); a GENERATED identity added or dropped is a
+`change-column-identity`, and dropping one is gated behind `--allow drop-identity-default`. Table
+and column comments are read from `pg_description` on both sides, and a changed one is a
+`change-comment` (`COMMENT ON … IS …`). Clearing a live comment the metadata does not declare
+(somebody else may have written it) needs `--allow drop-comment`: without it `meta migrate`
+leaves the comment in place, plans the rest and says so in a note, and `meta verify --db` still
+reports it as drift. A committed snapshot written before `formatVersion` 4 never recorded comments
+or a GENERATED identity, so the committed-snapshot check treats both as unknown rather than absent
+and does not compare them; re-run `meta migrate baseline --from-db` to record them. A view's body is compared as Postgres's deparse
+(`pg_get_viewdef`) of the shadow's copy against the live one; each view is created under its own
+savepoint, so a view whose body reads something only the live database has is left out of the
+shadow and compared by its fingerprint instead, without costing the run its table comparison.
+Off the shadow path identity and comments are not compared, and views are compared by fingerprint.
+No per-shape rule is involved, so `NOW()`/`now()`, `current_date`, a date
+literal on a `timestamptz` (read in the session `TimeZone`), `'1e3'` on a double, `'007'` on an
+integer, `now() + interval '1 day'`, a regrouped `NOT` and a precedence change are all decided by
+the database. A real change of any of them is still reported. The scratch database comes from:
+
+| Source | How |
+|---|---|
+| An explicit URL | `--shadow-db <url>` on `verify` and on `migrate --from-db` / `--apply` (a plain `meta migrate` reads no database, says so, and refuses the flag), else `SHADOW_DATABASE_URL`, else `migrate.shadowDatabaseUrl` in `.metaobjects/config.json`. Used as given and never dropped; nothing is left in it because the schema is applied inside a rolled-back transaction. |
+| `CREATE DATABASE` | With none of the above, a database named `mo_shadow_<random>` is created on the `--db` server when the role may, and **always dropped** afterwards, including on error. |
+
+A run opens its scratch database once, and every comparison it makes uses it: `meta verify --db`
+compares the committed snapshot with the database on the same scratch database as the drift check.
+
+An explicitly configured scratch database that cannot be opened, or that the expected schema does
+not apply to (an FK to a table outside the run's scope, a missing extension), is an **error** naming
+the cause: you asked for a scratch database so the target would not be written to, so the run does
+not fall back to the probe on the target. A `CREATE DATABASE` that the role may not run, or that the
+schema does not apply to, falls back to the next path, and the output says why.
+
+**2. The temp-object probe, the first fallback.** For each table it creates a **temporary table with
+the live table's columns** on the target itself, inside a transaction it rolls back (a savepoint, when the connection is already in one), adds the expected
 CHECK to it, creates each expected expression or partial-index predicate as a temporary index,
 and reads back `pg_get_constraintdef` / `pg_get_indexdef` / `pg_get_expr`. Those are compared with
-the live definitions as plain strings. Nothing persists, and nothing is written to your table.
+the live definitions as plain strings. Nothing persists, and nothing is written to your table, but
+the probe **needs write privileges on the target** (it creates temporary objects) and **takes brief
+locks** on it, which is why a scratch database is preferred.
 Two expressions that mean different things never compare equal: a precedence change
 (`(a OR b) AND c` against `a OR (b AND c)`), a regrouped `NOT`, and a changed enum-member or regex
 literal are all drift.
 
-Where the question cannot be asked, the comparison falls back to a **string normaliser**
-(`check-expr-compare.ts`), which rewrites both texts toward one shape. The fallback applies to:
+**3. The string normaliser, the last fallback.** Where neither question can be asked, the comparison uses it
+(`check-expr-compare.ts`), which rewrites both texts toward one shape. It always applies to:
 
 - SQLite and D1, which store the text as written;
 - the default **offline** `meta migrate`, which diffs the committed snapshot and has no database;
@@ -402,6 +450,13 @@ Where the question cannot be asked, the comparison falls back to a **string norm
 The normaliser cannot tell a precedence change from a bracket-only change (it deletes every
 bracket), so on the fallback path `(a OR b) AND c` and `a OR (b AND c)` compare as equal. A fallback
 never reports drift of its own: a probe that fails changes nothing about the answer.
+
+The probe answers column defaults the same way. Postgres re-spells a default (`NOW()` becomes
+`now()`, `current_date` becomes `CURRENT_DATE`, a date literal on a `timestamptz` becomes a full
+timestamp read in the session's `TimeZone`, `'1e3'` on a double becomes `'1000'`), so for a column
+with a default on both sides the expected one is set on the scratch table and `pg_get_expr` is
+read back. A column rename that carries a CHECK is answered on a scratch copy whose columns are
+renamed first.
 
 `meta migrate baseline --from-db` on Postgres closes the offline gap. Where the live database
 proves a CHECK, or an expression index's key or predicate, is what the metadata would generate, the

@@ -46,6 +46,7 @@ const STAGE_ORDER: Record<Change["kind"], number> = {
   "drop-index": 1.5,
   "add-column": 2, "drop-column": 2,
   "change-column-type": 2, "change-column-nullable": 2, "change-column-default": 2,
+  "change-column-identity": 2, "change-comment": 2,
   "rename-column": 3,
   "add-index": 4,
   "add-fk": 5,
@@ -408,6 +409,10 @@ function renderUpNative(c: Change): string {
       // (checks are create-time-only inline on SQLite, so a check change is a
       // recreate-triggering kind like the others).
       throw new Error(`renderUpNative: ${c.kind} should have been handled by recreate bundler`);
+    case "change-column-identity":
+    case "change-comment":
+      // Planned only on the Postgres shadow path; SQLite has neither GENERATED identity nor COMMENT.
+      throw new Error(`renderUpNative: ${c.kind} is a Postgres-only change`);
     // SQLite has no schema namespacing for views and no CREATE OR REPLACE VIEW;
     // a replace is DROP + CREATE. The view body lives in ViewDescriptor.sql.
     case "create-view":   return renderCreateView(c.view);
@@ -452,6 +457,10 @@ function renderDownNative(c: Change): string {
       // (checks are create-time-only inline on SQLite, so a check change is a
       // recreate-triggering kind like the others).
       throw new Error(`renderDownNative: ${c.kind} should have been handled by recreate bundler`);
+    case "change-column-identity":
+    case "change-comment":
+      // Planned only on the Postgres shadow path; SQLite has neither GENERATED identity nor COMMENT.
+      throw new Error(`renderDownNative: ${c.kind} is a Postgres-only change`);
     case "create-view":   return `DROP VIEW IF EXISTS ${quote(c.view.name)};`;
     // The view as the DB held it (`restore`) is a valid restore payload: a view dropped
     // around a table rebuild must come back on rollback, or the schema is not what it was.

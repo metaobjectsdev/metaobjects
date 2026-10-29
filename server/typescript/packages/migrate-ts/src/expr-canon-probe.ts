@@ -9,16 +9,21 @@
 import type { Kysely } from "kysely";
 import { sql } from "kysely";
 import { DEFAULT_DB_SCHEMA_POSTGRES } from "@metaobjectsdev/metadata";
-import { indexDefKeyExpr } from "./introspect/postgres.js";
+import { indexDefKeyExpr, parsePgDefault } from "./introspect/postgres.js";
 import { stripCheckWrapper } from "./check-expr-compare.js";
 import type { ExprCanon, ExprCanonProbe, IndexExprCanon } from "./expr-canon.js";
-import type { CheckDescriptor, IndexDescriptor } from "./types.js";
+import type { CheckDescriptor, ColumnDefault, ColumnDescriptor, IndexDescriptor } from "./types.js";
 import { quote, rolledBack } from "./view-replace-probe.js";
 
 const TABLE = "mo_check_probe";
 const CONSTRAINT = "mo_check_probe_c";
 const INDEX = "mo_check_probe_i";
 const SAVEPOINT = "mo_check_probe_sp";
+
+/** A default as it must be spelled after `SET DEFAULT`: a literal is quoted, an expression is the author's text. */
+function defaultSql(d: ColumnDefault): string {
+  return d.kind === "expr" ? d.value : `'${d.value.replace(/'/g, "''")}'`;
+}
 
 /** SQLSTATE that means no table will ever probe on this connection: the transaction is read-only. */
 const READ_ONLY_SQLSTATE = "25006";
@@ -64,7 +69,7 @@ export function postgresExprCanonProbe(db: Kysely<Record<string, unknown>>): Exp
   // Set once the server refuses a scratch table because it is read-only, so a standby is asked
   // once rather than once per table. Any other refusal (such as no SELECT on one table) is per table.
   let unavailable = false;
-  return async (live, expected) => {
+  return async (live, expected, renames) => {
     if (unavailable) return undefined;
     const checks = expected.checks.filter((c) => probeable(c.expression));
     const indexes = expected.indexes.filter(
@@ -72,7 +77,13 @@ export function postgresExprCanonProbe(db: Kysely<Record<string, unknown>>): Exp
         && probeable(ix.expr) && probeable(ix.where)
         && (ix.using === undefined || ACCESS_METHOD.test(ix.using)),
     );
-    if (checks.length === 0 && indexes.length === 0) return undefined;
+    // Only a column with a default on both sides can differ in spelling alone; a missing side
+    // is a real add or drop. The scratch table copies the LIVE column, so the default is
+    // coerced to the column's live type, exactly as it is stored today.
+    const liveColumns = new Map(live.columns.map((c) => [c.name, c]));
+    const defaults = expected.columns.filter((c) =>
+      c.default !== undefined && liveColumns.get(c.name)?.default !== undefined && probeable(c.default.value));
+    if (checks.length === 0 && indexes.length === 0 && defaults.length === 0) return undefined;
     const liveTable = `${quote(live.schema ?? DEFAULT_DB_SCHEMA_POSTGRES)}.${quote(live.name)}`;
     const scratch = `pg_temp.${quote(TABLE)}`;
     try {
@@ -83,6 +94,28 @@ export function postgresExprCanonProbe(db: Kysely<Record<string, unknown>>): Exp
           const code = (err as { code?: unknown }).code;
           if (code === READ_ONLY_SQLSTATE) unavailable = true;
           throw err;
+        }
+        // Two phases through scratch names, so a swap (a -> b, b -> a) cannot collide.
+        const moves = [...(renames ?? [])];
+        for (const [i, [from]] of moves.entries()) {
+          await sql.raw(`ALTER TABLE ${scratch} RENAME COLUMN ${quote(from)} TO ${quote(`mo_rename_${i}`)}`).execute(q);
+        }
+        for (const [i, [, to]] of moves.entries()) {
+          await sql.raw(`ALTER TABLE ${scratch} RENAME COLUMN ${quote(`mo_rename_${i}`)} TO ${quote(to)}`).execute(q);
+        }
+        const defaultAnswers = new Map<ColumnDescriptor, ColumnDefault>();
+        for (const col of defaults) {
+          const raw = await attempt(q, async () => {
+            await sql.raw(`ALTER TABLE ${scratch} ALTER COLUMN ${quote(col.name)} SET DEFAULT ${defaultSql(col.default!)}`).execute(q);
+            const rows = await sql<{ def: string | null }>`
+              SELECT pg_get_expr(d.adbin, d.adrelid) AS def FROM pg_attrdef d
+              JOIN pg_attribute a ON a.attrelid = d.adrelid AND a.attnum = d.adnum
+              WHERE d.adrelid = ${scratch}::regclass AND a.attname = ${col.name}
+            `.execute(q);
+            return rows.rows[0]?.def;
+          });
+          const stored = raw === undefined || raw === null ? undefined : parsePgDefault(raw);
+          if (stored !== undefined) defaultAnswers.set(col, stored);
         }
         const checkAnswers = new Map<CheckDescriptor, string>();
         for (const check of checks) {
@@ -114,7 +147,7 @@ export function postgresExprCanonProbe(db: Kysely<Record<string, unknown>>): Exp
           if (ix.where !== undefined && stored.predicate !== null) canon.where = stored.predicate;
           indexAnswers.set(ix, canon);
         }
-        return { checks: checkAnswers, indexes: indexAnswers };
+        return { checks: checkAnswers, indexes: indexAnswers, defaults: defaultAnswers };
       });
     } catch {
       return undefined;

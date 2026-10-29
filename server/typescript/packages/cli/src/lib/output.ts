@@ -218,7 +218,8 @@ export function formatMigrateResult(result: MigrateResultShape, _opts: FormatOpt
 
   const changeEntries = Object.entries(result.changeCounts).filter(([, v]) => v > 0);
   if (changeEntries.length === 0 && result.blocked.length === 0 && result.ambiguous.length === 0) {
-    return `${header}\n\n  No schema changes.\n`;
+    const noteLines = (result.notes ?? []).map((n) => `  Note: ${n}\n`).join("");
+    return `${header}\n\n  No schema changes.\n${noteLines}`;
   }
 
   if (changeEntries.length > 0) {

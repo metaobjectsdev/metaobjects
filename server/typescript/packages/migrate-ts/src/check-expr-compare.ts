@@ -495,7 +495,7 @@ export function stripCheckWrapper(def: string): string {
  * a constraint has after `RENAME COLUMN`, which rewrites it in place on both engines.
  * Matches a double-quoted identifier or a bare word token, and never touches the inside of
  * a single-quoted literal (a regex or IN-list value that happens to spell a column name is
- * data, not a reference). Used only to COMPARE: a miss leaves the drop+add pair it would
+ * data, not a reference), a word after `::` (a cast type) or a word before `(` (a function). Used only to COMPARE: a miss leaves the drop+add pair it would
  * have paired exactly as it was — gated — so it fails closed.
  */
 export function renameExprIdentifiers(expr: string, renames: ReadonlyMap<string, string>): string {
@@ -505,10 +505,13 @@ export function renameExprIdentifiers(expr: string, renames: ReadonlyMap<string,
   while (i < n) {
     const ch = expr[i]!;
     if (ch === "'") {
-      // Copy the single-quoted literal verbatim ('' escapes honored).
+      // Copy the single-quoted literal verbatim ('' escapes honored; an E'..' literal also
+      // escapes with a backslash).
       const start = i;
+      const backslash = /[eE]$/.test(out) && !/\w[eE]$/.test(out.slice(-2));
       i++;
       while (i < n) {
+        if (backslash && expr[i] === "\\") { i += 2; continue; }
         if (expr[i] === "'") {
           if (expr[i + 1] === "'") { i += 2; continue; }
           i++;
@@ -531,7 +534,10 @@ export function renameExprIdentifiers(expr: string, renames: ReadonlyMap<string,
       const start = i;
       while (i < n && /\w/.test(expr[i]!)) i++;
       const word = expr.slice(start, i);
-      out += renames.get(word) ?? word;
+      // A word after `::` is a type and one before `(` is a function: neither is a column.
+      const isType = /::\s*$/.test(out);
+      const isCall = /^\s*\(/.test(expr.slice(i));
+      out += isType || isCall ? word : renames.get(word) ?? word;
       continue;
     }
     out += ch;

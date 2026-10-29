@@ -10,6 +10,7 @@ import { formatMigrateResultJson } from "../lib/output-json.js";
 import type { OutputFormat } from "../lib/format.js";
 import { emitStructured, narrate, toonEncode } from "../lib/format.js";
 import { buildKyselyFromUrl, inferDialect, redactUrl } from "../lib/kysely.js";
+import { describeExprCanonPath, shadowSession } from "../lib/shadow.js";
 import { log } from "../lib/log.js";
 import { loadMemory, resolveCollection, resolveConfigDir, type Collection } from "@metaobjectsdev/sdk";
 import { loadMemoryOptionsFrom, loadMetaobjectsConfig, RemovedNamingConfigError, resolveGenConfigDir } from "../lib/load-metaobjects-config.js";
@@ -58,6 +59,9 @@ import {
   type TableDescriptor,
   postgresViewReplaceProbe,
   postgresExprCanonProbe,
+  type ShadowSchemaSource,
+  type ExprCanonPath,
+  canonProbeOverShadow,
   adoptGeneratedSpelling,
 } from "@metaobjectsdev/migrate-ts";
 import {
@@ -99,6 +103,9 @@ SUBCOMMANDS:
 MIGRATE FLAGS:
   --db <url>           DB connection URL (required for live-introspect / --apply / --rollback)
                        Supports: file:, libsql:, postgres:, postgresql:
+  --shadow-db <url>    Postgres: a scratch database for the drift comparison. Default: CREATE
+                       DATABASE on the --db server (dropped afterwards), else the temp-object
+                       probe on the target. Also SHADOW_DATABASE_URL / migrate.shadowDatabaseUrl.
   --dialect sqlite|postgres|d1
                        Optional dialect override (auto-detected from URL scheme)
   --migration-format default|flyway
@@ -115,7 +122,7 @@ MIGRATE FLAGS:
                        drop-column,drop-table,type-change,drop-index,drop-fk,
                        drop-check,drop-view,drop-view-cascade,
                        adopt-view,nullable-to-not-null,drop-identity-default,
-                       drop-unmanaged
+                       drop-unmanaged,drop-comment
                        drop-column DELETES the column and every value in it. If
                        the column was RENAMED, use --rename-column instead: it
                        keeps the data.
@@ -698,6 +705,13 @@ export async function migrateCommand(
   // when explicitly requested via --from-db, when --apply needs a connection, or
   // for --rollback (which runs hand-authored down.sql against the live DB).
   if (!config.fromDb && !config.apply && config.rollback === undefined) {
+    // The scratch database is one side of a comparison with a live database, which this
+    // path never reads; a --shadow-db it silently ignored would read as a clean comparison.
+    if (flags.shadowDb !== undefined) {
+      log.error(`migrate: --shadow-db needs --from-db (or --apply): without it migrate compares the metadata with the committed snapshot and reads no database`);
+      emitStructuredError("migrate: --shadow-db needs --from-db", "re-run with --from-db to compare the metadata with the database", fmt);
+      return 2;
+    }
     return await runOfflineGenerate(config, metaRoot, fmt, genRoot);
   }
 
@@ -765,6 +779,10 @@ export async function migrateCommand(
     return 2;
   }
   warnDecimalPrecision(metadata, collection, kysely.dialect);
+  // Postgres: a scratch database is the expected side of the drift diff (lib/shadow.ts).
+  const shadow = kysely.dialect === "postgres"
+    ? shadowSession(config.shadowDatabaseUrl, config.databaseUrl)
+    : undefined;
 
   let exitCode = 0;
   let writtenPaths: string[] = [];
@@ -831,6 +849,7 @@ export async function migrateCommand(
         // ...and the same for CHECK / index expressions: Postgres says how it stores the expected
         // text, so a stored rewrite no string rule knows is not proposed as a drop and re-add.
         ...(kysely.dialect === "postgres" ? { exprCanonProbe: postgresExprCanonProbe(kysely.db) } : {}),
+        ...(shadow !== undefined ? { shadowSchema: shadow.schema } : {}),
         allow: tokensToAllowOptions(config.allow),
         renames: config.renames,
         // #258 — adopting a live DB whose PRIMARY KEY differs from the metadata identity
@@ -877,6 +896,23 @@ export async function migrateCommand(
         return 1;
       }
       throw err;
+    }
+
+    // A live comment the metadata does not declare is cleared only with --allow drop-comment.
+    // Without it the change is reported and left out of the plan, rather than refusing the
+    // whole migration over somebody else's comment (`meta verify --db` still reports it).
+    const keptComments = diffResult.blocked.filter(
+      (c): c is Extract<Change, { kind: "change-comment" }> => c.kind === "change-comment");
+    if (keptComments.length > 0) {
+      const kept = new Set<Change>(keptComments);
+      diffResult = {
+        ...diffResult,
+        changes: diffResult.changes.filter((c) => !kept.has(c)),
+        blocked: diffResult.blocked.filter((c) => !kept.has(c)),
+      };
+      notes.push(...keptComments.map((c) =>
+        `kept the comment on ${c.column !== undefined ? `${c.table}.${c.column}` : c.table}, which the metadata `
+        + `does not declare; pass --allow drop-comment to clear it.`));
     }
 
     changeCounts = summarizeChanges(diffResult.changes);
@@ -926,6 +962,9 @@ export async function migrateCommand(
     // STAGE_ORDER sequences drop-view before and create-view after any column change
     // a view reads. There is no separate view-migration emitter, and unchanged views
     // produce no change (introspect reads the actual body, diff compares it).
+    if (diffResult.exprCanonPath !== undefined) {
+      notes.push(describeExprCanonPath(diffResult.exprCanonPath, diffResult.shadowUnavailable));
+    }
     if (diffResult.changes.length === 0) {
       // no-op — output will say "No schema changes"
     } else {
@@ -1067,6 +1106,7 @@ export async function migrateCommand(
       }
     }
   } finally {
+    await shadow?.close();
     try {
       await kysely.close();
     } catch (err) {
@@ -1157,13 +1197,25 @@ async function withGeneratedSpelling(
   dialect: Dialect,
   metaRoot: string,
   genRoot: string,
-): Promise<SchemaSnapshot> {
+  shadow: ShadowSchemaSource,
+): Promise<{ snapshot: SchemaSnapshot; path?: ExprCanonPath; shadowUnavailable?: string }> {
+  let expected: SchemaSnapshot;
   try {
     const metadata = await loadBaselineMetadata(metaRoot, genRoot);
-    const expected = baselineFromMetadata(metadata, dialect, buildProjectionViews(metadata, { dialect }));
-    return await adoptGeneratedSpelling(snapshot, expected, postgresExprCanonProbe(db));
+    expected = baselineFromMetadata(metadata, dialect, buildProjectionViews(metadata, { dialect }));
   } catch {
-    return snapshot;
+    return { snapshot };
+  }
+  // An explicitly configured scratch database that cannot be used rejects here, and is fatal.
+  const answer = await shadow(expected);
+  const chosen = "catalog" in answer
+    ? { path: "shadow" as const, probe: canonProbeOverShadow(answer.catalog) }
+    : { path: "probe" as const, probe: postgresExprCanonProbe(db), shadowUnavailable: answer.unavailable };
+  const why = chosen.shadowUnavailable !== undefined ? { shadowUnavailable: chosen.shadowUnavailable } : {};
+  try {
+    return { snapshot: await adoptGeneratedSpelling(snapshot, expected, chosen.probe), path: chosen.path, ...why };
+  } catch {
+    return { snapshot, path: chosen.path, ...why };
   }
 }
 
@@ -1205,7 +1257,20 @@ export async function runBaseline(
       snapshot = await introspect(kysely.db, kysely.dialect);
       if (config.format === "flyway") snapshot = withoutFlywayHistory(snapshot);
       if (kysely.dialect === "postgres") {
-        snapshot = await withGeneratedSpelling(snapshot, kysely.db, config.dialect, metaRoot, genRoot);
+        const shadow = shadowSession(config.shadowDatabaseUrl, config.databaseUrl);
+        let adopted;
+        try {
+          adopted = await withGeneratedSpelling(snapshot, kysely.db, config.dialect, metaRoot, genRoot, shadow.schema);
+        } catch (err) {
+          log.error(`migrate baseline: ${describeError(err)}`);
+          return 2;
+        } finally {
+          await shadow.close();
+        }
+        snapshot = adopted.snapshot;
+        if (adopted.path !== undefined) {
+          narrate(fmt, `migrate baseline: ${describeExprCanonPath(adopted.path, adopted.shadowUnavailable)}`);
+        }
       }
     } finally {
       await kysely.close();
@@ -1504,6 +1569,12 @@ export async function runOfflineGenerate(
   logOutOfScope(plan.outOfScope, plan.importedOutOfScope ?? [], fmt);
 
   const offlineNotes = viewRecreateNotes(diffResult.changes);
+  // Which comparison ran (every Postgres run says so): this one never reads the database, so
+  // a change somebody made there by hand is not seen here.
+  if (config.dialect === "postgres") {
+    offlineNotes.unshift("compared the metadata with the committed snapshot; no database was read, so a change "
+      + "made directly in the database is not seen here (meta migrate --from-db or meta verify --db compares with it).");
+  }
   const offlineResult = (extra: Partial<MigrateResultShape>): MigrateResultShape => ({
     dialect: offlineDialect,
     displayUrl: "",
@@ -1520,7 +1591,7 @@ export async function runOfflineGenerate(
     return 1;
   }
   if (diffResult.changes.length === 0) {
-    finishMigrate(fmt, [`migrate: no changes`], migrateResultToData(offlineResult({})));
+    finishMigrate(fmt, [`migrate: no changes`, ...narratedNotes(offlineNotes)], migrateResultToData(offlineResult({})));
     return 0;
   }
   const offlineWarnings = warnDataHazards(diffResult.hazards);
