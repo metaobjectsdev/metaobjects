@@ -158,7 +158,7 @@ MIGRATE FLAGS:
                         drop-column,drop-table,type-change,drop-index,drop-fk,
                         drop-check,drop-view,drop-view-cascade,
                         adopt-view,nullable-to-not-null,drop-identity-default,
-                        drop-comment
+                        drop-comment,drop-unmanaged
                         drop-column DELETES the column's data; for a renamed
                         column use --rename-column, which keeps it
   --on-ambiguous abort|rename|drop-add   Default abort

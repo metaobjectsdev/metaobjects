@@ -8,7 +8,7 @@ promises the **software** surface, `metamodelVersion` promises the **metadata** 
 `^1.0.0` accepts a MINOR — so **a release that moves `metamodelVersion` says so in its entry
 here.**
 
-## [1.2.0] — Unreleased
+## [Unreleased]
 
 ### Docs
 
