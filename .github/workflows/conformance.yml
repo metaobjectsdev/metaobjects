@@ -1,7 +1,7 @@
 name: conformance
 
 # COST: the cross-port conformance matrix + full Java reactor + drift/mutation gates
-# are heavy, so they do NOT run on every push/PR — release gate (tag `v*`), a NIGHTLY
+# are heavy, so they do NOT run on every push or PR (pr-ci.yml runs the touched ports' lanes on a PR) — release gate (tag `v*`), a NIGHTLY
 # schedule, and on-demand (workflow_dispatch). Run them LOCALLY before opening/merging
 # a PR:
 #   scripts/ci-local.sh            # full parity (this + integration suite + drift)

@@ -19,12 +19,12 @@ name: pr-ci
 # integration suites (integration-tests.yml owns those, on tags and on demand):
 #   ts      — ts-fast (build + typecheck, conformance, completeness) and ts-unit
 #             (the per-package suites)
-#   java    — java-fast (java + kotlin conformance) and java-slow (the full reactor
-#             build with tests on)
+#   java    — java-slow: the full reactor build with tests on, which already holds the
+#             java and kotlin conformance classes
 #   python / csharp — the port's full test suite and conformance
 #
-# THE REQUIRED CHECK: the final job, `pr-ci`, is the one name to make a required check.
-# It always runs and is green only when every lane that was selected passed, so the
+# THE REQUIRED CHECK: the final job, `pr-ci`, is the name to put in branch protection
+# when a maintainer decides to (it is not required yet; `leak-scan` is). It always runs and is green only when every lane that was selected passed, so the
 # set of lanes can change per PR without touching branch protection. Do not rename it.
 #
 # SECURITY: this is a `pull_request` workflow on GitHub-hosted runners with a read-only
@@ -54,10 +54,10 @@ jobs:
           persist-credentials: false
       - id: sel
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
-          # HEAD is the PR's merge commit, so base..HEAD is exactly the PR's change.
-          ports="$(scripts/ci-affected-ports.sh "$BASE_SHA" HEAD)"
+          # HEAD is the PR's merge commit; its first parent is the base tip the merge was
+          # built on, so HEAD^1..HEAD is exactly the PR's change even after main moves.
+          ports="$(scripts/ci-affected-ports.sh HEAD^1 HEAD)"
           echo "selected ports: '$ports'"
           echo "ports=$ports" >> "$GITHUB_OUTPUT"
 
@@ -79,11 +79,14 @@ jobs:
           key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
           restore-keys: |
             ${{ runner.os }}-bun-
-      - run: scripts/ci-local.sh --only gates --strict-toolchains
+      - name: Gates
+        env:
+          MO_CI_LEAK_BASE: origin/${{ github.base_ref }}
+        run: scripts/ci-local.sh --only gates --strict-toolchains
 
   ts:
     needs: detect
-    if: contains(needs.detect.outputs.ports, 'ts')
+    if: contains(format(' {0} ', needs.detect.outputs.ports), ' ts ')
     runs-on: ubuntu-latest
     timeout-minutes: 40
     strategy:
@@ -111,14 +114,15 @@ jobs:
 
   java:
     needs: detect
-    if: contains(needs.detect.outputs.ports, 'java')
+    if: contains(format(' {0} ', needs.detect.outputs.ports), ' java ')
     runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
-        # java-fast = java + kotlin conformance; java-slow = the full reactor, tests on.
-        lane: [java-fast, java-slow]
+        # java-slow = the full reactor with tests on, which already holds every java and
+        # kotlin conformance class (java-fast would run the same classes a second time).
+        lane: [java-slow]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -137,7 +141,7 @@ jobs:
 
   python:
     needs: detect
-    if: contains(needs.detect.outputs.ports, 'python')
+    if: contains(format(' {0} ', needs.detect.outputs.ports), ' python ')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -151,7 +155,7 @@ jobs:
 
   csharp:
     needs: detect
-    if: contains(needs.detect.outputs.ports, 'csharp')
+    if: contains(format(' {0} ', needs.detect.outputs.ports), ' csharp ')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
