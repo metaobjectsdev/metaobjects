@@ -99,7 +99,6 @@ public static class Verify
         return root;
     }
 
-    // `text` minus its comments, for the output-tag scan.
     /// <summary>A text that changes delimiters and also uses a partial does not render: report it
     /// against its first partial.</summary>
     private static void ReportDelimitedPartial(string text, List<VerifyError> errors)
@@ -108,6 +107,7 @@ public static class Verify
             errors.Add(new VerifyError(ERR_TEMPLATE_SYNTAX, partial));
     }
 
+    // `text` minus its comments, for the output-tag scan.
     private static string StaticText(string text) => MustacheTags.WithoutComments(text, MustacheTags.Scan(text));
 
     private static PayloadField? Find(IReadOnlyList<PayloadField> fields, string name) =>
