@@ -12,6 +12,13 @@ here.**
 
 ### Docs
 
+- **The `@formExclude` description says what the attribute does since #484.** The registry text
+  said only "omitted from generated forms"; it now also says the generated create, PATCH and PUT
+  routes ignore a value sent for the field and that reads of it are unchanged. The sentence is the
+  same in `spec/metamodel/ui.json`, the TypeScript, Python and C# registry sources (Java reads the
+  spec), `expected-registry.json`, the metamodel-docs fixture and the reference site. No
+  behavior changes.
+
 - **Verify tables, the capability matrix and the entity samples now match what the ports emit.**
   The per-port drift tables in `migrations-and-drift.md` and `templates-and-payloads.md` give
   each port's real bare command (`meta verify`, `mvn metaobjects:verify`, `dotnet meta verify`,

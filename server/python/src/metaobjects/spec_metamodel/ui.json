@@ -8,7 +8,7 @@
         { "type": "attr", "subType": "boolean", "name": "filterable", "min": 0, "max": 1, "description": "When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer)." },
         { "type": "attr", "subType": "boolean", "name": "sortable", "min": 0, "max": 1, "description": "When true, the field is exposed in generated CRUD sort allowlists. Inherits from @filterable by default; set false to opt out." },
         { "type": "attr", "subType": "string", "name": "sortableDefaultOrder", "min": 0, "max": 1, "allowedValues": ["asc", "desc"], "description": "Direction a sort takes when it names this field but omits the order: a ?sort=<field> with no :order, and a layout.dataGrid whose @defaultSortField names it with no @defaultSortOrder. Defaults to 'asc'." },
-        { "type": "attr", "subType": "boolean", "name": "formExclude", "min": 0, "max": 1, "description": "When true, the field is omitted from generated forms. Inert on fields for which no form is generated (e.g. projection/derived fields)." }
+        { "type": "attr", "subType": "boolean", "name": "formExclude", "min": 0, "max": 1, "description": "When true, the field is omitted from generated forms, and the generated create, PATCH and PUT routes ignore a value sent for it (reads of it are unchanged); inert on fields for which no form is generated (e.g. projection/derived fields)." }
       ]
     },
     {
