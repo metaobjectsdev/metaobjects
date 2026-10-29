@@ -146,7 +146,7 @@ export async function compareOwnedCopy(owned: string, reference: string): Promis
   const b = [...ordB].sort();
   const localOnly = countMissing(a, b);
   const referenceOnly = countMissing(b, a);
-  const sameOrder = ordA.length === ordB.length && ordA.every((l, i) => l === ordB[i]);
+  const sameOrder = ordA.join("\n") === ordB.join("\n");
   return {
     verdict: sameOrder ? "reformatted" : "differs",
     localOnly,

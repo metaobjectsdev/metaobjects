@@ -96,6 +96,11 @@ export function reorderedSuffix(behind: number, own: number): string {
   return behind === 0 && own === 0 ? ", reordered" : "";
 }
 
+/** The `[DIFFERS: ...]` tag for a reference copy that is not the ejected one, shared by every listing. */
+function differsTag(path: string, referenceOnly: number, localOnly: number): string {
+  return `  ${path}  [DIFFERS: ${referenceOnly} line(s) only in the package, ${localOnly} line(s) only in yours${reorderedSuffix(referenceOnly, localOnly)}]`;
+}
+
 /** Every ejectable name, in registry order (stable — matches `meta eject --list`). */
 export function ejectableNames(): string[] {
   return SOURCES.flatMap((s) => s.names);
@@ -354,7 +359,7 @@ export async function runtimeCopyLines(cwd: string): Promise<string[]> {
     else {
       differing.push(r.path);
       lines.push(
-        `  ${r.path}  [DIFFERS: ${r.referenceOnly} line(s) only in the package, ${r.localOnly} line(s) only in yours${reorderedSuffix(r.referenceOnly, r.localOnly)}]`,
+        differsTag(r.path, r.referenceOnly, r.localOnly),
       );
     }
   }
@@ -392,7 +397,7 @@ export async function templateCopyLines(cwd: string): Promise<string[]> {
       const diff = templateDiffCommand(r);
       if (diff !== undefined) differing.push(diff);
       lines.push(
-        `  ${r.path}  [DIFFERS: ${r.referenceOnly} line(s) only in the package, ${r.localOnly} line(s) only in yours${reorderedSuffix(r.referenceOnly, r.localOnly)}]`,
+        differsTag(r.path, r.referenceOnly, r.localOnly),
       );
     }
   }

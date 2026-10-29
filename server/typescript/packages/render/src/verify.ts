@@ -120,34 +120,47 @@ function parse(text: string): Token[] {
   return Mustache.parse(text) as unknown as Token[];
 }
 
+/** Parse `text`; a Mustache syntax error becomes an ERR_TEMPLATE_SYNTAX finding, anything else rethrows. */
+function parseOrSyntaxError(text: string): Token[] | VerifyError {
+  try {
+    return parse(text);
+  } catch (e) {
+    const section = syntaxSection(e);
+    if (section === undefined) throw e;
+    return { code: ERR_TEMPLATE_SYNTAX, path: section };
+  }
+}
+
 const TOKEN_PARTIAL = ">";
 const TOKEN_COMMENT = "!";
 const TOKEN_DELIMITERS = "=";
 
-/** Every partial tag in a parse, in text order, as `[ref, start, end]` (nested sections included). */
-export function partialTokens(tokens: readonly Token[]): [string, number, number][] {
-  const out: [string, number, number][] = [];
+/** Every token in a parse, depth-first, section bodies included. */
+function flatTokens(tokens: readonly Token[]): Token[] {
+  const out: Token[] = [];
   for (const tok of tokens) {
-    if (tok[0] === TOKEN_PARTIAL) out.push([tok[1] as string, tok[2] as number, tok[3] as number]);
-    else if (Array.isArray(tok[4])) out.push(...partialTokens(tok[4] as Token[]));
+    out.push(tok);
+    if (Array.isArray(tok[4])) out.push(...flatTokens(tok[4] as Token[]));
   }
   return out;
+}
+
+/** Every partial tag in a parse, in text order, as `[ref, start, end]` (nested sections included). */
+export function partialTokens(tokens: readonly Token[]): [string, number, number][] {
+  return flatTokens(tokens)
+    .filter((tok) => tok[0] === TOKEN_PARTIAL)
+    .map((tok) => [tok[1] as string, tok[2] as number, tok[3] as number]);
 }
 
 /** Whether the parse contains a `{{=<% %>=}}` delimiter change. */
 export function hasDelimiterChange(tokens: readonly Token[]): boolean {
-  return tokens.some(
-    (tok) => tok[0] === TOKEN_DELIMITERS || (Array.isArray(tok[4]) && hasDelimiterChange(tok[4] as Token[])),
-  );
+  return flatTokens(tokens).some((tok) => tok[0] === TOKEN_DELIMITERS);
 }
 
 function commentSpans(tokens: readonly Token[]): [number, number][] {
-  const out: [number, number][] = [];
-  for (const tok of tokens) {
-    if (tok[0] === TOKEN_COMMENT) out.push([tok[2] as number, tok[3] as number]);
-    else if (Array.isArray(tok[4])) out.push(...commentSpans(tok[4] as Token[]));
-  }
-  return out;
+  return flatTokens(tokens)
+    .filter((tok) => tok[0] === TOKEN_COMMENT)
+    .map((tok) => [tok[2] as number, tok[3] as number]);
 }
 
 /** `text` with its comments cut out: what a tag-presence check may scan. */
@@ -268,13 +281,9 @@ export function verify(
             errors.push({ code: ERR_TEMPLATE_ENGINE_UNSUPPORTED, path: value });
             break;
           }
-          let parsed: Token[];
-          try {
-            parsed = parse(text);
-          } catch (e) {
-            const section = syntaxSection(e);
-            if (section === undefined) throw e;
-            errors.push({ code: ERR_TEMPLATE_SYNTAX, path: section });
+          const parsed = parseOrSyntaxError(text);
+          if (!Array.isArray(parsed)) {
+            errors.push(parsed);
             break;
           }
           staticTexts.push(withoutComments(text, parsed));
@@ -287,14 +296,8 @@ export function verify(
     }
   }
 
-  let bodyTokens: Token[];
-  try {
-    bodyTokens = parse(templateText);
-  } catch (e) {
-    const section = syntaxSection(e);
-    if (section === undefined) throw e;
-    return [{ code: ERR_TEMPLATE_SYNTAX, path: section }];
-  }
+  const bodyTokens = parseOrSyntaxError(templateText);
+  if (!Array.isArray(bodyTokens)) return [bodyTokens];
   staticTexts[0] = withoutComments(templateText, bodyTokens);
   walk(bodyTokens, [root], []);
 

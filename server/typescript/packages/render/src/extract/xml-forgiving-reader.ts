@@ -17,12 +17,13 @@
  *  collides with a real attribute or child-element name. */
 export const TEXT_KEY = "#text";
 
-function quote(s: string): string {
+/** Escape regex metacharacters (equivalent of Java Pattern.quote). */
+export function quote(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 /** Find first regex match at index >= `from` (emulates Java Matcher.find(int)). */
-function matchFrom(source: string, flags: string, text: string, from: number): RegExpExecArray | null {
+export function matchFrom(source: string, flags: string, text: string, from: number): RegExpExecArray | null {
   const g = new RegExp(source, flags.includes("g") ? flags : flags + "g");
   g.lastIndex = from;
   return g.exec(text);

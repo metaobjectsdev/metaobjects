@@ -3,15 +3,10 @@
 // declared field); locateJson (first-closed-else-first-open) is its fallback. Mirrors Java Locate.
 
 import { commentEnd } from "./json-forgiving-reader.js";
-import { maskXmlNonMarkup } from "./xml-forgiving-reader.js";
+import { matchFrom, maskXmlNonMarkup, quote } from "./xml-forgiving-reader.js";
 
 /** The characters a JSON comment may follow: whitespace or a structural separator. */
 const COMMENT_MAY_FOLLOW = /[\s,{[]/;
-
-/** Escape regex metacharacters (equivalent of Java Pattern.quote). */
-function quote(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
 
 /** First balanced {...}; if none closes, first '{' to end; null if no '{'. */
 export function locateJson(text: string | null | undefined): string | null {
@@ -105,21 +100,14 @@ export function locateXml(
   const openEnd = open.index + open[0].length;
 
   // Search for the close tag at-or-after the opener's end (Java close.find(open.end())).
-  const close = matchFrom(new RegExp(`</${quote(rootName)}\\s*>`, flags), view, openEnd);
+  const close = matchFrom(`</${quote(rootName)}\\s*>`, flags, view, openEnd);
   if (close == null) return text.substring(open.index);
   let start = open.index;
   for (let at = openEnd; ; ) {
-    const next = matchFrom(new RegExp(openSrc, flags), view, at);
+    const next = matchFrom(openSrc, flags, view, at);
     if (next == null || next.index >= close.index) break;
     start = next.index;
     at = next.index + next[0].length;
   }
   return text.substring(start, close.index + close[0].length);
-}
-
-/** Find the first regex match at index >= `from` (emulates Java Matcher.find(int)). */
-function matchFrom(re: RegExp, text: string, from: number): RegExpExecArray | null {
-  const g = new RegExp(re.source, re.flags.includes("g") ? re.flags : re.flags + "g");
-  g.lastIndex = from;
-  return g.exec(text);
 }
