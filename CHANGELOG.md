@@ -299,6 +299,24 @@ here.**
   so. The three flags it never read (`--server`, `--client`, `--out`) are still accepted but
   ignored and hidden from help, so the old invocation still reaches the pointer.
 
+- **Postgres column `DEFAULT`s that Postgres re-spells no longer read as drift.** `NOW()`,
+  `current_date`, a date literal on a `timestamptz`, `'1e3'` on a double, `'007'` on an integer
+  and a composite expression such as `now() + interval '1 day'` were reported by `meta verify
+  --db` as `change-column-default` on every run, and `meta migrate --from-db` proposed a
+  `SET DEFAULT` for each, because the comparison was the classifier's text against the text
+  Postgres hands back. The same expression-canon probe that answers CHECKs now answers defaults:
+  inside its rolled-back transaction it sets each expected default on the scratch copy and reads
+  `pg_get_expr`, and a literal on a `timestamptz` is compared in the reading session's
+  `TimeZone`. A real change (another value, another instant, another function) is still reported.
+  The classifier is still the comparison for SQLite, offline runs, read-only connections and a
+  default that does not compile against the live column. `baseline --from-db` records the
+  authored default where the probe proved it equal, so the offline plan starts clean too.
+  A column rename that carries a CHECK is now decided the same way: the scratch copy renames the
+  column first, so a rename plus a literal-case change (`'OPEN'` to `'open'`) is not folded into a
+  plain `RENAME CONSTRAINT`. The anonymous-CHECK match on SQLite and D1 shares the comparison.
+  Separately, the rename rewrite no longer touches a cast type, a function name or the inside of
+  an `E'..'` literal when a column of that word is renamed.
+
 - **`@default: "now"` is the current time on Postgres, not the table's creation time.** The
   expected schema stored it as the literal `'now'`, and Postgres converts that literal to a
   timestamp once, when it creates the column's `DEFAULT`, so every row got the same value. It

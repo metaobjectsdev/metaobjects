@@ -403,6 +403,13 @@ The normaliser cannot tell a precedence change from a bracket-only change (it de
 bracket), so on the fallback path `(a OR b) AND c` and `a OR (b AND c)` compare as equal. A fallback
 never reports drift of its own: a probe that fails changes nothing about the answer.
 
+The probe answers column defaults the same way. Postgres re-spells a default (`NOW()` becomes
+`now()`, `current_date` becomes `CURRENT_DATE`, a date literal on a `timestamptz` becomes a full
+timestamp read in the session's `TimeZone`, `'1e3'` on a double becomes `'1000'`), so for a column
+with a default on both sides the expected one is set on the scratch table and `pg_get_expr` is
+read back. A column rename that carries a CHECK is answered on a scratch copy whose columns are
+renamed first.
+
 `meta migrate baseline --from-db` on Postgres closes the offline gap. Where the live database
 proves a CHECK, or an expression index's key or predicate, is what the metadata would generate, the
 snapshot records the **generated** text rather than Postgres's spelling, so the offline plan

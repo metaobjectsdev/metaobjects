@@ -14,8 +14,9 @@
 // against the live columns) yields no entry, and the comparison falls back to the string
 // normaliser exactly as it was.
 
-import type { CheckDescriptor, IndexDescriptor, TableDescriptor } from "./types.js";
+import type { CheckDescriptor, ColumnDescriptor, ColumnDefault, IndexDescriptor, TableDescriptor } from "./types.js";
 import { checkExprEquals, normalizeCheckExpr } from "./check-expr-compare.js";
+import { columnDefaultsEqual } from "./column-default.js";
 
 /** Postgres's stored form of the expression parts of one expected index. */
 export interface IndexExprCanon {
@@ -33,9 +34,14 @@ export interface IndexExprCanon {
 export interface ExprCanon {
   readonly checks: ReadonlyMap<CheckDescriptor, string>;
   readonly indexes: ReadonlyMap<IndexDescriptor, IndexExprCanon>;
+  /**
+   * Each expected column DEFAULT as Postgres stores it (`pg_get_expr(adbin, adrelid)`, read
+   * through the introspector's own `parsePgDefault`), keyed by the expected column.
+   */
+  readonly defaults: ReadonlyMap<ColumnDescriptor, ColumnDefault>;
 }
 
-export const NO_EXPR_CANON: ExprCanon = { checks: new Map(), indexes: new Map() };
+export const NO_EXPR_CANON: ExprCanon = { checks: new Map(), indexes: new Map(), defaults: new Map() };
 
 /**
  * Ask the database how it would store `expected`'s CHECK constraints and index expressions
@@ -46,6 +52,12 @@ export const NO_EXPR_CANON: ExprCanon = { checks: new Map(), indexes: new Map() 
 export type ExprCanonProbe = (
   live: TableDescriptor,
   expected: TableDescriptor,
+  /**
+   * Live column renames (old name → new name) the scratch table applies before probing, so
+   * an expected expression that names a renamed column compiles against the table as it
+   * will be after the migration.
+   */
+  renames?: ReadonlyMap<string, string>,
 ) => Promise<ExprCanon | undefined>;
 
 /**
@@ -70,4 +82,20 @@ export function indexExprMatchesLive(
   live: string,
 ): boolean {
   return stored !== undefined ? stored === live : normalizeCheckExpr(expected) === normalizeCheckExpr(live);
+}
+
+/**
+ * The same decision for one column DEFAULT. With the database's answer, Postgres's spelling
+ * of the expected default is compared with the live one (both read by `parsePgDefault`, so
+ * `NOW()`/`now()`, `current_date`/`CURRENT_DATE`, a date literal on a timestamptz, `'1e3'`
+ * on a double and `'007'` on an integer are equal when Postgres stores them equal, and a
+ * real change still differs); without it, the classifier's `kind` and `value` as written.
+ */
+export function columnDefaultMatchesLive(
+  canon: ExprCanon,
+  expected: ColumnDescriptor,
+  live: ColumnDescriptor,
+): boolean {
+  const stored = canon.defaults.get(expected);
+  return columnDefaultsEqual(stored ?? expected.default, live.default);
 }
