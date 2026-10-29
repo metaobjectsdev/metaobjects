@@ -86,12 +86,13 @@ definition of the checks: each wrapper checks out, installs the toolchains its
 lane needs, and calls the script, so a local run is the same check a workflow
 run would be. A pull request runs the leak scan (`hygiene.yml`) and `pr-ci.yml`, which
 runs the unit tests and conformance corpora of only the ports the PR touches (a change
-under `fixtures/`, `spec/`, `scripts/`, `.github/` or `agent-context/`, or to any file outside a
-port's directory that the selector does not recognise, touches every port; a change only to
-`docs/` or to Markdown files outside those directories runs just the offline gates). Its `pr-ci` job is green only when every selected lane is,
-and a newer push cancels the superseded run. The docker integration suites run on `main`,
-nightly and on release tags. Run the script locally before opening or merging a PR, so
-nothing red reaches `main`:
+under `fixtures/`, `spec/`, `scripts/`, `.github/` or `agent-context/`, or to any file
+outside a port's directory that the selector does not recognise, touches every port; a
+change only to `docs/` or to Markdown files outside those directories runs just the
+offline gates). Its `pr-ci` job is green only when every selected lane is, and a newer
+push cancels the superseded run. The docker integration suites run on `main`, nightly and
+on release tags. Run the script locally before opening or merging a PR, so nothing red
+reaches `main`:
 
 ```bash
 scripts/ci-local.sh            # full parity: hygiene.yml's leak-scan, all-port
