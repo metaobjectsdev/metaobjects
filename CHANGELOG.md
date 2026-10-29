@@ -192,6 +192,34 @@ here.**
 
 ### Changed
 
+- **On Postgres, `meta verify --db` and `meta migrate` ask Postgres whether a CHECK or an index
+  expression is the one stored, instead of comparing rewritten text.** For each table the plan
+  creates a temporary table with the live columns inside a transaction it rolls back (a savepoint
+  when the connection is already in one), adds the expected CHECK to it, creates each expected
+  expression-index key and partial-index predicate as a temporary index, reads back
+  `pg_get_constraintdef`, `pg_get_indexdef` and `pg_get_expr`, and compares them with the live
+  definitions as plain strings. Every rewrite Postgres makes, including ones nobody has hand-coded,
+  now compares equal, and the string normaliser stops growing Postgres-shaped special cases. It
+  also ends the normaliser's two verified false negatives: a precedence change (`(a OR b) AND c`
+  against `a OR (b AND c)`) and a regrouped `NOT` (`NOT (a AND b)` against `NOT a AND b`) now report
+  as drift, as does the same change in an index `@where`. A database that held such a change and
+  verified clean before now reports it once: run `meta migrate` to bring it back.
+  The string normaliser stays, and decides, on SQLite and D1, in the offline `meta migrate`
+  (which has no database), on a read-only connection or hot standby, for a role without the `TEMP`
+  privilege, and for an expression that does not compile against the live columns. A probe that
+  cannot answer never reports drift or fails the command. An expression holding a `;` anywhere, or
+  an index `@using` that is not a plain access-method name, is never sent to the database. A refusal
+  for one table (such as no `SELECT` on it) gives that table no answer and does not stop the other
+  tables being probed. `meta migrate baseline --from-db` now records the generated text, not
+  Postgres's spelling, for a CHECK or an index expression the live database proves equal to the
+  metadata's, so the offline plan after a baseline compares like with like; it is best effort and
+  writes the introspected snapshot as before if the metadata does not load.
+  `meta verify --db` also uses the probe for its committed-snapshot check. New exports from
+  `@metaobjectsdev/migrate-ts`: `postgresExprCanonProbe`, `adoptGeneratedSpelling` and the
+  `ExprCanonProbe` types, with a `DiffArgs.exprCanonProbe` option. Schema comparison is
+  TypeScript-owned, so no other port carries this comparison. MySQL, SQL Server and Oracle are not
+  migrate dialects, so they have no probe.
+
 - **A bare `verify` runs the same default gate set in every port: codegen drift, prompt
   templates and the requirement ledger.** Until now a bare run covered one gate: `meta verify`
   and `dotnet meta verify` ran only templates, so "run `verify` in CI" did not catch generated
@@ -296,10 +324,10 @@ here.**
   `meta migrate` to bring it back. Separately, `char(n)` is no longer treated as a text column
   for the `(col)::text` fold: its own regex operator sees the blank padding the cast trims, and
   Postgres never adds the cast there, so an explicit `(col)::text ~ '…'` on a `char(n)` column
-  now reads as drift. A precedence change (`(a OR b) AND c` against `a OR (b AND c)`) is still
-  not detected; that needs Postgres to canonicalise the expected side. A new Postgres test
-  migrates, applies and verifies every CHECK shape `migrate` generates. Schema comparison is
-  TypeScript-owned, so no other port carries this comparison.
+  now reads as drift. A precedence change (`(a OR b) AND c` against `a OR (b AND c)`) is not
+  detected by the string comparison; on Postgres Postgres now answers that (see "Changed", the
+  CHECK probe). A new Postgres test migrates, applies and verifies every CHECK shape `migrate`
+  generates. Schema comparison is TypeScript-owned, so no other port carries this comparison.
 
 ### Documentation
 

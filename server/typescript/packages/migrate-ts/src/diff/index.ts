@@ -13,7 +13,8 @@ import { detectColumnRenames, detectTableRenames } from "./rename-heuristic.js";
 import { firstViewSqlDifference, viewSqlEquals } from "../view-sql-compare.js";
 import { viewReplaceIsLegal, type ViewReplaceProbe } from "../view-replace.js";
 import { liveViewReadsTable, sqlNamesIdentifier } from "../view-reads.js";
-import { checkExprEquals, checkExprRespelledNullSafe, normalizeCheckExpr, renameExprIdentifiers } from "../check-expr-compare.js";
+import { checkExprEquals, checkExprRespelledNullSafe, renameExprIdentifiers } from "../check-expr-compare.js";
+import { checkMatchesLive, indexExprMatchesLive, NO_EXPR_CANON, type ExprCanon, type ExprCanonProbe, type IndexExprCanon } from "../expr-canon.js";
 import { isPgAutoSequenceDefault } from "../pg-identity-default.js";
 import { DEFAULT_DB_SCHEMA_POSTGRES } from "@metaobjectsdev/metadata";
 import { qualifiedDbName } from "../qualified-name.js";
@@ -79,6 +80,15 @@ export interface DiffArgs {
    * committed snapshot), or when it cannot answer, the plan is DROP + CREATE.
    */
   viewReplaceProbe?: ViewReplaceProbe;
+  /**
+   * Postgres: asks the live database how it stores each expected CHECK and index expression
+   * (`postgresExprCanonProbe`), so those are compared as the plain strings Postgres produced
+   * instead of through the string normaliser. Without a probe (an offline plan against the
+   * committed snapshot, SQLite, D1), or for any expression the probe cannot answer (a
+   * read-only connection, no TEMP privilege, an expression that does not compile against
+   * the live columns), the normaliser decides exactly as it always has.
+   */
+  exprCanonProbe?: ExprCanonProbe;
   /**
    * #258 — refuse (throw {@link PrimaryKeyChangeError}) when an existing table's live
    * PRIMARY KEY differs from the metadata identity. There is no primary-key change kind
@@ -244,14 +254,15 @@ export async function diff(
   // any table present on both sides (diffRenamedTables), and its columns are never
   // scanned as orphaned drop/add pairs by the column heuristic in Pass 3.
   await detectTableRenames(changes, args.onAmbiguous, args.renames);
-  const { renamed, predecessors } = diffRenamedTables(changes, expectedTables, actualTables, args.dialect);
+  const canon = await probeExprCanon(args.exprCanonProbe, args.dialect, changes, expectedTables, actualTables);
+  const { renamed, predecessors } = diffRenamedTables(changes, expectedTables, actualTables, args.dialect, canon);
 
   // Pass 2: tables in both → compare columns/indexes/FKs
   for (const [id, expectedTable] of expectedTables) {
     const actualTable = actualTables.get(id);
     if (!actualTable) continue;
     // An FK onto a renamed table follows the rename in the engine — compare it as such.
-    diffTablePair(expectedTable, withRenamedRefTables(actualTable, renamed), changes, args.dialect);
+    diffTablePair(expectedTable, withRenamedRefTables(actualTable, renamed), changes, args.dialect, canon);
   }
 
   // Pass 2b: views. Identity is (schema, name). How "changed" is decided is
@@ -344,6 +355,7 @@ function diffRenamedTables(
   expectedTables: ReadonlyMap<string, TableDescriptor>,
   actualTables: ReadonlyMap<string, TableDescriptor>,
   dialect: Dialect | undefined,
+  canon: ExprCanon,
 ): { renamed: Map<string, string>; predecessors: Map<string, TableDescriptor> } {
   const renames = changes.filter(
     (c): c is Extract<Change, { kind: "rename-table" }> => c.kind === "rename-table",
@@ -371,10 +383,58 @@ function diffRenamedTables(
     predecessors.set(newId, actual);
     const carried = withRenamedRefTables({ ...actual, name: r.to }, renamed);
     const tableChanges: Change[] = [];
-    diffTablePair(expected, carried, tableChanges, dialect);
-    changes.push(...(dialect === "postgres" ? foldNameOnlyChanges(r, tableChanges, textColumnsOf(actual)) : tableChanges));
+    diffTablePair(expected, carried, tableChanges, dialect, canon);
+    changes.push(...(dialect === "postgres" ? foldNameOnlyChanges(r, tableChanges, textColumnsOf(actual), canon) : tableChanges));
   }
   return { renamed, predecessors };
+}
+
+/**
+ * Postgres: ask the live database how it stores each expected CHECK and index expression,
+ * for every table that has a live counterpart (present on both sides, or carried through a
+ * rename), so the comparison below sees Postgres's own spelling on both sides. Only
+ * expressions whose text differs from the live one need asking: identical text is equal.
+ * Anything the probe cannot answer is absent from the result and keeps the string
+ * normaliser (see expr-canon.ts).
+ */
+async function probeExprCanon(
+  probe: ExprCanonProbe | undefined,
+  dialect: Dialect | undefined,
+  changes: readonly Change[],
+  expectedTables: ReadonlyMap<string, TableDescriptor>,
+  actualTables: ReadonlyMap<string, TableDescriptor>,
+): Promise<ExprCanon> {
+  if (probe === undefined || dialect !== "postgres") return NO_EXPR_CANON;
+  const liveOf = new Map<string, TableDescriptor>();
+  for (const c of changes) {
+    if (c.kind !== "rename-table") continue;
+    const live = actualTables.get(tableIdentity({ name: c.from, ...schemaSpread(c.schema) }));
+    if (live !== undefined) liveOf.set(tableIdentity({ name: c.to, ...schemaSpread(c.schema) }), live);
+  }
+  const checks = new Map<CheckDescriptor, string>();
+  const indexes = new Map<IndexDescriptor, IndexExprCanon>();
+  for (const [id, expected] of expectedTables) {
+    const live = actualTables.get(id) ?? liveOf.get(id);
+    if (live === undefined) continue;
+    const liveChecks = new Map(live.checks.map((c) => [c.name, c.expression]));
+    const liveIndexes = new Map(live.indexes.map((ix) => [ix.name, ix]));
+    // Both lookups are by expected descriptor, so the probe is asked only about those the
+    // comparison could not settle by identical text.
+    const unsettled: TableDescriptor = {
+      ...expected,
+      checks: expected.checks.filter((c) => liveChecks.get(c.name) !== c.expression),
+      indexes: expected.indexes.filter((ix) => {
+        const l = liveIndexes.get(ix.name);
+        return l === undefined || ix.expr !== l.expr || ix.where !== l.where;
+      }),
+    };
+    if (unsettled.checks.length === 0 && unsettled.indexes.length === 0) continue;
+    const answer = await probe(live, unsettled);
+    if (answer === undefined) continue;
+    for (const [c, text] of answer.checks) checks.set(c, text);
+    for (const [ix, text] of answer.indexes) indexes.set(ix, text);
+  }
+  return { checks, indexes };
 }
 
 /**
@@ -389,9 +449,10 @@ function diffTablePair(
   actual: TableDescriptor,
   changes: Change[],
   dialect: Dialect | undefined,
+  canon: ExprCanon,
 ): void {
   diffTableColumns(expected, actual, changes, dialect);
-  diffTableIndexes(expected, actual, changes);
+  diffTableIndexes(expected, actual, changes, canon);
   diffTableForeignKeys(expected, actual, changes, dialect);
   // CHECK constraints on existing tables are evolved whenever a dialect is
   // known (postgres: ALTER ADD/DROP CONSTRAINT; sqlite/d1: the emitter routes
@@ -401,7 +462,7 @@ function diffTablePair(
   // no dialect (legacy positional callers) checks stay un-diffed — those
   // callers may hold hand-built snapshots with empty check lists, and
   // diffing them would re-propose every modeled check forever.
-  if (dialect !== undefined) diffTableChecks(expected, actual, changes, dialect);
+  if (dialect !== undefined) diffTableChecks(expected, actual, changes, dialect, canon);
 }
 
 /** `t` with each FK's `refTable` mapped through the table renames (refs share `t`'s schema). */
@@ -429,6 +490,7 @@ function foldNameOnlyChanges(
   r: Extract<Change, { kind: "rename-table" }>,
   tableChanges: Change[],
   textColumns: ReadonlySet<string>,
+  canon: ExprCanon,
 ): Change[] {
   const constraintRenames: NameChange[] = [];
   const indexRenames: NameChange[] = [];
@@ -443,12 +505,12 @@ function foldNameOnlyChanges(
     } else if (d.kind === "drop-check" && d.restore !== undefined) {
       const restore = d.restore;
       const a = tableChanges.find((c): c is Extract<Change, { kind: "add-check" }> =>
-        c.kind === "add-check" && !folded.has(c) && checkExprEquals(c.check.expression, restore.expression, textColumns));
+        c.kind === "add-check" && !folded.has(c) && checkMatchesLive(canon, c.check, restore, textColumns));
       if (a) { folded.add(d).add(a); constraintRenames.push({ from: d.check, to: a.check.name }); }
     } else if (d.kind === "drop-index" && d.restore !== undefined) {
       const restore = d.restore;
       const a = tableChanges.find((c): c is Extract<Change, { kind: "add-index" }> =>
-        c.kind === "add-index" && !folded.has(c) && indexEquals(c.index, restore));
+        c.kind === "add-index" && !folded.has(c) && indexEquals(c.index, restore, canon));
       if (a) {
         folded.add(d).add(a);
         // Renaming a UNIQUE constraint renames its backing index with it.
@@ -719,6 +781,7 @@ function diffTableIndexes(
   expected: TableDescriptor,
   actual: TableDescriptor,
   changes: Change[],
+  canon: ExprCanon,
 ): void {
   const table = expected.name;
   const sx = schemaSpread(expected.schema);
@@ -728,7 +791,7 @@ function diffTableIndexes(
     const a = actualIdx.get(name);
     if (!a) {
       changes.push({ kind: "add-index", table, ...sx, index: ix, status: ALLOWED });
-    } else if (!indexEquals(ix, a)) {
+    } else if (!indexEquals(ix, a, canon)) {
       // Index shape changed: drop + add (atomic from caller's perspective).
       // restore = the ACTUAL shape so the down re-creates the original index.
       changes.push({ kind: "drop-index", table, ...sx, index: name, restore: a, status: ALLOWED });
@@ -842,7 +905,8 @@ function diffTableChecks(
   expected: TableDescriptor,
   actual: TableDescriptor,
   changes: Change[],
-  dialect?: Dialect,
+  dialect: Dialect | undefined,
+  canon: ExprCanon,
 ): void {
   const sx = schemaSpread(expected.schema);
   // SQLite/D1 stores no constraint identity for an inline `CHECK (…)`, so hand-written
@@ -864,7 +928,7 @@ function diffTableChecks(
     const ac = actualByName.get(ec.name);
     if (ac) {
       consumed.add(ac);
-      if (!checkExprEquals(ec.expression, ac.expression, textColumns)) {
+      if (!checkMatchesLive(canon, ec, ac, textColumns)) {
         const respelled = respelledSpread(ec, ac);
         changes.push({ kind: "drop-check", table: expected.name, ...sx, check: ec.name, restore: ac, ...respelled, status: ALLOWED });
         changes.push({ kind: "add-check", table: expected.name, ...sx, check: ec, ...respelled, status: ALLOWED });
@@ -1341,7 +1405,8 @@ function recreateReason(
   return proven ? { kind: "unchanged", tables } : undefined;
 }
 
-function indexEquals(a: IndexDescriptor, b: IndexDescriptor): boolean {
+function indexEquals(a: IndexDescriptor, b: IndexDescriptor, canon: ExprCanon = NO_EXPR_CANON): boolean {
+  const stored = canon.indexes.get(a);
   if (a.unique !== b.unique) return false;
   // Access method: absent = "btree" (the default).
   if ((a.using ?? "btree") !== (b.using ?? "btree")) return false;
@@ -1349,7 +1414,7 @@ function indexEquals(a: IndexDescriptor, b: IndexDescriptor): boolean {
   // as predicates). Both-absent = plain index; one-absent = different.
   if ((a.expr === undefined) !== (b.expr === undefined)) return false;
   if (a.expr !== undefined && b.expr !== undefined) {
-    if (normalizeCheckExpr(a.expr) !== normalizeCheckExpr(b.expr)) return false;
+    if (!indexExprMatchesLive(stored?.expr, a.expr, b.expr)) return false;
   }
   if (a.columns.length !== b.columns.length) return false;
   if (!a.columns.every((c, i) => c === b.columns[i])) return false;
@@ -1362,7 +1427,7 @@ function indexEquals(a: IndexDescriptor, b: IndexDescriptor): boolean {
   // the introspected `pg_get_expr` form. Both-absent = equal; one-absent = different.
   if ((a.where === undefined) !== (b.where === undefined)) return false;
   if (a.where !== undefined && b.where !== undefined) {
-    if (normalizeCheckExpr(a.where) !== normalizeCheckExpr(b.where)) return false;
+    if (!indexExprMatchesLive(stored?.where, a.where, b.where)) return false;
   }
   return true;
 }
