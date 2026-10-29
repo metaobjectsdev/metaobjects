@@ -29,6 +29,7 @@ import {
   effectivePackage,
   entityOutputPath,
   formatTs,
+  isCredentialField,
   isReport,
   relativeModuleSpecifier,
   type EmittedFile,
@@ -152,9 +153,12 @@ export function writeXml(root: string, columns: readonly ExportColumn[], rows: r
 `;
 }
 
-/** The report's exported fields, in derived-field order (the read model's declared order). */
+/**
+ * The report's exported fields, in derived-field order (the read model's declared order). A
+ * credential (#484) is not a column: the list route never returns it, and an export names none.
+ */
 export function exportColumns(report: MetaObject): { name: string; guard: boolean }[] {
-  return report.fields().map((f) => ({ name: f.name, guard: GUARDED_SUBTYPES.has(f.subType) }));
+  return report.fields().filter((f) => !isCredentialField(f)).map((f) => ({ name: f.name, guard: GUARDED_SUBTYPES.has(f.subType) }));
 }
 
 /** The per-report module: its column list and the CSV and XML writers, in the shape a mount takes. */

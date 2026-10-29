@@ -175,8 +175,14 @@ open class KotlinFilterAllowlistGenerator : MultiFileDirectGeneratorBase<MetaObj
          * collapse to the empty op-set (defensive — the allowlist becomes an effective
          * "field is unknown" gate).
          */
-        fun computeFilterableOps(entity: MetaObject): Map<String, Set<String>> =
-            computeFilterableOps(entity.metaFields)
+        fun computeFilterableOps(entity: MetaObject): Map<String, Set<String>> {
+            val ops = computeFilterableOps(entity.metaFields)
+            if (!com.metaobjects.generator.util.GeneratorUtil.isReport(entity)) return ops
+            // #484: a report's credential column is hidden from the response, so it must not be filterable
+            // either: a filter would let a caller recover the hidden value a prefix at a time.
+            val credentials = KotlinGenUtil.reportCredentialNames(entity).toSet()
+            return ops.filterKeys { it !in credentials }
+        }
 
         /**
          * [computeFilterableOps] over an explicit field list — used for a TPH base, whose allowlist

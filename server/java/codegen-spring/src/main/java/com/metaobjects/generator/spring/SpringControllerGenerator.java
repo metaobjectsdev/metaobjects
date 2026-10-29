@@ -36,6 +36,7 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import com.metaobjects.generator.util.GeneratedFileWriter;
@@ -301,6 +302,10 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         // private to this controller (no cross-file collision risk).
         appendSortAllowlist(src, entity, sortFields);
         appendServerOwnedOnCreate(src, entity);
+        // #484: the credential fields this entity's rows carry, hidden from every response body.
+        List<String> hidden = SpringGeneratorSupport.credentialNames(entity);
+        List<SpringM2mSupport.M2mNav> navs = SpringM2mSupport.resolve(entity, loader);
+        boolean redacts = !hidden.isEmpty() || navs.stream().anyMatch(n -> !targetCredentials(entity, n).isEmpty());
 
         // Repository wiring — constructor injection (Spring's recommended idiom; avoids
         // field-injection magic, plays well with final fields + final test seams). The
@@ -319,15 +324,16 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("        this.validator = validator;\n");
         src.append("    }\n\n");
         appendUnreadableBodyHandler(src);
+        if (redacts) appendRedactHelpers(src);
 
         // GET (list) — pagination + sort + withCount + FR-009 filter operators.
         // HttpServletRequest carries the raw query string so the bracketed
         // filter[<field>][<op>]=<value> grammar reaches FilterParser intact
         // (Spring's @RequestParam would collapse same-key occurrences).
-        appendListHandler(src, shortName, dtoName, repoName);
+        appendListHandler(src, shortName, dtoName, repoName, hidden);
 
         // GET /{id} — single by primary key.
-        appendGetByIdHandler(src, pkType);
+        appendGetByIdHandler(src, pkType, hidden);
 
         // POST — create. FR-036: bind the raw DTO (no @Valid, whose default 400 body is NOT the
         // cross-port envelope and does not even fire under the standaloneSetup test harness) and
@@ -335,6 +341,10 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         // any field-constraint violation BEFORE persisting.
         src.append("    @PostMapping\n");
         src.append("    public ResponseEntity<?> create(@RequestBody ").append(dtoName).append(" dto) {\n");
+        // #484: a @formExclude / credential value is IGNORED (never rejected): the DTO is rebuilt
+        // without it, so the column is left to the repository's default.
+        List<MetaField> components = SpringGeneratorSupport.dtoComponentFields(entity);
+        appendStripWriteDenied(src, dtoName, components, SpringGeneratorSupport.writeDeniedNames(components));
         // A caller does not supply server-owned columns, so a @NotNull on one must not reject
         // the request. The DTO is BOTH the request and the response body, so `id` carries
         // @NotNull because it is @required in the RESPONSE — while being identity.primary
@@ -370,7 +380,8 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
             ? dtoName + ".stampForInsert(dto)" : "dto";
         src.append("        try {\n");
         src.append("            ").append(dtoName).append(" saved = repository.create(").append(createArg).append(");\n");
-        src.append("            return ResponseEntity.status(HttpStatus.CREATED).body(saved);\n");
+        src.append("            return ResponseEntity.status(HttpStatus.CREATED).body(")
+           .append(redactOne("saved", hidden)).append(");\n");
         appendConstraintCatch(src);
         src.append("    }\n\n");
 
@@ -420,7 +431,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         }
         src.append("        try {\n");
         src.append("            return repository.patch(id, patch)\n");
-        src.append("                    .<ResponseEntity<?>>map(ResponseEntity::ok)\n");
+        src.append("                    .<ResponseEntity<?>>map(").append(okMapper(hidden)).append(")\n");
         src.append("                    .orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(\"error\", \"not_found\")));\n");
         appendConstraintCatch(src);
         src.append("    }\n\n");
@@ -442,13 +453,20 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         // pluralized (handled by @RequestMapping above); the relation segment is the
         // relationship name. Related-row order is not contractual. The repository finder
         // traverses the junction (hetero / directed self-join / symmetric union-on-read).
-        for (SpringM2mSupport.M2mNav nav : SpringM2mSupport.resolve(entity, loader)) {
+        for (SpringM2mSupport.M2mNav nav : navs) {
             String finder = SpringGeneratorSupport.m2mFinderName(nav.relationName());
+            String navCall = "repository." + finder + "(id" + SpringGeneratorSupport.targetSubtypeCallArg(nav) + ")";
             src.append("    @GetMapping(\"/{id}/").append(nav.relationName()).append("\")\n");
-            src.append("    public ResponseEntity<List<").append(nav.targetDtoType()).append(">> ")
-               .append(finder).append("(@PathVariable ").append(pkType).append(" id) {\n");
-            src.append("        return ResponseEntity.ok(repository.").append(finder)
-               .append("(id").append(SpringGeneratorSupport.targetSubtypeCallArg(nav)).append("));\n");
+            if (targetCredentials(entity, nav).isEmpty()) {
+                src.append("    public ResponseEntity<List<").append(nav.targetDtoType()).append(">> ")
+                   .append(finder).append("(@PathVariable ").append(pkType).append(" id) {\n");
+                src.append("        return ResponseEntity.ok(").append(navCall).append(");\n");
+            } else {
+                src.append("    public ResponseEntity<List<Object>> ")
+                   .append(finder).append("(@PathVariable ").append(pkType).append(" id) {\n");
+                src.append("        return ResponseEntity.ok(")
+                   .append(redactAll(navCall, targetCredentials(entity, nav))).append(");\n");
+            }
             src.append("    }\n\n");
         }
 
@@ -659,19 +677,33 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         // Repository wiring — constructor injection, the read-only seam only. No
         // ObjectMapper and no Validator: nothing here binds a request body, so injecting
         // either would make a consumer wire beans this controller can never use.
-        src.append("    private final ").append(repoName).append(" repository;\n\n");
-        src.append("    public ").append(controllerName).append("(").append(repoName)
-           .append(" repository) {\n");
+        // #484: a projection field that inherits a credential (view.password) is hidden from its
+        // rows. Redaction needs the ObjectMapper, so it is injected ONLY then; otherwise the
+        // constructor and the whole controller stay as they were.
+        // A served report is covered too: a derived column over a credential is a credential.
+        List<String> hidden = SpringGeneratorSupport.credentialNames(entity);
+        src.append("    private final ").append(repoName).append(" repository;\n");
+        if (hidden.isEmpty()) {
+            src.append("\n");
+            src.append("    public ").append(controllerName).append("(").append(repoName)
+               .append(" repository) {\n");
+        } else {
+            src.append("    private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;\n\n");
+            src.append("    public ").append(controllerName).append("(").append(repoName)
+               .append(" repository, com.fasterxml.jackson.databind.ObjectMapper objectMapper) {\n");
+            src.append("        this.objectMapper = objectMapper;\n");
+        }
         src.append("        this.repository = repository;\n");
         src.append("    }\n\n");
+        if (!hidden.isEmpty()) appendRedactHelpers(src);
 
         if (com.metaobjects.generator.util.GeneratorUtil.isReport(entity)) {
-            appendReportListHandler(src, shortName, dtoName, repoName, reportMaxRows, reportExport, routeBase);
+            appendReportListHandler(src, shortName, dtoName, repoName, reportMaxRows, reportExport, routeBase, hidden);
         } else {
-            appendListHandler(src, shortName, dtoName, repoName);
+            appendListHandler(src, shortName, dtoName, repoName, hidden);
         }
         if (hasItem) {
-            appendGetByIdHandler(src, pkType);
+            appendGetByIdHandler(src, pkType, hidden);
         }
 
         src.append("    @PostMapping\n");
@@ -732,8 +764,12 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
      */
     private static List<String> sortableFields(MetaObject entity) {
         List<String> sortFields = new ArrayList<>();
+        // #484: a served report's credential column is not sortable: ordering by it is an oracle.
+        List<String> credentials = com.metaobjects.generator.util.GeneratorUtil.isReport(entity)
+            ? SpringGeneratorSupport.credentialNames(entity) : List.of();
         for (MetaField field : entity.getMetaFields()) {
             if (!FilterOps.supportsFiltering(field.getSubType())) continue;
+            if (credentials.contains(field.getName())) continue;
             // A derived report field over an array is not sortable (a map has no band above).
             if (com.metaobjects.generator.util.GeneratorUtil.isReport(entity) && (field.isArrayType() || field instanceof com.metaobjects.field.MapField)) continue;
             sortFields.add(field.getName());
@@ -776,7 +812,8 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
      * filter[&lt;field&gt;][&lt;op&gt;]=&lt;value&gt; grammar reaches FilterParser intact
      * (Spring's {@code @RequestParam} would collapse same-key occurrences).
      */
-    private static void appendListHandler(StringBuilder src, String shortName, String dtoName, String repoName) {
+    private static void appendListHandler(StringBuilder src, String shortName, String dtoName, String repoName,
+            List<String> hidden) {
         String allowlistName = SpringNaming.filterAllowlistName(shortName);
         src.append("    @GetMapping\n");
         src.append("    public ResponseEntity<?> list(\n");
@@ -808,9 +845,10 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
            .append("> rows = repository.list(actualLimit, actualOffset, sortClause, filters);\n");
         src.append("        if (withCount != null && withCount == 1) {\n");
         src.append("            long total = repository.count(filters);\n");
-        src.append("            return ResponseEntity.ok(Map.of(\"rows\", rows, \"total\", total));\n");
+        src.append("            return ResponseEntity.ok(Map.of(\"rows\", ").append(redactAll("rows", hidden))
+           .append(", \"total\", total));\n");
         src.append("        }\n");
-        src.append("        return ResponseEntity.ok(rows);\n");
+        src.append("        return ResponseEntity.ok(").append(redactAll("rows", hidden)).append(");\n");
         src.append("    }\n\n");
     }
 
@@ -826,9 +864,9 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
      */
     private static void appendReportListHandler(StringBuilder out, String shortName, String dtoName,
                                                 String repoName, int maxRows, boolean export,
-                                                String routeBase) {
+                                                String routeBase, List<String> hidden) {
         StringBuilder src = new StringBuilder();
-        appendReportListHandlerBody(src, shortName, dtoName, repoName, maxRows, export, routeBase);
+        appendReportListHandlerBody(src, shortName, dtoName, repoName, maxRows, export, routeBase, hidden);
         String handler = src.toString();
         if (export) {
             // With the export branch wired, no answer of the list route consults Accept (the
@@ -850,7 +888,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
 
     private static void appendReportListHandlerBody(StringBuilder src, String shortName, String dtoName,
                                                 String repoName, int maxRows, boolean export,
-                                                String routeBase) {
+                                                String routeBase, List<String> hidden) {
         String allowlistName = SpringNaming.filterAllowlistName(shortName);
         src.append("    @GetMapping\n");
         src.append("    public ResponseEntity<?> list(\n");
@@ -916,12 +954,13 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
             src.append("        if (withCount != null && withCount == 1) {\n");
         }
         src.append("            long total = repository.count(filters);\n");
-        src.append("            return ResponseEntity.ok(Map.of(\"rows\", rows, \"total\", total));\n");
+        src.append("            return ResponseEntity.ok(Map.of(\"rows\", ").append(redactAll("rows", hidden))
+           .append(", \"total\", total));\n");
         src.append("        }\n");
-        src.append("        return ResponseEntity.ok(rows);\n");
+        src.append("        return ResponseEntity.ok(").append(redactAll("rows", hidden)).append(");\n");
         src.append("    }\n\n");
         if (export) {
-            appendReportExportHandler(src, shortName, dtoName, repoName, routeBase);
+            appendReportExportHandler(src, shortName, dtoName, repoName, routeBase, hidden);
         }
         src.append("    /** A page bound as an integer of at least {@code min}, or null when it is not one. */\n");
         src.append("    private static Long parseBound(String raw, long min) {\n");
@@ -946,7 +985,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
      * {@code { rows, total }} envelope. {@code Accept} is never read.
      */
     private static void appendReportExportHandler(StringBuilder src, String shortName, String dtoName,
-                                                  String repoName, String routeBase) {
+                                                  String repoName, String routeBase, List<String> hidden) {
         String allowlistName = SpringNaming.filterAllowlistName(shortName);
         String exportName = shortName + "Export";
         src.append("    private ResponseEntity<?> export(String format, String limit, String offset, String sort,\n");
@@ -1006,19 +1045,20 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("                return ok.body(").append(exportName).append(".xml(rows));\n");
         src.append("            default:\n");
         src.append("                if (\"1\".equals(withCount)) {\n");
-        src.append("                    return ok.body(Map.of(\"rows\", rows, \"total\", repository.count(filter.predicates())));\n");
+        src.append("                    return ok.body(Map.of(\"rows\", ").append(redactAll("rows", hidden))
+           .append(", \"total\", repository.count(filter.predicates())));\n");
         src.append("                }\n");
-        src.append("                return ok.body(rows);\n");
+        src.append("                return ok.body(").append(redactAll("rows", hidden)).append(");\n");
         src.append("        }\n");
         src.append("    }\n\n");
     }
 
     /** GET /{id} — single by primary key, 404 envelope on a miss. */
-    private static void appendGetByIdHandler(StringBuilder src, String pkType) {
+    private static void appendGetByIdHandler(StringBuilder src, String pkType, List<String> hidden) {
         src.append("    @GetMapping(\"/{id}\")\n");
         src.append("    public ResponseEntity<?> get(@PathVariable ").append(pkType).append(" id) {\n");
         src.append("        return repository.findById(id)\n");
-        src.append("                .<ResponseEntity<?>>map(ResponseEntity::ok)\n");
+        src.append("                .<ResponseEntity<?>>map(").append(okMapper(hidden)).append(")\n");
         src.append("                .orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(\"error\", \"not_found\")));\n");
         src.append("    }\n\n");
     }
@@ -1158,6 +1198,21 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("        this.validator = validator;\n");
         src.append("    }\n\n");
         appendUnreadableBodyHandler(src);
+        // #484: the TPH rows are union-DTO rows, so hide a credential declared on the base or on
+        // ANY subtype from every response, and ignore a write-denied one on every subtype create.
+        List<MetaField> unionFields = new ArrayList<>(SpringGeneratorSupport.scalarFields(base));
+        for (MetaField f : TphPlan.collectSubtypeFields(base, loader)) {
+            if (!(f instanceof com.metaobjects.field.ObjectField)) unionFields.add(f);
+        }
+        List<MetaField> markFields = new ArrayList<>(unionFields);
+        markFields.addAll(TphPlan.everySubtypeField(base, loader));
+        List<String> hidden = SpringGeneratorSupport.credentialNames(markFields);
+        Set<String> writeDenied = SpringGeneratorSupport.hierarchyWriteDeniedNames(base);
+        List<SpringM2mSupport.M2mNav> baseNavs = SpringM2mSupport.resolve(base, loader);
+        boolean redacts = !hidden.isEmpty() || baseNavs.stream().anyMatch(n -> !targetCredentials(base, n).isEmpty())
+            || plan.subtypes().stream().anyMatch(st -> SpringM2mSupport.resolve(st.entity(), loader).stream()
+                .anyMatch(n -> !targetCredentials(st.entity(), n).isEmpty()));
+        if (redacts) appendRedactHelpers(src);
 
         // --- polymorphic collection ---
         src.append("    // Polymorphic list — the union across all subtypes, each row tagged by its discriminator.\n");
@@ -1181,16 +1236,17 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("        List<FilterPredicate> filters = filter.predicates();\n");
         src.append("        List<").append(dtoName).append("> rows = repository.list(actualLimit, actualOffset, sortClause, filters);\n");
         src.append("        if (withCount != null && withCount == 1) {\n");
-        src.append("            return ResponseEntity.ok(Map.of(\"rows\", rows, \"total\", repository.count(filters)));\n");
+        src.append("            return ResponseEntity.ok(Map.of(\"rows\", ").append(redactAll("rows", hidden))
+           .append(", \"total\", repository.count(filters)));\n");
         src.append("        }\n");
-        src.append("        return ResponseEntity.ok(rows);\n");
+        src.append("        return ResponseEntity.ok(").append(redactAll("rows", hidden)).append(");\n");
         src.append("    }\n\n");
 
         src.append("    // Polymorphic get — one row of whatever subtype it is.\n");
         src.append("    @GetMapping(\"/{id}\")\n");
         src.append("    public ResponseEntity<?> get(@PathVariable ").append(pkType).append(" id) {\n");
         src.append("        return repository.findById(id)\n");
-        src.append("                .<ResponseEntity<?>>map(ResponseEntity::ok)\n");
+        src.append("                .<ResponseEntity<?>>map(").append(okMapper(hidden)).append(")\n");
         src.append("                .orElseGet(this::notFound);\n");
         src.append("    }\n\n");
 
@@ -1200,13 +1256,20 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         // traversal (including this same relationship, inherited) is emitted below, inside
         // the per-subtype loop — the overlap is deliberate (FR-017 design): a subtype
         // resource carries the same sub-resources as any other resource.
-        for (SpringM2mSupport.M2mNav nav : SpringM2mSupport.resolve(base, loader)) {
+        for (SpringM2mSupport.M2mNav nav : baseNavs) {
             String finder = SpringGeneratorSupport.m2mFinderName(nav.relationName());
+            String navCall = "repository." + finder + "(id" + SpringGeneratorSupport.targetSubtypeCallArg(nav) + ")";
             src.append("    @GetMapping(\"/{id}/").append(nav.relationName()).append("\")\n");
-            src.append("    public ResponseEntity<List<").append(nav.targetDtoType()).append(">> ")
-               .append(finder).append("(@PathVariable ").append(pkType).append(" id) {\n");
-            src.append("        return ResponseEntity.ok(repository.").append(finder)
-               .append("(id").append(SpringGeneratorSupport.targetSubtypeCallArg(nav)).append("));\n");
+            if (targetCredentials(base, nav).isEmpty()) {
+                src.append("    public ResponseEntity<List<").append(nav.targetDtoType()).append(">> ")
+                   .append(finder).append("(@PathVariable ").append(pkType).append(" id) {\n");
+                src.append("        return ResponseEntity.ok(").append(navCall).append(");\n");
+            } else {
+                src.append("    public ResponseEntity<List<Object>> ")
+                   .append(finder).append("(@PathVariable ").append(pkType).append(" id) {\n");
+                src.append("        return ResponseEntity.ok(")
+                   .append(redactAll(navCall, targetCredentials(base, nav))).append(");\n");
+            }
             src.append("    }\n\n");
         }
 
@@ -1243,8 +1306,9 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
             src.append("        FilterParseResult filter = FilterParser.parse(request.getQueryString(), ")
                .append(allowlistName).append(".FIELDS, ").append(allowlistName).append(".OPS_BY_FIELD, ").append(allowlistName).append(".DECIMAL_FIELDS);\n");
             src.append("        if (filter.error() != null) return ResponseEntity.badRequest().body(Map.of(\"error\", filter.error(), \"field\", filter.field()));\n");
-            src.append("        return ResponseEntity.ok(repository.listByType(\"").append(disc)
-               .append("\", actualLimit, actualOffset, sortClause, filter.predicates()));\n");
+            src.append("        return ResponseEntity.ok(").append(redactAll(
+                "repository.listByType(\"" + disc + "\", actualLimit, actualOffset, sortClause, filter.predicates())",
+                hidden)).append(");\n");
             src.append("    }\n\n");
 
             // per-subtype get (404 cross-subtype)
@@ -1252,7 +1316,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
             src.append("    public ResponseEntity<?> get").append(suffix)
                .append("(@PathVariable ").append(pkType).append(" id) {\n");
             src.append("        return repository.findByIdAndType(id, \"").append(disc).append("\")\n");
-            src.append("                .<ResponseEntity<?>>map(ResponseEntity::ok)\n");
+            src.append("                .<ResponseEntity<?>>map(").append(okMapper(hidden)).append(")\n");
             src.append("                .orElseGet(this::notFound);\n");
             src.append("    }\n\n");
 
@@ -1308,12 +1372,15 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
             // never emitted, producing a non-compiling controller. A TPH subtype declaring its
             // OWN @autoSet column is a documented non-goal (uniform with the Kotlin and Python
             // ports, both base-scoped): the column is simply never stamped, not a compile break.
+            // #484: ignore (never reject) a @formExclude / credential value in the body.
+            appendStripWriteDenied(src, dtoName, unionFields, writeDenied);
             String createArg = SpringGeneratorSupport.hasAutoSetFields(base)
                 ? dtoName + ".stampForInsert(dto)" : "dto";
             src.append("        try {\n");
             src.append("            ").append(dtoName).append(" saved = repository.createWithType(\"").append(disc)
                .append("\", ").append(createArg).append(");\n");
-            src.append("            return ResponseEntity.status(HttpStatus.CREATED).body(saved);\n");
+            src.append("            return ResponseEntity.status(HttpStatus.CREATED).body(")
+               .append(redactOne("saved", hidden)).append(");\n");
             appendConstraintCatch(src);
             src.append("    }\n\n");
 
@@ -1364,7 +1431,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
             src.append("        try {\n");
             src.append("            return repository.patchByIdAndType(id, \"").append(disc)
                .append("\", patch.assignedValues())\n");
-            src.append("                    .<ResponseEntity<?>>map(ResponseEntity::ok)\n");
+            src.append("                    .<ResponseEntity<?>>map(").append(okMapper(hidden)).append(")\n");
             src.append("                    .orElseGet(this::notFound);\n");
             appendConstraintCatch(src);
             src.append("    }\n\n");
@@ -1395,13 +1462,15 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
             for (SpringM2mSupport.M2mNav nav : SpringM2mSupport.resolve(st.entity(), loader)) {
                 String subFinder = SpringGeneratorSupport.m2mFinderNameForSubtype(nav.relationName(), disc);
                 src.append("    @GetMapping(\"/").append(seg).append("/{id}/").append(nav.relationName()).append("\")\n");
-                src.append("    public ResponseEntity<List<").append(nav.targetDtoType()).append(">> ")
+                boolean navHides = !targetCredentials(st.entity(), nav).isEmpty();
+                src.append("    public ResponseEntity<List<").append(navHides ? "Object" : nav.targetDtoType()).append(">> ")
                    .append(subFinder).append("(@PathVariable ").append(pkType).append(" id) {\n");
                 src.append("        if (repository.findByIdAndType(id, \"").append(disc).append("\").isEmpty()) {\n");
                 src.append("            return ResponseEntity.ok(List.of());\n");
                 src.append("        }\n");
-                src.append("        return ResponseEntity.ok(repository.").append(subFinder)
-                   .append("(id").append(SpringGeneratorSupport.targetSubtypeCallArg(nav)).append("));\n");
+                src.append("        return ResponseEntity.ok(").append(redactAll(
+                    "repository." + subFinder + "(id" + SpringGeneratorSupport.targetSubtypeCallArg(nav) + ")",
+                    targetCredentials(st.entity(), nav))).append(");\n");
                 src.append("    }\n\n");
             }
         }
@@ -1527,9 +1596,13 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
             .map(com.metaobjects.identity.MetaIdentity::getFields)
             .orElse(List.of());
 
+        java.util.Set<String> denied = SpringGeneratorSupport.hierarchyWriteDeniedNames(entity);
         List<String> out = new ArrayList<>();
         for (MetaField f : SpringGeneratorSupport.scalarFields(entity)) {
-            if (pkFields.contains(f.getName()) || AutoSetSupport.isAutoSet(f)) {
+            // #484: a write-denied field is IGNORED on create, so a @NotNull on it describes the
+            // response shape and must not reject a body that (necessarily) omits it.
+            if (pkFields.contains(f.getName()) || AutoSetSupport.isAutoSet(f)
+                    || denied.contains(f.getName())) {
                 String component = SpringNaming.recordComponentName(f.getName());
                 if (!out.contains(component)) out.add(component);
             }
@@ -1558,6 +1631,76 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("            return ResponseEntity.status(failure.status())\n");
         src.append("                    .body(Map.of(\"error\", failure.error(), \"constraint\", failure.constraint()));\n");
         src.append("        }\n");
+    }
+
+    /** The credential wire names of the TARGET of {@code source}'s M:N relationship {@code nav} (#484). */
+    private static List<String> targetCredentials(MetaObject source, SpringM2mSupport.M2mNav nav) {
+        for (com.metaobjects.relationship.MetaRelationship rel : source.getRelationships()) {
+            if (!nav.relationName().equals(rel.getShortName())) continue;
+            MetaObject target = com.metaobjects.loader.References.refTarget(
+                rel, com.metaobjects.relationship.MetaRelationship.ATTR_OBJECT_REF);
+            if (target == null) return List.of();
+            // A TPH base target's rows are shared-table rows of every subtype, so a credential
+            // declared on any subtype is hidden too.
+            List<MetaField> fields = new ArrayList<>(SpringGeneratorSupport.dtoComponentFields(target));
+            fields.addAll(TphPlan.everySubtypeField(target, source.getLoader()));
+            return SpringGeneratorSupport.credentialNames(fields);
+        }
+        return List.of();
+    }
+
+    /** The fields of a create body that a generated write route ignores (#484). */
+    private static void appendStripWriteDenied(StringBuilder src, String dtoName, List<MetaField> components,
+                                               Set<String> writeDenied) {
+        if (components.stream().noneMatch(f -> writeDenied.contains(f.getName()))) return;
+        src.append("        dto = new ").append(dtoName).append("(");
+        for (int i = 0; i < components.size(); i++) {
+            MetaField f = components.get(i);
+            if (i > 0) src.append(", ");
+            src.append(writeDenied.contains(f.getName())
+                ? "null" : "dto." + SpringNaming.recordComponentName(f.getName()) + "()");
+        }
+        src.append(");\n");
+    }
+
+    /** Java source for a {@code String...} argument list naming {@code hidden}. */
+    private static String hiddenArgs(List<String> hidden) {
+        StringBuilder b = new StringBuilder();
+        for (String h : hidden) b.append(", \"").append(h).append('"');
+        return b.toString();
+    }
+
+    /** Expression for one response row with {@code hidden} removed (the row itself when none). */
+    private static String redactOne(String expr, List<String> hidden) {
+        return hidden.isEmpty() ? expr : "redact(" + expr + hiddenArgs(hidden) + ")";
+    }
+
+    /** Expression for a list of response rows with {@code hidden} removed from each. */
+    private static String redactAll(String expr, List<String> hidden) {
+        return hidden.isEmpty() ? expr : "redactAll(" + expr + hiddenArgs(hidden) + ")";
+    }
+
+    /** The {@code Optional.map} argument that answers 200 with a row, minus {@code hidden}. */
+    private static String okMapper(List<String> hidden) {
+        return hidden.isEmpty() ? "ResponseEntity::ok" : "r -> ResponseEntity.ok(" + redactOne("r", hidden) + ")";
+    }
+
+    /**
+     * #484 — the helpers a controller uses to leave credential fields out of response bodies. The
+     * shared DTO keeps the member (the application's own code reads and writes it); only the
+     * generated HTTP boundary drops the key, so a credential is ABSENT, not null.
+     */
+    private static void appendRedactHelpers(StringBuilder src) {
+        src.append("    private Object redact(Object row, String... hidden) {\n");
+        src.append("        com.fasterxml.jackson.databind.node.ObjectNode node = objectMapper.valueToTree(row);\n");
+        src.append("        node.remove(java.util.Arrays.asList(hidden));\n");
+        src.append("        return node;\n");
+        src.append("    }\n\n");
+        src.append("    private List<Object> redactAll(List<?> rows, String... hidden) {\n");
+        src.append("        List<Object> out = new java.util.ArrayList<>(rows.size());\n");
+        src.append("        for (Object row : rows) out.add(redact(row, hidden));\n");
+        src.append("        return out;\n");
+        src.append("    }\n\n");
     }
 
     private static void appendServerOwnedOnCreate(StringBuilder src, MetaObject entity) {

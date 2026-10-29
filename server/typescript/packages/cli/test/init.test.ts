@@ -635,11 +635,12 @@ describe("init --d1", () => {
     expect(cfg.migrate.d1).toBeUndefined();
   });
 
-  test("scaffolds metaobjects.config.ts with dialect = 'd1' when --d1 is passed", async () => {
+  test("scaffolds metaobjects.config.ts with dialect = 'sqlite' (never 'd1', which codegen refuses) when --d1 is passed", async () => {
     const code = await initCommand(["--d1"], cwd);
     expect(code).toBe(0);
     const configTs = readFileSync(join(cwd, "metaobjects.config.ts"), "utf8");
-    expect(configTs).toContain('dialect: "d1"');
+    expect(configTs).toContain('dialect: "sqlite"');
+    expect(configTs).not.toContain('"d1"');
   });
 
   test("scaffolds metaobjects.config.ts with dialect = 'sqlite' when --d1 is not passed", async () => {

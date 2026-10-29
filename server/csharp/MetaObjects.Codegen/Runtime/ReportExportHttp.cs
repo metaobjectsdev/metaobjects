@@ -14,6 +14,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
@@ -61,7 +62,13 @@ public static class ReportExportHttp
     /// configured JSON options (so a <c>wire</c> setting applies exactly as on the list route), as
     /// <c>application/json</c>, with the attachment header.
     /// </summary>
-    public static IResult Json<T>(HttpContext http, string segment, T body)
+    public static IResult Json<T>(HttpContext http, string segment, T body) => Json(http, segment, body, [], false);
+
+    /// <summary>
+    /// The JSON export with credential columns (a derived field over a <c>view.password</c> field) OMITTED from
+    /// every row; <paramref name="envelope"/> says the body is <c>{ rows, total }</c> rather than the rows.
+    /// </summary>
+    public static IResult Json<T>(HttpContext http, string segment, T body, string[] omit, bool envelope = false)
     {
         Attach(http, segment, "json");
         var options = http.RequestServices
@@ -69,7 +76,18 @@ public static class ReportExportHttp
             is Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions> configured
             ? configured.Value.SerializerOptions
             : null;
-        return Results.Json(body, options, "application/json");
+        if (omit.Length == 0) return Results.Json(body, options, "application/json");
+        var node = System.Text.Json.JsonSerializer.SerializeToNode(body, body!.GetType(), options);
+        Strip(envelope && node is System.Text.Json.Nodes.JsonObject env ? env["rows"] : node, omit);
+        return Results.Json(node, options, "application/json");
+    }
+
+    private static void Strip(System.Text.Json.Nodes.JsonNode? n, string[] omit)
+    {
+        if (n is System.Text.Json.Nodes.JsonArray a) { foreach (var e in a) Strip(e, omit); return; }
+        if (n is not System.Text.Json.Nodes.JsonObject o) return;
+        foreach (var key in o.Select(p => p.Key).Where(k => omit.Any(x => string.Equals(x, k, StringComparison.OrdinalIgnoreCase))).ToList())
+            o.Remove(key);
     }
 
     /// <summary>The CSV export: <paramref name="write"/> fills a UTF-8 (no BOM of the encoder's own) body.</summary>

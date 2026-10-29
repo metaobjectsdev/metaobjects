@@ -40,6 +40,8 @@ won't block a commit. Silence it with `--no-antipatterns` or `META_NO_ANTIPATTER
 Text output caps it at 20 lines (raise with `--limit <n>` / `--limit all`); a
 `--format json`/`toon` run carries every finding, uncapped.
 
+Before you trust the hook, prove it can fail: [Prove your gate fails](prove-your-gate-fails.md).
+
 ## Choose your hook manager
 
 The MetaObjects framework is hook-manager-agnostic. Three common setups:

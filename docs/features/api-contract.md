@@ -529,6 +529,34 @@ log-only.
 | Kotlin | shipped — `metaobjects-codegen-kotlin` `KotlinSpringControllerGenerator` → Spring `@RestController` | One controller per writable entity (`source.rdb @kind="table"`) plus a READ-ONLY one per view-kind `object.projection` (F22, see "Read-only projections" below); 5 CRUD endpoints (GET list / GET by id / POST / PATCH+PUT / DELETE); `?sort`, `?limit/?offset`, `?withCount=1` envelope, 404 + 400 envelopes per the contract. Filter operators ship via the generated `<Entity>FilterAllowlist` (`KotlinFilterAllowlistGenerator`) + an inline `parse<Entity>Filter` helper emitted in the controller. |
 | Python | shipped — `metaobjects.codegen.generators.router_generator` → FastAPI `APIRouter` | One router per writable entity (`source.rdb @kind="table"`) plus a READ-ONLY one per view-kind `object.projection` (F22, see "Read-only projections" below); 5 CRUD endpoints (GET list / GET by id / POST / PATCH+PUT / DELETE); `?sort`, `?limit/?offset`, `?withCount=1` envelope, 404 + 400 envelopes per the contract. Consumer wires the repository via FastAPI `app.dependency_overrides`; the generator emits a `Protocol` interface so the persistence layer (SQLAlchemy / asyncpg / etc.) is the consumer's choice. Filter operators ship via the generated `<entity>_filter_allowlist.py` (`filter_allowlist_generator.py`) + the shared `filter_parser` helper, wired into the list handler. |
 
+## Credentials and excluded fields
+
+Two marks narrow what the generated routes accept and send, in every port (#484):
+
+| Mark | Create, PATCH, PUT | List, get, and the echo of a write |
+|---|---|---|
+| `@formExclude: true` | the field is **ignored** | returned |
+| a child `view.password` (a credential) | the field is **ignored** | **never returned** (the key is absent, not `null`) |
+
+A value for an ignored field is dropped, never rejected: the request answers `200` or `201` as if the key
+were absent, and a present `null` does not clear it. That is the rule for every key outside the settable
+set (`@mutability: writeOnce` on PATCH, the TPH discriminator, `@autoSet: onCreate`), and it is load-bearing:
+a generated edit form submits every field it was given, so a `400` would fail every save. A required field
+that is also ignored can never be created through the API, so mark such a field optional.
+
+Only the generated HTTP boundary changes. The entity, its DTO and the generated queries still carry the
+field, so your own code writes a hash or token and reads it back. Allowlists are unchanged: a field is
+filterable or sortable only if you wrote `@filterable` or `@sortable` on it, so do not put those on a credential
+(a filter on a secret answers whether a guess is right). To return a credential from a route, hand-write that
+route; the generated one will not. Generated forms and the api docs omit both kinds of field as well.
+
+A served report is covered too. A report column is derived from its `@of` field, and a derived column keeps
+that field's credential mark, so a report that groups by a credential (or takes its `min` or `max`) never
+returns the column, its `report-export` output has no column for it, and it is neither filterable nor sortable
+(a report's other columns all are, so this one is taken out). `count` over a credential is a number and is returned.
+
+`fixtures/api-contract-conformance/secret-fields/` pins this in the generated lane of every port.
+
 ## Read-only projections
 
 **All five ports serve an `object.projection` whose only source is a read-only

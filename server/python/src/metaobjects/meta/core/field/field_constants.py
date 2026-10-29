@@ -142,6 +142,9 @@ FIELD_ATTR_COLUMN = "column"
 # @format. Concepts WITH a native type/behavior are subtypes instead (uuid →
 # field.uuid, url/uri → field.uri, ip → field.inet). Mirrors TS FIELD_ATTR_STRING_FORMAT.
 FIELD_ATTR_STRING_FORMAT = "stringFormat"
+# #484: a field excluded from forms; a generated HTTP write route ignores it (a credential is
+# a field declaring a ``view.password`` child, see ``codegen.generators.router_generator``).
+FIELD_ATTR_FORM_EXCLUDE = "formExclude"
 STRING_FORMAT_EMAIL = "email"
 STRING_FORMAT_HOSTNAME = "hostname"
 STRING_FORMAT_VALUES = (STRING_FORMAT_EMAIL, STRING_FORMAT_HOSTNAME)

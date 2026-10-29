@@ -69,6 +69,7 @@ import {
   isReport,
   itemRouteField,
   decimalColumnsLine,
+  writeDeniedColumnsLine,
   servesReadApi,
   formatTs,
   entityOutputPath,
@@ -308,7 +309,7 @@ export async function ${handlerName}(fastify: ${FastifyInstanceSym}) {
       updateSchema: ${entityName}UpdateSchema,
       filterAllowlist: ${entityName}FilterAllowlist,
       sortAllowlist: ${entityName}SortAllowlist,
-      dialect: ${JSON.stringify(ctx.dialect)},${decimalColumnsLine(entity, "      ", ctx.loadedRoot)}${exposeLinePrefixed}
+      dialect: ${JSON.stringify(ctx.dialect)},${decimalColumnsLine(entity, "      ", ctx.loadedRoot)}${writeDeniedColumnsLine(entity, "      ")}${exposeLinePrefixed}
     });
 ${m2mMountsPrefixed}  }, { prefix: ${JSON.stringify(ctx.apiPrefix)} });
 }
@@ -333,7 +334,7 @@ export async function ${handlerName}(fastify: ${FastifyInstanceSym}) {
     updateSchema: ${entityName}UpdateSchema,
     filterAllowlist: ${entityName}FilterAllowlist,
     sortAllowlist: ${entityName}SortAllowlist,
-    dialect: ${JSON.stringify(ctx.dialect)},${decimalColumnsLine(entity, "    ", ctx.loadedRoot)}${exposeLineFlat}
+    dialect: ${JSON.stringify(ctx.dialect)},${decimalColumnsLine(entity, "    ", ctx.loadedRoot)}${writeDeniedColumnsLine(entity, "    ")}${exposeLineFlat}
   });
 ${m2mMountsFlat}}
 `;
@@ -400,6 +401,15 @@ interface TphM2mSource {
   discriminatorColumn: Code;
   /** This subtype's `@discriminatorValue`. */
   value: string;
+}
+
+/**
+ * The object a M:N mount reads rows of, plus the subtypes of a TPH base target: its rows are
+ * shared-table rows of every subtype, so a credential declared by any of them is hidden too.
+ */
+function m2mTargetObjects(target: MetaObject, ctx: RenderContext): MetaObject[] {
+  const plan = ctx.loadedRoot === undefined ? null : tphPlan(target, ctx.loadedRoot);
+  return plan === null ? [target] : [target, ...plan.subtypes.map((st) => st.entity)];
 }
 
 /**
@@ -489,7 +499,7 @@ function renderM2mMount(
     sourceColumn: ${sourceColumn},
     targetColumn: ${targetColumn},
     targetPkColumn: ${targetPkColumn},
-    symmetric: ${entry.symmetric ? "true" : "false"},${decimalColumnsLine(entry.target, "    ", ctx.loadedRoot)}${discriminatorLine}${sourceDiscriminatorLine}
+    symmetric: ${entry.symmetric ? "true" : "false"},${decimalColumnsLine(m2mTargetObjects(entry.target, ctx), "    ", ctx.loadedRoot)}${discriminatorLine}${sourceDiscriminatorLine}
   });`;
 }
 
@@ -580,6 +590,7 @@ function renderTphRoutes(
   // single writable shape — so an author-supplied `expose` intersects with that fixed set
   // rather than replacing it: it may narrow to just `list`, never widen to `create`.
   const polymorphicExposeLine = exposeLine(intersectExpose([...TPH_POLYMORPHIC_VERBS], expose), "      ");
+  const hierarchy = [base, ...plan.subtypes.map((st) => st.entity)];
   const polymorphic = code`
     ${mountCrudRoutesSym}({
       fastify: ${fastifyRef},
@@ -590,7 +601,7 @@ function renderTphRoutes(
       updateSchema: ${baseUpdateSym},
       filterAllowlist: ${baseFilterSym},
       sortAllowlist: ${baseSortSym},
-      dialect: ${dialectLit},${decimalColumnsLine([base, ...plan.subtypes.map((st) => st.entity)], "      ", ctx.loadedRoot)}${polymorphicExposeLine}
+      dialect: ${dialectLit},${decimalColumnsLine(hierarchy, "      ", ctx.loadedRoot)}${polymorphicExposeLine}
     });`;
 
   // FR-018 x FR-017 — M:N traversal inside a TPH hierarchy. This file never consulted
@@ -633,7 +644,7 @@ function renderTphRoutes(
       updateSchema: ${subUpdateSym},
       filterAllowlist: ${subFilterSym},
       sortAllowlist: ${subSortSym},
-      dialect: ${dialectLit},${decimalColumnsLine(sub, "      ", ctx.loadedRoot)}
+      dialect: ${dialectLit},${decimalColumnsLine(sub, "      ", ctx.loadedRoot, hierarchy)}${writeDeniedColumnsLine(sub, "      ", hierarchy)}
       discriminator: { column: ${JSON.stringify(discField)}, value: ${JSON.stringify(value)} },${exposeLine(expose, "      ")}
     });`;
     // This subtype's own M:N navigations, mounted beneath its segment and gated on the

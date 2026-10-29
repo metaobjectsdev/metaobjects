@@ -8,6 +8,7 @@ import com.metaobjects.generator.spring.AutoSetSupport;
 import com.metaobjects.generator.spring.SpringM2mSupport;
 import com.metaobjects.generator.spring.SpringNaming;
 import com.metaobjects.generator.spring.SpringTypeMapper;
+import com.metaobjects.generator.spring.TphPlan;
 
 import com.metaobjects.MetaData;
 import com.metaobjects.config.WireFormat;
@@ -78,9 +79,84 @@ public final class SpringGeneratorSupport {
             // create. A value presented for one is STRIPPED (simply not in the settable
             // set), never 400'd — the uniform behaviour of every excluded key here.
             if (isNonReadWriteMutability(field)) continue;
+            // #484: a @formExclude / credential field is not writable through the HTTP boundary.
+            if (isApiWriteDenied(field)) continue;
             out.add(field);
         }
         return out;
+    }
+
+    /** The {@code @formExclude} attribute (boolean): the field is left out of generated forms. */
+    public static final String ATTR_FORM_EXCLUDE = "formExclude";
+
+    /**
+     * #484 — a credential: the field declares (or inherits, ADR-0039) a child {@code view.password}.
+     * A credential is never returned by a generated route and never written through one.
+     */
+    public static boolean isCredentialField(MetaField field) {
+        for (Object child : field.getViews()) {
+            com.metaobjects.view.MetaView view = (com.metaobjects.view.MetaView) child;
+            if (com.metaobjects.view.PresentationView.SUBTYPE_PASSWORD.equals(view.getSubType())) return true;
+        }
+        return false;
+    }
+
+    /**
+     * #484 — true when a generated create / PATCH / PUT route must IGNORE a value for this field
+     * (strip it, never reject it, so a form that submits every field still saves): its effective
+     * {@code @formExclude} is true, or it is a {@link #isCredentialField credential}. Resolving
+     * (ADR-0039): an inherited mark counts.
+     */
+    public static boolean isApiWriteDenied(MetaField field) {
+        if (field.hasMetaAttr(ATTR_FORM_EXCLUDE, true)
+                && "true".equalsIgnoreCase(field.getMetaAttr(ATTR_FORM_EXCLUDE, true).getValueAsString())) {
+            return true;
+        }
+        return isCredentialField(field);
+    }
+
+    /** #484 — the distinct wire names of the credential fields among {@code fields}, in declared order. */
+    public static List<String> credentialNames(java.util.Collection<? extends MetaField> fields) {
+        java.util.Set<String> out = new java.util.LinkedHashSet<>();
+        for (MetaField f : fields) if (isCredentialField(f)) out.add(f.getName());
+        return new ArrayList<>(out);
+    }
+
+    /** #484 — the distinct wire names of the write-denied fields among {@code fields}. */
+    public static java.util.Set<String> writeDeniedNames(java.util.Collection<? extends MetaField> fields) {
+        java.util.Set<String> out = new java.util.LinkedHashSet<>();
+        for (MetaField f : fields) if (isApiWriteDenied(f)) out.add(f.getName());
+        return out;
+    }
+
+    /**
+     * #484 — the write-denied names of {@code entity}, widened to its whole TPH hierarchy (the base
+     * and every subtype) when it is in one: a mark on any declaration of a shared column counts.
+     */
+    public static java.util.Set<String> hierarchyWriteDeniedNames(MetaObject entity) {
+        List<MetaField> fields = new ArrayList<>(entity.getMetaFields());
+        MetaObject root = TphPlan.discriminatorRoot(entity);
+        if (root != null) {
+            fields.addAll(root.getMetaFields());
+            fields.addAll(TphPlan.everySubtypeField(root, root.getLoader()));
+        }
+        return writeDeniedNames(fields);
+    }
+
+    /** #484 — the credential wire names of {@code entity}'s DTO components. */
+    public static List<String> credentialNames(MetaObject entity) {
+        // A served report's columns are DERIVED from their @of fields and carry only type-shaping
+        // attrs, so a view.password on the source does not reach the derived field. The column is a
+        // credential when its type source is (resolving, ADR-0039).
+        if (entity instanceof com.metaobjects.reporting.ReportReadModel model) {
+            List<String> out = new ArrayList<>();
+            for (com.metaobjects.reporting.ReportShape.Field f
+                    : com.metaobjects.reporting.ReportShape.of(model.report()).fields()) {
+                if (f.typeSource() != null && isCredentialField(f.typeSource())) out.add(f.name());
+            }
+            return out;
+        }
+        return credentialNames(dtoComponentFields(entity));
     }
 
     /**
@@ -109,6 +185,7 @@ public final class SpringGeneratorSupport {
      * validated from the body.</p>
      */
     public static List<MetaField> settableFields(MetaObject entity, String alsoExclude) {
+        java.util.Set<String> denied = hierarchyWriteDeniedNames(entity);
         List<MetaField> out = new ArrayList<>();
         for (MetaField field : minusPk(entity, scalarFields(entity), alsoExclude)) {
             // ADR-0045 (#203/#229): @autoSet is server-owned — never a caller-settable TPH
@@ -124,6 +201,8 @@ public final class SpringGeneratorSupport {
             // a separate code path (the 0.19.4 lesson), so it is stated here too rather
             // than assumed to fall out of the vanilla walk.
             if (isNonReadWriteMutability(field)) continue;
+            // #484: a @formExclude / credential column, marked on any declaration in the hierarchy.
+            if (denied.contains(field.getName())) continue;
             out.add(field);
         }
         return out;
