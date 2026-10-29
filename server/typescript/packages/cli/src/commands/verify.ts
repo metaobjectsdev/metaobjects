@@ -85,7 +85,9 @@ import {
   type D1Binding,
   type D1Runner,
   type DriftResult,
+  type ExprCanonProbe,
   postgresViewReplaceProbe,
+  postgresExprCanonProbe,
   withoutFlywayHistory,
 } from "@metaobjectsdev/migrate-ts";
 import {
@@ -1347,6 +1349,8 @@ export async function verifyCommand(
       // Expected views from the single view-SQL source (codegen-ts), so view-body
       // drift is detected against the live DB.
       const expectedViews = buildProjectionViews(root, { dialect: kysely.dialect });
+      // One probe for the whole run, so a server that refuses scratch tables is asked once.
+      const exprCanonProbe = kysely.dialect === "postgres" ? postgresExprCanonProbe(kysely.db) : undefined;
       let driftResult;
       let actual: SchemaSnapshot;
       try {
@@ -1363,6 +1367,8 @@ export async function verifyCommand(
           views: expectedViews,
           // The same question `meta migrate` asks, so the report names the change it plans.
           ...(kysely.dialect === "postgres" ? { viewReplaceProbe: postgresViewReplaceProbe(kysely.db) } : {}),
+          // ...and asks Postgres, not a string rewrite, how it stores each expected CHECK and index expression.
+          ...(exprCanonProbe !== undefined ? { exprCanonProbe } : {}),
           ...(schemaScope !== undefined ? { inScope: schemaScope } : {}),
           // The import exclusion reaches scopeExpectedSchema through this option bag —
           // there is no direct call on this path to attach it to.
@@ -1376,7 +1382,7 @@ export async function verifyCommand(
 
       const snapshotDrift =
         driftResult.changes.length === 0
-          ? await checkCommittedSnapshot(actual, kysely.dialect, kysely.displayUrl, driftResult, migrateConfig)
+          ? await checkCommittedSnapshot(actual, kysely.dialect, kysely.displayUrl, driftResult, migrateConfig, exprCanonProbe)
           : [];
 
       return reportSchemaDrift(driftResult, [...ledgerDrift, ...snapshotDrift], kysely.displayUrl);
@@ -1503,6 +1509,9 @@ export async function verifyCommand(
     // Resolved by the caller and threaded through — see the `verify --db` branch: the same
     // run's flyway filter reads this config too, and `tryLoadConfig` does not cache.
     migrateConfig: ResolvedMigrateConfig,
+    // Postgres: the snapshot may hold either spelling of an expression (generated, or
+    // Postgres's own from a `baseline --from-db`); the database settles which is equal.
+    exprCanonProbe?: ExprCanonProbe,
   ): Promise<string[]> {
     if (dialect === "d1") return []; // d1 keeps migrations Wrangler-native; no offline snapshot
     // The migrations dir comes from migrate's OWN precedence (flag > config > default)
@@ -1541,6 +1550,7 @@ export async function verifyCommand(
       // Note `unmanagedNames` is NOT restated here: `scopedDiffInputs` above supplies it
       // MERGED with the out-of-scope set, and a second key would silently drop that half.
       dialect,
+      ...(exprCanonProbe !== undefined ? { exprCanonProbe } : {}),
     });
     // A view recreated only around a table change matches the snapshot (D3) — not a difference.
     const changes = withoutViewRecreates(result.changes);

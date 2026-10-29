@@ -31,7 +31,7 @@ import { entityModuleSpecifier, siblingSpecifier } from "../import-path.js";
 import { GENERATED_HEADER, GENERATED_EDIT_NOTE, sidecarLine } from "../constants.js";
 import { isProjection, isWriteThrough } from "../projection/projection-detector.js";
 import { isReport } from "../source-detect.js";
-import { decimalColumnsLine, itemRouteField } from "../api-surface.js";
+import { decimalColumnsLine, itemRouteField, writeDeniedColumnsLine } from "../api-surface.js";
 import { DEFAULT_ID_FIELD } from "../pk-resolver.js";
 import { authSeamJsDoc, type CrudVerb, exposeLine } from "../routes-expose.js";
 import { effectivePackage } from "../docs-paths.js";
@@ -200,7 +200,7 @@ export function ${handlerName}(app: ${HonoSym}<any, any, any>, deps: { db: unkno
     updateSchema: ${entityName}UpdateSchema,
     filterAllowlist: ${entityName}FilterAllowlist,
     sortAllowlist: ${entityName}SortAllowlist,
-    dialect: ${JSON.stringify(ctx.dialect)},${decimalColumnsLine(entity, "    ", ctx.loadedRoot)}${exposeLineHono}
+    dialect: ${JSON.stringify(ctx.dialect)},${decimalColumnsLine(entity, "    ", ctx.loadedRoot)}${writeDeniedColumnsLine(entity, "    ")}${exposeLineHono}
   });
 }
 `;

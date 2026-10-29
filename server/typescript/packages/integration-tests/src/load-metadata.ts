@@ -52,13 +52,14 @@ export async function loadMetadataDir(dir: string): Promise<MetaRoot> {
 }
 
 /**
- * Load a single metadata file (URI) through the standard loader. Use when
+ * Load a metadata file (URI), plus any `extra` files merged into the same root, through the
+ * standard loader. Use when
  * the surrounding directory contains non-metadata files (scenario YAML,
  * seed JSON) that the directory loader would mistakenly try to parse.
  */
-export async function loadMetadataFile(path: string): Promise<MetaRoot> {
+export async function loadMetadataFile(path: string, ...extra: string[]): Promise<MetaRoot> {
   // loadUris requires a URI scheme; convert the absolute path to file://.
-  const result = await loadUris([pathToFileURL(path).href]);
+  const result = await loadUris([path, ...extra].map((p) => pathToFileURL(p).href));
   if (result.errors.length > 0) {
     const summary = result.errors
       .map((e) => `${(e as { code?: string }).code ?? "ERROR"}: ${e.message}`)

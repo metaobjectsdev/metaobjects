@@ -19,11 +19,31 @@ import { normalizeTimestampMode } from "./dialect-module.js";
  */
 export type GeneratorSpec = Generator | string;
 
+/** The closed set of codegen dialects. `d1` is deliberately absent: it is a `meta migrate` transport. */
+export const CODEGEN_DIALECTS = ["sqlite", "postgres", "mysql"] as const;
+
 /**
  * The SQL dialect generated code targets. `mysql` is codegen + runtime only: `meta migrate`
  * does not own a MySQL schema (ADR-0015), so the adopter writes the DDL.
  */
-export type Dialect = "sqlite" | "postgres" | "mysql";
+export type Dialect = (typeof CODEGEN_DIALECTS)[number];
+
+/**
+ * Refuse a `dialect` that is not one of {@link CODEGEN_DIALECTS}. Without this an unknown value
+ * (most often `"d1"`) fell through to the Postgres branch of every dialect switch and emitted
+ * `pgTable` code that cannot run on the target database, with no diagnostic.
+ */
+export function assertCodegenDialect(dialect: unknown): asserts dialect is Dialect | undefined {
+  if (dialect === undefined || (CODEGEN_DIALECTS as readonly unknown[]).includes(dialect)) return;
+  const valid = CODEGEN_DIALECTS.map((d) => `"${d}"`).join(", ");
+  const shown = typeof dialect === "string" ? `"${dialect}"` : String(dialect);
+  const d1Hint =
+    dialect === "d1"
+      ? ` Cloudflare D1 is SQLite: set \`dialect: "sqlite"\` in metaobjects.config.ts. "d1" names only the \`meta migrate\` transport (\`migrate.dialect\` in .metaobjects/config.json, \`--dialect d1\`), which drives Wrangler; code generation has no separate D1 output, so a "d1" here would otherwise have been generated as Postgres.`
+      : "";
+  throw new Error(`invalid codegen dialect ${shown} in metaobjects.config.ts; expected one of: ${valid}.${d1Hint}`);
+}
+
 /**
  * The ORM the application uses (#479). `drizzle` (the default): the entity module carries the
  * Drizzle tables and the DB layer. `prisma`: the schema is `schema.prisma`, written by the
@@ -449,6 +469,7 @@ export function normalizeConfig(config: MetaobjectsGenConfig): NormalizedMetaobj
   if (removedNaming !== undefined) {
     throw new Error(physicalNamingRemovedMessage("columnNamingStrategy in metaobjects.config.ts", String(removedNaming), physicalNamingGuideUrl()));
   }
+  assertCodegenDialect(config.dialect);
   const dialect = config.dialect ?? DEFAULT_DIALECT;
   const generators = resolveGenerators(config.generators);
   if (resolveOrm(config) === ORM_PRISMA) checkPrismaConfig(config, generators);

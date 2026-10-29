@@ -7,6 +7,7 @@
 // `wire` setting, booleans) is already decided by the route; the writers only spell it.
 
 import type { MetaObject } from "@metaobjectsdev/metadata";
+import { isCredentialField } from "../api-surface.js";
 import { GENERATED_HEADER, GENERATED_EDIT_NOTE } from "../constants.js";
 import { relativeModuleSpecifier, type ResolvedTarget } from "../import-path.js";
 import type { ExtStyle } from "../render-context.js";
@@ -124,9 +125,12 @@ export function writeXml(root: string, columns: readonly ExportColumn[], rows: r
 `;
 }
 
-/** The report's exported fields, in derived-field order (the read model's declared order). */
+/**
+ * The report's exported fields, in derived-field order (the read model's declared order). A
+ * credential (#484) is not a column: the list route never returns it, and an export names none.
+ */
 export function exportColumns(report: MetaObject): { name: string; guard: boolean }[] {
-  return report.fields().map((f) => ({ name: f.name, guard: GUARDED_SUBTYPES.has(f.subType) }));
+  return report.fields().filter((f) => !isCredentialField(f)).map((f) => ({ name: f.name, guard: GUARDED_SUBTYPES.has(f.subType) }));
 }
 
 /** The per-report module: its column list and the CSV and XML writers, in the shape a mount takes. */

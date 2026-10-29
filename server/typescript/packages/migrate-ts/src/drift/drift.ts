@@ -24,6 +24,8 @@ import { scopeExpectedSchema, scopedDiffInputs, type ObjectScopePredicate } from
 import type { AllowOptions, Dialect, DiffResult, SchemaSnapshot } from "../types.js";
 import { postgresViewReplaceProbe } from "../view-replace-probe.js";
 import type { ViewReplaceProbe } from "../view-replace.js";
+import { postgresExprCanonProbe } from "../expr-canon-probe.js";
+import type { ExprCanonProbe } from "../expr-canon.js";
 
 export interface ComputeDriftOptions {
   /**
@@ -50,6 +52,13 @@ export interface ComputeDriftOptions {
    * so the drift report names the change `meta migrate` would plan.
    */
   viewReplaceProbe?: ViewReplaceProbe;
+  /**
+   * Postgres: the live-database probe that supplies Postgres's own spelling of each expected
+   * CHECK and index expression (passed through to `diff`). `computeDrift` supplies it from
+   * its connection; a caller of `computeDriftFromActual` passes its own, and without one
+   * the string normaliser decides.
+   */
+  exprCanonProbe?: ExprCanonProbe;
   /**
    * Per-command scope (`migrate.scope`): objects whose declaring FQN this predicate
    * rejects are governed by somebody else. They leave the expected side AND are
@@ -139,6 +148,7 @@ export async function computeDriftFromActual(
     allow: opts?.allow ?? {},
     ...(opts?.ignoreTables !== undefined ? { ignoreTables: opts.ignoreTables } : {}),
     ...(opts?.viewReplaceProbe !== undefined ? { viewReplaceProbe: opts.viewReplaceProbe } : {}),
+    ...(opts?.exprCanonProbe !== undefined ? { exprCanonProbe: opts.exprCanonProbe } : {}),
   });
   return {
     ...result,
@@ -170,6 +180,9 @@ export async function computeDrift(
     ...opts,
     ...(dialect === "postgres" && opts?.viewReplaceProbe === undefined
       ? { viewReplaceProbe: postgresViewReplaceProbe(db) }
+      : {}),
+    ...(dialect === "postgres" && opts?.exprCanonProbe === undefined
+      ? { exprCanonProbe: postgresExprCanonProbe(db) }
       : {}),
   });
 }

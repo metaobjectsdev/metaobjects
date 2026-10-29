@@ -50,6 +50,9 @@ export default defineConfig({
 });
 ```
 
+Already on drizzle-kit and want to keep its migrations? Re-export the generated tables from your own
+schema file: [drizzle-kit migrations](../recipes/drizzle-kit-migrations.md).
+
 A model of only value objects and sourceless projections needs no `dialect`. A sourceless
 object generates its type and nothing else: no table, no migration, no routes. See
 [Own your codegen](../features/own-your-codegen.md) for ejecting a generator, and the
@@ -149,7 +152,7 @@ import { entityFile, queriesFile, routesFile, barrel, docsFile, apiDocsFile } fr
 
 export default defineConfig({
   outDir: "src/generated",
-  dialect: "postgres",                 // "postgres" | "sqlite" | "d1"
+  dialect: "postgres",                 // "postgres" | "sqlite" | "mysql"  (Cloudflare D1: "sqlite")
   extStyle: "js",                      // ".js"-extensioned imports — nodenext- AND bundler-safe ("none" to opt out)
   apiPrefix: "/api",
   dbImport: "../db",                   // the module routesFile() imports `db` from — yours to write
@@ -743,7 +746,7 @@ import { entityFile, queriesFile, routesFileHono, barrel } from "@metaobjectsdev
 
 export default defineConfig({
   outDir: "src/generated",
-  dialect: "sqlite",                    // or "postgres" / "d1"
+  dialect: "sqlite",                    // or "postgres" / "mysql". Cloudflare D1 is "sqlite"; "d1" is refused
   extStyle: "js",
   apiPrefix: "/api",
   generators: [entityFile(), queriesFile(), routesFileHono(), barrel()],
@@ -783,7 +786,8 @@ export function registerAuthorRoutes(
 }
 ```
 
-Consumer wiring (Workers example):
+Consumer wiring (Workers example). The routes take `db` when they are mounted, and a D1
+binding exists only on `env`, so build the client and mount inside `fetch`:
 
 ```ts
 import { Hono } from "hono";
@@ -792,10 +796,19 @@ import { registerAuthorRoutes } from "./generated/Author.routes.hono.js";
 
 interface Env { DB: D1Database }
 
-const app = new Hono<{ Bindings: Env }>();
-registerAuthorRoutes(app, { db: drizzle({} as never) }); // replace with c.env.DB-derived db at request time
-export default app;
+export default {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    const app = new Hono<{ Bindings: Env }>();
+    registerAuthorRoutes(app, { db: drizzle(env.DB) });   // this request's binding
+    return app.fetch(request, env, ctx);
+  },
+};
 ```
+
+The full Workers recipe (wrangler binding, queries, why `dialect` is `"sqlite"` for D1) is in
+[Cloudflare Workers](../recipes/cloudflare-workers.md#generated-routes-and-queries-on-a-worker-per-request).
+To put these routes behind your own authentication, see
+[Guarding generated routes](../recipes/guarding-generated-routes.md).
 
 The Hono flavor differs from Fastify in two intentional ways, both reflecting
 Hono idioms rather than contract drift:

@@ -60,6 +60,7 @@ import {
   viewForContext,
   VIEW_CONTEXT_FORM,
   effectivePackage,
+  isCredentialField,
 } from "@metaobjectsdev/codegen-ts/engine";
 import { humanize, valueObjectFor, numericInputControl } from "@metaobjectsdev/codegen-ts/templates/field-meta";
 import { tphDiscriminatorPin } from "@metaobjectsdev/codegen-ts/engine";
@@ -97,6 +98,9 @@ function visibleFields(entity: MetaObject, discField?: string): MetaField[] {
   for (const child of entity.fields()) {
     // ADR-0039: resolving — a field may inherit @formExclude via extends.
     if (child.attr(FIELD_ATTR_FORM_EXCLUDE) === true) continue;
+    // A credential is never edited through a generated form: the generated write route
+    // strips it, and a form has no way to set one correctly (no hashing seam).
+    if (isCredentialField(child)) continue;
     if (pkNames.has(child.name)) continue;
     if (isAutoManaged(child)) continue;
     if (discField !== undefined && child.name === discField) continue;

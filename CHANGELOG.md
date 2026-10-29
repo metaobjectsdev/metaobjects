@@ -205,6 +205,34 @@ here.**
 
 ### Changed
 
+- **On Postgres, `meta verify --db` and `meta migrate` ask Postgres whether a CHECK or an index
+  expression is the one stored, instead of comparing rewritten text.** For each table the plan
+  creates a temporary table with the live columns inside a transaction it rolls back (a savepoint
+  when the connection is already in one), adds the expected CHECK to it, creates each expected
+  expression-index key and partial-index predicate as a temporary index, reads back
+  `pg_get_constraintdef`, `pg_get_indexdef` and `pg_get_expr`, and compares them with the live
+  definitions as plain strings. Every rewrite Postgres makes, including ones nobody has hand-coded,
+  now compares equal, and the string normaliser stops growing Postgres-shaped special cases. It
+  also ends the normaliser's two verified false negatives: a precedence change (`(a OR b) AND c`
+  against `a OR (b AND c)`) and a regrouped `NOT` (`NOT (a AND b)` against `NOT a AND b`) now report
+  as drift, as does the same change in an index `@where`. A database that held such a change and
+  verified clean before now reports it once: run `meta migrate` to bring it back.
+  The string normaliser stays, and decides, on SQLite and D1, in the offline `meta migrate`
+  (which has no database), on a read-only connection or hot standby, for a role without the `TEMP`
+  privilege, and for an expression that does not compile against the live columns. A probe that
+  cannot answer never reports drift or fails the command. An expression holding a `;` anywhere, or
+  an index `@using` that is not a plain access-method name, is never sent to the database. A refusal
+  for one table (such as no `SELECT` on it) gives that table no answer and does not stop the other
+  tables being probed. `meta migrate baseline --from-db` now records the generated text, not
+  Postgres's spelling, for a CHECK or an index expression the live database proves equal to the
+  metadata's, so the offline plan after a baseline compares like with like; it is best effort and
+  writes the introspected snapshot as before if the metadata does not load.
+  `meta verify --db` also uses the probe for its committed-snapshot check. New exports from
+  `@metaobjectsdev/migrate-ts`: `postgresExprCanonProbe`, `adoptGeneratedSpelling` and the
+  `ExprCanonProbe` types, with a `DiffArgs.exprCanonProbe` option. Schema comparison is
+  TypeScript-owned, so no other port carries this comparison. MySQL, SQL Server and Oracle are not
+  migrate dialects, so they have no probe.
+
 - **A bare `verify` runs the same default gate set in every port: codegen drift, prompt
   templates and the requirement ledger.** Until now a bare run covered one gate: `meta verify`
   and `dotnet meta verify` ran only templates, so "run `verify` in CI" did not catch generated
@@ -248,6 +276,29 @@ here.**
   the command and rolls the sync back. A stale `docs/CONFORMANCE.md` cell that claimed Python passed
   only 2 of the dependency corpus's cases is corrected.
 
+- **Generated routes no longer accept or return fields they must not (#484).** A field marked
+  `@formExclude`, or a credential (a field that declares a `view.password`), is now **ignored** by
+  the generated create, PATCH and PUT in every port: the value is dropped, not rejected, so
+  an edit form that submits every field still saves, and a present `null` no longer clears it. A credential is
+  also never returned: not by list, get, or the echo of a write, or by a served report that groups by
+  it or takes its `min` or `max` (a report column is derived from its `@of` field, and it keeps the
+  credential mark; a report export names no column for it, and that column is not filterable or sortable). Before this, `@formExclude` kept
+  a field out of the generated form while the route still wrote it, and a generated read returned password
+  hashes. Generated forms (React, Angular) and the api docs omit credentials too. Your own code is unaffected:
+  the entity, DTO and generated queries still carry the field, so you keep writing a hash or token yourself.
+  A project with neither mark generates byte-identical output. If you relied on a route writing a
+  `@formExclude` field, write it from your own code. A field that is `@required` and also
+  `@formExclude` or a credential now makes the generated create route fail, because the route
+  can no longer supply its value: make the field optional, or create that entity from your own
+  code (see "Credentials and excluded fields" in `docs/features/api-contract.md`). Gated by the new `secret-fields/` sub-corpus
+  of the api-contract conformance corpus, in the generated lane of all five ports.
+
+- **`meta gen` and `meta verify --codegen` refuse an unknown codegen `dialect`** instead of silently
+  generating Postgres code. `dialect: "d1"` gets a message that says to use `"sqlite"` (D1 is
+  SQLite; `"d1"` names only the `meta migrate` transport). `meta init --d1` now scaffolds
+  `dialect: "sqlite"` in `metaobjects.config.ts`; it used to write `"d1"`. If your config has `dialect: "d1"`,
+  change it to `"sqlite"`.
+
 - **The "Model / metadata" link in the Python, C#, Java and Kotlin API docs no longer points at
   a page that does not exist.** Those ports write no model pages, so the relative link was dead.
   It is now written only when `modelBaseUrl` is set.
@@ -286,12 +337,18 @@ here.**
   `meta migrate` to bring it back. Separately, `char(n)` is no longer treated as a text column
   for the `(col)::text` fold: its own regex operator sees the blank padding the cast trims, and
   Postgres never adds the cast there, so an explicit `(col)::text ~ '…'` on a `char(n)` column
-  now reads as drift. A precedence change (`(a OR b) AND c` against `a OR (b AND c)`) is still
-  not detected; that needs Postgres to canonicalise the expected side. A new Postgres test
-  migrates, applies and verifies every CHECK shape `migrate` generates. Schema comparison is
-  TypeScript-owned, so no other port carries this comparison.
+  now reads as drift. A precedence change (`(a OR b) AND c` against `a OR (b AND c)`) is not
+  detected by the string comparison; on Postgres Postgres now answers that (see "Changed", the
+  CHECK probe). A new Postgres test migrates, applies and verifies every CHECK shape `migrate`
+  generates. Schema comparison is TypeScript-owned, so no other port carries this comparison.
 
 ### Documentation
+
+- **New recipes and a real D1 example.** `docs/recipes/` gains keeping drizzle-kit migrations
+  (`drizzle-kit-migrations.md`), guarding generated routes with your own auth
+  (`guarding-generated-routes.md`) and proving your `meta verify` gate can fail
+  (`prove-your-gate-fails.md`). The Cloudflare Workers recipe now has a per-request `drizzle(env.DB)`
+  example, and the `drizzle({} as never)` placeholder and the wrong `"d1"` codegen-dialect statements are corrected.
 
 - **Two doc errors corrected against the code.** `docs/recipes/mysql.md` said Python ships a
   Postgres driver only; it ships SQLite and MySQL drivers beside it. `docs/features/api-contract.md`

@@ -1,0 +1,72 @@
+name: write-ignores-excluded
+description: >
+  A field excluded from forms (`@formExclude`) or marked as a credential (`view.password`)
+  is not writable through the generated routes: create, PATCH and PUT all leave it as it
+  was. The value is IGNORED, never rejected (HTTP 200/201, not 400), the same rule as
+  `@mutability: writeOnce` on PATCH (`writeonce-patch-stripped`), because a generated
+  edit form submits every field it was given.
+
+  The ordinary `name` rides in each body DELIBERATELY: it is applied, and that pairing is
+  what makes the assertion about the field and not about the request being ignored whole.
+  `tokenHash` is the observable one (it is still returned); `pinHash` is hidden on read,
+  so each port's runner pins its write by reading the stored rows back after this
+  scenario (seeded values unchanged, null on the created row).
+requests:
+  - id: r1
+    method: PATCH
+    path: /api/accounts/1
+    body:
+      name: "Ada L. (probe)"
+      tokenHash: "forged"
+      pinHash: "forged"
+    expect:
+      status: 200
+      body:
+        equals:
+          id: 1
+          name: "Ada L. (probe)"
+          tokenHash: "token-hash-1"
+  - id: r2
+    method: PUT
+    path: /api/accounts/2
+    body:
+      name: "Alan T. (probe)"
+      tokenHash: "forged"
+      pinHash: "forged"
+    expect:
+      status: 200
+      body:
+        equals:
+          id: 2
+          name: "Alan T. (probe)"
+          tokenHash: "token-hash-2"
+  - id: r3
+    method: POST
+    path: /api/accounts
+    body:
+      name: "Grace Hopper"
+      tokenHash: "forged"
+      pinHash: "forged"
+    expect:
+      status: 201
+      body:
+        row:
+          name: "Grace Hopper"
+          # Never written: the column stays null, and `forged` never landed.
+          tokenHash: null
+        hasId: true
+  - id: r4
+    method: PATCH
+    path: /api/accounts/1
+    body:
+      # Clearing is a write too: a present null must not reach a denied column.
+      name: "Ada L. (probe 2)"
+      tokenHash: null
+      pinHash: null
+    expect:
+      status: 200
+      body:
+        equals:
+          id: 1
+          name: "Ada L. (probe 2)"
+          tokenHash: "token-hash-1"

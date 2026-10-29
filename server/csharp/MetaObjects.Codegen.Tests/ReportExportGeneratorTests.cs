@@ -254,4 +254,48 @@ public class ReportExportGeneratorTests
         Assert.Null(ReportExportHttp.Refuse("csv", Q(("format", "csv"), ("withCount", "0"))));
         Assert.Equal(["csv", "json", "xml"], ReportExportHttp.Formats);
     }
+
+    // docs/features/api-contract.md, "Report export": a credential column (a grouped or min/max
+    // view.password field) is never returned, so its key is absent from a JSON export's rows,
+    // with or without the { rows, total } envelope, and the report's other columns stay.
+    public sealed record PinRow(string Name, string PinHash, long Accounts);
+
+    private static async Task<System.Text.Json.Nodes.JsonNode> ExportJson(object body, bool envelope, bool camelCase)
+    {
+        var services = new Microsoft.Extensions.DependencyInjection.ServiceCollection();
+        Microsoft.Extensions.DependencyInjection.LoggingServiceCollectionExtensions.AddLogging(services);
+        Microsoft.Extensions.DependencyInjection.OptionsServiceCollectionExtensions.Configure<Microsoft.AspNetCore.Http.Json.JsonOptions>(
+            services, o =>
+            {
+                o.SerializerOptions.PropertyNamingPolicy = camelCase ? System.Text.Json.JsonNamingPolicy.CamelCase : null;
+                o.SerializerOptions.PropertyNameCaseInsensitive = false;
+            });
+        var http = new DefaultHttpContext
+        {
+            RequestServices = Microsoft.Extensions.DependencyInjection.ServiceCollectionContainerBuilderExtensions.BuildServiceProvider(services),
+        };
+        http.Response.Body = new MemoryStream();
+        await ReportExportHttp.Json(http, "accounts-by-pin", body, ["pinHash"], envelope).ExecuteAsync(http);
+        Assert.Equal("attachment; filename=\"accounts-by-pin.json\"", http.Response.Headers.ContentDisposition.ToString());
+        http.Response.Body.Position = 0;
+        return System.Text.Json.Nodes.JsonNode.Parse(http.Response.Body)!;
+    }
+
+    [Theory]
+    [InlineData(false, true), InlineData(true, true), InlineData(false, false), InlineData(true, false)]
+    public async Task Json_export_omits_the_credential_key_from_every_row(bool envelope, bool camelCase)
+    {
+        PinRow[] rows = [new("Ann", "hash-a", 2), new("Bob", "hash-b", 3)];
+        var json = await ExportJson(envelope ? new { rows, total = 2 } : rows, envelope, camelCase);
+        var served = (envelope ? json["rows"] : json)!.AsArray();
+        Assert.Equal(2, served.Count);
+        foreach (var row in served.Select(r => r!.AsObject()))
+        {
+            Assert.DoesNotContain(row, p => string.Equals(p.Key, "pinHash", StringComparison.OrdinalIgnoreCase));
+            Assert.Contains(row, p => string.Equals(p.Key, "accounts", StringComparison.OrdinalIgnoreCase));
+            Assert.Contains(row, p => string.Equals(p.Key, "name", StringComparison.OrdinalIgnoreCase));
+        }
+        Assert.DoesNotContain("hash-", json.ToJsonString());
+        if (envelope) Assert.Equal(2, json["total"]!.GetValue<int>());
+    }
 }

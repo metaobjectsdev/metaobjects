@@ -1,7 +1,7 @@
 // The null-member rewrite of a value object column (`wire.nullMembers`, ADR-0019 Amendment 2).
 
 import { describe, test, expect } from "bun:test";
-import { nullMembersWire, withWire, type ValueObjectShape } from "../src/wire-format.js";
+import { hiddenColumnsWire, nullMembersWire, stripDeniedColumns, withWire, type ValueObjectShape } from "../src/wire-format.js";
 
 const money: ValueObjectShape = { members: ["label", "amount", "note"] };
 
@@ -61,5 +61,31 @@ describe("withWire", () => {
     expect(toWire({ price: "12.50", total: { label: null, amount: "1" } })).toEqual({ price: "12.5", total: { amount: "1" } });
     const native = withWire((r) => r, { decimalColumns: ["price"], valueObjects: { total: money } });
     expect(native({ price: "12.50", total: { label: null } })).toEqual({ price: "12.50", total: { label: null } });
+  });
+});
+
+describe("hiddenColumnsWire / stripDeniedColumns (#484)", () => {
+  test("hidden columns are removed from a row and nothing is hidden by default", () => {
+    expect(hiddenColumnsWire(undefined)).toBeUndefined();
+    expect(hiddenColumnsWire([])).toBeUndefined();
+    const hide = hiddenColumnsWire(["pinHash"])!;
+    const row = { id: 1, pinHash: "x", tokenHash: "y" };
+    expect(hide(row)).toEqual({ id: 1, tokenHash: "y" });
+    expect(row.pinHash).toBe("x"); // the input is not mutated
+    expect("pinHash" in (hide(row) as object)).toBe(false);
+    expect(hide(null)).toBeNull();
+  });
+
+  test("withWire strips hidden columns after the other rewrites", () => {
+    const toWire = withWire((r) => r, { decimalColumns: ["price"], decimalWire: "string", hiddenColumns: ["secret"] });
+    expect(toWire({ price: 1.5, secret: "s", name: "n" })).toEqual({ price: "1.5", name: "n" });
+  });
+
+  test("denied columns are stripped from a body, a present null included", () => {
+    expect(stripDeniedColumns({ name: "a", tokenHash: "forged", pinHash: null }, ["tokenHash", "pinHash"])).toEqual({ name: "a" });
+    expect(stripDeniedColumns({ name: "a" }, undefined)).toEqual({ name: "a" });
+    expect(stripDeniedColumns({ name: "a" }, [])).toEqual({ name: "a" });
+    expect(stripDeniedColumns("not-an-object", ["x"])).toBe("not-an-object");
+    expect(stripDeniedColumns(null, ["x"])).toBeNull();
   });
 });

@@ -125,7 +125,9 @@ open class KotlinReportExportGenerator : MultiFileDirectGeneratorBase<MetaObject
         entity: MetaObject, pkg: String, shortName: String, writerPackage: String, maxRows: Int,
     ): String {
         val className = "${shortName}Export"
-        val fields = entity.metaFields
+        // #484: a credential column is never exported.
+        val credentials = KotlinGenUtil.reportCredentialNames(entity).toSet()
+        val fields = entity.metaFields.filter { it.name !in credentials }
         val segment = KotlinNaming.controllerPath(shortName).substringAfterLast('/')
         val w = WRITER_NAME
         return buildString {

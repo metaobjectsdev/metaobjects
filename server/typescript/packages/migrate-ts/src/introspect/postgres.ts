@@ -653,7 +653,7 @@ async function readPgIndexes(k: RawKysely, schema: string, table: string): Promi
 
 /** Extract the raw key-expression text from a pg index def — the balanced `(...)`
  *  after `USING <method> `, stripped of a trailing partial-index `WHERE`. */
-function indexDefKeyExpr(indexdef: string): string {
+export function indexDefKeyExpr(indexdef: string): string {
   const open = indexdef.indexOf("(", indexdef.indexOf(" USING "));
   if (open === -1) return indexdef;
   let depth = 0;
