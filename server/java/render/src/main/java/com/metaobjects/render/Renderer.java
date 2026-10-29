@@ -128,8 +128,7 @@ public final class Renderer {
         List<MustacheTags.Tag> partials = tags.stream()
             .filter(t -> t.kind() == MustacheTags.Kind.PARTIAL).toList();
         if (partials.isEmpty()) return text;
-        // Inlined text is parsed under the surrounding delimiters, not the default ones.
-        if (tags.stream().anyMatch(t -> t.kind() == MustacheTags.Kind.DELIMITERS)) {
+        if (MustacheTags.delimitedPartial(tags) != null) {
             throw new RenderException(
                 "a template that uses partials cannot also change delimiters ({{=<% %>=}})");
         }

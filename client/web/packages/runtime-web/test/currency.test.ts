@@ -115,6 +115,12 @@ describe("parseCurrency — strict grammar and sign forms (audit finding 5)", ()
     expect(parseCurrency("₹12,34,567.00", "INR", "en-IN")).toBe(123456700);
   });
 
+  test("de-DE JPY keeps the locale's , decimal although yen has no minor units", () => {
+    expect(parseCurrency("1.5", "JPY", "de-DE")).toBeNull();
+    expect(parseCurrency("1,5", "JPY", "de-DE")).toBe(2);
+    expect(parseCurrency("1.000 ¥", "JPY", "de-DE")).toBe(1000);
+  });
+
   test("JPY has no minor units; a fraction rounds", () => {
     expect(parseCurrency("¥1,000", "JPY")).toBe(1000);
   });

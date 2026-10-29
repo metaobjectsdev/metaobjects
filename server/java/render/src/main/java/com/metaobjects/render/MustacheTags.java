@@ -113,6 +113,15 @@ final class MustacheTags {
         return tags;
     }
 
+    /**
+     * The first partial of a text that also changes delimiters, or {@code null}. Such a text does
+     * not render: the inlined partial would be parsed under the changed delimiters.
+     */
+    static String delimitedPartial(List<Tag> tags) {
+        if (tags.stream().noneMatch(t -> t.kind() == Kind.DELIMITERS)) return null;
+        return tags.stream().filter(t -> t.kind() == Kind.PARTIAL).map(Tag::value).findFirst().orElse(null);
+    }
+
     /** {@code text} with every comment cut out: what a tag-presence check may scan. */
     static String withoutComments(String text, List<Tag> tags) {
         StringBuilder sb = new StringBuilder(text.length());

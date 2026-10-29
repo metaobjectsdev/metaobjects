@@ -59,8 +59,7 @@ public static class Renderer
         catch (MustacheSyntaxException e) { throw new RenderException($"template syntax error: {e.Message}"); }
         var partials = tags.Where(t => t.Kind == MustacheTagKind.Partial).ToList();
         if (partials.Count == 0) return text;
-        // Inlined text is parsed under the surrounding delimiters, not the default ones.
-        if (tags.Any(t => t.Kind == MustacheTagKind.Delimiters))
+        if (MustacheTags.DelimitedPartial(tags) is not null)
             throw new RenderException("a template that uses partials cannot also change delimiters ({{=<% %>=}})");
         var sb = new System.Text.StringBuilder();
         int pos = 0;

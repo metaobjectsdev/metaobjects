@@ -157,6 +157,13 @@ export function hasDelimiterChange(tokens: readonly Token[]): boolean {
   return flatTokens(tokens).some((tok) => tok[0] === TOKEN_DELIMITERS);
 }
 
+/** A text that changes delimiters and also uses a partial does not render: the inlined partial
+ *  would be parsed under the changed delimiters. Reported against the text's first partial. */
+function delimiterConflict(tokens: readonly Token[]): VerifyError | undefined {
+  const first = partialTokens(tokens)[0];
+  return first !== undefined && hasDelimiterChange(tokens) ? { code: ERR_TEMPLATE_SYNTAX, path: first[0] } : undefined;
+}
+
 function commentSpans(tokens: readonly Token[]): [number, number][] {
   return flatTokens(tokens)
     .filter((tok) => tok[0] === TOKEN_COMMENT)
@@ -286,6 +293,8 @@ export function verify(
             errors.push(parsed);
             break;
           }
+          const conflict = delimiterConflict(parsed);
+          if (conflict) errors.push(conflict);
           staticTexts.push(withoutComments(text, parsed));
           walk(parsed, stack, [...seen, value], positional);
           break;
@@ -298,6 +307,8 @@ export function verify(
 
   const bodyTokens = parseOrSyntaxError(templateText);
   if (!Array.isArray(bodyTokens)) return [bodyTokens];
+  const conflict = delimiterConflict(bodyTokens);
+  if (conflict) errors.push(conflict);
   staticTexts[0] = withoutComments(templateText, bodyTokens);
   walk(bodyTokens, [root], []);
 

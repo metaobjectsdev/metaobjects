@@ -260,14 +260,19 @@ def packaged_module_path(entry: GeneratorEntry) -> Path:
     return Path(module.__file__)
 
 
+def _ordered(text: str) -> list[str]:
+    return [line.rstrip() for line in text.splitlines() if line.strip()]
+
+
 def _normalised(text: str) -> Counter[str]:
-    return Counter(line.rstrip() for line in text.splitlines() if line.strip())
+    return Counter(_ordered(text))
 
 
 def owned_status(root: Path, entry: GeneratorEntry) -> str | None:
     """``identical`` / ``DIFFERS: N behind, M of your own``, or ``None`` if not owned.
 
-    ``identical`` means the exact text (line endings aside): an edit that only reorders
+    ``identical`` means the reference lines in the reference order (trailing whitespace and
+    blank lines aside): an edit that only reorders
     lines is a customisation, because ``--undo`` deletes an ``identical`` copy. *behind*
     counts reference lines the copy lacks, *of your own* counts copy lines the reference
     lacks, as in TS ``owned-copy.ts``.
@@ -319,9 +324,10 @@ def _status(behind: int, own: int) -> str:
 
 
 def _compare(mine_text: str, ref_text: str) -> str:
-    """``identical`` only for the exact reference text, line endings aside. The line counts
-    ignore order, so a reorder reads ``DIFFERS: 0 behind, 0 of your own, reordered``."""
-    if mine_text.replace("\r\n", "\n") == ref_text.replace("\r\n", "\n"):
+    """``identical`` only for the reference lines in the reference order, trailing whitespace and
+    blank lines aside. The line counts ignore order, so a reorder reads ``DIFFERS: 0 behind, 0 of
+    your own, reordered``."""
+    if _ordered(mine_text) == _ordered(ref_text):
         return "identical"
     behind, own = _line_diff(mine_text, ref_text)
     status = _status(behind, own)

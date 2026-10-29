@@ -34,6 +34,14 @@ public sealed class OwnedCopyTests : IDisposable
     }
 
     [Fact]
+    public void Compare_is_blind_to_trailing_whitespace_and_blank_lines()
+    {
+        // An editor's save-time cleanup reorders nothing, so it must not read as an edit.
+        var cmp = OwnedCopy.Compare("a  \n\nb\t\nc\n\n", "a\nb\nc\n");
+        Assert.Equal(OwnedCopy.Verdict.Identical, cmp.Verdict);
+    }
+
+    [Fact]
     public void Compare_reads_a_reordering_as_an_edit()
     {
         // The same lines in another order are a different program; `eject --undo` deletes an

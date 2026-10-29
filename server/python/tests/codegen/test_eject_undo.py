@@ -163,3 +163,14 @@ def test_undo_keeps_a_copy_whose_only_edit_is_a_reordering(tmp_path: Path, monke
     assert path.exists()
     assert main(["eject", "--undo", "--force", "names"]) == 0
     assert not path.exists()
+
+
+def test_undo_removes_a_copy_whose_only_edit_is_whitespace(tmp_path: Path, monkeypatch, capsys) -> None:
+    monkeypatch.chdir(tmp_path)
+    assert main(["eject", "names"]) == 0
+    path = tmp_path / GEN / "names.py"
+    # An editor's save-time cleanup: trailing whitespace and an extra blank line, nothing reordered.
+    path.write_text("\n".join(line + "  " for line in path.read_text().splitlines()) + "\n\n\n")
+    capsys.readouterr()
+    assert main(["eject", "--undo", "names"]) == 0
+    assert not path.exists()

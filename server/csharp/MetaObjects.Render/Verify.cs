@@ -100,6 +100,14 @@ public static class Verify
     }
 
     // `text` minus its comments, for the output-tag scan.
+    /// <summary>A text that changes delimiters and also uses a partial does not render: report it
+    /// against its first partial.</summary>
+    private static void ReportDelimitedPartial(string text, List<VerifyError> errors)
+    {
+        if (MustacheTags.DelimitedPartial(MustacheTags.Scan(text)) is { } partial)
+            errors.Add(new VerifyError(ERR_TEMPLATE_SYNTAX, partial));
+    }
+
     private static string StaticText(string text) => MustacheTags.WithoutComments(text, MustacheTags.Scan(text));
 
     private static PayloadField? Find(IReadOnlyList<PayloadField> fields, string name) =>
@@ -226,6 +234,7 @@ public static class Verify
                             errors.Add(new VerifyError(ERR_TEMPLATE_SYNTAX, e.Section));
                             break;
                         }
+                        ReportDelimitedPartial(text, errors);
                         staticTexts.Add(StaticText(text));
                         Walk(partialToks, stack, new List<string>(seen) { p.Value }, inElement);
                         break;
@@ -239,6 +248,7 @@ public static class Verify
         {
             return [new VerifyError(ERR_TEMPLATE_SYNTAX, e.Section)];
         }
+        ReportDelimitedPartial(templateText, errors);
         staticTexts[0] = StaticText(templateText);
         Walk(bodyToks, [root], []);
 

@@ -109,6 +109,14 @@ def scan(text: str) -> list[Tag]:
     return tags
 
 
+def delimited_partial(tags: list[Tag]) -> str | None:
+    """The first partial of a text that also changes delimiters, or ``None``. Such a text does
+    not render: the inlined partial would be parsed under the changed delimiters."""
+    if not any(t.kind == KIND_DELIMITERS for t in tags):
+        return None
+    return next((t.value for t in tags if t.kind == KIND_PARTIAL), None)
+
+
 def without_comments(text: str, tags: list[Tag]) -> str:
     """``text`` with every comment tag cut out — what a tag-presence check may scan."""
     out: list[str] = []

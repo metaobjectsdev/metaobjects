@@ -392,10 +392,12 @@ here.**
     a partial tag in a comment is not expanded, `{{=<% %>=}}` raises no false
     `ERR_VAR_NOT_ON_PAYLOAD`, `@requiredTags` is not satisfied inside a comment, and an unbalanced
     section is `ERR_TEMPLATE_SYNTAX`. Render rejects partials combined with a delimiter change,
-    and the Python renderer rejects `{{=`.
+    and verify reports that combination as `ERR_TEMPLATE_SYNTAX` on the first partial (fixture
+    `verify-set-delimiter-with-partial`). The Python renderer rejects every `{{=`.
   - The forgiving XML extract reader (all five ports) decodes entities, reads CDATA as text,
     ignores comments, keeps literal `List<int>` prose inside closed elements, and locates the real
-    root. Six new `extract-conformance` cases.
+    root. An unclosed open tag after `>`, whitespace or the start of the body is still a child
+    (`<check><payoff>text</check>`). Seven new `extract-conformance` cases.
   - `meta upgrade` ignores JSONC comments when scanning JSON metadata, so a brace or trailing
     comment no longer skips a retirement silently.
   - The hosted `leak-scan` checks renamed files and `/Users/<name>/` paths and shares its patterns
@@ -424,7 +426,8 @@ here.**
     still enforcing an ASCII full match. `parseCurrency` caches the locale shape per
     (currency, locale). Workspace `**` expansion tolerates symlink cycles and skips dot-directories,
     `node_modules`, `dist` and `build`. `meta eject --list` says `, reordered` for a reorder-only
-    copy. C# `ConstraintErrors` falls back to message text when a driver code is not a constraint
+    copy; trailing whitespace and blank lines alone still read `identical` in Python and C#.
+    `parseCurrency` reads the decimal separator for zero-decimal currencies (JPY in `de-DE`). C# `ConstraintErrors` falls back to message text when a driver code is not a constraint
     code. The migration splitter treats `E'...'` as backslash-escaped on Postgres only.
   - Smaller instances: Java `<filters>` glob no longer throws on metacharacters; Java and C#
     generated string literals escape newlines and control characters; `library.json` is read with

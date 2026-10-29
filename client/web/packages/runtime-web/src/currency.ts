@@ -82,8 +82,12 @@ function localeShape(currency: string, locale: string): LocaleShape {
   let secondary = 3;
   const tokens = new Set<string>();
   try {
-    const parts = new Intl.NumberFormat(locale, { style: "currency", currency, useGrouping: true })
-      .formatToParts(123456789.12);
+    const parts = new Intl.NumberFormat(locale, {
+      style: "currency",
+      currency,
+      useGrouping: true,
+      minimumFractionDigits: 2,
+    }).formatToParts(123456789.12);
     group = parts.find((p) => p.type === "group")?.value ?? group;
     decimal = parts.find((p) => p.type === "decimal")?.value ?? decimal;
     const groups = parts.filter((p) => p.type === "integer").map((p) => p.value.length);

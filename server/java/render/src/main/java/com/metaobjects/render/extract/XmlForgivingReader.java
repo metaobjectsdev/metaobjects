@@ -51,6 +51,11 @@ public final class XmlForgivingReader {
     private static final Pattern ATTR = Pattern.compile(
             "([A-Za-z_:][A-Za-z0-9_:.\\-]*)\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s/>]+))");
 
+    // a character an identifier can end with: '<' right after one is a type argument, not a tag.
+    private static boolean isIdentChar(char c) {
+        return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_';
+    }
+
     private static final String COMMENT_OPEN = "<!--";
     private static final String COMMENT_CLOSE = "-->";
     private static final String CDATA_OPEN = "<![CDATA[";
@@ -178,8 +183,9 @@ public final class XmlForgivingReader {
      * Parse {@code inner}'s elements into {@code out}. When {@code loose} is non-null, the text
      * BETWEEN those elements (an element's own text in mixed content) is appended to it, one
      * segment per gap. {@code literalUnclosed} is set for the body of an element that DID
-     * close: an open tag in there with no close tag anywhere after it ({@code List<int> and
-     * ...}) is prose, not an element.
+     * close: an open tag in there that directly follows an identifier character and has no close
+     * tag anywhere after it ({@code List<int> and ...}) is prose, not an element. One after
+     * {@code >}, whitespace or the start of the body is a child whose close the model forgot.
      */
     private void parseChildren(String inner, boolean ci, Map<String, Object> out, List<String> loose,
                                boolean literalUnclosed) {
@@ -189,7 +195,8 @@ public final class XmlForgivingReader {
         int pos = 0;
         int scan = 0;
         while (m.find(scan)) {
-            if (literalUnclosed && !m.group(2).stripTrailing().endsWith("/")
+            if (literalUnclosed && m.start() > 0 && isIdentChar(inner.charAt(m.start() - 1))
+                    && !m.group(2).stripTrailing().endsWith("/")
                     && !closeTag.matcher(inner).region(m.end(), inner.length()).find()) {
                 scan = m.end();
                 continue;

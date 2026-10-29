@@ -38,6 +38,9 @@ const CLOSE_TAG_SRC = "</([A-Za-z_][A-Za-z0-9_]*)\\s*>";
 // one attribute: name = "double" | 'single' | bareword.
 const ATTR_SRC = "([A-Za-z_:][A-Za-z0-9_:.\\-]*)\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s/>]+))";
 
+/** A character an identifier can end with: `<` right after one is a type argument, not a tag. */
+const IDENT_CHAR = /^[A-Za-z0-9_]$/;
+
 const COMMENT_OPEN = "<!--";
 const COMMENT_CLOSE = "-->";
 const CDATA_OPEN = "<![CDATA[";
@@ -142,8 +145,10 @@ export function readXmlRootless(
 /**
  * Parse `inner`'s elements into `out`. When `loose` is non-null, the text BETWEEN those
  * elements (an element's own text in mixed content) is appended to it, one segment per gap.
- * `literalUnclosed` is set for the body of an element that DID close: an open tag in there with
- * no close tag anywhere after it (`List<int> and ...`) is prose, not an element.
+ * `literalUnclosed` is set for the body of an element that DID close: an open tag in there that
+ * directly follows an identifier character and has no close tag anywhere after it
+ * (`List<int> and ...`) is prose, not an element. One after `>`, whitespace or the start of the
+ * body is a child whose close the model forgot.
  */
 function parseChildren(
   inner: string,
@@ -161,6 +166,7 @@ function parseChildren(
     const afterOpen = m.index + m[0].length;
     if (
       literalUnclosed &&
+      IDENT_CHAR.test(inner[m.index - 1] ?? "") &&
       !(m[2] ?? "").trimEnd().endsWith("/") &&
       matchFrom(CLOSE_TAG_SRC, flags, inner, afterOpen) == null
     ) {

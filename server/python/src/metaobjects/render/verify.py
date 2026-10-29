@@ -32,6 +32,7 @@ from .mustache_tags import (
     KIND_SECTION,
     KIND_TRIPLE,
     MustacheSyntaxError,
+    delimited_partial,
     scan,
     without_comments,
 )
@@ -165,6 +166,13 @@ def _tokenize(text: str) -> list[_Token]:
             level.append(_Var(tag.value))  # {{x}}, {{x.y}}, {{.}}, {{{x}}}, {{&x}}
         # comments and delimiter changes carry no reference
     return root
+
+
+def _delimited_partial_errors(text: str) -> list[VerifyError]:
+    """A text that changes delimiters and also uses a partial does not render: report it
+    against its first partial."""
+    partial = delimited_partial(scan(text))
+    return [] if partial is None else [VerifyError(ERR_TEMPLATE_SYNTAX, partial)]
 
 
 def _static_text(text: str) -> str:
@@ -320,6 +328,7 @@ def verify(
                 except MustacheSyntaxError as e:
                     errors.append(VerifyError(ERR_TEMPLATE_SYNTAX, e.section))
                     continue
+                errors.extend(_delimited_partial_errors(body))
                 static_texts.append(_static_text(body))
                 walk(partial_tokens, stack, [*seen, tok.value], in_element)
 
@@ -327,6 +336,7 @@ def verify(
         body_tokens = _tokenize(template_text)
     except MustacheSyntaxError as e:
         return [VerifyError(ERR_TEMPLATE_SYNTAX, e.section)]
+    errors.extend(_delimited_partial_errors(template_text))
     static_texts[0] = _static_text(template_text)
     walk(body_tokens, [root], [])
 

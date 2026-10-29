@@ -2,9 +2,9 @@
 // compares to the reference `dotnet meta eject` would write today. Line-multiset
 // counts, the same shape as the Python port's owned_status (Counter subtraction) —
 // NOT the formatter-canonicalized comparison TS's owned-copy.ts does, since this port
-// has no bundled C# formatter to normalise through. The VERDICT is the exact text (line
-// endings aside): `eject --undo` deletes an identical copy, so an edit that only reorders
-// lines must read as an edit. "behind" counts reference lines the
+// has no bundled C# formatter to normalise through. The VERDICT is the ordered line
+// sequence (trailing whitespace and blank lines aside): `eject --undo` deletes an identical
+// copy, so an edit that only reorders lines must read as an edit. "behind" counts reference lines the
 // copy lacks (upstream moved); "of your own" counts copy lines the reference lacks
 // (your edit). The comparison is against the REWRITTEN reference (EjectableGenerators.
 // RewriteForEject applied) — the namespace/using lines eject itself changes are not
@@ -23,29 +23,32 @@ public static class OwnedCopy
     public static string OwnedPath(string root, string sourceFileName) =>
         Path.Combine(root, "codegen", "generators", sourceFileName);
 
-    /// <summary>The non-blank line multiset of <paramref name="text"/>, trailing
+    /// <summary>The non-blank lines of <paramref name="text"/> in order, trailing
     /// whitespace and CRLF stripped per line so a checkout's line-ending style never
     /// reads as drift.</summary>
-    private static Dictionary<string, int> LineCounts(string text)
+    private static List<string> OrderedLines(string text) =>
+        text.Split('\n').Select(raw => raw.TrimEnd('\r', ' ', '\t')).Where(line => line.Length > 0).ToList();
+
+    /// <summary>The multiset of <see cref="OrderedLines"/>.</summary>
+    private static Dictionary<string, int> LineCounts(IEnumerable<string> lines)
     {
         var counts = new Dictionary<string, int>(StringComparer.Ordinal);
-        foreach (var raw in text.Split('\n'))
-        {
-            var line = raw.TrimEnd('\r', ' ', '\t');
-            if (line.Length == 0) continue;
+        foreach (var line in lines)
             counts[line] = counts.GetValueOrDefault(line) + 1;
-        }
         return counts;
     }
 
     /// <summary>Compare <paramref name="owned"/> against <paramref name="reference"/>:
-    /// <c>Identical</c> only for the exact text, CRLF aside; the line counts are order-blind.</summary>
+    /// <c>Identical</c> only for the same lines in the same order (trailing whitespace and blank
+    /// lines aside); the line counts are order-blind.</summary>
     public static Comparison Compare(string owned, string reference)
     {
-        if (owned.Replace("\r\n", "\n") == reference.Replace("\r\n", "\n"))
+        var ownedLines = OrderedLines(owned);
+        var referenceLines = OrderedLines(reference);
+        if (ownedLines.SequenceEqual(referenceLines, StringComparer.Ordinal))
             return new Comparison(Verdict.Identical, 0, 0);
-        var mine = LineCounts(owned);
-        var theirs = LineCounts(reference);
+        var mine = LineCounts(ownedLines);
+        var theirs = LineCounts(referenceLines);
         int behind = 0, ofYourOwn = 0;
         foreach (var line in mine.Keys.Concat(theirs.Keys).Distinct(StringComparer.Ordinal))
         {

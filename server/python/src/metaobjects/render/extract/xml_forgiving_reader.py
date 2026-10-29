@@ -36,6 +36,8 @@ _OPEN_TAG_CI = re.compile(r"<([A-Za-z_][A-Za-z0-9_]*)([^>]*?)>", re.IGNORECASE)
 # the body) — LLMs commonly end a block with the wrong tag.
 _CLOSE_TAG = re.compile(r"</([A-Za-z_][A-Za-z0-9_]*)\s*>")
 _CLOSE_TAG_CI = re.compile(r"</([A-Za-z_][A-Za-z0-9_]*)\s*>", re.IGNORECASE)
+# a character an identifier can end with: '<' right after one is a type argument, not a tag.
+_IDENT_CHAR = re.compile(r"[A-Za-z0-9_]")
 # one attribute: name = "double" | 'single' | bareword.
 _ATTR = re.compile(r"""([A-Za-z_:][A-Za-z0-9_:.\-]*)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s/>]+))""")
 
@@ -158,8 +160,9 @@ class XmlForgivingReader:
         """Parse ``inner``'s elements into ``out``. When ``loose`` is not ``None``, the text
         BETWEEN those elements (an element's own text in mixed content) is appended to it,
         one segment per gap. ``literal_unclosed`` is set for the body of an element that DID
-        close: an open tag in there with no close tag anywhere after it (``List<int> and ...``)
-        is prose, not an element."""
+        close: an open tag in there that directly follows an identifier character and has no
+        close tag anywhere after it (``List<int> and ...``) is prose, not an element. One after
+        ``>``, whitespace or the start of the body is a child whose close the model forgot."""
         open_tag = _OPEN_TAG_CI if ci else _OPEN_TAG
         any_close = _CLOSE_TAG_CI if ci else _CLOSE_TAG
         pos = 0
@@ -170,6 +173,8 @@ class XmlForgivingReader:
                 break
             if (
                 literal_unclosed
+                and m.start() > 0
+                and _IDENT_CHAR.match(inner[m.start() - 1]) is not None
                 and not (m.group(2) or "").rstrip().endswith("/")
                 and any_close.search(inner, m.end()) is None
             ):

@@ -107,6 +107,7 @@ public final class Verify {
             errors.add(new VerifyError(ERR_TEMPLATE_SYNTAX, e.section()));
             return errors;
         }
+        reportDelimitedPartial(templateText, errors);
         staticTexts.add(staticText(templateText));
 
         WalkContext ctx = new WalkContext(provider, root, errors, referencedAtRoot, staticTexts);
@@ -236,6 +237,7 @@ public final class Verify {
                         ctx.errors().add(new VerifyError(ERR_TEMPLATE_SYNTAX, e.section()));
                         break;
                     }
+                    reportDelimitedPartial(text, ctx.errors());
                     ctx.staticTexts().add(staticText(text));
                     List<String> nextSeen = new ArrayList<>(seen);
                     nextSeen.add(p.value());
@@ -328,6 +330,13 @@ public final class Verify {
             }
         }
         return root;
+    }
+
+    /** A text that changes delimiters and also uses a partial does not render: report it against
+     *  its first partial. */
+    private static void reportDelimitedPartial(String text, List<VerifyError> errors) {
+        String partial = MustacheTags.delimitedPartial(MustacheTags.scan(text));
+        if (partial != null) errors.add(new VerifyError(ERR_TEMPLATE_SYNTAX, partial));
     }
 
     /** {@code text} minus its comments, for the output-tag scan. */

@@ -34,6 +34,9 @@ public sealed class XmlForgivingReader
         "([A-Za-z_:][A-Za-z0-9_:.\\-]*)\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s/>]+))",
         RegexOptions.Compiled);
 
+    // a character an identifier can end with: '<' right after one is a type argument, not a tag.
+    private static bool IsIdentChar(char c) => char.IsAsciiLetterOrDigit(c) || c == '_';
+
     private const string CommentOpen = "<!--";
     private const string CommentClose = "-->";
     private const string CdataOpen = "<![CDATA[";
@@ -161,8 +164,9 @@ public sealed class XmlForgivingReader
     /// <paramref name="loose"/> is non-null, the text BETWEEN those elements (an element's own
     /// text in mixed content) is appended to it, one segment per gap.
     /// <paramref name="literalUnclosed"/> is set for the body of an element that DID close: an
-    /// open tag in there with no close tag anywhere after it (<c>List&lt;int&gt; and ...</c>) is
-    /// prose, not an element.
+    /// open tag in there that directly follows an identifier character and has no close tag
+    /// anywhere after it (<c>List&lt;int&gt; and ...</c>) is prose, not an element. One after
+    /// <c>&gt;</c>, whitespace or the start of the body is a child whose close the model forgot.
     /// </summary>
     private static void ParseChildren(string inner, bool ci, Dictionary<string, object?> out_, List<string>? loose,
         bool literalUnclosed)
@@ -176,7 +180,8 @@ public sealed class XmlForgivingReader
         Match m = openTag.Match(inner, scan);
         while (m.Success)
         {
-            if (literalUnclosed && !m.Groups[2].Value.TrimEnd().EndsWith('/')
+            if (literalUnclosed && m.Index > 0 && IsIdentChar(inner[m.Index - 1])
+                && !m.Groups[2].Value.TrimEnd().EndsWith('/')
                 && !anyClose.Match(inner, m.Index + m.Length).Success)
             {
                 scan = m.Index + m.Length;

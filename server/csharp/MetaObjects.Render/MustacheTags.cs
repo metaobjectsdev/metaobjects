@@ -100,6 +100,13 @@ internal static class MustacheTags
         return tags;
     }
 
+    /// <summary>The first partial of a text that also changes delimiters, or <c>null</c>. Such a text
+    /// does not render: the inlined partial would be parsed under the changed delimiters.</summary>
+    public static string? DelimitedPartial(IReadOnlyList<MustacheTag> tags) =>
+        tags.Any(t => t.Kind == MustacheTagKind.Delimiters)
+            ? tags.FirstOrDefault(t => t.Kind == MustacheTagKind.Partial)?.Value
+            : null;
+
     /// <summary><paramref name="text"/> with every comment cut out: what a tag-presence check may scan.</summary>
     public static string WithoutComments(string text, IReadOnlyList<MustacheTag> tags)
     {
