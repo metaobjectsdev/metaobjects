@@ -61,7 +61,7 @@ public sealed class CSharpApiModelBuilder
         var units = new List<ApiUnit>();
 
         // Objects: one unit per concrete object.entity / object.value.
-        foreach (var obj in root.Objects())
+        foreach (var obj in root.Objects().Where(root.InScope))
         {
             // FR-044: a SERVED report (its read source is a view) is documented from its row
             // model, the same object the generators emit from, so its unit carries exactly

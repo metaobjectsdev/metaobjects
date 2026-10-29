@@ -57,9 +57,9 @@ sources.** It answers a different question than the ladder above — not "where 
 my metadata live" but "what does my metadata build on that lives elsewhere" — so a
 TypeScript project using a declared `sources` list and a Python project using its
 own `metadata:` key both get their declared dependencies resolved the same way, on
-top of whichever rung supplied their own files. **TypeScript, Python, Java and Kotlin**
-(Kotlin through Java's loader and Maven plugin) — C# doesn't read `dependencies` yet
-(Phase 2). See
+top of whichever rung supplied their own files. **TypeScript, Python, Java, Kotlin and C#**
+(Kotlin through Java's loader and Maven plugin) — each reads `dependencies` at every rung
+of its own source ladder. See
 [`metadata-dependencies.md`](metadata-dependencies.md).
 
 A config file that exists but is malformed is an error at its own rung; it never

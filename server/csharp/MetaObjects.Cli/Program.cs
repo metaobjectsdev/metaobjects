@@ -531,6 +531,7 @@ static int RunVerify(string[] rest)
         // FR-043 — read regardless of ladder vs. explicit <metadataDir> (see
         // ResolveMetadataDirOrExit).
         Libraries = resolvedMeta.Libraries,
+        Imports = resolvedMeta.Imports,
         // ADR-0058 — same source as Libraries; the --codegen gate's regen reads it from
         // the loaded root rather than a flag (see VerifyCommand.RunCodegenDrift).
         Naming = resolvedMeta.Naming,
@@ -612,7 +613,7 @@ static int RunVerify(string[] rest)
     // field name declared twice in one children list. Both load clean on every port. Runs
     // on every `verify`, whichever gates were selected; warnings ONLY, never the exit code.
     if (!noFieldLint && Environment.GetEnvironmentVariable(FieldLint.EnvOptOut) != "1")
-        FieldLint.RunAdvisory(resolvedMeta.Directory, resolvedMeta.Files, resolvedMeta.Libraries, Console.Error);
+        FieldLint.RunAdvisory(resolvedMeta.Directory, resolvedMeta.Files, resolvedMeta.Libraries, Console.Error, resolvedMeta.Imports);
 
     // The handed-off codegen gate already printed its own verdict (inherited console);
     // fold its exit code into the aggregate the same way every other subverb does — max,

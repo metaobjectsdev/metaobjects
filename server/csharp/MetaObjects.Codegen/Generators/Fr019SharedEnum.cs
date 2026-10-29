@@ -92,11 +92,14 @@ public static class Fr019SharedEnum
     /// type name. A declaration nobody extends is not materialized (no dangling type).
     /// Deterministic order: first-consumption order across entities (ordinal by name).
     /// </summary>
-    public static IReadOnlyList<SharedEnum> CollectSharedEnums(MetaRoot root)
+    public static IReadOnlyList<SharedEnum> CollectSharedEnums(MetaRoot root, IEnumerable<MetaObject>? alsoReached = null)
     {
         var seen = new HashSet<string>(StringComparer.Ordinal);
         var outList = new List<SharedEnum>();
-        foreach (var entity in root.Objects())
+        // FR-023: an enum reaches the output iff an object this project generates uses it, decided by the
+        // USING object, never by the enum's own package. `alsoReached` is what that object pulls in that
+        // is itself imported (a value object whose POCO is emitted because a generated entity holds one).
+        foreach (var entity in root.Objects().Where(root.InScope).Concat(alsoReached ?? []))
             foreach (var field in entity.Fields())
             {
                 if (SharedEnumForField(field) is not { } shared) continue;
@@ -106,8 +109,8 @@ public static class Fr019SharedEnum
     }
 
     /// <summary>The shared enums that metaobjects MATERIALIZES (non-@provided, consumed).</summary>
-    public static IReadOnlyList<SharedEnum> MaterializedSharedEnums(MetaRoot root) =>
-        CollectSharedEnums(root).Where(e => !e.Provided).ToList();
+    public static IReadOnlyList<SharedEnum> MaterializedSharedEnums(MetaRoot root, IEnumerable<MetaObject>? alsoReached = null) =>
+        CollectSharedEnums(root, alsoReached).Where(e => !e.Provided).ToList();
 
     /// <summary>
     /// The C# type reference a consuming field emits for a shared/provided enum:

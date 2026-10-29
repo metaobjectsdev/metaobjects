@@ -247,8 +247,13 @@ climbs out of the package, and a Python module that is not a package are
   like Python's.
 - **Kotlin** — inherits via Java: it loads through the same loader and Maven plugin. The
   Kotlin generators are covered by a codegen test that an imported entity emits nothing.
-- **C#** — Phase 2 (does not read `dependencies` yet). Runs the resolution arm when it consumes,
-  and the check arm when it gains a check.
+- **C#** — the resolution arm: resolution, load-time failure, lock/snapshot integrity, on the
+  neutral source ladder and again through the explicit metadata directory (C# has no native
+  config surface, so `.metaobjects/config.json` is where a dependency is declared at every
+  rung). `inScope` is Python's formula, not TypeScript's. Not the check arm: C# has no
+  `deps check` yet (that is `verify --deps`), so its runner skips the `expectCheck` cases. Not the
+  transport arm: C# never syncs. The runner is
+  `server/csharp/MetaObjects.Conformance.Tests/DependencyConformanceTests.cs`.
 
 ## Reference implementation
 

@@ -77,7 +77,7 @@ public class MetaDataLoader
     // Registry.cs::ApplyStrictAttrScoping can consult the id set without a
     // Registry → Loader back-reference (Loader → Registry/Provider/CoreTypes is the
     // sole pre-existing dependency direction).
-    private static TypeRegistry DefaultRegistry() =>
+    internal static TypeRegistry DefaultRegistry() =>
         Provider.ComposeRegistry(CoreTypes.LibraryProviders);
 
     // -------------------------------------------------------------------------
@@ -124,6 +124,17 @@ public class MetaDataLoader
     /// </summary>
     public static LoadResult FromDirectory(string directory, TypeRegistry registry,
         IEnumerable<string>? libraries, DirectorySource.Options? opts = null, bool strict = false)
+        => FromDirectory(directory, registry, libraries, null, opts, strict);
+
+    /// <summary>
+    /// <see cref="FromDirectory(string, TypeRegistry, IEnumerable{string}?, DirectorySource.Options?, bool)"/>
+    /// plus <paramref name="leading"/> sources (FR-023: a dependency's committed snapshot artifacts)
+    /// loaded AFTER the libraries and BEFORE the directory's own files. Internal: a host reaches this
+    /// through <see cref="Config.ResolvedMetadata.Load"/>, which also records what was imported.
+    /// </summary>
+    internal static LoadResult FromDirectory(string directory, TypeRegistry registry,
+        IEnumerable<string>? libraries, IReadOnlyList<IMetaDataSource>? leading,
+        DirectorySource.Options? opts = null, bool strict = false)
     {
         var src = new DirectorySource(directory, opts);
         List<IMetaDataSource> sources;
@@ -149,6 +160,7 @@ public class MetaDataLoader
             };
             return new LoadResult(root, Array.Empty<string>(), errors.AsReadOnly(), "error");
         }
+        if (leading is { Count: > 0 }) sources.InsertRange(0, leading);
         var libSources = Library.LibrarySources.Resolve(libraries);
         if (libSources.Count > 0) sources.InsertRange(0, libSources);
         var result = new MetaDataLoader(registry, strict: strict).Load(sources);
@@ -202,9 +214,19 @@ public class MetaDataLoader
     /// </summary>
     public static LoadResult FromUris(
         IReadOnlyList<Uri> uris, TypeRegistry registry, IEnumerable<string>? libraries, bool strict = false)
+        => FromUris(uris, registry, libraries, null, strict);
+
+    /// <summary>
+    /// <see cref="FromUris(IReadOnlyList{Uri}, TypeRegistry, IEnumerable{string}?, bool)"/> plus
+    /// <paramref name="leading"/> sources — see the directory twin above.
+    /// </summary>
+    internal static LoadResult FromUris(
+        IReadOnlyList<Uri> uris, TypeRegistry registry, IEnumerable<string>? libraries,
+        IReadOnlyList<IMetaDataSource>? leading, bool strict = false)
     {
         var loader = new MetaDataLoader(registry, strict: strict);
         var sources = uris.Select(u => (IMetaDataSource)new UriSource(u)).ToList();
+        if (leading is { Count: > 0 }) sources.InsertRange(0, leading);
         var libSources = Library.LibrarySources.Resolve(libraries);
         if (libSources.Count > 0) sources.InsertRange(0, libSources);
         return loader.Load(sources);

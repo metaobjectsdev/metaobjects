@@ -245,6 +245,9 @@ public static class RequirementCheck
         // never inherited, so IsAbstract is read as the node's own flag.
         root.Children()
             .Where(n => n.Type == TYPE_OBJECT && n.SubType == OBJECT_SUBTYPE_ENTITY && !n.IsAbstract)
+            // FR-023: an entity a metadata dependency owns is not this project's to claim; a dependency's
+            // own coverage is its publisher's gate. MetaRoot.InScope is the rule.
+            .Where(n => (root as MetaRoot)?.ImportScope?.InScope(n.ResolutionKey()) ?? true)
             .ToList();
 
     /// <summary>

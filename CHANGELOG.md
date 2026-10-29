@@ -108,6 +108,19 @@ here.**
   `fixtures/dependency-conformance/` (the 11 check cases pin the Node `meta deps check`); Kotlin loads through the same loader and adds a codegen test.
   Spring runtime auto-load and `verify` drift for dependencies are later slices.
 
+- **C# consumes a shared model at build time (FR-023 Phase 2).** `dotnet meta` now reads
+  `dependencies` from `.metaobjects/config.json` at every rung of its source ladder, verifies the
+  committed snapshot against `deps.lock.json` offline, and loads the snapshots ahead of the
+  project's own files, so an `extends`, `overlay: true` or plain FQN reference onto a dependency's
+  node resolves. Errors carry the same codes as TypeScript and Python
+  (`ERR_DEPENDENCY_SNAPSHOT_STALE`, `_METAMODEL_INCOMPATIBLE`, `_NODE_COLLISION`,
+  `_PACKAGE_NOT_OWNED`), and a load error in a dependency's file names `dep:<name>/<artifact>`.
+  Imported nodes load but are not generated: every C# generator, the `verify --codegen`
+  regeneration and the requirement gate's coverage denominator leave them out unless
+  `scope.include` names their package. C# runs the 26 resolution cases (the 11 check cases pin the Node `meta deps check`) of `fixtures/dependency-conformance/`.
+  The Node `meta deps sync` stays the only writer of the lock and the snapshot.
+  See [docs/features/metadata-dependencies.md](docs/features/metadata-dependencies.md).
+
 - **Own your generators, and give back the ones you did not change.** A team is expected to
   write generators of its own, because a generator it owns is what keeps output from drifting.
   Two things now help it carry fewer copies than it needs. `meta gen` prints one line naming
