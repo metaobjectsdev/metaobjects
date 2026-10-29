@@ -53,7 +53,6 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - id: sel
-        env:
         run: |
           # HEAD is the PR's merge commit; its first parent is the base tip the merge was
           # built on, so HEAD^1..HEAD is exactly the PR's change even after main moves.
