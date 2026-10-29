@@ -631,7 +631,7 @@ Tracked in [#482](https://github.com/metaobjectsdev/metaobjects/issues/482). Tod
 Python, Java, Kotlin and C# consume a dependency (Java and Kotlin shipped in slice S3, C# in S6).
 A port that does not read the lock fails loudly on a model that references a node a dependency
 would supply (`ERR_UNRESOLVED_OBJECT_REF`), never silently. Phase 2 adds no new contract. The manifest, the
-lock, the committed snapshot and the 24-case resolution corpus are plain files that every port
+lock, the committed snapshot and the 26-case resolution corpus are plain files that every port
 already has the pieces to read; what is missing is each port *loading* the snapshot.
 
 Two rulings shape it:
