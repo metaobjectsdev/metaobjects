@@ -157,7 +157,8 @@ MIGRATE FLAGS:
   --allow <csv>         Comma-separated destructive-change permissions:
                         drop-column,drop-table,type-change,drop-index,drop-fk,
                         drop-check,drop-view,drop-view-cascade,
-                        adopt-view,nullable-to-not-null,drop-identity-default
+                        adopt-view,nullable-to-not-null,drop-identity-default,
+                        drop-comment
                         drop-column DELETES the column's data; for a renamed
                         column use --rename-column, which keeps it
   --on-ambiguous abort|rename|drop-add   Default abort

@@ -39,6 +39,8 @@ export const ALLOW_TOKEN_MAP: Record<string, keyof AllowOptions> = {
   // migrate's generation-time provenance guard, not by diff()'s status pass — see
   // AllowOptions.dropUnmanaged for why it still belongs in that shape.
   "drop-unmanaged": "dropUnmanaged",
+  // Gates clearing a live table/column comment the metadata does not declare (shadow path only).
+  "drop-comment": "dropComment",
 };
 
 /** Translate parsed `--allow` tokens into the migrate-ts `AllowOptions` shape. */

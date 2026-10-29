@@ -56,6 +56,7 @@ describe("shadow path is schema-wide (live PG)", () => {
       CREATE VIEW sc2_v AS SELECT id, label FROM sc2_parent WHERE id > 0`).execute(main.db);
   });
   afterAll(async () => {
+    await sql.raw(`DROP SCHEMA IF EXISTS sc3 CASCADE`).execute(main.db);
     await sql.raw(`DROP VIEW IF EXISTS sc2_v; DROP TABLE IF EXISTS sc2_child; DROP TABLE IF EXISTS sc2_parent`).execute(main.db);
     await sql.raw(`DROP DATABASE IF EXISTS ${SHADOW_DB}`).execute(main.db);
     await main.pool.end();
@@ -138,7 +139,7 @@ describe("shadow path is schema-wide (live PG)", () => {
     const live = await introspectPostgres(main.db);
     const { changes } = await diff({
       expected: changed, actual: live, dialect: "postgres", scopeSchemas: ["public"], shadowSchema: shadow,
-      allow: { dropIdentityDefault: true },
+      allow: { dropIdentityDefault: true, dropComment: true },
     });
     expect(changes.map((c) => c.kind).sort()).toEqual(["change-column-identity", "change-comment", "change-comment"]);
     const { up } = emit(changes.filter((c) => c.kind === "change-column-identity" || c.kind === "change-comment"), { dialect: "postgres" });
@@ -151,6 +152,65 @@ describe("shadow path is schema-wide (live PG)", () => {
       after = r.changes.map((c) => c.kind);
       throw ROLLBACK;
     }).catch((err) => { if (err !== ROLLBACK) throw err; });
+    expect(after).toEqual([]);
+  });
+
+  // A new table on the shadow path is created from the shadow's catalog, so its CHECK, indexes,
+  // defaults, identity and comments are re-emitted in Postgres's spelling. Postgres is the oracle
+  // twice: it must accept the plan, and the table it built must read clean on the next diff.
+  test("a table created from the shadow catalog applies, and the next diff is clean", async () => {
+    const created: SchemaSnapshot = {
+      views: [],
+      tables: [
+        {
+          name: "sc3_parent", schema: "sc3", indexes: [], foreignKeys: [], checks: [], primaryKey: ["id"],
+          description: "Parents",
+          columns: [
+            { name: "id", sqlType: { kind: "integer", bits: 32 }, nullable: false, identity: "increment" },
+            { name: "name", sqlType: { kind: "text", maxLength: 40 }, nullable: false, description: "Shown name" },
+          ],
+        },
+        {
+          name: "sc3_child", schema: "sc3", primaryKey: ["id"],
+          columns: [
+            { name: "id", sqlType: { kind: "integer", bits: 64 }, nullable: false },
+            { name: "parent_id", sqlType: { kind: "integer", bits: 32 }, nullable: true },
+            { name: "qty", sqlType: { kind: "integer", bits: 32 }, nullable: false, default: { kind: "literal", value: "007" } },
+            { name: "label", sqlType: { kind: "text" }, nullable: false, default: { kind: "expr", value: "'a'::text || 'b'" } },
+            { name: "made", sqlType: { kind: "timestamp", withTimezone: true }, nullable: false, default: { kind: "expr", value: "NOW() + interval '1 day'" } },
+          ],
+          checks: [{ name: "sc3_child_qty_chk", expression: `"qty" > 0 AND ("qty" < 100 OR "label" IN ('ab', 'big'))` }],
+          indexes: [
+            { name: "sc3_child_label_idx", columns: [], unique: false, expr: `lower("label")` },
+            { name: "sc3_child_big_idx", columns: ["qty"], unique: false, where: `"qty" > 10` },
+          ],
+          foreignKeys: [{ name: "sc3_child_parent_fk", columns: ["parent_id"], refTable: "sc3_parent", refColumns: ["id"], onDelete: "cascade" }],
+        },
+      ],
+    };
+    const live = await introspectPostgres(main.db);
+    const plan = await diff({ expected: created, actual: live, dialect: "postgres", scopeSchemas: ["sc3"], shadowSchema: shadow });
+    expect(plan.exprCanonPath).toBe("shadow");
+    const { up } = emit(plan.changes, { dialect: "postgres" });
+    const ROLLBACK = new Error("rollback");
+    let after: string[] | undefined;
+    let row: { qty: number; label: string; tomorrow: boolean } | undefined;
+    await main.db.transaction().execute(async (trx) => {
+      await sql.raw(up).execute(trx);
+      await sql.raw(`INSERT INTO sc3.sc3_parent (name) VALUES ('p')`).execute(trx);
+      const inserted = await sql<{ qty: number; label: string; tomorrow: boolean }>`
+        INSERT INTO sc3.sc3_child (id, parent_id) SELECT 1, id FROM sc3.sc3_parent
+        RETURNING qty, label, made > now() AS tomorrow`.execute(trx);
+      row = inserted.rows[0];
+      const r = await diff({
+        expected: created, actual: await introspectPostgres(trx as unknown as Db), dialect: "postgres",
+        scopeSchemas: ["sc3"], shadowSchema: shadow,
+      });
+      after = r.changes.map((c) => c.kind);
+      throw ROLLBACK;
+    }).catch((err) => { if (err !== ROLLBACK) throw err; });
+    // The defaults Postgres evaluates are the authored ones: 007 is 7, and 'a' || 'b' is 'ab'.
+    expect(row).toEqual({ qty: 7, label: "ab", tomorrow: true });
     expect(after).toEqual([]);
   });
 });

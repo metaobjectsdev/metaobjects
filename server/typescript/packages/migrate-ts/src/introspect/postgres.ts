@@ -229,19 +229,14 @@ export function parsePgDefault(raw: string | null | undefined): ColumnDefault | 
     return { kind: "expr", value: raw };
   }
 
-  // If it starts with a single-quote, it's a quoted literal (possibly with
-  // a trailing ::type cast that PG appends for type clarity).
-  if (raw.startsWith("'")) {
-    // Strip the cast suffix (e.g. `::boolean`, `::text`, `::integer`)
-    const withoutCast = raw.replace(/::[^']+$/, "");
-    // Strip the surrounding single-quotes, then un-double the embedded `''`
-    // escapes PG stores verbatim (e.g. `'don''t'::text`) — without this the
-    // introspected value never equals the expected literal and the diff issues
-    // a bogus SET DEFAULT on every run.
-    const m = /^'(.*)'$/.exec(withoutCast);
-    const cleaned = m !== null ? m[1]!.replace(/''/g, "'") : withoutCast;
-    return { kind: "literal", value: cleaned };
-  }
+  // ONE quoted literal, possibly with a trailing ::type cast that PG appends for type
+  // clarity, is a literal: the cast is stripped and the embedded `''` escapes PG stores
+  // verbatim (e.g. `'don''t'::text`) are un-doubled — without this the introspected value
+  // never equals the expected literal and the diff issues a bogus SET DEFAULT on every run.
+  // Anything more that starts with a quote (`'a'::text || 'b'::text`) is an expression.
+  const literal = /^'((?:[^']|'')*)'(?:::[\w ."]+(?:\(\d+(?:,\s*\d+)?\))?(?:\[\])*)*$/.exec(raw);
+  if (literal !== null) return { kind: "literal", value: literal[1]!.replace(/''/g, "'") };
+  if (raw.startsWith("'")) return { kind: "expr", value: raw };
 
   // Anything else that contains a :: cast is a complex expression
   // (e.g. NULL::text, ARRAY[]::text[])

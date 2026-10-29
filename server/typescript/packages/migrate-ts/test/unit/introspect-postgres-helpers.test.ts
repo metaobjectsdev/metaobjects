@@ -113,4 +113,15 @@ describe("parsePgDefault", () => {
   test("a bare literal with no quotes and no cast is kind=literal", () => {
     expect(parsePgDefault("42")).toEqual({ kind: "literal", value: "42" });
   });
+
+  // Postgres stores `DEFAULT 'a' || 'b'` as `('a'::text || 'b'::text)` and a bare `'a'::text || 'b'`
+  // as `'a'::text || 'b'::text`: an expression that merely starts with a quoted literal.
+  test("an expression that starts with a quoted literal is kind=expr, not the text between its first and last quote", () => {
+    expect(parsePgDefault("'a'::text || 'b'::text")).toEqual({ kind: "expr", value: "'a'::text || 'b'::text" });
+    expect(parsePgDefault("'2024-01-01'::date + 1")).toEqual({ kind: "expr", value: "'2024-01-01'::date + 1" });
+    expect(parsePgDefault("'don''t'::text")).toEqual({ kind: "literal", value: "don't" });
+    expect(parsePgDefault("'x'::character varying")).toEqual({ kind: "literal", value: "x" });
+    expect(parsePgDefault("'1.50'::numeric(10,2)")).toEqual({ kind: "literal", value: "1.50" });
+    expect(parsePgDefault("'{}'::text[]")).toEqual({ kind: "literal", value: "{}" });
+  });
 });

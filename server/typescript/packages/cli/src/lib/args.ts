@@ -332,6 +332,9 @@ export const ALLOW_TOKENS = [
   // existed (#313). Unlike its neighbours this one is enforced by `migrate` itself
   // rather than by `diff()`'s status pass; see AllowOptions.dropUnmanaged.
   "drop-unmanaged",
+  // drop-comment permits clearing a live table or column comment the metadata does not
+  // declare (`COMMENT ON … IS NULL`); without it `migrate` leaves the comment and says so.
+  "drop-comment",
 ] as const;
 type AllowToken = (typeof ALLOW_TOKENS)[number];
 

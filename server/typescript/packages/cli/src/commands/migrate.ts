@@ -122,7 +122,7 @@ MIGRATE FLAGS:
                        drop-column,drop-table,type-change,drop-index,drop-fk,
                        drop-check,drop-view,drop-view-cascade,
                        adopt-view,nullable-to-not-null,drop-identity-default,
-                       drop-unmanaged
+                       drop-unmanaged,drop-comment
                        drop-column DELETES the column and every value in it. If
                        the column was RENAMED, use --rename-column instead: it
                        keeps the data.
@@ -889,6 +889,23 @@ export async function migrateCommand(
         return 1;
       }
       throw err;
+    }
+
+    // A live comment the metadata does not declare is cleared only with --allow drop-comment.
+    // Without it the change is reported and left out of the plan, rather than refusing the
+    // whole migration over somebody else's comment (`meta verify --db` still reports it).
+    const keptComments = diffResult.blocked.filter(
+      (c): c is Extract<Change, { kind: "change-comment" }> => c.kind === "change-comment");
+    if (keptComments.length > 0) {
+      const kept = new Set<Change>(keptComments);
+      diffResult = {
+        ...diffResult,
+        changes: diffResult.changes.filter((c) => !kept.has(c)),
+        blocked: diffResult.blocked.filter((c) => !kept.has(c)),
+      };
+      notes.push(...keptComments.map((c) =>
+        `kept the comment on ${c.column !== undefined ? `${c.table}.${c.column}` : c.table}, which the metadata `
+        + `does not declare; pass --allow drop-comment to clear it.`));
     }
 
     changeCounts = summarizeChanges(diffResult.changes);

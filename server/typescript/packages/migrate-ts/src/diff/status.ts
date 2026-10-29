@@ -171,7 +171,10 @@ function blockFor(
         + `--allow drop-identity-default if removing it is intentional`);
 
     case "change-comment":
-      return null;
+      if (c.from === undefined || c.to !== undefined) return null;
+      return gate(allow, "dropComment", `${c.column !== undefined ? `column "${c.table}"."${c.column}"` : `table "${c.table}"`} `
+        + `has a comment its metadata does not declare. Clearing it cannot be undone. Declare it as the `
+        + `description, or pass --allow drop-comment to clear it`);
 
     // Always-allowed kinds
     case "create-table":

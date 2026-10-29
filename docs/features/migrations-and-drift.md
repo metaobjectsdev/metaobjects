@@ -394,7 +394,12 @@ Identity is read from `pg_attribute.attidentity` on both sides (a legacy `serial
 as an `increment` key, so it is not drift against one); a GENERATED identity added or dropped is a
 `change-column-identity`, and dropping one is gated behind `--allow drop-identity-default`. Table
 and column comments are read from `pg_description` on both sides, and a changed one is a
-`change-comment` (`COMMENT ON … IS …`). A view's body is compared as Postgres's deparse
+`change-comment` (`COMMENT ON … IS …`). Clearing a live comment the metadata does not declare
+(somebody else may have written it) needs `--allow drop-comment`: without it `meta migrate`
+leaves the comment in place, plans the rest and says so in a note, and `meta verify --db` still
+reports it as drift. A committed snapshot written before `formatVersion` 4 never recorded comments
+or a GENERATED identity, so the committed-snapshot check treats both as unknown rather than absent
+and does not compare them; re-run `meta migrate baseline --from-db` to record them. A view's body is compared as Postgres's deparse
 (`pg_get_viewdef`) of the shadow's copy against the live one; each view is created under its own
 savepoint, so a view whose body reads something only the live database has is left out of the
 shadow and compared by its fingerprint instead, without costing the run its table comparison.

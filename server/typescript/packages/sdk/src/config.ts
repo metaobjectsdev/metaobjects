@@ -49,6 +49,7 @@ export const AllowTokenEnum = z.enum([
   "nullable-to-not-null",
   "drop-identity-default",
   "drop-unmanaged",
+  "drop-comment",
 ]);
 
 // .strict(), like every other object in this schema: `.partial()` alone leaves

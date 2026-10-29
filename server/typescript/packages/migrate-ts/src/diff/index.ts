@@ -275,7 +275,9 @@ export async function diff(
     else if (args.exprCanonProbe !== undefined) { canonProbe = args.exprCanonProbe; exprCanonPath = "probe"; }
   }
   const probed = await probeExprCanon(canonProbe, args.dialect, changes, expectedTables, actualTables);
-  const canon: ExprCanon = shadow !== undefined ? { ...probed, catalog: true } : probed;
+  // A snapshot older than formatVersion 4 never recorded identity or comments: unknown, not absent.
+  const catalog = shadow !== undefined && given.expected.meta?.identityAndCommentsUnknown !== true;
+  const canon: ExprCanon = catalog ? { ...probed, catalog: true } : probed;
   const { renamed, predecessors } = diffRenamedTables(changes, expectedTables, actualTables, args.dialect, canon);
 
   // Pass 2: tables in both → compare columns/indexes/FKs

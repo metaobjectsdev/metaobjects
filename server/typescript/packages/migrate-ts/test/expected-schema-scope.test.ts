@@ -295,7 +295,7 @@ describe("an accepted scoped run keeps out-of-scope entries in the committed sna
 });
 
 describe("provenance never reaches the committed snapshot", () => {
-  test("a view's declaring FQN is recorded but never serialized; formatVersion stays 3", async () => {
+  test("a view's declaring FQN is recorded but never serialized; formatVersion stays 4", async () => {
     const root = await loadBoth();
     const view = { name: "v_jobs", sql: "SELECT id FROM jobs", dependsOn: ["jobs"] };
 
@@ -308,7 +308,7 @@ describe("provenance never reaches the committed snapshot", () => {
     // The provenance thread is invisible on disk: carrying it changes no bytes.
     expect(serializeSnapshot(withFqn.snapshot)).toBe(serializeSnapshot(withoutFqn));
     expect(serializeSnapshot(withFqn.snapshot)).not.toContain("fqn");
-    expect(SNAPSHOT_FORMAT_VERSION).toBe(3);
+    expect(SNAPSHOT_FORMAT_VERSION).toBe(4);
 
     // ...and it IS recorded, keyed like every other qualified name.
     expect(withFqn.provenance.get("public.v_jobs")).toBe("acme::platform::JobSummary");
