@@ -10,7 +10,7 @@
   "generated/python/__init__.py": "daa04cec586768866d0996c779f62073e6773fe63750ff668327991fac2fd0f5",
   "generated/python/subscriber_filter_allowlist.py": "b0414cc95ff3982c80a0e1a06839f090c0b423e41f5a94275df93426cea09df5",
   "generated/python/subscriber_names.py": "269637a02bf9b46f55658b58cb42f83196c03a877e1e2101337847fd406c1561",
-  "generated/python/subscriber_router.py": "0d04c1d7286fba33459454e1cd8a8acb2de38b9309cdb1015cb4438c3881daeb",
+  "generated/python/subscriber_router.py": "5a354e50b1aab48239a4249b670a6d2351c1816cbca6d710ea688f252e9612e5",
   "generated/ts/Subscriber.queries.ts": "9f1a459c57fafc98bf074b4443b506d4a1e7023ed188f293021ae89c298d4562",
   "generated/ts/Subscriber.routes.ts": "147d32ae658f985e024c3de6e8894ca7359f767eeaa765cec70756802e3bd300",
   "generated/ts/Subscriber.ts": "a78c17f915222ee108290c28468313d77f77b5cff438f485324409302e389a96",
