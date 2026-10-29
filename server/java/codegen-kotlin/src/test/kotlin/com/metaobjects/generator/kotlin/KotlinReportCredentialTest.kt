@@ -96,4 +96,22 @@ class KotlinReportCredentialTest {
         assertFalse("ObjectMapper" in controller, controller)
         assertTrue("\"name\"" in file(files, "AccountsByNameExport.kt"))
     }
+
+    @Test
+    fun `a credential column is neither filterable nor sortable`() {
+        val files = generate()
+        for ((report, col) in listOf("AccountsByPin" to "pinHash", "AccountPinRange" to "firstPin")) {
+            val allowlist = file(files, "${report}FilterAllowlist.kt")
+            assertFalse("\"$col\"" in allowlist, allowlist)
+            val controller = file(files, "${report}Controller.kt")
+            // the sort parser knows no such column, so ?sort=<col> is refused as invalid_sort
+            val sortSurface = controller.substringAfter("${report}SortAllowlist = setOf(").substringBefore("\n)\n")
+            assertFalse("\"$col\"" in sortSurface, sortSurface)
+            assertTrue("\"name\"" in sortSurface || "\"accounts\"" in sortSurface, sortSurface)
+        }
+        // the report's other columns and a plain report keep theirs
+        assertTrue("\"accounts\"" in file(files, "AccountsByPinFilterAllowlist.kt"))
+        assertTrue("\"name\"" in file(files, "AccountsByNameFilterAllowlist.kt"))
+        assertTrue("\"name\"" in file(files, "AccountPinRangeFilterAllowlist.kt"))
+    }
 }

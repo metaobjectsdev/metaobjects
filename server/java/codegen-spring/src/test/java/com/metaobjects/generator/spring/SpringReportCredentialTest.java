@@ -98,4 +98,28 @@ public class SpringReportCredentialTest extends SharedRegistryTestBase {
         String export = read("AccountsByNameExport");
         assertTrue(export.contains("\"name\"") && export.contains("\"accounts\""));
     }
+
+    /** The SORT_ALLOWLIST declaration, up to its closing statement. */
+    private static String sortList(String controller) {
+        int at = controller.indexOf("SORT_ALLOWLIST = Set.of(");
+        return controller.substring(at, controller.indexOf(';', at));
+    }
+
+    @Test
+    public void credentialColumnIsNeitherFilterableNorSortable() throws Exception {
+        generate();
+        String byPin = read("AccountsByPinFilterAllowlist");
+        assertFalse("pinHash must not be filterable:\n" + byPin, byPin.contains("pinHash"));
+        assertTrue(byPin.contains("\"accounts\""));
+        assertFalse("pinHash must not be sortable", sortList(read("AccountsByPinController")).contains("pinHash"));
+        String range = read("AccountPinRangeFilterAllowlist");
+        assertFalse(range.contains("firstPin"));
+        assertTrue(range.contains("\"name\""));
+        assertFalse(sortList(read("AccountPinRangeController")).contains("firstPin"));
+        // A plain report keeps both columns in both allowlists.
+        String plain = read("AccountsByNameFilterAllowlist");
+        assertTrue(plain.contains("\"name\"") && plain.contains("\"accounts\""));
+        String plainCtl = read("AccountsByNameController");
+        assertTrue(sortList(plainCtl).contains("\"accounts\""));
+    }
 }

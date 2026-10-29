@@ -2080,9 +2080,11 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         val pkFieldName = primary?.let { KotlinGenUtil.keyFields(entity, it).firstOrNull() } ?: DEFAULT_PK_FIELD
         val pkParamType = primaryKeyParamType(entity, pkFieldName)
 
+        // #484: a report's credential column is not sortable (the order would leak the hidden value).
         val sortFields = entity.metaFields
             .filterNot { isNonScalarSurface(it) }
             .map { it.name }
+            .filterNot { GeneratorUtil.isReport(entity) && it in KotlinGenUtil.reportCredentialNames(entity) }
         // FR-044: a report's int-backed enum column is typed by the enum of the entity it
         // reads (the class its table and data class use), so its filter arm compares through
         // that class. Empty for a projection, whose arms are unchanged.

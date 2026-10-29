@@ -261,7 +261,8 @@ public class RoutesGenerator : PerEntityGenerator
         var sortFields = entity.Fields()
             .Where(f => (CSharpNaming.ScalarFor(f.SubType) is not null
                          || (isReport && f.SubType == FIELD_SUBTYPE_ENUM))
-                        && !f.ResolvedIsArray())
+                        && !f.ResolvedIsArray()
+                        && !(isReport && IsCredentialField(f)))   // a credential column would be a sort oracle
             .Select(f => CSharpNaming.Pascal(f.Name))
             .ToList();
 

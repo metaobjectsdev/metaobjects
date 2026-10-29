@@ -71,6 +71,11 @@ function isArrayOrMap(field: MetaField): boolean {
   return field.resolvedIsArray() || field.subType === FIELD_SUBTYPE_MAP;
 }
 
+/** True when the field declares or inherits a `view.password` (ADR-0039: resolving). */
+function isCredential(field: MetaField): boolean {
+  return field.views().some((v) => v.subType === VIEW_SUBTYPE_PASSWORD);
+}
+
 function derivedField(f: ReportField): MetaField {
   const field = new MetaField(new TypeId(TYPE_FIELD, f.subType), f.name);
   // From the derived shape, never from the type source: a `min` of a required column
@@ -97,7 +102,7 @@ function derivedField(f: ReportField): MetaField {
     // ADR-0039: resolving, it may be inherited) stays one. The read model is the only place a
     // report's fields exist, so this is what hides a grouped or min/max-ed secret from the
     // report's list route in every generator and runtime that reads the model.
-    if (src.views().some((v) => v.subType === VIEW_SUBTYPE_PASSWORD)) {
+    if (isCredential(src)) {
       field.addChild(new MetaView(new TypeId(TYPE_VIEW, VIEW_SUBTYPE_PASSWORD), VIEW_SUBTYPE_PASSWORD));
     }
   }
@@ -108,7 +113,9 @@ function derivedField(f: ReportField): MetaField {
   // with a scalar (`text[] = text` is a Postgres error), and the entity rule already refuses
   // `@filterable` on an array field, so a derived field whose source is either is neither
   // filterable nor sortable, in every port.
-  if (!isArrayOrMap(field) && opsForField(field).length > 0) field.setAttr(FIELD_ATTR_FILTERABLE, true);
+  // #484: not a credential either. A filter or a sort on a secret is an oracle for it (`like` a
+  // prefix, one character at a time), even when the response omits the column.
+  if (!isArrayOrMap(field) && !isCredential(field) && opsForField(field).length > 0) field.setAttr(FIELD_ATTR_FILTERABLE, true);
   return field;
 }
 

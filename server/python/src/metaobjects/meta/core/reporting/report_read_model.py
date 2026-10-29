@@ -108,7 +108,9 @@ def _derived_field(f: ReportField) -> MetaField:
     # because the loader's validation passes import this package.
     from ....loader.validation_passes import ops_for_field
 
-    if ops_for_field(field):
+    # #484: a credential column is hidden from the response, so a filter on it would be an
+    # oracle (a prefix at a time): it is never filterable (nor sortable, see the router).
+    if ops_for_field(field) and not is_credential_field(field):
         field.set_attr(FIELD_ATTR_FILTERABLE, True)
     return field
 

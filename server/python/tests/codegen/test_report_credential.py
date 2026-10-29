@@ -124,3 +124,20 @@ def test_served_report_list_omits_the_credential_key_over_http() -> None:
     prefix = re.search(r'APIRouter\(prefix="([^"]+)"', render_router(report)).group(1)
     body = TestClient(app).get(prefix).json()
     assert body == [{"accounts": 1}]
+
+
+def _allowlists(report: str) -> tuple[str, str]:
+    """(filter allowlist, router) source for *report*."""
+    return render_filter_allowlist(_R[report]), render_router(_R[report])
+
+
+def test_credential_column_is_neither_filterable_nor_sortable() -> None:
+    for report, secret in (("AccountsByPin", "pinHash"), ("AccountPinRange", "firstPin")):
+        flt, router = _allowlists(report)
+        assert f'"{secret}"' not in flt
+        assert f'"{secret}"' not in router.split("_SORT")[1].split("def ")[0]
+    flt, _ = _allowlists("AccountsByPin")
+    assert '"accounts"' in flt
+    # a plain report's allowlists keep every column
+    flt, router = _allowlists("AccountsByName")
+    assert '"name"' in flt and '"accounts"' in flt

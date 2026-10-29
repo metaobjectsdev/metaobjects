@@ -4,6 +4,7 @@
 
 import { describe, test, expect } from "bun:test";
 import { MetaDataLoader, InMemoryStringSource, reportReadModel, type MetaObject, type MetaRoot } from "@metaobjectsdev/metadata";
+import { entityFile } from "../src/generators/entity-file.js";
 import { routesFile } from "../src/generators/routes-file.js";
 import { routesFileHono } from "../src/generators/routes-file-hono.js";
 import { makeRenderContext } from "../src/render-context.js";
@@ -94,5 +95,17 @@ describe("a report over a credential field (#484)", () => {
     expect(names("AccountsByPin")).toEqual(["accounts"]);
     expect(names("AccountPinRange")).toEqual(["name"]);
     expect(names("AccountsByName")).toEqual(["name", "accounts"]);
+  });
+
+  test("a credential column is neither filterable nor sortable (a filter on a secret is an oracle)", async () => {
+    const files = await generate(entityFile(), await load());
+    const mod = (n: string) => files.find((f) => f.path === `${n}.ts`)!.content.replace(/\s+/g, " ");
+    const allow = (n: string, kind: "Filter" | "Sort") => new RegExp(`${n}${kind}Allowlist = \\{(.*?)\\} as const satisfies`).exec(mod(n))![1]!;
+    expect(allow("AccountsByPin", "Filter")).toContain("accounts:");
+    expect(allow("AccountsByPin", "Filter")).not.toContain("pinHash");
+    expect(allow("AccountsByPin", "Sort")).not.toContain("pinHash");
+    expect(allow("AccountPinRange", "Filter")).not.toContain("firstPin");
+    expect(allow("AccountPinRange", "Filter")).toContain("name:");
+    expect(allow("AccountsByName", "Sort")).toContain("name:");
   });
 });

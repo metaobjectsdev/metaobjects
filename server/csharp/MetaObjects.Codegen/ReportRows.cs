@@ -177,8 +177,9 @@ public static class ReportRows
         // source declares or inherits a view.password carries one, so every generator and runtime
         // that reads the row model (routes, export) hides it exactly as it hides an entity's.
         // ADR-0039: resolving (Views()), an inherited view.password counts.
-        if (f.TypeSource is { } cred
-            && cred.Views().Any(v => v.SubType == MetaObjects.Presentation.View.ViewConstants.VIEW_SUBTYPE_PASSWORD))
+        bool credential = f.TypeSource is { } cred
+            && cred.Views().Any(v => v.SubType == MetaObjects.Presentation.View.ViewConstants.VIEW_SUBTYPE_PASSWORD);
+        if (credential)
             field.AddChild(new MetaView(new TypeId(TYPE_VIEW, MetaObjects.Presentation.View.ViewConstants.VIEW_SUBTYPE_PASSWORD), "password"));
         // Table C: every derived field whose type has a filter band is filterable. Asked
         // last, of the finished field, because an int-backed enum's band depends on a
@@ -186,7 +187,9 @@ public static class ReportRows
         // `@filterable` on.
         // An array or a map has no scalar operator and no ordering, so a dimension over one is
         // neither filterable nor (see RoutesGenerator's sort list) sortable.
-        if (!field.ResolvedIsArray() && field.SubType != FIELD_SUBTYPE_MAP
+        // A credential is neither filterable nor sortable: a hidden column that still orders or
+        // narrows the rows is an oracle (`?filter[pin][like]=ab%` recovers it a prefix at a time).
+        if (!credential && !field.ResolvedIsArray() && field.SubType != FIELD_SUBTYPE_MAP
             && QueryConstants.OpsForField(field).Length > 0)
             field.SetAttr(FIELD_ATTR_FILTERABLE, true);
         return field;

@@ -301,7 +301,7 @@ A derived column carries the type-shaping attributes of its `@of` field where th
 `@required` beyond the rules above, no `@default` (a measure's `@default` is applied in the
 view, not carried), no validators. The one view it does carry is a credential: a column whose
 `@of` field declares or inherits `view.password` is itself a credential, so the served list route
-omits it and an export has no column for it (#484).
+omits it, an export has no column for it, and it is not filterable or sortable (#484).
 
 ### Measures
 

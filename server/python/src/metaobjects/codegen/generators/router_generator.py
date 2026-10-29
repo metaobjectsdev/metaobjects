@@ -170,6 +170,8 @@ def _scalar_fields(entity: MetaObject) -> list[MetaField]:
         # A derived report field over an array or a map is one jsonb value: ordering by it is
         # meaningless, so it is not sortable (nor filterable, see the filter allowlist).
         fields = [f for f in fields if f.sub_type != fc.FIELD_SUBTYPE_MAP and not field_is_array(f)]
+        # #484: a hidden credential column is no sort key either (an oracle).
+        fields = [f for f in fields if not _is_credential(f)]
     return fields
 
 

@@ -99,6 +99,36 @@ public class ReportCredentialCodegenTests
         Assert.Contains("\"name\"", Export(ctx, "AccountsByName"));
     }
 
+    // A hidden column that can still narrow or order the rows is an oracle: `?filter[pinHash][like]=ab%`
+    // or `?sort=pinHash` would recover the secret a prefix at a time.
+    [Theory]
+    [InlineData("AccountsByPin", "pinHash", "accounts")]
+    [InlineData("AccountPinRange", "firstPin", "name")]
+    public void A_credential_column_is_neither_filterable_nor_sortable(string report, string column, string kept)
+    {
+        var ctx = Ctx(Load());
+        var allowlist = new FilterAllowlistGenerator().Generate(ctx).Single(f => f.Path == report + "FilterAllowlist.g.cs").Content;
+        Assert.DoesNotContain($"\"{column}\"", allowlist);
+        Assert.Contains($"\"{kept}\"", allowlist);
+
+        var routes = Routes(ctx, report);
+        var pascal = char.ToUpperInvariant(column[0]) + column[1..];
+        Assert.DoesNotContain($"\"{pascal}\"", routes);
+        Assert.Contains($"\"{char.ToUpperInvariant(kept[0])}{kept[1..]}\"", routes);
+    }
+
+    [Fact]
+    public void A_plain_reports_allowlists_keep_every_column()
+    {
+        var ctx = Ctx(Load());
+        var allowlist = new FilterAllowlistGenerator().Generate(ctx).Single(f => f.Path == "AccountsByNameFilterAllowlist.g.cs").Content;
+        Assert.Contains("\"name\"", allowlist);
+        Assert.Contains("\"accounts\"", allowlist);
+        var routes = Routes(ctx, "AccountsByName");
+        Assert.Contains("\"Name\"", routes);
+        Assert.Contains("\"Accounts\"", routes);
+    }
+
     [Fact]
     public void The_credential_report_routes_and_export_compile()
     {

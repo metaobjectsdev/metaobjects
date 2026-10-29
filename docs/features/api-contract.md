@@ -552,8 +552,8 @@ route; the generated one will not. Generated forms and the api docs omit both ki
 
 A served report is covered too. A report column is derived from its `@of` field, and a derived column keeps
 that field's credential mark, so a report that groups by a credential (or takes its `min` or `max`) never
-returns the column, and its `report-export` output has no column for it. `count` over a credential is a
-number and is returned.
+returns the column, its `report-export` output has no column for it, and it is neither filterable nor sortable
+(a report's other columns all are, so this one is taken out). `count` over a credential is a number and is returned.
 
 `fixtures/api-contract-conformance/secret-fields/` pins this in the generated lane of every port.
 

@@ -114,6 +114,18 @@ public class SpringFilterAllowlistGenerator extends MultiFileDirectGeneratorBase
      * allowlist becomes an effective "field is unknown" gate).
      */
     static Map<String, Set<String>> computeFilterableOps(MetaObject entity) {
+        // #484: a served report's credential column is hidden from the response, so it must not be
+        // filterable either: a filter on it would be an oracle for the secret.
+        if (com.metaobjects.generator.util.GeneratorUtil.isReport(entity)) {
+            List<String> credentials = SpringGeneratorSupport.credentialNames(entity);
+            if (!credentials.isEmpty()) {
+                List<MetaField> open = new java.util.ArrayList<>();
+                for (MetaField f : entity.getMetaFields()) {
+                    if (!credentials.contains(f.getName())) open.add(f);
+                }
+                return computeFilterableOps(open);
+            }
+        }
         return computeFilterableOps(entity.getMetaFields());
     }
 

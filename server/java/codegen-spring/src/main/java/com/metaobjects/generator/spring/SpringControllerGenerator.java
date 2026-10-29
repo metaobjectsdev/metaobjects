@@ -764,8 +764,12 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
      */
     private static List<String> sortableFields(MetaObject entity) {
         List<String> sortFields = new ArrayList<>();
+        // #484: a served report's credential column is not sortable: ordering by it is an oracle.
+        List<String> credentials = com.metaobjects.generator.util.GeneratorUtil.isReport(entity)
+            ? SpringGeneratorSupport.credentialNames(entity) : List.of();
         for (MetaField field : entity.getMetaFields()) {
             if (!FilterOps.supportsFiltering(field.getSubType())) continue;
+            if (credentials.contains(field.getName())) continue;
             // A derived report field over an array is not sortable (a map has no band above).
             if (com.metaobjects.generator.util.GeneratorUtil.isReport(entity) && (field.isArrayType() || field instanceof com.metaobjects.field.MapField)) continue;
             sortFields.add(field.getName());
