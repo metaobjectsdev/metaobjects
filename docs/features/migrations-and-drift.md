@@ -392,9 +392,12 @@ Where the question cannot be asked, the comparison falls back to a **string norm
 - SQLite and D1, which store the text as written;
 - the default **offline** `meta migrate`, which diffs the committed snapshot and has no database;
 - a read-only connection or a hot standby, and a role without the `TEMP` privilege;
+- a table the role cannot read (no `SELECT` on it, or no `USAGE` on its schema): that table only,
+  the other tables are still asked;
 - an expected expression that does not compile against the live columns (the column diff reports
   that case);
-- an expression containing a `;` anywhere, quoted or not, or an index `@using` that is not a plain access-method name, which is never sent to the database.
+- an expression containing a `;` anywhere, quoted or not, or an index `@using` that is not a plain
+  access-method name: neither is ever sent to the database.
 
 The normaliser cannot tell a precedence change from a bracket-only change (it deletes every
 bracket), so on the fallback path `(a OR b) AND c` and `a OR (b AND c)` compare as equal. A fallback

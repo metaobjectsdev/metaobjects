@@ -207,12 +207,13 @@ here.**
   The string normaliser stays, and decides, on SQLite and D1, in the offline `meta migrate`
   (which has no database), on a read-only connection or hot standby, for a role without the `TEMP`
   privilege, and for an expression that does not compile against the live columns. A probe that
-  cannot answer never reports drift or fails the command. An expression holding a `;` anywhere, or an
-  index `@using` that is not a plain access-method name, is never sent to the database; a refusal
-  for one table (such as no `SELECT` on it) does not stop the other tables being probed. `meta migrate baseline --from-db` now records the
-  generated text, not Postgres's spelling, for a CHECK or an index expression the live database
-  proves equal to the metadata's, so the offline plan after a baseline compares like with like; it
-  is best effort and writes the introspected snapshot as before if the metadata does not load.
+  cannot answer never reports drift or fails the command. An expression holding a `;` anywhere, or
+  an index `@using` that is not a plain access-method name, is never sent to the database. A refusal
+  for one table (such as no `SELECT` on it) gives that table no answer and does not stop the other
+  tables being probed. `meta migrate baseline --from-db` now records the generated text, not
+  Postgres's spelling, for a CHECK or an index expression the live database proves equal to the
+  metadata's, so the offline plan after a baseline compares like with like; it is best effort and
+  writes the introspected snapshot as before if the metadata does not load.
   `meta verify --db` also uses the probe for its committed-snapshot check. New exports from
   `@metaobjectsdev/migrate-ts`: `postgresExprCanonProbe`, `adoptGeneratedSpelling` and the
   `ExprCanonProbe` types, with a `DiffArgs.exprCanonProbe` option. Schema comparison is
