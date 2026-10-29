@@ -14,10 +14,11 @@ those endpoints.
 from __future__ import annotations
 
 import datetime as _dt
+from builtins import list as _list
 from typing import Annotated, Any, Protocol
 
 from fastapi import APIRouter, Depends, Query, Request, status
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from metaobjects.codegen.runtime.constraint_errors import (
     classify_constraint_error,
 )
@@ -116,9 +117,9 @@ class SubscriberRepository(Protocol):
         limit: int,
         offset: int,
         sort: _SortClause | None,
-        filters: list[FilterPredicate],
-    ) -> list[Any]: ...
-    def count(self, filters: list[FilterPredicate]) -> int: ...
+        filters: _list[FilterPredicate],
+    ) -> _list[Any]: ...
+    def count(self, filters: _list[FilterPredicate]) -> int: ...
     def find_by_id(self, id: int) -> Any | None: ...
     def create(self, dto: Any) -> Any: ...
     def update(self, id: int, dto: Any) -> Any | None: ...
@@ -258,7 +259,7 @@ def update_subscriber(
 def delete_subscriber(
     subscriber_id: int,
     repo: Annotated[SubscriberRepository, Depends(get_repository)],
-) -> None:
+) -> Response:
     try:
         deleted = repo.delete(subscriber_id)
     except Exception as exc:
@@ -268,3 +269,4 @@ def delete_subscriber(
         return JSONResponse(status_code=failure.status, content=failure.body())
     if not deleted:
         return JSONResponse(status_code=404, content={"error": "not_found"})
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

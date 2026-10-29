@@ -714,13 +714,19 @@ and checks each one exists on the payload VO. If a template references
 body (Python and TypeScript) is checked the same way; see
 [Jinja templates](#jinja-templates-python-and-typescript).
 
-| Port | Command |
-|---|---|
-| TypeScript | `meta verify` (CLI) |
-| Java | `mvn metaobjects:verify` (Maven goal) |
-| Kotlin | `mvn metaobjects:verify` (same Maven goal) |
-| C# | `dotnet meta verify <metadataDir> --templates <root>` |
-| Python | `python -m metaobjects.render.verify` |
+A bare `verify` also checks generated code and the requirement ledger; name the template
+check to run it alone. Java and Python skip this check with a note when no template root is
+configured; C# does not skip, and a bare run with no `prompts/` or `templates/` directory
+(and no `--templates <root>`) exits 2
+([cli.md](cli.md#verify-is-one-verb-with-explicit-subverbs-adr-0021-d2)).
+
+| Port | Bare command (runs this check) | This check alone |
+|---|---|---|
+| TypeScript | `meta verify` | `meta verify --templates` |
+| Java | `mvn metaobjects:verify` (needs `-Dmeta.verify.templateRoot`) | `-Dmeta.verify.mode=templates` |
+| Kotlin | `mvn metaobjects:verify` (same Maven goal) | `-Dmeta.verify.mode=templates` |
+| C# | `dotnet meta verify` (needs a `prompts/` or `templates/` directory, else exits 2) | `dotnet meta verify --templates <root>` |
+| Python | `metaobjects verify` (needs `metaobjects.config.yaml` or `--prompts <dir>`) | `metaobjects verify --templates` |
 
 ## Determinism contract
 

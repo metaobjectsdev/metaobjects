@@ -39,7 +39,16 @@ export interface SiteOptions {
    *  (core-types + db + doc + prompt + ui) so a site can document metadata that
    *  uses custom field/view/object subtypes. Mirrors loadMemory's `providers`. */
   extraProviders?: readonly MetaDataTypeProvider[];
+  /** Where the page chrome loads its third-party CSS and JS from (daisyUI, Tailwind's browser
+   *  build, Mermaid, svg-pan-zoom): the base the package paths are appended to, e.g.
+   *  `<assetBase>/mermaid@11/dist/mermaid.min.js`. Default: {@link DEFAULT_ASSET_BASE}. Give an
+   *  absolute URL or a root-relative path (`/vendor/npm`) the pages can reach; a trailing slash
+   *  is ignored. The builder does not copy the files in. */
+  assetBase?: string;
 }
+
+/** The base the chrome loads its third-party assets from unless `assetBase` says otherwise. */
+export const DEFAULT_ASSET_BASE = "https://cdn.jsdelivr.net/npm";
 
 export interface SiteResult {
   pages: string[];
@@ -244,6 +253,7 @@ export async function generateSite(opts: SiteOptions): Promise<SiteResult> {
       stamp: opts.stamp,
       commit: opts.commit,
       relRoot,
+      assetBase: (opts.assetBase ?? DEFAULT_ASSET_BASE).replace(/\/+$/, ""),
       navHtml,
       tocHtml,
       legendHtml: legend,

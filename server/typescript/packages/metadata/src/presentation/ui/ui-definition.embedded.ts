@@ -47,7 +47,7 @@ export const UI_DEFINITION: ProviderDefinition = {
           "name": "formExclude",
           "min": 0,
           "max": 1,
-          "description": "When true, the field is omitted from generated forms. Inert on fields for which no form is generated (e.g. projection/derived fields)."
+          "description": "When true, the field is omitted from generated forms, and the generated create, PATCH and PUT routes ignore a value sent for it (reads of it are unchanged); inert on fields for which no form is generated (e.g. projection/derived fields)."
         }
       ]
     },

@@ -87,6 +87,12 @@ from ..runtime.m2m_codegen import (
 )
 from ..runtime.shared_predicates import emits_router, is_read_only_routed
 
+#: The repository ``Protocol`` declares a method named ``list`` (the cross-port contract keeps
+#: that name), and inside the class body a later bare ``list[...]`` annotation resolves to
+#: that method, not the builtin — ``mypy --strict`` reports ``valid-type``. The Protocol's
+#: annotations spell the builtin ``_list`` through this alias instead.
+_BUILTIN_LIST_ALIAS_IMPORT = "from builtins import list as _list"
+
 #: Where the emitted router imports its helper runtime (``filter_parser``,
 #: ``constraint_errors``) from. ``False`` — the packaged generator — imports the copy
 #: installed with ``metaobjects``: ``from metaobjects.codegen.runtime.<m> import ...``.
@@ -778,9 +784,9 @@ class RouterGenerator:
             "        limit: int,",
             "        offset: int,",
             "        sort: _SortClause | None,",
-            "        filters: list[FilterPredicate],",
-            "    ) -> list[Any]: ...",
-            "    def count(self, filters: list[FilterPredicate]) -> int: ...",
+            "        filters: _list[FilterPredicate],",
+            "    ) -> _list[Any]: ...",
+            "    def count(self, filters: _list[FilterPredicate]) -> int: ...",
             f"    def find_by_id(self, id: {pk_type}) -> Any | None: ...",
             "    def create(self, dto: Any) -> Any: ...",
             f"    def update(self, id: {pk_type}, dto: Any) -> Any | None: ...",
@@ -790,7 +796,7 @@ class RouterGenerator:
         for d in m2m:
             lines.append(
                 f"    def find_related_{d.relation_name}(self, id: {pk_type}"
-                f"{_target_subtype_param(discs[d.relation_name])}) -> list[Any]: ..."
+                f"{_target_subtype_param(discs[d.relation_name])}) -> _list[Any]: ..."
             )
         return lines
 
@@ -810,9 +816,9 @@ class RouterGenerator:
             single = reverse_finder_fn(entity_name, rfk.fk_field)
             batched = reverse_finder_in_fn(entity_name, rfk.fk_field)
             arg = _snake_case(rfk.fk_field)
-            lines.append(f"    def {single}(self, {arg}: Any) -> list[Any]: ...")
+            lines.append(f"    def {single}(self, {arg}: Any) -> _list[Any]: ...")
             lines.append(
-                f"    def {batched}(self, {arg}_values: list[Any]) -> list[Any]: ..."
+                f"    def {batched}(self, {arg}_values: _list[Any]) -> _list[Any]: ..."
             )
         return lines
 
@@ -1132,12 +1138,13 @@ class RouterGenerator:
                 f"def delete_{snake}(",
                 f"    {pk_param}: {pk_type},",
                 f"    repo: Annotated[{repo_class}, Depends(get_repository)],",
-                ") -> None:",
+                ") -> Response:",
                 "    try:",
                 f"        deleted = repo.delete({pk_param})",
                 *_CONSTRAINT_EXCEPT,
                 "    if not deleted:",
                 '        return JSONResponse(status_code=404, content={"error": "not_found"})',
+                "    return Response(status_code=status.HTTP_204_NO_CONTENT)",
             ]
         raise ValueError(f"unknown route handler '{name}'")
 
@@ -1157,9 +1164,10 @@ class RouterGenerator:
             f"    {pk_param}: {pk_type},",
             f"    repo: Annotated[{repo_class}, Depends(get_repository)],",
             ") -> list[Any]:",
-            f"    return render_wire(repo.find_related_{d.relation_name}"
+            f"    rows: list[Any] = render_wire(repo.find_related_{d.relation_name}"
             f"({pk_param}{_target_subtype_arg(d, {d.target_discriminator})}), "
             f"{_m2m_wire_name(d.target_entity)})",
+            "    return rows",
         ]
 
     def _emit_tph_m2m_route(
@@ -1215,10 +1223,11 @@ class RouterGenerator:
                 "        return []",
             ]
         lines.append(
-            f"    return render_wire(repo.find_related_{d.relation_name}"
+            f"    rows: list[Any] = render_wire(repo.find_related_{d.relation_name}"
             f"({subtype_expr}, {pk_param}{_target_subtype_arg(d, target_discs)}), "
             f"{_m2m_wire_name(d.target_entity)})"
         )
+        lines.append("    return rows")
         return lines
 
     def _emit_tph_list_body(
@@ -1407,10 +1416,11 @@ class RouterGenerator:
             parts.append(import_line)
         if pk.imports:
             parts.append("")
+        parts.append(_BUILTIN_LIST_ALIAS_IMPORT)
         parts.append("from typing import Annotated, Any, Protocol")
         parts.append("")
         parts.append("from fastapi import APIRouter, Depends, Query, Request, status")
-        parts.append("from fastapi.responses import JSONResponse")
+        parts.append("from fastapi.responses import JSONResponse, Response")
         parts.append("from pydantic import BaseModel, ValidationError")
         parts.append("")
         parts.append(f"from {_runtime_module('constraint_errors')} import (")
@@ -1483,9 +1493,9 @@ class RouterGenerator:
         parts.append("        limit: int,")
         parts.append("        offset: int,")
         parts.append("        sort: _SortClause | None,")
-        parts.append("        filters: list[FilterPredicate],")
-        parts.append("    ) -> list[Any]: ...")
-        parts.append("    def count(self, subtype: str | None, filters: list[FilterPredicate]) -> int: ...")
+        parts.append("        filters: _list[FilterPredicate],")
+        parts.append("    ) -> _list[Any]: ...")
+        parts.append("    def count(self, subtype: str | None, filters: _list[FilterPredicate]) -> int: ...")
         parts.append(f"    def find_by_id(self, subtype: str | None, id: {pk_type}) -> Any | None: ...")
         parts.append("    def create(self, subtype: str, dto: Any) -> Any: ...")
         parts.append(f"    def update(self, subtype: str, id: {pk_type}, dto: Any) -> Any | None: ...")
@@ -1497,7 +1507,7 @@ class RouterGenerator:
         for d in m2m_union:
             parts.append(
                 f"    def find_related_{d.relation_name}(self, subtype: str | None, id: {pk_type}"
-                f"{_target_subtype_param(m2m_target_discs[d.relation_name])}) -> list[Any]: ..."
+                f"{_target_subtype_param(m2m_target_discs[d.relation_name])}) -> _list[Any]: ..."
             )
         parts.append("")
         parts.append("")
@@ -1595,12 +1605,13 @@ class RouterGenerator:
             parts.append(f"def delete_{plural}_{sfx}(")
             parts.append(f"    {pk_param}: {pk_type},")
             parts.append(f"    repo: Annotated[{repo_class}, Depends(get_repository)],")
-            parts.append(") -> None:")
+            parts.append(") -> Response:")
             parts.append("    try:")
             parts.append(f'        deleted = repo.delete("{val}", {pk_param})')
             parts.extend(_CONSTRAINT_EXCEPT)
             parts.append("    if not deleted:")
             parts.append('        return JSONResponse(status_code=404, content={"error": "not_found"})')
+            parts.append("    return Response(status_code=status.HTTP_204_NO_CONTENT)")
             parts.append("")
             parts.append("")
 
@@ -1797,10 +1808,11 @@ class RouterGenerator:
             parts.append(import_line)
         if pk.imports:
             parts.append("")
+        parts.append(_BUILTIN_LIST_ALIAS_IMPORT)
         parts.append("from typing import Annotated, Any, Protocol")
         parts.append("")
         parts.append("from fastapi import APIRouter, Depends, Query, Request, status")
-        parts.append("from fastapi.responses import JSONResponse")
+        parts.append("from fastapi.responses import JSONResponse, Response")
         parts.append("from pydantic import BaseModel, ValidationError")
         parts.append("")
         parts.append(f"from {_runtime_module('constraint_errors')} import (")
@@ -2018,6 +2030,7 @@ class RouterGenerator:
             parts.append(import_line)
         if pk_imports:
             parts.append("")
+        parts.append(_BUILTIN_LIST_ALIAS_IMPORT)
         parts.append("from typing import Annotated, Any, Protocol")
         parts.append("")
         parts.append("from fastapi import APIRouter, Depends, Query, Request")
@@ -2080,9 +2093,9 @@ class RouterGenerator:
         parts.append("        limit: int,")
         parts.append("        offset: int,")
         parts.append("        sort: _SortClause | None,")
-        parts.append("        filters: list[FilterPredicate],")
-        parts.append("    ) -> list[Any]: ...")
-        parts.append("    def count(self, filters: list[FilterPredicate]) -> int: ...")
+        parts.append("        filters: _list[FilterPredicate],")
+        parts.append("    ) -> _list[Any]: ...")
+        parts.append("    def count(self, filters: _list[FilterPredicate]) -> int: ...")
         if item_route:
             parts.append(f"    def find_by_id(self, id: {pk_type}) -> Any | None: ...")
         parts.append("")

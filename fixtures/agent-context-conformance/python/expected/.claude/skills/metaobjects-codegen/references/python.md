@@ -270,6 +270,6 @@ rather than editing `render_wire(..., _WIRE)` in a router. `metaobjects verify` 
 
 ## Re-scaffold this context
 
-`metaobjects agent-docs --server python [--out <dir>]` (re)scaffolds the slim always-on
-Markdown + these `metaobjects-*` skills into the project — the Python tool bundles the
-agent-context tree, so a Python consumer needs no Node `meta`.
+`metaobjects agent-docs` does not scaffold anything: it prints a pointer and exits 1.
+Run `npx meta agent-docs --server python` (the Node `meta` CLI) to (re)scaffold the slim
+always-on Markdown + these `metaobjects-*` skills into the project.

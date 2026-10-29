@@ -36,6 +36,11 @@ export interface DocsSiteFileOpts {
    *  depend on the model alone and `meta verify --codegen` can hold them to it. A date here
    *  makes every day's run differ from the last. */
   stamp?: string;
+  /** Where the pages load their third-party CSS and JS from (daisyUI, Tailwind's browser build,
+   *  Mermaid, svg-pan-zoom). Default `https://cdn.jsdelivr.net/npm`, which needs network access
+   *  to render; set it to your own mirror, or to a path you serve the five files from. Give an
+   *  absolute URL or a root-relative path. See `@metaobjectsdev/docs-site` for the files. */
+  assetBase?: string;
   /** Named output target. Default `"docs"`, which `targets` must declare. */
   target?: string;
 }
@@ -84,6 +89,7 @@ export const docsSiteFile = function docsSiteFile(opts?: DocsSiteFileOpts): Gene
           stamp: opts?.stamp ?? "",
           commit: "",
           core: { n: 15 },
+          ...(opts?.assetBase !== undefined ? { assetBase: opts.assetBase } : {}),
           ...(ctx.providers !== undefined ? { extraProviders: ctx.providers } : {}),
           ...(existsSync(ownedTemplates) ? { templatesDir: ownedTemplates } : {}),
           ...(existsSync(ownedAssets) ? { assetsDir: ownedAssets } : {}),

@@ -26,7 +26,37 @@ export default defineConfig({
 whatever other documentation the config lists. Options: `subDir` (default `site`),
 `prompts` (an extra directory of prompt `.mustache` sources), `title`, `stamp` (footer
 text; default none, so the pages depend on the model alone and `meta verify --codegen`
-can check them) and `target`.
+can check them), `assetBase` (see below) and `target`.
+
+## Offline use: `assetBase`
+
+The page chrome loads five third-party files from jsDelivr (`https://cdn.jsdelivr.net/npm`):
+daisyUI's two stylesheets, Tailwind's browser build, Mermaid and svg-pan-zoom. A site opened
+without network access therefore renders unstyled, and the Mermaid diagrams and pan/zoom do
+not work. `assetBase` replaces that base in all five tags; the default is unchanged.
+
+```ts
+docsSiteFile({ assetBase: "/vendor/npm" })
+```
+
+(`generateSite({ assetBase })` takes the same option.) Give an absolute URL or a root-relative
+path, with or without a trailing slash. The builder does not copy the files into the output:
+download these five and serve them from the base you chose, keeping the paths below the base.
+
+| Path under `assetBase` | Package |
+|---|---|
+| `daisyui@5.5.19/daisyui.css` | `daisyui@5.5.19`, file `daisyui.css` |
+| `daisyui@5.5.19/themes.css` | `daisyui@5.5.19`, file `themes.css` |
+| `@tailwindcss/browser@4.2.4/dist/index.global.js` | `@tailwindcss/browser@4.2.4` |
+| `mermaid@11/dist/mermaid.min.js` | `mermaid@11` |
+| `svg-pan-zoom@3.6.2/dist/svg-pan-zoom.min.js` | `svg-pan-zoom@3.6.2` |
+
+One way to get them: `npm pack daisyui@5.5.19 @tailwindcss/browser@4.2.4 mermaid@11 svg-pan-zoom@3.6.2`,
+unpack each tarball's `package/` directory into `vendor/npm/<name>@<version>/`, and serve
+`vendor/npm` at `/vendor/npm` (or run a jsDelivr-compatible mirror and pass its URL). The
+site is generated output, so the files stay outside it. If you own the templates
+(`meta eject docs-site`), edit `chrome-head.mustache` directly; the `{{{assetBase}}}` in the
+packaged copy is what the option fills.
 
 ## Usage (as a library)
 

@@ -105,6 +105,15 @@ describe("meta gen with docsSiteFile()", () => {
     expect(existsSync(join(root, "docs-out", "site", "acme", "geo", "Place.html"))).toBe(true);
   });
 
+  test("docsSiteFile({ assetBase }) points the page chrome at that base instead of jsDelivr", async () => {
+    const cfg = config("").replace("docsSiteFile()", `docsSiteFile({ assetBase: "/vendor/npm" })`);
+    const root = await project(META, cfg);
+    expect(await run(["gen", "--cwd", root])).toBe(0);
+    const html = await readFile(join(root, "docs-out", "site", "index.html"), "utf8");
+    expect(html).not.toContain("cdn.jsdelivr.net");
+    expect(html).toContain('<script src="/vendor/npm/mermaid@11/dist/mermaid.min.js"></script>');
+  });
+
   test("two declared sources sharing a basename are both in the site", async () => {
     const workspace = await mkdtemp(join(tmpdir(), "meta-gen-site-multi-"));
     dirs.push(workspace);

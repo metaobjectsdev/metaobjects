@@ -347,10 +347,12 @@ message text of each diagnostic, and the summary counts.
 | TypeScript | `meta verify` | `meta verify — requirements:` |
 | Python | `metaobjects verify` | `metaobjects verify — requirements:` |
 | Java, Kotlin | `mvn metaobjects:verify` (one goal for both, in either mode) | `metaobjects:verify — requirements:` |
-| C# | `dotnet meta verify ./metadata --templates ./prompts` | `dotnet meta verify — requirements:` |
+| C# | `dotnet meta verify` | `dotnet meta verify — requirements:` |
 
-The C# tool has to be given one of its drift gates (`--templates <dir>`, or `--codegen
---out <dir>`); the requirement gate then runs beside whichever one it was given. Maven logs
+A bare `dotnet meta verify` runs the requirement gate with the other default gates, and needs a
+`prompts/` or `templates/` directory (else it exits 2 before any gate runs); naming
+one of them (`--templates <dir>`, or `--codegen --out <dir>`) runs that gate and the
+requirement gate beside it. Maven logs
 the summary at `info`, warnings as warnings and errors as errors.
 
 **What it reports**, checked per requirement in this order:
@@ -428,7 +430,7 @@ more than it links. A project whose ledger has caught up can make it fail the bu
 | TypeScript | `meta verify --require-implementers` | `META_REQUIRE_IMPLEMENTERS=1` |
 | Python | `metaobjects verify --require-implementers` | `META_REQUIRE_IMPLEMENTERS=1` |
 | Java, Kotlin | `mvn metaobjects:verify -Dmeta.verify.requireImplementers=true` | `META_REQUIRE_IMPLEMENTERS=1` |
-| C# | `dotnet meta verify ./metadata --templates ./prompts --require-implementers` | `META_REQUIRE_IMPLEMENTERS=1` |
+| C# | `dotnet meta verify --require-implementers` | `META_REQUIRE_IMPLEMENTERS=1` |
 
 **Recommended once the ledger is clean:** set the switch in the project's verify script or
 pre-push hook. Every adopter ledger we measured passed the default gate, because the gate

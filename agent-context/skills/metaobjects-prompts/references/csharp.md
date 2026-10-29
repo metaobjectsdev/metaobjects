@@ -5,8 +5,8 @@ For every RESPONDING `template.prompt` — one declaring `@responseRef` —
 a model's reply against that shape. ADR-0052: the tier binds `@responseRef`, never
 `@payloadRef` (which types the request the prompt renders outbound), and a
 `template.output` gets no parser at all. This is the receive side only — codegen emits
-**no** provider/LLM-call layer; you compose the call yourself. C# names records after the
-resolved VALUE OBJECT, so the response record simply IS that VO's record — no second
+**no** provider/LLM-call layer; you compose the call yourself. C# names its types after the
+resolved VALUE OBJECT, so the response type simply IS that VO's class — no second
 naming convention, and the parser and the record can't silently drift.
 
 ## Contents

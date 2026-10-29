@@ -119,6 +119,10 @@ dev = [
     # cli-registry corpus runs codegen, so without ruff in the group `uv run pytest`
     # fails at format time with "No module named ruff".
     "ruff>=0.6",
+    # The generated-router mypy gate (tests/codegen/test_router_mypy_strict.py) type-checks
+    # the emitted FastAPI routers under `mypy --strict`. The framework those routers import
+    # comes from `--extra integration`, which the python lane always passes.
+    "mypy>=1.10",
     # The Jinja engine and its conformance corpora (fixtures/jinja-*-conformance/) run in the
     # default suite, so the optional `jinja` extra's dependency is in the dev group too.
     "jinja2>=3.1",

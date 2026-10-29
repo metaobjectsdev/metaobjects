@@ -18,7 +18,9 @@ import qs from "qs";
  * correctly for the server's parser.
  *
  * `withCount` is the opt-in flag for the `{ rows, total }` list-response
- * envelope (see runtime-ts mountListRoute). Pass `1` or `true` to enable.
+ * envelope (see runtime-ts mountListRoute). Pass `1` or `true` to enable; the wire form is always
+ * `withCount=1`, the cross-port contract every server's list route reads. `false`, `0` and
+ * `undefined` emit nothing.
  *
  * `search` is a free-text term that the server ORs as `like('%term%')` across
  * all @filterable string fields, AND-combined with any explicit filter WHERE.
@@ -29,7 +31,7 @@ export function buildFilterQs(filter: Record<string, unknown>): string {
   if (limit     !== undefined) top.limit     = limit;
   if (offset    !== undefined) top.offset    = offset;
   if (sort      !== undefined) top.sort      = sort;
-  if (withCount !== undefined) top.withCount = withCount;
+  if (withCount === true || withCount === 1 || withCount === "1" || withCount === "true") top.withCount = 1;
   if (search    !== undefined) top.search    = search;
   const filterObj: Record<string, unknown> = { ...fields };
   if (or  !== undefined) filterObj.or  = or;

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { existsSync, readFileSync, mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, mkdtempSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { generateSite } from "../src/site";
@@ -63,4 +63,48 @@ test("nav lists members only for the current page's package", async () => {
   expect(aiNav).toContain("npcReviewOutput.html");
   expect(aiNav).toContain("shop/index.html");
   expect(aiNav).not.toContain("Order.html");
+});
+
+// ─── assetBase ────────────────────────────────────────────────────────────────
+
+const htmlFiles = (dir: string): string[] =>
+  readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
+    e.isDirectory() ? htmlFiles(join(dir, e.name)) : e.name.endsWith(".html") ? [join(dir, e.name)] : [],
+  );
+
+test("assetBase replaces the jsDelivr base in every page's stylesheet and script tags", async () => {
+  const out = mkdtempSync(join(tmpdir(), "site-assetbase-"));
+  await generateSite({
+    sourceDirs: [join(import.meta.dir, "fixture/input/acme")],
+    outDir: out, title: "Fixture", stamp: "2026-01-01", commit: "abc1234",
+    assetBase: "https://assets.example.test/npm/",
+  });
+  const pages = htmlFiles(out);
+  expect(pages.length).toBeGreaterThan(10);
+  for (const page of pages) {
+    const html = readFileSync(page, "utf8");
+    expect(html).not.toContain("cdn.jsdelivr.net");
+    expect(html).toContain('<link rel="stylesheet" href="https://assets.example.test/npm/daisyui@5.5.19/daisyui.css">');
+    expect(html).toContain('<link rel="stylesheet" href="https://assets.example.test/npm/daisyui@5.5.19/themes.css">');
+    expect(html).toContain('<script src="https://assets.example.test/npm/@tailwindcss/browser@4.2.4/dist/index.global.js"></script>');
+    expect(html).toContain('<script src="https://assets.example.test/npm/mermaid@11/dist/mermaid.min.js"></script>');
+    expect(html).toContain('<script src="https://assets.example.test/npm/svg-pan-zoom@3.6.2/dist/svg-pan-zoom.min.js"></script>');
+  }
+});
+
+test("a root-relative assetBase is written as given, at every page depth", async () => {
+  const out = mkdtempSync(join(tmpdir(), "site-assetbase-abs-"));
+  await generateSite({
+    sourceDirs: [join(import.meta.dir, "fixture/input/acme")],
+    outDir: out, title: "Fixture", stamp: "2026-01-01", commit: "abc1234",
+    assetBase: "/vendor",
+  });
+  for (const page of ["index.html", "acme/shop/Order.html"])
+    expect(readFileSync(join(out, page), "utf8")).toContain('<script src="/vendor/mermaid@11/dist/mermaid.min.js"></script>');
+});
+
+test("the default assetBase is jsDelivr", async () => {
+  const out = mkdtempSync(join(tmpdir(), "site-assetbase-default-"));
+  await generateSite({ sourceDirs: [join(import.meta.dir, "fixture/input/acme")], outDir: out, title: "Fixture", stamp: "2026-01-01", commit: "abc1234" });
+  expect(readFileSync(join(out, "index.html"), "utf8")).toContain('<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>');
 });

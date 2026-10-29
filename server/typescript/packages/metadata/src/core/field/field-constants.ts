@@ -125,7 +125,7 @@ export const FIELD_ATTR_FILTERABLE = "filterable";
 export const FIELD_ATTR_SORTABLE = "sortable";
 export const FIELD_ATTR_SORTABLE_DEFAULT_ORDER = "sortableDefaultOrder";
 
-/** When true, the field is omitted from generated forms. */
+/** When true, the field is omitted from generated forms, and the generated create, PATCH and PUT routes ignore a value sent for it. */
 export const FIELD_ATTR_FORM_EXCLUDE = "formExclude";
 
 /** Auto-set semantics on a timestamp field. Values: "onCreate" | "onUpdate". */

@@ -357,16 +357,15 @@ coverage; see [`ports/csharp.md`](../ports/csharp.md) for current support.
 ### Python
 
 The Python loader recognizes `source.rdb` and all `@kind` values; the codegen
-emits a `@dataclass` either way (read-only-ness is a runtime concern). Persistence
+emits a Pydantic `BaseModel` either way (read-only-ness is a runtime concern). Persistence
 + migration codegen for non-`table` kinds are in progress.
 
 ```python
-# generated/acme/blog/author_view.py — emitted same as a table-kind entity
-@dataclass
-class AuthorView:
-    id: int
+# generated/AuthorView.py — a read-only model, shaped like a table-kind entity's
+class AuthorView(BaseModel):
+    id: int | None = None
     name: str
-    post_count: int
+    postCount: int | None = None
 ```
 
 ## Verified by

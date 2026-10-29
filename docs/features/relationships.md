@@ -558,17 +558,26 @@ ALTER TABLE "posts"
 ### Python
 
 The Python loader recognizes `relationship.composition` and `identity.reference`
-and exposes them on the navigation API. Relationship-navigation codegen (emitting
-the FK-derived accessors into the generated Pydantic + FastAPI code) is still
-pending; the runtime is the shipped DB-API-2 `ObjectManager`.
+and exposes them on the navigation API. The generated Pydantic models carry the
+foreign key as a plain field and no navigation accessors; reverse traversal is the
+explicit FK finder pair (ADR-0038) on the router's repository `Protocol`, the same
+shape every port emits. A M:N relationship also emits the nested collection and a
+`GET /<source-plural>/{id}/<relation>` traversal route. The runtime is the shipped
+DB-API-2 `ObjectManager`.
 
 ```python
-# generated/acme/blog/post.py — current state
-@dataclass
-class Post:
-    id: int
+# generated/Post.py
+class Post(BaseModel):
+    id: int | None = None
     title: str
-    author_id: int  # FK to Author.id — relationship-as-runtime is on the roadmap
+    authorId: int  # FK to Author.id, a plain field: no navigation accessor on the model
+```
+
+```python
+# generated/post_router.py (excerpt of the repository Protocol)
+class PostRepository(Protocol):
+    def find_posts_by_author(self, author_id: Any) -> _list[Any]: ...
+    def find_posts_by_author_in(self, author_id_values: _list[Any]) -> _list[Any]: ...
 ```
 
 ## Verified by
