@@ -173,6 +173,7 @@ Flags:
 - `--db <url>` (required or via `$DATABASE_URL` or `.metaobjects/config.json`)
   - Supported schemes: `file:`, `libsql:`, `postgres:`, `postgresql:`
 - `--dialect sqlite|postgres|d1` — auto-detected from URL scheme; use `d1` for Cloudflare D1
+- `--shadow-db <url>` — Postgres scratch database the expected schema is applied to for `--from-db` / `--apply` drift (also `SHADOW_DATABASE_URL` or `migrate.shadowDatabaseUrl`). Read [How CHECK constraints and expression indexes are compared](../../../../docs/features/migrations-and-drift.md#how-check-constraints-and-expression-indexes-are-compared) for the three paths.
 - `--out-dir <path>` (default `./.metaobjects/migrations`)
 - `--slug <name>` — required when changes are pending (e.g., `add-user-shipping`)
 - `--allow <csv>` — destructive-change permissions: `drop-column,drop-table,type-change,drop-index,drop-fk,drop-check,drop-view,drop-view-cascade,adopt-view,nullable-to-not-null,drop-identity-default,drop-unmanaged,drop-comment`

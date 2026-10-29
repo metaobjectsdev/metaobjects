@@ -78,7 +78,7 @@ describe("shadow catalog: snapshot versions and undeclared comments (env-gated)"
     mkdirSync(join(root, "metaobjects"), { recursive: true });
     writeFileSync(join(root, "metaobjects", "meta.catalog.json"), MODEL, "utf8");
     // Day 1: the table, with its comments and a GENERATED identity, and a v4 snapshot of it.
-    expect((await captured(args("migrate", "--from-db", "--slug", "init", "--apply"))).exit).toBe(0);
+    expect((await captured(args("migrate", "--from-db", "--slug", "shadow-catalog", "--apply"))).exit).toBe(0);
   });
   afterAll(async () => {
     await pool.query(`DROP TABLE IF EXISTS ${TABLE} CASCADE`);

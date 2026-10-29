@@ -70,7 +70,7 @@ describe("shadow path: live default drift and an unreachable explicit shadow (en
     root = mkdtempSync(join(tmpdir(), "shadow-default-drift-pg-"));
     mkdirSync(join(root, "metaobjects"), { recursive: true });
     writeFileSync(join(root, "metaobjects", "meta.events.json"), MODEL, "utf8");
-    expect((await captured(args("migrate", "--from-db", "--slug", "init", "--apply"))).exit).toBe(0);
+    expect((await captured(args("migrate", "--from-db", "--slug", "shadow-default-drift", "--apply"))).exit).toBe(0);
   });
   afterAll(async () => {
     await pool.query(`DROP TABLE IF EXISTS ${TABLE} CASCADE`);
