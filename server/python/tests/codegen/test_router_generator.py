@@ -248,7 +248,29 @@ def test_router_list_handler_calls_parse_filter() -> None:
     assert "repo.list(actual_limit, actual_offset, sort_clause, predicates)" in out
     assert "repo.count(predicates)" in out
     # Repository protocol gains the filters parameter on list + count.
-    assert "filters: list[FilterPredicate]" in out
+    assert "filters: _list[FilterPredicate]" in out
+
+
+def test_repository_protocol_annotates_with_the_builtin_alias_not_the_list_method() -> None:
+    """The ``Protocol`` declares a method named ``list``; a bare ``list[...]`` annotation after
+    it resolves to that method (mypy ``valid-type``). Its annotations use the ``_list`` alias."""
+    out = _require(_author())
+    assert "from builtins import list as _list" in out
+    protocol = out[out.index("class AuthorRepository(Protocol):"):]
+    protocol = protocol[: protocol.index("def get_repository")]
+    assert "-> _list[Any]: ..." in protocol
+    assert "filters: _list[FilterPredicate]" in protocol
+    assert "list[" not in protocol.replace("_list[", "")
+
+
+def test_delete_handler_is_annotated_response_and_returns_the_204() -> None:
+    """The 404 path returns a ``JSONResponse``, so ``-> None`` fails ``mypy --strict``
+    (``return-value``); the handler is ``-> Response`` and the success path returns the 204."""
+    out = _require(_author())
+    handler = out[out.index("def delete_author("):]
+    assert ") -> Response:" in handler.split("try:", 1)[0]
+    assert "return Response(status_code=status.HTTP_204_NO_CONTENT)" in handler
+    assert "from fastapi.responses import JSONResponse, Response" in out
 
 
 # ---------------------------------------------------------------------------
@@ -379,7 +401,7 @@ def test_uuid_pk_types_every_path_param_and_protocol_site_as_uuid() -> None:
     assert "def find_by_id(self, id: uuid.UUID) -> Any | None: ..." in out
     assert "def update(self, id: uuid.UUID, dto: Any) -> Any | None: ..." in out
     assert "def delete(self, id: uuid.UUID) -> bool: ..." in out
-    assert "def find_related_tags(self, id: uuid.UUID) -> list[Any]: ..." in out
+    assert "def find_related_tags(self, id: uuid.UUID) -> _list[Any]: ..." in out
     # No int-typed pk leaks anywhere.
     assert "gadget_id: int" not in out
     assert "id: int)" not in out

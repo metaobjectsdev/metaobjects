@@ -98,4 +98,10 @@ internal static class ApiContractCorpusPaths
     public static readonly string WriteThroughScenariosDir = Path.Combine(WriteThroughDir, "scenarios");
     public static readonly string WriteThroughSeedFile = Path.Combine(WriteThroughDir, "seed.json");
     public static readonly string WriteThroughMetaJson = Path.Combine(WriteThroughDir, "meta.json");
+
+    // #484 secret-fields subcorpus (credentials and @formExclude fields), generated lane only.
+    public static readonly string SecretFieldsDir = Path.Combine(Corpus, "secret-fields");
+    public static readonly string SecretFieldsScenariosDir = Path.Combine(SecretFieldsDir, "scenarios");
+    public static readonly string SecretFieldsSeedFile = Path.Combine(SecretFieldsDir, "seed.json");
+    public static readonly string SecretFieldsMetaJson = Path.Combine(SecretFieldsDir, "meta.json");
 }

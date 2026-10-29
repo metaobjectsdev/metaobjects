@@ -569,16 +569,31 @@ Then `meta deps sync` as for any other installed package. Nothing about the regi
 reaches `.metaobjects/`: the lock records the transport (`npm`/`python` + `dir`), never a
 URL.
 
-**Only TypeScript publishes in Phase 1a — TypeScript, Python, Java and Kotlin consume.**
-TypeScript, Python, Java and Kotlin can *consume* a dependency (load its snapshot, extend
-it, overlay it); C# doesn't read `dependencies` yet (Phase 2). Java reads it at every rung
-of the Maven plugin's source ladder (`<sourceDir>`/`<sources>`, the neutral config, the default
-directory), and Kotlin inherits that through the same plugin and loader, so a Spring
-or Kotlin build consumes a shared model with no extra configuration. Only the TypeScript
-toolchain can *publish*: it alone can generate the artifact a publisher ships. A Python,
-Java or Kotlin project that wants to publish a shared model runs a TypeScript
-`sharedModelFile()` generator against its own metadata the same way any TypeScript consumer
-would; a C# project cannot yet participate as either a publisher or a consumer.
+**Only TypeScript publishes in Phase 1a — TypeScript, Python, Java, Kotlin and C# consume.**
+TypeScript, Python, Java, Kotlin and C# can *consume* a dependency (load its snapshot, extend
+it, overlay it). Java reads it at every rung of the Maven plugin's source ladder
+(`<sourceDir>`/`<sources>`, the neutral config, the default directory), and Kotlin inherits that
+through the same plugin and loader, so a Spring or Kotlin build consumes a shared model with no
+extra configuration. Only the TypeScript toolchain can *publish*: it alone can generate the
+artifact a publisher ships, and the Node `meta deps sync` is the only writer of the lock and the
+snapshot. A Python, Java, Kotlin or C# project that wants to publish a shared model runs a
+TypeScript `sharedModelFile()` generator against its own metadata the same way any TypeScript
+consumer would.
+
+**C#.** `dotnet meta` reads `dependencies` from `.metaobjects/config.json` at every rung of its
+source ladder — C# has no native config surface, so the explicit `<metadataDir>` form reads the
+project's file too — verifies the committed snapshot against `deps.lock.json` offline, and loads
+the snapshots first under `dep:<name>/<artifact>` source ids. It never writes either: run
+`meta deps sync` (the Node CLI) to refresh them, and a stale snapshot fails every command with
+`ERR_DEPENDENCY_SNAPSHOT_STALE`. An imported node is excluded from every C# generator, the
+`verify --codegen` regeneration and the requirement gate's entity-coverage denominator unless
+`scope.include` names its package; the one thing C# still emits from an imported package is the
+POCO of a *value object* (and the shared enums it uses) that a generated type reaches — an entity
+or local value object that holds it, or a local template whose `@payloadRef` / `@responseRef` names
+it — because that generated type needs it to compile. `inScope` is Python's formula (no `matchesScope` on the
+project's own objects), and C# has no entity-name positional on `gen`, so the TypeScript
+"refuse an explicitly named imported object" check has no C# surface. Known edge: a local entity
+that `extends` an imported concrete entity in a table-per-hierarchy mapping is not specially handled.
 
 ## Vendoring vs. depending
 
@@ -613,10 +628,10 @@ cross-port contract every consumer gets today.
 ## Phase 2: Java, Kotlin and C#
 
 Tracked in [#482](https://github.com/metaobjectsdev/metaobjects/issues/482). Today TypeScript,
-Python, Java and Kotlin consume a dependency (Java and Kotlin shipped in slice S3); C# ignores the
-`dependencies` key, and a model there that references a node a dependency would supply fails
-loudly (`ERR_UNRESOLVED_OBJECT_REF`), never silently. Phase 2 adds no new contract. The manifest, the
-lock, the committed snapshot and the 24-case resolution corpus are plain files that every port
+Python, Java, Kotlin and C# consume a dependency (Java and Kotlin shipped in slice S3, C# in S6).
+A port that does not read the lock fails loudly on a model that references a node a dependency
+would supply (`ERR_UNRESOLVED_OBJECT_REF`), never silently. Phase 2 adds no new contract. The manifest, the
+lock, the committed snapshot and the 26-case resolution corpus are plain files that every port
 already has the pieces to read; what is missing is each port *loading* the snapshot.
 
 Two rulings shape it:
@@ -675,9 +690,8 @@ but **not** built yet — do not assume any of the following exists:
 - **A runtime `ObjectManager` scope predicate.** Nothing at runtime refuses to serve
   an imported entity — "what's imported" is a load-time/codegen concept today, not a
   runtime one.
-- **C# as a dependency consumer, and Java, Kotlin and C# as publishers** — Java and
-  Kotlin consume from Phase 2 slice S3; C# arrives in a later slice. Spring apps do not yet
-  auto-load the snapshot at runtime (S4).
+- **Java, Kotlin, Python and C# as publishers** — Java, Kotlin and C# consume (S3 and S6);
+  publishing is TypeScript only. Spring apps do not yet auto-load the snapshot at runtime (S4).
 
 ## Verified by
 

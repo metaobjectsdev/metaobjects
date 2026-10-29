@@ -370,15 +370,71 @@ opened by an older SQLite (Python 3.10's stdlib, Ubuntu 22.04's `sqlite3`). The 
 behind `--allow drop-check` and raises no data hazard, because the rule is the same — and
 the re-diff is empty afterwards. Postgres keeps `IS [NOT] DISTINCT FROM`.
 
+## How CHECK constraints and expression indexes are compared
+
+Postgres rewrites an expression before it stores it (`"k" IN ('x')` becomes `k = 'x'::text`,
+`a IS NOT DISTINCT FROM b` becomes `NOT (a IS DISTINCT FROM b)`, an `IN` list becomes
+`= ANY (ARRAY[…])`, and casts and brackets are added), so the text `meta migrate` generates never
+comes back from the database as written. On Postgres, a plan against the database
+(`meta verify --db`, `meta migrate --from-db` and `--apply`) therefore **asks Postgres** instead of
+guessing. For each table it creates a **temporary table with the live table's columns** inside a
+transaction it rolls back (a savepoint, when the connection is already in one), adds the expected
+CHECK to it, creates each expected expression or partial-index predicate as a temporary index,
+and reads back `pg_get_constraintdef` / `pg_get_indexdef` / `pg_get_expr`. Those are compared with
+the live definitions as plain strings. Nothing persists, and nothing is written to your table.
+Two expressions that mean different things never compare equal: a precedence change
+(`(a OR b) AND c` against `a OR (b AND c)`), a regrouped `NOT`, and a changed enum-member or regex
+literal are all drift.
+
+Where the question cannot be asked, the comparison falls back to a **string normaliser**
+(`check-expr-compare.ts`), which rewrites both texts toward one shape. The fallback applies to:
+
+- SQLite and D1, which store the text as written;
+- the default **offline** `meta migrate`, which diffs the committed snapshot and has no database;
+- a read-only connection or a hot standby, and a role without the `TEMP` privilege;
+- a table the role cannot read (no `SELECT` on it, or no `USAGE` on its schema): that table only,
+  the other tables are still asked;
+- an expected expression that does not compile against the live columns (the column diff reports
+  that case);
+- an expression containing a `;` anywhere, quoted or not, or an index `@using` that is not a plain
+  access-method name: neither is ever sent to the database.
+
+The normaliser cannot tell a precedence change from a bracket-only change (it deletes every
+bracket), so on the fallback path `(a OR b) AND c` and `a OR (b AND c)` compare as equal. A fallback
+never reports drift of its own: a probe that fails changes nothing about the answer.
+
+`meta migrate baseline --from-db` on Postgres closes the offline gap. Where the live database
+proves a CHECK, or an expression index's key or predicate, is what the metadata would generate, the
+snapshot records the **generated** text rather than Postgres's spelling, so the offline plan
+compares like with like and a baselined project starts clean. Anything it cannot prove keeps
+Postgres's text. If the metadata does not load, the baseline is written as before.
+
 ## Drift verify commands per port
 
-| Port | Command | What it does |
-|---|---|---|
-| TypeScript | `meta verify --db` | Introspects the live DB; reports DB-vs-metadata drift. |
-| Java | `mvn metaobjects:verify -Dmeta.verify.mode=codegen\|templates` (`metaobjects:verify` Maven goal) + `Renderer.verify` (build-time) | The codegen/template-drift `metaobjects:verify` Maven goal is alive and is how Java gates drift in CI (`codegen` mode regens + fails on drift vs committed output; `templates` mode drift-checks `{{...}}` references against the payload VO via `Renderer.verify`). Only the *live-DB-schema* `metaobjects:verify` goal was removed — that's TS-owned now (`meta verify --db`) — along with the runtime auto-create validator (ADR-0015). |
-| Kotlin | `mvn metaobjects:verify -Dmeta.verify.mode=codegen\|templates` (`metaobjects:verify` Maven goal — same goal covers both Java + Kotlin) + `MetadataStartupValidator` (startup) | Same as Java — the `metaobjects:verify` Maven goal remains, plus template-drift and startup validation. |
-| C# | `meta verify ./metadata --templates ./prompts` | Drift-checks templates against their payload VOs (FR-004 prompt-drift). |
-| Python | `python -m metaobjects.render.verify` | Same as C# verify — template-vs-payload drift. |
+A bare `verify` runs the same default gate set in every port: **codegen drift**,
+**prompt-template drift** and the **requirement ledger**. What a check does when the run has
+no configuration for it differs by port. TypeScript, Java and Python skip it with a one-line
+note and do not fail: TypeScript skips the codegen gate when there is no `metaobjects.config.ts`
+(and its template gate passes with a note when the model has no `template.*` nodes), Java skips
+the template gate when `templateRoot` is unset, and Python skips the template gate when there
+is no `metaobjects.config.yaml` and no `--prompts`. C# does not skip: a bare `dotnet meta verify`
+needs a `prompts/` (else `templates/`) directory, or `--templates <root>`, and exits 2 with
+`templates directory not found` when neither exists (full contract:
+[cli.md, "`verify` is one verb with explicit subverbs"](cli.md#verify-is-one-verb-with-explicit-subverbs-adr-0021-d2)).
+
+| Port | Bare command | Config each check needs | One check alone |
+|---|---|---|---|
+| TypeScript | `meta verify` | Codegen: `metaobjects.config.ts`. Templates: the `template.*` nodes in the model. | `meta verify --codegen`, `meta verify --templates` |
+| Java | `mvn metaobjects:verify` | Codegen: the `<generators>` in the plugin configuration. Templates: `-Dmeta.verify.templateRoot`. | `-Dmeta.verify.mode=codegen`, `-Dmeta.verify.mode=templates` |
+| Kotlin | `mvn metaobjects:verify` (the same goal as Java) | As Java. `MetadataStartupValidator` adds a startup check. | As Java |
+| C# | `dotnet meta verify` | Codegen: an output directory (`csharp.outDir` in `.metaobjects/config.json`, or `--out <dir>`) and `codegen/Generators.cs`. Templates: `--templates <root>`, or a `prompts/` (else `templates/`) directory in the working directory; with neither, a bare run exits 2. | `dotnet meta verify --codegen`, `dotnet meta verify --templates <root>` |
+| Python | `metaobjects verify` | Codegen: `metaobjects.config.yaml`. Templates: `metaobjects.config.yaml` or `--prompts <dir>`. | `metaobjects verify --codegen`, `metaobjects verify --templates` |
+
+Schema drift is a separate, opt-in check and Node-only (ADR-0015): `meta verify --db <url>`
+introspects the live database and reports database-versus-metadata drift. The other four
+ports reject `--db` (C#, Python and the Maven goal exit 2 or fail with a pointer to the
+TypeScript CLI); the live-DB-schema `metaobjects:verify` goal was removed along with the
+runtime auto-create validator.
 
 ## Generated-vs-runtime: Kotlin startup validator
 

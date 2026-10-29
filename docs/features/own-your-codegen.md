@@ -314,6 +314,12 @@ That writes the Mustache templates to `codegen/docs-site/templates/` and the CSS
 packaged one. The site prints no date, so its pages depend on the model alone and
 `meta verify --codegen` can check them; `docsSiteFile({ stamp })` adds footer text.
 
+The page chrome loads daisyUI, Tailwind's browser build, Mermaid and svg-pan-zoom from
+jsDelivr, so a site opened offline renders unstyled and its diagrams do not work.
+`docsSiteFile({ assetBase: "/vendor/npm" })` replaces that base; serving the five files from
+it is on you. The files and how to fetch them are in the `@metaobjectsdev/docs-site` README,
+"Offline use".
+
 ### The ER diagram comes from `docsFile()`
 
 The model pages carry the Mermaid diagrams: the whole model on the overview page

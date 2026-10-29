@@ -29,7 +29,7 @@ export type { FilterAllowlist, SortAllowlist } from "./filter-allowlist.js";
 import { parseFilterParams, parsePageBound, FilterParseError } from "./filter-parser.js";
 import { isTruthyFlag, contractErrorCode, coerceIdForColumn, firstRow, extractRowCount } from "./util.js";
 import { timestampWire } from "../timestamp-wire.js";
-import { withWire, type WireOptions } from "../wire-format.js";
+import { stripDeniedColumns, withWire, type WireOptions } from "../wire-format.js";
 import { supportsReturning, type SqlDialect } from "../sql-dialect.js";
 import { withContractErrorHandler } from "./route-error-handler.js";
 import { validationErrorBody } from "../route-errors.js";
@@ -72,6 +72,13 @@ export interface CrudRoutesOptions extends WireOptions {
   insertSchema: ZodTypeAny;
   /** Zod schema for update payloads (typically `<Entity>UpdateSchema`). */
   updateSchema: ZodTypeAny;
+  /**
+   * Fields the API never writes (`@formExclude`, or a credential `view.password`). A key
+   * named here is stripped from a create or update body before validation, so the value never
+   * reaches the table; it is ignored, not rejected. The generated route passes them; the
+   * schemas stay whole for the application's own writes.
+   */
+  writeDeniedColumns?: readonly string[];
   /** Limit which verbs are mounted. Defaults to all five. */
   expose?: readonly CrudVerb[];
   /**
@@ -274,7 +281,7 @@ export function mountGetRoute(opts: VerbOptions): void {
 export function mountCreateRoute(opts: VerbOptions): void {
   const toWire = echoWire(opts);
   opts.fastify.post(opts.path, routeOpts(opts), async (req, reply) => {
-    const parsed = opts.insertSchema.safeParse(req.body);
+    const parsed = opts.insertSchema.safeParse(stripDeniedColumns(req.body, opts.writeDeniedColumns));
     if (!parsed.success) {
       return reply.code(400).send(validationErrorBody(parsed.error.issues));
     }
@@ -315,7 +322,7 @@ export function mountUpdateRoute(opts: VerbOptions): void {
     reply: { code: (n: number) => { send: (b: unknown) => unknown } },
   ) => {
     const { id } = req.params as { id: string };
-    const parsed = opts.updateSchema.safeParse(req.body);
+    const parsed = opts.updateSchema.safeParse(stripDeniedColumns(req.body, opts.writeDeniedColumns));
     if (!parsed.success) {
       return reply.code(400).send(validationErrorBody(parsed.error.issues));
     }

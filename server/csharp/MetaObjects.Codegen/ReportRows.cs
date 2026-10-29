@@ -173,13 +173,23 @@ public static class ReportRows
             // `isArray` is a native flag, not an attr; ResolvedIsArray() is its resolving read.
             if (src.ResolvedIsArray()) field.SetIsArray(true);
         }
+        // A credential stays a credential when read through a report: a derived field whose type
+        // source declares or inherits a view.password carries one, so every generator and runtime
+        // that reads the row model (routes, export) hides it exactly as it hides an entity's.
+        // ADR-0039: resolving (Views()), an inherited view.password counts.
+        bool credential = f.TypeSource is { } cred
+            && cred.Views().Any(v => v.SubType == MetaObjects.Presentation.View.ViewConstants.VIEW_SUBTYPE_PASSWORD);
+        if (credential)
+            field.AddChild(new MetaView(new TypeId(TYPE_VIEW, MetaObjects.Presentation.View.ViewConstants.VIEW_SUBTYPE_PASSWORD), "password"));
         // Table C: every derived field whose type has a filter band is filterable. Asked
         // last, of the finished field, because an int-backed enum's band depends on a
         // carried attr. A report author cannot narrow this set: there is no node to put
         // `@filterable` on.
         // An array or a map has no scalar operator and no ordering, so a dimension over one is
         // neither filterable nor (see RoutesGenerator's sort list) sortable.
-        if (!field.ResolvedIsArray() && field.SubType != FIELD_SUBTYPE_MAP
+        // A credential is neither filterable nor sortable: a hidden column that still orders or
+        // narrows the rows is an oracle (`?filter[pin][like]=ab%` recovers it a prefix at a time).
+        if (!credential && !field.ResolvedIsArray() && field.SubType != FIELD_SUBTYPE_MAP
             && QueryConstants.OpsForField(field).Length > 0)
             field.SetAttr(FIELD_ATTR_FILTERABLE, true);
         return field;
@@ -199,9 +209,13 @@ public static class ReportRows
         return copy;
     }
 
-    /// <summary>The row model of every view-backed report in the model, in declaration order.</summary>
+    /// <summary>
+    /// The row model of every view-backed report in the model, in declaration order. A report a metadata
+    /// dependency owns is not this project's to serve, so it has no row model here (FR-023,
+    /// <see cref="MetaRoot.InScope"/>).
+    /// </summary>
     public static IReadOnlyList<MetaObject> For(MetaRoot root) =>
-        root.Objects().Where(IsViewBacked).Select(r => RowModel(r, root)).ToList();
+        root.Objects().Where(r => IsViewBacked(r) && root.InScope(r)).Select(r => RowModel(r, root)).ToList();
 
     /// <summary>
     /// The objects a report-aware generator iterates: the run's entity set with every

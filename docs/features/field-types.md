@@ -25,7 +25,7 @@ across ports — a `field.currency` is integer minor units everywhere; a
 | `field.uri` | `string` | `java.net.URI` | `java.net.URI` | `Uri` | `AnyUrl` | `text` |
 | `field.inet` | `string` | `InetAddress` | `InetAddress` | `IPAddress` | `IPvAnyAddress` | `inet` |
 | `field.enum` | union + `z.enum` | `Enum` | `enum class` | `enum` | `Enum` | `varchar` + `CHECK` |
-| `field.object` | nested type | nested class | nested data class | nested record | nested dataclass | per `@storage` |
+| `field.object` | nested type | nested class | nested data class | nested class | nested Pydantic model | per `@storage` |
 | `field.map` | `Record<string, V>` | `Map<String, V>` | `Map<String, V>` | `Dictionary<string, V>` | `dict[str, V]` | `jsonb` |
 
 That is the whole registered vocabulary — 17 concrete subtypes. `field.base` is an
@@ -357,18 +357,31 @@ object AuthorTable : Table("authors") {
 ### C#
 
 ```csharp
-// generated/Acme/Blog/Author.cs
-public record Author
-{
-    public long           Id         { get; set; }
-    public string         Name       { get; set; } = string.Empty;
-    public string?        Bio        { get; set; }
-    public long           PriceCents { get; set; }                 // currency: minor units
-    public AuthorStatus   Status     { get; set; }
-    public DateTimeOffset CreatedAt  { get; set; }
-}
+// generated/Author.g.cs (usings and header elided)
+namespace Acme.Blog;
 
-public enum AuthorStatus { Draft, Published, Archived }
+[Table("authors")]
+public class Author
+{
+    public enum AuthorStatus { DRAFT, PUBLISHED, ARCHIVED }
+    [Key]
+    [Column("id")]
+    public long Id { get; set; }
+    [Column("name")]
+    [Required(AllowEmptyStrings = true)]
+    [MaxLength(200)]
+    [MinLength(1)]
+    public string Name { get; set; } = default!;
+    [Column("bio")]
+    [MaxLength(2000)]
+    public string? Bio { get; set; }
+    [Column("price_cents")]
+    public long PriceCents { get; set; }                  // currency: minor units
+    [Column("status")]
+    public AuthorStatus Status { get; set; }
+    [Column("created_at")]
+    public DateTimeOffset CreatedAt { get; set; }
+}
 ```
 
 EF Core enum-as-string is wired in `AppDbContext`:
@@ -382,25 +395,22 @@ modelBuilder.Entity<Author>()
 ### Python
 
 ```python
-# generated/acme/blog/author.py
-from dataclasses import dataclass
-from datetime import datetime
-from enum import Enum
-from typing import Optional
+# generated/Author.py (the Create and Patch input models are elided)
+from __future__ import annotations
 
-class AuthorStatus(str, Enum):
-    DRAFT = "DRAFT"
-    PUBLISHED = "PUBLISHED"
-    ARCHIVED = "ARCHIVED"
+import datetime
+from typing import Literal
 
-@dataclass
-class Author:
-    id: int
-    name: str
-    bio: Optional[str] = None
-    price_cents: int = 0       # currency: minor units
-    status: AuthorStatus = AuthorStatus.DRAFT
-    created_at: Optional[datetime] = None
+from pydantic import BaseModel, Field
+
+
+class Author(BaseModel):
+    id: int | None = None
+    name: str = Field(max_length=200)
+    bio: str | None = Field(default=None, max_length=2000)
+    priceCents: int                                   # currency: minor units
+    status: Literal["DRAFT", "PUBLISHED", "ARCHIVED"]
+    createdAt: datetime.datetime
 ```
 
 ## Verified by

@@ -25,17 +25,20 @@
 // a route and a list hook and no grid, form or detail hook.
 
 import {
+  FIELD_ATTR_FORM_EXCLUDE,
   FIELD_ATTR_OBJECT_REF,
   FIELD_SUBTYPE_DECIMAL,
   FIELD_SUBTYPE_MAP,
   FIELD_SUBTYPE_OBJECT,
   OBJECT_SUBTYPE_VALUE,
   TYPE_FIELD,
+  VIEW_SUBTYPE_PASSWORD,
   WIRE_DECIMALS_STRING,
   WIRE_NULL_MEMBERS_NATIVE,
   refTarget,
   wireFormatOf,
   type MetaData,
+  type MetaField,
   type MetaObject,
 } from "@metaobjectsdev/metadata";
 import { isAbstract } from "./instance-artifacts.js";
@@ -144,6 +147,54 @@ export function decimalFieldNames(entity: MetaObject): readonly string[] {
   return entity.fields().filter((f) => f.subType === FIELD_SUBTYPE_DECIMAL).map((f) => f.name);
 }
 
+/**
+ * True when the field is a credential: it declares a `view.password` ("masked input for
+ * sensitive values"), the one place the metamodel already says a value is secret.
+ *
+ * A generated CRUD route can never be a correct writer of a credential (it has no hashing
+ * seam), nor a safe reader of one, so a credential is never read or written through the
+ * generated API. Filter and sort allowlists are unchanged (`@filterable` and `@sortable` stay
+ * explicit opt-ins), so do not put them on a credential: a filter on a secret is an oracle for
+ * it. The application writes it itself, through its own code.
+ */
+export function isCredentialField(field: MetaField): boolean {
+  // ADR-0039: resolving. A view may be inherited via extends.
+  return field.views().some((v) => v.subType === VIEW_SUBTYPE_PASSWORD);
+}
+
+/**
+ * True when the generated API never writes the field: `@formExclude` (the field is out of the
+ * generated form, so no form-driven write reaches it either) or a credential.
+ */
+export function isApiWriteDenied(field: MetaField): boolean {
+  // ADR-0039: resolving. @formExclude may be inherited via extends.
+  return field.attr(FIELD_ATTR_FORM_EXCLUDE) === true || isCredentialField(field);
+}
+
+/**
+ * The names of the fields of `objects` that `isMarked` holds for on ANY declaration in
+ * `hierarchy`, in field order. A single-table (TPH) column declared by several subtypes is one
+ * column, so a credential or `@formExclude` on one declaration counts on every subtype that has it.
+ */
+function markedFieldNames(
+  objects: readonly MetaObject[],
+  hierarchy: readonly MetaObject[],
+  isMarked: (f: MetaField) => boolean,
+): string[] {
+  const marked = new Set(hierarchy.flatMap((o) => o.fields().filter(isMarked).map((f) => f.name)));
+  return [...new Set(objects.flatMap((o) => o.fields().map((f) => f.name)))].filter((n) => marked.has(n));
+}
+
+/**
+ * The `writeDeniedColumns` line of a mount that accepts writes, or "" when no field is denied
+ * (the output stays byte-identical for a model with no `@formExclude` or credential field).
+ * `hierarchy` is a TPH subtype's base and every subtype, when the mount serves one.
+ */
+export function writeDeniedColumnsLine(entity: MetaObject, indent: string, hierarchy: readonly MetaObject[] = [entity]): string {
+  const names = markedFieldNames([entity], hierarchy, isApiWriteDenied);
+  return names.length === 0 ? "" : `\n${indent}writeDeniedColumns: ${JSON.stringify(names)},`;
+}
+
 /** The declared shape of a value object, as a generated mount takes it (`ValueObjectShape` in runtime-ts). */
 interface ValueObjectShapeData {
   members: string[];
@@ -196,9 +247,15 @@ export function valueObjectShapes(entity: MetaObject): Record<string, ValueObjec
  * The setting is the project's, read from the root. Several objects share one mount when a
  * single-table (TPH) base's polymorphic route serves its subtypes' rows too: pass them all,
  * so a decimal or value object only a subtype declares is still covered. `root` is the loaded
- * root the setting is read from (`ctx.loadedRoot`).
+ * root the setting is read from (`ctx.loadedRoot`). `hierarchy` widens the credential marks to a
+ * TPH subtype's base and every subtype, when the mount serves one.
  */
-export function decimalColumnsLine(entity: MetaObject | readonly MetaObject[], indent: string, root?: MetaData): string {
+export function decimalColumnsLine(
+  entity: MetaObject | readonly MetaObject[],
+  indent: string,
+  root?: MetaData,
+  hierarchy?: readonly MetaObject[],
+): string {
   const objects: readonly MetaObject[] = Array.isArray(entity) ? entity : [entity as MetaObject];
   const first = objects[0];
   if (first === undefined) return "";
@@ -207,6 +264,8 @@ export function decimalColumnsLine(entity: MetaObject | readonly MetaObject[], i
   const wire = wireFormatOf(root ?? first);
   const names = [...new Set(objects.flatMap((o) => decimalFieldNames(o)))];
   let lines = "";
+  const hidden = markedFieldNames(objects, hierarchy ?? objects, isCredentialField);
+  if (hidden.length > 0) lines += `\n${indent}hiddenColumns: ${JSON.stringify(hidden)},`;
   if (names.length > 0) {
     lines += `\n${indent}decimalColumns: ${JSON.stringify(names)},`;
     if (wire.decimals === WIRE_DECIMALS_STRING) lines += `\n${indent}decimalWire: ${JSON.stringify(wire.decimals)},`;

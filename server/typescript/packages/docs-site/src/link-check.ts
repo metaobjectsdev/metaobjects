@@ -12,7 +12,9 @@ export function checkLinks(outDir: string, pages: string[]): string[] {
     const html = readFileSync(join(outDir, page), "utf8");
     for (const m of html.matchAll(/href="([^"]+)"/g)) {
       const href = m[1]!;
-      if (/^(https?:|mailto:|#$)/.test(href)) continue;
+      // A root-relative href is served from outside the site (an `assetBase` mirror); the site's
+      // own links are all relative.
+      if (/^(https?:|mailto:|#$|\/)/.test(href)) continue;
       const [file = "", anchor] = href.split("#");
       const target = file === "" ? page : normalize(join(dirname(page), file));
       const abs = join(outDir, target);

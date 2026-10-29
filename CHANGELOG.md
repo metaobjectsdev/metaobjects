@@ -12,6 +12,26 @@ here.**
 
 ### Docs
 
+- **The `@formExclude` description says what the attribute does since #484.** The registry text
+  said only "omitted from generated forms"; it now also says the generated create, PATCH and PUT
+  routes ignore a value sent for the field and that reads of it are unchanged. The sentence is the
+  same in `spec/metamodel/ui.json`, the TypeScript, Python and C# registry sources (Java reads the
+  spec), `expected-registry.json`, the metamodel-docs fixture and the reference site. No
+  behavior changes.
+
+- **Verify tables, the capability matrix and the entity samples now match what the ports emit.**
+  The per-port drift tables in `migrations-and-drift.md` and `templates-and-payloads.md` give
+  each port's real bare command (`meta verify`, `mvn metaobjects:verify`, `dotnet meta verify`,
+  `metaobjects verify`), what a bare run checks, the config each check needs and how to run one
+  alone, and where a bare run skips a check versus fails (a bare `dotnet meta verify` with no
+  `prompts/` or `templates/` directory exits 2); `python -m metaobjects.render.verify` (a module with no entry point) and the Node `meta`
+  as the C# binary are gone from every copy. The README capability matrix splits "DB-drift
+  verify" (TypeScript-only, the other four ports go through the TypeScript CLI) from
+  "Codegen-drift verify". The C# entity is a mutable `class`, not a `record`, and the Python
+  entity is a Pydantic `BaseModel`, not a `@dataclass`: the entity, field-type, source-kind and
+  relationship pages now show output generated from the example models. The Python
+  relationship section no longer calls reverse-finder and M:N codegen pending.
+
 - **Writing your own generator is documented as the normal path.** `llms.txt`, `llms-full.txt`
   and the README now say a team should expect to write generators, and that documentation is a
   generator. New recipe, [a typed client for the reference routes](docs/recipes/typed-client-for-the-reference-routes.md),
@@ -24,6 +44,13 @@ here.**
 - **Port docs and `llms-full.txt` now say what a fresh reader got wrong.** Each port page opens with its keep-your-ORM path (TypeScript `runtime: false`, Java and Kotlin records and data classes, sourceless C# POCOs as DTOs, Pydantic in Python); three-way merge is scoped to TypeScript everywhere it was claimed unscoped, with what the other ports do instead (committed hash manifest, refusal by name, eject); framework baselines are stated (Java 21 rather than the contradictory 17, Spring Boot 3.x with Boot 2 unsupported, .NET 8, Python 3.11, Node first and Bun second); and each port page carries its known gaps with absolute links.
 
 ### Added
+
+- **`docsSiteFile({ assetBase })` loads the docs site's CSS and JS from a base you choose.** The
+  page chrome loads daisyUI, Tailwind's browser build, Mermaid and svg-pan-zoom from jsDelivr, so a
+  site opened without network access rendered unstyled with dead diagrams. `assetBase` (also an
+  option of `generateSite`) replaces `https://cdn.jsdelivr.net/npm` in those five tags; the default
+  is unchanged and the default output is byte-identical. The `@metaobjectsdev/docs-site` README
+  lists the five files and how to serve them. Copying them into the output is not done for you.
 
 - **Jinja templates in Python and TypeScript, held to the same payload check (ADR-0061, closes #483).**
   A `template.prompt` or `template.output` body may be a Jinja file —
@@ -80,6 +107,19 @@ here.**
   an imported object unless `scope.include` names its package. Runs all 24 resolution cases of
   `fixtures/dependency-conformance/` (the 11 check cases pin the Node `meta deps check`); Kotlin loads through the same loader and adds a codegen test.
   Spring runtime auto-load and `verify` drift for dependencies are later slices.
+
+- **C# consumes a shared model at build time (FR-023 Phase 2).** `dotnet meta` now reads
+  `dependencies` from `.metaobjects/config.json` at every rung of its source ladder, verifies the
+  committed snapshot against `deps.lock.json` offline, and loads the snapshots ahead of the
+  project's own files, so an `extends`, `overlay: true` or plain FQN reference onto a dependency's
+  node resolves. Errors carry the same codes as TypeScript and Python
+  (`ERR_DEPENDENCY_SNAPSHOT_STALE`, `_METAMODEL_INCOMPATIBLE`, `_NODE_COLLISION`,
+  `_PACKAGE_NOT_OWNED`), and a load error in a dependency's file names `dep:<name>/<artifact>`.
+  Imported nodes load but are not generated: every C# generator, the `verify --codegen`
+  regeneration and the requirement gate's coverage denominator leave them out unless
+  `scope.include` names their package. C# runs the 26 resolution cases (the 11 check cases pin the Node `meta deps check`) of `fixtures/dependency-conformance/`.
+  The Node `meta deps sync` stays the only writer of the lock and the snapshot.
+  See [docs/features/metadata-dependencies.md](docs/features/metadata-dependencies.md).
 
 - **Own your generators, and give back the ones you did not change.** A team is expected to
   write generators of its own, because a generator it owns is what keeps output from drifting.
@@ -192,6 +232,34 @@ here.**
 
 ### Changed
 
+- **On Postgres, `meta verify --db` and `meta migrate` ask Postgres whether a CHECK or an index
+  expression is the one stored, instead of comparing rewritten text.** For each table the plan
+  creates a temporary table with the live columns inside a transaction it rolls back (a savepoint
+  when the connection is already in one), adds the expected CHECK to it, creates each expected
+  expression-index key and partial-index predicate as a temporary index, reads back
+  `pg_get_constraintdef`, `pg_get_indexdef` and `pg_get_expr`, and compares them with the live
+  definitions as plain strings. Every rewrite Postgres makes, including ones nobody has hand-coded,
+  now compares equal, and the string normaliser stops growing Postgres-shaped special cases. It
+  also ends the normaliser's two verified false negatives: a precedence change (`(a OR b) AND c`
+  against `a OR (b AND c)`) and a regrouped `NOT` (`NOT (a AND b)` against `NOT a AND b`) now report
+  as drift, as does the same change in an index `@where`. A database that held such a change and
+  verified clean before now reports it once: run `meta migrate` to bring it back.
+  The string normaliser stays, and decides, on SQLite and D1, in the offline `meta migrate`
+  (which has no database), on a read-only connection or hot standby, for a role without the `TEMP`
+  privilege, and for an expression that does not compile against the live columns. A probe that
+  cannot answer never reports drift or fails the command. An expression holding a `;` anywhere, or
+  an index `@using` that is not a plain access-method name, is never sent to the database. A refusal
+  for one table (such as no `SELECT` on it) gives that table no answer and does not stop the other
+  tables being probed. `meta migrate baseline --from-db` now records the generated text, not
+  Postgres's spelling, for a CHECK or an index expression the live database proves equal to the
+  metadata's, so the offline plan after a baseline compares like with like; it is best effort and
+  writes the introspected snapshot as before if the metadata does not load.
+  `meta verify --db` also uses the probe for its committed-snapshot check. New exports from
+  `@metaobjectsdev/migrate-ts`: `postgresExprCanonProbe`, `adoptGeneratedSpelling` and the
+  `ExprCanonProbe` types, with a `DiffArgs.exprCanonProbe` option. Schema comparison is
+  TypeScript-owned, so no other port carries this comparison. MySQL, SQL Server and Oracle are not
+  migrate dialects, so they have no probe.
+
 - **A bare `verify` runs the same default gate set in every port: codegen drift, prompt
   templates and the requirement ledger.** Until now a bare run covered one gate: `meta verify`
   and `dotnet meta verify` ran only templates, so "run `verify` in CI" did not catch generated
@@ -211,6 +279,25 @@ here.**
   `meta.verify.mode` parameter no longer defaults to `codegen`; unset means both gates.
 
 ### Fixed
+
+- **Generated Python routers pass `mypy --strict`.** The repository `Protocol` declares a method
+  named `list`, so every later `list[...]` annotation in its body resolved to that method
+  (`valid-type`, 81 errors on the fitness corpus); the annotations now use an
+  `from builtins import list as _list` alias, and the method keeps its name. The delete handlers
+  returned a `JSONResponse` from `-> None` and the M:N traversal handlers returned `Any` from
+  `-> list[Any]` (`return-value`, `no-any-return`); delete is now `-> Response` and returns the same
+  204, and the traversal handlers bind the rows to a typed local. HTTP behavior is unchanged
+  (the generated api-contract lane passes). A new test runs `mypy --strict` over the routers
+  generated from the fitness corpus. `mypy` joins the Python dev group.
+
+- **`buildFilterQs({ withCount: true })` sends `withCount=1`.** It sent `withCount=true`, which
+  every server's list route ignores (the cross-port contract is `withCount=1`), so the caller got
+  a bare array instead of `{ rows, total }`. `false` and `0` now send nothing.
+
+- **`metaobjects agent-docs` says what it does.** Its help claimed to scaffold the agent context;
+  the command only points at `npx meta agent-docs --server python` and exits 1. The help now says
+  so. The three flags it never read (`--server`, `--client`, `--out`) are still accepted but
+  ignored and hidden from help, so the old invocation still reaches the pointer.
 
 - **`@default: "now"` is the current time on Postgres, not the table's creation time.** The
   expected schema stored it as the literal `'now'`, and Postgres converts that literal to a
@@ -234,6 +321,29 @@ here.**
   did, and says that the port's own `verify` is the full check. Any other load failure still fails
   the command and rolls the sync back. A stale `docs/CONFORMANCE.md` cell that claimed Python passed
   only 2 of the dependency corpus's cases is corrected.
+
+- **Generated routes no longer accept or return fields they must not (#484).** A field marked
+  `@formExclude`, or a credential (a field that declares a `view.password`), is now **ignored** by
+  the generated create, PATCH and PUT in every port: the value is dropped, not rejected, so
+  an edit form that submits every field still saves, and a present `null` no longer clears it. A credential is
+  also never returned: not by list, get, or the echo of a write, or by a served report that groups by
+  it or takes its `min` or `max` (a report column is derived from its `@of` field, and it keeps the
+  credential mark; a report export names no column for it, and that column is not filterable or sortable). Before this, `@formExclude` kept
+  a field out of the generated form while the route still wrote it, and a generated read returned password
+  hashes. Generated forms (React, Angular) and the api docs omit credentials too. Your own code is unaffected:
+  the entity, DTO and generated queries still carry the field, so you keep writing a hash or token yourself.
+  A project with neither mark generates byte-identical output. If you relied on a route writing a
+  `@formExclude` field, write it from your own code. A field that is `@required` and also
+  `@formExclude` or a credential now makes the generated create route fail, because the route
+  can no longer supply its value: make the field optional, or create that entity from your own
+  code (see "Credentials and excluded fields" in `docs/features/api-contract.md`). Gated by the new `secret-fields/` sub-corpus
+  of the api-contract conformance corpus, in the generated lane of all five ports.
+
+- **`meta gen` and `meta verify --codegen` refuse an unknown codegen `dialect`** instead of silently
+  generating Postgres code. `dialect: "d1"` gets a message that says to use `"sqlite"` (D1 is
+  SQLite; `"d1"` names only the `meta migrate` transport). `meta init --d1` now scaffolds
+  `dialect: "sqlite"` in `metaobjects.config.ts`; it used to write `"d1"`. If your config has `dialect: "d1"`,
+  change it to `"sqlite"`.
 
 - **The "Model / metadata" link in the Python, C#, Java and Kotlin API docs no longer points at
   a page that does not exist.** Those ports write no model pages, so the relative link was dead.
@@ -273,12 +383,18 @@ here.**
   `meta migrate` to bring it back. Separately, `char(n)` is no longer treated as a text column
   for the `(col)::text` fold: its own regex operator sees the blank padding the cast trims, and
   Postgres never adds the cast there, so an explicit `(col)::text ~ '…'` on a `char(n)` column
-  now reads as drift. A precedence change (`(a OR b) AND c` against `a OR (b AND c)`) is still
-  not detected; that needs Postgres to canonicalise the expected side. A new Postgres test
-  migrates, applies and verifies every CHECK shape `migrate` generates. Schema comparison is
-  TypeScript-owned, so no other port carries this comparison.
+  now reads as drift. A precedence change (`(a OR b) AND c` against `a OR (b AND c)`) is not
+  detected by the string comparison; on Postgres Postgres now answers that (see "Changed", the
+  CHECK probe). A new Postgres test migrates, applies and verifies every CHECK shape `migrate`
+  generates. Schema comparison is TypeScript-owned, so no other port carries this comparison.
 
 ### Documentation
+
+- **New recipes and a real D1 example.** `docs/recipes/` gains keeping drizzle-kit migrations
+  (`drizzle-kit-migrations.md`), guarding generated routes with your own auth
+  (`guarding-generated-routes.md`) and proving your `meta verify` gate can fail
+  (`prove-your-gate-fails.md`). The Cloudflare Workers recipe now has a per-request `drizzle(env.DB)`
+  example, and the `drizzle({} as never)` placeholder and the wrong `"d1"` codegen-dialect statements are corrected.
 
 - **Two doc errors corrected against the code.** `docs/recipes/mysql.md` said Python ships a
   Postgres driver only; it ships SQLite and MySQL drivers beside it. `docs/features/api-contract.md`

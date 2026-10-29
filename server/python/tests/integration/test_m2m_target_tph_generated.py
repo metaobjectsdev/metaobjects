@@ -63,6 +63,8 @@ _META = {
                 "@discriminatorValue": "Bridge",
                 "children": [
                     {"field.int": {"name": "quantity", "@required": True}},
+                    {"field.string": {"name": "pinHash", "@maxLength": 80,
+                                      "children": [{"view.password": {}}]}},
                 ],
             }},
             {"object.entity": {
@@ -241,7 +243,7 @@ def _seed(repo: _SponsorRepo) -> None:
     repo.seed(
         sponsors=[{"id": 1, "name": "Acme"}],
         auths=[
-            {"id": 10, "type": "Bridge", "reference": "b1", "quantity": 3},
+            {"id": 10, "type": "Bridge", "reference": "b1", "quantity": 3, "pinHash": "bridge-pin"},
             {"id": 11, "type": "Copay", "reference": "c1", "payer": "acme"},
         ],
         sponsor_auths=[(1, 10), (1, 11)],
@@ -260,6 +262,20 @@ def test_compliant_repo_filters_target_to_the_resolved_discriminator() -> None:
         resp = client.get("/api/sponsors/1/bridgeAuths")
     assert resp.status_code == 200
     assert [r["id"] for r in resp.json()] == [10]
+
+
+def test_target_subtype_credential_is_never_returned() -> None:
+    # #484: BridgeAuth declares pinHash as a credential (view.password). The repo hands the
+    # router the stored row with the hash in it; the traversal must leave the key out
+    # entirely (the secret-fields corpus contract: a credential is never returned).
+    app, repo = _build_app(_SponsorRepo)
+    _seed(repo)
+    with TestClient(app) as client:
+        resp = client.get("/api/sponsors/1/bridgeAuths")
+    assert resp.status_code == 200
+    rows = resp.json()
+    assert [(r["id"], r["quantity"]) for r in rows] == [(10, 3)]
+    assert all("pinHash" not in r for r in rows), rows
 
 
 def test_router_threads_the_correct_literal_even_when_repo_ignores_it() -> None:

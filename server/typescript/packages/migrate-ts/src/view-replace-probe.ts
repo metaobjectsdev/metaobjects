@@ -16,7 +16,7 @@ const ROLLBACK = Symbol("rollback");
  * exactly as it was, still open and still usable even when `work` fails. Otherwise it
  * runs in a transaction of its own, which is rolled back.
  */
-async function rolledBack<T>(
+export async function rolledBack<T>(
   db: Kysely<Record<string, unknown>>,
   work: (q: Kysely<Record<string, unknown>>) => Promise<T>,
 ): Promise<T> {
@@ -41,7 +41,7 @@ async function rolledBack<T>(
   return result!.value;
 }
 
-const quote = (ident: string): string => `"${ident.replace(/"/g, '""')}"`;
+export const quote = (ident: string): string => `"${ident.replace(/"/g, '""')}"`;
 
 /**
  * The probe for a live Postgres database. It creates the expected definition as a

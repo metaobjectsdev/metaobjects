@@ -59,6 +59,7 @@ import {
   isReport,
   itemRouteField,
   decimalColumnsLine,
+  writeDeniedColumnsLine,
   servesReadApi,
   formatTs,
   entityOutputPath,
@@ -243,7 +244,7 @@ export function ${handlerName}(app: ${HonoSym}<any, any, any>, deps: { db: unkno
     updateSchema: ${entityName}UpdateSchema,
     filterAllowlist: ${entityName}FilterAllowlist,
     sortAllowlist: ${entityName}SortAllowlist,
-    dialect: ${JSON.stringify(ctx.dialect)},${decimalColumnsLine(entity, "    ", ctx.loadedRoot)}${exposeLineHono}
+    dialect: ${JSON.stringify(ctx.dialect)},${decimalColumnsLine(entity, "    ", ctx.loadedRoot)}${writeDeniedColumnsLine(entity, "    ")}${exposeLineHono}
   });
 }
 `;

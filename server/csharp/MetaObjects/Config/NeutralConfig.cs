@@ -1,11 +1,17 @@
 // Port-neutral `.metaobjects/config.json` reading.
 //
-// Reads the NEUTRAL SUBSET (`schema_version`, `sources`, `libraries`). The file also
-// carries TypeScript-owned keys (`pending_in_git`, `confidence_thresholds`,
-// `extract`, `migrate`, `scope`); those are IGNORED rather than modeled, so a
-// new TS-only key never becomes a four-port change. `scope` in particular is
-// entirely out of scope for this reader — see
+// Reads the NEUTRAL SUBSET (`schema_version`, `sources`, `libraries`, `dependencies`, and the two
+// pattern lists FR-023 needs: `scope.include` and `migrate.scope`). The file also carries
+// TypeScript-owned keys (`pending_in_git`, `confidence_thresholds`, `extract`, and the rest of
+// `migrate` and `scope`); those are IGNORED rather than modeled, so a new TS-only key never becomes
+// a four-port change. See
 // docs/superpowers/specs/2026-08-19-cross-port-metadata-sources-design.md §4.
+//
+// `dependencies` (FR-023) is read at EVERY rung of the source ladder, including the explicit
+// metadata directory a C# command is handed, because this port has no native config surface of its
+// own: `.metaobjects/config.json` is where a dependency is declared. `scope.include` is read only
+// for the explicit-include rule (a dependency's package is generated and migrated only when the
+// project NAMES it); `scope.exclude` is not read, because this port has never scoped its own output.
 //
 // `libraries` (FR-043) is read here — not just by TypeScript — because this port has
 // no rung-2 native config surface (unlike Java/Kotlin's pom or Python's
@@ -53,6 +59,24 @@ public sealed class NeutralConfig
     /// `resolveCollection` (ERR_UNKNOWN_LIBRARY).
     public IReadOnlyList<string> Libraries { get; }
 
+    /// <summary>
+    /// FR-023 — the declared metadata dependencies, each already validated; empty when the key is absent.
+    /// Names are unique. Resolving them to a committed snapshot is <see cref="ImportScope.Resolve"/>'s job.
+    /// </summary>
+    public IReadOnlyList<DependencySpec> Dependencies { get; }
+
+    /// <summary>FR-023 — <c>scope.include</c>, read only for the explicit-include rule. Empty when absent.</summary>
+    public IReadOnlyList<string> ScopeInclude { get; }
+
+    /// <summary>FR-023 — <c>migrate.scope</c>, or null when the project declares none.</summary>
+    public IReadOnlyList<string>? MigrateScope { get; }
+
+    /// <summary>
+    /// The directory holding the <c>.metaobjects/</c> folder this config was read from — where the lock and
+    /// the committed dependency snapshots live beside it.
+    /// </summary>
+    public string ConfigDir { get; }
+
     /// ADR-0058 — the project's physical-naming rules (`naming` in config.json), each
     /// absent rule at its default. Never null: an absent `naming` key is the default,
     /// same as an empty `naming: {}` block.
@@ -69,8 +93,14 @@ public sealed class NeutralConfig
 
     private NeutralConfig(
         IReadOnlyList<IReadOnlyDictionary<string, string>> sources, IReadOnlyList<string> libraries,
-        PhysicalNaming naming, WireFormat wire, string? outDir)
+        PhysicalNaming naming, WireFormat wire, string? outDir,
+        IReadOnlyList<DependencySpec> dependencies, IReadOnlyList<string> scopeInclude,
+        IReadOnlyList<string>? migrateScope, string configDir)
     {
+        Dependencies = dependencies;
+        ScopeInclude = scopeInclude;
+        MigrateScope = migrateScope;
+        ConfigDir = configDir;
         OutDir = outDir;
         Sources = sources;
         Libraries = libraries;
@@ -193,6 +223,10 @@ public sealed class NeutralConfig
                 }
             }
 
+            var dependencies = ReadDependencies(root, path);
+            var scopeInclude = ReadPatterns(root, path, "scope", "include") ?? [];
+            var migrateScope = ReadPatterns(root, path, "migrate", "scope");
+
             var columns = ColumnNamingStrategy.SnakeCase;
             var tables = TableNamingRule.SnakeCase;
             if (root.TryGetProperty("naming", out var naming))
@@ -226,11 +260,43 @@ public sealed class NeutralConfig
                 }
             }
 
-            // Unknown top-level keys (including `scope`/`migrate`) are IGNORED by
-            // design — see the file header.
+            // Unknown top-level keys, and every key of `scope` / `migrate` but the two pattern
+            // lists read above, are IGNORED by design — see the file header.
             return new NeutralConfig(specs, libraries, new PhysicalNaming(columns, tables), ReadWire(root, path),
-                ReadOutDir(root, path, configDir));
+                ReadOutDir(root, path, configDir), dependencies, scopeInclude, migrateScope,
+                Path.GetFullPath(configDir));
         }
+    }
+
+    /// The `dependencies` array (FR-023): present-but-wrong-shaped raises, as `sources` and `libraries`
+    /// do, and names must be unique because the name is the key of the lock and of the snapshot directory.
+    private static IReadOnlyList<DependencySpec> ReadDependencies(JsonElement root, string path)
+    {
+        if (!root.TryGetProperty("dependencies", out var deps)) return [];
+        if (deps.ValueKind != JsonValueKind.Array)
+            throw new MetaModelException($"{path}: \"dependencies\" must be an array", ErrorCode.ERR_BAD_ATTR_VALUE);
+
+        var specs = deps.EnumerateArray().Select(d => DependencyResolver.ReadSpec(d, path)).ToList();
+        if (specs.Select(s => s.Name).Distinct(StringComparer.Ordinal).Count() != specs.Count)
+            throw new MetaModelException($"{path}: \"dependencies\" names must be unique", ErrorCode.ERR_BAD_ATTR_VALUE);
+        return specs;
+    }
+
+    /// One pattern list nested in a TypeScript-owned block: `scope.include` or `migrate.scope`. The
+    /// block must be an object when present and the list an array of non-empty strings; every OTHER key
+    /// of the block is TypeScript's and is not read. Null when the block or the list is absent.
+    private static IReadOnlyList<string>? ReadPatterns(JsonElement root, string path, string block, string key)
+    {
+        if (!root.TryGetProperty(block, out var b) || b.ValueKind == JsonValueKind.Null) return null;
+        if (b.ValueKind != JsonValueKind.Object)
+            throw new MetaModelException($"{path}: \"{block}\" must be an object", ErrorCode.ERR_BAD_ATTR_VALUE);
+        if (!b.TryGetProperty(key, out var list) || list.ValueKind == JsonValueKind.Null) return null;
+
+        if (list.ValueKind != JsonValueKind.Array ||
+            list.EnumerateArray().Any(v => v.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(v.GetString())))
+            throw new MetaModelException(
+                $"{path}: \"{block}.{key}\" must be an array of non-empty strings", ErrorCode.ERR_BAD_ATTR_VALUE);
+        return list.EnumerateArray().Select(v => v.GetString()!).ToList();
     }
 
     /// The `csharp` block: the one C#-scoped setting, `outDir`, where `dotnet meta gen` writes

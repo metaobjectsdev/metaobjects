@@ -58,7 +58,11 @@ public static class CodegenRunner
             // generators that emit those ask for the report's row model themselves, through
             // ReportRows, so every other generator stays report-free without having to know
             // what a report is.
-            Entities = root.Objects().Where(o => !o.IsReport()).ToList(),
+            //
+            // FR-023: an object a metadata dependency owns is dropped here too, for the same reason
+            // and at the same place (root.InScope; ImportScope.InScope is the rule). It loaded so the
+            // project's own model resolves against it, but it is not this project's to generate.
+            Entities = root.Objects().Where(o => !o.IsReport() && root.InScope(o)).ToList(),
             Root = root,
             Config = config,
             Warn = warnings.Add,
@@ -69,7 +73,7 @@ public static class CodegenRunner
         // entity set every DbSet/route/finder-emitting generator below reads from.
         // A view-backed report gets a DbSet too, so it is part of the collision check.
         CSharpNaming.AssertNoCollectionNameCollisions(
-            [.. ctx.Entities, .. root.Objects().Where(ReportRows.IsViewBacked)]);
+            [.. ctx.Entities, .. root.Objects().Where(o => ReportRows.IsViewBacked(o) && root.InScope(o))]);
 
         Directory.CreateDirectory(config.OutDir);
         var results = new List<WriteResult>();

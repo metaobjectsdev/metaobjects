@@ -206,14 +206,15 @@ public static class FieldLint
     /// exit code. Loads LENIENT so the findings are the same with and without <c>--lax</c>;
     /// a load failure is the gate's to report, so it stays silent here.
     /// </summary>
-    public static void RunAdvisory(string metadataDir, IReadOnlyList<string>? metadataFiles, IReadOnlyList<string>? libraries, TextWriter stderr)
+    public static void RunAdvisory(
+        string metadataDir, IReadOnlyList<string>? metadataFiles, IReadOnlyList<string>? libraries, TextWriter stderr,
+        MetaObjects.Config.ImportScope? imports = null)
     {
         List<Finding> findings;
         try
         {
-            var load = metadataFiles is { } resolved
-                ? MetaDataLoader.FromUris(resolved.Select(f => new Uri(f)).ToList(), libraries, false)
-                : MetaDataLoader.FromDirectory(metadataDir, libraries, strict: false);
+            var load = new MetaObjects.Config.ResolvedMetadata(
+                metadataDir, metadataFiles, libraries ?? [], MetaObjects.Meta.PhysicalNaming.Default, null, null, imports).Load();
             if (load.Errors.Count > 0) return;
             var files = metadataFiles ?? new DirectorySource(metadataDir).Expand().Select(f => f.FilePath).ToList();
             findings = [.. LintReferenceFields(load.Root), .. LintDuplicateFields(files)];

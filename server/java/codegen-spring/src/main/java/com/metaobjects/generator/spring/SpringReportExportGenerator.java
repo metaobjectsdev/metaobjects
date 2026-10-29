@@ -204,7 +204,12 @@ public class SpringReportExportGenerator extends MultiFileDirectGeneratorBase<Me
                                        String writerPackage, int maxRows) {
         String dto = SpringNaming.dtoName(shortName);
         String className = shortName + "Export";
-        List<MetaField> fields = SpringGeneratorSupport.dtoComponentFields(entity);
+        // A credential column is never exported: no header, no cell.
+        List<String> credentials = SpringGeneratorSupport.credentialNames(entity);
+        List<MetaField> fields = new java.util.ArrayList<>();
+        for (MetaField f : SpringGeneratorSupport.dtoComponentFields(entity)) {
+            if (!credentials.contains(f.getName())) fields.add(f);
+        }
         StringBuilder src = new StringBuilder();
         if (!pkg.isEmpty()) src.append("package ").append(pkg).append(";\n\n");
         if (!writerPackage.equals(pkg)) {

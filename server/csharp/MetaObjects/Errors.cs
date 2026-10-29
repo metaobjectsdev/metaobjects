@@ -168,6 +168,26 @@ public enum ErrorCode
     /// FR-043: a NEW top-level node is declared into a package a shipped library owns while that library is opted in — a later release of the library may ship a node of that name and merge into it. `overlay: true` on one of the library's OWN nodes is the documented amendment door and is untouched.
     /// </summary>
     ERR_LIBRARY_PACKAGE_NOT_OWNED,
+
+    // FR-023 — metadata dependencies. The consume side (read `dependencies`, load the committed snapshot,
+    // refuse a stale or colliding one) raises the stale, collision, incompatible and not-owned codes in this
+    // port; `unresolved`, `manifest invalid` and `upstream drift` belong to the Node `meta deps sync` / `check`
+    // and are registered here so the shared corpus list stays one set in every port.
+
+    /// <summary>FR-023: a declared dependency's transport could not locate a directory holding metaobjects.pkg.json.</summary>
+    ERR_DEPENDENCY_UNRESOLVED,
+    /// <summary>FR-023: a dependency's metaobjects.pkg.json fails its schema, names a different dependency, points at a missing or hash-mismatched artifact, or its artifact does not load standalone / does not declare exactly the listed packages and nodes.</summary>
+    ERR_DEPENDENCY_MANIFEST_INVALID,
+    /// <summary>FR-023: the committed snapshot does not match .metaobjects/deps.lock.json (lock missing, entry missing or extra, artifact missing, or hash mismatch) — run `meta deps sync`.</summary>
+    ERR_DEPENDENCY_SNAPSHOT_STALE,
+    /// <summary>FR-023: two dependencies export the same fully-qualified node.</summary>
+    ERR_DEPENDENCY_NODE_COLLISION,
+    /// <summary>FR-023: a local top-level node is declared into a package owned by a dependency.</summary>
+    ERR_DEPENDENCY_PACKAGE_NOT_OWNED,
+    /// <summary>FR-023: a dependency's metamodelVersion major differs from this toolchain's.</summary>
+    ERR_DEPENDENCY_METAMODEL_INCOMPATIBLE,
+    /// <summary>FR-023: `meta deps check` / `verify --deps` found the installed dependency differs from the committed snapshot.</summary>
+    ERR_DEPENDENCY_UPSTREAM_DRIFT,
     // FR5c — multi-file overlay merge produced a conflicting attribute value:
     // two contributors set the same @attr to different non-empty values.
     ERR_MERGE_CONFLICT,

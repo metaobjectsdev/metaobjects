@@ -49,6 +49,7 @@ import {
   type AmbiguousResolution,
   type Change,
   type DataHazard,
+  type Dialect,
   type D1Binding,
   type EmitResult,
   type D1Runner,
@@ -56,6 +57,8 @@ import {
   type SchemaSnapshot,
   type TableDescriptor,
   postgresViewReplaceProbe,
+  postgresExprCanonProbe,
+  adoptGeneratedSpelling,
 } from "@metaobjectsdev/migrate-ts";
 import {
   buildWranglerExecuteArgs,
@@ -825,6 +828,9 @@ export async function migrateCommand(
         // Postgres decides whether a changed view can be replaced in place: the probe
         // creates the new definition as a temporary view in a transaction it rolls back.
         ...(kysely.dialect === "postgres" ? { viewReplaceProbe: postgresViewReplaceProbe(kysely.db) } : {}),
+        // ...and the same for CHECK / index expressions: Postgres says how it stores the expected
+        // text, so a stored rewrite no string rule knows is not proposed as a drop and re-add.
+        ...(kysely.dialect === "postgres" ? { exprCanonProbe: postgresExprCanonProbe(kysely.db) } : {}),
         allow: tokensToAllowOptions(config.allow),
         renames: config.renames,
         // #258 — adopting a live DB whose PRIMARY KEY differs from the metadata identity
@@ -1114,6 +1120,54 @@ export async function migrateCommand(
 }
 
 /**
+ * Load the project's metadata the way `baseline` does: `metaobjects.config.ts` is read ONCE, up
+ * front, for the consumer providers/libraries (mirroring the DB path and `meta gen`, so
+ * config-registered custom subtypes resolve too, #157), and the result is deliberately NOT
+ * scoped — `baseline` records a STARTING POINT.
+ *
+ * Throws what loading throws; a `RemovedNamingConfigError` from the config propagates unchanged.
+ */
+async function loadBaselineMetadata(metaRoot: string, genRoot: string) {
+  let baselineLoadOptions: ReturnType<typeof loadMemoryOptionsFrom> = {};
+  try {
+    const cfg = await loadMetaobjectsConfig(genRoot);
+    baselineLoadOptions = loadMemoryOptionsFrom(cfg);
+  } catch (e) {
+    if (e instanceof RemovedNamingConfigError) throw e;
+    // config absent — no custom providers, no libraries, default snake_case
+  }
+  const collection = await resolveCollection(metaRoot);
+  return await loadMemory(collection.configDir, {
+    ...collectionLoadOptions(collection),
+    ...baselineLoadOptions,
+  });
+}
+
+/**
+ * Postgres `baseline --from-db`: where the live database proves a CHECK or index expression is
+ * exactly what the metadata would generate, record the GENERATED text instead of Postgres's
+ * spelling of it, so the offline plan compares like with like (see migrate-ts
+ * `adoptGeneratedSpelling`). Best effort and never fatal: baseline worked without metadata
+ * before, so metadata that will not load, or a database that cannot answer the probe, leaves
+ * the introspected snapshot exactly as it was.
+ */
+async function withGeneratedSpelling(
+  snapshot: SchemaSnapshot,
+  db: Parameters<typeof introspect>[0],
+  dialect: Dialect,
+  metaRoot: string,
+  genRoot: string,
+): Promise<SchemaSnapshot> {
+  try {
+    const metadata = await loadBaselineMetadata(metaRoot, genRoot);
+    const expected = baselineFromMetadata(metadata, dialect, buildProjectionViews(metadata, { dialect }));
+    return await adoptGeneratedSpelling(snapshot, expected, postgresExprCanonProbe(db));
+  } catch {
+    return snapshot;
+  }
+}
+
+/**
  * `meta migrate baseline [--from-db]` — seed the committed reference snapshot.
  * `--from-metadata` (default) derives it from metadata; `--from-db` introspects
  * an existing database once. Emits no migration.
@@ -1150,6 +1204,9 @@ export async function runBaseline(
     try {
       snapshot = await introspect(kysely.db, kysely.dialect);
       if (config.format === "flyway") snapshot = withoutFlywayHistory(snapshot);
+      if (kysely.dialect === "postgres") {
+        snapshot = await withGeneratedSpelling(snapshot, kysely.db, config.dialect, metaRoot, genRoot);
+      }
     } finally {
       await kysely.close();
     }
@@ -1181,21 +1238,6 @@ export async function runBaseline(
       `baseline — this emits NO CREATE TABLE. Use it only if your database already matches ` +
       `your metadata; for a new/empty database run \`${greenfieldCreateCmd(config.dialect)}\` instead.`,
     );
-    let metadata;
-    // Load metaobjects.config.ts ONCE, up front, for the consumer providers/libraries —
-    // mirroring the DB path (and `meta gen`) so offline baseline resolves
-    // config-registered custom subtypes too (#157).
-    let baselineLoadOptions: ReturnType<typeof loadMemoryOptionsFrom> = {};
-    try {
-      const cfg = await loadMetaobjectsConfig(genRoot);
-      baselineLoadOptions = loadMemoryOptionsFrom(cfg);
-    } catch (e) {
-      if (e instanceof RemovedNamingConfigError) {
-        log.error(e.message);
-        return 2;
-      }
-      // config absent — no custom providers, no libraries, default snake_case
-    }
     // `baseline` records a STARTING POINT, so it is deliberately NOT scoped: the
     // `--from-db` arm captures whatever the database holds (there is no provenance
     // for an introspected table), and an offline baseline that recorded less would
@@ -1205,13 +1247,14 @@ export async function runBaseline(
     // it — which is what makes that true. Committing the narrowed schema instead
     // would delete the entry, and removing the scope later would then propose
     // CREATE TABLE for a table that exists.
+    let metadata;
     try {
-      const collection = await resolveCollection(metaRoot);
-      metadata = await loadMemory(collection.configDir, {
-        ...collectionLoadOptions(collection),
-        ...baselineLoadOptions,
-      });
+      metadata = await loadBaselineMetadata(metaRoot, genRoot);
     } catch (err) {
+      if (err instanceof RemovedNamingConfigError) {
+        log.error(err.message);
+        return 2;
+      }
       reportLoadError(log, "migrate baseline: failed to load metadata", err);
       return 1;
     }

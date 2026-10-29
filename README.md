@@ -179,9 +179,10 @@ first-week wedge plan — and `meta init` picks up from there.
 | Templates + render (FR-004) | Yes | Yes | Yes (wraps Java) | Yes | Yes |
 | Payload-VO codegen (the value object's own type, ADR-0056) | Yes (`entityFile()`) | Yes (`SpringValueObjectGenerator`) | Yes (`KotlinEntityGenerator`) | Yes (`EntityGenerator`) | Yes (`entity`) |
 | Migration emission | `meta migrate` (Postgres / SQLite / D1) | Via TS toolchain (`@metaobjectsdev/cli migrate`) | Via TS toolchain (`@metaobjectsdev/cli migrate`) | Via TS toolchain (ADR-0015) | Via TS toolchain (ADR-0015) |
-| DB-drift verify | `meta verify --db <url>` | Template-drift: `Verify.check`; schema-drift is TS-owned (ADR-0015) | Template-drift: `Verify.check`; startup: `MetadataStartupValidator` | `dotnet meta verify` (codegen-drift) | Schema-drift is TS-owned (ADR-0015) |
+| DB-drift verify | `meta verify --db <url>` | Through the TypeScript CLI (ADR-0015) | Through the TypeScript CLI (ADR-0015) | Through the TypeScript CLI (ADR-0015) | Through the TypeScript CLI (ADR-0015) |
+| Codegen-drift verify | `meta verify` | `mvn metaobjects:verify` | `mvn metaobjects:verify` (via Java) | `dotnet meta verify` | `metaobjects verify` |
 | Prisma schema (`orm: "prisma"`, #479) | `prismaSchemaFile()` writes `schema.prisma` (Postgres / MySQL / SQLite); `verify --codegen` and `verify --db` gate it | No | No | No | No |
-| Template-drift verify | Yes | Yes (`Verify.check`) | Yes (via Java) | Yes (`dotnet meta verify`) | Yes (`metaobjects.render.verify`) |
+| Template-drift verify | Yes | Yes (`Verify.check`) | Yes (via Java) | Yes (`dotnet meta verify`) | Yes (`metaobjects verify`) |
 | YAML authoring (sigil-free → JSON) | Yes | Yes | Yes (via Java) | Yes | Yes |
 | Capability requirements (`requirement.*`) | `meta verify` gate + authoring lint; `requirementTests()` stubs | `mvn metaobjects:verify` gate; JUnit Jupiter `requirement-tests` | Gate via the Java Maven goal; JUnit Jupiter `requirement-tests` | `dotnet meta verify` gate; xUnit `requirement-tests` | `metaobjects verify` gate; pytest `requirement-tests` |
 | Reporting vocabulary (`dimension` / `measure` / `segment` / `object.report`, FR-044) | Registered; a view-backed report becomes a SQL view in `meta migrate`, is read by `ObjectManager`, and gets generated read-only list routes and a TanStack list hook (no grid or form); the `cube-model` generator writes the vocabulary as Cube data-model files | Registered; OMDB reads a view-backed report; generates a read-only Spring controller, DTO, repository and filter allowlist | Registered (via Java); generates an Exposed table object, a row data class, a filter allowlist and a read-only Spring controller per view-backed report | Registered; generates a keyless EF Core row type, read-only routes and a filter allowlist per view-backed report | Registered; `ObjectManager` reads a view-backed report; generates a Pydantic row model, a read-only FastAPI router and a filter allowlist |
@@ -241,7 +242,7 @@ sixth ships two libraries at their own stability labels:
    [Write your own generator](docs/recipes/write-your-own-generator.md) has every port's
    20-line shape plus JSON Schema and OpenAPI examples to copy. The reference generators
    (Drizzle/Zod + Fastify for TS, Spring REST + DTO + repository for Java, `data class` +
-   Exposed for Kotlin, EF Core record + ASP.NET routes for C#, Pydantic + FastAPI for
+   Exposed for Kotlin, EF Core entity class + ASP.NET routes for C#, Pydantic + FastAPI for
    Python) are starting points: run one as shipped when it already emits what you want, or
    eject the one that is close, change it, and regenerate.
    The engine that runs generators is core; their output is yours.
@@ -276,8 +277,8 @@ sixth ships two libraries at their own stability labels:
    `meta eject <library>`. See [`docs/features/libraries.md`](docs/features/libraries.md).
 
 **Sharing a model across your own projects** *(the TypeScript toolchain publishes;
-TypeScript, Python, Java and Kotlin projects consume, from an installed npm or Python
-package or over a `path` dependency such as a sibling checkout; C# arrives in Phase 2)* — one project publishes
+TypeScript, Python, Java, Kotlin and C# projects consume, from an installed npm or Python
+package or over a `path` dependency such as a sibling checkout)* — one project publishes
 part of its model (a common `Customer`, an audited base, a set of enums) with
 `sharedModelFile()`, and another declares it in `dependencies`, syncs it into a
 committed, hash-locked snapshot and builds on it with `extends` and references. When the

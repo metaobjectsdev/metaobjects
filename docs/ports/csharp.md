@@ -106,6 +106,18 @@ Drop metadata under `metaobjects/`, for example `metaobjects/meta.blog.json`:
 }}
 ```
 
+### Building on a shared model (optional)
+
+A model published from another repository is declared under `dependencies` in
+`.metaobjects/config.json` and synced by the Node CLI (`meta deps sync` writes
+`.metaobjects/deps.lock.json` and a committed snapshot under `.metaobjects/deps/`). `dotnet meta`
+reads both, at every rung of the source ladder, and never writes them: a snapshot that no longer
+matches the lock fails with `ERR_DEPENDENCY_SNAPSHOT_STALE`. The snapshot loads first, so your
+own metadata can `extends`, overlay or reference its nodes, but an imported node is not generated
+(and is not counted by the requirement gate) unless `scope.include` names its package. What C#
+does and does not do is in
+[Metadata dependencies](../features/metadata-dependencies.md).
+
 ### Custom providers (optional)
 
 If your app needs a metamodel subtype the core doesn't ship, declare an

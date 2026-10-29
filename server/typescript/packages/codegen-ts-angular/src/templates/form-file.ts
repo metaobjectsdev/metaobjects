@@ -4,7 +4,7 @@
 //
 // Visible-fields rules match the React generator:
 //   - Primary-identity fields excluded (DB-generated)
-//   - Fields with @formExclude: true excluded
+//   - Fields with @formExclude: true excluded, and credential (view.password) fields
 //   - Timestamp fields with default CURRENT_TIMESTAMP excluded (auto-managed)
 //
 // Form generation is OPT-IN at PROJECT level: add `angularFormFile()` to
@@ -20,12 +20,13 @@ import {
   IDENTITY_SUBTYPE_PRIMARY,
   IDENTITY_ATTR_FIELDS,
   FIELD_ATTR_DEFAULT,
+  FIELD_ATTR_FORM_EXCLUDE,
   FIELD_ATTR_MAX_LENGTH,
   FIELD_SUBTYPE_CURRENCY,
   FIELD_SUBTYPE_BOOLEAN,
 } from "@metaobjectsdev/metadata";
 import { type RenderContext, GENERATED_HEADER, GENERATED_EDIT_NOTE, entityModuleSpecifier,
-  effectivePackage,
+  effectivePackage, isCredentialField,
 } from "@metaobjectsdev/codegen-ts";
 
 function primaryFieldNames(entity: MetaObject): Set<string> {
@@ -55,7 +56,9 @@ function visibleFields(entity: MetaObject): MetaField[] {
   const out: MetaField[] = [];
   for (const child of entity.fields()) {
     // ADR-0039: resolving — a field may inherit @formExclude via extends.
-    if (child.attr("formExclude") === true) continue;
+    if (child.attr(FIELD_ATTR_FORM_EXCLUDE) === true) continue;
+    // A credential is never edited through a generated form (see the React generator).
+    if (isCredentialField(child)) continue;
     if (pkNames.has(child.name)) continue;
     if (isAutoManaged(child)) continue;
     out.push(child);

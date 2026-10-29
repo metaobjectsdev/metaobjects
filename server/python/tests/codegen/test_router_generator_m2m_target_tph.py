@@ -127,7 +127,7 @@ def _render() -> str:
 def test_protocol_seam_gains_target_subtype_param_for_a_tph_target() -> None:
     out = _render()
     assert (
-        "def find_related_bridgeAuths(self, id: int, target_subtype: str) -> list[Any]: ..."
+        "def find_related_bridgeAuths(self, id: int, target_subtype: str) -> _list[Any]: ..."
     ) in out
 
 
@@ -139,7 +139,7 @@ def test_route_body_passes_the_resolved_discriminator_value_literal() -> None:
         "    sponsor_id: int,\n"
         "    repo: Annotated[SponsorRepository, Depends(get_repository)],\n"
         ") -> list[Any]:\n"
-        '    return render_wire(repo.find_related_bridgeAuths(sponsor_id, "Bridge"), _WIRE_BRIDGE_AUTH)'
+        '    rows: list[Any] = render_wire(repo.find_related_bridgeAuths(sponsor_id, "Bridge"), _WIRE_BRIDGE_AUTH)'
     ) in out
 
 
@@ -152,5 +152,5 @@ def test_no_bare_two_arg_form_leaks_alongside_the_widened_one() -> None:
     # test_router_generator.py::test_uuid_pk_types_every_path_param_and_protocol_site_as_uuid
     # — byte-identical before and after this change, since Tag is never TPH.
     out = _render()
-    assert "def find_related_bridgeAuths(self, id: int) -> list[Any]: ..." not in out
+    assert "def find_related_bridgeAuths(self, id: int) -> _list[Any]: ..." not in out
     assert "return repo.find_related_bridgeAuths(sponsor_id)\n" not in out

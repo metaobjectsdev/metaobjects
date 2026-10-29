@@ -62,6 +62,17 @@ describe("buildFilterQs", () => {
     expect(decoded(result)).not.toContain("filter[withCount]");
   });
 
+  test("withCount: true is sent as withCount=1, the value the server's list routes read", () => {
+    const result = buildFilterQs({ limit: 10, withCount: true });
+    expect(result).toContain("withCount=1");
+    expect(result).not.toContain("withCount=true");
+  });
+
+  test("withCount: false or 0 emits no withCount key", () => {
+    expect(buildFilterQs({ limit: 10, withCount: false })).not.toMatch(/withCount/);
+    expect(buildFilterQs({ limit: 10, withCount: 0 })).not.toMatch(/withCount/);
+  });
+
   test("omits withCount when not present (no key, not 'withCount=undefined')", () => {
     const result = buildFilterQs({ limit: 10 });
     expect(result).not.toMatch(/(^|&)withCount(=|&|$)/);

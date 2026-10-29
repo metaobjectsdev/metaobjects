@@ -43,6 +43,9 @@ export const API_CONTRACT_JSONB_SCENARIOS_DIR = resolve(API_CONTRACT_JSONB_DIR, 
 export const API_CONTRACT_WRITE_THROUGH_DIR = resolve(API_CONTRACT_DIR, "write-through");
 export const API_CONTRACT_WRITE_THROUGH_SCENARIOS_DIR = resolve(API_CONTRACT_WRITE_THROUGH_DIR, "scenarios");
 // F22 view-only projection subcorpus (GENERATED lane only, every port).
+export const API_CONTRACT_SECRET_FIELDS_DIR = resolve(API_CONTRACT_DIR, "secret-fields");
+export const API_CONTRACT_SECRET_FIELDS_SCENARIOS_DIR = resolve(API_CONTRACT_SECRET_FIELDS_DIR, "scenarios");
+
 export const API_CONTRACT_PROJECTION_DIR = resolve(API_CONTRACT_DIR, "projection");
 export const API_CONTRACT_PROJECTION_SCENARIOS_DIR = resolve(API_CONTRACT_PROJECTION_DIR, "scenarios");
 // FR-044 view-backed report subcorpus (GENERATED lane only, every port).
