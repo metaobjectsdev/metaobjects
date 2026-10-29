@@ -705,6 +705,13 @@ export async function migrateCommand(
   // when explicitly requested via --from-db, when --apply needs a connection, or
   // for --rollback (which runs hand-authored down.sql against the live DB).
   if (!config.fromDb && !config.apply && config.rollback === undefined) {
+    // The scratch database is one side of a comparison with a live database, which this
+    // path never reads; a --shadow-db it silently ignored would read as a clean comparison.
+    if (flags.shadowDb !== undefined) {
+      log.error(`migrate: --shadow-db needs --from-db (or --apply): without it migrate compares the metadata with the committed snapshot and reads no database`);
+      emitStructuredError("migrate: --shadow-db needs --from-db", "re-run with --from-db to compare the metadata with the database", fmt);
+      return 2;
+    }
     return await runOfflineGenerate(config, metaRoot, fmt, genRoot);
   }
 
@@ -1562,6 +1569,12 @@ export async function runOfflineGenerate(
   logOutOfScope(plan.outOfScope, plan.importedOutOfScope ?? [], fmt);
 
   const offlineNotes = viewRecreateNotes(diffResult.changes);
+  // Which comparison ran (every Postgres run says so): this one never reads the database, so
+  // a change somebody made there by hand is not seen here.
+  if (config.dialect === "postgres") {
+    offlineNotes.unshift("compared the metadata with the committed snapshot; no database was read, so a change "
+      + "made directly in the database is not seen here (meta migrate --from-db or meta verify --db compares with it).");
+  }
   const offlineResult = (extra: Partial<MigrateResultShape>): MigrateResultShape => ({
     dialect: offlineDialect,
     displayUrl: "",
@@ -1578,7 +1591,7 @@ export async function runOfflineGenerate(
     return 1;
   }
   if (diffResult.changes.length === 0) {
-    finishMigrate(fmt, [`migrate: no changes`], migrateResultToData(offlineResult({})));
+    finishMigrate(fmt, [`migrate: no changes`, ...narratedNotes(offlineNotes)], migrateResultToData(offlineResult({})));
     return 0;
   }
   const offlineWarnings = warnDataHazards(diffResult.hazards);

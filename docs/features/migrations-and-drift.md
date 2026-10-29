@@ -411,7 +411,7 @@ the database. A real change of any of them is still reported. The scratch databa
 
 | Source | How |
 |---|---|
-| An explicit URL | `--shadow-db <url>` on `verify` and `migrate`, else `SHADOW_DATABASE_URL`, else `migrate.shadowDatabaseUrl` in `.metaobjects/config.json`. Used as given and never dropped; nothing is left in it because the schema is applied inside a rolled-back transaction. |
+| An explicit URL | `--shadow-db <url>` on `verify` and on `migrate --from-db` / `--apply` (a plain `meta migrate` reads no database, says so, and refuses the flag), else `SHADOW_DATABASE_URL`, else `migrate.shadowDatabaseUrl` in `.metaobjects/config.json`. Used as given and never dropped; nothing is left in it because the schema is applied inside a rolled-back transaction. |
 | `CREATE DATABASE` | With none of the above, a database named `mo_shadow_<random>` is created on the `--db` server when the role may, and **always dropped** afterwards, including on error. |
 
 A run opens its scratch database once, and every comparison it makes uses it: `meta verify --db`

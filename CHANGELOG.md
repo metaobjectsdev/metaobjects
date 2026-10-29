@@ -318,7 +318,9 @@ here.**
   cannot be opened or applied is an error naming the cause. When a `CREATE`d one is not available,
   the rolled-back temp-object probe on the target answers (it needs write privileges and takes
   brief locks), and SQLite and offline plans keep the string normaliser. Every Postgres run says
-  which path ran and, on a fallback, why. Clearing a live comment the metadata does not declare
+  which path ran and, on a fallback, why: a plain `meta migrate` (no `--from-db` or `--apply`)
+  says it compared the committed snapshot and read no database, and refuses `--shadow-db`, which
+  it would otherwise have ignored. Clearing a live comment the metadata does not declare
   needs the new `--allow drop-comment`; without it `meta migrate` keeps the comment, plans the
   rest and says so, and `meta verify --db` still reports it. **Upgrade note:** the committed
   snapshot moves to `formatVersion` 4, which records comments and GENERATED identity read off the
