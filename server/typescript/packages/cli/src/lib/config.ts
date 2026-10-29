@@ -39,6 +39,10 @@ export interface ResolvedD1Config {
 export interface ResolvedMigrateConfig {
   outDir: string;
   databaseUrl: string | undefined;
+  /** Postgres: an explicit scratch database URL (flag > `SHADOW_DATABASE_URL` > config). */
+  shadowDatabaseUrl?: string | undefined;
+  /** `--no-shadow-db`: never open a scratch database. */
+  shadowDisabled?: boolean;
   dialect: Dialect | undefined;
   /** Output-format adapter (#192): "default" homegrown layout, or "flyway" V__/U__. */
   format: MigrateFormat;
@@ -137,6 +141,8 @@ export async function resolveMigrateConfig(
   return {
     outDir: flags.outDir ?? cfgBlock.outDir ?? MIGRATE_DEFAULTS.outDir,
     databaseUrl: flags.db ?? envUrl ?? cfgBlock.databaseUrl ?? MIGRATE_DEFAULTS.databaseUrl,
+    shadowDatabaseUrl: flags.shadowDb ?? process.env.SHADOW_DATABASE_URL ?? cfgBlock.shadowDatabaseUrl,
+    shadowDisabled: flags.noShadowDb === true,
     dialect: flags.dialect ?? cfgBlock.dialect ?? MIGRATE_DEFAULTS.dialect,
     format: flags.format ?? cfgBlock.format ?? MIGRATE_DEFAULTS.format,
     onAmbiguous: flags.onAmbiguous ?? cfgBlock.onAmbiguous ?? MIGRATE_DEFAULTS.onAmbiguous,

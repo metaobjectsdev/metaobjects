@@ -26,6 +26,7 @@ import { postgresViewReplaceProbe } from "../view-replace-probe.js";
 import type { ViewReplaceProbe } from "../view-replace.js";
 import { postgresExprCanonProbe } from "../expr-canon-probe.js";
 import type { ExprCanonProbe } from "../expr-canon.js";
+import type { ShadowCanonSource } from "../shadow-canon.js";
 
 export interface ComputeDriftOptions {
   /**
@@ -59,6 +60,8 @@ export interface ComputeDriftOptions {
    * the string normaliser decides.
    */
   exprCanonProbe?: ExprCanonProbe;
+  /** Postgres: the shadow-database source tried before `exprCanonProbe` (see shadow-canon.ts). */
+  exprCanonShadow?: ShadowCanonSource;
   /**
    * Per-command scope (`migrate.scope`): objects whose declaring FQN this predicate
    * rejects are governed by somebody else. They leave the expected side AND are
@@ -149,6 +152,7 @@ export async function computeDriftFromActual(
     ...(opts?.ignoreTables !== undefined ? { ignoreTables: opts.ignoreTables } : {}),
     ...(opts?.viewReplaceProbe !== undefined ? { viewReplaceProbe: opts.viewReplaceProbe } : {}),
     ...(opts?.exprCanonProbe !== undefined ? { exprCanonProbe: opts.exprCanonProbe } : {}),
+    ...(opts?.exprCanonShadow !== undefined ? { exprCanonShadow: opts.exprCanonShadow } : {}),
   });
   return {
     ...result,

@@ -377,17 +377,40 @@ Postgres rewrites an expression before it stores it (`"k" IN ('x')` becomes `k =
 `= ANY (ARRAY[…])`, and casts and brackets are added), so the text `meta migrate` generates never
 comes back from the database as written. On Postgres, a plan against the database
 (`meta verify --db`, `meta migrate --from-db` and `--apply`) therefore **asks Postgres** instead of
-guessing. For each table it creates a **temporary table with the live table's columns** inside a
-transaction it rolls back (a savepoint, when the connection is already in one), adds the expected
+guessing. There are three ways it asks, tried in this order, and the output says which one ran.
+
+**1. A scratch (shadow) database, the primary path.** The practice Atlas, Prisma and migra share:
+the model's full expected schema (the DDL `meta migrate` emits for an empty database) is applied to
+a throwaway Postgres database, in one transaction that is always rolled back, and read with the same
+introspector that reads your live database. The expected CHECKs, index expressions and predicates,
+and column defaults are then Postgres's own spelling of the same catalog, compared with the live
+one as plain strings. No per-shape rule is involved, so `NOW()`/`now()`, `current_date`, a date
+literal on a `timestamptz` (read in the session `TimeZone`), `'1e3'` on a double, `'007'` on an
+integer, `now() + interval '1 day'`, a regrouped `NOT` and a precedence change are all decided by
+the database. A real change of any of them is still reported. The scratch database comes from:
+
+| Source | How |
+|---|---|
+| An explicit URL | `--shadow-db <url>` on `verify` and `migrate`, else `SHADOW_DATABASE_URL`, else `migrate.shadowDatabaseUrl` in `.metaobjects/config.json`. Used as given and never dropped; nothing is left in it because the schema is applied inside a rolled-back transaction. |
+| `CREATE DATABASE` | With none of the above, a database named `mo_shadow_<random>` is created on the `--db` server when the role may, and **always dropped** afterwards, including on error. |
+| Off | `--no-shadow-db` skips both. |
+
+If no scratch database can be opened, or the expected schema does not apply to it (an FK to a table
+outside the run's scope, a missing extension), the next path runs.
+
+**2. The temp-object probe, the first fallback.** For each table it creates a **temporary table with
+the live table's columns** on the target itself, inside a transaction it rolls back (a savepoint, when the connection is already in one), adds the expected
 CHECK to it, creates each expected expression or partial-index predicate as a temporary index,
 and reads back `pg_get_constraintdef` / `pg_get_indexdef` / `pg_get_expr`. Those are compared with
-the live definitions as plain strings. Nothing persists, and nothing is written to your table.
+the live definitions as plain strings. Nothing persists, and nothing is written to your table, but
+the probe **needs write privileges on the target** (it creates temporary objects) and **takes brief
+locks** on it, which is why a scratch database is preferred.
 Two expressions that mean different things never compare equal: a precedence change
 (`(a OR b) AND c` against `a OR (b AND c)`), a regrouped `NOT`, and a changed enum-member or regex
 literal are all drift.
 
-Where the question cannot be asked, the comparison falls back to a **string normaliser**
-(`check-expr-compare.ts`), which rewrites both texts toward one shape. The fallback applies to:
+**3. The string normaliser, the last fallback.** Where neither question can be asked, the comparison uses it
+(`check-expr-compare.ts`), which rewrites both texts toward one shape. It always applies to:
 
 - SQLite and D1, which store the text as written;
 - the default **offline** `meta migrate`, which diffs the committed snapshot and has no database;

@@ -299,6 +299,18 @@ here.**
   so. The three flags it never read (`--server`, `--client`, `--out`) are still accepted but
   ignored and hidden from help, so the old invocation still reaches the pointer.
 
+- **Postgres drift is decided by a scratch (shadow) database first.** `meta verify --db` and
+  `meta migrate` (`--from-db`, `--apply`, and `baseline --from-db`) now apply the model's expected
+  schema to a throwaway database, as Atlas, Prisma and migra do, read it with the introspector that
+  reads the live database, and compare CHECKs, index expressions and predicates, and column
+  defaults in Postgres's own spelling. The scratch database is `--shadow-db <url>`, else
+  `SHADOW_DATABASE_URL`, else `migrate.shadowDatabaseUrl`; with none, a database is `CREATE`d on the
+  `--db` server when the role may and always dropped afterwards; `--no-shadow-db` skips both. The
+  schema is applied in a rolled-back transaction, so an explicit URL is left empty. When no scratch
+  database is available the rolled-back temp-object probe on the target answers (it needs write
+  privileges and takes brief locks), and SQLite and offline plans keep the string normaliser. The
+  output says which path ran. See `docs/features/migrations-and-drift.md`.
+
 - **Postgres column `DEFAULT`s that Postgres re-spells no longer read as drift.** `NOW()`,
   `current_date`, a date literal on a `timestamptz`, `'1e3'` on a double, `'007'` on an integer
   and a composite expression such as `now() + interval '1 day'` were reported by `meta verify
@@ -308,8 +320,7 @@ here.**
   inside its rolled-back transaction it sets each expected default on the scratch copy and reads
   `pg_get_expr`, and a literal on a `timestamptz` is compared in the reading session's
   `TimeZone`. A real change (another value, another instant, another function) is still reported.
-  The classifier is still the comparison for SQLite, offline runs, read-only connections and a
-  default that does not compile against the live column. `baseline --from-db` records the
+  The classifier is still the comparison for SQLite and offline runs. `baseline --from-db` records the
   authored default where the probe proved it equal, so the offline plan starts clean too.
   A column rename that carries a CHECK is now decided the same way: the scratch copy renames the
   column first, so a rename plus a literal-case change (`'OPEN'` to `'open'`) is not folded into a

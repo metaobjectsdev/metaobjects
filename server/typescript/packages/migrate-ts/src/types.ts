@@ -526,7 +526,18 @@ export interface DiffResult {
    * writes the preparation step above the statement. See {@link DataHazard}.
    */
   hazards: DataHazard[];
+  /** Postgres: which comparison decided CHECK, index-expression and column-default equality. */
+  exprCanonPath?: ExprCanonPath;
 }
+
+/**
+ * Where Postgres's own spelling of an expected expression came from.
+ *  - `shadow`: the expected schema applied to a scratch database (shadow-canon.ts).
+ *  - `probe`: temp objects in a rolled-back transaction on the target itself (needs write
+ *    privileges, and takes brief locks on it).
+ *  - `normaliser`: no database was asked; the string comparison decided.
+ */
+export type ExprCanonPath = "shadow" | "probe" | "normaliser";
 
 /**
  * A change whose apply depends on the data already in the table.

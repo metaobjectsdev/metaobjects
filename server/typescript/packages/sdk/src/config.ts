@@ -67,6 +67,8 @@ const MigrateFormatEnum = z.enum(["default", "flyway"]);
 const MigrateBlock = z.object({
   outDir: z.string(),
   databaseUrl: z.string(),
+  /** Postgres: a scratch database `meta verify --db` and `meta migrate` apply the expected schema to. */
+  shadowDatabaseUrl: z.string(),
   dialect: DialectEnum,
   format: MigrateFormatEnum,
   onAmbiguous: OnAmbiguousEnum,

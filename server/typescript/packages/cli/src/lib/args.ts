@@ -344,6 +344,10 @@ export interface VerifyFlags {
   prompts: string | undefined;
   /** Live DB connection URL; when present, enables the schema-drift gate. */
   db: string | undefined;
+  /** Postgres scratch database for the drift comparison (see `MigrateFlags.shadowDb`). */
+  shadowDb?: string | undefined;
+  /** Never use a scratch database (see `MigrateFlags.noShadowDb`). */
+  noShadowDb?: boolean;
   /** Optional dialect override (auto-detected from --db URL scheme otherwise). */
   dialect: Dialect | undefined;
   /** Destructive-change permissions; only affects how drift is described. */
@@ -496,6 +500,8 @@ export interface VerifyFlags {
 export const VERIFY_OPTIONS = {
   prompts: { type: "string" },
   db: { type: "string" },
+  "shadow-db": { type: "string" },
+  "no-shadow-db": { type: "boolean", default: false },
   dialect: { type: "string" },
   allow: { type: "string", multiple: true },
   "skip-schema": { type: "boolean", default: false },
@@ -586,6 +592,8 @@ export function parseVerifyArgs(argv: string[]): VerifyFlags {
   return {
     prompts: values.prompts,
     db: values.db as string | undefined,
+    ...(values["shadow-db"] !== undefined ? { shadowDb: values["shadow-db"] as string } : {}),
+    ...(values["no-shadow-db"] ? { noShadowDb: true } : {}),
     dialect: dialect as Dialect | undefined,
     allow: allowTokens as AllowToken[],
     skipSchema: !!values["skip-schema"],
@@ -676,6 +684,10 @@ export interface MigrateFlags {
   yes: boolean;
   /** Use live-DB introspection instead of the committed snapshot (legacy/adoption). */
   fromDb: boolean;
+  /** `--shadow-db <url>`: the Postgres scratch database the expected schema is applied to. */
+  shadowDb?: string | undefined;
+  /** `--no-shadow-db`: never use a scratch database (not even a CREATE DATABASE one). */
+  noShadowDb?: boolean;
   /** `migrate baseline` subcommand: seed the snapshot, emit no migration. */
   baseline: boolean;
   /** `migrate apply-pending` subcommand: replay committed migration files, no diff. */
@@ -695,6 +707,8 @@ export const MIGRATE_OPTIONS = {
   "rename-column": { type: "string", multiple: true },
   "dry-run": { type: "boolean", default: false },
   "from-db": { type: "boolean", default: false },
+  "shadow-db": { type: "string" },
+  "no-shadow-db": { type: "boolean", default: false },
   "d1": { type: "string" },
   "remote": { type: "boolean", default: false },
   "apply": { type: "boolean", default: false },
@@ -751,6 +765,8 @@ export function parseMigrateArgs(argv: string[]): MigrateFlags {
     rollback: values.rollback as string | undefined,
     yes: !!values.yes,
     fromDb: !!values["from-db"],
+    ...(values["shadow-db"] !== undefined ? { shadowDb: values["shadow-db"] as string } : {}),
+    ...(values["no-shadow-db"] ? { noShadowDb: true } : {}),
     baseline,
     applyPending,
   };

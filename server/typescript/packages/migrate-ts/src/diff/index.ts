@@ -3,7 +3,7 @@ import type {
   ViewDescriptor, ViewChangeReason,
   DependentRelation,
   Change, ChangeStatus, DiffResult, AllowOptions, AmbiguousCallback, Dialect,
-  CheckDescriptor, ColumnDefault, NameChange, DeclaredRename,
+  CheckDescriptor, ColumnDefault, NameChange, DeclaredRename, ExprCanonPath,
 } from "../types.js";
 import type { SqlType } from "../sql-type.js";
 import { sqlTypeEquals } from "../sql-type.js";
@@ -13,6 +13,7 @@ import { detectColumnRenames, detectTableRenames } from "./rename-heuristic.js";
 import { firstViewSqlDifference, viewSqlEquals } from "../view-sql-compare.js";
 import { viewReplaceIsLegal, type ViewReplaceProbe } from "../view-replace.js";
 import { liveViewReadsTable, sqlNamesIdentifier } from "../view-reads.js";
+import type { ShadowCanonSource } from "../shadow-canon.js";
 import { checkExprEquals, checkExprRespelledNullSafe, renameExprIdentifiers } from "../check-expr-compare.js";
 import { checkMatchesLive, columnDefaultMatchesLive, indexExprMatchesLive, NO_EXPR_CANON, type ExprCanon, type ExprCanonProbe, type IndexExprCanon } from "../expr-canon.js";
 import { isPgAutoSequenceDefault } from "../pg-identity-default.js";
@@ -89,6 +90,12 @@ export interface DiffArgs {
    * the live columns), the normaliser decides exactly as it always has.
    */
   exprCanonProbe?: ExprCanonProbe;
+  /**
+   * Postgres: the primary source of that answer, a scratch (shadow) database the expected
+   * schema is applied to (see shadow-canon.ts). Tried first; when it resolves no probe,
+   * `exprCanonProbe` answers, and without one the string normaliser does.
+   */
+  exprCanonShadow?: ShadowCanonSource;
   /**
    * #258 — refuse (throw {@link PrimaryKeyChangeError}) when an existing table's live
    * PRIMARY KEY differs from the metadata identity. There is no primary-key change kind
@@ -254,7 +261,14 @@ export async function diff(
   // any table present on both sides (diffRenamedTables), and its columns are never
   // scanned as orphaned drop/add pairs by the column heuristic in Pass 3.
   await detectTableRenames(changes, args.onAmbiguous, args.renames);
-  const canon = await probeExprCanon(args.exprCanonProbe, args.dialect, changes, expectedTables, actualTables);
+  let exprCanonPath: ExprCanonPath = "normaliser";
+  let canonProbe: ExprCanonProbe | undefined;
+  if (args.dialect === "postgres") {
+    canonProbe = args.exprCanonShadow === undefined ? undefined : await args.exprCanonShadow(args.expected);
+    if (canonProbe !== undefined) exprCanonPath = "shadow";
+    else if (args.exprCanonProbe !== undefined) { canonProbe = args.exprCanonProbe; exprCanonPath = "probe"; }
+  }
+  const canon = await probeExprCanon(canonProbe, args.dialect, changes, expectedTables, actualTables);
   const { renamed, predecessors } = diffRenamedTables(changes, expectedTables, actualTables, args.dialect, canon);
 
   // Pass 2: tables in both → compare columns/indexes/FKs
@@ -297,8 +311,8 @@ export async function diff(
   await carryThroughColumnRenames(changes, args.dialect, (id) => {
     const live = predecessors.get(id) ?? actualTables.get(id);
     return live === undefined ? NO_TEXT_COLUMNS : textColumnsOf(live);
-  }, args.exprCanonProbe === undefined ? undefined : {
-    probe: args.exprCanonProbe,
+  }, canonProbe === undefined ? undefined : {
+    probe: canonProbe,
     liveOf: (id) => predecessors.get(id) ?? actualTables.get(id),
     expectedOf: (id) => expectedTables.get(id),
   });
@@ -332,6 +346,7 @@ export async function diff(
     changes,
     blocked: changes.filter((c) => c.status.state === "blocked"),
     hazards: changes.flatMap((c) => dataHazardOf(c) ?? []),
+    ...(args.dialect === "postgres" ? { exprCanonPath } : {}),
   };
 }
 

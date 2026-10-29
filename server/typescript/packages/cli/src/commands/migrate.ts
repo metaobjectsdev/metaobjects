@@ -10,6 +10,7 @@ import { formatMigrateResultJson } from "../lib/output-json.js";
 import type { OutputFormat } from "../lib/format.js";
 import { emitStructured, narrate, toonEncode } from "../lib/format.js";
 import { buildKyselyFromUrl, inferDialect, redactUrl } from "../lib/kysely.js";
+import { describeExprCanonPath, shadowOpener } from "../lib/shadow.js";
 import { log } from "../lib/log.js";
 import { loadMemory, resolveCollection, resolveConfigDir, type Collection } from "@metaobjectsdev/sdk";
 import { loadMemoryOptionsFrom, loadMetaobjectsConfig, RemovedNamingConfigError, resolveGenConfigDir } from "../lib/load-metaobjects-config.js";
@@ -58,6 +59,8 @@ import {
   type TableDescriptor,
   postgresViewReplaceProbe,
   postgresExprCanonProbe,
+  postgresShadowCanon,
+  type ShadowCanonSource,
   adoptGeneratedSpelling,
 } from "@metaobjectsdev/migrate-ts";
 import {
@@ -99,6 +102,10 @@ SUBCOMMANDS:
 MIGRATE FLAGS:
   --db <url>           DB connection URL (required for live-introspect / --apply / --rollback)
                        Supports: file:, libsql:, postgres:, postgresql:
+  --shadow-db <url>    Postgres: a scratch database for the drift comparison. Default: CREATE
+                       DATABASE on the --db server (dropped afterwards), else the temp-object
+                       probe on the target. Also SHADOW_DATABASE_URL / migrate.shadowDatabaseUrl.
+  --no-shadow-db       Never open a scratch database (use the probe on the target).
   --dialect sqlite|postgres|d1
                        Optional dialect override (auto-detected from URL scheme)
   --migration-format default|flyway
@@ -765,6 +772,13 @@ export async function migrateCommand(
     return 2;
   }
   warnDecimalPrecision(metadata, collection, kysely.dialect);
+  // Postgres: a scratch database answers first how each expected expression is stored (lib/shadow.ts).
+  const shadowOpen = kysely.dialect === "postgres"
+    ? shadowOpener(
+        { url: config.shadowDatabaseUrl, disabled: config.shadowDisabled === true },
+        { url: config.databaseUrl, handle: kysely },
+      )
+    : undefined;
 
   let exitCode = 0;
   let writtenPaths: string[] = [];
@@ -831,6 +845,7 @@ export async function migrateCommand(
         // ...and the same for CHECK / index expressions: Postgres says how it stores the expected
         // text, so a stored rewrite no string rule knows is not proposed as a drop and re-add.
         ...(kysely.dialect === "postgres" ? { exprCanonProbe: postgresExprCanonProbe(kysely.db) } : {}),
+        ...(shadowOpen !== undefined ? { exprCanonShadow: postgresShadowCanon(shadowOpen) } : {}),
         allow: tokensToAllowOptions(config.allow),
         renames: config.renames,
         // #258 — adopting a live DB whose PRIMARY KEY differs from the metadata identity
@@ -930,6 +945,7 @@ export async function migrateCommand(
       // no-op — output will say "No schema changes"
     } else {
       notes.push(...viewRecreateNotes(diffResult.changes));
+      if (diffResult.exprCanonPath !== undefined) notes.push(describeExprCanonPath(diffResult.exprCanonPath));
       let emitted: EmitResult | undefined;
       try {
         emitted = emit(diffResult.changes, {
@@ -1157,11 +1173,13 @@ async function withGeneratedSpelling(
   dialect: Dialect,
   metaRoot: string,
   genRoot: string,
+  shadow?: ShadowCanonSource,
 ): Promise<SchemaSnapshot> {
   try {
     const metadata = await loadBaselineMetadata(metaRoot, genRoot);
     const expected = baselineFromMetadata(metadata, dialect, buildProjectionViews(metadata, { dialect }));
-    return await adoptGeneratedSpelling(snapshot, expected, postgresExprCanonProbe(db));
+    const probe = (shadow !== undefined ? await shadow(expected) : undefined) ?? postgresExprCanonProbe(db);
+    return await adoptGeneratedSpelling(snapshot, expected, probe);
   } catch {
     return snapshot;
   }
@@ -1205,7 +1223,14 @@ export async function runBaseline(
       snapshot = await introspect(kysely.db, kysely.dialect);
       if (config.format === "flyway") snapshot = withoutFlywayHistory(snapshot);
       if (kysely.dialect === "postgres") {
-        snapshot = await withGeneratedSpelling(snapshot, kysely.db, config.dialect, metaRoot, genRoot);
+        const shadowOpen = shadowOpener(
+          { url: config.shadowDatabaseUrl, disabled: config.shadowDisabled === true },
+          { url: config.databaseUrl, handle: kysely },
+        );
+        snapshot = await withGeneratedSpelling(
+          snapshot, kysely.db, config.dialect, metaRoot, genRoot,
+          shadowOpen !== undefined ? postgresShadowCanon(shadowOpen) : undefined,
+        );
       }
     } finally {
       await kysely.close();

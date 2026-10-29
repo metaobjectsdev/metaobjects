@@ -46,6 +46,8 @@ import { lintNodeNames } from "../lib/name-lint.js";
 import { lintDeprecatedReferences } from "../lib/deprecation-lint.js";
 import { lintDuplicateFields, lintReferenceFields } from "../lib/field-lint.js";
 import { FileSource } from "@metaobjectsdev/metadata/core";
+import { shadowOpener } from "../lib/shadow.js";
+import { describeExprCanonPath } from "../lib/shadow.js";
 import { resolveD1Config, resolveMigrateConfig, type ResolvedMigrateConfig } from "../lib/config.js";
 import {
   buildWranglerExecuteArgs,
@@ -88,6 +90,7 @@ import {
   type ExprCanonProbe,
   postgresViewReplaceProbe,
   postgresExprCanonProbe,
+  postgresShadowCanon,
   withoutFlywayHistory,
 } from "@metaobjectsdev/migrate-ts";
 import {
@@ -203,7 +206,9 @@ export async function verifyCommand(
     log.error(REMOVED_VERIFY_DOCS);
     return 2;
   }
-  const migrateFlags: MigrateFlags = { ...EMPTY_MIGRATE_FLAGS, format: flags.migrationFormat };
+  const migrateFlags: MigrateFlags = {
+    ...EMPTY_MIGRATE_FLAGS, format: flags.migrationFormat, shadowDb: flags.shadowDb, noShadowDb: flags.noShadowDb === true,
+  };
 
   // ADR-0021 D2 — explicit verify subverbs. Each flag selects one drift mode;
   // any combination runs each and the overall exit code is the MAX (non-zero on
@@ -1351,6 +1356,14 @@ export async function verifyCommand(
       const expectedViews = buildProjectionViews(root, { dialect: kysely.dialect });
       // One probe for the whole run, so a server that refuses scratch tables is asked once.
       const exprCanonProbe = kysely.dialect === "postgres" ? postgresExprCanonProbe(kysely.db) : undefined;
+      // ...but a scratch database answers first, when one can be opened (see lib/shadow.ts).
+      const shadowOpen = kysely.dialect === "postgres"
+        ? shadowOpener(
+            { url: migrateConfig.shadowDatabaseUrl, disabled: migrateConfig.shadowDisabled === true },
+            { url: flags.db as string, handle: kysely },
+          )
+        : undefined;
+      const exprCanonShadow = shadowOpen !== undefined ? postgresShadowCanon(shadowOpen) : undefined;
       let driftResult;
       let actual: SchemaSnapshot;
       try {
@@ -1369,6 +1382,7 @@ export async function verifyCommand(
           ...(kysely.dialect === "postgres" ? { viewReplaceProbe: postgresViewReplaceProbe(kysely.db) } : {}),
           // ...and asks Postgres, not a string rewrite, how it stores each expected CHECK and index expression.
           ...(exprCanonProbe !== undefined ? { exprCanonProbe } : {}),
+          ...(exprCanonShadow !== undefined ? { exprCanonShadow } : {}),
           ...(schemaScope !== undefined ? { inScope: schemaScope } : {}),
           // The import exclusion reaches scopeExpectedSchema through this option bag —
           // there is no direct call on this path to attach it to.
@@ -1379,6 +1393,8 @@ export async function verifyCommand(
         log.error(`verify: ${schemaRunError}`);
         return 1;
       }
+
+      if (driftResult.exprCanonPath !== undefined) say(describeExprCanonPath(driftResult.exprCanonPath));
 
       const snapshotDrift =
         driftResult.changes.length === 0

@@ -119,6 +119,12 @@ VERIFY FLAGS (ADR-0021 D2 — explicit subverbs; combine any; exit 1 on ANY drif
   --db <url>            Schema drift — live DB URL enables the schema-drift gate.
                         Supports: file:, libsql:, postgres:, postgresql:. Omit to skip.
                         D1 has no URL — use --dialect d1 / --d1 <binding> instead.
+  --shadow-db <url>     Postgres: a scratch database to apply the expected schema to, so CHECKs,
+                        index expressions and defaults are compared in Postgres's own spelling.
+                        Default: CREATE DATABASE on the --db server (dropped afterwards), else the
+                        temp-object probe on the target. Also SHADOW_DATABASE_URL or
+                        migrate.shadowDatabaseUrl in .metaobjects/config.json.
+  --no-shadow-db        Never open a scratch database (use the probe on the target instead).
   --prompts <dir>       Directory of provider-resolved template text (default: prompts)
   --dialect sqlite|postgres|d1   Optional override (auto-detected from --db URL scheme)
   --allow <csv>         Accepted for parity with 'migrate'; does NOT affect the
@@ -161,6 +167,12 @@ MIGRATE FLAGS:
   --db <url>            DB connection URL (required, or set DATABASE_URL or config)
                         Supports: file:, libsql:, postgres:, postgresql:
                         D1 has no URL — use --dialect d1 / --d1 <binding> instead.
+  --shadow-db <url>     Postgres: a scratch database to apply the expected schema to, so CHECKs,
+                        index expressions and defaults are compared in Postgres's own spelling.
+                        Default: CREATE DATABASE on the --db server (dropped afterwards), else the
+                        temp-object probe on the target. Also SHADOW_DATABASE_URL or
+                        migrate.shadowDatabaseUrl in .metaobjects/config.json.
+  --no-shadow-db        Never open a scratch database (use the probe on the target instead).
   --dialect sqlite|postgres|d1   Optional override (auto-detected from URL scheme)
   --out-dir <path>      Migration directory (default: ./.metaobjects/migrations)
   --slug <name>         Required when changes are present (e.g., add-user-shipping)
@@ -332,6 +344,12 @@ FLAGS:
   --db <url>            Schema drift — live DB URL enables the schema-drift gate.
                         Supports: file:, libsql:, postgres:, postgresql:
                         D1 has no URL — use --dialect d1 / --d1 <binding> instead.
+  --shadow-db <url>     Postgres: a scratch database to apply the expected schema to, so CHECKs,
+                        index expressions and defaults are compared in Postgres's own spelling.
+                        Default: CREATE DATABASE on the --db server (dropped afterwards), else the
+                        temp-object probe on the target. Also SHADOW_DATABASE_URL or
+                        migrate.shadowDatabaseUrl in .metaobjects/config.json.
+  --no-shadow-db        Never open a scratch database (use the probe on the target instead).
   --replay              Migration-chain drift — replay the committed chain into an
                         EMPTY throwaway database and assert it applies. Needs no --db:
                         the engine is in-process (PGlite for postgres, a temp file for
