@@ -160,5 +160,5 @@ export {
   type D1Binding,
   type WranglerConfig,
 } from "./wrangler-config.js";
-export { splitSqlStatements } from "./sql/split-statements.js";
+export { splitSqlStatements, type SplitSqlDialect } from "./sql/split-statements.js";
 export { viewFingerprint } from "./view-fingerprint.js";

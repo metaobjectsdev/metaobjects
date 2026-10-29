@@ -88,7 +88,9 @@ public static class ConstraintErrors
     public static ConstraintFailure? Classify(Exception? error)
     {
         var coded = CodedVerdict(error, out var hasCode);
-        if (hasCode) return coded is null ? null : Failure(coded.Value);
+        // A code that is not one of the four constraint classes (a serialization failure,
+        // say) is NOT a verdict: fall through to the message text, as for a code-less double.
+        if (hasCode && coded is not null) return Failure(coded.Value);
 
         var haystack = ChainText(error);
         if (haystack.Length == 0) return null;
@@ -119,8 +121,14 @@ public static class ConstraintErrors
     /// <summary>
     /// The verdict of the first exception in the chain that carries a structured code:
     /// <paramref name="hasCode"/> says whether one was found, and the return is its kind (null
-    /// for a code that is not one of the four constraint classes).
+    /// for a code that is not one of the four constraint classes, which callers treat as no verdict).
     /// </summary>
+    // The SQLite code is read by property name on purpose (no provider reference). The
+    // property is public on the provider's exception type, which the application roots
+    // by using it; a trimmer that removed it would only lose this fast path, and the
+    // message-text fallback below still classifies the violation.
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage(
+        "Trimming", "IL2075", Justification = "Optional provider property; message-text fallback covers its absence.")]
     private static ConstraintKind? CodedVerdict(Exception? error, out bool hasCode)
     {
         var seen = 0;

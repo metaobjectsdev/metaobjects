@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -331,6 +331,20 @@ describe("discoverWorkspace — glob semantics (audit finding 17)", () => {
       scaffoldPackage(root, "a", makeManifest("@acme/a", { metaobjectsPackage: "acme::a" }));
       scaffoldPackage(root, "node_modules/dep", makeManifest("@acme/dep", { metaobjectsPackage: "acme::dep" }));
       expect(await names(root, "a")).toEqual(["@acme/a"]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("trailing ** skips the base dir and dot-dirs, and survives a symlink cycle", async () => {
+    const root = mkdtempSync(join(tmpdir(), "ws-cycle-"));
+    try {
+      writeFileSync(join(root, "pnpm-workspace.yaml"), "packages:\n  - 'libs/**'\n");
+      scaffoldPackage(root, "libs", makeManifest("@acme/base", { metaobjectsPackage: "acme::base" }));
+      scaffoldPackage(root, "libs/a", makeManifest("@acme/a", { metaobjectsPackage: "acme::a" }));
+      scaffoldPackage(root, "libs/.hidden/h", makeManifest("@acme/h", { metaobjectsPackage: "acme::h" }));
+      symlinkSync(join(root, "libs"), join(root, "libs/a/loop"), "dir");
+      expect(await names(root, "libs/a")).toEqual(["@acme/a"]);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

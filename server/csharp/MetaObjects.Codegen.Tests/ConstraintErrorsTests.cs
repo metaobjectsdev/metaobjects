@@ -127,10 +127,18 @@ public class ConstraintErrorsTests
     }
 
     [Fact]
-    public void A_non_constraint_sqlstate_is_not_classified_from_message_text()
+    public void An_unrecognised_sqlstate_falls_through_to_message_text()
     {
-        // 40001 is a serialization failure; its message mentioning NOT NULL must not make it a 400.
-        Assert.Null(ConstraintErrors.Classify(new CodedDbException("column NOT NULL retry", "40001")));
+        // 40001 is not a constraint code, so it is no verdict: the message is still read.
+        var failure = ConstraintErrors.Classify(new CodedDbException("23505: duplicate key value", "40001"));
+        Assert.NotNull(failure);
+        Assert.Equal("unique", failure!.Constraint);
+    }
+
+    [Fact]
+    public void An_unrecognised_sqlstate_with_no_constraint_text_is_not_classified()
+    {
+        Assert.Null(ConstraintErrors.Classify(new CodedDbException("could not serialize access", "40001")));
     }
 
     [Theory]

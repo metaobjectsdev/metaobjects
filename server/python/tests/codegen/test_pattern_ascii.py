@@ -90,3 +90,10 @@ def test_hostname_format_is_ascii_full_match() -> None:
 def test_unicode_property_class_fails_at_generation() -> None:
     with pytest.raises(ValueError, match="not valid in Python's re"):
         render_entity_model(_entity(_meta(r"\p{L}+")))
+
+
+def test_published_json_schema_pattern_is_ecma_valid() -> None:
+    _, model = _model(_meta(r"\d+"))
+    pattern = model.model_json_schema()["properties"]["code"]["pattern"]
+    assert pattern == r"^(?:\d+)$"
+    assert "\\Z" not in pattern

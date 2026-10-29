@@ -103,6 +103,8 @@ class _AsciiPattern(str):
     COMPILED pattern is run on Python ``re`` instead, so ``re.ASCII`` can pin the classes to
     ASCII like the TS and Java ports and like the runtime validator (validator_runner.py)."""
 
+    schema_pattern: str = ""
+
 
 def _full_match_pattern(raw: str, field: MetaField) -> _AsciiPattern:
     """FR-036 Pin 2 — a validator.regex is a FULL match. A compiled pydantic pattern is a
@@ -122,7 +124,11 @@ def _full_match_pattern(raw: str, field: MetaField) -> _AsciiPattern:
             f"({exc}); Unicode property classes such as \\p{{L}} are not supported by the "
             "Python port, spell the character class out"
         ) from exc
-    return _AsciiPattern(anchored)
+    pat = _AsciiPattern(anchored)
+    # The published JSON-Schema / OpenAPI pattern must be ECMA-262 valid: ``\\Z`` is a
+    # literal ``Z`` there, so schema consumers get the portable ``$`` form instead.
+    pat.schema_pattern = f"^(?:{raw})$"
+    return pat
 
 
 def _validator_constraints(field: MetaField, *, wire: bool) -> dict[str, object]:
@@ -237,7 +243,12 @@ def _constraint_parts(constraints: dict[str, object]) -> list[str]:
 
 def _constraint_source(key: str, value: object) -> str:
     if isinstance(value, _AsciiPattern):
-        return f"{key}=re.compile({str(value)!r}, re.ASCII)"
+        # json_schema_extra overrides the schema ``pattern`` (the compiled one carries the
+        # Python-only ``\\Z`` anchor) with an ECMA-262-valid form for OpenAPI consumers.
+        return (
+            f"{key}=re.compile({str(value)!r}, re.ASCII), "
+            f"json_schema_extra={{'pattern': {value.schema_pattern!r}}}"
+        )
     return f"{key}={value!r}"
 
 

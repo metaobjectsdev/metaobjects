@@ -14,7 +14,7 @@
 //   - Lockfile-style resolution + version range matching
 //   - Better error messages on circular extends, missing packages
 
-import { readFile, readdir, stat } from "node:fs/promises";
+import { readFile, readdir, realpath, stat } from "node:fs/promises";
 import { dirname, join, resolve, basename, relative, sep } from "node:path";
 import { parse as parseYaml } from "yaml";
 import {
@@ -189,17 +189,48 @@ async function isDirectory(path: string): Promise<boolean> {
   }
 }
 
+/** Build output a `**` never descends into (dot-directories are skipped separately). */
+const GLOBSTAR_SKIPPED_DIRS = new Set(["node_modules", "dist", "build"]);
+
+/**
+ * `**` expansion: zero or more directory levels. Symlinks are followed but each real
+ * directory is visited once (cycle guard); dot-directories and build output are not
+ * descended into; a trailing `**` matches the descendants, never the base itself.
+ */
+async function expandGlobstar(
+  dir: string,
+  rest: readonly string[],
+  visited: Set<string>,
+): Promise<string[]> {
+  let real: string;
+  try {
+    real = await realpath(dir);
+  } catch {
+    return [];
+  }
+  if (visited.has(real)) return [];
+  visited.add(real);
+  const found = rest.length === 0 ? [] : await expandSegments(dir, rest);
+  for (const name of await subdirectories(dir)) {
+    if (name.startsWith(".") || GLOBSTAR_SKIPPED_DIRS.has(name)) continue;
+    const child = join(dir, name);
+    if (!(await isDirectory(child))) continue;
+    const before = visited.size;
+    const below = await expandGlobstar(child, rest, visited);
+    // Only a directory not yet visited (by real path) counts: a symlink back to an
+    // ancestor must not resurface it as a match.
+    if (rest.length === 0 && visited.size > before) found.push(child);
+    found.push(...below);
+  }
+  return found;
+}
+
 /** Directories under `dir` matching the remaining pattern segments. */
 async function expandSegments(dir: string, segments: readonly string[]): Promise<string[]> {
   const [head, ...rest] = segments;
   if (head === undefined) return [dir];
   if (head === "**") {
-    const found = await expandSegments(dir, rest);
-    for (const name of await subdirectories(dir)) {
-      const child = join(dir, name);
-      if (await isDirectory(child)) found.push(...(await expandSegments(child, segments)));
-    }
-    return found;
+    return expandGlobstar(dir, rest, new Set());
   }
   if (!/[*?]/.test(head)) {
     const child = join(dir, head);

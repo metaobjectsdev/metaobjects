@@ -4,8 +4,16 @@
  * confined to a single Math.round to avoid drift (e.g., 15.99 * 100 = 1598.999...).
  */
 
+const intlCache = new Map<string, Intl.NumberFormat>();
+
 function intlFor(currency: string, locale: string): Intl.NumberFormat {
-  return new Intl.NumberFormat(locale, { style: "currency", currency });
+  const key = `${locale}\u0000${currency}`;
+  let fmt = intlCache.get(key);
+  if (fmt === undefined) {
+    fmt = new Intl.NumberFormat(locale, { style: "currency", currency });
+    intlCache.set(key, fmt);
+  }
+  return fmt;
 }
 
 export function minorUnitsFor(currency: string, locale = "en-US"): number {
@@ -41,6 +49,30 @@ interface LocaleShape {
   readonly primary: number;
   readonly secondary: number;
   readonly tokens: readonly string[];
+}
+
+/** What `parseCurrency` derives per (currency, locale): the shape and its compiled regexes. */
+interface ParseSpec {
+  readonly shape: LocaleShape;
+  readonly grammar: RegExp;
+  readonly groupStrip: RegExp;
+}
+
+const parseSpecCache = new Map<string, ParseSpec>();
+
+function parseSpecFor(currency: string, locale: string): ParseSpec {
+  const key = `${locale}\u0000${currency}`;
+  let spec = parseSpecCache.get(key);
+  if (spec === undefined) {
+    const shape = localeShape(currency, locale);
+    spec = {
+      shape,
+      grammar: numberGrammar(shape),
+      groupStrip: new RegExp(groupClass(shape), "g"),
+    };
+    parseSpecCache.set(key, spec);
+  }
+  return spec;
 }
 
 function localeShape(currency: string, locale: string): LocaleShape {
@@ -97,7 +129,7 @@ export function parseCurrency(
   locale = "en-US",
 ): number | null {
   if (typeof text !== "string") return null;
-  const shape = localeShape(currency, locale);
+  const { shape, grammar, groupStrip } = parseSpecFor(currency, locale);
   let rest = text.replace(/[−‒-—]/g, "-").trim();
   if (rest === "") return null;
 
@@ -131,9 +163,9 @@ export function parseCurrency(
   }
   if (markers > 1 || (markers === 1 && positive)) return null;
 
-  const match = numberGrammar(shape).exec(rest.trim());
+  const match = grammar.exec(rest.trim());
   if (match === null) return null;
-  const whole = (match[1] ?? "").replace(new RegExp(groupClass(shape), "g"), "");
+  const whole = (match[1] ?? "").replace(groupStrip, "");
   const fraction = match[2] ?? "";
   if (whole === "" && fraction === "") return null;
 

@@ -8,7 +8,7 @@
  * Two engine rules a plain `;` scan gets wrong are honoured: a SQLite
  * `CREATE [TEMP] TRIGGER … BEGIN … END` is ONE statement (its body holds `;`; as in
  * `sqlite3_complete`, only an `END` that follows a `;` closes it, so a `CASE … END`
- * inside a body does not), and a Postgres `E'…'` literal treats `\` as an escape, so
+ * inside a body does not), and, on Postgres only, an `E'…'` literal treats `\` as an escape, so
  * `E'it\'s; fine'` is one literal.
  *
  * Returned statements are trimmed and DO NOT include the trailing `;`
@@ -21,7 +21,15 @@
  * statement stays attached to it. Re-emitters that must preserve the prose (the D1
  * safety pass rewrites a file it does not execute) pass `keepCommentOnly`.
  */
+export type SplitSqlDialect = "postgres" | "sqlite" | "mysql" | "d1";
+
 export interface SplitSqlOptions {
+  /**
+   * The engine the script targets. Only Postgres reads `E'…'` as a backslash-escaped
+   * literal; on SQLite, MySQL and D1 `e'\'` is the identifier-ish word `e` followed by
+   * an ordinary literal. Omitted means Postgres (the original behaviour).
+   */
+  dialect?: SplitSqlDialect;
   /** Keep comment-only fragments in the result (re-emitters only — never execute them). */
   keepCommentOnly?: boolean;
 }
@@ -31,6 +39,7 @@ export function splitSqlStatements(text: string, opts: SplitSqlOptions = {}): st
   let start = 0;
   let i = 0;
   const n = text.length;
+  const backslashEscapes = (opts.dialect ?? "postgres") === "postgres";
   // Whether the current fragment holds anything besides comments and whitespace.
   let hasCode = false;
   // Trigger tracking (per statement): the leading words, whether we are inside the
@@ -80,7 +89,7 @@ export function splitSqlStatements(text: string, opts: SplitSqlOptions = {}): st
       let j = i + 1;
       while (j < n && /[A-Za-z0-9_]/.test(text[j] as string)) j++;
       const word = text.slice(i, j).toUpperCase();
-      if (word === "E" && text[j] === "'") {
+      if (word === "E" && text[j] === "'" && backslashEscapes) {
         i = skipBackslashLiteral(text, j);
         afterSemi = false;
         afterEnd = false;

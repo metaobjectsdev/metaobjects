@@ -119,3 +119,21 @@ describe("parseCurrency — strict grammar and sign forms (audit finding 5)", ()
     expect(parseCurrency("¥1,000", "JPY")).toBe(1000);
   });
 });
+
+describe("parseCurrency memoisation", () => {
+  test("repeat parses for one (currency, locale) build no new Intl.NumberFormat", () => {
+    expect(parseCurrency("1.234,56", "EUR", "de-DE")).toBe(123456); // warm the cache
+    const Original = Intl.NumberFormat;
+    let constructed = 0;
+    (Intl as unknown as { NumberFormat: unknown }).NumberFormat = function (...args: ConstructorParameters<typeof Original>) {
+      constructed++;
+      return new Original(...args);
+    };
+    try {
+      for (let i = 0; i < 5; i++) expect(parseCurrency("1.234,56", "EUR", "de-DE")).toBe(123456);
+    } finally {
+      Intl.NumberFormat = Original;
+    }
+    expect(constructed).toBe(0);
+  });
+});

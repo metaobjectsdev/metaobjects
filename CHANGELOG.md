@@ -420,6 +420,12 @@ here.**
   - The CSV and spreadsheet formula-injection guard no longer prefixes `'` to strict numeric
     literals (`-5`, `-5.25`) in all four render ports; every other value starting with
     `= + - @ TAB CR` is still guarded. Fixture `render-csv-numeric-exempt`.
+  - Generated Pydantic models publish an ECMA-262-valid `pattern` in JSON Schema/OpenAPI while
+    still enforcing an ASCII full match. `parseCurrency` caches the locale shape per
+    (currency, locale). Workspace `**` expansion tolerates symlink cycles and skips dot-directories,
+    `node_modules`, `dist` and `build`. `meta eject --list` says `, reordered` for a reorder-only
+    copy. C# `ConstraintErrors` falls back to message text when a driver code is not a constraint
+    code. The migration splitter treats `E'...'` as backslash-escaped on Postgres only.
   - Smaller instances: Java `<filters>` glob no longer throws on metacharacters; Java and C#
     generated string literals escape newlines and control characters; `library.json` is read with
     Gson; the Kotlin relations helper imports its primary-key type; `eject` reads `pom.xml` with

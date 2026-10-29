@@ -91,6 +91,11 @@ function resolveSource(name: string): TemplateSource | undefined {
 }
 
 
+/** Line counts ignore order, so a pure reorder reads 0/0; say so (Python and C# do too). */
+export function reorderedSuffix(behind: number, own: number): string {
+  return behind === 0 && own === 0 ? ", reordered" : "";
+}
+
 /** Every ejectable name, in registry order (stable — matches `meta eject --list`). */
 export function ejectableNames(): string[] {
   return SOURCES.flatMap((s) => s.names);
@@ -349,7 +354,7 @@ export async function runtimeCopyLines(cwd: string): Promise<string[]> {
     else {
       differing.push(r.path);
       lines.push(
-        `  ${r.path}  [DIFFERS: ${r.referenceOnly} line(s) only in the package, ${r.localOnly} line(s) only in yours]`,
+        `  ${r.path}  [DIFFERS: ${r.referenceOnly} line(s) only in the package, ${r.localOnly} line(s) only in yours${reorderedSuffix(r.referenceOnly, r.localOnly)}]`,
       );
     }
   }
@@ -387,7 +392,7 @@ export async function templateCopyLines(cwd: string): Promise<string[]> {
       const diff = templateDiffCommand(r);
       if (diff !== undefined) differing.push(diff);
       lines.push(
-        `  ${r.path}  [DIFFERS: ${r.referenceOnly} line(s) only in the package, ${r.localOnly} line(s) only in yours]`,
+        `  ${r.path}  [DIFFERS: ${r.referenceOnly} line(s) only in the package, ${r.localOnly} line(s) only in yours${reorderedSuffix(r.referenceOnly, r.localOnly)}]`,
       );
     }
   }
@@ -535,11 +540,11 @@ async function listOutput(cwd: string): Promise<string> {
         ];
         lines.push(
           generatorFileDiffers(r)
-            ? `  ${r.name}  [owned — DIFFERS: ${r.behind} line(s) behind, ${r.own} line(s) of your own]`
+            ? `  ${r.name}  [owned — DIFFERS: ${r.behind} line(s) behind, ${r.own} line(s) of your own${reorderedSuffix(r.behind, r.own)}]`
             : `  ${r.name}  [owned — DIFFERS: generator identical, ${companions.join(" and ")} differ]`,
         );
         for (const t of differing) {
-          lines.push(`    renderer ${t.path}  [DIFFERS: ${t.behind} line(s) behind, ${t.own} line(s) of your own]`);
+          lines.push(`    renderer ${t.path}  [DIFFERS: ${t.behind} line(s) behind, ${t.own} line(s) of your own${reorderedSuffix(t.behind, t.own)}]`);
         }
         for (const path of r.runtime ?? []) lines.push(`    runtime ${path}  [DIFFERS]`);
       }

@@ -27,6 +27,15 @@ describe("splitSqlStatements: engine rules", () => {
     expect(splitSqlStatements("CREATE TABLE begin_x (a); SELECT 1;")).toEqual(["CREATE TABLE begin_x (a)", "SELECT 1"]);
   });
 
+  test("E'\\' is not a backslash escape on SQLite, MySQL or D1", () => {
+    const sql = "INSERT INTO e VALUES (e'\\'); SELECT 1;";
+    for (const dialect of ["sqlite", "mysql", "d1"] as const) {
+      expect(splitSqlStatements(sql, { dialect })).toEqual(["INSERT INTO e VALUES (e'\\')", "SELECT 1"]);
+    }
+    // On Postgres the same text is one unterminated E-literal.
+    expect(splitSqlStatements(sql, { dialect: "postgres" })).toHaveLength(1);
+  });
+
   test("Postgres E'' literal honours backslash escapes", () => {
     const sql = "INSERT INTO t VALUES (E'it\\'s; fine');\nSELECT 1;";
     expect(splitSqlStatements(sql)).toEqual(["INSERT INTO t VALUES (E'it\\'s; fine')", "SELECT 1"]);

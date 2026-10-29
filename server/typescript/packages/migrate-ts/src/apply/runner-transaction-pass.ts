@@ -1,4 +1,4 @@
-import { splitSqlStatements, stripLeadingComments } from "../sql/split-statements.js";
+import { type SplitSqlDialect, splitSqlStatements, stripLeadingComments } from "../sql/split-statements.js";
 
 /**
  * Adapt a migration file's statements for execution INSIDE the apply runner's own
@@ -63,7 +63,8 @@ import { splitSqlStatements, stripLeadingComments } from "../sql/split-statement
  *    caught anything; the caller now runs it after commit and fails on any row.
  *
  * Postgres migrations contain none of these constructs, so this is a no-op for them —
- * which is why it keys on statement text rather than needing the dialect threaded in.
+ * which is why it keys on statement text; the dialect only tells the splitter whether `E'…'`
+ * is a backslash-escaped literal (Postgres) or not.
  */
 export interface RunnerTransactionPassResult {
   /** Statements to execute, in order, inside the runner's transaction. */
@@ -85,13 +86,16 @@ const FK_OFF = /^\s*PRAGMA\s+foreign_keys\s*=\s*(OFF|0|false)\s*$/i;
 const FK_ON = /^\s*PRAGMA\s+foreign_keys\s*=\s*(ON|1|true)\s*$/i;
 const FK_CHECK = /^\s*PRAGMA\s+foreign_key_check\s*$/i;
 
-export function prepareForRunnerTransaction(sqlText: string): RunnerTransactionPassResult {
+export function prepareForRunnerTransaction(
+  sqlText: string,
+  dialect: SplitSqlDialect = "postgres",
+): RunnerTransactionPassResult {
   const notes: string[] = [];
   const statements: string[] = [];
   const postTransactionChecks: string[] = [];
   let requiresForeignKeysOff = false;
 
-  for (const stmt of splitSqlStatements(sqlText)) {
+  for (const stmt of splitSqlStatements(sqlText, { dialect })) {
     // Classify on the statement's SQL, not its prose: a rebuild down leads with a comment
     // header, and `^\s*PRAGMA` never matched a statement that started with one.
     const code = stripLeadingComments(stmt);
