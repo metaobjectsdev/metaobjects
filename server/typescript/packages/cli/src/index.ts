@@ -124,7 +124,6 @@ VERIFY FLAGS (ADR-0021 D2 — explicit subverbs; combine any; exit 1 on ANY drif
                         Default: CREATE DATABASE on the --db server (dropped afterwards), else the
                         temp-object probe on the target. Also SHADOW_DATABASE_URL or
                         migrate.shadowDatabaseUrl in .metaobjects/config.json.
-  --no-shadow-db        Never open a scratch database (use the probe on the target instead).
   --prompts <dir>       Directory of provider-resolved template text (default: prompts)
   --dialect sqlite|postgres|d1   Optional override (auto-detected from --db URL scheme)
   --allow <csv>         Accepted for parity with 'migrate'; does NOT affect the
@@ -172,7 +171,6 @@ MIGRATE FLAGS:
                         Default: CREATE DATABASE on the --db server (dropped afterwards), else the
                         temp-object probe on the target. Also SHADOW_DATABASE_URL or
                         migrate.shadowDatabaseUrl in .metaobjects/config.json.
-  --no-shadow-db        Never open a scratch database (use the probe on the target instead).
   --dialect sqlite|postgres|d1   Optional override (auto-detected from URL scheme)
   --out-dir <path>      Migration directory (default: ./.metaobjects/migrations)
   --slug <name>         Required when changes are present (e.g., add-user-shipping)
@@ -349,7 +347,6 @@ FLAGS:
                         Default: CREATE DATABASE on the --db server (dropped afterwards), else the
                         temp-object probe on the target. Also SHADOW_DATABASE_URL or
                         migrate.shadowDatabaseUrl in .metaobjects/config.json.
-  --no-shadow-db        Never open a scratch database (use the probe on the target instead).
   --replay              Migration-chain drift — replay the committed chain into an
                         EMPTY throwaway database and assert it applies. Needs no --db:
                         the engine is in-process (PGlite for postgres, a temp file for

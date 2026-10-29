@@ -161,6 +161,18 @@ function blockFor(
       return autoSequenceDropRefusal(c.table, c.column, c.from, c.to, allow);
     }
 
+    case "change-column-identity":
+      // Dropping an identity leaves the column with no generation mechanism: every insert
+      // that omits it starts failing, the same hazard as dropping an auto-sequence default.
+      if (c.to === "increment") return null;
+      return gate(allow, "dropIdentityDefault", `column "${c.table}"."${c.column}" is a live Postgres identity column `
+        + `but its metadata declares no @generation. Dropping the identity is destructive (every insert that omits `
+        + `the column starts failing). Declare @generation: increment on the identity to keep it, or pass `
+        + `--allow drop-identity-default if removing it is intentional`);
+
+    case "change-comment":
+      return null;
+
     // Always-allowed kinds
     case "create-table":
     case "rename-table":

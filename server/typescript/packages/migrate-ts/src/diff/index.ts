@@ -169,9 +169,10 @@ export async function diff(
     ? argsOrExpected
     : { expected: argsOrExpected, actual: actualMaybe!, ...(optsMaybe ?? {}) };
   // Postgres, primary path: the expected side becomes the shadow database's own catalog.
-  const shadow = given.dialect === "postgres" && given.shadowSchema !== undefined
+  const shadowAnswer = given.dialect === "postgres" && given.shadowSchema !== undefined
     ? await given.shadowSchema(given.expected)
     : undefined;
+  const shadow = shadowAnswer !== undefined && "catalog" in shadowAnswer ? shadowAnswer.catalog : undefined;
   const args: DiffArgs = shadow !== undefined ? { ...given, expected: expectedFromShadow(shadow, given.expected) } : given;
 
   const changes: Change[] = [];
@@ -273,7 +274,8 @@ export async function diff(
     if (shadow !== undefined) { canonProbe = shadowIdentityProbe; exprCanonPath = "shadow"; }
     else if (args.exprCanonProbe !== undefined) { canonProbe = args.exprCanonProbe; exprCanonPath = "probe"; }
   }
-  const canon = await probeExprCanon(canonProbe, args.dialect, changes, expectedTables, actualTables);
+  const probed = await probeExprCanon(canonProbe, args.dialect, changes, expectedTables, actualTables);
+  const canon: ExprCanon = shadow !== undefined ? { ...probed, catalog: true } : probed;
   const { renamed, predecessors } = diffRenamedTables(changes, expectedTables, actualTables, args.dialect, canon);
 
   // Pass 2: tables in both → compare columns/indexes/FKs
@@ -292,7 +294,10 @@ export async function diff(
   const actualViewsInScope = args.actual.views.filter(
     (v) => inScope(v.schema) && !unmanaged.has(viewIdentity(v)),
   );
-  await diffViews(expectedViewsInScope, actualViewsInScope, changes, args.dialect, args.viewReplaceProbe);
+  // On the shadow path a view's body is Postgres's deparse of the shadow's copy, compared
+  // with the deparse of the live one.
+  const catalogBodies = new Map((shadow?.views ?? []).flatMap((v) => (v.sql !== undefined ? [[viewIdentity(v), v.sql] as const] : [])));
+  await diffViews(expectedViewsInScope, actualViewsInScope, changes, args.dialect, args.viewReplaceProbe, catalogBodies);
 
   // Pass 2c: a change that disturbs the table under a view forces the view to be
   // dropped before and recreated after — postgres blocks ALTER on a column a view
@@ -352,6 +357,7 @@ export async function diff(
     blocked: changes.filter((c) => c.status.state === "blocked"),
     hazards: changes.flatMap((c) => dataHazardOf(c) ?? []),
     ...(args.dialect === "postgres" ? { exprCanonPath } : {}),
+    ...(shadowAnswer !== undefined && "unavailable" in shadowAnswer ? { shadowUnavailable: shadowAnswer.unavailable } : {}),
   };
 }
 
@@ -485,6 +491,13 @@ function diffTablePair(
   canon: ExprCanon,
 ): void {
   diffTableColumns(expected, actual, changes, dialect, canon);
+  if (canon.catalog === true && expected.description !== actual.description) {
+    changes.push({
+      kind: "change-comment", table: expected.name, ...schemaSpread(expected.schema), status: ALLOWED,
+      ...(actual.description !== undefined ? { from: actual.description } : {}),
+      ...(expected.description !== undefined ? { to: expected.description } : {}),
+    });
+  }
   diffTableIndexes(expected, actual, changes, canon);
   diffTableForeignKeys(expected, actual, changes, dialect);
   // CHECK constraints on existing tables are evolved whenever a dialect is
@@ -825,6 +838,25 @@ function diffTableColumns(
       };
       changes.push(change);
     }
+    if (canon.catalog === true) {
+      // Both sides read `increment` off a GENERATED identity (attidentity) or a legacy serial's
+      // nextval default; a serial losing its sequence is the default change above, not this.
+      const from = ac.identity === "increment" ? "increment" : undefined;
+      const to = ec.identity === "increment" ? "increment" : undefined;
+      if (from !== to && !(from !== undefined && liveIsAutoSequenceDefault)) {
+        changes.push({
+          kind: "change-column-identity", table, ...sx, column: name, status: ALLOWED,
+          ...(from !== undefined ? { from } : {}), ...(to !== undefined ? { to } : {}),
+        });
+      }
+      if (ec.description !== ac.description) {
+        changes.push({
+          kind: "change-comment", table, ...sx, column: name, status: ALLOWED,
+          ...(ac.description !== undefined ? { from: ac.description } : {}),
+          ...(ec.description !== undefined ? { to: ec.description } : {}),
+        });
+      }
+    }
   }
   for (const [name, ac] of actualCols) {
     if (!expectedCols.has(name)) {
@@ -1043,6 +1075,7 @@ async function diffViews(
   expected: ViewDescriptor[], actual: ViewDescriptor[], changes: Change[],
   dialect: Dialect | undefined,
   probe: ViewReplaceProbe | undefined,
+  catalogBodies: ReadonlyMap<string, string> = new Map(),
 ): Promise<void> {
   const exp = new Map(expected.map((v) => [viewIdentity(v), v] as const));
   const act = new Map(actual.map((v) => [viewIdentity(v), v] as const));
@@ -1057,6 +1090,17 @@ async function diffViews(
     }
 
     if (dialect === "postgres") {
+      // Shadow path: the view applied to the scratch database, so Postgres's deparse of it
+      // is compared with its deparse of the live one, catalog to catalog.
+      const body = catalogBodies.get(id);
+      if (body !== undefined) {
+        if (a.sql === body) continue;
+        const firstDifference = a.sql !== undefined ? firstViewSqlDifference(body, a.sql) : undefined;
+        await pushViewUpdate(v, a, changes, probe, a.fingerprint === undefined, {
+          kind: "definition", compared: "text", ...(firstDifference !== undefined ? { firstDifference } : {}),
+        });
+        continue;
+      }
       // No expected fingerprint (an unresolvable projection body) → we cannot prove a
       // change. Leave it alone rather than propose a spurious replace.
       if (v.fingerprint === undefined) continue;
@@ -1133,13 +1177,15 @@ async function pushViewUpdate(
   // stamp the adopt-view gate (`unmanagedActual`) onto whichever change we emit so
   // status.ts fails closed on `allow.adoptView`, legal-replace and drop+create alike.
   unmanaged = false,
+  // Shadow path: the deparsed bodies were compared, and this says where they differ.
+  catalogReason?: ViewChangeReason,
 ): Promise<void> {
   const sx = schemaSpread(expected.schema);
   const adopt = unmanaged ? { unmanagedActual: true as const } : {};
-  // Postgres compares fingerprints, never text: an unstamped view cannot be compared at all.
+  // Off the shadow path Postgres compares fingerprints, never text: an unstamped view cannot be compared at all.
   const reason: ViewChangeReason = unmanaged
     ? { kind: "unfingerprinted" }
-    : { kind: "definition", compared: "fingerprint" };
+    : catalogReason ?? { kind: "definition", compared: "fingerprint" };
   const evidence = probe === undefined || planMayChangeWhatBodyReads(expected, actual, changes)
     ? undefined
     : await probe(expected, actual);

@@ -39,6 +39,11 @@ export interface ExprCanon {
    * through the introspector's own `parsePgDefault`), keyed by the expected column.
    */
   readonly defaults: ReadonlyMap<ColumnDescriptor, ColumnDefault>;
+  /**
+   * The expected side IS a catalog (the shadow path), so what only a catalog can say is
+   * compared too: a column's GENERATED identity and table/column comments.
+   */
+  readonly catalog?: boolean;
 }
 
 export const NO_EXPR_CANON: ExprCanon = { checks: new Map(), indexes: new Map(), defaults: new Map() };

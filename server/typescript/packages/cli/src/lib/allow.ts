@@ -75,6 +75,8 @@ export function describeChange(c: Change): string {
     }
     case "change-column-nullable": return `${c.table}.${c.column} (${c.from ? "NULL" : "NOT NULL"} → ${c.to ? "NULL" : "NOT NULL"})`;
     case "change-column-default": return `${c.table}.${c.column}`;
+    case "change-column-identity": return `${c.table}.${c.column} (identity ${c.from ?? "none"} → ${c.to ?? "none"})`;
+    case "change-comment": return `${c.column !== undefined ? `${c.table}.${c.column}` : c.table} (comment)`;
     case "add-index": return `${c.table} idx ${c.index.name}`;
     case "drop-index": return `${c.table} idx ${c.index}`;
     case "add-fk": return `${c.table} fk ${c.fk.name}`;

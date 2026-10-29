@@ -377,20 +377,29 @@ Postgres rewrites an expression before it stores it (`"k" IN ('x')` becomes `k =
 `= ANY (ARRAY[…])`, and casts and brackets are added), so the text `meta migrate` generates never
 comes back from the database as written. On Postgres, a plan against the database
 (`meta verify --db`, `meta migrate --from-db` and `--apply`) therefore **asks Postgres** instead of
-guessing. There are three ways it asks, tried in this order, and the output says which one ran.
+guessing. There are three ways it asks, tried in this order, and every Postgres run of
+`meta verify --db`, `meta migrate` and `meta migrate baseline --from-db` says which one ran.
 
 **1. A scratch (shadow) database, the primary path.** The practice Atlas, Prisma and migra share:
 the model's full expected schema (the DDL `meta migrate` emits for an empty database) is applied to
 a throwaway Postgres database, in one transaction that is always rolled back, and read with the same
 introspector that reads your live database. Drift is then the **same diff run on two catalogs**,
 `introspect(shadow)` as the expected side against `introspect(live)`, for every object in the run's
-scope: tables, columns and types, nullability, defaults, CHECKs, primary/foreign/unique constraints
-and their actions, and indexes. Both sides are Postgres's own spelling, so a shape nobody wrote a
-rule for (`int4` against `integer`, `ON DELETE SET NULL`) needs none. Model-only knowledge stays an
-input to that diff, not a second comparison: renames, `@unmanaged` and scope are applied as always,
-a column's `identity` is carried over from the model (a legacy `serial` key is not drift against an
-`increment` key), and views keep their model fingerprint. Column and table comments are not read
-back from the database, so a changed description is not drift. No per-shape rule is involved, so `NOW()`/`now()`, `current_date`, a date
+scope: tables, columns and types, nullability, defaults, identity, CHECKs, primary/foreign/unique
+constraints and their actions, indexes, view bodies and comments. Both sides are Postgres's own
+spelling, so a shape nobody wrote a rule for (`int4` against `integer`, `ON DELETE SET NULL`, a
+view body written differently from Postgres's deparse) needs none. Model-only knowledge stays an
+input to that diff, not a second comparison: renames, `@unmanaged` and scope are applied as always.
+Identity is read from `pg_attribute.attidentity` on both sides (a legacy `serial` column also reads
+as an `increment` key, so it is not drift against one); a GENERATED identity added or dropped is a
+`change-column-identity`, and dropping one is gated behind `--allow drop-identity-default`. Table
+and column comments are read from `pg_description` on both sides, and a changed one is a
+`change-comment` (`COMMENT ON … IS …`). A view's body is compared as Postgres's deparse
+(`pg_get_viewdef`) of the shadow's copy against the live one; each view is created under its own
+savepoint, so a view whose body reads something only the live database has is left out of the
+shadow and compared by its fingerprint instead, without costing the run its table comparison.
+Off the shadow path identity and comments are not compared, and views are compared by fingerprint.
+No per-shape rule is involved, so `NOW()`/`now()`, `current_date`, a date
 literal on a `timestamptz` (read in the session `TimeZone`), `'1e3'` on a double, `'007'` on an
 integer, `now() + interval '1 day'`, a regrouped `NOT` and a precedence change are all decided by
 the database. A real change of any of them is still reported. The scratch database comes from:
@@ -399,10 +408,15 @@ the database. A real change of any of them is still reported. The scratch databa
 |---|---|
 | An explicit URL | `--shadow-db <url>` on `verify` and `migrate`, else `SHADOW_DATABASE_URL`, else `migrate.shadowDatabaseUrl` in `.metaobjects/config.json`. Used as given and never dropped; nothing is left in it because the schema is applied inside a rolled-back transaction. |
 | `CREATE DATABASE` | With none of the above, a database named `mo_shadow_<random>` is created on the `--db` server when the role may, and **always dropped** afterwards, including on error. |
-| Off | `--no-shadow-db` skips both. |
 
-If no scratch database can be opened, or the expected schema does not apply to it (an FK to a table
-outside the run's scope, a missing extension), the next path runs.
+A run opens its scratch database once, and every comparison it makes uses it: `meta verify --db`
+compares the committed snapshot with the database on the same scratch database as the drift check.
+
+An explicitly configured scratch database that cannot be opened, or that the expected schema does
+not apply to (an FK to a table outside the run's scope, a missing extension), is an **error** naming
+the cause: you asked for a scratch database so the target would not be written to, so the run does
+not fall back to the probe on the target. A `CREATE DATABASE` that the role may not run, or that the
+schema does not apply to, falls back to the next path, and the output says why.
 
 **2. The temp-object probe, the first fallback.** For each table it creates a **temporary table with
 the live table's columns** on the target itself, inside a transaction it rolls back (a savepoint, when the connection is already in one), adds the expected

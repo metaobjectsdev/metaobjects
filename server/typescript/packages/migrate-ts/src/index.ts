@@ -99,7 +99,7 @@ export type { ExactViewColumn, ViewReplaceEvidence, ViewReplaceProbe } from "./v
 export { postgresExprCanonProbe } from "./expr-canon-probe.js";
 export { postgresShadowSchema, canonProbeOverShadow } from "./shadow-canon.js";
 export type { ShadowHandle, ShadowOpener } from "./shadow-canon.js";
-export type { ShadowSchemaSource } from "./shadow-expected.js";
+export type { ShadowCatalog, ShadowSchemaSource } from "./shadow-expected.js";
 export type { ExprCanon, ExprCanonProbe, IndexExprCanon } from "./expr-canon.js";
 // `baseline --from-db`: record the generated text for an expression the probe proved equal.
 export { adoptGeneratedSpelling } from "./snapshot/adopt-generated-spelling.js";

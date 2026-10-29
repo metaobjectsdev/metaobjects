@@ -7,9 +7,14 @@
 //
 // The DDL is the one `meta migrate` emits for an empty database, run inside ONE transaction
 // that is always rolled back, so nothing is left behind even in a shared shadow database.
-// Where no shadow database can be opened, or the schema does not apply to it (an FK to a
-// table outside the run's scope, a missing extension), the caller falls back to the
-// temp-object probe (expr-canon-probe.ts), and from there to the string normaliser.
+// Each view is created under its own savepoint: a view whose body reads an object only the
+// live database has is left out of the shadow (and compared by its fingerprint instead)
+// without costing the run its table comparison.
+//
+// When the shadow cannot be opened or the tables do not apply to it (an FK to a table outside
+// the run's scope, a missing extension), a `required` shadow (one the user configured) is an
+// error naming the cause; otherwise the source answers `unavailable` with that cause and the
+// caller falls back to the temp-object probe (expr-canon-probe.ts), then the string normaliser.
 
 import type { Kysely } from "kysely";
 import { sql } from "kysely";
@@ -18,7 +23,7 @@ import { emit } from "./emit/index.js";
 import { introspectPostgres } from "./introspect/postgres.js";
 import { qualifiedDbName } from "./qualified-name.js";
 import type { ExprCanon, ExprCanonProbe, IndexExprCanon } from "./expr-canon.js";
-import type { ShadowSchemaSource } from "./shadow-expected.js";
+import type { ShadowCatalog, ShadowSchemaSource } from "./shadow-expected.js";
 import type { CheckDescriptor, ColumnDefault, ColumnDescriptor, IndexDescriptor, SchemaSnapshot } from "./types.js";
 
 /** A connection to a scratch Postgres database, and how to release it. */
@@ -28,41 +33,56 @@ export interface ShadowHandle {
   close(): Promise<void>;
 }
 
-/** Opens a shadow database, or resolves `undefined` when none is available. May throw; that reads as unavailable. */
-export type ShadowOpener = () => Promise<ShadowHandle | undefined>;
-
+/** Opens a shadow database. A rejection means none could be opened; its message is the reason. */
+export type ShadowOpener = () => Promise<ShadowHandle>;
 
 const ROLLBACK = new Error("shadow canon: always rolled back");
+const VIEW_SAVEPOINT = "mo_shadow_view";
+
+const messageOf = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 
 /**
- * The shadow catalog for a run: `expected` applied to a scratch database and introspected, or
- * `undefined` when no shadow is available or the schema does not apply (the caller falls back).
+ * The shadow catalog for a run: `expected` applied to a scratch database and introspected.
+ * `required`: the shadow was configured explicitly, so a failure throws instead of falling back.
  */
-export function postgresShadowSchema(open: ShadowOpener): ShadowSchemaSource {
+export function postgresShadowSchema(open: ShadowOpener, opts: { required?: boolean } = {}): ShadowSchemaSource {
+  const unavailable = (reason: string): ShadowCatalog => {
+    if (opts.required === true) throw new Error(`shadow database: ${reason}`);
+    return { unavailable: reason };
+  };
   return async (expected) => {
-    let handle: ShadowHandle | undefined;
+    let handle: ShadowHandle;
     try {
       handle = await open();
-    } catch {
-      return undefined;
+    } catch (err) {
+      return unavailable(`could not be opened: ${messageOf(err)}`);
     }
-    if (handle === undefined) return undefined;
     try {
       const { changes } = await diff({ expected, actual: { tables: [], views: [] }, dialect: "postgres" });
-      const { up } = emit(changes, { dialect: "postgres" });
+      const views = changes.filter((c) => c.kind === "create-view");
+      const { up } = emit(changes.filter((c) => c.kind !== "create-view"), { dialect: "postgres" });
       let shadow: SchemaSnapshot | undefined;
       try {
         await handle.db.transaction().execute(async (trx) => {
           await sql.raw(up).execute(trx);
+          for (const view of views) {
+            await sql.raw(`SAVEPOINT ${VIEW_SAVEPOINT}`).execute(trx);
+            try {
+              await sql.raw(emit([view], { dialect: "postgres" }).up).execute(trx);
+              await sql.raw(`RELEASE SAVEPOINT ${VIEW_SAVEPOINT}`).execute(trx);
+            } catch {
+              await sql.raw(`ROLLBACK TO SAVEPOINT ${VIEW_SAVEPOINT}`).execute(trx);
+            }
+          }
           shadow = await introspectPostgres(trx as unknown as Kysely<Record<string, unknown>>);
           throw ROLLBACK;
         });
       } catch (err) {
-        if (err !== ROLLBACK) return undefined;
+        if (err !== ROLLBACK) throw err;
       }
-      return shadow;
-    } catch {
-      return undefined;
+      return { catalog: shadow! };
+    } catch (err) {
+      return unavailable(`the expected schema does not apply to it: ${messageOf(err)}`);
     } finally {
       await handle.close();
     }

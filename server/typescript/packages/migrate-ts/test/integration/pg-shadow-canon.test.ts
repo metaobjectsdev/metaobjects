@@ -15,7 +15,7 @@ import { introspectPostgres } from "../../src/introspect/postgres.js";
 import { diff } from "../../src/diff/index.js";
 import { postgresExprCanonProbe } from "../../src/expr-canon-probe.js";
 import { postgresShadowSchema, type ShadowOpener } from "../../src/shadow-canon.js";
-import type { SchemaSnapshot, TableDescriptor } from "../../src/types.js";
+import type { ChangeKind, SchemaSnapshot, TableDescriptor } from "../../src/types.js";
 
 const PG_URL = process.env["MIGRATE_TS_PG_URL"];
 const TABLE = "shadow_canon_t";
@@ -131,7 +131,7 @@ describe("shadow-database canon (live PG)", () => {
   });
 
   test("a real change of each kind is still reported", async () => {
-    const cases: Array<[string, (t: TableDescriptor) => void, string[]]> = [
+    const cases: Array<[string, (t: TableDescriptor) => void, ChangeKind[]]> = [
       ["default value", (t) => { AUTHORED(t); t.columns.find((c) => c.name === "label")!.default = { kind: "literal", value: "b" }; }, ["change-column-default"]],
       ["default instant", (t) => { AUTHORED(t); t.columns.find((c) => c.name === "ts2")!.default = { kind: "literal", value: "2024-01-02" }; }, ["change-column-default"]],
       ["default expression", (t) => { AUTHORED(t); t.columns.find((c) => c.name === "soon")!.default = { kind: "expr", value: "now() + interval '2 days'" }; }, ["change-column-default"]],
@@ -154,7 +154,26 @@ describe("shadow-database canon (live PG)", () => {
       shadowSchema: postgresShadowSchema(opener), exprCanonProbe: postgresExprCanonProbe(main.db),
     });
     expect(r.exprCanonPath).toBe("probe");
+    expect(r.shadowUnavailable).toContain("does not apply");
     expect(r.changes.map((c) => c.kind)).toEqual(["add-fk"]);
+  });
+
+  test("an explicitly configured shadow that does not apply is an error naming the cause", async () => {
+    const { live, expected } = await declared(AUTHORED);
+    tableOf(expected).foreignKeys.push({ name: "sc_fk", columns: ["a"], refTable: "no_such_table", refColumns: ["id"], onDelete: "restrict" });
+    const run = diff({
+      expected, actual: live, dialect: "postgres", scopeSchemas: ["public"],
+      shadowSchema: postgresShadowSchema(opener, { required: true }), exprCanonProbe: postgresExprCanonProbe(main.db),
+    });
+    await expect(run).rejects.toThrow(/shadow database: the expected schema does not apply to it: .*no_such_table/);
+  });
+
+  test("a view that does not apply to the shadow is left out, and the tables are still compared there", async () => {
+    const { live, expected } = await declared(AUTHORED);
+    expected.views.push({ name: `${TABLE}_lost_v`, schema: "public", sql: "SELECT id FROM only_on_live_table", fingerprint: "f" });
+    const r = await diff({ expected, actual: live, dialect: "postgres", scopeSchemas: ["public"], shadowSchema: postgresShadowSchema(opener) });
+    expect(r.exprCanonPath).toBe("shadow");
+    expect(r.changes.map((c) => c.kind)).toEqual(["create-view"]);
   });
 
   test("an opener that cannot open reads as unavailable", async () => {
@@ -164,5 +183,15 @@ describe("shadow-database canon (live PG)", () => {
       shadowSchema: postgresShadowSchema(async () => { throw new Error("no CREATE DATABASE"); }),
     });
     expect(r.exprCanonPath).toBe("normaliser");
+    expect(r.shadowUnavailable).toBe("could not be opened: no CREATE DATABASE");
+  });
+
+  test("an explicitly configured shadow that cannot be opened is an error naming the cause", async () => {
+    const { live, expected } = await declared(AUTHORED);
+    const run = diff({
+      expected, actual: live, dialect: "postgres", scopeSchemas: ["public"],
+      shadowSchema: postgresShadowSchema(async () => { throw new Error("password authentication failed"); }, { required: true }),
+    });
+    await expect(run).rejects.toThrow("shadow database: could not be opened: password authentication failed");
   });
 });

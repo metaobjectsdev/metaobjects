@@ -2,7 +2,9 @@
  * A column rename carries the CHECK named after it only when Postgres says the rule is the
  * same. The pairing used to compare the author's text with the live text through the string
  * normaliser, which folds a literal-case change (`'OPEN'` → `'open'`) into a plain
- * RENAME CONSTRAINT, so the stale values survived the migration.
+ * RENAME CONSTRAINT, so the stale values survived the migration. Both database paths are
+ * covered: the temp-object probe on the target, and the scratch (shadow) database, where the
+ * expected CHECK is Postgres's own spelling under the new column name.
  *
  * Skips gracefully when MIGRATE_TS_PG_URL is not set.
  */
@@ -13,9 +15,11 @@ import { Kysely, PostgresDialect, sql } from "kysely";
 import { introspectPostgres } from "../../src/introspect/postgres.js";
 import { diff } from "../../src/diff/index.js";
 import { postgresExprCanonProbe } from "../../src/expr-canon-probe.js";
+import { postgresShadowSchema } from "../../src/shadow-canon.js";
 
 const PG_URL = process.env["MIGRATE_TS_PG_URL"];
 const TABLE = "rename_carry_t";
+const SHADOW_DB = "mo_rename_carry_shadow_test";
 
 describe("column rename carry (live PG)", () => {
   if (!PG_URL) {
@@ -24,10 +28,18 @@ describe("column rename carry (live PG)", () => {
   }
   let pool: Pool;
   let db: Kysely<Record<string, unknown>>;
+  const shadow = postgresShadowSchema(async () => {
+    const u = new URL(PG_URL);
+    u.pathname = `/${SHADOW_DB}`;
+    const s = new Kysely<Record<string, unknown>>({ dialect: new PostgresDialect({ pool: new Pool({ connectionString: u.toString() }) }) });
+    return { db: s, close: async () => { await s.destroy(); } };
+  }, { required: true });
 
   beforeAll(async () => {
     pool = new Pool({ connectionString: PG_URL });
     db = new Kysely<Record<string, unknown>>({ dialect: new PostgresDialect({ pool }) });
+    await sql.raw(`DROP DATABASE IF EXISTS ${SHADOW_DB}`).execute(db);
+    await sql.raw(`CREATE DATABASE ${SHADOW_DB}`).execute(db);
     await sql.raw(`
       DROP TABLE IF EXISTS ${TABLE};
       CREATE TABLE ${TABLE} (id bigserial PRIMARY KEY, status text,
@@ -35,10 +47,11 @@ describe("column rename carry (live PG)", () => {
   });
   afterAll(async () => {
     await sql.raw(`DROP TABLE IF EXISTS ${TABLE}`).execute(db);
+    await sql.raw(`DROP DATABASE IF EXISTS ${SHADOW_DB}`).execute(db);
     await pool.end();
   });
 
-  const run = async (expression: string, probe: boolean) => {
+  const run = async (expression: string, path: "probe" | "shadow") => {
     const live = await introspectPostgres(db);
     const expected = structuredClone(live);
     const t = expected.tables.find((x) => x.name === TABLE)!;
@@ -47,28 +60,33 @@ describe("column rename carry (live PG)", () => {
     return diff({
       expected, actual: live, dialect: "postgres", scopeSchemas: ["public"],
       renames: [{ kind: "column", table: TABLE, from: "status", to: "state" }],
-      ...(probe ? { exprCanonProbe: postgresExprCanonProbe(db) } : {}),
+      ...(path === "probe" ? { exprCanonProbe: postgresExprCanonProbe(db) } : { shadowSchema: shadow }),
     });
   };
   const kinds = (r: Awaited<ReturnType<typeof run>>) => r.changes.map((c) => c.kind).sort();
 
-  test("the same rule under the new column name folds into the rename", async () => {
-    const r = await run(`"state" IN ('OPEN', 'CLOSED')`, true);
-    expect(kinds(r)).toEqual(["rename-column"]);
-    expect((r.changes[0] as { constraintRenames?: unknown }).constraintRenames).toEqual([
-      { from: `${TABLE}_status_chk`, to: `${TABLE}_state_chk` },
-    ]);
-  });
+  for (const path of ["probe", "shadow"] as const) {
+    test(`${path}: the same rule under the new column name folds into the rename`, async () => {
+      const r = await run(`"state" IN ('OPEN', 'CLOSED')`, path);
+      expect(r.exprCanonPath).toBe(path);
+      expect(kinds(r)).toEqual(["rename-column"]);
+      expect((r.changes[0] as { constraintRenames?: unknown }).constraintRenames).toEqual([
+        { from: `${TABLE}_status_chk`, to: `${TABLE}_state_chk` },
+      ]);
+    });
 
-  test("a rename plus a literal-case change is NOT folded: the stale values must be rewritten", async () => {
-    const r = await run(`"state" IN ('open', 'closed')`, true);
-    expect(kinds(r)).toEqual(["add-check", "drop-check", "rename-column"]);
-  });
+    test(`${path}: a rename plus a literal-case change is NOT folded: the stale values must be rewritten`, async () => {
+      const r = await run(`"state" IN ('open', 'closed')`, path);
+      expect(r.exprCanonPath).toBe(path);
+      expect(kinds(r)).toEqual(["add-check", "drop-check", "rename-column"]);
+    });
 
-  test("a rename plus a changed rule is not folded either", async () => {
-    const r = await run(`"state" IN ('OPEN')`, true);
-    expect(kinds(r)).toEqual(["add-check", "drop-check", "rename-column"]);
-  });
+    test(`${path}: a rename plus a changed rule is not folded either`, async () => {
+      const r = await run(`"state" IN ('OPEN')`, path);
+      expect(r.exprCanonPath).toBe(path);
+      expect(kinds(r)).toEqual(["add-check", "drop-check", "rename-column"]);
+    });
+  }
 
   test("the probe compiles an expected expression against the renamed columns", async () => {
     const live = (await introspectPostgres(db)).tables.find((t) => t.name === TABLE)!;
