@@ -14,7 +14,7 @@ import { Kysely, PostgresDialect, sql } from "kysely";
 import { introspectPostgres } from "../../src/introspect/postgres.js";
 import { diff } from "../../src/diff/index.js";
 import { postgresExprCanonProbe } from "../../src/expr-canon-probe.js";
-import { postgresShadowCanon, type ShadowOpener } from "../../src/shadow-canon.js";
+import { postgresShadowSchema, type ShadowOpener } from "../../src/shadow-canon.js";
 import type { SchemaSnapshot, TableDescriptor } from "../../src/types.js";
 
 const PG_URL = process.env["MIGRATE_TS_PG_URL"];
@@ -101,7 +101,7 @@ describe("shadow-database canon (live PG)", () => {
     const { live, expected } = await declared(edit);
     const r = await diff({
       expected, actual: live, dialect: "postgres", scopeSchemas: ["public"],
-      ...(how === "shadow" ? { exprCanonShadow: postgresShadowCanon(opener) } : {}),
+      ...(how === "shadow" ? { shadowSchema: postgresShadowSchema(opener) } : {}),
       ...(how === "probe" ? { exprCanonProbe: postgresExprCanonProbe(main.db) } : {}),
     });
     return { kinds: r.changes.map((c) => c.kind).sort(), path: r.exprCanonPath };
@@ -151,7 +151,7 @@ describe("shadow-database canon (live PG)", () => {
     tableOf(expected).foreignKeys.push({ name: "sc_fk", columns: ["a"], refTable: "no_such_table", refColumns: ["id"], onDelete: "restrict" });
     const r = await diff({
       expected, actual: live, dialect: "postgres", scopeSchemas: ["public"],
-      exprCanonShadow: postgresShadowCanon(opener), exprCanonProbe: postgresExprCanonProbe(main.db),
+      shadowSchema: postgresShadowSchema(opener), exprCanonProbe: postgresExprCanonProbe(main.db),
     });
     expect(r.exprCanonPath).toBe("probe");
     expect(r.changes.map((c) => c.kind)).toEqual(["add-fk"]);
@@ -161,7 +161,7 @@ describe("shadow-database canon (live PG)", () => {
     const { live, expected } = await declared(AUTHORED);
     const r = await diff({
       expected, actual: live, dialect: "postgres", scopeSchemas: ["public"],
-      exprCanonShadow: postgresShadowCanon(async () => { throw new Error("no CREATE DATABASE"); }),
+      shadowSchema: postgresShadowSchema(async () => { throw new Error("no CREATE DATABASE"); }),
     });
     expect(r.exprCanonPath).toBe("normaliser");
   });

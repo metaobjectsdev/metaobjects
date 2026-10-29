@@ -59,8 +59,9 @@ import {
   type TableDescriptor,
   postgresViewReplaceProbe,
   postgresExprCanonProbe,
-  postgresShadowCanon,
-  type ShadowCanonSource,
+  postgresShadowSchema,
+  type ShadowSchemaSource,
+  canonProbeOverShadow,
   adoptGeneratedSpelling,
 } from "@metaobjectsdev/migrate-ts";
 import {
@@ -845,7 +846,7 @@ export async function migrateCommand(
         // ...and the same for CHECK / index expressions: Postgres says how it stores the expected
         // text, so a stored rewrite no string rule knows is not proposed as a drop and re-add.
         ...(kysely.dialect === "postgres" ? { exprCanonProbe: postgresExprCanonProbe(kysely.db) } : {}),
-        ...(shadowOpen !== undefined ? { exprCanonShadow: postgresShadowCanon(shadowOpen) } : {}),
+        ...(shadowOpen !== undefined ? { shadowSchema: postgresShadowSchema(shadowOpen) } : {}),
         allow: tokensToAllowOptions(config.allow),
         renames: config.renames,
         // #258 — adopting a live DB whose PRIMARY KEY differs from the metadata identity
@@ -1173,12 +1174,13 @@ async function withGeneratedSpelling(
   dialect: Dialect,
   metaRoot: string,
   genRoot: string,
-  shadow?: ShadowCanonSource,
+  shadow?: ShadowSchemaSource,
 ): Promise<SchemaSnapshot> {
   try {
     const metadata = await loadBaselineMetadata(metaRoot, genRoot);
     const expected = baselineFromMetadata(metadata, dialect, buildProjectionViews(metadata, { dialect }));
-    const probe = (shadow !== undefined ? await shadow(expected) : undefined) ?? postgresExprCanonProbe(db);
+    const shadowCatalog = shadow !== undefined ? await shadow(expected) : undefined;
+    const probe = shadowCatalog !== undefined ? canonProbeOverShadow(shadowCatalog) : postgresExprCanonProbe(db);
     return await adoptGeneratedSpelling(snapshot, expected, probe);
   } catch {
     return snapshot;
@@ -1229,7 +1231,7 @@ export async function runBaseline(
         );
         snapshot = await withGeneratedSpelling(
           snapshot, kysely.db, config.dialect, metaRoot, genRoot,
-          shadowOpen !== undefined ? postgresShadowCanon(shadowOpen) : undefined,
+          shadowOpen !== undefined ? postgresShadowSchema(shadowOpen) : undefined,
         );
       }
     } finally {

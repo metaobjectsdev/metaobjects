@@ -302,8 +302,10 @@ here.**
 - **Postgres drift is decided by a scratch (shadow) database first.** `meta verify --db` and
   `meta migrate` (`--from-db`, `--apply`, and `baseline --from-db`) now apply the model's expected
   schema to a throwaway database, as Atlas, Prisma and migra do, read it with the introspector that
-  reads the live database, and compare CHECKs, index expressions and predicates, and column
-  defaults in Postgres's own spelling. The scratch database is `--shadow-db <url>`, else
+  reads the live database, and diff the two catalogs, so tables, columns and types, defaults,
+  CHECKs, constraints and their actions, and indexes are all compared in Postgres's own spelling
+  with no per-shape rule (renames, `@unmanaged`, scope and a key's `identity` stay inputs to the
+  diff; views keep their model fingerprint; comments are not read back). The scratch database is `--shadow-db <url>`, else
   `SHADOW_DATABASE_URL`, else `migrate.shadowDatabaseUrl`; with none, a database is `CREATE`d on the
   `--db` server when the role may and always dropped afterwards; `--no-shadow-db` skips both. The
   schema is applied in a rolled-back transaction, so an explicit URL is left empty. When no scratch

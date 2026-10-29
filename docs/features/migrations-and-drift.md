@@ -382,9 +382,15 @@ guessing. There are three ways it asks, tried in this order, and the output says
 **1. A scratch (shadow) database, the primary path.** The practice Atlas, Prisma and migra share:
 the model's full expected schema (the DDL `meta migrate` emits for an empty database) is applied to
 a throwaway Postgres database, in one transaction that is always rolled back, and read with the same
-introspector that reads your live database. The expected CHECKs, index expressions and predicates,
-and column defaults are then Postgres's own spelling of the same catalog, compared with the live
-one as plain strings. No per-shape rule is involved, so `NOW()`/`now()`, `current_date`, a date
+introspector that reads your live database. Drift is then the **same diff run on two catalogs**,
+`introspect(shadow)` as the expected side against `introspect(live)`, for every object in the run's
+scope: tables, columns and types, nullability, defaults, CHECKs, primary/foreign/unique constraints
+and their actions, and indexes. Both sides are Postgres's own spelling, so a shape nobody wrote a
+rule for (`int4` against `integer`, `ON DELETE SET NULL`) needs none. Model-only knowledge stays an
+input to that diff, not a second comparison: renames, `@unmanaged` and scope are applied as always,
+a column's `identity` is carried over from the model (a legacy `serial` key is not drift against an
+`increment` key), and views keep their model fingerprint. Column and table comments are not read
+back from the database, so a changed description is not drift. No per-shape rule is involved, so `NOW()`/`now()`, `current_date`, a date
 literal on a `timestamptz` (read in the session `TimeZone`), `'1e3'` on a double, `'007'` on an
 integer, `now() + interval '1 day'`, a regrouped `NOT` and a precedence change are all decided by
 the database. A real change of any of them is still reported. The scratch database comes from:

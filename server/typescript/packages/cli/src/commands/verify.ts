@@ -90,7 +90,7 @@ import {
   type ExprCanonProbe,
   postgresViewReplaceProbe,
   postgresExprCanonProbe,
-  postgresShadowCanon,
+  postgresShadowSchema,
   withoutFlywayHistory,
 } from "@metaobjectsdev/migrate-ts";
 import {
@@ -1363,7 +1363,7 @@ export async function verifyCommand(
             { url: flags.db as string, handle: kysely },
           )
         : undefined;
-      const exprCanonShadow = shadowOpen !== undefined ? postgresShadowCanon(shadowOpen) : undefined;
+      const shadowSchema = shadowOpen !== undefined ? postgresShadowSchema(shadowOpen) : undefined;
       let driftResult;
       let actual: SchemaSnapshot;
       try {
@@ -1382,7 +1382,7 @@ export async function verifyCommand(
           ...(kysely.dialect === "postgres" ? { viewReplaceProbe: postgresViewReplaceProbe(kysely.db) } : {}),
           // ...and asks Postgres, not a string rewrite, how it stores each expected CHECK and index expression.
           ...(exprCanonProbe !== undefined ? { exprCanonProbe } : {}),
-          ...(exprCanonShadow !== undefined ? { exprCanonShadow } : {}),
+          ...(shadowSchema !== undefined ? { shadowSchema } : {}),
           ...(schemaScope !== undefined ? { inScope: schemaScope } : {}),
           // The import exclusion reaches scopeExpectedSchema through this option bag —
           // there is no direct call on this path to attach it to.

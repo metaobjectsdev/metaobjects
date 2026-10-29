@@ -2,9 +2,8 @@
 //
 // The practice Atlas, Prisma and migra share: apply the model's full expected schema to a
 // scratch (shadow) database, introspect it with the very introspector that reads the live
-// database, and compare. Both sides are then Postgres's own spelling of the same catalog, so
-// no per-shape rule is needed for a CHECK, an index expression or predicate, or a column
-// DEFAULT.
+// database, and diff the two catalogs (shadow-expected.ts). Both sides are then Postgres's own
+// spelling of the same catalog, so no per-shape rule is needed for anything in scope.
 //
 // The DDL is the one `meta migrate` emits for an empty database, run inside ONE transaction
 // that is always rolled back, so nothing is left behind even in a shared shadow database.
@@ -19,6 +18,7 @@ import { emit } from "./emit/index.js";
 import { introspectPostgres } from "./introspect/postgres.js";
 import { qualifiedDbName } from "./qualified-name.js";
 import type { ExprCanon, ExprCanonProbe, IndexExprCanon } from "./expr-canon.js";
+import type { ShadowSchemaSource } from "./shadow-expected.js";
 import type { CheckDescriptor, ColumnDefault, ColumnDescriptor, IndexDescriptor, SchemaSnapshot } from "./types.js";
 
 /** A connection to a scratch Postgres database, and how to release it. */
@@ -31,15 +31,14 @@ export interface ShadowHandle {
 /** Opens a shadow database, or resolves `undefined` when none is available. May throw; that reads as unavailable. */
 export type ShadowOpener = () => Promise<ShadowHandle | undefined>;
 
-/**
- * Given the expected schema of a run, resolves the probe that answers from a shadow database,
- * or `undefined` when no shadow is available (the caller then falls back).
- */
-export type ShadowCanonSource = (expected: SchemaSnapshot) => Promise<ExprCanonProbe | undefined>;
 
 const ROLLBACK = new Error("shadow canon: always rolled back");
 
-export function postgresShadowCanon(open: ShadowOpener): ShadowCanonSource {
+/**
+ * The shadow catalog for a run: `expected` applied to a scratch database and introspected, or
+ * `undefined` when no shadow is available or the schema does not apply (the caller falls back).
+ */
+export function postgresShadowSchema(open: ShadowOpener): ShadowSchemaSource {
   return async (expected) => {
     let handle: ShadowHandle | undefined;
     try {
@@ -61,7 +60,7 @@ export function postgresShadowCanon(open: ShadowOpener): ShadowCanonSource {
       } catch (err) {
         if (err !== ROLLBACK) return undefined;
       }
-      return shadow === undefined ? undefined : probeOver(shadow);
+      return shadow;
     } catch {
       return undefined;
     } finally {
@@ -70,8 +69,8 @@ export function postgresShadowCanon(open: ShadowOpener): ShadowCanonSource {
   };
 }
 
-/** The answer for each expected descriptor, read off the shadow table of the same name. */
-function probeOver(shadow: SchemaSnapshot): ExprCanonProbe {
+/** An {@link ExprCanonProbe} reading each expected descriptor off the shadow table of the same name (used by `baseline --from-db`). */
+export function canonProbeOverShadow(shadow: SchemaSnapshot): ExprCanonProbe {
   const tables = new Map(shadow.tables.map((t) => [qualifiedDbName(t), t] as const));
   return async (_live, expected) => {
     const st = tables.get(qualifiedDbName(expected));

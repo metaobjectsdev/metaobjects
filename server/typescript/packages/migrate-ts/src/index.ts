@@ -97,8 +97,9 @@ export type { ExactViewColumn, ViewReplaceEvidence, ViewReplaceProbe } from "./v
 // Postgres's own spelling of an expected CHECK / index expression is asked of the database the
 // same way (rolled-back scratch table); the string normaliser covers whatever it cannot answer.
 export { postgresExprCanonProbe } from "./expr-canon-probe.js";
-export { postgresShadowCanon } from "./shadow-canon.js";
-export type { ShadowCanonSource, ShadowHandle, ShadowOpener } from "./shadow-canon.js";
+export { postgresShadowSchema, canonProbeOverShadow } from "./shadow-canon.js";
+export type { ShadowHandle, ShadowOpener } from "./shadow-canon.js";
+export type { ShadowSchemaSource } from "./shadow-expected.js";
 export type { ExprCanon, ExprCanonProbe, IndexExprCanon } from "./expr-canon.js";
 // `baseline --from-db`: record the generated text for an expression the probe proved equal.
 export { adoptGeneratedSpelling } from "./snapshot/adopt-generated-spelling.js";

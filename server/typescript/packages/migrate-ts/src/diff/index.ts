@@ -13,7 +13,7 @@ import { detectColumnRenames, detectTableRenames } from "./rename-heuristic.js";
 import { firstViewSqlDifference, viewSqlEquals } from "../view-sql-compare.js";
 import { viewReplaceIsLegal, type ViewReplaceProbe } from "../view-replace.js";
 import { liveViewReadsTable, sqlNamesIdentifier } from "../view-reads.js";
-import type { ShadowCanonSource } from "../shadow-canon.js";
+import { expectedFromShadow, shadowIdentityProbe, type ShadowSchemaSource } from "../shadow-expected.js";
 import { checkExprEquals, checkExprRespelledNullSafe, renameExprIdentifiers } from "../check-expr-compare.js";
 import { checkMatchesLive, columnDefaultMatchesLive, indexExprMatchesLive, NO_EXPR_CANON, type ExprCanon, type ExprCanonProbe, type IndexExprCanon } from "../expr-canon.js";
 import { isPgAutoSequenceDefault } from "../pg-identity-default.js";
@@ -91,11 +91,12 @@ export interface DiffArgs {
    */
   exprCanonProbe?: ExprCanonProbe;
   /**
-   * Postgres: the primary source of that answer, a scratch (shadow) database the expected
-   * schema is applied to (see shadow-canon.ts). Tried first; when it resolves no probe,
+   * Postgres: the primary path. A scratch (shadow) database the expected schema is applied to;
+   * when it resolves a catalog, drift is the diff of that catalog against `actual` (see
+   * shadow-expected.ts) and `exprCanonProbe` is not consulted. When it resolves none,
    * `exprCanonProbe` answers, and without one the string normaliser does.
    */
-  exprCanonShadow?: ShadowCanonSource;
+  shadowSchema?: ShadowSchemaSource;
   /**
    * #258 — refuse (throw {@link PrimaryKeyChangeError}) when an existing table's live
    * PRIMARY KEY differs from the metadata identity. There is no primary-key change kind
@@ -164,9 +165,14 @@ export async function diff(
   optsMaybe?: Omit<DiffArgs, "expected" | "actual">,
 ): Promise<DiffResult> {
   // Normalize args.
-  const args: DiffArgs = isDiffArgs(argsOrExpected)
+  const given: DiffArgs = isDiffArgs(argsOrExpected)
     ? argsOrExpected
     : { expected: argsOrExpected, actual: actualMaybe!, ...(optsMaybe ?? {}) };
+  // Postgres, primary path: the expected side becomes the shadow database's own catalog.
+  const shadow = given.dialect === "postgres" && given.shadowSchema !== undefined
+    ? await given.shadowSchema(given.expected)
+    : undefined;
+  const args: DiffArgs = shadow !== undefined ? { ...given, expected: expectedFromShadow(shadow, given.expected) } : given;
 
   const changes: Change[] = [];
 
@@ -264,8 +270,7 @@ export async function diff(
   let exprCanonPath: ExprCanonPath = "normaliser";
   let canonProbe: ExprCanonProbe | undefined;
   if (args.dialect === "postgres") {
-    canonProbe = args.exprCanonShadow === undefined ? undefined : await args.exprCanonShadow(args.expected);
-    if (canonProbe !== undefined) exprCanonPath = "shadow";
+    if (shadow !== undefined) { canonProbe = shadowIdentityProbe; exprCanonPath = "shadow"; }
     else if (args.exprCanonProbe !== undefined) { canonProbe = args.exprCanonProbe; exprCanonPath = "probe"; }
   }
   const canon = await probeExprCanon(canonProbe, args.dialect, changes, expectedTables, actualTables);
