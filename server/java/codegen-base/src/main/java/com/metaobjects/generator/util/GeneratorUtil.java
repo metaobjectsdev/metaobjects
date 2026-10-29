@@ -172,25 +172,31 @@ public class GeneratorUtil {
         return Pattern.compile(createRegexFromGlob(nameFilter)).matcher( metaDataName ).matches();
     }
 
+    /**
+     * Glob to regex for the {@code <filters>} name surface: {@code *} any run (crossing {@code ::}),
+     * {@code @} one segment, {@code ?} one character. Every other character is literal, quoted so
+     * regex metacharacters in a name (e.g. {@code a::B(}) cannot throw or change the match.
+     * Deliberately not {@code Scope.compilePattern}: that grammar's {@code *} never crosses {@code ::}.
+     */
     private static String createRegexFromGlob(String glob)
     {
-        String out = "^";
+        StringBuilder out = new StringBuilder("^");
+        StringBuilder literal = new StringBuilder();
         for(int i = 0; i < glob.length(); ++i)
         {
             final char c = glob.charAt(i);
-            switch(c)
-            {
-                case '*': out += ".*"; break;
-                case '@': out += "[^:]+"; break;
-                case '?': out += "."; break;
-                case '.': out += "\\."; break;
-                case ':': out += "\\:"; break;      // TODO:  This doesn't seem to work on enforcing the ::'s as a separator for *
-                case '\\': out += "\\\\"; break;
-                default: out += c;
-            }
+            String wildcard = switch(c) {
+                case '*' -> ".*";
+                case '@' -> "[^:]+";
+                case '?' -> ".";
+                default -> null;
+            };
+            if (wildcard == null) { literal.append(c); continue; }
+            if (literal.length() > 0) { out.append(Pattern.quote(literal.toString())); literal.setLength(0); }
+            out.append(wildcard);
         }
-        out += '$';
-        return out;
+        if (literal.length() > 0) out.append(Pattern.quote(literal.toString()));
+        return out.append('$').toString();
     }
 
     public static String toRelativePackage( String p1, String p2 ) {

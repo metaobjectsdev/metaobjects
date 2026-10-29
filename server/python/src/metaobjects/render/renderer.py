@@ -10,15 +10,13 @@ Pre-expanding partials before interpretation guarantees deterministic
 cross-port whitespace and lets the engine own cycle detection. The Mustache
 subset implemented (interpolation, raw triple-stache, sections, inverted
 sections, partials, comments) is the corpus's vocabulary — set-delimiter
-directives are intentionally NOT supported (matches the verify side and the
-TS/C#/Java engines).
+directives are rejected loudly (verify understands them; this interpreter does not).
 
 Mirrors ``server/java/render/.../Renderer.java`` and
 ``server/csharp/MetaObjects.Render/Renderer.cs``.
 """
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -30,6 +28,7 @@ from .engine import (
     partial_engine_mismatch,
     template_engine_of,
 )
+from .mustache_tags import KIND_DELIMITERS, KIND_PARTIAL, MustacheSyntaxError, scan
 from .payload_accessors import with_derived_accessors
 from .verify import (
     ERR_REQUIRED_SLOT_UNUSED,
@@ -39,10 +38,6 @@ from .verify import (
     Provider,
 )
 from .verify import verify as verify_template
-
-# {{> name }} — captures the reference between the marker and the closing }}.
-_PARTIAL_PATTERN = re.compile(r"\{\{>\s*([^\s}]+)\s*\}\}")
-
 
 class RenderError(Exception):
     """Anything that goes wrong during render (unresolved partial, cycle, etc.)."""
@@ -145,9 +140,20 @@ def _pre_expand_partials(text: str, provider: Provider, stack: list[str]) -> str
         raise RenderError(
             f"partial depth exceeded {MAX_DEPTH} (chain: {' -> '.join(stack)})"
         )
-
-    def replace(match: re.Match[str]) -> str:
-        ref = match.group(1)
+    try:
+        tags = scan(text)
+    except MustacheSyntaxError as e:
+        raise RenderError(f"template syntax error: {e}") from e
+    if any(t.kind == KIND_DELIMITERS for t in tags):
+        raise RenderError(
+            "set-delimiter tags ({{=<% %>=}}) are not supported by the Python renderer"
+        )
+    out: list[str] = []
+    pos = 0
+    for tag in tags:
+        if tag.kind != KIND_PARTIAL:
+            continue
+        ref = tag.value
         if ref in stack:
             raise RenderError(f"partial cycle: {' -> '.join(stack)} -> {ref}")
         body = provider.resolve(ref)
@@ -157,11 +163,14 @@ def _pre_expand_partials(text: str, provider: Provider, stack: list[str]) -> str
             raise RenderError(partial_engine_message(ref, TEMPLATE_ENGINE_MUSTACHE))
         stack.append(ref)
         try:
-            return _pre_expand_partials(body, provider, stack)
+            expanded = _pre_expand_partials(body, provider, stack)
         finally:
             stack.pop()
-
-    return _PARTIAL_PATTERN.sub(replace, text)
+        out.append(text[pos : tag.start])
+        out.append(expanded)
+        pos = tag.end
+    out.append(text[pos:])
+    return "".join(out)
 
 
 # ---------------------------------------------------------------------------

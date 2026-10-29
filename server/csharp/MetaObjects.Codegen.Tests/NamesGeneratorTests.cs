@@ -343,7 +343,9 @@ public class NamesGeneratorTests
     [Fact]
     public void Two_fields_colliding_on_their_Pascal_form_is_refused_naming_the_model()
     {
-        // userId and UserId both Pascalize to "UserId" — two duplicate const members.
+        // userId and UserId both Pascalize to "UserId" — two duplicate const members. (The
+        // explicit @column keeps their PHYSICAL columns apart: equal physical columns are
+        // refused earlier, by the loader, as ERR_COLUMN_NAME_COLLISION.)
         // C# would refuse to compile the generated file, but the error would name a
         // generated .g.cs and read as a codegen bug rather than a model one. Fail here
         // instead, naming the entity and both offending field names.
@@ -353,7 +355,7 @@ public class NamesGeneratorTests
             { "source.rdb": { "@table": "weirds" } },
             { "field.long":   { "name": "id" } },
             { "field.string": { "name": "userId" } },
-            { "field.string": { "name": "UserId" } },
+            { "field.string": { "name": "UserId", "@column": "user_id_alt" } },
             { "identity.primary": { "@fields": "id" } }
           ]}}
         ]}}

@@ -79,6 +79,20 @@ describe("DirectorySource", () => {
     }
   });
 
+  test("exclude with a slash matches the path relative to the directory", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "ds-"));
+    try {
+      await mkdir(join(dir, "vendor", "deep"), { recursive: true });
+      await mkdir(join(dir, "app"), { recursive: true });
+      await writeFile(join(dir, "vendor", "deep", "meta.v.json"), "{}");
+      await writeFile(join(dir, "app", "meta.app.json"), "{}");
+      const expanded = await new DirectorySource(dir, { exclude: ["vendor/**"] }).expand();
+      expect(expanded.map((s) => s.id)).toEqual(["meta.app.json"]);
+    } finally {
+      await rm(dir, { recursive: true });
+    }
+  });
+
   test("recurses by default into subdirectories", async () => {
     const dir = await mkdtemp(join(tmpdir(), "ds-"));
     try {

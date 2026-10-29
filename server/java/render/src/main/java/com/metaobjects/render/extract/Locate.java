@@ -77,15 +77,26 @@ public final class Locate {
         return -1;
     }
 
-    /** Span of <root>...</root>; if close absent, opener to end; null if no opener. */
+    /**
+     * Span of <root>...</root>; if close absent, opener to end; null if no opener. Comments and
+     * CDATA are not searched, and when another opener of the same root sits between the first
+     * one and its close (the tag mentioned in prose, then the real element) the span starts at
+     * the LAST such opener: a root does not nest in itself.
+     */
     public static String xml(String text, String rootName, boolean caseInsensitive) {
         if (text == null || rootName == null) return null;
         int flags = caseInsensitive ? Pattern.CASE_INSENSITIVE : 0;
-        Matcher open = Pattern.compile("<" + Pattern.quote(rootName) + "(\\s[^>]*)?>", flags).matcher(text);
+        String view = XmlForgivingReader.maskNonMarkup(text);
+        Matcher open = Pattern.compile("<" + Pattern.quote(rootName) + "(\\s[^>]*)?>", flags).matcher(view);
         if (!open.find()) return null;
         int start = open.start();
-        Matcher close = Pattern.compile("</" + Pattern.quote(rootName) + "\\s*>", flags).matcher(text);
-        if (close.find(open.end())) return text.substring(start, close.end());
-        return text.substring(start);
+        Matcher close = Pattern.compile("</" + Pattern.quote(rootName) + "\\s*>", flags).matcher(view);
+        if (!close.find(open.end())) return text.substring(start);
+        int at = open.end();
+        while (open.find(at) && open.start() < close.start()) {
+            start = open.start();
+            at = open.end();
+        }
+        return text.substring(start, close.end());
     }
 }

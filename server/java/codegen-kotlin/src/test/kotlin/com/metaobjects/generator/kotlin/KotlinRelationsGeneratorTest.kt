@@ -139,4 +139,35 @@ class KotlinRelationsGeneratorTest {
             outDir.toFile().deleteRecursively()
         }
     }
+
+    @Test fun `a non-uuid library-typed primary key imports its own type`() {
+        val fixture = """{
+          "metadata.root": { "package": "acme::blog", "children": [
+            { "object.entity": { "name": "Day", "children": [
+                { "field.date":   { "name": "id" } },
+                { "relationship.composition": {
+                    "name": "posts", "@objectRef": "Post", "@cardinality": "many"
+                } },
+                { "source.rdb":   { "@table": "days" } },
+                { "identity.primary": { "name": "pk", "@fields": ["id"] } }
+            ] } },
+            { "object.entity": { "name": "Post", "children": [
+                { "field.long":   { "name": "id" } },
+                { "source.rdb":   { "@table": "posts" } },
+                { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } }
+            ] } }
+          ] }
+        }""".trimIndent()
+        val outDir = Files.createTempDirectory("krel-")
+        try {
+            val gen = KotlinRelationsGenerator()
+            gen.setArgs(mapOf("outputDir" to outDir.toString()))
+            gen.execute(loadString("rel-date-pk", fixture))
+            val src = Files.readString(outDir.resolve("acme/blog/DayRelations.kt"))
+            assertTrue("import java.time.LocalDate" in src, src)
+            assertTrue("dayId: LocalDate): Query" in src, src)
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
 }

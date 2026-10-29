@@ -1,7 +1,9 @@
 package com.metaobjects.render;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Deque;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -33,6 +35,8 @@ public final class Verify {
     public static final String ERR_REQUIRED_SLOT_UNUSED = "ERR_REQUIRED_SLOT_UNUSED";
     /** A declared {@code @requiredTags} output tag is absent from the template text. */
     public static final String ERR_OUTPUT_TAG_MISSING = "ERR_OUTPUT_TAG_MISSING";
+    /** The template text does not parse: an unbalanced Mustache section. path = the section's name. */
+    public static final String ERR_TEMPLATE_SYNTAX = "ERR_TEMPLATE_SYNTAX";
     /** A required field name is absent from the rendered output-format fragment. */
     public static final String ERR_OUTPUT_PROMPT_FIELD_MISSING = "ERR_OUTPUT_PROMPT_FIELD_MISSING";
 
@@ -95,10 +99,18 @@ public final class Verify {
         // The static text the output-tag check scans: the body plus every
         // provider-resolved partial body, collected during the single walk below.
         List<String> staticTexts = new ArrayList<>();
-        staticTexts.add(templateText);
+
+        List<Tok> bodyToks;
+        try {
+            bodyToks = tokenize(templateText);
+        } catch (MustacheTags.SyntaxException e) {
+            errors.add(new VerifyError(ERR_TEMPLATE_SYNTAX, e.section()));
+            return errors;
+        }
+        staticTexts.add(staticText(templateText));
 
         WalkContext ctx = new WalkContext(provider, root, errors, referencedAtRoot, staticTexts);
-        walk(tokenize(templateText), List.of(root), List.of(), ctx, false);
+        walk(bodyToks, List.of(root), List.of(), ctx, false);
 
         if (opts.requiredSlots() != null) {
             for (String slot : opts.requiredSlots()) {
@@ -217,10 +229,17 @@ public final class Verify {
                         ctx.errors().add(new VerifyError(ERR_PARTIAL_UNRESOLVED, p.value()));
                         break;
                     }
-                    ctx.staticTexts().add(text);
+                    List<Tok> partialToks;
+                    try {
+                        partialToks = tokenize(text);
+                    } catch (MustacheTags.SyntaxException e) {
+                        ctx.errors().add(new VerifyError(ERR_TEMPLATE_SYNTAX, e.section()));
+                        break;
+                    }
+                    ctx.staticTexts().add(staticText(text));
                     List<String> nextSeen = new ArrayList<>(seen);
                     nextSeen.add(p.value());
-                    walk(tokenize(text), stack, Collections.unmodifiableList(nextSeen), ctx, inElement);
+                    walk(partialToks, stack, Collections.unmodifiableList(nextSeen), ctx, inElement);
                 }
             }
         }
@@ -288,61 +307,32 @@ public final class Verify {
      * cares about: variables (incl. {@code {{&x}}} and {@code {{{x}}}}),
      * sections + inverted sections (with nested children), and partials.
      * Comments and set-delimiter changes are dropped; plain text is skipped.
+     * Tags come from the shared scanner ({@link MustacheTags}); an unbalanced
+     * section throws {@link MustacheTags.SyntaxException}.
      */
     static List<Tok> tokenize(String text) {
-        int[] pos = {0};
-        return parseTokens(text, pos);
-    }
-
-    /**
-     * Parse tokens until EOF or a matching {@code {{/...}}} (which is consumed).
-     * Mirrors C# {@code Verify.cs ParseTokens()} — note that any close tag
-     * (matched or mismatched) ends the current level, which is intentionally
-     * lenient (templates that drift to imbalanced sections still tokenize).
-     */
-    private static List<Tok> parseTokens(String text, int[] pos) {
-        List<Tok> tokens = new ArrayList<>();
-        while (pos[0] < text.length()) {
-            int open = text.indexOf("{{", pos[0]);
-            if (open < 0) break;   // remainder is plain text
-            boolean triple = open + 2 < text.length() && text.charAt(open + 2) == '{';
-            String closeDelim = triple ? "}}}" : "}}";
-            int contentStart = open + (triple ? 3 : 2);
-            int close = text.indexOf(closeDelim, contentStart);
-            if (close < 0) break;  // malformed; stop
-            String content = text.substring(contentStart, close).trim();
-            pos[0] = close + closeDelim.length();
-
-            if (triple) {
-                tokens.add(new VarTok(content));
-                continue;
-            }
-            if (content.isEmpty()) continue;
-
-            char sigil = content.charAt(0);
-            String name = content.length() > 1 ? content.substring(1).trim() : "";
-            switch (sigil) {
-                case '!':
-                    break;   // comment
-                case '#':
-                case '^':
-                    List<Tok> children = parseTokens(text, pos);
-                    tokens.add(new SectionTok(name, sigil == '^', children));
-                    break;
-                case '/':
-                    return tokens;   // close (matched or mismatched) ends this level
-                case '>':
-                    tokens.add(new PartialTok(name));
-                    break;
-                case '&':
-                    tokens.add(new VarTok(name));
-                    break;
-                default:
-                    tokens.add(new VarTok(content));   // {{x}}, {{x.y}}, {{.}}
-                    break;
+        List<Tok> root = new ArrayList<>();
+        Deque<List<Tok>> levels = new ArrayDeque<>();
+        levels.push(root);
+        for (MustacheTags.Tag tag : MustacheTags.scan(text)) {
+            switch (tag.kind()) {
+                case SECTION, INVERTED -> {
+                    List<Tok> children = new ArrayList<>();
+                    levels.peek().add(new SectionTok(tag.value(), tag.kind() == MustacheTags.Kind.INVERTED, children));
+                    levels.push(children);
+                }
+                case CLOSE -> levels.pop();   // the scanner already matched it to its open
+                case PARTIAL -> levels.peek().add(new PartialTok(tag.value()));
+                case NAME, TRIPLE, AMP -> levels.peek().add(new VarTok(tag.value()));   // {{x}}, {{x.y}}, {{.}}
+                default -> { }   // comments and delimiter changes carry no reference
             }
         }
-        return tokens;
+        return root;
+    }
+
+    /** {@code text} minus its comments, for the output-tag scan. */
+    private static String staticText(String text) {
+        return MustacheTags.withoutComments(text, MustacheTags.scan(text));
     }
 
     // ---------------- Required-tag matching ----------------

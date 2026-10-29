@@ -54,6 +54,9 @@ public static class Verify
     /// <summary>A declared @requiredTags output tag is absent from the template text.</summary>
     public const string ERR_OUTPUT_TAG_MISSING = "ERR_OUTPUT_TAG_MISSING";
 
+    /// <summary>The template text does not parse: an unbalanced Mustache section. path = the section's name.</summary>
+    public const string ERR_TEMPLATE_SYNTAX = "ERR_TEMPLATE_SYNTAX";
+
     private const int MaxDepth = 32;
 
     // --- Mustache tag token model (rendering-agnostic; only tag structure) ---
@@ -62,60 +65,42 @@ public static class Verify
     private sealed record SectionTok(string Value, bool Inverted, IReadOnlyList<Tok> Children) : Tok;
     private sealed record PartialTok(string Value) : Tok;
 
+    // The tag tree of `text`, built from the shared scanner (MustacheTags). Throws
+    // MustacheSyntaxException on an unbalanced section.
     private static List<Tok> Tokenize(string text)
     {
-        int pos = 0;
-        return ParseTokens(text, ref pos, null);
-    }
-
-    // Parse tokens until EOF or a matching {{/closeName}} (which is consumed).
-    private static List<Tok> ParseTokens(string text, ref int pos, string? closeName)
-    {
-        var tokens = new List<Tok>();
-        while (pos < text.Length)
+        var root = new List<Tok>();
+        var levels = new Stack<List<Tok>>();
+        levels.Push(root);
+        foreach (var tag in MustacheTags.Scan(text))
         {
-            int open = text.IndexOf("{{", pos, StringComparison.Ordinal);
-            if (open < 0) break; // remainder is plain text
-            bool triple = open + 2 < text.Length && text[open + 2] == '{';
-            string closeDelim = triple ? "}}}" : "}}";
-            int contentStart = open + (triple ? 3 : 2);
-            int close = text.IndexOf(closeDelim, contentStart, StringComparison.Ordinal);
-            if (close < 0) break; // malformed; stop
-            string content = text[contentStart..close].Trim();
-            pos = close + closeDelim.Length;
-
-            if (triple)
+            switch (tag.Kind)
             {
-                tokens.Add(new VarTok(content));
-                continue;
-            }
-            if (content.Length == 0) continue;
-
-            char sigil = content[0];
-            string name = content.Length > 1 ? content[1..].Trim() : "";
-            switch (sigil)
-            {
-                case '!': break; // comment
-                case '#':
-                case '^':
-                    var children = ParseTokens(text, ref pos, name);
-                    tokens.Add(new SectionTok(name, sigil == '^', children));
+                case MustacheTagKind.Section:
+                case MustacheTagKind.Inverted:
+                    var children = new List<Tok>();
+                    levels.Peek().Add(new SectionTok(tag.Value, tag.Kind == MustacheTagKind.Inverted, children));
+                    levels.Push(children);
                     break;
-                case '/':
-                    return tokens; // close (matched or mismatched) ends this level
-                case '>':
-                    tokens.Add(new PartialTok(name));
+                case MustacheTagKind.Close:
+                    levels.Pop(); // the scanner already matched it to its open
                     break;
-                case '&':
-                    tokens.Add(new VarTok(name));
+                case MustacheTagKind.Partial:
+                    levels.Peek().Add(new PartialTok(tag.Value));
                     break;
-                default:
-                    tokens.Add(new VarTok(content)); // {{x}}, {{x.y}}, {{.}}
+                case MustacheTagKind.Name:
+                case MustacheTagKind.Triple:
+                case MustacheTagKind.Amp:
+                    levels.Peek().Add(new VarTok(tag.Value)); // {{x}}, {{x.y}}, {{.}}, {{{x}}}, {{&x}}
                     break;
+                // comments and delimiter changes carry no reference
             }
         }
-        return tokens;
+        return root;
     }
+
+    // `text` minus its comments, for the output-tag scan.
+    private static string StaticText(string text) => MustacheTags.WithoutComments(text, MustacheTags.Scan(text));
 
     private static PayloadField? Find(IReadOnlyList<PayloadField> fields, string name) =>
         fields.FirstOrDefault(f => f.Name == name);
@@ -234,14 +219,28 @@ public static class Verify
                             errors.Add(new VerifyError(ERR_PARTIAL_UNRESOLVED, p.Value));
                             break;
                         }
-                        staticTexts.Add(text);
-                        Walk(Tokenize(text), stack, new List<string>(seen) { p.Value }, inElement);
+                        List<Tok> partialToks;
+                        try { partialToks = Tokenize(text); }
+                        catch (MustacheSyntaxException e)
+                        {
+                            errors.Add(new VerifyError(ERR_TEMPLATE_SYNTAX, e.Section));
+                            break;
+                        }
+                        staticTexts.Add(StaticText(text));
+                        Walk(partialToks, stack, new List<string>(seen) { p.Value }, inElement);
                         break;
                 }
             }
         }
 
-        Walk(Tokenize(templateText), [root], []);
+        List<Tok> bodyToks;
+        try { bodyToks = Tokenize(templateText); }
+        catch (MustacheSyntaxException e)
+        {
+            return [new VerifyError(ERR_TEMPLATE_SYNTAX, e.Section)];
+        }
+        staticTexts[0] = StaticText(templateText);
+        Walk(bodyToks, [root], []);
 
         foreach (var slot in options?.RequiredSlots ?? [])
             if (!referencedAtRoot.Contains(slot))

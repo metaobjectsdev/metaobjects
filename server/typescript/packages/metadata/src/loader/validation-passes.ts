@@ -55,6 +55,8 @@ import {
   OBJECT_PROJECTION_ATTR_FILTER,
 } from "../core/object/object-constants.js";
 import { MetaSource } from "../persistence/source/meta-source.js";
+import { resolveColumnName } from "../naming.js";
+import { isMetaField } from "../shared/node-guards.js";
 import {
   LAYOUT_SUBTYPE_DATA_GRID,
   LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_FIELD,
@@ -2760,5 +2762,45 @@ export function validateRetiredRequirementLinks(root: MetaData): ParseError[] {
   };
 
   walk(root);
+  return errors;
+}
+
+// ---------------------------------------------------------------------------
+// Physical column-name collisions
+//
+// Two fields of one stored object that resolve to the SAME physical column
+// (`userId` + `userID` both snake_case to `user_id`; or two fields sharing an
+// explicit @column) silently produce a duplicate column. Only the RESOLVED name
+// is compared, through the single door `resolveColumnName`, so an explicit @column
+// override, an inherited field and the project's column strategy are all honoured.
+// Scope: a concrete object that declares at least one source (a source-less
+// object generates nothing); derived fields (origin.*) and field.object (which may
+// flatten to several columns) are not columns of this table and are skipped.
+// ADR-0039: effective fields, so an inherited field collides like an own one.
+// ---------------------------------------------------------------------------
+
+export function validateColumnNameCollisions(root: MetaData): ParseError[] {
+  const errors: ParseError[] = [];
+  for (const obj of root.children().filter((c) => c.type === TYPE_OBJECT)) {
+    if (obj.isAbstract) continue;
+    if (!obj.children().some((c) => c.type === TYPE_SOURCE)) continue;
+    const seen = new Map<string, MetaData>();
+    for (const field of obj.children()) {
+      if (!isMetaField(field) || field.subType === FIELD_SUBTYPE_OBJECT || field.isDerived()) continue;
+      const column = resolveColumnName(field);
+      const first = seen.get(column);
+      if (first === undefined) {
+        seen.set(column, field);
+        continue;
+      }
+      errors.push(
+        new ParseError(
+          `fields "${first.name}" and "${field.name}" on "${obj.name}" both resolve to physical column ` +
+            `"${column}". Rename one field, or give one an explicit @column so the two columns differ.`,
+          { code: "ERR_COLUMN_NAME_COLLISION", source: field.source },
+        ),
+      );
+    }
+  }
   return errors;
 }

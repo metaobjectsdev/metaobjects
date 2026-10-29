@@ -250,3 +250,89 @@ describe("resolveExtendsOrder", () => {
     }
   });
 });
+
+describe("extractPnpmPackages — real YAML (audit finding 17)", () => {
+  test("zero-indent block list", () => {
+    expect(extractPnpmPackages("packages:\n- 'packages/*'\n- apps/*\n")).toEqual(["packages/*", "apps/*"]);
+  });
+  test("flow list", () => {
+    expect(extractPnpmPackages("packages: ['packages/*', \"apps/*\"]\n")).toEqual(["packages/*", "apps/*"]);
+  });
+  test("a # inside a quoted pattern is not a comment", () => {
+    expect(extractPnpmPackages("packages:\n  - 'a#b/*' # trailing\n")).toEqual(["a#b/*"]);
+  });
+  test("negations are kept as negations for the matcher", () => {
+    expect(extractPnpmPackages("packages:\n  - 'apps/*'\n  - '!apps/legacy'\n")).toEqual(["apps/*", "!apps/legacy"]);
+  });
+  test("invalid YAML yields no globs rather than throwing", () => {
+    expect(extractPnpmPackages("packages: [unclosed\n")).toEqual([]);
+  });
+});
+
+describe("discoverWorkspace — glob semantics (audit finding 17)", () => {
+  async function names(root: string, from: string): Promise<string[]> {
+    const ws = await discoverWorkspace(join(root, from));
+    return (ws?.packages ?? []).map((p) => p.manifest.name).sort();
+  }
+
+  test("a negation excludes a directory", async () => {
+    const root = mkdtempSync(join(tmpdir(), "ws-neg-"));
+    try {
+      writeFileSync(join(root, "pnpm-workspace.yaml"), "packages:\n  - 'apps/*'\n  - '!apps/legacy'\n");
+      scaffoldPackage(root, "apps/web", makeManifest("@acme/web", { metaobjectsPackage: "acme::web" }));
+      scaffoldPackage(root, "apps/legacy", makeManifest("@acme/legacy", { metaobjectsPackage: "acme::legacy" }));
+      expect(await names(root, "apps/web")).toEqual(["@acme/web"]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("** matches nested directories at any depth", async () => {
+    const root = mkdtempSync(join(tmpdir(), "ws-glob-"));
+    try {
+      writeFileSync(join(root, "pnpm-workspace.yaml"), "packages:\n  - 'libs/**'\n");
+      scaffoldPackage(root, "libs/a", makeManifest("@acme/a", { metaobjectsPackage: "acme::a" }));
+      scaffoldPackage(root, "libs/group/b", makeManifest("@acme/b", { metaobjectsPackage: "acme::b" }));
+      expect(await names(root, "libs/a")).toEqual(["@acme/a", "@acme/b"]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("a single * stays one level deep", async () => {
+    const root = mkdtempSync(join(tmpdir(), "ws-star-"));
+    try {
+      writeFileSync(join(root, "pnpm-workspace.yaml"), "packages:\n  - 'libs/*'\n");
+      scaffoldPackage(root, "libs/a", makeManifest("@acme/a", { metaobjectsPackage: "acme::a" }));
+      scaffoldPackage(root, "libs/group/b", makeManifest("@acme/b", { metaobjectsPackage: "acme::b" }));
+      expect(await names(root, "libs/a")).toEqual(["@acme/a"]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("a ** in the middle and a # in a directory name", async () => {
+    const root = mkdtempSync(join(tmpdir(), "ws-mid-"));
+    try {
+      writeFileSync(join(root, "pnpm-workspace.yaml"), "packages:\n  - 'a#b/*'\n  - 'x/**/pkg'\n");
+      scaffoldPackage(root, "a#b/one", makeManifest("@acme/one", { metaobjectsPackage: "acme::one" }));
+      scaffoldPackage(root, "x/y/z/pkg", makeManifest("@acme/deep", { metaobjectsPackage: "acme::deep" }));
+      scaffoldPackage(root, "x/pkg", makeManifest("@acme/zero", { metaobjectsPackage: "acme::zero" }));
+      expect(await names(root, "a#b/one")).toEqual(["@acme/deep", "@acme/one", "@acme/zero"]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("node_modules is never searched", async () => {
+    const root = mkdtempSync(join(tmpdir(), "ws-nm-"));
+    try {
+      writeFileSync(join(root, "pnpm-workspace.yaml"), "packages:\n  - '**'\n");
+      scaffoldPackage(root, "a", makeManifest("@acme/a", { metaobjectsPackage: "acme::a" }));
+      scaffoldPackage(root, "node_modules/dep", makeManifest("@acme/dep", { metaobjectsPackage: "acme::dep" }));
+      expect(await names(root, "a")).toEqual(["@acme/a"]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});

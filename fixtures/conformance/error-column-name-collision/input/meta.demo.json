@@ -1,0 +1,17 @@
+{
+  "metadata.root": {
+    "package": "demo",
+    "children": [
+      { "object.entity": {
+        "name": "Account",
+        "children": [
+          { "source.rdb": { "@kind": "table" } },
+          { "field.long": { "name": "id" } },
+          { "field.string": { "name": "userId" } },
+          { "field.string": { "name": "userID" } },
+          { "identity.primary": { "name": "id", "@fields": ["id"] } }
+        ]
+      }}
+    ]
+  }
+}

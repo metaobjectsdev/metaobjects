@@ -830,6 +830,16 @@ class EntityModelGenerator:
             # Member names follow the Python convention (UPPER_CASE constants); the
             # value preserves the wire form, so ``Enum("statistical")`` and
             # ``member == "statistical"`` still work (str-enum).
+            names: dict[str, str] = {}
+            for m in e.values:
+                # Two values folding to one member name ('Open' / 'open') would make the
+                # second an alias of the first at import time, silently dropping a value.
+                if m.upper() in names:
+                    raise ValueError(
+                        f"shared enum '{e.name}': values '{names[m.upper()]}' and '{m}' both map "
+                        f"to the Python member {m.upper()}; rename one so the members are distinct"
+                    )
+                names[m.upper()] = m
             parts += [f'    {m.upper()} = "{m}"' for m in e.values]
         parts.append("")
         return EmittedFile(path="enums.py", content=ruff_format("\n".join(parts)))

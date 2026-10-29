@@ -261,6 +261,8 @@ def run_validations(
     # #335 Half B — @sortable on an array field, or a subtype with no operator band → error.
     _validate_sortable_has_supported_subtype(root, errors)
     _validate_index_lookup_fields(root, errors)
+    # Two fields of one stored object resolving to the same physical column.
+    _validate_column_name_collisions(root, errors)
     # FR-039 -- a retired requirement carries no @implementedBy (refused, not exempted,
     # so the dangling-ref class is unreachable) and @supersededBy is legal only there.
     _validate_retired_requirement_links(root, errors)
@@ -4189,6 +4191,45 @@ def _validate_index_lookup_fields(root: MetaData, errors: list[MetaError]) -> No
 # ADR-0039: attrs() is the RESOLVING accessor in Python (attr() is own-only), so a
 # requirement inheriting its status through `extends` is judged on its EFFECTIVE one.
 # ---------------------------------------------------------------------------
+
+
+def _validate_column_name_collisions(root: MetaData, errors: list[MetaError]) -> None:
+    """ERR_COLUMN_NAME_COLLISION: two fields of one stored object resolving to the SAME
+    physical column (``userId`` + ``userID`` both snake_case to ``user_id``, or two
+    fields sharing an explicit ``@column``).
+
+    Only the RESOLVED name is compared, through :func:`resolve_column_name`, so an
+    explicit ``@column``, an inherited field and the project's column strategy are
+    honoured. Scope: a concrete object declaring at least one source (a source-less
+    object generates nothing); derived fields and ``field.object`` (may flatten to
+    several columns) are skipped. ADR-0039: effective children (inherited fields count).
+    """
+    from ..naming import resolve_column_name
+    from ..meta.core.field.meta_field import MetaField
+    for obj in (c for c in root.children() if c.type == TYPE_OBJECT):
+        if obj.is_abstract:
+            continue
+        if not any(c.type == TYPE_SOURCE for c in obj.children()):
+            continue
+        seen: dict[str, MetaData] = {}
+        for field in obj.children():
+            if not isinstance(field, MetaField) or field.sub_type == FIELD_SUBTYPE_OBJECT \
+                    or field.is_derived():
+                continue
+            column = resolve_column_name(field)
+            first = seen.get(column)
+            if first is None:
+                seen[column] = field
+                continue
+            errors.append(MetaError(
+                code=ErrorCode.ERR_COLUMN_NAME_COLLISION,
+                message=(
+                    f'fields "{first.name}" and "{field.name}" on "{obj.name}" both resolve '
+                    f'to physical column "{column}". Rename one field, or give one an '
+                    f"explicit @column so the two columns differ."
+                ),
+                envelope=field.source,
+            ))
 
 
 def _validate_retired_requirement_links(root: MetaData, errors: list[MetaError]) -> None:

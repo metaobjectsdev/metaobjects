@@ -15,7 +15,8 @@
 //   - Better error messages on circular extends, missing packages
 
 import { readFile, readdir, stat } from "node:fs/promises";
-import { dirname, join, resolve, basename } from "node:path";
+import { dirname, join, resolve, basename, relative, sep } from "node:path";
+import { parse as parseYaml } from "yaml";
 import {
   type PackageManifest,
   PackageManifestSchema,
@@ -72,35 +73,22 @@ async function readPnpmWorkspaceFile(path: string): Promise<string[] | undefined
 }
 
 /**
- * Extract the `packages:` glob list from pnpm-workspace.yaml. Tiny parser —
- * sufficient for the simple-list format pnpm actually emits. Not a general
- * YAML parser; doesn't support quoted strings with special chars, flow
- * mappings, anchors, etc.
+ * Extract the `packages:` glob list from pnpm-workspace.yaml with a real YAML parser, so
+ * block lists at any indent, flow lists, quoting and `#` inside quoted patterns all behave
+ * as pnpm reads them. Negations (`!apps/legacy`) are returned verbatim; `expandGlobs`
+ * applies them. Invalid YAML or a non-list `packages` yields `[]`.
  */
 export function extractPnpmPackages(yaml: string): string[] {
-  const lines = yaml.split(/\r?\n/);
-  const result: string[] = [];
-  let inPackages = false;
-  for (const rawLine of lines) {
-    const line = rawLine.replace(/#.*$/, "").trimEnd();
-    if (line.length === 0) continue;
-    if (/^packages\s*:/.test(line)) {
-      inPackages = true;
-      continue;
-    }
-    if (inPackages) {
-      const match = /^\s+-\s+['"]?([^'"]+)['"]?\s*$/.exec(line);
-      if (match !== null) {
-        result.push(match[1]!);
-        continue;
-      }
-      // Non-list line at the same or lower indent ends the packages: block
-      if (/^[A-Za-z_]/.test(line)) {
-        inPackages = false;
-      }
-    }
+  let doc: unknown;
+  try {
+    doc = parseYaml(yaml);
+  } catch {
+    return [];
   }
-  return result;
+  if (typeof doc !== "object" || doc === null) return [];
+  const packages = (doc as { packages?: unknown }).packages;
+  if (!Array.isArray(packages)) return [];
+  return packages.filter((p): p is string => typeof p === "string");
 }
 
 async function readPackageJsonWorkspaces(path: string): Promise<string[] | undefined> {
@@ -143,64 +131,106 @@ async function findWorkspaceConfig(start: string): Promise<WorkspaceConfig | und
 }
 
 // ---------------------------------------------------------------------------
-// Glob expansion (simple, matches workspace-style patterns)
+// Glob expansion (workspace-style patterns: `*`, `?`, `**`, leading `!` negation)
 // ---------------------------------------------------------------------------
 
-/** Expand a workspace glob like "packages/*" relative to root. Returns directory paths. */
-async function expandGlob(root: string, glob: string): Promise<string[]> {
-  // Strip trailing `/` for normalization
-  const pattern = glob.replace(/\/$/, "");
+/** Directories no workspace pattern descends into (pnpm ignores these by default). */
+const SKIPPED_DIRS = new Set(["node_modules", ".git"]);
 
-  // No wildcard: literal directory
-  if (!pattern.includes("*")) {
-    const literal = join(root, pattern);
-    try {
-      const s = await stat(literal);
-      return s.isDirectory() ? [literal] : [];
-    } catch {
-      return [];
-    }
-  }
-
-  // Split into prefix segments (literal) + last segment with wildcard.
-  // Supports the common cases: "packages/*", "apps/*", "packages/foo-*".
-  // Doesn't support deep `**` globs in this prototype.
-  const segments = pattern.split("/");
-  const lastSegment = segments.pop()!;
-  const prefixDir = join(root, ...segments);
-
-  let entries: string[];
-  try {
-    entries = await readdir(prefixDir);
-  } catch {
-    return [];
-  }
-
-  const matcher = matchGlobSegment(lastSegment);
-  const result: string[] = [];
-  for (const entry of entries) {
-    if (!matcher(entry)) continue;
-    const full = join(prefixDir, entry);
-    try {
-      const s = await stat(full);
-      if (s.isDirectory()) result.push(full);
-    } catch {
-      // skip unreadable
-    }
-  }
-  return result;
+/** Split a pattern into path segments, dropping `./` prefixes and trailing slashes. */
+function patternSegments(glob: string): string[] {
+  return glob.split("/").filter((seg) => seg !== "" && seg !== ".");
 }
 
+/** One path segment against one pattern segment (`*` = any run, `?` = one char; no `/`). */
 function matchGlobSegment(pattern: string): (value: string) => boolean {
   if (pattern === "*") return () => true;
   const regex = new RegExp(
     "^" +
       pattern
         .replace(/[.+^${}()|[\]\\]/g, "\\$&")
-        .replace(/\*/g, "[^/]*") +
+        .replace(/\*/g, "[^/]*")
+        .replace(/\?/g, "[^/]") +
       "$",
   );
   return (value) => regex.test(value);
+}
+
+/** Does the whole path match the whole pattern? `**` spans zero or more segments. */
+function matchSegments(pattern: readonly string[], path: readonly string[]): boolean {
+  const [head, ...rest] = pattern;
+  if (head === undefined) return path.length === 0;
+  if (head === "**") {
+    for (let skip = 0; skip <= path.length; skip++) {
+      if (matchSegments(rest, path.slice(skip))) return true;
+    }
+    return false;
+  }
+  const [first, ...remaining] = path;
+  return first !== undefined && matchGlobSegment(head)(first) && matchSegments(rest, remaining);
+}
+
+async function subdirectories(dir: string): Promise<string[]> {
+  try {
+    const entries = await readdir(dir, { withFileTypes: true });
+    return entries
+      .filter((e) => !SKIPPED_DIRS.has(e.name))
+      .map((e) => e.name);
+  } catch {
+    return [];
+  }
+}
+
+async function isDirectory(path: string): Promise<boolean> {
+  try {
+    return (await stat(path)).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+/** Directories under `dir` matching the remaining pattern segments. */
+async function expandSegments(dir: string, segments: readonly string[]): Promise<string[]> {
+  const [head, ...rest] = segments;
+  if (head === undefined) return [dir];
+  if (head === "**") {
+    const found = await expandSegments(dir, rest);
+    for (const name of await subdirectories(dir)) {
+      const child = join(dir, name);
+      if (await isDirectory(child)) found.push(...(await expandSegments(child, segments)));
+    }
+    return found;
+  }
+  if (!/[*?]/.test(head)) {
+    const child = join(dir, head);
+    return (await isDirectory(child)) ? expandSegments(child, rest) : [];
+  }
+  const matcher = matchGlobSegment(head);
+  const found: string[] = [];
+  for (const name of await subdirectories(dir)) {
+    const child = join(dir, name);
+    if (matcher(name) && (await isDirectory(child))) found.push(...(await expandSegments(child, rest)));
+  }
+  return found;
+}
+
+/**
+ * Expand workspace globs relative to `root`: every positive pattern contributes its
+ * matching directories, then every `!`-negated pattern removes the ones it matches.
+ */
+async function expandGlobs(root: string, globs: readonly string[]): Promise<string[]> {
+  const negations = globs
+    .filter((g) => g.startsWith("!"))
+    .map((g) => patternSegments(g.slice(1)));
+  const found = new Set<string>();
+  for (const glob of globs) {
+    if (glob.startsWith("!")) continue;
+    for (const dir of await expandSegments(root, patternSegments(glob))) found.add(dir);
+  }
+  return [...found].filter((dir) => {
+    const rel = relative(root, dir).split(sep);
+    return !negations.some((neg) => matchSegments(neg, rel));
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -223,10 +253,7 @@ export async function discoverWorkspace(cwd: string): Promise<Workspace | undefi
   if (config === undefined) return undefined;
 
   // Expand all workspace globs
-  const packageDirs: string[] = [];
-  for (const glob of config.globs) {
-    packageDirs.push(...(await expandGlob(config.root, glob)));
-  }
+  const packageDirs = await expandGlobs(config.root, config.globs);
 
   // Also include the workspace root itself if it has a .meta/ —
   // common pattern for root-level "the app" metadata.

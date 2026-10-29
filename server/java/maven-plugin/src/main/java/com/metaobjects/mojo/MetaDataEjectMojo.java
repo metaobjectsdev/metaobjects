@@ -1,7 +1,12 @@
 package com.metaobjects.mojo;
 
 import com.metaobjects.generator.GeneratorRegistry;
+import org.apache.maven.model.Build;
 import org.apache.maven.model.Dependency;
+import org.apache.maven.model.Model;
+import org.apache.maven.model.Plugin;
+import org.apache.maven.model.io.xpp3.MavenXpp3Reader;
+import org.codehaus.plexus.util.xml.pull.XmlPullParserException;
 import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
@@ -11,6 +16,7 @@ import org.apache.maven.project.MavenProject;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.StringReader;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -21,8 +27,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
@@ -456,7 +460,7 @@ public class MetaDataEjectMojo extends AbstractMojo {
             Path childPom = base.resolve(module).resolve("pom.xml");
             try {
                 if (Files.isRegularFile(childPom)
-                        && Files.readString(childPom, StandardCharsets.UTF_8).contains("metaobjects-maven-plugin")) {
+                        && declares(Files.readString(childPom, StandardCharsets.UTF_8), "metaobjects-maven-plugin")) {
                     candidates.add(module);
                 }
             } catch (IOException ex) {
@@ -710,11 +714,40 @@ public class MetaDataEjectMojo extends AbstractMojo {
             + "</project>\n";
     }
 
-    private static final Pattern SOURCE_DIRECTORY =
-            Pattern.compile("<sourceDirectory>\\s*([^<]*?)\\s*</sourceDirectory>");
+    /** The pom parsed by Maven's own reader, or null when it is not well-formed. */
+    static Model parsePom(String pom) {
+        try {
+            return new MavenXpp3Reader().read(new StringReader(pom), false);
+        } catch (IOException | XmlPullParserException ex) {
+            return null;
+        }
+    }
 
-    private static boolean declares(String pom, String artifactId) {
-        return pom.contains("<artifactId>" + artifactId + "</artifactId>");
+    /**
+     * Whether the pom declares {@code artifactId} as a dependency or a build plugin (managed or
+     * not). Read from the parsed model, so the name inside a comment or a property does not count.
+     */
+    static boolean declares(String pom, String artifactId) {
+        Model model = parsePom(pom);
+        if (model == null) return false;
+        for (Dependency d : model.getDependencies()) {
+            if (artifactId.equals(d.getArtifactId())) return true;
+        }
+        Build build = model.getBuild();
+        if (build == null) return false;
+        List<Plugin> plugins = new ArrayList<>(build.getPlugins());
+        if (build.getPluginManagement() != null) plugins.addAll(build.getPluginManagement().getPlugins());
+        for (Plugin plugin : plugins) {
+            if (artifactId.equals(plugin.getArtifactId())) return true;
+        }
+        return false;
+    }
+
+    /** {@code <build><sourceDirectory>} as written (trimmed), or null when absent. */
+    static String declaredSourceDirectory(String pom) {
+        Model model = parsePom(pom);
+        if (model == null || model.getBuild() == null || model.getBuild().getSourceDirectory() == null) return null;
+        return model.getBuild().getSourceDirectory().trim();
     }
 
     /**
@@ -741,9 +774,9 @@ public class MetaDataEjectMojo extends AbstractMojo {
                 changes.add("  Add to <build><plugins>:\n" + kotlinPlugin(KOTLIN_SOURCE_DIRS));
             }
             if (port == EjectSupport.Port.JAVA) {
-                Matcher sourceDirectory = SOURCE_DIRECTORY.matcher(content);
-                if (sourceDirectory.find() && !sourceDirectory.group(1).endsWith(sourceRoot)) {
-                    changes.add("  Remove " + sourceDirectory.group() + " from <build>, so that Maven compiles "
+                String sourceDirectory = declaredSourceDirectory(content);
+                if (sourceDirectory != null && !sourceDirectory.endsWith(sourceRoot)) {
+                    changes.add("  Remove <sourceDirectory>" + sourceDirectory + "</sourceDirectory> from <build>, so that Maven compiles "
                             + sourceRoot + ", and add to the <plugin> of " + KOTLIN_PLUGIN + ":\n"
                             + KOTLIN_SOURCE_DIRS);
                 }

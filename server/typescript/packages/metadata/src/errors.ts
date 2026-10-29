@@ -120,6 +120,9 @@ export const ERROR_CODES = [
   "ERR_DERIVED_FIELD_NO_READ_SOURCE",
   "ERR_ENTITY_PRIMARY_SOURCE_READONLY",
   "ERR_INVALID_TEMPLATE",
+  // Two fields of one stored object resolve to the same PHYSICAL column (snake_case
+  // folds `userId` and `userID` together, or two fields share an @column).
+  "ERR_COLUMN_NAME_COLLISION",
   // FR-017 — M:N relationship validation (slim vocabulary): @through must name a
   // junction declaring two identity.reference children; @sourceRefField must match
   // one of them; M:N attrs are invalid on a 1:N (@cardinality:one / no @through).

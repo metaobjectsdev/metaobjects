@@ -34,10 +34,102 @@ public sealed class XmlForgivingReader
         "([A-Za-z_:][A-Za-z0-9_:.\\-]*)\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s/>]+))",
         RegexOptions.Compiled);
 
-    public Dictionary<string, object?> Read(string? span, bool caseInsensitive)
+    private const string CommentOpen = "<!--";
+    private const string CommentClose = "-->";
+    private const string CdataOpen = "<![CDATA[";
+    private const string CdataClose = "]]>";
+    // the five predefined XML entities plus numeric character references.
+    private static readonly Regex EntityRegex = new(
+        "&(#x[0-9a-fA-F]+|#[0-9]+|lt|gt|amp|quot|apos);", RegexOptions.Compiled);
+
+    private enum RegionKind { Comment, Cdata }
+
+    /// <summary>
+    /// Rewrite every XML comment and CDATA section in <paramref name="text"/> through
+    /// <paramref name="replace"/>, scanning left to right so a comment marker inside CDATA (or
+    /// the reverse) is never mistaken for markup. An unclosed comment is left as text; an
+    /// unclosed CDATA section runs to the end.
+    /// </summary>
+    private static string RewriteRegions(string text, Func<RegionKind, string, string> replace)
+    {
+        var sb = new System.Text.StringBuilder();
+        int pos = 0, from = 0;
+        while (true)
+        {
+            int c = text.IndexOf(CommentOpen, from, StringComparison.Ordinal);
+            int d = text.IndexOf(CdataOpen, from, StringComparison.Ordinal);
+            bool isComment = c >= 0 && (d < 0 || c < d);
+            int start = isComment ? c : d;
+            if (start < 0) break;
+            int end;
+            if (isComment)
+            {
+                int e = text.IndexOf(CommentClose, start + CommentOpen.Length, StringComparison.Ordinal);
+                if (e < 0) { from = start + CommentOpen.Length; continue; }
+                end = e + CommentClose.Length;
+            }
+            else
+            {
+                int e = text.IndexOf(CdataClose, start + CdataOpen.Length, StringComparison.Ordinal);
+                end = e < 0 ? text.Length : e + CdataClose.Length;
+            }
+            sb.Append(text, pos, start - pos)
+              .Append(replace(isComment ? RegionKind.Comment : RegionKind.Cdata, text.Substring(start, end - start)));
+            pos = end;
+            from = end;
+        }
+        return sb.Append(text, pos, text.Length - pos).ToString();
+    }
+
+    /// <summary><paramref name="text"/> with comments and CDATA sections blanked to spaces (same
+    /// length, so indices hold): the view the tag locators search, so markup inside them is
+    /// never located.</summary>
+    internal static string MaskNonMarkup(string text) =>
+        RewriteRegions(text, (_, region) => new string(' ', region.Length));
+
+    /// <summary>Drop comments; turn each CDATA section into its text with <c>&amp; &lt; &gt;</c>
+    /// entity-escaped, so the tag scanner cannot split it and the entity decode restores it
+    /// exactly.</summary>
+    private static string Prepare(string text) => RewriteRegions(text, (kind, region) =>
+    {
+        if (kind == RegionKind.Comment) return "";
+        string body = region.EndsWith(CdataClose, StringComparison.Ordinal)
+            ? region.Substring(CdataOpen.Length, region.Length - CdataOpen.Length - CdataClose.Length)
+            : region.Substring(CdataOpen.Length);
+        return body.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;");
+    });
+
+    /// <summary>Decode predefined entities and numeric references in one pass (so
+    /// <c>&amp;amp;lt;</c> is <c>&amp;lt;</c>). An unknown or out-of-range reference stays as
+    /// written.</summary>
+    private static string DecodeEntities(string s)
+    {
+        if (!s.Contains('&')) return s;
+        return EntityRegex.Replace(s, m =>
+        {
+            string body = m.Groups[1].Value;
+            switch (body)
+            {
+                case "lt": return "<";
+                case "gt": return ">";
+                case "amp": return "&";
+                case "quot": return "\"";
+                case "apos": return "'";
+            }
+            bool hex = body[1] == 'x';
+            string digits = body.Substring(hex ? 2 : 1);
+            if (!int.TryParse(digits, hex ? System.Globalization.NumberStyles.HexNumber : System.Globalization.NumberStyles.None,
+                    System.Globalization.CultureInfo.InvariantCulture, out int cp)) return m.Value;
+            bool surrogate = cp >= 0xD800 && cp <= 0xDFFF;
+            return cp >= 1 && cp <= 0x10FFFF && !surrogate ? char.ConvertFromUtf32(cp) : m.Value;
+        });
+    }
+
+    public Dictionary<string, object?> Read(string? rawSpan, bool caseInsensitive)
     {
         var out_ = new Dictionary<string, object?>();
-        if (string.IsNullOrWhiteSpace(span)) return out_;
+        if (string.IsNullOrWhiteSpace(rawSpan)) return out_;
+        string span = Prepare(rawSpan);
 
         int gt = span.IndexOf('>');
         if (gt < 0) return out_;
@@ -46,7 +138,7 @@ public sealed class XmlForgivingReader
         int innerEnd = (rootEnd < 0 || rootEnd <= gt) ? span.Length : rootEnd;
         string inner = span.Substring(gt + 1, innerEnd - (gt + 1));
 
-        ParseChildren(inner, caseInsensitive, out_, null);
+        ParseChildren(inner, caseInsensitive, out_, null, false);
         return out_;
     }
 
@@ -60,7 +152,7 @@ public sealed class XmlForgivingReader
     {
         var out_ = new Dictionary<string, object?>();
         if (string.IsNullOrWhiteSpace(text)) return out_;
-        ParseChildren(text!, caseInsensitive, out_, null);
+        ParseChildren(Prepare(text!), caseInsensitive, out_, null, false);
         return out_;
     }
 
@@ -68,15 +160,30 @@ public sealed class XmlForgivingReader
     /// Parse <paramref name="inner"/>'s elements into <paramref name="out_"/>. When
     /// <paramref name="loose"/> is non-null, the text BETWEEN those elements (an element's own
     /// text in mixed content) is appended to it, one segment per gap.
+    /// <paramref name="literalUnclosed"/> is set for the body of an element that DID close: an
+    /// open tag in there with no close tag anywhere after it (<c>List&lt;int&gt; and ...</c>) is
+    /// prose, not an element.
     /// </summary>
-    private static void ParseChildren(string inner, bool ci, Dictionary<string, object?> out_, List<string>? loose)
+    private static void ParseChildren(string inner, bool ci, Dictionary<string, object?> out_, List<string>? loose,
+        bool literalUnclosed)
     {
-        var openTag = new Regex(OpenTagPattern, ci ? RegexOptions.IgnoreCase : RegexOptions.None);
+        var flags = ci ? RegexOptions.IgnoreCase : RegexOptions.None;
+        var openTag = new Regex(OpenTagPattern, flags);
+        var anyClose = new Regex(CloseTagPattern, flags);
 
         int pos = 0;
-        Match m = openTag.Match(inner, pos);
+        int scan = 0;
+        Match m = openTag.Match(inner, scan);
         while (m.Success)
         {
+            if (literalUnclosed && !m.Groups[2].Value.TrimEnd().EndsWith('/')
+                && !anyClose.Match(inner, m.Index + m.Length).Success)
+            {
+                scan = m.Index + m.Length;
+                if (scan >= inner.Length) break;
+                m = openTag.Match(inner, scan);
+                continue;
+            }
             loose?.Add(inner.Substring(pos, m.Index - pos));
 
             string tag = m.Groups[1].Value;
@@ -91,6 +198,7 @@ public sealed class XmlForgivingReader
             {
                 Accumulate(out_, key, attrs.Count == 0 ? (object?)"" : attrs);
                 pos = m.Index + m.Length;
+                scan = pos;
                 if (pos >= inner.Length) break;
                 m = openTag.Match(inner, pos);
                 continue;
@@ -152,8 +260,9 @@ public sealed class XmlForgivingReader
             }
 
             string content = inner.Substring(contentStart, contentEnd - contentStart);
-            Accumulate(out_, key, Combine(attrs, content, ci));
+            Accumulate(out_, key, Combine(attrs, content, ci, close.Success));
             pos = next;
+            scan = next;
             if (pos >= inner.Length) break;
             m = openTag.Match(inner, pos);
         }
@@ -188,13 +297,13 @@ public sealed class XmlForgivingReader
     /// content keeps BOTH: the children, and the element's own text under <see cref="TextKey"/>,
     /// so a scalar or @xmlText consumer still reads the prose around a child element.
     /// </summary>
-    private static object? Combine(Dictionary<string, object?> attrs, string content, bool ci)
+    private static object? Combine(Dictionary<string, object?> attrs, string content, bool ci, bool closed)
     {
         if (content.Contains('<'))
         {
             var nested = new Dictionary<string, object?>();
             var loose = new List<string>();
-            ParseChildren(content, ci, nested, loose);
+            ParseChildren(content, ci, nested, loose, closed);
             if (nested.Count > 0)
             {
                 // attributes first; a child element wins a name collision
@@ -216,7 +325,7 @@ public sealed class XmlForgivingReader
         var parts = new List<string>();
         foreach (string seg in segments)
         {
-            string t = closeRegex.Replace(seg, "").Trim();
+            string t = DecodeEntities(closeRegex.Replace(seg, "").Trim());
             if (t.Length > 0) parts.Add(t);
         }
         return string.Join(" ", parts);
@@ -224,7 +333,7 @@ public sealed class XmlForgivingReader
 
     private static object? TextValue(Dictionary<string, object?> attrs, string content)
     {
-        string text = content.Trim();
+        string text = DecodeEntities(content.Trim());
         if (attrs.Count == 0) return text;
         var m = new Dictionary<string, object?>(attrs) { [TextKey] = text };
         return m;
@@ -240,7 +349,7 @@ public sealed class XmlForgivingReader
             string val = a.Groups[2].Success ? a.Groups[2].Value
                 : a.Groups[3].Success ? a.Groups[3].Value
                 : a.Groups[4].Success ? a.Groups[4].Value : "";
-            if (!attrs.ContainsKey(name)) attrs[name] = val;
+            if (!attrs.ContainsKey(name)) attrs[name] = DecodeEntities(val);
         }
         return attrs;
     }

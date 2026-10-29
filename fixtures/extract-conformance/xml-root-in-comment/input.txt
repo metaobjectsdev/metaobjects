@@ -1,0 +1,2 @@
+<!-- <doc><title>draft</title></doc> -->
+<doc><title>real</title><note>n</note></doc>

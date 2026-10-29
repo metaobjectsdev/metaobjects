@@ -80,7 +80,7 @@ export interface RunnerTransactionPassResult {
   postTransactionChecks: string[];
 }
 
-const TRANSACTION_CONTROL = /^\s*(BEGIN|COMMIT|END\s+TRANSACTION|ROLLBACK|SAVEPOINT|RELEASE)\b/i;
+const TRANSACTION_CONTROL = /^\s*(BEGIN|COMMIT|END|ROLLBACK|SAVEPOINT|RELEASE)\b/i;
 const FK_OFF = /^\s*PRAGMA\s+foreign_keys\s*=\s*(OFF|0|false)\s*$/i;
 const FK_ON = /^\s*PRAGMA\s+foreign_keys\s*=\s*(ON|1|true)\s*$/i;
 const FK_CHECK = /^\s*PRAGMA\s+foreign_key_check\s*$/i;

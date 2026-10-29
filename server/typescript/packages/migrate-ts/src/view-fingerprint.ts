@@ -29,6 +29,7 @@
 // the body comparator (view-sql-compare.ts) is exact there.
 
 import { createHash } from "node:crypto";
+import { collapseWhitespaceOutsideQuotes } from "./view-sql-compare.js";
 
 /**
  * Marker format version. Bump ONLY if the normalization rules or the marker grammar
@@ -48,7 +49,7 @@ const CREATE_VIEW_PREFIX =
 /**
  * Canonicalize a view body for hashing.
  *
- * Collapses whitespace (so reindenting the emitter does not re-stamp every deployed
+ * Collapses whitespace outside quoted literals/identifiers (so reindenting the emitter does not re-stamp every deployed
  * view) and strips an optional CREATE VIEW wrapper and trailing semicolon — and
  * NOTHING else.
  *
@@ -59,9 +60,7 @@ const CREATE_VIEW_PREFIX =
  * there is nothing to buy and real drift to lose.
  */
 export function normalizeForFingerprint(body: string): string {
-  return body
-    .replace(CREATE_VIEW_PREFIX, "")
-    .replace(/\s+/g, " ")
+  return collapseWhitespaceOutsideQuotes(body.replace(CREATE_VIEW_PREFIX, ""))
     .replace(/;\s*$/, "")
     .trim();
 }

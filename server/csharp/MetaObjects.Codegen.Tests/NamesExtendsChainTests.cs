@@ -243,7 +243,7 @@ public class NamesExtendsChainTests
           { "object.entity": { "name": "Row", "extends": "BaseRow", "children": [
             { "source.rdb": { "@table": "rows" } },
             { "field.long":      { "name": "id" } },
-            { "field.timestamp": { "name": "CreatedAt" } },
+            { "field.timestamp": { "name": "CreatedAt", "@column": "created_at_alt" } },
             { "identity.primary": { "name": "pk", "@fields": "id", "@generation": "increment" } }
           ]}}
         ]}}

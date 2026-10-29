@@ -19,6 +19,7 @@ from metaobjects.render import (
     ERR_OUTPUT_TAG_MISSING,
     ERR_PARTIAL_UNRESOLVED,
     ERR_REQUIRED_SLOT_UNUSED,
+    ERR_TEMPLATE_SYNTAX,
     ERR_VAR_NOT_ON_PAYLOAD,
     InMemoryProvider,
     PayloadField,
@@ -34,6 +35,7 @@ _VERIFY_CODES = frozenset(
         ERR_PARTIAL_UNRESOLVED,
         ERR_REQUIRED_SLOT_UNUSED,
         ERR_OUTPUT_TAG_MISSING,
+        ERR_TEMPLATE_SYNTAX,
     }
 )
 

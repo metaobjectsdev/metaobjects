@@ -98,4 +98,54 @@ public class ConstraintErrorsTests
 
         Assert.Null(ConstraintErrors.Classify(deep));
     }
+
+    private sealed class CodedDbException(string message, string? sqlState) : System.Data.Common.DbException(message)
+    {
+        public override string? SqlState { get; } = sqlState;
+    }
+
+    private sealed class FakeSqliteException(string message, int extended) : Exception(message)
+    {
+        public int SqliteExtendedErrorCode { get; } = extended;
+    }
+
+    [Theory]
+    [InlineData("23505", 409, "unique")]
+    [InlineData("23503", 409, "foreign_key")]
+    [InlineData("23514", 400, "check")]
+    [InlineData("23502", 400, "not_null")]
+    public void A_sqlstate_decides_even_when_the_message_names_another_constraint(
+        string sqlState, int status, string constraint)
+    {
+        // The message would classify as a foreign key / not null by text; the code wins.
+        var failure = ConstraintErrors.Classify(new InvalidOperationException(EfWrapper,
+            new CodedDbException("duplicate value 'FOREIGN KEY' NOT NULL", sqlState)));
+
+        Assert.NotNull(failure);
+        Assert.Equal(status, failure!.Status);
+        Assert.Equal(constraint, failure.Constraint);
+    }
+
+    [Fact]
+    public void A_non_constraint_sqlstate_is_not_classified_from_message_text()
+    {
+        // 40001 is a serialization failure; its message mentioning NOT NULL must not make it a 400.
+        Assert.Null(ConstraintErrors.Classify(new CodedDbException("column NOT NULL retry", "40001")));
+    }
+
+    [Theory]
+    [InlineData(787, 409, "foreign_key")]
+    [InlineData(2067, 409, "unique")]
+    [InlineData(1555, 409, "unique")]
+    [InlineData(275, 400, "check")]
+    [InlineData(1299, 400, "not_null")]
+    public void A_sqlite_extended_code_decides_over_the_message(int extended, int status, string constraint)
+    {
+        var failure = ConstraintErrors.Classify(new InvalidOperationException(EfWrapper,
+            new FakeSqliteException("misleading UNIQUE CONSTRAINT text", extended)));
+
+        Assert.NotNull(failure);
+        Assert.Equal(status, failure!.Status);
+        Assert.Equal(constraint, failure.Constraint);
+    }
 }

@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.BiFunction;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -50,14 +51,113 @@ public final class XmlForgivingReader {
     private static final Pattern ATTR = Pattern.compile(
             "([A-Za-z_:][A-Za-z0-9_:.\\-]*)\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s/>]+))");
 
-    public Map<String, Object> read(String span, boolean caseInsensitive) {
+    private static final String COMMENT_OPEN = "<!--";
+    private static final String COMMENT_CLOSE = "-->";
+    private static final String CDATA_OPEN = "<![CDATA[";
+    private static final String CDATA_CLOSE = "]]>";
+    // the five predefined XML entities plus numeric character references.
+    private static final Pattern ENTITY = Pattern.compile("&(#x[0-9a-fA-F]+|#[0-9]+|lt|gt|amp|quot|apos);");
+
+    private static final String KIND_COMMENT = "comment";
+    private static final String KIND_CDATA = "cdata";
+
+    /**
+     * Rewrite every XML comment and CDATA section in {@code text} through {@code replace}
+     * (kind, region), scanning left to right so a comment marker inside CDATA (or the reverse)
+     * is never mistaken for markup. An unclosed comment is left as text; an unclosed CDATA
+     * section runs to the end.
+     */
+    private static String rewriteRegions(String text, BiFunction<String, String, String> replace) {
+        StringBuilder out = new StringBuilder();
+        int pos = 0;
+        int from = 0;
+        while (true) {
+            int c = text.indexOf(COMMENT_OPEN, from);
+            int d = text.indexOf(CDATA_OPEN, from);
+            boolean isComment = c >= 0 && (d < 0 || c < d);
+            int start = isComment ? c : d;
+            if (start < 0) break;
+            int end;
+            if (isComment) {
+                int e = text.indexOf(COMMENT_CLOSE, start + COMMENT_OPEN.length());
+                if (e < 0) {
+                    from = start + COMMENT_OPEN.length();
+                    continue;
+                }
+                end = e + COMMENT_CLOSE.length();
+            } else {
+                int e = text.indexOf(CDATA_CLOSE, start + CDATA_OPEN.length());
+                end = e < 0 ? text.length() : e + CDATA_CLOSE.length();
+            }
+            out.append(text, pos, start)
+                    .append(replace.apply(isComment ? KIND_COMMENT : KIND_CDATA, text.substring(start, end)));
+            pos = end;
+            from = end;
+        }
+        return out.append(text.substring(pos)).toString();
+    }
+
+    /** {@code text} with comments and CDATA sections blanked to spaces (same length, so
+     *  indices hold): the view the tag locators search, so markup inside them is never located. */
+    static String maskNonMarkup(String text) {
+        return rewriteRegions(text, (kind, region) -> " ".repeat(region.length()));
+    }
+
+    /** Drop comments; turn each CDATA section into its text with {@code & < >} entity-escaped,
+     *  so the tag scanner cannot split it and the entity decode restores it exactly. */
+    private static String prepare(String text) {
+        return rewriteRegions(text, (kind, region) -> {
+            if (kind.equals(KIND_COMMENT)) return "";
+            String body = region.endsWith(CDATA_CLOSE)
+                    ? region.substring(CDATA_OPEN.length(), region.length() - CDATA_CLOSE.length())
+                    : region.substring(CDATA_OPEN.length());
+            return body.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
+        });
+    }
+
+    /** Decode predefined entities and numeric references in one pass (so {@code &amp;lt;} is
+     *  {@code &lt;}). An unknown or out-of-range reference stays as written. */
+    private static String decodeEntities(String s) {
+        if (s.indexOf('&') < 0) return s;
+        Matcher m = ENTITY.matcher(s);
+        StringBuilder sb = new StringBuilder();
+        int last = 0;
+        while (m.find()) {
+            String body = m.group(1);
+            String rep = m.group();
+            switch (body) {
+                case "lt" -> rep = "<";
+                case "gt" -> rep = ">";
+                case "amp" -> rep = "&";
+                case "quot" -> rep = "\"";
+                case "apos" -> rep = "'";
+                default -> {
+                    try {
+                        int cp = body.charAt(1) == 'x'
+                                ? Integer.parseInt(body.substring(2), 16)
+                                : Integer.parseInt(body.substring(1), 10);
+                        boolean surrogate = cp >= 0xD800 && cp <= 0xDFFF;
+                        if (cp >= 1 && cp <= 0x10FFFF && !surrogate) rep = new String(Character.toChars(cp));
+                    } catch (NumberFormatException ignored) {
+                        // out-of-range reference: stays as written
+                    }
+                }
+            }
+            sb.append(s, last, m.start()).append(rep);
+            last = m.end();
+        }
+        return sb.append(s.substring(last)).toString();
+    }
+
+    public Map<String, Object> read(String rawSpan, boolean caseInsensitive) {
         Map<String, Object> out = new LinkedHashMap<>();
-        if (span == null || span.isBlank()) return out;
+        if (rawSpan == null || rawSpan.isBlank()) return out;
+        String span = prepare(rawSpan);
         int gt = span.indexOf('>');
         if (gt < 0) return out;
         int rootEnd = span.lastIndexOf("</");
         String inner = span.substring(gt + 1, (rootEnd < 0 || rootEnd <= gt) ? span.length() : rootEnd);
-        parseChildren(inner, caseInsensitive, out, null);
+        parseChildren(inner, caseInsensitive, out, null, false);
         return out;
     }
 
@@ -70,20 +170,30 @@ public final class XmlForgivingReader {
     public Map<String, Object> readRootless(String text, boolean caseInsensitive) {
         Map<String, Object> out = new LinkedHashMap<>();
         if (text == null || text.isBlank()) return out;
-        parseChildren(text, caseInsensitive, out, null);
+        parseChildren(prepare(text), caseInsensitive, out, null, false);
         return out;
     }
 
     /**
      * Parse {@code inner}'s elements into {@code out}. When {@code loose} is non-null, the text
      * BETWEEN those elements (an element's own text in mixed content) is appended to it, one
-     * segment per gap.
+     * segment per gap. {@code literalUnclosed} is set for the body of an element that DID
+     * close: an open tag in there with no close tag anywhere after it ({@code List<int> and
+     * ...}) is prose, not an element.
      */
-    private void parseChildren(String inner, boolean ci, Map<String, Object> out, List<String> loose) {
+    private void parseChildren(String inner, boolean ci, Map<String, Object> out, List<String> loose,
+                               boolean literalUnclosed) {
         Pattern openTag = Pattern.compile(OPEN_TAG_RE, ci ? Pattern.CASE_INSENSITIVE : 0);
+        Pattern closeTag = Pattern.compile(CLOSE_TAG_RE, ci ? Pattern.CASE_INSENSITIVE : 0);
         Matcher m = openTag.matcher(inner);
         int pos = 0;
-        while (m.find(pos)) {
+        int scan = 0;
+        while (m.find(scan)) {
+            if (literalUnclosed && !m.group(2).stripTrailing().endsWith("/")
+                    && !closeTag.matcher(inner).region(m.end(), inner.length()).find()) {
+                scan = m.end();
+                continue;
+            }
             if (loose != null) loose.add(inner.substring(pos, m.start()));
             String tag = m.group(1);
             String key = ci ? tag.toLowerCase() : tag;
@@ -96,6 +206,7 @@ public final class XmlForgivingReader {
             if (selfClosing) {
                 accumulate(out, key, attrs.isEmpty() ? "" : attrs);
                 pos = m.end();
+                scan = pos;
                 continue;
             }
 
@@ -103,7 +214,8 @@ public final class XmlForgivingReader {
             String closeRe = "</" + Pattern.quote(tag) + "\\s*>";
             Matcher close = Pattern.compile(closeRe, ci ? Pattern.CASE_INSENSITIVE : 0).matcher(inner);
             int contentEnd, next;
-            if (close.find(contentStart)) {
+            boolean closed = close.find(contentStart);
+            if (closed) {
                 contentEnd = close.start();
                 next = close.end();
             } else {
@@ -141,8 +253,9 @@ public final class XmlForgivingReader {
                 }
             }
             String content = inner.substring(contentStart, contentEnd);
-            accumulate(out, key, combine(attrs, content, ci));
+            accumulate(out, key, combine(attrs, content, ci, closed));
             pos = next;
+            scan = next;
         }
         if (loose != null) loose.add(inner.substring(pos));
     }
@@ -171,11 +284,11 @@ public final class XmlForgivingReader {
      * content keeps BOTH: the children, and the element's own text under {@link #TEXT_KEY}, so
      * a scalar or {@code @xmlText} consumer still reads the prose around a child element.
      */
-    private Object combine(Map<String, Object> attrs, String content, boolean ci) {
+    private Object combine(Map<String, Object> attrs, String content, boolean ci, boolean closed) {
         if (content.contains("<")) {
             Map<String, Object> nested = new LinkedHashMap<>();
             List<String> loose = new ArrayList<>();
-            parseChildren(content, ci, nested, loose);
+            parseChildren(content, ci, nested, loose, closed);
             if (!nested.isEmpty()) {
                 // attributes first; a child element takes precedence on a name collision
                 Map<String, Object> merged = new LinkedHashMap<>(attrs);
@@ -194,7 +307,7 @@ public final class XmlForgivingReader {
         Pattern close = Pattern.compile(CLOSE_TAG_RE, ci ? Pattern.CASE_INSENSITIVE : 0);
         List<String> parts = new ArrayList<>();
         for (String seg : segments) {
-            String t = close.matcher(seg).replaceAll("").trim();
+            String t = decodeEntities(close.matcher(seg).replaceAll("").trim());
             if (!t.isEmpty()) parts.add(t);
         }
         return String.join(" ", parts);
@@ -203,7 +316,7 @@ public final class XmlForgivingReader {
     /** A text body: bare {@code String} when there are no attributes, else a map carrying the
      *  attributes plus the text under {@link #TEXT_KEY}. */
     private Object textValue(Map<String, Object> attrs, String content) {
-        String text = content.trim();
+        String text = decodeEntities(content.trim());
         if (attrs.isEmpty()) return text;
         Map<String, Object> m = new LinkedHashMap<>(attrs);
         m.put(TEXT_KEY, text);
@@ -219,7 +332,7 @@ public final class XmlForgivingReader {
             String val = a.group(2) != null ? a.group(2)
                     : a.group(3) != null ? a.group(3)
                     : a.group(4) != null ? a.group(4) : "";
-            attrs.putIfAbsent(name, val);
+            attrs.putIfAbsent(name, decodeEntities(val));
         }
         return attrs;
     }

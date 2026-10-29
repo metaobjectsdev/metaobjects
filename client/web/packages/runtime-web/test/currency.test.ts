@@ -74,3 +74,48 @@ describe("parseCurrency", () => {
     expect(parseCurrency("15.9.9.9")).toBeNull();
   });
 });
+
+describe("parseCurrency — strict grammar and sign forms (audit finding 5)", () => {
+  test.each([
+    ["$-5.00", -500],
+    ["-$5.00", -500],
+    ["(5.00)", -500],
+    ["($5.00)", -500],
+    ["5.00-", -500],
+    ["−5.00", -500],
+    ["+5.00", 500],
+    ["USD 1,234.50", 123450],
+    ["1.005", 101],
+    [".5", 50],
+    ["5.", 500],
+    ["0.00", 0],
+    ["-0.00", 0],
+  ])("%s → %p", (input, cents) => {
+    expect(parseCurrency(input)).toBe(cents);
+  });
+
+  test.each(["1e3", "12.50 (2 items)", "--5", "(-5.00)", "-5.00-", "$$5", "1,23.45", "1,2345", "5 apples", "-", "$", "()", "1.5.2"])(
+    "%s → null",
+    (input) => {
+      expect(parseCurrency(input)).toBeNull();
+    },
+  );
+
+  test("de-DE uses , as decimal and . as grouping; '1.5' is not an amount", () => {
+    expect(parseCurrency("1.234,56 €", "EUR", "de-DE")).toBe(123456);
+    expect(parseCurrency("-5,00 €", "EUR", "de-DE")).toBe(-500);
+    expect(parseCurrency("1.5", "EUR", "de-DE")).toBeNull();
+  });
+
+  test("fr-FR accepts an ordinary space for its narrow no-break group separator", () => {
+    expect(parseCurrency("1 234,50 €", "EUR", "fr-FR")).toBe(123450);
+  });
+
+  test("en-IN groups 2,2,3", () => {
+    expect(parseCurrency("₹12,34,567.00", "INR", "en-IN")).toBe(123456700);
+  });
+
+  test("JPY has no minor units; a fraction rounds", () => {
+    expect(parseCurrency("¥1,000", "JPY")).toBe(1000);
+  });
+});

@@ -17,19 +17,17 @@
 #
 set -uo pipefail
 
-# Generic, non-sensitive structural patterns — safe to commit (name no project):
-# /Users/ is the macOS home shape. It was missing until a plan doc authored on a Mac
-# committed an absolute developer home path that this hook scanned and passed.
-PATTERNS='/home/[A-Za-z0-9._-]+/|/Users/[A-Za-z0-9._-]+/|~/Development'
-
-# Legitimate matches to ignore (e.g. the published npm author email).
-ALLOW='doug@dougmealing\.com'
+ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo .)"
+# Patterns, allow-list and diff filter are shared with .githooks/leak-scan.sh.
+# shellcheck source=leak-patterns.sh
+. "$ROOT/.githooks/leak-patterns.sh"
+PATTERNS="$LEAK_PATTERNS"
+ALLOW="$LEAK_ALLOW"
 
 # Merge in private-name patterns from a denylist. Source priority:
 #   1) git config hooks.denyListPath  -> point at your private denylist file (kept in a private repo)
 #   2) .githooks/deny-list.local      -> untracked local file or symlink
 # If neither resolves, only the generic structural patterns above are enforced.
-ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo .)"
 DENY_FILE="$(git config --get hooks.denyListPath 2>/dev/null || true)"
 [ -z "$DENY_FILE" ] && DENY_FILE="$ROOT/.githooks/deny-list.local"
 if [ -f "$DENY_FILE" ]; then
@@ -38,7 +36,7 @@ if [ -f "$DENY_FILE" ]; then
 fi
 
 # Scan only newly-ADDED staged lines, attributed to their file; skip the hooks dir.
-hits=$(git diff --cached --diff-filter=ACM -U0 --no-color 2>/dev/null | awk '
+hits=$(git diff --cached --diff-filter="$LEAK_DIFF_FILTER" -U0 --no-color 2>/dev/null | awk '
   /^\+\+\+ /              { f=$2; sub(/^b\//,"",f); next }
   /^\+/ && !/^\+\+\+/     { if (f !~ /^\.githooks\//) print f "\t" substr($0,2) }
 ' | grep -Ei "$PATTERNS" | grep -vEi "$ALLOW")

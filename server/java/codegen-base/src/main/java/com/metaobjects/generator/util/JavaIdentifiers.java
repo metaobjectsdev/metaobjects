@@ -94,4 +94,29 @@ public final class JavaIdentifiers {
     public static String escapeIdentifier(String name) {
         return isKeyword(name) ? name + "_" : name;
     }
+
+    /**
+     * {@code s} escaped for the inside of a Java double-quoted string literal. Beyond the
+     * backslash and quote, a raw newline, carriage return or other control character would end
+     * the literal (or the file) and generate source that does not compile.
+     */
+    public static String escapeStringLiteral(String s) {
+        StringBuilder out = new StringBuilder(s.length() + 8);
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            switch (c) {
+                case '\\': out.append("\\\\"); break;
+                case '"':  out.append("\\\""); break;
+                case '\n': out.append("\\n"); break;
+                case '\r': out.append("\\r"); break;
+                case '\t': out.append("\\t"); break;
+                case '\b': out.append("\\b"); break;
+                case '\f': out.append("\\f"); break;
+                default:
+                    if (c < 0x20 || c == 0x7f) out.append(String.format("\\u%04x", (int) c));
+                    else out.append(c);
+            }
+        }
+        return out.toString();
+    }
 }

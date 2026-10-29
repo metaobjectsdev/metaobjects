@@ -739,19 +739,7 @@ public class SpringOutputParserGenerator extends MultiFileDirectGeneratorBase<Me
 
     /** Escape a value for embedding inside a Java double-quoted string literal. */
     private static String escapeJava(String value) {
-        StringBuilder sb = new StringBuilder(value.length() + 4);
-        for (int i = 0; i < value.length(); i++) {
-            char c = value.charAt(i);
-            switch (c) {
-                case '\\': sb.append("\\\\"); break;
-                case '"':  sb.append("\\\""); break;
-                case '\t': sb.append("\\t"); break;
-                case '\n': sb.append("\\n"); break;
-                case '\r': sb.append("\\r"); break;
-                default:   sb.append(c);
-            }
-        }
-        return sb.toString();
+        return com.metaobjects.generator.util.JavaIdentifiers.escapeStringLiteral(value);
     }
 
     /**

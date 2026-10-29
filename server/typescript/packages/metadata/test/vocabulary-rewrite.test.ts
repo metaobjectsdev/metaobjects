@@ -241,3 +241,38 @@ describe("nothing exits clean while the metadata still will not load", () => {
     expect(() => JSON.parse(r.text)).not.toThrow();
   });
 });
+
+describe("JSONC comments (audit finding 11)", () => {
+  test("a brace inside a // comment does not end the node scope early", () => {
+    const src = `{ "field.string": { "name": "ref", // closes } early?
+  "@readOnly": true } }`;
+    const r = rewriteDocument(src);
+    expect(r.text).toContain('"@mutability": "readOnly"');
+    expect(r.text).toContain("// closes } early?");
+  });
+
+  test("a trailing // comment after a value-scoped retired value still matches", () => {
+    const src = `{ "requirement.functional": { "name": "r",
+  "@status": "abandoned" // gave up
+} }`;
+    const r = rewriteDocument(src);
+    expect(r.changes.length).toBeGreaterThan(0);
+    expect(r.text).not.toContain('"abandoned"');
+    expect(r.text).toContain("// gave up");
+  });
+
+  test("a trailing block comment does not hide a rewrite", () => {
+    const src = `{ "field.string": { "name": "ref", "@readOnly": true /* old */ } }`;
+    const r = rewriteDocument(src);
+    expect(r.text).toContain('"@mutability": "readOnly"');
+  });
+
+  test("a commented-out retired key is left alone", () => {
+    const src = `{ "field.string": { "name": "ref",
+  // "@readOnly": true,
+  "@maxLength": 5 } }`;
+    const r = rewriteDocument(src);
+    expect(r.changes).toEqual([]);
+    expect(r.text).toBe(src);
+  });
+});

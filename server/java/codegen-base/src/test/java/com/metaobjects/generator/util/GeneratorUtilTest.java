@@ -10,6 +10,15 @@ import static com.metaobjects.generator.util.GeneratorUtil.*;
 public class GeneratorUtilTest {
 
     @Test
+    public void testFilterTreatsRegexMetacharactersAsLiterals() {
+        assertTrue( filterByName( "a::B(", "a::B(" ));
+        assertTrue( filterByName( "a::B[1]", "a::B[1]" ));
+        assertFalse( filterByName( "a::B1", "a::B[1]" ));
+        assertFalse( filterByName( "a::Bxc", "a::B.c" ));
+        assertTrue( filterByName( "a::B+c", "a::B+*" ));
+    }
+
+    @Test
     public void testFilterMatching() {
         assertTrue( filterByName( "acme::store::PrimaryStore", "acme::*" ));
         assertTrue( filterByName( "acme::store::PrimaryStore", "acme::store::PrimaryStore" ));

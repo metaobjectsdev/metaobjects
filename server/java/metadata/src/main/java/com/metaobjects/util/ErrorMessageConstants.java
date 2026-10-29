@@ -256,6 +256,9 @@ public final class ErrorMessageConstants {
      */
     public static final String ERR_INVALID_INDEX = "ERR_INVALID_INDEX";
 
+    /** Cross-language contract: {@code ERR_COLUMN_NAME_COLLISION}. */
+    public static final String ERR_COLUMN_NAME_COLLISION = "ERR_COLUMN_NAME_COLLISION";
+
     /** FR-039 — a retired requirement may not declare @implementedBy. */
     public static final String ERR_REQUIREMENT_RETIRED_HAS_IMPLEMENTORS =
             "ERR_REQUIREMENT_RETIRED_HAS_IMPLEMENTORS";

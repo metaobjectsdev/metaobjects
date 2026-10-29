@@ -20,7 +20,15 @@
 // KIND — matching TypeScript byte for byte rather than inventing a taxonomy the other
 // ports would then have to follow.
 //
-// WHY TEXT AND NOT A TYPED DRIVER CHECK: this assembly must not take a dependency on any
+// STRUCTURED CODES FIRST: when the chain holds a DbException that reports a SQLSTATE
+// (DbException.SqlState, which Npgsql fills), or an exception exposing a SQLite extended
+// result code (Microsoft.Data.Sqlite's SqliteExtendedErrorCode, read by property name so no
+// provider is referenced), that code is the verdict and message text is never consulted:
+// a unique-violation whose offending value happens to read "NOT NULL" is still a unique
+// violation. Message matching survives only as the fallback for exceptions that carry no
+// code at all, such as an in-memory double.
+//
+// WHY NOT A TYPED DRIVER CHECK: this assembly must not take a dependency on any
 // specific ADO.NET provider — a consumer may be on Npgsql, SQL Server, SQLite or an
 // in-memory double, and binding to one of them here would make the generated routes
 // unusable on the others. Npgsql puts the SQLSTATE at the front of PostgresException's
@@ -79,6 +87,9 @@ public static class ConstraintErrors
     /// </summary>
     public static ConstraintFailure? Classify(Exception? error)
     {
+        var coded = CodedVerdict(error, out var hasCode);
+        if (hasCode) return coded is null ? null : Failure(coded.Value);
+
         var haystack = ChainText(error);
         if (haystack.Length == 0) return null;
 
@@ -87,8 +98,65 @@ public static class ConstraintErrors
 
         // 409 for referential/uniqueness conflicts with EXISTING state; 400 for a value
         // the request itself got wrong. Both are client errors — neither is a 500.
+        return Failure(kind.Value);
+    }
+
+    private static ConstraintFailure Failure(ConstraintKind kind)
+    {
         var status = kind is ConstraintKind.ForeignKey or ConstraintKind.Unique ? 409 : 400;
-        return new ConstraintFailure(status, kind.Value);
+        return new ConstraintFailure(status, kind);
+    }
+
+    private const int MaxDepth = 8;
+
+    // SQLite extended result codes (https://www.sqlite.org/rescode.html).
+    private const int SqliteConstraintCheck = 275;
+    private const int SqliteConstraintForeignKey = 787;
+    private const int SqliteConstraintNotNull = 1299;
+    private const int SqliteConstraintPrimaryKey = 1555;
+    private const int SqliteConstraintUnique = 2067;
+
+    /// <summary>
+    /// The verdict of the first exception in the chain that carries a structured code:
+    /// <paramref name="hasCode"/> says whether one was found, and the return is its kind (null
+    /// for a code that is not one of the four constraint classes).
+    /// </summary>
+    private static ConstraintKind? CodedVerdict(Exception? error, out bool hasCode)
+    {
+        var seen = 0;
+        for (var e = error; e is not null && seen < MaxDepth; e = e.InnerException, seen++)
+        {
+            foreach (var candidate in e is AggregateException agg ? agg.InnerExceptions.Prepend(e) : new[] { e })
+            {
+                if (candidate is System.Data.Common.DbException { SqlState: { Length: > 0 } state })
+                {
+                    hasCode = true;
+                    return state switch
+                    {
+                        "23503" => ConstraintKind.ForeignKey,
+                        "23505" => ConstraintKind.Unique,
+                        "23514" => ConstraintKind.Check,
+                        "23502" => ConstraintKind.NotNull,
+                        _ => null,
+                    };
+                }
+                var extended = candidate.GetType().GetProperty("SqliteExtendedErrorCode")?.GetValue(candidate);
+                if (extended is int code)
+                {
+                    hasCode = true;
+                    return code switch
+                    {
+                        SqliteConstraintForeignKey => ConstraintKind.ForeignKey,
+                        SqliteConstraintUnique or SqliteConstraintPrimaryKey => ConstraintKind.Unique,
+                        SqliteConstraintCheck => ConstraintKind.Check,
+                        SqliteConstraintNotNull => ConstraintKind.NotNull,
+                        _ => null,
+                    };
+                }
+            }
+        }
+        hasCode = false;
+        return null;
     }
 
     private static ConstraintKind? KindOf(string haystack)
@@ -132,9 +200,8 @@ public static class ConstraintErrors
     /// </summary>
     private static string ChainText(Exception? error)
     {
-        const int maxDepth = 8;
-        var parts = new List<string>(maxDepth);
-        for (var e = error; e is not null && parts.Count < maxDepth; e = e.InnerException)
+        var parts = new List<string>(MaxDepth);
+        for (var e = error; e is not null && parts.Count < MaxDepth; e = e.InnerException)
         {
             if (!string.IsNullOrEmpty(e.Message)) parts.Add(e.Message);
             // An AggregateException holds its failures beside InnerException, so the chain

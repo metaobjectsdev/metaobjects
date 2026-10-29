@@ -642,6 +642,9 @@ public class MetaDataLoader
             // and each must exist in the entity's effective field set (ERR_INVALID_INDEX).
             errors.AddRange(ValidationPasses.ValidateIndexLookupFields(root));
 
+            // Two fields of one stored object resolving to the same physical column.
+            errors.AddRange(ValidationPasses.ValidateColumnNameCollisions(root));
+
             // FR-039 — a retired requirement carries no @implementedBy (refused, not
             // exempted, so the dangling-ref class is unreachable) and @supersededBy is
             // legal only there.

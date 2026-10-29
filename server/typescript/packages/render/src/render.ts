@@ -1,7 +1,14 @@
 import Mustache from "mustache";
 import type { Provider } from "./provider.js";
 import { ESCAPERS, type RenderFormat } from "./escapers.js";
-import { verify, ERR_REQUIRED_SLOT_UNUSED, type PayloadField } from "./verify.js";
+import {
+  verify,
+  parseTemplate,
+  partialTokens,
+  hasDelimiterChange,
+  ERR_REQUIRED_SLOT_UNUSED,
+  type PayloadField,
+} from "./verify.js";
 import { withDerivedAccessors } from "./payload-accessors.js";
 import {
   TEMPLATE_ENGINE_JINJA,
@@ -14,15 +21,24 @@ import {
 import { renderJinja } from "./jinja/render.js";
 import { MAX_DEPTH } from "./verify-shared.js";
 
-const PARTIAL = /\{\{>\s*([^}\s]+)\s*\}\}/g;
-
 // Resolve `{{> group/source }}` partials by inlining their text, recursively,
 // BEFORE Mustache parses — giving us deterministic whitespace and true,
 // path-based cycle/depth detection (no reliance on a per-lib partial loader).
 // Inlined text still renders in the surrounding context (e.g. once per loop
 // item), exactly like a native partial, because Mustache renders the result.
+// Partial tags are located by Mustache's own parser, so a `{{> x}}` written inside
+// a comment is not a partial, and a `{{=<% %>=}}` delimiter change is honoured.
 function expand(text: string, provider: Provider, path: readonly string[]): string {
-  return text.replace(PARTIAL, (_match, ref: string) => {
+  const tokens = parseTemplate(text);
+  const partials = partialTokens(tokens);
+  if (partials.length === 0) return text;
+  // Inlined text is parsed under the surrounding delimiters, not the default ones.
+  if (hasDelimiterChange(tokens)) {
+    throw new Error("a template that uses partials cannot also change delimiters ({{=<% %>=}})");
+  }
+  let out = "";
+  let pos = 0;
+  for (const [ref, start, end] of partials) {
     if (path.includes(ref)) throw new Error(`partial cycle: ${[...path, ref].join(" -> ")}`);
     if (path.length >= MAX_DEPTH) throw new Error(`partial depth exceeded ${MAX_DEPTH}: ${ref}`);
     const t = provider.resolve(ref);
@@ -30,8 +46,10 @@ function expand(text: string, provider: Provider, path: readonly string[]): stri
     if (partialEngineMismatch(provider, ref, TEMPLATE_ENGINE_MUSTACHE)) {
       throw new Error(partialEngineMessage(ref, TEMPLATE_ENGINE_MUSTACHE));
     }
-    return expand(t, provider, [...path, ref]);
-  });
+    out += text.slice(pos, start) + expand(t, provider, [...path, ref]);
+    pos = end;
+  }
+  return out + text.slice(pos);
 }
 
 export interface RenderOptions {
