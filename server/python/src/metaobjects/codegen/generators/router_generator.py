@@ -59,6 +59,7 @@ from metaobjects.loader.validate_field_mutability import (
     is_read_only_mutability,
     is_write_once_mutability,
 )
+from metaobjects.meta.core.field.credential import is_credential_field
 from metaobjects.meta.core.field.meta_field import MetaField
 from metaobjects.meta.persistence.db import db_constants as dbc
 from metaobjects.meta.core.identity.identity_constants import (
@@ -175,6 +176,8 @@ def _scalar_fields(entity: MetaObject) -> list[MetaField]:
         # A derived report field over an array or a map is one jsonb value: ordering by it is
         # meaningless, so it is not sortable (nor filterable, see the filter allowlist).
         fields = [f for f in fields if f.sub_type != fc.FIELD_SUBTYPE_MAP and not field_is_array(f)]
+        # #484: a hidden credential column is no sort key either (an oracle).
+        fields = [f for f in fields if not _is_credential(f)]
     return fields
 
 
@@ -317,6 +320,8 @@ def _wire_lines(entities: list[MetaObject], wire: WireFormat, name: str = "_WIRE
     args = f'decimals="{wire.decimals}", null_members="{wire.null_members}"'
     if shapes:
         args += f", shapes={shapes!r}"
+    if hidden := _hidden_names(entities):
+        args += f", hidden={tuple(hidden)!r}"
     return ["", "", f"{name} = WireOutput({args})"]
 
 
@@ -378,6 +383,49 @@ def _is_auto_set(field: MetaField) -> bool:
         fc.AUTO_SET_ON_CREATE,
         fc.AUTO_SET_ON_UPDATE,
     )
+
+
+def _is_credential(field: MetaField) -> bool:
+    """#484 — a field declaring (or inheriting) a ``view.password`` child is a credential:
+    never returned by a generated route, never written by one. RESOLVING ``children()``
+    (ADR-0039), so an inherited ``view.password`` counts."""
+    return is_credential_field(field)
+
+
+def _denied_names(entity: MetaObject) -> list[str]:
+    """#484 — the fields a generated create / PATCH / PUT ignores: ``@formExclude`` (RESOLVING
+    read) or a credential. Ignored, never 400'd — a generated edit form submits every field it
+    was given. Only the HTTP boundary strips them; the entity model and the application's own
+    repository still carry the members."""
+    return [
+        f.name
+        for f in entity.fields()
+        if f.get_meta_attr(fc.FIELD_ATTR_FORM_EXCLUDE) is True or _is_credential(f)
+    ]
+
+
+def _hidden_names(entities: list[MetaObject]) -> list[str]:
+    """#484 — the credential fields of *entities*, which no generated response carries.
+    ``@formExclude`` alone does not hide a field."""
+    return list(dict.fromkeys(f.name for e in entities for f in e.fields() if _is_credential(f)))
+
+
+def _denied_strip_lines(names: list[str], indent: str = "    ") -> list[str]:
+    """The pop-loop for :func:`_denied_names`. Empty when nothing is denied, so output stays
+    byte-identical for a model with no ``@formExclude`` and no ``view.password``."""
+    if not names:
+        return []
+    return [
+        f"{indent}# #484: @formExclude / credential fields are IGNORED on write, never 400'd.",
+        f"{indent}for _denied in _DENIED_FIELDS:",
+        f"{indent}    dto.pop(_denied, None)",
+    ]
+
+
+def _denied_const_lines(names: list[str]) -> list[str]:
+    if not names:
+        return []
+    return ["", "", f"_DENIED_FIELDS: frozenset[str] = {_py_set_literal(names, frozen=True)}"]
 
 
 def _frozen_names(entity: MetaObject) -> list[str]:
@@ -897,6 +945,7 @@ class RouterGenerator:
         create_autoset: list[str] = (),
         update_autoset: list[str] = (),
         frozen_strip: list[str] = (),
+        denied_strip: list[str] = (),
         report_max_rows: int | None = None,
         report_export: bool = False,
     ) -> list[str]:
@@ -1033,6 +1082,7 @@ class RouterGenerator:
                 f"    repo: Annotated[{repo_class}, Depends(get_repository)],",
                 ") -> Any:",
                 *_DECIMAL_COERCE,
+                *denied_strip,
                 "    # FR-036: run the generated field constraints (length / pattern /",
                 "    # numeric bounds) before persisting; a violation is the cross-port 400.",
                 "    try:",
@@ -1057,6 +1107,7 @@ class RouterGenerator:
                 f"    repo: Annotated[{repo_class}, Depends(get_repository)],",
                 ") -> Any:",
                 *_DECIMAL_COERCE,
+                *denied_strip,
                 "    # FR-035 PATCH-2: an explicit null on a @required field is a 400 —",
                 "    # a present null on a NON-required field falls through and clears it,",
                 "    # and an OMITTED required field is untouched (never a 400).",
@@ -1296,6 +1347,11 @@ class RouterGenerator:
                     frozen_seen.add(name)
                     frozen_names.append(name)
         frozen_set_body = _py_set_literal(frozen_names, frozen=True)
+        # #484 — union across the base AND every subtype, like the frozen set above.
+        denied_names: list[str] = list(dict.fromkeys(
+            [*_denied_names(entity), *(n for st in plan.subtypes for n in _denied_names(st.entity))]
+        ))
+        denied_strip_tph = _denied_strip_lines(denied_names)
         frozen_strip_tph = _frozen_strip_lines(entity) if frozen_names else []
         if frozen_names and not _frozen_names(entity):
             # A subtype-only frozen field still needs the strip emitted.
@@ -1416,6 +1472,7 @@ class RouterGenerator:
         # the generated module always carries the seam (an entity that later gains a
         # writeOnce field changes one literal, not the module's shape).
         parts.append(f"_FROZEN_FIELDS: frozenset[str] = {frozen_set_body}")
+        parts.extend(_denied_const_lines(denied_names))
         parts.append("")
         parts.append("")
         parts.extend(_sort_parse_fn_lines())
@@ -1489,6 +1546,7 @@ class RouterGenerator:
             parts.append(f"    repo: Annotated[{repo_class}, Depends(get_repository)],")
             parts.append(") -> Any:")
             parts.extend(_DECIMAL_COERCE)
+            parts.extend(denied_strip_tph)
             parts.append("    # FR-036: run the subtype's field constraints before persisting.")
             parts.append("    try:")
             parts.append(f"        {sub}Create(**dto)")
@@ -1521,6 +1579,7 @@ class RouterGenerator:
             parts.append(f"    repo: Annotated[{repo_class}, Depends(get_repository)],")
             parts.append(") -> Any:")
             parts.extend(_DECIMAL_COERCE)
+            parts.extend(denied_strip_tph)
             parts.append("    # FR-035 PATCH-2: an explicit null on a @required field is a 400.")
             parts.append("    for _k in _REQUIRED_FIELDS:")
             parts.append("        if _k in dto and dto[_k] is None:")
@@ -1802,6 +1861,8 @@ class RouterGenerator:
         # the generated module always carries the seam (an entity that later gains a
         # writeOnce field changes one literal, not the module's shape).
         parts.append(f"_FROZEN_FIELDS: frozenset[str] = {frozen_set_body}")
+        denied_names = _denied_names(entity)
+        parts.extend(_denied_const_lines(denied_names))
         parts.append("")
         parts.append("")
         parts.extend(_sort_parse_fn_lines())
@@ -1834,6 +1895,7 @@ class RouterGenerator:
             # FastAPI (the handler binds the RAW body dict and hands THAT to the
             # repository), so the strip has to live here, not in <Entity>Patch.
             frozen_strip=_frozen_strip_lines(entity),
+            denied_strip=_denied_strip_lines(denied_names),
         )
         for i, hname in enumerate(("list", "get", "create", "update", "delete")):
             if i > 0:

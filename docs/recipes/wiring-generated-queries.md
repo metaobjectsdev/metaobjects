@@ -280,10 +280,10 @@ export default defineConfig({
 });
 ```
 
-> **Note for D1 consumers:** codegen-ts only knows `"sqlite" | "postgres"`. D1 is
-> SQLite at the SQL level, so codegen uses `dialect: "sqlite"`. The D1-specific
-> `--dialect d1` is a `meta migrate` CLI flag (it controls migration transport +
-> file layout), not a codegen config value.
+> **Note for D1 consumers:** codegen's `dialect` is `"sqlite" | "postgres" | "mysql"`. D1 is
+> SQLite at the SQL level, so codegen uses `dialect: "sqlite"`. `--dialect d1` is a
+> `meta migrate` CLI flag (migration transport + file layout), not a codegen config value, and
+> `dialect: "d1"` in `metaobjects.config.ts` is refused with an error.
 
 ## Migration from 0.6.0
 

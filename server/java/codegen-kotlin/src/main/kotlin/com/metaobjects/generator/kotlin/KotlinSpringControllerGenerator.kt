@@ -216,6 +216,25 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         for (pkg in decimalWirePackages) KotlinDecimalWireEmitter.write(pkg, outRoot, wire)
     }
 
+    /** #484: the call that turns a ResultRow into the response value — redacted when [creds] is non-empty. */
+    private fun wireRow(shortName: String, creds: Collection<String>, arg: String): String =
+        if (creds.isEmpty()) "rowTo$shortName($arg)" else "redact$shortName(objectMapper, rowTo$shortName($arg))"
+
+    /**
+     * #484: a credential is never returned. The shared data class keeps its declared types, so the key is
+     * dropped from the serialized tree at the HTTP boundary (absent, not null), through the same mapper
+     * (and so the same wire annotations) the response would use.
+     */
+    private fun appendRedactor(sb: StringBuilder, shortName: String, creds: Collection<String>) {
+        if (creds.isEmpty()) return
+        sb.append("/** GENERATED — the ${shortName} response value with its credential field(s) removed. */\n")
+        sb.append("private fun redact${shortName}(mapper: ObjectMapper, row: ${shortName}): Any =\n")
+        sb.append("    mapper.valueToTree<com.fasterxml.jackson.databind.node.ObjectNode>(row).apply { remove(listOf(${creds.joinToString(", ") { "\"$it\"" }})) }\n\n")
+    }
+
+    private fun credentialNames(fields: Collection<MetaField<*>>): List<String> =
+        fields.filter { KotlinGenUtil.isCredentialField(it) }.map { it.name }.distinct()
+
     protected open fun emit(entity: MetaObject, outRoot: Path, loader: MetaDataLoader) {
         val api = exposedApi()
         val (pkg, shortName) = PackageMapping.splitFqn(entity.name)
@@ -274,9 +293,15 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                 // that is the uniform behaviour of every excluded key on this path, and the
                 // generated edit form submits every registered field.
                 !KotlinGenUtil.isReadOnlyMutability(it) &&
-                !KotlinGenUtil.isWriteOnceMutability(it)
+                !KotlinGenUtil.isWriteOnceMutability(it) &&
+                // #484: @formExclude / credential fields are stripped like the above, never 400'd.
+                !KotlinGenUtil.isApiWriteDenied(it)
         }
         val hasPatchFields = patchSettableFields.isNotEmpty()
+        // #484: credential fields are removed from every response at the HTTP boundary.
+        val creds = credentialNames(entity.metaFields)
+        val m2mNavsForMapper = KotlinM2mSupport.resolve(entity, loader, providedEnums)
+        val needsMapper = hasPatchFields || creds.isNotEmpty() || m2mNavsForMapper.any { it.targetCredentialFields.isNotEmpty() }
 
         // #203/ADR-0045: @autoSet columns are stamped by the generated controller, not bound from
         // the caller. insert stamps BOTH onCreate+onUpdate (a fresh row's updatedAt == createdAt —
@@ -350,10 +375,8 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             // ObjectMapper + TypeReference are used ONLY by the per-field patch bind, which is
             // emitted only when there ARE settable fields — omit them otherwise (unused import /
             // ctor param would fail the module's allWarningsAsErrors compile).
-            if (hasPatchFields) {
-                append("import com.fasterxml.jackson.core.type.TypeReference\n")
-                append("import com.fasterxml.jackson.databind.ObjectMapper\n")
-            }
+            if (hasPatchFields) append("import com.fasterxml.jackson.core.type.TypeReference\n")
+            if (needsMapper) append("import com.fasterxml.jackson.databind.ObjectMapper\n")
             // FR-036: the controller enforces the entity's field constraints over HTTP through a
             // jakarta Validator (POST body + present PATCH values) — always injected in this
             // writable-table path (a read-only projection controller never reaches emit()).
@@ -440,6 +463,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             emitFilterPipeline(this, shortName, readObj, allowlistName, scalarFields)
 
             appendRowToMapper(this, shortName, entity, readObj)
+            appendRedactor(this, shortName, creds)
 
             append("/**\n")
             append(" * GENERATED — REST controller for ${shortName} entity. Implements the cross-port API contract.\n")
@@ -458,15 +482,15 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             // @Valid data class, which cannot see absent-vs-null) and per-field-binds present
             // values via the Spring-configured ObjectMapper — injected only when there ARE
             // settable fields (a PK + only object/jsonb columns needs no mapper).
-            if (hasPatchFields) {
+            if (needsMapper) {
                 append("class ${shortName}Controller(private val objectMapper: ObjectMapper, private val validator: Validator) {\n\n")
             } else {
                 append("class ${shortName}Controller(private val validator: Validator) {\n\n")
             }
 
-            appendListHandler(this, shortName, readObj, sortFields)
+            appendListHandler(this, shortName, readObj, sortFields, creds)
 
-            appendGetHandler(this, shortName, readObj, pkFieldName, pkParamType)
+            appendGetHandler(this, shortName, readObj, pkFieldName, pkParamType, creds)
 
             // POST — create. FR-036: validate the bound body through the jakarta Validator and
             // 400 with the cross-port envelope on any violation BEFORE the insert. (@Valid's
@@ -504,6 +528,8 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                     append("            it[${field.name}] = ${insertNowVal[KotlinTypeMapper.nowExpr(field)]}\n")
                     continue
                 }
+                // #484: a @formExclude / credential column is never bound from the request body.
+                if (KotlinGenUtil.isApiWriteDenied(field)) continue
                 // NOTE: a `field.string @dbColumnType=jsonb` open bag IS written here (create
                 // binds it from the @Valid DTO's kotlinx JsonElement property, gated by the
                 // jsonb-open-bag-roundtrip corpus). PATCH cannot (the raw-JsonNode path can't bind
@@ -515,7 +541,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             // #214: re-read the persisted row through the READ object (the view for a write-through
             // entity) by PK so the returned entity carries the derived fields (read-your-writes).
             append("        val saved = ${readObj}.selectAll().where { ${readObj}.${pkFieldName} eq newId }.single()\n")
-            append("        ResponseEntity.status(HttpStatus.CREATED).body(rowTo${shortName}(saved) as Any)\n")
+            append("        ResponseEntity.status(HttpStatus.CREATED).body(${wireRow(shortName, creds, "saved")} as Any)\n")
             append("    }\n\n")
 
             // PATCH + PUT — single handler (per API contract; same body shape both verbs).
@@ -638,7 +664,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             // carries the derived fields; the write above targeted the write table.
             append("        val row = ${readObj}.selectAll().where { ${readObj}.${pkFieldName} eq id }.singleOrNull()\n")
             append("        if (row == null) ResponseEntity.status(HttpStatus.NOT_FOUND).body(mapOf(\"error\" to \"not_found\") as Any)\n")
-            append("        else ResponseEntity.ok(rowTo${shortName}(row) as Any)\n")
+            append("        else ResponseEntity.ok(${wireRow(shortName, creds, "row")} as Any)\n")
             append("    }\n\n")
 
             // DELETE — Exposed's `deleteWhere` is an extension fn on Table; the import
@@ -762,9 +788,14 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             insertNowVal.getOrPut(KotlinTypeMapper.nowExpr(f)) { "autoSetNow${insertNowVal.size}" }
         }
 
+        // #484: a mark on ANY declaration of a union column (base or any subtype) counts.
+        val markFields = scalarFields + KotlinTphPlan.everySubtypeField(plan)
+        val writeDenied = KotlinTphPlan.hierarchyWriteDeniedNames(base, loader)
         // Non-discriminator, non-PK, non-@autoSet columns the create handler writes from the body.
         val writableFields = scalarFields.map { it.name }
             .filter { it != plan.discriminatorField && it != pkFieldName && it !in autoSetNames }
+            // #484: @formExclude / credential columns are never bound from the request body.
+            .filter { it !in writeDenied }
 
         // FR-035/FR-036 Program B: the per-subtype settable columns = the subtype's EFFECTIVE scalar
         // fields (base + own, resolved via extends) minus the PK and the discriminator, EXCLUDING
@@ -796,6 +827,11 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         // unused → allWarningsAsErrors). A real TPH base always contributes ≥1 base scalar, so this is
         // true in practice; the guard keeps the pathological hierarchy byte-clean.
         val anyPatchFields = plan.subtypes.any { subtypePatchFields(it).isNotEmpty() }
+        // #484: credential columns (base or subtype-only) are removed from every response; the controller
+        // then needs the ObjectMapper even when no subtype has a settable column.
+        val creds = credentialNames(markFields)
+        val needsMapper = anyPatchFields || creds.isNotEmpty() ||
+            (listOf(baseM2mNavs) + plan.subtypes.map { subtypeM2mNavs(it) }).any { navs -> navs.any { it.targetCredentialFields.isNotEmpty() } }
 
         val src = buildString {
             if (pkg.isNotEmpty()) append("package $pkg\n\n")
@@ -828,6 +864,8 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                 append("import com.fasterxml.jackson.core.type.TypeReference\n")
                 append("import com.fasterxml.jackson.databind.ObjectMapper\n")
                 append("import jakarta.validation.Validator\n")
+            } else if (needsMapper) {
+                append("import com.fasterxml.jackson.databind.ObjectMapper\n")
             }
             append("import org.springframework.http.HttpStatus\n")
             append("import org.springframework.http.ResponseEntity\n")
@@ -916,6 +954,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             append("private fun rowTo${shortName}(row: ResultRow): $shortName = $shortName(\n")
             for (field in scalarFields) append("    ${field.name} = row[$table.${field.name}],\n")
             append(")\n\n")
+            appendRedactor(this, shortName, creds)
 
             append("/**\n")
             append(" * GENERATED — TPH discriminator-base controller for $shortName (polymorphic + per-subtype CRUD).\n")
@@ -933,6 +972,8 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             // subtype has a settable column (else a no-arg controller, keeping unused params out).
             if (anyPatchFields) {
                 append("class ${shortName}Controller(private val objectMapper: ObjectMapper, private val validator: Validator) {\n\n")
+            } else if (needsMapper) {
+                append("class ${shortName}Controller(private val objectMapper: ObjectMapper) {\n\n")
             } else {
                 append("class ${shortName}Controller {\n\n")
             }
@@ -960,9 +1001,9 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             // issue #390: Exposed 1.x's Query.limit(count) dropped the 0.x 2-arg
             // limit(count, offset) overload — offset is now its OWN chained call.
             if (api == ExposedApi.V1) {
-                append("        val rows = q.limit(limit ?: 50).offset((offset ?: 0).toLong()).map { rowTo${shortName}(it) }\n")
+                append("        val rows = q.limit(limit ?: 50).offset((offset ?: 0).toLong()).map { ${wireRow(shortName, creds, "it")} }\n")
             } else {
-                append("        val rows = q.limit(limit ?: 50, (offset ?: 0).toLong()).map { rowTo${shortName}(it) }\n")
+                append("        val rows = q.limit(limit ?: 50, (offset ?: 0).toLong()).map { ${wireRow(shortName, creds, "it")} }\n")
             }
             append("        if (withCount == 1) ResponseEntity.ok(mapOf(\"rows\" to rows, \"total\" to total) as Any)\n")
             append("        else ResponseEntity.ok(rows as Any)\n")
@@ -973,7 +1014,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             append("    fun get(@PathVariable id: $pkParamType): ResponseEntity<Any> = transaction {\n")
             append("        val row = $table.selectAll().where { $table.$pkFieldName eq id }.singleOrNull()\n")
             append("            ?: return@transaction ResponseEntity.status(HttpStatus.NOT_FOUND).body(mapOf(\"error\" to \"not_found\") as Any)\n")
-            append("        ResponseEntity.ok(rowTo${shortName}(row) as Any)\n")
+            append("        ResponseEntity.ok(${wireRow(shortName, creds, "row")} as Any)\n")
             append("    }\n\n")
 
             // Base-declared M:N — unscoped, same shape emitM2mEndpoint gives a vanilla entity.
@@ -1024,9 +1065,9 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                 // issue #390: Exposed 1.x's Query.limit(count) dropped the 0.x 2-arg
             // limit(count, offset) overload — offset is now its OWN chained call.
             if (api == ExposedApi.V1) {
-                append("        val rows = q.limit(limit ?: 50).offset((offset ?: 0).toLong()).map { rowTo${shortName}(it) }\n")
+                append("        val rows = q.limit(limit ?: 50).offset((offset ?: 0).toLong()).map { ${wireRow(shortName, creds, "it")} }\n")
             } else {
-                append("        val rows = q.limit(limit ?: 50, (offset ?: 0).toLong()).map { rowTo${shortName}(it) }\n")
+                append("        val rows = q.limit(limit ?: 50, (offset ?: 0).toLong()).map { ${wireRow(shortName, creds, "it")} }\n")
             }
                 append("        ResponseEntity.ok(rows as Any)\n")
                 append("    }\n\n")
@@ -1036,7 +1077,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                 append("    fun get$sfx(@PathVariable id: $pkParamType): ResponseEntity<Any> = transaction {\n")
                 append("        val row = $table.selectAll().where { ($table.$pkFieldName eq id) and ($table.${plan.discriminatorField} eq $disc) }.singleOrNull()\n")
                 append("            ?: return@transaction ResponseEntity.status(HttpStatus.NOT_FOUND).body(mapOf(\"error\" to \"not_found\") as Any)\n")
-                append("        ResponseEntity.ok(rowTo${shortName}(row) as Any)\n")
+                append("        ResponseEntity.ok(${wireRow(shortName, creds, "row")} as Any)\n")
                 append("    }\n\n")
 
                 // per-subtype create (discriminator injected from URL). FR-036: validate each body
@@ -1076,7 +1117,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                 }
                 append("        }[$table.$pkFieldName]\n")
                 append("        val saved = $table.selectAll().where { $table.$pkFieldName eq newId }.single()\n")
-                append("        ResponseEntity.status(HttpStatus.CREATED).body(rowTo${shortName}(saved) as Any)\n")
+                append("        ResponseEntity.status(HttpStatus.CREATED).body(${wireRow(shortName, creds, "saved")} as Any)\n")
                 append("    }\n\n")
 
                 // per-subtype update — FR-035/FR-036 present-key PATCH tristate (mirrors the vanilla
@@ -1163,7 +1204,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                 }
                 append("        val row = $table.selectAll().where { ($table.$pkFieldName eq id) and ($table.${plan.discriminatorField} eq $disc) }.singleOrNull()\n")
                 append("        if (row == null) ResponseEntity.status(HttpStatus.NOT_FOUND).body(mapOf(\"error\" to \"not_found\") as Any)\n")
-                append("        else ResponseEntity.ok(rowTo${shortName}(row) as Any)\n")
+                append("        else ResponseEntity.ok(${wireRow(shortName, creds, "row")} as Any)\n")
                 append("    }\n\n")
 
                 // per-subtype delete (404 cross-subtype)
@@ -1828,16 +1869,34 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         out.append("\n")
         out.append("    /** M:N traversal: the ${nav.targetShortName} rows related to this $sourceShort through ${nav.junctionShortName}$symMarker. */\n")
         out.append("    @GetMapping(\"/{id}/${nav.relationName}\")\n")
-        out.append("    fun ${nav.relationName}(@PathVariable id: $pkParamType): ResponseEntity<List<$targetType>> = transaction {\n")
-        out.append("        val rows = $sourceTable.$queryFnName(id).map { row ->\n")
+        out.append("    fun ${nav.relationName}(@PathVariable id: $pkParamType): ResponseEntity<List<${m2mReturnElement(nav, targetType)}>> = transaction {\n")
+        appendM2mRows(out, nav, targetType, "$sourceTable.$queryFnName(id)")
+        out.append("    }\n")
+    }
+
+    /** #484: the element type an M:N traversal answers — `Any` (a redacted tree) when the target has a credential. */
+    private fun m2mReturnElement(nav: KotlinM2mSupport.M2mNav, targetType: String): String =
+        if (nav.targetCredentialFields.isEmpty()) targetType else "Any"
+
+    /**
+     * The shared body of an M:N traversal: map each joined row to the target data class and, when the target
+     * declares credentials (#484), drop those keys from the serialized value (the source controller holds an
+     * `objectMapper` whenever one of its targets does).
+     */
+    private fun appendM2mRows(out: StringBuilder, nav: KotlinM2mSupport.M2mNav, targetType: String, query: String) {
+        val creds = nav.targetCredentialFields
+        out.append("        val rows${if (creds.isNotEmpty()) ": List<Any>" else ""} = $query.map { row ->\n")
+        if (creds.isNotEmpty()) out.append("            objectMapper.valueToTree<com.fasterxml.jackson.databind.node.ObjectNode>(\n")
         out.append("            $targetType(\n")
         for (fname in nav.targetScalarFields) {
             out.append("                $fname = row[${nav.targetTableObj}.$fname],\n")
         }
         out.append("            )\n")
+        if (creds.isNotEmpty()) {
+            out.append("            ).apply { remove(listOf(${creds.joinToString(", ") { "\"$it\"" }})) }\n")
+        }
         out.append("        }\n")
         out.append("        ResponseEntity.ok(rows)\n")
-        out.append("    }\n")
     }
 
     /**
@@ -1876,18 +1935,12 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         out.append("\n")
         out.append("    /** M:N traversal scoped to $discExpr: the ${nav.targetShortName} rows related to this $discExpr through ${nav.junctionShortName}$symMarker. Verifies id names a $discExpr row, returning [] (not the sibling's rows) when it does not. */\n")
         out.append("    @GetMapping(\"/$seg/{id}/${nav.relationName}\")\n")
-        out.append("    fun ${nav.relationName}$sfx(@PathVariable id: $pkParamType): ResponseEntity<List<$targetType>> = transaction {\n")
+        val elem = m2mReturnElement(nav, targetType)
+        out.append("    fun ${nav.relationName}$sfx(@PathVariable id: $pkParamType): ResponseEntity<List<$elem>> = transaction {\n")
         out.append("        if ($table.selectAll().where { ($table.$pkFieldName eq id) and ($table.$discField eq $discExpr) }.singleOrNull() == null) {\n")
-        out.append("            return@transaction ResponseEntity.ok(emptyList<$targetType>())\n")
+        out.append("            return@transaction ResponseEntity.ok(emptyList<$elem>())\n")
         out.append("        }\n")
-        out.append("        val rows = $table.$queryFnName(id).map { row ->\n")
-        out.append("            $targetType(\n")
-        for (fname in nav.targetScalarFields) {
-            out.append("                $fname = row[${nav.targetTableObj}.$fname],\n")
-        }
-        out.append("            )\n")
-        out.append("        }\n")
-        out.append("        ResponseEntity.ok(rows)\n")
+        appendM2mRows(out, nav, targetType, "$table.$queryFnName(id)")
         out.append("    }\n")
     }
 
@@ -2027,9 +2080,11 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         val pkFieldName = primary?.let { KotlinGenUtil.keyFields(entity, it).firstOrNull() } ?: DEFAULT_PK_FIELD
         val pkParamType = primaryKeyParamType(entity, pkFieldName)
 
+        // #484: a report's credential column is not sortable (the order would leak the hidden value).
         val sortFields = entity.metaFields
             .filterNot { isNonScalarSurface(it) }
             .map { it.name }
+            .filterNot { GeneratorUtil.isReport(entity) && it in KotlinGenUtil.reportCredentialNames(entity) }
         // FR-044: a report's int-backed enum column is typed by the enum of the entity it
         // reads (the class its table and data class use), so its filter arm compares through
         // that class. Empty for a projection, whose arms are unchanged.
@@ -2046,6 +2101,9 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         // "report" or "projection", for generated prose only.
         val noun = KotlinNaming.readOnlyNoun(entity)
 
+        // #484: a read-only row is redacted the same way. A report's credential columns are the ones derived
+        // from a credential source field (the derived field itself carries no `view.password`).
+        val creds = if (GeneratorUtil.isReport(entity)) KotlinGenUtil.reportCredentialNames(entity) else credentialNames(entity.metaFields)
         val source = buildString {
             if (pkg.isNotEmpty()) {
                 append("package $pkg\n\n")
@@ -2066,6 +2124,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             append("import ${ExposedImports.core(api, "and")}\n")
             append("import ${ExposedImports.jdbc(api, "selectAll")}\n")
             append("import ${ExposedImports.transactions(api, "transaction")}\n")
+            if (creds.isNotEmpty()) append("import com.fasterxml.jackson.databind.ObjectMapper\n")
             append("import org.springframework.http.HttpStatus\n")
             append("import org.springframework.http.ResponseEntity\n")
             append("import org.springframework.web.bind.annotation.GetMapping\n")
@@ -2112,6 +2171,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             appendSortSurface(this, shortName, entity, sortFields)
             emitFilterPipeline(this, shortName, readObj, allowlistName, scalarFields)
             appendRowToMapper(this, shortName, entity, readObj)
+            appendRedactor(this, shortName, creds)
 
             append("/**\n")
             append(" * GENERATED — READ-ONLY REST controller for the ${shortName} $noun.\n")
@@ -2127,15 +2187,16 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             // No constructor at all: nothing here binds a request body, so injecting an
             // ObjectMapper or a Validator would make a consumer wire beans this controller
             // can never use.
-            append("class ${shortName}Controller {\n\n")
+            if (creds.isNotEmpty()) append("class ${shortName}Controller(private val objectMapper: ObjectMapper) {\n\n")
+            else append("class ${shortName}Controller {\n\n")
 
             if (GeneratorUtil.isReport(entity)) {
-                appendReportListHandler(this, shortName, readObj, sortFields, reportMaxRows(), reportExport())
+                appendReportListHandler(this, shortName, readObj, sortFields, reportMaxRows(), reportExport(), creds)
             } else {
-                appendListHandler(this, shortName, readObj, sortFields)
+                appendListHandler(this, shortName, readObj, sortFields, creds)
             }
             if (hasItem) {
-                appendGetHandler(this, shortName, readObj, pkFieldName, pkParamType)
+                appendGetHandler(this, shortName, readObj, pkFieldName, pkParamType, creds)
             }
 
             append("    @PostMapping\n")
@@ -2240,7 +2301,8 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
 
     /** GET (list) — pagination + sort + withCount + the FR-009 filter operators. */
     private fun appendListHandler(
-        sb: StringBuilder, shortName: String, readObj: String, sortFields: List<String>
+        sb: StringBuilder, shortName: String, readObj: String, sortFields: List<String>,
+        creds: Collection<String> = emptyList(),
     ) = with(sb) {
         val api = exposedApi()
         // List handler — pagination + sort + withCount + FR-009 filter operators.
@@ -2274,9 +2336,9 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         append("        val effectiveOffset = (offset ?: 0).toLong()\n")
         // issue #390: see the vanilla/TPH controllers' identical comment above.
         if (api == ExposedApi.V1) {
-            append("        val rows = q.limit(effectiveLimit).offset(effectiveOffset).map { rowTo${shortName}(it) }\n")
+            append("        val rows = q.limit(effectiveLimit).offset(effectiveOffset).map { ${wireRow(shortName, creds, "it")} }\n")
         } else {
-            append("        val rows = q.limit(effectiveLimit, effectiveOffset).map { rowTo${shortName}(it) }\n")
+            append("        val rows = q.limit(effectiveLimit, effectiveOffset).map { ${wireRow(shortName, creds, "it")} }\n")
         }
         append("        if (withCount == 1) ResponseEntity.ok(mapOf(\"rows\" to rows, \"total\" to total) as Any)\n")
         append("        else ResponseEntity.ok(rows as Any)\n")
@@ -2293,7 +2355,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
      */
     private fun appendReportListHandler(
         sb: StringBuilder, shortName: String, readObj: String, sortFields: List<String>, maxRows: Int,
-        export: Boolean,
+        export: Boolean, creds: Collection<String> = emptyList(),
     ) = with(sb) {
         val api = exposedApi()
         // With the export branch wired, no answer of the list route consults Accept (the selector
@@ -2353,15 +2415,15 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         append("        val total: Long = if ($withCountOne) q.count() else -1L\n")
         append("        val effectiveLimit = requestedLimit ?: (maxRows + 1)\n")
         if (api == ExposedApi.V1) {
-            append("        val rows = q.limit(effectiveLimit).offset(effectiveOffset).map { rowTo${shortName}(it) }\n")
+            append("        val rows = q.limit(effectiveLimit).offset(effectiveOffset).map { ${wireRow(shortName, creds, "it")} }\n")
         } else {
-            append("        val rows = q.limit(effectiveLimit, effectiveOffset).map { rowTo${shortName}(it) }\n")
+            append("        val rows = q.limit(effectiveLimit, effectiveOffset).map { ${wireRow(shortName, creds, "it")} }\n")
         }
         append("        if (requestedLimit == null && rows.size > maxRows) return@transaction tooLarge\n")
         append("        if ($withCountOne) ${okBody}mapOf(\"rows\" to rows, \"total\" to total) as Any)\n")
         append("        else ${okBody}rows as Any)\n")
         append("    }\n\n")
-        if (export) appendReportExportHandler(this, shortName, readObj, sortFields)
+        if (export) appendReportExportHandler(this, shortName, readObj, sortFields, creds)
     }
 
     /**
@@ -2376,6 +2438,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
      */
     private fun appendReportExportHandler(
         sb: StringBuilder, shortName: String, readObj: String, sortFields: List<String>,
+        creds: Collection<String> = emptyList(),
     ) = with(sb) {
         val api = exposedApi()
         val x = "${shortName}Export"
@@ -2414,13 +2477,15 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             append("        val rows = q.limit(effectiveLimit, effectiveOffset).map { rowTo${shortName}(it) }\n")
         }
         append("        if (requestedLimit == null && rows.size > maxRows) return@transaction jsonBadRequest($x.tooLarge())\n")
+        // #484: csv and xml name no credential column (the export's own FIELDS); the json body drops the key.
+        val jsonRows = if (creds.isEmpty()) "rows" else "rows.map { redact$shortName(objectMapper, it) }"
         append("        val ok = ResponseEntity.ok()\n")
         append("            .header(\"Content-Disposition\", $x.contentDisposition(format))\n")
         append("            .header(\"Content-Type\", $x.contentType(format))\n")
         append("        when (format) {\n")
         append("            \"csv\" -> ok.body($x.csv(rows) as Any)\n")
         append("            \"xml\" -> ok.body($x.xml(rows) as Any)\n")
-        append("            else -> if (withCount == \"1\") ok.body(mapOf(\"rows\" to rows, \"total\" to total) as Any) else ok.body(rows as Any)\n")
+        append("            else -> if (withCount == \"1\") ok.body(mapOf(\"rows\" to $jsonRows, \"total\" to total) as Any) else ok.body($jsonRows as Any)\n")
         append("        }\n")
         append("    }\n\n")
         append("    private fun jsonBadRequest(body: Any): ResponseEntity<Any> =\n")
@@ -2431,14 +2496,15 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
 
     /** GET /{id} — single row by primary key, 404 envelope on a miss. */
     private fun appendGetHandler(
-        sb: StringBuilder, shortName: String, readObj: String, pkFieldName: String, pkParamType: String
+        sb: StringBuilder, shortName: String, readObj: String, pkFieldName: String, pkParamType: String,
+        creds: Collection<String> = emptyList(),
     ) = with(sb) {
         // GET /{id}
         append("    @GetMapping(\"/{id}\")\n")
         append("    fun get(@PathVariable id: $pkParamType): ResponseEntity<Any> = transaction {\n")
         append("        val row = ${readObj}.selectAll().where { ${readObj}.${pkFieldName} eq id }.singleOrNull()\n")
         append("            ?: return@transaction ResponseEntity.status(HttpStatus.NOT_FOUND).body(mapOf(\"error\" to \"not_found\") as Any)\n")
-        append("        ResponseEntity.ok(rowTo${shortName}(row) as Any)\n")
+        append("        ResponseEntity.ok(${wireRow(shortName, creds, "row")} as Any)\n")
         append("    }\n\n")
     }
 

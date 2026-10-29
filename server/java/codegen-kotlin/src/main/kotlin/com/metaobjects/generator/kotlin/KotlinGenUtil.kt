@@ -759,15 +759,52 @@ public object KotlinGenUtil {
     fun isNullableShapeProperty(field: MetaField<*>): Boolean =
         !isRequiredField(field) && !originGuaranteedNonNull(field) && !isAssignedPrimaryKeyField(field)
 
-    fun isRequiredField(field: MetaField<*>): Boolean {
-        if (!field.hasMetaAttr(MetaField.ATTR_REQUIRED, true)) return false
-        val raw = runCatching { field.getMetaAttr(MetaField.ATTR_REQUIRED, true).value }.getOrNull()
+    /**
+     * #484 — a credential: the field declares (or inherits, ADR-0039: resolving read) a child
+     * `view.password`. A credential is never returned by a generated read route and never
+     * written by a generated write route.
+     */
+    fun isCredentialField(field: MetaField<*>): Boolean =
+        field.getChildren(com.metaobjects.view.MetaView::class.java, true)
+            .any { it.subType == com.metaobjects.view.PresentationView.SUBTYPE_PASSWORD }
+
+    /**
+     * #484 — the field names of a served report that are credentials. A report column is DERIVED from its
+     * `@of` field (a dimension attribute, or a min/max measure over it), and the derived field carries
+     * only type-shaping attrs, so it loses the source's `view.password`; the credential is read off the
+     * type source instead ([com.metaobjects.reporting.ReportShape.Field.typeSource], resolving accessors).
+     * Takes the declared `object.report` or its read model.
+     */
+    fun reportCredentialNames(report: MetaObject): List<String> {
+        val declared = (report as? com.metaobjects.reporting.ReportReadModel)?.report() ?: report
+        return com.metaobjects.reporting.ReportShape.of(declared).fields()
+            .filter { it.typeSource() != null && isCredentialField(it.typeSource()) }
+            .map { it.name() }
+    }
+
+    /** #484 — `@formExclude: true` (resolving read): the field is not part of the write shape. */
+    fun isFormExcluded(field: MetaField<*>): Boolean = resolvedBooleanAttr(field, ATTR_FORM_EXCLUDE)
+
+    /** Resolving boolean read: a Boolean value, or the string "true" in any case. */
+    private fun resolvedBooleanAttr(field: MetaField<*>, name: String): Boolean {
+        if (!field.hasMetaAttr(name, true)) return false
+        val raw = runCatching { field.getMetaAttr(name, true).value }.getOrNull()
         return when (raw) {
             is Boolean -> raw
             is String -> raw.equals("true", ignoreCase = true)
             else -> false
         }
     }
+
+    /**
+     * #484 — true when a generated create / PATCH / PUT route must IGNORE the field (strip it, never
+     * reject it): `@formExclude` or a credential. The application's own repository still writes it.
+     */
+    fun isApiWriteDenied(field: MetaField<*>): Boolean = isFormExcluded(field) || isCredentialField(field)
+
+    private const val ATTR_FORM_EXCLUDE = "formExclude"
+
+    fun isRequiredField(field: MetaField<*>): Boolean = resolvedBooleanAttr(field, MetaField.ATTR_REQUIRED)
 
     /**
      * The `@autoSet` policy of [field] — [AUTO_SET_ON_CREATE] / [AUTO_SET_ON_UPDATE] — or null

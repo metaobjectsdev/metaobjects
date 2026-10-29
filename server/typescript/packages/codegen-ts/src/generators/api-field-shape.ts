@@ -24,6 +24,7 @@ import {
   updateSchemaFields,
   type SchemaFieldShape,
 } from "../templates/zod-validators.js";
+import { isApiWriteDenied, isCredentialField } from "../api-surface.js";
 import { isFieldRequired } from "./docs-data-builder.js";
 
 /** One documented field in a model / payload shape. Structured so BOTH renderers
@@ -47,8 +48,13 @@ export interface FieldShape {
  * Mirrors `InferSelectModel` field-presence; the PK is reported required.
  */
 export function modelFieldShapes(obj: MetaObject): FieldShape[] {
+  // A credential is not on the wire, so it is not in the documented model either.
+  return fieldShapesOf(obj, obj.fields().filter((f) => !isCredentialField(f)));
+}
+
+function fieldShapesOf(obj: MetaObject, fields: readonly MetaField[]): FieldShape[] {
   const pkNames = new Set<string>(obj.primaryIdentity()?.fields ?? []);
-  return obj.fields().map((field: MetaField): FieldShape => {
+  return fields.map((field: MetaField): FieldShape => {
     const isPk = pkNames.has(field.name);
     const required = isPk || isFieldRequired(field);
     return {
@@ -64,7 +70,12 @@ export function modelFieldShapes(obj: MetaObject): FieldShape[] {
  *  TPH-pinned discriminator field documents the literal as its type. */
 function shapesFromSchemaFields(obj: MetaObject, walk: SchemaFieldShape[]): FieldShape[] {
   const fieldByName = new Map<string, MetaField>(obj.fields().map((f) => [f.name, f]));
-  return walk.map((sf): FieldShape => {
+  // The generated routes strip a write-denied field from the body, so it is not accepted.
+  const accepted = walk.filter((sf) => {
+    const f = fieldByName.get(sf.name);
+    return f === undefined || !isApiWriteDenied(f);
+  });
+  return accepted.map((sf): FieldShape => {
     const field = fieldByName.get(sf.name);
     let type = field !== undefined ? fieldTsTypeString(obj.name, field) : "unknown";
     let note: string | undefined;
@@ -102,7 +113,7 @@ export function updateFieldShapes(obj: MetaObject): FieldShape[] {
 export function payloadFieldShapes(tmpl: MetaData, attrName: string): FieldShape[] | undefined {
   const vo = refTarget(tmpl, attrName);
   if (vo === undefined || !isMetaObject(vo)) return undefined;
-  return modelFieldShapes(vo);
+  return fieldShapesOf(vo, vo.fields());
 }
 
 /** Format a list of field shapes as a compact inline TS object type, e.g.

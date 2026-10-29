@@ -51,7 +51,7 @@ public final class TphPlan {
      * {@code @discriminatorValue} are declaration-layer TPH markers (never inherited into
      * an effective form), so each hop is read own-only while the loop does the resolving.
      */
-    private static MetaObject discriminatorRoot(MetaObject obj) {
+    public static MetaObject discriminatorRoot(MetaObject obj) {
         for (MetaObject cursor = obj; cursor != null; cursor = cursor.getSuperObject()) {
             if (cursor.hasMetaAttr(MetaObject.ATTR_DISCRIMINATOR, false)) return cursor;
         }
@@ -123,6 +123,19 @@ public final class TphPlan {
     /** True when {@code obj} carries {@code @discriminator} AND has at least one concrete subtype. */
     public static boolean isTphBase(MetaObject obj, MetaDataLoader loader) {
         return planFor(obj, loader) != null;
+    }
+
+    /**
+     * #484 — every field of every subtype, base columns included and NOT deduplicated by name, so
+     * a credential or {@code @formExclude} on any one declaration of a shared column counts. Empty
+     * when {@code base} is not a TPH base.
+     */
+    public static List<MetaField> everySubtypeField(MetaObject base, MetaDataLoader loader) {
+        Plan plan = planFor(base, loader);
+        if (plan == null) return List.of();
+        List<MetaField> out = new ArrayList<>();
+        for (Subtype st : plan.subtypes()) out.addAll(st.entity().getMetaFields());
+        return out;
     }
 
     /**

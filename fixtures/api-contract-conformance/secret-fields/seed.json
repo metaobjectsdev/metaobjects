@@ -1,0 +1,6 @@
+{
+  "rows": [
+    { "id": 1, "name": "Ada Lovelace", "tokenHash": "token-hash-1", "pinHash": "pin-hash-1" },
+    { "id": 2, "name": "Alan Turing",  "tokenHash": "token-hash-2", "pinHash": "pin-hash-2" }
+  ]
+}

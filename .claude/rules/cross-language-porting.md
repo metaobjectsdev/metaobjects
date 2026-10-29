@@ -48,7 +48,7 @@ Preserve the following contracts exactly across all language ports:
 - Overlay/merge: same `package` + same object `name` across multiple files → merged. Last-writer-wins on attr conflicts; structural children accumulate.
 - Default scan path: `metaobjects/**/*.json` (recursive).
 
-**D1 is TS-only.** Cloudflare D1 is a peer of `sqlite`/`postgres` in TS's `dialect` vocabulary. It is SQLite at the SQL level — Java/Python/C# don't have an analogue (Cloudflare Workers run JS). When adding cross-language vocabulary, D1 doesn't constrain anything: its uniqueness is wrangler-CLI transport + Wrangler-native file layout (`migrations/<seq>_<slug>.sql`), both of which are TS-only concerns.
+**D1 is TS-only.** Cloudflare D1 is a peer of `sqlite`/`postgres` in `meta migrate`'s `dialect` vocabulary (`migrate.dialect`, `--dialect d1`); codegen's `dialect` is `sqlite`/`postgres`/`mysql` and D1 uses `sqlite` (`"d1"` there is an error). It is SQLite at the SQL level — Java/Python/C# don't have an analogue (Cloudflare Workers run JS). When adding cross-language vocabulary, D1 doesn't constrain anything: its uniqueness is wrangler-CLI transport + Wrangler-native file layout (`migrations/<seq>_<slug>.sql`), both of which are TS-only concerns.
 
 **Constants discipline:**
 - TS: named constants, imported from `@metaobjectsdev/metadata/constants` (defined in 16 per-concern `*-constants.ts` modules under `packages/metadata/src/`, e.g. `core/field/field-constants.ts`, `persistence/db/db-constants.ts`). Never inline metamodel strings as literals in code.

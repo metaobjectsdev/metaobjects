@@ -45,7 +45,7 @@ export type {
 import { isTruthyFlag, coerceIdForColumn, firstRow, extractRowCount } from "../drizzle-fastify/util.js";
 import { supportsReturning, type SqlDialect } from "../sql-dialect.js";
 import { timestampWire } from "../timestamp-wire.js";
-import { withWire, type WireOptions } from "../wire-format.js";
+import { stripDeniedColumns, withWire, type WireOptions } from "../wire-format.js";
 // Every handler below is wrapped in guardRoute (an unexpected error answers
 // `500 { error: "internal" }`, logged server-side) and reads its body through
 // readJsonBody (a malformed body answers `400 { error: "invalid_json" }`).
@@ -98,6 +98,13 @@ export interface CrudRoutesOptions extends WireOptions {
   insertSchema: ZodTypeAny;
   /** Zod schema for update payloads (typically `<Entity>UpdateSchema`). */
   updateSchema: ZodTypeAny;
+  /**
+   * Fields the API never writes (`@formExclude`, or a credential `view.password`). A key
+   * named here is stripped from a create or update body before validation, so the value never
+   * reaches the table; it is ignored, not rejected. The generated route passes them; the
+   * schemas stay whole for the application's own writes.
+   */
+  writeDeniedColumns?: readonly string[];
   /** Limit which verbs are mounted. Defaults to all five. */
   expose?: readonly CrudVerb[];
   /**
@@ -264,7 +271,7 @@ export function mountCreateRoute(opts: VerbOptions): void {
   opts.app.post(opts.path, guardRoute(async (c) => {
     const read = await readJsonBody(c);
     if (!read.ok) return read.response;
-    const parsed = opts.insertSchema.safeParse(read.body);
+    const parsed = opts.insertSchema.safeParse(stripDeniedColumns(read.body, opts.writeDeniedColumns));
     if (!parsed.success) {
       return c.json(validationErrorBody(parsed.error.issues), 400);
     }
@@ -299,7 +306,7 @@ export function mountUpdateRoute(opts: VerbOptions): void {
     const id = c.req.param("id") ?? "";
     const read = await readJsonBody(c);
     if (!read.ok) return read.response;
-    const parsed = opts.updateSchema.safeParse(read.body);
+    const parsed = opts.updateSchema.safeParse(stripDeniedColumns(read.body, opts.writeDeniedColumns));
     if (!parsed.success) {
       return c.json(validationErrorBody(parsed.error.issues), 400);
     }
