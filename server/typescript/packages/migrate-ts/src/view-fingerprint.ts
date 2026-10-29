@@ -53,11 +53,10 @@ const CREATE_VIEW_PREFIX =
  * view) and strips an optional CREATE VIEW wrapper and trailing semicolon — and
  * NOTHING else.
  *
- * Deliberately does NOT lowercase, unlike `normalizeViewSql`. That lowercasing exists
- * only to chase Postgres's deparser, and it masks drift inside case-sensitive string
- * literals — which `origin.aggregate @filter` predicates now carry (`status = 'Active'`
- * and `status = 'active'` are different views). We never chase the deparser here, so
- * there is nothing to buy and real drift to lose.
+ * Deliberately does NOT lowercase (nor does `normalizeViewSql` any more): lowercasing
+ * masks drift inside case-sensitive string literals — which `origin.aggregate @filter`
+ * predicates now carry (`status = 'Active'` and `status = 'active'` are different views).
+ * We never chase the deparser here, so there is nothing to buy and real drift to lose.
  */
 export function normalizeForFingerprint(body: string): string {
   return collapseWhitespaceOutsideQuotes(body.replace(CREATE_VIEW_PREFIX, ""))
