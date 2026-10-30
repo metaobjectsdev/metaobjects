@@ -1,0 +1,1 @@
+{ "format": "csv", "note": "CSV formula guard exempts strict numeric literals (-5, -5.25); other leading = + - @ values stay guarded" }

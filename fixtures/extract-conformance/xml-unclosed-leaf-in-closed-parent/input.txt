@@ -1,0 +1,1 @@
+<doc><check id="A" resolved="yes"><payoff>The gate swings wide.</check><note>use List<int> here</note></doc>

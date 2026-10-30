@@ -115,4 +115,10 @@ public class JsonForgivingReaderTest {
         assertSame(JsonForgivingReader.TRUNCATED, m.get("a"));
         assertEquals("2", m.get("b"));
     }
+
+    @Test
+    public void fullJsonEscapeGrammar() {
+        Map<String, Object> m = read("{\"a\":\"caf\\u00e9 \\ud83d\\ude00 a\\/b\\bx\\fy \\\"q\\\" \\\\ \\u12\"}");
+        org.junit.Assert.assertEquals("caf\u00e9 \ud83d\ude00 a/b\bx\fy \"q\" \\ u12", m.get("a"));
+    }
 }

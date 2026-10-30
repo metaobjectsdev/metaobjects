@@ -15,13 +15,13 @@
 #
 set -uo pipefail
 
-# Generic, non-sensitive structural patterns (safe to commit — name no project):
-PATTERNS='/home/[A-Za-z0-9._-]+/|~/Development'
-
-# Legitimate matches to ignore (the published npm author email).
-ALLOW='doug@dougmealing\.com'
-
 ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo .)"
+# Patterns, allow-list and diff filter are shared with .githooks/pre-commit.
+# shellcheck source=leak-patterns.sh
+. "$ROOT/.githooks/leak-patterns.sh"
+PATTERNS="$LEAK_PATTERNS"
+ALLOW="$LEAK_ALLOW"
+
 DENY_FILE="$(git config --get hooks.denyListPath 2>/dev/null || true)"
 [ -z "$DENY_FILE" ] && DENY_FILE="$ROOT/.githooks/deny-list.local"
 if [ -f "$DENY_FILE" ]; then
@@ -30,9 +30,9 @@ if [ -f "$DENY_FILE" ]; then
 fi
 
 if [ -n "${1:-}" ]; then
-  DIFF=$(git diff "$1...HEAD" -U0 --no-color --diff-filter=ACM 2>/dev/null)
+  DIFF=$(git diff "$1...HEAD" -U0 --no-color --diff-filter="$LEAK_DIFF_FILTER" 2>/dev/null)
 else
-  DIFF=$(git diff --cached --diff-filter=ACM -U0 --no-color 2>/dev/null)
+  DIFF=$(git diff --cached --diff-filter="$LEAK_DIFF_FILTER" -U0 --no-color 2>/dev/null)
 fi
 
 # Scan only newly-ADDED lines, attributed to their file; skip the hooks dir itself.

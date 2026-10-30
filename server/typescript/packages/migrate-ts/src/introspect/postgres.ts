@@ -51,6 +51,7 @@ export async function introspectPostgres(db: Kysely<Record<string, unknown>>): P
   for (const { schema, name } of tableRefs) {
     const columns = await readColumns(k, schema, name);
     const primaryKey = await readPrimaryKey(k, schema, name);
+    const description = await readPgCatalogColumnFacts(k, schema, name, columns);
     tables.push({
       name,
       schema,
@@ -59,6 +60,7 @@ export async function introspectPostgres(db: Kysely<Record<string, unknown>>): P
       foreignKeys: await readPgForeignKeys(k, schema, name),
       checks: await readPgChecks(k, schema, name),
       primaryKey,
+      ...(description !== undefined ? { description } : {}),
     });
   }
 
@@ -227,19 +229,14 @@ export function parsePgDefault(raw: string | null | undefined): ColumnDefault | 
     return { kind: "expr", value: raw };
   }
 
-  // If it starts with a single-quote, it's a quoted literal (possibly with
-  // a trailing ::type cast that PG appends for type clarity).
-  if (raw.startsWith("'")) {
-    // Strip the cast suffix (e.g. `::boolean`, `::text`, `::integer`)
-    const withoutCast = raw.replace(/::[^']+$/, "");
-    // Strip the surrounding single-quotes, then un-double the embedded `''`
-    // escapes PG stores verbatim (e.g. `'don''t'::text`) — without this the
-    // introspected value never equals the expected literal and the diff issues
-    // a bogus SET DEFAULT on every run.
-    const m = /^'(.*)'$/.exec(withoutCast);
-    const cleaned = m !== null ? m[1]!.replace(/''/g, "'") : withoutCast;
-    return { kind: "literal", value: cleaned };
-  }
+  // ONE quoted literal, possibly with a trailing ::type cast that PG appends for type
+  // clarity, is a literal: the cast is stripped and the embedded `''` escapes PG stores
+  // verbatim (e.g. `'don''t'::text`) are un-doubled — without this the introspected value
+  // never equals the expected literal and the diff issues a bogus SET DEFAULT on every run.
+  // Anything more that starts with a quote (`'a'::text || 'b'::text`) is an expression.
+  const literal = /^'((?:[^']|'')*)'(?:::[\w ."]+(?:\(\d+(?:,\s*\d+)?\))?(?:\[\])*)*$/.exec(raw);
+  if (literal !== null) return { kind: "literal", value: literal[1]!.replace(/''/g, "'") };
+  if (raw.startsWith("'")) return { kind: "expr", value: raw };
 
   // Anything else that contains a :: cast is a complex expression
   // (e.g. NULL::text, ARRAY[]::text[])
@@ -492,6 +489,44 @@ async function readColumns(k: Kysely<any>, schema: string, tableName: string): P
 
     return col;
   });
+}
+
+/**
+ * What only the catalog holds about a table's columns: a GENERATED identity
+ * (`pg_attribute.attidentity`, which information_schema's column_default leaves NULL) and
+ * the comments (`pg_description`). Sets `identity` and `description` on `columns` in place
+ * and returns the table comment.
+ */
+async function readPgCatalogColumnFacts(
+  k: RawKysely, schema: string, tableName: string, columns: ColumnDescriptor[],
+): Promise<string | undefined> {
+  // pg-mem gap: pg_attribute / col_description are not supported — the query throws and
+  // the columns stay as information_schema described them.
+  try {
+    const rows = await sql<{ column_name: string; attidentity: string; comment: string | null; table_comment: string | null }>`
+      SELECT a.attname AS column_name,
+             a.attidentity::text AS attidentity,
+             col_description(c.oid, a.attnum) AS comment,
+             obj_description(c.oid, 'pg_class') AS table_comment
+      FROM pg_attribute a
+      JOIN pg_class c ON c.oid = a.attrelid
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = ${schema}
+        AND c.relname = ${tableName}
+        AND a.attnum > 0
+        AND NOT a.attisdropped
+    `.execute(k);
+    const byName = new Map(columns.map((c) => [c.name, c] as const));
+    for (const r of rows.rows) {
+      const col = byName.get(r.column_name);
+      if (col === undefined) continue;
+      if (r.attidentity === "a" || r.attidentity === "d") col.identity = "increment";
+      if (r.comment !== null) col.description = r.comment;
+    }
+    return rows.rows[0]?.table_comment ?? undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 // Typed alias for raw Kysely — avoids per-call `as any` casts in the helpers below.

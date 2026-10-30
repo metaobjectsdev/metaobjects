@@ -23,6 +23,7 @@ import com.metaobjects.loader.MetaDataLoader
 import com.metaobjects.`object`.MetaObject
 import com.metaobjects.relationship.CompositionRelationship
 import com.metaobjects.relationship.MetaRelationship
+import com.squareup.kotlinpoet.ClassName
 import com.squareup.kotlinpoet.LONG
 import com.squareup.kotlinpoet.TypeName
 import java.io.OutputStream
@@ -143,9 +144,10 @@ open class KotlinRelationsGenerator : MultiFileDirectGeneratorBase<MetaObject>()
         val api = exposedApi()
         val (pkg, ownerShort) = PackageMapping.splitFqn(entity.name)
         val ownerTable = ownerShort + "Table"
-        // TypeName.toString() yields the FQN (`kotlin.Long`, `java.util.UUID`, ...);
-        // grab the trailing simple name for the generated source.
-        val pkParamSimpleName = primaryKeyKotlinType(entity).toString().substringAfterLast('.')
+        // The generated source is text, so the PK type is rendered as a simple name plus
+        // the import it needs (a ClassName), not by slicing TypeName.toString().
+        val pkRendered = renderType(primaryKeyKotlinType(entity))
+        val pkParamSimpleName = pkRendered.name
         // FK column matches KotlinExposedTableGenerator.buildInverseFkSpec: <ownerShortLowercased>Id.
         val fkColName = ownerShort.replaceFirstChar { it.lowercaseChar() } + "Id"
 
@@ -205,9 +207,9 @@ open class KotlinRelationsGenerator : MultiFileDirectGeneratorBase<MetaObject>()
             // reverse-FK value type) is uuid — the param types were already derived, but
             // without this import the generated file had an unresolved reference. Emitted
             // conditionally so uuid-free files stay byte-identical.
-            if (pkParamSimpleName == "UUID" || reverseFks.any { it.valueType == "UUID" }) {
-                append("import java.util.UUID\n")
-            }
+            val typeImports = (listOf(pkRendered.import) + reverseFks.map { it.valueImport })
+                .filterNotNull().toSortedSet()
+            for (line in typeImports) append("import $line\n")
             val crossPackageTables = KotlinM2mSupport.importLines(m2mNavs.map { it.nav }, pkg, junction = true, dataClass = false) +
                 helpers.filter { it.targetPackage != pkg }
                     .map { if (it.targetPackage.isEmpty()) it.targetTable else "${it.targetPackage}.${it.targetTable}" }
@@ -342,7 +344,26 @@ open class KotlinRelationsGenerator : MultiFileDirectGeneratorBase<MetaObject>()
      * the FK field name, the target entity short name, and the Kotlin value type of the
      * FK (the type a `findBy<FkField>` arg / element takes — the FK column's own Kotlin type).
      */
-    protected data class ReverseFk(val fkField: String, val targetShortName: String, val valueType: String)
+    protected data class ReverseFk(
+        val fkField: String,
+        val targetShortName: String,
+        val valueType: String,
+        val valueImport: String? = null,
+    )
+
+    /** A Kotlin type as it is written into generated source: the name to print and the import it needs, if any. */
+    protected data class RenderedType(val name: String, val import: String?)
+
+    /**
+     * Render [type] for text emission. A [ClassName] prints its simple name and imports its
+     * canonical name (nothing for the auto-imported `kotlin` / `java.lang` packages). Any other
+     * shape (parameterized, nullable, ...) prints fully qualified, which is always valid.
+     */
+    protected fun renderType(type: TypeName): RenderedType {
+        if (type !is ClassName || type.isNullable) return RenderedType(type.toString(), null)
+        val autoImported = type.packageName == "kotlin" || type.packageName == "java.lang"
+        return RenderedType(type.simpleNames.joinToString("."), if (autoImported) null else type.topLevelClassName().canonicalName)
+    }
 
     /**
      * Collect every reverse FK [entity] declares, in declaration order — one per
@@ -360,11 +381,10 @@ open class KotlinRelationsGenerator : MultiFileDirectGeneratorBase<MetaObject>()
             if (fields.size != 1) continue // single-column FKs only
             val fkField = fields.first()
             val targetShort = child.targetEntity?.let { PackageMapping.splitFqn(it).second } ?: ""
-            val valueType = entity.metaFields.firstOrNull { it.name == fkField }?.let { f ->
-                runCatching { KotlinTypeMapper.kotlinTypeName(f).toString().substringAfterLast('.') }
-                    .getOrDefault("Long")
-            } ?: "Long"
-            out.add(ReverseFk(fkField, targetShort, valueType))
+            val rendered = entity.metaFields.firstOrNull { it.name == fkField }?.let { f ->
+                runCatching { renderType(KotlinTypeMapper.kotlinTypeName(f)) }.getOrNull()
+            } ?: renderType(LONG)
+            out.add(ReverseFk(fkField, targetShort, rendered.name, rendered.import))
         }
         return out
     }

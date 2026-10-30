@@ -292,3 +292,12 @@ def test_narrowed_run_on_only_the_projection_still_materializes_the_shared_enum(
     ticket_summary_src = (out_dir / "TicketSummary.py").read_text()
     assert "level: Priority" in ticket_summary_src
     assert "from .enums import Priority" in ticket_summary_src
+
+
+def test_shared_enum_values_colliding_after_upper_are_a_codegen_error() -> None:
+    with pytest.raises(ValueError, match="both map to the Python member OPEN"):
+        _emit_doc({"metadata.root": {"package": "a::b", "children": [
+            {"field.enum": {"name": "State", "abstract": True, "@values": ["Open", "open"]}},
+            {"object.value": {"name": "M", "children": [
+                {"field.enum": {"name": "st", "extends": "a::b::State"}}]}},
+        ]}})

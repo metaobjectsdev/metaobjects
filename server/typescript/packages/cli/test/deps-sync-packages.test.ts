@@ -349,6 +349,12 @@ describe("the installed-vs-manifest version warning", () => {
     ["1.0.dev0", "1.0-dev"],
     ["1.0.dev3", "1.0_dev3"],
     ["1.0.0", "v1.0.0"],
+    // PEP 440 ignores trailing zero release segments: 1.0 is 1.0.0.
+    ["1.0", "1.0.0"],
+    ["1.0.0", "1.0"],
+    ["2", "2.0.0"],
+    ["1.0.0rc1", "1.0rc1"],
+    ["1!1.0", "1!1.0.0"],
   ])("python: installed %s matches manifest %s", (installed, manifest) => {
     expect(packageVersionWarning(DEP, py, installed, manifest)).toBeUndefined();
   });
@@ -357,7 +363,8 @@ describe("the installed-vs-manifest version warning", () => {
     expect(packageVersionWarning(DEP, py, "1.0.0rc2", "1.0.0-rc.1")).toContain("records 1.0.0-rc.1");
     expect(packageVersionWarning(DEP, py, "1.0.0rc1", "1.0.0rc2")).toContain("records 1.0.0rc2");
     expect(packageVersionWarning(DEP, py, "1.0.0rc1.post2", "1.0.0rc1")).toContain("records 1.0.0rc1");
-    expect(packageVersionWarning(DEP, py, "1.0", "1.0.0")).toContain("records 1.0.0");
+    expect(packageVersionWarning(DEP, py, "1.0.1", "1.0")).toContain("records 1.0");
+    expect(packageVersionWarning(DEP, py, "1.10", "1.1")).toContain("records 1.1");
     expect(packageVersionWarning(DEP, py, "1.1.0", "1.0.0")).toContain("is 1.1.0");
   });
 

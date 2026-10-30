@@ -12,6 +12,7 @@ using MetaObjects.Persistence.Db;
 using static MetaObjects.Core.Field.FieldConstants;
 using static MetaObjects.Core.Identity.IdentityConstants;
 using static MetaObjects.Core.Index.IndexConstants;
+using static MetaObjects.Core.Object.ObjectConstants;
 using static MetaObjects.Persistence.Source.SourceConstants;
 using static MetaObjects.Shared.BaseTypes;
 
@@ -1175,6 +1176,38 @@ public static class CSharpNaming
             else
             {
                 ownerOfPlural[plural] = obj;
+            }
+        }
+        AssertNoRouteSegmentCollisions(entities);
+    }
+
+    /// <summary>
+    /// The route half. <see cref="RoutePath"/> is the entity NAME snake_cased then
+    /// pluralized, so "ApiKey" and "APIKey" both serve "/api_keys" while their pluralized
+    /// PascalCase names differ and pass the DbSet-name check above. Counts only objects that
+    /// actually get a route: not a value object, not abstract, not sourceless, and not a
+    /// TPH subtype (folded into its base's table and served under the base's route).
+    /// </summary>
+    private static void AssertNoRouteSegmentCollisions(IReadOnlyList<MetaObject> entities)
+    {
+        var ownerOfSegment = new Dictionary<string, MetaObject>(StringComparer.Ordinal);
+        foreach (var obj in entities)
+        {
+            if (obj.IsValue() || !InstanceArtifacts.EmitsInstanceArtifacts(obj)) continue;
+            // ADR-0039: OwnAttr is REQUIRED — a TPH subtype declares @discriminatorValue itself.
+            if (obj.OwnAttr(OBJECT_ATTR_DISCRIMINATOR_VALUE) is string { Length: > 0 }) continue;
+            var segment = RoutePath(obj);
+            if (ownerOfSegment.TryGetValue(segment, out var existing))
+            {
+                if (existing.ResolutionKey() != obj.ResolutionKey())
+                    throw new InvalidOperationException(
+                        $"\"{existing.Name}\" and \"{obj.Name}\" both resolve " +
+                        $"to the REST collection segment \"{segment}\" — rename one entity so its " +
+                        $"snake_cased, pluralized route segment is distinct.");
+            }
+            else
+            {
+                ownerOfSegment[segment] = obj;
             }
         }
     }

@@ -3,14 +3,10 @@
 // declared field); locateJson (first-closed-else-first-open) is its fallback. Mirrors Java Locate.
 
 import { commentEnd } from "./json-forgiving-reader.js";
+import { matchFrom, maskXmlNonMarkup, quote } from "./xml-forgiving-reader.js";
 
 /** The characters a JSON comment may follow: whitespace or a structural separator. */
 const COMMENT_MAY_FOLLOW = /[\s,{[]/;
-
-/** Escape regex metacharacters (equivalent of Java Pattern.quote). */
-function quote(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
 
 /** First balanced {...}; if none closes, first '{' to end; null if no '{'. */
 export function locateJson(text: string | null | undefined): string | null {
@@ -84,7 +80,12 @@ function scanBalanced(s: string, open: number): number {
   return -1;
 }
 
-/** Span of <root>...</root>; if close absent, opener to end; null if no opener. */
+/**
+ * Span of <root>...</root>; if close absent, opener to end; null if no opener. Comments and
+ * CDATA are not searched, and when another opener of the same root sits between the first one
+ * and its close (the tag mentioned in prose, then the real element) the span starts at the
+ * LAST such opener: a root does not nest in itself.
+ */
 export function locateXml(
   text: string | null | undefined,
   rootName: string | null | undefined,
@@ -92,22 +93,21 @@ export function locateXml(
 ): string | null {
   if (text == null || rootName == null) return null;
   const flags = caseInsensitive ? "i" : "";
-  const open = new RegExp(`<${quote(rootName)}(\\s[^>]*)?>`, flags).exec(text);
+  const view = maskXmlNonMarkup(text);
+  const openSrc = `<${quote(rootName)}(\\s[^>]*)?>`;
+  const open = new RegExp(openSrc, flags).exec(view);
   if (open == null) return null;
-  const start = open.index;
   const openEnd = open.index + open[0].length;
 
-  const closeRe = new RegExp(`</${quote(rootName)}\\s*>`, flags);
-  closeRe.lastIndex = openEnd;
   // Search for the close tag at-or-after the opener's end (Java close.find(open.end())).
-  const close = matchFrom(closeRe, text, openEnd);
-  if (close != null) return text.substring(start, close.index + close[0].length);
-  return text.substring(start);
-}
-
-/** Find the first regex match at index >= `from` (emulates Java Matcher.find(int)). */
-function matchFrom(re: RegExp, text: string, from: number): RegExpExecArray | null {
-  const g = new RegExp(re.source, re.flags.includes("g") ? re.flags : re.flags + "g");
-  g.lastIndex = from;
-  return g.exec(text);
+  const close = matchFrom(`</${quote(rootName)}\\s*>`, flags, view, openEnd);
+  if (close == null) return text.substring(open.index);
+  let start = open.index;
+  for (let at = openEnd; ; ) {
+    const next = matchFrom(openSrc, flags, view, at);
+    if (next == null || next.index >= close.index) break;
+    start = next.index;
+    at = next.index + next[0].length;
+  }
+  return text.substring(start, close.index + close[0].length);
 }

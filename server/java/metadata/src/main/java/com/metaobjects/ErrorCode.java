@@ -492,6 +492,9 @@ public enum ErrorCode {
      * entity's effective (resolved, via {@code extends:}) field set.
      */
     ERR_INVALID_INDEX,
+    /** Two fields of one stored object resolve to the same PHYSICAL column (snake_case folds
+     *  {@code userId} and {@code userID} together, or two fields share an @column). */
+    ERR_COLUMN_NAME_COLLISION,
     /** FR-039 — @status: retired declares @implementedBy. Refused rather than exempted:
      *  a retired capability has no implementation BY DEFINITION, so forbidding the
      *  attribute makes the dangling-reference class unreachable instead of tolerated. */
@@ -560,6 +563,12 @@ public enum ErrorCode {
      * stays string-backed: drop {@code @intValueMap}, or make the field scalar.
      */
     ERR_ENUM_INT_VALUE_MAP_ARRAY,
+
+    /**
+     * Two declared members of one {@code field.enum} normalize to the same key under the
+     * default {@code @normalize: strip}; rename a member or set {@code collapse} / {@code none}.
+     */
+    ERR_ENUM_NORMALIZE_COLLISION,
 
     /**
      * FR-044: a {@code dimension.*} is invalid: {@code @of} is not Entity.field on the

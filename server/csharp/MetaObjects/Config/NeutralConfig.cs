@@ -25,7 +25,8 @@
 // or a non-object `naming` is refused (ERR_BAD_ATTR_VALUE), the same "present but
 // wrong-shaped raises" rule `sources`/`libraries` already follow.
 //
-// `csharp.outDir` is the C#-scoped generated-code directory; the other ports ignore the block.
+// `csharp.outDir` is the C#-scoped generated-code directory and `csharp.namespace` the C# namespace
+// generated code lands in; the other ports ignore the block.
 //
 // `wire` (ADR-0019 Amendment 2) is read here too — the output form of a generated REST surface
 // (`decimals`, `nullMembers`), refused exactly as `naming` is.
@@ -91,9 +92,15 @@ public sealed class NeutralConfig
     /// directory. Null when the key is absent. `--out` on the command line wins over it.
     public string? OutDir { get; }
 
+    /// The C# namespace generated code lands in (`csharp.namespace` in config.json), or null when
+    /// the key is absent. `--namespace` on the command line wins over it. It is the namespace for
+    /// generated types no package binding places (GenConfig.Namespace); with neither, a run that
+    /// emits such a type stops and asks for one.
+    public string? Namespace { get; }
+
     private NeutralConfig(
         IReadOnlyList<IReadOnlyDictionary<string, string>> sources, IReadOnlyList<string> libraries,
-        PhysicalNaming naming, WireFormat wire, string? outDir,
+        PhysicalNaming naming, WireFormat wire, (string? OutDir, string? Namespace) csharp,
         IReadOnlyList<DependencySpec> dependencies, IReadOnlyList<string> scopeInclude,
         IReadOnlyList<string>? migrateScope, string configDir)
     {
@@ -101,7 +108,8 @@ public sealed class NeutralConfig
         ScopeInclude = scopeInclude;
         MigrateScope = migrateScope;
         ConfigDir = configDir;
-        OutDir = outDir;
+        OutDir = csharp.OutDir;
+        Namespace = csharp.Namespace;
         Sources = sources;
         Libraries = libraries;
         Naming = naming;
@@ -263,7 +271,7 @@ public sealed class NeutralConfig
             // Unknown top-level keys, and every key of `scope` / `migrate` but the two pattern
             // lists read above, are IGNORED by design — see the file header.
             return new NeutralConfig(specs, libraries, new PhysicalNaming(columns, tables), ReadWire(root, path),
-                ReadOutDir(root, path, configDir), dependencies, scopeInclude, migrateScope,
+                ReadCSharp(root, path, configDir), dependencies, scopeInclude, migrateScope,
                 Path.GetFullPath(configDir));
         }
     }
@@ -299,29 +307,32 @@ public sealed class NeutralConfig
         return list.EnumerateArray().Select(v => v.GetString()!).ToList();
     }
 
-    /// The `csharp` block: the one C#-scoped setting, `outDir`, where `dotnet meta gen` writes
-    /// and `dotnet meta verify` diffs. The other ports ignore the block, as they ignore any key
-    /// they do not own. An unknown key, a non-string or empty `outDir`, or a non-object block is
-    /// refused, the same rule as `naming`.
-    private static string? ReadOutDir(JsonElement root, string path, string configDir)
+    /// The `csharp` block: the C#-scoped settings `outDir`, where `dotnet meta gen` writes and
+    /// `dotnet meta verify` diffs, and `namespace`, the namespace both generate under. The other
+    /// ports ignore the block, as they ignore any key they do not own. An unknown key, a
+    /// non-string or empty value, or a non-object block is refused, the same rule as `naming`.
+    private static (string? OutDir, string? Namespace) ReadCSharp(JsonElement root, string path, string configDir)
     {
-        if (!root.TryGetProperty("csharp", out var block)) return null;
+        if (!root.TryGetProperty("csharp", out var block)) return (null, null);
         if (block.ValueKind != JsonValueKind.Object)
             throw new MetaModelException($"{path}: \"csharp\" must be an object", ErrorCode.ERR_BAD_ATTR_VALUE);
 
-        string? outDir = null;
+        string? outDir = null, ns = null;
         foreach (var p in block.EnumerateObject())
         {
-            if (p.Name != "outDir")
+            if (p.Name is not ("outDir" or "namespace"))
                 throw new MetaModelException(
-                    $"{path}: \"csharp\" has an unknown key \"{p.Name}\" (expected \"outDir\")",
+                    $"{path}: \"csharp\" has an unknown key \"{p.Name}\" (expected \"outDir\" and/or \"namespace\")",
                     ErrorCode.ERR_BAD_ATTR_VALUE);
             if (p.Value.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(p.Value.GetString()))
                 throw new MetaModelException(
-                    $"{path}: \"csharp.outDir\" must be a non-empty string", ErrorCode.ERR_BAD_ATTR_VALUE);
-            outDir = Path.GetFullPath(p.Value.GetString()!, Path.GetFullPath(configDir));
+                    $"{path}: \"csharp.{p.Name}\" must be a non-empty string", ErrorCode.ERR_BAD_ATTR_VALUE);
+            if (p.Name == "outDir")
+                outDir = Path.GetFullPath(p.Value.GetString()!, Path.GetFullPath(configDir));
+            else
+                ns = p.Value.GetString()!;
         }
-        return outDir;
+        return (outDir, ns);
     }
 
     /// The `wire` block (ADR-0019 Amendment 2): an unknown key, an unknown value, or a

@@ -19,6 +19,14 @@ public class VerifyTest {
     }
 
     @Test
+    public void emptySetDelimiterTagIsIgnoredNotACrash() {
+        var errors = Verify.check("{{=}}Hello {{name}}",
+            List.of(PayloadField.scalar("name")),
+            VerifyOptions.empty());
+        assertTrue(errors.isEmpty());
+    }
+
+    @Test
     public void variableNotOnPayloadFlagged() {
         var errors = Verify.check("Hello {{missing}}",
             List.of(PayloadField.scalar("name")),

@@ -76,8 +76,8 @@ public sealed class OrphanSweepTests : IDisposable
         finally { Console.SetOut(prevOut); Console.SetError(prevErr); }
     }
 
-    private (int Code, string Out, string Err) Gen(params string[] extra) => Run(["gen", Meta, "--out", Out, .. extra]);
-    private (int Code, string Out, string Err) Verify() => Run("verify", "--codegen", Meta, "--out", Out);
+    private (int Code, string Out, string Err) Gen(params string[] extra) => Run(["gen", Meta, "--out", Out, "--namespace", "Acme.Generated", .. extra]);
+    private (int Code, string Out, string Err) Verify() => Run("verify", "--codegen", Meta, "--out", Out, "--namespace", "Acme.Generated");
 
     private Dictionary<string, string> Manifest() =>
         JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(ManifestPath))!;

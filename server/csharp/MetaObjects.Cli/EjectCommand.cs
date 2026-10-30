@@ -221,12 +221,11 @@ public static class EjectCommand
             outLines.Add("");
             outLines.Add($"Also wrote {string.Join(", ", scaffolded)}.");
         }
-        var programIgnoresList = CodegenHandoff.ProgramIgnoresList(root);
         if (scaffolded.Contains("codegen/Generators.cs"))
         {
             outLines.Add(
-                $"codegen/Generators.cs lists the generator(s) you just ejected ({string.Join(", ", entries)})." +
-                (programIgnoresList ? "" : " `dotnet meta gen` and `dotnet meta verify --codegen` run that list."));
+                $"codegen/Generators.cs lists the generator(s) you just ejected ({string.Join(", ", entries)}). " +
+                "`dotnet meta gen` and `dotnet meta verify --codegen` run that list.");
         }
         else
         {
@@ -236,11 +235,6 @@ public static class EjectCommand
                 outLines.Add($"  {entry},");
             outLines.Add("to the list there, in place of the packaged entry if it lists one " +
                           "(MetaObjects.Codegen.Generators.<Name>).");
-        }
-        if (programIgnoresList)
-        {
-            outLines.Add("");
-            outLines.AddRange(CodegenScaffold.ReplaceProgram());
         }
         if (csprojExisted) outLines.AddRange(OlderPinWarning(csprojPath, "eject"));
 

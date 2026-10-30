@@ -41,6 +41,16 @@ public class RenderTests
             P(new() { ["g/main"] = "Hi {{name}}." }), @ref: "g/main"));
 
     [Fact]
+    public void A_delimiter_change_in_a_root_template_resolved_by_ref_with_no_partials_renders() =>
+        Assert.Equal("Hi Ada.", Render("text", Obj(("name", "Ada")),
+            P(new() { ["g/main"] = "{{=<% %>=}}Hi <% name %>." }), @ref: "g/main"));
+
+    [Fact]
+    public void A_delimiter_change_in_a_partial_body_is_refused() =>
+        Assert.Throws<RenderException>(() => Render("text", Obj(("name", "Ada")),
+            P(new() { ["g/main"] = "{{> g/leaf }} {{name}}", ["g/leaf"] = "{{=<% %>=}}hi" }), @ref: "g/main"));
+
+    [Fact]
     public void Iterates_arrays_in_order() =>
         Assert.Equal("a,b,c,", Render("text", Obj(("xs", new List<object> { "a", "b", "c" })), P(),
             template: "{{#xs}}{{.}},{{/xs}}"));

@@ -20,8 +20,14 @@ import type { SchemaSnapshot } from "../types.js";
  * place is asked of the live database (view-replace.ts). It is no longer written, and
  * `parseSnapshot` drops it. The version does not move: a reader that still looks for
  * the field finds it absent, which it already treats as unknown.
+ *
+ * v4 — a snapshot records a table's and column's comment and a GENERATED identity as the
+ * database holds them: `baseline --from-db` now reads them back (`pg_description`,
+ * `attidentity`), where a v3 baseline left both out. Absence therefore means "none" only from
+ * v4 on; `parseSnapshot` marks an older snapshot `identityAndCommentsUnknown`, and the shadow
+ * comparison does not compare what it never recorded.
  */
-export const SNAPSHOT_FORMAT_VERSION = 3;
+export const SNAPSHOT_FORMAT_VERSION = 4;
 
 interface SnapshotFile {
   formatVersion: number;
@@ -50,8 +56,16 @@ function canonicalize(s: SchemaSnapshot): SchemaSnapshot {
       delete written.opaque;
       return written;
     }),
-    ...(s.meta ? { meta: s.meta } : {}),
+    ...metaWritten(s.meta),
   };
+}
+
+/** `meta` as written: the parse-time `identityAndCommentsUnknown` marker is not part of the file. */
+function metaWritten(meta: SchemaSnapshot["meta"]): Pick<SchemaSnapshot, "meta"> {
+  if (meta === undefined) return {};
+  const written = { ...meta };
+  delete written.identityAndCommentsUnknown;
+  return Object.keys(written).length > 0 ? { meta: written } : {};
 }
 
 /** JSON.stringify with object keys sorted recursively (arrays left as-is). */
@@ -98,6 +112,9 @@ export function parseSnapshot(text: string): SchemaSnapshot {
         (t as { checks: unknown[] }).checks = [];
       }
     }
+  }
+  if (file.formatVersion < 4) {
+    file.snapshot.meta = { ...file.snapshot.meta, identityAndCommentsUnknown: true };
   }
   for (const v of file.snapshot.views ?? []) delete (v as { columns?: unknown }).columns;
   return file.snapshot;

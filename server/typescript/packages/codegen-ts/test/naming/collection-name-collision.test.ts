@@ -105,4 +105,31 @@ describe("assertNoCollectionNameCollisions", () => {
       expect(() => assertNoCollectionNameCollisions(objects)).toThrow(ERR_COLLECTION_NAME_COLLISION);
     }
   });
+
+  test("ApiKey and APIKey collide on the snake_cased route segment", async () => {
+    const objects = await loadObjects([entity("ApiKey"), entity("APIKey")]);
+    expect(() => assertNoCollectionNameCollisions(objects)).toThrow(
+      new RegExp(`${ERR_COLLECTION_NAME_COLLISION}.*"ApiKey".*"APIKey".*"api_keys"`),
+    );
+  });
+
+  test("a route-segment twin that is abstract or sourceless gets no route and does not collide", async () => {
+    const abstractTwin = {
+      "object.entity": {
+        name: "APIKey",
+        "@isAbstract": true,
+        children: [{ "field.long": { name: "id" } }, { "identity.primary": { "@fields": "id" } }],
+      },
+    };
+    const sourceless = {
+      "object.entity": {
+        name: "APIKey",
+        children: [{ "field.long": { name: "id" } }, { "identity.primary": { "@fields": "id" } }],
+      },
+    };
+    for (const twin of [abstractTwin, sourceless]) {
+      const objects = await loadObjects([entity("ApiKey"), twin]);
+      expect(() => assertNoCollectionNameCollisions(objects)).not.toThrow();
+    }
+  });
 });

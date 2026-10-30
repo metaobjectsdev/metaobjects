@@ -181,10 +181,10 @@ in `.metaobjects/config.json`, below).
 
 ```bash
 # Run the list: EF Core entities + AppDbContext + CRUD minimal-API routes
-dotnet meta gen ./metaobjects --out ./Generated --namespace Acme.Blog
+dotnet meta gen ./metaobjects --out ./Generated
 
 # The drift gate: regenerate into a temp tree and fail (exit 1, naming the files) if the
-# committed ./Generated differs. Run it in CI; the namespace is inferred from ./Generated.
+# committed ./Generated differs. Run it in CI.
 dotnet meta verify ./metaobjects --codegen --out ./Generated
 ```
 
@@ -196,12 +196,23 @@ against `prompts/` when it exists, else `templates/`, and fails the same way whe
 exists. It also runs the codegen gate when `--out <dir>` and `codegen/Generators.cs` are
 present, and skips it with a note otherwise; name both subverbs to require both.
 
-The output directory is a project setting, so `gen` and `verify` cannot disagree about it.
-Declare it once in `.metaobjects/config.json`, relative to the directory holding `.metaobjects/`:
+The output directory and the namespace are project settings, so `gen` and `verify` cannot
+disagree about them. Declare them once in `.metaobjects/config.json`; `outDir` is relative to the
+directory holding `.metaobjects/`:
 
 ```json
-{ "schema_version": 1, "csharp": { "outDir": "Generated" } }
+{ "schema_version": 1, "csharp": { "outDir": "Generated", "namespace": "Acme.Blog" } }
 ```
+
+Each generated type's namespace comes from the package bindings, keyed by that type's own
+metadata package: a type-level override (`GenConfig.TypeOverrides`), then a package-level one
+(`PackageNamespaces`), then the `Convention` rule (strip a package prefix, prepend a root, case
+each `::` segment), then `UnmappedStrategy`. The default strategy, `Flatten`, puts every type in
+one namespace: `--namespace` when given, else `csharp.namespace`. There is no built-in value, so
+a run that emits a file needing it with neither set stops and names both; a run that emits
+nothing never asks. The namespace must be a dotted path of C# identifiers. `dotnet meta gen` and
+`verify` set only that flat namespace; the per-package bindings are `GenConfig` properties, set
+when you run codegen from your own code with `CodegenRunner`.
 
 With that, `dotnet meta gen` writes there, `dotnet meta verify --codegen` diffs against it, and
 a plain `dotnet meta verify` in CI runs the codegen gate with no flags. `--out <dir>` still works

@@ -36,6 +36,7 @@ from typing import Any, Optional
 import yaml  # type: ignore[import-untyped]  # PyYAML ships no type stubs
 
 from .error_source import YamlPosition
+from .yaml_core_schema import CoreSchemaLoader, check_unique_keys
 
 
 class YamlPositionMap(dict):
@@ -100,8 +101,9 @@ def set_position_map(
 def parse_yaml_with_positions(text: str) -> Any:
     """Parse YAML text and return a Python structure with positions attached.
 
-    Mirrors the contract of :func:`yaml.safe_load` for the shapes the
-    metaobjects authoring grammar uses (mappings, sequences, scalars). Aliases
+    Mirrors the contract of the TS ``yaml.parse`` (YAML 1.2 core schema, unique
+    mapping keys) for the shapes the metaobjects authoring grammar uses
+    (mappings, sequences, scalars). Aliases
     are resolved via the underlying SafeLoader pipeline — i.e. they resolve
     as the library normally would.
 
@@ -110,10 +112,10 @@ def parse_yaml_with_positions(text: str) -> Any:
     the position of the KEY token in the YAML source.
 
     Raises:
-        :class:`yaml.YAMLError`: on YAML syntax errors (same as
-            ``yaml.safe_load``).
+        :class:`yaml.YAMLError`: on YAML syntax errors and on a duplicate
+            mapping key.
     """
-    loader = yaml.SafeLoader(text)
+    loader = CoreSchemaLoader(text)
     try:
         node = loader.get_single_node()
         if node is None:
@@ -130,16 +132,17 @@ def _yaml_node_to_py(node: Any, loader: Any) -> Any:
     :class:`YamlPositionMap`) onto the resulting dict — the position of each
     key is the (line, col) of the KEY token in the YAML source.
 
-    Scalar nodes are constructed via the SafeLoader's constructor pipeline,
-    so YAML 1.1's typed scalars (null, bool, int, float) coerce exactly the
-    way :func:`yaml.safe_load` produces them. The desugar's D2 coercion
-    guard fires on those coerced values, matching TS / Java / C# behavior.
+    Scalar nodes are constructed via :class:`CoreSchemaLoader`, so typed scalars
+    (null, bool, int, float) resolve under the YAML 1.2 core schema, matching the
+    TS loader: ``off``/``no``/``1:30`` stay strings and ``0777`` is the decimal int 777. The desugar's D2
+    coercion guard fires on the values that do coerce (``true``, ``42``).
     """
     if isinstance(node, yaml.ScalarNode):
         return loader.construct_object(node, deep=True)
     if isinstance(node, yaml.SequenceNode):
         return [_yaml_node_to_py(item, loader) for item in node.value]
     if isinstance(node, yaml.MappingNode):
+        check_unique_keys(node)
         out = YamlPositionMap()
         positions: dict[str, YamlPosition] = {}
         for key_node, value_node in node.value:

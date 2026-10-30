@@ -1,5 +1,5 @@
 // adopt-generated-spelling.ts — what `baseline --from-db` writes for a CHECK / index
-// expression it can prove equal to the one migrate generates.
+// expression or a column DEFAULT it can prove equal to the one migrate generates.
 //
 // An introspected Postgres snapshot carries Postgres's spelling (`(resource_kind = 'space'::text)`)
 // of every expression. The OFFLINE plan has no database to ask, so it compares that text with the
@@ -12,7 +12,8 @@
 
 import type { ExprCanonProbe } from "../expr-canon.js";
 import { qualifiedDbName } from "../qualified-name.js";
-import type { CheckDescriptor, IndexDescriptor, SchemaSnapshot, TableDescriptor } from "../types.js";
+import { columnDefaultsEqual } from "../column-default.js";
+import type { CheckDescriptor, ColumnDescriptor, IndexDescriptor, SchemaSnapshot, TableDescriptor } from "../types.js";
 
 export async function adoptGeneratedSpelling(
   live: SchemaSnapshot,
@@ -31,6 +32,14 @@ export async function adoptGeneratedSpelling(
 async function adoptTable(live: TableDescriptor, expected: TableDescriptor, probe: ExprCanonProbe): Promise<TableDescriptor> {
   const answer = await probe(live, expected);
   if (answer === undefined) return live;
+  const expectedColumns = new Map(expected.columns.map((c) => [c.name, c] as const));
+  const columns = live.columns.map((ac): ColumnDescriptor => {
+    const ec = expectedColumns.get(ac.name);
+    const stored = ec === undefined ? undefined : answer.defaults.get(ec);
+    return ec?.default !== undefined && stored !== undefined && columnDefaultsEqual(stored, ac.default)
+      ? { ...ac, default: ec.default }
+      : ac;
+  });
   const expectedChecks = new Map(expected.checks.map((c) => [c.name, c] as const));
   const expectedIndexes = new Map(expected.indexes.map((ix) => [ix.name, ix] as const));
   const checks = live.checks.map((ac): CheckDescriptor => {
@@ -46,5 +55,5 @@ async function adoptTable(live: TableDescriptor, expected: TableDescriptor, prob
     if (ei.where !== undefined && ai.where !== undefined && stored.where === ai.where) adopted.where = ei.where;
     return adopted;
   });
-  return { ...live, checks, indexes };
+  return { ...live, columns, checks, indexes };
 }

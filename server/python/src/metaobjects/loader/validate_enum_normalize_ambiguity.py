@@ -34,6 +34,7 @@ from ..meta.core.field.field_constants import (
     NORMALIZE_DEFAULT,
 )
 from ..shared.base_types import TYPE_FIELD, TYPE_OBJECT
+from ..errors import ErrorCode, MetaError
 from ..source.error_source import LoaderWarning
 
 WARN_ENUM_NORMALIZE_AMBIGUOUS = "WARN_ENUM_NORMALIZE_AMBIGUOUS"
@@ -157,6 +158,56 @@ def validate_enum_normalize_ambiguity(
                             break  # one warning per declaring node
         # ADR-0039 sanctioned own: structural walk of what each node declares;
         # resolving children would re-visit inherited nodes at every referrer.
+        for child in node.own_children():
+            visit(child)
+
+    visit(root)
+
+
+def validate_enum_normalize_collision(root: MetaData, errors: list[MetaError]) -> None:
+    """``ERR_ENUM_NORMALIZE_COLLISION`` — two declared members of one enum fold to
+    the SAME key under ``@normalize: strip`` (e.g. ``READ_ONLY`` and ``READONLY``).
+
+    One of them is then unreachable and a reply naming it coerces to the other
+    (wrong-and-green). An ERROR, unlike the concatenation advisory above: the
+    vocabulary itself is ambiguous. ``collapse`` / ``none`` are not gated.
+    Mirrors the TS reference."""
+
+    def visit(node: MetaData) -> None:
+        if node.type == TYPE_FIELD and node.sub_type == FIELD_SUBTYPE_ENUM:
+            # ADR-0039 sanctioned own: the vocabulary DECLARED here; an inheriting
+            # enum shares the super's set, already checked there.
+            raw = node.own_attrs().get(FIELD_ATTR_VALUES)
+            if isinstance(raw, list) and len(raw) > 1:
+                mode, explicit = _effective_normalize(node)
+                if mode == NORMALIZE_DEFAULT:
+                    by_key: dict[str, list[str]] = {}
+                    for m in raw:
+                        member = str(m)
+                        key = _strip_normalize(member)
+                        if key:
+                            by_key.setdefault(key, []).append(member)
+                    for key, members in by_key.items():
+                        # Distinct members only: an exact duplicate is ERR_BAD_ATTR_VALUE's job.
+                        distinct = list(dict.fromkeys(members))
+                        if len(distinct) < 2:
+                            continue
+                        listed = ", ".join(f"'{d}'" for d in distinct)
+                        errors.append(
+                            MetaError(
+                                f'field.enum "{node.name}" members {listed} all normalize to '
+                                f"'{key}' under @{FIELD_ATTR_NORMALIZE}: '{NORMALIZE_DEFAULT}'"
+                                f"{'' if explicit else ' (the default)'}, which upper-cases and "
+                                f"deletes everything outside A-Z0-9, so a reply naming one of "
+                                f"them is indistinguishable from the others. Rename the members "
+                                f"so they differ after that fold, or set "
+                                f"@{FIELD_ATTR_NORMALIZE}: 'collapse' (keeps '_' distinct) or "
+                                f"'none' (exact match) on this field.",
+                                ErrorCode.ERR_ENUM_NORMALIZE_COLLISION,
+                                envelope=node.source,
+                            )
+                        )
+                        break  # one error per declaring node
         for child in node.own_children():
             visit(child)
 

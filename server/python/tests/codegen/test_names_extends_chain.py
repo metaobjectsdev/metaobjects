@@ -296,7 +296,7 @@ def test_a_child_field_colliding_with_an_inherited_one_is_refused_naming_the_mod
                         "children": [
                             {"source.rdb": {"@table": "rows"}},
                             {"field.long": {"name": "id"}},
-                            {"field.timestamp": {"name": "created_at"}},
+                            {"field.timestamp": {"name": "created_at", "@column": "created_at_alt"}},
                             {"identity.primary": {"name": "pk", "@fields": "id", "@generation": "increment"}},
                         ],
                     }

@@ -10,6 +10,7 @@ configured format; ``{{{var}}}`` bypasses escaping (Mustache's
 "triple-stache" raw form is preserved by the renderer).
 """
 from __future__ import annotations
+import re
 
 FORMAT_TEXT = "text"
 FORMAT_HTML = "html"
@@ -38,13 +39,17 @@ def _escape_xml(s: str) -> str:
     return "".join(out)
 
 
+# Strict numeric literal (ASCII digits only, whole string) is exempt from the guard.
+_STRICT_NUMERIC = re.compile(r"-?[0-9]+(\.[0-9]+)?", re.ASCII)
+
+
 def _injection_guard(s: str) -> str:
     """OWASP CSV/Excel formula-injection guard: prefix a literal apostrophe when
     the cell starts with an active char (``=``, ``+``, ``-``, ``@``, tab, CR)."""
     if not s:
         return s
     first = s[0]
-    if first in ("=", "+", "-", "@", "\t", "\r"):
+    if first in ("=", "+", "-", "@", "\t", "\r") and not _STRICT_NUMERIC.fullmatch(s):
         return "'" + s
     return s
 

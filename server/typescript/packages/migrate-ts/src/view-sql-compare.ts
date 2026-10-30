@@ -16,30 +16,57 @@
 // deparser at all. Do not point this function at Postgres again.
 //
 // normalizeViewSql strips a leading `CREATE [OR REPLACE] VIEW <name> AS`, collapses
-// whitespace runs, drops a trailing `;`, and lower-cases.
-//
-// CAVEAT (accepted tradeoff): lower-casing can mask a difference living ONLY in a
-// case-sensitive string literal (e.g. `WHERE status = 'Active'` vs `'active'`), which
-// an `origin.aggregate @filter` predicate can now carry. The fingerprint path
-// deliberately does NOT lowercase for exactly this reason; this SQLite path keeps it
-// for backwards-compatible behavior. The name regex matches one whitespace/`(`-free
-// token, so a quoted view name containing a space would not strip cleanly — a non-issue
-// for generated identifiers.
+// whitespace runs OUTSIDE quoted literals and identifiers, and drops a trailing `;`.
+// It does NOT lower-case: SQLite stores the text verbatim, so an exact comparison is
+// sound, and a case change inside a literal (`status = 'Active'` vs `'active'`) or a
+// whitespace change inside one (`'a  b'` vs `'a b'`) is a real change of the view. The
+// name regex matches one whitespace/`(`-free token, so a quoted view name containing a
+// space would not strip cleanly — a non-issue for generated identifiers.
 
 const CREATE_VIEW_PREFIX =
   /^\s*create\s+(?:or\s+replace\s+)?(?:temp(?:orary)?\s+)?view\s+(?:if\s+not\s+exists\s+)?[^\s(]+(?:\s*\([^)]*\))?\s+as\s+/i;
 
 /**
+ * Collapse every whitespace run to one space, except inside `'…'` literals, `"…"` and
+ * `` `…` `` identifiers (doubled quote = escape), which are copied verbatim.
+ */
+export function collapseWhitespaceOutsideQuotes(sql: string): string {
+  let out = "";
+  let i = 0;
+  const n = sql.length;
+  while (i < n) {
+    const ch = sql[i] as string;
+    if (ch === "'" || ch === '"' || ch === "`") {
+      let j = i + 1;
+      while (j < n) {
+        if (sql[j] === ch) {
+          if (sql[j + 1] === ch) { j += 2; continue; }
+          j++;
+          break;
+        }
+        j++;
+      }
+      out += sql.slice(i, j);
+      i = j;
+    } else if (/\s/.test(ch)) {
+      while (i < n && /\s/.test(sql[i] as string)) i++;
+      out += " ";
+    } else {
+      out += ch;
+      i++;
+    }
+  }
+  return out;
+}
+
+/**
  * Collapse a view definition (full `CREATE VIEW ... AS body` OR a bare body)
- * to a canonical, comparable string. Whitespace-, case-, and wrapper-insensitive.
+ * to a canonical, comparable string. Whitespace- (outside quotes) and wrapper-insensitive; case-sensitive.
  */
 export function normalizeViewSql(sql: string): string {
-  return sql
-    .replace(CREATE_VIEW_PREFIX, "")
-    .replace(/\s+/g, " ")
+  return collapseWhitespaceOutsideQuotes(sql.replace(CREATE_VIEW_PREFIX, ""))
     .replace(/;\s*$/, "")
-    .trim()
-    .toLowerCase();
+    .trim();
 }
 
 /** True when two view definitions are equivalent after normalization. */

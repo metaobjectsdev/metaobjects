@@ -201,6 +201,9 @@ class ErrorCode(str, Enum):
     # Cross-language vocabulary for features other ports added (FR-003 storage, FR-004 template);
     # the Python loader does not emit these yet, but the enum tracks the shared corpus codes.
     ERR_INVALID_TEMPLATE = "ERR_INVALID_TEMPLATE"
+    # Two fields of one stored object resolve to the same PHYSICAL column (snake_case
+    # folds `userId` and `userID` together, or two fields share an @column).
+    ERR_COLUMN_NAME_COLLISION = "ERR_COLUMN_NAME_COLLISION"
     ERR_STORAGE_FLATTENED_ARRAY = "ERR_STORAGE_FLATTENED_ARRAY"
     ERR_STORAGE_WITHOUT_OBJECT_REF = "ERR_STORAGE_WITHOUT_OBJECT_REF"
     # ADR-0013: a field.object REQUIRES @objectRef (open/untyped JSON uses the
@@ -290,6 +293,9 @@ class ErrorCode(str, Enum):
     # an integer array. An array-of-enum stays string-backed: drop @intValueMap,
     # or make the field scalar.
     ERR_ENUM_INT_VALUE_MAP_ARRAY = "ERR_ENUM_INT_VALUE_MAP_ARRAY"
+    # Two declared members of one field.enum normalize to the same key under the
+    # default `@normalize: strip`; rename a member or set `collapse` / `none`.
+    ERR_ENUM_NORMALIZE_COLLISION = "ERR_ENUM_NORMALIZE_COLLISION"
     ERR_UNKNOWN = "ERR_UNKNOWN"
 
 

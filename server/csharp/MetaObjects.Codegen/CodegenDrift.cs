@@ -11,7 +11,6 @@
 // SAFETY: the regen is written ONLY under a fresh temp dir; the real OutDir is
 // read but never written. On any outcome the temp tree is removed.
 
-using System.Text.RegularExpressions;
 using MetaObjects.Meta;
 
 namespace MetaObjects.Codegen;
@@ -19,41 +18,6 @@ namespace MetaObjects.Codegen;
 /// <summary>Regenerate-to-temp + diff vs committed output (ADR-0021 D2).</summary>
 public static class CodegenDrift
 {
-    // Matches the FIRST top-level namespace declaration in a C# source file:
-    // file-scoped `namespace X.Y;` or block `namespace X.Y {` / `namespace X.Y`.
-    // Multiline so `^` anchors each line; we scan line-leading declarations only.
-    private static readonly Regex NamespaceDecl =
-        new(@"^\s*namespace\s+([A-Za-z_][\w.]*)\s*;?", RegexOptions.Multiline | RegexOptions.Compiled);
-
-    /// <summary>
-    /// Infer the C# namespace embedded in the committed generated output under
-    /// <paramref name="outDir"/>. Scans the FIRST <c>.cs</c> file (ordinal-sorted)
-    /// that carries a top-level <c>namespace</c> declaration and returns it.
-    /// Returns <c>null</c> when the dir is missing or no <c>.cs</c> file declares a
-    /// namespace — the caller then falls back to its default (there is nothing
-    /// meaningful to diff against in that case anyway). Used by
-    /// <c>verify --codegen</c> so a regen matches output produced with ANY namespace
-    /// when <c>--namespace</c> is omitted.
-    /// </summary>
-    public static string? InferNamespace(string outDir)
-    {
-        if (!Directory.Exists(outDir)) return null;
-
-        var csFiles = Directory.EnumerateFiles(outDir, "*.cs", SearchOption.AllDirectories)
-            .OrderBy(p => p.Replace(Path.DirectorySeparatorChar, '/'), StringComparer.Ordinal);
-
-        foreach (var file in csFiles)
-        {
-            string text;
-            try { text = File.ReadAllText(file); }
-            catch { continue; }
-
-            var m = NamespaceDecl.Match(text);
-            if (m.Success) return m.Groups[1].Value;
-        }
-        return null;
-    }
-
     /// <summary>The outcome of a codegen-drift computation (pure; no console I/O).</summary>
     public sealed record Result
     {
@@ -128,8 +92,16 @@ public static class CodegenDrift
             // No manifest and no sweep for the throwaway regen: it records nothing and deletes
             // nothing, and a fresh temp tree writes every file either way.
             var tempConfig = config with { OutDir = temps[0], GenStateDir = null, ProjectRoot = null, SweepOrphans = false };
-            var regen = CodegenRunner.Run(tempConfig, root, generators,
-                g => temps[roots.FindIndex(r => r.Committed == Path.GetFullPath(realRootFor(g)))]);
+            CodegenRunner.RunResult regen;
+            try
+            {
+                regen = CodegenRunner.Run(tempConfig, root, generators,
+                    g => temps[roots.FindIndex(r => r.Committed == Path.GetFullPath(realRootFor(g)))]);
+            }
+            catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
+            {
+                return new Result { Clean = false, Error = $"verify --codegen: {ex.Message}" };
+            }
             var overwriteDirs = CodegenRunner.OverwriteDirs(generators, realRootFor, config.OutDir);
 
             var drifted = new SortedSet<string>(StringComparer.Ordinal);

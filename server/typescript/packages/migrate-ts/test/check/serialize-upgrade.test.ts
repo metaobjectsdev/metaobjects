@@ -16,8 +16,19 @@ describe("serialize with checks + snapshot format version", () => {
   // not understand them would silently fall back to comparing view TEXT against
   // Postgres's deparsed output — which never matches — and re-propose every view on
   // every migrate. So the version must be bumped, to hard-fail instead of misread.
-  test("format version is 3", () => {
-    expect(SNAPSHOT_FORMAT_VERSION).toBe(3);
+  // v4: comments and a GENERATED identity are recorded as the database holds them.
+  test("format version is 4", () => {
+    expect(SNAPSHOT_FORMAT_VERSION).toBe(4);
+  });
+
+  // Before v4 a `baseline --from-db` left comments and identity out, so in a v3 file an absent
+  // one says nothing; from v4 on it means none. The marker lives only in memory.
+  test("a v3 snapshot reads its identity and comments as unknown; a v4 one does not, and the marker is never written", () => {
+    const body = { tables: [], views: [] };
+    const v3 = parseSnapshot(JSON.stringify({ formatVersion: 3, snapshot: body }));
+    expect(v3.meta?.identityAndCommentsUnknown).toBe(true);
+    expect(JSON.parse(serializeSnapshot(v3))).toEqual({ formatVersion: 4, snapshot: body });
+    expect(parseSnapshot(JSON.stringify({ formatVersion: 4, snapshot: body })).meta).toBeUndefined();
   });
 
   test("checks round-trip and are order-stable", () => {
@@ -60,7 +71,7 @@ describe("serialize with checks + snapshot format version", () => {
     const parsed = parseSnapshot(older);
     expect(parsed.views).toEqual([{ name: "v_orders", sql: "SELECT 1 AS n", fingerprint: "a".repeat(64) }]);
     expect(JSON.parse(serializeSnapshot(parsed))).toEqual({
-      formatVersion: 3,
+      formatVersion: 4,
       snapshot: { tables: [], views: [{ name: "v_orders", sql: "SELECT 1 AS n", fingerprint: "a".repeat(64) }] },
     });
   });

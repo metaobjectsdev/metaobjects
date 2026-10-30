@@ -109,4 +109,13 @@ describe("renameExprIdentifiers", () => {
     expect(renameExprIdentifiers(`rating_note = 'rating' OR "rating" IS NULL`, m))
       .toBe(`rating_note = 'rating' OR "stars" IS NULL`);
   });
+  test("leaves a cast type and a function name alone even when a column of that name is renamed", () => {
+    const date = new Map([["date", "day"]]);
+    expect(renameExprIdentifiers(`date >= 'x'::date AND date(created) = date`, date))
+      .toBe(`day >= 'x'::date AND date(created) = day`);
+  });
+  test("leaves the inside of an E'..' literal alone, including a backslash-escaped quote", () => {
+    expect(renameExprIdentifiers(`note = E'it\\'s rating' AND rating > 1`, m))
+      .toBe(`note = E'it\\'s rating' AND stars > 1`);
+  });
 });

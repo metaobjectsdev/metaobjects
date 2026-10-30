@@ -10,9 +10,8 @@ import java.io.StringWriter;
 import java.io.Writer;
 import java.util.ArrayDeque;
 import java.util.Deque;
+import java.util.List;
 import java.util.function.Function;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
  * Mustache-driven render pipeline for the {@code template.*} metatype (FR-004).
@@ -34,10 +33,6 @@ import java.util.regex.Pattern;
 public final class Renderer {
 
     static final int MAX_DEPTH = 32;
-
-    // {{> name }} — captures the reference between the marker and the closing }}.
-    private static final Pattern PARTIAL_PATTERN =
-        Pattern.compile("\\{\\{>\\s*([^\\s}]+)\\s*\\}\\}");
 
     public String render(RenderRequest req) {
         validate(req);
@@ -122,14 +117,26 @@ public final class Renderer {
                 + " (chain: " + String.join(" -> ", stack) + ")");
         }
 
-        Matcher m = PARTIAL_PATTERN.matcher(text);
-        if (!m.find()) return text;
-        m.reset();
+        // Partial tags are located by the shared scanner, so one written inside a comment
+        // is not a partial and a {{=<% %>=}} delimiter change is honoured.
+        List<MustacheTags.Tag> tags;
+        try {
+            tags = MustacheTags.scan(text);
+        } catch (MustacheTags.SyntaxException e) {
+            throw new RenderException("template syntax error: " + e.getMessage());
+        }
+        if (MustacheTags.delimiterConflict(tags, stack.peek()) != null) {
+            throw new RenderException(
+                "a template that uses partials cannot also change delimiters ({{=<% %>=}})");
+        }
+        List<MustacheTags.Tag> partials = tags.stream()
+            .filter(t -> t.kind() == MustacheTags.Kind.PARTIAL).toList();
+        if (partials.isEmpty()) return text;
 
         StringBuilder out = new StringBuilder(text.length());
         int last = 0;
-        while (m.find()) {
-            String partialRef = m.group(1);
+        for (MustacheTags.Tag tag : partials) {
+            String partialRef = tag.value();
             if (stack.contains(partialRef)) {
                 throw new RenderException("partial cycle: "
                     + String.join(" -> ", stack) + " -> " + partialRef);
@@ -144,9 +151,9 @@ public final class Renderer {
             String expanded = preExpandPartials(partialText, provider, stack);
             stack.pop();
 
-            out.append(text, last, m.start());
+            out.append(text, last, tag.start());
             out.append(expanded);
-            last = m.end();
+            last = tag.end();
         }
         out.append(text, last, text.length());
         return out.toString();

@@ -247,6 +247,9 @@ public enum ErrorCode
     // @fields), whichever is declared supplies no key, or a named field does not exist
     // in the entity's effective field set.
     ERR_INVALID_INDEX,
+    // Two fields of one stored object resolve to the same PHYSICAL column (snake_case folds
+    // `userId` and `userID` together, or two fields share an @column).
+    ERR_COLUMN_NAME_COLLISION,
     // FR-044 — reporting vocabulary (ValidationPasses.ValidateReporting). Rule ids
     // D1-D4 / M1-M6 / R1-R7 are the cross-port rule table; S1/F1/F2 reuse
     // ERR_BAD_ATTR_FILTER.
@@ -296,6 +299,9 @@ public enum ErrorCode
     // an integer array. An array-of-enum stays string-backed: drop @intValueMap,
     // or make the field scalar.
     ERR_ENUM_INT_VALUE_MAP_ARRAY,
+    // Two declared members of one field.enum normalize to the same key under the
+    // default @normalize: strip; rename a member or set collapse / none.
+    ERR_ENUM_NORMALIZE_COLLISION,
     ERR_UNKNOWN,
 }
 

@@ -104,18 +104,28 @@ public static class Locate
         var flags = caseInsensitive
             ? RegexOptions.IgnoreCase
             : RegexOptions.None;
+        // Comments and CDATA are not searched; the view has the same length as the text.
+        string view = XmlForgivingReader.MaskNonMarkup(text);
         var openPattern = new Regex($"<{Regex.Escape(rootName)}(\\s[^>]*)?>", flags);
-        var openMatch = openPattern.Match(text);
+        var openMatch = openPattern.Match(view);
         if (!openMatch.Success) return null;
         int start = openMatch.Index;
         int gt = openMatch.Index + openMatch.Length - 1; // position of the '>' closing the open tag
 
         var closePattern = new Regex($"</{Regex.Escape(rootName)}\\s*>", flags);
-        var closeMatch = closePattern.Match(text, openMatch.Index + openMatch.Length);
+        var closeMatch = closePattern.Match(view, openMatch.Index + openMatch.Length);
         // Guard: if close found but its end position <= gt, treat as no-close (shouldn't
         // normally occur, but protects against malformed input such as a bare close tag).
         if (closeMatch.Success && closeMatch.Index + closeMatch.Length > gt)
         {
+            // A root does not nest in itself: another opener between the first one and its
+            // close is the real element (the tag was mentioned in prose first).
+            var next = openPattern.Match(view, openMatch.Index + openMatch.Length);
+            while (next.Success && next.Index < closeMatch.Index)
+            {
+                start = next.Index;
+                next = openPattern.Match(view, next.Index + next.Length);
+            }
             return text[start..(closeMatch.Index + closeMatch.Length)];
         }
         return text[start..];

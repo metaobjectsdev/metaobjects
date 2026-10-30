@@ -141,7 +141,7 @@ export async function applyPending(
       // directory of migrations, and `--replay` guessing at a remedy it could not
       // have chosen correctly without knowing the position.
       try {
-        await runSqlFileWithLedgerMutation(db, text, (trx) =>
+        await runSqlFileWithLedgerMutation(db, text, dialect, (trx) =>
           recordApplied(trx, m.name, checksum, dialect, ledger),
         );
       } catch (err) {
@@ -218,14 +218,14 @@ export async function rollbackTo(
       }
       // Comments alone reverse nothing: running them would only delete the ledger row
       // and report a rollback that never happened.
-      if (splitSqlStatements(downText).length === 0) {
+      if (splitSqlStatements(downText, { dialect }).length === 0) {
         throw new Error(
           `rollback '${name}': down.sql has no executable statement (only comments) — ` +
             `nothing would be reversed. Author the down by hand, or roll forward instead.`,
         );
       }
       // Run the down SQL + the ledger delete in ONE transaction.
-      await runSqlFileWithLedgerMutation(db, downText, (trx) =>
+      await runSqlFileWithLedgerMutation(db, downText, dialect, (trx) =>
         deleteApplied(trx, name, dialect, ledger),
       );
       rolledBack.push(name);
@@ -338,6 +338,7 @@ function advisoryKey(name: string): string {
 async function runSqlFileWithLedgerMutation(
   db: Kysely<Record<string, unknown>>,
   sqlText: string,
+  dialect: LedgerDialect,
   mutateLedger: (trx: Transaction<Record<string, unknown>>) => Promise<void>,
 ): Promise<void> {
   // Adapt the file to the transaction we are about to open. A SQLite rebuild script
@@ -346,7 +347,7 @@ async function runSqlFileWithLedgerMutation(
   // scaffold's default dialect) and its own `PRAGMA foreign_keys = OFF`, which is a
   // no-op inside a transaction. See runner-transaction-pass.ts for the full rationale.
   const { statements, requiresForeignKeysOff, postTransactionChecks } =
-    prepareForRunnerTransaction(sqlText);
+    prepareForRunnerTransaction(sqlText, dialect);
 
   // OUTSIDE the transaction, deliberately: `PRAGMA foreign_keys` is a no-op inside one,
   // and `defer_foreign_keys` cannot stand in for it here — `DROP TABLE`'s implicit delete

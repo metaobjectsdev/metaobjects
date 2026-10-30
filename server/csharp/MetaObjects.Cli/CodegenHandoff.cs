@@ -22,14 +22,6 @@ public static class CodegenHandoff
     public static bool HasGeneratorList(string projectRoot) =>
         File.Exists(Path.Combine(projectRoot, "codegen", "Generators.cs"));
 
-    /// <summary>True iff <paramref name="projectRoot"/> has a <c>codegen/Program.cs</c> that does not run
-    /// <c>Generators.All</c>: a 1.0 entry point, which declares its own list and ignores codegen/Generators.cs.</summary>
-    public static bool ProgramIgnoresList(string projectRoot)
-    {
-        var program = Path.Combine(projectRoot, "codegen", "Program.cs");
-        return File.Exists(program) && !File.ReadAllText(program).Contains("Generators.All", StringComparison.Ordinal);
-    }
-
     /// <summary>
     /// When <paramref name="projectRoot"/> has an ejected codegen project, run `dotnet
     /// run --project codegen -- &lt;args&gt;` (inheriting this process's console) and set

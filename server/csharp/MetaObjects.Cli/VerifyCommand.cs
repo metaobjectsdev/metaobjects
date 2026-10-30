@@ -123,12 +123,11 @@ public static class VerifyCommand
         public string? TemplatesRoot { get; init; }
         /// <summary>The committed output dir for the <c>--codegen</c> gate (<c>--out &lt;dir&gt;</c>).</summary>
         public string? OutDir { get; init; }
-        /// <summary>Code-gen namespace (only affects the temp regen; default mirrors `gen`).</summary>
-        public string Namespace { get; init; } = "Generated";
-        /// <summary>True when the user explicitly passed <c>--namespace</c>. When false and
-        /// <c>--codegen</c> runs, the namespace is inferred from the committed output so a
-        /// regen matches output generated with any namespace (avoids spurious drift).</summary>
-        public bool NamespaceExplicit { get; init; }
+        /// <summary><c>--namespace</c> for the codegen regen; null falls back to
+        /// <see cref="ConfiguredNamespace"/>, as <c>gen</c> does.</summary>
+        public string? Namespace { get; init; }
+        /// <summary><c>csharp.namespace</c> from <c>.metaobjects/config.json</c>, or null.</summary>
+        public string? ConfiguredNamespace { get; init; }
         /// <summary>Generator selection for the <c>--codegen</c> regen. There is no default suite: name the ones <c>gen</c> ran.</summary>
         public IReadOnlyList<string>? Generators { get; init; }
         /// <summary>Template root for render-helper/template generators in the codegen regen.</summary>
@@ -432,15 +431,6 @@ public static class VerifyCommand
                 ],
             };
 
-        // The C# namespace is embedded in every generated file (`namespace {ns};`).
-        // If the user did NOT pass --namespace, infer it from the committed output so
-        // the regen matches output produced with any namespace (otherwise every file
-        // would spuriously drift). An explicit --namespace always wins (back-compat /
-        // override); inference falling back to null leaves the default in place.
-        var ns = opts.Namespace;
-        if (!opts.NamespaceExplicit)
-            ns = Codegen.CodegenDrift.InferNamespace(opts.OutDir) ?? opts.Namespace;
-
         // C1 — same presence gate `gen` computes (GeneratorRegistry.IncludesNames over
         // the SAME resolved `names` list above), or a regen under a `--generators`
         // selection that excludes `names` would reference `<Entity>Names.*` while `gen`
@@ -448,7 +438,7 @@ public static class VerifyCommand
         // direction, a false-clean pass in the other.
         var config = new GenConfig
         {
-            OutDir = opts.OutDir, Namespace = ns,
+            OutDir = opts.OutDir, Namespace = opts.Namespace ?? opts.ConfiguredNamespace,
             IncludeNames = GeneratorRegistry.IncludesNames(names),
             // ADR-0058 — one project setting, read from the loaded root: `gen` produced
             // --out reading the SAME root's naming.columns, so this regen agrees with it

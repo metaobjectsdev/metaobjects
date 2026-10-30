@@ -224,6 +224,6 @@ public class ExtractorCodeGenerator extends GeneratorBase {
     }
 
     private static String escape(String s) {
-        return s.replace("\\", "\\\\").replace("\"", "\\\"");
+        return com.metaobjects.generator.util.JavaIdentifiers.escapeStringLiteral(s);
     }
 }

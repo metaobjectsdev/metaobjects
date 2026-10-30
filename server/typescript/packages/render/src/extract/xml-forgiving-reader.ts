@@ -17,12 +17,13 @@
  *  collides with a real attribute or child-element name. */
 export const TEXT_KEY = "#text";
 
-function quote(s: string): string {
+/** Escape regex metacharacters (equivalent of Java Pattern.quote). */
+export function quote(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 /** Find first regex match at index >= `from` (emulates Java Matcher.find(int)). */
-function matchFrom(source: string, flags: string, text: string, from: number): RegExpExecArray | null {
+export function matchFrom(source: string, flags: string, text: string, from: number): RegExpExecArray | null {
   const g = new RegExp(source, flags.includes("g") ? flags : flags + "g");
   g.lastIndex = from;
   return g.exec(text);
@@ -37,14 +38,92 @@ const CLOSE_TAG_SRC = "</([A-Za-z_][A-Za-z0-9_]*)\\s*>";
 // one attribute: name = "double" | 'single' | bareword.
 const ATTR_SRC = "([A-Za-z_:][A-Za-z0-9_:.\\-]*)\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s/>]+))";
 
-export function readXml(span: string | null | undefined, caseInsensitive: boolean): Record<string, unknown> {
+/** A character an identifier can end with: `<` right after one is a type argument, not a tag. */
+const IDENT_CHAR = /^[A-Za-z0-9_]$/;
+
+const COMMENT_OPEN = "<!--";
+const COMMENT_CLOSE = "-->";
+const CDATA_OPEN = "<![CDATA[";
+const CDATA_CLOSE = "]]>";
+/** The five predefined XML entities plus numeric character references. */
+const ENTITY_RE = /&(#x[0-9a-fA-F]+|#[0-9]+|lt|gt|amp|quot|apos);/g;
+const NAMED_ENTITIES: Readonly<Record<string, string>> = { lt: "<", gt: ">", amp: "&", quot: '"', apos: "'" };
+
+type XmlRegionKind = "comment" | "cdata";
+
+/**
+ * Rewrite every XML comment and CDATA section in `text` through `replace`, scanning left to
+ * right so a comment marker inside CDATA (or the reverse) is never mistaken for markup. An
+ * unclosed comment is left as text; an unclosed CDATA section runs to the end.
+ */
+function rewriteRegions(text: string, replace: (kind: XmlRegionKind, region: string) => string): string {
+  let out = "";
+  let pos = 0;
+  let from = 0;
+  for (;;) {
+    const c = text.indexOf(COMMENT_OPEN, from);
+    const d = text.indexOf(CDATA_OPEN, from);
+    const isComment = c >= 0 && (d < 0 || c < d);
+    const start = isComment ? c : d;
+    if (start < 0) break;
+    let end: number;
+    if (isComment) {
+      const e = text.indexOf(COMMENT_CLOSE, start + COMMENT_OPEN.length);
+      if (e < 0) {
+        from = start + COMMENT_OPEN.length;
+        continue;
+      }
+      end = e + COMMENT_CLOSE.length;
+    } else {
+      const e = text.indexOf(CDATA_CLOSE, start + CDATA_OPEN.length);
+      end = e < 0 ? text.length : e + CDATA_CLOSE.length;
+    }
+    out += text.substring(pos, start) + replace(isComment ? "comment" : "cdata", text.substring(start, end));
+    pos = end;
+    from = end;
+  }
+  return out + text.substring(pos);
+}
+
+/** `text` with comments and CDATA sections blanked to spaces (same length, so indices hold):
+ *  the view the tag locators search, so markup inside them is never located. */
+export function maskXmlNonMarkup(text: string): string {
+  return rewriteRegions(text, (_kind, region) => " ".repeat(region.length));
+}
+
+/** Drop comments; turn each CDATA section into its text with `& < >` entity-escaped, so the
+ *  tag scanner cannot split it and the entity decode restores it exactly. */
+function prepareXml(text: string): string {
+  return rewriteRegions(text, (kind, region) => {
+    if (kind === "comment") return "";
+    const body = region.endsWith(CDATA_CLOSE)
+      ? region.substring(CDATA_OPEN.length, region.length - CDATA_CLOSE.length)
+      : region.substring(CDATA_OPEN.length);
+    return body.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  });
+}
+
+/** Decode predefined entities and numeric references in one pass (so `&amp;lt;` is `&lt;`).
+ *  An unknown or out-of-range reference stays as written. */
+function decodeEntities(s: string): string {
+  if (!s.includes("&")) return s;
+  return s.replace(ENTITY_RE, (whole, body: string) => {
+    if (!body.startsWith("#")) return NAMED_ENTITIES[body] ?? whole;
+    const cp = body[1] === "x" ? parseInt(body.substring(2), 16) : parseInt(body.substring(1), 10);
+    const surrogate = cp >= 0xd800 && cp <= 0xdfff;
+    return cp >= 1 && cp <= 0x10ffff && !surrogate ? String.fromCodePoint(cp) : whole;
+  });
+}
+
+export function readXml(rawSpan: string | null | undefined, caseInsensitive: boolean): Record<string, unknown> {
   const out: Record<string, unknown> = {};
-  if (span == null || span.trim().length === 0) return out;
+  if (rawSpan == null || rawSpan.trim().length === 0) return out;
+  const span = prepareXml(rawSpan);
   const gt = span.indexOf(">");
   if (gt < 0) return out;
   const rootEnd = span.lastIndexOf("</");
   const inner = span.substring(gt + 1, rootEnd < 0 || rootEnd <= gt ? span.length : rootEnd);
-  parseChildren(inner, caseInsensitive, out, null);
+  parseChildren(inner, caseInsensitive, out, null, false);
   return out;
 }
 
@@ -59,25 +138,41 @@ export function readXmlRootless(
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   if (text == null || text.trim().length === 0) return out;
-  parseChildren(text, caseInsensitive, out, null);
+  parseChildren(prepareXml(text), caseInsensitive, out, null, false);
   return out;
 }
 
 /**
  * Parse `inner`'s elements into `out`. When `loose` is non-null, the text BETWEEN those
  * elements (an element's own text in mixed content) is appended to it, one segment per gap.
+ * `literalUnclosed` is set for the body of an element that DID close: an open tag in there that
+ * directly follows an identifier character and has no close tag anywhere after it
+ * (`List<int> and ...`) is prose, not an element. One after `>`, whitespace or the start of the
+ * body is a child whose close the model forgot.
  */
 function parseChildren(
   inner: string,
   ci: boolean,
   out: Record<string, unknown>,
   loose: string[] | null,
+  literalUnclosed: boolean,
 ): void {
   const flags = ci ? "i" : "";
   let pos = 0;
+  let scan = 0;
   for (;;) {
-    const m = matchFrom(OPEN_TAG_SRC, flags, inner, pos);
+    const m = matchFrom(OPEN_TAG_SRC, flags, inner, scan);
     if (m == null) break;
+    const afterOpen = m.index + m[0].length;
+    if (
+      literalUnclosed &&
+      IDENT_CHAR.test(inner[m.index - 1] ?? "") &&
+      !(m[2] ?? "").trimEnd().endsWith("/") &&
+      matchFrom(CLOSE_TAG_SRC, flags, inner, afterOpen) == null
+    ) {
+      scan = afterOpen;
+      continue;
+    }
     loose?.push(inner.substring(pos, m.index));
     const tag = m[1] ?? "";
     const key = ci ? tag.toLowerCase() : tag;
@@ -90,6 +185,7 @@ function parseChildren(
     if (selfClosing) {
       accumulate(out, key, Object.keys(attrs).length === 0 ? "" : attrs);
       pos = m.index + m[0].length;
+      scan = pos;
       continue;
     }
 
@@ -137,8 +233,9 @@ function parseChildren(
     }
 
     const content = inner.substring(contentStart, contentEnd);
-    accumulate(out, key, combine(attrs, content, ci));
+    accumulate(out, key, combine(attrs, content, ci, close != null));
     pos = next;
+    scan = next;
   }
   loose?.push(inner.substring(pos));
 }
@@ -168,11 +265,11 @@ function findStrayClose(inner: string, from: number, to: number, ci: boolean): [
  * keeps BOTH: the children, and the element's own text under TEXT_KEY, so a scalar or
  * `@xmlText` consumer still reads the prose around a child element.
  */
-function combine(attrs: Record<string, unknown>, content: string, ci: boolean): unknown {
+function combine(attrs: Record<string, unknown>, content: string, ci: boolean, closed: boolean): unknown {
   if (content.includes("<")) {
     const nested: Record<string, unknown> = {};
     const loose: string[] = [];
-    parseChildren(content, ci, nested, loose);
+    parseChildren(content, ci, nested, loose, closed);
     if (Object.keys(nested).length > 0) {
       // attributes first; a child element wins a name collision
       const merged: Record<string, unknown> = { ...attrs, ...nested };
@@ -191,14 +288,14 @@ function mixedText(segments: readonly string[], ci: boolean): string {
   const parts: string[] = [];
   for (const seg of segments) {
     closeRe.lastIndex = 0;
-    const t = seg.replace(closeRe, "").trim();
+    const t = decodeEntities(seg.replace(closeRe, "").trim());
     if (t.length > 0) parts.push(t);
   }
   return parts.join(" ");
 }
 
 function textValue(attrs: Record<string, unknown>, content: string): unknown {
-  const text = content.trim();
+  const text = decodeEntities(content.trim());
   if (Object.keys(attrs).length === 0) return text;
   return { ...attrs, [TEXT_KEY]: text };
 }
@@ -212,7 +309,7 @@ function parseAttrs(rawAttrs: string, ci: boolean): Record<string, unknown> {
     const rawName = a[1];
     if (rawName === undefined) continue; // group 1 is mandatory in a match; guards strict TS
     const name = ci ? rawName.toLowerCase() : rawName;
-    const val = a[2] ?? a[3] ?? a[4] ?? "";
+    const val = decodeEntities(a[2] ?? a[3] ?? a[4] ?? "");
     if (!Object.prototype.hasOwnProperty.call(attrs, name)) attrs[name] = val;
   }
   return attrs;

@@ -25,6 +25,7 @@ public class VerifyConformanceTests
         Verify.ERR_PARTIAL_UNRESOLVED,
         Verify.ERR_REQUIRED_SLOT_UNUSED,
         Verify.ERR_OUTPUT_TAG_MISSING,
+        Verify.ERR_TEMPLATE_SYNTAX,
     };
 
     private static string CorpusRoot()

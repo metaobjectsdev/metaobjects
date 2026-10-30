@@ -38,7 +38,8 @@ from ..shared.base_types import TYPE_FIELD, TYPE_OBJECT
 _NUMERIC_DISCRIMINATOR_SUBTYPES = frozenset(
     {FIELD_SUBTYPE_INT, FIELD_SUBTYPE_LONG}
 )
-_INT_RE = re.compile(r"^-?\d+$")
+# ASCII digits only and `\Z`: `\d` matches every Unicode digit and `$` matches before a trailing newline.
+_INT_RE = re.compile(r"-?[0-9]+\Z")
 
 
 def _find_field_on_entity(entity: MetaData, name: str) -> MetaData | None:
@@ -154,8 +155,13 @@ def validate_discriminator(root: MetaData, errors: list[MetaError]) -> None:
     # Pass 3: ERR_DISCRIMINATOR_VALUE_DUPLICATE within each root's subtypes.
     for _disc_root, bindings in bindings_by_root:
         seen: dict[str, MetaData] = {}
+        root_field_name = _disc_root.attr(OBJECT_ATTR_DISCRIMINATOR)  # Python attr() is own-only: the root declares it
+        root_field = _find_field_on_entity(_disc_root, root_field_name) if isinstance(root_field_name, str) else None
+        numeric_root = root_field is not None and root_field.sub_type in _NUMERIC_DISCRIMINATOR_SUBTYPES
         for subtype, value in bindings:
-            prev = seen.get(value)
+            # "1" and "01" are one value to a numeric column, so they are one claim.
+            key = str(int(value)) if numeric_root and _INT_RE.match(value) else value
+            prev = seen.get(key)
             if prev is not None:
                 errors.append(
                     MetaError(
@@ -167,7 +173,7 @@ def validate_discriminator(root: MetaData, errors: list[MetaError]) -> None:
                     )
                 )
             else:
-                seen[value] = subtype
+                seen[key] = subtype
 
     # Pass 4: ERR_DISCRIMINATOR_VALUE_MISSING — every concrete entity that extends
     # a @discriminator-bearing root must declare a value.

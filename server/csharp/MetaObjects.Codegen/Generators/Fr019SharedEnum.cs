@@ -134,6 +134,6 @@ public static class Fr019SharedEnum
                 $"@provided but no C# namespace is configured to reference it from. Set " +
                 $"Convention.ProvidedEnumPrepend, map its package in PackageNamespaces, " +
                 $"or set the legacy ProvidedEnumNamespace fallback.");
-        return $"{ns}.{shared.Name}";
+        return $"{PackageBindingResolver.ValidNamespace(ns, shared.Package)}.{shared.Name}";
     }
 }

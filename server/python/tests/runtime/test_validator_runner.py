@@ -138,6 +138,12 @@ def test_regex_is_full_match() -> None:
     }]
 
 
+def test_regex_digit_class_is_ascii_only() -> None:
+    e = _load(_with(_string("code"), {"validator.regex": {"@pattern": "\\d+"}}))
+    assert _rules(e, {"code": "123"}) == []
+    assert _rules(e, {"code": "\u0661\u0662"}) == ["code:regex"]  # Arabic-Indic digits
+
+
 def test_regex_rejects_a_trailing_newline() -> None:
     e = _load(_with(_string("code"), {"validator.regex": {"@pattern": "[A-Z]+"}}))
     assert _rules(e, {"code": "ABC\n"}) == ["code:regex"]

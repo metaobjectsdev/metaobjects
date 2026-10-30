@@ -8,6 +8,7 @@ import {
   ERR_PARTIAL_UNRESOLVED,
   ERR_REQUIRED_SLOT_UNUSED,
   ERR_OUTPUT_TAG_MISSING,
+  ERR_TEMPLATE_SYNTAX,
   type PayloadField,
   type VerifyError,
   type VerifyOptions,
@@ -35,6 +36,7 @@ const VERIFY_CODES = new Set<string>([
   ERR_PARTIAL_UNRESOLVED,
   ERR_REQUIRED_SLOT_UNUSED,
   ERR_OUTPUT_TAG_MISSING,
+  ERR_TEMPLATE_SYNTAX,
 ]);
 
 interface FixtureOptions {

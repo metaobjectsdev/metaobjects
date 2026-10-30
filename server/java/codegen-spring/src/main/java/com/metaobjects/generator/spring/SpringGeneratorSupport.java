@@ -635,7 +635,7 @@ public final class SpringGeneratorSupport {
 
     /** Escape a regex/string literal for safe embedding in generated Java source. */
     public static String escapeJavaString(String s) {
-        return s.replace("\\", "\\\\").replace("\"", "\\\"");
+        return com.metaobjects.generator.util.JavaIdentifiers.escapeStringLiteral(s);
     }
 
     /**

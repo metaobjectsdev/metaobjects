@@ -119,3 +119,27 @@ describe("WARN_ENUM_NORMALIZE_AMBIGUOUS scope", () => {
     expect(warnings.filter((x) => x.code === "WARN_ENUM_NORMALIZE_AMBIGUOUS").length).toBe(1);
   });
 });
+
+describe("ERR_ENUM_NORMALIZE_COLLISION", () => {
+  const codes = async (values: string[], normalize?: string) =>
+    (await load(enumDoc(values, normalize))).errors.map((e) => (e as { code?: string }).code);
+
+  test("default strip: members folding to one key are refused, naming both", async () => {
+    expect(await codes(["READ_ONLY", "READONLY", "WRITE"])).toContain("ERR_ENUM_NORMALIZE_COLLISION");
+    const { errors } = await load(enumDoc(["READ_ONLY", "READONLY", "WRITE"]));
+    expect(errors[0]!.message).toContain("'READ_ONLY', 'READONLY'");
+  });
+
+  test("explicit strip is refused too", async () => {
+    expect(await codes(["X_1", "X1"], "strip")).toContain("ERR_ENUM_NORMALIZE_COLLISION");
+  });
+
+  test("collapse and none do not error", async () => {
+    expect(await codes(["READ_ONLY", "READONLY"], "collapse")).not.toContain("ERR_ENUM_NORMALIZE_COLLISION");
+    expect(await codes(["READ_ONLY", "READONLY"], "none")).not.toContain("ERR_ENUM_NORMALIZE_COLLISION");
+  });
+
+  test("collision-free control loads", async () => {
+    expect(await codes(["READ_ONLY", "WRITE", "ADMIN"])).toEqual([]);
+  });
+});

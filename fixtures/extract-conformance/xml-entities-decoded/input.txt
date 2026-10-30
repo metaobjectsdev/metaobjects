@@ -1,0 +1,1 @@
+<doc><title>A &amp; B &lt;ok&gt; &#65;&#x42;</title><note>&amp;lt; stays</note></doc>

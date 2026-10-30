@@ -266,4 +266,16 @@ public class CSharpNamingTests
         Assert.Throws<InvalidOperationException>(
             () => CSharpNaming.AssertNoCollectionNameCollisions(entities));
     }
+
+    [Fact]
+    public void AssertNoCollectionNameCollisions_throws_forRouteSegmentTwins()
+    {
+        // ApiKey / APIKey pluralize to different names but both snake_case to /api_keys.
+        var entities = MultiEntityRoot(("ApiKey", false), ("APIKey", false));
+        var ex = Assert.Throws<InvalidOperationException>(
+            () => CSharpNaming.AssertNoCollectionNameCollisions(entities));
+        Assert.Contains("\"ApiKey\"", ex.Message);
+        Assert.Contains("\"APIKey\"", ex.Message);
+        Assert.Contains("api_keys", ex.Message);
+    }
 }

@@ -162,7 +162,7 @@ describe("D3 — a view whose definition differs says so", () => {
       expect(c !== undefined && "reason" in c ? c.reason : undefined).toEqual({
         kind: "definition",
         compared: "text",
-        firstDifference: { expected: "select id, label as title from t", actual: "select id, label from t" },
+        firstDifference: { expected: "SELECT id, label AS title FROM t", actual: "SELECT id, label FROM t" },
       });
     });
 

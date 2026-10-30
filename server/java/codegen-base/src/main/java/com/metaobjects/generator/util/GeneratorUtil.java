@@ -1,6 +1,8 @@
 package com.metaobjects.generator.util;
 
 import com.metaobjects.MetaData;
+import com.metaobjects.MetaDataException;
+import com.metaobjects.config.Scope;
 import com.metaobjects.generator.MetaDataFilters;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.object.MetaObject;
@@ -168,29 +170,91 @@ public class GeneratorUtil {
         return false;
     }
 
+    /**
+     * Whether {@code metaDataName} matches the {@code <filters>} name glob. The grammar is
+     * {@link Scope#compilePattern}'s, the one every port's {@code scope} uses: {@code *} inside a
+     * segment never crosses {@code ::}, a segment that is exactly {@code **} spans one or more
+     * segments, and every other character (including {@code ?}, {@code @} and regex
+     * metacharacters) is literal.
+     *
+     * <p>Before 8.2.0 {@code *} crossed {@code ::}, {@code @} matched one segment and {@code ?} one
+     * character. A pattern the old rule matched but this one does not would silently drop objects
+     * from the output, so it fails instead: the error names the pattern and its {@code **}
+     * replacement.
+     *
+     * @throws MetaDataException when the legacy rule matches this name and the current one does not
+     */
     public static boolean filterByName( String metaDataName, String nameFilter) {
-        return Pattern.compile(createRegexFromGlob(nameFilter)).matcher( metaDataName ).matches();
+        boolean matches = Scope.compilePattern(nameFilter).matcher( metaDataName ).matches();
+        if (!matches && Pattern.compile(createLegacyRegexFromGlob(nameFilter)).matcher( metaDataName ).matches()) {
+            throw new MetaDataException( vanishingFilterMessage( metaDataName, nameFilter ));
+        }
+        return matches;
     }
 
-    private static String createRegexFromGlob(String glob)
+    private static String vanishingFilterMessage( String metaDataName, String nameFilter ) {
+        StringBuilder msg = new StringBuilder("The <filters> pattern \"").append(nameFilter)
+            .append("\" no longer selects \"").append(metaDataName)
+            .append("\": since 8.2.0 a filter uses the scope grammar, where '*' stops at '::', '**' spans")
+            .append(" packages, and '@' and '?' are ordinary characters. Without this error the object would")
+            .append(" silently drop out of the generated output.");
+        String suggestion = suggestReplacement( metaDataName, nameFilter );
+        if (suggestion != null) {
+            msg.append(" Replace it with \"").append(suggestion).append("\".");
+        } else {
+            msg.append(" Rewrite it with '*' (within a package) and '**' (across packages).");
+        }
+        return msg.toString();
+    }
+
+    /** The legacy pattern rewritten in the current grammar, or null when no rewrite selects {@code name}. */
+    private static String suggestReplacement( String name, String glob ) {
+        List<String> out = new ArrayList<>();
+        for (String raw : glob.split( Pattern.quote(MetaData.PKG_SEPARATOR), -1 )) {
+            boolean wild = raw.contains("*");
+            boolean bare = wild && raw.chars().allMatch( c -> c == '*' );
+            String segment = raw.replace('@', '*'); // the old one-segment wildcard is this grammar's '*'
+            if (wild && bare) {
+                if (out.isEmpty() || !out.get(out.size()-1).equals("**")) out.add("**");
+            } else if (wild) {
+                if (out.isEmpty() || !out.get(out.size()-1).equals("**")) out.add("**");
+                out.add(segment);
+            } else {
+                out.add(segment);
+            }
+        }
+        String candidate = String.join( MetaData.PKG_SEPARATOR, out );
+        try {
+            return Scope.compilePattern(candidate).matcher(name).matches() ? candidate : null;
+        } catch (MetaDataException e) {
+            return null;
+        }
+    }
+
+    /**
+     * The pre-8.2.0 {@code <filters>} glob, kept only to detect a filter whose selection shrank:
+     * {@code *} any run (crossing {@code ::}), {@code @} one segment, {@code ?} one character,
+     * every other character quoted.
+     */
+    private static String createLegacyRegexFromGlob(String glob)
     {
-        String out = "^";
+        StringBuilder out = new StringBuilder("^");
+        StringBuilder literal = new StringBuilder();
         for(int i = 0; i < glob.length(); ++i)
         {
             final char c = glob.charAt(i);
-            switch(c)
-            {
-                case '*': out += ".*"; break;
-                case '@': out += "[^:]+"; break;
-                case '?': out += "."; break;
-                case '.': out += "\\."; break;
-                case ':': out += "\\:"; break;      // TODO:  This doesn't seem to work on enforcing the ::'s as a separator for *
-                case '\\': out += "\\\\"; break;
-                default: out += c;
-            }
+            String wildcard = switch(c) {
+                case '*' -> ".*";
+                case '@' -> "[^:]+";
+                case '?' -> ".";
+                default -> null;
+            };
+            if (wildcard == null) { literal.append(c); continue; }
+            if (literal.length() > 0) { out.append(Pattern.quote(literal.toString())); literal.setLength(0); }
+            out.append(wildcard);
         }
-        out += '$';
-        return out;
+        if (literal.length() > 0) out.append(Pattern.quote(literal.toString()));
+        return out.append('$').toString();
     }
 
     public static String toRelativePackage( String p1, String p2 ) {

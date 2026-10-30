@@ -120,6 +120,9 @@ export const ERROR_CODES = [
   "ERR_DERIVED_FIELD_NO_READ_SOURCE",
   "ERR_ENTITY_PRIMARY_SOURCE_READONLY",
   "ERR_INVALID_TEMPLATE",
+  // Two fields of one stored object resolve to the same PHYSICAL column (snake_case
+  // folds `userId` and `userID` together, or two fields share an @column).
+  "ERR_COLUMN_NAME_COLLISION",
   // FR-017 — M:N relationship validation (slim vocabulary): @through must name a
   // junction declaring two identity.reference children; @sourceRefField must match
   // one of them; M:N attrs are invalid on a 1:N (@cardinality:one / no @through).
@@ -275,6 +278,11 @@ export const ERROR_CODES = [
   // an integer array. An array-of-enum stays string-backed: drop @intValueMap,
   // or make the field scalar.
   "ERR_ENUM_INT_VALUE_MAP_ARRAY",
+  // Two declared members of one field.enum normalize to the same key under the
+  // default `@normalize: strip` (upper-case, delete everything outside A-Z0-9), so
+  // one is unreachable and a reply naming it coerces to the other. Rename a member,
+  // or set `@normalize: collapse` / `none`.
+  "ERR_ENUM_NORMALIZE_COLLISION",
   // Phase-1 metadata-source-resolution — a path source declared in
   // .metaobjects/config.json does not exist on disk.
   "ERR_SOURCE_UNRESOLVED",

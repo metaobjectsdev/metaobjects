@@ -256,6 +256,9 @@ public final class ErrorMessageConstants {
      */
     public static final String ERR_INVALID_INDEX = "ERR_INVALID_INDEX";
 
+    /** Cross-language contract: {@code ERR_COLUMN_NAME_COLLISION}. */
+    public static final String ERR_COLUMN_NAME_COLLISION = "ERR_COLUMN_NAME_COLLISION";
+
     /** FR-039 — a retired requirement may not declare @implementedBy. */
     public static final String ERR_REQUIREMENT_RETIRED_HAS_IMPLEMENTORS =
             "ERR_REQUIREMENT_RETIRED_HAS_IMPLEMENTORS";
@@ -305,6 +308,9 @@ public final class ErrorMessageConstants {
      * <p>Cross-language contract: {@code ERR_ENUM_INT_VALUE_MAP_ARRAY}.
      */
     public static final String ERR_ENUM_INT_VALUE_MAP_ARRAY = "ERR_ENUM_INT_VALUE_MAP_ARRAY";
+
+    /** Cross-language contract: {@code ERR_ENUM_NORMALIZE_COLLISION}. */
+    public static final String ERR_ENUM_NORMALIZE_COLLISION = "ERR_ENUM_NORMALIZE_COLLISION";
 
     /**
      * #208 (design doc §5 R6) warning: an {@code origin.*}-bearing (derived) own

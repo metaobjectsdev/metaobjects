@@ -129,7 +129,12 @@ export function validateDiscriminator(root: MetaData): ParseError[] {
   for (const [, bindings] of bindingsByRoot) {
     const seen = new Map<string, MetaData>();
     for (const b of bindings) {
-      const prev = seen.get(b.value);
+      // "1" and "01" are one value to a numeric column, so they are one claim.
+      const key =
+        NUMERIC_DISCRIMINATOR_SUBTYPES.has(b.discField.subType) && /^-?[0-9]+$/.test(b.value)
+          ? BigInt(b.value).toString()
+          : b.value;
+      const prev = seen.get(key);
       if (prev !== undefined) {
         errors.push(
           new ParseError(
@@ -139,7 +144,7 @@ export function validateDiscriminator(root: MetaData): ParseError[] {
           ),
         );
       } else {
-        seen.set(b.value, b.subtype);
+        seen.set(key, b.subtype);
       }
     }
   }

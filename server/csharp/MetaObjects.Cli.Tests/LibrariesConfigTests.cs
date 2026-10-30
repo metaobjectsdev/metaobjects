@@ -123,7 +123,7 @@ public sealed class LibrariesConfigTests : IDisposable
         var outDir = Path.Combine(_tmp, "apidocs");
         var (exitCode, stdout, stderr) = OwnedRunner.Run(
             _tmp, [new MetaObjects.Codegen.Generators.ApiDocsGenerator { OutDir = outDir }],
-            "gen", modelDir, "--out", Path.Combine(_tmp, "generated"));
+            "gen", modelDir, "--out", Path.Combine(_tmp, "generated"), "--namespace", "Acme.Generated");
 
         Assert.True(exitCode == 0, $"exit={exitCode}\nstdout={stdout}\nstderr={stderr}");
         Assert.NotEmpty(Directory.GetFiles(outDir, "AgentCall.md", SearchOption.AllDirectories));

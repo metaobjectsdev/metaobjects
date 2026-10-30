@@ -1,0 +1,44 @@
+{
+  "metadata.root": {
+    "package": "demo",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Auth",
+          "@discriminator": "kind",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "auths"
+              }
+            },
+            {
+              "field.int": {
+                "name": "kind"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Five",
+          "extends": "demo::Auth",
+          "@discriminatorValue": "5\n",
+          "children": []
+        }
+      }
+    ]
+  }
+}

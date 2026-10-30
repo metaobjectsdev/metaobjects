@@ -76,7 +76,7 @@ export type {
   ViewDescriptor, ViewChangeReason, FkAction, NameChange,
   Change, ChangeKind, ChangeStatus,
   AllowOptions, AmbiguousChange, AmbiguousResolution, AmbiguousCallback,
-  DiffResult, DataHazard, DeclaredRename, EmitResult, Dialect,
+  DiffResult, DataHazard, DeclaredRename, EmitResult, Dialect, ExprCanonPath,
 } from "./types.js";
 export type { DiffArgs } from "./diff/index.js";
 export type { EmitOptions } from "./emit/index.js";
@@ -97,6 +97,9 @@ export type { ExactViewColumn, ViewReplaceEvidence, ViewReplaceProbe } from "./v
 // Postgres's own spelling of an expected CHECK / index expression is asked of the database the
 // same way (rolled-back scratch table); the string normaliser covers whatever it cannot answer.
 export { postgresExprCanonProbe } from "./expr-canon-probe.js";
+export { postgresShadowSchema, canonProbeOverShadow } from "./shadow-canon.js";
+export type { ShadowHandle, ShadowOpener } from "./shadow-canon.js";
+export type { ShadowCatalog, ShadowSchemaSource } from "./shadow-expected.js";
 export type { ExprCanon, ExprCanonProbe, IndexExprCanon } from "./expr-canon.js";
 // `baseline --from-db`: record the generated text for an expression the probe proved equal.
 export { adoptGeneratedSpelling } from "./snapshot/adopt-generated-spelling.js";
@@ -157,5 +160,5 @@ export {
   type D1Binding,
   type WranglerConfig,
 } from "./wrangler-config.js";
-export { splitSqlStatements } from "./sql/split-statements.js";
+export { splitSqlStatements, type SplitSqlDialect } from "./sql/split-statements.js";
 export { viewFingerprint } from "./view-fingerprint.js";

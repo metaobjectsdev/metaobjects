@@ -88,7 +88,7 @@ public static class PackageBindingResolver
         string? package,
         string? typeName = null,
         string? fallbackContext = null)
-        => ResolveImpl(config, package, typeName, useProvidedEnumPrepend: false, fallbackContext);
+        => ValidNamespace(ResolveImpl(config, package, typeName, useProvidedEnumPrepend: false, fallbackContext), package);
 
     /// <summary>Resolve for an abstract <c>field.enum</c> with <c>@provided: true</c>
     /// (FR-019 shared-enum reference case). Layer order is the same as <see cref="Resolve"/>,
@@ -99,7 +99,7 @@ public static class PackageBindingResolver
         string? package,
         string? typeName = null,
         string? fallbackContext = null)
-        => ResolveImpl(config, package, typeName, useProvidedEnumPrepend: true, fallbackContext);
+        => ValidNamespace(ResolveImpl(config, package, typeName, useProvidedEnumPrepend: true, fallbackContext), package);
 
     /// <summary>Resolve via the layered map (TypeOverrides → PackageNamespaces → Convention)
     /// WITHOUT applying the unmapped-strategy fallback. Returns null when none of the layers
@@ -111,6 +111,44 @@ public static class PackageBindingResolver
         string? package,
         string? typeName = null,
         bool useProvidedEnumPrepend = false)
+        => TryResolveUnchecked(config, package, typeName, useProvidedEnumPrepend) is { } ns
+            ? ValidNamespace(ns, package)
+            : null;
+
+    /// <summary><paramref name="ns"/> when it is a dotted path of C# identifiers (<c>Acme.Shop</c>);
+    /// otherwise an <see cref="InvalidOperationException"/> naming the bad part and, when given, the
+    /// metadata <paramref name="package"/> it came from, so a namespace the compiler would reject
+    /// fails generation instead of the adopter's build. Every namespace a binding layer or the flat
+    /// fallback produces passes through here once, at the resolver.</summary>
+    public static string ValidNamespace(string ns, string? package = null)
+    {
+        var bad = ns.Split('.').FirstOrDefault(s =>
+            s.Length == 0 || !(char.IsLetter(s[0]) || s[0] == '_') || !s.All(c => char.IsLetterOrDigit(c) || c == '_')
+            || ReservedKeywords.Contains(s));
+        if (bad is null) return ns;
+        var from = string.IsNullOrEmpty(package) ? "" : $" (from metadata package \"{package}\")";
+        var why = ReservedKeywords.Contains(bad) ? " (a reserved C# keyword)" : "";
+        throw new InvalidOperationException(
+            $"\"{ns}\" is not a C# namespace{from}: \"{bad}\" is not an identifier{why}.");
+    }
+
+    private static readonly HashSet<string> ReservedKeywords = new(StringComparer.Ordinal)
+    {
+        "abstract", "as", "base", "bool", "break", "byte", "case", "catch", "char", "checked", "class", "const",
+        "continue", "decimal", "default", "delegate", "do", "double", "else", "enum", "event", "explicit",
+        "extern", "false", "finally", "fixed", "float", "for", "foreach", "goto", "if", "implicit", "in", "int",
+        "interface", "internal", "is", "lock", "long", "namespace", "new", "null", "object", "operator", "out",
+        "override", "params", "private", "protected", "public", "readonly", "ref", "return", "sbyte", "sealed",
+        "short", "sizeof", "stackalloc", "static", "string", "struct", "switch", "this", "throw", "true", "try",
+        "typeof", "uint", "ulong", "unchecked", "unsafe", "ushort", "using", "virtual", "void", "volatile",
+        "while",
+    };
+
+    private static string? TryResolveUnchecked(
+        GenConfig config,
+        string? package,
+        string? typeName,
+        bool useProvidedEnumPrepend)
     {
         // 1. Type-level override — wins absolutely for both paths.
         if (!string.IsNullOrEmpty(package) && !string.IsNullOrEmpty(typeName))

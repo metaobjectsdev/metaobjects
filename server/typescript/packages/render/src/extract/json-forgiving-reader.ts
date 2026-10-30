@@ -127,17 +127,44 @@ class Reader {
   private readString(quoteChar: string): string {
     this.i++; // opening quote
     let sb = "";
-    let esc = false;
     while (this.i < this.s.length) {
       const c = this.s.charAt(this.i++);
-      if (esc) {
-        sb += unescape(c);
-        esc = false;
-      } else if (c === "\\") esc = true;
-      else if (c === quoteChar) return sb;
+      if (c === "\\") {
+        sb += this.readEscape();
+      } else if (c === quoteChar) return sb;
       else sb += c;
     }
     return sb; // unterminated string → return what we have
+  }
+
+  /** The escape after a consumed backslash: the full JSON grammar (\\uXXXX, with surrogate pairs
+   *  carried through as two code units). An unknown escape keeps its character; a truncated
+   *  \\u keeps its text, so a cut-off reply still yields what it has. */
+  private readEscape(): string {
+    if (this.i >= this.s.length) return "";
+    const c = this.s.charAt(this.i++);
+    switch (c) {
+      case "n":
+        return "\n";
+      case "t":
+        return "\t";
+      case "r":
+        return "\r";
+      case "b":
+        return "\b";
+      case "f":
+        return "\f";
+      case "u": {
+        const hex = this.s.substring(this.i, this.i + 4);
+        if (/^[0-9a-fA-F]{4}$/.test(hex)) {
+          this.i += 4;
+          return String.fromCharCode(Number.parseInt(hex, 16));
+        }
+        return "u";
+      }
+      default:
+        return c; // \" \\ \/ and any unknown escape
+    }
   }
 
   private readBareScalar(): string | null | typeof NULL_LITERAL {
@@ -185,19 +212,6 @@ export function commentEnd(s: string, i: number): number {
   }
   const close = s.indexOf("*/", i + 2);
   return close < 0 ? s.length : close + 2;
-}
-
-function unescape(c: string): string {
-  switch (c) {
-    case "n":
-      return "\n";
-    case "t":
-      return "\t";
-    case "r":
-      return "\r";
-    default:
-      return c;
-  }
 }
 
 function isPlainObject(o: unknown): boolean {

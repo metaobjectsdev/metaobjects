@@ -49,6 +49,7 @@ export const AllowTokenEnum = z.enum([
   "nullable-to-not-null",
   "drop-identity-default",
   "drop-unmanaged",
+  "drop-comment",
 ]);
 
 // .strict(), like every other object in this schema: `.partial()` alone leaves
@@ -67,6 +68,8 @@ const MigrateFormatEnum = z.enum(["default", "flyway"]);
 const MigrateBlock = z.object({
   outDir: z.string(),
   databaseUrl: z.string(),
+  /** Postgres: a scratch database `meta verify --db` and `meta migrate` apply the expected schema to. */
+  shadowDatabaseUrl: z.string(),
   dialect: DialectEnum,
   format: MigrateFormatEnum,
   onAmbiguous: OnAmbiguousEnum,
@@ -228,10 +231,14 @@ export const ConfigSchema = z.object({
     .optional(),
   /**
    * C#-scoped settings. `outDir` is where `dotnet meta gen` writes and a bare `dotnet meta
-   * verify` diffs, relative to the directory holding `.metaobjects/`. Only the C# port reads
-   * it; it is declared here so the shared file validates and this reader does not warn on it.
+   * verify` diffs, relative to the directory holding `.metaobjects/`; `namespace` is the C#
+   * namespace generated types that no package binding places land in. Only the C# port reads
+   * them; they are declared here so the shared file validates and this reader does not warn on them.
    */
-  csharp: z.strictObject({ outDir: z.string().min(1).optional() }).optional(),
+  csharp: z.strictObject({
+    outDir: z.string().min(1).optional(),
+    namespace: z.string().min(1).optional(),
+  }).optional(),
 }).strict();
 
 export type Config = z.infer<typeof ConfigSchema>;

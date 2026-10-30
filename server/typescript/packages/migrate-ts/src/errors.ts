@@ -47,6 +47,7 @@ const ALLOW_OPTION_BY_KIND: Partial<Record<ChangeKind, keyof AllowOptions>> = {
   // Postgres auto-sequence default with no declared @generation (see
   // diff/status.ts) — and allow.dropIdentityDefault is the flag that enables it.
   "change-column-default": "dropIdentityDefault",
+  "change-column-identity": "dropIdentityDefault",
 };
 
 /**
@@ -73,7 +74,10 @@ function changeLocator(c: Change): string {
     case "change-column-type":
     case "change-column-nullable":
     case "change-column-default":
+    case "change-column-identity":
       return `${c.table}.${"column" in c ? c.column : c.from}`;
+    case "change-comment":
+      return c.column !== undefined ? `${c.table}.${c.column}` : c.table;
     case "add-column":
       return `${c.table}.${c.column.name}`;
     case "drop-table":

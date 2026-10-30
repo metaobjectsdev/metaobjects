@@ -8,6 +8,7 @@ from __future__ import annotations
 import re
 
 from metaobjects.render.extract.json_forgiving_reader import comment_end
+from metaobjects.render.extract.xml_forgiving_reader import mask_non_markup
 
 
 def json(text: str | None) -> str | None:
@@ -84,17 +85,29 @@ def _scan_balanced(s: str, open_idx: int) -> int:
 
 
 def xml(text: str | None, root_name: str | None, case_insensitive: bool) -> str | None:
-    """Span of ``<root>...</root>``; if close absent, opener to end; ``None`` if no opener."""
+    """Span of ``<root>...</root>``; if close absent, opener to end; ``None`` if no opener.
+
+    Comments and CDATA are not searched, and when another opener of the same root sits between
+    the first one and its close (the tag mentioned in prose, then the real element) the span
+    starts at the LAST such opener: a root does not nest in itself."""
     if text is None or root_name is None:
         return None
     flags = re.IGNORECASE if case_insensitive else 0
+    view = mask_non_markup(text)
     open_re = re.compile("<" + re.escape(root_name) + r"(\s[^>]*)?>", flags)
-    open_m = open_re.search(text)
+    open_m = open_re.search(view)
     if open_m is None:
         return None
     start = open_m.start()
     close_re = re.compile("</" + re.escape(root_name) + r"\s*>", flags)
-    close_m = close_re.search(text, open_m.end())
-    if close_m is not None:
-        return text[start : close_m.end()]
-    return text[start:]
+    close_m = close_re.search(view, open_m.end())
+    if close_m is None:
+        return text[start:]
+    at = open_m.end()
+    while True:
+        nxt = open_re.search(view, at)
+        if nxt is None or nxt.start() >= close_m.start():
+            break
+        start = nxt.start()
+        at = nxt.end()
+    return text[start : close_m.end()]

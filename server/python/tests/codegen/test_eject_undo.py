@@ -143,3 +143,34 @@ def test_undo_with_a_repeated_name_removes_it_once(tmp_path: Path, monkeypatch, 
     capsys.readouterr()
     assert main(["eject", "--undo", "entity", "entity"]) == 0
     assert not (tmp_path / GEN / "entity.py").exists()
+
+
+def test_undo_keeps_a_copy_whose_only_edit_is_a_reordering(tmp_path: Path, monkeypatch, capsys) -> None:
+    monkeypatch.chdir(tmp_path)
+    assert main(["eject", "entity", "names"]) == 0
+    path = tmp_path / GEN / "names.py"
+    lines = path.read_text().splitlines()
+    # Swap two adjacent, different, non-blank lines: the same lines in another order.
+    i = next(i for i in range(len(lines) - 1)
+             if lines[i].strip() and lines[i + 1].strip() and lines[i].strip() != lines[i + 1].strip())
+    lines[i], lines[i + 1] = lines[i + 1], lines[i]
+    path.write_text("\n".join(lines) + "\n")
+    capsys.readouterr()
+    assert main(["eject", "--undo"]) == 0
+    assert not (tmp_path / GEN / "entity.py").exists()
+    assert path.exists()
+    assert main(["eject", "--undo", "names"]) != 0
+    assert path.exists()
+    assert main(["eject", "--undo", "--force", "names"]) == 0
+    assert not path.exists()
+
+
+def test_undo_removes_a_copy_whose_only_edit_is_whitespace(tmp_path: Path, monkeypatch, capsys) -> None:
+    monkeypatch.chdir(tmp_path)
+    assert main(["eject", "names"]) == 0
+    path = tmp_path / GEN / "names.py"
+    # An editor's save-time cleanup: trailing whitespace and an extra blank line, nothing reordered.
+    path.write_text("\n".join(line + "  " for line in path.read_text().splitlines()) + "\n\n\n")
+    capsys.readouterr()
+    assert main(["eject", "--undo", "names"]) == 0
+    assert not path.exists()

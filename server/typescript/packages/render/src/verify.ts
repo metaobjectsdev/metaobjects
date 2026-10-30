@@ -17,6 +17,7 @@ import {
   ERR_VAR_NOT_ON_PAYLOAD,
   ERR_PARTIAL_UNRESOLVED,
   ERR_TEMPLATE_ENGINE_UNSUPPORTED,
+  ERR_TEMPLATE_SYNTAX,
   MAX_DEPTH,
   slotAndTagFindings,
   type PayloadField,
@@ -117,6 +118,77 @@ const resolve = resolveTemplateVariable;
 
 function parse(text: string): Token[] {
   return Mustache.parse(text) as unknown as Token[];
+}
+
+/** Parse `text`; a Mustache syntax error becomes an ERR_TEMPLATE_SYNTAX finding, anything else rethrows. */
+function parseOrSyntaxError(text: string): Token[] | VerifyError {
+  try {
+    return parse(text);
+  } catch (e) {
+    const section = syntaxSection(e);
+    if (section === undefined) throw e;
+    return { code: ERR_TEMPLATE_SYNTAX, path: section };
+  }
+}
+
+const TOKEN_PARTIAL = ">";
+const TOKEN_COMMENT = "!";
+const TOKEN_DELIMITERS = "=";
+
+/** Every token in a parse, depth-first, section bodies included. */
+function flatTokens(tokens: readonly Token[]): Token[] {
+  const out: Token[] = [];
+  for (const tok of tokens) {
+    out.push(tok);
+    if (Array.isArray(tok[4])) out.push(...flatTokens(tok[4] as Token[]));
+  }
+  return out;
+}
+
+/** Every partial tag in a parse, in text order, as `[ref, start, end]` (nested sections included). */
+export function partialTokens(tokens: readonly Token[]): [string, number, number][] {
+  return flatTokens(tokens)
+    .filter((tok) => tok[0] === TOKEN_PARTIAL)
+    .map((tok) => [tok[1] as string, tok[2] as number, tok[3] as number]);
+}
+
+/** Whether the parse contains a `{{=<% %>=}}` delimiter change. */
+function hasDelimiterChange(tokens: readonly Token[]): boolean {
+  return flatTokens(tokens).some((tok) => tok[0] === TOKEN_DELIMITERS);
+}
+
+/**
+ * Where a text that changes delimiters cannot render, or undefined when it can: inlined text is
+ * parsed under the surrounding delimiters. A partial body (`inlinedAs` is its ref) that changes
+ * them is reported at that ref; a text that changes them and inlines a partial is reported at its
+ * first partial.
+ */
+export function delimiterConflict(tokens: readonly Token[], inlinedAs: string | undefined): string | undefined {
+  if (!hasDelimiterChange(tokens)) return undefined;
+  return inlinedAs ?? partialTokens(tokens)[0]?.[0];
+}
+
+function commentSpans(tokens: readonly Token[]): [number, number][] {
+  return flatTokens(tokens)
+    .filter((tok) => tok[0] === TOKEN_COMMENT)
+    .map((tok) => [tok[2] as number, tok[3] as number]);
+}
+
+/** `text` with its comments cut out: what a tag-presence check may scan. */
+function withoutComments(text: string, tokens: readonly Token[]): string {
+  let out = "";
+  let pos = 0;
+  for (const [start, end] of commentSpans(tokens)) {
+    out += text.slice(pos, start);
+    pos = end;
+  }
+  return out + text.slice(pos);
+}
+
+/** The section a Mustache parse error is about (`Unopened section "x" at 4`), else undefined. */
+function syntaxSection(e: unknown): string | undefined {
+  const m = /^(?:Unopened|Unclosed) section "(.*)" at \d+$/.exec(e instanceof Error ? e.message : "");
+  return m?.[1];
 }
 
 /**
@@ -220,8 +292,15 @@ export function verify(
             errors.push({ code: ERR_TEMPLATE_ENGINE_UNSUPPORTED, path: value });
             break;
           }
-          staticTexts.push(text);
-          walk(parse(text), stack, [...seen, value], positional);
+          const parsed = parseOrSyntaxError(text);
+          if (!Array.isArray(parsed)) {
+            errors.push(parsed);
+            break;
+          }
+          const conflict = delimiterConflict(parsed, value);
+          if (conflict !== undefined) errors.push({ code: ERR_TEMPLATE_SYNTAX, path: conflict });
+          staticTexts.push(withoutComments(text, parsed));
+          walk(parsed, stack, [...seen, value], positional);
           break;
         }
         default:
@@ -230,7 +309,12 @@ export function verify(
     }
   }
 
-  walk(parse(templateText), [root], []);
+  const bodyTokens = parseOrSyntaxError(templateText);
+  if (!Array.isArray(bodyTokens)) return [bodyTokens];
+  const conflict = delimiterConflict(bodyTokens, undefined);
+  if (conflict !== undefined) errors.push({ code: ERR_TEMPLATE_SYNTAX, path: conflict });
+  staticTexts[0] = withoutComments(templateText, bodyTokens);
+  walk(bodyTokens, [root], []);
 
   errors.push(...slotAndTagFindings(referencedAtRoot, staticTexts, opts));
   return errors;

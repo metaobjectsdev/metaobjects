@@ -429,4 +429,21 @@ public class CanonicalJsonSerializerTest extends SharedRegistryTestBase {
         assertTrue("authored validator name 'length2' must be emitted (not suppressed as auto-generated), got: " + json,
                 json.contains("\"name\": \"length2\""));
     }
+
+    // An authored name that merely LOOKS auto-generated ("required7" on a required
+    // validator) is an authored name: suppression is decided by the parser's
+    // auto-named flag, never by the shape of the name.
+    @Test
+    public void testAuthoredNameMatchingAutoPatternIsEmitted() {
+        MetaRoot root = new MetaRoot("test::pkg");
+        ValueMetaObject obj = ValueMetaObject.create("test::pkg::Widget");
+        RegexValidator validator = new RegexValidator("regex7");
+        obj.addChild(validator);
+        root.addChild(obj);
+
+        String json = CanonicalJsonSerializer.canonicalSerialize(root);
+
+        assertTrue("authored 'regex7' must survive canonical serialization, got: " + json,
+                json.contains("\"name\": \"regex7\""));
+    }
 }
