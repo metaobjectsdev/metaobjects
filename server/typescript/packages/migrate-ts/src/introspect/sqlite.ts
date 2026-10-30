@@ -6,7 +6,7 @@ import type {
 } from "../types.js";
 import {
   parseSqliteDefault, sqliteTypeToSqlType, sqliteRuleToAction, parseSqliteChecks,
-  buildSqliteIndexDescriptor,
+  buildSqliteIndexDescriptor, hasAutoincrementKeyword,
 } from "./sqlite-shared.js";
 import { MIGRATIONS_TABLE } from "../apply/ledger.js";
 
@@ -36,7 +36,7 @@ export async function introspectSqlite(db: Kysely<Record<string, unknown>>): Pro
     const cols = await readSqliteColumns(k, t.name);
     const pk = await readSqlitePrimaryKey(k, t.name);
     // Detect AUTOINCREMENT via the CREATE TABLE statement (sqlite has no PRAGMA for it).
-    const hasAutoincrement = (t.sql ?? "").toUpperCase().includes("AUTOINCREMENT");
+    const hasAutoincrement = hasAutoincrementKeyword(t.sql);
     if (hasAutoincrement && pk.length === 1) {
       const pkCol = cols.find((c) => c.name === pk[0]);
       if (pkCol) pkCol.identity = "increment";

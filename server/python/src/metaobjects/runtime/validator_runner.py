@@ -343,8 +343,10 @@ def _scalar_errors(field: MetaData, value: object, required: bool, label: str) -
             if not isinstance(pattern, str):
                 continue
             try:
-                # @pattern is FULL-MATCH: the whole value must match.
-                matched = re.fullmatch(f"(?:{pattern})", value) is not None
+                # @pattern is FULL-MATCH: the whole value must match. re.ASCII keeps \d, \w
+                # and \s to ASCII like the TS and Java ports; str patterns default to
+                # Unicode, so \d would otherwise accept Arabic-Indic digits.
+                matched = re.fullmatch(f"(?:{pattern})", value, re.ASCII) is not None
             except re.error:
                 errors.append(ValidationFailure(
                     label, "regex", f"'{label}' has an invalid validator pattern: {pattern}", pattern,

@@ -30,6 +30,20 @@ describe("render engine", () => {
     expect(render({ ref: "g/main", payload: { items: [{ n: 1 }, { n: 2 }] }, provider: p, format: "text" })).toBe("<1><2>");
   });
 
+  test("a delimiter change in a partial body is refused, not leaked into the parent", () => {
+    const p = P({ "g/main": "{{> g/leaf }} {{name}}", "g/leaf": "{{=<% %>=}}hi" });
+    expect(() => render({ ref: "g/main", payload: { name: "Ada" }, provider: p })).toThrow(/change delimiters/);
+  });
+
+  test("a delimiter change in a root template resolved by ref, with no partials, renders", () => {
+    const p = P({ "g/main": "{{=<% %>=}}Hi <% name %>." });
+    expect(render({ ref: "g/main", payload: { name: "Ada" }, provider: p })).toBe("Hi Ada.");
+  });
+
+  test("a delimiter change in a template without partials renders", () => {
+    expect(render({ template: "{{=<% %>=}}Hi <% name %>.", payload: { name: "Ada" }, provider: P({}) })).toBe("Hi Ada.");
+  });
+
   test("detects partial cycles", () => {
     const p = P({ "g/a": "{{> g/b }}", "g/b": "{{> g/a }}" });
     expect(() => render({ ref: "g/a", payload: {}, provider: p })).toThrow(/cycle/i);

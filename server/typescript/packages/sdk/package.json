@@ -52,6 +52,7 @@
   },
   "dependencies": {
     "@metaobjectsdev/metadata": "workspace:*",
+    "yaml": "^2.9.0",
     "zod": "^4.6.6"
   },
   "devDependencies": {

@@ -68,8 +68,23 @@ public sealed record GenConfig
     /// </para>
     /// </summary>
     public string Baseline { get; init; } = "default";
-    /// <summary>C# namespace for generated types.</summary>
-    public required string Namespace { get; init; }
+    /// <summary>
+    /// C# namespace for generated types that no package binding places — the
+    /// <see cref="UnmappedPackageStrategy.Flatten"/> namespace (<c>--namespace</c>, else
+    /// <c>csharp.namespace</c> in <c>.metaobjects/config.json</c>). Unset is fine until a generated
+    /// file needs it; reading it then throws <see cref="InvalidOperationException"/> naming both
+    /// settings, so a run that emits nothing never asks for one.
+    /// </summary>
+    [System.Diagnostics.CodeAnalysis.AllowNull]
+    public string Namespace
+    {
+        get => PackageBindingResolver.ValidNamespace(_namespace ?? throw new InvalidOperationException(
+            "no C# namespace for the generated code: set \"csharp\": { \"namespace\": \"<ns>\" } in " +
+            ".metaobjects/config.json or pass --namespace <ns>."));
+        init => _namespace = value;
+    }
+    private readonly string? _namespace;
+
     /// <summary>
     /// Strategy applied to field names with no <c>@column</c> override. ADR-0058 — one
     /// project setting (<c>naming.columns</c> in <c>.metaobjects/config.json</c>), read by

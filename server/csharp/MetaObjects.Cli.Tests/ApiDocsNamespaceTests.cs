@@ -56,8 +56,8 @@ public sealed class ApiDocsNamespaceTests : IDisposable
     [Fact]
     public void Code_blocks_are_using_directives_never_the_bare_namespace_placeholder()
     {
-        // Default namespace = gen's default.
-        var outcome = RunDocs(GenCommand.DefaultNamespace);
+        // Any namespace: the docs must import it, never name it bare.
+        var outcome = RunDocs("Generated");
         Assert.True(outcome.Ok, string.Join("; ", outcome.LoadErrors));
 
         var pages = Directory.EnumerateFiles(OutDir, "*.md", SearchOption.AllDirectories)
@@ -87,7 +87,7 @@ public sealed class ApiDocsNamespaceTests : IDisposable
     [Fact]
     public void Documented_namespace_defaults_to_the_gen_default_and_appears_in_blocks()
     {
-        var outcome = RunDocs(GenCommand.DefaultNamespace);
+        var outcome = RunDocs("Generated");
         Assert.True(outcome.Ok);
 
         // acme::shop binds to the default namespace + package → "<DefaultNs>.Acme.Shop"-style.
@@ -96,7 +96,7 @@ public sealed class ApiDocsNamespaceTests : IDisposable
         var orderPage = Directory.EnumerateFiles(OutDir, "Order.md", SearchOption.AllDirectories).Single();
         var text = File.ReadAllText(orderPage);
         Assert.Contains("```csharp\nusing ", text);
-        Assert.Contains(GenCommand.DefaultNamespace, text);
+        Assert.Contains("Generated", text);
     }
 
     [Fact]

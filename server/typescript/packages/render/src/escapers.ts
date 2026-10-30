@@ -24,7 +24,11 @@ const xml = (s: string): string =>
     .replace(/'/g, "&#39;");
 
 // OWASP CSV/Excel formula-injection guard: neutralize a leading active char.
-const injectionGuard = (s: string): string => (/^[=+\-@\t\r]/.test(s) ? "'" + s : s);
+// A strict numeric literal (ASCII digits, no trailing newline: `$` without the m flag) is
+// exempt, so a negative number stays a number instead of becoming text.
+const STRICT_NUMERIC = /^-?[0-9]+(\.[0-9]+)?$/;
+const injectionGuard = (s: string): string =>
+  /^[=+\-@\t\r]/.test(s) && !STRICT_NUMERIC.test(s) ? "'" + s : s;
 
 const csv = (s: string): string => {
   const v = injectionGuard(s);

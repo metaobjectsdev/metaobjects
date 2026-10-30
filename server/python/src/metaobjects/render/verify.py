@@ -11,11 +11,10 @@ Ported from ``typescript/packages/render/src/verify.ts`` and
 ``csharp/MetaObjects.Render/Verify.cs``; the three share the
 ``fixtures/verify-conformance/`` corpus that proves they agree.
 
-The tokenizer models only plain interpolation, sections, inverted sections, and
-partials (matching the C# port). It deliberately does NOT model Mustache
-set-delimiter directives (``{{=<% %>=}}``); the TS engine parses with the real
-``mustache`` library, so a fixture using set-delimiters would diverge across
-ports. The corpus uses only plain tags — keep it that way.
+Tags come from :mod:`metaobjects.render.mustache_tags`, which follows the Mustache
+spec (a comment ends at the first closing delimiter, ``{{=<% %>=}}`` changes the
+delimiters, a close must name its open) and is shared with the renderer's partial
+expansion, so verify and render cannot disagree about where a tag is.
 """
 
 from __future__ import annotations
@@ -24,6 +23,19 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from .engine import TEMPLATE_ENGINE_JINJA, TEMPLATE_ENGINE_MUSTACHE, partial_engine_mismatch
+from .mustache_tags import (
+    KIND_AMP,
+    KIND_CLOSE,
+    KIND_INVERTED,
+    KIND_NAME,
+    KIND_PARTIAL,
+    KIND_SECTION,
+    KIND_TRIPLE,
+    MustacheSyntaxError,
+    delimiter_change,
+    scan,
+    without_comments,
+)
 from .payload_accessors import is_boolean_accessor, is_positional_accessor
 
 #: A ``{{var}}`` references a field the (contextual) payload does not declare.
@@ -39,7 +51,8 @@ ERR_OUTPUT_TAG_MISSING = "ERR_OUTPUT_TAG_MISSING"
 #: dynamic key on an object (``user[key]``), a computed ``attribute=`` argument, or a
 #: template name that is an expression (``{% include name %}``). Reported, never passed.
 ERR_TEMPLATE_NOT_STATIC = "ERR_TEMPLATE_NOT_STATIC"
-#: Jinja: the template text does not parse. path = the parser's message.
+#: The template text does not parse. Jinja: path = the parser's message. Mustache: an
+#: unbalanced section, path = the section's name.
 ERR_TEMPLATE_SYNTAX = "ERR_TEMPLATE_SYNTAX"
 #: A body is written for an engine this port does not run (Java, Kotlin and C# run
 #: Mustache only, so a ``.jinja`` template there is refused with this code).
@@ -134,48 +147,42 @@ _Token = _Var | _Section | _Partial
 
 
 def _tokenize(text: str) -> list[_Token]:
-    tokens, _ = _parse_tokens(text, 0)
-    return tokens
+    """The tag tree of ``text``, built from the shared scanner (:mod:`mustache_tags`).
+
+    Raises :class:`MustacheSyntaxError` on an unbalanced section."""
+    root: list[_Token] = []
+    open_levels: list[list[_Token]] = [root]
+    for tag in scan(text):
+        level = open_levels[-1]
+        if tag.kind in (KIND_SECTION, KIND_INVERTED):
+            section = _Section(tag.value, tag.kind == KIND_INVERTED, [])
+            level.append(section)
+            open_levels.append(section.children)
+        elif tag.kind == KIND_CLOSE:
+            open_levels.pop()  # the scanner already matched it to its open
+        elif tag.kind == KIND_PARTIAL:
+            level.append(_Partial(tag.value))
+        elif tag.kind in (KIND_NAME, KIND_TRIPLE, KIND_AMP):
+            level.append(_Var(tag.value))  # {{x}}, {{x.y}}, {{.}}, {{{x}}}, {{&x}}
+        # comments and delimiter changes carry no reference
+    return root
 
 
-def _parse_tokens(text: str, pos: int) -> tuple[list[_Token], int]:
-    """Parse tokens until EOF or a matching ``{{/close}}`` (which is consumed)."""
-    tokens: list[_Token] = []
-    while pos < len(text):
-        open_idx = text.find("{{", pos)
-        if open_idx < 0:
-            break  # remainder is plain text
-        triple = open_idx + 2 < len(text) and text[open_idx + 2] == "{"
-        close_delim = "}}}" if triple else "}}"
-        content_start = open_idx + (3 if triple else 2)
-        close_idx = text.find(close_delim, content_start)
-        if close_idx < 0:
-            break  # malformed; stop
-        content = text[content_start:close_idx].strip()
-        pos = close_idx + len(close_delim)
+def _delimiter_errors(text: str, inlined_as: str | None) -> list[VerifyError]:
+    """The Python renderer refuses every delimiter change. Reported where the other ports report
+    the changes their renderers refuse: at the partial ref for a partial body, at the first
+    partial for a text that inlines one; elsewhere at the delimiters themselves."""
+    tags = scan(text)
+    change = delimiter_change(tags)
+    if change is None:
+        return []
+    first_partial = next((t.value for t in tags if t.kind == KIND_PARTIAL), None)
+    return [VerifyError(ERR_TEMPLATE_SYNTAX, inlined_as or first_partial or change)]
 
-        if triple:
-            tokens.append(_Var(content))
-            continue
-        if not content:
-            continue
 
-        sigil = content[0]
-        name = content[1:].strip() if len(content) > 1 else ""
-        if sigil == "!":
-            continue  # comment
-        if sigil in ("#", "^"):
-            children, pos = _parse_tokens(text, pos)
-            tokens.append(_Section(name, sigil == "^", children))
-        elif sigil == "/":
-            return tokens, pos  # close (matched or mismatched) ends this level
-        elif sigil == ">":
-            tokens.append(_Partial(name))
-        elif sigil == "&":
-            tokens.append(_Var(name))
-        else:
-            tokens.append(_Var(content))  # {{x}}, {{x.y}}, {{.}}
-    return tokens, pos
+def _static_text(text: str) -> str:
+    """``text`` minus its comments, for the output-tag scan."""
+    return without_comments(text, scan(text))
 
 
 def _find(fields: list[PayloadField], name: str) -> PayloadField | None:
@@ -321,10 +328,22 @@ def verify(
                 if partial_engine_mismatch(provider, tok.value, TEMPLATE_ENGINE_MUSTACHE):
                     errors.append(VerifyError(ERR_TEMPLATE_ENGINE_UNSUPPORTED, tok.value))
                     continue
-                static_texts.append(body)
-                walk(_tokenize(body), stack, [*seen, tok.value], in_element)
+                try:
+                    partial_tokens = _tokenize(body)
+                except MustacheSyntaxError as e:
+                    errors.append(VerifyError(ERR_TEMPLATE_SYNTAX, e.section))
+                    continue
+                errors.extend(_delimiter_errors(body, tok.value))
+                static_texts.append(_static_text(body))
+                walk(partial_tokens, stack, [*seen, tok.value], in_element)
 
-    walk(_tokenize(template_text), [root], [])
+    try:
+        body_tokens = _tokenize(template_text)
+    except MustacheSyntaxError as e:
+        return [VerifyError(ERR_TEMPLATE_SYNTAX, e.section)]
+    errors.extend(_delimiter_errors(template_text, None))
+    static_texts[0] = _static_text(template_text)
+    walk(body_tokens, [root], [])
 
     errors.extend(slot_and_tag_findings(referenced_at_root, static_texts, required_slots, required_tags))
     return errors

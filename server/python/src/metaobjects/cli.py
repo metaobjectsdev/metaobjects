@@ -1877,7 +1877,9 @@ def _relative_set(root: Path, nested: list[Path] | None = None) -> dict[str, str
         if p.suffix in _UNCOMPARED_SUFFIXES:
             continue
         try:
-            files[str(rel)] = p.read_text(encoding="utf-8")
+            # Bytes, not read_text(): text mode translates \r\n and lone \r to \n, so a
+            # committed CRLF file would compare equal to the LF the generator wrote.
+            files[str(rel)] = p.read_bytes().decode("utf-8")
         except (UnicodeDecodeError, OSError):
             continue
     return files

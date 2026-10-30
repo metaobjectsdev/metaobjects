@@ -82,3 +82,10 @@ strict parser does not change: only the tolerant recovery reads past comments.
 The three `json-array-*-items-*` cases pin `validator.array` bounds: too many elements truncated
 under NORMAL, too many rejected under STRICT, too few rejected (and listed in
 `malformedRequired`) under any tolerance.
+
+The `json-string-escapes` and `json-fence-inner-*` cases pin two reply-parser defects found by
+the regex audit. `json-string-escapes` holds every escape of the JSON grammar (`\uXXXX` including
+a surrogate pair, `\b`, `\f`, `\/`, `\"`, `\\`) and a digit string above 2^53 that must survive
+verbatim. `json-fence-inner-backticks` has triple backticks inside a JSON string in a three-tick
+fence, and `json-fence-inner-block` a nested fenced sample inside a four-tick fence: a fence
+closes only at a line that starts with a backtick run at least as long as the one that opened it.

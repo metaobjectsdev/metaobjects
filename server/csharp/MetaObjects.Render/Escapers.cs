@@ -34,7 +34,21 @@ public static class Escapers
 
     // OWASP CSV/Excel formula-injection guard: neutralize a leading active char.
     private static string InjectionGuard(string s) =>
-        s.Length > 0 && "=+-@\t\r".IndexOf(s[0]) >= 0 ? "'" + s : s;
+        s.Length > 0 && "=+-@\t\r".IndexOf(s[0]) >= 0 && !IsStrictNumeric(s) ? "'" + s : s;
+
+    // ^-?[0-9]+(\.[0-9]+)?$ over ASCII digits, whole string (hand-rolled: .NET `$` accepts a trailing \n).
+    private static bool IsStrictNumeric(string s)
+    {
+        var i = s.Length > 0 && s[0] == '-' ? 1 : 0;
+        var intStart = i;
+        while (i < s.Length && s[i] >= '0' && s[i] <= '9') i++;
+        if (i == intStart) return false;
+        if (i == s.Length) return true;
+        if (s[i] != '.') return false;
+        var fracStart = ++i;
+        while (i < s.Length && s[i] >= '0' && s[i] <= '9') i++;
+        return i > fracStart && i == s.Length;
+    }
 
     private static string Csv(string s)
     {

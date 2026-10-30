@@ -1,0 +1,4 @@
+Here you go:
+````json
+{"summary": "Use:\n```bash\nmake\n```\nthen test", "score": 7, "note": "kept"}
+````

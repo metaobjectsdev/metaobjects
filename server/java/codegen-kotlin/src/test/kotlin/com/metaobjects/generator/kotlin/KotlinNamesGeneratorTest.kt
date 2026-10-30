@@ -343,7 +343,7 @@ class KotlinNamesGeneratorTest {
                 { "source.rdb":   { "@table": "weirds" } },
                 { "field.long":   { "name": "id" } },
                 { "field.string": { "name": "userId" } },
-                { "field.string": { "name": "UserId" } },
+                { "field.string": { "name": "UserId", "@column": "user_id_alt" } },
                 { "identity.primary": { "@fields": ["id"], "@generation": "increment" } }
             ] } }
           ] }
@@ -514,7 +514,7 @@ class KotlinNamesGeneratorTest {
             { "object.entity": { "name": "Row", "extends": "BaseRow", "children": [
                 { "source.rdb": { "@table": "rows" } },
                 { "field.long":      { "name": "id" } },
-                { "field.timestamp": { "name": "created_at" } },
+                { "field.timestamp": { "name": "created_at", "@column": "created_at_alt" } },
                 { "identity.primary": { "@fields": ["id"], "@generation": "increment" } }
             ] } }
           ] }

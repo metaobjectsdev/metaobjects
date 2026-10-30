@@ -1,14 +1,13 @@
 // Deterministic, logic-less render: (template + payload + provider) -> string.
 //
 // Ported from typescript/packages/render/src/render.ts. Partials are inlined by
-// regex BEFORE the Mustache pass (deterministic whitespace + path-based cycle/
+// tag scan BEFORE the Mustache pass (deterministic whitespace + path-based cycle/
 // depth detection, independent of any lib partial loader); escaping is engine-
 // owned (the format escaper is installed as Stubble's encoding function, the
 // equivalent of overriding mustache.js's Mustache.escape). `{{{x}}}` bypasses it.
 //
 // The render-time `verify` guard (FR-004 Plan #3) is intentionally not wired yet.
 
-using System.Text.RegularExpressions;
 using Stubble.Core.Builders;
 using Stubble.Core.Settings;
 
@@ -45,21 +44,28 @@ public sealed record RenderRequest
 }
 
 /// <summary>The logic-less, deterministic MetaObjects render engine.</summary>
-public static partial class Renderer
+public static class Renderer
 {
     private const int MaxDepth = 32;
 
-    [GeneratedRegex(@"\{\{>\s*([^}\s]+)\s*\}\}")]
-    private static partial Regex PartialPattern();
-
     // Resolve `{{> group/source }}` partials by inlining their text, recursively,
     // BEFORE Mustache parses — giving deterministic whitespace and true, path-based
-    // cycle/depth detection.
-    private static string Expand(string text, IProvider provider, IReadOnlyList<string> path)
+    // cycle/depth detection. Partial tags are located by the shared scanner
+    // (MustacheTags), so one written inside a comment is not a partial.
+    private static string Expand(string text, IProvider provider, IReadOnlyList<string> path, string? inlinedAs = null)
     {
-        return PartialPattern().Replace(text, match =>
+        List<MustacheTag> tags;
+        try { tags = MustacheTags.Scan(text); }
+        catch (MustacheSyntaxException e) { throw new RenderException($"template syntax error: {e.Message}"); }
+        if (MustacheTags.DelimiterConflict(tags, inlinedAs) is not null)
+            throw new RenderException("a template that uses partials cannot also change delimiters ({{=<% %>=}})");
+        var partials = tags.Where(t => t.Kind == MustacheTagKind.Partial).ToList();
+        if (partials.Count == 0) return text;
+        var sb = new System.Text.StringBuilder();
+        int pos = 0;
+        foreach (var tag in partials)
         {
-            string reference = match.Groups[1].Value;
+            string reference = tag.Value;
             if (path.Contains(reference))
                 throw new RenderException($"partial cycle: {string.Join(" -> ", path.Append(reference))}");
             if (path.Count >= MaxDepth)
@@ -68,8 +74,10 @@ public static partial class Renderer
             if (t is null)
                 throw new RenderException($"unresolved partial: {reference}");
             var next = new List<string>(path) { reference };
-            return Expand(t, provider, next);
-        });
+            sb.Append(text, pos, tag.Start - pos).Append(Expand(t, provider, next, reference));
+            pos = tag.End;
+        }
+        return sb.Append(text, pos, text.Length - pos).ToString();
     }
 
     /// <summary>Deterministic, logic-less render of a template against a payload.</summary>

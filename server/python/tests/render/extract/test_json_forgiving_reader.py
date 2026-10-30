@@ -93,3 +93,8 @@ def test_empty_value_then_more_keys_continues() -> None:
     m = _read('{"a":,"b":"2"}')
     assert m["a"] is TRUNCATED
     assert m["b"] == "2"
+
+
+def test_full_json_escape_grammar() -> None:
+    got = _read(r'{"a":"café 😀 a\/b\bx\fy \"q\" \\ \u12"}')
+    assert got["a"] == 'café 😀 a/b\x08x\x0cy "q" \\ u12'

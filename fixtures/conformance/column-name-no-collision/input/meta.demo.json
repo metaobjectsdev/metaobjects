@@ -1,0 +1,24 @@
+{
+  "metadata.root": {
+    "package": "demo",
+    "children": [
+      { "object.entity": {
+        "name": "Account",
+        "children": [
+          { "source.rdb": { "@kind": "table" } },
+          { "field.long": { "name": "id" } },
+          { "field.string": { "name": "userId" } },
+          { "field.string": { "name": "userID", "@column": "user_id_legacy" } },
+          { "identity.primary": { "name": "id", "@fields": ["id"] } }
+        ]
+      }},
+      { "object.value": {
+        "name": "Shape",
+        "children": [
+          { "field.string": { "name": "userId" } },
+          { "field.string": { "name": "userID" } }
+        ]
+      }}
+    ]
+  }
+}

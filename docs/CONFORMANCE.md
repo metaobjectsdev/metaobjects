@@ -26,14 +26,14 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 
 | Corpus | Fixtures | TS | Java | Kotlin | C# | Python |
 |---|---|---|---|---|---|---|
-| [`fixtures/conformance/`](../fixtures/conformance/) (metamodel) | 413 | ✓ | ✓ | inherits via `metadata-ktx` | ✓ | ✓ |
+| [`fixtures/conformance/`](../fixtures/conformance/) (metamodel) | 421 | ✓ | ✓ | inherits via `metadata-ktx` | ✓ | ✓ |
 | [`fixtures/yaml-conformance/`](../fixtures/yaml-conformance/) | 16 | 16 / 16 | 15 / 16 (1 ledgered: `yaml-quoted-leading-zero` — Java pipeline strips quotes off `"007"`) | inherits via Java | 15 / 16 (1 ledgered: `error-yaml-coerced-hex-in-string` — YamlDotNet doesn't coerce `0xFF`) | 16 / 16 |
-| [`fixtures/verify-conformance/`](../fixtures/verify-conformance/) | 37 | ✓ | ✓ | inherits via Java | ✓ | ✓ |
+| [`fixtures/verify-conformance/`](../fixtures/verify-conformance/) | 45 | ✓ | ✓ | inherits via Java | ✓ | ✓ |
 | [`fixtures/verify-strict-conformance/`](../fixtures/verify-strict-conformance/) | 1 | ✓ | — | — | — | ✓ |
-| [`fixtures/render-conformance/`](../fixtures/render-conformance/) | 16 | ✓ | ✓ | inherits via Java | ✓ | ✓ |
+| [`fixtures/render-conformance/`](../fixtures/render-conformance/) | 18 | ✓ | ✓ | inherits via Java | ✓ | ✓ |
 | [`fixtures/jinja-render-conformance/`](../fixtures/jinja-render-conformance/) (ADR-0061 — Jinja bodies render the same in jinja2 and nunjucks) | 15 | ✓ (nunjucks) | refuses Jinja (`ERR_TEMPLATE_ENGINE_UNSUPPORTED`) | refuses, via Java | refuses Jinja (`ERR_TEMPLATE_ENGINE_UNSUPPORTED`) | ✓ (jinja2) |
 | [`fixtures/jinja-verify-conformance/`](../fixtures/jinja-verify-conformance/) (ADR-0061 — the payload check over a Jinja body) | 31 | ✓ | refuses Jinja | refuses, via Java | refuses Jinja | ✓ |
-| [`fixtures/extract-conformance/`](../fixtures/extract-conformance/) | 48 | ✓ | ✓ | inherits the shared JVM engine | ✓ | ✓ |
+| [`fixtures/extract-conformance/`](../fixtures/extract-conformance/) | 58 | ✓ | ✓ | inherits the shared JVM engine | ✓ | ✓ |
 | [`fixtures/output-prompt-conformance/`](../fixtures/output-prompt-conformance/) | 17 | ✓ | ✓ | ✓ | ✓ | ✓ |
 | [`fixtures/persistence-conformance/`](../fixtures/persistence-conformance/) | 59 (53 query + 6 migration) | all 59; the 24 `report-*` and the `-15` decimal scenarios also on SQLite, MySQL and D1, `decimal-exact` also on MySQL (a scenario's `engines:` key is exact) | 53 query (migrations TS-only, ADR-0015); the `report-*` and `engines:` scenarios also on SQLite and MySQL | 53 query (via Exposed); the `report-*` and `engines:` scenarios also on SQLite and MySQL | 53 query; the `report-*` and `engines:` scenarios also on SQLite and MySQL | 53 query (pg8000); the `report-*` and `engines:` scenarios also on SQLite (`sqlite3`) and MySQL (PyMySQL) |
 | [`fixtures/api-contract-conformance/`](../fixtures/api-contract-conformance/) | 119 (31 core + 10 tph + 9 m2m + 5 jsonb + 2 write-through + 2 secret-fields + 12 projection + 37 report + 11 decimal) | ✓ (Fastify reference + generated lane); `report/` and `decimal/` also on SQLite, MySQL and D1 | ✓ (embedded HTTP + JDBC); `report/` and `decimal/` generated controllers over OMDB on Postgres, SQLite and MySQL | ✓ (embedded HTTP + Exposed); `report/` and `decimal/` also on SQLite and MySQL | ✓ (Kestrel + Npgsql); `report/` and `decimal/` also on SQLite and MySQL | ✓ (FastAPI + pg8000); `report/` and `decimal/` also on SQLite and MySQL |
@@ -284,7 +284,7 @@ unit-test runners (`bun test`, `dotnet test`, `pytest`, `mvn test`) pull Docker.
 
 ## Fixture-to-doc mapping
 
-### `fixtures/conformance/` — metamodel loader + canonical serializer (413)
+### `fixtures/conformance/` — metamodel loader + canonical serializer (421)
 
 | Fixture prefix | Feature doc |
 |---|---|
@@ -319,14 +319,15 @@ before its base in one file, etc.) and 7 `error-yaml-*` fixtures that pin the
 YAML 1.1 coercion guards (bool / null / hex in string contexts; numeric in enum
 contexts; reserved-as-attr).
 
-### `fixtures/render-conformance/` (16)
+### `fixtures/render-conformance/` (18)
 
-All 16 fixtures → [features/templates-and-payloads.md](features/templates-and-payloads.md)
-(render engine output section). 4 are end-to-end shape examples (prompt / email /
-spreadsheet / CSV-injection escape); 11 pin Mustache-engine semantics — dotted-path
-lookup, parent-context fallthrough, falsy/empty-array section behavior, inverted
-sections, nested partials, standalone-tag whitespace stripping, raw-HTML bypass,
-trailing-newline preservation, unicode multibyte handling, and the `-last` list-separator accessor.
+All 18 fixtures → [features/templates-and-payloads.md](features/templates-and-payloads.md)
+(render engine output section). 5 are end-to-end shape and escape examples (prompt / email /
+spreadsheet / CSV-injection escape / CSV numeric-literal exemption); 13 pin Mustache-engine
+semantics — dotted-path lookup, parent-context fallthrough, falsy/empty-array section behavior,
+inverted sections, nested partials, a comment tag beside a partial, standalone-tag whitespace
+stripping, raw-HTML bypass, trailing-newline preservation, unicode multibyte handling, the derived
+`has` accessor, and the `-last` list-separator accessor.
 
 ### `fixtures/jinja-render-conformance/` (15) and `fixtures/jinja-verify-conformance/` (31)
 
@@ -609,8 +610,8 @@ files into a real Cube.
 
 ## Orphaned fixtures (tested but not yet documented)
 
-The fixtures in the nine corpora mapped above (metamodel 413 + yaml 16 + verify 37
-+ render 16 + persistence 59 + api-contract 119 + source-resolution 25 + scope 10 +
+The fixtures in the nine corpora mapped above (metamodel 421 + yaml 16 + verify 45
++ render 18 + persistence 59 + api-contract 119 + source-resolution 25 + scope 10 +
 dependency 37) each map to a feature doc, and so do the two requirement corpora, `shared-model-conformance` and the
 `cube-model` corpus, whose case lists live in their own READMEs. None are orphaned today. The remaining
 corpora in the totals table gate tooling contracts (registry manifests, provider

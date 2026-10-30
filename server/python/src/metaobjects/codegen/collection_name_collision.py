@@ -16,10 +16,14 @@ entities and the colliding name.
 """
 from __future__ import annotations
 
-from metaobjects.apidocs.naming import pluralize
+from metaobjects.apidocs.naming import pluralize, route_path
 from metaobjects.errors import ErrorCode
 from metaobjects.meta.core.object.meta_object import MetaObject
 from metaobjects.meta.core.object.object_constants import OBJECT_SUBTYPE_VALUE
+from metaobjects.meta.persistence.source.meta_source import MetaSource
+from metaobjects.runtime.tph import tph_subtype_of
+
+from .instance_artifacts import is_abstract
 
 ERR_COLLECTION_NAME_COLLISION = ErrorCode.ERR_COLLECTION_NAME_COLLISION.value
 
@@ -56,3 +60,31 @@ def assert_no_collection_name_collisions(entities: list[MetaObject]) -> None:
                 )
         else:
             owner_of_plural[plural] = obj
+    _assert_no_route_segment_collisions(entities)
+
+
+def _assert_no_route_segment_collisions(entities: list[MetaObject]) -> None:
+    """The route half. The REST segment is the entity NAME snake_cased and then
+    pluralized (:func:`route_path`), so ``ApiKey`` and ``APIKey`` both serve
+    ``/api_keys`` while their pluralized names differ and pass the check above.
+    Counts only objects that actually get a route: not a value object, not abstract,
+    not sourceless, not a TPH subtype (folded into its base and served under it)."""
+    owner_of_segment: dict[str, MetaObject] = {}
+    for obj in entities:
+        if obj.sub_type == OBJECT_SUBTYPE_VALUE or is_abstract(obj):
+            continue
+        # ADR-0039: children() resolves — an inherited source still gets a route.
+        if not any(isinstance(c, MetaSource) for c in obj.children()):
+            continue
+        if tph_subtype_of(obj) is not None:
+            continue
+        segment = route_path(obj.name)
+        existing = owner_of_segment.get(segment)
+        if existing is None:
+            owner_of_segment[segment] = obj
+        elif existing.resolution_key() != obj.resolution_key():
+            raise ValueError(
+                f'{ERR_COLLECTION_NAME_COLLISION}: "{existing.name}" and "{obj.name}" both resolve '
+                f'to the REST collection segment "{segment}" — rename one entity so its '
+                "snake_cased, pluralized route segment is distinct."
+            )

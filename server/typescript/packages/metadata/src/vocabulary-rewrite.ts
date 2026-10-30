@@ -153,6 +153,38 @@ function atOrBefore(a: string, b: string): boolean {
   return true;
 }
 
+/**
+ * `text` with every JSONC comment overwritten by spaces (newlines kept), string literals
+ * untouched. Offsets are preserved exactly, so every scan below can run on the masked copy
+ * while edits are applied to the original: a `}` or `,` inside a comment can no longer end a
+ * node body or a scalar value early, and a commented-out key no longer matches. A comment
+ * the scan erases is also erased if its key is dropped, which is the right outcome for a
+ * trailing note about that key.
+ */
+function maskComments(text: string): string {
+  const out = text.split("");
+  let inStr = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inStr) {
+      if (c === "\\") i++;
+      else if (c === '"') inStr = false;
+      continue;
+    }
+    if (c === '"') {
+      inStr = true;
+    } else if (c === "/" && text[i + 1] === "/") {
+      for (; i < text.length && text[i] !== "\n"; i++) out[i] = " ";
+    } else if (c === "/" && text[i + 1] === "*") {
+      const end = text.indexOf("*/", i + 2);
+      const stop = end < 0 ? text.length : end + 2;
+      for (; i < stop; i++) if (text[i] !== "\n") out[i] = " ";
+      i--;
+    }
+  }
+  return out.join("");
+}
+
 /** 1-indexed line of `index` in `text`. */
 function lineAt(text: string, index: number): number {
   let line = 1;
@@ -316,7 +348,10 @@ function valueSpan(text: string, from: number): { start: number; end: number; ra
     if (c === '"') inStr = true;
     else if (c === "," || c === "}" || c === "\n") break;
   }
-  return { start: i, end: j, raw: text.slice(i, j).trim() };
+  // End at the last token character, not at the delimiter: the gap before it may be a
+  // (masked) comment, which a value replacement must not swallow.
+  const raw = text.slice(i, j).trim();
+  return { start: i, end: i + raw.length, raw };
 }
 
 /** Does the raw token equal this literal? Compares JSON-decoded where possible so
@@ -371,7 +406,9 @@ function dropSpan(source: string, keyStart: number, valueEnd: number): { start: 
  * Pure: no filesystem, no loader, no registry. Returns the new text plus every change and
  * every refusal, so a caller can print a diff and exit non-zero when work remains.
  */
-export function rewriteDocument(source: string, opts: RewriteOpts = {}): RewriteResult {
+export function rewriteDocument(original: string, opts: RewriteOpts = {}): RewriteResult {
+  // Scan the comment-masked copy; apply edits to the original (offsets are identical).
+  const source = maskComments(original);
   const changes: RewriteChange[] = [];
   const refusals: RewriteRefusal[] = [];
 
@@ -519,7 +556,7 @@ export function rewriteDocument(source: string, opts: RewriteOpts = {}): Rewrite
   }
 
   edits.sort((a, b) => b.start - a.start);
-  let text = source;
+  let text = original;
   for (const e of edits) text = text.slice(0, e.start) + e.text + text.slice(e.end);
 
   return { text, changes, refusals };

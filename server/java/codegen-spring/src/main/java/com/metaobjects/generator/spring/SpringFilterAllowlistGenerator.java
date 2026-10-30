@@ -4,6 +4,7 @@ package com.metaobjects.generator.spring;
 // com.metaobjects.generator.spring when this generator is copied out via
 // `mvn metaobjects:eject` and its own package is renamed — an explicit import, not
 // same-package bare-name resolution, is what keeps the ejected copy compiling.
+import com.metaobjects.generator.spring.SpringGeneratorSupport;
 import com.metaobjects.generator.spring.SpringNaming;
 import com.metaobjects.generator.spring.TphPlan;
 

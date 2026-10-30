@@ -4,7 +4,7 @@ import type {
 } from "../types.js";
 import {
   parseSqliteDefault, sqliteTypeToSqlType, sqliteRuleToAction, parseSqliteChecks,
-  buildSqliteIndexDescriptor,
+  buildSqliteIndexDescriptor, hasAutoincrementKeyword,
 } from "./sqlite-shared.js";
 
 /**
@@ -86,7 +86,7 @@ export async function introspectD1(opts: IntrospectD1Options): Promise<SchemaSna
     const tableInfoRows = await readTableInfo(exec, name);
     const cols = extractColumns(tableInfoRows);
     const pk = extractPrimaryKey(tableInfoRows);
-    const hasAutoincrement = createSql.toUpperCase().includes("AUTOINCREMENT");
+    const hasAutoincrement = hasAutoincrementKeyword(createSql);
     if (hasAutoincrement && pk.length === 1) {
       const pkCol = cols.find((c) => c.name === pk[0]);
       if (pkCol) pkCol.identity = "increment";

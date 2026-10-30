@@ -112,10 +112,9 @@ public class PackageBindingResolverTests
     [Theory]
     [InlineData(PackageCase.PascalCase, "users-access", "UsersAccess")]
     [InlineData(PackageCase.CamelCase, "users-access", "usersAccess")]
-    [InlineData(PackageCase.KebabCase, "users-access", "users-access")]
     [InlineData(PackageCase.SnakeCase, "users-access", "users_access")]
     [InlineData(PackageCase.Lowercase, "users-access", "usersaccess")]
-    [InlineData(PackageCase.Preserve, "users-access", "users-access")]
+    [InlineData(PackageCase.Preserve, "users_access", "users_access")]
     public void Case_transformations(PackageCase casing, string input, string expected)
     {
         var cfg = CfgWithDefaults() with
@@ -131,6 +130,54 @@ public class PackageBindingResolverTests
 
         var result = PackageBindingResolver.Resolve(cfg, $"acme::{input}", "X");
         Assert.Equal($"Root.{expected}", result);
+    }
+
+    private static GenConfig WithConvention(PackageCase casing) => CfgWithDefaults() with
+    {
+        Convention = new PackageBindingConvention { Strip = "acme::", Prepend = "Root", Case = casing },
+    };
+
+    [Theory]
+    [InlineData(PackageCase.KebabCase, "users-access", "users-access")]
+    [InlineData(PackageCase.Preserve, "my-app", "my-app")]
+    [InlineData(PackageCase.PascalCase, "2fa", "2fa")]
+    [InlineData(PackageCase.Lowercase, "event", "event")]
+    [InlineData(PackageCase.Preserve, "default", "default")]
+    public void A_convention_that_yields_a_non_identifier_segment_stops_generation(
+        PackageCase casing, string input, string badSegment)
+    {
+        var cfg = WithConvention(casing);
+
+        var ex = Assert.Throws<InvalidOperationException>(() => PackageBindingResolver.Resolve(cfg, $"acme::{input}", "X"));
+        Assert.Contains($"\"{badSegment}\" is not an identifier", ex.Message);
+        Assert.Contains($"metadata package \"acme::{input}\"", ex.Message);
+        Assert.Throws<InvalidOperationException>(() => PackageBindingResolver.TryResolve(cfg, $"acme::{input}", "X"));
+        Assert.Throws<InvalidOperationException>(() => PackageBindingResolver.ResolveForProvidedEnum(
+            cfg with { Convention = cfg.Convention! with { ProvidedEnumPrepend = "Root" } }, $"acme::{input}", "X"));
+    }
+
+    [Theory]
+    [InlineData("My-app.Shop", "My-app")]
+    [InlineData("Acme.2fa", "2fa")]
+    [InlineData("Acme.object", "object")]
+    public void An_override_that_is_not_an_identifier_path_stops_generation(string target, string badSegment)
+    {
+        var typeOverride = CfgWithDefaults() with
+        {
+            TypeOverrides = new Dictionary<string, string> { ["acme::cases::Case"] = target },
+        };
+        var packageOverride = CfgWithDefaults() with
+        {
+            PackageNamespaces = new Dictionary<string, string> { ["acme::cases"] = target },
+        };
+
+        foreach (var cfg in new[] { typeOverride, packageOverride })
+        {
+            var ex = Assert.Throws<InvalidOperationException>(() => PackageBindingResolver.Resolve(cfg, "acme::cases", "Case"));
+            Assert.Contains($"\"{badSegment}\" is not an identifier", ex.Message);
+            Assert.Contains("metadata package \"acme::cases\"", ex.Message);
+            Assert.Throws<InvalidOperationException>(() => PackageBindingResolver.TryResolve(cfg, "acme::cases", "Case"));
+        }
     }
 
     [Fact]

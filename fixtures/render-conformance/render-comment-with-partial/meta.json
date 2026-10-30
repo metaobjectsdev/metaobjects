@@ -1,0 +1,1 @@
+{ "format": "text", "note": "a comment ends at the first closing delimiter, so a partial tag written inside one is never a partial (no unresolved-partial error)" }

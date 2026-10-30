@@ -1,5 +1,8 @@
 package com.metaobjects.library;
 
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.metaobjects.loader.FileSource;
 import com.metaobjects.loader.InMemoryStringSource;
 import com.metaobjects.loader.MetaDataSource;
@@ -48,30 +51,32 @@ public final class LibrarySources {
     private static Map<String, Map<String, List<String>>> buildLayers() {
         Map<String, Map<String, List<String>>> map = new LinkedHashMap<>();
         for (String name : new TreeSet<>(EmbeddedLibrary.MANIFESTS.keySet())) {
-            // Hand-parsed rather than pulled through Jackson: this module is the metadata
-            // core and does not depend on a JSON binder, and the shape read here is four
-            // keys deep in a file this repo generates. A binder would be a dependency
-            // added for a manifest we also write.
             map.put(name, parseLayers(EmbeddedLibrary.MANIFESTS.get(name)));
         }
         return map;
     }
 
+    private static JsonObject manifestRoot(String manifestJson) {
+        return JsonParser.parseString(manifestJson).getAsJsonObject();
+    }
+
+    /** A string array member as a list; absent or not an array gives empty. */
+    private static List<String> stringArray(JsonObject obj, String key) {
+        List<String> out = new ArrayList<>();
+        JsonElement el = obj.get(key);
+        if (el == null || !el.isJsonArray()) return out;
+        for (JsonElement item : el.getAsJsonArray()) out.add(item.getAsString());
+        return out;
+    }
+
     /** The {@code "layers"} object of a manifest: token to refs, in declaration order. */
-    private static Map<String, List<String>> parseLayers(String manifestJson) {
+    static Map<String, List<String>> parseLayers(String manifestJson) {
         Map<String, List<String>> layers = new LinkedHashMap<>();
-        java.util.regex.Matcher block = java.util.regex.Pattern
-            .compile("\"layers\"\\s*:\\s*\\{(.*?)\\n  \\}", java.util.regex.Pattern.DOTALL)
-            .matcher(manifestJson);
-        if (!block.find()) return layers;
-        java.util.regex.Matcher entry = java.util.regex.Pattern
-            .compile("\"([^\"]*)\"\\s*:\\s*\\{[^}]*?\"refs\"\\s*:\\s*\\[([^\\]]*)\\]", java.util.regex.Pattern.DOTALL)
-            .matcher(block.group(1));
-        while (entry.find()) {
-            List<String> refs = new ArrayList<>();
-            java.util.regex.Matcher ref = java.util.regex.Pattern.compile("\"([^\"]+)\"").matcher(entry.group(2));
-            while (ref.find()) refs.add(ref.group(1));
-            layers.put(entry.group(1), refs);
+        JsonElement block = manifestRoot(manifestJson).get("layers");
+        if (block == null || !block.isJsonObject()) return layers;
+        for (Map.Entry<String, JsonElement> entry : block.getAsJsonObject().entrySet()) {
+            if (!entry.getValue().isJsonObject()) continue;
+            layers.put(entry.getKey(), stringArray(entry.getValue().getAsJsonObject(), "refs"));
         }
         return layers;
     }
@@ -96,19 +101,21 @@ public final class LibrarySources {
     public static List<String> generatorAnchors(String generatorName) {
         List<String> out = new ArrayList<>();
         for (String name : new TreeSet<>(EmbeddedLibrary.MANIFESTS.keySet())) {
-            String manifest = EmbeddedLibrary.MANIFESTS.get(name);
-            java.util.regex.Matcher block = java.util.regex.Pattern
-                .compile("\"generators\"\\s*:\\s*\\[(.*?)\\]", java.util.regex.Pattern.DOTALL)
-                .matcher(manifest);
-            if (!block.find()) continue;
-            java.util.regex.Matcher obj = java.util.regex.Pattern
-                .compile("\\{([^}]*)\\}").matcher(block.group(1));
-            while (obj.find()) {
-                String body = obj.group(1);
-                String declared = manifestField(body, "name");
-                String anchor = manifestField(body, "anchor");
-                if (generatorName.equals(declared) && anchor != null) out.add(anchor);
-            }
+            out.addAll(generatorAnchors(EmbeddedLibrary.MANIFESTS.get(name), generatorName));
+        }
+        return out;
+    }
+
+    static List<String> generatorAnchors(String manifest, String generatorName) {
+        List<String> out = new ArrayList<>();
+        JsonElement block = manifestRoot(manifest).get("generators");
+        if (block == null || !block.isJsonArray()) return out;
+        for (JsonElement el : block.getAsJsonArray()) {
+            if (!el.isJsonObject()) continue;
+            JsonObject gen = el.getAsJsonObject();
+            String declared = manifestField(gen, "name");
+            String anchor = manifestField(gen, "anchor");
+            if (generatorName.equals(declared) && anchor != null) out.add(anchor);
         }
         return out;
     }
@@ -119,27 +126,22 @@ public final class LibrarySources {
      *
      * <p>The provenance key for requirement-coverage activation (FR-043 &sect;5.4): a
      * requirement whose package is NOT in this set was authored by the adopter. Read from the
-     * manifests, hand-parsed for the reason {@link #parseLayers} is, and never regenerated.</p>
+     * manifests and never regenerated.</p>
      *
      * @return the declared package names, sorted
      */
     public static java.util.Set<String> libraryPackages() {
         java.util.Set<String> out = new TreeSet<>();
         for (String manifest : EmbeddedLibrary.MANIFESTS.values()) {
-            java.util.regex.Matcher block = java.util.regex.Pattern
-                .compile("\"packages\"\\s*:\\s*\\[([^\\]]*)\\]").matcher(manifest);
-            if (!block.find()) continue;
-            java.util.regex.Matcher pkg = java.util.regex.Pattern.compile("\"([^\"]+)\"").matcher(block.group(1));
-            while (pkg.find()) out.add(pkg.group(1));
+            out.addAll(stringArray(manifestRoot(manifest), "packages"));
         }
         return out;
     }
 
-    /** One {@code "key": "value"} string field out of a flat JSON object body. */
-    private static String manifestField(String objectBody, String key) {
-        java.util.regex.Matcher m = java.util.regex.Pattern
-            .compile("\"" + key + "\"\\s*:\\s*\"([^\"]*)\"").matcher(objectBody);
-        return m.find() ? m.group(1) : null;
+    /** One string member of a JSON object, or null when absent or not a string. */
+    private static String manifestField(JsonObject obj, String key) {
+        JsonElement el = obj.get(key);
+        return el != null && el.isJsonPrimitive() ? el.getAsString() : null;
     }
 
     /** The prefix every library source id carries. */

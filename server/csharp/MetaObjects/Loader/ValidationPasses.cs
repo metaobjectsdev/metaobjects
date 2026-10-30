@@ -3842,6 +3842,70 @@ public static partial class ValidationPasses
         foreach (var child in node.OwnChildren()) VisitEnumNormalizeAmbiguity(child, warnings);
     }
 
+    /// <summary>
+    /// ERR_ENUM_NORMALIZE_COLLISION — two declared members of one enum fold to the SAME key
+    /// under <c>@normalize: strip</c> (e.g. READ_ONLY and READONLY), so one is unreachable and a
+    /// reply naming it coerces to the other. An ERROR (the vocabulary itself is ambiguous);
+    /// <c>collapse</c> / <c>none</c> are not gated. Mirrors the TS reference.
+    /// </summary>
+    public static IReadOnlyList<MetaError> ValidateEnumNormalizeCollision(MetaData root)
+    {
+        var errors = new List<MetaError>();
+        VisitEnumNormalizeCollision(root, errors);
+        return errors;
+    }
+
+    private static void VisitEnumNormalizeCollision(MetaData node, List<MetaError> errors)
+    {
+        if (node.Type == TYPE_FIELD && node.SubType == FIELD_SUBTYPE_ENUM)
+        {
+            // ADR-0039 sanctioned own: the vocabulary DECLARED here; an inheriting enum
+            // shares the super's set, already checked there.
+            var ownValues = node.OwnAttr(FIELD_ATTR_VALUES);
+            if (ownValues is System.Collections.IEnumerable rawEnum && ownValues is not string)
+            {
+                var members = new List<string>();
+                foreach (var o in rawEnum) members.Add(o?.ToString() ?? string.Empty);
+                var normalize = EffectiveNormalizeMode(node);
+                if (members.Count > 1 && normalize.Mode == NORMALIZE_DEFAULT)
+                {
+                    var byKey = new Dictionary<string, List<string>>();
+                    var order = new List<string>();
+                    foreach (var m in members)
+                    {
+                        var key = StripNormalize(m);
+                        if (key.Length == 0) continue;
+                        if (!byKey.TryGetValue(key, out var list))
+                        {
+                            byKey[key] = list = new List<string>();
+                            order.Add(key);
+                        }
+                        // Distinct members only: an exact duplicate is ERR_BAD_ATTR_VALUE's job.
+                        if (!list.Contains(m)) list.Add(m);
+                    }
+                    foreach (var key in order)
+                    {
+                        var distinct = byKey[key];
+                        if (distinct.Count < 2) continue;
+                        var listed = string.Join(", ", distinct.Select(d => $"'{d}'"));
+                        errors.Add(new MetaError(
+                            $"field.enum \"{node.Name}\" members {listed} all normalize to '{key}' under " +
+                            $"@{FIELD_ATTR_NORMALIZE}: '{NORMALIZE_DEFAULT}'{(normalize.Explicit ? "" : " (the default)")}, " +
+                            "which upper-cases and deletes everything outside A-Z0-9, so a reply naming one of " +
+                            "them is indistinguishable from the others. Rename the members so they differ after " +
+                            $"that fold, or set @{FIELD_ATTR_NORMALIZE}: 'collapse' (keeps '_' distinct) or " +
+                            "'none' (exact match) on this field.",
+                            ErrorCode.ERR_ENUM_NORMALIZE_COLLISION,
+                            Envelope: node.Source));
+                        break; // one error per declaring node
+                    }
+                }
+            }
+        }
+        // ADR-0039 sanctioned own: structural walk of what each node declares.
+        foreach (var child in node.OwnChildren()) VisitEnumNormalizeCollision(child, errors);
+    }
+
     // =========================================================================
     // FR-037 R1 — field-level @mutability cross-attribute rules.
     //   ERR_MUTABILITY_AUTOSET_CONFLICT / ERR_MUTABILITY_DOWNGRADE /
@@ -4105,7 +4169,7 @@ public static partial class ValidationPasses
             }
             else if (NumericDiscriminatorSubtypes.Contains(field.SubType))
             {
-                if (!Regex.IsMatch(value, "^-?\\d+$"))
+                if (!IsAsciiInteger(value))
                 {
                     errors.Add(new MetaError(
                         $"object.entity \"{obj.Name}\" @discriminatorValue: \"{value}\" does not coerce to " +
@@ -4129,9 +4193,14 @@ public static partial class ValidationPasses
         foreach (var discRoot in order)
         {
             var seen = new Dictionary<string, MetaData>();
+            var rootField = discRoot.OwnAttr(OBJECT_ATTR_DISCRIMINATOR) is string rootFieldName
+                ? FindFieldOnEntity(discRoot, rootFieldName) : null;
+            var numericRoot = rootField != null && NumericDiscriminatorSubtypes.Contains(rootField.SubType);
             foreach (var (subtype, value) in bindingsByRoot[discRoot])
             {
-                if (seen.TryGetValue(value, out var prev))
+                // "1" and "01" are one value to a numeric column, so they are one claim.
+                var key = numericRoot && IsAsciiInteger(value) ? CanonicalInteger(value) : value;
+                if (seen.TryGetValue(key, out var prev))
                 {
                     errors.Add(new MetaError(
                         $"object.entity \"{subtype.Name}\" @discriminatorValue: \"{value}\" duplicates the " +
@@ -4141,7 +4210,7 @@ public static partial class ValidationPasses
                 }
                 else
                 {
-                    seen[value] = subtype;
+                    seen[key] = subtype;
                 }
             }
         }
@@ -4163,6 +4232,21 @@ public static partial class ValidationPasses
 
         return errors.AsReadOnly();
     }
+
+    /// <summary>An optional minus sign and ASCII digits only. Not <c>\d</c> (which matches every Unicode
+    /// decimal digit) and not <c>$</c> (which matches before a trailing newline).</summary>
+    private static bool IsAsciiInteger(string value)
+    {
+        var start = value.Length > 0 && value[0] == '-' ? 1 : 0;
+        if (value.Length == start) return false;
+        for (var i = start; i < value.Length; i++)
+            if (value[i] < '0' || value[i] > '9') return false;
+        return true;
+    }
+
+    /// <summary>The integer's canonical decimal spelling: no leading zeros, and no sign on zero.</summary>
+    private static string CanonicalInteger(string value) =>
+        System.Numerics.BigInteger.Parse(value, System.Globalization.CultureInfo.InvariantCulture).ToString(System.Globalization.CultureInfo.InvariantCulture);
 
     private static MetaField? FindFieldOnEntity(MetaData entity, string name)
     {
@@ -4350,6 +4434,42 @@ public static partial class ValidationPasses
         }
 
         Walk(root);
+        return errors;
+    }
+
+    // ValidateColumnNameCollisions — ERR_COLUMN_NAME_COLLISION: two fields of one stored
+    // object resolving to the SAME physical column (userId + userID both snake_case to
+    // user_id, or two fields sharing an explicit @column). Only the RESOLVED name is
+    // compared (PhysicalNaming.ResolveColumnName), so an explicit @column, an inherited
+    // field and the project's column strategy are honoured. Scope: a concrete object
+    // declaring at least one source (a source-less object generates nothing); derived
+    // fields and field.object (may flatten to several columns) are skipped.
+    // ADR-0039: effective children, so an inherited field collides like an own one.
+    public static IReadOnlyList<MetaError> ValidateColumnNameCollisions(MetaData root)
+    {
+        var errors = new List<MetaError>();
+        foreach (var obj in root.OwnChildren().Where(c => c.Type == TYPE_OBJECT))
+        {
+            if (obj.IsAbstract) continue;
+            if (!obj.Children().Any(c => c.Type == TYPE_SOURCE)) continue;
+            var seen = new Dictionary<string, MetaField>(StringComparer.Ordinal);
+            foreach (var field in obj.Children().OfType<MetaField>())
+            {
+                if (field.SubType == FIELD_SUBTYPE_OBJECT || field.IsDerived()) continue;
+                var column = PhysicalNaming.ResolveColumnName(field);
+                if (!seen.TryGetValue(column, out var first))
+                {
+                    seen[column] = field;
+                    continue;
+                }
+                errors.Add(new MetaError(
+                    $"fields \"{first.Name}\" and \"{field.Name}\" on \"{obj.Name}\" both resolve to " +
+                    $"physical column \"{column}\". Rename one field, or give one an explicit @column " +
+                    "so the two columns differ.",
+                    ErrorCode.ERR_COLUMN_NAME_COLLISION,
+                    Envelope: field.Source));
+            }
+        }
         return errors;
     }
 

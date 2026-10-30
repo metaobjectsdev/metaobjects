@@ -26,3 +26,21 @@ def test_no_fence_returns_trimmed_input() -> None:
 
 def test_null_safe() -> None:
     assert _strip.strip(None) == ""
+
+
+def test_backticks_inside_a_json_string_do_not_close_the_fence() -> None:
+    out = _strip.strip('```json\n{"summary": "run ```make``` first", "score": 7}\n```')
+    assert out == '{"summary": "run ```make``` first", "score": 7}'
+
+
+def test_longer_opening_fence_closes_only_on_an_equal_or_longer_run() -> None:
+    out = _strip.strip("````md\nbefore\n```\ninner\n```\nafter\n````\ntail")
+    assert out == "before\n```\ninner\n```\nafter\ntail"
+
+
+def test_closing_fence_on_the_payload_line_is_accepted_at_the_end() -> None:
+    assert _strip.strip('```json\n{"a":1}```') == '{"a":1}'
+
+
+def test_unclosed_fence_is_not_a_fence() -> None:
+    assert _strip.strip('```json\n{"a":1}') == '```json\n{"a":1}'

@@ -46,8 +46,8 @@ if (args.Length == 0 || helpRequested)
         "                                                       --codegen    regen-to-temp vs committed --out\n" +
         "                                                                    (--out defaults to csharp.outDir in\n" +
         "                                                                    .metaobjects/config.json, as for gen)\n" +
-        "                                                       --namespace  codegen regen namespace; inferred\n" +
-        "                                                                    from the committed --out when omitted\n" +
+        "                                                       --namespace  codegen regen namespace (default: csharp.namespace\n" +
+        "                                                                    in .metaobjects/config.json, else the metadata package)\n" +
         "                                                       --db         NOT supported in C# (migrate engine)\n" +
         "                                                       --lax        load lax (legacy); strict-by-default\n" +
         "                                                                    rejects an unregistered @attr (ADR-0023)\n" +
@@ -171,11 +171,6 @@ static int? RequireGeneratorList(string projectRoot, string command)
         Console.Error.WriteLine(
             $"{command}: codegen/Generators.cs has no codegen/Codegen.csproj to compile it. " +
             "`dotnet meta init` writes the missing files and keeps the ones you have.");
-        return 2;
-    }
-    if (CodegenHandoff.ProgramIgnoresList(projectRoot))
-    {
-        Console.Error.WriteLine(CodegenCli.LegacyProgram(command));
         return 2;
     }
     return null;
@@ -385,8 +380,7 @@ static int RunVerify(string[] rest)
     string? metadataDir = null;
     string? templatesRoot = null;
     string? outDir = null;
-    string ns = "Generated";
-    bool nsExplicit = false;
+    string? ns = null;
     string? generatorsCsv = null;
     string? templateRoot = null;
     string? columnNamingRaw = null;
@@ -422,7 +416,7 @@ static int RunVerify(string[] rest)
         // ledger has caught up with its links. META_REQUIRE_IMPLEMENTERS=1 does the same.
         else if (a == "--require-implementers") requireImplementers = true;
         else if (a == "--out" && i + 1 < rest.Length) outDir = rest[++i];
-        else if (a == "--namespace" && i + 1 < rest.Length) { ns = rest[++i]; nsExplicit = true; }
+        else if (a == "--namespace" && i + 1 < rest.Length) { ns = rest[++i]; }
         else if (a == "--generators" && i + 1 < rest.Length) generatorsCsv = rest[++i];
         else if (a == "--template-root" && i + 1 < rest.Length) templateRoot = rest[++i];
         // ADR-0058 — the flag is removed: column and table naming is one project setting
@@ -513,7 +507,7 @@ static int RunVerify(string[] rest)
             // --generators narrows the declared list there exactly as it narrows gen's.
             List<string> codegenArgs = ["verify", "--codegen", "--out", outDir];
             if (metadataDir is not null) codegenArgs.Insert(2, metadataDir);
-            if (nsExplicit) codegenArgs.AddRange(["--namespace", ns]);
+            if (ns is not null) codegenArgs.AddRange(["--namespace", ns]);
             if (generatorsCsv is not null) codegenArgs.AddRange(["--generators", generatorsCsv]);
             if (templateRoot is not null) codegenArgs.AddRange(["--template-root", templateRoot]);
             if (lax) codegenArgs.Add("--lax");
@@ -540,7 +534,7 @@ static int RunVerify(string[] rest)
         TemplatesRoot = templatesRoot,
         OutDir = outDir,
         Namespace = ns,
-        NamespaceExplicit = nsExplicit,
+        ConfiguredNamespace = resolvedMeta.Namespace,
         Generators = generators,
         TemplateRoot = templateRoot,
         Templates = templates,

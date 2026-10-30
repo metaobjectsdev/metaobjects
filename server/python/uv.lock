@@ -443,7 +443,7 @@ requires-dist = [
     { name = "jinja2", marker = "extra == 'jinja'", specifier = ">=3.1" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10" },
     { name = "pg8000", marker = "extra == 'integration'", specifier = ">=1.31" },
-    { name = "pydantic", marker = "extra == 'dev'", specifier = ">=2" },
+    { name = "pydantic", marker = "extra == 'dev'", specifier = ">=2.8" },
     { name = "pymysql", marker = "extra == 'integration'", specifier = ">=1.1" },
     { name = "pymysql", marker = "extra == 'mysql'", specifier = ">=1.1" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8" },
@@ -457,7 +457,7 @@ provides-extras = ["dev", "integration", "mysql", "jinja"]
 dev = [
     { name = "jinja2", specifier = ">=3.1" },
     { name = "mypy", specifier = ">=1.10" },
-    { name = "pydantic", specifier = ">=2" },
+    { name = "pydantic", specifier = ">=2.8" },
     { name = "pytest", specifier = ">=9.0.3" },
     { name = "pytest-xdist", specifier = ">=3.6" },
     { name = "ruff", specifier = ">=0.6" },

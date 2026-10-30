@@ -30,6 +30,7 @@ import yaml  # type: ignore[import-untyped]  # PyYAML ships no type stubs
 
 from metaobjects.codegen.config import DEFAULT_API_PREFIX
 from metaobjects.naming import removed_naming_source_message
+from metaobjects.source.yaml_core_schema import safe_load_core
 
 #: Config filename looked up in the cwd when ``--config`` is not given.
 CONFIG_FILENAME = "metaobjects.config.yaml"
@@ -374,7 +375,7 @@ def load_project_config(path: Path) -> ProjectConfig:
     except (OSError, UnicodeDecodeError) as exc:
         raise ConfigError(f"{path}: cannot read config file: {exc}") from exc
     try:
-        raw = yaml.safe_load(text)
+        raw = safe_load_core(text)
     except yaml.YAMLError as exc:
         raise ConfigError(f"{path}: invalid YAML: {exc}") from exc
 

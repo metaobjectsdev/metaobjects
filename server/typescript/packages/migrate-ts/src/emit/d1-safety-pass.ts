@@ -28,7 +28,7 @@ export function applyD1SafetyPass(sql: string, opts?: { collectWarnings?: boolea
   // fragments (a down's trailing `-- WARNING…` block) are kept so the prose survives
   // the rewrite, and are re-emitted WITHOUT a terminator: a `;` after them would make
   // an empty statement for whatever executes the file.
-  const statements = splitSqlStatements(sql, { keepCommentOnly: true });
+  const statements = splitSqlStatements(sql, { keepCommentOnly: true, dialect: "d1" });
   const kept: string[] = [];
 
   for (const stmt of statements) {
@@ -67,7 +67,7 @@ export function applyD1SafetyPass(sql: string, opts?: { collectWarnings?: boolea
 
 /** True when a (kept) fragment carries no SQL — the splitter drops those by default. */
 function isCommentOnly(fragment: string): boolean {
-  return splitSqlStatements(fragment).length === 0;
+  return splitSqlStatements(fragment, { dialect: "d1" }).length === 0;
 }
 
 function byteLength(s: string): number {

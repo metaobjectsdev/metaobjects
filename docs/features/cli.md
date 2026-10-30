@@ -216,7 +216,10 @@ the committed `--out` tree, never touching it), and a **clean `--db` rejection
 (exit 2)** — bare `dotnet meta verify` runs `--templates` and, when an output
 directory and `codegen/Generators.cs` are present, `--codegen`. The output directory is
 `csharp.outDir` in `.metaobjects/config.json` (the same setting `gen` writes to); `--out <dir>`
-wins over it. With neither, the codegen gate is skipped with a note that names the setting. A bare run prints the subverb note. The **Java/Kotlin `mvn metaobjects:verify`** port expresses the same vocabulary as a
+wins over it. With neither, the codegen gate is skipped with a note that names the setting. The
+namespace for types no package binding places is `--namespace`, else `csharp.namespace` there,
+read the same way by `gen` and `verify`; a run that emits such a type with neither set stops and
+asks for one. A bare run prints the subverb note. The **Java/Kotlin `mvn metaobjects:verify`** port expresses the same vocabulary as a
 `mode` parameter (Maven goals are parameter-driven, not flag-driven). With `mode` unset the goal
 runs both gates below, skipping the template gate with a note when no `templateRoot` is set.
 `-Dmeta.verify.mode=codegen`

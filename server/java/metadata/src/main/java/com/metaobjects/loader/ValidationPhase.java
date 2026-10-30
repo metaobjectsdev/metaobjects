@@ -191,6 +191,8 @@ public final class ValidationPhase {
         // Authoring guard — a field.enum vocabulary ambiguous under the default
         // @normalize: strip. WARN_ENUM_NORMALIZE_AMBIGUOUS.
         pass(collected, () -> validateEnumNormalizeAmbiguity(root, loader));
+        // Two members folding to one key under `strip` -- ERR_ENUM_NORMALIZE_COLLISION.
+        validateEnumNormalizeCollision(root, collected);
         // FR-014 — TPH discriminator cross-attribute rules.
         pass(collected, () -> validateDiscriminator(root));
         // FR-015 — source.rdb @parameterRef typed-input rules.
@@ -287,6 +289,8 @@ public final class ValidationPhase {
         pass(collected, () -> validateFilterableHasSupportedOps(root));
         pass(collected, () -> validateSortableHasSupportedSubtype(root));
         pass(collected, () -> validateIndexLookupFields(root));
+        // Two fields of one stored object resolving to the same physical column.
+        pass(collected, () -> validateColumnNameCollisions(root));
         // FR-039 — a retired requirement carries no @implementedBy (refused, not exempted,
         // so the dangling-ref class is unreachable) and @supersededBy is legal only there.
         pass(collected, () -> validateRetiredRequirementLinks(root));
@@ -587,6 +591,64 @@ public final class ValidationPhase {
 
     static void validateEnumNormalizeAmbiguity(MetaRoot root, MetaDataLoader loader) {
         walkEnumNormalizeAmbiguity(root, loader);
+    }
+
+    /**
+     * ERR_ENUM_NORMALIZE_COLLISION -- two declared members of one enum fold to the SAME key
+     * under {@code @normalize: strip} (e.g. READ_ONLY and READONLY), so one is unreachable
+     * and a reply naming it coerces to the other. An ERROR (the vocabulary itself is
+     * ambiguous); {@code collapse} / {@code none} are not gated. Mirrors the TS reference.
+     */
+    static void validateEnumNormalizeCollision(MetaData node, List<MetaDataException> out) {
+        checkEnumNormalizeCollision(node, out);
+        // Own children only -- inherited children are checked on their declaring nodes.
+        for (MetaData child : node.getChildren(MetaData.class, false)) {
+            validateEnumNormalizeCollision(child, out);
+        }
+    }
+
+    private static void checkEnumNormalizeCollision(MetaData node, List<MetaDataException> out) {
+        if (!EnumField.TYPE_FIELD.equals(node.getType())
+                || !EnumField.SUBTYPE_ENUM.equals(node.getSubType())) {
+            return;
+        }
+        // Own-attrs-only (ADR-0039): the vocabulary DECLARED here; an inheriting enum
+        // shares the super's set, already checked there.
+        if (!node.hasMetaAttr(EnumField.ATTR_VALUES, false)) return;
+        Object raw = node.getMetaAttr(EnumField.ATTR_VALUES, false).getValue();
+        if (!(raw instanceof List) || ((List<?>) raw).size() < 2) return;
+        String[] normalize = effectiveNormalizeMode(node);
+        if (!EnumField.NORMALIZE_DEFAULT.equals(normalize[0])) return;
+        boolean modeIsExplicit = "true".equals(normalize[1]);
+
+        java.util.Map<String, java.util.LinkedHashSet<String>> byKey = new java.util.LinkedHashMap<>();
+        for (Object o : (List<?>) raw) {
+            String member = String.valueOf(o);
+            String key = stripNormalize(member);
+            if (key.isEmpty()) continue;
+            byKey.computeIfAbsent(key, k -> new java.util.LinkedHashSet<>()).add(member);
+        }
+        for (java.util.Map.Entry<String, java.util.LinkedHashSet<String>> e : byKey.entrySet()) {
+            // Distinct members only: an exact duplicate is ERR_BAD_ATTR_VALUE's job.
+            if (e.getValue().size() < 2) continue;
+            StringBuilder listed = new StringBuilder();
+            for (String m : e.getValue()) {
+                if (listed.length() > 0) listed.append(", ");
+                listed.append('\'').append(m).append('\'');
+            }
+            out.add(new MetaDataException(
+                ErrorMessageConstants.ERR_ENUM_NORMALIZE_COLLISION
+                    + ": field.enum \"" + shortNameOf(node) + "\" members " + listed
+                    + " all normalize to '" + e.getKey() + "' under @" + EnumField.ATTR_NORMALIZE
+                    + ": '" + EnumField.NORMALIZE_DEFAULT + "'"
+                    + (modeIsExplicit ? "" : " (the default)")
+                    + ", which upper-cases and deletes everything outside A-Z0-9, so a reply"
+                    + " naming one of them is indistinguishable from the others. Rename the"
+                    + " members so they differ after that fold, or set @" + EnumField.ATTR_NORMALIZE
+                    + ": 'collapse' (keeps '_' distinct) or 'none' (exact match) on this field.",
+                ErrorCode.ERR_ENUM_NORMALIZE_COLLISION, node.getSource()));
+            return; // one error per declaring node
+        }
     }
 
     private static void walkEnumNormalizeAmbiguity(MetaData node, MetaDataLoader loader) {
@@ -5043,6 +5105,9 @@ public final class ValidationPhase {
     private static final Set<String> NUMERIC_DISCRIMINATOR_SUBTYPES = Set.of(
         IntegerField.SUBTYPE_INT, LongField.SUBTYPE_LONG);
 
+    /** An optional minus sign and ASCII digits; matched whole, so no newline slips past. */
+    private static final java.util.regex.Pattern INTEGER_LITERAL = java.util.regex.Pattern.compile("-?[0-9]+");
+
     static void validateDiscriminator(MetaRoot root) {
         List<MetaObject> entities = new java.util.ArrayList<>();
         for (MetaData rc : root.getChildren(MetaData.class, false)) {
@@ -5089,7 +5154,7 @@ public final class ValidationPhase {
                         ErrorCode.ERR_DISCRIMINATOR_VALUE_TYPE_MISMATCH, obj.getSource());
                 }
             } else if (NUMERIC_DISCRIMINATOR_SUBTYPES.contains(st)) {
-                if (!value.matches("-?\\d+")) {
+                if (!INTEGER_LITERAL.matcher(value).matches()) {
                     throw new MetaDataException(
                         "ERR_DISCRIMINATOR_VALUE_TYPE_MISMATCH"
                             + ": object.entity \"" + shortNameOf(obj) + "\" @discriminatorValue: \""
@@ -5107,10 +5172,16 @@ public final class ValidationPhase {
         // Pass 3: ERR_DISCRIMINATOR_VALUE_DUPLICATE within each root's subtypes.
         for (Map.Entry<MetaObject, List<Object[]>> e : bindingsByRoot.entrySet()) {
             Map<String, MetaObject> seen = new java.util.HashMap<>();
+            String rootFieldName = ownAttrString(e.getKey(), MetaObject.ATTR_DISCRIMINATOR);
+            MetaField rootField = rootFieldName == null ? null : findFieldOnEntity(e.getKey(), rootFieldName);
+            boolean numericRoot = rootField != null && NUMERIC_DISCRIMINATOR_SUBTYPES.contains(rootField.getSubType());
             for (Object[] b : e.getValue()) {
                 MetaObject sub = (MetaObject) b[0];
                 String value = (String) b[1];
-                MetaObject prev = seen.get(value);
+                // "1" and "01" are one value to a numeric column, so they are one claim.
+                String key = numericRoot && INTEGER_LITERAL.matcher(value).matches()
+                    ? new java.math.BigInteger(value).toString() : value;
+                MetaObject prev = seen.get(key);
                 if (prev != null) {
                     throw new MetaDataException(
                         "ERR_DISCRIMINATOR_VALUE_DUPLICATE"
@@ -5119,7 +5190,7 @@ public final class ValidationPhase {
                             + shortNameOf(prev) + "\"",
                         ErrorCode.ERR_DISCRIMINATOR_VALUE_DUPLICATE, sub.getSource());
                 }
-                seen.put(value, sub);
+                seen.put(key, sub);
             }
         }
 
@@ -5324,6 +5395,39 @@ public final class ValidationPhase {
         // Hierarchy IS nesting, so a retired requirement can sit at any depth.
         for (MetaData child : node.getChildren(MetaData.class, false)) {
             walkRetiredRequirementLinks(child);
+        }
+    }
+
+    /**
+     * ERR_COLUMN_NAME_COLLISION: two fields of one stored object resolving to the SAME
+     * physical column ({@code userId} + {@code userID} both snake_case to {@code user_id},
+     * or two fields sharing an explicit {@code @column}).
+     *
+     * <p>Only the RESOLVED name is compared, through {@link com.metaobjects.database.ColumnNaming#resolve},
+     * so an explicit {@code @column}, an inherited field and the project's column strategy are
+     * honoured. Scope: a concrete object declaring at least one source (a source-less object
+     * generates nothing); derived fields and {@code field.object} (may flatten to several
+     * columns) are skipped. ADR-0039: resolving accessors, so an inherited field collides like
+     * an own one.</p>
+     */
+    static void validateColumnNameCollisions(MetaRoot root) {
+        for (MetaObject obj : root.getChildren(MetaObject.class, false)) {
+            if (isAbstract(obj)) continue;
+            if (obj.getChildren(MetaSource.class, true).isEmpty()) continue;
+            java.util.Map<String, MetaField<?>> seen = new java.util.HashMap<>();
+            for (MetaField<?> field : obj.getChildren(MetaField.class, true)) {
+                if (ObjectField.SUBTYPE_OBJECT.equals(field.getSubType()) || field.isDerived()) continue;
+                String column = com.metaobjects.database.ColumnNaming.resolve(field);
+                MetaField<?> first = seen.putIfAbsent(column, field);
+                if (first == null) continue;
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_COLUMN_NAME_COLLISION
+                        + ": fields \"" + first.getName() + "\" and \"" + field.getName()
+                        + "\" on \"" + obj.getName() + "\" both resolve to physical column \""
+                        + column + "\". Rename one field, or give one an explicit @column so the"
+                        + " two columns differ.",
+                    ErrorCode.ERR_COLUMN_NAME_COLLISION, field.getSource());
+            }
         }
     }
 

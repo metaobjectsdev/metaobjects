@@ -288,6 +288,17 @@ function pep440Normalized(version: string): string | undefined {
   return `${epoch}${release}${pre}${post}${dev}${local}`;
 }
 
+/** PEP 440 equality: release segments compare with trailing zeros ignored, so `1.0` and
+ *  `1.0.0` are the same version. A string that is not PEP 440 compares verbatim. */
+function pep440Equal(a: string, b: string): boolean {
+  const key = (v: string): string => {
+    const n = pep440Normalized(v);
+    if (n === undefined) return v;
+    return n.replace(/^((?:\d+!)?\d+(?:\.\d+)*)/, (rel) => rel.replace(/(?:\.0+)+$/, ""));
+  };
+  return key(a) === key(b);
+}
+
 /** The installed package's own version should be the manifest's: `sharedModelFile()`
  *  defaults the manifest version to the host package's. A difference means the
  *  publisher bumped the package without regenerating the artifact (or set
@@ -301,7 +312,7 @@ export function packageVersionWarning(
   if (packageVersion === undefined) return undefined;
   const same =
     "python" in spec
-      ? (pep440Normalized(packageVersion) ?? packageVersion) === (pep440Normalized(manifestVersion) ?? manifestVersion)
+      ? pep440Equal(packageVersion, manifestVersion)
       : packageVersion === manifestVersion;
   if (same) return undefined;
   const pkg = "npm" in spec ? `npm package "${spec.npm}"` : "python" in spec ? `Python package "${spec.python}"` : "package";

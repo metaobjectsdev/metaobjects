@@ -107,3 +107,12 @@ def test_naming_conformance_collision_cases_are_refused(tmp_path: Path) -> None:
             assert_no_collection_name_collisions(
                 _entities(tmp_path / str(i), case["entityA"], case["entityB"])
             )
+
+
+def test_raises_for_route_segment_twins(tmp_path: Path) -> None:
+    # ApiKey / APIKey pluralize to different names but both snake_case to /api_keys.
+    with pytest.raises(ValueError) as exc_info:
+        assert_no_collection_name_collisions(_entities(tmp_path, "ApiKey", "APIKey"))
+    msg = str(exc_info.value)
+    assert ERR_COLLECTION_NAME_COLLISION in msg
+    assert '"ApiKey"' in msg and '"APIKey"' in msg and "api_keys" in msg

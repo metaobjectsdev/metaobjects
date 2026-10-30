@@ -25,7 +25,7 @@ import { ParseError } from "../errors.js";
 import type { LoaderWarning } from "../source.js";
 import { codeSource, resolvedSource } from "../source.js";
 import { parseJson } from "../parser-json.js";
-import { validateDataGridSortFields, validateFilterableHasIndex, validateFilterableHasSupportedOps, validateSortableHasSupportedSubtype, validateOriginPaths, validateDerivedFieldProvidability, validateDataGridFilterValues, validateFieldObjectStorage, validateFieldMap, validateTemplatePayloadRefs, validateFieldDefaults, validateRelationships, validateOneSideReferenceResolution, validateM2MJunctionPairing, validateIndexLookupFields, validateProjectionFilter, validateRetiredRequirementLinks } from "./validation-passes.js";
+import { validateDataGridSortFields, validateFilterableHasIndex, validateFilterableHasSupportedOps, validateSortableHasSupportedSubtype, validateOriginPaths, validateDerivedFieldProvidability, validateDataGridFilterValues, validateFieldObjectStorage, validateFieldMap, validateTemplatePayloadRefs, validateFieldDefaults, validateRelationships, validateOneSideReferenceResolution, validateM2MJunctionPairing, validateIndexLookupFields, validateProjectionFilter, validateRetiredRequirementLinks, validateColumnNameCollisions } from "./validation-passes.js";
 import { validateReporting } from "./reporting-validation.js";
 import { runRegisteredValidation } from "./validation-registry.js";
 import { validateSourceRoles } from "../persistence/source/validate-source-roles.js";
@@ -33,7 +33,7 @@ import { validateSourceEscapes } from "../persistence/source/validate-source-esc
 import { validateSourcePhysicalNames } from "../persistence/source/validate-source-physical-names.js";
 import { validateSourceParameterRef } from "../persistence/source/validate-source-parameter-ref.js";
 import { validateFieldMutability } from "../core/field/validate-field-mutability.js";
-import { validateEnumNormalizeAmbiguity } from "../core/field/validate-enum-normalize-ambiguity.js";
+import { validateEnumNormalizeAmbiguity, validateEnumNormalizeCollision } from "../core/field/validate-enum-normalize-ambiguity.js";
 import { validateDiscriminator } from "../core/object/validate-discriminator.js";
 import { resolveDeferredSupers, EXTENDS_TARGET_MISMATCH_RULE } from "../super-resolve.js";
 import { resolveReferences } from "./resolve-references.js";
@@ -691,6 +691,9 @@ export class MetaDataLoader {
       // (ADR-0039: resolving accessor, so inherited fields via extends are visible).
       errors.push(...validateIndexLookupFields(root));
 
+      // Two fields of one stored object resolving to the same physical column.
+      errors.push(...validateColumnNameCollisions(root));
+
       // FR-039 — a retired requirement carries no @implementedBy (refused, not
       // exempted, so the dangling-ref class is unreachable) and @supersededBy is
       // legal only on `retired`.
@@ -752,6 +755,8 @@ export class MetaDataLoader {
       // others), which would silently coerce delimited input to a wrong-but-valid
       // member. WARN_ENUM_NORMALIZE_AMBIGUOUS.
       envelopeWarnings.push(...validateEnumNormalizeAmbiguity(root).warnings);
+      // Two members folding to the same key under `strip` — ERR_ENUM_NORMALIZE_COLLISION.
+      errors.push(...validateEnumNormalizeCollision(root));
 
       // FR-015 — source.rdb @parameterRef typed-input validation.
       errors.push(...validateSourceParameterRef(root));

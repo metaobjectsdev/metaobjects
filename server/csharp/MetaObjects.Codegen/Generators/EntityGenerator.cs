@@ -1842,9 +1842,31 @@ public static class DecimalWire
             System.Globalization.CultureInfo.InvariantCulture, out _) ? s : null;
     }
 
-    // Escapes a regex pattern for embedding in a C# string-literal attribute argument.
-    protected static string EscapeAttrString(string s) =>
-        s.Replace("\\", "\\\\").Replace("\"", "\\\"");
+    // Escapes a regex pattern or default for embedding in a C# string-literal attribute argument.
+    // A raw newline, any other control character, or a Unicode line separator would end the
+    // literal and emit source that does not compile.
+    protected static string EscapeAttrString(string s)
+    {
+        var sb = new System.Text.StringBuilder(s.Length + 8);
+        foreach (var c in s)
+        {
+            switch (c)
+            {
+                case '\\': sb.Append("\\\\"); break;
+                case '"': sb.Append("\\\""); break;
+                case '\n': sb.Append("\\n"); break;
+                case '\r': sb.Append("\\r"); break;
+                case '\t': sb.Append("\\t"); break;
+                default:
+                    if (char.IsControl(c) || c is '\u2028' or '\u2029')
+                        sb.Append("\\u").Append(((int)c).ToString("x4", System.Globalization.CultureInfo.InvariantCulture));
+                    else
+                        sb.Append(c);
+                    break;
+            }
+        }
+        return sb.ToString();
+    }
 
     // An owned-type navigation property for an object-typed field. Returns null (with
     // a warning) when the @objectRef can't be resolved.

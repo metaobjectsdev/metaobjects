@@ -52,6 +52,18 @@ here.**
   is unchanged and the default output is byte-identical. The `@metaobjectsdev/docs-site` README
   lists the five files and how to serve them. Copying them into the output is not done for you.
 
+- **`ERR_ENUM_NORMALIZE_COLLISION`.** Loading refuses an enum, in all five ports, when two declared
+  members fold to the same key under the default `@normalize: strip` (`READ_ONLY` and `READONLY`,
+  `X_1` and `X1`), because a reply naming one could not be told from the other. Set
+  `@normalize: collapse` or `none`, or rename a member. Collapse and none are unaffected and no
+  accepted reply changes. Fixtures `error-enum-normalize-collision`, `enum-normalize-no-collision`
+  and `enum-normalize-collision-collapse-ok`.
+
+- **`ERR_COLUMN_NAME_COLLISION`.** Two fields of one stored object that resolve to the same
+  physical column (`userId` and `userID` under snake_case, or two fields sharing `@column`) are a
+  load error in every port, naming both fields. A model that loaded before with a duplicate column
+  now fails at load. Fixtures `error-column-name-collision` and `column-name-no-collision`.
+
 - **Jinja templates in Python and TypeScript, held to the same payload check (ADR-0061, closes #483).**
   A `template.prompt` or `template.output` body may be a Jinja file —
   `<group>/<source>.jinja`, `.j2` or `.jinja2` — instead of a `.mustache` one. Nothing in the
@@ -232,6 +244,32 @@ here.**
 
 ### Changed
 
+- **C# no longer reads source code to work out its configuration.** `dotnet meta verify
+  --codegen` regenerates under the namespace `gen` resolves instead of reading it from the
+  committed output, so output generated under another namespace is drift. A C# namespace comes
+  from the package bindings (`GenConfig.TypeOverrides`, then `PackageNamespaces`, then the
+  `Convention` rule, then `UnmappedStrategy`, each keyed by an object's own metadata package);
+  the default `Flatten` strategy places every type in one namespace, `--namespace` or else the
+  new `csharp.namespace` key in `.metaobjects/config.json`. There is no default value: the
+  constant `Generated` is gone, and a run that emits a file needing the namespace without one
+  set stops and asks for it (a run that emits nothing never does). A namespace that is not a
+  dotted path of C# identifiers fails generation. **Upgrade step:** set
+  `"csharp": { "namespace": "<ns>" }` to the namespace your committed output uses (`Generated`
+  if you never passed `--namespace`), so `gen` and a bare `dotnet meta verify` both use it. `dotnet meta gen`, `verify --codegen`, `init`
+  and `eject` no longer check whether `codegen/Program.cs` runs `Generators.All`.
+  **Upgrade step:** if `codegen/Program.cs` builds its own generator list, replace that list
+  with `Generators.All`. Such a project still runs its own list and ignores
+  `codegen/Generators.cs`, and nothing warns about it. Move each entry into `Generators.All`
+  in `codegen/Generators.cs`, then change `Program.cs`:
+
+  ```csharp
+  // before
+  IReadOnlyList<IGenerator> generators = [new MetaObjects.Codegen.Generators.EntityGenerator()];
+  return CodegenCli.Run(args, generators);
+  // after
+  return CodegenCli.Run(args, Generators.All);
+  ```
+
 - **On Postgres, `meta verify --db` and `meta migrate` ask Postgres whether a CHECK or an index
   expression is the one stored, instead of comparing rewritten text.** For each table the plan
   creates a temporary table with the live columns inside a transaction it rolls back (a savepoint
@@ -259,6 +297,20 @@ here.**
   `ExprCanonProbe` types, with a `DiffArgs.exprCanonProbe` option. Schema comparison is
   TypeScript-owned, so no other port carries this comparison. MySQL, SQL Server and Oracle are not
   migrate dialects, so they have no probe.
+
+- **Java and Kotlin `<filters>` name globs now use the same grammar as `scope`.** `*` matches
+  within one `::` segment and no longer crosses `::`; a whole segment `**` matches one or more
+  segments; `@` and `?` are ordinary characters, no longer wildcards. `!` still excludes and the
+  `.[attr:...]` predicate is unchanged. A filter that now selects fewer objects than before fails
+  generation, naming the pattern, an object it no longer selects and the `**` replacement; before,
+  those objects vanished from the output silently. To update, in every `<filters>` list in your
+  pom (and every generator entry that repeats them, such as `entity` and `extractor`):
+  1. Run `mvn metaobjects:generate`; the error lists each affected pattern with its replacement.
+  2. Replace a segment that is only `*` with `**` (`acme::*` becomes `acme::**`).
+  3. Replace a mixed segment such as `*Store` for nested packages with `**::*Store`: keep
+     `acme::*Store` for direct children and add `acme::**::*Store` as a second entry.
+  4. Replace `@` (one segment) with `*`; replace each `?` with an explicit name or a `*`.
+  5. Run `mvn metaobjects:generate` again; the generated file set should be unchanged.
 
 - **A bare `verify` runs the same default gate set in every port: codegen drift, prompt
   templates and the requirement ledger.** Until now a bare run covered one gate: `meta verify`
@@ -346,6 +398,92 @@ here.**
   plain `RENAME CONSTRAINT`. The anonymous-CHECK match on SQLite and D1 shares the comparison.
   Separately, the rename rewrite no longer touches a cast type, a function name or the inside of
   an `E'..'` literal when a column of that word is renamed.
+
+- **Regex and hand-rewrite audit follow-ups.** Places that decided a match by regex or string
+  rewriting now ask the authoritative source:
+  - `parseCurrency` reads the locale's separators and sign forms from `Intl.NumberFormat`, returns
+    `null` on junk, and reads `$-5.00`, `(5.00)` and `5.00-` as negative. A long fraction rounds
+    exactly (`1.005` is 101, not 100).
+  - The migration SQL splitter keeps a SQLite `CREATE TRIGGER … BEGIN … END` as one statement and
+    honours Postgres `E'…'` backslash escapes; a bare `END` is dropped as transaction control.
+  - SQLite/D1 view comparison is case-sensitive and whitespace-exact inside quoted literals (as is
+    the Postgres fingerprint), so literal-only view changes are detected. A Postgres view whose
+    body has a whitespace-bearing literal re-stamps once. SQLite/D1 `AUTOINCREMENT` detection
+    ignores comments, literals and quoted identifiers.
+  - Python loads YAML with YAML 1.2 core-schema scalars, matching the TypeScript loader: `off`,
+    `no`, `1:30` and `2024-01-02` stay strings; a duplicate mapping key is a load error. The
+    Python codegen drift gate compares bytes, so CRLF edits are no longer hidden; `@pattern` uses
+    ASCII `\d`/`\w`/`\s`; a shared enum whose values differ only by case fails generation.
+  - Template verify and render agree with the Mustache engine in C#, Java, Python and TypeScript:
+    a partial tag in a comment is not expanded, `{{=<% %>=}}` raises no false
+    `ERR_VAR_NOT_ON_PAYLOAD`, `@requiredTags` is not satisfied inside a comment, and an unbalanced
+    section is `ERR_TEMPLATE_SYNTAX`. Render rejects a delimiter change in a template that uses
+    partials, or in a partial body, and verify reports the same as `ERR_TEMPLATE_SYNTAX` at the
+    first partial or the partial's ref (fixtures `verify-set-delimiter-with-partial`,
+    `verify-set-delimiter-in-partial`). The Python renderer rejects every `{{=`, so Python verify
+    reports every one (`expected-drift.python.json` overrides).
+  - The forgiving XML extract reader (all five ports) decodes entities, reads CDATA as text,
+    ignores comments, keeps literal `List<int>` prose inside closed elements, and locates the real
+    root. An unclosed open tag after `>`, whitespace or the start of the body is still a child
+    (`<check><payoff>text</check>`). Seven new `extract-conformance` cases.
+  - `meta upgrade` ignores JSONC comments when scanning JSON metadata, so a brace or trailing
+    comment no longer skips a retirement silently.
+  - The hosted `leak-scan` checks renamed files and `/Users/<name>/` paths and shares its patterns
+    with the local pre-commit hook.
+  - The Java canonical serializer and `source.rdb` name resolution no longer treat an authored
+    name like `required7` or `rdb1` as auto-generated (new fixture
+    `authored-name-looks-autogenerated`).
+  - Workspace discovery parses `pnpm-workspace.yaml` as YAML and honours negations and `**`.
+  - Python generated Pydantic models match `validator.regex` `@pattern` (and the hostname format)
+    as an ASCII full match: `\d`/`\w`/`\s` no longer accept non-ASCII, lookahead works, a trailing
+    newline is rejected. A pattern Python's `re` cannot compile, such as `\p{L}`, now fails at `gen`
+    with a clear error instead of at validation time. **Upgrade step:** generated models now need
+    Pydantic 2.8 or later. They pass a compiled `re.ASCII` pattern to `Field(pattern=...)`, which
+    Pydantic accepts from 2.7.0 and keeps the flags of from 2.8.0; on an older 2.x the ASCII rule
+    is lost. Raise your `pydantic` requirement to `>=2.8`.
+  - Codegen refuses, with `ERR_COLLECTION_NAME_COLLISION`, two served entities whose snake-cased,
+    pluralized REST segments are equal (`ApiKey` and `APIKey`, both `/api_keys`); TS, C# and Python
+    compared only the pluralized PascalCase name. Java and Kotlin already refused it.
+  - The Spring and Kotlin filter-allowlist generators import their support class explicitly, so an
+    ejected, package-renamed copy compiles again (broken since #503).
+  - The CSV and spreadsheet formula-injection guard no longer prefixes `'` to strict numeric
+    literals (`-5`, `-5.25`) in all four render ports; every other value starting with
+    `= + - @ TAB CR` is still guarded. Fixture `render-csv-numeric-exempt`.
+  - Generated Pydantic models publish an ECMA-262-valid `pattern` in JSON Schema/OpenAPI while
+    still enforcing an ASCII full match. `parseCurrency` caches the locale shape per
+    (currency, locale). Workspace patterns find the members pnpm finds: `**` tolerates symlink cycles and
+    includes its base directory, a wildcard skips dot-directories, and only `node_modules`,
+    `bower_components`, `test` and `tests` are never entered (`dist` and `build` are ordinary directories). `meta eject --list` says `, reordered` for a reorder-only
+    copy; trailing whitespace and blank lines alone still read `identical` in Python and C#.
+    `parseCurrency` reads the decimal separator for zero-decimal currencies (JPY in `de-DE`). C# `ConstraintErrors` falls back to message text when a driver code is not a constraint
+    code. The migration splitter treats `E'...'` as backslash-escaped on Postgres only.
+  - Smaller instances: Java `<filters>` glob no longer throws on metacharacters; Java and C#
+    generated string literals escape newlines and control characters; `library.json` is read with
+    Gson; the Kotlin relations helper imports its primary-key type; `eject` reads `pom.xml` with
+    Maven's model reader; C# constraint-violation classification uses SQLSTATE / SQLite extended
+    codes before message text; numeric `@discriminatorValue` rejects non-ASCII digits and a
+    trailing newline and treats `"1"` and `"01"` as duplicates (new fixtures); `meta deps sync`
+    no longer warns that Python `1.0` differs from `1.0.0`; `DirectorySource` excludes containing
+    `/` match the relative path.
+
+- **The reply parser no longer corrupts escaped JSON strings or cuts a fenced reply short, in
+  every port (Kotlin through the Java render module).** The forgiving JSON reader decoded only
+  `\n`, `\t` and `\r`, so `"caf\u00e9"` came back as `cafu00e9` and was reported `EXTRACTED`; it
+  now reads the full JSON escape grammar (`\uXXXX` with surrogate pairs, `\b`, `\f`, `\/`). The
+  fence matcher closed at the first triple backtick inside the payload, so
+  `{"summary": "run ```make``` first"}` extracted as `run `; a fence now closes only at a line
+  that starts with a backtick run at least as long as the opening one. Python `LONG` coercion
+  also no longer rounds a value above 2^53 through `float`. Three new `extract-conformance`
+  cases (`json-string-escapes`, `json-fence-inner-backticks`, `json-fence-inner-block`) gate all
+  five ports.
+
+- **`eject --undo` no longer deletes a copy whose only edit is a reordering (TypeScript, Python,
+  C#).** "Untouched" was decided from a sorted multiset of lines, so swapping two statements read
+  as the stock file and `--undo` removed it without `--force`. A copy is now stock only when its
+  text matches the reference in order (TypeScript keeps formatter-insensitivity, and import runs
+  stay order-insensitive; Python and C# compare exact text, line endings aside). The "N behind,
+  M of your own" counts are unchanged. #505 is unreleased, so this ships with the first release
+  of `--undo`.
 
 - **`@default: "now"` is the current time on Postgres, not the table's creation time.** The
   expected schema stored it as the literal `'now'`, and Postgres converts that literal to a

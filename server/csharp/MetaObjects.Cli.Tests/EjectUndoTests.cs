@@ -36,6 +36,26 @@ public sealed class EjectUndoTests : IDisposable
     }
 
     [Fact]
+    public void A_copy_whose_only_edit_is_a_reordering_is_customised_and_needs_force()
+    {
+        Eject("filter-allowlist");
+        var path = Owned("codegen/generators/FilterAllowlistGenerator.cs");
+        var lines = File.ReadAllLines(path).ToList();
+        // Swap two adjacent, different, non-blank lines: the same lines in another order.
+        var i = Enumerable.Range(0, lines.Count - 1).First(k =>
+            lines[k].Trim().Length > 0 && lines[k + 1].Trim().Length > 0 && lines[k].Trim() != lines[k + 1].Trim());
+        (lines[i], lines[i + 1]) = (lines[i + 1], lines[i]);
+        File.WriteAllLines(path, lines);
+
+        Assert.Equal(0, EjectCommand.Undo([], _root, force: false).ExitCode);
+        Assert.True(File.Exists(path));
+        Assert.Equal(2, EjectCommand.Undo(["filter-allowlist"], _root, force: false).ExitCode);
+        Assert.True(File.Exists(path));
+        Assert.Equal(0, EjectCommand.Undo(["filter-allowlist"], _root, force: true).ExitCode);
+        Assert.False(File.Exists(path));
+    }
+
+    [Fact]
     public void It_prints_the_edit_that_points_the_entry_back_and_never_edits_Generators_cs()
     {
         Eject("filter-allowlist");

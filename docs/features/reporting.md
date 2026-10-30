@@ -795,9 +795,10 @@ refused with `400 export_with_count`. The route fetches
 is materialised up to the cap; there is no streaming in this version.
 
 **Formula injection.** A CSV cell that is a string, an enum symbol or a uri and starts with `=`,
-`+`, `-`, `@`, TAB or CR gets a leading `'`, so a spreadsheet reads it as text. This is the
-render escapers' rule, one rule in every port. A number or a date is never changed, so `-5`
-stays a number.
+`+`, `-`, `@`, TAB or CR gets a leading `'`, so a spreadsheet reads it as text, unless the whole
+cell is a strict numeric literal (an optional `-`, ASCII digits, an optional fraction such as
+`-5` or `12.50`), which is left alone. This is the render escapers' rule, one rule in every
+port. A number or a date is never changed.
 
 **Per-port XML null default.** The default follows the port's standard XML serializer (ADR-0019
 Amendment 2); the corpus pins `"nil"` in every lane.

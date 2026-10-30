@@ -104,6 +104,29 @@ describe("meta eject --undo", () => {
     }
   });
 
+  test("a copy whose only edit is a reordering is customised, not stock", async () => {
+    const dir = tmp();
+    try {
+      await ejectCommand(["barrel"], dir, "text");
+      // Swap two statements of the generator body: the same lines in a different order.
+      const lines = readFileSync(gen(dir, "barrel"), "utf8").split("\n");
+      const i = lines.findIndex((l) => l.includes("const sorted = ["));
+      expect(i).toBeGreaterThan(0);
+      [lines[i], lines[i + 1]] = [lines[i + 1] as string, lines[i] as string];
+      writeFileSync(gen(dir, "barrel"), lines.join("\n"), "utf8");
+      logged = []; erred = [];
+      expect(await ejectCommand(["--undo"], dir, "text")).toBe(0);
+      expect(existsSync(gen(dir, "barrel"))).toBe(true);
+      expect(text()).toContain("customised");
+      expect(await ejectCommand(["--undo", "barrel"], dir, "text")).toBe(2);
+      expect(existsSync(gen(dir, "barrel"))).toBe(true);
+      expect(await ejectCommand(["--undo", "--force", "barrel"], dir, "text")).toBe(0);
+      expect(existsSync(gen(dir, "barrel"))).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test("--force removes a named customised copy", async () => {
     const dir = tmp();
     try {

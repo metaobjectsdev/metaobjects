@@ -606,6 +606,9 @@ public class MetaDataLoader
                 }
             }
 
+            // Two members folding to one key under `strip` — ERR_ENUM_NORMALIZE_COLLISION.
+            errors.AddRange(ValidationPasses.ValidateEnumNormalizeCollision(root));
+
             // FR-014: TPH discriminator cross-attribute rules.
             errors.AddRange(ValidationPasses.ValidateDiscriminator(root));
 
@@ -641,6 +644,9 @@ public class MetaDataLoader
             // index.lookup @fields resolution — every index.lookup must name ≥1 field,
             // and each must exist in the entity's effective field set (ERR_INVALID_INDEX).
             errors.AddRange(ValidationPasses.ValidateIndexLookupFields(root));
+
+            // Two fields of one stored object resolving to the same physical column.
+            errors.AddRange(ValidationPasses.ValidateColumnNameCollisions(root));
 
             // FR-039 — a retired requirement carries no @implementedBy (refused, not
             // exempted, so the dangling-ref class is unreachable) and @supersededBy is

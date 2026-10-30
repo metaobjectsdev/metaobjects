@@ -3,6 +3,7 @@ package com.metaobjects.generator.util;
 import static org.junit.Assert.*;
 
 import com.metaobjects.generator.util.GeneratorUtil;
+import com.metaobjects.MetaDataException;
 import org.junit.Test;
 
 import static com.metaobjects.generator.util.GeneratorUtil.*;
@@ -10,25 +11,55 @@ import static com.metaobjects.generator.util.GeneratorUtil.*;
 public class GeneratorUtilTest {
 
     @Test
+    public void testFilterTreatsRegexMetacharactersAsLiterals() {
+        assertTrue( filterByName( "a::B(", "a::B(" ));
+        assertTrue( filterByName( "a::B[1]", "a::B[1]" ));
+        assertFalse( filterByName( "a::B1", "a::B[1]" ));
+        assertFalse( filterByName( "a::Bxc", "a::B.c" ));
+        assertTrue( filterByName( "a::B+c", "a::B+*" ));
+    }
+
+    @Test
     public void testFilterMatching() {
-        assertTrue( filterByName( "acme::store::PrimaryStore", "acme::*" ));
+        assertTrue( filterByName( "acme::store::PrimaryStore", "acme::**" ));
+        assertTrue( filterByName( "acme::PrimaryStore", "acme::*" ));
         assertTrue( filterByName( "acme::store::PrimaryStore", "acme::store::PrimaryStore" ));
-        assertTrue( filterByName( "acme::store::PrimaryStore", "acme::store::???????Store" ));
-        assertTrue( filterByName( "acme::store::PrimaryStore", "acme::store::@Store" ));
-        assertFalse( filterByName( "acme::store::PrimaryStore", "acme::store::??????Store" ));
         assertTrue( filterByName( "acme::store::PrimaryStore", "acme::*::*Store" ));
-        assertTrue( filterByName( "acme::store::good::PrimaryStore", "acme::*Store" ));
-        assertTrue( filterByName( "acme::store::good::PrimaryStore", "acme::*::*Store" ));
-        assertTrue( filterByName( "acme::store::PrimaryStore", "acme::@::@Store" ));
-        assertFalse( filterByName( "acme::store::bad::PrimaryStore", "acme::@::@Store" ));
-        assertFalse( filterByName( "acme::store::bad::PrimaryStore", "acme::store::@Store" ));
-        assertTrue( filterByName( "acme::store::PrimaryStore", "acme::store::Pri@Store" ));
         assertTrue( filterByName( "acme::store::PrimaryStore", "acme::store::Pri*Store" ));
-        assertFalse( filterByName( "acme::store::PrimaryStore", "acme::*::*StoreZ" ));
+        assertTrue( filterByName( "acme::store::good::PrimaryStore", "acme::**::*Store" ));
         assertTrue( filterByName( "acme::store::PrimaryStore", "acme::*::*Store*" ));
-        assertFalse( filterByName( "acme::store::PrimaryStore", "acme::*::*Store@" ));
-        assertFalse( filterByName( "acme::store::PrimaryStore", "acme::*::*Store?" ));
+        assertFalse( filterByName( "acme::store::PrimaryStore", "acme::*::*StoreZ" ));
         assertFalse( filterByName( "acme::store::PrimaryStore", "bobs::*" ));
+        assertFalse( filterByName( "acme::store::PrimaryStore", "bobs::**" ));
+    }
+
+    @Test
+    public void testAtAndQuestionMarkAreLiteralInTheScopeGrammar() {
+        assertTrue( filterByName( "acme::a@b", "acme::a@b" ));
+        assertTrue( filterByName( "acme::a?b", "acme::a?b" ));
+        assertFalse( filterByName( "acme::store::Pri@Store", "acme::store::PriXStore" ));
+    }
+
+    @Test
+    public void testFilterThatWouldSilentlyDropObjectsFailsNamingTheDoubleStarReplacement() {
+        MetaDataException e = assertThrows( MetaDataException.class,
+            () -> filterByName( "acme::store::PrimaryStore", "acme::*" ));
+        assertTrue( e.getMessage(), e.getMessage().contains( "\"acme::*\"" ));
+        assertTrue( e.getMessage(), e.getMessage().contains( "\"acme::**\"" ));
+
+        e = assertThrows( MetaDataException.class,
+            () -> filterByName( "acme::store::good::PrimaryStore", "acme::*Store" ));
+        assertTrue( e.getMessage(), e.getMessage().contains( "\"acme::**::*Store\"" ));
+    }
+
+    @Test
+    public void testRemovedWildcardsFailInsteadOfVanishing() {
+        MetaDataException e = assertThrows( MetaDataException.class,
+            () -> filterByName( "acme::store::PrimaryStore", "acme::store::@Store" ));
+        assertTrue( e.getMessage(), e.getMessage().contains( "\"acme::store::*Store\"" ));
+        e = assertThrows( MetaDataException.class,
+            () -> filterByName( "acme::store::PrimaryStore", "acme::store::???????Store" ));
+        assertTrue( e.getMessage(), e.getMessage().contains( "Rewrite it" ));
     }
 
     @Test

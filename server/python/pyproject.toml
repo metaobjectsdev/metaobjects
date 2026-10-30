@@ -50,7 +50,7 @@ Issues = "https://github.com/metaobjectsdev/metaobjects/issues"
 Changelog = "https://github.com/metaobjectsdev/metaobjects/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "pytest-xdist>=3.6", "mypy>=1.10", "ruff>=0.6", "pydantic>=2"]
+dev = ["pytest>=8", "pytest-xdist>=3.6", "mypy>=1.10", "ruff>=0.6", "pydantic>=2.8"]
 # On-demand cross-language conformance suites — persistence + api-contract.
 # pg8000 is pure-python so this extra installs cleanly without native deps;
 # the persistence harness shells out to the docker CLI directly (matches the
@@ -114,7 +114,7 @@ dev = [
     # The validator-parity corpus (tests/codegen/test_validation_conformance.py)
     # imports pydantic to exercise the generated Pydantic models, so it must be here
     # or the CI `uv run pytest` collection fails with ModuleNotFoundError.
-    "pydantic>=2",
+    "pydantic>=2.8",
     # ruff is the Python codegen format pass (src/metaobjects/codegen/format.py); the
     # cli-registry corpus runs codegen, so without ruff in the group `uv run pytest`
     # fails at format time with "No module named ruff".

@@ -123,25 +123,54 @@ public sealed class JsonForgivingReader
     {
         _i++; // opening quote
         var sb = new System.Text.StringBuilder();
-        bool esc = false;
         while (_i < _s.Length)
         {
             char c = _s[_i++];
-            if (esc) { sb.Append(Unescape(c)); esc = false; }
-            else if (c == '\\') esc = true;
+            if (c == '\\') sb.Append(ReadEscape());
             else if (c == quote) return sb.ToString();
             else sb.Append(c);
         }
         return sb.ToString(); // unterminated string → return what we have
     }
 
-    private static char Unescape(char c) => c switch
+    /// <summary>The escape after a consumed backslash: the full JSON grammar. A <c>\uXXXX</c> escape
+    /// is one UTF-16 unit, so a surrogate pair is two escapes appended in order. An unknown escape
+    /// keeps its character and a truncated <c>\u</c> keeps its text, so a cut-off reply still
+    /// yields what it has.</summary>
+    private string ReadEscape()
     {
-        'n' => '\n',
-        't' => '\t',
-        'r' => '\r',
-        _ => c
-    };
+        if (_i >= _s.Length) return "";
+        char c = _s[_i++];
+        switch (c)
+        {
+            case 'n': return "\n";
+            case 't': return "\t";
+            case 'r': return "\r";
+            case 'b': return "\b";
+            case 'f': return "\f";
+            case 'u':
+                return TryHex4(out int unit) ? ((char)unit).ToString() : "u";
+            default: return c.ToString(); // \" \\ \/ and any unknown escape
+        }
+    }
+
+    private bool TryHex4(out int unit)
+    {
+        unit = 0;
+        if (_i + 4 > _s.Length) return false;
+        for (int k = 0; k < 4; k++)
+        {
+            char h = _s[_i + k];
+            int d = h is >= '0' and <= '9' ? h - '0'
+                : h is >= 'a' and <= 'f' ? h - 'a' + 10
+                : h is >= 'A' and <= 'F' ? h - 'A' + 10
+                : -1;
+            if (d < 0) return false;
+            unit = unit * 16 + d;
+        }
+        _i += 4;
+        return true;
+    }
 
     private object? ReadBareScalar()
     {

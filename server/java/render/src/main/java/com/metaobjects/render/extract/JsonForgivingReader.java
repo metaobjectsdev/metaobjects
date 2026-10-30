@@ -107,19 +107,45 @@ public final class JsonForgivingReader {
     private Object readString(char quote) {
         i++; // opening quote
         StringBuilder sb = new StringBuilder();
-        boolean esc = false;
         while (i < s.length()) {
             char c = s.charAt(i++);
-            if (esc) { sb.append(unescape(c)); esc = false; }
-            else if (c == '\\') esc = true;
+            if (c == '\\') sb.append(readEscape());
             else if (c == quote) return sb.toString();
             else sb.append(c);
         }
         return sb.toString(); // unterminated string → return what we have
     }
 
-    private static char unescape(char c) {
-        return switch (c) { case 'n' -> '\n'; case 't' -> '\t'; case 'r' -> '\r'; default -> c; };
+    /** The escape after a consumed backslash: the full JSON grammar. A {@code \\uXXXX} escape is one
+     *  UTF-16 unit, so a surrogate pair is two escapes appended in order. An unknown escape keeps its
+     *  character and a truncated {@code \\u} keeps its text, so a cut-off reply still yields what it has. */
+    private String readEscape() {
+        if (i >= s.length()) return "";
+        char c = s.charAt(i++);
+        return switch (c) {
+            case 'n' -> "\n";
+            case 't' -> "\t";
+            case 'r' -> "\r";
+            case 'b' -> "\b";
+            case 'f' -> "\f";
+            case 'u' -> {
+                int unit = hex4();
+                yield unit < 0 ? "u" : String.valueOf((char) unit);
+            }
+            default -> String.valueOf(c); // \" \\ \/ and any unknown escape
+        };
+    }
+
+    private int hex4() {
+        if (i + 4 > s.length()) return -1;
+        int v = 0;
+        for (int k = 0; k < 4; k++) {
+            int d = Character.digit(s.charAt(i + k), 16);
+            if (d < 0 || s.charAt(i + k) > 'f') return -1;
+            v = v * 16 + d;
+        }
+        i += 4;
+        return v;
     }
 
     private Object readBareScalar() {

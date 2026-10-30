@@ -1,0 +1,1 @@
+{ "empty": false, "states": { "title": "EXTRACTED", "note": "EXTRACTED" }, "data": { "title": "x <b>bold</b> & <!-- not a comment -->", "note": "n" } }

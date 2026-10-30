@@ -191,7 +191,7 @@ public static class CodegenCli
     /// directly.
     /// </summary>
     public static GenOutcome RunGen(
-        string metadataDir, string outDir, string ns, bool emitAbstractShapes,
+        string metadataDir, string outDir, string? ns, bool emitAbstractShapes,
         IReadOnlyList<IGenerator> generators, string baseline = "default")
         => RunGen(MetadataLocation.Resolve(metadataDir, Directory.GetCurrentDirectory()).Load(), outDir, ns,
             emitAbstractShapes, generators, ProjectRootFor(metadataDir), baseline);
@@ -226,7 +226,7 @@ public static class CodegenCli
     /// them emitted is stale output and is deleted when untouched (<see cref="GenConfig.SweepOrphans"/>).
     /// </param>
     public static GenOutcome RunGen(
-        LoadResult load, string outDir, string ns, bool emitAbstractShapes,
+        LoadResult load, string outDir, string? ns, bool emitAbstractShapes,
         IReadOnlyList<IGenerator> generators, string? projectRoot = null,
         string baseline = "default",
         bool? includeNames = null,
@@ -315,14 +315,6 @@ public static class CodegenCli
     public static string NoGeneratorList(string command) =>
         $"{command}: no codegen/Generators.cs. The generator list lives there in 1.1.0, documentation included; " +
         "`dotnet meta init` writes it. See " + DocsMigrationGuide + ".";
-
-    /// <summary>What a gen or <c>verify --codegen</c> run prints, exit 2, when <c>codegen/Program.cs</c> does not
-    /// run <c>Generators.All</c>: a 1.0 entry point declares its generators inline and would ignore the list.</summary>
-    /// <param name="command">The command's own name: <c>dotnet meta gen</c> or <c>dotnet meta verify --codegen</c>.</param>
-    public static string LegacyProgram(string command) =>
-        $"{command}: codegen/Program.cs does not run Generators.All, so it would ignore the generator list in " +
-        "codegen/Generators.cs. Replace it with the two-line entry `using MetaObjects.Codegen;` and " +
-        "`return CodegenCli.Run(args, Generators.All);`. See " + DocsMigrationGuide + ".";
 
     /// <summary>What a gen run prints, exit 2, when it finds 1.0 template-spec configuration: a
     /// project-root <c>template-spec.json</c> no entry declares, or <c>--template-spec</c>. Through
@@ -546,9 +538,9 @@ public static class CodegenCli
     private sealed class OwnedArgs
     {
         public string? MetadataDir, OutDir, TemplateRoot, TemplateSpecPath, ColumnNamingRaw, GeneratorsCsv;
-        public string Namespace = "Generated";
+        public string? Namespace;
         public string Baseline = "default";
-        public bool NamespaceExplicit, EmitAbstractShapes, Codegen, Lax, Strict;
+        public bool EmitAbstractShapes, Codegen, Lax, Strict;
         /// <summary>1.0 docs flags given (<see cref="LegacyDocsFlags"/>), in order.</summary>
         public List<string> LegacyDocs = [];
         /// <summary>The usage error the arguments earn, or <c>null</c>.</summary>
@@ -584,7 +576,7 @@ public static class CodegenCli
                     switch (flag)
                     {
                         case "--out": a.OutDir = value; break;
-                        case "--namespace": a.Namespace = value; a.NamespaceExplicit = true; break;
+                        case "--namespace": a.Namespace = value; break;
                         case "--column-naming": a.ColumnNamingRaw = value; break;
                         case "--baseline": a.Baseline = value; break;
                         case "--template-root": a.TemplateRoot = value; break;
@@ -761,7 +753,7 @@ public static class CodegenCli
             WarnUnknownAttrs(meta);
             genLoad = meta.Load();
         }
-        var outcome = RunGen(genLoad, a.OutDir, a.Namespace, a.EmitAbstractShapes, suite, projectRoot, a.Baseline,
+        var outcome = RunGen(genLoad, a.OutDir, a.Namespace ?? meta.Namespace, a.EmitAbstractShapes, suite, projectRoot, a.Baseline,
             includeNames: declared.Any(g => g.Name == "names"),
             // Only a run of the whole declared list can tell a stale file from one the
             // narrowing left out.
@@ -954,10 +946,6 @@ public static class CodegenCli
             return 0;
         }
 
-        // Same inference rule `dotnet meta verify --codegen` has always used: an explicit
-        // --namespace always wins; otherwise infer from the committed output so a regen
-        // matches output produced with any namespace (avoids spurious drift).
-        var effectiveNs = a.NamespaceExplicit ? a.Namespace : (CodegenDrift.InferNamespace(a.OutDir) ?? a.Namespace);
         // ADR-0058 — the loaded root carries the project's column rule; `gen` read it the
         // same way producing the committed output, so this regen agrees with it by
         // construction instead of needing a flag told to match.
@@ -965,7 +953,7 @@ public static class CodegenCli
         var config = new GenConfig
         {
             OutDir = a.OutDir,
-            Namespace = effectiveNs,
+            Namespace = a.Namespace ?? meta.Namespace,
             ColumnNamingStrategy = columnNaming,
             IncludeNames = declared.Any(g => g.Name == "names"),
             // The manifest gen keeps: an extra file is classified by what gen recorded writing.

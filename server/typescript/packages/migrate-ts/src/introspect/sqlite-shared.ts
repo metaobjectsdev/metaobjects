@@ -337,3 +337,14 @@ export function sqliteRuleToAction(rule: string): FkAction {
   if (r === "RESTRICT") return "restrict";
   return "no-action";
 }
+
+/**
+ * True when a CREATE TABLE declares AUTOINCREMENT as a keyword: the scan runs on a masked
+ * copy, so a comment, a string literal (`DEFAULT 'AUTOINCREMENT'`) cannot trip it. A
+ * double-quoted identifier is preserved by the mask, so it is blanked here too.
+ */
+export function hasAutoincrementKeyword(createSql: string | null | undefined): boolean {
+  if (createSql === null || createSql === undefined) return false;
+  const masked = maskCommentsAndStrings(createSql).replace(/"(?:[^"]|"")*"/g, (m) => " ".repeat(m.length));
+  return /\bAUTOINCREMENT\b/i.test(masked);
+}

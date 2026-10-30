@@ -61,6 +61,20 @@ public sealed record PhysicalNaming(ColumnNamingStrategy Columns, TableNamingRul
     public static PhysicalNaming Of(MetaData node) =>
         node.Root() is MetaRoot root ? root.PhysicalNaming : Default;
 
+    /// <summary>A field's physical column name: its explicit <c>@column</c> (resolving, so an
+    /// inherited override counts), else the field name through the project's column strategy.
+    /// The loader's collision check compares THESE resolved names, not the raw field names.</summary>
+    public static string ResolveColumnName(MetaField field)
+    {
+        if (field.DbColumn is { Length: > 0 } explicitColumn) return explicitColumn;
+        return PhysicalNaming.Of(field).Columns switch
+        {
+            ColumnNamingStrategy.SnakeCase => SourceNaming.ToSnakeCase(field.Name),
+            ColumnNamingStrategy.KebabCase => SourceNaming.ToSnakeCase(field.Name).Replace('_', '-'),
+            _ => field.Name,
+        };
+    }
+
     /// <summary><paramref name="name"/> cased by the table rule — no pluralization (the
     /// caller decides whether to pluralize; see <see cref="MetaSource.PhysicalName"/>).</summary>
     public static string ApplyTableNamingRule(string name, TableNamingRule rule) =>

@@ -6,12 +6,16 @@
 // across environments and language ports.
 
 import { readdir, stat } from "node:fs/promises";
-import { basename, extname, join } from "node:path";
+import { basename, extname, join, relative, sep } from "node:path";
 import { FileSource } from "./file-source.js";
 import type { MetaDataSource } from "../meta-data-source.js";
 
 export interface DirectoryOptions {
-  /** Filename patterns to exclude. Supports literal match and `*` / `**` globs. */
+  /**
+   * Patterns to exclude. Supports literal match and `*` / `**` globs. A pattern without `/`
+   * matches the file's basename; a pattern containing `/` matches its `/`-separated path
+   * relative to the directory (so `vendor/**` excludes a subtree).
+   */
   exclude?: string[];
   /** Recurse into subdirectories. Default: true. */
   recurse?: boolean;
@@ -44,7 +48,8 @@ export class DirectorySource {
     for (const p of files) {
       if (!SUPPORTED_EXTS.has(extname(p).toLowerCase())) continue;
       const name = basename(p);
-      if (exclude.some((pat) => matchSimpleGlob(pat, name))) continue;
+      const rel = relative(this.directory, p).split(sep).join("/");
+      if (exclude.some((pat) => matchSimpleGlob(pat, pat.includes("/") ? rel : name))) continue;
       filtered.push(p);
     }
 

@@ -1,0 +1,1 @@
+<doc><title><![CDATA[x <b>bold</b> & <!-- not a comment -->]]></title><note>n</note></doc>

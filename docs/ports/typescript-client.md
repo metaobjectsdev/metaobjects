@@ -343,8 +343,9 @@ on `Author`):
    the locale-formatted string. Server never formats.
 4. **Form input**: `<CurrencyInput>` from `@metaobjectsdev/react` is a
    controlled bidirectional input — focus strips symbol + grouping for
-   editing, blur re-formats and emits cents to `onChange`. Float drift
-   is bounded by a single `Math.round` in `parseCurrency`.
+   editing, blur re-formats and emits cents to `onChange`. `parseCurrency`
+   does exact decimal-string arithmetic (no float multiply) and rounds the
+   first dropped digit half away from zero.
 
 Metadata:
 

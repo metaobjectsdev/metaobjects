@@ -27,7 +27,7 @@ export interface CurrencyInputProps {
  * - Empty input + !required → emits 0
  * - Empty input + required → reverts to last valid; no onChange
  * - Unparseable input on blur → reverts to last valid format; no onChange
- * - Float drift avoided via Math.round in parseCurrency
+ * - Float drift avoided: parseCurrency uses decimal-string arithmetic
  */
 export function CurrencyInput(props: CurrencyInputProps): ReactElement {
   const currency = props.currency ?? "USD";

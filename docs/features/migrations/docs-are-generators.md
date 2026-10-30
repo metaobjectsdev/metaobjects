@@ -324,14 +324,11 @@ A project that already has `codegen/Program.cs` with an inline list: move each e
 `new Codegen.Generators.<Name>()`, a packaged one `new MetaObjects.Codegen.Generators.<Name>()`),
 and replace `Program.cs` with the two lines above. `dotnet meta init` writes
 `Generators.cs` beside an existing `Program.cs` and leaves `Program.cs` alone. Until
-`Program.cs` runs `Generators.All`, `dotnet meta gen` prints this and exits 2, writing nothing
-(`dotnet meta verify --codegen` in place of `dotnet meta gen` for the gate):
+`Program.cs` runs `Generators.All`, `dotnet meta gen` and `dotnet meta verify --codegen` run
+the list `Program.cs` builds and ignore `Generators.cs`; nothing warns about it, so replace
+`Program.cs` as part of the upgrade.
 
-```
-dotnet meta gen: codegen/Program.cs does not run Generators.All, so it would ignore the generator list in codegen/Generators.cs. Replace it with the two-line entry `using MetaObjects.Codegen;` and `return CodegenCli.Run(args, Generators.All);`. See https://github.com/metaobjectsdev/metaobjects/blob/v1.1.0/docs/features/migrations/docs-are-generators.md, section "C#".
-```
-
-`init` and `eject` say the same, and warn when `codegen/Codegen.csproj` still pins an older
+`init` and `eject` warn when `codegen/Codegen.csproj` still pins an older
 `MetaObjects.Codegen`: set that version to the tool's, or the 1.0 codegen runs.
 
 **A template spec.** Through 1.0, `dotnet meta gen` and `verify --codegen` also read a
