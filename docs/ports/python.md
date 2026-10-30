@@ -259,12 +259,13 @@ When `verify --codegen` finds the committed output was generated with another ru
 so rather than telling you to regenerate. (A field carrying an explicit `@column` is
 unaffected either way.)
 
-**Both `pydantic` and `fastapi` are consumer-installed, not transitive deps of
+**`fastapi` and `pydantic` are consumer-installed, not transitive deps of
 `metaobjects` itself** — the entity/router files this emits `import pydantic`
-and `import fastapi`, so add them before importing the generated code:
+and `import fastapi`, so add them before importing the generated code. The
+`pydantic` extra installs the 2.8 minimum (see [Install](#install) above):
 
 ```bash
-pip install pydantic fastapi
+pip install "metaobjects[pydantic]" fastapi
 ```
 
 The entity-model generator emits one Pydantic **`BaseModel`** per entity (not
