@@ -1,4 +1,4 @@
-# Capability sheet — what each port ships at 1.1.4 / Maven 8.1.4 (never promise across these lines)
+# Capability sheet — what each port ships at 1.2.0 / Maven 8.2.0 (never promise across these lines)
 
 ## Contents
 - Contract-only generation, per port
@@ -26,18 +26,26 @@ building block. Every generator is a reference helper an adopter selects, ejects
   A TypeScript model of only value objects and sourceless projections needs no `dialect`
   (`server/typescript/packages/codegen-ts/src/db-emitting.ts`).
 - **The drift gate per port** — regenerate into a temp tree and diff: `meta verify --codegen`
-  (TS); `mvn metaobjects:verify` (Java/Kotlin; `codegen` is the default mode); `dotnet meta
+  (TS); `mvn metaobjects:verify` (Java/Kotlin; unset `meta.verify.mode` runs both the codegen and the template gate); `dotnet meta
   verify --codegen` (C#; bare `verify` runs it when `csharp.outDir` (or `--out`) and `codegen/Generators.cs` are present);
-  `metaobjects verify` (Python; `--codegen` is part of the default). Source: `docs/features/cli.md`.
+  `metaobjects verify` (Python; `--codegen` is part of the default). Since 1.2 a bare `verify` runs
+  codegen drift, prompt templates and the requirement ledger in every port, and skips with a note
+  a gate it has no configuration for. Source: `docs/features/cli.md`.
 - **Generated code compiles**: a codegen-compile gate compiles every port's emitted model tier
   with its real compiler in CI (`docs/CONFORMANCE.md`, "Split coverage").
 - **Sharing a model** (`docs/features/metadata-dependencies.md`): in one repository, every port
   reads the same metadata directory (`sources`), so a TS service and a Java, C# or Python
   service can generate from one declaration today. **Across repositories**, a published model
-  with a hash-locked snapshot and `meta verify --deps` works for **TypeScript publishers and
-  TypeScript/Python consumers only**; Java, Kotlin and C# neither publish nor consume one yet
-  (Phase 2) and must share by monorepo or a vendored copy (`docs/features/metadata-sources.md`,
-  "Vendoring"), which carries no upstream hash check.
+  with a hash-locked snapshot works for **TypeScript publishers only**; **TypeScript, Python,
+  Java, Kotlin and C# consume** it at build time (a committed `.metaobjects/deps/` snapshot loaded
+  ahead of the project's own files; `extends`/overlay onto a dependency's node resolves; imported
+  nodes are not generated unless `scope.include` names their package). The Node `meta deps sync`
+  is the only writer of the lock and snapshot, so a Java, Kotlin or C# consumer needs Node to
+  sync. Dependencies come from a `path`, an npm package or a Python package; the Maven and NuGet
+  transports are design only. Java, Kotlin, Python and C# cannot publish; the Spring runtime does
+  not yet auto-load the snapshot, and the Java/Kotlin `verify` does not yet check dependency
+  drift. Plain vendoring (`docs/features/metadata-sources.md`, "Vendoring") still works and
+  carries no upstream hash check. Source: `docs/features/metadata-dependencies.md`, "Phase 2".
 - **Libraries** (`docs/features/libraries.md`): `iam` (preview) and `ai` (stable) ship as
   declared designs; the core layer is sourceless and adds no tables. Mention one only when the
   target is hand-building the same design.
@@ -72,7 +80,8 @@ code from the shapes.
   `measure.*`, `segment.filter` and `object.report` load and validate in all five ports. A report with
   a read-only `source.rdb @kind: view` is lowered to a SQL view by `meta migrate` (Postgres, SQLite,
   D1; MySQL SQL from `buildReportViews`) and every port's generators serve it as one read-only list
-  route (rows past a 10,000 cap answer `report_too_large`). The TypeScript `cube-model` reference
+  route (rows past a 10,000 cap answer `report_too_large`); the `report-export` generator adds
+  `?format=csv|json|xml` in every port (`docs/features/reporting.md`, "Exporting a report"). The TypeScript `cube-model` reference
   generator exports it to Cube. TanStack gets a list hook only: no grid or form for a report.
 - **Requirements** (`docs/features/requirements.md`): `requirement.functional` / `.architectural`
   load in all five ports and the `verify` gate runs in each. The strict form is
@@ -88,7 +97,15 @@ code from the shapes.
 
 **Full-stack caps per port:**
 - **Schema pillar** (`meta migrate`, `verify --db`): Node `meta` CLI only; Postgres, SQLite, D1
-  only. Any other database: out for that database; data access unaffected.
+  only. Any other database: out for that database; data access unaffected. On Postgres, drift is
+  decided by applying the model to a scratch (shadow) database and diffing catalogs
+  (`--shadow-db`, `SHADOW_DATABASE_URL` or `migrate.shadowDatabaseUrl`; else a database `CREATE`d
+  on the server when the role may, else a rolled-back probe); SQLite, D1 and offline plans compare
+  by text (`docs/features/migrations-and-drift.md`).
+- **Credentials and excluded fields** (`docs/features/api-contract.md`, "Credentials and excluded
+  fields"): in every port the generated create/PATCH/PUT ignore a `@formExclude` field or a
+  `view.password` credential, and a credential is never returned; your own code still reads and
+  writes it. A `@required` field with either mark makes the generated create fail.
 - **TS**: Drizzle/Zod + Fastify or Hono routes with the filter-operator grammar, TanStack/React UI
   codegen + runtime, migrations. The only port with UI codegen + runtime.
 - **Java/Spring**: DTO records, controllers (full filter grammar via the generated allowlist +
@@ -98,12 +115,16 @@ code from the shapes.
 - **Kotlin/JVM**: entity + Exposed table + Spring controller + payload + relations + filter
   allowlist + a startup validator that checks the Exposed tables against the model (not field validation) + output parsers.
 - **C#**: EF Core entities + `AppDbContext` + CRUD minimal-API routes + render/payload/verify via
-  `dotnet meta`; no metadata-driven runtime tier; no migrate surface.
+  `dotnet meta`; no metadata-driven runtime tier; no migrate surface. Namespaces come from the
+  metadata package bindings; with none set, each type takes its own package (`acme::billing` is
+  `Acme.Billing`), and `csharp.namespace` forces one flat namespace (`docs/ports/csharp.md`).
 - **Python**: Pydantic + router + payload/parsers + `ObjectManager` runtime; the consumer wires the
   FastAPI router and repository; `metaobjects gen`/`verify` (no migrate).
 - **Prompt pillar** (all five ports): render + payload codegen + `verify` templates + the reply
   parser for a responding `template.prompt` (`@responseRef`) + the output-format fragment and
-  tolerant `extract`. `template.output` emits no parser. MCP exposure of declared prompts/tools
+  tolerant `extract`. `template.output` emits no parser. A template body may be Jinja (`.jinja`,
+  `.j2`, `.jinja2`) in Python and TypeScript only; Java, Kotlin and C# render Mustache and refuse
+  a Jinja-only body with `ERR_TEMPLATE_ENGINE_UNSUPPORTED`. MCP exposure of declared prompts/tools
   is not shipped.
 - **Not shipped, never promise**: the `api.*`/`operation.*`/`binding.*` declared-API surface;
   the cut `byte`/`short`/`class` field stubs; `index.fulltext`/`vector`/`spatial`; native PG enums
