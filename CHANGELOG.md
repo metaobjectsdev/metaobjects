@@ -249,13 +249,15 @@ here.**
   committed output, so output generated under another namespace is drift. A C# namespace comes
   from the package bindings (`GenConfig.TypeOverrides`, then `PackageNamespaces`, then the
   `Convention` rule, then `UnmappedStrategy`, each keyed by an object's own metadata package);
-  the default `Flatten` strategy places every type in one namespace, `--namespace` or else the
-  new `csharp.namespace` key in `.metaobjects/config.json`. There is no default value: the
-  constant `Generated` is gone, and a run that emits a file needing the namespace without one
-  set stops and asks for it (a run that emits nothing never does). A namespace that is not a
-  dotted path of C# identifiers fails generation. **Upgrade step:** set
-  `"csharp": { "namespace": "<ns>" }` to the namespace your committed output uses (`Generated`
-  if you never passed `--namespace`), so `gen` and a bare `dotnet meta verify` both use it. `dotnet meta gen`, `verify --codegen`, `init`
+  with nothing configured, each type's namespace is derived from its own metadata package (each
+  `::` segment PascalCased, joined with `.`: `acme::billing` is `Acme.Billing`), and the types that
+  belong to no single package (`AppDbContext`, routes) land in the namespace every package shares.
+  `csharp.namespace` in `.metaobjects/config.json` (or `--namespace`) replaces the derived default
+  with one flat namespace for types no binding places. A namespace that is not a dotted path of C#
+  identifiers fails generation, naming the metadata package it came from. **Upgrade step:** a
+  project that set no namespace now gets namespaces derived from its packages instead of
+  `Generated`; to keep the namespace you generated with before, set
+  `"csharp": { "namespace": "Generated" }` (or whatever your committed output uses). `dotnet meta gen`, `verify --codegen`, `init`
   and `eject` no longer check whether `codegen/Program.cs` runs `Generators.All`.
   **Upgrade step:** if `codegen/Program.cs` builds its own generator list, replace that list
   with `Generators.All`. Such a project still runs its own list and ignores

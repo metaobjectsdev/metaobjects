@@ -3,9 +3,9 @@ using Xunit;
 namespace MetaObjects.Cli.Tests;
 
 /// <summary>
-/// The flat namespace gen and verify --codegen generate under: <c>--namespace</c>, else
-/// <c>csharp.namespace</c> in <c>.metaobjects/config.json</c>; with neither, only a run that emits
-/// a file needing one stops. Driven through the entry point a project's
+/// The namespace gen and verify --codegen generate under: <c>--namespace</c>, else
+/// <c>csharp.namespace</c> in <c>.metaobjects/config.json</c>; with neither, each type's namespace is
+/// derived from its metadata package. Driven through the entry point a project's
 /// codegen/Program.cs calls (<see cref="OwnedRunner"/>); the oracle is the
 /// <c>namespace ...;</c> declaration in the generated file, the output contract an adopter's code
 /// compiles against.
@@ -65,18 +65,16 @@ public sealed class CodegenNamespaceTests : IDisposable
     }
 
     [Fact]
-    public void With_no_namespace_a_run_that_emits_code_stops_and_asks_for_one()
+    public void With_no_namespace_it_is_derived_from_the_metadata_package_and_a_bare_verify_is_clean()
     {
         WriteConfig("\"outDir\": \"Generated\"");
 
         var gen = Run("gen");
-        Assert.NotEqual(0, gen.Exit);
-        Assert.Contains("\"csharp\": { \"namespace\": \"<ns>\" }", gen.Output);
-        Assert.False(File.Exists(Path.Combine(OutDir, "Subscriber.g.cs")));
+        Assert.True(gen.Exit == 0, gen.Output);
+        Assert.Contains("namespace Acme.Shop;", EntityFile());
 
         var verify = Run("verify", "--codegen");
-        Assert.Equal(2, verify.Exit);
-        Assert.Contains("\"csharp\": { \"namespace\": \"<ns>\" }", verify.Output);
+        Assert.True(verify.Exit == 0, verify.Output);
     }
 
     [Fact]

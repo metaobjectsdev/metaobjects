@@ -3,7 +3,7 @@
 #nullable enable
 using System.Collections.Generic;
 
-namespace Generated;
+namespace Acme;
 
 /// <summary>
 /// GENERATED — per-entity FR-009 filter allowlist for Subscriber.

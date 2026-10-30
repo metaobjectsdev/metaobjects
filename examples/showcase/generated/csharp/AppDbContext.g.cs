@@ -3,7 +3,7 @@
 #nullable enable
 using Microsoft.EntityFrameworkCore;
 
-namespace Generated;
+namespace Acme;
 
 public class AppDbContext : DbContext
 {

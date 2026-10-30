@@ -207,10 +207,11 @@ directory holding `.metaobjects/`:
 Each generated type's namespace comes from the package bindings, keyed by that type's own
 metadata package: a type-level override (`GenConfig.TypeOverrides`), then a package-level one
 (`PackageNamespaces`), then the `Convention` rule (strip a package prefix, prepend a root, case
-each `::` segment), then `UnmappedStrategy`. The default strategy, `Flatten`, puts every type in
-one namespace: `--namespace` when given, else `csharp.namespace`. There is no built-in value, so
-a run that emits a file needing it with neither set stops and names both; a run that emits
-nothing never asks. The namespace must be a dotted path of C# identifiers. `dotnet meta gen` and
+each `::` segment), then `UnmappedStrategy`. With none of those configured, the default
+convention applies: each `::` segment PascalCased and joined with `.` (`acme::billing` is
+`Acme.Billing`), and the artifacts that belong to no single package (`AppDbContext`, routes) land in
+the namespace all the packages share. Setting `--namespace` or `csharp.namespace` switches the
+default off and puts every type no binding places in that one flat namespace. The namespace must be a dotted path of C# identifiers. `dotnet meta gen` and
 `verify` set only that flat namespace; the per-package bindings are `GenConfig` properties, set
 when you run codegen from your own code with `CodegenRunner`.
 

@@ -3,7 +3,7 @@
 #nullable enable
 using System.Collections.Generic;
 
-namespace Generated;
+namespace Acme;
 
 /// <summary>
 /// GENERATED — per-object physical database names for Subscriber (spec A1/A2/A6).
