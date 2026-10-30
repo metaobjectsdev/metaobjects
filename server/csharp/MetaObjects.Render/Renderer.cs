@@ -52,12 +52,12 @@ public static class Renderer
     // BEFORE Mustache parses — giving deterministic whitespace and true, path-based
     // cycle/depth detection. Partial tags are located by the shared scanner
     // (MustacheTags), so one written inside a comment is not a partial.
-    private static string Expand(string text, IProvider provider, IReadOnlyList<string> path)
+    private static string Expand(string text, IProvider provider, IReadOnlyList<string> path, string? inlinedAs = null)
     {
         List<MustacheTag> tags;
         try { tags = MustacheTags.Scan(text); }
         catch (MustacheSyntaxException e) { throw new RenderException($"template syntax error: {e.Message}"); }
-        if (MustacheTags.DelimiterConflict(tags, path.Count > 0 ? path[^1] : null) is not null)
+        if (MustacheTags.DelimiterConflict(tags, inlinedAs) is not null)
             throw new RenderException("a template that uses partials cannot also change delimiters ({{=<% %>=}})");
         var partials = tags.Where(t => t.Kind == MustacheTagKind.Partial).ToList();
         if (partials.Count == 0) return text;
@@ -74,7 +74,7 @@ public static class Renderer
             if (t is null)
                 throw new RenderException($"unresolved partial: {reference}");
             var next = new List<string>(path) { reference };
-            sb.Append(text, pos, tag.Start - pos).Append(Expand(t, provider, next));
+            sb.Append(text, pos, tag.Start - pos).Append(Expand(t, provider, next, reference));
             pos = tag.End;
         }
         return sb.Append(text, pos, text.Length - pos).ToString();

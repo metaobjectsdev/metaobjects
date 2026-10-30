@@ -35,6 +35,11 @@ describe("render engine", () => {
     expect(() => render({ ref: "g/main", payload: { name: "Ada" }, provider: p })).toThrow(/change delimiters/);
   });
 
+  test("a delimiter change in a root template resolved by ref, with no partials, renders", () => {
+    const p = P({ "g/main": "{{=<% %>=}}Hi <% name %>." });
+    expect(render({ ref: "g/main", payload: { name: "Ada" }, provider: p })).toBe("Hi Ada.");
+  });
+
   test("a delimiter change in a template without partials renders", () => {
     expect(render({ template: "{{=<% %>=}}Hi <% name %>.", payload: { name: "Ada" }, provider: P({}) })).toBe("Hi Ada.");
   });

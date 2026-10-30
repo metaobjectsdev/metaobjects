@@ -28,9 +28,9 @@ import { MAX_DEPTH } from "./verify-shared.js";
 // item), exactly like a native partial, because Mustache renders the result.
 // Partial tags are located by Mustache's own parser, so a `{{> x}}` written inside
 // a comment is not a partial, and a `{{=<% %>=}}` delimiter change is honoured.
-function expand(text: string, provider: Provider, path: readonly string[]): string {
+function expand(text: string, provider: Provider, path: readonly string[], inlinedAs?: string): string {
   const tokens = parseTemplate(text);
-  if (delimiterConflict(tokens, path[path.length - 1]) !== undefined) {
+  if (delimiterConflict(tokens, inlinedAs) !== undefined) {
     throw new Error("a template that uses partials cannot also change delimiters ({{=<% %>=}})");
   }
   const partials = partialTokens(tokens);
@@ -45,7 +45,7 @@ function expand(text: string, provider: Provider, path: readonly string[]): stri
     if (partialEngineMismatch(provider, ref, TEMPLATE_ENGINE_MUSTACHE)) {
       throw new Error(partialEngineMessage(ref, TEMPLATE_ENGINE_MUSTACHE));
     }
-    out += text.slice(pos, start) + expand(t, provider, [...path, ref]);
+    out += text.slice(pos, start) + expand(t, provider, [...path, ref], ref);
     pos = end;
   }
   return out + text.slice(pos);
