@@ -3,8 +3,9 @@
 Targets Python 3.11+ on the FastAPI / Pydantic stack. Ships the
 metadata loader (canonical JSON + sigil-free YAML), conformance runner over the
 shared corpora, the FR-004 render engine, and the entity / payload / router
-codegen. **Keep your ORM:** the `entity` generator writes Pydantic v2 models with no ORM of any
-kind, so your SQLAlchemy or Django models stay hand-written beside them. Schema migrations are owned by the Node `meta` CLI (ADR-0015) — the
+codegen. **Keep your ORM:** the `entity` generator writes Pydantic v2 models (Pydantic 2.8 or later:
+a `validator.regex` field passes a compiled `re.ASCII` pattern, whose flags Pydantic keeps from 2.8)
+with no ORM of any kind, so your SQLAlchemy or Django models stay hand-written beside them. Schema migrations are owned by the Node `meta` CLI (ADR-0015) — the
 Python port has no `migrate` command by design; it consumes the canonical
 `schema.postgres.sql` artifact verbatim.
 

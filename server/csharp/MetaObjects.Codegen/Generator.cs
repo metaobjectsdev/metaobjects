@@ -68,8 +68,35 @@ public sealed record GenConfig
     /// </para>
     /// </summary>
     public string Baseline { get; init; } = "default";
-    /// <summary>C# namespace for generated types.</summary>
-    public required string Namespace { get; init; }
+    /// <summary>
+    /// C# namespace for generated types that no package binding places — the
+    /// <see cref="UnmappedPackageStrategy.Flatten"/> namespace (<c>--namespace</c>, else
+    /// <c>csharp.namespace</c> in <c>.metaobjects/config.json</c>). Unset is fine until a generated
+    /// file needs it; reading it then throws <see cref="InvalidOperationException"/> naming both
+    /// settings, so a run that emits nothing never asks for one.
+    /// </summary>
+    [System.Diagnostics.CodeAnalysis.AllowNull]
+    public string Namespace
+    {
+        get => ValidNamespace(_namespace ?? throw new InvalidOperationException(
+            "no C# namespace for the generated code: set \"csharp\": { \"namespace\": \"<ns>\" } in " +
+            ".metaobjects/config.json or pass --namespace <ns>."));
+        init => _namespace = value;
+    }
+    private readonly string? _namespace;
+
+    /// <summary><paramref name="ns"/> when it is a dotted path of C# identifiers (<c>Acme.Shop</c>);
+    /// otherwise an <see cref="InvalidOperationException"/>, so a namespace the compiler would reject
+    /// fails generation instead of the adopter's build.</summary>
+    private static string ValidNamespace(string ns)
+    {
+        static bool Identifier(string s) =>
+            s.Length > 0 && (char.IsLetter(s[0]) || s[0] == '_') && s.All(c => char.IsLetterOrDigit(c) || c == '_');
+        if (!ns.Split('.').All(Identifier))
+            throw new InvalidOperationException(
+                $"\"{ns}\" is not a C# namespace: each dot-separated part must be an identifier.");
+        return ns;
+    }
     /// <summary>
     /// Strategy applied to field names with no <c>@column</c> override. ADR-0058 — one
     /// project setting (<c>naming.columns</c> in <c>.metaobjects/config.json</c>), read by

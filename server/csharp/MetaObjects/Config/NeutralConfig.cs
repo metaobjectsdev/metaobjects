@@ -93,8 +93,9 @@ public sealed class NeutralConfig
     public string? OutDir { get; }
 
     /// The C# namespace generated code lands in (`csharp.namespace` in config.json), or null when
-    /// the key is absent. `--namespace` on the command line wins over it; with neither, the
-    /// namespace derives from the project's metadata package (CodegenNamespace.Resolve).
+    /// the key is absent. `--namespace` on the command line wins over it. It is the namespace for
+    /// generated types no package binding places (GenConfig.Namespace); with neither, a run that
+    /// emits such a type stops and asks for one.
     public string? Namespace { get; }
 
     private NeutralConfig(

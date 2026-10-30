@@ -123,8 +123,8 @@ public static class VerifyCommand
         public string? TemplatesRoot { get; init; }
         /// <summary>The committed output dir for the <c>--codegen</c> gate (<c>--out &lt;dir&gt;</c>).</summary>
         public string? OutDir { get; init; }
-        /// <summary><c>--namespace</c> for the codegen regen; null resolves it as <c>gen</c> does
-        /// (<see cref="Codegen.CodegenNamespace.Resolve"/>).</summary>
+        /// <summary><c>--namespace</c> for the codegen regen; null falls back to
+        /// <see cref="ConfiguredNamespace"/>, as <c>gen</c> does.</summary>
         public string? Namespace { get; init; }
         /// <summary><c>csharp.namespace</c> from <c>.metaobjects/config.json</c>, or null.</summary>
         public string? ConfiguredNamespace { get; init; }
@@ -431,18 +431,6 @@ public static class VerifyCommand
                 ],
             };
 
-        // The namespace resolves exactly as `gen` resolves it, so output generated under another
-        // namespace is drift.
-        string ns;
-        try
-        {
-            ns = Codegen.CodegenNamespace.Resolve(opts.Namespace, opts.ConfiguredNamespace, load.Root);
-        }
-        catch (ArgumentException e)
-        {
-            return new Codegen.CodegenDrift.Result { Clean = false, Error = $"verify --codegen: {e.Message}" };
-        }
-
         // C1 — same presence gate `gen` computes (GeneratorRegistry.IncludesNames over
         // the SAME resolved `names` list above), or a regen under a `--generators`
         // selection that excludes `names` would reference `<Entity>Names.*` while `gen`
@@ -450,7 +438,7 @@ public static class VerifyCommand
         // direction, a false-clean pass in the other.
         var config = new GenConfig
         {
-            OutDir = opts.OutDir, Namespace = ns,
+            OutDir = opts.OutDir, Namespace = opts.Namespace ?? opts.ConfiguredNamespace,
             IncludeNames = GeneratorRegistry.IncludesNames(names),
             // ADR-0058 — one project setting, read from the loaded root: `gen` produced
             // --out reading the SAME root's naming.columns, so this regen agrees with it

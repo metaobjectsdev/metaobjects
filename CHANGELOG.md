@@ -246,14 +246,16 @@ here.**
 
 - **C# no longer reads source code to work out its configuration.** `dotnet meta verify
   --codegen` regenerates under the namespace `gen` resolves instead of reading it from the
-  committed output, so output generated under another namespace is drift. Both resolve it the
-  same way: `--namespace`, else the new `csharp.namespace` key in `.metaobjects/config.json`,
-  else the project's metadata package with each `::` segment PascalCased (`acme::shop` becomes
-  `Acme.Shop`; library and dependency packages are not the project's, and objects that share no
-  package are an error asking for one of the other two). The default was the constant
-  `Generated`. **Upgrade step:** a project that generated with `--namespace <ns>` sets
-  `"csharp": { "namespace": "<ns>" }` so a bare `dotnet meta verify` regenerates under it; one
-  that relied on `Generated` sets that value or regenerates under its package. `dotnet meta gen`, `verify --codegen`, `init`
+  committed output, so output generated under another namespace is drift. A C# namespace comes
+  from the package bindings (`GenConfig.TypeOverrides`, then `PackageNamespaces`, then the
+  `Convention` rule, then `UnmappedStrategy`, each keyed by an object's own metadata package);
+  the default `Flatten` strategy places every type in one namespace, `--namespace` or else the
+  new `csharp.namespace` key in `.metaobjects/config.json`. There is no default value: the
+  constant `Generated` is gone, and a run that emits a file needing the namespace without one
+  set stops and asks for it (a run that emits nothing never does). A namespace that is not a
+  dotted path of C# identifiers fails generation. **Upgrade step:** set
+  `"csharp": { "namespace": "<ns>" }` to the namespace your committed output uses (`Generated`
+  if you never passed `--namespace`), so `gen` and a bare `dotnet meta verify` both use it. `dotnet meta gen`, `verify --codegen`, `init`
   and `eject` no longer check whether `codegen/Program.cs` runs `Generators.All`.
   **Upgrade step:** a 1.0 project whose `codegen/Program.cs` builds its own generator list
   still runs that list and ignores `codegen/Generators.cs`, and nothing warns about it. Move
@@ -427,7 +429,10 @@ here.**
   - Python generated Pydantic models match `validator.regex` `@pattern` (and the hostname format)
     as an ASCII full match: `\d`/`\w`/`\s` no longer accept non-ASCII, lookahead works, a trailing
     newline is rejected. A pattern Python's `re` cannot compile, such as `\p{L}`, now fails at `gen`
-    with a clear error instead of at validation time.
+    with a clear error instead of at validation time. **Upgrade step:** generated models now need
+    Pydantic 2.8 or later. They pass a compiled `re.ASCII` pattern to `Field(pattern=...)`, which
+    Pydantic accepts from 2.7.0 and keeps the flags of from 2.8.0; on an older 2.x the ASCII rule
+    is lost. Raise your `pydantic` requirement to `>=2.8`.
   - Codegen refuses, with `ERR_COLLECTION_NAME_COLLISION`, two served entities whose snake-cased,
     pluralized REST segments are equal (`ApiKey` and `APIKey`, both `/api_keys`); TS, C# and Python
     compared only the pluralized PascalCase name. Java and Kotlin already refused it.

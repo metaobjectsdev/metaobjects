@@ -204,10 +204,15 @@ directory holding `.metaobjects/`:
 { "schema_version": 1, "csharp": { "outDir": "Generated", "namespace": "Acme.Blog" } }
 ```
 
-The namespace is `--namespace` when given, else `csharp.namespace`, else the project's metadata
-package with each `::` segment PascalCased (`acme::shop` becomes `Acme.Shop`). Objects from a
-library or a metadata dependency do not count; when the project's own objects share no package,
-`gen` and `verify` stop and ask for `csharp.namespace` or `--namespace`.
+Each generated type's namespace comes from the package bindings, keyed by that type's own
+metadata package: a type-level override (`GenConfig.TypeOverrides`), then a package-level one
+(`PackageNamespaces`), then the `Convention` rule (strip a package prefix, prepend a root, case
+each `::` segment), then `UnmappedStrategy`. The default strategy, `Flatten`, puts every type in
+one namespace: `--namespace` when given, else `csharp.namespace`. There is no built-in value, so
+a run that emits a file needing it with neither set stops and names both; a run that emits
+nothing never asks. The namespace must be a dotted path of C# identifiers. `dotnet meta gen` and
+`verify` set only that flat namespace; the per-package bindings are `GenConfig` properties, set
+when you run codegen from your own code with `CodegenRunner`.
 
 With that, `dotnet meta gen` writes there, `dotnet meta verify --codegen` diffs against it, and
 a plain `dotnet meta verify` in CI runs the codegen gate with no flags. `--out <dir>` still works

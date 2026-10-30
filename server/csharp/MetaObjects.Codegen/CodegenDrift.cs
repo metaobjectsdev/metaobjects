@@ -92,8 +92,16 @@ public static class CodegenDrift
             // No manifest and no sweep for the throwaway regen: it records nothing and deletes
             // nothing, and a fresh temp tree writes every file either way.
             var tempConfig = config with { OutDir = temps[0], GenStateDir = null, ProjectRoot = null, SweepOrphans = false };
-            var regen = CodegenRunner.Run(tempConfig, root, generators,
-                g => temps[roots.FindIndex(r => r.Committed == Path.GetFullPath(realRootFor(g)))]);
+            CodegenRunner.RunResult regen;
+            try
+            {
+                regen = CodegenRunner.Run(tempConfig, root, generators,
+                    g => temps[roots.FindIndex(r => r.Committed == Path.GetFullPath(realRootFor(g)))]);
+            }
+            catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
+            {
+                return new Result { Clean = false, Error = $"verify --codegen: {ex.Message}" };
+            }
             var overwriteDirs = CodegenRunner.OverwriteDirs(generators, realRootFor, config.OutDir);
 
             var drifted = new SortedSet<string>(StringComparer.Ordinal);

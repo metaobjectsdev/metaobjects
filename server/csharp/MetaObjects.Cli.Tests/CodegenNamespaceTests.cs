@@ -3,9 +3,9 @@ using Xunit;
 namespace MetaObjects.Cli.Tests;
 
 /// <summary>
-/// The namespace gen and verify --codegen generate under: <c>--namespace</c>, else
-/// <c>csharp.namespace</c> in <c>.metaobjects/config.json</c>, else the project's metadata package
-/// with each <c>::</c> segment PascalCased. Driven through the entry point a project's
+/// The flat namespace gen and verify --codegen generate under: <c>--namespace</c>, else
+/// <c>csharp.namespace</c> in <c>.metaobjects/config.json</c>; with neither, only a run that emits
+/// a file needing one stops. Driven through the entry point a project's
 /// codegen/Program.cs calls (<see cref="OwnedRunner"/>); the oracle is the
 /// <c>namespace ...;</c> declaration in the generated file, the output contract an adopter's code
 /// compiles against.
@@ -65,14 +65,31 @@ public sealed class CodegenNamespaceTests : IDisposable
     }
 
     [Fact]
-    public void With_no_flag_or_config_the_namespace_is_the_metadata_package()
+    public void With_no_namespace_a_run_that_emits_code_stops_and_asks_for_one()
     {
         WriteConfig("\"outDir\": \"Generated\"");
 
         var gen = Run("gen");
+        Assert.NotEqual(0, gen.Exit);
+        Assert.Contains("\"csharp\": { \"namespace\": \"<ns>\" }", gen.Output);
+        Assert.False(File.Exists(Path.Combine(OutDir, "Subscriber.g.cs")));
+
+        var verify = Run("verify", "--codegen");
+        Assert.Equal(2, verify.Exit);
+        Assert.Contains("\"csharp\": { \"namespace\": \"<ns>\" }", verify.Output);
+    }
+
+    [Fact]
+    public void With_no_namespace_a_project_with_nothing_to_emit_generates_cleanly()
+    {
+        WriteConfig("\"outDir\": \"Generated\"");
+        File.WriteAllText(Path.Combine(MetaDir, "meta.shop.json"),
+            """{ "metadata.root": { "package": "acme::shop", "children": [] } }""");
+
+        var gen = Run("gen");
         Assert.True(gen.Exit == 0, gen.Output);
-        Assert.Contains("namespace Acme.Shop;", EntityFile());
-        Assert.Equal(0, Run("verify", "--codegen").Exit);
+        var verify = Run("verify", "--codegen");
+        Assert.True(verify.Exit == 0, verify.Output);
     }
 
     [Fact]
@@ -86,32 +103,16 @@ public sealed class CodegenNamespaceTests : IDisposable
     }
 
     [Theory]
-    [InlineData("my-app::shop", "My-app")]
-    [InlineData("acme::2fa", "2fa")]
-    public void A_package_segment_that_is_not_an_identifier_needs_a_namespace(string package, string badSegment)
+    [InlineData("My-app.Shop")]
+    [InlineData("Acme.2fa")]
+    [InlineData("Acme..Shop")]
+    public void A_namespace_that_is_not_a_dotted_identifier_path_fails_generation(string ns)
     {
-        WriteConfig("\"outDir\": \"Generated\"");
-        File.WriteAllText(Path.Combine(MetaDir, "meta.shop.json"), Metadata.Replace("acme::shop", package));
+        WriteConfig($"\"outDir\": \"Generated\", \"namespace\": \"{ns}\"");
 
         var gen = Run("gen");
-        Assert.Equal(2, gen.Exit);
-        Assert.Contains($"\"{badSegment}\"", gen.Output);
-        Assert.Contains("\"csharp\": { \"namespace\": \"<ns>\" }", gen.Output);
-        Assert.False(Directory.Exists(OutDir) && Directory.EnumerateFiles(OutDir).Any());
-
-        WriteConfig("\"outDir\": \"Generated\", \"namespace\": \"Acme.Shop\"");
-        Assert.Equal(0, Run("gen").Exit);
-    }
-
-    [Fact]
-    public void Objects_that_share_no_package_need_a_namespace()
-    {
-        WriteConfig("\"outDir\": \"Generated\"");
-        File.WriteAllText(Path.Combine(MetaDir, "meta.billing.json"), Metadata
-            .Replace("acme::shop", "billing").Replace("Subscriber", "Invoice").Replace("subscribers", "invoices"));
-
-        var gen = Run("gen");
-        Assert.Equal(2, gen.Exit);
-        Assert.Contains("\"csharp\": { \"namespace\": \"<ns>\" }", gen.Output);
+        Assert.NotEqual(0, gen.Exit);
+        Assert.Contains($"\"{ns}\" is not a C# namespace", gen.Output);
+        Assert.False(File.Exists(Path.Combine(OutDir, "Subscriber.g.cs")));
     }
 }

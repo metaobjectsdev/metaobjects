@@ -254,21 +254,19 @@ public sealed class VerifySubverbTests : IDisposable
     }
 
     // -------------------- the namespace is gen's, never read from the output --------------------
-    // verify --codegen regenerates under the namespace gen resolves (--namespace, else the
-    // default). Output generated under another namespace is drift, not something to adopt.
+    // verify --codegen regenerates under the namespace gen resolves (--namespace, else
+    // csharp.namespace). Output generated under another namespace is drift, not something to adopt.
 
-    private VerifyCommand.Options CodegenOpts(string? ns) =>
-        ns is null
-            ? new() { MetadataDir = MetaDir, Generators = GenSuite.Names, OutDir = OutDir, Codegen = true }
-            : new() { MetadataDir = MetaDir, Generators = GenSuite.Names, OutDir = OutDir, Codegen = true, Namespace = ns };
+    private VerifyCommand.Options CodegenOpts(string ns) =>
+        new() { MetadataDir = MetaDir, Generators = GenSuite.Names, OutDir = OutDir, Codegen = true, Namespace = ns };
 
     [Fact]
-    public void Codegen_output_under_another_namespace_is_drift_without_the_flag()
+    public void Codegen_output_under_another_namespace_is_drift()
     {
         File.WriteAllText(Path.Combine(MetaDir, "meta.ai.json"), EntityMetadata);
         GenSuite.Run(MetaDir, OutDir, "Acme.Generated");
 
-        var r = VerifyCommand.RunSubverbs(CodegenOpts(null));
+        var r = VerifyCommand.RunSubverbs(CodegenOpts("Other.Ns"));
         Assert.NotEqual(0, r.ExitCode);
         Assert.Contains(r.Codegen!.DriftedFiles, f => f.EndsWith("Subscriber.g.cs"));
     }

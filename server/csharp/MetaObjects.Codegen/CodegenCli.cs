@@ -191,7 +191,7 @@ public static class CodegenCli
     /// directly.
     /// </summary>
     public static GenOutcome RunGen(
-        string metadataDir, string outDir, string ns, bool emitAbstractShapes,
+        string metadataDir, string outDir, string? ns, bool emitAbstractShapes,
         IReadOnlyList<IGenerator> generators, string baseline = "default")
         => RunGen(MetadataLocation.Resolve(metadataDir, Directory.GetCurrentDirectory()).Load(), outDir, ns,
             emitAbstractShapes, generators, ProjectRootFor(metadataDir), baseline);
@@ -226,7 +226,7 @@ public static class CodegenCli
     /// them emitted is stale output and is deleted when untouched (<see cref="GenConfig.SweepOrphans"/>).
     /// </param>
     public static GenOutcome RunGen(
-        LoadResult load, string outDir, string ns, bool emitAbstractShapes,
+        LoadResult load, string outDir, string? ns, bool emitAbstractShapes,
         IReadOnlyList<IGenerator> generators, string? projectRoot = null,
         string baseline = "default",
         bool? includeNames = null,
@@ -625,23 +625,6 @@ public static class CodegenCli
         }
     }
 
-    /// <summary>The namespace this run generates under (<see cref="CodegenNamespace.Resolve"/>), or
-    /// false after printing why it cannot be derived.</summary>
-    private static bool TryResolveNamespace(string? flag, ResolvedMetadata meta, LoadResult load, out string ns)
-    {
-        try
-        {
-            ns = CodegenNamespace.Resolve(flag, meta.Namespace, load.Root);
-            return true;
-        }
-        catch (ArgumentException e)
-        {
-            Console.Error.WriteLine($"error: {e.Message}");
-            ns = "";
-            return false;
-        }
-    }
-
     /// <summary>Resolve the metadata location through the same ladder as <c>dotnet meta</c>,
     /// or print why not. <c>null</c> means the caller exits 2.</summary>
     private static ResolvedMetadata? ResolveOrReport(string? metadataDir)
@@ -770,9 +753,7 @@ public static class CodegenCli
             WarnUnknownAttrs(meta);
             genLoad = meta.Load();
         }
-        var ns = "";
-        if (genLoad.Errors.Count == 0 && !TryResolveNamespace(a.Namespace, meta, genLoad, out ns)) return 2;
-        var outcome = RunGen(genLoad, a.OutDir, ns, a.EmitAbstractShapes, suite, projectRoot, a.Baseline,
+        var outcome = RunGen(genLoad, a.OutDir, a.Namespace ?? meta.Namespace, a.EmitAbstractShapes, suite, projectRoot, a.Baseline,
             includeNames: declared.Any(g => g.Name == "names"),
             // Only a run of the whole declared list can tell a stale file from one the
             // narrowing left out.
@@ -968,12 +949,11 @@ public static class CodegenCli
         // ADR-0058 — the loaded root carries the project's column rule; `gen` read it the
         // same way producing the committed output, so this regen agrees with it by
         // construction instead of needing a flag told to match.
-        if (!TryResolveNamespace(a.Namespace, meta, load, out var ns)) return 2;
         var columnNaming = load.Root.PhysicalNaming.Columns;
         var config = new GenConfig
         {
             OutDir = a.OutDir,
-            Namespace = ns,
+            Namespace = a.Namespace ?? meta.Namespace,
             ColumnNamingStrategy = columnNaming,
             IncludeNames = declared.Any(g => g.Name == "names"),
             // The manifest gen keeps: an extra file is classified by what gen recorded writing.
