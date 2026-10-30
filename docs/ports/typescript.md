@@ -1,6 +1,6 @@
 # TypeScript port
 
-The reference implementation. Published to npm at `1.1.4` as 14
+The reference implementation. Published to npm at `1.2.0` as 14
 `@metaobjectsdev/*` packages on the `latest` tag. Targets Node-compatible
 runtimes: the generated code and the CLI run on stock Node (via `tsx` or after a `tsc`
 build), and Bun is simply the fastest dev workflow in this repo.

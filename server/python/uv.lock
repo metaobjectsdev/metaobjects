@@ -425,6 +425,9 @@ jinja = [
 mysql = [
     { name = "pymysql" },
 ]
+pydantic = [
+    { name = "pydantic" },
+]
 
 [package.dev-dependencies]
 dev = [
@@ -444,6 +447,7 @@ requires-dist = [
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10" },
     { name = "pg8000", marker = "extra == 'integration'", specifier = ">=1.31" },
     { name = "pydantic", marker = "extra == 'dev'", specifier = ">=2.8" },
+    { name = "pydantic", marker = "extra == 'pydantic'", specifier = ">=2.8" },
     { name = "pymysql", marker = "extra == 'integration'", specifier = ">=1.1" },
     { name = "pymysql", marker = "extra == 'mysql'", specifier = ">=1.1" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8" },
@@ -451,7 +455,7 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.6" },
 ]
-provides-extras = ["dev", "integration", "mysql", "jinja"]
+provides-extras = ["dev", "integration", "mysql", "jinja", "pydantic"]
 
 [package.metadata.requires-dev]
 dev = [

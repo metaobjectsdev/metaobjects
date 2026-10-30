@@ -61,7 +61,7 @@ your own `<groupId>`, `<artifactId>` and `<version>`:
 ```xml
 <!-- pom.xml -->
 <properties>
-  <metaobjects.version>8.1.4</metaobjects.version>
+  <metaobjects.version>8.2.0</metaobjects.version>
   <kotlin.version>2.0.21</kotlin.version>
   <spring-boot.version>3.3.5</spring-boot.version>
   <exposed.version>0.55.0</exposed.version>

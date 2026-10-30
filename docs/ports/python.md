@@ -25,6 +25,9 @@ Requires **Python 3.11+**. Published to PyPI as **`metaobjects`**:
 pip install metaobjects        # or: uv add metaobjects
 ```
 
+Generated models import Pydantic 2.8 or newer. `pip install "metaobjects[pydantic]"` installs
+that minimum alongside the package.
+
 > **On an older default interpreter?** Many systems (e.g. Ubuntu 22.04) still
 > ship `python3` = 3.10, where `pip install metaobjects` fails with a confusing
 > `ERROR: No matching distribution found for metaobjects` (the wheel is
