@@ -106,6 +106,7 @@ public sealed class CodegenNamespaceTests : IDisposable
     [InlineData("My-app.Shop")]
     [InlineData("Acme.2fa")]
     [InlineData("Acme..Shop")]
+    [InlineData("Acme.public")]
     public void A_namespace_that_is_not_a_dotted_identifier_path_fails_generation(string ns)
     {
         WriteConfig($"\"outDir\": \"Generated\", \"namespace\": \"{ns}\"");

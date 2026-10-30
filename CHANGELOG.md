@@ -452,8 +452,8 @@ here.**
   - Generated Pydantic models publish an ECMA-262-valid `pattern` in JSON Schema/OpenAPI while
     still enforcing an ASCII full match. `parseCurrency` caches the locale shape per
     (currency, locale). Workspace patterns find the members pnpm finds: `**` tolerates symlink cycles and
-    includes its base directory, a wildcard skips dot-directories, and only `node_modules` and
-    `bower_components` are never entered (`dist` and `build` are ordinary directories). `meta eject --list` says `, reordered` for a reorder-only
+    includes its base directory, a wildcard skips dot-directories, and only `node_modules`,
+    `bower_components`, `test` and `tests` are never entered (`dist` and `build` are ordinary directories). `meta eject --list` says `, reordered` for a reorder-only
     copy; trailing whitespace and blank lines alone still read `identical` in Python and C#.
     `parseCurrency` reads the decimal separator for zero-decimal currencies (JPY in `de-DE`). C# `ConstraintErrors` falls back to message text when a driver code is not a constraint
     code. The migration splitter treats `E'...'` as backslash-escaped on Postgres only.

@@ -141,6 +141,8 @@ public class PackageBindingResolverTests
     [InlineData(PackageCase.KebabCase, "users-access", "users-access")]
     [InlineData(PackageCase.Preserve, "my-app", "my-app")]
     [InlineData(PackageCase.PascalCase, "2fa", "2fa")]
+    [InlineData(PackageCase.Lowercase, "event", "event")]
+    [InlineData(PackageCase.Preserve, "default", "default")]
     public void A_convention_that_yields_a_non_identifier_segment_stops_generation(
         PackageCase casing, string input, string badSegment)
     {
@@ -157,6 +159,7 @@ public class PackageBindingResolverTests
     [Theory]
     [InlineData("My-app.Shop", "My-app")]
     [InlineData("Acme.2fa", "2fa")]
+    [InlineData("Acme.object", "object")]
     public void An_override_that_is_not_an_identifier_path_stops_generation(string target, string badSegment)
     {
         var typeOverride = CfgWithDefaults() with

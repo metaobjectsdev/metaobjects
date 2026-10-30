@@ -338,6 +338,22 @@ describe("discoverWorkspace — glob semantics (audit finding 17)", () => {
     }
   });
 
+  test("test and tests directories are never entered, as in pnpm", async () => {
+    const root = mkdtempSync(join(tmpdir(), "ws-tests-"));
+    try {
+      writeFileSync(join(root, "pnpm-workspace.yaml"), "packages:\n  - 'packages/*'\n  - 'tools/**'\n  - 'libs/tests'\n");
+      scaffoldPackage(root, "packages/real", makeManifest("@acme/real", { metaobjectsPackage: "acme::real" }));
+      scaffoldPackage(root, "packages/test", makeManifest("@acme/t", { metaobjectsPackage: "acme::t" }));
+      scaffoldPackage(root, "tools/x", makeManifest("@acme/x", { metaobjectsPackage: "acme::x" }));
+      scaffoldPackage(root, "tools/x/tests/fixture", makeManifest("@acme/f", { metaobjectsPackage: "acme::f" }));
+      scaffoldPackage(root, "tools/test/y", makeManifest("@acme/y", { metaobjectsPackage: "acme::y" }));
+      scaffoldPackage(root, "libs/tests", makeManifest("@acme/lt", { metaobjectsPackage: "acme::lt" }));
+      expect(await names(root, "packages/real")).toEqual(["@acme/real", "@acme/x"]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   test("node_modules is never searched", async () => {
     const root = mkdtempSync(join(tmpdir(), "ws-nm-"));
     try {

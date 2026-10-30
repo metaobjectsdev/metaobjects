@@ -135,7 +135,7 @@ async function findWorkspaceConfig(start: string): Promise<WorkspaceConfig | und
 // ---------------------------------------------------------------------------
 
 /** Directories pnpm's workspace walk never enters, whatever the pattern says. */
-const WORKSPACE_IGNORED_DIRS = new Set(["node_modules", "bower_components"]);
+const WORKSPACE_IGNORED_DIRS = new Set(["node_modules", "bower_components", "test", "tests"]);
 
 /** Split a pattern into path segments, dropping `./` prefixes and trailing slashes. */
 function patternSegments(glob: string): string[] {

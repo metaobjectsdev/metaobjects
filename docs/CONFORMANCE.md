@@ -321,12 +321,13 @@ contexts; reserved-as-attr).
 
 ### `fixtures/render-conformance/` (18)
 
-All 16 fixtures → [features/templates-and-payloads.md](features/templates-and-payloads.md)
-(render engine output section). 4 are end-to-end shape examples (prompt / email /
-spreadsheet / CSV-injection escape); 11 pin Mustache-engine semantics — dotted-path
-lookup, parent-context fallthrough, falsy/empty-array section behavior, inverted
-sections, nested partials, standalone-tag whitespace stripping, raw-HTML bypass,
-trailing-newline preservation, unicode multibyte handling, and the `-last` list-separator accessor.
+All 18 fixtures → [features/templates-and-payloads.md](features/templates-and-payloads.md)
+(render engine output section). 5 are end-to-end shape and escape examples (prompt / email /
+spreadsheet / CSV-injection escape / CSV numeric-literal exemption); 13 pin Mustache-engine
+semantics — dotted-path lookup, parent-context fallthrough, falsy/empty-array section behavior,
+inverted sections, nested partials, a comment tag beside a partial, standalone-tag whitespace
+stripping, raw-HTML bypass, trailing-newline preservation, unicode multibyte handling, the derived
+`has` accessor, and the `-last` list-separator accessor.
 
 ### `fixtures/jinja-render-conformance/` (15) and `fixtures/jinja-verify-conformance/` (31)
 
