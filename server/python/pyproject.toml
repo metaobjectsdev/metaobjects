@@ -66,6 +66,9 @@ mysql = ["PyMySQL>=1.1"]
 # `.jinja` / `.j2` / `.jinja2` template is rendered or checked, so a Mustache-only project
 # installs nothing extra.
 jinja = ["jinja2>=3.1"]
+# Pydantic 2.8 is the minimum for generated Python models (1.2.0). Generated code imports
+# pydantic; the core loader does not, so it stays out of the base dependencies.
+pydantic = ["pydantic>=2.8"]
 
 [[tool.mypy.overrides]]
 # PyMySQL ships no type information.

@@ -10,6 +10,12 @@ here.**
 
 ## [Unreleased]
 
+### Added
+
+- **A `pydantic` extra on the Python package.** `pip install "metaobjects[pydantic]"` installs
+  `pydantic>=2.8`, the minimum the generated Python models need, so an adopter can get the enforced
+  floor with the package. The base install is unchanged.
+
 ## [1.2.0] — 2026-10-30
 
 _npm `1.2.0` (full lockstep across all 14 `@metaobjectsdev/*` publish candidates)._

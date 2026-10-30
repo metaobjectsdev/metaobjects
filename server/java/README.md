@@ -1,6 +1,6 @@
 # MetaObjects — Java
 
-The Java port of the cross-language MetaObjects metadata standard. Published to Maven Central under `com.metaobjects:*` across 14 modules, at `8.1.0` for the 1.1.0 release (the Maven major is the npm major + 7). Apache 2.0.
+The Java port of the cross-language MetaObjects metadata standard. Published to Maven Central under `com.metaobjects:*` across 14 modules, at `8.2.0` for the 1.2.0 release (the Maven major is the npm major + 7). Apache 2.0.
 
 For the standard itself (metamodel, conformance corpora, ADRs) see the [repository-level docs](../../spec/) and the parent [README](../../README.md). This document is scoped to the Java implementation.
 
@@ -25,7 +25,7 @@ so they are maintained in one place rather than restated per port.
 
 ## Modules
 
-All published to Maven Central under `com.metaobjects:*` (`8.1.0` for the 1.1.0 release):
+All published to Maven Central under `com.metaobjects:*` (`8.2.0` for the 1.2.0 release):
 
 | Module | Purpose |
 |---|---|
@@ -52,7 +52,7 @@ The `archetype` and `examples` directories were removed in 7.1.0 (they had been 
 <dependency>
     <groupId>com.metaobjects</groupId>
     <artifactId>metaobjects-metadata</artifactId>
-    <version>8.1.0</version>
+    <version>8.2.0</version>
 </dependency>
 ```
 
@@ -62,12 +62,12 @@ Spring REST stack (repository interface is consumer-implemented):
 <dependency>
     <groupId>com.metaobjects</groupId>
     <artifactId>metaobjects-codegen-spring</artifactId>
-    <version>8.1.0</version>
+    <version>8.2.0</version>
 </dependency>
 <dependency>
     <groupId>com.metaobjects</groupId>
     <artifactId>metaobjects-core-spring</artifactId>
-    <version>8.1.0</version>
+    <version>8.2.0</version>
 </dependency>
 ```
 
@@ -77,7 +77,7 @@ Maven plugin for `metaobjects:generate` / `metaobjects:verify` / `metaobjects:ed
 <plugin>
     <groupId>com.metaobjects</groupId>
     <artifactId>metaobjects-maven-plugin</artifactId>
-    <version>8.1.0</version>
+    <version>8.2.0</version>
     <executions>
         <execution>
             <goals><goal>generate</goal></goals>
@@ -101,12 +101,12 @@ Kotlin entry point — adds the Kotlin facade and the KotlinPoet codegen pipelin
 <dependency>
     <groupId>com.metaobjects</groupId>
     <artifactId>metaobjects-metadata-ktx</artifactId>
-    <version>8.1.0</version>
+    <version>8.2.0</version>
 </dependency>
 <dependency>
     <groupId>com.metaobjects</groupId>
     <artifactId>metaobjects-codegen-kotlin</artifactId>
-    <version>8.1.0</version>
+    <version>8.2.0</version>
 </dependency>
 ```
 

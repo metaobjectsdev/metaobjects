@@ -25,6 +25,9 @@ Requires **Python 3.11+**. Published to PyPI as **`metaobjects`**:
 pip install metaobjects        # or: uv add metaobjects
 ```
 
+Generated models import Pydantic 2.8 or newer. `pip install "metaobjects[pydantic]"` installs
+that minimum alongside the package.
+
 > **On an older default interpreter?** Many systems (e.g. Ubuntu 22.04) still
 > ship `python3` = 3.10, where `pip install metaobjects` fails with a confusing
 > `ERROR: No matching distribution found for metaobjects` (the wheel is
@@ -256,12 +259,13 @@ When `verify --codegen` finds the committed output was generated with another ru
 so rather than telling you to regenerate. (A field carrying an explicit `@column` is
 unaffected either way.)
 
-**Both `pydantic` and `fastapi` are consumer-installed, not transitive deps of
+**`fastapi` and `pydantic` are consumer-installed, not transitive deps of
 `metaobjects` itself** — the entity/router files this emits `import pydantic`
-and `import fastapi`, so add them before importing the generated code:
+and `import fastapi`, so add them before importing the generated code. The
+`pydantic` extra installs the 2.8 minimum (see [Install](#install) above):
 
 ```bash
-pip install pydantic fastapi
+pip install "metaobjects[pydantic]" fastapi
 ```
 
 The entity-model generator emits one Pydantic **`BaseModel`** per entity (not
