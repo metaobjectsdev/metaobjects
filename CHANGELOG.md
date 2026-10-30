@@ -307,8 +307,8 @@ here.**
   pom (and every generator entry that repeats them, such as `entity` and `extractor`):
   1. Run `mvn metaobjects:generate`; the error lists each affected pattern with its replacement.
   2. Replace a segment that is only `*` with `**` (`acme::*` becomes `acme::**`).
-  3. Replace a mixed segment such as `*Store` with `**::*Store` (`acme::*Store` becomes
-     `acme::**::*Store`).
+  3. Replace a mixed segment such as `*Store` for nested packages with `**::*Store`: keep
+     `acme::*Store` for direct children and add `acme::**::*Store` as a second entry.
   4. Replace `@` (one segment) with `*`; replace each `?` with an explicit name or a `*`.
   5. Run `mvn metaobjects:generate` again; the generated file set should be unchanged.
 

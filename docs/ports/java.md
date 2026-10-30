@@ -430,8 +430,9 @@ extractor lands beside its class. A pom with more than one `entity` entry lists 
 literal (`@` and `?` were wildcards through 8.1.x and no longer are). A `!` prefix excludes.
 A pattern that selected objects before 8.2.0 and now selects fewer fails generation naming
 the pattern and its `**` replacement, so output cannot vanish silently. Upgrade:
-`acme::*` becomes `acme::**` wherever it must reach nested packages; `acme::*Store`
-becomes `acme::**::*Store`; `@` becomes `*`.
+`acme::*` becomes `acme::**` wherever it must reach nested packages. `acme::*Store` keeps
+matching direct children as `acme::*Store`; nested children need `acme::**::*Store` as a
+second entry. `@` becomes `*`.
 
 ### Shared and `@provided` enums
 

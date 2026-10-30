@@ -160,10 +160,10 @@ falls behind the reference. To drop one:
    - **`identical to the reference` is the only mark that proves a copy unmodified.** Such
      a copy can be replaced without looking further.
    - **Every other mark needs a look first.** `same content as the reference, your
-     formatting` comes from a comparison that ignores line order, so a copy whose
-     statements you reordered reads the same way. `DIFFERS` with `0 line(s) of your own`
-     rules out lines you added or edited, not lines you removed or reordered: a line you
-     deleted is counted as "behind", exactly like a line upstream added. Before dropping
+     formatting` means the lines match in order. A copy whose statements you reordered
+     reads `DIFFERS` with `, reordered` appended. `DIFFERS` with `0 line(s) of your own`
+     rules out lines you added or edited, not lines you removed: a line you deleted is
+     counted as "behind", exactly like a line upstream added. Before dropping
      a copy with either mark, confirm it from the file's history
      (`git log -p -- codegen/generators/<name>.ts` shows no edit after the eject) or from
      the diff against the reference
