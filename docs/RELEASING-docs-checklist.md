@@ -116,6 +116,12 @@ not an edit. Confirm rather than change:
       is versioned as the tag — that is what identifies the npm line, since the legacy
       JVM-only `v7.x` tags still sort above it. Read the `pinned to metaobjects vX.Y.Z` line
       in the deploy log; a wrong pin publishes a stale site with every step green.
+- [ ] **Diff the CHANGELOG against the homepage's prose claims.** Version numbers are
+      injected, but claims are not: the 1.2.0 cut left the homepage saying things the
+      release had made false. Read this release's user-visible `CHANGELOG.md` entries
+      against `www/index.html` — "What fails the build", "Who it's for", "Using it with
+      the ORM you have" — and the help-section gaps list. A stale claim becomes a PR on
+      the site repo, which merges only on a maintainer's word, because a merge redeploys.
 - [ ] Preview exactly what a deploy would render, without touching the site checkout:
       `bun run site:preview --site <site-repo>/www --strict`.
 - Deploys automatically via `.github/workflows/deploy.yml` on push to the default branch.
