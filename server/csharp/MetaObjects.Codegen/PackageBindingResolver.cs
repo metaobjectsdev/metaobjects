@@ -3,7 +3,8 @@
 //
 //   1. Type-level override        — config.TypeOverrides["<pkg>::<typeName>"]
 //   2. Package-level override     — config.PackageNamespaces[<pkg>]
-//   3. Convention rule            — config.Convention (strip + prepend + case + separator)
+//   3. Convention rule            — config.Convention (strip + prepend + case + separator); when
+//                                   none is set and no flat namespace is either, DefaultConvention
 //   4. Unmapped strategy fallback — config.UnmappedStrategy (Flatten | Error | Derive)
 //
 // All resolution happens via this single helper so the @provided enum resolver
@@ -20,6 +21,49 @@ public static class PackageBindingResolver
 {
     /// <summary>The metaobjects-standard package separator (cross-port invariant). Always <c>::</c>.</summary>
     public const string MetaPackageSeparator = "::";
+
+    /// <summary>The default pattern: each <c>::</c> segment PascalCased, joined with <c>.</c>
+    /// (<c>acme::billing</c> → <c>Acme.Billing</c>). It applies only while the project configures no
+    /// <see cref="GenConfig.Convention"/> and no flat namespace, so every explicit setting wins.</summary>
+    public static readonly PackageBindingConvention DefaultConvention = new() { Prepend = "" };
+
+    /// <summary>With no configured namespace, the home namespace the package-less artifacts need: the
+    /// longest dotted prefix every package namespace in the model shares (<c>Acme.Billing</c> and
+    /// <c>Acme.Crm</c> → <c>Acme</c>; a single package → its own). Left unset when the packages share
+    /// no root, so a run that needs one fails naming the setting. A configured namespace is returned
+    /// unchanged.</summary>
+    public static GenConfig WithDerivedHome(GenConfig config, MetaRoot root)
+    {
+        if (config.HasNamespace) return config;
+        var namespaces = root.Objects()
+            .Where(root.InScope)
+            .Select(EffectivePackage)
+            .Where(p => !string.IsNullOrEmpty(p))
+            .Distinct(StringComparer.Ordinal)
+            .Select(p => TryResolve(config, p))
+            .OfType<string>()
+            .Select(ns => ns.Split('.'))
+            .ToList();
+        if (namespaces.Count == 0) return config;
+        var common = namespaces[0].AsEnumerable();
+        foreach (var other in namespaces.Skip(1))
+            common = common.Zip(other, (a, b) => (a, b)).TakeWhile(t => t.a == t.b).Select(t => t.a);
+        var home = string.Join('.', common);
+        return home.Length == 0 ? config : config with { DerivedHome = home };
+    }
+
+    /// <summary>The <c>using</c> directives a file in the home namespace needs to name
+    /// <paramref name="types"/> bare: one per distinct namespace they resolve to other than the home
+    /// itself, sorted ordinally.</summary>
+    public static IEnumerable<string> HomeUsings(GenConfig config, IEnumerable<MetaData> types) =>
+        types.Select(t => Resolve(config, EffectivePackage(t), t.Name, fallbackContext: t.Name))
+            .Where(ns => ns != config.Namespace)
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(ns => ns, StringComparer.Ordinal)
+            .Select(ns => $"using {ns};");
+
+    private static PackageBindingConvention? EffectiveConvention(GenConfig config) =>
+        config.Convention ?? (config.HasNamespace ? null : DefaultConvention);
 
     /// <summary>The metadata node's EFFECTIVE package — the file-default package captured at parse
     /// time, NOT just the node's own (rarely-set) <c>package:</c> attr. Mirrors the
@@ -171,7 +215,7 @@ public static class PackageBindingResolver
             return pkgTarget;
         }
         // 3. Convention rule.
-        if (!string.IsNullOrEmpty(package) && config.Convention is { } conv)
+        if (!string.IsNullOrEmpty(package) && EffectiveConvention(config) is { } conv)
         {
             // When useProvidedEnumPrepend is true, ONLY succeed if the convention actually has
             // a ProvidedEnumPrepend set; otherwise fall through so the caller can apply its
@@ -206,7 +250,7 @@ public static class PackageBindingResolver
         }
 
         // 3. Convention rule — derives the target from the package itself.
-        if (!string.IsNullOrEmpty(package) && config.Convention is { } conv)
+        if (!string.IsNullOrEmpty(package) && EffectiveConvention(config) is { } conv)
         {
             var derived = ApplyConvention(conv, package, applyStripPrepend: true, useProvidedEnumPrepend);
             if (derived is not null) return derived;

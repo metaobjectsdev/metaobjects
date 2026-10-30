@@ -6,7 +6,7 @@ using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
-namespace Generated;
+namespace Acme;
 
 [Table(SubscriberNames.SourcePrimaryTable)]
 public class Subscriber

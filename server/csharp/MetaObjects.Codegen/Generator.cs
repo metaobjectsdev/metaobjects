@@ -78,12 +78,24 @@ public sealed record GenConfig
     [System.Diagnostics.CodeAnalysis.AllowNull]
     public string Namespace
     {
-        get => PackageBindingResolver.ValidNamespace(_namespace ?? throw new InvalidOperationException(
+        get => PackageBindingResolver.ValidNamespace(_namespace ?? DerivedHome ?? throw new InvalidOperationException(
             "no C# namespace for the generated code: set \"csharp\": { \"namespace\": \"<ns>\" } in " +
-            ".metaobjects/config.json or pass --namespace <ns>."));
+            ".metaobjects/config.json or pass --namespace <ns> (the metadata packages share no common " +
+            "root to derive one from)."));
         init => _namespace = value;
     }
     private readonly string? _namespace;
+
+    /// <summary>True when <c>--namespace</c> or <c>csharp.namespace</c> supplied a flat namespace.
+    /// Without one, a package no binding places takes its namespace from its own metadata package
+    /// (<see cref="PackageBindingResolver.DefaultConvention"/>).</summary>
+    public bool HasNamespace => _namespace is not null;
+
+    /// <summary>The home namespace derived from the model's own packages when none is configured:
+    /// where the artifacts that belong to no single package (<c>AppDbContext</c>, routes) land.
+    /// Set once per run by <see cref="PackageBindingResolver.WithDerivedHome"/>; kept apart from the
+    /// configured namespace so deriving it does not switch the default convention off.</summary>
+    internal string? DerivedHome { get; init; }
 
     /// <summary>
     /// Strategy applied to field names with no <c>@column</c> override. ADR-0058 — one

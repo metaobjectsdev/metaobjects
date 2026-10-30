@@ -8,7 +8,7 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
 using MetaObjects.Codegen.Runtime;
 
-namespace Generated;
+namespace Acme;
 
 public static class SubscriberRoutes
 {

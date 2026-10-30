@@ -409,7 +409,7 @@ public class DbContextGenerator : IGenerator
         // this DbContext's own same-named DbSet property instead of the entity type
         // (CS1061), which an already-plural base entity name now reaches.
         var enumType = discField is not null && isEnum
-            ? $"{CSharpNaming.QualifiedOwnerTypeRef(owner, config)}.{CSharpNaming.EnumTypeName(baseEntity, discField)}" : null;
+            ? $"{CSharpNaming.QualifiedOwnerTypeRef(owner, baseEntity, config)}.{CSharpNaming.EnumTypeName(baseEntity, discField)}" : null;
 
         var sb = new StringBuilder();
         sb.Append($"        modelBuilder.Entity<{owner}>().HasDiscriminator(e => e.{discProp})");
@@ -946,7 +946,7 @@ public class DbContextGenerator : IGenerator
         // name now reaches.
         var type = Fr019SharedEnum.SharedEnumForField(f) is { } shared
             ? Fr019SharedEnum.SharedEnumTypeReference(shared, config)
-            : $"{CSharpNaming.QualifiedOwnerTypeRef(owner, config)}.{CSharpNaming.EnumTypeName(entity, f)}";
+            : $"{CSharpNaming.QualifiedOwnerTypeRef(owner, entity, config)}.{CSharpNaming.EnumTypeName(entity, f)}";
         // Read the ints THROUGH the map, keyed by member, so @values stays the SSOT and a
         // member with no mapping cannot silently vanish from the conversion.
         var ints = new List<string>(members.Count);

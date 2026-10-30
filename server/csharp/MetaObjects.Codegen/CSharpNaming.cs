@@ -1127,8 +1127,8 @@ public static class CSharpNaming
     /// with ITSELF (the self-collision case), which the refusal does not and should not
     /// forbid.</para>
     /// </summary>
-    public static string QualifiedOwnerTypeRef(string owner, GenConfig config) =>
-        Pluralize(owner) == owner ? $"global::{config.Namespace}.{owner}" : owner;
+    public static string QualifiedOwnerTypeRef(string owner, MetaObject ownerObject, GenConfig config) =>
+        Pluralize(owner) == owner ? $"global::{ValueObjectNames.Namespace(ownerObject, config)}.{owner}" : owner;
 
     /// <summary>
     /// Refuse a generation run in which two DISTINCT entities/projections pluralize to

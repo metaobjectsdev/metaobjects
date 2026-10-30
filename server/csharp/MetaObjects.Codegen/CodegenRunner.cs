@@ -45,6 +45,7 @@ public static class CodegenRunner
     internal static RunResult Run(
         GenConfig config, MetaRoot root, IReadOnlyList<IGenerator> generators, Func<IGenerator, string> outRoot)
     {
+        config = PackageBindingResolver.WithDerivedHome(config, root);
         var warnings = new List<string>();
         var ctx = new GenContext
         {

@@ -183,6 +183,26 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine($"                return ReportExportHttp.Xml(http, \"{route}\", w => {cls}Export.WriteXml(w, rows));");
     }
 
+    // Every type the route file names bare — the entity itself, its value objects (owned and map
+    // values) and the targets and junctions of its M:N traversals — so a split-namespace model gets
+    // a `using` for each package namespace the home-namespace file reaches into.
+    private static IEnumerable<MetaData> ReferencedTypes(IEnumerable<MetaObject> entities, MetaRoot root)
+    {
+        foreach (var entity in entities)
+        {
+            yield return entity;
+            foreach (var f in entity.Fields())
+                if ((f.SubType == FIELD_SUBTYPE_OBJECT || f.SubType == FIELD_SUBTYPE_MAP)
+                    && ValueObjectNames.ResolveFieldRef(f, root) is { } target && target.IsValue())
+                    yield return target;
+            foreach (var nav in M2MNavigationBuilder.For(entity, root, _ => { }))
+            {
+                yield return nav.Target;
+                yield return nav.Junction;
+            }
+        }
+    }
+
     protected virtual EmittedFile GenerateStandardRoutes(MetaObject entity, GenContext ctx)
     {
         var cls = CSharpNaming.Pascal(entity.Name);
@@ -286,6 +306,7 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine("using Microsoft.AspNetCore.Routing;");
         sb.AppendLine("using Microsoft.EntityFrameworkCore;");
         sb.AppendLine($"using {HelperRuntimeNamespace};");
+        foreach (var u in PackageBindingResolver.HomeUsings(ctx.Config, ReferencedTypes([entity], ctx.Root))) sb.AppendLine(u);
         sb.AppendLine();
         sb.AppendLine($"namespace {ctx.Config.Namespace};");
         sb.AppendLine();
@@ -596,6 +617,7 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine("using Microsoft.AspNetCore.Routing;");
         sb.AppendLine("using Microsoft.EntityFrameworkCore;");
         sb.AppendLine($"using {HelperRuntimeNamespace};");
+        foreach (var u in PackageBindingResolver.HomeUsings(ctx.Config, ReferencedTypes(tph.Subtypes.Select(st => st.Entity).Prepend(baseEntity), ctx.Root))) sb.AppendLine(u);
         sb.AppendLine();
         sb.AppendLine($"namespace {ctx.Config.Namespace};");
         sb.AppendLine();

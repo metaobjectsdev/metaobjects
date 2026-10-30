@@ -106,9 +106,9 @@ set and no separate docs command. `--generators <names>` narrows a run to entrie
 list already declares, by stable name; it never adds one, and naming an entry the list
 does not declare is refused. `dotnet meta gen --list` is the catalog of what the port
 registers, not what this project runs; under each name it prints the expression that lists
-that generator in `codegen/Generators.cs` and its options. Output lands under `--namespace` in
-`--out` unless a generator's own init properties say otherwise — documentation
-does (below).
+that generator in `codegen/Generators.cs` and its options. Output lands in `--out`, in the
+namespace its metadata package maps to (see `docs/ports/csharp.md`), unless a generator's own
+init properties say otherwise — documentation does (below).
 
 | Stable name | Entry in `codegen/Generators.cs` (`new MetaObjects.Codegen.Generators.…`) | Output |
 |---|---|---|

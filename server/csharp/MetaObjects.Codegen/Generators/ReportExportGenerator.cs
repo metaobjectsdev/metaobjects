@@ -99,6 +99,7 @@ public class ReportExportGenerator : IGenerator
         sb.AppendLine("using System.Collections.Generic;");
         sb.AppendLine("using System.IO;");
         sb.AppendLine("using System.Linq;");
+        foreach (var u in PackageBindingResolver.HomeUsings(ctx.Config, [report])) sb.AppendLine(u);
         sb.AppendLine();
         sb.AppendLine($"namespace {ctx.Config.Namespace};");
         sb.AppendLine();

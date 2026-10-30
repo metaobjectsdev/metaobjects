@@ -116,6 +116,10 @@ public static class ReverseFinderBuilder
         sb.AppendLine("using System.Collections.Generic;");
         sb.AppendLine("using System.Linq;");
         sb.AppendLine("using Microsoft.EntityFrameworkCore;");
+        // The finders live beside AppDbContext; the entity (or its view read model) lives in its own
+        // package's namespace when the model is split.
+        var entityNs = PackageBindingResolver.Resolve(ctx.Config, PackageBindingResolver.EffectivePackage(entity), entity.Name, fallbackContext: entity.Name);
+        if (entityNs != ctx.Config.Namespace) sb.AppendLine($"using {entityNs};");
         sb.AppendLine();
         sb.AppendLine($"namespace {ctx.Config.Namespace};");
         sb.AppendLine();
