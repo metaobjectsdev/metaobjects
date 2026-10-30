@@ -33,6 +33,9 @@ public class VerifyTests
     [Fact] public void Known_scalar_var_no_drift() =>
         Assert.Empty(Verify.Check("Hi {{displayName}}.", AuthorBrief));
 
+    [Fact] public void Empty_set_delimiter_tag_is_ignored_not_a_crash() =>
+        Assert.Empty(Verify.Check("{{=}}Hi {{displayName}}.", AuthorBrief));
+
     [Fact] public void Unknown_var_is_drift_with_path()
     {
         var errs = Verify.Check("Hi {{notARealField}}.", AuthorBrief);

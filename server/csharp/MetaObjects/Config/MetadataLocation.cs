@@ -42,7 +42,7 @@ namespace MetaObjects.Config;
 /// </param>
 public sealed record ResolvedMetadata(
     string Directory, IReadOnlyList<string>? Files, IReadOnlyList<string> Libraries, PhysicalNaming Naming,
-    WireFormat? Wire = null, string? OutDir = null, ImportScope? Imports = null)
+    WireFormat? Wire = null, string? OutDir = null, ImportScope? Imports = null, string? Namespace = null)
 {
     /// <summary>Load this metadata, with the project's <c>libraries</c>, and set the loaded
     /// root's <see cref="MetaRoot.PhysicalNaming"/> from <see cref="Naming"/> (ADR-0058) and its
@@ -117,7 +117,7 @@ public static class MetadataLocation
             // No config found means no project to read a lock from: nothing is imported.
             var explicitImports = explicitCfg is null ? ImportScope.None : ImportScope.Resolve(explicitCfg.ConfigDir, explicitCfg);
             return new ResolvedMetadata(
-                metadataDir, null, explicitLibs, explicitNaming, explicitCfg?.Wire, explicitCfg?.OutDir, explicitImports);
+                metadataDir, null, explicitLibs, explicitNaming, explicitCfg?.Wire, explicitCfg?.OutDir, explicitImports, explicitCfg?.Namespace);
         }
 
         var cfg = NeutralConfig.Read(cwd);
@@ -132,7 +132,7 @@ public static class MetadataLocation
             // No declared sources: resolve the DEFAULT directory through the same ladder
             // the shared conformance corpus gates (ERR_COLLECTION_NOT_FOUND when absent).
             var defaultFiles = SourceResolver.ResolveCollection(cwd);
-            return new ResolvedMetadata(Path.Combine(cwd, NeutralConfig.DefaultMetadataDir), defaultFiles, libraries, naming, wire, cfg?.OutDir, imports);
+            return new ResolvedMetadata(Path.Combine(cwd, NeutralConfig.DefaultMetadataDir), defaultFiles, libraries, naming, wire, cfg?.OutDir, imports, cfg?.Namespace);
         }
 
         if (specs.Count > 1)
@@ -162,6 +162,6 @@ public static class MetadataLocation
                 "\"sources\" at the file's containing directory.");
         }
 
-        return new ResolvedMetadata(resolved, files, libraries, naming, wire, cfg?.OutDir, imports);
+        return new ResolvedMetadata(resolved, files, libraries, naming, wire, cfg?.OutDir, imports, cfg?.Namespace);
     }
 }

@@ -35,7 +35,7 @@ public sealed class CliSurfaceTests : IDisposable
         var (exit, stdout, _) = CliProcess.Run(_tmp, "--help");
         Assert.Equal(0, exit);
         Assert.Contains("usage: dotnet meta <command>", stdout);
-        // --namespace defaults (GenCommand.DefaultNamespace); the banner must not show it as required.
+        // --namespace has a default (config, else the metadata package); the banner must not show it as required.
         Assert.Contains("--out <dir> [--namespace <ns>]", stdout);
     }
 

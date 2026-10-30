@@ -62,6 +62,7 @@ public sealed class VerifyTemplateSpecTests : IDisposable
         TemplatesRoot = TemplateRoot,
         TemplateRoot = TemplateRoot,
         OutDir = OutDir,
+        Namespace = "Acme.Generated",
         Templates = false,
         Codegen = true,
         Db = false,

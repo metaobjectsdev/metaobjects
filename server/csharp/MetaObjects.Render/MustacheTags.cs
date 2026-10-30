@@ -61,7 +61,7 @@ internal static class MustacheTags
                     tags.Add(new(MustacheTagKind.Comment, name, start, end));
                     break;
                 case '=':
-                    if (content.EndsWith('='))
+                    if (content.Length > 1 && content.EndsWith('='))
                     {
                         var parts = content[1..^1].Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
                         if (parts.Length == 2) { open = parts[0]; close = parts[1]; }

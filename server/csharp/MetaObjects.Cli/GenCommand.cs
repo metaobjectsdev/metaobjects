@@ -20,13 +20,6 @@ public static class GenCommand
     }
 
     /// <summary>
-    /// The default C# namespace generated code lands in when <c>--namespace</c> is omitted.
-    /// The api reference documents the same namespace, so its <c>using &lt;ns&gt;;</c> import
-    /// lines match what an adopter writes against generated code.
-    /// </summary>
-    public const string DefaultNamespace = "Generated";
-
-    /// <summary>
     /// The error a run with no generator selection reports.
     /// </summary>
     /// <remarks>

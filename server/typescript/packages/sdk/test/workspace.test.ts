@@ -324,6 +324,20 @@ describe("discoverWorkspace — glob semantics (audit finding 17)", () => {
     }
   });
 
+  test("dist and build are ordinary directories; bower_components is never searched", async () => {
+    const root = mkdtempSync(join(tmpdir(), "ws-build-"));
+    try {
+      writeFileSync(join(root, "pnpm-workspace.yaml"), "packages:\n  - 'tools/**'\n  - 'libs/*'\n");
+      scaffoldPackage(root, "tools/build", makeManifest("@acme/build", { metaobjectsPackage: "acme::build" }));
+      scaffoldPackage(root, "tools/dist/x", makeManifest("@acme/x", { metaobjectsPackage: "acme::x" }));
+      scaffoldPackage(root, "tools/bower_components/b", makeManifest("@acme/b", { metaobjectsPackage: "acme::b" }));
+      scaffoldPackage(root, "libs/.hidden", makeManifest("@acme/h", { metaobjectsPackage: "acme::h" }));
+      expect(await names(root, "tools/build")).toEqual(["@acme/build", "@acme/x"]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   test("node_modules is never searched", async () => {
     const root = mkdtempSync(join(tmpdir(), "ws-nm-"));
     try {
@@ -336,7 +350,7 @@ describe("discoverWorkspace — glob semantics (audit finding 17)", () => {
     }
   });
 
-  test("trailing ** skips the base dir and dot-dirs, and survives a symlink cycle", async () => {
+  test("trailing ** matches the base dir, skips dot-dirs, and survives a symlink cycle", async () => {
     const root = mkdtempSync(join(tmpdir(), "ws-cycle-"));
     try {
       writeFileSync(join(root, "pnpm-workspace.yaml"), "packages:\n  - 'libs/**'\n");
@@ -344,7 +358,7 @@ describe("discoverWorkspace — glob semantics (audit finding 17)", () => {
       scaffoldPackage(root, "libs/a", makeManifest("@acme/a", { metaobjectsPackage: "acme::a" }));
       scaffoldPackage(root, "libs/.hidden/h", makeManifest("@acme/h", { metaobjectsPackage: "acme::h" }));
       symlinkSync(join(root, "libs"), join(root, "libs/a/loop"), "dir");
-      expect(await names(root, "libs/a")).toEqual(["@acme/a"]);
+      expect(await names(root, "libs/a")).toEqual(["@acme/a", "@acme/base"]);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

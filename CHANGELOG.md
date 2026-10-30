@@ -245,9 +245,15 @@ here.**
 ### Changed
 
 - **C# no longer reads source code to work out its configuration.** `dotnet meta verify
-  --codegen` regenerates under the namespace `gen` resolves (`--namespace`, else `Generated`)
-  instead of reading it from the committed output, so output generated under another namespace
-  is drift. Pass the same `--namespace` to both. `dotnet meta gen`, `verify --codegen`, `init`
+  --codegen` regenerates under the namespace `gen` resolves instead of reading it from the
+  committed output, so output generated under another namespace is drift. Both resolve it the
+  same way: `--namespace`, else the new `csharp.namespace` key in `.metaobjects/config.json`,
+  else the project's metadata package with each `::` segment PascalCased (`acme::shop` becomes
+  `Acme.Shop`; library and dependency packages are not the project's, and objects that share no
+  package are an error asking for one of the other two). The default was the constant
+  `Generated`. **Upgrade step:** a project that generated with `--namespace <ns>` sets
+  `"csharp": { "namespace": "<ns>" }` so a bare `dotnet meta verify` regenerates under it; one
+  that relied on `Generated` sets that value or regenerates under its package. `dotnet meta gen`, `verify --codegen`, `init`
   and `eject` no longer check whether `codegen/Program.cs` runs `Generators.All`.
   **Upgrade step:** a 1.0 project whose `codegen/Program.cs` builds its own generator list
   still runs that list and ignores `codegen/Generators.cs`, and nothing warns about it. Move
@@ -432,8 +438,9 @@ here.**
     `= + - @ TAB CR` is still guarded. Fixture `render-csv-numeric-exempt`.
   - Generated Pydantic models publish an ECMA-262-valid `pattern` in JSON Schema/OpenAPI while
     still enforcing an ASCII full match. `parseCurrency` caches the locale shape per
-    (currency, locale). Workspace `**` expansion tolerates symlink cycles and skips dot-directories,
-    `node_modules`, `dist` and `build`. `meta eject --list` says `, reordered` for a reorder-only
+    (currency, locale). Workspace patterns find the members pnpm finds: `**` tolerates symlink cycles and
+    includes its base directory, a wildcard skips dot-directories, and only `node_modules` and
+    `bower_components` are never entered (`dist` and `build` are ordinary directories). `meta eject --list` says `, reordered` for a reorder-only
     copy; trailing whitespace and blank lines alone still read `identical` in Python and C#.
     `parseCurrency` reads the decimal separator for zero-decimal currencies (JPY in `de-DE`). C# `ConstraintErrors` falls back to message text when a driver code is not a constraint
     code. The migration splitter treats `E'...'` as backslash-escaped on Postgres only.

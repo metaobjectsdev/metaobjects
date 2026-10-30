@@ -78,7 +78,7 @@ final class MustacheTags {
             switch (sigil) {
                 case '!' -> tags.add(new Tag(Kind.COMMENT, name, start, end));
                 case '=' -> {
-                    if (content.endsWith("=")) {
+                    if (content.length() > 1 && content.endsWith("=")) {
                         String[] parts = content.substring(1, content.length() - 1).trim().split("\\s+");
                         if (parts.length == 2) {
                             open = parts[0];

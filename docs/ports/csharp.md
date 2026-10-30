@@ -181,11 +181,11 @@ in `.metaobjects/config.json`, below).
 
 ```bash
 # Run the list: EF Core entities + AppDbContext + CRUD minimal-API routes
-dotnet meta gen ./metaobjects --out ./Generated --namespace Acme.Blog
+dotnet meta gen ./metaobjects --out ./Generated
 
 # The drift gate: regenerate into a temp tree and fail (exit 1, naming the files) if the
-# committed ./Generated differs. Run it in CI with the --namespace gen used.
-dotnet meta verify ./metaobjects --codegen --out ./Generated --namespace Acme.Blog
+# committed ./Generated differs. Run it in CI.
+dotnet meta verify ./metaobjects --codegen --out ./Generated
 ```
 
 `verify --codegen` is the gate for generated code. `dotnet meta verify ./metaobjects
@@ -196,12 +196,18 @@ against `prompts/` when it exists, else `templates/`, and fails the same way whe
 exists. It also runs the codegen gate when `--out <dir>` and `codegen/Generators.cs` are
 present, and skips it with a note otherwise; name both subverbs to require both.
 
-The output directory is a project setting, so `gen` and `verify` cannot disagree about it.
-Declare it once in `.metaobjects/config.json`, relative to the directory holding `.metaobjects/`:
+The output directory and the namespace are project settings, so `gen` and `verify` cannot
+disagree about them. Declare them once in `.metaobjects/config.json`; `outDir` is relative to the
+directory holding `.metaobjects/`:
 
 ```json
-{ "schema_version": 1, "csharp": { "outDir": "Generated" } }
+{ "schema_version": 1, "csharp": { "outDir": "Generated", "namespace": "Acme.Blog" } }
 ```
+
+The namespace is `--namespace` when given, else `csharp.namespace`, else the project's metadata
+package with each `::` segment PascalCased (`acme::shop` becomes `Acme.Shop`). Objects from a
+library or a metadata dependency do not count; when the project's own objects share no package,
+`gen` and `verify` stop and ask for `csharp.namespace` or `--namespace`.
 
 With that, `dotnet meta gen` writes there, `dotnet meta verify --codegen` diffs against it, and
 a plain `dotnet meta verify` in CI runs the codegen gate with no flags. `--out <dir>` still works

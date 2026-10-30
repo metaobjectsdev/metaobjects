@@ -134,8 +134,8 @@ async function findWorkspaceConfig(start: string): Promise<WorkspaceConfig | und
 // Glob expansion (workspace-style patterns: `*`, `?`, `**`, leading `!` negation)
 // ---------------------------------------------------------------------------
 
-/** Directories no workspace pattern descends into (pnpm ignores these by default). */
-const SKIPPED_DIRS = new Set(["node_modules", ".git"]);
+/** Directories pnpm's workspace walk never enters, whatever the pattern says. */
+const WORKSPACE_IGNORED_DIRS = new Set(["node_modules", "bower_components"]);
 
 /** Split a pattern into path segments, dropping `./` prefixes and trailing slashes. */
 function patternSegments(glob: string): string[] {
@@ -174,7 +174,7 @@ async function subdirectories(dir: string): Promise<string[]> {
   try {
     const entries = await readdir(dir, { withFileTypes: true });
     return entries
-      .filter((e) => !SKIPPED_DIRS.has(e.name))
+      .filter((e) => !WORKSPACE_IGNORED_DIRS.has(e.name))
       .map((e) => e.name);
   } catch {
     return [];
@@ -189,13 +189,16 @@ async function isDirectory(path: string): Promise<boolean> {
   }
 }
 
-/** Build output a `**` never descends into (dot-directories are skipped separately). */
-const GLOBSTAR_SKIPPED_DIRS = new Set(["node_modules", "dist", "build"]);
+/** Whether a wildcard segment may match `name`: as in pnpm (micromatch without `dot`), a
+ *  wildcard matches a dot-directory only when the segment itself starts with a dot. */
+function wildcardMay(name: string, segment: string): boolean {
+  return !name.startsWith(".") || segment.startsWith(".");
+}
 
 /**
- * `**` expansion: zero or more directory levels. Symlinks are followed but each real
- * directory is visited once (cycle guard); dot-directories and build output are not
- * descended into; a trailing `**` matches the descendants, never the base itself.
+ * `**` expansion: zero or more directory levels, the base included. Symlinks are followed
+ * but each real directory is visited once (cycle guard); dot-directories are not descended
+ * into.
  */
 async function expandGlobstar(
   dir: string,
@@ -210,17 +213,12 @@ async function expandGlobstar(
   }
   if (visited.has(real)) return [];
   visited.add(real);
-  const found = rest.length === 0 ? [] : await expandSegments(dir, rest);
+  const found = await expandSegments(dir, rest);
   for (const name of await subdirectories(dir)) {
-    if (name.startsWith(".") || GLOBSTAR_SKIPPED_DIRS.has(name)) continue;
+    if (!wildcardMay(name, "**")) continue;
     const child = join(dir, name);
     if (!(await isDirectory(child))) continue;
-    const before = visited.size;
-    const below = await expandGlobstar(child, rest, visited);
-    // Only a directory not yet visited (by real path) counts: a symlink back to an
-    // ancestor must not resurface it as a match.
-    if (rest.length === 0 && visited.size > before) found.push(child);
-    found.push(...below);
+    found.push(...(await expandGlobstar(child, rest, visited)));
   }
   return found;
 }
@@ -233,6 +231,7 @@ async function expandSegments(dir: string, segments: readonly string[]): Promise
     return expandGlobstar(dir, rest, new Set());
   }
   if (!/[*?]/.test(head)) {
+    if (WORKSPACE_IGNORED_DIRS.has(head)) return [];
     const child = join(dir, head);
     return (await isDirectory(child)) ? expandSegments(child, rest) : [];
   }
@@ -240,7 +239,7 @@ async function expandSegments(dir: string, segments: readonly string[]): Promise
   const found: string[] = [];
   for (const name of await subdirectories(dir)) {
     const child = join(dir, name);
-    if (matcher(name) && (await isDirectory(child))) found.push(...(await expandSegments(child, rest)));
+    if (wildcardMay(name, head) && matcher(name) && (await isDirectory(child))) found.push(...(await expandSegments(child, rest)));
   }
   return found;
 }
