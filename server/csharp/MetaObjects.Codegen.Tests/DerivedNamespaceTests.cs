@@ -49,6 +49,34 @@ public class DerivedNamespaceTests
     ]}}
     """;
 
+    private const string Ops = """
+    { "metadata.root": { "package": "acme::ops", "children": [
+      { "field.enum": { "name": "Grade", "abstract": true, "@values": ["Low", "High"] } },
+      { "object.entity": { "name": "Ticket", "children": [
+        { "source.rdb": { "@table": "tickets" } },
+        { "field.long": { "name": "id" } },
+        { "field.enum": { "name": "grade", "extends": "Grade" } },
+        { "identity.primary": { "@fields": "id" } }
+      ]}},
+      { "object.value": { "name": "TicketArgs", "children": [
+        { "field.int": { "name": "ticketId", "@required": true } }
+      ]}},
+      { "object.projection": { "name": "TicketSummary", "children": [
+        { "source.rdb": { "@kind": "storedProc", "@proc": "fn_ticket_summary", "@parameterRef": "TicketArgs" } },
+        { "field.long": { "name": "ticketId" } }
+      ]}},
+      { "object.value": { "name": "TicketBrief", "children": [
+        { "field.string": { "name": "title" } }
+      ]}},
+      { "object.value": { "name": "TicketVerdict", "children": [
+        { "field.enum": { "name": "verdict", "@required": true, "@values": ["GOOD", "POOR"] } },
+        { "field.string": { "name": "rationale", "@required": true, "@maxLength": 480 } }
+      ]}},
+      { "template.prompt": { "name": "triage", "@payloadRef": "TicketBrief", "@responseRef": "TicketVerdict",
+        "@textRef": "ops/triage", "@format": "text", "@responseFormat": "json", "@promptStyle": "guide" } }
+    ]}}
+    """;
+
     private static MetaRoot Load(params string[] docs)
     {
         var r = new MetaDataLoader().Load(docs.Select((d, i) => (IMetaDataSource)new InMemoryStringSource(d, id: $"m{i}.json")).ToList());
@@ -64,9 +92,19 @@ public class DerivedNamespaceTests
             {
                 new EntityGenerator(), new DbContextGenerator(), new FilterAllowlistGenerator(),
                 new NamesGenerator(), new ReportExportGenerator(), new RoutesGenerator(),
+                new CallableGenerator(), new RenderHelperGenerator(TemplateRoot.Value), new OutputPromptGenerator(),
+                new OutputParserGenerator(), new ExtractorGenerator(),
             }
             .SelectMany(g => g.Generate(ctx)).ToList();
     }
+
+    private static readonly Lazy<string> TemplateRoot = new(() =>
+    {
+        var root = Path.Combine(Path.GetTempPath(), "derived-ns-prompts-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(root, "ops"));
+        File.WriteAllText(Path.Combine(root, "ops", "triage.mustache"), "Ticket: {{title}}\n");
+        return root;
+    });
 
     private static IEnumerable<string> Usings(string source) =>
         CSharpSyntaxTree.ParseText(source).GetCompilationUnitRoot().Usings.Select(u => u.Name!.ToString());
@@ -79,7 +117,7 @@ public class DerivedNamespaceTests
     [Fact]
     public void No_config_derives_each_namespace_from_its_package()
     {
-        var files = Generate(Load(Billing(), Crm), Bare());
+        var files = Generate(Load(Billing(), Crm, Ops), Bare());
         Assert.Contains("namespace Acme.Billing;", Content(files, "Invoice.g.cs"));
         Assert.Contains("namespace Acme.Crm;", Content(files, "Order.g.cs"));
         // The package-less artifact lands in the namespace both packages share, and uses both.
@@ -102,7 +140,7 @@ public class DerivedNamespaceTests
     [Fact]
     public void Configured_namespace_overrides_the_derived_default()
     {
-        var files = Generate(Load(Billing(), Crm), Bare() with { Namespace = "My.App" });
+        var files = Generate(Load(Billing(), Crm, Ops), Bare() with { Namespace = "My.App" });
         Assert.Contains("namespace My.App;", Content(files, "Invoice.g.cs"));
         Assert.Contains("namespace My.App;", Content(files, "Order.g.cs"));
     }
@@ -111,7 +149,7 @@ public class DerivedNamespaceTests
     public void A_package_binding_overrides_the_derived_default()
     {
         var cfg = Bare() with { PackageNamespaces = new() { ["acme::billing"] = "Acme.Ledger" } };
-        var files = Generate(Load(Billing(), Crm), cfg);
+        var files = Generate(Load(Billing(), Crm, Ops), cfg);
         Assert.Contains("namespace Acme.Ledger;", Content(files, "Invoice.g.cs"));
         Assert.Contains("namespace Acme.Crm;", Content(files, "Order.g.cs"));
     }
@@ -127,7 +165,13 @@ public class DerivedNamespaceTests
     [Fact]
     public void A_multi_package_model_compiles()
     {
-        var files = Generate(Load(Billing(), Crm), Bare());
+        var files = Generate(Load(Billing(), Crm, Ops), Bare());
+        foreach (var expected in new[]
+                 {
+                     "Enums.g.cs", "TicketSummary.callable.g.cs", "triage.render.cs", "triage.response.cs",
+                     "triage.responseFormat.cs", "TicketVerdictExtracted.g.cs", "InvoiceTotalsExport.g.cs",
+                 })
+            Assert.Contains(files, f => f.Path == expected);
         // Routes import the ASP.NET Core shared framework, which an in-memory compilation does not
         // carry (CodegenCompileConformanceTests draws the same line); their package usings are
         // asserted by Routes_reach_the_package_namespaces_of_the_types_they_name.
@@ -144,7 +188,7 @@ public class DerivedNamespaceTests
     [Fact]
     public void Routes_reach_the_package_namespaces_of_the_types_they_name()
     {
-        var files = Generate(Load(Billing(), Crm), Bare());
+        var files = Generate(Load(Billing(), Crm, Ops), Bare());
         Assert.Contains("Acme.Billing", Usings(Content(files, "InvoiceRoutes.g.cs")));
         Assert.Contains("Acme.Crm", Usings(Content(files, "OrderRoutes.g.cs")));
         // Order navigates to an Invoice, and the home namespace is neither package's.
