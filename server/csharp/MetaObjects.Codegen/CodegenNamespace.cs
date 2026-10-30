@@ -16,7 +16,8 @@ public static class CodegenNamespace
     /// The project's package is the one its own objects share (the longest common <c>::</c> prefix);
     /// objects from a library or a metadata dependency are not the project's.
     /// </summary>
-    /// <exception cref="ArgumentException">Nothing is given and the project's objects share no package.</exception>
+    /// <exception cref="ArgumentException">Nothing is given and the project's objects share no package, or the
+    /// package has a segment that is not a C# identifier once PascalCased (<c>my-app</c>, <c>2fa</c>).</exception>
     public static string Resolve(string? flag, string? configured, MetaRoot root)
     {
         if (!string.IsNullOrWhiteSpace(flag)) return flag;
@@ -24,10 +25,19 @@ public static class CodegenNamespace
         var package = ProjectPackage(root);
         if (package.Count == 0)
             throw new ArgumentException(
-                "cannot derive the C# namespace: the project's metadata objects share no package. " +
-                "Set \"csharp\": { \"namespace\": \"<ns>\" } in .metaobjects/config.json or pass --namespace <ns>.");
-        return string.Join(".", package.Select(CSharpNaming.Pascal));
+                "cannot derive the C# namespace: the project's metadata objects share no package. " + SetOne);
+        var segments = package.Select(CSharpNaming.Pascal).ToList();
+        if (segments.FirstOrDefault(s => !Identifier.IsMatch(s)) is { } bad)
+            throw new ArgumentException(
+                $"cannot derive the C# namespace: \"{bad}\" (from the metadata package \"{string.Join("::", package)}\") " +
+                "is not a C# identifier. " + SetOne);
+        return string.Join(".", segments);
     }
+
+    private const string SetOne =
+        "Set \"csharp\": { \"namespace\": \"<ns>\" } in .metaobjects/config.json or pass --namespace <ns>.";
+
+    private static readonly System.Text.RegularExpressions.Regex Identifier = new("^[A-Za-z_][A-Za-z0-9_]*$");
 
     private static IReadOnlyList<string> ProjectPackage(MetaRoot root)
     {

@@ -85,6 +85,24 @@ public sealed class CodegenNamespaceTests : IDisposable
         Assert.Equal(1, Run("verify", "--codegen").Exit);
     }
 
+    [Theory]
+    [InlineData("my-app::shop", "My-app")]
+    [InlineData("acme::2fa", "2fa")]
+    public void A_package_segment_that_is_not_an_identifier_needs_a_namespace(string package, string badSegment)
+    {
+        WriteConfig("\"outDir\": \"Generated\"");
+        File.WriteAllText(Path.Combine(MetaDir, "meta.shop.json"), Metadata.Replace("acme::shop", package));
+
+        var gen = Run("gen");
+        Assert.Equal(2, gen.Exit);
+        Assert.Contains($"\"{badSegment}\"", gen.Output);
+        Assert.Contains("\"csharp\": { \"namespace\": \"<ns>\" }", gen.Output);
+        Assert.False(Directory.Exists(OutDir) && Directory.EnumerateFiles(OutDir).Any());
+
+        WriteConfig("\"outDir\": \"Generated\", \"namespace\": \"Acme.Shop\"");
+        Assert.Equal(0, Run("gen").Exit);
+    }
+
     [Fact]
     public void Objects_that_share_no_package_need_a_namespace()
     {
