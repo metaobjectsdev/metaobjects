@@ -257,10 +257,18 @@ here.**
   `"csharp": { "namespace": "<ns>" }` to the namespace your committed output uses (`Generated`
   if you never passed `--namespace`), so `gen` and a bare `dotnet meta verify` both use it. `dotnet meta gen`, `verify --codegen`, `init`
   and `eject` no longer check whether `codegen/Program.cs` runs `Generators.All`.
-  **Upgrade step:** a 1.0 project whose `codegen/Program.cs` builds its own generator list
-  still runs that list and ignores `codegen/Generators.cs`, and nothing warns about it. Move
-  each entry into `Generators.All` and replace `Program.cs` with the two lines
-  `using MetaObjects.Codegen;` and `return CodegenCli.Run(args, Generators.All);`.
+  **Upgrade step:** if `codegen/Program.cs` builds its own generator list, replace that list
+  with `Generators.All`. Such a project still runs its own list and ignores
+  `codegen/Generators.cs`, and nothing warns about it. Move each entry into `Generators.All`
+  in `codegen/Generators.cs`, then change `Program.cs`:
+
+  ```csharp
+  // before
+  IReadOnlyList<IGenerator> generators = [new MetaObjects.Codegen.Generators.EntityGenerator()];
+  return CodegenCli.Run(args, generators);
+  // after
+  return CodegenCli.Run(args, Generators.All);
+  ```
 
 - **On Postgres, `meta verify --db` and `meta migrate` ask Postgres whether a CHECK or an index
   expression is the one stored, instead of comparing rewritten text.** For each table the plan

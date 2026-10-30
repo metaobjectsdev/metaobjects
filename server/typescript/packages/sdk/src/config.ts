@@ -231,10 +231,14 @@ export const ConfigSchema = z.object({
     .optional(),
   /**
    * C#-scoped settings. `outDir` is where `dotnet meta gen` writes and a bare `dotnet meta
-   * verify` diffs, relative to the directory holding `.metaobjects/`. Only the C# port reads
-   * it; it is declared here so the shared file validates and this reader does not warn on it.
+   * verify` diffs, relative to the directory holding `.metaobjects/`; `namespace` is the C#
+   * namespace generated types that no package binding places land in. Only the C# port reads
+   * them; they are declared here so the shared file validates and this reader does not warn on them.
    */
-  csharp: z.strictObject({ outDir: z.string().min(1).optional() }).optional(),
+  csharp: z.strictObject({
+    outDir: z.string().min(1).optional(),
+    namespace: z.string().min(1).optional(),
+  }).optional(),
 }).strict();
 
 export type Config = z.infer<typeof ConfigSchema>;
