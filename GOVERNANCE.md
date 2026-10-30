@@ -131,6 +131,12 @@ license does not grant use of the MetaObjects name or trademark.
 Paid work or sponsorship does not grant a role, a vote or an exception to review. A change built
 for a paying customer goes through the same review as any other change.
 
+One commitment goes with the roles: a port maintainer gets first call on paid work in the port
+they maintain, as listed in [MAINTAINERS.md](MAINTAINERS.md). When the creator or Doug Mealing LLC
+has paid work that falls in a port, they offer it to that port's maintainer before anyone else; work
+that spans several ports is offered to each of those ports' maintainers. This is an offer of work
+only. It grants no role, vote or review exception, and the maintainer may decline it.
+
 ## Succession
 
 The creator has stepped away when they say so in writing, or when they have not committed,

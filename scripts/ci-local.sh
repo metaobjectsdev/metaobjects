@@ -118,7 +118,8 @@
 # so use it wherever a skip would mean a real gap rather than an absent toolchain:
 # the pre-release run, and the no-mistakes gate's two commands (.no-mistakes.yaml).
 #
-# Called by: hygiene.yml (--only leak-scan) · conformance.yml (--only gates /
+# Called by: hygiene.yml (--only leak-scan) · pr-ci.yml (the touched ports' lanes, with
+# --no-integration) · conformance.yml (--only gates /
 # ts-fast / csharp / java-fast / python, and java-slow for the reactor, all with
 # --no-integration) · integration-tests.yml (--integration-only, one job per lane) ·
 # local-ci.yml (one job per lane).

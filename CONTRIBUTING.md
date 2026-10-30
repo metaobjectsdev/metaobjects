@@ -28,10 +28,10 @@ conformance corpora. This guide covers how to propose changes.
 1. **Fork** the repo and create a branch from `main`.
 2. Make your change following the discipline below — **tests first (TDD)**.
 3. Run the gates locally with **`scripts/ci-local.sh --quick`** and make sure it's
-   green. **This matters:** on a pull request GitHub Actions runs only the leak scan
-   (`hygiene.yml`); the conformance and integration lanes run on `main`, nightly and on
-   release tags, so your local run is the only check of the rest before merge — see the
-   *Local CI* section below.
+   green. On a pull request GitHub Actions runs the leak scan (`hygiene.yml`) and the
+   unit and conformance tests of the ports your change touches (`pr-ci.yml`); the docker
+   integration suites run on release tags and on manual dispatch — see the *Local CI*
+   section below.
 4. Open a **pull request** against `main` and fill out the PR template.
 5. A maintainer reviews the change and the checks on the pull request before merge. Who can
    approve what, and which changes need a core maintainer, is in
@@ -84,9 +84,15 @@ GitHub Actions is enabled on this repository. The check workflows in
 `.github/workflows/` are thin wrappers over `scripts/ci-local.sh`, the single
 definition of the checks: each wrapper checks out, installs the toolchains its
 lane needs, and calls the script, so a local run is the same check a workflow
-run would be. A pull request runs only the leak scan; the other lanes run on
-`main`, nightly and on release tags. Run the script locally before opening or
-merging a PR, so nothing red reaches `main`:
+run would be. A pull request runs the leak scan (`hygiene.yml`) and `pr-ci.yml`, which
+runs the unit tests and conformance corpora of only the ports the PR touches (a change
+under `fixtures/`, `spec/`, `scripts/`, `.github/` or `agent-context/`, or to any file
+outside a port's directory that the selector does not recognise, touches every port; a
+change only to `docs/` or to Markdown files outside those directories runs just the
+offline gates). Its `pr-ci` job is green only when every selected lane is, and a newer
+push cancels the superseded run. The docker integration suites run on release tags and on
+manual dispatch. Run the script locally before opening or merging a PR, so nothing red
+reaches `main`:
 
 ```bash
 scripts/ci-local.sh            # full parity: hygiene.yml's leak-scan, all-port
