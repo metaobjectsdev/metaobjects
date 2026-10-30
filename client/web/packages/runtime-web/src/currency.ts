@@ -1,7 +1,8 @@
 /**
  * Currency helpers — read-side display, write-side parsing, minor-units lookup.
- * All operations are integer-cents in / integer-cents out; float arithmetic is
- * confined to a single Math.round to avoid drift (e.g., 15.99 * 100 = 1598.999...).
+ * All operations are integer-cents in / integer-cents out. parseCurrency does
+ * exact decimal-string arithmetic, so it never multiplies a float (e.g.,
+ * 15.99 * 100 = 1598.999...).
  */
 
 const intlCache = new Map<string, Intl.NumberFormat>();
