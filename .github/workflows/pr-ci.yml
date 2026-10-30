@@ -12,8 +12,8 @@ name: pr-ci
 # WHICH PORTS: `detect` maps the PR's changed paths to ports with
 # scripts/ci-affected-ports.sh, the same mapper local-ci.yml uses. A change under a
 # port's directory selects that port; a change to fixtures/, spec/, scripts/, .github/,
-# agent-context/ or anything unrecognised selects ALL ports (the mapper fails open); a docs-only change
-# selects none and runs only the offline `gates` lane.
+# agent-context/ or anything unrecognised selects ALL ports (the mapper fails open); a
+# docs-only change selects none and runs only the offline `gates` lane.
 #
 # WHAT RUNS PER PORT: unit tests plus the conformance corpora, not the docker
 # integration suites (integration-tests.yml owns those, on tags and on demand):
@@ -24,8 +24,9 @@ name: pr-ci
 #   python / csharp — the port's full test suite and conformance
 #
 # THE REQUIRED CHECK: the final job, `pr-ci`, is the name to put in branch protection
-# when a maintainer decides to (it is not required yet; `leak-scan` is). It always runs and is green only when every lane that was selected passed, so the
-# set of lanes can change per PR without touching branch protection. Do not rename it.
+# when a maintainer decides to (it is not required yet; `leak-scan` is). It always runs
+# and is green only when every lane that was selected passed, so the set of lanes can
+# change per PR without touching branch protection. Do not rename it.
 #
 # SECURITY: this is a `pull_request` workflow on GitHub-hosted runners with a read-only
 # token and no secrets, so fork-submitted code cannot reach anything. It must NEVER move

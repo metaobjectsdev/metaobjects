@@ -30,7 +30,7 @@ conformance corpora. This guide covers how to propose changes.
 3. Run the gates locally with **`scripts/ci-local.sh --quick`** and make sure it's
    green. On a pull request GitHub Actions runs the leak scan (`hygiene.yml`) and the
    unit and conformance tests of the ports your change touches (`pr-ci.yml`); the docker
-   integration suites run on `main`, nightly and on release tags — see the *Local CI*
+   integration suites run on release tags and on manual dispatch — see the *Local CI*
    section below.
 4. Open a **pull request** against `main` and fill out the PR template.
 5. A maintainer reviews the change and the checks on the pull request before merge. Who can
@@ -90,8 +90,8 @@ under `fixtures/`, `spec/`, `scripts/`, `.github/` or `agent-context/`, or to an
 outside a port's directory that the selector does not recognise, touches every port; a
 change only to `docs/` or to Markdown files outside those directories runs just the
 offline gates). Its `pr-ci` job is green only when every selected lane is, and a newer
-push cancels the superseded run. The docker integration suites run on `main`, nightly and
-on release tags. Run the script locally before opening or merging a PR, so nothing red
+push cancels the superseded run. The docker integration suites run on release tags and on
+manual dispatch. Run the script locally before opening or merging a PR, so nothing red
 reaches `main`:
 
 ```bash
