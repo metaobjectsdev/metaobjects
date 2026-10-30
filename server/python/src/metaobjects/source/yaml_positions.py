@@ -134,7 +134,7 @@ def _yaml_node_to_py(node: Any, loader: Any) -> Any:
 
     Scalar nodes are constructed via :class:`CoreSchemaLoader`, so typed scalars
     (null, bool, int, float) resolve under the YAML 1.2 core schema, matching the
-    TS loader: ``off``/``no``/``1:30``/``0777`` stay strings. The desugar's D2
+    TS loader: ``off``/``no``/``1:30`` stay strings and ``0777`` is the decimal int 777. The desugar's D2
     coercion guard fires on the values that do coerce (``true``, ``42``).
     """
     if isinstance(node, yaml.ScalarNode):
