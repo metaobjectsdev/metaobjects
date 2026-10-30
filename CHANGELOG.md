@@ -10,6 +10,10 @@ here.**
 
 ## [Unreleased]
 
+## [1.2.0] — 2026-10-30
+
+_npm `1.2.0` (full lockstep across all 14 `@metaobjectsdev/*` publish candidates)._
+
 ### Docs
 
 - **The `@formExclude` description says what the attribute does since #484.** The registry text

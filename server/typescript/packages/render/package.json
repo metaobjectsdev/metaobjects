@@ -1,7 +1,7 @@
 {
   "name": "@metaobjectsdev/render",
-  "version": "1.1.4",
-  "description": "Deterministic text render engine for MetaObjects templates \u2014 Mustache (logic-less, the cross-port default) and Jinja (via nunjucks), provider-resolved partials, format-driven escaping, build-time payload drift check, zero core dependency.",
+  "version": "1.2.0",
+  "description": "Deterministic text render engine for MetaObjects templates — Mustache (logic-less, the cross-port default) and Jinja (via nunjucks), provider-resolved partials, format-driven escaping, build-time payload drift check, zero core dependency.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
