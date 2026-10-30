@@ -36,6 +36,7 @@ public static class PackageBindingResolver
     {
         if (config.HasNamespace) return config;
         var namespaces = root.Objects()
+            .Where(root.InScope)
             .Select(EffectivePackage)
             .Where(p => !string.IsNullOrEmpty(p))
             .Distinct(StringComparer.Ordinal)

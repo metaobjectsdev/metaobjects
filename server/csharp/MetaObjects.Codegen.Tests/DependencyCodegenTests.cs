@@ -58,13 +58,13 @@ public sealed class DependencyCodegenTests : IDisposable
         File.WriteAllText(path, content);
     }
 
-    private Dictionary<string, string> GenerateAll()
+    private Dictionary<string, string> GenerateAll(string? ns = "Acme.Generated")
     {
         var load = MetadataLocation.Resolve(null, _tmp).Load();
         Assert.Empty(load.Errors);
         // The import is on the loaded root: that is what the generators read.
         Assert.NotNull(load.Root.ImportScope);
-        var config = new GenConfig { OutDir = OutDir, Namespace = "Acme.Generated" };
+        var config = ns is null ? new GenConfig { OutDir = OutDir } : new GenConfig { OutDir = OutDir, Namespace = ns };
         var names = GeneratorRegistry.Entries.Keys.Where(n => !Excluded.Contains(n)).ToList();
         CodegenRunner.Run(config, load.Root, GeneratorRegistry.Resolve(names));
         return Directory.EnumerateFiles(OutDir, "*", SearchOption.AllDirectories)
@@ -92,6 +92,18 @@ public sealed class DependencyCodegenTests : IDisposable
             Assert.False(text.Contains("Customer") || text.Contains("Address") || text.Contains("acme.common", StringComparison.OrdinalIgnoreCase),
                 $"{path} mentions an imported node");
         }
+    }
+
+    [Fact]
+    public void With_no_namespace_configured_an_imported_package_does_not_decide_the_home_namespace()
+    {
+        Project();
+        var output = GenerateAll(ns: null);
+
+        // The project's own package `app` and the imported `acme::common` share no root; only the
+        // project's own package is generated, so only it names the home namespace.
+        Assert.Contains("namespace App;", output["AppDbContext.g.cs"]);
+        Assert.Contains("namespace App;", output["Order.g.cs"]);
     }
 
     [Fact]
