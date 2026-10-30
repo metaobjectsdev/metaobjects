@@ -586,6 +586,10 @@ git push origin main                             # NO tag here — see golden ru
 **The `v<version>` tag is cut LAST, by `scripts/finish-release.mjs`** — after PyPI, NuGet
 and Maven have been bumped, committed and published. See golden rule 7.
 
+**After the version propagation, check the site's prose.** The site injects version
+numbers but not claims; walk the "Diff the CHANGELOG against the homepage's prose claims"
+item in [`RELEASING-docs-checklist.md`](RELEASING-docs-checklist.md) §B.
+
 ### 4. Cleanup
 ```bash
 # deprecate any broken/superseded RCs
