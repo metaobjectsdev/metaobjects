@@ -210,10 +210,11 @@ metadata package: a type-level override (`GenConfig.TypeOverrides`), then a pack
 each `::` segment), then `UnmappedStrategy`. With none of those configured, the default
 convention applies: each `::` segment PascalCased and joined with `.` (`acme::billing` is
 `Acme.Billing`), and the artifacts that belong to no single package (`AppDbContext`, routes) land in
-the namespace all the packages share. Setting `--namespace` or `csharp.namespace` switches the
-default off and puts every type no binding places in that one flat namespace. The namespace must be a dotted path of C# identifiers. `dotnet meta gen` and
-`verify` set only that flat namespace; the per-package bindings are `GenConfig` properties, set
-when you run codegen from your own code with `CodegenRunner`.
+the namespace all the packages share. When they share no root, generation stops and asks for a
+namespace. Setting `--namespace` or `csharp.namespace` switches the default off and puts every type
+no binding places in that one flat namespace. The namespace must be a dotted path of C#
+identifiers. `dotnet meta gen` and `verify` set only that flat namespace; the per-package bindings
+are `GenConfig` properties, set when you run codegen from your own code with `CodegenRunner`.
 
 With that, `dotnet meta gen` writes there, `dotnet meta verify --codegen` diffs against it, and
 a plain `dotnet meta verify` in CI runs the codegen gate with no flags. `--out <dir>` still works
