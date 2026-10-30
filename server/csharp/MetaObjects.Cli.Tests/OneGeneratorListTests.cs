@@ -300,8 +300,6 @@ public sealed class OneGeneratorListTests : IDisposable
         Assert.Equal(CodegenScaffold.ProgramCs, File.ReadAllText(Path.Combine(_tmp, "codegen", "Program.cs")));
     }
 
-    // ---- a 1.0 Program.cs, which never runs Generators.All, is refused --------------------------
-
     private const string LegacyProgramCs =
         "using MetaObjects.Codegen;\n" +
         "IReadOnlyList<IGenerator> generators = [new MetaObjects.Codegen.Generators.EntityGenerator()];\n" +
@@ -315,67 +313,6 @@ public sealed class OneGeneratorListTests : IDisposable
         File.WriteAllText(Path.Combine(_tmp, "codegen", "Codegen.csproj"), CodegenScaffold.Csproj());
         if (withGeneratorList)
             File.WriteAllText(Path.Combine(_tmp, "codegen", "Generators.cs"), CodegenScaffold.GeneratorsCs([]));
-    }
-
-    private static string LegacyProgramLine(string command) =>
-        $"{command}: codegen/Program.cs does not run Generators.All, so it would ignore the generator list in " +
-        "codegen/Generators.cs. Replace it with the two-line entry `using MetaObjects.Codegen;` and " +
-        "`return CodegenCli.Run(args, Generators.All);`. See https://github.com/metaobjectsdev/metaobjects/blob/v1.1.0/docs/features/migrations/docs-are-generators.md, section \"C#\".";
-
-    [Fact]
-    public void Gen_with_a_1_0_program_refuses_with_the_migration_line_and_writes_nothing()
-    {
-        WriteLegacyCodegenProject(withGeneratorList: true);
-
-        var (exit, _, stderr) = CliProcess.Run(_tmp, "gen", MetaDir, "--out", OutDir);
-
-        Assert.Equal(2, exit);
-        Assert.Equal(LegacyProgramLine("dotnet meta gen"), stderr.Trim());
-        Assert.Equal(CodegenCli.LegacyProgram("dotnet meta gen"), stderr.Trim());
-        Assert.Empty(FilesUnder(OutDir));
-    }
-
-    [Fact]
-    public void Verify_codegen_with_a_1_0_program_refuses_with_the_migration_line()
-    {
-        WriteLegacyCodegenProject(withGeneratorList: true);
-
-        var (exit, _, stderr) = CliProcess.Run(_tmp, "verify", MetaDir, "--codegen", "--out", OutDir);
-
-        Assert.Equal(2, exit);
-        Assert.Contains(LegacyProgramLine("dotnet meta verify --codegen"), stderr);
-    }
-
-    [Fact]
-    public void Init_beside_a_1_0_program_says_to_replace_it_instead_of_claiming_gen_runs_the_list()
-    {
-        WriteLegacyCodegenProject(withGeneratorList: false);
-
-        var lines = InitCommand.Run(_tmp);
-
-        Assert.Contains("  wrote codegen/Generators.cs", lines);
-        Assert.Contains("  kept codegen/Program.cs (already yours)", lines);
-        Assert.DoesNotContain(lines, l => l.Contains("is the generator list `dotnet meta gen` runs", StringComparison.Ordinal));
-        Assert.Contains(lines, l => l.StartsWith("codegen/Program.cs does not run Generators.All", StringComparison.Ordinal));
-        Assert.Contains("  return CodegenCli.Run(args, Generators.All);", lines);
-        Assert.Contains("See https://github.com/metaobjectsdev/metaobjects/blob/v1.1.0/docs/features/migrations/docs-are-generators.md, section \"C#\".", lines);
-        Assert.Equal(LegacyProgramCs, File.ReadAllText(Path.Combine(_tmp, "codegen", "Program.cs")));
-    }
-
-    [Fact]
-    public void Eject_beside_a_1_0_program_says_to_replace_it_instead_of_claiming_gen_runs_the_list()
-    {
-        WriteLegacyCodegenProject(withGeneratorList: false);
-
-        var outcome = EjectCommand.Run(["entity"], _tmp, force: false);
-
-        Assert.Equal(0, outcome.ExitCode);
-        Assert.Contains(outcome.Out, l => l.StartsWith("codegen/Generators.cs lists the generator(s) you just ejected", StringComparison.Ordinal));
-        Assert.DoesNotContain(outcome.Out, l => l.Contains("run that list", StringComparison.Ordinal));
-        Assert.Contains(outcome.Out, l => l.StartsWith("codegen/Program.cs does not run Generators.All", StringComparison.Ordinal));
-        Assert.Contains("  return CodegenCli.Run(args, Generators.All);", outcome.Out);
-        Assert.Contains("See https://github.com/metaobjectsdev/metaobjects/blob/v1.1.0/docs/features/migrations/docs-are-generators.md, section \"C#\".", outcome.Out);
-        Assert.Equal(LegacyProgramCs, File.ReadAllText(Path.Combine(_tmp, "codegen", "Program.cs")));
     }
 
     [Fact]

@@ -184,8 +184,8 @@ in `.metaobjects/config.json`, below).
 dotnet meta gen ./metaobjects --out ./Generated --namespace Acme.Blog
 
 # The drift gate: regenerate into a temp tree and fail (exit 1, naming the files) if the
-# committed ./Generated differs. Run it in CI; the namespace is inferred from ./Generated.
-dotnet meta verify ./metaobjects --codegen --out ./Generated
+# committed ./Generated differs. Run it in CI with the --namespace gen used.
+dotnet meta verify ./metaobjects --codegen --out ./Generated --namespace Acme.Blog
 ```
 
 `verify --codegen` is the gate for generated code. `dotnet meta verify ./metaobjects

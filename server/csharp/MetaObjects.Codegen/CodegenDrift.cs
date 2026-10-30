@@ -18,35 +18,6 @@ namespace MetaObjects.Codegen;
 /// <summary>Regenerate-to-temp + diff vs committed output (ADR-0021 D2).</summary>
 public static class CodegenDrift
 {
-    /// <summary>
-    /// Infer the C# namespace embedded in the committed generated output under
-    /// <paramref name="outDir"/>. Scans the FIRST <c>.cs</c> file (ordinal-sorted)
-    /// that carries a top-level <c>namespace</c> declaration and returns it.
-    /// Returns <c>null</c> when the dir is missing or no <c>.cs</c> file declares a
-    /// namespace — the caller then falls back to its default (there is nothing
-    /// meaningful to diff against in that case anyway). Used by
-    /// <c>verify --codegen</c> so a regen matches output produced with ANY namespace
-    /// when <c>--namespace</c> is omitted.
-    /// </summary>
-    public static string? InferNamespace(string outDir)
-    {
-        if (!Directory.Exists(outDir)) return null;
-
-        var csFiles = Directory.EnumerateFiles(outDir, "*.cs", SearchOption.AllDirectories)
-            .OrderBy(p => p.Replace(Path.DirectorySeparatorChar, '/'), StringComparer.Ordinal);
-
-        foreach (var file in csFiles)
-        {
-            string text;
-            try { text = File.ReadAllText(file); }
-            catch { continue; }
-
-            var ns = CSharpSource.TopLevelNamespace(text);
-            if (ns is not null) return ns;
-        }
-        return null;
-    }
-
     /// <summary>The outcome of a codegen-drift computation (pure; no console I/O).</summary>
     public sealed record Result
     {

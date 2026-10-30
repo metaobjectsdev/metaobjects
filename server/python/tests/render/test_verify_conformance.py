@@ -95,10 +95,11 @@ def test_verify_conformance(name: str) -> None:
     fixture_dir = _CORPUS / name
     fields = _parse_fields(json.loads((fixture_dir / "payload.json").read_text()))
     template = (fixture_dir / "template.mustache").read_text()
-    expected = [
-        VerifyError(e["code"], e["path"])
-        for e in json.loads((fixture_dir / "expected-drift.json").read_text())
-    ]
+    # expected-drift.python.json (optional) replaces expected-drift.json for this port: the
+    # Python renderer refuses every delimiter change, so its verify reports each one.
+    python_expected = fixture_dir / "expected-drift.python.json"
+    expected_path = python_expected if python_expected.is_file() else fixture_dir / "expected-drift.json"
+    expected = [VerifyError(e["code"], e["path"]) for e in json.loads(expected_path.read_text())]
 
     # Lint: every expected code is a known verify code (typo guard).
     for e in expected:

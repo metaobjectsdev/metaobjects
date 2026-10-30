@@ -114,11 +114,14 @@ final class MustacheTags {
     }
 
     /**
-     * The first partial of a text that also changes delimiters, or {@code null}. Such a text does
-     * not render: the inlined partial would be parsed under the changed delimiters.
+     * Where a text that changes delimiters cannot render, or {@code null} when it can: inlined
+     * text is parsed under the surrounding delimiters. A partial body ({@code inlinedAs} is its
+     * ref) that changes them is reported at that ref; a text that changes them and inlines a
+     * partial is reported at its first partial.
      */
-    static String delimitedPartial(List<Tag> tags) {
+    static String delimiterConflict(List<Tag> tags, String inlinedAs) {
         if (tags.stream().noneMatch(t -> t.kind() == Kind.DELIMITERS)) return null;
+        if (inlinedAs != null) return inlinedAs;
         return tags.stream().filter(t -> t.kind() == Kind.PARTIAL).map(Tag::value).findFirst().orElse(null);
     }
 

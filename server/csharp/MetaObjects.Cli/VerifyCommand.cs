@@ -125,10 +125,6 @@ public static class VerifyCommand
         public string? OutDir { get; init; }
         /// <summary>Code-gen namespace (only affects the temp regen; default mirrors `gen`).</summary>
         public string Namespace { get; init; } = "Generated";
-        /// <summary>True when the user explicitly passed <c>--namespace</c>. When false and
-        /// <c>--codegen</c> runs, the namespace is inferred from the committed output so a
-        /// regen matches output generated with any namespace (avoids spurious drift).</summary>
-        public bool NamespaceExplicit { get; init; }
         /// <summary>Generator selection for the <c>--codegen</c> regen. There is no default suite: name the ones <c>gen</c> ran.</summary>
         public IReadOnlyList<string>? Generators { get; init; }
         /// <summary>Template root for render-helper/template generators in the codegen regen.</summary>
@@ -432,14 +428,9 @@ public static class VerifyCommand
                 ],
             };
 
-        // The C# namespace is embedded in every generated file (`namespace {ns};`).
-        // If the user did NOT pass --namespace, infer it from the committed output so
-        // the regen matches output produced with any namespace (otherwise every file
-        // would spuriously drift). An explicit --namespace always wins (back-compat /
-        // override); inference falling back to null leaves the default in place.
+        // The namespace resolves exactly as `gen` resolves it (--namespace, else the default),
+        // so output generated under another namespace is drift.
         var ns = opts.Namespace;
-        if (!opts.NamespaceExplicit)
-            ns = Codegen.CodegenDrift.InferNamespace(opts.OutDir) ?? opts.Namespace;
 
         // C1 — same presence gate `gen` computes (GeneratorRegistry.IncludesNames over
         // the SAME resolved `names` list above), or a regen under a `--generators`

@@ -28,7 +28,7 @@ from .engine import (
     partial_engine_mismatch,
     template_engine_of,
 )
-from .mustache_tags import KIND_DELIMITERS, KIND_PARTIAL, MustacheSyntaxError, scan
+from .mustache_tags import KIND_PARTIAL, MustacheSyntaxError, delimiter_change, scan
 from .payload_accessors import with_derived_accessors
 from .verify import (
     ERR_REQUIRED_SLOT_UNUSED,
@@ -144,7 +144,7 @@ def _pre_expand_partials(text: str, provider: Provider, stack: list[str]) -> str
         tags = scan(text)
     except MustacheSyntaxError as e:
         raise RenderError(f"template syntax error: {e}") from e
-    if any(t.kind == KIND_DELIMITERS for t in tags):
+    if delimiter_change(tags) is not None:
         raise RenderError(
             "set-delimiter tags ({{=<% %>=}}) are not supported by the Python renderer"
         )

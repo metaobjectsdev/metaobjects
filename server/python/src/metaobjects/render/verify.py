@@ -32,7 +32,7 @@ from .mustache_tags import (
     KIND_SECTION,
     KIND_TRIPLE,
     MustacheSyntaxError,
-    delimited_partial,
+    delimiter_change,
     scan,
     without_comments,
 )
@@ -168,11 +168,16 @@ def _tokenize(text: str) -> list[_Token]:
     return root
 
 
-def _delimited_partial_errors(text: str) -> list[VerifyError]:
-    """A text that changes delimiters and also uses a partial does not render: report it
-    against its first partial."""
-    partial = delimited_partial(scan(text))
-    return [] if partial is None else [VerifyError(ERR_TEMPLATE_SYNTAX, partial)]
+def _delimiter_errors(text: str, inlined_as: str | None) -> list[VerifyError]:
+    """The Python renderer refuses every delimiter change. Reported where the other ports report
+    the changes their renderers refuse: at the partial ref for a partial body, at the first
+    partial for a text that inlines one; elsewhere at the delimiters themselves."""
+    tags = scan(text)
+    change = delimiter_change(tags)
+    if change is None:
+        return []
+    first_partial = next((t.value for t in tags if t.kind == KIND_PARTIAL), None)
+    return [VerifyError(ERR_TEMPLATE_SYNTAX, inlined_as or first_partial or change)]
 
 
 def _static_text(text: str) -> str:
@@ -328,7 +333,7 @@ def verify(
                 except MustacheSyntaxError as e:
                     errors.append(VerifyError(ERR_TEMPLATE_SYNTAX, e.section))
                     continue
-                errors.extend(_delimited_partial_errors(body))
+                errors.extend(_delimiter_errors(body, tok.value))
                 static_texts.append(_static_text(body))
                 walk(partial_tokens, stack, [*seen, tok.value], in_element)
 
@@ -336,7 +341,7 @@ def verify(
         body_tokens = _tokenize(template_text)
     except MustacheSyntaxError as e:
         return [VerifyError(ERR_TEMPLATE_SYNTAX, e.section)]
-    errors.extend(_delimited_partial_errors(template_text))
+    errors.extend(_delimiter_errors(template_text, None))
     static_texts[0] = _static_text(template_text)
     walk(body_tokens, [root], [])
 

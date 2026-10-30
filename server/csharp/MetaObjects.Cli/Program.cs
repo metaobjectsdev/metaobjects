@@ -46,8 +46,8 @@ if (args.Length == 0 || helpRequested)
         "                                                       --codegen    regen-to-temp vs committed --out\n" +
         "                                                                    (--out defaults to csharp.outDir in\n" +
         "                                                                    .metaobjects/config.json, as for gen)\n" +
-        "                                                       --namespace  codegen regen namespace; inferred\n" +
-        "                                                                    from the committed --out when omitted\n" +
+        "                                                       --namespace  codegen regen namespace; pass the one\n" +
+        "                                                                    gen used (default Generated)\n" +
         "                                                       --db         NOT supported in C# (migrate engine)\n" +
         "                                                       --lax        load lax (legacy); strict-by-default\n" +
         "                                                                    rejects an unregistered @attr (ADR-0023)\n" +
@@ -171,11 +171,6 @@ static int? RequireGeneratorList(string projectRoot, string command)
         Console.Error.WriteLine(
             $"{command}: codegen/Generators.cs has no codegen/Codegen.csproj to compile it. " +
             "`dotnet meta init` writes the missing files and keeps the ones you have.");
-        return 2;
-    }
-    if (CodegenHandoff.ProgramIgnoresList(projectRoot))
-    {
-        Console.Error.WriteLine(CodegenCli.LegacyProgram(command));
         return 2;
     }
     return null;
@@ -540,7 +535,6 @@ static int RunVerify(string[] rest)
         TemplatesRoot = templatesRoot,
         OutDir = outDir,
         Namespace = ns,
-        NamespaceExplicit = nsExplicit,
         Generators = generators,
         TemplateRoot = templateRoot,
         Templates = templates,

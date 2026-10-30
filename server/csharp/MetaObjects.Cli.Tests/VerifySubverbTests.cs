@@ -253,70 +253,33 @@ public sealed class VerifySubverbTests : IDisposable
         Assert.Contains("did not load", r.Codegen!.Error);
     }
 
-    // -------------------- the namespace-inference footgun --------------------
-    // gen used a CUSTOM namespace; verify --codegen WITHOUT --namespace must infer
-    // it from the committed output (else every file would spuriously drift on the
-    // embedded `namespace {ns};`). Build the Options with NO explicit namespace.
+    // -------------------- the namespace is gen's, never read from the output --------------------
+    // verify --codegen regenerates under the namespace gen resolves (--namespace, else the
+    // default). Output generated under another namespace is drift, not something to adopt.
 
-    /// <summary>Codegen opts with NO explicit namespace (the footgun scenario).</summary>
-    private VerifyCommand.Options CodegenOptsNoNamespace() =>
-        new()
-        {
-            MetadataDir = MetaDir,
-            // verify --codegen re-runs the SELECTION; there is no default suite to fall
-            // back on, so the mechanics tests name the one their fixtures were written for.
-            Generators = GenSuite.Names,
-            OutDir = OutDir,
-            Codegen = true,
-            // Namespace intentionally NOT set + NamespaceExplicit defaults to false.
-        };
+    private VerifyCommand.Options CodegenOpts(string? ns) =>
+        ns is null
+            ? new() { MetadataDir = MetaDir, Generators = GenSuite.Names, OutDir = OutDir, Codegen = true }
+            : new() { MetadataDir = MetaDir, Generators = GenSuite.Names, OutDir = OutDir, Codegen = true, Namespace = ns };
 
     [Fact]
-    public void Codegen_infers_custom_namespace_from_committed_output_no_flag()
-    {
-        File.WriteAllText(Path.Combine(MetaDir, "meta.ai.json"), EntityMetadata);
-        // Committed output generated with a CUSTOM namespace.
-        GenSuite.Run(MetaDir, OutDir, "Acme.Generated");
-
-        // verify --codegen WITHOUT --namespace → must infer "Acme.Generated" from the
-        // committed files and produce a byte-identical regen → exit 0 (no spurious drift).
-        var r = VerifyCommand.RunSubverbs(CodegenOptsNoNamespace());
-        Assert.Equal(0, r.ExitCode);
-        Assert.True(r.Codegen!.Clean, string.Join("; ", r.Codegen!.Lines));
-    }
-
-    [Fact]
-    public void Codegen_inference_still_detects_real_drift_with_custom_namespace()
+    public void Codegen_output_under_another_namespace_is_drift_without_the_flag()
     {
         File.WriteAllText(Path.Combine(MetaDir, "meta.ai.json"), EntityMetadata);
         GenSuite.Run(MetaDir, OutDir, "Acme.Generated");
-        // A real hand-edit on top of the custom namespace must still be drift.
-        File.AppendAllText(Path.Combine(OutDir, "Subscriber.g.cs"), "\n// real drift\n");
 
-        var r = VerifyCommand.RunSubverbs(CodegenOptsNoNamespace());
+        var r = VerifyCommand.RunSubverbs(CodegenOpts(null));
         Assert.NotEqual(0, r.ExitCode);
         Assert.Contains(r.Codegen!.DriftedFiles, f => f.EndsWith("Subscriber.g.cs"));
     }
 
     [Fact]
-    public void Codegen_explicit_namespace_still_wins_over_inference()
+    public void Codegen_with_the_namespace_gen_used_is_clean()
     {
         File.WriteAllText(Path.Combine(MetaDir, "meta.ai.json"), EntityMetadata);
         GenSuite.Run(MetaDir, OutDir, "Acme.Generated");
 
-        // Explicit namespace set (matching) → wins, byte-identical regen → exit 0.
-        var opts = new VerifyCommand.Options
-        {
-            MetadataDir = MetaDir,
-            // verify --codegen re-runs the SELECTION; there is no default suite to fall
-            // back on, so the mechanics tests name the one their fixtures were written for.
-            Generators = GenSuite.Names,
-            OutDir = OutDir,
-            Namespace = "Acme.Generated",
-            NamespaceExplicit = true,
-            Codegen = true,
-        };
-        var r = VerifyCommand.RunSubverbs(opts);
+        var r = VerifyCommand.RunSubverbs(CodegenOpts("Acme.Generated"));
         Assert.Equal(0, r.ExitCode);
         Assert.True(r.Codegen!.Clean, string.Join("; ", r.Codegen!.Lines));
     }
@@ -371,7 +334,6 @@ public sealed class VerifySubverbTests : IDisposable
         Generators = GenSuite.Names,
         OutDir = OutDir,
         Namespace = "Acme.Generated",
-        NamespaceExplicit = true,
         Codegen = true,
         Naming = new PhysicalNaming(verifyStrategy, TableNamingRule.SnakeCase),
     };

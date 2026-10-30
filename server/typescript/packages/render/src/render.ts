@@ -5,7 +5,7 @@ import {
   verify,
   parseTemplate,
   partialTokens,
-  hasDelimiterChange,
+  delimiterConflict,
   ERR_REQUIRED_SLOT_UNUSED,
   type PayloadField,
 } from "./verify.js";
@@ -30,12 +30,11 @@ import { MAX_DEPTH } from "./verify-shared.js";
 // a comment is not a partial, and a `{{=<% %>=}}` delimiter change is honoured.
 function expand(text: string, provider: Provider, path: readonly string[]): string {
   const tokens = parseTemplate(text);
-  const partials = partialTokens(tokens);
-  if (partials.length === 0) return text;
-  // Inlined text is parsed under the surrounding delimiters, not the default ones.
-  if (hasDelimiterChange(tokens)) {
+  if (delimiterConflict(tokens, path[path.length - 1]) !== undefined) {
     throw new Error("a template that uses partials cannot also change delimiters ({{=<% %>=}})");
   }
+  const partials = partialTokens(tokens);
+  if (partials.length === 0) return text;
   let out = "";
   let pos = 0;
   for (const [ref, start, end] of partials) {

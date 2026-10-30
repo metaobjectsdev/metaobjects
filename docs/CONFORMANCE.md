@@ -28,7 +28,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 |---|---|---|---|---|---|---|
 | [`fixtures/conformance/`](../fixtures/conformance/) (metamodel) | 413 | ✓ | ✓ | inherits via `metadata-ktx` | ✓ | ✓ |
 | [`fixtures/yaml-conformance/`](../fixtures/yaml-conformance/) | 16 | 16 / 16 | 15 / 16 (1 ledgered: `yaml-quoted-leading-zero` — Java pipeline strips quotes off `"007"`) | inherits via Java | 15 / 16 (1 ledgered: `error-yaml-coerced-hex-in-string` — YamlDotNet doesn't coerce `0xFF`) | 16 / 16 |
-| [`fixtures/verify-conformance/`](../fixtures/verify-conformance/) | 44 | ✓ | ✓ | inherits via Java | ✓ | ✓ |
+| [`fixtures/verify-conformance/`](../fixtures/verify-conformance/) | 45 | ✓ | ✓ | inherits via Java | ✓ | ✓ |
 | [`fixtures/verify-strict-conformance/`](../fixtures/verify-strict-conformance/) | 1 | ✓ | — | — | — | ✓ |
 | [`fixtures/render-conformance/`](../fixtures/render-conformance/) | 16 | ✓ | ✓ | inherits via Java | ✓ | ✓ |
 | [`fixtures/jinja-render-conformance/`](../fixtures/jinja-render-conformance/) (ADR-0061 — Jinja bodies render the same in jinja2 and nunjucks) | 15 | ✓ (nunjucks) | refuses Jinja (`ERR_TEMPLATE_ENGINE_UNSUPPORTED`) | refuses, via Java | refuses Jinja (`ERR_TEMPLATE_ENGINE_UNSUPPORTED`) | ✓ (jinja2) |

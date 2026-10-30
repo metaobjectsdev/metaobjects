@@ -57,10 +57,10 @@ public static class Renderer
         List<MustacheTag> tags;
         try { tags = MustacheTags.Scan(text); }
         catch (MustacheSyntaxException e) { throw new RenderException($"template syntax error: {e.Message}"); }
+        if (MustacheTags.DelimiterConflict(tags, path.Count > 0 ? path[^1] : null) is not null)
+            throw new RenderException("a template that uses partials cannot also change delimiters ({{=<% %>=}})");
         var partials = tags.Where(t => t.Kind == MustacheTagKind.Partial).ToList();
         if (partials.Count == 0) return text;
-        if (MustacheTags.DelimitedPartial(tags) is not null)
-            throw new RenderException("a template that uses partials cannot also change delimiters ({{=<% %>=}})");
         var sb = new System.Text.StringBuilder();
         int pos = 0;
         foreach (var tag in partials)

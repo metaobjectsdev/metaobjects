@@ -99,12 +99,11 @@ public static class Verify
         return root;
     }
 
-    /// <summary>A text that changes delimiters and also uses a partial does not render: report it
-    /// against its first partial.</summary>
-    private static void ReportDelimitedPartial(string text, List<VerifyError> errors)
+    /// <summary>A delimiter change the renderer refuses (<see cref="MustacheTags.DelimiterConflict"/>).</summary>
+    private static void ReportDelimiterConflict(string text, string? inlinedAs, List<VerifyError> errors)
     {
-        if (MustacheTags.DelimitedPartial(MustacheTags.Scan(text)) is { } partial)
-            errors.Add(new VerifyError(ERR_TEMPLATE_SYNTAX, partial));
+        if (MustacheTags.DelimiterConflict(MustacheTags.Scan(text), inlinedAs) is { } path)
+            errors.Add(new VerifyError(ERR_TEMPLATE_SYNTAX, path));
     }
 
     // `text` minus its comments, for the output-tag scan.
@@ -234,7 +233,7 @@ public static class Verify
                             errors.Add(new VerifyError(ERR_TEMPLATE_SYNTAX, e.Section));
                             break;
                         }
-                        ReportDelimitedPartial(text, errors);
+                        ReportDelimiterConflict(text, p.Value, errors);
                         staticTexts.Add(StaticText(text));
                         Walk(partialToks, stack, new List<string>(seen) { p.Value }, inElement);
                         break;
@@ -248,7 +247,7 @@ public static class Verify
         {
             return [new VerifyError(ERR_TEMPLATE_SYNTAX, e.Section)];
         }
-        ReportDelimitedPartial(templateText, errors);
+        ReportDelimiterConflict(templateText, null, errors);
         staticTexts[0] = StaticText(templateText);
         Walk(bodyToks, [root], []);
 

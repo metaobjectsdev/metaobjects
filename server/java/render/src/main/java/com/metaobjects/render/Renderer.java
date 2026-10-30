@@ -125,13 +125,13 @@ public final class Renderer {
         } catch (MustacheTags.SyntaxException e) {
             throw new RenderException("template syntax error: " + e.getMessage());
         }
-        List<MustacheTags.Tag> partials = tags.stream()
-            .filter(t -> t.kind() == MustacheTags.Kind.PARTIAL).toList();
-        if (partials.isEmpty()) return text;
-        if (MustacheTags.delimitedPartial(tags) != null) {
+        if (MustacheTags.delimiterConflict(tags, stack.peek()) != null) {
             throw new RenderException(
                 "a template that uses partials cannot also change delimiters ({{=<% %>=}})");
         }
+        List<MustacheTags.Tag> partials = tags.stream()
+            .filter(t -> t.kind() == MustacheTags.Kind.PARTIAL).toList();
+        if (partials.isEmpty()) return text;
 
         StringBuilder out = new StringBuilder(text.length());
         int last = 0;

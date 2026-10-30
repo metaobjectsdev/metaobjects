@@ -153,15 +153,19 @@ export function partialTokens(tokens: readonly Token[]): [string, number, number
 }
 
 /** Whether the parse contains a `{{=<% %>=}}` delimiter change. */
-export function hasDelimiterChange(tokens: readonly Token[]): boolean {
+function hasDelimiterChange(tokens: readonly Token[]): boolean {
   return flatTokens(tokens).some((tok) => tok[0] === TOKEN_DELIMITERS);
 }
 
-/** A text that changes delimiters and also uses a partial does not render: the inlined partial
- *  would be parsed under the changed delimiters. Reported against the text's first partial. */
-function delimiterConflict(tokens: readonly Token[]): VerifyError | undefined {
-  const first = partialTokens(tokens)[0];
-  return first !== undefined && hasDelimiterChange(tokens) ? { code: ERR_TEMPLATE_SYNTAX, path: first[0] } : undefined;
+/**
+ * Where a text that changes delimiters cannot render, or undefined when it can: inlined text is
+ * parsed under the surrounding delimiters. A partial body (`inlinedAs` is its ref) that changes
+ * them is reported at that ref; a text that changes them and inlines a partial is reported at its
+ * first partial.
+ */
+export function delimiterConflict(tokens: readonly Token[], inlinedAs: string | undefined): string | undefined {
+  if (!hasDelimiterChange(tokens)) return undefined;
+  return inlinedAs ?? partialTokens(tokens)[0]?.[0];
 }
 
 function commentSpans(tokens: readonly Token[]): [number, number][] {
@@ -293,8 +297,8 @@ export function verify(
             errors.push(parsed);
             break;
           }
-          const conflict = delimiterConflict(parsed);
-          if (conflict) errors.push(conflict);
+          const conflict = delimiterConflict(parsed, value);
+          if (conflict !== undefined) errors.push({ code: ERR_TEMPLATE_SYNTAX, path: conflict });
           staticTexts.push(withoutComments(text, parsed));
           walk(parsed, stack, [...seen, value], positional);
           break;
@@ -307,8 +311,8 @@ export function verify(
 
   const bodyTokens = parseOrSyntaxError(templateText);
   if (!Array.isArray(bodyTokens)) return [bodyTokens];
-  const conflict = delimiterConflict(bodyTokens);
-  if (conflict) errors.push(conflict);
+  const conflict = delimiterConflict(bodyTokens, undefined);
+  if (conflict !== undefined) errors.push({ code: ERR_TEMPLATE_SYNTAX, path: conflict });
   staticTexts[0] = withoutComments(templateText, bodyTokens);
   walk(bodyTokens, [root], []);
 
