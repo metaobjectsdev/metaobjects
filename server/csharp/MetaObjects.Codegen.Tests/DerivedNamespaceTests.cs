@@ -20,8 +20,19 @@ public class DerivedNamespaceTests
       { "object.entity": { "name": "Invoice", "children": [
         { "source.rdb": { "@table": "invoices" } },
         { "field.long": { "name": "id" } },
+        { "field.string": { "name": "label", "@maxLength": 40 } },
+        { "identity.primary": { "@fields": "id" } },
+        { "dimension.attribute": { "name": "label", "@of": "Invoice.label" } },
+        { "measure.aggregate": { "name": "lines", "@agg": "count", "@of": "Invoice.id" } }
+      ]}},
+      { "object.entity": { "name": "Series", "children": [
+        { "source.rdb": { "@table": "series" } },
+        { "field.long": { "name": "id" } },
+        { "field.enum": { "name": "grade", "@values": ["Low", "High"], "@intValueMap": { "Low": 1, "High": 2 } } },
         { "identity.primary": { "@fields": "id" } }
-      ]}}
+      ]}},
+      { "object.report": { "name": "InvoiceTotals", "@from": "Invoice", "@dimensions": ["label"], "@measures": ["lines"],
+        "children": [ { "source.rdb": { "@kind": "view", "@view": "v_invoice_totals" } } ] } }
     ]}}
     """.Replace("@PKG@", package);
 
@@ -49,9 +60,16 @@ public class DerivedNamespaceTests
     {
         config = PackageBindingResolver.WithDerivedHome(config, root);
         var ctx = new GenContext { Entities = root.Objects(), Root = root, Config = config };
-        return new IGenerator[] { new EntityGenerator(), new DbContextGenerator(), new FilterAllowlistGenerator() }
+        return new IGenerator[]
+            {
+                new EntityGenerator(), new DbContextGenerator(), new FilterAllowlistGenerator(),
+                new NamesGenerator(), new ReportExportGenerator(), new RoutesGenerator(),
+            }
             .SelectMany(g => g.Generate(ctx)).ToList();
     }
+
+    private static IEnumerable<string> Usings(string source) =>
+        CSharpSyntaxTree.ParseText(source).GetCompilationUnitRoot().Usings.Select(u => u.Name!.ToString());
 
     private static GenConfig Bare() => new() { OutDir = "/tmp" };
 
@@ -69,6 +87,9 @@ public class DerivedNamespaceTests
         Assert.Contains("namespace Acme;", db);
         Assert.Contains("using Acme.Billing;", db);
         Assert.Contains("using Acme.Crm;", db);
+        // An already-plural owner is named by its own package's namespace, not the home's.
+        Assert.Contains("global::Acme.Billing.Series.", db);
+        Assert.DoesNotContain("global::Acme.Series", db);
     }
 
     [Fact]
@@ -107,13 +128,27 @@ public class DerivedNamespaceTests
     public void A_multi_package_model_compiles()
     {
         var files = Generate(Load(Billing(), Crm), Bare());
+        // Routes import the ASP.NET Core shared framework, which an in-memory compilation does not
+        // carry (CodegenCompileConformanceTests draws the same line); their package usings are
+        // asserted by Routes_reach_the_package_namespaces_of_the_types_they_name.
         var comp = CSharpCompilation.Create(
             "derived_ns_" + Guid.NewGuid().ToString("N"),
-            files.Select(f => CSharpSyntaxTree.ParseText(f.Content, new CSharpParseOptions(LanguageVersion.CSharp12), path: f.Path)),
+            files.Where(f => !f.Path.EndsWith("Routes.g.cs", StringComparison.Ordinal)).Select(f => CSharpSyntaxTree.ParseText(f.Content, new CSharpParseOptions(LanguageVersion.CSharp12), path: f.Path)),
             DbContextCompileTests.BuildReferences(),
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
         var errors = comp.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error)
             .Select(d => $"{d.Location.GetLineSpan().Path} {d.Id}: {d.GetMessage()}").ToList();
         Assert.True(errors.Count == 0, string.Join("\n", errors));
+    }
+
+    [Fact]
+    public void Routes_reach_the_package_namespaces_of_the_types_they_name()
+    {
+        var files = Generate(Load(Billing(), Crm), Bare());
+        Assert.Contains("Acme.Billing", Usings(Content(files, "InvoiceRoutes.g.cs")));
+        Assert.Contains("Acme.Crm", Usings(Content(files, "OrderRoutes.g.cs")));
+        // Order navigates to an Invoice, and the home namespace is neither package's.
+        Assert.Contains("Acme", Content(files, "OrderRoutes.g.cs").Split('\n').Where(l => l.StartsWith("namespace ")).Select(l => l["namespace ".Length..].TrimEnd(';', '\r')));
+        Assert.Contains("Acme.Billing", Usings(Content(files, "InvoiceTotalsExport.g.cs")));
     }
 }

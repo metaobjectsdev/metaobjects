@@ -51,6 +51,16 @@ public static class PackageBindingResolver
         return home.Length == 0 ? config : config with { DerivedHome = home };
     }
 
+    /// <summary>The <c>using</c> directives a file in the home namespace needs to name
+    /// <paramref name="types"/> bare: one per distinct namespace they resolve to other than the home
+    /// itself, sorted ordinally.</summary>
+    public static IEnumerable<string> HomeUsings(GenConfig config, IEnumerable<MetaData> types) =>
+        types.Select(t => Resolve(config, EffectivePackage(t), t.Name, fallbackContext: t.Name))
+            .Where(ns => ns != config.Namespace)
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(ns => ns, StringComparer.Ordinal)
+            .Select(ns => $"using {ns};");
+
     private static PackageBindingConvention? EffectiveConvention(GenConfig config) =>
         config.Convention ?? (config.HasNamespace ? null : DefaultConvention);
 
