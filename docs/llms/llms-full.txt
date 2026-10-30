@@ -117,7 +117,7 @@ A library is **layered, and its core layer is inert**: the core declares no `sou
 
 ### Sharing a model across your own projects
 
-Today the TypeScript toolchain publishes and TypeScript and Python projects consume, from an installed npm or Python package or over a `path` dependency (a sibling checkout or submodule); Java, Kotlin and C# arrive in Phase 2. One project publishes part of its model with the `sharedModelFile()` generator; another declares it under `dependencies` in `.metaobjects/config.json`, runs `meta deps sync` to commit a hash-locked snapshot, and builds on it with `extends`, overlays and references. When the publisher's model moves, `meta verify --deps` reports it instead of two copies drifting apart. See docs/features/metadata-dependencies.md.
+Today only the TypeScript toolchain publishes; TypeScript, Python, Java, Kotlin and C# projects consume, from an installed npm or Python package or over a `path` dependency (a sibling checkout or submodule). Maven and NuGet transports are design only. One project publishes part of its model with the `sharedModelFile()` generator; another declares it under `dependencies` in `.metaobjects/config.json`, runs `meta deps sync` to commit a hash-locked snapshot, and builds on it with `extends`, overlays and references. When the publisher's model moves, `meta verify --deps` reports it instead of two copies drifting apart. See docs/features/metadata-dependencies.md.
 
 ---
 
