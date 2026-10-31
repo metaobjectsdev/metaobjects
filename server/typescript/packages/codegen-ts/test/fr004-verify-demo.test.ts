@@ -78,6 +78,7 @@ const RENDER_STUB = `declare module "@metaobjectsdev/render" {
   export interface Provider { resolve(ref: string): string | undefined; }
   export function render(o: {
     ref?: string; template?: string; payload: unknown; provider: Provider; format?: string;
+    verify?: ReadonlyArray<{ name: string; fields?: unknown; isArray?: boolean }>;
   }): string;
 }
 `;

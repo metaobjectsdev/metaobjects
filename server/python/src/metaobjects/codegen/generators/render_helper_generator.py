@@ -37,13 +37,11 @@ model, imported from the module the ``entity`` generator emits (``<Name>.py``); 
 generator declares no payload type. A plain ``dict`` still renders — the annotation is for
 the caller, and the render engine reads a model and a mapping alike.
 
-Python divergence vs TS / Java / C#: Python's ``RenderRequest`` has NO ``verify``
-field — the Python render engine does not run a runtime drift pass — so the emitted
-helper does NOT pass a runtime ``verify`` field-tree. The BUILD-TIME gate that runs
-here is the only, and a complete, drift guarantee: codegen cannot succeed unless
-every referenced mustache verifies clean against the payload VO. The field-tree walk
-is still performed (it is what ``verify`` checks against); it is simply not baked into
-the emitted call. The emitted helper shape is otherwise identical to the other ports.
+The emitted call bakes in the payload field tree as ``verify=``, so the render engine
+checks the template it resolves at RUN time against the payload too (a ``RenderError``
+carrying ``ERR_VAR_NOT_ON_PAYLOAD``), the same as every other port. That covers text edited
+or served after codegen, which the BUILD-TIME gate cannot see; without it ``{{nmae}}`` for
+``name`` would render as an empty string. Both engines are covered, Mustache and Jinja.
 
 Drift message style matches the other ports exactly:
 ``render-helper drift: template "<N>" ref "<r>" — <CODE>: {{<f>}} not on payload VO``
@@ -479,20 +477,17 @@ def render_helper_generator(
 
 
 def _jinja_imports(engine: str) -> list[str]:
-    """The import a helper needs when it renders a Jinja body (ADR-0061); none for Mustache,
-    so a Mustache helper is byte-identical to what it was before Jinja existed."""
-    if engine != TEMPLATE_ENGINE_JINJA:
-        return []
+    """The import every helper needs: the ``PayloadField`` type its baked-in ``verify=`` tree is
+    written with. (A Mustache helper used to need none, before it passed ``verify``.)"""
     return ["from metaobjects.render.verify import PayloadField"]
 
 
 def _jinja_request_lines(engine: str, fields: list[PayloadField], pad: str) -> list[str]:
-    """For a Jinja body: name the engine (so a runtime provider that cannot tell, such as an
-    in-memory one, still renders it as Jinja) and run the payload check again at render
-    time against the field tree the build gate used."""
-    if engine != TEMPLATE_ENGINE_JINJA:
-        return []
-    return [
-        f"{pad}engine={_py_str(TEMPLATE_ENGINE_JINJA)},",
-        f"{pad}verify={_field_tree_literal(fields)},",
-    ]
+    """Run the payload check again at render time against the field tree the build gate used,
+    for either engine. A Jinja body also names its engine (ADR-0061), so a runtime provider that
+    cannot tell, such as an in-memory one, still renders it as Jinja."""
+    lines = []
+    if engine == TEMPLATE_ENGINE_JINJA:
+        lines.append(f"{pad}engine={_py_str(TEMPLATE_ENGINE_JINJA)},")
+    lines.append(f"{pad}verify={_field_tree_literal(fields)},")
+    return lines

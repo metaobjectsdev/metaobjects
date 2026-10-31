@@ -90,7 +90,7 @@ import type { ${payloadTypeName} } from ${JSON.stringify(payloadSpecifier)};`;
  * the same small walk lives here against the metadata constants codegen-ts
  * already imports.
  */
-function derivePayloadFieldTree(
+export function derivePayloadFieldTree(
   vo: MetaData | undefined,
   seen: ReadonlySet<MetaData> = new Set(),
 ): PayloadField[] {
@@ -112,7 +112,7 @@ function derivePayloadFieldTree(
 
 /** Serialize a PayloadField[] as a stable, deterministic TS array literal so the
  *  emitted render() call runs the same runtime drift check the build gate ran. */
-function fieldTreeLiteral(fields: PayloadField[]): string {
+export function fieldTreeLiteral(fields: PayloadField[]): string {
   // JSON.stringify is deterministic for this shape (no functions/cycles by
   // construction) and produces valid TS object/array literal syntax.
   return JSON.stringify(fields);

@@ -32,6 +32,23 @@ here.**
   new command. `examples/brownfield/` holds a runnable project for each, and the recipe ships in
   the `metaobjects-authoring` skill.
 
+### Changed
+
+- **A prompt or output template that names a variable not on its payload now raises at render time.**
+  Behaviour change: a generated render helper used to render `Hi {{nmae}}` as `Hi ` with no error
+  when the payload declares `name`; it now raises `ERR_VAR_NOT_ON_PAYLOAD (nmae)` (`RenderError` in
+  Python, `RenderException` in Java, Kotlin and C#, an `Error` in TypeScript). The build-time check
+  already caught this when the helper was generated; the gap was text edited or served afterwards.
+  The silent paths were the TypeScript `promptRender()` handle, the Python helper on a Mustache body
+  (only Jinja was checked), and the Java and Kotlin helpers, whose `Renderer` accepted the payload
+  field tree and never read it. The C# helper and the TypeScript `render-helper` already raised. All
+  five ports are held to it by `fixtures/template-output-render-conformance/runtime-drift/`. A call
+  to `render()` with no declared payload is unchanged: it has nothing to compare against, so it keeps
+  the engine's default and checks only when you pass `verify` (`verify:` in TypeScript, `verify=` in
+  Python, `Verify` in C#, the `verify` field of `RenderRequest` in Java and Kotlin). If a template
+  already named a missing variable, regenerate and fix the name; the generated helper text changes
+  (TypeScript `prompts.ts` and Python helpers gain a `verify` argument).
+
 ### Fixed
 
 - **Python: an array field's `default` generated a string.** A model with

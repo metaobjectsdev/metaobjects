@@ -292,6 +292,35 @@ public sealed class RenderHelperConformanceTests
     }
 
     // ---------------------------------------------------------------------
+    // runtime-drift/ → a variable not on the payload RAISES at render time. The helpers are
+    // generated against the clean templates/; runtime-drift/templates/ serves {{nmae}} for
+    // name (text edited after codegen, which the build-time gate cannot see). Covers a
+    // template.output and a template.prompt over the same payload.
+    // ---------------------------------------------------------------------
+
+    [Theory]
+    [InlineData("WelcomePage", "Acme.Generated.WelcomePageRenderHelper")]
+    [InlineData("WelcomePrompt", "Acme.Generated.WelcomePromptRenderHelper")]
+    public void Runtime_drift_variable_not_on_payload_raises(string template, string helperType)
+    {
+        var corpus = Corpus();
+        var root = LoadFromFile(Path.Combine(corpus, "runtime-drift", "meta.json"));
+        var clean = Path.Combine(corpus, "templates");
+        var drifted = Path.Combine(corpus, "runtime-drift", "templates");
+
+        var file = Assert.Single(new RenderHelperGenerator(clean).Generate(Ctx(root)), f => f.Path == template + ".render.cs");
+        var asm = CompileToAssembly([file.Content, .. GeneratedValueObjects.Sources(root)]);
+
+        var render = asm.GetType(helperType)!.GetMethod("Render")!;
+        var payload = MakeWelcome(asm, "Ada");
+        Assert.Equal("Hello Ada", (string)render.Invoke(null, [payload, new FilesystemProvider(clean)])!);
+
+        var ex = Assert.Throws<System.Reflection.TargetInvocationException>(
+            () => render.Invoke(null, [payload, new FilesystemProvider(drifted)]));
+        Assert.Contains("ERR_VAR_NOT_ON_PAYLOAD (nmae)", ex.InnerException!.Message);
+    }
+
+    // ---------------------------------------------------------------------
     // Helpers
     // ---------------------------------------------------------------------
 

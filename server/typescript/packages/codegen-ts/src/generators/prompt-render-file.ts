@@ -27,6 +27,7 @@ import {
   oncePerRun,
 } from "../generator.js";
 import { templateSymbolBase } from "../naming.js";
+import { derivePayloadFieldTree, fieldTreeLiteral } from "../templates/render-helper.js";
 import { valueObjectImport, valueObjectImportLines, type ValueObjectImport } from "../templates/value-object-import.js";
 import { GENERATED_HEADER, GENERATED_EDIT_NOTE } from "../constants.js";
 
@@ -40,15 +41,18 @@ export interface PromptRenderOpts {
 const RENDER_IMPORT = `import { render, type Provider } from "@metaobjectsdev/render";`;
 
 /** One template.prompt's typed render handle, typed by its payload's own interface. */
-function renderHandle(tmpl: MetaData, payloadType: string): string {
+function renderHandle(tmpl: MetaData, payloadType: string, payloadVo: MetaData): string {
   // ADR-0039: resolving — a template may inherit its @* refs/format via extends.
   const textRef = tmpl.attr(TEMPLATE_ATTR_TEXT_REF);
   const format = (tmpl.attr(TEMPLATE_ATTR_FORMAT) as string | undefined) ?? "text";
   // One base for every symbol a template emits, shared with the parser and render helper.
   const fn = `render${templateSymbolBase(tmpl.name)}`;
+  // The payload field tree is baked in so render() checks the template it resolves at RUN time
+  // against it: `{{nmae}}` for `name` raises ERR_VAR_NOT_ON_PAYLOAD instead of rendering empty.
+  const verify = fieldTreeLiteral(derivePayloadFieldTree(payloadVo));
   return [
     `export function ${fn}(payload: ${payloadType}, provider: Provider): string {`,
-    `  return render({ ref: ${JSON.stringify(textRef)}, payload, format: ${JSON.stringify(format)}, provider });`,
+    `  return render({ ref: ${JSON.stringify(textRef)}, payload, format: ${JSON.stringify(format)}, provider, verify: ${verify} });`,
     `}`,
   ].join("\n");
 }
@@ -71,7 +75,7 @@ export const promptRender = function promptRender(opts?: PromptRenderOpts): Gene
         if (vo === undefined) continue;
         const imp = valueObjectImport(ctx.renderContext, vo, outFile, ctx.config.extStyle ?? "js");
         imports.push(imp);
-        handles.push(renderHandle(t, imp.name));
+        handles.push(renderHandle(t, imp.name, vo));
       }
       if (handles.length === 0) return [];
 

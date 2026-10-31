@@ -6,7 +6,8 @@
 // owned (the format escaper is installed as Stubble's encoding function, the
 // equivalent of overriding mustache.js's Mustache.escape). `{{{x}}}` bypasses it.
 //
-// The render-time `verify` guard (FR-004 Plan #3) is intentionally not wired yet.
+// The render-time `verify` guard (FR-004 Plan #3) is wired: a request carrying the payload field
+// tree verifies the resolved body before it renders, and a mismatch throws RenderException.
 
 using Stubble.Core.Builders;
 using Stubble.Core.Settings;

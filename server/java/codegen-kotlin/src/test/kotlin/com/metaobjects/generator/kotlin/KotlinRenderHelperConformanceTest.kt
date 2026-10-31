@@ -89,6 +89,40 @@ class KotlinRenderHelperConformanceTest {
     }
 
     // -------------------------------------------------------------------------
+    // runtime-drift/ → a variable not on the payload RAISES at render time. The helpers are
+    // generated against the clean templates/; runtime-drift/templates/ serves {{nmae}} for
+    // name (text edited after codegen, which the build-time gate cannot see). Covers a
+    // template.output and a template.prompt over the same payload.
+    // -------------------------------------------------------------------------
+    @Test fun `runtime drift raises for output and prompt helpers`() {
+        val outDir = Files.createTempDirectory("krhc-rdrift-")
+        val clean = corpus.resolve("templates")
+        val drifted = corpus.resolve("runtime-drift").resolve("templates")
+        try {
+            generate(corpus.resolve("runtime-drift").resolve("meta.json"), outDir, clean)
+            val result = compile(outDir)
+            assertEquals(KotlinCompilation.ExitCode.OK, result.exitCode, result.messages)
+            val cl = result.classLoader
+
+            val payloadClass = cl.loadClass("acme.ai.Welcome")
+            val payload = payloadClass.getDeclaredConstructor(String::class.java).newInstance("Ada")
+            val providerClass = cl.loadClass("com.metaobjects.render.Provider")
+            for (name in listOf("WelcomePageRenderHelper", "WelcomePromptRenderHelper")) {
+                val helperClass = cl.loadClass("acme.ai.prompts.$name")
+                val instance = helperClass.getDeclaredField("INSTANCE").get(null)
+                val render = helperClass.getDeclaredMethod("render", payloadClass, providerClass)
+                assertEquals("Hello Ada", render.invoke(instance, payload, fsProvider(cl, clean)), name)
+                val ex = kotlin.test.assertFailsWith<java.lang.reflect.InvocationTargetException>(name) {
+                    render.invoke(instance, payload, fsProvider(cl, drifted))
+                }
+                assertTrue(ex.cause?.message?.contains("ERR_VAR_NOT_ON_PAYLOAD (nmae)") == true, "$name: ${ex.cause?.message}")
+            }
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
+
+    // -------------------------------------------------------------------------
     // email → EmailDocument
     // -------------------------------------------------------------------------
     @Test fun `email WelcomeEmail matches corpus oracle`() {
