@@ -34,7 +34,7 @@ You need Docker (Postgres 16, Atlas and oasdiff run as containers), Node.js 20 o
 `python3`. The first run installs both setups' dependencies and pulls three images; later runs reuse them.
 
 ```sh
-./run.sh            # every scenario, both setups, rewrites SCORECARD.md (about three minutes)
+./run.sh            # every scenario, both setups, rewrites SCORECARD.md (about four minutes)
 ./run.sh S1 S6      # chosen scenarios (S0, the control, always runs)
 ./run.sh --keep /tmp/h2h-work   # also keep each scenario's working copy and its .ci-logs/
 ```
@@ -73,8 +73,9 @@ nothing about the other.
    prompt in the worker; the same files in both setups) is reported beside it. The probe is informational
    and is not part of either gate.
 2. **Does a breaking change for outside callers get flagged?** Only the baseline has a check for this
-   (`oasdiff`). MetaObjects 1.2.0 has no equivalent, so every row in that table reads "no such check" for
-   it. A change can be perfectly consistent across every layer and still break a partner; consistency checks
+   (`oasdiff`). MetaObjects 1.2.0 has no equivalent, so every pull-request row in that table reads "no such
+   check" for it (S5 is `n/a` on both sides). A change can be perfectly consistent across every layer and
+   still break a partner; consistency checks
    cannot see that, and this is the one place the baseline is simply ahead.
 
 ### Our reading of the rows that need explaining
