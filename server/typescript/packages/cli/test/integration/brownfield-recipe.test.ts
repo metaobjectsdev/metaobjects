@@ -32,14 +32,17 @@ function project(name: "drizzle" | "zod"): string {
   return root;
 }
 
-function tsc(root: string): { code: number; output: string } {
-  const p = Bun.spawnSync([TSC_BIN, "-p", join(root, "tsconfig.json")], { cwd: root });
+function spawn(cmd: string, args: string[], root: string): { code: number; output: string } {
+  const p = Bun.spawnSync([cmd, ...args], { cwd: root });
   return { code: p.exitCode, output: `${p.stdout.toString()}${p.stderr.toString()}` };
 }
 
+function tsc(root: string): { code: number; output: string } {
+  return spawn(TSC_BIN, ["-p", join(root, "tsconfig.json")], root);
+}
+
 function bun(root: string, script: string): { code: number; output: string } {
-  const p = Bun.spawnSync([process.execPath, script], { cwd: root });
-  return { code: p.exitCode, output: `${p.stdout.toString()}${p.stderr.toString()}` };
+  return spawn(process.execPath, [script], root);
 }
 
 function edit(root: string, file: string, from: string, to: string): void {

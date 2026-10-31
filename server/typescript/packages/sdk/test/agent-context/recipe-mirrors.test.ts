@@ -43,7 +43,7 @@ test("the shipped adoption guide carries the recipe unchanged", () => {
   const shipped = readFileSync(join(AUTHORING_REFS, "adopting-existing-models.md"), "utf8");
   const original = readFileSync(join(REPO, "docs/features/adopting-existing-models.md"), "utf8");
   expect(original.includes(MARK)).toBe(true);
-  expect(shipped.slice(shipped.lastIndexOf(`\n${MARK}\n`) + 1)).toBe(original.slice(original.indexOf(`\n${MARK}\n`) + 1));
+  expect(shipped.slice(shipped.indexOf(`\n${MARK}\n`) + 1)).toBe(original.slice(original.indexOf(`\n${MARK}\n`) + 1));
 });
 
 // The recipe prints these helpers for an agent to copy. brownfield-recipe.test.ts and

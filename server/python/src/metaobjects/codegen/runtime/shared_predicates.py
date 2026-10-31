@@ -75,6 +75,10 @@ def _parse_text_element(raw: object) -> str:
     raise ValueError(raw)
 
 
+def _parse_int_element(raw: object) -> int:
+    return int(str(raw))
+
+
 def _parse_float_element(raw: object) -> float:
     """float() also reads ``nan`` and ``inf``, whose repr is not Python source."""
     value = float(str(raw))
@@ -87,8 +91,8 @@ def _parse_float_element(raw: object) -> float:
 # with no entry has no Python spelling here, so its array default stays with the database.
 _ARRAY_ELEMENT_PARSERS: dict[str, Callable[[object], object]] = {
     fc.FIELD_SUBTYPE_STRING: _parse_text_element,
-    fc.FIELD_SUBTYPE_INT: lambda v: int(str(v)),
-    fc.FIELD_SUBTYPE_LONG: lambda v: int(str(v)),
+    fc.FIELD_SUBTYPE_INT: _parse_int_element,
+    fc.FIELD_SUBTYPE_LONG: _parse_int_element,
     fc.FIELD_SUBTYPE_DOUBLE: _parse_float_element,
     fc.FIELD_SUBTYPE_FLOAT: _parse_float_element,
     fc.FIELD_SUBTYPE_BOOLEAN: _parse_bool_element,
