@@ -17,7 +17,8 @@
 //     off API auth and recompiles the model when the mounted files change.
 //
 // `stop()` force-removes both containers and the network. It runs from the caller's afterAll AND
-// from every failure path inside startCubeStack, so a run that dies half-way leaves nothing behind.
+// from every failure path inside startCubeStack, and Ryuk removes everything when a killed run
+// reaches neither (test-reaper.ts).
 // Containers are deliberately not `--rm`: an auto-removed container takes its logs with it, and
 // the logs are what explains a failure.
 //
@@ -26,6 +27,7 @@
 
 import { spawn, spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { reaperLabelArgs } from "./test-reaper.ts";
 
 export const CUBE_IMAGE = "cubejs/cube:v1.7.43";
 export const CUBE_POSTGRES_IMAGE = "postgres:16-alpine";
@@ -145,14 +147,15 @@ export async function startCubeStack(modelDir: string, options: CubeStackOptions
   process.on("SIGTERM", onSignal);
 
   try {
-    docker(["network", "create", network]);
+    const labels = await reaperLabelArgs();
+    docker(["network", "create", ...labels, network]);
     if (dataSource === "mysql") {
-      docker(["run", "-d", "--name", pgContainer, "--network", network,
+      docker(["run", "-d", ...labels, "--name", pgContainer, "--network", network,
         "-e", `MYSQL_ROOT_PASSWORD=${PG_PASSWORD}`, "-e", `MYSQL_DATABASE=${MYSQL_DATABASE}`, CUBE_MYSQL_IMAGE]);
       await waitForMysql(pgContainer);
       for (const script of options.initSql ?? []) mysqlExec(pgContainer, script);
     } else {
-      docker(["run", "-d", "--name", pgContainer, "--network", network,
+      docker(["run", "-d", ...labels, "--name", pgContainer, "--network", network,
         "-e", `POSTGRES_PASSWORD=${PG_PASSWORD}`, CUBE_POSTGRES_IMAGE]);
       await waitForPostgres(pgContainer);
       for (const script of options.initSql ?? []) psql(pgContainer, script);
@@ -164,7 +167,7 @@ export async function startCubeStack(modelDir: string, options: CubeStackOptions
          "CUBEJS_DB_NAME=postgres", "CUBEJS_DB_USER=postgres", `CUBEJS_DB_PASS=${PG_PASSWORD}`];
 
     docker([
-      "run", "-d", "--name", cubeContainer, "--network", network,
+      "run", "-d", ...labels, "--name", cubeContainer, "--network", network,
       "-p", "127.0.0.1::4000",
       ...dbEnv.flatMap((e) => ["-e", e]),
       "-e", "CUBEJS_DEV_MODE=true",

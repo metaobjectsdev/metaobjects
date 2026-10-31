@@ -65,6 +65,7 @@
     <exposed1x.kotlin.stdlib.version>2.3.20</exposed1x.kotlin.stdlib.version>
     <jackson.version>2.18.2</jackson.version>
     <postgres.jdbc.version>42.7.4</postgres.jdbc.version>
+    <testcontainers.version>2.0.5</testcontainers.version>
     <!-- Controller-tier compile pass (issue #390 review fix) — the SAME version
          integration-tests-kotlin's SP-F lane already compiles the 0.x generated controller
          against, so "compatible with Spring 6.2 / Boot 3.5" is proven by precedent, not guessed. -->
@@ -222,8 +223,16 @@
       <scope>test</scope>
     </dependency>
 
-    <!-- Round-trip test: a real Postgres (via PostgresContainer, docker CLI — see
-         integration-tests-kotlin's copy for why not testcontainers-java) + its JDBC driver. -->
+    <!-- Ryuk only: removes this suite's docker-CLI containers when a killed JVM never reaches
+         close() (see ReaperLabels). Needs 2.x: the 1.21 line cannot talk to Docker Engine 29+. -->
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>testcontainers</artifactId>
+      <version>${testcontainers.version}</version>
+      <scope>test</scope>
+    </dependency>
+
+    <!-- Round-trip test: a real Postgres (via PostgresContainer, docker CLI) + its JDBC driver. -->
     <dependency>
       <groupId>org.postgresql</groupId>
       <artifactId>postgresql</artifactId>

@@ -12,9 +12,9 @@ import java.util.UUID;
 /**
  * A throwaway MySQL database for one test, started through the {@code docker} CLI.
  *
- * <p>Same approach as {@link PostgresContainer} and for the same reason: testcontainers-java's
- * bundled docker-java cannot negotiate with current Docker daemons. Only the per-container mode
- * exists here; there is no shared CI sidecar for MySQL.
+ * <p>Same approach as {@link PostgresContainer}, and Ryuk covers it the same way (see
+ * {@link ReaperLabels}). Only the per-container mode exists here; there is no shared CI sidecar
+ * for MySQL.
  *
  * <p>Set {@code METAOBJECTS_TEST_MYSQL_URL} ({@code jdbc:mysql://host:port/db}, with
  * {@code METAOBJECTS_TEST_MYSQL_USER} / {@code _PASSWORD}) to run against an existing server
@@ -47,11 +47,11 @@ public final class MySqlContainer implements AutoCloseable, JdbcTarget {
         this.password = PASSWORD;
         // Docker assigns the host port at bind time; see the port note in PostgresContainer.
         try {
-            runDocker("run", "-d", "--name", name,
+            runDocker(ReaperLabels.dockerRun("--name", name,
                 "-e", "MYSQL_ROOT_PASSWORD=" + PASSWORD,
                 "-e", "MYSQL_DATABASE=" + DB,
                 "-p", "127.0.0.1::3306",
-                IMAGE, "--innodb-use-native-aio=0");
+                IMAGE, "--innodb-use-native-aio=0"));
             String url = "jdbc:mysql://127.0.0.1:" + PostgresContainer.publishedPort(name, 3306) + "/" + DB;
             waitForReady(url);
             this.jdbcUrl = url;
@@ -109,7 +109,7 @@ public final class MySqlContainer implements AutoCloseable, JdbcTarget {
     }
 
     private void forceRemove() {
-        try { runDocker("rm", "-f", name); } catch (RuntimeException ignored) { /* already gone */ }
+        try { runDocker("rm", "-f", "-v", name); } catch (RuntimeException ignored) { /* already gone */ }
     }
 
     private String inspectState() {

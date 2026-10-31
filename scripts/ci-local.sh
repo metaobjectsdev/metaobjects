@@ -91,16 +91,16 @@
 #
 # POSTGRES SIDECAR (see ensure_pg_sidecar below). Any lane that runs integration
 # tests shares ONE Postgres container instead of booting a Testcontainers instance
-# per scenario. It is started (or reused) automatically and costs ~6s cold, ~1s warm.
+# per scenario. It is started automatically and costs ~4s.
 # Measured on this repo: python integration 6m54s -> 11s, kotlin integration 47s with
 # zero containers booted. Every port's helper creates its own database per scenario,
-# so lanes that share the container never share a database. Its name carries a hash of
-# this checkout's path, so two checkouts on one machine never share or stop each
-# other's. It is left running for the next run (that is the ~1s warm start), so each
-# checkout keeps one; `docker rm -f metaobjects-ci-sidecar-<n>` removes it. If
+# so lanes that share the container never share a database. Each run starts its own
+# and removes it on the way out, and Ryuk removes it when the run is killed first, so
+# no two runs share or stop each other's and none outlives its run. If
 # METAOBJECTS_TEST_PG_URL is already set — as local-ci.yml does from its
 # `services:` block — nothing here changes. Opt out with MO_CI_NO_PG_SIDECAR=1; rename
-# it with MO_PG_SIDECAR_NAME.
+# it with MO_PG_SIDECAR_NAME (a container of that name already running is used and left
+# alone).
 #
 # MO_CI_LEAK_BASE overrides the ref the leak scan diffs against (default origin/main,
 # else HEAD~1); hygiene.yml points it at the PR's base branch. MO_CI_JACOCO=1 keeps
@@ -262,6 +262,10 @@ gate_publish_intent() { scripts/check-publish-intent.sh; }
 # could see it. Both paths now read scripts/publish-set.mjs, which also asserts the
 # set is tier-ordered and closed over its own sibling deps. Offline (manifests only).
 gate_publish_set() { node scripts/publish-set.mjs --check && node scripts/test-publish-set.mjs; }
+
+# Every docker-CLI test container must carry its reaper label, or a killed run leaves it behind.
+# Offline; see scripts/check-test-containers-reaped.sh.
+gate_containers_reaped() { scripts/check-test-containers-reaped.sh; }
 
 # ── no root script may be another root script's lifecycle hook ───────────────
 # npm and bun both run `pre<name>` before `<name>`, with no per-script opt-out. So
@@ -830,32 +834,97 @@ run_cube_lane() {
 # CI lanes. Nothing warned that the slow path had been taken; the run just looked slow.
 #
 # So: if the variable is already set (CI, or a deliberate override) this does nothing at
-# all. Otherwise it starts — or REUSES — a container named below and exports the same URL
-# shape CI uses. Reuse is the point: the second local run pays nothing.
+# all. Otherwise it starts a container named below and exports the same URL shape CI uses.
 #
-# Two details are load-bearing, both learned the hard way:
-#   * the host port is DYNAMIC (`-p 5432`, read back with `docker port`), never 5432:5432
-#     — this box already runs several Postgres containers and a fixed port collides;
+# Three details are load-bearing, all learned the hard way:
+#   * the host port is DYNAMIC (`-p 127.0.0.1::5432`, read back with `docker port`), never
+#     5432:5432 — this box already runs several Postgres containers and a fixed port collides;
 #   * readiness is POLLED before the URL is exported. The original shared-sidecar mode had
 #     no readiness gate and that was the dominant flake: the first connect to a
 #     transiently-slow sidecar hung to the test timeout.
 #
-#   * the container name is PER CHECKOUT (a checksum of this checkout's path). Several
-#     checkouts of this repository run on one machine at once, and a shared name made them
-#     reuse one database: the migrate-ts and runtime-ts suites create fixed table names in
-#     it, so two checkouts' runs could drop each other's tables mid-test.
+#   * the container is PER RUN, never kept for the next one. Several checkouts of this
+#     repository run on one machine at once, and a shared name made them reuse one database:
+#     the migrate-ts and runtime-ts suites create fixed table names in it, so two runs could
+#     drop each other's tables mid-test. Keeping one per checkout instead saved ~3s a run,
+#     and its name came from the checkout's path, so deleting the checkout left it running
+#     for good. A gate run gets a fresh worktree every time, which made that the common case.
+#
+# A killed run cannot clean up after itself: SIGKILL, the kernel OOM killer and earlyoom all
+# skip the EXIT trap. So the sidecar is put under Ryuk, the reaper the Testcontainers libraries
+# use (start_ci_reaper below), which removes it from outside this process. Ryuk removes only
+# what carries this run's own session label, so it cannot touch another run's container.
 #
 # Opt out with MO_CI_NO_PG_SIDECAR=1 to get the old per-scenario-container behaviour.
-MO_PG_SIDECAR_NAME="${MO_PG_SIDECAR_NAME:-metaobjects-ci-sidecar-$(printf '%s' "$ROOT" | cksum | cut -d' ' -f1)}"
-MO_CI_PG_URL=""   # set by start_pg_sidecar; exported only by use_pg_sidecar
+MO_CI_RUN_ID="${CI_TMP##*.}"
+MO_PG_SIDECAR_NAME="${MO_PG_SIDECAR_NAME:-metaobjects-ci-sidecar-$MO_CI_RUN_ID}"
+MO_CI_RYUK_IMAGE="testcontainers/ryuk:0.14.0"
+MO_CI_SESSION_LABEL="org.testcontainers.session-id=metaobjects-ci-$MO_CI_RUN_ID"
+MO_CI_PG_URL=""       # set by start_pg_sidecar; exported only by use_pg_sidecar
+CI_SIDECAR_STARTED=0  # 1 once this run started the sidecar, so it is this run's to remove
+CI_REAPER_PID=""      # the background shell that holds this run's Ryuk connection
 
-# ensure_pg_sidecar — start (or reuse) the sidecar and export its URL into THIS shell.
+# start_ci_reaper — start Ryuk and hold its connection for as long as this script lives.
+#
+# Ryuk prunes a session ten seconds after its connection closes. The bash client differs from
+# the libraries in one way: the socket lives in a small background shell rather than here,
+# because bash cannot mark a descriptor close-on-exec. Every test JVM, and every build server
+# it leaves running, would inherit it, and the connection would outlive the run. The holder
+# polls this script's pid and exits when it is gone, however it went. TESTCONTAINERS_RYUK_DISABLED
+# =true turns this off, as it does in the libraries.
+start_ci_reaper() {
+  [ "${TESTCONTAINERS_RYUK_DISABLED:-}" = "true" ] && return 0
+  [ -n "$CI_REAPER_PID" ] && return 0
+
+  local name="metaobjects-ci-ryuk-$MO_CI_RUN_ID" port i
+  docker run -d --rm --name "$name" \
+      -v "${TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE:-/var/run/docker.sock}:/var/run/docker.sock" \
+      -p 127.0.0.1::8080 "$MO_CI_RYUK_IMAGE" >/dev/null 2>&1 || return 1
+  port="$(docker port "$name" 8080/tcp 2>/dev/null | head -1 | sed 's/.*://')"
+  [ -n "$port" ] || return 1
+
+  (
+    i=0 ack=""
+    while [ "$i" -lt 75 ]; do
+      if { exec 9<>"/dev/tcp/127.0.0.1/$port"; } 2>/dev/null; then
+        printf 'label=%s\n' "$MO_CI_SESSION_LABEL" >&9
+        IFS= read -r -t 5 ack <&9 || ack=""
+        [ "$ack" = "ACK" ] && break
+        exec 9>&-
+      fi
+      i=$((i + 1)); sleep 0.2
+    done
+    [ "$ack" = "ACK" ] || exit 1
+    : > "$CI_TMP/reaper.ready"
+    while kill -0 $$ 2>/dev/null; do sleep 2; done
+  ) </dev/null >/dev/null 2>&1 &
+  CI_REAPER_PID=$!
+
+  i=0
+  while [ "$i" -lt 100 ]; do
+    [ -e "$CI_TMP/reaper.ready" ] && return 0
+    kill -0 "$CI_REAPER_PID" 2>/dev/null || break
+    i=$((i + 1)); sleep 0.2
+  done
+  kill "$CI_REAPER_PID" 2>/dev/null
+  CI_REAPER_PID=""
+  return 1
+}
+
+# stop_pg_sidecar — remove what this run started. Letting go of Ryuk ends it too.
+stop_pg_sidecar() {
+  [ "$CI_SIDECAR_STARTED" -eq 1 ] && docker rm -f -v "$MO_PG_SIDECAR_NAME" >/dev/null 2>&1
+  [ -n "$CI_REAPER_PID" ] && kill "$CI_REAPER_PID" 2>/dev/null
+  return 0
+}
+
+# ensure_pg_sidecar — start the sidecar, if this run has none yet, and export its URL into THIS shell.
 ensure_pg_sidecar() {
   [ -n "${METAOBJECTS_TEST_PG_URL:-}" ] && return 0   # CI, or an explicit override
   start_pg_sidecar && use_pg_sidecar
 }
 
-# start_pg_sidecar — start (or reuse) the sidecar and record its URL in MO_CI_PG_URL, exporting
+# start_pg_sidecar — start the sidecar and record its URL in MO_CI_PG_URL, exporting
 # nothing. The full run calls it once before its lanes fork and lets each lane that runs an
 # integration suite export the URL for itself, so a lane with no database (ts unit suites)
 # never sees one: runtime-ts's suite runs its real-PG files whenever the URL is set, against
@@ -865,19 +934,27 @@ start_pg_sidecar() {
 
   local name="$MO_PG_SIDECAR_NAME" port
   if [ -z "$(docker ps -q -f "name=^${name}$" 2>/dev/null)" ]; then
-    # Clear a stopped leftover of the same name, then start fresh.
-    docker rm -f "$name" >/dev/null 2>&1 || true
-    if ! docker run -d --name "$name" \
+    if ! start_ci_reaper; then
+      echo "  ⚠ could not start Ryuk ($MO_CI_RYUK_IMAGE) — falling back to per-scenario" >&2
+      echo "    containers (slow). Integration results are unaffected." >&2
+      return 0
+    fi
+    local label=(--label "$MO_CI_SESSION_LABEL")
+    [ -n "$CI_REAPER_PID" ] || label=()
+    # Clear a stopped leftover of an MO_PG_SIDECAR_NAME override, then start fresh.
+    docker rm -f -v "$name" >/dev/null 2>&1 || true
+    if ! docker run -d --name "$name" ${label[@]+"${label[@]}"} \
         -e POSTGRES_USER=metaobjects -e POSTGRES_PASSWORD=metaobjects \
         -e POSTGRES_DB=metaobjects_test \
-        -p 5432 postgres:16 >/dev/null 2>&1; then
+        -p 127.0.0.1::5432 postgres:16 >/dev/null 2>&1; then
       echo "  ⚠ could not start the Postgres sidecar — falling back to per-scenario" >&2
       echo "    containers (slow). Integration results are unaffected." >&2
       return 0
     fi
+    CI_SIDECAR_STARTED=1
     echo "  ▸ started Postgres sidecar '$name'"
   else
-    echo "  ▸ reusing Postgres sidecar '$name'"
+    echo "  ▸ using Postgres sidecar '$name'"
   fi
 
   port="$(docker port "$name" 5432/tcp 2>/dev/null | head -1 | sed 's/.*://')"
@@ -915,8 +992,8 @@ start_pg_sidecar() {
   # reported as ✓ into a loud failure. Hosted CI sets both from its `services:` block; the
   # local run had neither, which is why a local ✓ and a hosted ✖ could disagree about the
   # only real-engine gate on migration correctness.
-  MO_CI_PG_URL="postgres://metaobjects:metaobjects@localhost:${port}/metaobjects_test"
-  echo "    METAOBJECTS_TEST_PG_URL -> localhost:${port} (stop it: docker rm -f $name)"
+  MO_CI_PG_URL="postgres://metaobjects:metaobjects@127.0.0.1:${port}/metaobjects_test"
+  echo "    METAOBJECTS_TEST_PG_URL -> 127.0.0.1:${port}"
 }
 
 # use_pg_sidecar — export the URL start_pg_sidecar recorded (nothing when it fell back).
@@ -1022,6 +1099,7 @@ run_lanes() {
 kill_tree() { local c; for c in $(pgrep -P "$1" 2>/dev/null); do kill_tree "$c"; done; kill "$1" 2>/dev/null; }
 ci_cleanup() {
   local p; for p in "${LANE_PID[@]:-}"; do [ -n "$p" ] && kill -0 "$p" 2>/dev/null && kill_tree "$p"; done
+  stop_pg_sidecar
   rm -rf "$CI_TMP"
 }
 trap ci_cleanup EXIT
@@ -1035,6 +1113,7 @@ run_gates_offline() {
   if want gates; then step    "uv.lock version parity"           gate_uv_lock_version;        fi
   if want gates; then step    "publish-intent parity"            gate_publish_intent;         fi
   if want gates; then step    "publish-set parity"               gate_publish_set;            fi
+  if want gates; then step    "test containers reaped"           gate_containers_reaped;      fi
   if want gates; then step    "no committed pre-release version" gate_no_prerelease_versions; fi
   if want gates; then step    "script-name hook collisions"      gate_script_name_hooks;      fi
   if want gates; then step    "ci lane selection"                gate_ci_port_selection;      fi

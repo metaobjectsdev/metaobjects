@@ -20,12 +20,11 @@ import java.util.UUID
  *  2. **Per-container (local dev)**: with no env var, boot a fresh container via
  *     the `docker` CLI, exactly as before.
  *
- * Implementation note (mode 2): testcontainers-java 1.21.x bundles docker-java
- * 3.4.x which hardcodes a client API version (1.32-class) below the minimum
- * supported by recent Docker daemons. The hand-managed CLI path here is small,
- * fast (~3s incl. pg_isready), and avoids the version-negotiation issue
- * entirely. Mirrors the Java port's `PostgresContainer.java` and the TS port's
- * `postgres-container.ts`. The shared sidecar mode sidesteps this entirely.
+ * Implementation note (mode 2): the `docker` CLI path is small, fast (~3s incl.
+ * pg_isready) and mirrors the Java port's `PostgresContainer.java` and the TS port's
+ * `postgres-container.ts`. testcontainers-java supplies only Ryuk, through
+ * [ReaperLabels]. Its 1.21.x line could not talk to Docker Engine 29+ at all, which
+ * is why this path exists.
  */
 class PostgresContainer : AutoCloseable {
     private val shared: Boolean
@@ -64,14 +63,16 @@ class PostgresContainer : AutoCloseable {
             //
             // Deliberately NOT `--rm`: an auto-removed container takes its logs with it,
             // so the one artefact explaining a failure vanishes exactly when it is
-            // needed. close() force-removes, so nothing leaks.
+            // needed. close() force-removes, and Ryuk removes it when a killed run never
+            // reaches close() (see ReaperLabels).
             jdbcUrl = try {
                 runDocker(
-                    "run", "-d",
-                    "--name", name,
-                    "-e", "POSTGRES_PASSWORD=$PG_PASSWORD",
-                    "-p", "127.0.0.1::5432",
-                    IMAGE,
+                    *ReaperLabels.dockerRun(
+                        "--name", name,
+                        "-e", "POSTGRES_PASSWORD=$PG_PASSWORD",
+                        "-p", "127.0.0.1::5432",
+                        IMAGE,
+                    ),
                 )
                 val url = "jdbc:postgresql://127.0.0.1:${publishedPort(name, 5432)}/postgres"
                 waitForReady(url)
@@ -93,7 +94,7 @@ class PostgresContainer : AutoCloseable {
             return
         }
         try {
-            runDocker("rm", "-f", name!!) // non-null in per-container mode
+            runDocker("rm", "-f", "-v", name!!) // non-null in per-container mode
         } catch (_: RuntimeException) {
             // Container may already be gone; ignore.
         }
@@ -157,7 +158,7 @@ class PostgresContainer : AutoCloseable {
 
     /** Best-effort teardown of a container that failed to start. */
     private fun forceRemove() {
-        try { runDocker("rm", "-f", name!!) } catch (_: RuntimeException) { /* already gone */ }  // non-null in per-container mode
+        try { runDocker("rm", "-f", "-v", name!!) } catch (_: RuntimeException) { /* already gone */ }  // non-null in per-container mode
     }
 
     /** The container's docker state, or "gone" when it cannot be determined. */

@@ -27,15 +27,10 @@ import java.util.UUID;
  *       container via the {@code docker} CLI, exactly as before.</li>
  * </ol>
  *
- * <p>Implementation note (mode 2): testcontainers-java 1.21.x bundles
- * docker-java 3.4.x which hardcodes a client API version (1.32-class) below the
- * minimum supported by recent Docker daemons (Docker Engine 29+ requires API
- * 1.44+). That mismatch surfaces as a BadRequestException during the
- * Testcontainers discovery phase, with no extraction path short of waiting for
- * an upstream docker-java upgrade. The hand-managed CLI path here is small, fast
- * (~3s incl. pg_isready), and avoids the version-negotiation issue entirely.
- * Mirrors the TS port's {@code postgres-container.ts}. The shared sidecar mode
- * sidesteps this entirely; the fallback keeps the docker path.
+ * <p>Implementation note (mode 2): the {@code docker} CLI path is small, fast
+ * (~3s incl. pg_isready) and mirrors the TS port's {@code postgres-container.ts}.
+ * testcontainers-java supplies only Ryuk, through {@link ReaperLabels}. Its 1.21.x
+ * line could not talk to Docker Engine 29+ at all, which is why this path exists.
  */
 public final class PostgresContainer implements AutoCloseable, JdbcTarget {
     /** Env var naming the shared CI Postgres sidecar (admin URL). Unset = per-container fallback. */
@@ -84,13 +79,14 @@ public final class PostgresContainer implements AutoCloseable, JdbcTarget {
         //
         // Deliberately NOT `--rm`: an auto-removed container takes its logs with it, so
         // the one artefact that explains a failure disappears exactly when it is
-        // needed. close() already force-removes, so nothing leaks.
+        // needed. close() force-removes, and Ryuk removes it when a killed run never
+        // reaches close() (see ReaperLabels).
         try {
-            runDocker("run", "-d",
+            runDocker(ReaperLabels.dockerRun(
                 "--name", name,
                 "-e", "POSTGRES_PASSWORD=" + PG_PASSWORD,
                 "-p", "127.0.0.1::5432",
-                IMAGE);
+                IMAGE));
             String url = "jdbc:postgresql://127.0.0.1:" + publishedPort(name, 5432) + "/postgres";
             waitForReady(url);
             this.jdbcUrl = url;
@@ -110,7 +106,7 @@ public final class PostgresContainer implements AutoCloseable, JdbcTarget {
             catch (RuntimeException ignored) { /* best-effort cleanup */ }
             return;
         }
-        try { runDocker("rm", "-f", name); }
+        try { runDocker("rm", "-f", "-v", name); }
         catch (RuntimeException ignored) { /* container may already be gone */ }
     }
 

@@ -20,6 +20,7 @@ from typing import Any
 from urllib.parse import unquote, urlsplit
 
 from .postgres_container import published_port
+from .reaper import reaper_label_args
 
 SHARED_MYSQL_URL_ENV = "METAOBJECTS_TEST_MYSQL_URL"
 
@@ -82,7 +83,7 @@ class MySqlContainer:
         # Docker assigns the host port at bind time; see the port note in postgres_container.
         try:
             _docker(
-                "run", "-d", "--name", self._name,
+                "run", "-d", *reaper_label_args(), "--name", self._name,
                 "-e", f"MYSQL_ROOT_PASSWORD={self.PASSWORD}",
                 "-e", f"MYSQL_DATABASE={self.DATABASE}",
                 # Native AIO reserves ~17k kernel aio-nr slots per server; with the default
@@ -112,7 +113,7 @@ class MySqlContainer:
 
     def _force_remove(self) -> None:
         try:
-            _docker("rm", "-f", str(self._name))
+            _docker("rm", "-f", "-v", str(self._name))
         except Exception:  # noqa: BLE001 -- already gone
             pass
 
