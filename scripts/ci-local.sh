@@ -863,6 +863,7 @@ MO_CI_SESSION_LABEL="org.testcontainers.session-id=metaobjects-ci-$MO_CI_RUN_ID"
 MO_CI_PG_URL=""       # set by start_pg_sidecar; exported only by use_pg_sidecar
 CI_SIDECAR_STARTED=0  # 1 once this run started the sidecar, so it is this run's to remove
 CI_REAPER_PID=""      # the background shell that holds this run's Ryuk connection
+CI_REAPER_FAILED=0    # 1 once Ryuk would not start, so each lane does not wait for it again
 
 # start_ci_reaper — start Ryuk and hold its connection for as long as this script lives.
 #
@@ -875,8 +876,17 @@ CI_REAPER_PID=""      # the background shell that holds this run's Ryuk connecti
 start_ci_reaper() {
   [ "${TESTCONTAINERS_RYUK_DISABLED:-}" = "true" ] && return 0
   [ -n "$CI_REAPER_PID" ] && return 0
+  [ "$CI_REAPER_FAILED" -eq 0 ] || return 1
 
-  local name="metaobjects-ci-ryuk-$MO_CI_RUN_ID" port i
+  local name="metaobjects-ci-ryuk-$MO_CI_RUN_ID"
+  connect_ci_reaper "$name" && return 0
+  CI_REAPER_FAILED=1
+  docker rm -f "$name" >/dev/null 2>&1
+  return 1
+}
+
+connect_ci_reaper() {
+  local name="$1" port i
   docker run -d --rm --name "$name" \
       -v "${TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE:-/var/run/docker.sock}:/var/run/docker.sock" \
       -p 127.0.0.1::8080 "$MO_CI_RYUK_IMAGE" >/dev/null 2>&1 || return 1

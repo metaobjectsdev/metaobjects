@@ -202,7 +202,7 @@ public final class PostgresContainer implements AutoCloseable, JdbcTarget {
 
     /** Best-effort teardown of a container that failed to start. */
     private void forceRemove() {
-        try { runDocker("rm", "-f", name); } catch (RuntimeException ignored) { /* already gone */ }
+        try { runDocker("rm", "-f", "-v", name); } catch (RuntimeException ignored) { /* already gone */ }
     }
 
     /** The container's docker state, or null when it cannot be determined. */
