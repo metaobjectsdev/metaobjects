@@ -85,7 +85,7 @@ export const LOCAL_TIMESTAMP_PATTERN = "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-
  * as UTC (the api-contract corpus sends one), which `date-time` refuses, so a write states what a
  * route takes and a read states what it answers.
  */
-export const TIMESTAMP_INPUT_PATTERN = "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})?$";
+const TIMESTAMP_INPUT_PATTERN = "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})?$";
 
 const NUMERIC_SUBTYPES: ReadonlySet<string> = new Set([
   FIELD_SUBTYPE_INT, FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_CURRENCY, FIELD_SUBTYPE_DOUBLE, FIELD_SUBTYPE_FLOAT,

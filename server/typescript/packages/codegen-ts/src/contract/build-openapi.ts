@@ -8,7 +8,7 @@
 // caller can use (the api docs omit them for the same reason).
 
 import { type MetaField, type MetaObject, type MetaRoot, opsForField } from "@metaobjectsdev/metadata";
-import { FIELD_ATTR_FILTERABLE, FIELD_SUBTYPE_DECIMAL, FIELD_SUBTYPE_ENUM, FIELD_SUBTYPE_TIMESTAMP, FILTER_OP_IN, FILTER_OP_IS_NULL, FILTER_OP_LIKE } from "@metaobjectsdev/metadata/constants";
+import { FIELD_ATTR_FILTERABLE, FIELD_SUBTYPE_ENUM, FIELD_SUBTYPE_TIMESTAMP, FILTER_OP_IN, FILTER_OP_IS_NULL, FILTER_OP_LIKE } from "@metaobjectsdev/metadata/constants";
 import { hasItemRoute, itemRouteField, servedPath, servesReadApi } from "../api-surface.js";
 import { isProjection } from "../projection/projection-detector.js";
 import type { RelationMap } from "../relation-resolver.js";
@@ -18,7 +18,7 @@ import { sortableFields } from "../templates/filter-shared.js";
 import { tphPlan } from "../templates/tph-discriminator.js";
 import { isTphSubtype } from "../tph.js";
 import { ContractEmitError, ERR_CONTRACT_NAME_COLLISION } from "./contract-errors.js";
-import { type ContractShape, DECIMAL_INPUT_PATTERN, enumSchema, type JsonSchema, scalarSchema, timestampInputSchema } from "./field-schema.js";
+import { type ContractShape, enumSchema, type JsonSchema, scalarSchema, timestampInputSchema } from "./field-schema.js";
 import { collectContractEntries, type ContractTarget } from "./object-schema.js";
 
 export const OPENAPI_VERSION = "3.1.0";
@@ -59,8 +59,12 @@ export interface OpenApiBuildInput extends OpenApiDocumentOptions {
   readonly reportExport: boolean;
 }
 
+function compareNames(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
 function byName(a: MetaObject, b: MetaObject): number {
-  return a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
+  return compareNames(a.name, b.name);
 }
 
 function componentName(obj: MetaObject, shape: ContractShape): string {
@@ -107,7 +111,6 @@ function filterValueSchema(field: MetaField, op: string): JsonSchema {
   if (op === FILTER_OP_IS_NULL) return { type: "boolean" };
   if (op === FILTER_OP_IN) return { type: "string", description: "Comma-separated values." };
   if (op === FILTER_OP_LIKE) return { type: "string" };
-  if (field.subType === FIELD_SUBTYPE_DECIMAL) return { type: "string", pattern: DECIMAL_INPUT_PATTERN };
   if (field.subType === FIELD_SUBTYPE_TIMESTAMP) return timestampInputSchema(field);
   if (field.subType === FIELD_SUBTYPE_ENUM) return enumSchema(field);
   return scalarSchema(field.subType);
@@ -324,16 +327,11 @@ function pathsOf(
     });
   }
   const plan = tphPlan(obj, root);
-  if (plan === null) {
-    return {
-      ...resourcePaths({ row: obj, path, report: false, reportExport: false, item: true, refs, verbs: verbsOf(CRUD_VERBS, obj, expose) }),
-      ...m2mPaths(obj, path, relationMap, refs),
-    };
-  }
   const paths: Record<string, JsonSchema> = {
-    ...resourcePaths({ row: obj, path, report: false, reportExport: false, item: true, refs, verbs: verbsOf(TPH_POLYMORPHIC_VERBS, obj, expose) }),
+    ...resourcePaths({ row: obj, path, report: false, reportExport: false, item: true, refs, verbs: verbsOf(plan === null ? CRUD_VERBS : TPH_POLYMORPHIC_VERBS, obj, expose) }),
     ...m2mPaths(obj, path, relationMap, refs),
   };
+  if (plan === null) return paths;
   for (const { entity, routeSegment } of plan.subtypes) {
     const subPath = `${path}/${routeSegment}`;
     Object.assign(paths, resourcePaths({
@@ -405,7 +403,7 @@ function collectSchemas(input: OpenApiBuildInput, refs: PathRefs): Record<string
       field: { type: "string", description: "The rejected filter or sort field, on the four codes that name one." },
     },
   };
-  return Object.fromEntries(Object.entries(schemas).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
+  return Object.fromEntries(Object.entries(schemas).sort(([a], [b]) => compareNames(a, b)));
 }
 
 /** The whole document, in the key order it is written. */

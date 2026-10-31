@@ -74,9 +74,14 @@ export function openApiCheck(caseName: string): ContractCheck {
     throw new Error(`${caseName}: ${req.method} ${req.path} (${req.id}): ${why}`);
   }
 
+  // Compiled once per pointer: Ajv caches by schema identity, so a fresh `$ref` object each call recompiles.
+  const compiled = new Map<string, ReturnType<typeof ajv.compile>>();
+
   /** Compiled by its place in the document, so the `$ref`s inside resolve against the document. */
   function validate(req: ApiRequest, what: string, at: string[], value: unknown): void {
-    const check = ajv.compile({ $ref: `${DOCUMENT_ID}#/${at.map(pointerToken).join("/")}` });
+    const pointer = `${DOCUMENT_ID}#/${at.map(pointerToken).join("/")}`;
+    const check = compiled.get(pointer) ?? ajv.compile({ $ref: pointer });
+    compiled.set(pointer, check);
     if (check(value)) return;
     fail(req, `${what} does not match the document: ${ajv.errorsText(check.errors)}: ${JSON.stringify(value)}`);
   }
