@@ -865,6 +865,9 @@ CI_SIDECAR_STARTED=0  # 1 once this run started the sidecar, so it is this run's
 CI_REAPER_PID=""      # the background shell that holds this run's Ryuk connection
 CI_REAPER_FAILED=0    # 1 once Ryuk would not start, so each lane does not wait for it again
 
+# docker_host_port <container> <container-port> — the host port Docker published for it.
+docker_host_port() { docker port "$1" "$2" 2>/dev/null | head -1 | sed 's/.*://'; }
+
 # start_ci_reaper — start Ryuk and hold its connection for as long as this script lives.
 #
 # Ryuk prunes a session ten seconds after its connection closes. The bash client differs from
@@ -890,7 +893,7 @@ connect_ci_reaper() {
   docker run -d --rm --name "$name" \
       -v "${TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE:-/var/run/docker.sock}:/var/run/docker.sock" \
       -p 127.0.0.1::8080 "$MO_CI_RYUK_IMAGE" >/dev/null 2>&1 || return 1
-  port="$(docker port "$name" 8080/tcp 2>/dev/null | head -1 | sed 's/.*://')"
+  port="$(docker_host_port "$name" 8080/tcp)"
   [ -n "$port" ] || return 1
 
   (
@@ -949,8 +952,8 @@ start_pg_sidecar() {
       echo "    containers (slow). Integration results are unaffected." >&2
       return 0
     fi
-    local label=(--label "$MO_CI_SESSION_LABEL")
-    [ -n "$CI_REAPER_PID" ] || label=()
+    local label=()
+    [ -n "$CI_REAPER_PID" ] && label=(--label "$MO_CI_SESSION_LABEL")
     # Clear a stopped leftover of an MO_PG_SIDECAR_NAME override, then start fresh.
     docker rm -f -v "$name" >/dev/null 2>&1 || true
     if ! docker run -d --name "$name" ${label[@]+"${label[@]}"} \
@@ -967,7 +970,7 @@ start_pg_sidecar() {
     echo "  ▸ using Postgres sidecar '$name'"
   fi
 
-  port="$(docker port "$name" 5432/tcp 2>/dev/null | head -1 | sed 's/.*://')"
+  port="$(docker_host_port "$name" 5432/tcp)"
   if [ -z "$port" ]; then
     echo "  ⚠ sidecar has no published port — falling back to per-scenario containers." >&2
     return 0
