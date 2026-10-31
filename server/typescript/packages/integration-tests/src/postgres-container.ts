@@ -14,9 +14,8 @@
 // under Bun even though the container itself comes up healthy (verified:
 // container ready in <1s, but the promise never resolves). The hand-managed
 // docker-CLI path here is small, fast, and avoids the bun/testcontainers compat
-// issue entirely. When testcontainers-node + bun is fixed upstream, swap in
-// `@testcontainers/postgresql` (deps for it are already declared). The shared
-// sidecar mode sidesteps this entirely; the fallback keeps the docker path.
+// issue entirely. The shared sidecar mode sidesteps this entirely; the fallback
+// keeps the docker path.
 //
 // Readiness gating (mode 2): postgres' first-boot entrypoint starts the server
 // twice (initial init, then the real boot). `pg_isready` can return success
@@ -26,6 +25,7 @@
 import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { Client } from "pg";
+import { reaperLabelArgs } from "./test-reaper.ts";
 
 /** Env var naming the shared CI Postgres sidecar (admin URL). Unset = per-container fallback. */
 const SHARED_PG_URL_ENV = "METAOBJECTS_TEST_PG_URL";
@@ -53,12 +53,12 @@ export async function startPostgres(image = "postgres:16-alpine"): Promise<Runni
   //
   // Deliberately NOT `--rm`: an auto-removed container takes its logs with it, so the
   // one artefact explaining a failure vanishes exactly when it is needed. stop()
-  // force-removes, so nothing leaks.
+  // force-removes, and Ryuk removes it when a killed run never reaches stop() (test-reaper.ts).
   const name = `metaobjects-test-${randomUUID().slice(0, 8)}`;
-  const forceRemove = (): void => { try { runDocker(["rm", "-f", name]); } catch { /* already gone */ } };
+  const forceRemove = (): void => { try { runDocker(["rm", "-f", "-v", name]); } catch { /* already gone */ } };
   try {
     runDocker([
-      "run", "-d",
+      "run", "-d", ...(await reaperLabelArgs()),
       "--name", name,
       "-e", "POSTGRES_PASSWORD=test",
       "-p", "127.0.0.1::5432",

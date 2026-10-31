@@ -24,6 +24,7 @@
 
   <properties>
     <postgres.jdbc.version>42.7.4</postgres.jdbc.version>
+    <testcontainers.version>2.0.5</testcontainers.version>
     <snakeyaml.version>2.3</snakeyaml.version>
     <jackson.version>2.18.2</jackson.version>
     <spring.version>6.2.11</spring.version>
@@ -121,9 +122,17 @@
       <scope>test</scope>
     </dependency>
 
+    <!-- Ryuk only: removes this suite's docker-CLI containers when a killed JVM never reaches
+         close() (see ReaperLabels). Needs 2.x: the 1.21 line cannot talk to Docker Engine 29+. -->
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>testcontainers</artifactId>
+      <version>${testcontainers.version}</version>
+      <scope>test</scope>
+    </dependency>
+
     <!-- Postgres JDBC. Containers are spun up via the `docker` CLI directly
-         (see PostgresContainer.java) — testcontainers-java's docker-java
-         dependency hardcodes an API version too old for current Docker daemons. -->
+         (see PostgresContainer.java). -->
     <dependency>
       <groupId>org.postgresql</groupId>
       <artifactId>postgresql</artifactId>

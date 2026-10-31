@@ -9,9 +9,9 @@ import java.util.UUID
 /**
  * A throwaway MySQL database for the report scenarios, started through the `docker` CLI.
  *
- * Same approach as [PostgresContainer] and the Java port's `MySqlContainer.java`: testcontainers-java's
- * bundled docker-java cannot negotiate with current Docker daemons. Only the per-container mode
- * exists; there is no shared CI sidecar for MySQL. Set `METAOBJECTS_TEST_MYSQL_URL`
+ * Same approach as [PostgresContainer] and the Java port's `MySqlContainer.java`, and Ryuk covers it
+ * the same way (see [ReaperLabels]). Only the per-container mode exists; there is no shared CI
+ * sidecar for MySQL. Set `METAOBJECTS_TEST_MYSQL_URL`
  * (`jdbc:mysql://host:port/db`, with `METAOBJECTS_TEST_MYSQL_USER` / `_PASSWORD`) to run against an
  * existing server instead: the test then owns that database.
  */
@@ -35,11 +35,13 @@ class MySqlContainer : AutoCloseable {
             // Docker assigns the host port at bind time; see the port note in PostgresContainer.
             jdbcUrl = try {
                 runDocker(
-                    "run", "-d", "--name", name,
-                    "-e", "MYSQL_ROOT_PASSWORD=$PASSWORD",
-                    "-e", "MYSQL_DATABASE=$DB",
-                    "-p", "127.0.0.1::3306",
-                    IMAGE, "--innodb-use-native-aio=0",
+                    *ReaperLabels.dockerRun(
+                        "--name", name,
+                        "-e", "MYSQL_ROOT_PASSWORD=$PASSWORD",
+                        "-e", "MYSQL_DATABASE=$DB",
+                        "-p", "127.0.0.1::3306",
+                        IMAGE, "--innodb-use-native-aio=0",
+                    ),
                 )
                 val url = "jdbc:mysql://127.0.0.1:${PostgresContainer.publishedPort(name, 3306)}/$DB"
                 waitForReady(url)
@@ -89,7 +91,7 @@ class MySqlContainer : AutoCloseable {
     }
 
     private fun forceRemove() {
-        try { runDocker("rm", "-f", name!!) } catch (_: RuntimeException) { /* already gone */ }
+        try { runDocker("rm", "-f", "-v", name!!) } catch (_: RuntimeException) { /* already gone */ }
     }
 
     private fun inspectState(): String = try {

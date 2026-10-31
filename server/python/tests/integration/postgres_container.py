@@ -9,9 +9,8 @@ Two modes, mirroring the TS/Java/Kotlin/C# integration suites:
      gets a pristine empty database, so isolation is identical to the per-
      container path.
   2. Per-container (local dev): with no env var, ``docker run`` a fresh container,
-     exactly as before. Avoids the python-testcontainers package + its docker API
-     negotiation churn (the same kind of mismatch testcontainers-java hits
-     against Docker Engine 29+).
+     exactly as before. The testcontainers package supplies only Ryuk, which removes
+     the container when a killed run never reaches its teardown (see :mod:`reaper`).
 """
 from __future__ import annotations
 
@@ -21,6 +20,8 @@ import time
 import uuid
 from dataclasses import dataclass
 from urllib.parse import urlsplit
+
+from .reaper import reaper_label_args
 
 # Env var naming the shared CI Postgres sidecar (admin URL). Unset = per-container.
 SHARED_PG_URL_ENV = "METAOBJECTS_TEST_PG_URL"
@@ -62,10 +63,11 @@ class PostgresContainer:
         #
         # Deliberately NOT `--rm`: an auto-removed container takes its logs with it, so
         # the one artefact explaining a failure vanishes exactly when it is needed.
-        # close() force-removes, so nothing leaks.
+        # close() force-removes, and Ryuk removes it when a killed run never reaches
+        # close() (see :mod:`reaper`).
         try:
             _docker(
-                "run", "-d",
+                "run", "-d", *reaper_label_args(),
                 "--name", self._name,
                 "-e", f"POSTGRES_PASSWORD={self.PASSWORD}",
                 "-p", "127.0.0.1::5432",
@@ -131,7 +133,7 @@ class PostgresContainer:
                 pass
             return
         try:
-            _docker("rm", "-f", self._name)
+            _docker("rm", "-f", "-v", self._name)
         except subprocess.CalledProcessError:
             pass  # container already gone — fine
 
@@ -157,7 +159,7 @@ class PostgresContainer:
     def _force_remove(self) -> None:
         """Best-effort teardown of a container that failed to start."""
         try:
-            _docker("rm", "-f", self._name)
+            _docker("rm", "-f", "-v", self._name)
         except Exception:  # noqa: BLE001 — already gone
             pass
 

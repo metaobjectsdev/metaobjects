@@ -10,6 +10,7 @@
 import { spawnSync } from "node:child_process";
 import { createHmac, randomUUID } from "node:crypto";
 import { CUBE_IMAGE, type CubeDataSource, type CubeStack } from "../src/cube-container.ts";
+import { reaperLabelArgs } from "../src/test-reaper.ts";
 import type { CubeEndpoint } from "./cube-live-support.ts";
 
 /** Cube Store, pinned to the release of the Cube image (a rollup is written and read through it). */
@@ -86,7 +87,8 @@ export async function startProductionCube(base: CubeStack, modelDir: string, dat
   process.prependListener("SIGTERM", onSignal);
 
   try {
-    docker(["run", "-d", "--name", storeContainer, "--network", base.network, CUBE_STORE_IMAGE]);
+    const labels = await reaperLabelArgs();
+    docker(["run", "-d", ...labels, "--name", storeContainer, "--network", base.network, CUBE_STORE_IMAGE]);
     const secret = randomUUID();
     const dbEnv =
       dataSource === "mysql"
@@ -109,7 +111,7 @@ export async function startProductionCube(base: CubeStack, modelDir: string, dat
       "CUBEJS_DEFAULT_API_SCOPES=meta,data,jobs",
     ];
     docker([
-      "run", "-d", "--name", cubeContainer, "--network", base.network,
+      "run", "-d", ...labels, "--name", cubeContainer, "--network", base.network,
       "-p", "127.0.0.1::4000",
       ...env.flatMap((e) => ["-e", e]),
       "-v", `${modelDir}:/cube/conf/model:ro`,

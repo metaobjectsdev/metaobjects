@@ -12,6 +12,8 @@
          `dotnet test path/to/MetaObjects.IntegrationTests.csproj` or
          scripts/integration-test.sh. -->
     <IsPackable>false</IsPackable>
+    <!-- ReaperKillTests.Main is this assembly's entry point: its killed child process. -->
+    <GenerateProgramFile>false</GenerateProgramFile>
   </PropertyGroup>
   <!-- The generated minimal-API routes (RoutesGenerator output) are hosted on a
        real ASP.NET Core host (Kestrel) in the SP-F generated-server lane
@@ -31,7 +33,7 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />
     <PackageReference Include="xunit" Version="2.6.4" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.5.6" />
-    <PackageReference Include="Testcontainers.PostgreSql" Version="3.10.0" />
+    <PackageReference Include="Testcontainers.PostgreSql" Version="4.16.0" />
     <PackageReference Include="YamlDotNet" Version="18.0.0" />
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="8.0.10" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="8.0.10" />
@@ -40,6 +42,6 @@
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="8.0.10" />
     <!-- ...and on MySQL (Docker): Pomelo is the EF Core provider, MySqlConnector the ADO.NET driver. -->
     <PackageReference Include="Pomelo.EntityFrameworkCore.MySql" Version="8.0.2" />
-    <PackageReference Include="Testcontainers.MySql" Version="3.10.0" />
+    <PackageReference Include="Testcontainers.MySql" Version="4.16.0" />
   </ItemGroup>
 </Project>

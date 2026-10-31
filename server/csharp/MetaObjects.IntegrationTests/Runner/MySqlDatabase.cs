@@ -31,7 +31,7 @@ public sealed class MySqlServer : IAsyncLifetime
         var existing = Environment.GetEnvironmentVariable(ExistingServerEnv);
         if (!string.IsNullOrWhiteSpace(existing)) return FromUrl(existing);
 
-        _container = new MySqlBuilder().WithImage("mysql:8.4").WithUsername("root")
+        _container = new MySqlBuilder("mysql:8.4").WithUsername("root")
             .WithCommand("--innodb-use-native-aio=0").Build();
         await _container.StartAsync();
         return _container.GetConnectionString();

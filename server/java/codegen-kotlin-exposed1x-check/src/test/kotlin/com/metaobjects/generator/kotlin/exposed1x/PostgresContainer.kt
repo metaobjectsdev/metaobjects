@@ -11,8 +11,7 @@ import java.util.UUID
  * Obtain a fresh, isolated Postgres database for the issue #390 round-trip test.
  *
  * Adapted verbatim from `integration-tests-kotlin`'s `PostgresContainer.kt` (same two modes,
- * same docker-CLI rationale — testcontainers-java's bundled docker-java hardcodes an API
- * version below what recent Docker daemons support). Duplicated rather than shared because
+ * same docker-CLI path, and Ryuk covers it through [ReaperLabels]). Duplicated rather than shared because
  * this module intentionally depends on NEITHER `integration-tests-kotlin` (which pins Exposed
  * 0.x) NOR a test-jar of it (none is published) — see this module's pom for why the two stay
  * independent.
@@ -52,11 +51,12 @@ class PostgresContainer : AutoCloseable {
             // `docker port`): a port picked, released and handed to docker races parallel lanes.
             jdbcUrl = try {
                 runDocker(
-                    "run", "-d",
-                    "--name", name,
-                    "-e", "POSTGRES_PASSWORD=$PG_PASSWORD",
-                    "-p", "127.0.0.1::5432",
-                    IMAGE,
+                    *ReaperLabels.dockerRun(
+                        "--name", name,
+                        "-e", "POSTGRES_PASSWORD=$PG_PASSWORD",
+                        "-p", "127.0.0.1::5432",
+                        IMAGE,
+                    ),
                 )
                 val url = "jdbc:postgresql://127.0.0.1:${publishedPort(name, 5432)}/postgres"
                 waitForReady(url)
@@ -78,7 +78,7 @@ class PostgresContainer : AutoCloseable {
             return
         }
         try {
-            runDocker("rm", "-f", name!!)
+            runDocker("rm", "-f", "-v", name!!)
         } catch (_: RuntimeException) {
             // Container may already be gone; ignore.
         }
@@ -128,7 +128,7 @@ class PostgresContainer : AutoCloseable {
     }
 
     private fun forceRemove() {
-        try { runDocker("rm", "-f", name!!) } catch (_: RuntimeException) { /* already gone */ }
+        try { runDocker("rm", "-f", "-v", name!!) } catch (_: RuntimeException) { /* already gone */ }
     }
 
     private fun inspectState(): String = try {
