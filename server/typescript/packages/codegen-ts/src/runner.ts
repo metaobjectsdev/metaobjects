@@ -887,6 +887,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
         includeRestRoutes,
         includeNames: namesTargets.has(selfTarget.name),
         includeReportExport: reportExportTargets.has(selfTarget.name),
+        reportExportInRun: reportExportTargets.size > 0,
         includeUiTier,
         includeUiTierExplicit,
         ...(routesExpose !== undefined && { routesExpose }),

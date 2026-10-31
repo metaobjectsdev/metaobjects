@@ -15,49 +15,41 @@
     "total": {
       "type": [
         "string",
-        "number",
         "null"
       ],
-      "description": "A decimal. Set wire.decimals to \"string\" to fix one form across server languages."
+      "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]*[1-9])?$"
     },
     "totalOrZero": {
-      "type": [
-        "string",
-        "number"
-      ],
-      "description": "A decimal. Set wire.decimals to \"string\" to fix one form across server languages."
+      "type": "string",
+      "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]*[1-9])?$"
     },
     "mean": {
       "type": [
         "string",
-        "number",
         "null"
       ],
-      "description": "A decimal. Set wire.decimals to \"string\" to fix one form across server languages."
+      "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]*[1-9])?$"
     },
     "top": {
       "type": [
         "string",
-        "number",
         "null"
       ],
-      "description": "A decimal. Set wire.decimals to \"string\" to fix one form across server languages. Precision 28, scale 10."
+      "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]*[1-9])?$"
     },
     "flaggedShare": {
       "type": [
         "string",
-        "number",
         "null"
       ],
-      "description": "A decimal. Set wire.decimals to \"string\" to fix one form across server languages."
+      "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]*[1-9])?$"
     },
     "perFlagged": {
       "type": [
         "string",
-        "number",
         "null"
       ],
-      "description": "A decimal. Set wire.decimals to \"string\" to fix one form across server languages."
+      "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]*[1-9])?$"
     }
   },
   "required": [

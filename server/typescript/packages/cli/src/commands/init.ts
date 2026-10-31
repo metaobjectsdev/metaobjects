@@ -139,8 +139,8 @@ export default defineConfig({
   //
   // Nothing is generated that this file does not declare, documentation included.
   //
-  // Need an output nothing in that catalog emits — OpenAPI, JSON Schema, a client, a
-  // service layer? Write your own generator; that is the normal path:
+  // Need an output nothing in that catalog emits — a client, a service layer? Write
+  // your own generator; that is the normal path:
   //
   //   meta generator new data-dictionary --scope model
   //

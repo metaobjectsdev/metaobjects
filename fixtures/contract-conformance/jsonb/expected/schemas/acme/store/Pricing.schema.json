@@ -5,10 +5,7 @@
   "type": "object",
   "properties": {
     "tiers": {
-      "type": [
-        "object",
-        "null"
-      ],
+      "type": "object",
       "additionalProperties": {
         "$ref": "./Tier.schema.json"
       }

@@ -1,1 +1,1 @@
-{ "meta": "fixtures/api-contract-conformance/write-through/meta.json" }
+{ "meta": "fixtures/api-contract-conformance/write-through/meta.json", "wire": {"decimals": "string", "nullMembers": "omit"} }

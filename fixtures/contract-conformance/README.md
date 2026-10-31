@@ -10,7 +10,8 @@ Each case is a directory.
 - `meta.json`, or `case.json` naming a shared metadata file. Most cases reuse an api-contract
   corpus model, because that is the surface every port's routes are held to.
 - `case.json` keys: `meta` (repository-relative), `wire` (the setting, as in
-  `.metaobjects/config.json`), `strictExclude` (objects the strict profile leaves out, because the
+  `.metaobjects/config.json`; a case on an api-contract model pins what that corpus pins, because the
+  integration suite holds that corpus's answers to this document), `strictExclude` (objects the strict profile leaves out, because the
   strict subset cannot state them) and `reportExport` (the project wires `report-export`).
 - `expected/`: the exact tree the emitters write: the canonical schemas, the strict schemas and
   `openapi.json`. Or `expected-error.txt`: the exact refusal.
@@ -43,4 +44,5 @@ document for that corpus.
 | `report` | The api-contract `report/` model: served reports, and the rest of the model around them. |
 | `secret-fields` | The api-contract `secret-fields/` model: a credential is not on the wire. |
 | `tph` | The api-contract `tph/` model: a polymorphic base and per-subtype routes. |
+| `tph-shared-marks` | Subtypes sharing a column that only one declaration marks as a credential or `@formExclude`. |
 | `write-through` | The api-contract `write-through/` model. |

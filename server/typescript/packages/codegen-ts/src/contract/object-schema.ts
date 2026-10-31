@@ -15,10 +15,11 @@ import {
   type MetaRoot,
   WIRE_NULL_MEMBERS_EMIT,
   WIRE_NULL_MEMBERS_OMIT,
+  type WireFormat,
   wireFormatOf,
 } from "@metaobjectsdev/metadata";
 import { DOC_ATTR_DESCRIPTION, OBJECT_SUBTYPE_VALUE } from "@metaobjectsdev/metadata/constants";
-import { isApiWriteDenied, isCredentialField, servesWriteApi } from "../api-surface.js";
+import { hiddenFieldNames, servesWriteApi, tphHierarchy, writeDeniedFieldNames } from "../api-surface.js";
 import { isAbstract } from "../instance-artifacts.js";
 import { tphPlan } from "../templates/tph-discriminator.js";
 import { insertSchemaFields, updateSchemaFields } from "../templates/zod-validators.js";
@@ -67,28 +68,28 @@ function polymorphicSchema(obj: MetaObject, env: ObjectSchemaEnv): JsonSchema | 
   return { oneOf, discriminator: { propertyName: plan.discriminatorField, mapping } };
 }
 
-function readSchema(obj: MetaObject, env: ObjectSchemaEnv): JsonSchema {
+function readSchema(obj: MetaObject, env: ObjectSchemaEnv, wire: WireFormat): JsonSchema {
   const polymorphic = polymorphicSchema(obj, env);
   if (polymorphic !== undefined) return polymorphic;
   const pk = new Set<string>(obj.primaryIdentity()?.fields ?? []);
   const pin = tphDiscriminatorPin(obj);
-  const nullMembers = wireFormatOf(obj).nullMembers;
+  const hidden = new Set(hiddenFieldNames(obj, tphHierarchy(obj, env.root)));
   const properties: Record<string, JsonSchema> = {};
   const required: string[] = [];
   // A credential is never on the wire: the key is absent, not null.
-  for (const field of obj.fields().filter((f) => !isCredentialField(f))) {
+  for (const field of obj.fields().filter((f) => !hidden.has(f.name))) {
     if (pin !== undefined && field.name === pin.fieldName) {
       properties[field.name] = { const: pin.value };
       required.push(field.name);
       continue;
     }
-    const schema = fieldSchema(field, "read", env.refFor);
+    const schema = fieldSchema(field, "read", env.refFor, wire);
     if (pk.has(field.name) || field.isRequired) {
       properties[field.name] = schema;
       required.push(field.name);
-    } else if (isValueObject(obj) && nullMembers === WIRE_NULL_MEMBERS_OMIT) {
+    } else if (isValueObject(obj) && wire.nullMembers === WIRE_NULL_MEMBERS_OMIT) {
       properties[field.name] = schema;
-    } else if (isValueObject(obj) && nullMembers !== WIRE_NULL_MEMBERS_EMIT) {
+    } else if (isValueObject(obj) && wire.nullMembers !== WIRE_NULL_MEMBERS_EMIT) {
       properties[field.name] = withNull(schema);
     } else {
       properties[field.name] = withNull(schema);
@@ -98,33 +99,40 @@ function readSchema(obj: MetaObject, env: ObjectSchemaEnv): JsonSchema {
   return objectBody(properties, required);
 }
 
-/** Whether a client writes this field: not a server-filled one, and not a write-denied one. */
-function isClientWritten(field: MetaField | undefined, serverSet: boolean | undefined): field is MetaField {
-  return field !== undefined && serverSet !== true && !isApiWriteDenied(field);
+/** The fields no client writes, as the routes decide it: across a TPH hierarchy's one table. */
+function writeDenied(obj: MetaObject, env: ObjectSchemaEnv): ReadonlySet<string> {
+  return new Set(writeDeniedFieldNames(obj, tphHierarchy(obj, env.root)));
 }
 
-function createSchema(obj: MetaObject, env: ObjectSchemaEnv): JsonSchema {
+/** Whether a client writes this field: not a server-filled one, and not a write-denied one. */
+function isClientWritten(field: MetaField | undefined, serverSet: boolean | undefined, denied: ReadonlySet<string>): field is MetaField {
+  return field !== undefined && serverSet !== true && !denied.has(field.name);
+}
+
+function createSchema(obj: MetaObject, env: ObjectSchemaEnv, wire: WireFormat): JsonSchema {
   const fieldByName = new Map(obj.fields().map((f) => [f.name, f]));
+  const denied = writeDenied(obj, env);
   const properties: Record<string, JsonSchema> = {};
   const required: string[] = [];
   for (const shape of insertSchemaFields(obj)) {
     const field = fieldByName.get(shape.name);
     // A TPH subtype's discriminator is injected from the URL, not read from the body.
-    if (shape.pinnedLiteral !== undefined || !isClientWritten(field, shape.autoSet)) continue;
-    properties[shape.name] = fieldSchema(field, "create", env.refFor);
+    if (shape.pinnedLiteral !== undefined || !isClientWritten(field, shape.autoSet, denied)) continue;
+    properties[shape.name] = fieldSchema(field, "create", env.refFor, wire);
     if (!shape.optional) required.push(shape.name);
   }
   return objectBody(properties, required);
 }
 
-function updateSchema(obj: MetaObject, env: ObjectSchemaEnv): JsonSchema {
+function updateSchema(obj: MetaObject, env: ObjectSchemaEnv, wire: WireFormat): JsonSchema {
   const fieldByName = new Map(obj.fields().map((f) => [f.name, f]));
   const pk = new Set<string>(obj.primaryIdentity()?.fields ?? []);
+  const denied = writeDenied(obj, env);
   const properties: Record<string, JsonSchema> = {};
   for (const shape of updateSchemaFields(obj)) {
     const field = fieldByName.get(shape.name);
-    if (!isClientWritten(field, shape.autoSet)) continue;
-    const schema = fieldSchema(field, "update", env.refFor);
+    if (!isClientWritten(field, shape.autoSet, denied)) continue;
+    const schema = fieldSchema(field, "update", env.refFor, wire);
     // FR-035: a present null clears a non-@required field. A key is never cleared.
     properties[shape.name] = field.isRequired || pk.has(shape.name) ? schema : withNull(schema);
   }
@@ -133,7 +141,8 @@ function updateSchema(obj: MetaObject, env: ObjectSchemaEnv): JsonSchema {
 
 /** The object's schema in one shape, without a document's `$schema` or `$id`. */
 export function objectSchema(obj: MetaObject, shape: ContractShape, env: ObjectSchemaEnv): JsonSchema {
-  const body = shape === "read" ? readSchema(obj, env) : shape === "create" ? createSchema(obj, env) : updateSchema(obj, env);
+  const wire = wireFormatOf(env.root);
+  const body = shape === "read" ? readSchema(obj, env, wire) : shape === "create" ? createSchema(obj, env, wire) : updateSchema(obj, env, wire);
   const description = obj.attr(DOC_ATTR_DESCRIPTION);
   return { ...(typeof description === "string" && { description }), ...body };
 }

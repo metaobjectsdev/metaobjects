@@ -9,10 +9,7 @@
       "maxLength": 40
     },
     "score": {
-      "type": [
-        "integer",
-        "null"
-      ],
+      "type": "integer",
       "format": "int32"
     }
   },

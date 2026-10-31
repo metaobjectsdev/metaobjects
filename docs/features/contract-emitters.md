@@ -50,10 +50,8 @@ the model.
 | both | `filter` | every object | Narrow what is covered. An object a kept one references stays, so a `$ref` never dangles. |
 | both | `target` | the default target | The named output target the files land under. |
 | `jsonSchemaFile` | `profile` | `"canonical"` | `"strict"` writes the structured-output subset. |
-| `jsonSchemaFile` | `baseUri` | the file's relative path | An absolute prefix for each `$id`, when a schema registry needs one. |
 | `openApiFile` | `title`, `version`, `description` | `API`, `0.0.0`, none | The document's `info`. |
 | `openApiFile` | `servers`, `securitySchemes`, `security` | none | Passed through untouched. See [Security](#security-and-servers). |
-| `openApiFile` | `path` | `openapi.json` | Where the file lands under the target. |
 | `openApiFile` | `expose` | what the routes generators declare, else every verb | The verbs your routes mount. Needed when another port generates them. |
 
 ## What it writes
@@ -86,7 +84,9 @@ A read, a create and an update differ in what is required and what may be null, 
 | create | `@required` fields | may be left out, may not be `null` | server-set fields, a generated key, `@formExclude`, credentials, a pinned TPH discriminator |
 | update | none | may be left out, and `null` clears them | server-set fields, `@formExclude`, credentials, a TPH discriminator |
 
-A nested value object in a write takes the target's create shape.
+A nested value object in a write takes the target's create shape. A column several TPH subtypes
+declare is one column, so a credential or `@formExclude` on one declaration holds on every subtype
+that has it, as it does in the routes.
 
 ## Types
 
@@ -147,9 +147,10 @@ of what those hosts accept.
 
 What the subset cannot state is refused, not dropped, because a schema narrowed in silence gives a
 model a different contract from the one you declared. A map, an open object, a recursive type or a
-reference to a polymorphic TPH base stops the run with `ERR_CONTRACT_STRICT_UNREPRESENTABLE`, naming
-the path. Leave that object out with `filter`. A TPH base gets no strict file of its own, because each
-of its subtypes has one.
+reference to a polymorphic TPH base reached through a read shape, that is, from an object with no
+create shape, stops the run with `ERR_CONTRACT_STRICT_UNREPRESENTABLE`, naming the path. Leave that
+object out with `filter`. A reference from a create shape inlines the base's own create fields. A TPH
+base gets no strict file of its own, because each of its subtypes has one.
 
 ## The OpenAPI document
 

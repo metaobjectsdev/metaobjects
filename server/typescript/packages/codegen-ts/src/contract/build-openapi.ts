@@ -311,15 +311,10 @@ function verbsOf(fixed: readonly CrudVerb[], obj: MetaObject, expose: ExposeOpti
   return new Set<CrudVerb>(intersectExpose([...fixed], resolveExpose(obj, expose)));
 }
 
-function pathsOf(
-  obj: MetaObject,
-  input: OpenApiBuildInput,
-  reportNames: ReadonlySet<string>,
-  refs: PathRefs,
-): Record<string, JsonSchema> {
+function pathsOf(obj: MetaObject, input: OpenApiBuildInput, refs: PathRefs): Record<string, JsonSchema> {
   const { root, apiPrefix, expose, relationMap } = input;
   const path = servedPath(obj, apiPrefix);
-  const report = reportNames.has(obj.name);
+  const report = isReport(obj);
   if (isProjection(obj)) {
     return resourcePaths({
       row: obj, path, report, reportExport: report && input.reportExport, item: hasItemRoute(obj), refs,
@@ -408,12 +403,11 @@ function collectSchemas(input: OpenApiBuildInput, refs: PathRefs): Record<string
 
 /** The whole document, in the key order it is written. */
 export function buildOpenApiDocument(input: OpenApiBuildInput): JsonSchema {
-  const reportNames = new Set(input.root.objects().filter(isReport).map((o) => o.name));
   const objects = [...input.objects].sort(byName);
   const served = objects.filter((o) => servesReadApi(o) && !isTphSubtype(o) && (input.mounted?.(o) ?? true));
   const paths: Record<string, JsonSchema> = {};
   const refs: PathRefs = { shapes: [], listed: new Set() };
-  for (const obj of served) Object.assign(paths, pathsOf(obj, input, reportNames, refs));
+  for (const obj of served) Object.assign(paths, pathsOf(obj, input, refs));
   refuseDuplicateOperationIds(paths);
   return {
     openapi: OPENAPI_VERSION,

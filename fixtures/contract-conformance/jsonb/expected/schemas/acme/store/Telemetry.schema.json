@@ -13,10 +13,7 @@
       "format": "double"
     },
     "tempC": {
-      "type": [
-        "integer",
-        "null"
-      ],
+      "type": "integer",
       "format": "int32"
     }
   },

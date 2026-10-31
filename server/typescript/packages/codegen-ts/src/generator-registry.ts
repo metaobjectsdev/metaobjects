@@ -271,7 +271,7 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
     tier: "neutral",
     factory: () => jsonSchemaFile(),
     factoryExport: "jsonSchemaFile",
-    options: "profile?, baseUri?, filter?, target?",
+    options: "profile?, filter?, target?",
     // The files import nothing, and a validator is whatever the reader already has.
     requires: [],
     runtimePackages: [],
@@ -288,7 +288,7 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
     tier: "neutral",
     factory: () => openApiFile(),
     factoryExport: "openApiFile",
-    options: "title?, version?, description?, servers?, securitySchemes?, security?, path?, expose?, filter?, target?",
+    options: "title?, version?, description?, servers?, securitySchemes?, security?, expose?, filter?, target?",
     // The document imports nothing. It reads the routes generators' `expose` when they are wired,
     // and does not need them: another port's routes answer the same contract.
     requires: [],

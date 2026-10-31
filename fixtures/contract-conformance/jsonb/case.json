@@ -1,1 +1,1 @@
-{ "meta": "fixtures/api-contract-conformance/jsonb/meta.json", "strictExclude": ["Document", "Pricing"] }
+{ "meta": "fixtures/api-contract-conformance/jsonb/meta.json", "wire": {"decimals": "string", "nullMembers": "omit"}, "strictExclude": ["Document", "Pricing"] }

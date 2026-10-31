@@ -13,7 +13,7 @@ import {
   type MetaField,
   type MetaObject,
   WIRE_DECIMALS_STRING,
-  wireFormatOf,
+  type WireFormat,
 } from "@metaobjectsdev/metadata";
 import {
   DB_COLUMN_TYPE_JSONB,
@@ -103,7 +103,7 @@ function decimalPrecisionNote(field: MetaField): string {
 }
 
 /** A decimal. An answer follows `wire.decimals`; a request takes either form in every mode. */
-function decimalSchema(field: MetaField, shape: ContractShape): JsonSchema {
+function decimalSchema(field: MetaField, shape: ContractShape, wire: WireFormat): JsonSchema {
   const note = decimalPrecisionNote(field);
   if (shape !== "read") {
     return {
@@ -112,7 +112,7 @@ function decimalSchema(field: MetaField, shape: ContractShape): JsonSchema {
       description: `A decimal, as a string in JSON-number grammar or a JSON number.${note}`,
     };
   }
-  if (wireFormatOf(field).decimals === WIRE_DECIMALS_STRING) {
+  if (wire.decimals === WIRE_DECIMALS_STRING) {
     return { type: "string", pattern: DECIMAL_CANONICAL_PATTERN };
   }
   return {
@@ -154,11 +154,11 @@ export function enumSchema(field: MetaField): JsonSchema {
 }
 
 /** One value of a field that holds no reference to another object. */
-function plainValueSchema(field: MetaField, shape: ContractShape): JsonSchema {
+function plainValueSchema(field: MetaField, shape: ContractShape, wire: WireFormat): JsonSchema {
   const lenient = field.attr(FIELD_ATTR_LENIENT) === true;
   switch (field.subType) {
     case FIELD_SUBTYPE_DECIMAL:
-      return decimalSchema(field, shape);
+      return decimalSchema(field, shape, wire);
     case FIELD_SUBTYPE_TIMESTAMP:
       if (shape !== "read") return timestampInputSchema(field);
       return field.attr(FIELD_ATTR_LOCAL_TIME) === true
@@ -264,13 +264,16 @@ function joinDescription(first: unknown, second: unknown): string | undefined {
   return parts.length === 0 ? undefined : parts.join(" ");
 }
 
-/** The JSON Schema of a field's value in one shape. Null is the caller's to add: see `withNull`. */
-export function fieldSchema(field: MetaField, shape: ContractShape, refFor: RefFor): JsonSchema {
+/**
+ * The JSON Schema of a field's value in one shape. Null is the caller's to add: see `withNull`.
+ * `wire` is the loaded root's setting: a report's read model has no root of its own to read.
+ */
+export function fieldSchema(field: MetaField, shape: ContractShape, refFor: RefFor, wire: WireFormat): JsonSchema {
   const value: JsonSchema = field.subType === FIELD_SUBTYPE_OBJECT
     ? objectValueSchema(field, shape, refFor)
     : field.subType === FIELD_SUBTYPE_MAP
       ? mapValueSchema(field, shape, refFor)
-      : plainValueSchema(field, shape);
+      : plainValueSchema(field, shape, wire);
 
   const bounds = boundsOf(field);
   let schema = value;

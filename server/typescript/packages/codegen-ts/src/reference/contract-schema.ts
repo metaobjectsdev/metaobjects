@@ -49,8 +49,6 @@ const SHAPE_INFIX: Record<ContractShape, string> = { read: "", create: ".create"
 export interface JsonSchemaFileOptions {
   /** `canonical` is full fidelity. `strict` is the structured-output subset. Default: canonical. */
   readonly profile?: "canonical" | "strict";
-  /** An absolute prefix for each `$id`, when a registry needs one. Default: the file's relative path. */
-  readonly baseUri?: string;
   /** Narrow which objects get a file. An object a kept one references still gets its own. */
   readonly filter?: (obj: MetaObject) => boolean;
   /** Named output target: the files land under its outDir. */
@@ -81,12 +79,11 @@ function renderJson(value: JsonSchema): string {
   return `${JSON.stringify(value, null, 2)}\n`;
 }
 
-function canonicalFiles(objects: readonly MetaObject[], root: MetaRoot, baseUri: string | undefined): EmittedFile[] {
+function canonicalFiles(objects: readonly MetaObject[], root: MetaRoot): EmittedFile[] {
   return collectContractEntries(objects, root, relativeRef).map(({ obj, shape, schema }) => {
     const path = schemaPath(obj, shape);
     const title = shape === "read" ? obj.name : `${obj.name}${SHAPE_INFIX[shape]}`;
-    const $id = baseUri === undefined ? path : `${baseUri.replace(/\/$/, "")}/${path}`;
-    return { path, content: renderJson({ $schema: JSON_SCHEMA_DIALECT, $id, title, ...schema }) };
+    return { path, content: renderJson({ $schema: JSON_SCHEMA_DIALECT, $id: path, title, ...schema }) };
   });
 }
 
@@ -100,7 +97,7 @@ function strictFiles(objects: readonly MetaObject[], root: MetaRoot): EmittedFil
 function generateSchemaFiles(ctx: GenContext, options: JsonSchemaFileOptions): EmittedFile[] {
   const root = ctx.loadedRoot;
   const objects = contractObjects(ctx.entities.filter(ctx.matches), root);
-  return options.profile === "strict" ? strictFiles(objects, root) : canonicalFiles(objects, root, options.baseUri);
+  return options.profile === "strict" ? strictFiles(objects, root) : canonicalFiles(objects, root);
 }
 
 /** JSON Schema files for the model's objects, in one profile. List it twice for both. */

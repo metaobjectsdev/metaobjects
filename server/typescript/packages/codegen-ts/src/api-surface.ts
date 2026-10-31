@@ -40,14 +40,15 @@ import {
   type MetaData,
   type MetaField,
   type MetaObject,
+  type MetaRoot,
 } from "@metaobjectsdev/metadata";
 import { isAbstract } from "./instance-artifacts.js";
 import { isProjection } from "./projection/projection-detector.js";
 import { hasAnyRdbSource, hasWritableRdbSource, isReport, servedReport } from "./source-detect.js";
 import { getPkFields } from "./pk-resolver.js";
 import { resourcePath, restPath } from "./templates/entity-ui-descriptor.js";
-import { declaresTphDiscriminator, isTphSubtype, tphDiscriminatorBase, tphDiscriminatorPin } from "./tph.js";
-import { tphRouteSegment } from "./templates/tph-discriminator.js";
+import { declaresTphDiscriminator, isTphSubtype, tphDiscriminatorBase, tphDiscriminatorPin, tphStorageObject } from "./tph.js";
+import { tphPlan, tphRouteSegment } from "./templates/tph-discriminator.js";
 
 /**
  * True when the object is served by a generated READ endpoint.
@@ -185,13 +186,29 @@ function markedFieldNames(
   return [...new Set(objects.flatMap((o) => o.fields().map((f) => f.name)))].filter((n) => marked.has(n));
 }
 
+/** The objects that share `obj`'s table: a TPH base and every subtype, else `obj` alone. */
+export function tphHierarchy(obj: MetaObject, root: MetaRoot): readonly MetaObject[] {
+  const plan = tphPlan(tphStorageObject(obj), root);
+  return plan === null ? [obj] : [plan.base, ...plan.subtypes.map((s) => s.entity)];
+}
+
+/** The names of the fields of `obj` no route reads: a credential on any declaration in `hierarchy`. */
+export function hiddenFieldNames(obj: MetaObject, hierarchy: readonly MetaObject[] = [obj]): string[] {
+  return markedFieldNames([obj], hierarchy, isCredentialField);
+}
+
+/** The names of the fields of `obj` no route writes: denied on any declaration in `hierarchy`. */
+export function writeDeniedFieldNames(obj: MetaObject, hierarchy: readonly MetaObject[] = [obj]): string[] {
+  return markedFieldNames([obj], hierarchy, isApiWriteDenied);
+}
+
 /**
  * The `writeDeniedColumns` line of a mount that accepts writes, or "" when no field is denied
  * (the output stays byte-identical for a model with no `@formExclude` or credential field).
  * `hierarchy` is a TPH subtype's base and every subtype, when the mount serves one.
  */
 export function writeDeniedColumnsLine(entity: MetaObject, indent: string, hierarchy: readonly MetaObject[] = [entity]): string {
-  const names = markedFieldNames([entity], hierarchy, isApiWriteDenied);
+  const names = writeDeniedFieldNames(entity, hierarchy);
   return names.length === 0 ? "" : `\n${indent}writeDeniedColumns: ${JSON.stringify(names)},`;
 }
 

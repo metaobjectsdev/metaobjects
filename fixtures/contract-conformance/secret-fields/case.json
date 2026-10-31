@@ -1,1 +1,1 @@
-{ "meta": "fixtures/api-contract-conformance/secret-fields/meta.json" }
+{ "meta": "fixtures/api-contract-conformance/secret-fields/meta.json", "wire": {"decimals": "string", "nullMembers": "omit"} }

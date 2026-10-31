@@ -14,20 +14,16 @@
         "null"
       ],
       "items": {
-        "type": [
-          "string",
-          "number"
-        ],
-        "description": "A decimal. Set wire.decimals to \"string\" to fix one form across server languages. Precision 9, scale 4."
+        "type": "string",
+        "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]*[1-9])?$"
       }
     },
     "free": {
       "type": [
         "string",
-        "number",
         "null"
       ],
-      "description": "A decimal. Set wire.decimals to \"string\" to fix one form across server languages."
+      "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]*[1-9])?$"
     }
   },
   "required": [

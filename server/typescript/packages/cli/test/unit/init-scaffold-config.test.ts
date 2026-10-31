@@ -22,6 +22,16 @@ describe("meta init scaffolds metaobjects.config.ts", () => {
     expect(result.created).toContain("metaobjects.config.ts");
   });
 
+  // The sentence sends a reader to `meta generator new` for what no catalog entry emits, so
+  // it may not name an output the catalog ships.
+  test("does not send a reader to hand-write what the catalog ships", async () => {
+    await init({ cwd: tmp, quiet: true });
+    const body = readFileSync(join(tmp, "metaobjects.config.ts"), "utf-8");
+    const sentence = /Need an output nothing in that catalog emits[^?]*\?/.exec(body.replace(/\n\s*\/\/\s*/g, " "))?.[0];
+    expect(sentence).toBeDefined();
+    for (const shipped of ["OpenAPI", "JSON Schema"]) expect(sentence).not.toContain(shipped);
+  });
+
   // ADR-0034 Amendment 9: nothing is generated that the config does not declare, and
   // `meta init` declares nothing, documentation included. It writes no `docs` block (the 1.0
   // shape `meta gen` now refuses) and wires no docs generator; it says how to add one.

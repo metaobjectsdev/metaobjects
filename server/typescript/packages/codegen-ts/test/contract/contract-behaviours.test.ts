@@ -10,7 +10,7 @@ import type { MetaObject } from "@metaobjectsdev/metadata";
 import { type ContractCase, contractCases, contractTree, loadCaseModel } from "../../scripts/gen-contract-conformance.js";
 import { readTree } from "../../scripts/gen-cube-model-canonical.js";
 import { DECIMAL_CANONICAL_PATTERN } from "../../src/contract/field-schema.js";
-import { jsonSchemaFile, openApiFile } from "../../src/generators/index.js";
+import { jsonSchemaFile, openApiFile, reportExport, routesFile } from "../../src/generators/index.js";
 import { defineConfig, type Generator, runGen } from "../../src/index.js";
 import { jsonSchemaFile as refJsonSchemaFile } from "../../src/reference/contract-schema.js";
 import { openApiFile as refOpenApiFile } from "../../src/reference/openapi.js";
@@ -26,6 +26,8 @@ function corpusCase(name: string): ContractCase {
 
 interface RunOptions {
   entityFilter?: string[];
+  /** Named targets, each landing in a directory of its own beside the default one. */
+  targets?: string[];
 }
 
 async function emit(c: ContractCase, generators: Generator[], run: RunOptions = {}): Promise<Map<string, string>> {
@@ -34,7 +36,14 @@ async function emit(c: ContractCase, generators: Generator[], run: RunOptions = 
   try {
     const outDir = join(dir, "out");
     await runGen({
-      config: defineConfig({ outDir, dialect: "postgres", apiPrefix: "/api", generators }),
+      config: defineConfig({
+        outDir,
+        dialect: "postgres",
+        dbImport: "./db",
+        apiPrefix: "/api",
+        generators,
+        ...(run.targets !== undefined && { targets: Object.fromEntries(run.targets.map((t) => [t, { outDir: join(dir, t) }])) }),
+      }),
       metadata: root,
       genStateDir: join(dir, ".gen-state"),
       ...(run.entityFilter !== undefined && { entityFilter: run.entityFilter }),
@@ -58,6 +67,15 @@ function validatorOf(tree: ReadonlyMap<string, string>, path: string): (value: u
   const validate = ajv.getSchema(jsonAt(tree, path)["$id"] as string);
   if (validate === undefined) throw new Error(`${path} did not compile`);
   return (value) => validate(value) as boolean;
+}
+
+/** Whether the document's report list takes `format`, and answers CSV. */
+function reportExportOn(tree: ReadonlyMap<string, string>): boolean {
+  const paths = jsonAt(tree, "openapi.json")["paths"] as Record<string, { get: { parameters: { name: string }[]; responses: Record<string, { content: JsonDoc }> } }>;
+  const { get } = paths["/api/invoice_totals"]!;
+  const format = get.parameters.some((p) => p.name === "format");
+  expect("text/csv" in get.responses["200"]!.content).toBe(format);
+  return format;
 }
 
 const ALL_FIELDS = "schemas/acme/contract/AllFields";
@@ -102,6 +120,21 @@ describe("a read answers what the wire setting says", () => {
     const canonical = new RegExp(DECIMAL_CANONICAL_PATTERN);
     for (const ok of ["0", "-1", "19.99", "0.5", "1000"]) expect(canonical.test(ok), ok).toBe(true);
     for (const bad of ["1e3", "+1", "1.", ".5", "01", "1.50"]) expect(canonical.test(bad), bad).toBe(false);
+  });
+
+  test("a report's decimal follows the setting, as an entity's does", async () => {
+    const decimal = corpusCase("decimal");
+    const ledger = "schemas/acme/ledger";
+    const pinned = await contractTree({ ...decimal, wire: { decimals: "string" } });
+    const native = await contractTree({ ...decimal, wire: { decimals: "native" } });
+    const total = (tree: ReadonlyMap<string, string>, object: string): JsonDoc =>
+      (jsonAt(tree, `${ledger}/${object}.schema.json`)["properties"] as Record<string, JsonDoc>)["total"]!;
+    expect(total(pinned, "EntryTotals")).toEqual({ type: ["string", "null"], pattern: DECIMAL_CANONICAL_PATTERN });
+    expect(total(native, "EntryTotals")["type"]).toEqual(["string", "number", "null"]);
+    const inDocument = (jsonAt(pinned, "openapi.json")["components"] as { schemas: Record<string, { properties: Record<string, JsonDoc> }> }).schemas;
+    expect(inDocument["EntryTotals"]!.properties["total"]).toEqual(total(pinned, "EntryTotals"));
+    const strict = (jsonAt(pinned, `${ledger}/EntryTotals.strict.schema.json`)["properties"] as Record<string, JsonDoc>)["total"]!;
+    expect(strict["type"]).toEqual(["string", "null"]);
   });
 
   test("nullMembers: omit leaves a null member out of a value object", async () => {
@@ -163,12 +196,15 @@ describe("a write takes what a route takes", () => {
   });
 
   test("a report's list route takes format only when the project wires report-export", async () => {
-    const formatOn = (tree: ReadonlyMap<string, string>): boolean => {
-      const list = (jsonAt(tree, "openapi.json")["paths"] as Record<string, { get: { parameters: { name: string }[] } }>)["/api/invoice_totals"]!;
-      return list.get.parameters.some((p) => p.name === "format");
-    };
-    expect(formatOn(await contractTree(corpusCase("report")))).toBe(true);
-    expect(formatOn(await emit(corpusCase("report"), [openApiFile({ title: "t", version: "1" })]))).toBe(false);
+    expect(reportExportOn(await contractTree(corpusCase("report")))).toBe(true);
+    expect(reportExportOn(await emit(corpusCase("report"), [openApiFile({ title: "t", version: "1" })]))).toBe(false);
+  });
+
+  test("the document states format when report-export lands in another target", async () => {
+    for (const factory of [openApiFile, refOpenApiFile]) {
+      const tree = await emit(corpusCase("report"), [factory({ title: "t", version: "1" }), reportExport({ target: "api" })], { targets: ["api"] });
+      expect(reportExportOn(tree)).toBe(true);
+    }
   });
 });
 
@@ -206,6 +242,26 @@ describe("the three shapes", () => {
     expect(keysOf(`${account}.create.schema.json`)).toEqual(["name"]);
     expect(keysOf(`${account}.update.schema.json`)).toEqual(["name"]);
     expect(tree.get("openapi.json")).not.toContain("pinHash");
+  });
+
+  test("a mark on one subtype's column holds on every subtype, as the routes hold it", async () => {
+    const c = corpusCase("tph-shared-marks");
+    const tree = await contractTree(c);
+    const keysOf = (path: string): string[] => Object.keys(jsonAt(tree, path)["properties"] as JsonDoc);
+    const copay = "schemas/acme/auth/CopayAuth";
+    const bridge = "schemas/acme/auth/BridgeAuth";
+    const row = { id: 1, type: "Copay", reference: "R-1", auditRef: "A-1" };
+    expect(validatorOf(tree, `${copay}.schema.json`)(row)).toBe(true);
+    expect(keysOf(`${copay}.schema.json`)).not.toContain("token");
+    expect(keysOf(`${bridge}.schema.json`)).not.toContain("token");
+    for (const shape of ["create", "update"]) {
+      expect(keysOf(`${copay}.${shape}.schema.json`)).toEqual(["reference"]);
+      expect(keysOf(`${bridge}.${shape}.schema.json`)).toEqual(["reference"]);
+    }
+
+    const routes = [...(await emit(c, [routesFile()])).values()].join("\n");
+    expect(routes).toContain(`hiddenColumns: ["token"]`);
+    expect(routes).toContain(`writeDeniedColumns: ["token", "auditRef"]`);
   });
 
   test("a projection and a report read, and nothing writes them", async () => {
@@ -279,14 +335,6 @@ describe("what a project's run changes", () => {
     expect(verbsOf("/api/authors/{id}")).toEqual(["get"]);
   });
 
-  test("baseUri prefixes every $id, and the relative $refs still resolve", async () => {
-    const baseUri = "https://schemas.example.com/v1/";
-    const tree = await emit(corpusCase("all-fields"), [jsonSchemaFile({ baseUri })]);
-    const id = jsonAt(tree, `${ALL_FIELDS}.schema.json`)["$id"] as string;
-    expect(id).toBe(`${baseUri}${ALL_FIELDS}.schema.json`);
-    validatorOf(tree, `${ALL_FIELDS}.schema.json`);
-  });
-
   test("title, version, servers and security are options, and pass through untouched", async () => {
     const tree = await emit(corpusCase("blog"), [openApiFile({
       title: "Blog API",
@@ -303,13 +351,9 @@ describe("what a project's run changes", () => {
     expect((doc["components"] as JsonDoc)["securitySchemes"]).toEqual({ bearer: { type: "http", scheme: "bearer" } });
   });
 
-  test("the path option moves the document, and the strict profile writes only .strict files", async () => {
-    const tree = await emit(corpusCase("blog"), [
-      openApiFile({ title: "t", version: "1", path: "api/openapi.json" }),
-      jsonSchemaFile({ profile: "strict" }),
-    ]);
-    expect(tree.has("api/openapi.json")).toBe(true);
-    const schemas = [...tree.keys()].filter((p) => p.endsWith(".json") && p !== "api/openapi.json");
+  test("the strict profile writes only .strict files", async () => {
+    const tree = await emit(corpusCase("blog"), [jsonSchemaFile({ profile: "strict" })]);
+    const schemas = [...tree.keys()].filter((p) => p.endsWith(".json"));
     expect(schemas.length).toBeGreaterThan(0);
     for (const p of schemas) expect(p.endsWith(".strict.schema.json"), p).toBe(true);
   });

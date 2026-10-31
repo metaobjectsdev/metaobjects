@@ -14,7 +14,7 @@
 //                filter, sort and paging parameters, the error envelope, and the model's wire
 //                shapes as components.
 // customize:     which objects it covers (`documentObjects`, narrowed by the `filter` option) and
-//                where the file lands (the `path` option). Copied beside it, so yours too:
+//                where the file lands (the `target` option). Copied beside it, so yours too:
 //                `buildOpenApiDocument`, which decides which operations exist and what each one
 //                answers. If your API has routes of its own, that is the file to change.
 // composes-with: contract-schema, whose canonical schemas are these components. Reads what the
@@ -40,11 +40,9 @@ import type { MetaObject } from "@metaobjectsdev/metadata";
 /** The generator's stable name. */
 const GENERATOR_NAME = "openapi";
 
-const DEFAULT_PATH = "openapi.json";
+const DOCUMENT_PATH = "openapi.json";
 
 export interface OpenApiFileOptions extends OpenApiDocumentOptions {
-  /** Output path relative to the target's outDir. Default: `openapi.json`. */
-  readonly path?: string;
   /**
    * The verbs your routes mount, for a project whose routes this run does not generate (a port
    * other than TypeScript). Default: what the routes generators in this run declare, else all of them.
@@ -65,7 +63,7 @@ function documentObjects(ctx: GenContext): MetaObject[] {
 
 /** One OpenAPI 3.1 document for the whole model. */
 export function openApiFile(options: OpenApiFileOptions = {}): Generator {
-  const { path, expose, filter, target, ...document } = options;
+  const { expose, filter, target, ...document } = options;
   const generator: Generator = {
     name: GENERATOR_NAME,
     generate: (ctx) => {
@@ -78,11 +76,11 @@ export function openApiFile(options: OpenApiFileOptions = {}): Generator {
         objects: documentObjects(ctx),
         apiPrefix: ctx.renderContext?.apiPrefix ?? "",
         relationMap: ctx.renderContext?.relationMap ?? new Map(),
-        reportExport: ctx.config.includeReportExport ?? false,
+        reportExport: ctx.config.reportExportInRun ?? false,
         ...(surface !== undefined && { expose: surface }),
         ...(mounted !== undefined && { mounted }),
       });
-      return [{ path: path ?? DEFAULT_PATH, content: `${JSON.stringify(doc, null, 2)}\n` }];
+      return [{ path: DOCUMENT_PATH, content: `${JSON.stringify(doc, null, 2)}\n` }];
     },
   };
   if (filter !== undefined) generator.filter = filter;
