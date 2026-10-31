@@ -1,0 +1,7 @@
+{
+  "api/src/generated/Customer.ts": "d9006b83967730e33605fca1f21440e2d854dcc8889e4bed47f33d606a957864",
+  "api/src/generated/WelcomePayload.ts": "791e8ce00f4737d5f9cea4ba3a53c801cfa873bff24cdb4a79e7a8f4f28ee7f6",
+  "worker/generated/Customer.py": "89650fb2d0fdd0d4f27611d31db55daf715de21b121cb36934646dbdccb033ee",
+  "worker/generated/WelcomePayload.py": "1a301352d76fac08c92f6515b95fd1a4c3bc5a7dec94d8a802d9ae358bafbfb0",
+  "worker/generated/__init__.py": "daa04cec586768866d0996c779f62073e6773fe63750ff668327991fac2fd0f5"
+}
