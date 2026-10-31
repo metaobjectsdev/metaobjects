@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/acme/store/Document.update.schema.json",
+  "title": "Document.update",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "payload": {},
+    "primaryMarker": {
+      "$ref": "./Marker.create.schema.json"
+    },
+    "optionalMarker": {
+      "anyOf": [
+        {
+          "$ref": "./Marker.create.schema.json"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "markers": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "items": {
+        "$ref": "./Marker.create.schema.json"
+      }
+    },
+    "measure": {
+      "anyOf": [
+        {
+          "$ref": "./Measure.create.schema.json"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "measures": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "items": {
+        "$ref": "./Measure.create.schema.json"
+      }
+    },
+    "telemetry": {
+      "anyOf": [
+        {
+          "$ref": "./Telemetry.create.schema.json"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "tiers": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": {
+        "$ref": "./Tier.create.schema.json"
+      }
+    },
+    "pricing": {
+      "anyOf": [
+        {
+          "$ref": "./Pricing.create.schema.json"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  }
+}

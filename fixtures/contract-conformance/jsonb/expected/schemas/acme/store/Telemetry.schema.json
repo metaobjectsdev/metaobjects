@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/acme/store/Telemetry.schema.json",
+  "title": "Telemetry",
+  "type": "object",
+  "properties": {
+    "capturedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "latitude": {
+      "type": "number",
+      "format": "double"
+    },
+    "tempC": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "format": "int32"
+    }
+  },
+  "required": [
+    "capturedAt",
+    "latitude"
+  ]
+}

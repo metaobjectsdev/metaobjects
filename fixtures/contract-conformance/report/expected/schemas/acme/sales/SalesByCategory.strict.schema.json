@@ -1,0 +1,38 @@
+{
+  "title": "SalesByCategory",
+  "type": "object",
+  "properties": {
+    "categoryName": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "sales": {
+      "type": "integer"
+    },
+    "revenueCents": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "maxCents": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "largeSales": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "categoryName",
+    "sales",
+    "revenueCents",
+    "maxCents",
+    "largeSales"
+  ],
+  "additionalProperties": false
+}

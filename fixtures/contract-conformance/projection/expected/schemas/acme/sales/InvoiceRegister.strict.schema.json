@@ -1,0 +1,21 @@
+{
+  "title": "InvoiceRegister",
+  "type": "object",
+  "properties": {
+    "regNo": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "reference": {
+      "description": "Maximum length: 40.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "regNo",
+    "reference"
+  ],
+  "additionalProperties": false
+}

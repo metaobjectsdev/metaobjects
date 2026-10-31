@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/acme/sales/Invoice.schema.json",
+  "title": "Invoice",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "integer",
+      "format": "int64"
+    },
+    "reference": {
+      "type": "string",
+      "maxLength": 40
+    },
+    "status": {
+      "type": "string",
+      "maxLength": 20
+    },
+    "amountCents": {
+      "type": "integer",
+      "format": "int64"
+    },
+    "discount": {
+      "type": [
+        "string",
+        "number",
+        "null"
+      ],
+      "description": "A decimal. Set wire.decimals to \"string\" to fix one form across server languages. Precision 10, scale 2."
+    },
+    "weight": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "format": "float"
+    }
+  },
+  "required": [
+    "id",
+    "reference",
+    "status",
+    "amountCents",
+    "discount",
+    "weight"
+  ]
+}

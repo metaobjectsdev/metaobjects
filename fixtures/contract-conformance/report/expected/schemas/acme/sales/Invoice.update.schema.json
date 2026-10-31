@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/acme/sales/Invoice.update.schema.json",
+  "title": "Invoice.update",
+  "type": "object",
+  "properties": {
+    "reference": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 40
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "OPEN",
+        "PAID",
+        "VOID"
+      ]
+    },
+    "amountCents": {
+      "type": "integer",
+      "format": "int64"
+    },
+    "issuedOn": {
+      "type": "string",
+      "format": "date"
+    },
+    "disputed": {
+      "type": "boolean"
+    }
+  }
+}

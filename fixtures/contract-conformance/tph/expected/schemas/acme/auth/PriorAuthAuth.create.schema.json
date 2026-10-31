@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/acme/auth/PriorAuthAuth.create.schema.json",
+  "title": "PriorAuthAuth.create",
+  "type": "object",
+  "properties": {
+    "reference": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80
+    },
+    "issuedCurrency": {
+      "type": "string",
+      "maxLength": 3
+    },
+    "approver": {
+      "type": "string",
+      "maxLength": 80
+    }
+  },
+  "required": [
+    "reference"
+  ]
+}

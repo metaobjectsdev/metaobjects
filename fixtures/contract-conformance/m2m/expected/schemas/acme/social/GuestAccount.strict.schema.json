@@ -1,0 +1,22 @@
+{
+  "title": "GuestAccount",
+  "type": "object",
+  "properties": {
+    "handle": {
+      "description": "Minimum length: 1. Maximum length: 80.",
+      "type": "string"
+    },
+    "invitedBy": {
+      "description": "Maximum length: 80.",
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "handle",
+    "invitedBy"
+  ],
+  "additionalProperties": false
+}

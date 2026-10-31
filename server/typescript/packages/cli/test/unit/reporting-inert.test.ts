@@ -24,6 +24,10 @@
 // a cube only the rollup of a served one (here StoreTotals), and a selection that matches no
 // entity with that vocabulary gets no cube at all.
 //
+// The contract emitters (FR-022) follow the served line in their own shapes: `contract-schema`
+// adds the report's one schema file, and `openapi`, one document for the whole model, gains the
+// report's one list path and its three schemas, which the test reads from the parsed document.
+//
 // The model pair lives in fixtures/codegen-noop/reporting/ and is shared with the other
 // four ports' copies of this test. `with/` carries a report that declares a read-only
 // `source.rdb @kind: view` (R5 allows one): that is the case that once leaked in C#, where
@@ -143,6 +147,7 @@ const SERVED_REPORT_FILES: Readonly<Record<string, readonly string[]>> = {
   hooks: [`${OUT}/StoreTotals.hooks.ts`, `${OUT}/StoreTotals.meta.ts`],
   // The export spec for the report's list route, and the project's one shared writer module.
   "report-export": [`${OUT}/StoreTotals.export.ts`, `${OUT}/report-export-writers.ts`],
+  "contract-schema": [`${OUT}/schemas/acme/shop/StoreTotals.schema.json`],
 };
 /**
  * FR-044 Plan 4: the files `cube-model` writes for `with/`, and none for `without/`. It writes
@@ -171,6 +176,8 @@ const BARREL = `${OUT}/index.ts`;
 /** The agent UI page, which `agent-docs` writes when the run also wires the client tier. It
  *  is one page for the whole model, so a served report adds its section to it. */
 const AGENT_UI_PAGE = `${OUT}/agent/ui.md`;
+/** The OpenAPI document, one for the whole model, so a served report adds to it. */
+const OPENAPI_DOC = `${OUT}/openapi.json`;
 /** The client UI generators that emit NOTHING for a report: a report has a list hook and no
  *  grid, grid hook or form. */
 const UI_TIER = ["grid", "grid-hook", "form"] as const;
@@ -196,6 +203,26 @@ function expectOnlyAdds(
   for (const name of SOURCELESS_REPORTS) {
     expect(Object.keys(actual).filter((p) => p.includes(name))).toEqual([]);
   }
+}
+
+interface OpenApiDoc {
+  paths: Record<string, unknown>;
+  components: { schemas: Record<string, unknown> };
+}
+
+/** The OpenAPI document moves by the served report's list path and its three schemas alone:
+ *  everything else in it is unchanged, and a sourceless report appears nowhere. */
+function expectOpenApiAddsOnlyTheServedReport(before: string, after: string): void {
+  const was = JSON.parse(before) as OpenApiDoc;
+  const now = JSON.parse(after) as OpenApiDoc;
+  expect(Object.keys(now.paths).filter((p) => !(p in was.paths))).toEqual(["/store_totals"]);
+  expect(Object.keys(now.components.schemas).filter((s) => !(s in was.components.schemas)).sort())
+    .toEqual(["StoreTotals", "StoreTotalsList", "StoreTotalsPage"]);
+  for (const [path, item] of Object.entries(was.paths)) expect(now.paths[path]).toEqual(item);
+  for (const [name, schema] of Object.entries(was.components.schemas)) {
+    expect(now.components.schemas[name]).toEqual(schema);
+  }
+  for (const name of SOURCELESS_REPORTS) expect(after).not.toContain(name);
 }
 
 describe("FR-044 a sourceless report is inert; a served report emits exactly its read-only files", () => {
@@ -229,7 +256,8 @@ describe("FR-044 a sourceless report is inert; a served report emits exactly its
         expect(actual).toEqual(expected);
         return;
       }
-      expectOnlyAdds(expected, actual, ADDED_FOR_WITH[name] ?? []);
+      expectOnlyAdds(expected, actual, ADDED_FOR_WITH[name] ?? [], [OPENAPI_DOC]);
+      if (name === "openapi") expectOpenApiAddsOnlyTheServedReport(expected[OPENAPI_DOC]!, actual[OPENAPI_DOC]!);
       if (name === "barrel") {
         // The barrel is the one shared file that moves, and it moves by the report's
         // export alone: every line it had is still there, in order.
@@ -349,7 +377,7 @@ describe("FR-044 a sourceless report is inert; a served report emits exactly its
     expect(expected["<threw>"]).toBeUndefined();
     expect(actual["<threw>"]).toBeUndefined();
     expect(Object.keys(expected).length).toBeGreaterThan(10);
-    expectOnlyAdds(expected, actual, Object.values(ADDED_FOR_WITH).flat(), [AGENT_UI_PAGE]);
+    expectOnlyAdds(expected, actual, Object.values(ADDED_FOR_WITH).flat(), [AGENT_UI_PAGE, OPENAPI_DOC]);
     // The agent UI page moves by the served report's section alone: every line it had is
     // still there, in order, and the section names the report.
     const before = expected[AGENT_UI_PAGE]!.split("\n");

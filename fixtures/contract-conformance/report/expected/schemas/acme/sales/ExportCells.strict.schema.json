@@ -1,0 +1,28 @@
+{
+  "title": "ExportCells",
+  "type": "object",
+  "properties": {
+    "label": {
+      "description": "Maximum length: 40.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "cells": {
+      "type": "integer"
+    },
+    "totalCents": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "label",
+    "cells",
+    "totalCents"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,32 @@
+{
+  "title": "ProductRefunds",
+  "type": "object",
+  "properties": {
+    "productId": {
+      "type": "integer"
+    },
+    "productName": {
+      "type": "string"
+    },
+    "sales": {
+      "type": "integer"
+    },
+    "hasRefund": {
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "hasRefundOrFalse": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "productId",
+    "productName",
+    "sales",
+    "hasRefund",
+    "hasRefundOrFalse"
+  ],
+  "additionalProperties": false
+}

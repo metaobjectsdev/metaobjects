@@ -1,0 +1,21 @@
+{
+  "title": "ExportLine",
+  "type": "object",
+  "properties": {
+    "label": {
+      "description": "Maximum length: 40.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "amountCents": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "label",
+    "amountCents"
+  ],
+  "additionalProperties": false
+}

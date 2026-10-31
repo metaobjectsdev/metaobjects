@@ -142,7 +142,7 @@ export default defineConfig({
   // Need an output nothing in that catalog emits — OpenAPI, JSON Schema, a client, a
   // service layer? Write your own generator; that is the normal path:
   //
-  //   meta generator new openapi --scope model
+  //   meta generator new data-dictionary --scope model
   //
   // writes a working, commented generator into ./codegen/generators/ and adds it here.
 ${docsTarget}  generators: ${generators},

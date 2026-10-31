@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/acme/sales/Sale.update.schema.json",
+  "title": "Sale.update",
+  "type": "object",
+  "properties": {
+    "productId": {
+      "type": "integer",
+      "format": "int64"
+    },
+    "amountCents": {
+      "type": "integer",
+      "format": "int64"
+    },
+    "refunded": {
+      "type": [
+        "boolean",
+        "null"
+      ]
+    }
+  }
+}

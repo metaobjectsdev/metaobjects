@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/acme/sales/InvoiceSummary.schema.json",
+  "title": "InvoiceSummary",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "integer",
+      "format": "int64"
+    },
+    "reference": {
+      "type": "string",
+      "maxLength": 40
+    },
+    "status": {
+      "type": "string",
+      "maxLength": 20
+    },
+    "amountCents": {
+      "type": "integer",
+      "format": "int64"
+    }
+  },
+  "required": [
+    "id",
+    "reference",
+    "status",
+    "amountCents"
+  ]
+}

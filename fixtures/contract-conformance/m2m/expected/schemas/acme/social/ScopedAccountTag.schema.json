@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/acme/social/ScopedAccountTag.schema.json",
+  "title": "ScopedAccountTag",
+  "type": "object",
+  "properties": {
+    "accountId": {
+      "type": "integer",
+      "format": "int64"
+    },
+    "tagId": {
+      "type": "integer",
+      "format": "int64"
+    }
+  },
+  "required": [
+    "accountId",
+    "tagId"
+  ]
+}

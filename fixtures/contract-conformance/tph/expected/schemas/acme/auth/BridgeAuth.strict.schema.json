@@ -1,0 +1,26 @@
+{
+  "title": "BridgeAuth",
+  "type": "object",
+  "properties": {
+    "reference": {
+      "description": "Minimum length: 1. Maximum length: 80.",
+      "type": "string"
+    },
+    "issuedCurrency": {
+      "description": "Maximum length: 3.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "quantity": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "reference",
+    "issuedCurrency",
+    "quantity"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/acme/sales/InvoiceStatusTotals.schema.json",
+  "title": "InvoiceStatusTotals",
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": [
+        "OPEN",
+        "PAID",
+        "VOID"
+      ]
+    },
+    "invoices": {
+      "type": "integer",
+      "format": "int64"
+    },
+    "totalCents": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "format": "int64"
+    },
+    "paidCents": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "format": "int64"
+    }
+  },
+  "required": [
+    "status",
+    "invoices",
+    "totalCents",
+    "paidCents"
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/acme/contract/Bag.create.schema.json",
+  "title": "Bag.create",
+  "type": "object",
+  "properties": {
+    "counters": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer",
+        "format": "int32"
+      }
+    },
+    "places": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "./Address.create.schema.json"
+      }
+    },
+    "tree": {
+      "$ref": "./Tree.create.schema.json"
+    },
+    "open": {}
+  }
+}

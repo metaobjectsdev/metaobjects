@@ -28,7 +28,7 @@ even see it.
 
 The product is the **core** — model, loader, registry, `verify`, `migrate`, render and
 extract. On it, **you build the generators your application needs**: an output the model
-fully describes and no reference emits (OpenAPI, JSON Schema, Zod, DTOs, a client, docs)
+fully describes and no reference emits (Zod, DTOs, a client, docs)
 is a generator you write, not a layer you hand-write and not a feature you wait for
 ([ADR-0034 Amendment 4](../../spec/decisions/ADR-0034-codegen-scaffold-and-own.md#amendment-4-2026-09-26--write-your-own-generator-is-the-primary-path)).
 A generator is a name plus a function from the model to files, and `verify --codegen`
@@ -191,7 +191,7 @@ and breaks under GraalVM native-image / .NET AOT. (ADR-0001.)
 Keep native code generators **per-port and idiomatic** (Drizzle/Zod for TS, EF Core for
 C#, Spring for Java/Kotlin, Pydantic for Python) — collapsing them to one generic
 emitter is the OpenAPI-Generator trap. Keep language-*neutral* artifacts (migrations,
-docs, future OpenAPI/Mermaid) as **one shared engine**. The test: does the output depend
+docs, [OpenAPI and JSON Schema](contract-emitters.md)) as **one shared engine**. The test: does the output depend
 on the implementation language? If yes, it's per-port; if no, it's shared. (ADR-0020.)
 
 ## 10. Codegen scopes — object, package, app

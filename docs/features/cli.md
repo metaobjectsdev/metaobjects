@@ -385,6 +385,29 @@ skips: a generated page committed in `agent/` that a fresh run no longer writes 
 previous schema's `agent/schema.md`, say) is reported as drift, so a skip cannot leave a
 stale page in place, green. A hand-written file in the docs directory is left alone.
 
+## The contract emitters: `contract-schema` and `openapi`
+
+Two stock generators write the REST contract as standard documents. They are entries in
+`generators` like any other, imported from `@metaobjectsdev/codegen-ts/generators`.
+
+| Generator | Factory | What it writes |
+|---|---|---|
+| `contract-schema` | `jsonSchemaFile()` | JSON Schema 2020-12 for each object's read, create and update shapes, under `schemas/`. `profile: "strict"` writes one structured-output `<Name>.strict.schema.json` per object instead. |
+| `openapi` | `openApiFile()` | One OpenAPI 3.1 document for the generated REST surface, `openapi.json`. |
+
+```bash
+meta gen --generators openapi,contract-schema   # only these entries
+meta verify --codegen                           # fails when a document is stale
+meta eject contract-schema openapi              # copy them to change what they write
+```
+
+There is no verify flag for them and none is needed: `verify --codegen` re-runs every declared entry.
+Both run through the Node `meta` CLI on every port, because their output does not depend on the server
+language. A project on another port passes `expose` to `openApiFile()`. To check a change against the
+last release, compare two emitted documents with oasdiff. See
+[contract-emitters.md](contract-emitters.md) and
+[the recipe](../recipes/check-api-against-last-release.md).
+
 ## Declarative config (`metaobjects.config.yaml`) — Python codegen
 
 The Python `metaobjects` CLI reads its generator list from a declarative project config,

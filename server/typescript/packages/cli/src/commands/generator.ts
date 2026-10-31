@@ -1,8 +1,8 @@
 // `meta generator new <name>` — scaffold a generator of YOUR OWN (ADR-0034 Amendment 4).
 //
 // MetaObjects' product is the core — the model, loader, `verify`, `migrate`, render and
-// extract. Every output an application needs beyond the reference generators (OpenAPI, JSON
-// Schema, a client, a DTO layer, docs) is a generator the adopter writes. This command makes
+// extract. Every output an application needs beyond the reference generators (a client, a DTO
+// layer, a data dictionary) is a generator the adopter writes. This command makes
 // the first minute of that cheap: it writes a working, commented generator into
 // codegen/generators/ and wires it into metaobjects.config.ts, so `meta gen` runs it and
 // `meta verify --codegen` gates it before the author has changed a line.

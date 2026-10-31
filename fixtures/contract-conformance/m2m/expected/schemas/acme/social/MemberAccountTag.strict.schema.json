@@ -1,0 +1,17 @@
+{
+  "title": "MemberAccountTag",
+  "type": "object",
+  "properties": {
+    "accountId": {
+      "type": "integer"
+    },
+    "tagId": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "accountId",
+    "tagId"
+  ],
+  "additionalProperties": false
+}

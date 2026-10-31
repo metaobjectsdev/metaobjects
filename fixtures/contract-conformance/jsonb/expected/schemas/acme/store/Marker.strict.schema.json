@@ -1,0 +1,21 @@
+{
+  "title": "Marker",
+  "type": "object",
+  "properties": {
+    "label": {
+      "description": "Minimum length: 1. Maximum length: 40.",
+      "type": "string"
+    },
+    "score": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "label",
+    "score"
+  ],
+  "additionalProperties": false
+}

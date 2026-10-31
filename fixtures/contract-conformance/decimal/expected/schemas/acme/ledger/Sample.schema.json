@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/acme/ledger/Sample.schema.json",
+  "title": "Sample",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "integer",
+      "format": "int64"
+    },
+    "readings": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "items": {
+        "type": [
+          "string",
+          "number"
+        ],
+        "description": "A decimal. Set wire.decimals to \"string\" to fix one form across server languages. Precision 9, scale 4."
+      }
+    },
+    "free": {
+      "type": [
+        "string",
+        "number",
+        "null"
+      ],
+      "description": "A decimal. Set wire.decimals to \"string\" to fix one form across server languages."
+    }
+  },
+  "required": [
+    "id",
+    "readings",
+    "free"
+  ]
+}

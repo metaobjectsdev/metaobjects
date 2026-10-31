@@ -1,0 +1,35 @@
+{
+  "title": "Author",
+  "type": "object",
+  "properties": {
+    "name": {
+      "description": "Minimum length: 1. Maximum length: 100.",
+      "type": "string"
+    },
+    "bio": {
+      "description": "Maximum length: 1000.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "createdAt": {
+      "description": "An instant. A value with no offset is read as UTC. Pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})?$.",
+      "type": "string"
+    },
+    "issuedCurrency": {
+      "description": "Maximum length: 3.",
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "name",
+    "bio",
+    "createdAt",
+    "issuedCurrency"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/acme/sales/Invoice.schema.json",
+  "title": "Invoice",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "integer",
+      "format": "int64"
+    },
+    "reference": {
+      "type": "string",
+      "maxLength": 40
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "OPEN",
+        "PAID",
+        "VOID"
+      ]
+    },
+    "amountCents": {
+      "type": "integer",
+      "format": "int64"
+    },
+    "issuedOn": {
+      "type": "string",
+      "format": "date"
+    },
+    "disputed": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "id",
+    "reference",
+    "status",
+    "amountCents",
+    "issuedOn",
+    "disputed"
+  ]
+}

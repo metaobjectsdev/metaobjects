@@ -1,0 +1,28 @@
+{
+  "title": "SalesBySku",
+  "type": "object",
+  "properties": {
+    "productSku": {
+      "description": "Format: uuid.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "sales": {
+      "type": "integer"
+    },
+    "revenueCents": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "productSku",
+    "sales",
+    "revenueCents"
+  ],
+  "additionalProperties": false
+}

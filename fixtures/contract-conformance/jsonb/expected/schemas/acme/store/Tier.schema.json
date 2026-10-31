@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/acme/store/Tier.schema.json",
+  "title": "Tier",
+  "type": "object",
+  "properties": {
+    "amount": {
+      "type": [
+        "string",
+        "number",
+        "null"
+      ],
+      "description": "A decimal. Set wire.decimals to \"string\" to fix one form across server languages. Precision 12, scale 4."
+    }
+  }
+}

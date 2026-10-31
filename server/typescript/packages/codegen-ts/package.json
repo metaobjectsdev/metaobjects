@@ -112,7 +112,8 @@
   "scripts": {
     "build": "tsc -p .",
     "typecheck": "tsc -p tsconfig.typecheck.json",
-    "gen:cube-canonical": "bun scripts/gen-cube-model-canonical.ts"
+    "gen:cube-canonical": "bun scripts/gen-cube-model-canonical.ts",
+    "gen:contract-conformance": "bun scripts/gen-contract-conformance.ts"
   },
   "license": "Apache-2.0",
   "author": "Doug Mealing <doug@dougmealing.com>",
@@ -154,6 +155,9 @@
     "@biomejs/biome": "^1.9.0",
     "@metaobjectsdev/codegen-ts-react": "workspace:*",
     "@metaobjectsdev/runtime-ts": "workspace:*",
+    "@seriousme/openapi-schema-validator": "^2.11.0",
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1",
     "bun-types": "latest",
     "drizzle-orm": "^0.38.0",
     "hono": "^4.6.0",

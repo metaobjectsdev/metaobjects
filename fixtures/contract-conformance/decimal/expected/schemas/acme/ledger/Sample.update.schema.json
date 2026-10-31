@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/acme/ledger/Sample.update.schema.json",
+  "title": "Sample.update",
+  "type": "object",
+  "properties": {
+    "readings": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "items": {
+        "type": [
+          "string",
+          "number"
+        ],
+        "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?([eE][+-]?[0-9]+)?$",
+        "description": "A decimal, as a string in JSON-number grammar or a JSON number. Precision 9, scale 4."
+      }
+    },
+    "free": {
+      "type": [
+        "string",
+        "number",
+        "null"
+      ],
+      "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?([eE][+-]?[0-9]+)?$",
+      "description": "A decimal, as a string in JSON-number grammar or a JSON number."
+    }
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/acme/social/GuestAccount.create.schema.json",
+  "title": "GuestAccount.create",
+  "type": "object",
+  "properties": {
+    "handle": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80
+    },
+    "invitedBy": {
+      "type": "string",
+      "maxLength": 80
+    }
+  },
+  "required": [
+    "handle"
+  ]
+}

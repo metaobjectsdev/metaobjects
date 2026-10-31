@@ -1,0 +1,28 @@
+{
+  "title": "InvoiceTotals",
+  "type": "object",
+  "properties": {
+    "invoices": {
+      "type": "integer"
+    },
+    "totalCents": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "paidShare": {
+      "description": "A decimal. Set wire.decimals to \"string\" to fix one form across server languages.",
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "invoices",
+    "totalCents",
+    "paidShare"
+  ],
+  "additionalProperties": false
+}

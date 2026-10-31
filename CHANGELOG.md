@@ -12,6 +12,16 @@ here.**
 
 ### Added
 
+- **Contract emitters: JSON Schema and OpenAPI generators (FR-022).** `jsonSchemaFile()`
+  (`contract-schema`) writes JSON Schema 2020-12 for each object's read, create and update shapes, and
+  a strict structured-output subset with `profile: "strict"`. `openApiFile()` (`openapi`) writes one
+  OpenAPI 3.1 document for the generated REST surface: the routes, the filter, sort and paging
+  parameters, the error envelope, and those shapes as components. The output follows the REST contract
+  and the `wire` setting, and a project on any port runs them through the Node `meta` CLI. They are
+  reference helpers: opt-in, listed by `meta gen --list`, ejectable and gated by `verify --codegen`
+  (ADR-0034 Amendment 10). Protobuf is not built. See `docs/features/contract-emitters.md`.
+- **A recipe for checking an API change against the last release.** Emit the document at the last tag
+  and at `HEAD`, then run oasdiff. See `docs/recipes/check-api-against-last-release.md`.
 - **A `pydantic` extra on the Python package.** `pip install "metaobjects[pydantic]"` installs
   `pydantic>=2.8`, the minimum the generated Python models need, so an adopter can get the enforced
   floor with the package. The base install is unchanged.

@@ -1,0 +1,11 @@
+{
+  "metadata.root": {
+    "package": "acme::contract",
+    "children": [
+      { "object.value": {
+        "name": "Counters",
+        "children": [ { "field.map": { "name": "byName", "@valueType": "int" } } ]
+      }}
+    ]
+  }
+}

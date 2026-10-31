@@ -1,0 +1,63 @@
+{
+  "title": "EntryTotals",
+  "type": "object",
+  "properties": {
+    "bucket": {
+      "description": "Maximum length: 8.",
+      "type": "string"
+    },
+    "entries": {
+      "type": "integer"
+    },
+    "total": {
+      "description": "A decimal. Set wire.decimals to \"string\" to fix one form across server languages.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "totalOrZero": {
+      "description": "A decimal. Set wire.decimals to \"string\" to fix one form across server languages.",
+      "type": "string"
+    },
+    "mean": {
+      "description": "A decimal. Set wire.decimals to \"string\" to fix one form across server languages.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "top": {
+      "description": "A decimal. Set wire.decimals to \"string\" to fix one form across server languages. Precision 28, scale 10.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "flaggedShare": {
+      "description": "A decimal. Set wire.decimals to \"string\" to fix one form across server languages.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "perFlagged": {
+      "description": "A decimal. Set wire.decimals to \"string\" to fix one form across server languages.",
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "bucket",
+    "entries",
+    "total",
+    "totalOrZero",
+    "mean",
+    "top",
+    "flaggedShare",
+    "perFlagged"
+  ],
+  "additionalProperties": false
+}

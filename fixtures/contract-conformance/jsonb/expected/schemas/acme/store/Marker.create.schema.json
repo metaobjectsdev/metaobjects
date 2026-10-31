@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/acme/store/Marker.create.schema.json",
+  "title": "Marker.create",
+  "type": "object",
+  "properties": {
+    "label": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 40
+    },
+    "score": {
+      "type": "integer",
+      "format": "int32"
+    }
+  },
+  "required": [
+    "label"
+  ]
+}

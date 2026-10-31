@@ -1,0 +1,14 @@
+{
+  "title": "Category",
+  "type": "object",
+  "properties": {
+    "name": {
+      "description": "Minimum length: 1.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "name"
+  ],
+  "additionalProperties": false
+}

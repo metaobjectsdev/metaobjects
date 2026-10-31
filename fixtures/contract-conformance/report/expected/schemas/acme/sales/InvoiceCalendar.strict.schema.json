@@ -1,0 +1,30 @@
+{
+  "title": "InvoiceCalendar",
+  "type": "object",
+  "properties": {
+    "issuedOnDay": {
+      "description": "Format: date.",
+      "type": "string"
+    },
+    "issuedOnMonth": {
+      "description": "Format: date.",
+      "type": "string"
+    },
+    "invoices": {
+      "type": "integer"
+    },
+    "totalCents": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "issuedOnDay",
+    "issuedOnMonth",
+    "invoices",
+    "totalCents"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,32 @@
+{
+  "title": "ProductRevenue",
+  "type": "object",
+  "properties": {
+    "productId": {
+      "type": "integer"
+    },
+    "productName": {
+      "type": "string"
+    },
+    "sales": {
+      "type": "integer"
+    },
+    "revenueCents": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "revenueOrZero": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "productId",
+    "productName",
+    "sales",
+    "revenueCents",
+    "revenueOrZero"
+  ],
+  "additionalProperties": false
+}

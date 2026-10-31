@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/acme/social/PostTag.create.schema.json",
+  "title": "PostTag.create",
+  "type": "object",
+  "properties": {
+    "postId": {
+      "type": "integer",
+      "format": "int64"
+    },
+    "tagId": {
+      "type": "integer",
+      "format": "int64"
+    }
+  },
+  "required": [
+    "postId",
+    "tagId"
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "title": "Sample",
+  "type": "object",
+  "properties": {
+    "readings": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "items": {
+        "description": "A decimal, as a string in JSON-number grammar or a JSON number. Precision 9, scale 4. Pattern: ^-?(0|[1-9][0-9]*)(\\.[0-9]+)?([eE][+-]?[0-9]+)?$.",
+        "type": "string"
+      }
+    },
+    "free": {
+      "description": "A decimal, as a string in JSON-number grammar or a JSON number. Pattern: ^-?(0|[1-9][0-9]*)(\\.[0-9]+)?([eE][+-]?[0-9]+)?$.",
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "readings",
+    "free"
+  ],
+  "additionalProperties": false
+}

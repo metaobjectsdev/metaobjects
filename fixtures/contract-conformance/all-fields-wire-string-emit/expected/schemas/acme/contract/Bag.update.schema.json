@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/acme/contract/Bag.update.schema.json",
+  "title": "Bag.update",
+  "type": "object",
+  "properties": {
+    "counters": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": {
+        "type": "integer",
+        "format": "int32"
+      }
+    },
+    "places": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": {
+        "$ref": "./Address.create.schema.json"
+      }
+    },
+    "tree": {
+      "anyOf": [
+        {
+          "$ref": "./Tree.create.schema.json"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "open": {}
+  }
+}

@@ -77,7 +77,7 @@ in order and every change that needs action.
 ## Need an output? Write the generator — this is the primary path
 
 **When.** You need an output the model fully describes and no reference generator emits —
-or none emits it the way this application needs it. OpenAPI, JSON Schema, Zod schemas,
+or none emits it the way this application needs it. Zod schemas,
 DTOs or a client for a framework nothing here ships, a service layer in the house style,
 a data dictionary, a search-index mapping, test fixtures. That is a generator, and you
 write it now, in this change — once it passes the cost test in `references/owning-generators.md`
@@ -146,9 +146,12 @@ without typechecking, so a wrong accessor runs silently.
   Make it deterministic: the same model must give the same bytes, or verify reports drift.
 
 Every port's minimal generator (each run through gen, verify and a convicted model
-change) and two worked examples to copy — JSON Schema and OpenAPI 3.1, examples and not a
-product surface — are in the guide "Write your own generator":
+change) and two worked examples to copy — JSON Schema and OpenAPI 3.1, examples of writing a
+generator and not a product surface — are in the guide "Write your own generator":
 <https://github.com/metaobjectsdev/metaobjects/blob/main/docs/recipes/write-your-own-generator.md>.
+For the documents themselves, the stock `contract-schema` and `openapi` generators emit them, from
+1.2.1 (run through the Node `meta` CLI on any port):
+<https://github.com/metaobjectsdev/metaobjects/blob/main/docs/features/contract-emitters.md>.
 
 **Use a stock generator as shipped** when one already emits what you need:
 `meta gen --list --probe` is the catalog, and each row says how to wire it with nothing

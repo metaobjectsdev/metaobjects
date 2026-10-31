@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/acme/sales/TicketsByTags.schema.json",
+  "title": "TicketsByTags",
+  "type": "object",
+  "properties": {
+    "tags": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "items": {
+        "type": "string"
+      }
+    },
+    "attrs": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "tickets": {
+      "type": "integer",
+      "format": "int64"
+    }
+  },
+  "required": [
+    "tags",
+    "attrs",
+    "tickets"
+  ]
+}

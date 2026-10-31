@@ -9,6 +9,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { API_CONTRACT_REPORT_DIR, API_CONTRACT_REPORT_SCENARIOS_DIR } from "../src/paths.ts";
+import { openApiCheck, type ContractCheck } from "../src/api-contract-openapi-check.ts";
 import { loadScenarios, assertResponseFull, type ApiScenario } from "../src/api-contract-scenario.ts";
 import { startPostgres } from "../src/postgres-container.ts";
 import {
@@ -33,6 +34,8 @@ const SERVED_PATHS: Array<[string, string]> = [
   ["SalesBySku", "/api/sales_by_skus"],
   ["ProductRefunds", "/api/product_refunds"],
 ];
+
+const contractCheck: ContractCheck = openApiCheck("report");
 
 describe("api contract report (FR-044) — GENERATED routes lane", () => {
   for (const scenario of loadScenarios(API_CONTRACT_REPORT_SCENARIOS_DIR)) {
@@ -105,6 +108,8 @@ async function runScenario(
     }
     if (Object.keys(headers).length > 0) init.headers = headers;
     const res = await fetch(server.baseUrl + req.path, init);
-    assertResponseFull(scenario.name, req, res.status, await res.text(), (name) => res.headers.get(name));
+    const bodyText = await res.text();
+    assertResponseFull(scenario.name, req, res.status, bodyText, (name) => res.headers.get(name));
+    contractCheck(req, res.status, bodyText);
   }
 }

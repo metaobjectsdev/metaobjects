@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/acme/social/PostReviewer.update.schema.json",
+  "title": "PostReviewer.update",
+  "type": "object",
+  "properties": {
+    "postId": {
+      "type": "integer",
+      "format": "int64"
+    },
+    "accountId": {
+      "type": "integer",
+      "format": "int64"
+    }
+  }
+}

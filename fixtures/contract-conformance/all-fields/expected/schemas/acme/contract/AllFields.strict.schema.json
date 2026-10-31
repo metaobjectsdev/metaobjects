@@ -1,0 +1,244 @@
+{
+  "title": "AllFields",
+  "description": "One field of every wire type.",
+  "type": "object",
+  "properties": {
+    "title": {
+      "description": "The display title. Pattern: ^(?:[A-Z].*)$. Minimum length: 3. Maximum length: 120.",
+      "type": "string"
+    },
+    "email": {
+      "description": "Format: email.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "host": {
+      "description": "Format: hostname.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "quantity": {
+      "description": "Minimum: 0. Maximum: 1000.",
+      "type": "integer"
+    },
+    "views": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "ratio": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "score": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "amount": {
+      "description": "A decimal, as a string in JSON-number grammar or a JSON number. Precision 10, scale 2. Pattern: ^-?(0|[1-9][0-9]*)(\\.[0-9]+)?([eE][+-]?[0-9]+)?$.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "active": {
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "startsOn": {
+      "description": "Format: date.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "startsAt": {
+      "description": "Pattern: ^[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?$.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "publishedAt": {
+      "description": "An instant. A value with no offset is read as UTC. Pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})?$.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "wallClock": {
+      "description": "Pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?$.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "priceCents": {
+      "description": "Integer minor units of USD.",
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "live"
+      ]
+    },
+    "stage": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "early",
+        "late",
+        null
+      ]
+    },
+    "homepage": {
+      "description": "Format: uri.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "looseLink": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "address": {
+      "description": "Format: ipv4 or ipv6.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "shipTo": {
+      "description": "A postal address.",
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "street": {
+          "description": "Minimum length: 1. Maximum length: 80.",
+          "type": "string"
+        },
+        "unit": {
+          "description": "Maximum length: 10.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "latitude": {
+          "description": "A decimal, as a string in JSON-number grammar or a JSON number. Precision 9, scale 6. Pattern: ^-?(0|[1-9][0-9]*)(\\.[0-9]+)?([eE][+-]?[0-9]+)?$.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "street",
+        "unit",
+        "latitude"
+      ],
+      "additionalProperties": false
+    },
+    "stops": {
+      "description": "Minimum items: 1. Maximum items: 5.",
+      "type": [
+        "array",
+        "null"
+      ],
+      "items": {
+        "description": "A postal address.",
+        "type": "object",
+        "properties": {
+          "street": {
+            "description": "Minimum length: 1. Maximum length: 80.",
+            "type": "string"
+          },
+          "unit": {
+            "description": "Maximum length: 10.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "latitude": {
+            "description": "A decimal, as a string in JSON-number grammar or a JSON number. Precision 9, scale 6. Pattern: ^-?(0|[1-9][0-9]*)(\\.[0-9]+)?([eE][+-]?[0-9]+)?$.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "street",
+          "unit",
+          "latitude"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "tags": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "items": {
+        "type": "string"
+      }
+    },
+    "issuedBy": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "title",
+    "email",
+    "host",
+    "quantity",
+    "views",
+    "ratio",
+    "score",
+    "amount",
+    "active",
+    "startsOn",
+    "startsAt",
+    "publishedAt",
+    "wallClock",
+    "priceCents",
+    "status",
+    "stage",
+    "homepage",
+    "looseLink",
+    "address",
+    "shipTo",
+    "stops",
+    "tags",
+    "issuedBy"
+  ],
+  "additionalProperties": false
+}

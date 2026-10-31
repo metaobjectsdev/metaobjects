@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/acme/sales/Reading.create.schema.json",
+  "title": "Reading.create",
+  "type": "object",
+  "properties": {
+    "seq": {
+      "type": "integer",
+      "format": "int32"
+    }
+  },
+  "required": [
+    "seq"
+  ]
+}

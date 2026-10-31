@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/acme/sales/ExportCells.schema.json",
+  "title": "ExportCells",
+  "type": "object",
+  "properties": {
+    "label": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 40
+    },
+    "cells": {
+      "type": "integer",
+      "format": "int64"
+    },
+    "totalCents": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "format": "int64"
+    }
+  },
+  "required": [
+    "label",
+    "cells",
+    "totalCents"
+  ]
+}

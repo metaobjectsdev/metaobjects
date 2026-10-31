@@ -1,0 +1,1 @@
+[ERR_CONTRACT_NAME_COLLISION] the OpenAPI component 'OrderCreate' is both 'acme::contract::Order' (create shape) and 'acme::contract::OrderCreate' (read shape). Rename one, or leave one out with the generator's filter option.

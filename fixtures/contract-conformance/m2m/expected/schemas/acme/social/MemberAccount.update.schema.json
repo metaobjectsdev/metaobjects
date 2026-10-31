@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/acme/social/MemberAccount.update.schema.json",
+  "title": "MemberAccount.update",
+  "type": "object",
+  "properties": {
+    "handle": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80
+    },
+    "karma": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "format": "int32"
+    }
+  }
+}

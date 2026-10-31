@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/acme/ledger/EntryTotals.schema.json",
+  "title": "EntryTotals",
+  "type": "object",
+  "properties": {
+    "bucket": {
+      "type": "string",
+      "maxLength": 8
+    },
+    "entries": {
+      "type": "integer",
+      "format": "int64"
+    },
+    "total": {
+      "type": [
+        "string",
+        "number",
+        "null"
+      ],
+      "description": "A decimal. Set wire.decimals to \"string\" to fix one form across server languages."
+    },
+    "totalOrZero": {
+      "type": [
+        "string",
+        "number"
+      ],
+      "description": "A decimal. Set wire.decimals to \"string\" to fix one form across server languages."
+    },
+    "mean": {
+      "type": [
+        "string",
+        "number",
+        "null"
+      ],
+      "description": "A decimal. Set wire.decimals to \"string\" to fix one form across server languages."
+    },
+    "top": {
+      "type": [
+        "string",
+        "number",
+        "null"
+      ],
+      "description": "A decimal. Set wire.decimals to \"string\" to fix one form across server languages. Precision 28, scale 10."
+    },
+    "flaggedShare": {
+      "type": [
+        "string",
+        "number",
+        "null"
+      ],
+      "description": "A decimal. Set wire.decimals to \"string\" to fix one form across server languages."
+    },
+    "perFlagged": {
+      "type": [
+        "string",
+        "number",
+        "null"
+      ],
+      "description": "A decimal. Set wire.decimals to \"string\" to fix one form across server languages."
+    }
+  },
+  "required": [
+    "bucket",
+    "entries",
+    "total",
+    "totalOrZero",
+    "mean",
+    "top",
+    "flaggedShare",
+    "perFlagged"
+  ]
+}

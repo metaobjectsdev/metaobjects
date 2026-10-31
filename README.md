@@ -235,12 +235,12 @@ roadmap item. The fifth has been dogfooded on maintainer-owned projects only, an
 sixth ships two libraries at their own stability labels:
 
 1. **Codegen** *(generators you write and own, in every port)* — on the core, you build
-   the generators your application needs: OpenAPI, JSON Schema, Zod, DTOs, a client,
-   docs — anything the model describes. A generator is a name plus a function from the
+   the generators your application needs: Zod, DTOs, a client, docs — anything the
+   model describes. A generator is a name plus a function from the
    model to files, and `verify` gates it with nothing to register; `meta generator new
    <name>` scaffolds a working one on TypeScript, and
    [Write your own generator](docs/recipes/write-your-own-generator.md) has every port's
-   20-line shape plus JSON Schema and OpenAPI examples to copy. The reference generators
+   20-line shape plus worked examples to copy. The reference generators
    (Drizzle/Zod + Fastify for TS, Spring REST + DTO + repository for Java, `data class` +
    Exposed for Kotlin, EF Core entity class + ASP.NET routes for C#, Pydantic + FastAPI for
    Python) are starting points: run one as shipped when it already emits what you want, or

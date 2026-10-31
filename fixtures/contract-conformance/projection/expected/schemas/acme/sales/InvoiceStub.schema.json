@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/acme/sales/InvoiceStub.schema.json",
+  "title": "InvoiceStub",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "format": "int64"
+    },
+    "reference": {
+      "type": "string",
+      "maxLength": 40
+    }
+  },
+  "required": [
+    "id",
+    "reference"
+  ]
+}

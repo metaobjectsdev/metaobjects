@@ -1,0 +1,36 @@
+{
+  "title": "Invoice",
+  "type": "object",
+  "properties": {
+    "reference": {
+      "description": "Minimum length: 1. Maximum length: 40.",
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "OPEN",
+        "PAID",
+        "VOID"
+      ]
+    },
+    "amountCents": {
+      "type": "integer"
+    },
+    "issuedOn": {
+      "description": "Format: date.",
+      "type": "string"
+    },
+    "disputed": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "reference",
+    "status",
+    "amountCents",
+    "issuedOn",
+    "disputed"
+  ],
+  "additionalProperties": false
+}

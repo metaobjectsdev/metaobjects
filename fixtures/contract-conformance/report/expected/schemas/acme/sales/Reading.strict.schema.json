@@ -1,0 +1,13 @@
+{
+  "title": "Reading",
+  "type": "object",
+  "properties": {
+    "seq": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "seq"
+  ],
+  "additionalProperties": false
+}

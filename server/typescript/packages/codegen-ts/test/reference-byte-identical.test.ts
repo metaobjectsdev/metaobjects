@@ -44,6 +44,10 @@ import { cubeModel as builtinCubeModel } from "../src/generators/cube-model.js";
 import { cubeModel as refCubeModel } from "../src/reference/cube-model.js";
 import { prismaSchemaFile as builtinPrismaSchema } from "../src/generators/prisma-schema-file.js";
 import { prismaSchemaFile as refPrismaSchema } from "../src/reference/prisma-schema.js";
+import { jsonSchemaFile as builtinContractSchema } from "../src/generators/contract-schema-file.js";
+import { jsonSchemaFile as refContractSchema } from "../src/reference/contract-schema.js";
+import { openApiFile as builtinOpenApi } from "../src/generators/openapi-file.js";
+import { openApiFile as refOpenApi } from "../src/reference/openapi.js";
 import { callableFile as builtinCallable } from "../src/generators/callable-file.js";
 import { callableFile as refCallable } from "../src/reference/callable.js";
 import { traceHelperFile as builtinTraceHelper } from "../src/generators/trace-helper-file.js";
@@ -184,6 +188,8 @@ const PAIRS: Record<ReferenceGeneratorName, { builtin: () => Generator; ref: () 
   // vocabulary), so the pair is compared over two empty sets there; the describe at the end
   // of this file runs both over models that DO, under both Cube dialects.
   "cube-model": { builtin: builtinCubeModel, ref: refCubeModel },
+  "contract-schema": { builtin: builtinContractSchema, ref: refContractSchema },
+  openapi: { builtin: builtinOpenApi, ref: refOpenApi },
   // These fixtures run under sqlite, where a CHECK is refused unless omitted, and some declare
   // views, which a Prisma schema cannot create; the describe at the end of this file runs the
   // pair over the Prisma fixture under each provider, checks and refusals included.

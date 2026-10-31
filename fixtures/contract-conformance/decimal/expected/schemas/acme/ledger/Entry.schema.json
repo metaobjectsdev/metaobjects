@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/acme/ledger/Entry.schema.json",
+  "title": "Entry",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "integer",
+      "format": "int64"
+    },
+    "bucket": {
+      "type": "string",
+      "maxLength": 8
+    },
+    "amount": {
+      "type": [
+        "string",
+        "number",
+        "null"
+      ],
+      "description": "A decimal. Set wire.decimals to \"string\" to fix one form across server languages. Precision 28, scale 10."
+    },
+    "flagged": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "id",
+    "bucket",
+    "amount",
+    "flagged"
+  ]
+}

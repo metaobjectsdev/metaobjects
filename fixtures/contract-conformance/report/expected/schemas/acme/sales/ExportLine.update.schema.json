@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/acme/sales/ExportLine.update.schema.json",
+  "title": "ExportLine.update",
+  "type": "object",
+  "properties": {
+    "label": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 40
+    },
+    "amountCents": {
+      "type": "integer",
+      "format": "int64"
+    }
+  }
+}

@@ -1,0 +1,1 @@
+[ERR_CONTRACT_NAME_COLLISION] the OpenAPI component 'OrderList' is both 'acme::contract::OrderList' (read shape) and the list response of 'acme::contract::Order'. Rename one, or leave one out with the generator's filter option.

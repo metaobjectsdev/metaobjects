@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/acme/auth/BridgeAuth.schema.json",
+  "title": "BridgeAuth",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "integer",
+      "format": "int64"
+    },
+    "type": {
+      "const": "Bridge"
+    },
+    "reference": {
+      "type": "string",
+      "maxLength": 80
+    },
+    "issuedCurrency": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 3
+    },
+    "autoCreatedAt": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "autoUpdatedAt": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "quantity": {
+      "type": "integer",
+      "format": "int32"
+    }
+  },
+  "required": [
+    "id",
+    "type",
+    "reference",
+    "issuedCurrency",
+    "autoCreatedAt",
+    "autoUpdatedAt",
+    "quantity"
+  ]
+}

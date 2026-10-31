@@ -1,0 +1,21 @@
+{
+  "title": "InvoiceDisputes",
+  "type": "object",
+  "properties": {
+    "disputed": {
+      "type": "boolean"
+    },
+    "invoices": {
+      "type": "integer"
+    },
+    "bigInvoices": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "disputed",
+    "invoices",
+    "bigInvoices"
+  ],
+  "additionalProperties": false
+}

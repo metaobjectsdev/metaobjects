@@ -1,0 +1,17 @@
+{
+  "title": "PostTag",
+  "type": "object",
+  "properties": {
+    "postId": {
+      "type": "integer"
+    },
+    "tagId": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "postId",
+    "tagId"
+  ],
+  "additionalProperties": false
+}

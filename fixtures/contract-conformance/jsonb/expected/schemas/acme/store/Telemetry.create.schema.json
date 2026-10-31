@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/acme/store/Telemetry.create.schema.json",
+  "title": "Telemetry.create",
+  "type": "object",
+  "properties": {
+    "capturedAt": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})?$",
+      "description": "An instant. A value with no offset is read as UTC."
+    },
+    "latitude": {
+      "type": "number",
+      "format": "double"
+    },
+    "tempC": {
+      "type": "integer",
+      "format": "int32"
+    }
+  },
+  "required": [
+    "capturedAt",
+    "latitude"
+  ]
+}

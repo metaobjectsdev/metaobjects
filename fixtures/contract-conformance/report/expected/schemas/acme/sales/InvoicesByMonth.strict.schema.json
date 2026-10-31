@@ -1,0 +1,25 @@
+{
+  "title": "InvoicesByMonth",
+  "type": "object",
+  "properties": {
+    "issuedOnMonth": {
+      "description": "Format: date.",
+      "type": "string"
+    },
+    "invoices": {
+      "type": "integer"
+    },
+    "totalCents": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "issuedOnMonth",
+    "invoices",
+    "totalCents"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/acme/sales/Product.create.schema.json",
+  "title": "Product.create",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sku": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "categoryId": {
+      "type": "integer",
+      "format": "int64"
+    }
+  },
+  "required": [
+    "name"
+  ]
+}

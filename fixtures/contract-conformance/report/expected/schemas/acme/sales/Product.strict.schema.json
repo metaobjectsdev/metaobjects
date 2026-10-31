@@ -1,0 +1,29 @@
+{
+  "title": "Product",
+  "type": "object",
+  "properties": {
+    "name": {
+      "description": "Minimum length: 1.",
+      "type": "string"
+    },
+    "sku": {
+      "description": "Format: uuid.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "categoryId": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "name",
+    "sku",
+    "categoryId"
+  ],
+  "additionalProperties": false
+}

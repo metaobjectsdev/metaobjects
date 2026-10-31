@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/acme/sales/ReadingLog.schema.json",
+  "title": "ReadingLog",
+  "type": "object",
+  "properties": {
+    "seq": {
+      "type": "integer",
+      "format": "int32"
+    },
+    "readings": {
+      "type": "integer",
+      "format": "int64"
+    }
+  },
+  "required": [
+    "seq",
+    "readings"
+  ]
+}

@@ -239,6 +239,22 @@
       "eject": "full",
       "ports": ["typescript", "csharp", "java", "kotlin", "python"]
     },
+    "contract-schema": {
+      "concept": "JSON Schema 2020-12 for the model's wire shapes (read, create, update), and a strict structured-output profile. A different concept from json-schema, which describes metadata files.",
+      "tier": "neutral",
+      "layer": "api",
+      "note": "TYPESCRIPT ONLY by design (ADR-0034 Amendment 10): a neutral artifact with one engine, so an adopter on any port runs it through the Node `meta` CLI, and the output depends on the model and the wire setting, never on the port.",
+      "eject": "full",
+      "ports": ["typescript"]
+    },
+    "openapi": {
+      "concept": "One OpenAPI 3.1 document for the generated REST surface, whose components are the contract-schema shapes.",
+      "tier": "neutral",
+      "layer": "api",
+      "note": "TYPESCRIPT ONLY by design (ADR-0034 Amendment 10): every port's routes answer the same REST contract, so one engine states it for all of them.",
+      "eject": "full",
+      "ports": ["typescript"]
+    },
     "cube-model": {
       "concept": "Cube data model files (model/cubes/*.yml, model/views/*.yml) exported from the reporting vocabulary.",
       "tier": "native",

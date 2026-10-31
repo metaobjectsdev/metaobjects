@@ -1,0 +1,1868 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "projection",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/api/invoices": {
+      "get": {
+        "operationId": "listInvoice",
+        "tags": [
+          "Invoice"
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "withCount",
+            "in": "query",
+            "description": "Answer { rows, total } instead of the array.",
+            "schema": {
+              "type": "integer",
+              "enum": [
+                1
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The rows.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/InvoiceList"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvoicePage"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request was refused.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createInvoice",
+        "tags": [
+          "Invoice"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InvoiceCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The new row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Invoice"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request was refused.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A constraint refused the write.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/invoices/{id}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getInvoice",
+        "tags": [
+          "Invoice"
+        ],
+        "responses": {
+          "200": {
+            "description": "The row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Invoice"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "operationId": "updateInvoice",
+        "tags": [
+          "Invoice"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InvoiceUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Invoice"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request was refused.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A constraint refused the write.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "putInvoice",
+        "tags": [
+          "Invoice"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InvoiceUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Invoice"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request was refused.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A constraint refused the write.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteInvoice",
+        "tags": [
+          "Invoice"
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted."
+          },
+          "404": {
+            "description": "No such row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A constraint refused the write.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/invoice_ledgers": {
+      "get": {
+        "operationId": "listInvoiceLedger",
+        "tags": [
+          "InvoiceLedger"
+        ],
+        "parameters": [
+          {
+            "name": "filter[number]",
+            "in": "query",
+            "description": "Sugar for the eq operator.",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "filter[number][eq]",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "filter[number][ne]",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "filter[number][gt]",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "filter[number][gte]",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "filter[number][lt]",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "filter[number][lte]",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "filter[number][in]",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "description": "Comma-separated values."
+            }
+          },
+          {
+            "name": "filter[number][isNull]",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "filter[reference]",
+            "in": "query",
+            "description": "Sugar for the eq operator.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "filter[reference][eq]",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "filter[reference][ne]",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "filter[reference][in]",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "description": "Comma-separated values."
+            }
+          },
+          {
+            "name": "filter[reference][like]",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "filter[reference][isNull]",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "filter[discount]",
+            "in": "query",
+            "description": "Sugar for the eq operator.",
+            "schema": {
+              "type": "string",
+              "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?([eE][+-]?[0-9]+)?$"
+            }
+          },
+          {
+            "name": "filter[discount][eq]",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?([eE][+-]?[0-9]+)?$"
+            }
+          },
+          {
+            "name": "filter[discount][ne]",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?([eE][+-]?[0-9]+)?$"
+            }
+          },
+          {
+            "name": "filter[discount][gt]",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?([eE][+-]?[0-9]+)?$"
+            }
+          },
+          {
+            "name": "filter[discount][gte]",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?([eE][+-]?[0-9]+)?$"
+            }
+          },
+          {
+            "name": "filter[discount][lt]",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?([eE][+-]?[0-9]+)?$"
+            }
+          },
+          {
+            "name": "filter[discount][lte]",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?([eE][+-]?[0-9]+)?$"
+            }
+          },
+          {
+            "name": "filter[discount][in]",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "description": "Comma-separated values."
+            }
+          },
+          {
+            "name": "filter[discount][isNull]",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "filter[weight]",
+            "in": "query",
+            "description": "Sugar for the eq operator.",
+            "schema": {
+              "type": "number",
+              "format": "float"
+            }
+          },
+          {
+            "name": "filter[weight][eq]",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "format": "float"
+            }
+          },
+          {
+            "name": "filter[weight][ne]",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "format": "float"
+            }
+          },
+          {
+            "name": "filter[weight][gt]",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "format": "float"
+            }
+          },
+          {
+            "name": "filter[weight][gte]",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "format": "float"
+            }
+          },
+          {
+            "name": "filter[weight][lt]",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "format": "float"
+            }
+          },
+          {
+            "name": "filter[weight][lte]",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "format": "float"
+            }
+          },
+          {
+            "name": "filter[weight][in]",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "description": "Comma-separated values."
+            }
+          },
+          {
+            "name": "filter[weight][isNull]",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "number",
+                "number:asc",
+                "number:desc",
+                "reference",
+                "reference:asc",
+                "reference:desc",
+                "discount",
+                "discount:asc",
+                "discount:desc",
+                "weight",
+                "weight:asc",
+                "weight:desc"
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "withCount",
+            "in": "query",
+            "description": "Answer { rows, total } instead of the array.",
+            "schema": {
+              "type": "integer",
+              "enum": [
+                1
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The rows.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/InvoiceLedgerList"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvoiceLedgerPage"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request was refused.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/invoice_ledgers/{id}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getInvoiceLedger",
+        "tags": [
+          "InvoiceLedger"
+        ],
+        "responses": {
+          "200": {
+            "description": "The row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvoiceLedger"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/invoice_registers": {
+      "get": {
+        "operationId": "listInvoiceRegister",
+        "tags": [
+          "InvoiceRegister"
+        ],
+        "parameters": [
+          {
+            "name": "filter[regNo]",
+            "in": "query",
+            "description": "Sugar for the eq operator.",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "filter[regNo][eq]",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "filter[regNo][ne]",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "filter[regNo][gt]",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "filter[regNo][gte]",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "filter[regNo][lt]",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "filter[regNo][lte]",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "filter[regNo][in]",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "description": "Comma-separated values."
+            }
+          },
+          {
+            "name": "filter[regNo][isNull]",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "filter[reference]",
+            "in": "query",
+            "description": "Sugar for the eq operator.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "filter[reference][eq]",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "filter[reference][ne]",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "filter[reference][in]",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "description": "Comma-separated values."
+            }
+          },
+          {
+            "name": "filter[reference][like]",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "filter[reference][isNull]",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "regNo",
+                "regNo:asc",
+                "regNo:desc",
+                "reference",
+                "reference:asc",
+                "reference:desc"
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "withCount",
+            "in": "query",
+            "description": "Answer { rows, total } instead of the array.",
+            "schema": {
+              "type": "integer",
+              "enum": [
+                1
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The rows.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/InvoiceRegisterList"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvoiceRegisterPage"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request was refused.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/invoice_registers/{id}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getInvoiceRegister",
+        "tags": [
+          "InvoiceRegister"
+        ],
+        "responses": {
+          "200": {
+            "description": "The row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvoiceRegister"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/invoice_stubs": {
+      "get": {
+        "operationId": "listInvoiceStub",
+        "tags": [
+          "InvoiceStub"
+        ],
+        "parameters": [
+          {
+            "name": "filter[id]",
+            "in": "query",
+            "description": "Sugar for the eq operator.",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "filter[id][eq]",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "filter[id][ne]",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "filter[id][gt]",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "filter[id][gte]",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "filter[id][lt]",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "filter[id][lte]",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "filter[id][in]",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "description": "Comma-separated values."
+            }
+          },
+          {
+            "name": "filter[id][isNull]",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "filter[reference]",
+            "in": "query",
+            "description": "Sugar for the eq operator.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "filter[reference][eq]",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "filter[reference][ne]",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "filter[reference][in]",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "description": "Comma-separated values."
+            }
+          },
+          {
+            "name": "filter[reference][like]",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "filter[reference][isNull]",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "id",
+                "id:asc",
+                "id:desc",
+                "reference",
+                "reference:asc",
+                "reference:desc"
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "withCount",
+            "in": "query",
+            "description": "Answer { rows, total } instead of the array.",
+            "schema": {
+              "type": "integer",
+              "enum": [
+                1
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The rows.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/InvoiceStubList"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvoiceStubPage"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request was refused.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/invoice_summaries": {
+      "get": {
+        "operationId": "listInvoiceSummary",
+        "tags": [
+          "InvoiceSummary"
+        ],
+        "parameters": [
+          {
+            "name": "filter[id]",
+            "in": "query",
+            "description": "Sugar for the eq operator.",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "filter[id][eq]",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "filter[id][ne]",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "filter[id][gt]",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "filter[id][gte]",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "filter[id][lt]",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "filter[id][lte]",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "filter[id][in]",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "description": "Comma-separated values."
+            }
+          },
+          {
+            "name": "filter[id][isNull]",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "filter[reference]",
+            "in": "query",
+            "description": "Sugar for the eq operator.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "filter[reference][eq]",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "filter[reference][ne]",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "filter[reference][in]",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "description": "Comma-separated values."
+            }
+          },
+          {
+            "name": "filter[reference][like]",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "filter[reference][isNull]",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "filter[status]",
+            "in": "query",
+            "description": "Sugar for the eq operator.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "filter[status][eq]",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "filter[status][ne]",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "filter[status][in]",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "description": "Comma-separated values."
+            }
+          },
+          {
+            "name": "filter[status][like]",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "filter[status][isNull]",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "filter[amountCents]",
+            "in": "query",
+            "description": "Sugar for the eq operator.",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "filter[amountCents][eq]",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "filter[amountCents][ne]",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "filter[amountCents][gt]",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "filter[amountCents][gte]",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "filter[amountCents][lt]",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "filter[amountCents][lte]",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "filter[amountCents][in]",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "description": "Comma-separated values."
+            }
+          },
+          {
+            "name": "filter[amountCents][isNull]",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "id",
+                "id:asc",
+                "id:desc",
+                "reference",
+                "reference:asc",
+                "reference:desc",
+                "amountCents",
+                "amountCents:asc",
+                "amountCents:desc"
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "withCount",
+            "in": "query",
+            "description": "Answer { rows, total } instead of the array.",
+            "schema": {
+              "type": "integer",
+              "enum": [
+                1
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The rows.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/InvoiceSummaryList"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvoiceSummaryPage"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request was refused.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/invoice_summaries/{id}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getInvoiceSummary",
+        "tags": [
+          "InvoiceSummary"
+        ],
+        "responses": {
+          "200": {
+            "description": "The row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvoiceSummary"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ApiError": {
+        "title": "ApiError",
+        "description": "The error envelope. `error` is the stable code; `message` is free prose.",
+        "type": "object",
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "field": {
+            "type": "string",
+            "description": "The rejected filter or sort field, on the four codes that name one."
+          }
+        }
+      },
+      "Invoice": {
+        "title": "Invoice",
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "reference": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "status": {
+            "type": "string",
+            "maxLength": 20
+          },
+          "amountCents": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "discount": {
+            "type": [
+              "string",
+              "number",
+              "null"
+            ],
+            "description": "A decimal. Set wire.decimals to \"string\" to fix one form across server languages. Precision 10, scale 2."
+          },
+          "weight": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float"
+          }
+        },
+        "required": [
+          "id",
+          "reference",
+          "status",
+          "amountCents",
+          "discount",
+          "weight"
+        ]
+      },
+      "InvoiceCreate": {
+        "title": "InvoiceCreate",
+        "type": "object",
+        "properties": {
+          "reference": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40
+          },
+          "status": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20
+          },
+          "amountCents": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "discount": {
+            "type": [
+              "string",
+              "number"
+            ],
+            "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?([eE][+-]?[0-9]+)?$",
+            "description": "A decimal, as a string in JSON-number grammar or a JSON number. Precision 10, scale 2."
+          },
+          "weight": {
+            "type": "number",
+            "format": "float"
+          }
+        },
+        "required": [
+          "reference",
+          "status",
+          "amountCents"
+        ]
+      },
+      "InvoiceLedger": {
+        "title": "InvoiceLedger",
+        "type": "object",
+        "properties": {
+          "number": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "reference": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "discount": {
+            "type": [
+              "string",
+              "number",
+              "null"
+            ],
+            "description": "A decimal. Set wire.decimals to \"string\" to fix one form across server languages. Precision 10, scale 2."
+          },
+          "weight": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float"
+          }
+        },
+        "required": [
+          "number",
+          "reference",
+          "discount",
+          "weight"
+        ]
+      },
+      "InvoiceLedgerList": {
+        "title": "InvoiceLedgerList",
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/InvoiceLedger"
+        }
+      },
+      "InvoiceLedgerPage": {
+        "title": "InvoiceLedgerPage",
+        "type": "object",
+        "required": [
+          "rows",
+          "total"
+        ],
+        "properties": {
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InvoiceLedger"
+            }
+          },
+          "total": {
+            "type": "integer"
+          }
+        }
+      },
+      "InvoiceList": {
+        "title": "InvoiceList",
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/Invoice"
+        }
+      },
+      "InvoicePage": {
+        "title": "InvoicePage",
+        "type": "object",
+        "required": [
+          "rows",
+          "total"
+        ],
+        "properties": {
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Invoice"
+            }
+          },
+          "total": {
+            "type": "integer"
+          }
+        }
+      },
+      "InvoiceRegister": {
+        "title": "InvoiceRegister",
+        "type": "object",
+        "properties": {
+          "regNo": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "reference": {
+            "type": "string",
+            "maxLength": 40
+          }
+        },
+        "required": [
+          "regNo",
+          "reference"
+        ]
+      },
+      "InvoiceRegisterList": {
+        "title": "InvoiceRegisterList",
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/InvoiceRegister"
+        }
+      },
+      "InvoiceRegisterPage": {
+        "title": "InvoiceRegisterPage",
+        "type": "object",
+        "required": [
+          "rows",
+          "total"
+        ],
+        "properties": {
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InvoiceRegister"
+            }
+          },
+          "total": {
+            "type": "integer"
+          }
+        }
+      },
+      "InvoiceStub": {
+        "title": "InvoiceStub",
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "reference": {
+            "type": "string",
+            "maxLength": 40
+          }
+        },
+        "required": [
+          "id",
+          "reference"
+        ]
+      },
+      "InvoiceStubList": {
+        "title": "InvoiceStubList",
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/InvoiceStub"
+        }
+      },
+      "InvoiceStubPage": {
+        "title": "InvoiceStubPage",
+        "type": "object",
+        "required": [
+          "rows",
+          "total"
+        ],
+        "properties": {
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InvoiceStub"
+            }
+          },
+          "total": {
+            "type": "integer"
+          }
+        }
+      },
+      "InvoiceSummary": {
+        "title": "InvoiceSummary",
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "reference": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "status": {
+            "type": "string",
+            "maxLength": 20
+          },
+          "amountCents": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "id",
+          "reference",
+          "status",
+          "amountCents"
+        ]
+      },
+      "InvoiceSummaryList": {
+        "title": "InvoiceSummaryList",
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/InvoiceSummary"
+        }
+      },
+      "InvoiceSummaryPage": {
+        "title": "InvoiceSummaryPage",
+        "type": "object",
+        "required": [
+          "rows",
+          "total"
+        ],
+        "properties": {
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InvoiceSummary"
+            }
+          },
+          "total": {
+            "type": "integer"
+          }
+        }
+      },
+      "InvoiceUpdate": {
+        "title": "InvoiceUpdate",
+        "type": "object",
+        "properties": {
+          "reference": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40
+          },
+          "status": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20
+          },
+          "amountCents": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "discount": {
+            "type": [
+              "string",
+              "number",
+              "null"
+            ],
+            "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?([eE][+-]?[0-9]+)?$",
+            "description": "A decimal, as a string in JSON-number grammar or a JSON number. Precision 10, scale 2."
+          },
+          "weight": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float"
+          }
+        }
+      }
+    }
+  }
+}
