@@ -19,7 +19,7 @@ import java.util.TreeMap;
  * of a killed process, so no code in the dying JVM has to run.
  *
  * <p>Each JVM gets its own session, so one fork's death reaps that fork's containers and no other
- * run's. {@code TESTCONTAINERS_RYUK_DISABLED=true} turns the reaper off, as it does everywhere else.
+ * run's. {@code TESTCONTAINERS_RYUK_DISABLED=true} turns the reaper off.
  */
 final class ReaperLabels {
     private static List<String> labelArgs;

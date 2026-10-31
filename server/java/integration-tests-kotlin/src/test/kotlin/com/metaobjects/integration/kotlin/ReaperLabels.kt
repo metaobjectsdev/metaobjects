@@ -14,7 +14,7 @@ import org.testcontainers.utility.ResourceReaper
  * so no code in the dying JVM has to run.
  *
  * Each JVM gets its own session, so one fork's death reaps that fork's containers and no other
- * run's. `TESTCONTAINERS_RYUK_DISABLED=true` turns the reaper off, as it does everywhere else.
+ * run's. `TESTCONTAINERS_RYUK_DISABLED=true` turns the reaper off.
  */
 internal object ReaperLabels {
     private val labelArgs: List<String> by lazy {

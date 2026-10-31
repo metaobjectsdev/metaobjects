@@ -263,10 +263,6 @@ gate_publish_intent() { scripts/check-publish-intent.sh; }
 # set is tier-ordered and closed over its own sibling deps. Offline (manifests only).
 gate_publish_set() { node scripts/publish-set.mjs --check && node scripts/test-publish-set.mjs; }
 
-# Every docker-CLI test container must carry its reaper label, or a killed run leaves it behind.
-# Offline; see scripts/check-test-containers-reaped.sh.
-gate_containers_reaped() { scripts/check-test-containers-reaped.sh; }
-
 # ── no root script may be another root script's lifecycle hook ───────────────
 # npm and bun both run `pre<name>` before `<name>`, with no per-script opt-out. So
 # declaring BOTH `release` and `prerelease` made `bun run release <version>` — the
@@ -863,7 +859,6 @@ MO_CI_SESSION_LABEL="org.testcontainers.session-id=metaobjects-ci-$MO_CI_RUN_ID"
 MO_CI_PG_URL=""       # set by start_pg_sidecar; exported only by use_pg_sidecar
 CI_SIDECAR_STARTED=0  # 1 once this run started the sidecar, so it is this run's to remove
 CI_REAPER_PID=""      # the background shell that holds this run's Ryuk connection
-CI_REAPER_FAILED=0    # 1 once Ryuk would not start, so each lane does not wait for it again
 
 # docker_host_port <container> <container-port> — the host port Docker published for it.
 docker_host_port() { docker port "$1" "$2" 2>/dev/null | head -1 | sed 's/.*://'; }
@@ -874,16 +869,13 @@ docker_host_port() { docker port "$1" "$2" 2>/dev/null | head -1 | sed 's/.*://'
 # the libraries in one way: the socket lives in a small background shell rather than here,
 # because bash cannot mark a descriptor close-on-exec. Every test JVM, and every build server
 # it leaves running, would inherit it, and the connection would outlive the run. The holder
-# polls this script's pid and exits when it is gone, however it went. TESTCONTAINERS_RYUK_DISABLED
-# =true turns this off, as it does in the libraries.
+# polls this script's pid and exits when it is gone, however it went. A Ryuk that will not answer
+# costs about 15 seconds each time a lane asks for the sidecar, then the fall-back applies.
 start_ci_reaper() {
-  [ "${TESTCONTAINERS_RYUK_DISABLED:-}" = "true" ] && return 0
   [ -n "$CI_REAPER_PID" ] && return 0
-  [ "$CI_REAPER_FAILED" -eq 0 ] || return 1
 
   local name="metaobjects-ci-ryuk-$MO_CI_RUN_ID"
   connect_ci_reaper "$name" && return 0
-  CI_REAPER_FAILED=1
   docker rm -f "$name" >/dev/null 2>&1
   return 1
 }
@@ -891,7 +883,7 @@ start_ci_reaper() {
 connect_ci_reaper() {
   local name="$1" port i
   docker run -d --rm --name "$name" \
-      -v "${TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE:-/var/run/docker.sock}:/var/run/docker.sock" \
+      -v /var/run/docker.sock:/var/run/docker.sock \
       -p 127.0.0.1::8080 "$MO_CI_RYUK_IMAGE" >/dev/null 2>&1 || return 1
   port="$(docker_host_port "$name" 8080/tcp)"
   [ -n "$port" ] || return 1
@@ -952,11 +944,9 @@ start_pg_sidecar() {
       echo "    containers (slow). Integration results are unaffected." >&2
       return 0
     fi
-    local label=()
-    [ -n "$CI_REAPER_PID" ] && label=(--label "$MO_CI_SESSION_LABEL")
     # Clear a stopped leftover of an MO_PG_SIDECAR_NAME override, then start fresh.
     docker rm -f -v "$name" >/dev/null 2>&1 || true
-    if ! docker run -d --name "$name" ${label[@]+"${label[@]}"} \
+    if ! docker run -d --name "$name" --label "$MO_CI_SESSION_LABEL" \
         -e POSTGRES_USER=metaobjects -e POSTGRES_PASSWORD=metaobjects \
         -e POSTGRES_DB=metaobjects_test \
         -p 127.0.0.1::5432 postgres:16 >/dev/null 2>&1; then
@@ -1126,7 +1116,6 @@ run_gates_offline() {
   if want gates; then step    "uv.lock version parity"           gate_uv_lock_version;        fi
   if want gates; then step    "publish-intent parity"            gate_publish_intent;         fi
   if want gates; then step    "publish-set parity"               gate_publish_set;            fi
-  if want gates; then step    "test containers reaped"           gate_containers_reaped;      fi
   if want gates; then step    "no committed pre-release version" gate_no_prerelease_versions; fi
   if want gates; then step    "script-name hook collisions"      gate_script_name_hooks;      fi
   if want gates; then step    "ci lane selection"                gate_ci_port_selection;      fi

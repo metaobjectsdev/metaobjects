@@ -12,6 +12,8 @@
          `dotnet test path/to/MetaObjects.IntegrationTests.csproj` or
          scripts/integration-test.sh. -->
     <IsPackable>false</IsPackable>
+    <!-- ReaperKillTests.Main is this assembly's entry point: its killed child process. -->
+    <GenerateProgramFile>false</GenerateProgramFile>
   </PropertyGroup>
   <!-- The generated minimal-API routes (RoutesGenerator output) are hosted on a
        real ASP.NET Core host (Kestrel) in the SP-F generated-server lane

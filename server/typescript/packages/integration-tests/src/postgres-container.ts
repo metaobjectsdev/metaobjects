@@ -14,9 +14,8 @@
 // under Bun even though the container itself comes up healthy (verified:
 // container ready in <1s, but the promise never resolves). The hand-managed
 // docker-CLI path here is small, fast, and avoids the bun/testcontainers compat
-// issue entirely. When testcontainers-node + bun is fixed upstream, swap in
-// `@testcontainers/postgresql` (deps for it are already declared). The shared
-// sidecar mode sidesteps this entirely; the fallback keeps the docker path.
+// issue entirely. The shared sidecar mode sidesteps this entirely; the fallback
+// keeps the docker path.
 //
 // Readiness gating (mode 2): postgres' first-boot entrypoint starts the server
 // twice (initial init, then the real boot). `pg_isready` can return success

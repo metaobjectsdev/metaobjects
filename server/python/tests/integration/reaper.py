@@ -8,8 +8,7 @@ session's label. The operating system closes the socket of a killed process, so 
 dying process has to run.
 
 Each process gets its own session, so an xdist worker's death reaps that worker's containers and
-no other run's. ``TESTCONTAINERS_RYUK_DISABLED=true`` turns the reaper off, as it does everywhere
-else.
+no other run's. ``TESTCONTAINERS_RYUK_DISABLED=true`` turns the reaper off.
 """
 from __future__ import annotations
 
