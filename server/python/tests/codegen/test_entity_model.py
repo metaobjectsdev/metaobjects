@@ -257,6 +257,11 @@ def test_field_default_is_emitted_as_literal() -> None:
         (fc.FIELD_SUBTYPE_LONG, "{1,2}", "[1, 2]"),
         (fc.FIELD_SUBTYPE_DOUBLE, "[1.5]", "[1.5]"),
         (fc.FIELD_SUBTYPE_BOOLEAN, "{true,false}", "[True, False]"),
+        # JSON numbers and booleans in a text array read as their text, as TypeScript reads them.
+        (fc.FIELD_SUBTYPE_STRING, "[true, 1]", "['true', '1']"),
+        # An empty array needs no element parsing, so every element subtype has it.
+        (fc.FIELD_SUBTYPE_UUID, "{}", "[]"),
+        (fc.FIELD_SUBTYPE_DECIMAL, "[]", "[]"),
     ],
 )
 def test_array_default_is_a_python_list_not_the_metadata_string(
@@ -277,7 +282,12 @@ def test_array_default_is_a_python_list_not_the_metadata_string(
     [
         (fc.FIELD_SUBTYPE_STRING, '{"a,b",c}'),
         (fc.FIELD_SUBTYPE_INT, "{1,x}"),
-        (fc.FIELD_SUBTYPE_UUID, "{}"),
+        (fc.FIELD_SUBTYPE_UUID, "{a}"),
+        # float() reads these, but `[nan]` is not Python source and the module would not import.
+        (fc.FIELD_SUBTYPE_DOUBLE, "{nan}"),
+        (fc.FIELD_SUBTYPE_DOUBLE, "{inf}"),
+        (fc.FIELD_SUBTYPE_STRING, "[null]"),
+        (fc.FIELD_SUBTYPE_STRING, '[["a"]]'),
     ],
 )
 def test_array_default_python_cannot_spell_is_left_to_the_database(subtype: str, raw: str) -> None:

@@ -196,13 +196,21 @@ import { z } from "zod";
 import { CreateCustomer } from "../src/api/schemas.js";
 import { CreateCustomerInsertSchema } from "../src/generated/CreateCustomer.js";
 
-const rules = (schema: z.ZodType) => z.toJSONSchema(schema, { io: "input", unrepresentable: "any" });
+// `required` follows the order of the fields, which does not change what a schema accepts.
+const rules = (schema: z.ZodType, io: "input" | "output") =>
+  JSON.parse(
+    JSON.stringify(z.toJSONSchema(schema, { io, unrepresentable: "any" }), (key, value) =>
+      key === "required" && Array.isArray(value) ? [...value].sort() : value,
+    ),
+  );
 
-assert.deepEqual(rules(CreateCustomer), rules(CreateCustomerInsertSchema));
+for (const io of ["input", "output"] as const) {
+  assert.deepEqual(rules(CreateCustomer, io), rules(CreateCustomerInsertSchema, io));
+}
 ```
 
-`z.toJSONSchema` is Zod 4. On Zod 3, compare `zodToJsonSchema(schema)` from the `zod-to-json-schema`
-package instead.
+`z.toJSONSchema` is Zod 4. On Zod 3, sort and compare `zodToJsonSchema(schema)` from the
+`zod-to-json-schema` package instead.
 
 A required string generates `.min(1)`, so a hand-written `z.string()` with no minimum shows up here
 as a `minLength` difference. If the existing schema really accepts an empty string, say so in the

@@ -602,9 +602,10 @@ gate_prisma_pg() {
 
 # The brownfield recipe's database check (docs/features/adopting-existing-models.md): the model
 # matches a Postgres built from examples/brownfield/drizzle/db/schema.sql, and a wrong column that
-# tsc cannot see fails `meta verify --db`. Same split and same sidecar as gate_prisma_pg above.
+# tsc cannot see fails `meta verify --db`. The rest of that file needs no database and runs with
+# the cli suite, so this runs only the Postgres half, on the same sidecar as gate_prisma_pg above.
 gate_brownfield_pg() {
-  bun_install && ( cd server/typescript/packages/cli && bun test test/integration/brownfield-recipe.test.ts )
+  bun_install && ( cd server/typescript/packages/cli && bun test test/integration/brownfield-recipe.test.ts -t "meta verify --db" )
 }
 
 # ── conformance.yml — per-port conformance corpora (exact CI commands) ────────

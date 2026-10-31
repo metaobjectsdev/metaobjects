@@ -19,6 +19,7 @@ it runs at ``gen`` time only, which is why it may import ``metaobjects``.
 from __future__ import annotations
 
 import json
+import math
 import re
 from collections.abc import Callable
 
@@ -64,15 +65,32 @@ def _parse_bool_element(raw: object) -> bool:
     return text == "true"
 
 
-# How an array @default's elements read in Python, per element subtype. A subtype with no
-# entry has no Python spelling here, so its array default stays with the database.
+def _parse_text_element(raw: object) -> str:
+    """A string, or a JSON number or boolean read as its text. null and a nested value are
+    refused."""
+    if isinstance(raw, str):
+        return raw
+    if isinstance(raw, bool | int | float):
+        return json.dumps(raw)
+    raise ValueError(raw)
+
+
+def _parse_float_element(raw: object) -> float:
+    """float() also reads ``nan`` and ``inf``, whose repr is not Python source."""
+    value = float(str(raw))
+    if not math.isfinite(value):
+        raise ValueError(raw)
+    return value
+
+
+# How an array @default's non-empty elements read in Python, per element subtype. A subtype
+# with no entry has no Python spelling here, so its array default stays with the database.
 _ARRAY_ELEMENT_PARSERS: dict[str, Callable[[object], object]] = {
-    fc.FIELD_SUBTYPE_STRING: str,
-    fc.FIELD_SUBTYPE_ENUM: str,
+    fc.FIELD_SUBTYPE_STRING: _parse_text_element,
     fc.FIELD_SUBTYPE_INT: lambda v: int(str(v)),
     fc.FIELD_SUBTYPE_LONG: lambda v: int(str(v)),
-    fc.FIELD_SUBTYPE_DOUBLE: lambda v: float(str(v)),
-    fc.FIELD_SUBTYPE_FLOAT: lambda v: float(str(v)),
+    fc.FIELD_SUBTYPE_DOUBLE: _parse_float_element,
+    fc.FIELD_SUBTYPE_FLOAT: _parse_float_element,
     fc.FIELD_SUBTYPE_BOOLEAN: _parse_bool_element,
 }
 
@@ -84,8 +102,7 @@ def array_default(field: MetaField) -> list[object] | None:
     here, with the same refusals: a quote or nested brace in the Postgres form is an
     escaping shape neither port models."""
     raw = field.attrs().get(fc.FIELD_ATTR_DEFAULT)
-    parse = _ARRAY_ELEMENT_PARSERS.get(field.sub_type)
-    if not isinstance(raw, str) or parse is None:
+    if not isinstance(raw, str):
         return None
     text = raw.strip()
     elements: list[object]
@@ -102,6 +119,11 @@ def array_default(field: MetaField) -> list[object] | None:
             return None
         elements = [p.strip() for p in inner.split(",")] if inner else []
     else:
+        return None
+    if not elements:
+        return []
+    parse = _ARRAY_ELEMENT_PARSERS.get(field.sub_type)
+    if parse is None:
         return None
     try:
         return [parse(e) for e in elements]

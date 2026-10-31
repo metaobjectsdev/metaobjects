@@ -244,6 +244,14 @@ export const backward: A = {} as B;
     expect(bun(root, "proof/rules.ts").code).toBe(0);
   }, 120_000);
 
+  test("fields in a different order are not a difference", async () => {
+    const root = fresh("zod");
+    expect(await run(["gen", "--cwd", root])).toBe(0);
+    edit(root, "src/api/schemas.ts", "  email: z.string().min(1).max(254),\n  displayName: z.string().min(1).max(120),\n", "  displayName: z.string().min(1).max(120),\n  email: z.string().min(1).max(254),\n");
+    expect(tsc(root)).toEqual({ code: 0, output: "" });
+    expect(bun(root, "proof/rules.ts").code).toBe(0);
+  }, 120_000);
+
   test("tsc names a field that became any, which assigns both ways", async () => {
     const root = fresh("zod");
     expect(await run(["gen", "--cwd", root])).toBe(0);
