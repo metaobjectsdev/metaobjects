@@ -1,0 +1,8 @@
+node_modules
+.venv
+__pycache__/
+.mypy_cache/
+.pytest_cache/
+.ci-logs/
+.metaobjects/.gen-state/*
+!.metaobjects/.gen-state/.hashes.json

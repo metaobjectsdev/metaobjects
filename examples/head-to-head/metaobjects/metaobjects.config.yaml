@@ -1,0 +1,6 @@
+metadata: metaobjects
+templates: prompts
+targets:
+  app:
+    outDir: worker/generated
+    generators: [entity]

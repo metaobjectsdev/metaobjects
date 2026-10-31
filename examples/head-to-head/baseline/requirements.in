@@ -1,0 +1,6 @@
+datamodel-code-generator[black,isort]==0.87.0
+jinja2
+mypy
+psycopg[binary]
+pydantic
+pytest
