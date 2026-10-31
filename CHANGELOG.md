@@ -26,8 +26,9 @@ here.**
 
 - **Python: an array field's `default` generated a string.** A model with
   `field.string[]: { default: "{}" }` generated `tags: list[str] = '{}'`, which fails on first use.
-  It now generates `tags: list[str] = []`, from the same four spellings TypeScript accepts. A
-  default Python cannot spell as a list is left to the database.
+  It now generates `tags: list[str] = []`, from the same four spellings TypeScript accepts, or
+  from a native YAML list such as `default: [a, b]`. A default Python cannot spell as a list is
+  left to the database.
 
 ## [1.2.0] — 2026-10-30
 

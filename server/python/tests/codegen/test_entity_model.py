@@ -262,14 +262,20 @@ def test_field_default_is_emitted_as_literal() -> None:
         # An empty array needs no element parsing, so every element subtype has it.
         (fc.FIELD_SUBTYPE_UUID, "{}", "[]"),
         (fc.FIELD_SUBTYPE_DECIMAL, "[]", "[]"),
+        # YAML `default: [a, b]` reaches the generator as a native list, not a string.
+        (fc.FIELD_SUBTYPE_STRING, ["a", "b"], "['a', 'b']"),
+        (fc.FIELD_SUBTYPE_STRING, [], "[]"),
+        (fc.FIELD_SUBTYPE_LONG, [1, 2], "[1, 2]"),
+        (fc.FIELD_SUBTYPE_BOOLEAN, [True, False], "[True, False]"),
+        (fc.FIELD_SUBTYPE_UUID, [], "[]"),
     ],
 )
 def test_array_default_is_a_python_list_not_the_metadata_string(
-    subtype: str, raw: str, expected: str
+    subtype: str, raw: object, expected: str
 ) -> None:
-    """An array @default is authored as a string; both models must get the list it spells,
-    because Pydantic does not validate a default and `tags: list[str] = '{}'` hands every
-    instance a str."""
+    """An array @default is authored as a string or a native list; both models must get the
+    list it spells, because Pydantic does not validate a default and `tags: list[str] = '{}'`
+    hands every instance a str."""
     tags = _f("tags", subtype, is_array=True)
     tags.set_attr(fc.FIELD_ATTR_DEFAULT, raw)
     out = render_entity_model(_entity("M", [tags]))
@@ -288,15 +294,19 @@ def test_array_default_is_a_python_list_not_the_metadata_string(
         (fc.FIELD_SUBTYPE_DOUBLE, "{inf}"),
         (fc.FIELD_SUBTYPE_STRING, "[null]"),
         (fc.FIELD_SUBTYPE_STRING, '[["a"]]'),
+        (fc.FIELD_SUBTYPE_INT, ["x"]),
+        (fc.FIELD_SUBTYPE_UUID, ["a"]),
     ],
 )
-def test_array_default_python_cannot_spell_is_left_to_the_database(subtype: str, raw: str) -> None:
+def test_array_default_python_cannot_spell_is_left_to_the_database(
+    subtype: str, raw: str | list[str]
+) -> None:
     """A shape this parser does not model carries no Python default, as a SQL expression
     does: the column has the default, and the model must not invent one."""
     tags = _f("tags", subtype, is_array=True)
     tags.set_attr(fc.FIELD_ATTR_DEFAULT, raw)
     out = render_entity_model(_entity("M", [tags]))
-    assert raw not in out
+    assert str(raw) not in out
     assert "] | None = None" in out.split("class MCreate")[0]
 
 

@@ -42,6 +42,9 @@ off, or pytest never collected it.
 
 ### Drizzle
 
+Install the CLI with `npm i -D @metaobjectsdev/cli @metaobjectsdev/codegen-ts typescript`, then run
+`npx meta init` once in the project root.
+
 Write the model. Field names are the TypeScript property names. `snake_case` is the default for
 columns, so `displayName` already means `display_name`. Reuse the names the database has: the name
 of a `.unique()` index goes on `identity.secondary`, and an existing foreign key name goes in
@@ -78,6 +81,8 @@ export default defineConfig({
   generators: ["entity"],
 });
 ```
+
+Run `npx meta gen` to generate.
 
 Copy this helper into `proof/differs.ts`:
 
@@ -150,6 +155,9 @@ Keep one migration tool per database. To stay on drizzle-kit, point it at this f
 
 ### Zod
 
+Install the CLI with `npm i -D @metaobjectsdev/cli @metaobjectsdev/codegen-ts typescript`, then run
+`npx meta init` once in the project root.
+
 A Zod project often has no ORM, so generate a contract-only target. An object with no table is an
 `object.value`:
 
@@ -180,7 +188,7 @@ metadata:
           - field.string[]: { name: tags, required: true }
 ```
 
-The schema for `CreateCustomer` is `CreateCustomerInsertSchema`. The generated `CreateCustomer` is
+Run `npx meta gen` to generate. The schema for `CreateCustomer` is `CreateCustomerInsertSchema`. The generated `CreateCustomer` is
 the type. Use the same `proof/differs.ts` as above, and compare both `z.input` and `z.output`,
 because a default or a transform changes one without the other:
 
@@ -272,6 +280,8 @@ targets:
     outDir: generated # beside the existing code; nothing imports it yet
     generators: [entity]
 ```
+
+Run `metaobjects gen` from the project root to generate.
 
 mypy cannot compare two Pydantic models, because a class is its own type, whatever its fields are.
 Pydantic can describe a model as JSON Schema, so compare those. Pydantic validates input and writes

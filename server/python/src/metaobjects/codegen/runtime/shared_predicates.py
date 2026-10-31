@@ -101,16 +101,18 @@ _ARRAY_ELEMENT_PARSERS: dict[str, Callable[[object], object]] = {
 
 def array_default(field: MetaField) -> list[object] | None:
     """The list an array field's ``@default`` spells, or None when it is not one this can
-    read. The metadata value is always a string — ``{}``, ``[]``, ``{a,b}`` or ``["a","b"]``
-    — and the same four shapes the TS column-mapper's parseArrayDefault accepts are read
-    here, with the same refusals: a quote or nested brace in the Postgres form is an
-    escaping shape neither port models."""
+    read. The metadata value is a string — ``{}``, ``[]``, ``{a,b}`` or ``["a","b"]`` — or a
+    native list (``default: [a, b]`` in YAML, which the loader keeps as written). The four
+    string shapes the TS column-mapper's parseArrayDefault accepts are read here, with the
+    same refusals: a quote or nested brace in the Postgres form is an escaping shape neither
+    port models. A native list goes through the same element parsers."""
     raw = field.attrs().get(fc.FIELD_ATTR_DEFAULT)
-    if not isinstance(raw, str):
-        return None
-    text = raw.strip()
     elements: list[object]
-    if text.startswith("[") and text.endswith("]"):
+    if isinstance(raw, list):
+        elements = raw
+    elif not isinstance(raw, str):
+        return None
+    elif (text := raw.strip()).startswith("[") and text.endswith("]"):
         try:
             elements = json.loads(text)
         except ValueError:
