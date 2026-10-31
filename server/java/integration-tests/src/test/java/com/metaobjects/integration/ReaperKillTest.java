@@ -26,7 +26,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 public final class ReaperKillTest {
     private static final Pattern READY = Pattern.compile("^READY (\\d+)$", Pattern.MULTILINE);
     private static final long CHILD_READY_MS = 60_000;
-    private static final long REMOVAL_BOUND_MS = 45_000;
+    // Ryuk waits 10s, then Docker has to finish the container's exit, and it cannot until the overlay
+    // unmount has flushed the host filesystem's dirty pages. A busy disk makes removal slow, not wrong.
+    // Measured with a 256 MiB backlog: 34-38s at 12 MB/s and 67-76s at 6 MB/s, against under 11s at
+    // 6 MB/s with no backlog. Every removal succeeded.
+    private static final long REMOVAL_BOUND_MS = 120_000;
 
     /** The killed JVM: it starts a real helper container, reports the port and waits. */
     public static void main(String[] args) throws Exception {
@@ -56,7 +60,7 @@ public final class ReaperKillTest {
 
             long deadline = System.currentTimeMillis() + REMOVAL_BOUND_MS;
             while (exists(container) && System.currentTimeMillis() < deadline) Thread.sleep(250);
-            assertFalse(exists(container), container + " outlived its killed JVM");
+            assertFalse(exists(container), container + " outlived its killed JVM (" + status(container) + ")");
         } finally {
             child.destroyForcibly();
             if (!container.isEmpty()) docker("rm", "-f", "-v", container);
@@ -76,6 +80,10 @@ public final class ReaperKillTest {
 
     private static boolean exists(String container) throws IOException, InterruptedException {
         return !docker("ps", "-a", "--filter", "name=^" + container + "$", "--format", "{{.Names}}").isEmpty();
+    }
+
+    private static String status(String container) throws IOException, InterruptedException {
+        return docker("ps", "-a", "--filter", "name=^" + container + "$", "--format", "{{.Status}}");
     }
 
     private static String docker(String... args) throws IOException, InterruptedException {

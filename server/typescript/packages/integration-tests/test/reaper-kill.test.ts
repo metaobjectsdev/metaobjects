@@ -23,7 +23,12 @@ const CAN_RUN_CI_LOCAL = existsSync(CI_LOCAL) && spawnSync("bash", ["--version"]
 
 const CHILD_READY_MS = 60_000;
 const SIDECAR_START_MS = 120_000;
-const REMOVAL_BOUND_MS = 45_000;
+// Ryuk waits 10s, then Docker has to finish the container's exit, and it cannot until the overlay
+// unmount has flushed the host filesystem's dirty pages. A busy disk makes removal slow, not wrong.
+// Measured with a 256 MiB backlog: 34-38s at 12 MB/s and 67-76s at 6 MB/s, against under 11s at
+// 6 MB/s with no backlog. Every removal succeeded.
+const REMOVAL_BOUND_MS = 120_000;
+const TEARDOWN_MARGIN_MS = 60_000;
 const POLL_MS = 250;
 
 function docker(...args: string[]): string {
@@ -33,6 +38,7 @@ function docker(...args: string[]): string {
 }
 
 const exists = (name: string): boolean => docker("ps", "-a", "--filter", `name=^${name}$`, "--format", "{{.Names}}") !== "";
+const status = (name: string): string => docker("ps", "-a", "--filter", `name=^${name}$`, "--format", "{{.Status}}");
 const isRunning = (name: string): boolean =>
   docker("ps", "--filter", `name=^${name}$`, "--filter", "status=running", "--format", "{{.Names}}") !== "";
 const removeOwn = (name: string): void => { spawnSync("docker", ["rm", "-f", "-v", name], { stdio: "ignore", timeout: 30_000 }); };
@@ -48,7 +54,7 @@ async function waitUntil(condition: () => boolean, boundMs: number): Promise<boo
 
 async function expectRemoved(name: string): Promise<void> {
   const removed = await waitUntil(() => !exists(name), REMOVAL_BOUND_MS);
-  if (!removed) throw new Error(`container ${name} still exists ${REMOVAL_BOUND_MS / 1000}s after its process ended`);
+  if (!removed) throw new Error(`container ${name} still exists ${REMOVAL_BOUND_MS / 1000}s after its process ended (${status(name)})`);
 }
 
 interface Child {
@@ -94,7 +100,7 @@ describe("a killed run removes its containers", () => {
         if (child.container !== undefined) removeOwn(child.container);
       }
     }
-  }, 240_000);
+  }, 2 * CHILD_READY_MS + 2 * REMOVAL_BOUND_MS + TEARDOWN_MARGIN_MS);
 
   test.skipIf(!CAN_RUN_CI_LOCAL)("a killed ci-local run removes its Postgres sidecar", async () => {
     const sidecar = `metaobjects-test-sidecar-${randomUUID().slice(0, 8)}`;
@@ -119,5 +125,5 @@ describe("a killed run removes its containers", () => {
       removeOwn(sidecar);
       rmSync(scratch, { recursive: true, force: true });
     }
-  }, 240_000);
+  }, SIDECAR_START_MS + REMOVAL_BOUND_MS + TEARDOWN_MARGIN_MS);
 });
