@@ -110,10 +110,11 @@ own rules. None needed a product decision from outside them.
    strict file covers the object's create shape, the thing a model is asked to fill in, or its
    read shape when it has no create shape. It carries no `$schema` or `$id`, because some hosts
    refuse them, and `format`, `pattern` and the bound keywords become `description` prose. What the
-   subset cannot state (a map, an open object, a recursive type, a polymorphic base) is
-   **refused with `ERR_CONTRACT_STRICT_UNREPRESENTABLE`, naming the path**, never dropped: a
-   silently narrowed schema gives a model a different contract from the one declared. A project
-   leaves such an object out with `filter`.
+   subset cannot state (a map, an open object, a recursive type, a reference to a polymorphic
+   base) is **refused with `ERR_CONTRACT_STRICT_UNREPRESENTABLE`, naming the path**, never dropped:
+   a silently narrowed schema gives a model a different contract from the one declared. A project
+   leaves such an object out with `filter`. A TPH base gets no strict file of its own, because
+   each of its subtypes has one.
 4. **Proto naming (open question 4).** Left to Phase 3 with the rest of it.
 5. **Stable names.** `json-schema` was already taken: it is the Java generator for metadata
    files, a different concept. The emitter's stable name is `contract-schema`, its factory

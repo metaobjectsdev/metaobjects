@@ -147,8 +147,9 @@ of what those hosts accept.
 
 What the subset cannot state is refused, not dropped, because a schema narrowed in silence gives a
 model a different contract from the one you declared. A map, an open object, a recursive type or a
-polymorphic TPH base stops the run with `ERR_CONTRACT_STRICT_UNREPRESENTABLE`, naming the path. Leave
-that object out with `filter`.
+reference to a polymorphic TPH base stops the run with `ERR_CONTRACT_STRICT_UNREPRESENTABLE`, naming
+the path. Leave that object out with `filter`. A TPH base gets no strict file of its own, because each
+of its subtypes has one.
 
 ## The OpenAPI document
 
