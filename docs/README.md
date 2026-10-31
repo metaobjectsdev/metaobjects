@@ -85,6 +85,7 @@ this tree is documentation, not the source of truth.
 | Know which feature is supported in which port today | the capability matrix in the root [`README.md`](../README.md) or the per-port "Capability snapshot" table |
 | See which conformance fixtures gate each feature (and which port passes which) | [`CONFORMANCE.md`](CONFORMANCE.md) |
 | See a worked, non-toy model end to end (projections, value objects, TPH, prompt payloads on one runnable spine) | [`../examples/advanced-modeling/`](../examples/advanced-modeling/) |
+| Compare MetaObjects with a do-it-yourself stack on the same app (drift scenarios, self-measured scorecard) | [`../examples/head-to-head/`](../examples/head-to-head/) |
 | Read the canonical spec (target-agnostic) | [`../spec/`](../spec/) |
 | Find a release recipe (Cloudflare D1, etc.) | [`recipes/`](recipes/) |
 | Keep drizzle-kit migrations while MetaObjects owns the model | [`recipes/drizzle-kit-migrations.md`](recipes/drizzle-kit-migrations.md) |

@@ -1,0 +1,72 @@
+{
+  "formatVersion": 4,
+  "snapshot": {
+    "tables": [
+      {
+        "checks": [
+          {
+            "expression": "\"plan\" IN ('free', 'pro')",
+            "name": "customers_plan_chk"
+          }
+        ],
+        "columns": [
+          {
+            "default": {
+              "kind": "expr",
+              "value": "now()"
+            },
+            "name": "created_at",
+            "nullable": false,
+            "sqlType": {
+              "kind": "timestamp",
+              "withTimezone": true
+            }
+          },
+          {
+            "name": "email",
+            "nullable": false,
+            "sqlType": {
+              "kind": "text",
+              "maxLength": 320
+            }
+          },
+          {
+            "identity": "increment",
+            "name": "id",
+            "nullable": false,
+            "sqlType": {
+              "bits": 64,
+              "kind": "integer"
+            }
+          },
+          {
+            "name": "name",
+            "nullable": true,
+            "sqlType": {
+              "kind": "text",
+              "maxLength": 200
+            }
+          },
+          {
+            "default": {
+              "kind": "literal",
+              "value": "free"
+            },
+            "name": "plan",
+            "nullable": false,
+            "sqlType": {
+              "kind": "text"
+            }
+          }
+        ],
+        "foreignKeys": [],
+        "indexes": [],
+        "name": "customers",
+        "primaryKey": [
+          "id"
+        ]
+      }
+    ],
+    "views": []
+  }
+}
