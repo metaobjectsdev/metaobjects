@@ -3,8 +3,9 @@
 //
 // The build-time gate cannot see this case: the helper is generated against a clean template,
 // and the template text is then edited (or served by a different provider) afterwards. The
-// shared corpus is fixtures/template-output-render-conformance/runtime-drift/ — `templates/`
-// holds the drifted text; the clean text the helpers are generated from is the parent corpus.
+// shared corpus is fixtures/template-output-render-conformance/runtime-drift/ — its `templates/`
+// holds the drifted text; the clean text the helpers are generated from is the parent corpus's
+// `templates/`.
 import { describe, test, expect, afterAll } from "bun:test";
 import { mkdtempSync, writeFileSync, rmSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
