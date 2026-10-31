@@ -1,0 +1,32 @@
+{
+  "metadata.root": {
+    "package": "acme::ai",
+    "children": [
+      {
+        "object.value": {
+          "name": "Welcome",
+          "children": [
+            { "field.string": { "name": "name", "@required": true } }
+          ]
+        }
+      },
+      {
+        "template.output": {
+          "name": "WelcomePage",
+          "@kind": "document",
+          "@payloadRef": "Welcome",
+          "@textRef": "pages/welcome",
+          "@format": "text"
+        }
+      },
+      {
+        "template.prompt": {
+          "name": "WelcomePrompt",
+          "@payloadRef": "Welcome",
+          "@textRef": "pages/welcome",
+          "@format": "text"
+        }
+      }
+    ]
+  }
+}

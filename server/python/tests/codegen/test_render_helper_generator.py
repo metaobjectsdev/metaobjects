@@ -555,15 +555,14 @@ def test_jinja_not_static_fails_codegen(tmp_path) -> None:
     raise AssertionError("expected ERR_TEMPLATE_NOT_STATIC to fail codegen")
 
 
-def test_mustache_helper_has_no_engine_or_runtime_tree(tmp_path) -> None:
+def test_mustache_helper_names_no_engine_but_bakes_in_the_runtime_tree(tmp_path) -> None:
     _write_mustache(tmp_path, "pages/welcome", "Hi {{name}}")
     payload = _payload_vo("Welcome", [_field("name")])
     tmpl = _document_template("WelcomePage", "Welcome", text_ref="pages/welcome")
     root = _root([payload, tmpl])
     src = RenderHelperGenerator(str(tmp_path)).generate(_ctx(root))[0].content
-    assert "engine=" not in src
-    assert "verify=" not in src
-    assert "PayloadField" not in src
+    assert "engine=" not in src  # a Mustache body needs no engine named
+    assert 'verify=[PayloadField("name")]' in src  # but it is still checked at render time
 
 
 def test_email_parts_may_mix_engines(tmp_path, monkeypatch) -> None:

@@ -16,7 +16,8 @@ import java.util.function.Function;
 /**
  * Mustache-driven render pipeline for the {@code template.*} metatype (FR-004).
  *
- * <p>Pipeline: resolve template text (inline or via provider) → pre-expand
+ * <p>Pipeline: resolve template text (inline or via provider) → verify it against the
+ * request's payload field tree when one is given → pre-expand
  * partials by recursive inlining (cycle-guarded, MAX_DEPTH=32) →
  * Mustache.java compile + execute (HTML escaping DISABLED on the factory
  * because the {@link Escapers} layer owns escaping) → apply format-keyed
@@ -40,6 +41,22 @@ public final class Renderer {
         String body = req.template() != null
             ? req.template()
             : resolveOrThrow(req.provider(), req.ref());
+
+        // Drift guard: when the request carries the payload field tree, the RESOLVED body is
+        // verified against it before it renders, so `{{nmae}}` for `name` raises instead of
+        // rendering empty. A warning-level result (a declared required slot the body never
+        // uses) is not drift. Matches TS render.ts and C# Renderer.Render.
+        if (req.verify() != null) {
+            List<VerifyError> drift = Verify.check(body, req.verify(), new VerifyOptions(req.provider(), null, null))
+                .stream()
+                .filter(e -> !Verify.ERR_REQUIRED_SLOT_UNUSED.equals(e.code()))
+                .toList();
+            if (!drift.isEmpty()) {
+                throw new RenderException("render verify failed: " + drift.stream()
+                    .map(e -> e.code() + " (" + e.path() + ")")
+                    .collect(java.util.stream.Collectors.joining(", ")));
+            }
+        }
 
         String expanded = preExpandPartials(body, req.provider(), new ArrayDeque<>());
 

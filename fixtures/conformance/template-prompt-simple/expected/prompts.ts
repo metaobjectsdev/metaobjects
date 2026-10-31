@@ -4,5 +4,5 @@ import { render, type Provider } from "@metaobjectsdev/render";
 import type { NpcPromptPayload } from "./NpcPromptPayload.js";
 
 export function renderNpcTurn(payload: NpcPromptPayload, provider: Provider): string {
-  return render({ ref: "npc/turn", payload, format: "xml", provider });
+  return render({ ref: "npc/turn", payload, format: "xml", provider, verify: [{"name":"name"},{"name":"mood"}] });
 }

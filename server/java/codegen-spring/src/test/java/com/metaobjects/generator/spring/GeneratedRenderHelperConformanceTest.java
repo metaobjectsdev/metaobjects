@@ -276,6 +276,44 @@ public class GeneratedRenderHelperConformanceTest extends SharedRegistryTestBase
     // Helpers
     // -------------------------------------------------------------------------
 
+    // -------------------------------------------------------------------------
+    // runtime-drift/ -> a variable not on the payload RAISES at render time. The helpers are
+    // generated against the clean templates/; runtime-drift/templates/ serves {{nmae}} for
+    // name (text edited after codegen, which the build-time gate cannot see). Covers a
+    // template.output and a template.prompt over the same payload.
+    // -------------------------------------------------------------------------
+    @Test
+    public void runtimeDriftRaisesForOutputAndPromptHelpers() throws Exception {
+        assertNotNull("corpus must be reachable", CORPUS);
+        Path clean = CORPUS.resolve("templates");
+        Path drifted = CORPUS.resolve("runtime-drift").resolve("templates");
+        MetaDataLoader loader = loadCorpus(CORPUS.resolve("runtime-drift").resolve("meta.json"), "rdrift");
+
+        Path gen = tmp.newFolder("rdrift-gen").toPath();
+        generate(loader, gen, clean);
+
+        Path classes = compile(collectSources(gen));
+        try (URLClassLoader cl = new URLClassLoader(
+                new URL[]{ classes.toUri().toURL() }, getClass().getClassLoader())) {
+            Class<?> payloadClass = cl.loadClass("acme.ai.Welcome");
+            Object payload = payloadClass.getConstructor(String.class).newInstance("Ada");
+            Class<?> providerClass = Class.forName("com.metaobjects.render.Provider");
+
+            for (String helper : new String[]{ "WelcomePageRenderHelper", "WelcomePromptRenderHelper" }) {
+                Method render = cl.loadClass("acme.ai.prompts." + helper)
+                        .getMethod("render", payloadClass, providerClass);
+                assertEquals(helper, "Hello Ada", render.invoke(null, payload, newFilesystemProvider(clean)));
+                try {
+                    Object out = render.invoke(null, payload, newFilesystemProvider(drifted));
+                    fail(helper + " rendered a variable not on the payload instead of raising: \"" + out + "\"");
+                } catch (java.lang.reflect.InvocationTargetException e) {
+                    String msg = String.valueOf(e.getCause().getMessage());
+                    assertTrue(helper + ": " + msg, msg.contains("ERR_VAR_NOT_ON_PAYLOAD (nmae)"));
+                }
+            }
+        }
+    }
+
     private MetaDataLoader loadCorpus(Path metaJson, String baseName) throws Exception {
         assertTrue("corpus meta.json must exist: " + metaJson, Files.exists(metaJson));
         Path ws = tmp.newFolder("ws-" + baseName).toPath();

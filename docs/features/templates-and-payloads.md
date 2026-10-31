@@ -714,6 +714,17 @@ and checks each one exists on the payload VO. If a template references
 body (Python and TypeScript) is checked the same way; see
 [Jinja templates](#jinja-templates-python-and-typescript).
 
+**The same check runs at render time in every generated render helper** (the `template.output`
+helper and the `template.prompt` handle, in all five ports). The helper carries its payload's
+field tree, so text edited or served after codegen that names a variable the payload lacks
+(`{{nmae}}` for `name`) raises `ERR_VAR_NOT_ON_PAYLOAD` instead of rendering as an empty
+string. Before this, the TypeScript `promptRender()` handle, the Python helper on a Mustache
+body, and the Java and Kotlin helpers rendered it silently. Calling the engine's `render()`
+directly with no declared payload keeps the engine's default, since there is nothing to compare
+against; ask for the check by passing the field tree (`verify` in TypeScript, Java, Kotlin and
+C#; `verify=` in Python). Pinned by
+[`fixtures/template-output-render-conformance/runtime-drift/`](../../fixtures/template-output-render-conformance/runtime-drift/).
+
 A bare `verify` also checks generated code and the requirement ledger; name the template
 check to run it alone. Java and Python skip this check with a note when no template root is
 configured; C# does not skip, and a bare run with no `prompts/` or `templates/` directory

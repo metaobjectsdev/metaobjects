@@ -217,3 +217,16 @@ error code `ERR_VAR_NOT_ON_PAYLOAD`, and the message must name the offending
 field (`missing`), the template (`WelcomePage`), and the ref (`pages/bad`). This
 is the build-time gate that stops a template from drifting away from its payload
 contract.
+
+## Runtime drift — `runtime-drift/`
+
+A variable that is not on the payload must RAISE at render time, never render as empty. The
+build-time gate cannot see this case: the helper is generated against clean text, and the text is
+edited or served by another provider afterwards. `runtime-drift/meta.json` declares the `Welcome`
+payload plus a `template.output` (`WelcomePage`) and a `template.prompt` (`WelcomePrompt`) over the
+same ref `pages/welcome`. Each port:
+
+1. generates both helpers with the CLEAN `templates/` (the codegen gate passes);
+2. renders with `templates/` → `"Hello Ada"`;
+3. renders with `runtime-drift/templates/` (`pages/welcome.mustache` = `Hello {{nmae}}`) → the
+   helper throws, and the message contains `ERR_VAR_NOT_ON_PAYLOAD (nmae)`.
