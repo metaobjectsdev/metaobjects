@@ -4,5 +4,5 @@ import { render, type Provider } from "@metaobjectsdev/render";
 import type { SubscriberBlurbPayload } from "./SubscriberBlurbPayload";
 
 export function renderSubscriberBlurb(payload: SubscriberBlurbPayload, provider: Provider): string {
-  return render({ ref: "subscriber/blurb", payload, format: "text", provider });
+  return render({ ref: "subscriber/blurb", payload, format: "text", provider, verify: [{"name":"name"},{"name":"status"}] });
 }
