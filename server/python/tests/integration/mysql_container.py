@@ -1,8 +1,7 @@
 """A throwaway MySQL 8.4 server for the MySQL conformance lanes.
 
-Shells out to the ``docker`` CLI exactly like :mod:`postgres_container` (no
-python-testcontainers, whose docker-API negotiation lags current Docker engines). One
-server is started for a whole pytest session (see ``conftest.py``); every scenario starts
+Shells out to the ``docker`` CLI exactly like :mod:`postgres_container`, with the
+testcontainers package supplying only Ryuk (see :mod:`reaper`). One server is started for a whole pytest session (see ``conftest.py``); every scenario starts
 from an EMPTY schema via :func:`reset_database`, which is what the Java and Kotlin lanes do.
 
 Set ``METAOBJECTS_TEST_MYSQL_URL`` (``mysql://user:password@host:port/database``) to run

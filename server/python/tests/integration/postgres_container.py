@@ -9,9 +9,8 @@ Two modes, mirroring the TS/Java/Kotlin/C# integration suites:
      gets a pristine empty database, so isolation is identical to the per-
      container path.
   2. Per-container (local dev): with no env var, ``docker run`` a fresh container,
-     exactly as before. Avoids the python-testcontainers package + its docker API
-     negotiation churn (the same kind of mismatch testcontainers-java hits
-     against Docker Engine 29+).
+     exactly as before. The testcontainers package supplies only Ryuk, which removes
+     the container when a killed run never reaches its teardown (see :mod:`reaper`).
 """
 from __future__ import annotations
 

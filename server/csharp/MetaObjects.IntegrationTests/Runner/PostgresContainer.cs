@@ -47,9 +47,7 @@ public sealed class PostgresContainer : IAsyncDisposable
             return await StartOnSharedAsync(sharedUrl);
         }
 
-        var container = new PostgreSqlBuilder()
-            .WithImage("postgres:16-alpine")
-            .Build();
+        var container = new PostgreSqlBuilder("postgres:16-alpine").Build();
         await container.StartAsync();
         return new PostgresContainer(container);
     }
