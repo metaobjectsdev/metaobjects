@@ -53,6 +53,10 @@ export default defineConfig({
 Already on drizzle-kit and want to keep its migrations? Re-export the generated tables from your own
 schema file: [drizzle-kit migrations](../recipes/drizzle-kit-migrations.md).
 
+Moving existing Drizzle tables or Zod schemas into the model? [Adopting existing
+models](../features/adopting-existing-models.md) generates beside them and proves the types match
+before you switch a call site.
+
 A model of only value objects and sourceless projections needs no `dialect`. A sourceless
 object generates its type and nothing else: no table, no migration, no routes. See
 [Own your codegen](../features/own-your-codegen.md) for ejecting a generator, and the

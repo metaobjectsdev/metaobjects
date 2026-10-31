@@ -15,6 +15,19 @@ here.**
 - **A `pydantic` extra on the Python package.** `pip install "metaobjects[pydantic]"` installs
   `pydantic>=2.8`, the minimum the generated Python models need, so an adopter can get the enforced
   floor with the package. The base install is unchanged.
+- **A recipe for moving existing models into MetaObjects without a rewrite.**
+  `docs/features/adopting-existing-models.md` takes Drizzle tables, Zod schemas and Pydantic models
+  from writing the model through retiring the old code, and proves the generated types match first.
+  The proof is a test file that `tsc` or pytest runs, so nothing reads your source and there is no
+  new command. `examples/brownfield/` holds a runnable project for each, and the recipe ships in
+  the `metaobjects-authoring` skill.
+
+### Fixed
+
+- **Python: an array field's `default` generated a string.** A model with
+  `field.string[]: { default: "{}" }` generated `tags: list[str] = '{}'`, which fails on first use.
+  It now generates `tags: list[str] = []`, from the same four spellings TypeScript accepts. A
+  default Python cannot spell as a list is left to the database.
 
 ## [1.2.0] — 2026-10-30
 

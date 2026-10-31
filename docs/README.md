@@ -73,6 +73,7 @@ this tree is documentation, not the source of truth.
 | Record what the system is supposed to do, and stop agents reviving retired features | [`features/requirements.md`](features/requirements.md) |
 | Declare what a dashboard groups by and counts (`dimension`, `measure`, `segment`, `object.report`; load-time checked; a view-backed report becomes a SQL view served by a generated read-only list route and a TypeScript list hook) | [`features/reporting.md`](features/reporting.md) |
 | Download a report as CSV, JSON or XML (`?format=`, the `report-export` generator, its cap and null forms) | [`features/reporting.md`](features/reporting.md#exporting-a-report) |
+| Move existing Zod, Drizzle or Pydantic models into the model, and prove the generated types match before you switch | [`features/adopting-existing-models.md`](features/adopting-existing-models.md) |
 | Keep Prisma as the ORM, with `schema.prisma` generated from the model and gated by `verify` (TypeScript) | [`recipes/prisma.md`](recipes/prisma.md) |
 | Export the reporting vocabulary to Cube (`cube-model`: cubes, joins, rollups; the `cube` lane that checks it against a real Cube) | [`features/cube-export.md`](features/cube-export.md) |
 | Wire prompt construction (FR-004) | [`features/templates-and-payloads.md`](features/templates-and-payloads.md) |

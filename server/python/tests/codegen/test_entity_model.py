@@ -247,6 +247,49 @@ def test_field_default_is_emitted_as_literal() -> None:
     assert "s: str = 'approx'" in out
 
 
+@pytest.mark.parametrize(
+    ("subtype", "raw", "expected"),
+    [
+        (fc.FIELD_SUBTYPE_STRING, "{}", "[]"),
+        (fc.FIELD_SUBTYPE_STRING, "[]", "[]"),
+        (fc.FIELD_SUBTYPE_STRING, "{a,b}", "['a', 'b']"),
+        (fc.FIELD_SUBTYPE_STRING, '["a","b"]', "['a', 'b']"),
+        (fc.FIELD_SUBTYPE_LONG, "{1,2}", "[1, 2]"),
+        (fc.FIELD_SUBTYPE_DOUBLE, "[1.5]", "[1.5]"),
+        (fc.FIELD_SUBTYPE_BOOLEAN, "{true,false}", "[True, False]"),
+    ],
+)
+def test_array_default_is_a_python_list_not_the_metadata_string(
+    subtype: str, raw: str, expected: str
+) -> None:
+    """An array @default is authored as a string; both models must get the list it spells,
+    because Pydantic does not validate a default and `tags: list[str] = '{}'` hands every
+    instance a str."""
+    tags = _f("tags", subtype, is_array=True)
+    tags.set_attr(fc.FIELD_ATTR_DEFAULT, raw)
+    out = render_entity_model(_entity("M", [tags]))
+    assert f"] = {expected}\n" in out.split("class MCreate")[0]
+    assert f"] = {expected}\n" in out.split("class MCreate")[1]
+
+
+@pytest.mark.parametrize(
+    ("subtype", "raw"),
+    [
+        (fc.FIELD_SUBTYPE_STRING, '{"a,b",c}'),
+        (fc.FIELD_SUBTYPE_INT, "{1,x}"),
+        (fc.FIELD_SUBTYPE_UUID, "{}"),
+    ],
+)
+def test_array_default_python_cannot_spell_is_left_to_the_database(subtype: str, raw: str) -> None:
+    """A shape this parser does not model carries no Python default, as a SQL expression
+    does: the column has the default, and the model must not invent one."""
+    tags = _f("tags", subtype, is_array=True)
+    tags.set_attr(fc.FIELD_ATTR_DEFAULT, raw)
+    out = render_entity_model(_entity("M", [tags]))
+    assert raw not in out
+    assert "] | None = None" in out.split("class MCreate")[0]
+
+
 def test_dbcolumntype_jsonb_field_is_any_with_import() -> None:
     """Issue #98 — a field.string @dbColumnType:jsonb stores genuinely-open JSON,
     which pg8000 decodes to a native Python object at read time. The generated

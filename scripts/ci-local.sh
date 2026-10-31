@@ -600,6 +600,13 @@ gate_prisma_pg() {
   bun_install && ( cd server/typescript/packages/cli && bun test test/integration/prisma-schema.test.ts )
 }
 
+# The brownfield recipe's database check (docs/features/adopting-existing-models.md): the model
+# matches a Postgres built from examples/brownfield/drizzle/db/schema.sql, and a wrong column that
+# tsc cannot see fails `meta verify --db`. Same split and same sidecar as gate_prisma_pg above.
+gate_brownfield_pg() {
+  bun_install && ( cd server/typescript/packages/cli && bun test test/integration/brownfield-recipe.test.ts )
+}
+
 # ── conformance.yml — per-port conformance corpora (exact CI commands) ────────
 gate_conf_ts() {
   bun_install || return 1
@@ -1098,6 +1105,7 @@ lane_ts_integ() {
   step_if bun "migrate-ts real-PG suite"          gate_migrate_ts_pg
   step_if bun "runtime-ts real-PG dialect matrix" gate_runtime_ts_pg
   step_if bun "prisma real-PG round trip"         gate_prisma_pg
+  step_if bun "brownfield recipe real-PG check"   gate_brownfield_pg
   step "integration-tests (ts)" gate_integration_port ts
 }
 lane_cube() { [ "$NO_INTEG" -eq 0 ] && run_cube_lane; return 0; }
@@ -1247,6 +1255,7 @@ if [ "$PARALLEL" -eq 0 ]; then
       in_lane_any ts ts-slow     && step_if bun "migrate-ts real-PG suite" gate_migrate_ts_pg
       in_lane_any ts ts-slow     && step_if bun "runtime-ts real-PG dialect matrix" gate_runtime_ts_pg
       in_lane_any ts ts-slow     && step_if bun "prisma real-PG round trip" gate_prisma_pg
+      in_lane_any ts ts-slow     && step_if bun "brownfield recipe real-PG check" gate_brownfield_pg
       in_lane_any ts ts-slow     && run_integration_for ts     ts
       in_lane_any java java-slow && run_integration_for java   java kotlin
       in_lane python             && run_integration_for python python

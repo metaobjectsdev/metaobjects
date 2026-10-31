@@ -18,10 +18,13 @@ it runs at ``gen`` time only, which is why it may import ``metaobjects``.
 """
 from __future__ import annotations
 
+import json
 import re
+from collections.abc import Callable
 
 from metaobjects.codegen.generators.tph_plan import is_tph_subtype
 from metaobjects.codegen.instance_artifacts import emits_instance_artifacts
+from metaobjects.codegen.type_map import field_is_array
 from metaobjects.meta.core.field import field_constants as fc
 from metaobjects.meta.core.field.meta_field import MetaField
 from metaobjects.meta.core.object.meta_object import MetaObject
@@ -54,13 +57,68 @@ def is_sql_expr_default(value: object) -> bool:
     return isinstance(value, str) and any(p.search(value) for p in SQL_EXPR_DEFAULT_PATTERNS)
 
 
+def _parse_bool_element(raw: object) -> bool:
+    text = str(raw).lower()
+    if text not in ("true", "false"):
+        raise ValueError(raw)
+    return text == "true"
+
+
+# How an array @default's elements read in Python, per element subtype. A subtype with no
+# entry has no Python spelling here, so its array default stays with the database.
+_ARRAY_ELEMENT_PARSERS: dict[str, Callable[[object], object]] = {
+    fc.FIELD_SUBTYPE_STRING: str,
+    fc.FIELD_SUBTYPE_ENUM: str,
+    fc.FIELD_SUBTYPE_INT: lambda v: int(str(v)),
+    fc.FIELD_SUBTYPE_LONG: lambda v: int(str(v)),
+    fc.FIELD_SUBTYPE_DOUBLE: lambda v: float(str(v)),
+    fc.FIELD_SUBTYPE_FLOAT: lambda v: float(str(v)),
+    fc.FIELD_SUBTYPE_BOOLEAN: _parse_bool_element,
+}
+
+
+def array_default(field: MetaField) -> list[object] | None:
+    """The list an array field's ``@default`` spells, or None when it is not one this can
+    read. The metadata value is always a string — ``{}``, ``[]``, ``{a,b}`` or ``["a","b"]``
+    — and the same four shapes the TS column-mapper's parseArrayDefault accepts are read
+    here, with the same refusals: a quote or nested brace in the Postgres form is an
+    escaping shape neither port models."""
+    raw = field.attrs().get(fc.FIELD_ATTR_DEFAULT)
+    parse = _ARRAY_ELEMENT_PARSERS.get(field.sub_type)
+    if not isinstance(raw, str) or parse is None:
+        return None
+    text = raw.strip()
+    elements: list[object]
+    if text.startswith("[") and text.endswith("]"):
+        try:
+            elements = json.loads(text)
+        except ValueError:
+            return None
+        if not isinstance(elements, list):
+            return None
+    elif text.startswith("{") and text.endswith("}"):
+        inner = text[1:-1].strip()
+        if re.search(r'["{}]', inner):
+            return None
+        elements = [p.strip() for p in inner.split(",")] if inner else []
+    else:
+        return None
+    try:
+        return [parse(e) for e in elements]
+    except ValueError:
+        return None
+
+
 def has_literal_default(field: MetaField) -> bool:
     """True iff the read model gives *field* a Python default: a ``@default`` that is not a
-    server-side SQL expression. Such a field is annotated ``T`` (not ``T | None``) with that
-    default, so code that builds the model without a value for it must OMIT the keyword
-    rather than pass ``None`` — the extractor's mapper relies on exactly this."""
+    server-side SQL expression (nor an array default Python cannot spell). Such a field is
+    annotated ``T`` (not ``T | None``) with that default, so code that builds the model
+    without a value for it must OMIT the keyword rather than pass ``None`` — the extractor's
+    mapper relies on exactly this."""
     default_raw = field.attrs().get(fc.FIELD_ATTR_DEFAULT)
-    return default_raw is not None and not is_sql_expr_default(default_raw)
+    if default_raw is None or is_sql_expr_default(default_raw):
+        return False
+    return not field_is_array(field) or array_default(field) is not None
 
 
 # F22 — the read-only source kinds that still get a REST surface. A view (and a

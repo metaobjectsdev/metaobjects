@@ -25,6 +25,7 @@ This file covers what almost every model needs. The topics below live in
 | File | Open it when |
 |---|---|
 | `references/adopting-existing-code.md` | working code or a populated schema already exists for what you are modeling |
+| `references/adopting-existing-models.md` | moving existing Zod, Drizzle or Pydantic models into the model: the step-by-step recipe, and how to prove the generated types match before the switch |
 | `references/choosing-a-shape.md` | no row of "Canonical form for common field needs" fits; you need the full UUID / timestamp / URI / `@autoSet` rule; or you are registering your own vocabulary |
 | `references/json-columns.md` | a JSON column beyond the ladder below: coverage per port, `field.map` at runtime, version caveats, bag → native array |
 | `references/identities-and-indexes.md` | declaring a primary, secondary or reference identity, an FK, or a non-unique `index.lookup` |
