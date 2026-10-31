@@ -616,7 +616,7 @@ gate_conf_ts() {
   ( cd server/typescript/packages/render && bun test test/render-conformance.test.ts test/verify-conformance.test.ts test/extract/extract-conformance.test.ts test/output-prompt-conformance.test.ts ) || return 1
   ( cd server/typescript/packages/integration-tests && bun test test/validation-conformance.test.ts test/validation-conformance-runtime.test.ts ) || return 1
   ( cd server/typescript/packages/migrate-ts && bun test ) || return 1
-  ( cd server/typescript/packages/codegen-ts && bun test ) || return 1
+  ( cd server/typescript/packages/codegen-ts && bun test --timeout 30000 ) || return 1
   # --timeout 30000: the cli suite invokes full `meta`/run() dispatch, which lazily
   # imports each command's (sometimes heavy: codegen, migrate-ts) module on first
   # use. On a cold/contended self-hosted runner that first cold-start import can
