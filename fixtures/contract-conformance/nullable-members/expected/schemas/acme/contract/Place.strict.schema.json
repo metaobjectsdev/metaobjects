@@ -1,0 +1,14 @@
+{
+  "title": "Place",
+  "type": "object",
+  "properties": {
+    "city": {
+      "description": "Minimum length: 1.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "city"
+  ],
+  "additionalProperties": false
+}

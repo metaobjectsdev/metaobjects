@@ -38,7 +38,8 @@ type PathItem = Record<string, unknown> & { parameters?: Array<{ name: string; i
 export type ContractCheck = (req: ApiRequest, status: number, bodyText: string) => void;
 
 function templateRegex(template: string): RegExp {
-  return new RegExp(`^${template.split("/").map((part) => (part.startsWith("{") ? "[^/]+" : part)).join("/")}$`);
+  const literal = (part: string): string => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`^${template.split("/").map((part) => (part.startsWith("{") ? "[^/]+" : literal(part))).join("/")}$`);
 }
 
 /** A document's path templates, literal ones first: `/x/subtypes` wins over `/x/{id}`. */

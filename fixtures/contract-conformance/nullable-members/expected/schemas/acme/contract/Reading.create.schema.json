@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/acme/contract/Reading.create.schema.json",
+  "title": "Reading.create",
+  "type": "object",
+  "properties": {
+    "unit": {
+      "type": "string"
+    },
+    "grade": {
+      "type": "string",
+      "enum": [
+        "LOW",
+        "HIGH"
+      ]
+    },
+    "place": {
+      "$ref": "./Place.create.schema.json"
+    }
+  }
+}

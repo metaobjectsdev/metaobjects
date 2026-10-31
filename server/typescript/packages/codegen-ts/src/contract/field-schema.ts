@@ -147,6 +147,12 @@ export function scalarSchema(subType: string): JsonSchema {
   }
 }
 
+/** An enum as a string. With no values to state it stays open: `enum: []` would refuse everything. */
+export function enumSchema(field: MetaField): JsonSchema {
+  const values = enumValues(field);
+  return values === undefined || values.length === 0 ? { type: "string" } : { type: "string", enum: values };
+}
+
 /** One value of a field that holds no reference to another object. */
 function plainValueSchema(field: MetaField, shape: ContractShape): JsonSchema {
   const lenient = field.attr(FIELD_ATTR_LENIENT) === true;
@@ -162,7 +168,7 @@ function plainValueSchema(field: MetaField, shape: ContractShape): JsonSchema {
     case FIELD_SUBTYPE_INET:
       return lenient ? { type: "string" } : scalarSchema(field.subType);
     case FIELD_SUBTYPE_ENUM:
-      return { type: "string", enum: enumValues(field) ?? [] };
+      return enumSchema(field);
     case FIELD_SUBTYPE_CURRENCY: {
       const code = field.attr(FIELD_ATTR_CURRENCY);
       const unit = typeof code === "string" ? ` of ${code}` : "";
@@ -283,7 +289,7 @@ export function fieldSchema(field: MetaField, shape: ContractShape, refFor: RefF
   return schema;
 }
 
-/** The schema that also accepts `null`. */
+/** The schema that also accepts `null`. Safe on one that already does: `type` entries must be unique. */
 export function withNull(schema: JsonSchema): JsonSchema {
   if (Object.keys(schema).length === 0) return schema; // an open value already holds null
   if (schema.$ref !== undefined) {
@@ -293,8 +299,8 @@ export function withNull(schema: JsonSchema): JsonSchema {
   const out: JsonSchema = { ...schema };
   const type = schema.type;
   if (typeof type === "string") out.type = [type, "null"];
-  else if (Array.isArray(type)) out.type = [...type, "null"];
+  else if (Array.isArray(type) && !type.includes("null")) out.type = [...type, "null"];
   // `enum` is checked on its own: without null in it, a nullable enum still refuses null.
-  if (Array.isArray(schema.enum)) out.enum = [...schema.enum, null];
+  if (Array.isArray(schema.enum) && !schema.enum.includes(null)) out.enum = [...schema.enum, null];
   return out;
 }

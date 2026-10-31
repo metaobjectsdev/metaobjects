@@ -33,10 +33,12 @@ document for that corpus.
 | `decimal` | The api-contract `decimal/` model. |
 | `error-name-collision` | Refused: a real object takes the name of another object's create shape. |
 | `error-name-collision-list` | Refused: a real object takes the name of another object's list response. |
+| `error-operation-id-collision` | Refused: an object's list route takes the `operationId` of another object's traversal. |
 | `error-strict-map` | Refused: the strict subset has no map. |
 | `error-strict-recursive` | Refused: the strict subset has no recursion. |
 | `jsonb` | The api-contract `jsonb/` model: value objects, arrays of them and maps. |
 | `m2m` | The api-contract `m2m/` model: traversal routes, also over TPH. |
+| `nullable-members` | Read-only shapes whose optional members are already nullable: a value object's, an enum's and a nested object's. |
 | `projection` | The api-contract `projection/` model: read-only surfaces, keyed and keyless. |
 | `report` | The api-contract `report/` model: served reports, and the rest of the model around them. |
 | `secret-fields` | The api-contract `secret-fields/` model: a credential is not on the wire. |

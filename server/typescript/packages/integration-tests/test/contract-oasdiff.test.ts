@@ -32,7 +32,8 @@ function findRunner(): Runner | undefined {
       return { status: r.status, stdout: r.stdout, stderr: r.stderr };
     };
   }
-  if (!succeeds("docker", ["info"])) return undefined;
+  // Docker alone is not enough: the image has to be here, or pullable.
+  if (!succeeds("docker", ["run", "--rm", OASDIFF_IMAGE, "--version"])) return undefined;
   return (args, dir) => {
     const r = spawnSync("docker", ["run", "--rm", "-v", `${dir}:/work`, "-w", "/work", OASDIFF_IMAGE, ...args], { encoding: "utf8" });
     return { status: r.status, stdout: r.stdout, stderr: r.stderr };

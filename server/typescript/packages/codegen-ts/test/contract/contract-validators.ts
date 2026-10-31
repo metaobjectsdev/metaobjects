@@ -22,6 +22,24 @@ export async function openApiErrors(doc: JsonDoc): Promise<unknown[]> {
   return result.valid ? [] : (result.errors as unknown[]);
 }
 
+/** Every `$ref` in a document with no component behind it: empty when none dangles. */
+export function danglingRefs(doc: JsonDoc): string[] {
+  const schemas = (doc["components"] as { schemas: JsonDoc }).schemas;
+  const found = new Set<string>();
+  const walk = (value: unknown): void => {
+    if (Array.isArray(value)) value.forEach(walk);
+    else if (typeof value === "object" && value !== null) {
+      for (const [key, child] of Object.entries(value)) {
+        if (key === "$ref" && typeof child === "string") {
+          if (!(child.split("/").pop()! in schemas)) found.add(child);
+        } else walk(child);
+      }
+    }
+  };
+  walk(doc);
+  return [...found];
+}
+
 /** The only keywords a strict schema may use, anywhere in it. */
 const STRICT_KEYWORDS: ReadonlySet<string> = new Set([
   "title", "description", "type", "properties", "required", "additionalProperties", "items", "enum",

@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/acme/contract/Place.create.schema.json",
+  "title": "Place.create",
+  "type": "object",
+  "properties": {
+    "city": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "required": [
+    "city"
+  ]
+}

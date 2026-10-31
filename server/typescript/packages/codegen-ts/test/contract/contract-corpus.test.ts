@@ -10,7 +10,7 @@ import { join } from "node:path";
 import { ContractEmitError } from "../../src/contract/contract-errors.js";
 import { CONTRACT_SCRIPT, contractCases, contractTree } from "../../scripts/gen-contract-conformance.js";
 import { readTree } from "../../scripts/gen-cube-model-canonical.js";
-import { ajvOver, type JsonDoc, openApiErrors, strictViolations } from "./contract-validators.js";
+import { ajvOver, danglingRefs, type JsonDoc, openApiErrors, strictViolations } from "./contract-validators.js";
 
 const STRICT_SUFFIX = ".strict.schema.json";
 const OPENAPI_FILE = "openapi.json";
@@ -97,6 +97,11 @@ describe("the contract corpus", () => {
         for (const name of Object.keys(schemas)) {
           expect(ajv.compile({ $ref: `openapi#/components/schemas/${name}` }), name).toBeDefined();
         }
+      });
+
+      test("every $ref in the document has a component behind it", async () => {
+        const doc = documents(await written, (p) => p === OPENAPI_FILE).get(OPENAPI_FILE)!;
+        expect(danglingRefs(doc)).toEqual([]);
       });
 
       test("every operation has a unique operationId", async () => {

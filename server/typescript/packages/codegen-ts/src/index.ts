@@ -429,9 +429,8 @@ export { withClientDirective, CLIENT_DIRECTIVE } from "./client-directive.js";
 export { buildSharedModel, renderSharedModelFiles } from "./shared-model/build-shared-model.js";
 export type { SharedModel, SharedModelFiles, SharedModelInput } from "./shared-model/build-shared-model.js";
 
-// FR-044 Plan 4 — the Cube exporter. `cubeModel()` is the reference generator; the two pure
-// stages it wires are public so an owned (ejected) copy imports only this package and keeps
-// only the parts it owns: which entities get a cube, the file layout and the YAML text.
+// FR-022 — the contract emitters. `jsonSchemaFile()` and `openApiFile()` are the reference
+// generators; what they wire is public so an owned (ejected) copy imports only this package.
 export { jsonSchemaFile } from "./generators/contract-schema-file.js";
 export type { JsonSchemaFileOptions } from "./generators/contract-schema-file.js";
 export { openApiFile } from "./generators/openapi-file.js";
@@ -444,6 +443,10 @@ export type { ContractShape, JsonSchema } from "./contract/field-schema.js";
 export { strictSchema } from "./contract/strict-profile.js";
 export { ContractEmitError, CONTRACT_ERROR_CODES, ERR_CONTRACT_NAME_COLLISION, ERR_CONTRACT_STRICT_UNREPRESENTABLE } from "./contract/contract-errors.js";
 export type { ContractErrorCode } from "./contract/contract-errors.js";
+
+// FR-044 Plan 4 — the Cube exporter. `cubeModel()` is the reference generator; the two pure
+// stages it wires are public so an owned (ejected) copy imports only this package and keeps
+// only the parts it owns: which entities get a cube, the file layout and the YAML text.
 export { cubeModel } from "./generators/cube-model.js";
 export type { CubeModelGeneratorOptions } from "./generators/cube-model.js";
 export { buildCubeModel, hasReportingVocabulary } from "./cube/build-cube-model.js";

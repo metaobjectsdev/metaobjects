@@ -1,0 +1,57 @@
+{
+  "title": "Sensor",
+  "type": "object",
+  "properties": {
+    "reading": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "unit": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "grade": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "LOW",
+            "HIGH",
+            null
+          ]
+        },
+        "place": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "properties": {
+            "city": {
+              "description": "Minimum length: 1.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "city"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "unit",
+        "grade",
+        "place"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "reading"
+  ],
+  "additionalProperties": false
+}

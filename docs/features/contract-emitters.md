@@ -221,5 +221,5 @@ removed field or filter fails: [Check an API change against the last release](..
 
 | Code | Meaning | Fix |
 |---|---|---|
-| `ERR_CONTRACT_NAME_COLLISION` | Two things would take one component name, such as an object `OrderCreate` beside the create shape of `Order` | Rename one, or leave one out with `filter` |
+| `ERR_CONTRACT_NAME_COLLISION` | Two things would take one component name, such as an object `OrderCreate` beside the create shape of `Order`, or one `operationId`, such as the `tags` traversal of `Post` beside an object `PostTags` | Rename one, or leave one out with `filter` |
 | `ERR_CONTRACT_STRICT_UNREPRESENTABLE` | The strict subset cannot state an object | Leave it out of the strict entry with `filter` |

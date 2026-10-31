@@ -138,9 +138,13 @@ export function objectSchema(obj: MetaObject, shape: ContractShape, env: ObjectS
   return { ...(typeof description === "string" && { description }), ...body };
 }
 
-export interface ContractEntry {
+/** One object in one wire shape. */
+export interface ContractTarget {
   readonly obj: MetaObject;
   readonly shape: ContractShape;
+}
+
+export interface ContractEntry extends ContractTarget {
   readonly schema: JsonSchema;
 }
 
@@ -155,14 +159,19 @@ export function collectContractEntries(
   objects: readonly MetaObject[],
   root: MetaRoot,
   refFrom: RefFrom,
-  options: { readonly openApiDiscriminator?: boolean } = {},
+  options: {
+    readonly openApiDiscriminator?: boolean;
+    /** Shapes something outside these schemas points at, such as an OpenAPI path. */
+    readonly referenced?: readonly ContractTarget[];
+  } = {},
 ): ContractEntry[] {
-  const queued = new Map<string, { obj: MetaObject; shape: ContractShape }>();
+  const queued = new Map<string, ContractTarget>();
   const queue = (obj: MetaObject, shape: ContractShape): void => {
     const key = `${obj.resolutionKey()}#${shape}`;
     if (!queued.has(key)) queued.set(key, { obj, shape });
   };
   for (const obj of objects) for (const shape of shapesOf(obj, root)) queue(obj, shape);
+  for (const { obj, shape } of options.referenced ?? []) queue(obj, shape);
 
   const entries: ContractEntry[] = [];
   // A Map iterates what is added while it is walked, so this visits everything `refFor` queues.
@@ -171,7 +180,8 @@ export function collectContractEntries(
       queue(target, targetShape);
       return refFrom(obj, target, targetShape);
     };
-    entries.push({ obj, shape, schema: objectSchema(obj, shape, { root, refFor, ...options }) });
+    const { openApiDiscriminator } = options;
+    entries.push({ obj, shape, schema: objectSchema(obj, shape, { root, refFor, ...(openApiDiscriminator !== undefined && { openApiDiscriminator }) }) });
   }
   return entries;
 }

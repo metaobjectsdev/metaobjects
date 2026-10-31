@@ -10,7 +10,6 @@
 import { type MetaField, type MetaObject, type MetaRoot, opsForField } from "@metaobjectsdev/metadata";
 import { FIELD_ATTR_FILTERABLE, FIELD_SUBTYPE_DECIMAL, FIELD_SUBTYPE_ENUM, FIELD_SUBTYPE_TIMESTAMP, FILTER_OP_IN, FILTER_OP_IS_NULL, FILTER_OP_LIKE } from "@metaobjectsdev/metadata/constants";
 import { hasItemRoute, itemRouteField, servedPath, servesReadApi } from "../api-surface.js";
-import { enumValues } from "../enum-meta.js";
 import { isProjection } from "../projection/projection-detector.js";
 import type { RelationMap } from "../relation-resolver.js";
 import { CRUD_VERBS, type CrudVerb, type ExposeOption, intersectExpose, resolveExpose, TPH_POLYMORPHIC_VERBS } from "../routes-expose.js";
@@ -19,8 +18,8 @@ import { sortableFields } from "../templates/filter-shared.js";
 import { tphPlan } from "../templates/tph-discriminator.js";
 import { isTphSubtype } from "../tph.js";
 import { ContractEmitError, ERR_CONTRACT_NAME_COLLISION } from "./contract-errors.js";
-import { type ContractShape, DECIMAL_INPUT_PATTERN, type JsonSchema, scalarSchema, timestampInputSchema } from "./field-schema.js";
-import { collectContractEntries } from "./object-schema.js";
+import { type ContractShape, DECIMAL_INPUT_PATTERN, enumSchema, type JsonSchema, scalarSchema, timestampInputSchema } from "./field-schema.js";
+import { collectContractEntries, type ContractTarget } from "./object-schema.js";
 
 export const OPENAPI_VERSION = "3.1.0";
 
@@ -76,6 +75,21 @@ function shapeRef(obj: MetaObject, shape: ContractShape): JsonSchema {
   return { $ref: componentRef(componentName(obj, shape)) };
 }
 
+/**
+ * What the paths point at, gathered as they are built. A path can name a shape nothing else in the
+ * document reaches, such as the target of a traversal when the generator's `filter` leaves it out.
+ */
+interface PathRefs {
+  readonly shapes: ContractTarget[];
+  /** The objects a list route answers, for their list components. */
+  readonly listed: Set<MetaObject>;
+}
+
+function pathRef(refs: PathRefs, obj: MetaObject, shape: ContractShape): JsonSchema {
+  refs.shapes.push({ obj, shape });
+  return shapeRef(obj, shape);
+}
+
 function jsonContent(schema: JsonSchema): JsonSchema {
   return { "application/json": { schema } };
 }
@@ -95,7 +109,7 @@ function filterValueSchema(field: MetaField, op: string): JsonSchema {
   if (op === FILTER_OP_LIKE) return { type: "string" };
   if (field.subType === FIELD_SUBTYPE_DECIMAL) return { type: "string", pattern: DECIMAL_INPUT_PATTERN };
   if (field.subType === FIELD_SUBTYPE_TIMESTAMP) return timestampInputSchema(field);
-  if (field.subType === FIELD_SUBTYPE_ENUM) return { type: "string", enum: enumValues(field) ?? [] };
+  if (field.subType === FIELD_SUBTYPE_ENUM) return enumSchema(field);
   return scalarSchema(field.subType);
 }
 
@@ -176,8 +190,7 @@ interface ResourceOps {
   readonly report: boolean;
   readonly reportExport: boolean;
   readonly item: boolean;
-  /** Collects each object a list route answers, for its list components. */
-  readonly listed: Set<MetaObject>;
+  readonly refs: PathRefs;
 }
 
 function listOperation(r: ResourceOps): JsonSchema {
@@ -188,7 +201,8 @@ function listOperation(r: ResourceOps): JsonSchema {
     ...pageParameters(r.report ? 1 : 0),
     ...(r.reportExport ? [{ name: "format", in: "query", schema: { type: "string", enum: ["csv", "json", "xml"] } }] : []),
   ];
-  r.listed.add(row);
+  r.refs.listed.add(row);
+  r.refs.shapes.push({ obj: row, shape: "read" });
   const content = jsonContent(listSchema(row));
   const exports = r.reportExport ? { "text/csv": { schema: { type: "string" } }, "application/xml": { schema: { type: "string" } } } : {};
   return {
@@ -199,17 +213,17 @@ function listOperation(r: ResourceOps): JsonSchema {
   };
 }
 
-function writeBody(row: MetaObject, shape: ContractShape): JsonSchema {
-  return { required: true, content: jsonContent(shapeRef(row, shape)) };
+function writeBody(r: ResourceOps, shape: ContractShape): JsonSchema {
+  return { required: true, content: jsonContent(pathRef(r.refs, r.row, shape)) };
 }
 
-function updateOperation(row: MetaObject, operationId: string): JsonSchema {
+function updateOperation(r: ResourceOps, operationId: string): JsonSchema {
   return {
     operationId,
-    tags: [row.name],
-    requestBody: writeBody(row, "update"),
+    tags: [r.row.name],
+    requestBody: writeBody(r, "update"),
     responses: {
-      "200": { description: "The row.", content: jsonContent(shapeRef(row, "read")) },
+      "200": { description: "The row.", content: jsonContent(pathRef(r.refs, r.row, "read")) },
       "400": BAD_REQUEST,
       "404": NOT_FOUND,
       "409": CONFLICT,
@@ -225,13 +239,13 @@ function itemOperations(r: ResourceOps): JsonSchema {
       get: {
         operationId: `get${row.name}`,
         tags,
-        responses: { "200": { description: "The row.", content: jsonContent(shapeRef(row, "read")) }, "404": NOT_FOUND },
+        responses: { "200": { description: "The row.", content: jsonContent(pathRef(r.refs, row, "read")) }, "404": NOT_FOUND },
       },
     }),
     ...(verbs.has("update") && {
-      patch: updateOperation(row, `update${row.name}`),
+      patch: updateOperation(r, `update${row.name}`),
       // The contract's PUT is an alias of PATCH: a partial update, not a replacement.
-      put: updateOperation(row, `put${row.name}`),
+      put: updateOperation(r, `put${row.name}`),
     }),
     ...(verbs.has("delete") && {
       delete: {
@@ -251,9 +265,9 @@ function collectionOperations(r: ResourceOps): JsonSchema {
       post: {
         operationId: `create${row.name}`,
         tags: [row.name],
-        requestBody: writeBody(row, "create"),
+        requestBody: writeBody(r, "create"),
         responses: {
-          "201": { description: "The new row.", content: jsonContent(shapeRef(row, "read")) },
+          "201": { description: "The new row.", content: jsonContent(pathRef(r.refs, row, "read")) },
           "400": BAD_REQUEST,
           "409": CONFLICT,
         },
@@ -272,7 +286,7 @@ function resourcePaths(r: ResourceOps): Record<string, JsonSchema> {
 }
 
 /** `GET <source>/{id}/<relation>`: the M:N traversal, an array of the target's rows. */
-function m2mPaths(source: MetaObject, path: string, relationMap: RelationMap): Record<string, JsonSchema> {
+function m2mPaths(source: MetaObject, path: string, relationMap: RelationMap, refs: PathRefs): Record<string, JsonSchema> {
   const paths: Record<string, JsonSchema> = {};
   for (const entry of relationMap.get(source.name) ?? []) {
     if (entry.junctionEntity === undefined) continue;
@@ -282,7 +296,7 @@ function m2mPaths(source: MetaObject, path: string, relationMap: RelationMap): R
         operationId: `list${source.name}${entry.name.charAt(0).toUpperCase()}${entry.name.slice(1)}`,
         tags: [source.name],
         responses: {
-          "200": { description: "The related rows.", content: jsonContent({ type: "array", items: shapeRef(entry.target, "read") }) },
+          "200": { description: "The related rows.", content: jsonContent({ type: "array", items: pathRef(refs, entry.target, "read") }) },
         },
       },
     };
@@ -298,39 +312,59 @@ function pathsOf(
   obj: MetaObject,
   input: OpenApiBuildInput,
   reportNames: ReadonlySet<string>,
-  listed: Set<MetaObject>,
+  refs: PathRefs,
 ): Record<string, JsonSchema> {
   const { root, apiPrefix, expose, relationMap } = input;
   const path = servedPath(obj, apiPrefix);
   const report = reportNames.has(obj.name);
   if (isProjection(obj)) {
     return resourcePaths({
-      row: obj, path, report, reportExport: report && input.reportExport, item: hasItemRoute(obj), listed,
+      row: obj, path, report, reportExport: report && input.reportExport, item: hasItemRoute(obj), refs,
       verbs: new Set<CrudVerb>(["list", "get"]),
     });
   }
   const plan = tphPlan(obj, root);
   if (plan === null) {
     return {
-      ...resourcePaths({ row: obj, path, report: false, reportExport: false, item: true, listed, verbs: verbsOf(CRUD_VERBS, obj, expose) }),
-      ...m2mPaths(obj, path, relationMap),
+      ...resourcePaths({ row: obj, path, report: false, reportExport: false, item: true, refs, verbs: verbsOf(CRUD_VERBS, obj, expose) }),
+      ...m2mPaths(obj, path, relationMap, refs),
     };
   }
   const paths: Record<string, JsonSchema> = {
-    ...resourcePaths({ row: obj, path, report: false, reportExport: false, item: true, listed, verbs: verbsOf(TPH_POLYMORPHIC_VERBS, obj, expose) }),
-    ...m2mPaths(obj, path, relationMap),
+    ...resourcePaths({ row: obj, path, report: false, reportExport: false, item: true, refs, verbs: verbsOf(TPH_POLYMORPHIC_VERBS, obj, expose) }),
+    ...m2mPaths(obj, path, relationMap, refs),
   };
   for (const { entity, routeSegment } of plan.subtypes) {
     const subPath = `${path}/${routeSegment}`;
     Object.assign(paths, resourcePaths({
-      row: entity, path: subPath, report: false, reportExport: false, item: true, listed,
+      row: entity, path: subPath, report: false, reportExport: false, item: true, refs,
       verbs: verbsOf(CRUD_VERBS, obj, expose), excludeField: plan.discriminatorField,
-    }), m2mPaths(entity, subPath, relationMap));
+    }), m2mPaths(entity, subPath, relationMap, refs));
   }
   return paths;
 }
 
-function collectSchemas(input: OpenApiBuildInput, listed: ReadonlySet<MetaObject>): Record<string, JsonSchema> {
+/** An `operationId` is unique in a document, and a client generator names a method after it. */
+function refuseDuplicateOperationIds(paths: Record<string, JsonSchema>): void {
+  const seen = new Map<string, string>();
+  for (const [path, item] of Object.entries(paths)) {
+    for (const [method, operation] of Object.entries(item)) {
+      const id = (operation as JsonSchema).operationId;
+      if (typeof id !== "string") continue;
+      const here = `${method.toUpperCase()} ${path}`;
+      const other = seen.get(id);
+      if (other !== undefined) {
+        throw new ContractEmitError(
+          ERR_CONTRACT_NAME_COLLISION,
+          `the OpenAPI operationId '${id}' is both ${other} and ${here}. Rename one, or leave one out with the generator's filter option.`,
+        );
+      }
+      seen.set(id, here);
+    }
+  }
+}
+
+function collectSchemas(input: OpenApiBuildInput, refs: PathRefs): Record<string, JsonSchema> {
   const taken = new Map<string, string>([[ERROR_COMPONENT, "the error envelope"]]);
   const schemas: Record<string, JsonSchema> = {};
   function claim(name: string, holder: string): void {
@@ -347,14 +381,14 @@ function collectSchemas(input: OpenApiBuildInput, listed: ReadonlySet<MetaObject
     input.objects,
     input.root,
     (_from, target, shape) => componentRef(componentName(target, shape)),
-    { openApiDiscriminator: true },
+    { openApiDiscriminator: true, referenced: refs.shapes },
   );
   for (const { obj, shape, schema } of entries) {
     const name = componentName(obj, shape);
     claim(name, `'${obj.resolutionKey()}' (${shape} shape)`);
     schemas[name] = { title: name, ...schema };
   }
-  for (const row of listed) {
+  for (const row of refs.listed) {
     for (const [name, schema] of Object.entries(listComponents(row))) {
       claim(name, `the list response of '${row.resolutionKey()}'`);
       schemas[name] = schema;
@@ -380,8 +414,9 @@ export function buildOpenApiDocument(input: OpenApiBuildInput): JsonSchema {
   const objects = [...input.objects].sort(byName);
   const served = objects.filter((o) => servesReadApi(o) && !isTphSubtype(o) && (input.mounted?.(o) ?? true));
   const paths: Record<string, JsonSchema> = {};
-  const listed = new Set<MetaObject>();
-  for (const obj of served) Object.assign(paths, pathsOf(obj, input, reportNames, listed));
+  const refs: PathRefs = { shapes: [], listed: new Set() };
+  for (const obj of served) Object.assign(paths, pathsOf(obj, input, reportNames, refs));
+  refuseDuplicateOperationIds(paths);
   return {
     openapi: OPENAPI_VERSION,
     info: {
@@ -393,7 +428,7 @@ export function buildOpenApiDocument(input: OpenApiBuildInput): JsonSchema {
     ...(input.security !== undefined && { security: input.security }),
     paths,
     components: {
-      schemas: collectSchemas({ ...input, objects }, listed),
+      schemas: collectSchemas({ ...input, objects }, refs),
       ...(input.securitySchemes !== undefined && { securitySchemes: input.securitySchemes }),
     },
   };

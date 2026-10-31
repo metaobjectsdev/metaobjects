@@ -1,0 +1,60 @@
+{
+  "title": "SensorSummary",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "integer"
+    },
+    "reading": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "unit": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "grade": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "LOW",
+            "HIGH",
+            null
+          ]
+        },
+        "place": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "properties": {
+            "city": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "city"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "unit",
+        "grade",
+        "place"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "id",
+    "reading"
+  ],
+  "additionalProperties": false
+}

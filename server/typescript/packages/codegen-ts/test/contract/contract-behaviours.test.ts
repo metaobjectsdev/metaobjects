@@ -14,7 +14,7 @@ import { jsonSchemaFile, openApiFile } from "../../src/generators/index.js";
 import { defineConfig, type Generator, runGen } from "../../src/index.js";
 import { jsonSchemaFile as refJsonSchemaFile } from "../../src/reference/contract-schema.js";
 import { openApiFile as refOpenApiFile } from "../../src/reference/openapi.js";
-import { ajvOver, type JsonDoc } from "./contract-validators.js";
+import { ajvOver, danglingRefs, type JsonDoc } from "./contract-validators.js";
 
 const CASES = new Map(contractCases().map((c) => [c.name, c]));
 
@@ -238,6 +238,29 @@ describe("what a project's run changes", () => {
     expect(Object.keys(doc["paths"] as JsonDoc)).toEqual(["/api/all_fields", "/api/all_fields/{id}"]);
     expect(Object.keys((doc["components"] as { schemas: JsonDoc }).schemas)).toContain("Address");
     expect(Object.keys((doc["components"] as { schemas: JsonDoc }).schemas)).not.toContain("Bag");
+  });
+
+  test("a filter that drops a traversal's target keeps the target's component", async () => {
+    const tree = await emit(corpusCase("m2m"), [openApiFile({ title: "t", version: "1", filter: (o) => o.name === "Post" })]);
+    const doc = jsonAt(tree, "openapi.json");
+    expect(Object.keys(doc["paths"] as JsonDoc)).toContain("/api/posts/{id}/tags");
+    expect(danglingRefs(doc)).toEqual([]);
+  });
+
+  test("a filter that keeps only a TPH base keeps each subtype's write shapes", async () => {
+    const tree = await emit(corpusCase("tph"), [openApiFile({ title: "t", version: "1", filter: (o) => o.name === "Auth" })]);
+    const doc = jsonAt(tree, "openapi.json");
+    expect(Object.keys(doc["paths"] as JsonDoc).length).toBeGreaterThan(2);
+    expect(danglingRefs(doc)).toEqual([]);
+  });
+
+  test("an optional member that is already nullable is not made nullable twice", async () => {
+    const tree = await emit(corpusCase("nullable-members"), [jsonSchemaFile({ profile: "strict" })]);
+    const reading = (jsonAt(tree, "schemas/acme/contract/SensorSummary.strict.schema.json")["properties"] as Record<string, { properties: Record<string, JsonDoc> }>)["reading"]!;
+    expect(reading.properties["unit"]!["type"]).toEqual(["string", "null"]);
+    expect(reading.properties["grade"]!["type"]).toEqual(["string", "null"]);
+    expect(reading.properties["grade"]!["enum"]).toEqual(["LOW", "HIGH", null]);
+    expect(reading.properties["place"]!["type"]).toEqual(["object", "null"]);
   });
 
   test("a schema filter keeps a file for what a kept object references, so no $ref dangles", async () => {
