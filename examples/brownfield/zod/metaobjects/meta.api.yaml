@@ -1,0 +1,18 @@
+metadata:
+  package: api
+  children:
+    - object.value:
+        name: Address
+        children:
+          - field.string: { name: line1, required: true }
+          - field.string: { name: city, required: true }
+          - field.string: { name: postcode }
+    - object.value:
+        name: CreateCustomer
+        children:
+          - field.string: { name: email, required: true, maxLength: 254 }
+          - field.string: { name: displayName, required: true, maxLength: 120 }
+          - field.enum: { name: plan, values: [free, team, enterprise] }
+          - field.int: { name: seats }
+          - field.object: { name: address, objectRef: Address }
+          - field.string[]: { name: tags, required: true }

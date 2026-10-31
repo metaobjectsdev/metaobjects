@@ -968,5 +968,6 @@ import lines are stable.
 
 - [`server/python/README.md`](../../server/python/README.md) — module-level overview
 - [`docs/features/`](../features/) — every feature shows the Python output inline
+- [Adopting existing models](../features/adopting-existing-models.md) — move Pydantic models into the model and prove they match before you switch a call site
 - [`docs/superpowers/specs/2026-05-23-python-codegen-engine-entity-generator-design.md`](../superpowers/specs/2026-05-23-python-codegen-engine-entity-generator-design.md)
 - [`docs/superpowers/specs/2026-05-23-python-codegen-persistence-foundation-roadmap.md`](../superpowers/specs/2026-05-23-python-codegen-persistence-foundation-roadmap.md)

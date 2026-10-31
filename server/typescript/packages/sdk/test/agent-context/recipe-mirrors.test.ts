@@ -11,6 +11,8 @@ import { join } from "node:path";
 
 const REPO = join(import.meta.dir, "../../../../../..");
 const REFS = join(REPO, "agent-context/skills/metaobjects-codegen/references");
+const AUTHORING_REFS = join(REPO, "agent-context/skills/metaobjects-authoring/references");
+const BROWNFIELD = join(REPO, "examples/brownfield");
 
 test("the shipped MongoDB repository generator is the tested recipe, byte for byte", () => {
   const shipped = readFileSync(join(REFS, "typescript-document-store.md"), "utf8");
@@ -34,4 +36,24 @@ test("the shipped Prisma guide carries the recipe's setup, workflow, mapping and
   const original = readFileSync(join(REPO, "docs/recipes/prisma.md"), "utf8");
   expect(shipped.includes(MARK)).toBe(true);
   expect(shipped.slice(shipped.indexOf(MARK))).toBe(original.slice(original.indexOf(MARK)));
+});
+
+test("the shipped adoption guide carries the recipe unchanged", () => {
+  const MARK = "## The recipe";
+  const shipped = readFileSync(join(AUTHORING_REFS, "adopting-existing-models.md"), "utf8");
+  const original = readFileSync(join(REPO, "docs/features/adopting-existing-models.md"), "utf8");
+  expect(original.includes(MARK)).toBe(true);
+  expect(shipped.slice(shipped.indexOf(`\n${MARK}\n`) + 1)).toBe(original.slice(original.indexOf(`\n${MARK}\n`) + 1));
+});
+
+// The recipe prints these helpers for an agent to copy. brownfield-recipe.test.ts and
+// test_brownfield_recipe.py run the example copies, so the printed text must be those.
+test("the helpers the adoption recipe prints are the tested ones, byte for byte", () => {
+  const recipe = readFileSync(join(REPO, "docs/features/adopting-existing-models.md"), "utf8");
+  const differs = readFileSync(join(BROWNFIELD, "drizzle/proof/differs.ts"), "utf8");
+  expect(readFileSync(join(BROWNFIELD, "zod/proof/differs.ts"), "utf8")).toBe(differs);
+  expect(recipe).toContain(`\`\`\`ts\n${differs}\`\`\``);
+  const python = readFileSync(join(BROWNFIELD, "pydantic/proof/test_equivalence.py"), "utf8");
+  const body = python.slice(python.indexOf("from typing import Any"));
+  expect(recipe).toContain(`\`\`\`python\n${body}\`\`\``);
 });

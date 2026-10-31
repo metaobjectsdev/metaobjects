@@ -53,7 +53,7 @@ from metaobjects.codegen.value_objects import (
 
 from ..runtime import fr019_shared_enum as fr019
 from ..runtime.m2m_codegen import build_object_index, resolve_m2m_descriptors
-from ..runtime.shared_predicates import has_literal_default, is_sql_expr_default
+from ..runtime.shared_predicates import array_default, has_literal_default
 
 
 def _is_int(value: object) -> bool:
@@ -348,11 +348,21 @@ def _with_type_checking(imports: list[str]) -> list[str]:
     return sorted([*imports, "from typing import TYPE_CHECKING"])
 
 
+def _literal_default_expr(field: MetaField, enum_type_name: str | None) -> str:
+    """The Python source of a literal @default: the list an array default spells, an enum
+    member (Type.MEMBER, UPPER_CASE), or the value's own literal."""
+    default_raw = field.attrs().get(fc.FIELD_ATTR_DEFAULT)
+    if field_is_array(field):
+        return repr(array_default(field))
+    if enum_type_name is not None:
+        return f"{enum_type_name}.{str(default_raw).upper()}"
+    return repr(default_raw)
+
+
 def _field_line(field: MetaField, imports: set[str], config: GenConfig) -> tuple[str, bool]:
     """Return (source line, uses_field). Collects required imports into *imports*."""
     type_expr, enum_type_name = _type_expr_for_field(field, imports, config, wire=False)
     required = field.attrs().get(fc.FIELD_ATTR_REQUIRED) is True
-    default_raw = field.attrs().get(fc.FIELD_ATTR_DEFAULT)
     # A server-side expression default (now(), gen_random_uuid(), CURRENT_TIMESTAMP)
     # is filled by the DB — the Python model carries no default for it (the field keeps
     # its required/optional shape). Only literal defaults become Pydantic defaults.
@@ -361,14 +371,7 @@ def _field_line(field: MetaField, imports: set[str], config: GenConfig) -> tuple
     parts = _constraint_parts(_validator_constraints(field, wire=False))
     uses_field = bool(parts)
 
-    # @default — render an enum member (Type.MEMBER, UPPER_CASE) or a Python literal.
-    if has_default:
-        if enum_type_name is not None and not field_is_array(field):
-            default_expr = f"{enum_type_name}.{str(default_raw).upper()}"
-        else:
-            default_expr = repr(default_raw)
-    else:
-        default_expr = None
+    default_expr = _literal_default_expr(field, enum_type_name) if has_default else None
 
     # #195 — a field derived by an origin.aggregate any|all|collect always COALESCEs
     # to a value (any→false, all→true, collect→[]), so its read type is mandatory
@@ -472,7 +475,7 @@ def _create_field_line(
     type_expr, enum_type_name = _type_expr_for_field(field, imports, config, wire=True)
     required = field.attrs().get(fc.FIELD_ATTR_REQUIRED) is True
     default_raw = field.attrs().get(fc.FIELD_ATTR_DEFAULT)
-    literal_default = default_raw is not None and not is_sql_expr_default(default_raw)
+    literal_default = has_literal_default(field)
     auto_set = field.attrs().get(fc.FIELD_ATTR_AUTO_SET)
     is_auto_set = auto_set in (fc.AUTO_SET_ON_CREATE, fc.AUTO_SET_ON_UPDATE)
     # A field is required in the CREATE shape only when @required AND not server-filled:
@@ -489,12 +492,9 @@ def _create_field_line(
     py_name = field.name  # FR-036 #3 — validation models key by the WIRE name (field.name)
 
     if literal_default:
-        # Preserve the literal @default (enum member or Python literal) exactly as the
-        # read model does — the caller may omit the field and the model fills the default.
-        if enum_type_name is not None and not field_is_array(field):
-            default_expr = f"{enum_type_name}.{str(default_raw).upper()}"
-        else:
-            default_expr = repr(default_raw)
+        # Preserve the literal @default exactly as the read model does — the caller may
+        # omit the field and the model fills the default.
+        default_expr = _literal_default_expr(field, enum_type_name)
         annotation = type_expr
         assignment = (
             f" = Field(default={default_expr}, {', '.join(parts)})"

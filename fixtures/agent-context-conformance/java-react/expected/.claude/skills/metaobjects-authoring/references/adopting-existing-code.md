@@ -13,6 +13,9 @@ redefining it. (The metadata is still the durable spine *going forward*; only th
 **The observable predicate:** does working code or a populated schema already exist for
 what you're modeling? If yes, you are in adoption mode and these rules apply.
 
+For Zod schemas, Drizzle tables or Pydantic models, `adopting-existing-models.md` is the
+step-by-step recipe: generate beside them, prove the types match, move one call site at a time.
+
 **Author metadata to match what the code ALREADY IS — not what you'd design fresh.**
 Read the existing code and schema *first*, then model to reproduce them:
 - The **native types the code uses** are the spec — model `field.uuid` when the code

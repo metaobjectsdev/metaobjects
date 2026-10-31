@@ -247,6 +247,69 @@ def test_field_default_is_emitted_as_literal() -> None:
     assert "s: str = 'approx'" in out
 
 
+@pytest.mark.parametrize(
+    ("subtype", "raw", "expected"),
+    [
+        (fc.FIELD_SUBTYPE_STRING, "{}", "[]"),
+        (fc.FIELD_SUBTYPE_STRING, "[]", "[]"),
+        (fc.FIELD_SUBTYPE_STRING, "{a,b}", "['a', 'b']"),
+        (fc.FIELD_SUBTYPE_STRING, '["a","b"]', "['a', 'b']"),
+        (fc.FIELD_SUBTYPE_LONG, "{1,2}", "[1, 2]"),
+        (fc.FIELD_SUBTYPE_DOUBLE, "[1.5]", "[1.5]"),
+        (fc.FIELD_SUBTYPE_BOOLEAN, "{true,false}", "[True, False]"),
+        # JSON numbers and booleans in a text array read as their text, as TypeScript reads them.
+        (fc.FIELD_SUBTYPE_STRING, "[true, 1]", "['true', '1']"),
+        # An empty array needs no element parsing, so every element subtype has it.
+        (fc.FIELD_SUBTYPE_UUID, "{}", "[]"),
+        (fc.FIELD_SUBTYPE_DECIMAL, "[]", "[]"),
+        # YAML `default: [a, b]` reaches the generator as a native list, not a string.
+        (fc.FIELD_SUBTYPE_STRING, ["a", "b"], "['a', 'b']"),
+        (fc.FIELD_SUBTYPE_STRING, [], "[]"),
+        (fc.FIELD_SUBTYPE_LONG, [1, 2], "[1, 2]"),
+        (fc.FIELD_SUBTYPE_BOOLEAN, [True, False], "[True, False]"),
+        (fc.FIELD_SUBTYPE_UUID, [], "[]"),
+    ],
+)
+def test_array_default_is_a_python_list_not_the_metadata_string(
+    subtype: str, raw: object, expected: str
+) -> None:
+    """An array @default is authored as a string or a native list; both models must get the
+    list it spells, because Pydantic does not validate a default and `tags: list[str] = '{}'`
+    hands every instance a str."""
+    tags = _f("tags", subtype, is_array=True)
+    tags.set_attr(fc.FIELD_ATTR_DEFAULT, raw)
+    out = render_entity_model(_entity("M", [tags]))
+    assert f"] = {expected}\n" in out.split("class MCreate")[0]
+    assert f"] = {expected}\n" in out.split("class MCreate")[1]
+
+
+@pytest.mark.parametrize(
+    ("subtype", "raw"),
+    [
+        (fc.FIELD_SUBTYPE_STRING, '{"a,b",c}'),
+        (fc.FIELD_SUBTYPE_INT, "{1,x}"),
+        (fc.FIELD_SUBTYPE_UUID, "{a}"),
+        # float() reads these, but `[nan]` is not Python source and the module would not import.
+        (fc.FIELD_SUBTYPE_DOUBLE, "{nan}"),
+        (fc.FIELD_SUBTYPE_DOUBLE, "{inf}"),
+        (fc.FIELD_SUBTYPE_STRING, "[null]"),
+        (fc.FIELD_SUBTYPE_STRING, '[["a"]]'),
+        (fc.FIELD_SUBTYPE_INT, ["x"]),
+        (fc.FIELD_SUBTYPE_UUID, ["a"]),
+    ],
+)
+def test_array_default_python_cannot_spell_is_left_to_the_database(
+    subtype: str, raw: str | list[str]
+) -> None:
+    """A shape this parser does not model carries no Python default, as a SQL expression
+    does: the column has the default, and the model must not invent one."""
+    tags = _f("tags", subtype, is_array=True)
+    tags.set_attr(fc.FIELD_ATTR_DEFAULT, raw)
+    out = render_entity_model(_entity("M", [tags]))
+    assert str(raw) not in out
+    assert "] | None = None" in out.split("class MCreate")[0]
+
+
 def test_dbcolumntype_jsonb_field_is_any_with_import() -> None:
     """Issue #98 — a field.string @dbColumnType:jsonb stores genuinely-open JSON,
     which pg8000 decodes to a native Python object at read time. The generated

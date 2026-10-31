@@ -1,0 +1,39 @@
+metadata:
+  package: shop
+  children:
+    - object.value:
+        name: ShippingAddress
+        children:
+          - field.string: { name: line1, required: true }
+          - field.string: { name: city, required: true }
+          - field.string: { name: postcode }
+    - object.entity:
+        name: Customer
+        children:
+          - source.rdb: { table: customers }
+          - field.uuid: { name: id, required: true }
+          - field.string: { name: email, required: true, maxLength: 254 }
+          - field.string: { name: displayName, required: true, maxLength: 120 }
+          - field.int: { name: loyaltyPoints, required: true, default: 0 }
+          - field.boolean: { name: marketingOptIn, required: true, default: false }
+          - field.string: { name: notes }
+          - field.timestamp: { name: createdAt, required: true, default: now(), mutability: readOnly }
+          - identity.primary: { fields: id, generation: uuid }
+          - identity.secondary: { name: customers_email_unique, fields: email }
+    - object.entity:
+        name: Order
+        children:
+          - source.rdb: { table: orders }
+          - field.long: { name: id, required: true }
+          - field.uuid: { name: customerId, required: true }
+          - field.enum: { name: status, required: true, values: [pending, paid, shipped], default: pending }
+          - field.decimal: { name: total, required: true, precision: 12, scale: 2 }
+          - field.object: { name: shippingAddress, objectRef: ShippingAddress, storage: jsonb }
+          - field.string[]: { name: tags, required: true, default: "{}" }
+          - field.date: { name: placedOn, required: true }
+          - identity.primary: { fields: id, generation: increment }
+          - identity.reference:
+              name: fkCustomer
+              fields: customerId
+              references: Customer
+              constraintName: orders_customer_id_customers_id_fk

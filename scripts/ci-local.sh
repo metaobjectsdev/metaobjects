@@ -600,6 +600,14 @@ gate_prisma_pg() {
   bun_install && ( cd server/typescript/packages/cli && bun test test/integration/prisma-schema.test.ts )
 }
 
+# The brownfield recipe's database check (docs/features/adopting-existing-models.md): the model
+# matches a Postgres built from examples/brownfield/drizzle/db/schema.sql, and a wrong column that
+# tsc cannot see fails `meta verify --db`. The rest of that file needs no database and runs with
+# the cli suite, so this runs only the Postgres half, on the same sidecar as gate_prisma_pg above.
+gate_brownfield_pg() {
+  bun_install && ( cd server/typescript/packages/cli && bun test test/integration/brownfield-recipe.test.ts -t "meta verify --db" )
+}
+
 # ── conformance.yml — per-port conformance corpora (exact CI commands) ────────
 gate_conf_ts() {
   bun_install || return 1
@@ -608,7 +616,7 @@ gate_conf_ts() {
   ( cd server/typescript/packages/render && bun test test/render-conformance.test.ts test/verify-conformance.test.ts test/extract/extract-conformance.test.ts test/output-prompt-conformance.test.ts ) || return 1
   ( cd server/typescript/packages/integration-tests && bun test test/validation-conformance.test.ts test/validation-conformance-runtime.test.ts ) || return 1
   ( cd server/typescript/packages/migrate-ts && bun test ) || return 1
-  ( cd server/typescript/packages/codegen-ts && bun test ) || return 1
+  ( cd server/typescript/packages/codegen-ts && bun test --timeout 30000 ) || return 1
   # --timeout 30000: the cli suite invokes full `meta`/run() dispatch, which lazily
   # imports each command's (sometimes heavy: codegen, migrate-ts) module on first
   # use. On a cold/contended self-hosted runner that first cold-start import can
@@ -1098,6 +1106,7 @@ lane_ts_integ() {
   step_if bun "migrate-ts real-PG suite"          gate_migrate_ts_pg
   step_if bun "runtime-ts real-PG dialect matrix" gate_runtime_ts_pg
   step_if bun "prisma real-PG round trip"         gate_prisma_pg
+  step_if bun "brownfield recipe real-PG check"   gate_brownfield_pg
   step "integration-tests (ts)" gate_integration_port ts
 }
 lane_cube() { [ "$NO_INTEG" -eq 0 ] && run_cube_lane; return 0; }
@@ -1247,6 +1256,7 @@ if [ "$PARALLEL" -eq 0 ]; then
       in_lane_any ts ts-slow     && step_if bun "migrate-ts real-PG suite" gate_migrate_ts_pg
       in_lane_any ts ts-slow     && step_if bun "runtime-ts real-PG dialect matrix" gate_runtime_ts_pg
       in_lane_any ts ts-slow     && step_if bun "prisma real-PG round trip" gate_prisma_pg
+      in_lane_any ts ts-slow     && step_if bun "brownfield recipe real-PG check" gate_brownfield_pg
       in_lane_any ts ts-slow     && run_integration_for ts     ts
       in_lane_any java java-slow && run_integration_for java   java kotlin
       in_lane python             && run_integration_for python python

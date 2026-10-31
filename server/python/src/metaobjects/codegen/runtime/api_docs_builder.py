@@ -45,7 +45,7 @@ from .m2m_codegen import (
     resolve_m2m_descriptors,
 )
 from metaobjects.codegen.generators.find_inbound import is_xml, response_shape
-from metaobjects.codegen.value_objects import bound_payload_vo, is_field_required, pkg_of
+from metaobjects.codegen.value_objects import bound_payload_vo, is_field_required
 from metaobjects.codegen.instance_artifacts import (
     has_item_route,
     is_abstract,

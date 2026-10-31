@@ -1,0 +1,5 @@
+metadata: metaobjects
+targets:
+  app:
+    outDir: generated # beside the existing code; nothing imports it yet
+    generators: [entity]
