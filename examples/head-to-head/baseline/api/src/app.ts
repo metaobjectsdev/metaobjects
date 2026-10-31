@@ -2,6 +2,8 @@ import Fastify from "fastify";
 import pg from "pg";
 import type { components, operations } from "../../generated/api";
 
+pg.types.setTypeParser(pg.types.builtins.INT8, Number);
+
 type Customer = components["schemas"]["Customer"];
 type CreateCustomer = components["schemas"]["CreateCustomer"];
 type ListQuery = NonNullable<operations["Customers_list"]["parameters"]["query"]>;

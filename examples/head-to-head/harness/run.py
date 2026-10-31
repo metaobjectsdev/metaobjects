@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run every drift scenario against both setups and write SCORECARD.md.
+"""Run the drift scenarios against both setups; a full run writes SCORECARD.md, a subset prints it.
 
 Nothing in the scorecard's result cells is typed by hand: each one is computed from the
 exit codes of the checks the scenario ran. Standard library only (Python 3.9+).
@@ -211,9 +211,9 @@ def s6_metaobjects(w: Work) -> None:
 
 
 SCENARIOS = [
-    Scenario("S0", "Control: no change", "Nothing is edited. Every check must pass, so a red cell elsewhere is not noise from the setup itself.",
+    Scenario("S0", "Control: no change", "Nothing is edited. Every check must pass, so a red cell elsewhere is not noise from the setup itself. (The live-database check has its own control: S5 runs it on the unedited database first and aborts the run unless it passes.)",
              "pr", {"baseline": no_change, "metaobjects": no_change}),
-    Scenario("S1", "Rename a field", "`Customer.email` becomes `contactEmail` in the place each setup treats as its source of truth, then that setup's own generators run. The prompt payload, the database column and the hand-written code are left as they were.",
+    Scenario("S1", "Rename a field", "`Customer.email` becomes `contactEmail` in the place each setup treats as its source of truth, then that setup's own generators run. Baseline: the TypeSpec model is edited, including the payload's field list, so the payload field is renamed too; `./gen.sh` runs; `atlas/schema.sql`, the migrations, the prompt and the hand-written code are left as they were. MetaObjects: the field and the payload's `extends` are edited, so the payload field keeps the name `email`; `meta gen`, `metaobjects gen` and `meta migrate --rename-column customers.email=contact_email` run; the prompt and the hand-written code are left as they were.",
              "pr", {"baseline": s1_baseline, "metaobjects": s1_metaobjects}),
     Scenario("S2", "Add a required field", "`Customer` gains a required `country` (2 characters). Generators run; nothing else is touched.",
              "pr", {"baseline": s2_baseline, "metaobjects": s2_metaobjects}),
@@ -221,7 +221,7 @@ SCENARIOS = [
              "pr", {"baseline": s3, "metaobjects": s3}),
     Scenario("S4", "Skip a regen", "An optional `nickname` field is added to the model and no generator is run, so the committed generated files are stale.",
              "pr", {"baseline": s4_baseline, "metaobjects": s4_metaobjects}),
-    Scenario("S5", "Edit the database by hand", "Someone runs `ALTER TABLE customers ADD COLUMN vip boolean NOT NULL DEFAULT false` on a live database. The check is each setup's live-database drift command, the one a team runs on a schedule or at deploy time.",
+    Scenario("S5", "Edit the database by hand", "Someone runs `ALTER TABLE customers ADD COLUMN vip boolean NOT NULL DEFAULT false` on a live database. The check is each setup's live-database drift command, the one a team runs on a schedule or at deploy time. It is run first on the unedited database and must pass, so a red result after the edit is the edit, not a broken tool.",
              "live", {"baseline": s5, "metaobjects": s5}),
     Scenario("S6", "Change a field on the partner API", "`name` becomes required on `POST /customers`: a request partners send today without it would be rejected. Generators run; the database follows where the setup derives it.",
              "pr", {"baseline": s6_baseline, "metaobjects": s6_metaobjects}),
@@ -275,9 +275,6 @@ class Outcome:
     def has_compat_check(self) -> bool:
         return any(n in COMPAT_CHECKS for n in CHECKS[self.setup])
 
-    @property
-    def clean_gate(self) -> bool:
-        return self.gate_rc in (0, None)
 
 
 def clean(text: str, work: Path | None = None) -> str:
@@ -426,6 +423,9 @@ def run_scenario(sc: Scenario, setup: str, pg: Postgres, tmp: Path) -> Outcome:
         app = sh("./db-apply.sh", w.path, w.env(H2H_DB=live_db, H2H_DEV_DB=w.db("dev")))
         if app.returncode != 0:
             raise SystemExit(f"{setup}: could not provision the live database:\n{app.stdout}")
+        control = sh("./live-drift.sh", w.path, w.env(H2H_DB=live_db, H2H_DEV_DB=w.db("devcontrol")))
+        if control.returncode != 0:
+            raise SystemExit(f"{setup}: live-drift reports drift on an unedited database:\n{control.stdout}")
         edit = pg.psql("ALTER TABLE customers ADD COLUMN vip boolean NOT NULL DEFAULT false", live_db)
         if edit.returncode != 0:
             raise SystemExit(f"hand edit failed: {edit.stderr}")
@@ -450,8 +450,7 @@ def first_line(cmd: str | list[str], cwd: Path) -> str:
 
 def npm_version(setup: str, pkg: str) -> str:
     p = ROOT / setup / "node_modules" / pkg / "package.json"
-    import json as _json
-    return _json.loads(p.read_text())["version"] if p.exists() else "?"
+    return json.loads(p.read_text())["version"] if p.exists() else "?"
 
 
 def py_version(setup: str, dist: str) -> str:
@@ -521,10 +520,14 @@ def check_shared_probe_files() -> None:
 # --------------------------------------------------------------------------- scorecard
 
 
+def control_ok(o: Outcome) -> bool:
+    return o.gate_rc == 0 and (o.smoke is None or o.smoke[0])
+
+
 def verdict(o: Outcome) -> str:
     """One word for the log; the scorecard uses layers_cell/compat_cell."""
     if o.scenario.id == "S0":
-        return "no false alarm" if o.clean_gate and (o.smoke is None or o.smoke[0]) else "FALSE ALARM"
+        return "no false alarm" if control_ok(o) else "FALSE ALARM"
     return "layers red" if o.layer_failed else ("partner break flagged" if o.compat_failed else "all green")
 
 
@@ -536,7 +539,7 @@ def probe(o: Outcome) -> str:
 
 def layers_cell(o: Outcome) -> str:
     if o.scenario.id == "S0":
-        return ("✅ **no false alarm**" if o.clean_gate and (o.smoke is None or o.smoke[0]) else "⚠️ **FALSE ALARM**") \
+        return ("✅ **no false alarm**" if control_ok(o) else "⚠️ **FALSE ALARM**") \
             + f" · exit {o.gate_rc} · {probe(o)}"
     parts = ["🔴 **red**: " + ", ".join(f"`{n}`" for n in o.layer_failed)] if o.layer_failed else ["🟢 **green**"]
     if o.smoke is not None:
@@ -659,8 +662,8 @@ def render_scorecard(outcomes: dict[tuple[str, str], Outcome], versions, counts,
     w("")
     w("## Lines each setup needs")
     w("")
-    w("One rule for both: every committed file in the setup's directory counts, minus lock files and "
-      "machine-generated output (listed below), minus the smoke probe (identical in both). Blank lines and "
+    w("One rule for both: every committed file in the setup's directory counts, minus lock files, "
+      "machine-generated output (listed below), the smoke probe (identical in both) and `.gitignore`. Blank lines and "
       "comment-only lines do not count. The numbers are from the files in this repository at the commit that "
       "generated this page.")
     w("")
@@ -712,8 +715,6 @@ def render_scorecard(outcomes: dict[tuple[str, str], Outcome], versions, counts,
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("scenarios", nargs="*", help="scenario ids to run (default: all), e.g. S1 S3")
-    ap.add_argument("--out", default=str(ROOT / "SCORECARD.md"), help="where to write the scorecard")
-    ap.add_argument("--json", help="also write raw results to this path")
     ap.add_argument("--keep", help="run in this directory and keep every scenario's working copy and logs")
     args = ap.parse_args()
 
@@ -722,6 +723,9 @@ def main() -> int:
             raise SystemExit(f"missing prerequisite: {tool}")
     if subprocess.run(["docker", "info"], capture_output=True).returncode != 0:
         raise SystemExit("docker is installed but its daemon is not reachable")
+    unknown = sorted(set(args.scenarios) - {s.id for s in SCENARIOS})
+    if unknown:
+        ap.error(f"unknown scenario id(s): {', '.join(unknown)}; choose from {', '.join(s.id for s in SCENARIOS)}")
     wanted = [s for s in SCENARIOS if not args.scenarios or s.id in args.scenarios or s.id == "S0"]
 
     check_shared_probe_files()
@@ -750,15 +754,12 @@ def main() -> int:
                     f"smoke {'-' if o.smoke is None else ('ok' if o.smoke[0] else 'FAIL')}) {o.seconds:.0f}s")
     card = render_scorecard(outcomes, versions, counts,
                             datetime.now(timezone.utc).strftime("%Y-%m-%d"), wanted, time.time() - t0)
-    Path(args.out).write_text(card, encoding="utf-8")
-    log(f"wrote {args.out}")
-    if args.json:
-        Path(args.json).write_text(json.dumps({f"{k[0]}/{k[1]}": {
-            "gate_rc": v.gate_rc, "checks": {n: ok for n, (ok, _) in v.checks.items()},
-            "smoke": None if v.smoke is None else v.smoke[0], "dev_notes": v.dev_notes}
-            for k, v in outcomes.items()}, indent=2), encoding="utf-8")
-    control_ok = all(verdict(outcomes[("S0", s)]) == "no false alarm" for s in SETUPS)
-    if not control_ok:
+    if args.scenarios:
+        print(card)
+    else:
+        (ROOT / "SCORECARD.md").write_text(card, encoding="utf-8")
+        log("wrote SCORECARD.md")
+    if not all(control_ok(outcomes[("S0", s)]) for s in SETUPS):
         log("the control scenario failed: a setup is red with no change, fix that before reading anything else")
         return 1
     return 0

@@ -2,7 +2,7 @@
 
 The rule: every file under a setup directory is committed source unless it is a
 dependency directory, a cache, a lock file or machine-generated output (the GENERATED
-list below). Each remaining file falls in exactly one category; a file that matches no
+list below), or a .gitignore (counted in no category). Each remaining file falls in exactly one category; a file that matches no
 category is an error, so nothing can escape the count. Blank lines and comment-only
 lines are not counted.
 """
@@ -102,7 +102,7 @@ def count_setup(root: Path, setup: str) -> dict:
                     break
             else:
                 raise SystemExit(f"lines.py: {setup}/{rel} matches no category; add it to CATEGORIES or GENERATED")
-    gen_lines = sum(len((root / g).read_text(encoding="utf-8").splitlines()) for g in generated
-                    if not g.endswith(("package-lock.json", "requirements.txt")))
-    return {"totals": totals, "files": files, "generated_files": len(generated),
+    shown = [g for g in generated if not g.endswith(("package-lock.json", "requirements.txt"))]
+    gen_lines = sum(len((root / g).read_text(encoding="utf-8").splitlines()) for g in shown)
+    return {"totals": totals, "files": files, "generated_files": len(shown),
             "generated_lines": gen_lines, "probe": probe}

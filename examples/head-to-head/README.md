@@ -35,7 +35,7 @@ You need Docker (Postgres 16, Atlas and oasdiff run as containers), Node.js 20 o
 
 ```sh
 ./run.sh            # every scenario, both setups, rewrites SCORECARD.md (about four minutes)
-./run.sh S1 S6      # chosen scenarios (S0, the control, always runs)
+./run.sh S1 S6      # chosen scenarios (S0, the control, always runs); prints the scorecard, does not write SCORECARD.md
 ./run.sh --keep /tmp/h2h-work   # also keep each scenario's working copy and its .ci-logs/
 ```
 
@@ -47,7 +47,7 @@ container is started for the run and removed at the end.
 ## The scenarios
 
 Every scenario edits **the place that setup treats as its source of truth**, runs **the generators that
-setup gives you**, and leaves anything else alone. That is the premise: it measures what happens when
+setup gives you** (for MetaObjects that includes `meta migrate`), and leaves the hand-written code and the prompt alone. S1's description in the scorecard spells out what it edits in each setup. That is the premise: it measures what happens when
 someone forgets the rest, not how well anyone remembers it. S0 changes nothing and must be green on both
 sides, otherwise a red cell elsewhere would be noise.
 
@@ -101,7 +101,7 @@ These are interpretation, written by hand, not measured. Check them against the 
 ## Lines each setup needs
 
 The scorecard also counts what each setup makes you write. One rule for both: every committed file in the
-setup's directory counts, except lock files, machine-generated output (`generated/`, the migrations,
+setup's directory counts, except lock files, `.gitignore`, machine-generated output (`generated/`, the migrations,
 `.metaobjects/.gen-state/` and so on, all listed in the scorecard) and the smoke probe, which is
 byte-identical in both. Blank lines and comment-only lines are not counted. `harness/lines.py` fails if a
 file fits no category, so nothing escapes the count. Generated lines are reported, not hidden.
