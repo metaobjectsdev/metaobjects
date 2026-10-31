@@ -12,6 +12,7 @@ from __future__ import annotations
 import http.client
 import json
 import os
+import queue
 import re
 import shutil
 import signal
@@ -189,8 +190,11 @@ def test_a_removal_that_fails_once_is_retried(tmp_path: Path) -> None:
         shutil.rmtree(directory)
 
 
-def _one_shot_server(reply: bytes) -> socket.socket:
-    """A listener that answers one registration with *reply*, then hangs up unless it said ACK."""
+def _one_shot_server(
+    reply: bytes, peer_state: queue.Queue[str] | None = None
+) -> socket.socket:
+    """A listener that answers one registration with *reply*, then hangs up unless it said ACK.
+    After an ACK it reports to *peer_state* whether the client kept its end "open" or hung up ("eof")."""
     server = socket.create_server(("127.0.0.1", 0))
 
     def answer() -> None:
@@ -199,6 +203,15 @@ def _one_shot_server(reply: bytes) -> socket.socket:
         conn.sendall(reply)
         if reply != b"ACK\n":
             conn.close()
+            return
+        conn.settimeout(0.3)
+        try:
+            state = "eof" if conn.recv(1) == b"" else "open"
+        except TimeoutError:
+            state = "open"
+        if peer_state is not None:
+            peer_state.put(state)
+        conn.close()
 
     threading.Thread(target=answer, daemon=True).start()
     return server
@@ -210,7 +223,11 @@ def test_a_connection_ryuk_never_acknowledged_is_not_a_registration() -> None:
 
 
 def test_a_connection_ryuk_acknowledged_is_held_open() -> None:
-    with _one_shot_server(b"ACK\n") as server:
+    peer_state: queue.Queue[str] = queue.Queue()
+    with _one_shot_server(b"ACK\n", peer_state) as server:
         conn = _register(server.getsockname()[1], LABEL)
         assert conn is not None
-        conn.close()
+        try:
+            assert peer_state.get(timeout=5) == "open"
+        finally:
+            conn.close()
