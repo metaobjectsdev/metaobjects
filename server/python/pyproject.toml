@@ -54,10 +54,10 @@ dev = ["pytest>=8", "pytest-xdist>=3.6", "mypy>=1.10", "ruff>=0.6", "pydantic>=2
 # On-demand cross-language conformance suites — persistence + api-contract.
 # pg8000 is pure-python so this extra installs cleanly without native deps;
 # the persistence harness shells out to the docker CLI directly (matches the
-# TS/Java pattern); testcontainers supplies only Ryuk, which removes a killed
-# run's containers (tests/integration/reaper.py); the api-contract harness drives a FastAPI Author API in-process via the
-# starlette TestClient (httpx).
-integration = ["pg8000>=1.31", "PyMySQL>=1.1", "fastapi>=0.110", "httpx>=0.27", "testcontainers>=4.15"]
+# TS/Java pattern), and tests/integration/reaper.py starts Ryuk the same way to remove a
+# killed run's containers; the api-contract harness drives a FastAPI Author API in-process
+# via the starlette TestClient (httpx).
+integration = ["pg8000>=1.31", "PyMySQL>=1.1", "fastapi>=0.110", "httpx>=0.27"]
 # MySQL for the ObjectManager (`metaobjects.runtime.MySqlDriver`). PyMySQL is pure Python,
 # so like pg8000 it installs without native build dependencies. SQLite needs nothing: the
 # driver wraps the standard library's `sqlite3`.

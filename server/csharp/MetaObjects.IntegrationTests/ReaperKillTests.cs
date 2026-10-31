@@ -16,7 +16,11 @@ namespace MetaObjects.IntegrationTests;
 public sealed class ReaperKillTests
 {
     private static readonly TimeSpan ChildReady = TimeSpan.FromSeconds(60);
-    private static readonly TimeSpan RemovalBound = TimeSpan.FromSeconds(45);
+    // Ryuk waits 10s, then Docker has to finish the container's exit, and it cannot until the overlay
+    // unmount has flushed the host filesystem's dirty pages. A busy disk makes removal slow, not wrong.
+    // Measured with a 256 MiB backlog: 34-38s at 12 MB/s and 67-76s at 6 MB/s, against under 11s at
+    // 6 MB/s with no backlog. Every removal succeeded.
+    private static readonly TimeSpan RemovalBound = TimeSpan.FromSeconds(120);
 
     // The killed process: it starts a real helper container, reports the port and waits. This is
     // the test assembly's entry point, which GenerateProgramFile=false leaves free.
@@ -49,7 +53,7 @@ public sealed class ReaperKillTests
             {
                 await Task.Delay(250);
             }
-            Assert.False(await ExistsAsync(container), $"{container} outlived its killed process");
+            Assert.False(await ExistsAsync(container), $"{container} outlived its killed process ({await StatusAsync(container)})");
         }
         finally
         {
@@ -71,6 +75,9 @@ public sealed class ReaperKillTests
 
     private static async Task<bool> ExistsAsync(string container) =>
         await DockerAsync("ps", "-a", "--filter", $"name=^{container}$", "--format", "{{.Names}}") != "";
+
+    private static Task<string> StatusAsync(string container) =>
+        DockerAsync("ps", "-a", "--filter", $"name=^{container}$", "--format", "{{.Status}}");
 
     private static async Task<string> DockerAsync(params string[] args)
     {
