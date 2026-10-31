@@ -1,0 +1,24 @@
+{
+  "title": "Sale",
+  "type": "object",
+  "properties": {
+    "productId": {
+      "type": "integer"
+    },
+    "amountCents": {
+      "type": "integer"
+    },
+    "refunded": {
+      "type": [
+        "boolean",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "productId",
+    "amountCents",
+    "refunded"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/acme/orders/Order.update.schema.json",
+  "title": "Order.update",
+  "type": "object",
+  "properties": {
+    "customerId": {
+      "type": "integer",
+      "format": "int64"
+    }
+  }
+}

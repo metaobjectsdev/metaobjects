@@ -1,0 +1,17 @@
+{
+  "title": "PostReviewer",
+  "type": "object",
+  "properties": {
+    "postId": {
+      "type": "integer"
+    },
+    "accountId": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "postId",
+    "accountId"
+  ],
+  "additionalProperties": false
+}

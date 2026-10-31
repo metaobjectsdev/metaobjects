@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/acme/store/Measure.create.schema.json",
+  "title": "Measure.create",
+  "type": "object",
+  "properties": {
+    "ratio": {
+      "type": "number",
+      "format": "double"
+    },
+    "samples": {
+      "type": "array",
+      "items": {
+        "type": "number",
+        "format": "double"
+      }
+    },
+    "amount": {
+      "type": [
+        "string",
+        "number"
+      ],
+      "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?([eE][+-]?[0-9]+)?$",
+      "description": "A decimal, as a string in JSON-number grammar or a JSON number. Precision 12, scale 4."
+    }
+  }
+}

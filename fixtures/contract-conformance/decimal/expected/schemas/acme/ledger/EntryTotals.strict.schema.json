@@ -1,0 +1,63 @@
+{
+  "title": "EntryTotals",
+  "type": "object",
+  "properties": {
+    "bucket": {
+      "description": "Maximum length: 8.",
+      "type": "string"
+    },
+    "entries": {
+      "type": "integer"
+    },
+    "total": {
+      "description": "Pattern: ^-?(0|[1-9][0-9]*)(\\.[0-9]*[1-9])?$.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "totalOrZero": {
+      "description": "Pattern: ^-?(0|[1-9][0-9]*)(\\.[0-9]*[1-9])?$.",
+      "type": "string"
+    },
+    "mean": {
+      "description": "Pattern: ^-?(0|[1-9][0-9]*)(\\.[0-9]*[1-9])?$.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "top": {
+      "description": "Pattern: ^-?(0|[1-9][0-9]*)(\\.[0-9]*[1-9])?$.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "flaggedShare": {
+      "description": "Pattern: ^-?(0|[1-9][0-9]*)(\\.[0-9]*[1-9])?$.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "perFlagged": {
+      "description": "Pattern: ^-?(0|[1-9][0-9]*)(\\.[0-9]*[1-9])?$.",
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "bucket",
+    "entries",
+    "total",
+    "totalOrZero",
+    "mean",
+    "top",
+    "flaggedShare",
+    "perFlagged"
+  ],
+  "additionalProperties": false
+}

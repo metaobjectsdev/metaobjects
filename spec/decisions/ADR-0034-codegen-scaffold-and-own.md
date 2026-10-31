@@ -1203,3 +1203,27 @@ policy for this release, recorded here so the CHANGELOG's breaking notice can ci
 
 **Open.** Nothing. The C# file name was ruled 2026-10-14: the list lives in
 `codegen/Generators.cs`, and `codegen/Program.cs` is a two-line entry point.
+
+### Amendment 10 (2026-10-30) — the contract emitters are stock generators
+
+**Ruling (maintainer).** Amendment 4 item 4 made JSON Schema and OpenAPI recipes and "not a product
+surface". Round 7 of the positioning work found the missing emitter was the condition API-first
+teams name for adopting, and the "fourth source of truth" objection every time they read it. The
+maintainer decided the emitter is the next feature (FR-022).
+
+**The rule.**
+
+1. `contract-schema` (`jsonSchemaFile()`) and `openapi` (`openApiFile()`) are stock generators in
+   the catalog, `tier: "neutral"`, `eject: "full"`.
+2. They are still reference helpers under Amendment 3: listed, importable, ejectable, gated by
+   `verify --codegen`. What the core guarantees has not changed. A defect in one is a defect in a
+   reference, not in a core guarantee.
+3. One engine, in TypeScript, for all five ports. Their output depends on the model and the `wire`
+   setting and never on the port, so a project on any port runs them through the Node `meta` CLI.
+   That is ADR-0022's test for a neutral artifact, and the manifest records it as
+   `ports: ["typescript"]` with a note.
+
+**Amendment 4 stands** for everything else: writing a generator is the primary path. The two recipes
+stay as worked examples of writing one, and say that a stock generator now exists.
+
+**Packaged output.** Two new generators. No existing generator emits different bytes.

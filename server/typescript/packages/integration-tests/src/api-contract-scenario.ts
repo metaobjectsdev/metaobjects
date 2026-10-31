@@ -109,7 +109,11 @@ function parseScenario(file: string): ApiScenario {
  * shared by the report lane's variants (SQLite, D1, MySQL) so the request envelope lives once —
  * the Postgres lane's own copy predates this and is the cross-port runner's reference.
  */
-export async function runScenario(scenario: ApiScenario, baseUrl: string): Promise<void> {
+export async function runScenario(
+  scenario: ApiScenario,
+  baseUrl: string,
+  check?: (req: ApiRequest, status: number, bodyText: string) => void,
+): Promise<void> {
   for (const req of scenario.requests) {
     const init: RequestInit = { method: req.method };
     const headers: Record<string, string> = { ...req.headers };
@@ -121,6 +125,7 @@ export async function runScenario(scenario: ApiScenario, baseUrl: string): Promi
     const res = await fetch(baseUrl + req.path, init);
     const bodyText = await res.text();
     assertResponseFull(scenario.name, req, res.status, bodyText, (name) => res.headers.get(name));
+    check?.(req, res.status, bodyText);
   }
 }
 

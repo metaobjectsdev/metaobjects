@@ -1,0 +1,14 @@
+{
+  "title": "CopayAuth",
+  "type": "object",
+  "properties": {
+    "reference": {
+      "description": "Minimum length: 1. Maximum length: 80.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "reference"
+  ],
+  "additionalProperties": false
+}

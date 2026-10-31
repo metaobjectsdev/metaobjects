@@ -141,7 +141,7 @@ under **Shipped**; planned FRs under **Planned** + the **Release plan**. ✅ shi
 | FR-019 | Shared / externally-provided enums | 📋 | 1.1 | [#5](https://github.com/metaobjectsdev/metaobjects/issues/5) |
 | FR-020 | `@inheritance` joined strategy | 📋 | 1.x | [#6](https://github.com/metaobjectsdev/metaobjects/issues/6) |
 | FR-021 | api metadata + contract projections | 📋 | 1.3 | [#7](https://github.com/metaobjectsdev/metaobjects/issues/7) |
-| FR-022 | Contract emitters (JSON Schema/OpenAPI/protobuf) | 📋 | 1.3 | [#8](https://github.com/metaobjectsdev/metaobjects/issues/8) |
+| FR-022 | Contract emitters (JSON Schema/OpenAPI/protobuf) | 🔵 JSON Schema and OpenAPI 1.2.1 · protobuf 1.3 | 1.2.1 | [#8](https://github.com/metaobjectsdev/metaobjects/issues/8) |
 | FR-023 | Metadata dependencies (cross-repo sharing: generated shared-model artifact, `meta deps sync`, committed snapshot + lock, default exclusion of imported metadata, consumer extend/overlay across the boundary) | 🟢 Phase 1a (TS + Python) **shipped** per DESIGN §11, Java/Kotlin consume (Phase 2 S3) — the usage-aware breaking-change classifier and the `npm`/`python` transports are deferred (§11.4); C# consumer shipped in Phase 2 S6 | 1.1 | [#9](https://github.com/metaobjectsdev/metaobjects/issues/9) |
 | FR-024 | Entity surfaces (projection/value + declared API) | 🟢 taxonomy + B3/B4a/B4b/B5/B6 validation parity + projection codegen **shipped 5 ports (1.0)**; declared-API surface (`api.operational`/`operation`/`binding.rest`) **deferred to a later 1.x** (not in 1.1.0; foundation for FR-034) | 1.0 · 1.x (later) | [#10](https://github.com/metaobjectsdev/metaobjects/issues/10) |
 | FR-025 | Cross-port package-binding codegen config | 📋 | 1.1 | [#11](https://github.com/metaobjectsdev/metaobjects/issues/11) |
@@ -405,7 +405,7 @@ _(FR-032 was developed under the working number "FR-026" — see commit history;
 - **FR-024 — Entity surfaces: `object.projection`, universal field-`extends`, and the declared API.** A third object subtype (derived, read-only, borrowed identity via `extends`; the declared field set IS the exposure — fail-closed), universal `Entity.child` extends-resolution (load-time drift gate on every contract shape), `@via` single-hop-unique inference, multi-source entity view behavior, and the `api.operational` / `operation.query|command` / `binding.rest` surface — across all 5 ports, conformance-gated; the two pre-taxonomy spellings (entity-`extends`-entity views, proc-results-as-entities) are removed outright (hard cutover, pre-GA). Decisions: [ADR-0028](decisions/ADR-0028-object-taxonomy-projection-value-purity.md) / [ADR-0029](decisions/ADR-0029-entity-child-extends-and-via-inference.md) / [ADR-0030](decisions/ADR-0030-declared-api-surface-and-org-tier-boundary.md). Design: `docs/superpowers/specs/2026-06-12-fr-024-entity-surfaces-projections-design.md`; program plan: `docs/superpowers/plans/2026-06-12-fr-024-entity-surfaces-program.md`. Supersedes the shape-vocabulary half of the FR-021 sketch (its `api`/`wireId` direction stands, retyped onto projection/value).
 - **FR-021 — `api` metadata type + contract projections.** Declared API surfaces (operations + per-protocol bindings) over the derived-CRUD default; operation payloads are declared contract shapes (post-#210: an `object.value` carries `origin.passthrough` lineage only — assembly origins live on `object.projection`, the same machinery as prompts and views); wire-stable `wireId` numbering lives on the contract projection (never the entity) so domain evolution can't break wire compat. Design sketch: `docs/superpowers/specs/2026-06-11-fr-021-api-metadata-and-contract-projections-design.md`. **Revised by FR-024:** contract shapes are `object.projection` (query outputs) / `object.value` (command inputs); subtype vocabulary `api.base`/`api.operational`; see ADR-0030.
 - **FR-034 — Ecosystem tier: connecting meta-modeled systems over a network.** A semantic topology layer that models the *ecosystem* — many meta-modeled systems and how they call each other — rather than a single system's shapes. C4-style two-level nesting: `system` (logical software system) → `container.service|client` (the deployable network participants), each carrying `surface.provided|consumed` edges whose `@apiRef` resolves (FQN, ADR-0041) to an `api.*` node in the same or a dependency package; plus `environment.deployment` (the named instantiation that keys a generated per-environment address-config matrix). URLs are **not** metadata (a generated, fail-closed *address contract* keyed per environment carries them); the logical topology moves **into** core (superseding ADR-0030 §5) while the physical tier stays permanently out. Reuses FR-023 (metadata-package transport), ADR-0041 (resolution), and ADR-0029 (the load-time drift gate, now spanning repos → cross-system drift detection = pillar 3, one tier up). Depends on the FR-024 declared-API surface. Owner rulings (2026-07-10): C4-nesting, topology-into-core, names-only environments, defer third-party. **Draft, deferred post-1.0.** Design: `docs/superpowers/specs/2026-07-10-fr-034-ecosystem-tier-connected-systems-design.md`. Downstream convergence evidence (a consumer independently re-deriving the consumed-edge address contract + protocol-off-the-type-axis): `spec/design-docs/2026-07-11-downstream-convergence-outbound-adapters.md`.
-- **FR-022 — Contract emitters (Tier-2): JSON Schema 2020-12 (canonical + strict structured-output profile) → OpenAPI 3.1 → protobuf.** One shared neutral engine per ADR-0020; strict profile targets the cross-provider structured-output intersection (also MCP input schemas); proto emission consumes FR-021 `wireId`s, maps types per the locked table (Decimal/minor-units/uuid-string/optional/UNSPECIFIED-enum-zero), and inherits wire-compat regression detection via `buf breaking` on the emitted artifacts. Design sketch: `docs/superpowers/specs/2026-06-11-fr-022-contract-emitters-design.md`.
+- **FR-022 — Contract emitters (Tier-2): JSON Schema 2020-12 (canonical + strict structured-output profile) → OpenAPI 3.1 → protobuf.** One shared neutral engine per ADR-0022; strict profile targets the cross-provider structured-output intersection (also MCP input schemas). The JSON Schema and OpenAPI phases target 1.2.1. Proto emission stays under 1.3 with binary protocols: it maps types per the locked table (Decimal/minor-units/uuid-string/optional/UNSPECIFIED-enum-zero) and inherits wire-compat regression detection via `buf breaking` on the emitted artifacts. Design: `docs/superpowers/specs/2026-06-11-fr-022-contract-emitters-design.md`.
 - **FR-023 — Metadata dependencies: cross-repo distribution + reuse.** **Phase 1a
   shipped** (TS + Python, per DESIGN §11's "B+" ruling — thin dependencies plus
   default exclusion of imported metadata): a publisher's `sharedModelFile()`
@@ -676,12 +676,17 @@ the breaking half at `1.1`.
   JSON/XML download via the 1.1 serializer & field-subset + export conformance + the secondary
   grid gaps (column width/visibility/selection, consistent server `search`).
 
-#### 1.3 — Binary protocols + contract emitters
+#### 1.2.1 — Contract emitters
+
+- **FR-022 — JSON Schema and OpenAPI emitters**, with the oasdiff recipe that checks a change
+  against the last release.
+
+#### 1.3 — Binary protocols
 
 - **FR-030 binary** — protobuf / MessagePack / CBOR over the SPI → completes the
   **json → xml → binary → json** no-data-loss round-trip gate.
-- **FR-022 — contract emitters** (JSON Schema / OpenAPI / protobuf) — overlaps the protobuf
-  serializer (shared `wireId`/type mapping); do together.
+- **FR-022 — protobuf emitter** — overlaps the protobuf serializer (shared `wireId`/type
+  mapping); do together.
 
 #### 1.4 — Metadata API + runtime-driven UI
 

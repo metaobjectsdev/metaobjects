@@ -1,0 +1,14 @@
+{
+  "metadata.root": {
+    "package": "acme::contract",
+    "children": [
+      { "object.value": {
+        "name": "Tree",
+        "children": [
+          { "field.string": { "name": "label", "@required": true } },
+          { "field.object": { "name": "children", "@objectRef": "Tree", "isArray": true } }
+        ]
+      }}
+    ]
+  }
+}

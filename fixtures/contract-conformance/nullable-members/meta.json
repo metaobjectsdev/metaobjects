@@ -1,0 +1,109 @@
+{
+  "metadata.root": {
+    "package": "acme::contract",
+    "children": [
+      {
+        "object.value": {
+          "name": "Place",
+          "children": [
+            {
+              "field.string": {
+                "name": "city",
+                "@required": true
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.value": {
+          "name": "Reading",
+          "children": [
+            {
+              "field.string": {
+                "name": "unit"
+              }
+            },
+            {
+              "field.enum": {
+                "name": "grade",
+                "@values": [
+                  "LOW",
+                  "HIGH"
+                ]
+              }
+            },
+            {
+              "field.object": {
+                "name": "place",
+                "@objectRef": "Place"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Sensor",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "sensors"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.object": {
+                "name": "reading",
+                "@objectRef": "Reading",
+                "@storage": "jsonb"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": "id",
+                "@generation": "increment"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "SensorSummary",
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_sensor_summary"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id",
+                "extends": "Sensor.id"
+              }
+            },
+            {
+              "field.object": {
+                "name": "reading",
+                "extends": "Sensor.reading"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "extends": "Sensor.pk"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

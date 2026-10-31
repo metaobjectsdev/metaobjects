@@ -1,0 +1,27 @@
+{
+  "title": "InvoiceSummary",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "integer"
+    },
+    "reference": {
+      "description": "Maximum length: 40.",
+      "type": "string"
+    },
+    "status": {
+      "description": "Maximum length: 20.",
+      "type": "string"
+    },
+    "amountCents": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "id",
+    "reference",
+    "status",
+    "amountCents"
+  ],
+  "additionalProperties": false
+}

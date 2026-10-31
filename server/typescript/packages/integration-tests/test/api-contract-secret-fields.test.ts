@@ -13,6 +13,7 @@ import {
   API_CONTRACT_SECRET_FIELDS_DIR,
   API_CONTRACT_SECRET_FIELDS_SCENARIOS_DIR,
 } from "../src/paths.ts";
+import { openApiCheck, type ContractCheck } from "../src/api-contract-openapi-check.ts";
 import { loadScenarios, assertResponse, type ApiScenario, parseBodyExact } from "../src/api-contract-scenario.ts";
 import { startPostgres } from "../src/postgres-container.ts";
 import {
@@ -25,6 +26,8 @@ const SEED = JSON.parse(
   readFileSync(join(API_CONTRACT_SECRET_FIELDS_DIR, "seed.json"), "utf8"),
 ) as SecretFieldsSeed;
 const META_PATH = join(API_CONTRACT_SECRET_FIELDS_DIR, "meta.json");
+
+const contractCheck: ContractCheck = openApiCheck("secret-fields");
 
 describe("api contract secret fields (#484) — GENERATED routes lane", () => {
   for (const scenario of loadScenarios(API_CONTRACT_SECRET_FIELDS_SCENARIOS_DIR)) {
@@ -91,6 +94,7 @@ async function runScenario(scenario: ApiScenario, server: GeneratedSecretFieldsS
       try { body = parseBodyExact(bodyText); } catch { body = bodyText; }
     }
     assertResponse(scenario.name, req, res.status, body);
+    contractCheck(req, res.status, bodyText);
   }
 }
 

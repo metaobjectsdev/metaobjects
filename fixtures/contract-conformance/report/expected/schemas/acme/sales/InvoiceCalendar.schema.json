@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/acme/sales/InvoiceCalendar.schema.json",
+  "title": "InvoiceCalendar",
+  "type": "object",
+  "properties": {
+    "issuedOnDay": {
+      "type": "string",
+      "format": "date"
+    },
+    "issuedOnMonth": {
+      "type": "string",
+      "format": "date"
+    },
+    "invoices": {
+      "type": "integer",
+      "format": "int64"
+    },
+    "totalCents": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "format": "int64"
+    }
+  },
+  "required": [
+    "issuedOnDay",
+    "issuedOnMonth",
+    "invoices",
+    "totalCents"
+  ]
+}

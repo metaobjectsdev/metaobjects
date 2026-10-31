@@ -1,6 +1,7 @@
 // EXAMPLE GENERATOR — copy it into your repo (codegen/generators/openapi.ts) and own it.
-// It is a worked example, NOT a supported MetaObjects product surface: no release promises
-// its output, and when your API differs you edit your copy.
+// It is a worked example of writing a generator, NOT a supported MetaObjects product surface: no
+// release promises its output, and when your API differs you edit your copy. For the document
+// itself, use the stock `openapi` generator (docs/features/contract-emitters.md).
 //
 // Wire it in metaobjects.config.ts (it reuses the field mapping in json-schema.ts, so copy
 // both files into the same directory):

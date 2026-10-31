@@ -15,6 +15,7 @@ import { describe, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { API_CONTRACT_JSONB_DIR, API_CONTRACT_JSONB_SCENARIOS_DIR } from "../src/paths.ts";
+import { openApiCheck, type ContractCheck } from "../src/api-contract-openapi-check.ts";
 import { loadScenarios, assertResponse, type ApiScenario, parseBodyExact } from "../src/api-contract-scenario.ts";
 import { startPostgres } from "../src/postgres-container.ts";
 import { loadMetadataFile } from "../src/load-metadata.ts";
@@ -55,7 +56,7 @@ describe("api contract jsonb open-bag — GENERATED routes lane", () => {
       try {
         server = await startGeneratedJsonbServer(pg.connectionUri, META_PATH);
         await server.applySeed(SEED.rows);
-        await runScenario(scenario, server);
+        await runScenario(scenario, server, openApiCheck("jsonb"));
       } finally {
         if (server) await server.close();
         await pg.stop();
@@ -64,7 +65,7 @@ describe("api contract jsonb open-bag — GENERATED routes lane", () => {
   }
 });
 
-async function runScenario(scenario: ApiScenario, server: Lane): Promise<void> {
+async function runScenario(scenario: ApiScenario, server: Lane, check?: ContractCheck): Promise<void> {
   for (const req of scenario.requests) {
     const init: RequestInit = { method: req.method };
     if (req.body !== undefined) {
@@ -78,5 +79,6 @@ async function runScenario(scenario: ApiScenario, server: Lane): Promise<void> {
       try { body = parseBodyExact(bodyText); } catch { body = bodyText; }
     }
     assertResponse(scenario.name, req, res.status, body);
+    check?.(req, res.status, bodyText);
   }
 }

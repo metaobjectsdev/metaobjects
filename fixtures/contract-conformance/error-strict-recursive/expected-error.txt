@@ -1,0 +1,1 @@
+[ERR_CONTRACT_STRICT_UNREPRESENTABLE] 'acme::contract::Tree' has no strict schema: its shape is recursive (Tree -> Tree) (at 'children'). Leave it out with the generator's filter option.

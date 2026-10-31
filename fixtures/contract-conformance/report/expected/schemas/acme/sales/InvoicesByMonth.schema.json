@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/acme/sales/InvoicesByMonth.schema.json",
+  "title": "InvoicesByMonth",
+  "type": "object",
+  "properties": {
+    "issuedOnMonth": {
+      "type": "string",
+      "format": "date"
+    },
+    "invoices": {
+      "type": "integer",
+      "format": "int64"
+    },
+    "totalCents": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "format": "int64"
+    }
+  },
+  "required": [
+    "issuedOnMonth",
+    "invoices",
+    "totalCents"
+  ]
+}

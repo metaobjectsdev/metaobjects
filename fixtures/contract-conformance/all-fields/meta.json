@@ -1,0 +1,81 @@
+{
+  "metadata.root": {
+    "package": "acme::contract",
+    "children": [
+      { "object.value": {
+        "name": "Address",
+        "@description": "A postal address.",
+        "children": [
+          { "field.string": { "name": "street", "@required": true, "@maxLength": 80 } },
+          { "field.string": { "name": "unit", "@maxLength": 10 } },
+          { "field.decimal": { "name": "latitude", "@precision": 9, "@scale": 6 } }
+        ]
+      }},
+      { "object.value": {
+        "name": "Tree",
+        "children": [
+          { "field.string": { "name": "label", "@required": true } },
+          { "field.object": { "name": "children", "@objectRef": "Tree", "isArray": true, "@storage": "jsonb" } }
+        ]
+      }},
+      { "object.entity": {
+        "name": "AllFields",
+        "@description": "One field of every wire type.",
+        "children": [
+          { "source.rdb": { "@table": "all_fields" } },
+          { "field.uuid": { "name": "id", "@filterable": true } },
+          { "field.string": { "name": "title", "@required": true, "@maxLength": 120, "@filterable": true, "@sortable": true, "@description": "The display title.", "children": [
+            { "validator.length": { "name": "titleLength", "@min": 3 } },
+            { "validator.regex": { "name": "titleShape", "@pattern": "[A-Z].*" } }
+          ]}},
+          { "field.string": { "name": "email", "@stringFormat": "email", "@filterable": true } },
+          { "field.string": { "name": "host", "@stringFormat": "hostname" } },
+          { "field.int": { "name": "quantity", "@required": true, "@filterable": true, "@sortable": true, "children": [
+            { "validator.numeric": { "name": "quantityRange", "@min": 0, "@max": 1000 } }
+          ]}},
+          { "field.long": { "name": "views", "@filterable": true } },
+          { "field.double": { "name": "ratio", "@filterable": true } },
+          { "field.float": { "name": "score" } },
+          { "field.decimal": { "name": "amount", "@precision": 10, "@scale": 2, "@filterable": true } },
+          { "field.boolean": { "name": "active", "@filterable": true } },
+          { "field.date": { "name": "startsOn", "@filterable": true } },
+          { "field.time": { "name": "startsAt", "@filterable": true } },
+          { "field.timestamp": { "name": "publishedAt", "@filterable": true } },
+          { "field.timestamp": { "name": "wallClock", "@localTime": true } },
+          { "field.currency": { "name": "priceCents", "@currency": "USD", "@filterable": true } },
+          { "field.enum": { "name": "status", "@values": ["draft", "live"], "@required": true, "@filterable": true } },
+          { "field.enum": { "name": "stage", "@values": ["early", "late"], "@filterable": true } },
+          { "field.uri": { "name": "homepage" } },
+          { "field.uri": { "name": "looseLink", "@lenient": true } },
+          { "field.inet": { "name": "address" } },
+          { "field.object": { "name": "shipTo", "@objectRef": "Address", "@storage": "jsonb" } },
+          { "field.object": { "name": "stops", "@objectRef": "Address", "isArray": true, "@storage": "jsonb", "children": [
+            { "validator.array": { "name": "stopsCount", "@min": 1, "@max": 5 } }
+          ]}},
+          { "field.string": { "name": "tags", "isArray": true } },
+          { "field.string": { "name": "password", "children": [
+            { "view.password": { "name": "secret" } }
+          ]}},
+          { "field.string": { "name": "internalNote", "@formExclude": true } },
+          { "field.string": { "name": "issuedBy", "@mutability": "writeOnce" } },
+          { "field.string": { "name": "syncedBy", "@mutability": "readOnly" } },
+          { "field.timestamp": { "name": "createdAt", "@autoSet": "onCreate" } },
+          { "field.timestamp": { "name": "updatedAt", "@autoSet": "onUpdate" } },
+          { "identity.primary": { "name": "pk", "@fields": "id", "@generation": "uuid" } }
+        ]
+      }},
+      { "object.entity": {
+        "name": "Bag",
+        "children": [
+          { "source.rdb": { "@table": "bags" } },
+          { "field.long": { "name": "id" } },
+          { "field.map": { "name": "counters", "@valueType": "int", "@storage": "jsonb" } },
+          { "field.map": { "name": "places", "@objectRef": "Address", "@storage": "jsonb" } },
+          { "field.object": { "name": "tree", "@objectRef": "Tree", "@storage": "jsonb" } },
+          { "field.string": { "name": "open", "@dbColumnType": "jsonb" } },
+          { "identity.primary": { "name": "pk", "@fields": "id", "@generation": "increment" } }
+        ]
+      }}
+    ]
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/acme/sales/InvoiceTotals.schema.json",
+  "title": "InvoiceTotals",
+  "type": "object",
+  "properties": {
+    "invoices": {
+      "type": "integer",
+      "format": "int64"
+    },
+    "totalCents": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "format": "int64"
+    },
+    "paidShare": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]*[1-9])?$"
+    }
+  },
+  "required": [
+    "invoices",
+    "totalCents",
+    "paidShare"
+  ]
+}

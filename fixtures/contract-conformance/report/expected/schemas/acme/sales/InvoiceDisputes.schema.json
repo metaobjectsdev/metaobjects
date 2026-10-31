@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/acme/sales/InvoiceDisputes.schema.json",
+  "title": "InvoiceDisputes",
+  "type": "object",
+  "properties": {
+    "disputed": {
+      "type": "boolean"
+    },
+    "invoices": {
+      "type": "integer",
+      "format": "int64"
+    },
+    "bigInvoices": {
+      "type": "integer",
+      "format": "int64"
+    }
+  },
+  "required": [
+    "disputed",
+    "invoices",
+    "bigInvoices"
+  ]
+}

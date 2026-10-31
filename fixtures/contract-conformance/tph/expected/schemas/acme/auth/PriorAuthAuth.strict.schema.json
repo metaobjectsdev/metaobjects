@@ -1,0 +1,30 @@
+{
+  "title": "PriorAuthAuth",
+  "type": "object",
+  "properties": {
+    "reference": {
+      "description": "Minimum length: 1. Maximum length: 80.",
+      "type": "string"
+    },
+    "issuedCurrency": {
+      "description": "Maximum length: 3.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "approver": {
+      "description": "Maximum length: 80.",
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "reference",
+    "issuedCurrency",
+    "approver"
+  ],
+  "additionalProperties": false
+}

@@ -79,9 +79,9 @@ meta gen --list --format json
 #    to swap in, the entry to wire, and what to install.
 meta eject entity
 
-#    Need an output none of them emits (OpenAPI, JSON Schema, a client, docs)? Write your
-#    own: this scaffolds a working, commented generator and wires it into the config.
-meta generator new openapi --scope model
+#    Need an output none of them emits (a client, a data dictionary, a search mapping)? Write
+#    your own: this scaffolds a working, commented generator and wires it into the config.
+meta generator new data-dictionary --scope model
 
 # 5. Generate TS code (config-driven via metaobjects.config.ts)
 meta gen
@@ -131,14 +131,14 @@ On a real write run (not `--dry-run`), `meta gen` also runs an **advisory anti-p
 
 ### `meta generator new <name>`
 
-Writes a generator of your own — the primary way to get an output MetaObjects does not ship (OpenAPI, JSON Schema, a client, a service layer, docs). `codegen/generators/<name>.ts` is a small, commented generator that already runs: it emits one JSON file per unit describing the model, read through the resolving accessors. The command also adds the import and the `<camelName>Generator()` entry to `metaobjects.config.ts` when the config has one literal `generators: [...]`, and otherwise prints the two lines to add. `meta gen` runs it and `meta verify --codegen` gates it with nothing to register; change the emit from there.
+Writes a generator of your own — the primary way to get an output MetaObjects does not ship (a client, a service layer, a data dictionary). `codegen/generators/<name>.ts` is a small, commented generator that already runs: it emits one JSON file per unit describing the model, read through the resolving accessors. The command also adds the import and the `<camelName>Generator()` entry to `metaobjects.config.ts` when the config has one literal `generators: [...]`, and otherwise prints the two lines to add. `meta gen` runs it and `meta verify --codegen` gates it with nothing to register; change the emit from there.
 
 Flags:
 - `--scope entity|package|model` — one file per object (default), per metadata package, or for the whole model
 - `--force` — overwrite an existing `codegen/generators/<name>.ts`
 - `--no-wire` — write the file only; print the import and entry to add
 
-A reference generator's name is refused — eject that one instead. Every port's shape, and JSON Schema / OpenAPI 3.1 examples to copy, are in the repository guide `docs/recipes/write-your-own-generator.md`.
+A reference generator's name is refused — eject that one instead. Every port's shape, and worked examples to copy, are in the repository guide `docs/recipes/write-your-own-generator.md`.
 
 ### `meta types [<query>]`
 

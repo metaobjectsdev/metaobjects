@@ -34,7 +34,7 @@ to make the choice cheap, and `layer` is the axis it is cheap along.
 |---|---|---|
 | `model` | entity, names, barrel, dto, value-object | app shape |
 | `persistence` | queries, prisma-schema, db-context, repository, exposed-table, relations, stored-proc | app shape |
-| `api` | routes, routes-hono, filter-allowlist, validator, spring-config | app shape |
+| `api` | routes, routes-hono, filter-allowlist, validator, spring-config, contract-schema, openapi | app shape |
 | `client` | form, hooks, grid, grid-hook | app shape |
 | `docs` | docs, api-docs, requirements, agent-docs, metamodel-docs, docs-site, plantuml, html-docs, ai-docs | declared in the project's generator list like any other; nothing is generated that the list does not declare (ADR-0034 Amendment 9) |
 | `capability` | prompt-render, output-parser, output-prompt, extractor, render-helper, trace-helper, requirement-tests, cube-model, shared-model, template, callable, json-schema, mustache | `meta gen --list --probe` |

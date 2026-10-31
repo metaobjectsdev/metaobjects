@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/acme/contract/Address.schema.json",
+  "title": "Address",
+  "description": "A postal address.",
+  "type": "object",
+  "properties": {
+    "street": {
+      "type": "string",
+      "maxLength": 80
+    },
+    "unit": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 10
+    },
+    "latitude": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]*[1-9])?$"
+    }
+  },
+  "required": [
+    "street",
+    "unit",
+    "latitude"
+  ]
+}

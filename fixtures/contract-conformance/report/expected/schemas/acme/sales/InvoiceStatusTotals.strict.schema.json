@@ -1,0 +1,36 @@
+{
+  "title": "InvoiceStatusTotals",
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": [
+        "OPEN",
+        "PAID",
+        "VOID"
+      ]
+    },
+    "invoices": {
+      "type": "integer"
+    },
+    "totalCents": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "paidCents": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "status",
+    "invoices",
+    "totalCents",
+    "paidCents"
+  ],
+  "additionalProperties": false
+}

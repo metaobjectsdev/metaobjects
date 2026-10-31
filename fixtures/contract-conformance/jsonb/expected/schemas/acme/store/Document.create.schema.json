@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/acme/store/Document.create.schema.json",
+  "title": "Document.create",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "payload": {},
+    "primaryMarker": {
+      "$ref": "./Marker.create.schema.json"
+    },
+    "optionalMarker": {
+      "$ref": "./Marker.create.schema.json"
+    },
+    "markers": {
+      "type": "array",
+      "items": {
+        "$ref": "./Marker.create.schema.json"
+      }
+    },
+    "measure": {
+      "$ref": "./Measure.create.schema.json"
+    },
+    "measures": {
+      "type": "array",
+      "items": {
+        "$ref": "./Measure.create.schema.json"
+      }
+    },
+    "telemetry": {
+      "$ref": "./Telemetry.create.schema.json"
+    },
+    "tiers": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "./Tier.create.schema.json"
+      }
+    },
+    "pricing": {
+      "$ref": "./Pricing.create.schema.json"
+    }
+  },
+  "required": [
+    "title",
+    "primaryMarker"
+  ]
+}

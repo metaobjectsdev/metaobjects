@@ -1,0 +1,17 @@
+{
+  "title": "ReadingLog",
+  "type": "object",
+  "properties": {
+    "seq": {
+      "type": "integer"
+    },
+    "readings": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "seq",
+    "readings"
+  ],
+  "additionalProperties": false
+}

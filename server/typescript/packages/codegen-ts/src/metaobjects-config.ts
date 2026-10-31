@@ -127,6 +127,9 @@ export interface ResolvedGenConfig {
    *  the suite's `emitsReportExport` markers). A report's routes mount the `?format=` branch, and
    *  import the `<Report>.export` module, only when this is true. Undefined => false. */
   includeReportExport?: boolean;
+  /** Whether the `report-export` generator is active in ANY target of the run: the same fact for a
+   *  generator that describes the routes from a target of its own. Undefined => false. */
+  reportExportInRun?: boolean;
   /** Whether any CLIENT UI generator (form, hook, grid, columns) is active in the
    *  run — aggregated by the runner from the suite's `emitsUiTier` markers.
    *  `agent/ui.md` reads this to decide whether a UI tier exists to describe;
@@ -164,7 +167,7 @@ export const DEFAULT_EXT_STYLE: ExtStyle = "js";
  * fills inert defaults when they are absent AND the model emits no DB artifacts, and
  * throws a clear error when they are absent but the model DOES emit DB code (#194).
  */
-export interface MetaobjectsGenConfig extends Omit<ResolvedGenConfig, "dbImport" | "dialect" | "extStyle" | "routesExpose" | "includeUiTierExplicit"> {
+export interface MetaobjectsGenConfig extends Omit<ResolvedGenConfig, "dbImport" | "dialect" | "extStyle" | "routesExpose" | "reportExportInRun" | "includeUiTierExplicit"> {
   dbImport?: string;
   dialect?: Dialect;
   /** Import-specifier suffix in generated code. Defaults to `"js"` (`./x.js`), which is

@@ -1,0 +1,13 @@
+{
+  "title": "Order",
+  "type": "object",
+  "properties": {
+    "customerId": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "customerId"
+  ],
+  "additionalProperties": false
+}

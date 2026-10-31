@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/acme/ledger/Entry.update.schema.json",
+  "title": "Entry.update",
+  "type": "object",
+  "properties": {
+    "bucket": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 8
+    },
+    "amount": {
+      "type": [
+        "string",
+        "number",
+        "null"
+      ],
+      "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?([eE][+-]?[0-9]+)?$",
+      "description": "A decimal, as a string in JSON-number grammar or a JSON number. Precision 28, scale 10."
+    },
+    "flagged": {
+      "type": "boolean"
+    }
+  }
+}

@@ -1,0 +1,1 @@
+{ "meta": "fixtures/api-contract-conformance/tph/meta.json", "wire": {"decimals": "string", "nullMembers": "omit"} }

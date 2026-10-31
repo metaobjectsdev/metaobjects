@@ -1,0 +1,45 @@
+{
+  "title": "Reading",
+  "type": "object",
+  "properties": {
+    "unit": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "grade": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "LOW",
+        "HIGH",
+        null
+      ]
+    },
+    "place": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "city": {
+          "description": "Minimum length: 1.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "city"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "unit",
+    "grade",
+    "place"
+  ],
+  "additionalProperties": false
+}

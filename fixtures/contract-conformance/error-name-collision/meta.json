@@ -1,0 +1,19 @@
+{
+  "metadata.root": {
+    "package": "acme::contract",
+    "children": [
+      { "object.entity": {
+        "name": "Order",
+        "children": [
+          { "source.rdb": { "@table": "orders" } },
+          { "field.long": { "name": "id" } },
+          { "identity.primary": { "name": "pk", "@fields": "id", "@generation": "increment" } }
+        ]
+      }},
+      { "object.value": {
+        "name": "OrderCreate",
+        "children": [ { "field.string": { "name": "note" } } ]
+      }}
+    ]
+  }
+}

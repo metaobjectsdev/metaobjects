@@ -1,6 +1,7 @@
 // EXAMPLE GENERATOR — copy it into your repo (codegen/generators/json-schema.ts) and own it.
-// It is a worked example, NOT a supported MetaObjects product surface: no release promises
-// its output, and when you need a different shape you edit your copy.
+// It is a worked example of writing a generator, NOT a supported MetaObjects product surface: no
+// release promises its output, and when you need a different shape you edit your copy. For the
+// schemas themselves, use the stock `contract-schema` generator (docs/features/contract-emitters.md).
 //
 // Wire it in metaobjects.config.ts:
 //   import { jsonSchemaFile } from "./codegen/generators/json-schema.js";

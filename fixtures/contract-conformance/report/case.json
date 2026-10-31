@@ -1,0 +1,1 @@
+{ "meta": "fixtures/api-contract-conformance/report/meta.json", "wire": {"decimals": "string", "nullMembers": "omit"}, "strictExclude": ["Ticket", "TicketsByTags"], "reportExport": true }

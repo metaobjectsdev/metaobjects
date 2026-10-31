@@ -1,0 +1,21 @@
+{
+  "title": "InvoiceStub",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "reference": {
+      "description": "Maximum length: 40.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "reference"
+  ],
+  "additionalProperties": false
+}

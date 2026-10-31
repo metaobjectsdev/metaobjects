@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/acme/sales/SalesBySku.schema.json",
+  "title": "SalesBySku",
+  "type": "object",
+  "properties": {
+    "productSku": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "uuid"
+    },
+    "sales": {
+      "type": "integer",
+      "format": "int64"
+    },
+    "revenueCents": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "format": "int64"
+    }
+  },
+  "required": [
+    "productSku",
+    "sales",
+    "revenueCents"
+  ]
+}

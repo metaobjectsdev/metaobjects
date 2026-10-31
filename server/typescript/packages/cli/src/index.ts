@@ -34,7 +34,7 @@ COMMANDS:
   agent-docs            Scaffold only the agent-context (.metaobjects/ + .claude/skills/) — canonical redirect target for all language ports
   gen [<entity>...]     Codegen TS targets from your declared metadata
   generator new <name>  Write a generator of your own into codegen/generators/ and wire it — the
-                        way to get any output MetaObjects does not ship (OpenAPI, JSON Schema, …)
+                        way to get any output MetaObjects does not ship (Zod, a client, …)
   eject <generator>     Copy a reference generator into codegen/generators/ to own it (any time after init)
   eject --list          List every ejectable generator name, grouped by package
   eject --undo          Remove owned generator copies that are the shipped reference

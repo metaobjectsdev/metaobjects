@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/acme/sales/SalesByCategory.schema.json",
+  "title": "SalesByCategory",
+  "type": "object",
+  "properties": {
+    "categoryName": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "sales": {
+      "type": "integer",
+      "format": "int64"
+    },
+    "revenueCents": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "format": "int64"
+    },
+    "maxCents": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "format": "int64"
+    },
+    "largeSales": {
+      "type": "integer",
+      "format": "int64"
+    }
+  },
+  "required": [
+    "categoryName",
+    "sales",
+    "revenueCents",
+    "maxCents",
+    "largeSales"
+  ]
+}

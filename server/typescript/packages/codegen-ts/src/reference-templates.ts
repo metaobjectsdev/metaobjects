@@ -32,6 +32,9 @@ export const REFERENCE_GENERATOR_NAMES = [
   // The Prisma schema (#479): which objects get a model, the file layout and the blocks above
   // the models, with `buildPrismaSchema` and the renderers handed over beside it.
   "prisma-schema",
+  // The contract emitters (FR-022): which objects get a schema or a route in the document, and where
+  // the files land, with the field mapping and the document builder handed over beside them.
+  "contract-schema", "openapi",
   // The stored-procedure / table-function wrapper and the LLM-call trace helper.
   "callable", "trace-helper",
   // The publisher's shared-model artifact: which source files may contribute and which version

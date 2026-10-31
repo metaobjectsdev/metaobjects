@@ -27,7 +27,7 @@ tested repository generator),
 For any output the model describes and no reference emits, start here:
 
 ```bash
-meta generator new openapi --scope model   # entity (default) | package | model
+meta generator new data-dictionary --scope model   # entity (default) | package | model
 meta gen                                   # runs it — it already emits JSON per unit
 meta verify --codegen                      # gates it; nothing to register
 npx tsc -p tsconfig.codegen.json           # typecheck it; meta gen loads it untyped
@@ -224,6 +224,14 @@ report hook until you resync it (`meta eject`). On SQLite a decimal field of a r
 `avg`, a ratio) is sent as a string, as on Postgres: the route passes `decimalColumns` to the
 mount. A report with no view source, or an abstract one, generates nothing. The route and
 contract: `references/reporting.md` in the `metaobjects-authoring` skill.
+
+**Contract emitters (`jsonSchemaFile()`, `openApiFile()`), from 1.2.1.** Reference helpers that
+write the REST contract as standard documents. `contract-schema` writes JSON Schema 2020-12 for each
+object's read, create and update shapes (`profile: "strict"` for a structured-output subset), and
+`openapi` writes one OpenAPI 3.1 document. Opt-in: import them from
+`@metaobjectsdev/codegen-ts/generators`, or `meta eject contract-schema openapi` to own them, and
+`verify --codegen` gates the output. A project that publishes the contract should fix `wire.decimals`
+and `wire.nullMembers`. Details: `docs/features/contract-emitters.md`.
 
 **Cube export (`cubeModel()`).** A reference helper that writes the reporting vocabulary
 (`dimension.*`, `measure.*`, `segment.filter`, a served `object.report`) as Cube data-model files,

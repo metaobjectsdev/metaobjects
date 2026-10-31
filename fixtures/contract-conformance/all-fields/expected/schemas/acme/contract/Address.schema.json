@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/acme/contract/Address.schema.json",
+  "title": "Address",
+  "description": "A postal address.",
+  "type": "object",
+  "properties": {
+    "street": {
+      "type": "string",
+      "maxLength": 80
+    },
+    "unit": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 10
+    },
+    "latitude": {
+      "type": [
+        "string",
+        "number",
+        "null"
+      ],
+      "description": "A decimal. Set wire.decimals to \"string\" to fix one form across server languages. Precision 9, scale 6."
+    }
+  },
+  "required": [
+    "street"
+  ]
+}

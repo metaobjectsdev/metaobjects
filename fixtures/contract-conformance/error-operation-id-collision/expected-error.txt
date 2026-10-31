@@ -1,0 +1,1 @@
+[ERR_CONTRACT_NAME_COLLISION] the OpenAPI operationId 'listPostTags' is both GET /api/posts/{id}/tags and GET /api/post_tags. Rename one, or leave one out with the generator's filter option.

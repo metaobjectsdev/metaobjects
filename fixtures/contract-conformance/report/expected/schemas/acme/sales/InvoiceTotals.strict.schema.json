@@ -1,0 +1,28 @@
+{
+  "title": "InvoiceTotals",
+  "type": "object",
+  "properties": {
+    "invoices": {
+      "type": "integer"
+    },
+    "totalCents": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "paidShare": {
+      "description": "Pattern: ^-?(0|[1-9][0-9]*)(\\.[0-9]*[1-9])?$.",
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "invoices",
+    "totalCents",
+    "paidShare"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,30 @@
+{
+  "metadata.root": {
+    "package": "acme::contract",
+    "children": [
+      { "object.entity": {
+        "name": "Order",
+        "children": [
+          { "source.rdb": { "@table": "orders" } },
+          { "field.long": { "name": "id" } },
+          { "identity.primary": { "name": "pk", "@fields": "id", "@generation": "increment" } }
+        ]
+      }},
+      { "object.value": {
+        "name": "OrderList",
+        "children": [
+          { "field.string": { "name": "label", "@required": true } }
+        ]
+      }},
+      { "object.entity": {
+        "name": "Basket",
+        "children": [
+          { "source.rdb": { "@table": "baskets" } },
+          { "field.long": { "name": "id" } },
+          { "field.object": { "name": "orders", "@objectRef": "OrderList", "@storage": "jsonb" } },
+          { "identity.primary": { "name": "pk", "@fields": "id", "@generation": "increment" } }
+        ]
+      }}
+    ]
+  }
+}

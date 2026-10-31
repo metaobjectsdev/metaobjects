@@ -1,0 +1,184 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/acme/contract/AllFields.update.schema.json",
+  "title": "AllFields.update",
+  "description": "One field of every wire type.",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 120,
+      "pattern": "^(?:[A-Z].*)$",
+      "description": "The display title."
+    },
+    "email": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "email"
+    },
+    "host": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "hostname"
+    },
+    "quantity": {
+      "type": "integer",
+      "format": "int32",
+      "minimum": 0,
+      "maximum": 1000
+    },
+    "views": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "format": "int64"
+    },
+    "ratio": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "format": "double"
+    },
+    "score": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "format": "float"
+    },
+    "amount": {
+      "type": [
+        "string",
+        "number",
+        "null"
+      ],
+      "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?([eE][+-]?[0-9]+)?$",
+      "description": "A decimal, as a string in JSON-number grammar or a JSON number. Precision 10, scale 2."
+    },
+    "active": {
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "startsOn": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date"
+    },
+    "startsAt": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?$"
+    },
+    "publishedAt": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})?$",
+      "description": "An instant. A value with no offset is read as UTC."
+    },
+    "wallClock": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?$"
+    },
+    "priceCents": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "format": "int64",
+      "description": "Integer minor units of USD."
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "live"
+      ]
+    },
+    "stage": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "early",
+        "late",
+        null
+      ]
+    },
+    "homepage": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "uri"
+    },
+    "looseLink": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "address": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "anyOf": [
+        {
+          "format": "ipv4"
+        },
+        {
+          "format": "ipv6"
+        }
+      ]
+    },
+    "shipTo": {
+      "anyOf": [
+        {
+          "$ref": "./Address.create.schema.json"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "stops": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "items": {
+        "$ref": "./Address.create.schema.json"
+      },
+      "minItems": 1,
+      "maxItems": 5
+    },
+    "tags": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

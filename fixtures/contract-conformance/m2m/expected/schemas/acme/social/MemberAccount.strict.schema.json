@@ -1,0 +1,21 @@
+{
+  "title": "MemberAccount",
+  "type": "object",
+  "properties": {
+    "handle": {
+      "description": "Minimum length: 1. Maximum length: 80.",
+      "type": "string"
+    },
+    "karma": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "handle",
+    "karma"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,1 @@
+[ERR_CONTRACT_STRICT_UNREPRESENTABLE] 'acme::contract::Counters' has no strict schema: a map has keys no schema can list (at 'byName'). Leave it out with the generator's filter option.

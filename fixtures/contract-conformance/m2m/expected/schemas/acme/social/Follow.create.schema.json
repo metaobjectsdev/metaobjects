@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/acme/social/Follow.create.schema.json",
+  "title": "Follow.create",
+  "type": "object",
+  "properties": {
+    "followerId": {
+      "type": "integer",
+      "format": "int64"
+    },
+    "followeeId": {
+      "type": "integer",
+      "format": "int64"
+    }
+  },
+  "required": [
+    "followerId",
+    "followeeId"
+  ]
+}

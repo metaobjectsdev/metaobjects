@@ -1,0 +1,1 @@
+{ "meta": "fixtures/api-contract-conformance/m2m/meta.json", "wire": {"decimals": "string", "nullMembers": "omit"} }

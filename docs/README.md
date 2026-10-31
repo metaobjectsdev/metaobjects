@@ -45,6 +45,7 @@ docs/
 │   ├── metadata-dependencies.md     # building on a metadata model published elsewhere (FR-023)
 │   ├── libraries.md                 # reusable declared design you opt into, a layer at a time (FR-043)
 │   ├── reporting.md                 # dimensions, measures, segments, reports: vocabulary and load rules (FR-044)
+│   ├── contract-emitters.md         # the contract-schema and openapi generators: JSON Schema and OpenAPI for the REST contract (FR-022)
 │   ├── cube-export.md               # the cube-model generator: reporting vocabulary as Cube data-model files (FR-044)
 │   └── own-your-codegen.md          # scaffold-and-own generator ownership (ADR-0034)
 └── ports/                       # one file per language/framework port
@@ -74,6 +75,7 @@ this tree is documentation, not the source of truth.
 | Declare what a dashboard groups by and counts (`dimension`, `measure`, `segment`, `object.report`; load-time checked; a view-backed report becomes a SQL view served by a generated read-only list route and a TypeScript list hook) | [`features/reporting.md`](features/reporting.md) |
 | Download a report as CSV, JSON or XML (`?format=`, the `report-export` generator, its cap and null forms) | [`features/reporting.md`](features/reporting.md#exporting-a-report) |
 | Keep Prisma as the ORM, with `schema.prisma` generated from the model and gated by `verify` (TypeScript) | [`recipes/prisma.md`](recipes/prisma.md) |
+| Publish the API as JSON Schema or OpenAPI, and check a change against the last release | [`features/contract-emitters.md`](features/contract-emitters.md), [`recipes/check-api-against-last-release.md`](recipes/check-api-against-last-release.md) |
 | Export the reporting vocabulary to Cube (`cube-model`: cubes, joins, rollups; the `cube` lane that checks it against a real Cube) | [`features/cube-export.md`](features/cube-export.md) |
 | Wire prompt construction (FR-004) | [`features/templates-and-payloads.md`](features/templates-and-payloads.md) |
 | Share a metadata shape across multiple instances (abstracts, `extends:`) | [`features/abstracts-and-inheritance.md`](features/abstracts-and-inheritance.md) |

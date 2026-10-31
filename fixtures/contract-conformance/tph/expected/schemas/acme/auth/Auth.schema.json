@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/acme/auth/Auth.schema.json",
+  "title": "Auth",
+  "oneOf": [
+    {
+      "$ref": "./BridgeAuth.schema.json"
+    },
+    {
+      "$ref": "./CopayAuth.schema.json"
+    },
+    {
+      "$ref": "./PriorAuthAuth.schema.json"
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/acme/sales/InvoiceRegister.schema.json",
+  "title": "InvoiceRegister",
+  "type": "object",
+  "properties": {
+    "regNo": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "format": "int64"
+    },
+    "reference": {
+      "type": "string",
+      "maxLength": 40
+    }
+  },
+  "required": [
+    "regNo",
+    "reference"
+  ]
+}

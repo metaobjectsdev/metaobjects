@@ -1,0 +1,34 @@
+{
+  "title": "Measure",
+  "type": "object",
+  "properties": {
+    "ratio": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "samples": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "items": {
+        "type": "number"
+      }
+    },
+    "amount": {
+      "description": "A decimal, as a string in JSON-number grammar or a JSON number. Precision 12, scale 4. Pattern: ^-?(0|[1-9][0-9]*)(\\.[0-9]+)?([eE][+-]?[0-9]+)?$.",
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "ratio",
+    "samples",
+    "amount"
+  ],
+  "additionalProperties": false
+}

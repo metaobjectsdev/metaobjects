@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/acme/contract/Sensor.create.schema.json",
+  "title": "Sensor.create",
+  "type": "object",
+  "properties": {
+    "reading": {
+      "$ref": "./Reading.create.schema.json"
+    }
+  }
+}

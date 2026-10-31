@@ -10,6 +10,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { API_CONTRACT_DECIMAL_DIR, API_CONTRACT_DECIMAL_SCENARIOS_DIR } from "../src/paths.ts";
+import { openApiCheck } from "../src/api-contract-openapi-check.ts";
 import { loadScenarios, runScenario } from "../src/api-contract-scenario.ts";
 import { startDecimalServer, type DecimalEngine } from "../src/api-contract-decimal-server.ts";
 import type { ReportSeed } from "../src/api-contract-report-generated-server.ts";
@@ -50,7 +51,7 @@ for (const engine of ENGINES) describe(`api contract decimal (ADR-0019 Amendment
   for (const scenario of scenarios) {
     if (scenario.engines !== undefined && !scenario.engines.includes(engine)) continue;
     test(scenario.name, async () => {
-      await withServer(engine, (baseUrl) => runScenario(scenario, baseUrl));
+      await withServer(engine, (baseUrl) => runScenario(scenario, baseUrl, openApiCheck("decimal")));
     }, { timeout: 120_000 });
   }
 

@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/acme/auth/CopayAuth.schema.json",
+  "title": "CopayAuth",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "integer",
+      "format": "int64"
+    },
+    "type": {
+      "const": "Copay"
+    },
+    "reference": {
+      "type": "string",
+      "maxLength": 80
+    },
+    "issuedCurrency": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 3
+    },
+    "autoCreatedAt": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "autoUpdatedAt": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "copayAmount": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]*[1-9])?$"
+    }
+  },
+  "required": [
+    "id",
+    "type",
+    "reference",
+    "issuedCurrency",
+    "autoCreatedAt",
+    "autoUpdatedAt",
+    "copayAmount"
+  ]
+}

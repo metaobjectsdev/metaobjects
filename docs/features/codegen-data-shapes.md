@@ -218,7 +218,7 @@ section MUST appear in every entity's docs output. Optional fields use
 
 ## Adding new template families
 
-To add a new shape (e.g. for an HTML docs site, an OpenAPI spec, or a
+To add a new shape (e.g. for an HTML docs site, an AsyncAPI spec, or a
 Mermaid diagram):
 
 1. Export a typed `interface XxxData` from a sibling module of

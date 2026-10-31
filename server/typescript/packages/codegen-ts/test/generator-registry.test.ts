@@ -36,9 +36,17 @@ const EXPECTED_NATIVE = [
   "shared-model",
 ] as const;
 
-// NEUTRAL: language-neutral pages about the model. A description of the output only: every
+// NEUTRAL: language-neutral artifacts about the model. A description of the output only: every
 // entry, either tier, runs when the project lists it (ADR-0034 Amendment 9).
-const EXPECTED_NEUTRAL = ["docs", "requirements", "agent-docs", "metamodel-docs", "docs-site"] as const;
+const EXPECTED_NEUTRAL = [
+  "docs",
+  "requirements",
+  "agent-docs",
+  "metamodel-docs",
+  "docs-site",
+  "contract-schema",
+  "openapi",
+] as const;
 
 describe("generator-registry (ADR-0021 D3)", () => {
   test("contains every expected stable name", () => {

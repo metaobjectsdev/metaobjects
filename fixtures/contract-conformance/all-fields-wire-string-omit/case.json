@@ -1,0 +1,1 @@
+{ "meta": "fixtures/contract-conformance/all-fields/meta.json", "wire": { "decimals": "string", "nullMembers": "omit" }, "strictExclude": ["Bag", "Tree"] }

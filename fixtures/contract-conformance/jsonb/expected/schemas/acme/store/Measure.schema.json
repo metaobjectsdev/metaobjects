@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/acme/store/Measure.schema.json",
+  "title": "Measure",
+  "type": "object",
+  "properties": {
+    "ratio": {
+      "type": "number",
+      "format": "double"
+    },
+    "samples": {
+      "type": "array",
+      "items": {
+        "type": "number",
+        "format": "double"
+      }
+    },
+    "amount": {
+      "type": "string",
+      "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]*[1-9])?$"
+    }
+  }
+}

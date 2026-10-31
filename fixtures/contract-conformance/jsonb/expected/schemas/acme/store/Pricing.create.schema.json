@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/acme/store/Pricing.create.schema.json",
+  "title": "Pricing.create",
+  "type": "object",
+  "properties": {
+    "tiers": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "./Tier.create.schema.json"
+      }
+    }
+  }
+}

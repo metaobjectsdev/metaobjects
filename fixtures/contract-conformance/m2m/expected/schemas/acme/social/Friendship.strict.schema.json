@@ -1,0 +1,17 @@
+{
+  "title": "Friendship",
+  "type": "object",
+  "properties": {
+    "personAId": {
+      "type": "integer"
+    },
+    "personBId": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "personAId",
+    "personBId"
+  ],
+  "additionalProperties": false
+}

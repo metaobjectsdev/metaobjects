@@ -53,6 +53,8 @@ import {
   metamodelDocsFile,
   docsSiteFile,
   cubeModel,
+  jsonSchemaFile,
+  openApiFile,
   prismaSchemaFile,
 } from "./generators/index.js";
 
@@ -260,6 +262,41 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
   },
 
   // ----- api --------------------------------------------------------------
+  "contract-schema": {
+    name: "contract-schema",
+    kind: "generator",
+    layer: "api",
+    description:
+      "JSON Schema 2020-12 for the model's wire shapes (<Name>.schema.json, .create, .update), or one self-contained structured-output schema per object with profile: \"strict\". Faithful to the REST contract and the wire setting.",
+    tier: "neutral",
+    factory: () => jsonSchemaFile(),
+    factoryExport: "jsonSchemaFile",
+    options: "profile?, filter?, target?",
+    // The files import nothing, and a validator is whatever the reader already has.
+    requires: [],
+    runtimePackages: [],
+    runtimePeers: [],
+    configKeys: [],
+    ejectable: ejectable("contract-schema"),
+  },
+  openapi: {
+    name: "openapi",
+    kind: "generator",
+    layer: "api",
+    description:
+      "One OpenAPI 3.1 document for the generated REST surface: the routes, the filter, sort and paging parameters, the error envelope, and the wire shapes as components.",
+    tier: "neutral",
+    factory: () => openApiFile(),
+    factoryExport: "openApiFile",
+    options: "title?, version?, description?, servers?, securitySchemes?, security?, expose?, filter?, target?",
+    // The document imports nothing. It reads the routes generators' `expose` when they are wired,
+    // and does not need them: another port's routes answer the same contract.
+    requires: [],
+    runtimePackages: [],
+    runtimePeers: [],
+    configKeys: ["apiPrefix"],
+    ejectable: ejectable("openapi"),
+  },
   routes: {
     name: "routes",
     kind: "generator",

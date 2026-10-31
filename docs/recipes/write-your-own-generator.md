@@ -2,7 +2,7 @@
 
 MetaObjects is a core — the typed model, the loader and registry, `verify`, `migrate`,
 prompt render and reply extract — and on that core **you build the generators your
-application needs**: OpenAPI, JSON Schema, Zod, DTOs, a client, a service layer, docs,
+application needs**: Zod, DTOs, a client, a service layer, a data dictionary,
 anything the model describes. The generators MetaObjects ships are reference examples to
 eject and modify, not the product
 ([ADR-0034 Amendment 4](../../spec/decisions/ADR-0034-codegen-scaffold-and-own.md#amendment-4-2026-09-26--write-your-own-generator-is-the-primary-path)).
@@ -16,8 +16,9 @@ fails the build when committed output is stale. You register nothing for that.
 Write a generator when **the model fully describes an output and no reference generator
 emits it**, or none emits it the way your application needs it:
 
-- a document derived from the model: JSON Schema, OpenAPI, AsyncAPI, a GraphQL SDL, an ER
-  diagram, a data dictionary;
+- a document derived from the model: AsyncAPI, a GraphQL SDL, an ER diagram, a data
+  dictionary (for JSON Schema and OpenAPI, use the [stock
+  generators](../features/contract-emitters.md));
 - code derived from the model: a DTO or client layer for a framework nothing here ships,
   a service or repository layer in your house style, validators in another library, test
   fixtures, seed data shapes;
@@ -364,10 +365,11 @@ report drift on every run.
 
 ## Two worked examples: JSON Schema and OpenAPI 3.1
 
-These are **examples to copy, not a supported product surface.** Nothing promises their
-output across releases; the moment your API differs from the reference contract they
-describe, edit your copy. Each is exercised by a test so it keeps running against the
-current engine.
+These are **examples of writing a generator, not the way to get those files.** For the
+documents themselves, use the stock [`contract-schema` and `openapi`
+generators](../features/contract-emitters.md). They follow the full REST contract and are
+held to it, and these examples are not. Nothing promises the examples' output across
+releases. Each is exercised by a test so it keeps running against the current engine.
 
 | Port | Files | Gated by |
 |---|---|---|

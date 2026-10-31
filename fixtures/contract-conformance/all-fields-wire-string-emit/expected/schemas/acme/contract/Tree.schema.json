@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/acme/contract/Tree.schema.json",
+  "title": "Tree",
+  "type": "object",
+  "properties": {
+    "label": {
+      "type": "string"
+    },
+    "children": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "items": {
+        "$ref": "./Tree.schema.json"
+      }
+    }
+  },
+  "required": [
+    "label",
+    "children"
+  ]
+}

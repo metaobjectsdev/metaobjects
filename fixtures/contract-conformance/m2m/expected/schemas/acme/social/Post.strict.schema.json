@@ -1,0 +1,14 @@
+{
+  "title": "Post",
+  "type": "object",
+  "properties": {
+    "title": {
+      "description": "Minimum length: 1. Maximum length: 200.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "title"
+  ],
+  "additionalProperties": false
+}

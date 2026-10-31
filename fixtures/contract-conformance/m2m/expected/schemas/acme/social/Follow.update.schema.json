@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/acme/social/Follow.update.schema.json",
+  "title": "Follow.update",
+  "type": "object",
+  "properties": {
+    "followerId": {
+      "type": "integer",
+      "format": "int64"
+    },
+    "followeeId": {
+      "type": "integer",
+      "format": "int64"
+    }
+  }
+}

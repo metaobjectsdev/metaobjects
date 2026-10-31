@@ -15,6 +15,7 @@ import { describe, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { API_CONTRACT_DIR, API_CONTRACT_SCENARIOS_DIR } from "../src/paths.ts";
+import { openApiCheck, type ContractCheck } from "../src/api-contract-openapi-check.ts";
 import { loadScenarios, assertResponse, type ApiScenario, parseBodyExact } from "../src/api-contract-scenario.ts";
 import {
   startGeneratedServer,
@@ -25,6 +26,8 @@ import { startPostgres } from "../src/postgres-container.ts";
 
 const SEED = JSON.parse(readFileSync(join(API_CONTRACT_DIR, "seed.json"), "utf8")) as { rows: AuthorRow[] };
 const META_PATH = join(API_CONTRACT_DIR, "meta.json");
+
+const contractCheck: ContractCheck = openApiCheck("blog");
 
 describe("api contract conformance — TS GENERATED routes runner", () => {
   for (const scenario of loadScenarios(API_CONTRACT_SCENARIOS_DIR)) {
@@ -59,5 +62,6 @@ async function executeRequests(scenario: ApiScenario, server: GeneratedServerHan
       try { body = parseBodyExact(bodyText); } catch { body = bodyText; }
     }
     assertResponse(scenario.name, req, res.status, body);
+    contractCheck(req, res.status, bodyText);
   }
 }

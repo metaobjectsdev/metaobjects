@@ -96,3 +96,8 @@ export { cubeModel, type CubeModelGeneratorOptions } from "./cube-model.js";
 // #479 — the Prisma schema: the model's tables as `schema.prisma`, for a project that keeps Prisma
 // as its ORM. A reference helper; its pure stages are exported from the package root.
 export { prismaSchemaFile, type PrismaSchemaFileOptions } from "./prisma-schema-file.js";
+
+// FR-022 — the contract emitters: the model's wire shapes as JSON Schema 2020-12 and the generated
+// REST surface as one OpenAPI 3.1 document. Reference helpers; the pure stages are in src/contract/.
+export { jsonSchemaFile, type JsonSchemaFileOptions } from "./contract-schema-file.js";
+export { openApiFile, type OpenApiFileOptions } from "./openapi-file.js";

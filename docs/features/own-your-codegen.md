@@ -14,11 +14,11 @@ there; your copy is yours.
 
 **Need an output nothing here emits? Write the generator.** That is the primary path, not
 an escape hatch ([ADR-0034 Amendment 4](../../spec/decisions/ADR-0034-codegen-scaffold-and-own.md#amendment-4-2026-09-26--write-your-own-generator-is-the-primary-path)):
-OpenAPI, JSON Schema, a client, a DTO or service layer, docs — anything the model
-describes. A generator is a name plus a function from the model to files; `verify
+a client, a DTO or service layer, docs — anything the model
+describes. OpenAPI and JSON Schema are [stock generators](contract-emitters.md). A generator is a name plus a function from the model to files; `verify
 --codegen` gates it with nothing to register. On TypeScript, `meta generator new <name>`
 scaffolds a working one and wires it. Every port's 20-line shape, run end to end, plus
-JSON Schema and OpenAPI 3.1 examples to copy:
+worked examples to copy:
 [Write your own generator](../recipes/write-your-own-generator.md). Eject a reference
 (below) only when one already emits something close to what you want. A worked TypeScript
 example that sits on top of the stock routes: [a typed fetch client for the reference

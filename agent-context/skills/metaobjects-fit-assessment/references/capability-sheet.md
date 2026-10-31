@@ -58,16 +58,23 @@ building block. Every generator is a reference helper an adopter selects, ejects
   on a hand edit, and `verify --db` checks the database Prisma pushed (Postgres, SQLite).
   Views, expression/partial indexes and SQLite CHECKs are refused, not dropped
   (`docs/recipes/prisma.md`);
-- ship an OpenAPI, AsyncAPI or JSON Schema generator;
+- ship an AsyncAPI generator;
 - reach a consumer outside the five ports (Go, Rust, Ruby, PHP, Swift…) directly.
 
 **Each of those is a generator the project writes**, and that is the primary codegen path, not
 a workaround: a generator is a function from the loaded model to files, a few dozen lines, and
 `verify --codegen` gates its output like any other. `meta generator new <name>` scaffolds one in
-TypeScript; `docs/recipes/write-your-own-generator.md` shows every port and ships JSON Schema and
-OpenAPI 3.1 example generators to copy. An OpenAPI or JSON Schema generator also reaches the
-languages outside the five ports through their own generators. Price it in the wedge (a day or
-two for a first generator), and do not report it as impossible.
+TypeScript; `docs/recipes/write-your-own-generator.md` shows every port. Price it in the wedge (a
+day or two for a first generator), and do not report it as impossible.
+
+**OpenAPI and JSON Schema are stock generators, unreleased, targeting 1.2.1.** `openapi` writes one
+OpenAPI 3.1 document for the generated REST surface, and `contract-schema` writes JSON Schema 2020-12
+for each object's read, create and update shapes, plus a strict structured-output subset. A project
+on any port runs them through the Node `meta` CLI. They reach the languages outside the five ports
+through those languages' own OpenAPI tooling, and oasdiff over two emitted documents checks a change
+against the last release (`docs/features/contract-emitters.md`). Until 1.2.1 ships, an assessment of
+a released version counts these as generators the project writes, from the examples in
+`docs/recipes/write-your-own-generator.md`.
 
 **Contract-only cannot** bind a shape to a queue, topic or transport as declared vocabulary
 (`api.*`, `operation.*`, `binding.*` are not shipped); a generator can still emit per-transport
