@@ -1,4 +1,5 @@
 import { DuplicateSqlNameError, FkTargetNotUniqueError, type FkTargetViolation } from "./errors.js";
+import { defaultConventions, type SchemaConventions } from "./schema-conventions.js";
 import type {
   ColumnNamingStrategy, MetaData, MetaField, MetaObject, MetaReferenceIdentity, MetaRoot, MetaValidator,
 } from "@metaobjectsdev/metadata";
@@ -106,6 +107,12 @@ export interface BuildExpectedSchemaOptions {
    * Advisory: the schema built is the same with or without it.
    */
   onReferentialActionConflict?: (conflict: ReferentialActionConflict) => void;
+  /**
+   * Names and physical choices for the objects no code addresses (PK and FK constraint
+   * names, FK indexes, unique key kind). Absent = `defaultConventions`, what migrate has
+   * always emitted.
+   */
+  conventions?: SchemaConventions | undefined;
 }
 
 /**
@@ -257,11 +264,13 @@ export function buildExpectedSchemaWithProvenance(
   // Pass 2: build full descriptors with FK resolution. Every FK whose target is not a
   // unique key is collected here and refused once, after every table is built.
   const fkTargetViolations: FkTargetViolation[] = [];
+  const conventions = opts?.conventions ?? defaultConventions;
+  const fkCtx: ForeignKeyBuildContext = { conventions, violations: fkTargetViolations };
   // Schema is resolved here (not stored in Pass 1) to avoid exactOptionalPropertyTypes
   // issues with `string | undefined` vs `schema?: string`.
   const tables: TableDescriptor[] = entities.map(({ entity, tableName }) => {
     const t = buildTable(
-      entity, tableName, resolveTargetTable, root as MetaRoot, strategy, dialect, fkTargetViolations, opts?.onReferentialActionConflict,
+      entity, tableName, resolveTargetTable, root as MetaRoot, strategy, dialect, fkCtx, opts?.onReferentialActionConflict,
     );
     const schema = resolveTableSchema(entity);
     if (schema !== undefined) t.schema = schema;
@@ -270,6 +279,7 @@ export function buildExpectedSchemaWithProvenance(
   });
 
   if (fkTargetViolations.length > 0) throw new FkTargetNotUniqueError(fkTargetViolations);
+  applySchemaConventions(tables, conventions);
 
   // Pass 3: dialect-specific SqlType normalization.
   if (dialect === "sqlite") {
@@ -522,7 +532,7 @@ function buildTable(
   root: MetaRoot,
   strategy: ColumnNamingStrategy,
   dialect: Dialect | undefined,
-  fkTargetViolations: FkTargetViolation[],
+  fkCtx: ForeignKeyBuildContext,
   onConflict?: (conflict: ReferentialActionConflict) => void,
 ): TableDescriptor {
   // Use effective accessors so inherited fields/identities (from `extends:` /
@@ -606,7 +616,7 @@ function buildTable(
     name: tableName,
     columns,
     indexes: buildSecondaryIndexes(entity, tableName, strategy),
-    foreignKeys: buildForeignKeys(entity, tableName, resolveTargetTable, root, strategy, fkTargetViolations, onConflict),
+    foreignKeys: buildForeignKeys(entity, tableName, resolveTargetTable, root, strategy, fkCtx, onConflict),
     checks: buildChecks(entity, tableName, strategy, dialect),
     primaryKey,
   };
@@ -980,7 +990,7 @@ function buildForeignKeys(
   resolveTargetTable: (target: MetaObject) => string | undefined,
   root: MetaRoot,
   strategy: ColumnNamingStrategy,
-  fkTargetViolations: FkTargetViolation[],
+  fkCtx: ForeignKeyBuildContext,
   onConflict?: (conflict: ReferentialActionConflict) => void,
 ): FkDescriptor[] {
   const fks: FkDescriptor[] = [];
@@ -1032,7 +1042,7 @@ function buildForeignKeys(
     // Guard: an explicit target must be a unique key on the target, or the database
     // refuses the FK at apply time. The bare form targets the primary key by construction.
     if (explicitTargetFields.length > 0 && !isUniqueKeyOf(targetObj, explicitTargetFields)) {
-      fkTargetViolations.push({
+      fkCtx.violations.push({
         entityName: holder.name, referenceName: refChild.name, targetEntityName: targetObj.name, targetFields: explicitTargetFields,
       });
       continue;
@@ -1056,7 +1066,7 @@ function buildForeignKeys(
     const constraintName =
       typeof constraintNameOverride === "string" && constraintNameOverride.length > 0
         ? constraintNameOverride
-        : `${tableName}_${fkCols[0]}_fk`;
+        : fkCtx.conventions.foreignKeyName({ table: tableName, columns: fkCols, refTable, refColumns });
 
     // Guard: ON DELETE SET NULL requires nullable FK columns.
     validateSetNullNullability(holder, refChild, onDelete, constraintName);
@@ -1074,6 +1084,52 @@ function buildForeignKeys(
     fks.push(fk);
   }
   return fks;
+}
+
+/** What building a table's foreign keys needs beyond the table: the conventions, and where refusals go. */
+interface ForeignKeyBuildContext {
+  conventions: SchemaConventions;
+  violations: FkTargetViolation[];
+}
+
+/**
+ * The schema conventions' second pass, over every built table: the primary key's name, the
+ * kind of each unique key (an FK anywhere in the model may reference it), and the index each
+ * foreign key gets. FK names were decided while the FKs were built, where a declared
+ * `@constraintName` is known. The default conventions change nothing here.
+ */
+function applySchemaConventions(tables: TableDescriptor[], conventions: SchemaConventions): void {
+  const keyOf = (table: string, columns: readonly string[]) => `${table}|${[...columns].sort().join(",")}`;
+  const referenced = new Set(tables.flatMap((t) => t.foreignKeys.map((fk) => keyOf(fk.refTable, fk.refColumns))));
+  for (const t of tables) {
+    if (t.primaryKey.length > 0) {
+      const pkName = conventions.primaryKeyName({ table: t.name, columns: t.primaryKey });
+      if (pkName !== `${t.name}_pkey`) t.primaryKeyName = pkName;
+    }
+    for (const ix of t.indexes) {
+      if (!ix.unique || ix.where !== undefined || ix.expr !== undefined) continue;
+      const kind = conventions.uniqueKeyKind({ table: t.name, columns: ix.columns, referencedByForeignKey: referenced.has(keyOf(t.name, ix.columns)) });
+      if (kind === "constraint") ix.constraint = "unique";
+    }
+    for (const fk of t.foreignKeys) {
+      const index = conventions.foreignKeyIndex(
+        { table: t.name, columns: fk.columns, refTable: fk.refTable, refColumns: fk.refColumns },
+        { primaryKey: t.primaryKey, indexes: t.indexes },
+      );
+      if (index === undefined) continue;
+      if (t.indexes.some((ix) => ix.name === index.name)) {
+        throw new DuplicateSqlNameError([{
+          name: index.name,
+          owners: [
+            `the ${conventions.id} conventions' index for foreign key "${fk.name}" on table "${t.name}"`,
+            `an index already named "${index.name}" on table "${t.name}"`,
+          ],
+          involvesIndex: true,
+        }]);
+      }
+      t.indexes.push({ name: index.name, columns: [...fk.columns], unique: false });
+    }
+  }
 }
 
 /**

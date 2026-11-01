@@ -377,7 +377,10 @@ function renderDown(c: Change, recreated: ReadonlySet<string> = new Set()): stri
         : `ALTER TABLE ${quoteQualified(c.table, c.schema)} ALTER COLUMN ${quote(c.column)} DROP DEFAULT;`;
     case "change-column-identity": return renderIdentity(c.table, c.schema, c.column, c.from);
     case "change-comment":         return renderComment(c.table, c.schema, c.column, c.from);
-    case "add-index":              return `DROP INDEX ${quoteIndexQualified(c.index.name, c.schema)};`;
+    case "add-index":
+      return isUniqueConstraint(c.index)
+        ? `ALTER TABLE ${quoteQualified(c.table, c.schema)} DROP CONSTRAINT ${quote(c.index.name)};`
+        : `DROP INDEX ${quoteIndexQualified(c.index.name, c.schema)};`;
     case "drop-index":
       // #285: the up dropped a CONSTRAINT, so the down must add one back — recreating a
       // bare unique index would leave the database in a different shape than it started
@@ -432,7 +435,7 @@ function renderDown(c: Change, recreated: ReadonlySet<string> = new Set()): stri
 function renderCreateTable(t: TableDescriptor): string {
   const colDefs = t.columns.map((c) => `  ${renderColumn(c)}`);
   if (t.primaryKey.length > 0) {
-    colDefs.push(`  CONSTRAINT ${quote(t.name + "_pkey")} PRIMARY KEY (${t.primaryKey.map(quote).join(", ")})`);
+    colDefs.push(`  CONSTRAINT ${quote(t.primaryKeyName ?? t.name + "_pkey")} PRIMARY KEY (${t.primaryKey.map(quote).join(", ")})`);
   }
   for (const chk of t.checks ?? []) {
     colDefs.push(`  CONSTRAINT ${quote(chk.name)} CHECK (${chk.expression})`);
@@ -543,7 +546,15 @@ function renderDefault(d: ColumnDefault): string {
   return `'${pgEscape(d.value)}'`;
 }
 
+/** A unique key the schema conventions create as a constraint (only a plain column key can be one). */
+function isUniqueConstraint(ix: IndexDescriptor): boolean {
+  return ix.constraint === "unique" && ix.unique && ix.where === undefined && ix.expr === undefined;
+}
+
 function renderCreateIndex(table: string, schema: string | undefined, ix: IndexDescriptor): string {
+  if (isUniqueConstraint(ix)) {
+    return `ALTER TABLE ${quoteQualified(table, schema)} ADD CONSTRAINT ${quote(ix.name)} UNIQUE (${ix.columns.map(quote).join(", ")});`;
+  }
   const u = ix.unique ? "UNIQUE " : "";
   // Key list: a raw expression (functional/expression index) takes precedence over
   // the per-column list. The expression is emitted verbatim (already valid SQL).

@@ -17,6 +17,10 @@ export {
 export type { ExpectedSchemaWithProvenance, SchemaProvenance } from "./expected-schema.js";
 export { introspect, introspectPostgres, introspectSqlite } from "./introspect/index.js";
 export { diff } from "./diff/index.js";
+export {
+  defaultConventions, efcoreConventions, resolveSchemaConventions, SCHEMA_CONVENTION_PRESETS,
+  type SchemaConventions, type KeyContext, type ForeignKeyContext, type ExistingKeys,
+} from "./schema-conventions.js";
 export { collectUnmanagedNames } from "./unmanaged.js";
 // Per-command scope (`migrate.scope`) — see scope.ts for why the suppression is
 // two-sided and why the pattern engine stays in @metaobjectsdev/sdk.

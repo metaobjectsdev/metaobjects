@@ -40,6 +40,12 @@ export interface TableDescriptor {
   checks: CheckDescriptor[];
   primaryKey: string[];              // column names; [] if none
   /**
+   * The primary-key constraint's name, when the project's schema conventions name it
+   * something other than `<table>_pkey` (absent = `<table>_pkey`, which keeps every
+   * existing snapshot byte-identical). Rendered at create; not compared by the diff.
+   */
+  primaryKeyName?: string;
+  /**
    * Human-readable description threaded from entity `@description`.
    * Postgres: emitted as `COMMENT ON TABLE … IS '…';` after CREATE TABLE.
    * SQLite: silently ignored (no native COMMENT support).
@@ -112,10 +118,11 @@ export interface IndexDescriptor {
    * refuses `DROP INDEX` on such an index ("cannot drop index X because constraint
    * X on table Y requires it"), so the emitter must drop the CONSTRAINT instead.
    *
-   * Never authored in metadata and never present on the expected side — it describes
-   * how the database happens to hold an index, not what the model asks for. It is
-   * therefore deliberately NOT compared by `indexEquals`: a unique index and a unique
-   * constraint over the same columns are the same model-level thing.
+   * Never authored in metadata. On the expected side it is set only by the project's
+   * schema conventions (`uniqueKeyKind`), so the emitter creates the key as a UNIQUE
+   * constraint (EF Core's alternate keys are constraints). It is deliberately NOT
+   * compared by `indexEquals`: a unique index and a unique constraint over the same
+   * columns are the same model-level thing, so an existing database never churns.
    *
    * This matters far beyond an edge case: Drizzle's `unique()` produces constraints,
    * so every adopter migrating from a Drizzle-managed schema has constraint-backed
