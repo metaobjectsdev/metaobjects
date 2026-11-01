@@ -35,6 +35,33 @@ export class SetNullNotNullableError extends Error {
   }
 }
 
+/**
+ * Thrown by buildExpectedSchema() when an identity.reference targets fields the target
+ * table does not hold unique: not its primary key, not a plain identity.secondary, not a
+ * single @unique field. Postgres refuses such an FK at apply time, after earlier
+ * statements in the migration already ran; refusing here names the reference instead.
+ */
+export class FkTargetNotUniqueError extends Error {
+  override readonly name = "FkTargetNotUniqueError";
+  readonly entityName: string;
+  readonly referenceName: string;
+  readonly targetEntityName: string;
+  readonly targetFields: string[];
+
+  constructor(entityName: string, referenceName: string, targetEntityName: string, targetFields: string[]) {
+    const fieldList = targetFields.join(", ");
+    super(
+      `Entity "${entityName}": reference "${referenceName}" targets [${fieldList}] on "${targetEntityName}", ` +
+      `which is not a unique key there (not its primary key, an identity.secondary without @where/@expr, or a @unique field). ` +
+      `A database refuses this foreign key. Fix: declare an identity.secondary on "${targetEntityName}" with @fields [${fieldList}].`,
+    );
+    this.entityName = entityName;
+    this.referenceName = referenceName;
+    this.targetEntityName = targetEntityName;
+    this.targetFields = targetFields;
+  }
+}
+
 const ALLOW_OPTION_BY_KIND: Partial<Record<ChangeKind, keyof AllowOptions>> = {
   "drop-column": "dropColumn",
   "drop-table": "dropTable",

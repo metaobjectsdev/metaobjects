@@ -1,4 +1,4 @@
-import { DuplicateSqlNameError } from "./errors.js";
+import { DuplicateSqlNameError, FkTargetNotUniqueError } from "./errors.js";
 import type {
   ColumnNamingStrategy, MetaData, MetaField, MetaObject, MetaReferenceIdentity, MetaRoot, MetaValidator,
 } from "@metaobjectsdev/metadata";
@@ -1023,6 +1023,11 @@ function buildForeignKeys(
     const targetFieldNames = explicitTargetFields.length > 1
       ? explicitTargetFields
       : [refChild.resolvedTargetPkField(root) ?? "id"];
+    // Guard: an explicit target must be a unique key on the target, or the database
+    // refuses the FK at apply time. The bare form targets the primary key by construction.
+    if (explicitTargetFields.length > 0 && !isUniqueKeyOf(targetObj, explicitTargetFields)) {
+      throw new FkTargetNotUniqueError(holder.name, refChild.name, targetObj.name, explicitTargetFields);
+    }
     const refColumns = targetFieldNames.map((jsName) => {
       const targetField = findField(targetObj, jsName);
       return targetField
@@ -1060,6 +1065,29 @@ function buildForeignKeys(
     fks.push(fk);
   }
   return fks;
+}
+
+/**
+ * True when `fieldNames` (in any order) are a key the target table holds unique: exactly its
+ * primary key, exactly a plain identity.secondary (a partial or expression index is not a key
+ * a foreign key may reference), or a single field declaring @unique.
+ */
+function isUniqueKeyOf(target: MetaObject, fieldNames: string[]): boolean {
+  const wanted = [...fieldNames].sort().join(",");
+  const same = (fields: string[]) => [...fields].sort().join(",") === wanted;
+  const primary = target.primaryIdentity();
+  if (primary !== undefined && same(readIdentityFields(primary))) return true;
+  for (const secondary of target.secondaryIdentities()) {
+    // ADR-0039: resolving — @where / @expr may be inherited via extends.
+    if (secondary.attr(IDENTITY_ATTR_WHERE) !== undefined || secondary.attr(IDENTITY_ATTR_EXPR) !== undefined) continue;
+    if (same(readIdentityFields(secondary))) return true;
+  }
+  if (fieldNames.length === 1) {
+    const field = findField(target, fieldNames[0]!);
+    // ADR-0039: resolving — @unique may be inherited via extends.
+    if (field !== undefined && field.attr(FIELD_ATTR_UNIQUE) === true) return true;
+  }
+  return false;
 }
 
 /**

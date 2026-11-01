@@ -34,6 +34,13 @@ here.**
 
 ### Changed
 
+- **`meta migrate` refuses a foreign key that references columns the target does not hold unique.**
+  Behaviour change: an `identity.reference` whose dotted `@references` names target fields that are
+  not the target's primary key, a plain `identity.secondary` (no `@where`, no `@expr`) or a single
+  `@unique` field used to emit an FK the database refuses at apply time ("there is no unique
+  constraint matching given keys"), after earlier statements had already run. `meta migrate` and
+  `meta verify --db` now fail first with `FkTargetNotUniqueError`, naming the entity, the reference,
+  the target and its fields. Fix: declare an `identity.secondary` on those fields of the target.
 - **A prompt or output template that names a variable not on its payload now raises at render time.**
   Behaviour change: a generated render helper used to render `Hi {{nmae}}` as `Hi ` with no error
   when the payload declares `name`; it now raises `ERR_VAR_NOT_ON_PAYLOAD (nmae)` (`RenderError` in
