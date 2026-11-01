@@ -11,13 +11,14 @@
  * `identity.reference`, and an index node's own name.
  *
  * Selected with `migrate.conventions` in `.metaobjects/config.json` (a preset name), or
- * supplied as an object by the project (`migrate.conventions` in `metaobjects.config.ts`).
+ * supplied as an object by the project (`schemaConventions` in `metaobjects.config.ts`).
  * `default` is what migrate has always emitted, so a project that sets nothing sees no
  * change; `efcore` reproduces EF Core's conventions, for a database first built by EF
  * Core migrations.
  */
 
-import { UnknownSchemaConventionsError } from "./errors.js";
+import { InvalidSchemaConventionsError, UnknownSchemaConventionsError } from "./errors.js";
+import type { IndexDescriptor } from "./types.js";
 
 /** A key on one table: the table's database name and the key's columns, in key order. */
 export interface KeyContext {
@@ -31,10 +32,13 @@ export interface ForeignKeyContext extends KeyContext {
   refColumns: readonly string[];
 }
 
-/** What a table already has that may already serve as a foreign key's index. */
-export interface ExistingKeys {
+/** A table as the FK-index decision sees it: its keys, its declared indexes, its foreign keys. */
+export interface TableKeys {
+  table: string;
   primaryKey: readonly string[];
+  /** The indexes the model declares (unique keys included); the conventions add to these. */
   indexes: readonly { columns: readonly string[]; where?: string; expr?: string }[];
+  foreignKeys: readonly ForeignKeyContext[];
 }
 
 export interface SchemaConventions {
@@ -43,8 +47,8 @@ export interface SchemaConventions {
   primaryKeyName(key: KeyContext): string;
   /** Used when the identity.reference declares no `@constraintName`. */
   foreignKeyName(fk: ForeignKeyContext): string;
-  /** The index a foreign key gets, or undefined for none. */
-  foreignKeyIndex(fk: ForeignKeyContext, existing: ExistingKeys): { name: string } | undefined;
+  /** The indexes the conventions add for a table's foreign keys (none, for most conventions). */
+  foreignKeyIndexes(table: TableKeys): { name: string; columns: string[] }[];
   /** How a unique key (`identity.secondary`) is created. A partial or expression key is always an index. */
   uniqueKeyKind(key: KeyContext & { referencedByForeignKey: boolean }): "index" | "constraint";
 }
@@ -66,7 +70,7 @@ export const defaultConventions: SchemaConventions = {
   id: "default",
   primaryKeyName: ({ table }) => `${table}_pkey`,
   foreignKeyName: ({ table, columns }) => `${table}_${columns[0]}_fk`,
-  foreignKeyIndex: () => undefined,
+  foreignKeyIndexes: () => [],
   uniqueKeyKind: () => "index",
 };
 
@@ -74,11 +78,23 @@ export const efcoreConventions: SchemaConventions = {
   id: "efcore",
   primaryKeyName: ({ table }) => efTruncate(`PK_${table}`),
   foreignKeyName: ({ table, columns, refTable }) => efTruncate(`FK_${table}_${refTable}_${columns.join("_")}`),
-  // EF Core indexes every foreign key unless a key or index already starts with its columns.
-  foreignKeyIndex: (fk, existing) => {
-    if (startsWith(existing.primaryKey, fk.columns)) return undefined;
-    const covered = existing.indexes.some((ix) => ix.where === undefined && ix.expr === undefined && startsWith(ix.columns, fk.columns));
-    return covered ? undefined : { name: efTruncate(`IX_${fk.table}_${fk.columns.join("_")}`) };
+  // EF Core's ForeignKeyIndexConvention: every foreign key gets an index unless a key or
+  // another index already starts with its columns. Its AreIndexedBy compares property lists
+  // only — a filter is a relational annotation the convention never sees, so a partial index
+  // covers — and an index added later removes a convention index it covers, so the result
+  // does not depend on the order the foreign keys are declared in.
+  foreignKeyIndexes: (t) => {
+    const candidates: string[][] = [];
+    for (const fk of t.foreignKeys) {
+      const columns = [...fk.columns];
+      if (startsWith(t.primaryKey, columns)) continue;
+      if (t.indexes.some((ix) => ix.expr === undefined && startsWith(ix.columns, columns))) continue;
+      if (candidates.some((c) => c.length === columns.length && startsWith(c, columns))) continue;
+      candidates.push(columns);
+    }
+    return candidates
+      .filter((c) => !candidates.some((o) => o.length > c.length && startsWith(o, c)))
+      .map((columns) => ({ name: efTruncate(`IX_${t.table}_${columns.join("_")}`), columns }));
   },
   // An alternate key (one an FK references) is a UNIQUE constraint; any other unique key is an index.
   uniqueKeyKind: ({ referencedByForeignKey }) => (referencedByForeignKey ? "constraint" : "index"),
@@ -95,8 +111,20 @@ export const SCHEMA_CONVENTION_PRESETS = Object.keys(PRESETS) as readonly string
 /** A preset by name, a project-supplied object as itself, and nothing as `default`. */
 export function resolveSchemaConventions(selected: string | SchemaConventions | undefined): SchemaConventions {
   if (selected === undefined) return defaultConventions;
-  if (typeof selected !== "string") return selected;
+  if (typeof selected !== "string") {
+    const members = ["primaryKeyName", "foreignKeyName", "foreignKeyIndexes", "uniqueKeyKind"] as const;
+    const missing = members.filter((m) => typeof (selected as unknown as Record<string, unknown>)[m] !== "function");
+    if (missing.length > 0) throw new InvalidSchemaConventionsError(String((selected as { id?: unknown }).id ?? "(no id)"), missing);
+    return selected;
+  }
   const preset = PRESETS[selected];
   if (preset === undefined) throw new UnknownSchemaConventionsError(selected, SCHEMA_CONVENTION_PRESETS);
   return preset;
+}
+
+/** A unique key a `UNIQUE` constraint can express: plain ascending btree columns, no predicate. */
+export function canBeUniqueConstraint(ix: IndexDescriptor): boolean {
+  return ix.unique && ix.where === undefined && ix.expr === undefined
+    && (ix.using === undefined || ix.using === "btree")
+    && (ix.orders === undefined || ix.orders.every((o) => o === "asc"));
 }

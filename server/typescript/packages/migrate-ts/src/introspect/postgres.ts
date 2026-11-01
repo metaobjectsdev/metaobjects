@@ -743,6 +743,10 @@ async function readPgForeignKeys(k: RawKysely, schema: string, table: string): P
       WHERE con.contype = 'f'
         AND n.nspname = ${schema}
         AND t.relname = ${table}
+        -- Same-schema FKs only: FkDescriptor carries no referenced schema and the emitter
+        -- assumes the holder's, so a cross-schema FK would read as one to a same-named
+        -- table here. (The information_schema join this replaced excluded them too.)
+        AND rt.relnamespace = t.relnamespace
       ORDER BY con.conname, key.ord
     `.execute(k);
   } catch {

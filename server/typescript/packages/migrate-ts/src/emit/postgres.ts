@@ -1,3 +1,4 @@
+import { canBeUniqueConstraint } from "../schema-conventions.js";
 import type {
   Change, EmitResult, ColumnDescriptor, IndexDescriptor, FkDescriptor,
   TableDescriptor, ViewDescriptor, ColumnDefault, FkAction, NameChange, DataHazard,
@@ -566,7 +567,7 @@ function renderDefault(d: ColumnDefault): string {
 
 /** A unique key the schema conventions create as a constraint (only a plain column key can be one). */
 function isUniqueConstraint(ix: IndexDescriptor): boolean {
-  return ix.constraint === "unique" && ix.unique && ix.where === undefined && ix.expr === undefined;
+  return ix.constraint === "unique" && canBeUniqueConstraint(ix);
 }
 
 function renderCreateIndex(table: string, schema: string | undefined, ix: IndexDescriptor): string {

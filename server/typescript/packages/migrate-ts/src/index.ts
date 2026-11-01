@@ -19,7 +19,7 @@ export { introspect, introspectPostgres, introspectSqlite } from "./introspect/i
 export { diff } from "./diff/index.js";
 export {
   defaultConventions, efcoreConventions, resolveSchemaConventions, SCHEMA_CONVENTION_PRESETS,
-  type SchemaConventions, type KeyContext, type ForeignKeyContext, type ExistingKeys,
+  type SchemaConventions, type KeyContext, type ForeignKeyContext, type TableKeys,
 } from "./schema-conventions.js";
 export { collectUnmanagedNames } from "./unmanaged.js";
 // Per-command scope (`migrate.scope`) — see scope.ts for why the suppression is
@@ -64,6 +64,7 @@ export {
   isFkTargetNotUniqueError,
   isUnknownSchemaConventionsError,
   UnknownSchemaConventionsError,
+  InvalidSchemaConventionsError,
   FkTargetNotUniqueError,
   type FkTargetViolation,
 } from "./errors.js";

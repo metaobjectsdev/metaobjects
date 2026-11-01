@@ -9,7 +9,8 @@
 //   bun run prerelease:publish --iter 5              # pin the iteration number
 //   bun run prerelease:publish --base 0.25.0         # override the in-development version
 //
-// The base version is the lowest CHANGELOG.md `## [x.y.z]` section that is not released yet —
+// The base version is the lowest CHANGELOG.md `## [x.y.z]` section on the released major line (or
+// the next major) that is not released yet —
 // the repository's own declaration of what is being worked on — falling back to minor+1 when
 // every section is released. "Released" is read from public npm and the release tags, never
 // from package.json (release prep bumps that first). `--base` may override, but never to skip

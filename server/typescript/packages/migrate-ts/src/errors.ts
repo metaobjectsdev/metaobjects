@@ -333,9 +333,19 @@ export class UnknownSchemaConventionsError extends Error {
   }
 }
 
+/** A project-supplied schema-conventions object lacks members this version calls. */
+export class InvalidSchemaConventionsError extends Error {
+  override readonly name = "InvalidSchemaConventionsError";
+  constructor(readonly id: string, readonly missing: readonly string[]) {
+    super(`the schema conventions "${id}" are missing ${missing.join(", ")} — start from a preset ` +
+      `({ ...efcoreConventions, id: "${id}", … }) so every member this version calls is present`);
+  }
+}
+
 /** Is `err` the {@link UnknownSchemaConventionsError}? */
-export function isUnknownSchemaConventionsError(err: unknown): err is UnknownSchemaConventionsError {
-  return err instanceof Error && err.name === "UnknownSchemaConventionsError";
+export function isUnknownSchemaConventionsError(err: unknown): err is UnknownSchemaConventionsError | InvalidSchemaConventionsError {
+  // Both are a project's conventions selection the tool cannot use: a config error.
+  return err instanceof Error && (err.name === "UnknownSchemaConventionsError" || err.name === "InvalidSchemaConventionsError");
 }
 
 /** Is `err` the {@link FkTargetNotUniqueError} from FKs whose targets are not unique keys? */

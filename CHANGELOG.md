@@ -27,8 +27,10 @@ here.**
   unless you set it. `efcore` reproduces EF Core's conventions (`PK_`, `FK_`, `IX_`, its
   63-character `~` truncation, alternate keys as constraints), so a database built by EF Core
   migrations and one built by `meta migrate` match. A project can supply its own conventions
-  object from `metaobjects.config.ts`. An unknown preset name is refused by name. See
-  `docs/features/migrations-and-drift.md`, "Schema conventions".
+  object from `metaobjects.config.ts`; an unknown preset name, or an object missing a member, is
+  refused by name. The PK name is now introspected too, so a `baseline --from-db` snapshot of a
+  database whose primary keys are not named `<table>_pkey` records their names (not compared;
+  nothing churns). See `docs/features/migrations-and-drift.md`, "Schema conventions".
 - **A recipe for checking an API change against the last release.** Emit the document at the last tag
   and at `HEAD`, then run oasdiff. See `docs/recipes/check-api-against-last-release.md`.
 - **A `pydantic` extra on the Python package.** `pip install "metaobjects[pydantic]"` installs
@@ -85,7 +87,8 @@ here.**
   a three-column one as nine. `meta migrate` reads its expected side back from the shadow database, so
   the doubled columns reached the emitted DDL, which Postgres refused ("foreign key referenced-columns
   list must not contain duplicates"); `verify --db` misreported every composite FK. It now reads
-  `pg_constraint`, pairing `conkey` with `confkey` by position.
+  `pg_constraint`, pairing `conkey` with `confkey` by position. As before, only same-schema foreign
+  keys are read (the FK descriptor carries no referenced schema).
 
 - **Python: an array field's `default` generated a string.** A model with
   `field.string[]: { default: "{}" }` generated `tags: list[str] = '{}'`, which fails on first use.

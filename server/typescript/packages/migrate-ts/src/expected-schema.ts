@@ -1,5 +1,5 @@
 import { DuplicateSqlNameError, FkTargetNotUniqueError, type FkTargetViolation } from "./errors.js";
-import { resolveSchemaConventions, type SchemaConventions } from "./schema-conventions.js";
+import { canBeUniqueConstraint, resolveSchemaConventions, type SchemaConventions } from "./schema-conventions.js";
 import type {
   ColumnNamingStrategy, MetaData, MetaField, MetaObject, MetaReferenceIdentity, MetaRoot, MetaValidator,
 } from "@metaobjectsdev/metadata";
@@ -1159,35 +1159,40 @@ function collectFkTargetViolations(
  * `@constraintName` is known. The default conventions change nothing here.
  */
 function applySchemaConventions(tables: TableDescriptor[], conventions: SchemaConventions): void {
-  const keyOf = (table: string, columns: readonly string[]) => `${table}|${[...columns].sort().join(",")}`;
-  const referenced = new Set(tables.flatMap((t) => t.foreignKeys.map((fk) => keyOf(fk.refTable, fk.refColumns))));
+  // An FK references a table in its own schema (the emitter's assumption), so the key is schema-qualified.
+  const keyOf = (schema: string | undefined, table: string, columns: readonly string[]) =>
+    `${schema ?? ""}.${table}|${[...columns].sort().join(",")}`;
+  const referenced = new Set(tables.flatMap((t) => t.foreignKeys.map((fk) => keyOf(t.schema, fk.refTable, fk.refColumns))));
   for (const t of tables) {
     if (t.primaryKey.length > 0) {
       const pkName = conventions.primaryKeyName({ table: t.name, columns: t.primaryKey });
       if (pkName !== `${t.name}_pkey`) t.primaryKeyName = pkName;
     }
     for (const ix of t.indexes) {
-      if (!ix.unique || ix.where !== undefined || ix.expr !== undefined) continue;
-      const kind = conventions.uniqueKeyKind({ table: t.name, columns: ix.columns, referencedByForeignKey: referenced.has(keyOf(t.name, ix.columns)) });
+      // Only a plain key can be a UNIQUE constraint: one with a predicate, an expression, a DESC
+      // column or a non-btree method stays an index whatever the conventions prefer.
+      if (!canBeUniqueConstraint(ix)) continue;
+      const kind = conventions.uniqueKeyKind({ table: t.name, columns: ix.columns, referencedByForeignKey: referenced.has(keyOf(t.schema, t.name, ix.columns)) });
       if (kind === "constraint") ix.constraint = "unique";
     }
-    for (const fk of t.foreignKeys) {
-      const index = conventions.foreignKeyIndex(
-        { table: t.name, columns: fk.columns, refTable: fk.refTable, refColumns: fk.refColumns },
-        { primaryKey: t.primaryKey, indexes: t.indexes },
-      );
-      if (index === undefined) continue;
+    const fkIndexes = conventions.foreignKeyIndexes({
+      table: t.name,
+      primaryKey: t.primaryKey,
+      indexes: t.indexes,
+      foreignKeys: t.foreignKeys.map((fk) => ({ table: t.name, columns: fk.columns, refTable: fk.refTable, refColumns: fk.refColumns })),
+    });
+    for (const index of fkIndexes) {
       if (t.indexes.some((ix) => ix.name === index.name)) {
         throw new DuplicateSqlNameError([{
           name: index.name,
           owners: [
-            `the ${conventions.id} conventions' index for foreign key "${fk.name}" on table "${t.name}"`,
+            `the ${conventions.id} conventions' foreign-key index on [${index.columns.join(", ")}] of table "${t.name}"`,
             `an index already named "${index.name}" on table "${t.name}"`,
           ],
           involvesIndex: true,
         }]);
       }
-      t.indexes.push({ name: index.name, columns: [...fk.columns], unique: false });
+      t.indexes.push({ name: index.name, columns: [...index.columns], unique: false });
     }
   }
 }

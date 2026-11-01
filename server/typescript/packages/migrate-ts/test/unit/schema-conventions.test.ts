@@ -20,7 +20,8 @@ describe("efcore conventions", () => {
     expect(efcoreConventions.foreignKeyName(fk)).toBe("FK_OrderLines_Orders_OrderId");
     expect(efcoreConventions.foreignKeyName({ ...fk, columns: ["OrderId", "Region"], refColumns: ["Id", "Region"] }))
       .toBe("FK_OrderLines_Orders_OrderId_Region");
-    expect(efcoreConventions.foreignKeyIndex(fk, { primaryKey: ["Id"], indexes: [] })).toEqual({ name: "IX_OrderLines_OrderId" });
+    expect(efcoreConventions.foreignKeyIndexes({ table: "OrderLines", primaryKey: ["Id"], indexes: [], foreignKeys: [fk] }))
+      .toEqual([{ name: "IX_OrderLines_OrderId", columns: ["OrderId"] }]);
   });
 
   test("a name over 63 characters is cut to 62 and marked with ~, as EF Core does", () => {
@@ -33,14 +34,30 @@ describe("efcore conventions", () => {
   });
 
   test("no FK index when the primary key or an existing index already starts with the FK's columns", () => {
-    expect(efcoreConventions.foreignKeyIndex(fk, { primaryKey: ["OrderId", "LineNo"], indexes: [] })).toBeUndefined();
-    expect(efcoreConventions.foreignKeyIndex(fk, { primaryKey: ["Id"], indexes: [{ columns: ["OrderId", "Sku"] }] })).toBeUndefined();
+    const ix = (primaryKey: string[], indexes: { columns: string[]; where?: string; expr?: string }[]) =>
+      efcoreConventions.foreignKeyIndexes({ table: "OrderLines", primaryKey, indexes, foreignKeys: [fk] }).map((i) => i.name);
+
+    expect(ix(["OrderId", "LineNo"], [])).toEqual([]);
+    expect(ix(["Id"], [{ columns: ["OrderId", "Sku"] }])).toEqual([]);
     // an index that merely CONTAINS the columns later does not cover them
-    expect(efcoreConventions.foreignKeyIndex(fk, { primaryKey: ["Id"], indexes: [{ columns: ["Sku", "OrderId"] }] }))
-      .toEqual({ name: "IX_OrderLines_OrderId" });
-    // a partial or expression index does not cover them either
-    expect(efcoreConventions.foreignKeyIndex(fk, { primaryKey: ["Id"], indexes: [{ columns: ["OrderId"], where: "x" }] }))
-      .toEqual({ name: "IX_OrderLines_OrderId" });
+    expect(ix(["Id"], [{ columns: ["Sku", "OrderId"] }])).toEqual(["IX_OrderLines_OrderId"]);
+    // a PARTIAL index covers them: EF Core's AreIndexedBy compares properties, and a filter is
+    // a relational annotation that convention never sees
+    expect(ix(["Id"], [{ columns: ["OrderId"], where: "x" }])).toEqual([]);
+    // an expression index has no columns to lead with
+    expect(ix(["Id"], [{ columns: [], expr: "lower(x)" }])).toEqual(["IX_OrderLines_OrderId"]);
+  });
+
+  test("FK indexes do not depend on FK order: one an FK index covers is dropped, as EF Core does", () => {
+    const a = { table: "hs", columns: ["a"], refTable: "x", refColumns: ["id"] };
+    const ab = { table: "hs", columns: ["a", "b"], refTable: "y", refColumns: ["id", "k"] };
+    const names = (foreignKeys: typeof a[]) =>
+      efcoreConventions.foreignKeyIndexes({ table: "hs", primaryKey: ["id"], indexes: [], foreignKeys }).map((i) => i.name);
+
+    expect(names([a, ab])).toEqual(["IX_hs_a_b"]);
+    expect(names([ab, a])).toEqual(["IX_hs_a_b"]);
+    // two FKs on the same columns get one index
+    expect(names([a, { ...a, refTable: "z" }])).toEqual(["IX_hs_a"]);
   });
 
   test("a unique key an FK references is a constraint; any other is an index", () => {
@@ -53,7 +70,7 @@ describe("default conventions (what migrate has always emitted)", () => {
   test("{table}_pkey, {table}_{firstColumn}_fk, no FK index, unique keys are indexes", () => {
     expect(defaultConventions.primaryKeyName({ table: "orders", columns: ["id"] })).toBe("orders_pkey");
     expect(defaultConventions.foreignKeyName({ ...fk, table: "order_lines", columns: ["order_id", "region"] })).toBe("order_lines_order_id_fk");
-    expect(defaultConventions.foreignKeyIndex(fk, { primaryKey: ["Id"], indexes: [] })).toBeUndefined();
+    expect(defaultConventions.foreignKeyIndexes({ table: "OrderLines", primaryKey: ["Id"], indexes: [], foreignKeys: [fk] })).toEqual([]);
     expect(defaultConventions.uniqueKeyKind({ table: "orders", columns: ["code"], referencedByForeignKey: true })).toBe("index");
   });
 });
@@ -69,5 +86,11 @@ describe("resolveSchemaConventions", () => {
   test("an unknown preset is refused, naming the ones that exist", () => {
     expect(() => resolveSchemaConventions("hibernate")).toThrow(/migrate\.conventions "hibernate".*default, efcore/);
     expect(SCHEMA_CONVENTION_PRESETS).toEqual(["default", "efcore"]);
+  });
+
+  test("a supplied object missing a member is refused by name (e.g. written for another version)", () => {
+    const partial = { id: "acme", primaryKeyName: () => "pk" } as unknown as Parameters<typeof resolveSchemaConventions>[0];
+    expect(() => resolveSchemaConventions(partial))
+      .toThrow(/schema conventions "acme" are missing foreignKeyName, foreignKeyIndexes, uniqueKeyKind/);
   });
 });

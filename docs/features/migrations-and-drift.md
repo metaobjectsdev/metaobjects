@@ -384,13 +384,17 @@ come from the project's **schema conventions**, selected in `.metaobjects/config
 |---|---|---|
 | Primary-key constraint name | `<table>_pkey` | `PK_<table>` |
 | Foreign-key constraint name | `<table>_<first column>_fk` | `FK_<table>_<principal>_<columns>` |
-| Index on a foreign key | none | `IX_<table>_<columns>`, unless the primary key or an index already starts with the FK's columns |
-| Unique key (`identity.secondary`) | a unique index | a UNIQUE constraint when a foreign key references it, else a unique index |
+| Index on a foreign key | none | `IX_<table>_<columns>`, unless the primary key or another index (a partial one included) already starts with the FK's columns; an FK index another FK index covers is dropped, so FK order does not matter |
+| Unique key (`identity.secondary`, a `@unique` field) | a unique index | a UNIQUE constraint when a foreign key references it, else a unique index |
 
-`efcore` reproduces EF Core's own conventions, including its truncation of a name longer
-than 63 characters to 62 characters and `~`, so a database first built by EF Core migrations
-and one built by `meta migrate` have the same catalog. `default` is what migrate has always
-emitted.
+`efcore` follows EF Core's own conventions on PostgreSQL (Npgsql), including its truncation of a
+name longer than 63 characters to 62 characters and `~`. A database first built by EF Core
+migrations and one built by `meta migrate` then agree on these objects. Where the EF Core model
+carried something its conventions do not (a hand-named key, an index dropped by raw SQL), declare
+it in metadata. A unique key keeps the name its metadata node declares (EF Core would call an
+alternate key `AK_…`; name the node that if you want EF's). A key with a `DESC` column or a
+non-btree `@using` stays an index, since a UNIQUE constraint carries neither. `default` is what
+migrate has always emitted.
 
 Names code does address are not conventions. Tables, views and columns resolve in core
 naming (`naming`, and `@table` / `@column`), the same in every port. A constraint or index a
@@ -399,7 +403,8 @@ declared in metadata: `@constraintName` on an `identity.reference`, or the index
 name. A declared name always wins over a convention.
 
 A project can supply its own conventions from `metaobjects.config.ts`, which wins over the
-preset name:
+preset name. Start from a preset so every member is present; an object missing one is refused
+by name:
 
 ```ts
 import { defineConfig } from "@metaobjectsdev/cli";
@@ -411,9 +416,11 @@ export default defineConfig({
 });
 ```
 
-The conventions shape what migrate creates. The PK name and whether a unique key is a
-constraint or an index are not compared by the diff, so changing them never churns an
-existing database; FK and index names are compared, as they always have been.
+**Changing the conventions of an existing database.** On Postgres, an FK, CHECK or index whose
+definition is unchanged and whose name differs is renamed in place (`RENAME CONSTRAINT` /
+`ALTER INDEX … RENAME`), never dropped and re-created; new FK indexes are created. The PK name
+and whether a unique key is a constraint or an index are not compared by the diff, so they only
+shape what migrate creates. SQLite cannot rename a constraint and rebuilds the table instead.
 
 ## How CHECK constraints and expression indexes are compared
 

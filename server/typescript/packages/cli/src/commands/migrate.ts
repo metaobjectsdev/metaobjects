@@ -13,7 +13,7 @@ import { buildKyselyFromUrl, inferDialect, redactUrl } from "../lib/kysely.js";
 import { describeExprCanonPath, shadowSession } from "../lib/shadow.js";
 import { log } from "../lib/log.js";
 import { loadMemory, resolveCollection, resolveConfigDir, type Collection } from "@metaobjectsdev/sdk";
-import { loadMemoryOptionsFrom, loadMetaobjectsConfig, RemovedNamingConfigError, resolveGenConfigDir } from "../lib/load-metaobjects-config.js";
+import { configNotLoadedWarning, loadMemoryOptionsFrom, loadMetaobjectsConfig, RemovedNamingConfigError, resolveGenConfigDir } from "../lib/load-metaobjects-config.js";
 import { collectionLoadOptions } from "../lib/collection-load-options.js";
 import { exclusionNotes, importedOption, migrateScopeMismatch } from "../lib/migrate-scope.js";
 import {
@@ -759,6 +759,8 @@ export async function migrateCommand(
       log.error(e.message);
       return 2;
     }
+    const warning = configNotLoadedWarning(genRoot, e, "migrate");
+    if (warning !== undefined) log.warn(warning);
     postgresLoadOptions = {};
   }
 
@@ -1199,6 +1201,8 @@ async function loadBaselineMetadata(metaRoot: string, genRoot: string) {
   } catch (e) {
     if (e instanceof RemovedNamingConfigError) throw e;
     // config absent — no custom providers, no libraries, default snake_case
+    const warning = configNotLoadedWarning(genRoot, e, "migrate");
+    if (warning !== undefined) log.warn(warning);
   }
   const collection = await resolveCollection(metaRoot);
   return await loadMemory(collection.configDir, {
@@ -1496,6 +1500,8 @@ export async function runOfflineGenerate(
       return 2;
     }
     // config absent — no custom providers, no libraries, default snake_case
+    const warning = configNotLoadedWarning(genRoot, e, "migrate");
+    if (warning !== undefined) log.warn(warning);
   }
 
   let metadata;
@@ -1792,6 +1798,8 @@ async function runD1Migrate(
       log.error(e.message);
       return 2;
     }
+    const warning = configNotLoadedWarning(genRoot, e, "migrate");
+    if (warning !== undefined) log.warn(warning);
     d1LoadOptions = {};
   }
 

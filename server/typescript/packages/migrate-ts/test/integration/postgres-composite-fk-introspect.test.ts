@@ -63,4 +63,25 @@ d("postgres composite FK introspection (real PG)", () => {
       await k.destroy();
     }
   });
+
+  test("an FK into another schema is not read (FkDescriptor has no referenced schema; as before)", async () => {
+    const k = new Kysely<Record<string, unknown>>({ dialect: new PostgresDialect({ pool: new Pool({ connectionString: PG_URL }) }) });
+    const a = "xsa_" + Math.random().toString(36).slice(2, 8);
+    const b = "xsb_" + Math.random().toString(36).slice(2, 8);
+    try {
+      await sql.raw(`CREATE SCHEMA ${a}; CREATE SCHEMA ${b}`).execute(k);
+      await sql.raw(`CREATE TABLE ${b}.users ( id INTEGER PRIMARY KEY )`).execute(k);
+      await sql.raw(`CREATE TABLE ${a}.users ( id INTEGER PRIMARY KEY )`).execute(k);
+      await sql.raw(`CREATE TABLE ${a}.profiles ( id INTEGER PRIMARY KEY, user_id INTEGER REFERENCES ${b}.users (id), local_id INTEGER REFERENCES ${a}.users (id) )`).execute(k);
+
+      const snap = await introspectPostgres(k);
+      const profiles = snap.tables.find((x) => x.name === "profiles" && x.schema === a)!;
+
+      // Only the same-schema FK: the cross-schema one would read as an FK to a.users.
+      expect(profiles.foreignKeys.map((f) => f.columns)).toEqual([["local_id"]]);
+    } finally {
+      await sql.raw(`DROP SCHEMA IF EXISTS ${a} CASCADE; DROP SCHEMA IF EXISTS ${b} CASCADE`).execute(k);
+      await k.destroy();
+    }
+  });
 });

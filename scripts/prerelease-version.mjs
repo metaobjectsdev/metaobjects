@@ -46,7 +46,8 @@ export function releasedVersion({ npmLatest, tags, major }) {
  * The version this cut is FOR: `{ base, source }`, or throws an Error whose message says why not.
  *
  * - A CHANGELOG section newer than the release is unpublished work; the lowest one is the next
- *   release, and the cut is for it.
+ *   release, and the cut is for it. Only sections on the released major line or the next one
+ *   count: the historical Maven-only [7.x] sections are not this line's work.
  * - `--base` may name that version, or any version when every section is published. It may not
  *   name an already released version, and it may not SKIP an unpublished section: that is the
  *   mis-numbering this exists to refuse, reached by hand instead of by guess.
@@ -61,11 +62,12 @@ export function decideBase({ released, changelog, explicit }) {
         "Pass --base <x.y.z> (the CHANGELOG section being prepared).",
     );
   }
-  // Only sections on the released major line: the CHANGELOG also carries the old Maven-only
-  // [7.x] sections, which sort above every 1.x number and were proposed as the next base.
+  // Only sections on the released major line or the next one (a major being prepared): the
+  // CHANGELOG also carries the old Maven-only [7.x] sections, which sort above every 1.x
+  // number and were proposed as the next base.
   const major = Number(released.split(".")[0]);
   const unpublished = changelog
-    .filter((v) => Number(v.split(".")[0]) === major && cmpVer(v, released) > 0)
+    .filter((v) => Number(v.split(".")[0]) <= major + 1 && cmpVer(v, released) > 0)
     .sort(cmpVer);
   if (explicit != null) {
     if (cmpVer(explicit, released) <= 0)

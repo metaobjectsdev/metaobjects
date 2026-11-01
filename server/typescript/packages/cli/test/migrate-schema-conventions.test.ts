@@ -47,12 +47,14 @@ async function project(conventions: string | undefined): Promise<string> {
 let out: string[] = [];
 let infoSpy: ReturnType<typeof spyOn>;
 let errSpy: ReturnType<typeof spyOn>;
+let warnSpy: ReturnType<typeof spyOn>;
 beforeEach(() => {
   out = [];
   infoSpy = spyOn(log, "info").mockImplementation((m: string) => { out.push(String(m)); });
   errSpy = spyOn(log, "error").mockImplementation((m: string) => { out.push(String(m)); });
+  warnSpy = spyOn(log, "warn").mockImplementation((m: string) => { out.push(String(m)); });
 });
-afterEach(() => { infoSpy.mockRestore(); errSpy.mockRestore(); });
+afterEach(() => { infoSpy.mockRestore(); errSpy.mockRestore(); warnSpy.mockRestore(); });
 
 const dryRun = (root: string) =>
   migrateCommand(["--from-db", "--db", `file:${join(root, "t.db")}`, "--dialect", "sqlite", "--dry-run"], root);
@@ -80,5 +82,28 @@ describe("meta migrate with migrate.conventions", () => {
     expect(code).toBe(2);
     expect(text).toContain('migrate.conventions "hibernate" is not a schema-conventions preset: expected one of default, efcore');
     expect(text).not.toContain("unexpected error");
+  });
+
+  test("a conventions object from metaobjects.config.ts applies, importing the preset from migrate-ts", async () => {
+    const root = await project(undefined);
+    await writeFile(join(root, "metaobjects.config.ts"), [
+      'import { efcoreConventions } from "@metaobjectsdev/migrate-ts";',
+      "export default { generators: [], schemaConventions: { ...efcoreConventions, id: \"acme\" } };",
+      "",
+    ].join("\n"), "utf8");
+
+    expect(await dryRun(root)).toBe(0);
+    expect(out.join("\n")).toContain('CREATE INDEX "IX_OrderLines_OrderId"');
+  });
+
+  test("a metaobjects.config.ts that exists but does not load is warned about, not silently ignored", async () => {
+    const root = await project(undefined);
+    await writeFile(join(root, "metaobjects.config.ts"), 'throw new Error("config exploded");\n', "utf8");
+
+    expect(await dryRun(root)).toBe(0);
+    const text = out.join("\n");
+    expect(text).toContain("metaobjects.config.ts exists but did not load");
+    expect(text).toContain("config exploded");
+    expect(text).toContain("schemaConventions");
   });
 });

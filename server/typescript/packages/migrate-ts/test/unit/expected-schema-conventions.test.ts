@@ -129,3 +129,46 @@ describe("the conventions the project-aware load put on the root", () => {
     expect(() => buildExpectedSchema(root)).toThrow(/migrate\.conventions "hibernate".*default, efcore/);
   });
 });
+
+describe("efcore unique keys that must stay indexes", () => {
+  const doc = (secondary: Record<string, unknown>, extra: unknown[] = []) => ({ "metadata.root": { package: "acme", children: [
+    { "object.entity": { name: "Region", children: [
+      { "source.rdb": { "@table": "Regions", "@schema": "a" } },
+      { "field.long": { name: "id", "@column": "Id" } },
+      { "field.string": { name: "code", "@column": "Code" } },
+      { "identity.primary": { name: "pk", "@fields": "id" } },
+      { "identity.secondary": { name: "AK_Regions_Code", "@fields": ["code"], ...secondary } },
+    ] } },
+    { "object.entity": { name: "Store", children: [
+      { "source.rdb": { "@table": "Stores", "@schema": "a" } },
+      { "field.long": { name: "id", "@column": "Id" } },
+      { "field.string": { name: "regionCode", "@column": "RegionCode" } },
+      { "identity.primary": { name: "pk", "@fields": "id" } },
+      { "identity.reference": { name: "region", "@fields": ["regionCode"], "@references": "Region.code" } },
+    ] } },
+    ...extra,
+  ] } });
+  const kind = async (d: unknown, schema: string) => {
+    const { root, errors } = await new MetaDataLoader().load([new InMemoryStringSource(JSON.stringify(d))]);
+    expect(errors).toHaveLength(0);
+    const t = buildExpectedSchema(root, { conventions: efcoreConventions }).tables.find((x) => x.name === "Regions" && x.schema === schema)!;
+    return t.indexes.find((i) => i.name.startsWith("AK_"))!.constraint ?? "index";
+  };
+
+  test("a DESC key or a non-btree method stays an index (a UNIQUE constraint carries neither)", async () => {
+    expect(await kind(doc({}), "a")).toBe("unique");
+    expect(await kind(doc({ "@orders": ["desc"] }), "a")).toBe("index");
+    expect(await kind(doc({ "@using": "hash" }), "a")).toBe("index");
+  });
+
+  test("an FK in one schema does not make a same-named key in another schema a constraint", async () => {
+    const other = { "object.entity": { name: "OtherRegion", children: [
+      { "source.rdb": { "@table": "Regions", "@schema": "b" } },
+      { "field.long": { name: "id", "@column": "Id" } },
+      { "field.string": { name: "code", "@column": "Code" } },
+      { "identity.primary": { name: "pk", "@fields": "id" } },
+      { "identity.secondary": { name: "AK_OtherRegions_Code", "@fields": ["code"] } },
+    ] } };
+    expect(await kind(doc({}, [other]), "b")).toBe("index");
+  });
+});
