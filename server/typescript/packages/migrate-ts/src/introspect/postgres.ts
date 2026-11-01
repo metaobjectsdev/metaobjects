@@ -50,7 +50,7 @@ export async function introspectPostgres(db: Kysely<Record<string, unknown>>): P
 
   for (const { schema, name } of tableRefs) {
     const columns = await readColumns(k, schema, name);
-    const primaryKey = await readPrimaryKey(k, schema, name);
+    const { columns: primaryKey, name: primaryKeyName } = await readPrimaryKey(k, schema, name);
     const description = await readPgCatalogColumnFacts(k, schema, name, columns);
     tables.push({
       name,
@@ -60,6 +60,9 @@ export async function introspectPostgres(db: Kysely<Record<string, unknown>>): P
       foreignKeys: await readPgForeignKeys(k, schema, name),
       checks: await readPgChecks(k, schema, name),
       primaryKey,
+      // Only a name other than Postgres's default `<table>_pkey`, as the expected side
+      // records it — a database built without schema conventions reads back unchanged.
+      ...(primaryKeyName !== undefined && primaryKeyName !== `${name}_pkey` ? { primaryKeyName } : {}),
       ...(description !== undefined ? { description } : {}),
     });
   }
@@ -534,11 +537,11 @@ async function readPgCatalogColumnFacts(
 type RawKysely = Kysely<any>;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function readPrimaryKey(k: Kysely<any>, schema: string, tableName: string): Promise<string[]> {
+async function readPrimaryKey(k: Kysely<any>, schema: string, tableName: string): Promise<{ columns: string[]; name: string | undefined }> {
   // Uses information_schema only — avoids pg_attribute / pg_constraint joins
   // that are either missing or return empty in pg-mem.
-  const rows = await sql<{ column_name: string; ordinal_position: number }>`
-    SELECT kcu.column_name, kcu.ordinal_position
+  const rows = await sql<{ column_name: string; ordinal_position: number; constraint_name: string }>`
+    SELECT kcu.column_name, kcu.ordinal_position, tc.constraint_name
     FROM information_schema.table_constraints tc
     JOIN information_schema.key_column_usage kcu
       ON kcu.constraint_name = tc.constraint_name
@@ -549,7 +552,7 @@ async function readPrimaryKey(k: Kysely<any>, schema: string, tableName: string)
       AND tc.table_name      = ${tableName}
     ORDER BY kcu.ordinal_position
   `.execute(k);
-  return rows.rows.map((r) => r.column_name);
+  return { columns: rows.rows.map((r) => r.column_name), name: rows.rows[0]?.constraint_name };
 }
 
 async function readPgIndexes(k: RawKysely, schema: string, table: string): Promise<IndexDescriptor[]> {

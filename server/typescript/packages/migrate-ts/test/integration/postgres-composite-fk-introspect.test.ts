@@ -43,4 +43,24 @@ d("postgres composite FK introspection (real PG)", () => {
       await k.destroy();
     }
   });
+
+  test("reads a primary key's constraint name when it is not <table>_pkey", async () => {
+    const k = new Kysely<Record<string, unknown>>({ dialect: new PostgresDialect({ pool: new Pool({ connectionString: PG_URL }) }) });
+    const named = "pkn_" + Math.random().toString(36).slice(2, 8);
+    const plain = "pkp_" + Math.random().toString(36).slice(2, 8);
+    try {
+      await sql.raw(`CREATE TABLE ${named} ( id INTEGER, CONSTRAINT "PK_${named}" PRIMARY KEY (id) )`).execute(k);
+      await sql.raw(`CREATE TABLE ${plain} ( id INTEGER PRIMARY KEY )`).execute(k);
+
+      const snap = await introspectPostgres(k);
+
+      expect(snap.tables.find((x) => x.name === named)!.primaryKeyName).toBe(`PK_${named}`);
+      // the default name is left absent, so a snapshot without conventions is unchanged
+      expect(snap.tables.find((x) => x.name === plain)!.primaryKeyName).toBeUndefined();
+    } finally {
+      await sql.raw(`DROP TABLE IF EXISTS ${named}`).execute(k);
+      await sql.raw(`DROP TABLE IF EXISTS ${plain}`).execute(k);
+      await k.destroy();
+    }
+  });
 });
