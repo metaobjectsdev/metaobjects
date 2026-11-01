@@ -80,6 +80,10 @@ const MigrateBlock = z.object({
    *  Include-only — there's no `migrate.scope.exclude`, since a migration run
    *  is scoped to what it's touching, not filtered down from "everything". */
   scope: z.array(z.string().min(1)),
+  /** Schema conventions for the database objects no code addresses: a preset name
+   *  (`default`, `efcore`); meta migrate refuses a name it does not know. A project's own
+   *  conventions object is supplied from metaobjects.config.ts instead. */
+  conventions: z.string().min(1),
 // .strict() for the same reason as the top level and the source arms below, and
 // with sharper teeth here: `{ migrate: { scopee: [...], dialect: "postgres" } }`
 // used to parse to `{ dialect: "postgres" }`, so a typo'd `scope` key meant

@@ -216,10 +216,13 @@ function rewriteImportSpecifiers(source: string, aliasMap: Record<string, string
  * than set to `undefined`, which is what lets `loadMemory` apply its own defaults.
  */
 export function loadMemoryOptionsFrom(
-  cfg: Pick<MetaobjectsGenConfig, "providers"> | undefined,
-): { providers?: readonly MetaDataTypeProvider[] } {
+  cfg: Pick<MetaobjectsGenConfig, "providers" | "schemaConventions"> | undefined,
+): { providers?: readonly MetaDataTypeProvider[]; schemaConventions?: unknown } {
   return {
     ...(cfg?.providers !== undefined ? { providers: cfg.providers } : {}),
+    // A project's own conventions object; spread after the collection's options, it wins
+    // over a `migrate.conventions` preset name in .metaobjects/config.json.
+    ...(cfg?.schemaConventions !== undefined ? { schemaConventions: cfg.schemaConventions } : {}),
   };
 }
 

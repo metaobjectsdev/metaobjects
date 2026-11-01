@@ -8,6 +8,7 @@ import { describe, test, expect } from "bun:test";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { buildExpectedSchema } from "../../src/expected-schema.js";
 import { efcoreConventions } from "../../src/schema-conventions.js";
+import { UnknownSchemaConventionsError } from "../../src/errors.js";
 import { emit } from "../../src/emit/index.js";
 import { diff } from "../../src/diff/index.js";
 
@@ -107,5 +108,24 @@ describe("buildExpectedSchema with the default conventions", () => {
     expect(table(s, "OrderLines").foreignKeys.map((f) => f.name).sort()).toEqual(["FK_Legacy_Name", "OrderLines_OrderId_fk"]);
     expect(table(s, "OrderLines").indexes).toEqual([]);
     expect(table(s, "Regions").indexes.every((i) => i.constraint === undefined)).toBe(true);
+  });
+});
+
+describe("the conventions the project-aware load put on the root", () => {
+  test("are used when the caller passes none", async () => {
+    const root = await load();
+    (root as { schemaConventions?: unknown }).schemaConventions = "efcore";
+
+    expect(table(buildExpectedSchema(root), "Orders").primaryKeyName).toBe("PK_Orders");
+    // `conventions: undefined` is "not given", so it does not mask the root
+    expect(table(buildExpectedSchema(root, { conventions: undefined }), "Orders").primaryKeyName).toBe("PK_Orders");
+  });
+
+  test("an unknown preset name is refused, naming the ones that exist", async () => {
+    const root = await load();
+    (root as { schemaConventions?: unknown }).schemaConventions = "hibernate";
+
+    expect(() => buildExpectedSchema(root)).toThrow(UnknownSchemaConventionsError);
+    expect(() => buildExpectedSchema(root)).toThrow(/migrate\.conventions "hibernate".*default, efcore/);
   });
 });

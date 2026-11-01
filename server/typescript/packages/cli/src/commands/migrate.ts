@@ -22,6 +22,7 @@ import {
   isDeclaredRenameError,
   isDuplicateSqlNameError,
   isFkTargetNotUniqueError,
+  isUnknownSchemaConventionsError,
   buildExpectedSchemaWithProvenance,
   scopeExpectedSchema,
   scopedDiffInputs,
@@ -1156,6 +1157,11 @@ export async function migrateCommand(
     if (isDuplicateSqlNameError(err)) return refuseEngineError(err, DUPLICATE_SQL_NAME_HINT, fmt);
     // A metadata defect too: a foreign key whose target columns are not a unique key there.
     if (isFkTargetNotUniqueError(err)) return refuseEngineError(err, FK_TARGET_NOT_UNIQUE_HINT, fmt);
+    // A config error: `migrate.conventions` names a preset this version does not ship.
+    if (isUnknownSchemaConventionsError(err)) {
+      refuseEngineError(err, "set migrate.conventions in .metaobjects/config.json to one of the presets, or supply your own conventions from metaobjects.config.ts", fmt);
+      return 2;
+    }
     // Unexpected error: emit structured error on stdout in the active format, then exit 1.
     const msg = describeError(err) ?? String(err);
     log.error(`migrate: unexpected error: ${msg}`);

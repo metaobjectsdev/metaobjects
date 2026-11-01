@@ -26,7 +26,7 @@ import type { Collection, LoadMemoryOptions } from "@metaobjectsdev/sdk";
  */
 export function collectionLoadOptions(
   collection: Collection,
-): Required<Pick<LoadMemoryOptions, "files" | "fileIds" | "importedPackages" | "importedNodes" | "libraries" | "physicalNaming" | "wireFormat">> {
+): Required<Pick<LoadMemoryOptions, "files" | "fileIds" | "importedPackages" | "importedNodes" | "libraries" | "physicalNaming" | "wireFormat">> & Pick<LoadMemoryOptions, "schemaConventions"> {
   return {
     files: collection.files,
     fileIds: collection.fileIds,
@@ -40,5 +40,6 @@ export function collectionLoadOptions(
     libraries: collection.libraries,
     physicalNaming: collection.physicalNaming,
     wireFormat: collection.wireFormat,
+    ...(collection.schemaConventions !== undefined ? { schemaConventions: collection.schemaConventions } : {}),
   };
 }

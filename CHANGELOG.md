@@ -20,6 +20,15 @@ here.**
   and the `wire` setting, and a project on any port runs them through the Node `meta` CLI. They are
   reference helpers: opt-in, listed by `meta gen --list`, ejectable and gated by `verify --codegen`
   (ADR-0034 Amendment 10). Protobuf is not built. See `docs/features/contract-emitters.md`.
+- **Schema conventions for the database objects no code addresses.** `migrate.conventions` in
+  `.metaobjects/config.json` picks how `meta migrate` names primary-key and foreign-key
+  constraints, whether each foreign key gets an index, and whether a unique key an FK references
+  is a constraint or an index. `default` is what migrate has always emitted, so nothing changes
+  unless you set it. `efcore` reproduces EF Core's conventions (`PK_`, `FK_`, `IX_`, its
+  63-character `~` truncation, alternate keys as constraints), so a database built by EF Core
+  migrations and one built by `meta migrate` match. A project can supply its own conventions
+  object from `metaobjects.config.ts`. An unknown preset name is refused by name. See
+  `docs/features/migrations-and-drift.md`, "Schema conventions".
 - **A recipe for checking an API change against the last release.** Emit the document at the last tag
   and at `HEAD`, then run oasdiff. See `docs/recipes/check-api-against-last-release.md`.
 - **A `pydantic` extra on the Python package.** `pip install "metaobjects[pydantic]"` installs

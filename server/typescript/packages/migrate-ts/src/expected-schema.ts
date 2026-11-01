@@ -1,5 +1,5 @@
 import { DuplicateSqlNameError, FkTargetNotUniqueError, type FkTargetViolation } from "./errors.js";
-import { defaultConventions, type SchemaConventions } from "./schema-conventions.js";
+import { resolveSchemaConventions, type SchemaConventions } from "./schema-conventions.js";
 import type {
   ColumnNamingStrategy, MetaData, MetaField, MetaObject, MetaReferenceIdentity, MetaRoot, MetaValidator,
 } from "@metaobjectsdev/metadata";
@@ -264,7 +264,10 @@ export function buildExpectedSchemaWithProvenance(
   // Pass 2: build full descriptors with FK resolution. Every FK whose target is not a
   // unique key is collected here and refused once, after every table is built.
   const fkTargetViolations: FkTargetViolation[] = [];
-  const conventions = opts?.conventions ?? defaultConventions;
+  // The caller's conventions, else the ones the project-aware load put on the root
+  // (`migrate.conventions`), else migrate's default.
+  const conventions = opts?.conventions
+    ?? resolveSchemaConventions((root.root() as { schemaConventions?: string | SchemaConventions }).schemaConventions);
   const fkCtx: ForeignKeyBuildContext = { conventions, violations: fkTargetViolations };
   // Schema is resolved here (not stored in Pass 1) to avoid exactOptionalPropertyTypes
   // issues with `string | undefined` vs `schema?: string`.

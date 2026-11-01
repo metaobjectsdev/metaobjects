@@ -1,3 +1,4 @@
+import type { SchemaConventions } from "@metaobjectsdev/migrate-ts";
 import { physicalNamingRemovedMessage, type MetaDataTypeProvider } from "@metaobjectsdev/metadata";
 import { physicalNamingGuideUrl } from "@metaobjectsdev/metadata/release-docs";
 import type { RoutesExpose } from "./routes-expose.js";
@@ -181,6 +182,13 @@ export interface MetaobjectsGenConfig extends Omit<ResolvedGenConfig, "dbImport"
    * entries use the generator's default options. ADR-0021 #1.
    */
   generators: GeneratorSpec[];
+  /**
+   * The project's own schema conventions for `meta migrate`: the names and physical choices
+   * for database objects no code addresses (PK/FK constraint names, FK indexes, unique key
+   * kind). Wins over a `migrate.conventions` preset name in `.metaobjects/config.json`.
+   * Start from a preset: `{ ...efcoreConventions, id: "acme", primaryKeyName: ... }`.
+   */
+  schemaConventions?: SchemaConventions;
   /**
    * Auto-pluralize the Drizzle collection (table) variable name derived from
    * each entity (`AgentConfig` → `agentConfigs`). Defaults to `true`. Set

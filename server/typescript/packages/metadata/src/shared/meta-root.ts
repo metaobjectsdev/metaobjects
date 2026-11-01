@@ -26,6 +26,15 @@ export class MetaRoot extends MetaData {
    */
   wireFormat: WireFormat = DEFAULT_WIRE_FORMAT;
 
+  /**
+   * The project's schema conventions for `meta migrate`: a preset name from
+   * `migrate.conventions` in `.metaobjects/config.json`, or a conventions object the project
+   * supplies from `metaobjects.config.ts`. Set by the project-aware load, read and resolved
+   * by migrate's expected-schema build. Undefined = migrate's default conventions. Typed
+   * `unknown` here because the conventions contract lives in the migrate package.
+   */
+  schemaConventions: unknown = undefined;
+
   /** Object entities defined at this root level. */
   objects(): MetaObject[] {
     return this.cached("objects", () =>

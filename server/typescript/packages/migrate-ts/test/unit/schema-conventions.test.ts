@@ -67,7 +67,7 @@ describe("resolveSchemaConventions", () => {
   });
 
   test("an unknown preset is refused, naming the ones that exist", () => {
-    expect(() => resolveSchemaConventions("hibernate")).toThrow(/unknown schema conventions "hibernate".*default, efcore/);
+    expect(() => resolveSchemaConventions("hibernate")).toThrow(/migrate\.conventions "hibernate".*default, efcore/);
     expect(SCHEMA_CONVENTION_PRESETS).toEqual(["default", "efcore"]);
   });
 });

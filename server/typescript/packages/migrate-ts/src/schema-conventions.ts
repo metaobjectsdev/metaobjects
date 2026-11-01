@@ -17,6 +17,8 @@
  * Core migrations.
  */
 
+import { UnknownSchemaConventionsError } from "./errors.js";
+
 /** A key on one table: the table's database name and the key's columns, in key order. */
 export interface KeyContext {
   table: string;
@@ -95,8 +97,6 @@ export function resolveSchemaConventions(selected: string | SchemaConventions | 
   if (selected === undefined) return defaultConventions;
   if (typeof selected !== "string") return selected;
   const preset = PRESETS[selected];
-  if (preset === undefined) {
-    throw new Error(`unknown schema conventions "${selected}": expected one of ${SCHEMA_CONVENTION_PRESETS.join(", ")}`);
-  }
+  if (preset === undefined) throw new UnknownSchemaConventionsError(selected, SCHEMA_CONVENTION_PRESETS);
   return preset;
 }

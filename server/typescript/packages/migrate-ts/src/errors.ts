@@ -316,6 +316,19 @@ export function isDuplicateSqlNameError(err: unknown): err is DuplicateSqlNameEr
   return err instanceof Error && err.name === "DuplicateSqlNameError";
 }
 
+/** `migrate.conventions` names a schema-conventions preset that does not exist. */
+export class UnknownSchemaConventionsError extends Error {
+  override readonly name = "UnknownSchemaConventionsError";
+  constructor(readonly selected: string, readonly presets: readonly string[]) {
+    super(`migrate.conventions "${selected}" is not a schema-conventions preset: expected one of ${presets.join(", ")}`);
+  }
+}
+
+/** Is `err` the {@link UnknownSchemaConventionsError}? */
+export function isUnknownSchemaConventionsError(err: unknown): err is UnknownSchemaConventionsError {
+  return err instanceof Error && err.name === "UnknownSchemaConventionsError";
+}
+
 /** Is `err` the {@link FkTargetNotUniqueError} from FKs whose targets are not unique keys? */
 export function isFkTargetNotUniqueError(err: unknown): err is FkTargetNotUniqueError {
   return err instanceof Error && err.name === "FkTargetNotUniqueError";

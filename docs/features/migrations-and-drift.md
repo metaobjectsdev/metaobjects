@@ -370,6 +370,51 @@ opened by an older SQLite (Python 3.10's stdlib, Ubuntu 22.04's `sqlite3`). The 
 behind `--allow drop-check` and raises no data hazard, because the rule is the same — and
 the re-diff is empty afterwards. Postgres keeps `IS [NOT] DISTINCT FROM`.
 
+## Schema conventions: names for objects no code addresses
+
+Some database objects have names that no program ever reads: a primary-key constraint, most
+foreign-key constraints, the index on a foreign key. Their names, and a few physical choices,
+come from the project's **schema conventions**, selected in `.metaobjects/config.json`:
+
+```json
+{ "schema_version": 1, "migrate": { "conventions": "efcore" } }
+```
+
+| Decides | `default` (absent) | `efcore` |
+|---|---|---|
+| Primary-key constraint name | `<table>_pkey` | `PK_<table>` |
+| Foreign-key constraint name | `<table>_<first column>_fk` | `FK_<table>_<principal>_<columns>` |
+| Index on a foreign key | none | `IX_<table>_<columns>`, unless the primary key or an index already starts with the FK's columns |
+| Unique key (`identity.secondary`) | a unique index | a UNIQUE constraint when a foreign key references it, else a unique index |
+
+`efcore` reproduces EF Core's own conventions, including its truncation of a name longer
+than 63 characters to 62 characters and `~`, so a database first built by EF Core migrations
+and one built by `meta migrate` have the same catalog. `default` is what migrate has always
+emitted.
+
+Names code does address are not conventions. Tables, views and columns resolve in core
+naming (`naming`, and `@table` / `@column`), the same in every port. A constraint or index a
+program compares against (a unique-violation handler checking the constraint name) is
+declared in metadata: `@constraintName` on an `identity.reference`, or the index node's own
+name. A declared name always wins over a convention.
+
+A project can supply its own conventions from `metaobjects.config.ts`, which wins over the
+preset name:
+
+```ts
+import { defineConfig } from "@metaobjectsdev/cli";
+import { efcoreConventions } from "@metaobjectsdev/migrate-ts";
+
+export default defineConfig({
+  generators: [/* … */],
+  schemaConventions: { ...efcoreConventions, id: "acme", primaryKeyName: ({ table }) => `pk_${table}` },
+});
+```
+
+The conventions shape what migrate creates. The PK name and whether a unique key is a
+constraint or an index are not compared by the diff, so changing them never churns an
+existing database; FK and index names are compared, as they always have been.
+
 ## How CHECK constraints and expression indexes are compared
 
 Postgres rewrites an expression before it stores it (`"k" IN ('x')` becomes `k = 'x'::text`,

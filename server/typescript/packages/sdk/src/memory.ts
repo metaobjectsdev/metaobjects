@@ -114,6 +114,12 @@ export interface LoadMemoryOptions {
   physicalNaming?: PhysicalNaming;
   /** The project wire format; defaults to the collection's (`resolveCollection(...).wireFormat`) when `files` is not passed. */
   wireFormat?: WireFormat;
+  /**
+   * The schema conventions `meta migrate` names database-only objects with, set on the loaded
+   * root: a preset name, or a conventions object the project supplies. Defaults to the
+   * collection's `migrate.conventions` when `files` is not passed.
+   */
+  schemaConventions?: unknown;
 }
 
 /** Default provider bundle threaded by {@link loadMemory} when no options
@@ -169,7 +175,7 @@ export async function loadMemory(
   repoRoot: string,
   options?: LoadMemoryOptions,
 ): Promise<MetaRoot> {
-  const { result, importedPackages, importedNodes, libraries, physicalNaming, wireFormat } =
+  const { result, importedPackages, importedNodes, libraries, physicalNaming, wireFormat, schemaConventions } =
     await loadCollectionRaw(repoRoot, options, options?.strict === true);
 
   if (result.errors.length > 0) {
@@ -190,6 +196,7 @@ export async function loadMemory(
 
   if (physicalNaming !== undefined) result.root.physicalNaming = physicalNaming;
   if (wireFormat !== undefined) result.root.wireFormat = wireFormat;
+  if (schemaConventions !== undefined) result.root.schemaConventions = schemaConventions;
   return result.root;
 }
 
@@ -264,6 +271,7 @@ async function loadCollectionRaw(
   libraries: readonly string[] | undefined;
   physicalNaming: PhysicalNaming | undefined;
   wireFormat: WireFormat | undefined;
+  schemaConventions: unknown;
 }> {
   const extra = options?.providers ?? [];
   let providers: readonly MetaDataTypeProvider[];
@@ -292,6 +300,7 @@ async function loadCollectionRaw(
   let libraries: readonly string[] | undefined = options?.libraries;
   let physicalNaming: PhysicalNaming | undefined = options?.physicalNaming;
   let wireFormat: WireFormat | undefined = options?.wireFormat;
+  let schemaConventions: unknown = options?.schemaConventions;
   if (options?.files !== undefined) {
     paths = [...options.files];
     fileIds = options.fileIds;
@@ -312,6 +321,7 @@ async function loadCollectionRaw(
     libraries ??= collection.libraries;
     physicalNaming ??= collection.physicalNaming;
     wireFormat ??= collection.wireFormat;
+    schemaConventions ??= collection.schemaConventions;
   }
 
   const loader = new MetaDataLoader({
@@ -337,7 +347,7 @@ async function loadCollectionRaw(
       return id === undefined ? new FileSource(p) : new FileSource(p, { id });
     }),
   ]);
-  return { result, registry, importedPackages, importedNodes, libraries, physicalNaming, wireFormat };
+  return { result, registry, importedPackages, importedNodes, libraries, physicalNaming, wireFormat, schemaConventions };
 }
 
 /** Every source file that contributed to a node, across the envelope variants that
