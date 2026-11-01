@@ -7,6 +7,8 @@
 //     skips an unpublished CHANGELOG section (release prep bumped package.json to 1.1.0 and the
 //     next rc went out as 1.2.0-rc.3).
 // P2  the iteration counter reads every page of the registry's listing.
+// P4  only CHANGELOG sections on the released major line count; the old Maven-only [7.x] sections
+//     made a cut after 1.2.0 propose 7.20.12.
 // P3  a SIGTERM restores the version files, as exit and SIGINT already did, and stops a step that
 //     is still running instead of letting the run publish the remaining registries first.
 import assert from "node:assert/strict";
@@ -34,6 +36,16 @@ await test("changelog sections are read in order, [Unreleased] skipped", () => {
 await test("the release tag is the highest plain tag on the npm major line", () => {
   assert.equal(latestReleaseTag(["v1.0.9", "v1.0.13", "v1.1.0-rc.3", "v7.20.12", "v1.0.10"], 1), "1.0.13");
   assert.equal(latestReleaseTag(["v7.20.12"], 1), null);
+});
+
+await test("P4: a section from another major line (the old Maven-only [7.x]) is never the base", () => {
+  // 1.2.0 released; the CHANGELOG still carries historical Maven-only sections such as [7.20.12],
+  // which sort above every 1.x number. The cut must be 1.3.0 (nothing on 1.x is unpublished), not 7.20.12.
+  const md = "## [Unreleased]\n\n## [1.2.0] — 2026-10-30\n\n## [1.1.4]\n\n## [7.20.12] — 2026-08-02\n";
+  assert.deepEqual(decideBase({ released: "1.2.0", changelog: changelogVersions(md), explicit: null }),
+    { base: "1.3.0", source: "guessed from released 1.2.0" });
+  // and an explicit --base is not refused for "skipping" a section on another line
+  assert.equal(decideBase({ released: "1.2.0", changelog: changelogVersions(md), explicit: "1.2.1" }).base, "1.2.1");
 });
 
 await test("P1: release prep's package.json bump does not make 1.1.0 'released'", () => {

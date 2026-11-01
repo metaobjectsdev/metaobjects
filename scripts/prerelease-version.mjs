@@ -61,7 +61,12 @@ export function decideBase({ released, changelog, explicit }) {
         "Pass --base <x.y.z> (the CHANGELOG section being prepared).",
     );
   }
-  const unpublished = changelog.filter((v) => cmpVer(v, released) > 0).sort(cmpVer);
+  // Only sections on the released major line: the CHANGELOG also carries the old Maven-only
+  // [7.x] sections, which sort above every 1.x number and were proposed as the next base.
+  const major = Number(released.split(".")[0]);
+  const unpublished = changelog
+    .filter((v) => Number(v.split(".")[0]) === major && cmpVer(v, released) > 0)
+    .sort(cmpVer);
   if (explicit != null) {
     if (cmpVer(explicit, released) <= 0)
       throw new Error(`--base ${explicit} is not newer than the released ${released}`);
