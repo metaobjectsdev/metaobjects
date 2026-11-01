@@ -151,6 +151,13 @@ export type SchemaProvenance = ReadonlyMap<string, string>;
 export interface ExpectedSchemaWithProvenance {
   snapshot: SchemaSnapshot;
   provenance: SchemaProvenance;
+  /**
+   * Foreign keys whose target columns are not a unique key of the table they reference.
+   * Not thrown here: `scopeExpectedSchema` refuses the ones on governed tables and returns
+   * the rest (an imported or out-of-scope holder is not this project's to fix), and
+   * {@link buildExpectedSchema} refuses them all. Absent when there are none.
+   */
+  fkTargetViolations?: FkTargetViolation[];
 }
 
 /**
@@ -161,7 +168,10 @@ export function buildExpectedSchema(
   root: MetaData,
   opts?: BuildExpectedSchemaOptions,
 ): SchemaSnapshot {
-  return buildExpectedSchemaWithProvenance(root, opts).snapshot;
+  const built = buildExpectedSchemaWithProvenance(root, opts);
+  // No scope here: every FK whose target is not a unique key is refused.
+  if (built.fkTargetViolations !== undefined) throw new FkTargetNotUniqueError(built.fkTargetViolations);
+  return built.snapshot;
 }
 
 /**
@@ -261,14 +271,12 @@ export function buildExpectedSchemaWithProvenance(
   // them — a TPH subtype, for one, shares its base's table and declares none of its own).
   const provenance = new Map<string, string>();
 
-  // Pass 2: build full descriptors with FK resolution. Every FK whose target is not a
-  // unique key is collected here and refused once, after every table is built.
-  const fkTargetViolations: FkTargetViolation[] = [];
+  // Pass 2: build full descriptors with FK resolution.
   // The caller's conventions, else the ones the project-aware load put on the root
   // (`migrate.conventions`), else migrate's default.
   const conventions = opts?.conventions
     ?? resolveSchemaConventions((root.root() as { schemaConventions?: string | SchemaConventions }).schemaConventions);
-  const fkCtx: ForeignKeyBuildContext = { conventions, violations: fkTargetViolations };
+  const fkCtx: ForeignKeyBuildContext = { conventions, origins: new Map() };
   // Schema is resolved here (not stored in Pass 1) to avoid exactOptionalPropertyTypes
   // issues with `string | undefined` vs `schema?: string`.
   const tables: TableDescriptor[] = entities.map(({ entity, tableName }) => {
@@ -281,7 +289,9 @@ export function buildExpectedSchemaWithProvenance(
     return t;
   });
 
-  if (fkTargetViolations.length > 0) throw new FkTargetNotUniqueError(fkTargetViolations);
+  // Checked against the BUILT tables, before the conventions add FK indexes: a key the model
+  // declares but never emits (on a TPH subtype) is no key a database can reference.
+  const fkTargetViolations = collectFkTargetViolations(tables, fkCtx.origins, provenance);
   applySchemaConventions(tables, conventions);
 
   // Pass 3: dialect-specific SqlType normalization.
@@ -425,7 +435,7 @@ export function buildExpectedSchemaWithProvenance(
     }));
   if (collisions.length > 0) throw new DuplicateSqlNameError(collisions);
 
-  return { snapshot: { tables, views }, provenance };
+  return { snapshot: { tables, views }, provenance, ...(fkTargetViolations.length > 0 ? { fkTargetViolations } : {}) };
 }
 
 /**
@@ -1042,14 +1052,6 @@ function buildForeignKeys(
     const targetFieldNames = explicitTargetFields.length > 1
       ? explicitTargetFields
       : [refChild.resolvedTargetPkField(root) ?? "id"];
-    // Guard: an explicit target must be a unique key on the target, or the database
-    // refuses the FK at apply time. The bare form targets the primary key by construction.
-    if (explicitTargetFields.length > 0 && !isUniqueKeyOf(targetObj, explicitTargetFields)) {
-      fkCtx.violations.push({
-        entityName: holder.name, referenceName: refChild.name, targetEntityName: targetObj.name, targetFields: explicitTargetFields,
-      });
-      continue;
-    }
     const refColumns = targetFieldNames.map((jsName) => {
       const targetField = findField(targetObj, jsName);
       return targetField
@@ -1085,6 +1087,10 @@ function buildForeignKeys(
     // Two subtypes may declare the same FK column; it folds to ONE column, so ONE constraint.
     if (fks.some((existing) => existing.name === fk.name)) continue;
     fks.push(fk);
+    fkCtx.origins.set(fk, {
+      entityName: holder.name, referenceName: refChild.name, targetEntityName: targetObj.name,
+      targetKey: targetObj.resolutionKey(), targetFields: targetFieldNames,
+    });
   }
   return fks;
 }
@@ -1092,7 +1098,58 @@ function buildForeignKeys(
 /** What building a table's foreign keys needs beyond the table: the conventions, and where refusals go. */
 interface ForeignKeyBuildContext {
   conventions: SchemaConventions;
-  violations: FkTargetViolation[];
+  /** Where each built FK came from, for the target check that runs once every table is built. */
+  origins: Map<FkDescriptor, FkOrigin>;
+}
+
+interface FkOrigin {
+  entityName: string;
+  referenceName: string;
+  targetEntityName: string;
+  /** The target entity's resolution key, to tell a TPH subtype from the entity owning the table. */
+  targetKey: string;
+  targetFields: string[];
+}
+
+/**
+ * Every built FK whose referenced columns are not a unique key of the BUILT target table: its
+ * primary key, or a unique index with no predicate or expression, as a column set (Postgres
+ * accepts any order). A target this model does not build — an @unmanaged table, another
+ * owner's — is skipped: its keys are not known here, and the database is the judge.
+ */
+function collectFkTargetViolations(
+  tables: TableDescriptor[],
+  origins: ReadonlyMap<FkDescriptor, FkOrigin>,
+  provenance: ReadonlyMap<string, string>,
+): FkTargetViolation[] {
+  const setOf = (columns: readonly string[]) => [...columns].sort().join(",");
+  const violations: FkTargetViolation[] = [];
+  for (const t of tables) {
+    for (const fk of t.foreignKeys) {
+      // The emitter assumes the referenced table lives in the holder's schema.
+      const target = tables.find((x) => x.name === fk.refTable && x.schema === t.schema);
+      if (target === undefined) continue;
+      const wanted = setOf(fk.refColumns);
+      const keys = [
+        target.primaryKey,
+        ...target.indexes.filter((ix) => ix.unique && ix.where === undefined && ix.expr === undefined).map((ix) => ix.columns),
+      ];
+      if (keys.some((k) => k.length > 0 && setOf(k) === wanted)) continue;
+      const origin = origins.get(fk);
+      if (origin === undefined) continue;
+      const owner = provenance.get(qualifiedDbName(target));
+      const storedIn = owner !== undefined && owner !== origin.targetKey ? owner.split("::").pop() : undefined;
+      violations.push({
+        table: qualifiedDbName(t),
+        entityName: origin.entityName,
+        referenceName: origin.referenceName,
+        targetEntityName: origin.targetEntityName,
+        targetFields: origin.targetFields,
+        ...(storedIn !== undefined ? { storedIn } : {}),
+      });
+    }
+  }
+  return violations;
 }
 
 /**
@@ -1135,28 +1192,6 @@ function applySchemaConventions(tables: TableDescriptor[], conventions: SchemaCo
   }
 }
 
-/**
- * True when `fieldNames` (in any order) are a key the target table holds unique: exactly its
- * primary key, exactly a plain identity.secondary (a partial or expression index is not a key
- * a foreign key may reference), or a single field declaring @unique.
- */
-function isUniqueKeyOf(target: MetaObject, fieldNames: string[]): boolean {
-  const wanted = [...fieldNames].sort().join(",");
-  const same = (fields: string[]) => [...fields].sort().join(",") === wanted;
-  const primary = target.primaryIdentity();
-  if (primary !== undefined && same(readIdentityFields(primary))) return true;
-  for (const secondary of target.secondaryIdentities()) {
-    // ADR-0039: resolving — @where / @expr may be inherited via extends.
-    if (secondary.attr(IDENTITY_ATTR_WHERE) !== undefined || secondary.attr(IDENTITY_ATTR_EXPR) !== undefined) continue;
-    if (same(readIdentityFields(secondary))) return true;
-  }
-  if (fieldNames.length === 1) {
-    const field = findField(target, fieldNames[0]!);
-    // ADR-0039: resolving — @unique may be inherited via extends.
-    if (field !== undefined && field.attr(FIELD_ATTR_UNIQUE) === true) return true;
-  }
-  return false;
-}
 
 /**
  * Expand a `field.object @storage "flattened"` into one ColumnDescriptor per

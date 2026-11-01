@@ -44,25 +44,27 @@ const MODEL = JSON.stringify({
   },
 });
 
-async function project(): Promise<string> {
+async function project(migrate: Record<string, unknown> = { dialect: "sqlite" }): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "fk-target-unique-"));
   dirs.push(root);
   await mkdir(join(root, "metaobjects"), { recursive: true });
   await writeFile(join(root, "metaobjects", "meta.platform.json"), MODEL, "utf8");
   await mkdir(join(root, ".metaobjects", "migrations"), { recursive: true });
-  await writeFile(join(root, ".metaobjects", "config.json"), JSON.stringify({ schema_version: 1, migrate: { dialect: "sqlite" } }), "utf8");
+  await writeFile(join(root, ".metaobjects", "config.json"), JSON.stringify({ schema_version: 1, migrate }), "utf8");
   return root;
 }
 
 let out: string[] = [];
 let infoSpy: ReturnType<typeof spyOn>;
 let errSpy: ReturnType<typeof spyOn>;
+let warnSpy: ReturnType<typeof spyOn>;
 beforeEach(() => {
   out = [];
   infoSpy = spyOn(log, "info").mockImplementation((m: string) => { out.push(String(m)); });
   errSpy = spyOn(log, "error").mockImplementation((m: string) => { out.push(String(m)); });
+  warnSpy = spyOn(log, "warn").mockImplementation((m: string) => { out.push(String(m)); });
 });
-afterEach(() => { infoSpy.mockRestore(); errSpy.mockRestore(); });
+afterEach(() => { infoSpy.mockRestore(); errSpy.mockRestore(); warnSpy.mockRestore(); });
 
 describe("meta migrate refuses an FK to a non-unique target", () => {
   test("exits 1 with the reference named and the fix, not as an unexpected error", async () => {
@@ -75,5 +77,15 @@ describe("meta migrate refuses an FK to a non-unique target", () => {
     expect(text).toContain("identity.secondary");
     expect(text).not.toContain("unexpected error");
     expect(text).not.toContain("CREATE TABLE");
+  });
+
+  test("a holder outside migrate.scope is not this run's to fix: warned, and the run goes on", async () => {
+    const root = await project({ dialect: "sqlite", scope: ["acme::platform::Person"] });
+    const code = await migrateCommand(["--from-db", "--db", `file:${join(root, "t.db")}`, "--dialect", "sqlite", "--dry-run"], root);
+
+    const text = out.join("\n");
+    expect(code).toBe(0);
+    expect(text).toContain('reference "ref_person" targets [code] on "Person"');
+    expect(text).toContain("not governed by this run");
   });
 });

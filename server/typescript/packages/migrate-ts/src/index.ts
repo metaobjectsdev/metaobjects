@@ -65,6 +65,7 @@ export {
   isUnknownSchemaConventionsError,
   UnknownSchemaConventionsError,
   FkTargetNotUniqueError,
+  type FkTargetViolation,
 } from "./errors.js";
 export type { SqlNameCollision } from "./errors.js";
 

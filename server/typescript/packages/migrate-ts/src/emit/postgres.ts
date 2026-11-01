@@ -37,6 +37,8 @@ import { dataHazardOf } from "../hazards.js";
 const STAGE_ORDER: Record<Change["kind"], number> = {
   "drop-view": 0,
   "rename-table": 0.5,
+  // After a table rename (its new name is the one this change addresses), before every drop/add.
+  "rename-constraints": 0.6,
   "drop-fk": 1, "drop-check": 1,
   "create-table": 1,
   "drop-index": 1.5,
@@ -230,6 +232,7 @@ function renderUp(c: Change, recreated: ReadonlySet<string> = new Set()): string
     // so a no-op down would still record the rollback as done.
     case "drop-table":             return `DROP TABLE IF EXISTS ${quoteQualified(c.table, c.schema)};`;
     case "rename-table":           return renderRenameTable(c, "up");
+    case "rename-constraints":     return renderRenameConstraints(c, "up");
     case "add-column": {
       const base = `ALTER TABLE ${quoteQualified(c.table, c.schema)} ADD COLUMN ${renderColumn(c.column)};`;
       if (!c.column.description) return base;
@@ -339,6 +342,20 @@ function renderRenameTable(c: Extract<Change, { kind: "rename-table" }>, dir: "u
   return (up ? lines : [...lines].reverse()).join("\n\n");
 }
 
+/** Constraints and indexes renamed in place on a table that keeps its name; the down renames them back. */
+function renderRenameConstraints(c: Extract<Change, { kind: "rename-constraints" }>, dir: "up" | "down"): string {
+  const up = dir === "up";
+  const table = quoteQualified(c.table, c.schema);
+  const flip = (r: NameChange): NameChange => (up ? r : { from: r.to, to: r.from });
+  const lines = [
+    ...(c.constraintRenames ?? []).map(flip).map((r) =>
+      `ALTER TABLE ${table} RENAME CONSTRAINT ${quote(r.from)} TO ${quote(r.to)};`),
+    ...(c.indexRenames ?? []).map(flip).map((r) =>
+      `ALTER INDEX ${quoteIndexQualified(r.from, c.schema)} RENAME TO ${quote(r.to)};`),
+  ];
+  return (up ? lines : [...lines].reverse()).join("\n\n");
+}
+
 function renderDown(c: Change, recreated: ReadonlySet<string> = new Set()): string {
   switch (c.kind) {
     case "create-table":           return `DROP TABLE ${quoteQualified(c.table.name, c.table.schema)};`;
@@ -360,6 +377,7 @@ function renderDown(c: Change, recreated: ReadonlySet<string> = new Set()): stri
       return parts.join("\n");
     }
     case "rename-table":           return renderRenameTable(c, "down");
+    case "rename-constraints":     return renderRenameConstraints(c, "down");
     case "add-column":             return `ALTER TABLE ${quoteQualified(c.table, c.schema)} DROP COLUMN ${quote(c.column.name)};`;
     case "drop-column":
       return c.restore

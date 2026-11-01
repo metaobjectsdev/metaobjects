@@ -35,12 +35,16 @@ export class SetNullNotNullableError extends Error {
   }
 }
 
-/** One identity.reference whose dotted @references names fields the target does not hold unique. */
+/** One identity.reference whose target fields are not a unique key on the table it references. */
 export interface FkTargetViolation {
+  /** The holder's table, qualified (`<schema>.<table>`): what `scopeExpectedSchema` governs by. */
+  table: string;
   entityName: string;
   referenceName: string;
   targetEntityName: string;
   targetFields: string[];
+  /** Set when the target is a TPH subtype: the entity whose table it is stored in. */
+  storedIn?: string;
 }
 
 /**
@@ -57,9 +61,12 @@ export class FkTargetNotUniqueError extends Error {
   constructor(violations: FkTargetViolation[]) {
     const lines = violations.map((v) => {
       const fieldList = v.targetFields.join(", ");
-      return `Entity "${v.entityName}": reference "${v.referenceName}" targets [${fieldList}] on "${v.targetEntityName}", ` +
-        `which is not a unique key there (not its primary key, an identity.secondary without @where/@expr, or a @unique field). ` +
-        `Fix: declare an identity.secondary on "${v.targetEntityName}" with @fields [${fieldList}].`;
+      const head = `Entity "${v.entityName}": reference "${v.referenceName}" targets [${fieldList}] on "${v.targetEntityName}", ` +
+        `which is not a unique key of its table (its primary key, an identity.secondary without @where/@expr, or a @unique field). `;
+      return v.storedIn !== undefined
+        ? head + `"${v.targetEntityName}" is stored in the table of "${v.storedIn}", and a key declared on a TPH subtype is not emitted: ` +
+          `declare it on "${v.storedIn}" (an identity.secondary with @fields [${fieldList}]).`
+        : head + `Fix: declare an identity.secondary on "${v.targetEntityName}" with @fields [${fieldList}], or reference its whole primary key.`;
     });
     const head = violations.length === 1
       ? "A database refuses this foreign key."
@@ -117,6 +124,8 @@ function changeLocator(c: Change): string {
     case "drop-table":
     case "rename-table":
       return c.kind === "drop-table" ? c.table : `${c.from}→${c.to}`;
+    case "rename-constraints":
+      return `${c.table}: ${[...(c.constraintRenames ?? []), ...(c.indexRenames ?? [])].map((r) => `${r.from}→${r.to}`).join(", ")}`;
     case "create-table":
       return c.table.name;
     case "add-index":

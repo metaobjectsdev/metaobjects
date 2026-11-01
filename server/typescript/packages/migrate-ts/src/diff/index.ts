@@ -285,7 +285,23 @@ export async function diff(
     const actualTable = actualTables.get(id);
     if (!actualTable) continue;
     // An FK onto a renamed table follows the rename in the engine — compare it as such.
-    diffTablePair(expectedTable, withRenamedRefTables(actualTable, renamed), changes, args.dialect, canon);
+    if (args.dialect !== "postgres") {
+      diffTablePair(expectedTable, withRenamedRefTables(actualTable, renamed), changes, args.dialect, canon);
+      continue;
+    }
+    // Postgres: a constraint or index whose only change is its name is renamed in place.
+    const tableChanges: Change[] = [];
+    diffTablePair(expectedTable, withRenamedRefTables(actualTable, renamed), tableChanges, args.dialect, canon);
+    const { constraintRenames, indexRenames, rest } = pairNameOnlyChanges(tableChanges, textColumnsOf(actualTable), canon);
+    if (constraintRenames.length > 0 || indexRenames.length > 0) {
+      changes.push({
+        kind: "rename-constraints", table: expectedTable.name, ...schemaSpread(expectedTable.schema),
+        ...(constraintRenames.length > 0 ? { constraintRenames } : {}),
+        ...(indexRenames.length > 0 ? { indexRenames } : {}),
+        status: ALLOWED,
+      });
+    }
+    changes.push(...rest);
   }
 
   // Pass 2b: views. Identity is (schema, name). How "changed" is decided is
@@ -540,6 +556,21 @@ function foldNameOnlyChanges(
   textColumns: ReadonlySet<string>,
   canon: ExprCanon,
 ): Change[] {
+  const { constraintRenames, indexRenames, rest } = pairNameOnlyChanges(tableChanges, textColumns, canon);
+  if (constraintRenames.length > 0) r.constraintRenames = constraintRenames;
+  if (indexRenames.length > 0) r.indexRenames = indexRenames;
+  return rest;
+}
+
+/**
+ * Pair each drop of a constraint or index with an add of the SAME definition under another
+ * name. The pairs are name changes; `rest` is every other change, in order.
+ */
+function pairNameOnlyChanges(
+  tableChanges: Change[],
+  textColumns: ReadonlySet<string>,
+  canon: ExprCanon,
+): { constraintRenames: NameChange[]; indexRenames: NameChange[]; rest: Change[] } {
   const constraintRenames: NameChange[] = [];
   const indexRenames: NameChange[] = [];
   const folded = new Set<Change>();
@@ -567,10 +598,7 @@ function foldNameOnlyChanges(
       }
     }
   }
-  if (folded.size === 0) return tableChanges;
-  if (constraintRenames.length > 0) r.constraintRenames = constraintRenames;
-  if (indexRenames.length > 0) r.indexRenames = indexRenames;
-  return tableChanges.filter((c) => !folded.has(c));
+  return { constraintRenames, indexRenames, rest: folded.size === 0 ? tableChanges : tableChanges.filter((c) => !folded.has(c)) };
 }
 
 function idOfChange(c: Change): string | undefined {

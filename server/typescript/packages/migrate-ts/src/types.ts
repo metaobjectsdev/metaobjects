@@ -258,6 +258,19 @@ export type Change =
       indexRenames?: NameChange[];
       status: ChangeStatus;
     }
+  | {
+      kind: "rename-constraints"; table: string; schema?: string;
+      /**
+       * Constraints (FK / CHECK / constraint-backed index) on a table that is NOT renamed,
+       * whose definition is unchanged and whose name differs — e.g. after the project's
+       * schema conventions changed. Renamed in place, never dropped and re-created.
+       * Postgres only; sqlite/d1 cannot rename a constraint and keep the drop+add.
+       */
+      constraintRenames?: NameChange[];
+      /** Plain indexes on that table whose definition is unchanged and whose name differs. Postgres only. */
+      indexRenames?: NameChange[];
+      status: ChangeStatus;
+    }
   | { kind: "add-column"; table: string; schema?: string; column: ColumnDescriptor; status: ChangeStatus }
   | { kind: "drop-column"; table: string; schema?: string; column: string; restore?: ColumnDescriptor; status: ChangeStatus }
   | {

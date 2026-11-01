@@ -179,6 +179,7 @@ function blockFor(
     // Always-allowed kinds
     case "create-table":
     case "rename-table":
+    case "rename-constraints":
     case "add-column":
     case "rename-column":
     case "add-index":

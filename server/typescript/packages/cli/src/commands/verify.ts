@@ -91,6 +91,10 @@ import {
   postgresExprCanonProbe,
   type ShadowSchemaSource,
   withoutFlywayHistory,
+  isFkTargetNotUniqueError,
+  isUnknownSchemaConventionsError,
+  resolveSchemaConventions,
+  type SchemaConventions,
 } from "@metaobjectsdev/migrate-ts";
 import {
   DEFAULT_METAOBJECTS_DIR,
@@ -388,6 +392,17 @@ export async function verifyCommand(
         : isStrictAttr ? strictHint : "fix the metadata error above and re-run",
     }, fmt);
     return 1;
+  }
+
+  // A `migrate.conventions` preset this version does not ship is a config error on every
+  // verify run, not only one that builds the expected schema (a typo'd preset otherwise
+  // passes `meta verify` and changes nothing until `meta migrate`).
+  try {
+    resolveSchemaConventions((root as { schemaConventions?: string | SchemaConventions }).schemaConventions);
+  } catch (err) {
+    if (!isUnknownSchemaConventionsError(err)) throw err;
+    log.error(`verify: ${err.message}`);
+    return 2;
   }
 
   // The schema gate governs exactly the objects `meta migrate` governs — ONE
@@ -1387,6 +1402,16 @@ export async function verifyCommand(
           ...importedOption(collection),
         });
       } catch (err) {
+        // Metadata refusals raised while building the expected side, not introspection failures.
+        if (isFkTargetNotUniqueError(err)) {
+          log.error(`verify: ${err.message}`);
+          log.error("verify: declare an identity.secondary on the target entity with exactly the referenced fields, or reference its primary key");
+          return 1;
+        }
+        if (isUnknownSchemaConventionsError(err)) {
+          log.error(`verify: ${err.message}`);
+          return 2;
+        }
         schemaRunError = `failed to introspect ${kysely.displayUrl}: ${describeError(err)}`;
         log.error(`verify: ${schemaRunError}`);
         return 1;
@@ -1874,6 +1899,7 @@ const DRIFT_PRESENTATION: Record<Change["kind"], { glyph: string; noun: string }
   "create-table": { glyph: "+", noun: "table" },
   "drop-table": { glyph: "-", noun: "table" },
   "rename-table": { glyph: "~", noun: "table" },
+  "rename-constraints": { glyph: "~", noun: "constraint name" },
   "add-column": { glyph: "+", noun: "column" },
   "drop-column": { glyph: "-", noun: "column" },
   "rename-column": { glyph: "~", noun: "column" },

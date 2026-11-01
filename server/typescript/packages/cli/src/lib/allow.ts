@@ -65,6 +65,8 @@ export function describeChange(c: Change): string {
     case "create-table": return c.table.name;
     case "drop-table": return c.table;
     case "rename-table": return `${c.from} → ${c.to}`;
+    case "rename-constraints":
+      return `${c.table} ${[...(c.constraintRenames ?? []), ...(c.indexRenames ?? [])].map((r) => `${r.from} → ${r.to}`).join(", ")}`;
     case "add-column": return `${c.table}.${c.column.name}`;
     case "drop-column": return `${c.table}.${c.column}`;
     case "rename-column": return `${c.table}.${c.from} → ${c.table}.${c.to}`;

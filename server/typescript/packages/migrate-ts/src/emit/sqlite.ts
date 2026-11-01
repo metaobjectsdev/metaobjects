@@ -41,6 +41,7 @@ const STAGE_ORDER: Record<Change["kind"], number> = {
   // rename-table runs before every other table change (mirrors postgres): changes on a
   // renamed table — including its recreate-and-copy — are keyed by the NEW name.
   "rename-table": 0.5,
+  "rename-constraints": 0.6,
   "drop-fk": 1, "drop-check": 1,
   "create-table": 1,
   "drop-index": 1.5,
@@ -151,6 +152,7 @@ export function changeTable(c: Change): string | undefined {
     case "create-table": return c.table.name;
     case "drop-table":   return c.table;
     case "rename-table": return c.from;             // applies to source table
+    case "rename-constraints": return c.table;
     case "add-column":
     case "drop-column":
     case "rename-column":
@@ -390,6 +392,8 @@ function renderUpNative(c: Change): string {
       assertNoCarriedRenames(c);
       return `ALTER TABLE ${quote(c.from)} RENAME TO ${quote(c.to)};`;
     }
+    case "rename-constraints":
+      throw new Error("rename-constraints is postgres-only — the sqlite/d1 diff never produces it (sqlite cannot rename a constraint)");
     case "add-column":     return `ALTER TABLE ${quote(c.table)} ADD COLUMN ${renderColumnInline(c.column)};`;
     case "drop-column":    return `ALTER TABLE ${quote(c.table)} DROP COLUMN ${quote(c.column)};`;
     case "rename-column": {
@@ -438,6 +442,8 @@ function renderDownNative(c: Change): string {
       assertNoCarriedRenames(c);
       return `ALTER TABLE ${quote(c.to)} RENAME TO ${quote(c.from)};`;
     }
+    case "rename-constraints":
+      throw new Error("rename-constraints is postgres-only — the sqlite/d1 diff never produces it (sqlite cannot rename a constraint)");
     case "add-column":     return `ALTER TABLE ${quote(c.table)} DROP COLUMN ${quote(c.column.name)};`;
     case "drop-column":    return `-- WARNING: down migration cannot restore data\n-- TODO: re-add dropped column "${c.column}" manually`;
     case "rename-column": {

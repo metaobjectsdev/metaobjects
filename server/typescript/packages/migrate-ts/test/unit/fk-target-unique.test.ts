@@ -15,6 +15,8 @@ import { describe, test, expect } from "bun:test";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { buildExpectedSchema } from "../../src/expected-schema.js";
 import { FkTargetNotUniqueError } from "../../src/errors.js";
+import { buildExpectedSchemaWithProvenance } from "../../src/expected-schema.js";
+import { scopeExpectedSchema } from "../../src/scope.js";
 
 async function loadDoc(doc: unknown) {
   const { root, errors } = await new MetaDataLoader().load([
@@ -149,5 +151,73 @@ describe("buildExpectedSchema — an FK must reference a unique key", () => {
   test("the target's primary key, bare or dotted → no throw", async () => {
     expect(await build({ references: "Person", holderFields: ["personId"] })).not.toThrow();
     expect(await build({ references: "Person.id", holderFields: ["personId"] })).not.toThrow();
+  });
+
+  test("a TPH subtype's unique key is not emitted, so it does not count — the hint names the base", async () => {
+    const doc = { "metadata.root": { package: "acme", children: [
+      { "object.entity": { name: "Party", "@discriminator": "kind", children: [
+        { "source.rdb": { "@table": "parties" } },
+        { "field.long": { name: "id" } },
+        { "field.enum": { name: "kind", "@values": ["Carrier", "Broker"] } },
+        { "identity.primary": { name: "id", "@fields": "id" } },
+      ] } },
+      { "object.entity": { name: "Carrier", extends: "Party", "@discriminatorValue": "Carrier", children: [
+        { "field.string": { name: "code" } },
+        { "identity.secondary": { name: "ux_carrier_code", "@fields": ["code"] } },
+      ] } },
+      { "object.entity": { name: "Policy", children: [
+        { "source.rdb": { "@table": "policies" } },
+        { "field.long": { name: "id" } },
+        { "field.string": { name: "carrierCode" } },
+        { "identity.primary": { name: "id", "@fields": "id" } },
+        { "identity.reference": { name: "ref_carrier", "@fields": ["carrierCode"], "@references": "Carrier.code" } },
+      ] } },
+    ] } };
+    const root = await loadDoc(doc);
+
+    expect(() => buildExpectedSchema(root)).toThrow(FkTargetNotUniqueError);
+    expect(() => buildExpectedSchema(root)).toThrow(/stored in the table of "Party".*declare it on "Party"/);
+  });
+
+  test("a bare reference into a composite primary key with one FK field is refused", async () => {
+    const doc = { "metadata.root": { package: "acme", children: [
+      { "object.entity": { name: "Line", children: [
+        { "source.rdb": {} },
+        { "field.long": { name: "orderId" } },
+        { "field.int": { name: "lineNo" } },
+        { "identity.primary": { name: "pk", "@fields": ["orderId", "lineNo"] } },
+      ] } },
+      { "object.entity": { name: "Note", children: [
+        { "source.rdb": {} },
+        { "field.long": { name: "id" } },
+        { "field.long": { name: "lineOrderId" } },
+        { "identity.primary": { name: "pk", "@fields": "id" } },
+        { "identity.reference": { name: "ref_line", "@fields": ["lineOrderId"], "@references": "Line" } },
+      ] } },
+    ] } };
+
+    const root = await loadDoc(doc);
+
+    expect(() => buildExpectedSchema(root)).toThrow(FkTargetNotUniqueError);
+    expect(() => buildExpectedSchema(root)).toThrow(/reference "ref_line" targets \[orderId\] on "Line"/);
+  });
+
+  test("a target this model does not build (@unmanaged) is not refused: its keys are not known here", async () => {
+    const doc = makeDoc({ references: "Person.code", holderFields: ["personCode"] });
+    const person = (doc["metadata.root"].children[0] as { "object.entity": { children: unknown[] } })["object.entity"];
+    person.children[0] = { "source.rdb": { "@unmanaged": true } };
+    const root = await loadDoc(doc);
+
+    expect(() => buildExpectedSchema(root)).not.toThrow();
+  });
+
+  test("through scopeExpectedSchema only a governed holder is refused; the others are returned", async () => {
+    const root = await loadDoc(makeDoc({ references: "Person.code", holderFields: ["personCode"] }));
+    const built = buildExpectedSchemaWithProvenance(root);
+
+    expect(built.fkTargetViolations?.map((v) => v.referenceName)).toEqual(["ref_person"]);
+    expect(() => scopeExpectedSchema(built, undefined)).toThrow(FkTargetNotUniqueError);
+    const outside = scopeExpectedSchema(built, (fqn) => !fqn.endsWith("Visit"));
+    expect(outside.ungovernedFkTargetViolations?.map((v) => v.referenceName)).toEqual(["ref_person"]);
   });
 });

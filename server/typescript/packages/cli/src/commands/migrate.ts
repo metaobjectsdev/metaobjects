@@ -22,6 +22,8 @@ import {
   isDeclaredRenameError,
   isDuplicateSqlNameError,
   isFkTargetNotUniqueError,
+  FkTargetNotUniqueError,
+  type FkTargetViolation,
   isUnknownSchemaConventionsError,
   buildExpectedSchemaWithProvenance,
   scopeExpectedSchema,
@@ -359,6 +361,16 @@ function mapOnAmbiguous(v: "abort" | "rename" | "drop-add"): AmbiguousResolution
  * for scope. The engine's guards (`isPrimaryKeyChangeError` et al.) narrow at the catch
  * site; only the hint varies by refusal, so each hint is written once.
  */
+/**
+ * FKs whose target is not a unique key, on tables this run does not govern (imported, or
+ * outside migrate.scope). This project never emits them, so they are reported, not refused.
+ */
+function warnUngovernedFkTargets(violations: readonly FkTargetViolation[] | undefined): void {
+  if (violations === undefined || violations.length === 0) return;
+  log.warn(`migrate: ${new FkTargetNotUniqueError([...violations]).message}`);
+  log.warn(`migrate: the table(s) holding ${violations.length === 1 ? "that foreign key are" : "those foreign keys are"} not governed by this run (imported, or outside migrate.scope), so nothing is refused.`);
+}
+
 function refuseEngineError(err: Error, hint: string, fmt: OutputFormat): number {
   log.error(`migrate: ${err.message}`);
   emitStructuredError(`migrate: ${err.message}`, hint, fmt);
@@ -822,6 +834,7 @@ export async function migrateCommand(
     const scoped = scopeExpectedSchema(built, collection.inMigrateScope, importedOption(collection));
     const expected = scoped.snapshot;
     logOutOfScope(scoped.outOfScope, scoped.importedOutOfScope ?? [], fmt);
+    warnUngovernedFkTargets(scoped.ungovernedFkTargetViolations);
     let actual;
     try {
       actual = await introspect(kysely.db, kysely.dialect);
@@ -1815,6 +1828,7 @@ async function runD1Migrate(
   const scoped = scopeExpectedSchema(built, collection.inMigrateScope, importedOption(collection));
   const expected = scoped.snapshot;
   logOutOfScope(scoped.outOfScope, scoped.importedOutOfScope ?? [], fmt);
+  warnUngovernedFkTargets(scoped.ungovernedFkTargetViolations);
   let actual;
   try {
     actual = await introspectD1({
