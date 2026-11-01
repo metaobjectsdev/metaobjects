@@ -87,6 +87,33 @@ describe("buildExpectedSchema — an FK must reference a unique key", () => {
     expect(run).toThrow(/identity\.secondary/);
   });
 
+  test("every offending reference, across tables, in ONE error — not one per run", async () => {
+    const doc = makeDoc({ references: "Person.code", holderFields: ["personCode"] });
+    const children = (doc["metadata.root"] as { children: unknown[] }).children;
+    children.push({
+      "object.entity": {
+        name: "Badge",
+        children: [
+          { "source.rdb": {} },
+          { "field.long": { name: "id" } },
+          { "field.long": { name: "ownerRegion" } },
+          { "identity.primary": { name: "id", "@fields": "id" } },
+          { "identity.reference": { name: "ref_owner", "@fields": ["ownerRegion"], "@references": "Person.region" } },
+        ],
+      },
+    });
+    const root = await loadDoc(doc);
+
+    let caught: unknown;
+    try { buildExpectedSchema(root); } catch (e) { caught = e; }
+
+    expect(caught).toBeInstanceOf(FkTargetNotUniqueError);
+    const err = caught as FkTargetNotUniqueError;
+    expect(err.violations.map((v) => `${v.entityName}.${v.referenceName}`).sort()).toEqual(["Badge.ref_owner", "Visit.ref_person"]);
+    expect(err.message).toContain('reference "ref_person" targets [code] on "Person"');
+    expect(err.message).toContain('reference "ref_owner" targets [region] on "Person"');
+  });
+
   test("a composite target that is not a declared key → throws", async () => {
     const run = await build({ references: "Person.id,region", holderFields: ["personId", "personRegion"] });
 

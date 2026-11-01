@@ -39,8 +39,10 @@ here.**
   not the target's primary key, a plain `identity.secondary` (no `@where`, no `@expr`) or a single
   `@unique` field used to emit an FK the database refuses at apply time ("there is no unique
   constraint matching given keys"), after earlier statements had already run. `meta migrate` and
-  `meta verify --db` now fail first with `FkTargetNotUniqueError`, naming the entity, the reference,
-  the target and its fields. Fix: declare an `identity.secondary` on those fields of the target.
+  `meta verify --db` now fail first with `FkTargetNotUniqueError`, which lists every offending
+  reference at once (entity, reference, target and fields), and `meta migrate` reports it as a
+  metadata refusal with a hint rather than an unexpected error. Fix: declare an
+  `identity.secondary` on those fields of the target.
 - **A prompt or output template that names a variable not on its payload now raises at render time.**
   Behaviour change: a generated render helper used to render `Hi {{nmae}}` as `Hi ` with no error
   when the payload declares `name`; it now raises `ERR_VAR_NOT_ON_PAYLOAD (nmae)` (`RenderError` in

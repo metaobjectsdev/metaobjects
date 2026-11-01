@@ -21,6 +21,7 @@ import {
   isPrimaryKeyChangeError,
   isDeclaredRenameError,
   isDuplicateSqlNameError,
+  isFkTargetNotUniqueError,
   buildExpectedSchemaWithProvenance,
   scopeExpectedSchema,
   scopedDiffInputs,
@@ -367,6 +368,8 @@ const PK_CHANGE_HINT =
   "align the primary key manually, or reconcile the metadata identity to match the live table";
 const DUPLICATE_SQL_NAME_HINT =
   "rename one of the colliding declarations; an index's database name is its identity.secondary / index.lookup name, not prefixed with its table";
+const FK_TARGET_NOT_UNIQUE_HINT =
+  "declare an identity.secondary on the target entity with exactly the referenced fields, or reference its primary key";
 const DECLARED_RENAME_HINT =
   "fix or remove the --rename-table / --rename-column flag; a table's name is its name in the metadata (the new name when it is renamed too)";
 
@@ -1151,6 +1154,8 @@ export async function migrateCommand(
     if (err instanceof AlreadyEmittedError) return err.exitCode;
     // A metadata defect, not a tool failure: two declarations generate one database name.
     if (isDuplicateSqlNameError(err)) return refuseEngineError(err, DUPLICATE_SQL_NAME_HINT, fmt);
+    // A metadata defect too: a foreign key whose target columns are not a unique key there.
+    if (isFkTargetNotUniqueError(err)) return refuseEngineError(err, FK_TARGET_NOT_UNIQUE_HINT, fmt);
     // Unexpected error: emit structured error on stdout in the active format, then exit 1.
     const msg = describeError(err) ?? String(err);
     log.error(`migrate: unexpected error: ${msg}`);

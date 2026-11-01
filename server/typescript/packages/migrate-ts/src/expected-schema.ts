@@ -1,4 +1,4 @@
-import { DuplicateSqlNameError, FkTargetNotUniqueError } from "./errors.js";
+import { DuplicateSqlNameError, FkTargetNotUniqueError, type FkTargetViolation } from "./errors.js";
 import type {
   ColumnNamingStrategy, MetaData, MetaField, MetaObject, MetaReferenceIdentity, MetaRoot, MetaValidator,
 } from "@metaobjectsdev/metadata";
@@ -254,18 +254,22 @@ export function buildExpectedSchemaWithProvenance(
   // them — a TPH subtype, for one, shares its base's table and declares none of its own).
   const provenance = new Map<string, string>();
 
-  // Pass 2: build full descriptors with FK resolution.
+  // Pass 2: build full descriptors with FK resolution. Every FK whose target is not a
+  // unique key is collected here and refused once, after every table is built.
+  const fkTargetViolations: FkTargetViolation[] = [];
   // Schema is resolved here (not stored in Pass 1) to avoid exactOptionalPropertyTypes
   // issues with `string | undefined` vs `schema?: string`.
   const tables: TableDescriptor[] = entities.map(({ entity, tableName }) => {
     const t = buildTable(
-      entity, tableName, resolveTargetTable, root as MetaRoot, strategy, dialect, opts?.onReferentialActionConflict,
+      entity, tableName, resolveTargetTable, root as MetaRoot, strategy, dialect, fkTargetViolations, opts?.onReferentialActionConflict,
     );
     const schema = resolveTableSchema(entity);
     if (schema !== undefined) t.schema = schema;
     provenance.set(qualifiedDbName(t), entity.resolutionKey());
     return t;
   });
+
+  if (fkTargetViolations.length > 0) throw new FkTargetNotUniqueError(fkTargetViolations);
 
   // Pass 3: dialect-specific SqlType normalization.
   if (dialect === "sqlite") {
@@ -518,6 +522,7 @@ function buildTable(
   root: MetaRoot,
   strategy: ColumnNamingStrategy,
   dialect: Dialect | undefined,
+  fkTargetViolations: FkTargetViolation[],
   onConflict?: (conflict: ReferentialActionConflict) => void,
 ): TableDescriptor {
   // Use effective accessors so inherited fields/identities (from `extends:` /
@@ -601,7 +606,7 @@ function buildTable(
     name: tableName,
     columns,
     indexes: buildSecondaryIndexes(entity, tableName, strategy),
-    foreignKeys: buildForeignKeys(entity, tableName, resolveTargetTable, root, strategy, onConflict),
+    foreignKeys: buildForeignKeys(entity, tableName, resolveTargetTable, root, strategy, fkTargetViolations, onConflict),
     checks: buildChecks(entity, tableName, strategy, dialect),
     primaryKey,
   };
@@ -975,6 +980,7 @@ function buildForeignKeys(
   resolveTargetTable: (target: MetaObject) => string | undefined,
   root: MetaRoot,
   strategy: ColumnNamingStrategy,
+  fkTargetViolations: FkTargetViolation[],
   onConflict?: (conflict: ReferentialActionConflict) => void,
 ): FkDescriptor[] {
   const fks: FkDescriptor[] = [];
@@ -1026,7 +1032,10 @@ function buildForeignKeys(
     // Guard: an explicit target must be a unique key on the target, or the database
     // refuses the FK at apply time. The bare form targets the primary key by construction.
     if (explicitTargetFields.length > 0 && !isUniqueKeyOf(targetObj, explicitTargetFields)) {
-      throw new FkTargetNotUniqueError(holder.name, refChild.name, targetObj.name, explicitTargetFields);
+      fkTargetViolations.push({
+        entityName: holder.name, referenceName: refChild.name, targetEntityName: targetObj.name, targetFields: explicitTargetFields,
+      });
+      continue;
     }
     const refColumns = targetFieldNames.map((jsName) => {
       const targetField = findField(targetObj, jsName);

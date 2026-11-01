@@ -35,30 +35,37 @@ export class SetNullNotNullableError extends Error {
   }
 }
 
+/** One identity.reference whose dotted @references names fields the target does not hold unique. */
+export interface FkTargetViolation {
+  entityName: string;
+  referenceName: string;
+  targetEntityName: string;
+  targetFields: string[];
+}
+
 /**
- * Thrown by buildExpectedSchema() when an identity.reference targets fields the target
- * table does not hold unique: not its primary key, not a plain identity.secondary, not a
- * single @unique field. Postgres refuses such an FK at apply time, after earlier
- * statements in the migration already ran; refusing here names the reference instead.
+ * Thrown by buildExpectedSchema() when one or more identity.references target fields the
+ * target table does not hold unique: not its primary key, not a plain identity.secondary,
+ * not a single @unique field. A database refuses such an FK at apply time, after earlier
+ * statements in the migration already ran; refusing here names every offending reference
+ * at once, so a model with several is fixed in one pass rather than one run per reference.
  */
 export class FkTargetNotUniqueError extends Error {
   override readonly name = "FkTargetNotUniqueError";
-  readonly entityName: string;
-  readonly referenceName: string;
-  readonly targetEntityName: string;
-  readonly targetFields: string[];
+  readonly violations: FkTargetViolation[];
 
-  constructor(entityName: string, referenceName: string, targetEntityName: string, targetFields: string[]) {
-    const fieldList = targetFields.join(", ");
-    super(
-      `Entity "${entityName}": reference "${referenceName}" targets [${fieldList}] on "${targetEntityName}", ` +
-      `which is not a unique key there (not its primary key, an identity.secondary without @where/@expr, or a @unique field). ` +
-      `A database refuses this foreign key. Fix: declare an identity.secondary on "${targetEntityName}" with @fields [${fieldList}].`,
-    );
-    this.entityName = entityName;
-    this.referenceName = referenceName;
-    this.targetEntityName = targetEntityName;
-    this.targetFields = targetFields;
+  constructor(violations: FkTargetViolation[]) {
+    const lines = violations.map((v) => {
+      const fieldList = v.targetFields.join(", ");
+      return `Entity "${v.entityName}": reference "${v.referenceName}" targets [${fieldList}] on "${v.targetEntityName}", ` +
+        `which is not a unique key there (not its primary key, an identity.secondary without @where/@expr, or a @unique field). ` +
+        `Fix: declare an identity.secondary on "${v.targetEntityName}" with @fields [${fieldList}].`;
+    });
+    const head = violations.length === 1
+      ? "A database refuses this foreign key."
+      : `A database refuses these ${violations.length} foreign keys.`;
+    super(`${head}\n${lines.map((l) => `  - ${l}`).join("\n")}`);
+    this.violations = violations;
   }
 }
 
@@ -307,6 +314,11 @@ export function isPrimaryKeyChangeError(err: unknown): err is PrimaryKeyChangeEr
 /** Is `err` the {@link DuplicateSqlNameError} from two declarations sharing a database name? */
 export function isDuplicateSqlNameError(err: unknown): err is DuplicateSqlNameError {
   return err instanceof Error && err.name === "DuplicateSqlNameError";
+}
+
+/** Is `err` the {@link FkTargetNotUniqueError} from FKs whose targets are not unique keys? */
+export function isFkTargetNotUniqueError(err: unknown): err is FkTargetNotUniqueError {
+  return err instanceof Error && err.name === "FkTargetNotUniqueError";
 }
 
 /** Is `err` the {@link DeclaredRenameError} from a declared rename that does not apply? */

@@ -57,6 +57,8 @@ export {
   DuplicateSqlNameError,
   allowOptionFor, isBlockedChangesError, isPrimaryKeyChangeError, isDeclaredRenameError,
   isDuplicateSqlNameError,
+  isFkTargetNotUniqueError,
+  FkTargetNotUniqueError,
 } from "./errors.js";
 export type { SqlNameCollision } from "./errors.js";
 
