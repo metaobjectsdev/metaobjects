@@ -60,6 +60,14 @@ here.**
 
 ### Fixed
 
+- **Postgres introspection reads a composite foreign key's columns once each, in order.** It joined
+  `information_schema.key_column_usage` to `constraint_column_usage`, which has no column position, so
+  every FK column was paired with every referenced column: a two-column FK read back as four columns and
+  a three-column one as nine. `meta migrate` reads its expected side back from the shadow database, so
+  the doubled columns reached the emitted DDL, which Postgres refused ("foreign key referenced-columns
+  list must not contain duplicates"); `verify --db` misreported every composite FK. It now reads
+  `pg_constraint`, pairing `conkey` with `confkey` by position.
+
 - **Python: an array field's `default` generated a string.** A model with
   `field.string[]: { default: "{}" }` generated `tags: list[str] = '{}'`, which fails on first use.
   It now generates `tags: list[str] = []`, from the same four spellings TypeScript accepts, or

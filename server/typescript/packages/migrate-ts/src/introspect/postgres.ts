@@ -703,7 +703,7 @@ export function indexDefKeyExpr(indexdef: string): string {
 }
 
 async function readPgForeignKeys(k: RawKysely, schema: string, table: string): Promise<FkDescriptor[]> {
-  // pg-mem gap: information_schema.referential_constraints is not supported —
+  // pg-mem gap: pg_constraint (and the information_schema views before it) is not supported —
   // the query returns empty rows or throws. We catch and return [] so other
   // tests still pass on pg-mem. Real PG (Postgres 16) handles this correctly.
   let rows: { rows: Array<{ fk_name: string; column_name: string; ref_table: string; ref_column: string; update_rule: string; delete_rule: string; ordinal: number }> };
@@ -717,27 +717,30 @@ async function readPgForeignKeys(k: RawKysely, schema: string, table: string): P
       delete_rule: string;
       ordinal: number;
     }>`
-      SELECT tc.constraint_name AS fk_name,
-             kcu.column_name,
-             ccu.table_name AS ref_table,
-             ccu.column_name AS ref_column,
-             rc.update_rule,
-             rc.delete_rule,
-             kcu.ordinal_position AS ordinal
-      FROM information_schema.table_constraints tc
-      JOIN information_schema.key_column_usage kcu
-        ON kcu.constraint_name = tc.constraint_name
-        AND kcu.table_schema = tc.table_schema
-      JOIN information_schema.referential_constraints rc
-        ON rc.constraint_name = tc.constraint_name
-        AND rc.constraint_schema = tc.table_schema
-      JOIN information_schema.constraint_column_usage ccu
-        ON ccu.constraint_name = tc.constraint_name
-        AND ccu.table_schema = tc.table_schema
-      WHERE tc.constraint_type = 'FOREIGN KEY'
-        AND tc.table_schema = ${schema}
-        AND tc.table_name = ${table}
-      ORDER BY tc.constraint_name, kcu.ordinal_position
+      -- pg_constraint, not information_schema: constraint_column_usage has no column
+      -- position, so joining it to key_column_usage paired every FK column with every
+      -- referenced column (a two-column FK read back as four). conkey and confkey are
+      -- parallel arrays; unnesting them together keeps each pair and the FK's order.
+      SELECT con.conname AS fk_name,
+             a.attname AS column_name,
+             rt.relname AS ref_table,
+             ra.attname AS ref_column,
+             CASE con.confupdtype WHEN 'c' THEN 'CASCADE' WHEN 'n' THEN 'SET NULL' WHEN 'r' THEN 'RESTRICT'
+                                  WHEN 'd' THEN 'SET DEFAULT' ELSE 'NO ACTION' END AS update_rule,
+             CASE con.confdeltype WHEN 'c' THEN 'CASCADE' WHEN 'n' THEN 'SET NULL' WHEN 'r' THEN 'RESTRICT'
+                                  WHEN 'd' THEN 'SET DEFAULT' ELSE 'NO ACTION' END AS delete_rule,
+             key.ord AS ordinal
+      FROM pg_constraint con
+      JOIN pg_class t ON t.oid = con.conrelid
+      JOIN pg_namespace n ON n.oid = t.relnamespace
+      JOIN pg_class rt ON rt.oid = con.confrelid
+      CROSS JOIN LATERAL unnest(con.conkey, con.confkey) WITH ORDINALITY AS key(attnum, refattnum, ord)
+      JOIN pg_attribute a ON a.attrelid = con.conrelid AND a.attnum = key.attnum
+      JOIN pg_attribute ra ON ra.attrelid = con.confrelid AND ra.attnum = key.refattnum
+      WHERE con.contype = 'f'
+        AND n.nspname = ${schema}
+        AND t.relname = ${table}
+      ORDER BY con.conname, key.ord
     `.execute(k);
   } catch {
     // pg-mem: referential_constraints not supported — return empty FK list.
