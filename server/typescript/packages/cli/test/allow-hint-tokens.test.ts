@@ -147,7 +147,7 @@ describe("a drop-column held by a view the tool does not own", () => {
   test("the blocked entry names the view that reads the column", async () => {
     const r = await diff({
       expected: snap([T({ columns: [T().columns[0]!] })]),
-      actual: snap([T()], [view({ name: "v_hand", sql: "SELECT id, label FROM t", fingerprint: undefined })]),
+      actual: snap([T()], [{ name: "v_hand", sql: "SELECT id, label FROM t" }]),
       dialect: "sqlite",
       allow: { dropColumn: true },
     });
