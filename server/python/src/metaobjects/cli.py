@@ -2277,7 +2277,7 @@ def naming_candidates(used: NamingRules) -> list[NamingRules]:
     """Every naming other than ``used``, in the order ``verify --codegen`` probes them (the C#
     port probes the same order): the used table rule first, so a different column rule alone
     is tried before a different table rule; within each, the used column rule first, then
-    snake_case, literal, kebab-case."""
+    snake_case, literal, kebab-case, PascalCase."""
     tables = sorted(TABLE_NAMING_RULES, key=lambda t: t != used.tables)
     columns = sorted(COLUMN_NAMING_STRATEGIES, key=lambda c: c != used.columns)
     return [

@@ -1,5 +1,5 @@
 {
-  "_comment": "Cross-port physical naming (ADR-0058). Each case is the `naming` block of a project's .metaobjects/config.json. A port parses it with the reader it uses for that file, loads meta.naming.json, and resolves every table and column below through the resolver its codegen, migrate (TypeScript), runtime and verify use. `tables` keys are object names; `columns` keys are `<Object>.<field>`. Overrides (@table, a source's structural name, @column) win under every rule; the entity-name fallback keeps the frozen legacy pluralizer under every rule. `invalid` blocks must be refused when the config is read.",
+  "_comment": "Cross-port physical naming (ADR-0058). Each case is the `naming` block of a project's .metaobjects/config.json. A port parses it with the reader it uses for that file, loads meta.naming.json, and resolves every table and column below through the resolver its codegen, migrate (TypeScript), runtime and verify use. `tables` keys are object names; `columns` keys are `<Object>.<field>`. Overrides (@table, a source's structural name, @column) win under every rule; the entity-name fallback keeps the frozen legacy pluralizer under every rule. `invalid` blocks must be refused when the config is read. `PascalCase` upper-cases the field name's first letter and changes nothing else (`requestURL` → `RequestURL`): the names EF Core and most C# schemas use.",
   "cases": [
     {
       "name": "default",
@@ -50,11 +50,22 @@
         "Person.firstName": "first-name", "Person.lastName": "family_name",
         "AuditEntry.eventType": "event-type", "Category.displayName": "display-name", "HTTPRequest.requestURL": "request-url"
       }
+    },
+    {
+      "name": "PascalCase columns, literal tables",
+      "naming": { "columns": "PascalCase", "tables": "literal" },
+      "tables": { "OrderItem": "OrderItems", "Person": "people", "AuditEntry": "AuditLog", "Category": "Categories", "HTTPRequest": "HTTPRequests" },
+      "columns": {
+        "OrderItem.id": "Id", "OrderItem.createdAt": "CreatedAt", "OrderItem.unitPriceCents": "UnitPriceCents", "OrderItem.sku": "SKU_CODE",
+        "Person.firstName": "FirstName", "Person.lastName": "family_name",
+        "AuditEntry.eventType": "EventType", "Category.displayName": "DisplayName", "HTTPRequest.requestURL": "RequestURL"
+      }
     }
   ],
   "invalid": [
     { "name": "unknown column rule", "naming": { "columns": "camelCase" } },
     { "name": "kebab-case is not a table rule", "naming": { "tables": "kebab-case" } },
+    { "name": "PascalCase is not a table rule", "naming": { "tables": "PascalCase" } },
     { "name": "unknown key", "naming": { "column": "literal" } },
     { "name": "not an object", "naming": "snake_case" }
   ]

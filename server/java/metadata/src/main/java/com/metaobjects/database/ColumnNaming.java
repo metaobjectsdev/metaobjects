@@ -45,6 +45,12 @@ public final class ColumnNaming {
     public static final String SNAKE_CASE = "snake_case";
     /** camelCase / PascalCase to kebab-case. */
     public static final String KEBAB_CASE = "kebab-case";
+    /**
+     * The first letter upper-cased, nothing else changed ({@code requestURL} to
+     * {@code RequestURL}): EF Core's column name for a property, so a camelCase model maps onto
+     * an EF-built schema with no {@code @column}. Not a word split.
+     */
+    public static final String PASCAL_CASE = "PascalCase";
 
     /** The project default (ADR-0058) — what {@code meta migrate} has always created. */
     public static final String DEFAULT = SNAKE_CASE;
@@ -83,9 +89,16 @@ public final class ColumnNaming {
         if (LITERAL.equals(strategy)) return name;
         if (SNAKE_CASE.equals(strategy)) return toSnakeCase(name);
         if (KEBAB_CASE.equals(strategy)) return toSnakeCase(name).replace('_', '-');
+        if (PASCAL_CASE.equals(strategy)) return toPascalCaseColumn(name);
         throw new IllegalArgumentException(
                 "unknown column-naming strategy '" + strategy + "'; expected one of: "
-                        + LITERAL + ", " + SNAKE_CASE + ", " + KEBAB_CASE);
+                        + LITERAL + ", " + SNAKE_CASE + ", " + KEBAB_CASE + ", " + PASCAL_CASE);
+    }
+
+    /** The {@link #PASCAL_CASE} rule: the first letter upper-cased, the rest verbatim. */
+    public static String toPascalCaseColumn(String name) {
+        if (name == null || name.isEmpty()) return name;
+        return Character.toUpperCase(name.charAt(0)) + name.substring(1);
     }
 
     /**

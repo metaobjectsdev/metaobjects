@@ -23,6 +23,10 @@ public enum ColumnNamingStrategy
     SnakeCase,
     /// <summary>camelCase / PascalCase → kebab-case.</summary>
     KebabCase,
+    /// <summary>The first letter upper-cased, nothing else changed (<c>requestURL</c> →
+    /// <c>RequestURL</c>): EF Core's column name for a property, so a camelCase model maps
+    /// onto an EF-built schema with no <c>@column</c>.</summary>
+    PascalCase,
 }
 
 /// <summary>
@@ -71,9 +75,15 @@ public sealed record PhysicalNaming(ColumnNamingStrategy Columns, TableNamingRul
         {
             ColumnNamingStrategy.SnakeCase => SourceNaming.ToSnakeCase(field.Name),
             ColumnNamingStrategy.KebabCase => SourceNaming.ToSnakeCase(field.Name).Replace('_', '-'),
+            ColumnNamingStrategy.PascalCase => ToPascalCaseColumn(field.Name),
             _ => field.Name,
         };
     }
+
+    /// <summary>The <c>PascalCase</c> column rule: the first letter upper-cased, the rest
+    /// verbatim. Not a word split — an acronym keeps the case it was written in.</summary>
+    public static string ToPascalCaseColumn(string name) =>
+        name.Length == 0 ? name : char.ToUpperInvariant(name[0]) + name[1..];
 
     /// <summary><paramref name="name"/> cased by the table rule — no pluralization (the
     /// caller decides whether to pluralize; see <see cref="MetaSource.PhysicalName"/>).</summary>

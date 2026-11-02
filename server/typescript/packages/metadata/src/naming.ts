@@ -54,16 +54,26 @@ export function toKebabCase(s: string): string {
 }
 
 /**
+ * The `PascalCase` column rule: the first letter upper-cased, nothing else changed
+ * (`createdAt` → `CreatedAt`, `requestURL` → `RequestURL`). Not a word split: an
+ * acronym keeps the case it was written in, the way EF Core names a column after its
+ * property, so a camelCase model maps onto an EF-built schema with no `@column`.
+ */
+export function toPascalCaseColumn(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+/**
  * How a field with no `@column` becomes a column name. One project setting,
  * `naming.columns` in `.metaobjects/config.json`, read by every port (ADR-0058): the
  * loaded root carries it ({@link physicalNamingOf}), so codegen, migrate, the runtime
  * and verify resolve the same name. Not a metadata attr: `@column` is the per-field
  * override, this is the rule for the rest.
  */
-export type ColumnNamingStrategy = "snake_case" | "literal" | "kebab-case";
+export type ColumnNamingStrategy = "snake_case" | "literal" | "kebab-case" | "PascalCase";
 
 /** Every column-naming rule, in the order the conformance corpus lists them. */
-export const COLUMN_NAMING_STRATEGIES: readonly ColumnNamingStrategy[] = ["snake_case", "literal", "kebab-case"];
+export const COLUMN_NAMING_STRATEGIES: readonly ColumnNamingStrategy[] = ["snake_case", "literal", "kebab-case", "PascalCase"];
 
 /** The default in EVERY port: what `meta migrate` has always created. */
 export const DEFAULT_COLUMN_NAMING_STRATEGY: ColumnNamingStrategy = "snake_case";
@@ -134,6 +144,7 @@ export function applyColumnNamingStrategy(name: string, strategy: ColumnNamingSt
     case "literal":     return name;
     case "kebab-case":  return toKebabCase(name);
     case "snake_case":  return toSnakeCase(name);
+    case "PascalCase":  return toPascalCaseColumn(name);
   }
 }
 

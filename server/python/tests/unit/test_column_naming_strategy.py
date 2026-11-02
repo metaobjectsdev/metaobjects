@@ -78,7 +78,7 @@ def test_an_unknown_strategy_is_refused_not_silently_defaulted() -> None:
     # A typo'd strategy would otherwise bind an entire schema to the wrong columns and
     # report success.
     with pytest.raises(ValueError, match="snake_case"):
-        apply_column_naming_strategy("createdAt", "PascalCase")
+        apply_column_naming_strategy("createdAt", "camelCase")
 
 
 # WHERE THE STRATEGY ACTUALLY REACHES, in this port.

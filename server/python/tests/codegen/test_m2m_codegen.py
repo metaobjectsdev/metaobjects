@@ -266,7 +266,7 @@ def test_an_unknown_strategy_is_refused_at_the_descriptor_too() -> None:
     # Fail loudly rather than fall back: a typo would otherwise bind junction SQL to
     # columns that do not exist and report success.
     with pytest.raises(ValueError, match="snake_case"):
-        resolve_m2m_descriptors(_ENTITIES["Post"], _INDEX, column_naming="PascalCase")
+        resolve_m2m_descriptors(_ENTITIES["Post"], _INDEX, column_naming="camelCase")
 
 
 # ---------------------------------------------------------------------------

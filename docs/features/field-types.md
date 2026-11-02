@@ -111,7 +111,8 @@ A field has **two names**: the one your code calls it (`createdAt`, the metadata
 database calls it. `@column` sets the second. It never changes the first.
 
 With no `@column`, the physical name comes from the project's **column rule**:
-`snake_case` (the default), `literal` (the field name verbatim) or `kebab-case`. That
+`snake_case` (the default), `literal` (the field name verbatim), `kebab-case` or
+`PascalCase` (the first letter upper-cased, the rest verbatim: EF Core's names). That
 is CONFIG, not metadata, on purpose: the same model has to be able to drive a
 snake_case Postgres schema and a literal-column one. It is ONE setting for the whole
 project, `naming` in `.metaobjects/config.json` (ADR-0058):

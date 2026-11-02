@@ -896,6 +896,7 @@ public object KotlinGenUtil {
     const val COLUMN_NAMING_SNAKE_CASE: String = ColumnNaming.SNAKE_CASE
     const val COLUMN_NAMING_LITERAL: String = ColumnNaming.LITERAL
     const val COLUMN_NAMING_KEBAB_CASE: String = ColumnNaming.KEBAB_CASE
+    const val COLUMN_NAMING_PASCAL_CASE: String = ColumnNaming.PASCAL_CASE
     const val DEFAULT_COLUMN_NAMING: String = COLUMN_NAMING_SNAKE_CASE
 
     /**

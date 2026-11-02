@@ -20,6 +20,12 @@ here.**
   and the `wire` setting, and a project on any port runs them through the Node `meta` CLI. They are
   reference helpers: opt-in, listed by `meta gen --list`, ejectable and gated by `verify --codegen`
   (ADR-0034 Amendment 10). Protobuf is not built. See `docs/features/contract-emitters.md`.
+- **A `PascalCase` column rule.** `"naming": { "columns": "PascalCase" }` in
+  `.metaobjects/config.json` upper-cases a field name's first letter and changes nothing else
+  (`createdAt` → `CreatedAt`, `requestURL` → `RequestURL`), in every port: the column names EF Core
+  creates, so a camelCase model over an EF-built schema needs `@column` only where the database
+  spells a name differently. A column rule only; `literal` tables keep a PascalCase object name.
+  See `docs/features/migrations/physical-naming.md`.
 - **Schema conventions for the database objects no code addresses.** `migrate.conventions` in
   `.metaobjects/config.json` picks how `meta migrate` names primary-key and foreign-key
   constraints, whether each foreign key gets an index, and whether a unique key an FK references

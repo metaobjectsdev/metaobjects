@@ -25,10 +25,16 @@ every runtime `ObjectManager` and `verify` read it, so they always produce the s
 
 | Key | Values | Applies to | Default |
 |---|---|---|---|
-| `columns` | `snake_case`, `literal`, `kebab-case` | a field with no `@column` | `snake_case` |
+| `columns` | `snake_case`, `literal`, `kebab-case`, `PascalCase` | a field with no `@column` | `snake_case` |
 | `tables` | `snake_case`, `literal` | a source with no `@table`/`@view`/`@proc`/`@function`: its `name`, else the object's name made plural | `snake_case` |
 
 An unknown key or value fails when the file is read. Index and constraint names are unchanged.
+
+`PascalCase` (added in 1.2.1) upper-cases the field name's first letter and changes nothing
+else: `createdAt` becomes `CreatedAt` and `requestURL` becomes `RequestURL`. It is the column
+EF Core creates for a property, so a camelCase model over an EF-built schema needs `@column`
+only where the database spells a name differently (an acronym the field writes in lower case,
+for example). It is a column rule only; `literal` tables already keep a PascalCase object name.
 
 **Upgrade every port of an estate together.** A 1.0.x TypeScript tool refuses the new `naming` key,
 but a 1.0.x C#, Java or Python tool ignores an unknown top-level key silently and keeps the old

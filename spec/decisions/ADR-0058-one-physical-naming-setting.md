@@ -42,7 +42,9 @@ every port already reads for `sources`, `dependencies` and `libraries`:
 { "schema_version": 1, "naming": { "columns": "snake_case", "tables": "snake_case" } }
 ```
 
-- `columns`: `snake_case` | `literal` | `kebab-case`. Applies to a field with no `@column`.
+- `columns`: `snake_case` | `literal` | `kebab-case` | `PascalCase`. Applies to a field with no
+  `@column`. (`PascalCase` was added in 1.2.1: the first letter upper-cased, the rest verbatim.
+  It is a column rule only, like `kebab-case`.)
 - `tables`: `snake_case` | `literal`. Applies to a source with no physical-name attribute: its
   structural `name` is cased by the rule; with no name either, the owning object's name is cased
   by the rule and then pluralized by the frozen legacy pluralizer, under every rule.
