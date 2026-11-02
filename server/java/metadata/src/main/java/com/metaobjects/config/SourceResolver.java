@@ -225,6 +225,11 @@ public final class SourceResolver {
         return discoverConfig(uris).map(NeutralConfig::getWireFormat);
     }
 
+    /** The enum storage defaults of the {@code .metaobjects/config.json} the same walk finds, if any. */
+    public static java.util.Optional<EnumDefaults> discoverEnumDefaults(List<java.net.URI> uris) {
+        return discoverConfig(uris).map(NeutralConfig::getEnumDefaults);
+    }
+
     /**
      * ADR-0058 — the physical-naming rules of the {@code .metaobjects/config.json} found by
      * walking up from the first {@code file:} URI (stopping after a directory holding

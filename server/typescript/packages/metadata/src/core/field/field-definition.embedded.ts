@@ -287,6 +287,14 @@ export const FIELD_DEFINITION: ProviderDefinition = {
         },
         {
           "type": "attr",
+          "subType": "int",
+          "name": "maxLength",
+          "min": 0,
+          "max": 1,
+          "description": "Column length of a string-stored enum (drives VARCHAR(n)); every member must fit. Overrides the project's enums.maxLength. Refused with @intValueMap, whose column is an integer."
+        },
+        {
+          "type": "attr",
           "subType": "intMap",
           "name": "intValueMap",
           "min": 0,

@@ -28,6 +28,7 @@ from ..meta.core.field.field_constants import (
     FIELD_ATTR_COERCE_DEFAULT,
     FIELD_ATTR_DEFAULT,
     FIELD_ATTR_INT_VALUE_MAP,
+    FIELD_ATTR_MAX_LENGTH,
     FIELD_ATTR_OBJECT_REF,
     FIELD_ATTR_REQUIRED,
     FIELD_ATTR_SORTABLE,
@@ -248,6 +249,8 @@ def run_validations(
     # FR-015 — source.rdb @parameterRef typed-input rules.
     validate_source_parameter_ref(root, errors)
     _validate_field_object_storage(root, errors)
+    # field.enum @maxLength — every member fits; refused with @intValueMap.
+    _validate_enum_max_length(root, errors)
     # field.map — exactly one of @valueType (scalar) or @objectRef (VO), and
     # @valueType (when set) must name a known scalar subtype.
     _validate_field_map(root, errors)
@@ -3715,6 +3718,54 @@ def _validate_sortable_has_supported_subtype(
 #   3. @flattenedColumnPrefix without @storage="flattened" →
 #      ERR_FLATTENED_COLUMN_PREFIX_WITHOUT_FLATTENED_STORAGE (no other storage gives the
 #      members columns of their own to prefix).
+
+
+# field.enum @maxLength — the column length of a string-stored enum:
+#   1. every member of @values fits in it (ERR_ENUM_VALUE_EXCEEDS_MAX_LENGTH), the longest
+#      offender named;
+#   2. it is refused beside @intValueMap (ERR_ENUM_MAX_LENGTH_WITH_INT_VALUE_MAP).
+# Read RESOLVING (ADR-0039), reported on the node that DECLARES one of the three, so an enum
+# that only inherits them is not reported twice. Mirrors TS validateEnumMaxLength.
+def _validate_enum_max_length(root: MetaData, errors: list[MetaError]) -> None:
+    for node in _walk(root):
+        if node.type != TYPE_FIELD or node.sub_type != FIELD_SUBTYPE_ENUM:
+            continue
+        declares = any(
+            node.attr(a) is not None
+            for a in (FIELD_ATTR_MAX_LENGTH, FIELD_ATTR_VALUES, FIELD_ATTR_INT_VALUE_MAP)
+        )
+        max_length = node.get_meta_attr(FIELD_ATTR_MAX_LENGTH)  # ADR-0039 resolving
+        if not declares or not isinstance(max_length, int) or isinstance(max_length, bool):
+            continue
+        owner = node.parent
+        label = f"{owner.name}.{node.name}" if owner is not None and owner.type == TYPE_OBJECT else node.name
+        if node.get_meta_attr(FIELD_ATTR_INT_VALUE_MAP) is not None:
+            errors.append(MetaError(
+                code=ErrorCode.ERR_ENUM_MAX_LENGTH_WITH_INT_VALUE_MAP,
+                message=(
+                    f'field.enum "{label}" sets @maxLength {max_length} and @intValueMap; an '
+                    f"@intValueMap enum is stored as an integer, so a column length does not "
+                    f"apply. Remove @maxLength."
+                ),
+                envelope=node.source,
+            ))
+            continue
+        values = node.get_meta_attr(FIELD_ATTR_VALUES)
+        too_long = sorted(
+            (v for v in (values if isinstance(values, list) else []) if isinstance(v, str) and len(v) > max_length),
+            key=len,
+            reverse=True,
+        )
+        if too_long:
+            errors.append(MetaError(
+                code=ErrorCode.ERR_ENUM_VALUE_EXCEEDS_MAX_LENGTH,
+                message=(
+                    f'field.enum "{label}" @maxLength {max_length} is shorter than its member '
+                    f'"{too_long[0]}" ({len(too_long[0])} characters). Raise @maxLength to at '
+                    f"least {len(too_long[0])}, or shorten the member."
+                ),
+                envelope=node.source,
+            ))
 
 
 def _validate_field_object_storage(root: MetaData, errors: list[MetaError]) -> None:

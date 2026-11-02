@@ -190,7 +190,23 @@ must be a non-empty set of unique members matching `^[A-Za-z_][A-Za-z0-9_]*$`.
 The loader enforces members own-only and emits `ERR_BAD_ATTR_VALUE` on a bad
 member or `ERR_MISSING_REQUIRED_ATTR` on missing `@values`.
 
-**Int-backed storage:** `@intValueMap` switches the DB column from string to integer while
+**Column length:** a string-stored enum is an unbounded text column unless it has a length.
+`@maxLength` on the field gives it one, and `"enums": { "maxLength": n }` in
+`.metaobjects/config.json` gives every enum without its own `@maxLength` a default:
+
+```json
+{ "field.enum": { "name": "status", "@values": ["DRAFT", "PUBLISHED", "ARCHIVED"], "@maxLength": 16 } }
+```
+
+The column is then `VARCHAR(n)`: `meta migrate` creates it, and the Drizzle, Prisma, EF Core
+(`HasMaxLength(n)`) and Exposed bindings name the same length. Every member must fit. A member
+longer than `@maxLength` is refused at load, and one longer than the project default is refused
+when the column is sized, both as `ERR_ENUM_VALUE_EXCEEDS_MAX_LENGTH`, with the member named.
+`@maxLength` beside `@intValueMap` is refused (`ERR_ENUM_MAX_LENGTH_WITH_INT_VALUE_MAP`): an
+int-backed enum's column is an integer. An array of enums stays a `text[]` column. Kotlin's
+Exposed binding keeps its 64-character width when the enum has no length.
+
+**Int-backed storage:** `@intValueMap` switches the DB column from string to integer while**Int-backed storage:** `@intValueMap` switches the DB column from string to integer while
 preserving the string wire format and generated enum type. Keys must match `@values` exactly;
 values must be unique integers. Display labels and native Postgres `ENUM` types remain
 deferred (see [enum-datatype-design.md](../superpowers/specs/2026-05-23-enum-datatype-design.md)).

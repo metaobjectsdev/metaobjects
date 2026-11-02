@@ -9,6 +9,7 @@ import type { MetaObject } from "../core/object/meta-object.js";
 import type { MetaField } from "../core/field/meta-field.js";
 import { DEFAULT_PHYSICAL_NAMING, type PhysicalNaming } from "../naming.js";
 import { DEFAULT_WIRE_FORMAT, type WireFormat } from "../wire.js";
+import { DEFAULT_ENUM_DEFAULTS, type EnumDefaults } from "../enum-length.js";
 import { PACKAGE_SEPARATOR } from "./structural.js";
 import { lookupCanonical } from "../naming-refs.js";
 
@@ -25,6 +26,12 @@ export class MetaRoot extends MetaData {
    * set by the project-aware load beside `physicalNaming` and read through `wireFormatOf`.
    */
   wireFormat: WireFormat = DEFAULT_WIRE_FORMAT;
+
+  /**
+   * The project's enum storage defaults (`enums` in `.metaobjects/config.json`), set by the
+   * project-aware load beside `physicalNaming` and read through `enumDefaultsOf`.
+   */
+  enumDefaults: EnumDefaults = DEFAULT_ENUM_DEFAULTS;
 
   /**
    * The project's schema conventions for `meta migrate`: a preset name from

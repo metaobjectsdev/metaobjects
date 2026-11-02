@@ -213,6 +213,22 @@ public class MetaRoot extends MetaData implements com.metaobjects.database.Physi
     private transient com.metaobjects.config.WireFormat wireFormat =
         com.metaobjects.config.WireFormat.DEFAULT;
 
+    /**
+     * The project's enum storage defaults ({@code enums} in {@code .metaobjects/config.json}),
+     * set by the same project-aware load as the naming rules and read through
+     * {@link com.metaobjects.config.EnumDefaults#of(MetaData)}. A tree loaded with no project has none.
+     */
+    private transient com.metaobjects.config.EnumDefaults enumDefaults =
+        com.metaobjects.config.EnumDefaults.DEFAULT;
+
+    public com.metaobjects.config.EnumDefaults getEnumDefaults() {
+        return enumDefaults;
+    }
+
+    public void setEnumDefaults(com.metaobjects.config.EnumDefaults enumDefaults) {
+        this.enumDefaults = (enumDefaults != null) ? enumDefaults : com.metaobjects.config.EnumDefaults.DEFAULT;
+    }
+
     /** The project's wire-format setting for this tree. Never {@code null}. */
     public com.metaobjects.config.WireFormat getWireFormat() {
         return wireFormat;

@@ -15,6 +15,7 @@ import {
   type MetaRoot,
   type PhysicalNaming,
   type WireFormat,
+  type EnumDefaults,
 } from "@metaobjectsdev/metadata";
 import { FileSource } from "@metaobjectsdev/metadata/core";
 // FR-043 — a node-only subpath (it reaches the filesystem), which is why it is imported
@@ -114,6 +115,8 @@ export interface LoadMemoryOptions {
   physicalNaming?: PhysicalNaming;
   /** The project wire format; defaults to the collection's (`resolveCollection(...).wireFormat`) when `files` is not passed. */
   wireFormat?: WireFormat;
+  /** The project's enum storage defaults; defaults to the collection's (`resolveCollection(...).enumDefaults`) when `files` is not passed. */
+  enumDefaults?: EnumDefaults;
   /**
    * The schema conventions `meta migrate` names database-only objects with, set on the loaded
    * root: a preset name, or a conventions object the project supplies. Defaults to the
@@ -175,7 +178,7 @@ export async function loadMemory(
   repoRoot: string,
   options?: LoadMemoryOptions,
 ): Promise<MetaRoot> {
-  const { result, importedPackages, importedNodes, libraries, physicalNaming, wireFormat, schemaConventions } =
+  const { result, importedPackages, importedNodes, libraries, physicalNaming, wireFormat, enumDefaults, schemaConventions } =
     await loadCollectionRaw(repoRoot, options, options?.strict === true);
 
   if (result.errors.length > 0) {
@@ -196,6 +199,7 @@ export async function loadMemory(
 
   if (physicalNaming !== undefined) result.root.physicalNaming = physicalNaming;
   if (wireFormat !== undefined) result.root.wireFormat = wireFormat;
+  if (enumDefaults !== undefined) result.root.enumDefaults = enumDefaults;
   if (schemaConventions !== undefined) result.root.schemaConventions = schemaConventions;
   return result.root;
 }
@@ -271,6 +275,7 @@ async function loadCollectionRaw(
   libraries: readonly string[] | undefined;
   physicalNaming: PhysicalNaming | undefined;
   wireFormat: WireFormat | undefined;
+  enumDefaults: EnumDefaults | undefined;
   schemaConventions: unknown;
 }> {
   const extra = options?.providers ?? [];
@@ -300,6 +305,7 @@ async function loadCollectionRaw(
   let libraries: readonly string[] | undefined = options?.libraries;
   let physicalNaming: PhysicalNaming | undefined = options?.physicalNaming;
   let wireFormat: WireFormat | undefined = options?.wireFormat;
+  let enumDefaults: EnumDefaults | undefined = options?.enumDefaults;
   let schemaConventions: unknown = options?.schemaConventions;
   if (options?.files !== undefined) {
     paths = [...options.files];
@@ -321,6 +327,7 @@ async function loadCollectionRaw(
     libraries ??= collection.libraries;
     physicalNaming ??= collection.physicalNaming;
     wireFormat ??= collection.wireFormat;
+    enumDefaults ??= collection.enumDefaults;
     schemaConventions ??= collection.schemaConventions;
   }
 
@@ -347,7 +354,7 @@ async function loadCollectionRaw(
       return id === undefined ? new FileSource(p) : new FileSource(p, { id });
     }),
   ]);
-  return { result, registry, importedPackages, importedNodes, libraries, physicalNaming, wireFormat, schemaConventions };
+  return { result, registry, importedPackages, importedNodes, libraries, physicalNaming, wireFormat, enumDefaults, schemaConventions };
 }
 
 /** Every source file that contributed to a node, across the envelope variants that

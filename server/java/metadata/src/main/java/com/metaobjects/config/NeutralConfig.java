@@ -69,6 +69,7 @@ public final class NeutralConfig {
     private final List<String> migrateScope;
     private final PhysicalNaming physicalNaming;
     private final WireFormat wireFormat;
+    private EnumDefaults enumDefaults = EnumDefaults.DEFAULT;
 
     private NeutralConfig(List<Map<String, String>> sources, List<Map<String, String>> dependencies,
                           List<String> scopeInclude, List<String> migrateScope,
@@ -132,6 +133,11 @@ public final class NeutralConfig {
      */
     public WireFormat getWireFormat() {
         return wireFormat;
+    }
+
+    /** The project's enum storage defaults ({@code enums} in this file). Never {@code null}. */
+    public EnumDefaults getEnumDefaults() {
+        return enumDefaults;
     }
 
     /**
@@ -328,8 +334,41 @@ public final class NeutralConfig {
 
         // Unknown top-level keys, and every key of `scope`/`migrate` but the two read above,
         // are IGNORED by design — see the class javadoc.
-        return new NeutralConfig(specs, dependencies, scopeInclude, migrateScope, physicalNaming,
+        NeutralConfig cfg = new NeutralConfig(specs, dependencies, scopeInclude, migrateScope, physicalNaming,
                 wireFormat);
+        cfg.enumDefaults = parseEnums(root.get("enums"), origin);
+        return cfg;
+    }
+
+    /**
+     * The {@code enums} block: {@code maxLength}, a positive integer, is the column length of a
+     * string-stored enum with no {@code @maxLength}. An unknown key, a wrong-typed value, or a
+     * non-object block is refused, the same rule as {@code naming}.
+     */
+    private static EnumDefaults parseEnums(JsonElement enums, String origin) {
+        if (enums == null) return EnumDefaults.DEFAULT;
+        if (!enums.isJsonObject()) {
+            throw new MetaDataException(origin + ": \"enums\" must be an object", ErrorCode.ERR_BAD_ATTR_VALUE);
+        }
+        Long maxLength = null;
+        JsonObject obj = enums.getAsJsonObject();
+        for (String key : obj.keySet()) {
+            if (!"maxLength".equals(key)) {
+                throw new MetaDataException(
+                        origin + ": \"enums\" has unknown key \"" + key + "\"; expected \"maxLength\"",
+                        ErrorCode.ERR_BAD_ATTR_VALUE);
+            }
+            JsonElement v = obj.get(key);
+            java.math.BigDecimal n = v.isJsonPrimitive() && v.getAsJsonPrimitive().isNumber()
+                    ? v.getAsBigDecimal() : null;
+            if (n == null || n.signum() <= 0 || n.stripTrailingZeros().scale() > 0) {
+                throw new MetaDataException(
+                        origin + ": \"enums.maxLength\" must be a positive integer",
+                        ErrorCode.ERR_BAD_ATTR_VALUE);
+            }
+            maxLength = n.longValueExact();
+        }
+        return maxLength == null ? EnumDefaults.DEFAULT : new EnumDefaults(maxLength);
     }
 
     /** Mirrors the TS {@code DependencyName} regex (DESIGN §3.1). */

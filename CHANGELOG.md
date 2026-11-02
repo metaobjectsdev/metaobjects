@@ -42,6 +42,17 @@ here.**
   that generated before still generates. In C# and Java, a names class no longer extends its
   base's when that would make a base constant that is not a column of its own table reachable
   through it (a flattened field redeclared as jsonb, say); it is emitted complete instead.
+- **A string-stored enum's column length: `@maxLength` on `field.enum`, and `enums.maxLength`.**
+  `@maxLength` on a `field.enum` makes its column `VARCHAR(n)`, and `"enums": { "maxLength": n }`
+  in `.metaobjects/config.json` gives every enum without one a default; with neither, the column
+  stays unbounded text, as before. Every port reads the setting and resolves the length through
+  one core function (`resolveEnumMaxLength`, `EnumLength.ResolveMaxLength`,
+  `EnumLength.resolveMaxLength`, `resolve_enum_max_length`), and `meta migrate`, the Drizzle,
+  Prisma, EF Core and Exposed bindings use it. A member longer than the length is refused
+  (`ERR_ENUM_VALUE_EXCEEDS_MAX_LENGTH`): at load for `@maxLength`, when the column is sized for
+  the project default, which `meta migrate` and `meta verify` report by name. `@maxLength` beside
+  `@intValueMap` is refused at load (`ERR_ENUM_MAX_LENGTH_WITH_INT_VALUE_MAP`). A new shared
+  corpus, `fixtures/enum-length-conformance/`, pins the resolution in every port.
 - **A `PascalCase` column rule.** `"naming": { "columns": "PascalCase" }` in
   `.metaobjects/config.json` upper-cases a field name's first letter and changes nothing else
   (`createdAt` → `CreatedAt`, `requestURL` → `RequestURL`), in every port: the column names EF Core

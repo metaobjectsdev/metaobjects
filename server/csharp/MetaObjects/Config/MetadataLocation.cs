@@ -42,7 +42,8 @@ namespace MetaObjects.Config;
 /// </param>
 public sealed record ResolvedMetadata(
     string Directory, IReadOnlyList<string>? Files, IReadOnlyList<string> Libraries, PhysicalNaming Naming,
-    WireFormat? Wire = null, string? OutDir = null, ImportScope? Imports = null, string? Namespace = null)
+    WireFormat? Wire = null, string? OutDir = null, ImportScope? Imports = null, string? Namespace = null,
+    EnumDefaults? Enums = null)
 {
     /// <summary>Load this metadata, with the project's <c>libraries</c>, and set the loaded
     /// root's <see cref="MetaRoot.PhysicalNaming"/> from <see cref="Naming"/> (ADR-0058) and its
@@ -57,6 +58,7 @@ public sealed record ResolvedMetadata(
                 Directory, MetaDataLoader.DefaultRegistry(), Libraries, leading, strict: strict);
         result.Root.PhysicalNaming = Naming;
         result.Root.WireFormat = Wire ?? WireFormat.Default;
+        result.Root.EnumDefaults = Enums ?? EnumDefaults.Default;
         if (Imports is null) return result;
 
         result.Root.ImportScope = Imports;
@@ -117,7 +119,7 @@ public static class MetadataLocation
             // No config found means no project to read a lock from: nothing is imported.
             var explicitImports = explicitCfg is null ? ImportScope.None : ImportScope.Resolve(explicitCfg.ConfigDir, explicitCfg);
             return new ResolvedMetadata(
-                metadataDir, null, explicitLibs, explicitNaming, explicitCfg?.Wire, explicitCfg?.OutDir, explicitImports, explicitCfg?.Namespace);
+                metadataDir, null, explicitLibs, explicitNaming, explicitCfg?.Wire, explicitCfg?.OutDir, explicitImports, explicitCfg?.Namespace, explicitCfg?.Enums);
         }
 
         var cfg = NeutralConfig.Read(cwd);
@@ -132,7 +134,7 @@ public static class MetadataLocation
             // No declared sources: resolve the DEFAULT directory through the same ladder
             // the shared conformance corpus gates (ERR_COLLECTION_NOT_FOUND when absent).
             var defaultFiles = SourceResolver.ResolveCollection(cwd);
-            return new ResolvedMetadata(Path.Combine(cwd, NeutralConfig.DefaultMetadataDir), defaultFiles, libraries, naming, wire, cfg?.OutDir, imports, cfg?.Namespace);
+            return new ResolvedMetadata(Path.Combine(cwd, NeutralConfig.DefaultMetadataDir), defaultFiles, libraries, naming, wire, cfg?.OutDir, imports, cfg?.Namespace, cfg?.Enums);
         }
 
         if (specs.Count > 1)
@@ -162,6 +164,6 @@ public static class MetadataLocation
                 "\"sources\" at the file's containing directory.");
         }
 
-        return new ResolvedMetadata(resolved, files, libraries, naming, wire, cfg?.OutDir, imports, cfg?.Namespace);
+        return new ResolvedMetadata(resolved, files, libraries, naming, wire, cfg?.OutDir, imports, cfg?.Namespace, cfg?.Enums);
     }
 }

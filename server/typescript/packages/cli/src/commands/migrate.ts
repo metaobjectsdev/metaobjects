@@ -1,4 +1,5 @@
 import { resolve as resolvePath } from "node:path";
+import { ENUM_LENGTH_HINT, isEnumLengthRefusal } from "../lib/enum-length-refusal.js";
 import { mkdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { spawn } from "node:child_process";
@@ -1172,6 +1173,8 @@ export async function migrateCommand(
     if (isDuplicateSqlNameError(err)) return refuseEngineError(err, DUPLICATE_SQL_NAME_HINT, fmt);
     // A metadata defect too: a foreign key whose target columns are not a unique key there.
     if (isFkTargetNotUniqueError(err)) return refuseEngineError(err, FK_TARGET_NOT_UNIQUE_HINT, fmt);
+    // A metadata defect too: an enum member longer than the project's enums.maxLength.
+    if (isEnumLengthRefusal(err)) return refuseEngineError(err, ENUM_LENGTH_HINT, fmt);
     // A config error: `migrate.conventions` names a preset this version does not ship.
     if (isUnknownSchemaConventionsError(err)) {
       refuseEngineError(err, "set migrate.conventions in .metaobjects/config.json to one of the presets, or supply your own conventions from metaobjects.config.ts", fmt);

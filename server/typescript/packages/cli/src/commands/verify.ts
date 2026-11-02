@@ -7,6 +7,7 @@
 // silently break a prompt" guarantee, enforced at the last fixed point before
 // the text ships. Required-slot misses are warnings (don't fail the build).
 
+import { ENUM_LENGTH_HINT, isEnumLengthRefusal } from "../lib/enum-length-refusal.js";
 import { existsSync } from "node:fs";
 import { join, relative, resolve as resolvePath } from "node:path";
 import { parseVerifyArgs, type MigrateFlags } from "../lib/args.js";
@@ -1406,6 +1407,11 @@ export async function verifyCommand(
         if (isFkTargetNotUniqueError(err)) {
           log.error(`verify: ${err.message}`);
           log.error("verify: declare an identity.secondary on the target entity with exactly the referenced fields, or reference its primary key");
+          return 1;
+        }
+        if (isEnumLengthRefusal(err)) {
+          log.error(`verify: ${err.message}`);
+          log.error(`verify: ${ENUM_LENGTH_HINT}`);
           return 1;
         }
         if (isUnknownSchemaConventionsError(err)) {

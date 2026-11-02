@@ -1120,6 +1120,13 @@
           "description": "Optional per-member int values ({member: int}) switching this enum field's DB persistence from string+CHECK to integer+CHECK. Keys must exactly match @values; values must be unique integers. The generated native type and wire format are unchanged in every language."
         },
         {
+          "name": "maxLength",
+          "valueType": "int",
+          "isArray": false,
+          "required": false,
+          "description": "Column length of a string-stored enum (drives VARCHAR(n)); every member must fit. Overrides the project's enums.maxLength. Refused with @intValueMap, whose column is an integer."
+        },
+        {
           "name": "mutability",
           "valueType": "string",
           "isArray": false,

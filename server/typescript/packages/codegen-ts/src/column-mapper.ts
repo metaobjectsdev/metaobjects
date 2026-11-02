@@ -45,6 +45,7 @@ import {
   AGG_ANY,
   AGG_ALL,
   AGG_COLLECT,
+  resolveEnumMaxLength,
 } from "@metaobjectsdev/metadata";
 import { columnNameFromField } from "./naming.js";
 import { enumValues, intValueMapOf, intValueForMember } from "./enum-meta.js";
@@ -514,6 +515,10 @@ function mapMysqlColumn(
         const t = buildEnumIntCustomType(field, im);
         return t !== undefined ? { fnName: t.fnConstName, enumIntCustomType: t } : { fnName: "int" };
       }
+      // The column `meta migrate` creates: the enum's length (core's resolveEnumMaxLength —
+      // its @maxLength, else the project's enums.maxLength), else the longest member.
+      const sized = resolveEnumMaxLength(field);
+      if (sized !== undefined) return varchar(sized);
       const values = enumValues(field) ?? [];
       const longest = values.reduce((n, v) => Math.max(n, v.length), 1);
       return varchar(longest);
@@ -781,7 +786,15 @@ export function mapColumnType(
               enumIntCustomType = buildEnumIntCustomType(field, im);
               fnName = enumIntCustomType?.fnConstName ?? "integer";
             } else {
-              fnName = "text";
+              // A length (core's resolveEnumMaxLength) is the VARCHAR(n) `meta migrate`
+              // creates; with none the column is unbounded text, as before.
+              const sized = resolveEnumMaxLength(field);
+              if (sized !== undefined) {
+                fnName = "varchar";
+                fnOptions = { length: sized };
+              } else {
+                fnName = "text";
+              }
             }
           }
           break;
@@ -798,7 +811,9 @@ export function mapColumnType(
   // arrays use { mode: "json" }, and the enum members go through Zod
   // validation at the Insert/Update layer instead. Mirrors the Zod
   // emission, which already uses z.enum([...]).
-  if (subType === FIELD_SUBTYPE_ENUM && !isArray && (fnName === "text" || (dialect === "mysql" && fnName === "varchar"))) {
+  // A sized enum is a varchar on Postgres too (resolveEnumMaxLength); pg-core's varchar
+  // takes the same `enum` option.
+  if (subType === FIELD_SUBTYPE_ENUM && !isArray && (fnName === "text" || fnName === "varchar")) {
     const values = enumValues(field);
     if (values !== undefined && values.length > 0) {
       fnOptions = { ...(fnOptions ?? {}), enum: values };

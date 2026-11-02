@@ -1,0 +1,35 @@
+{
+  "_comment": "The column length of a string-stored field.enum, per port. Each case is the `enums` block of a project's .metaobjects/config.json (null: no block). Each port reads it with its own config reader, puts it on the loaded meta.enums.json root, and resolves every Ticket enum's length through its core resolver (resolveEnumMaxLength and its per-port equivalents). null in `lengths` means no length: an unbounded text column. `overflow` cases must be refused when the named field's length is resolved, with ERR_ENUM_VALUE_EXCEEDS_MAX_LENGTH. Each `invalid` block must be refused when the config is read.",
+  "cases": [
+    {
+      "name": "no enums block: only an explicit @maxLength sizes a column",
+      "enums": null,
+      "lengths": { "status": null, "channel": 20, "priority": 8, "rank": null }
+    },
+    {
+      "name": "an empty block is the same as none",
+      "enums": {},
+      "lengths": { "status": null, "channel": 20, "priority": 8, "rank": null }
+    },
+    {
+      "name": "the project default sizes every enum without its own @maxLength",
+      "enums": { "maxLength": 32 },
+      "lengths": { "status": 32, "channel": 20, "priority": 8, "rank": null }
+    }
+  ],
+  "overflow": [
+    {
+      "name": "a member longer than the project default is refused",
+      "enums": { "maxLength": 10 },
+      "field": "status",
+      "member": "IN_PROGRESS"
+    }
+  ],
+  "invalid": [
+    { "name": "maxLength is a positive integer, not zero", "enums": { "maxLength": 0 } },
+    { "name": "maxLength is an integer", "enums": { "maxLength": 12.5 } },
+    { "name": "maxLength is a number, not a string", "enums": { "maxLength": "32" } },
+    { "name": "an unknown key is refused", "enums": { "length": 32 } },
+    { "name": "enums is an object", "enums": 32 }
+  ]
+}

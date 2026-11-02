@@ -78,4 +78,25 @@ describe("meta verify — schema refusals", () => {
     expect(withDb.code).toBe(2);
     expect(withDb.out).not.toContain("failed to introspect");
   });
+
+  test("--db: an enum member longer than enums.maxLength is refused by name, not as an introspection failure", async () => {
+    const root = await mkdtemp(join(tmpdir(), "verify-schema-refusals-"));
+    dirs.push(root);
+    await mkdir(join(root, "metaobjects"), { recursive: true });
+    await writeFile(join(root, "metaobjects", "meta.acme.json"), JSON.stringify({ "metadata.root": { package: "acme", children: [
+      { "object.entity": { name: "Ticket", children: [
+        { "source.rdb": { "@table": "tickets" } },
+        { "field.long": { name: "id" } },
+        { "field.enum": { name: "status", "@values": ["OPEN", "IN_PROGRESS"] } },
+        { "identity.primary": { name: "pk", "@fields": "id", "@generation": "increment" } },
+      ] } },
+    ] } }), "utf8");
+    await mkdir(join(root, ".metaobjects"), { recursive: true });
+    await writeFile(join(root, ".metaobjects", "config.json"), JSON.stringify({ schema_version: 1, enums: { maxLength: 10 } }), "utf8");
+
+    const { code, out } = await capture(() => verifyCommand(["--db", `file:${join(root, "t.db")}`], root));
+    expect(code).toBe(1);
+    expect(out).toContain('field.enum "Ticket.status" has the member "IN_PROGRESS"');
+    expect(out).not.toContain("failed to introspect");
+  });
 });

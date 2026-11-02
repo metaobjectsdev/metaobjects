@@ -142,6 +142,8 @@ public enum ErrorCode
     ERR_STORAGE_FLATTENED_ARRAY,
     // @flattenedColumnPrefix on a field.object whose @storage is not "flattened" (absent is jsonb).
     ERR_FLATTENED_COLUMN_PREFIX_WITHOUT_FLATTENED_STORAGE,
+    ERR_ENUM_VALUE_EXCEEDS_MAX_LENGTH,
+    ERR_ENUM_MAX_LENGTH_WITH_INT_VALUE_MAP,
     ERR_INVALID_TEMPLATE,
     ERR_SOURCE_NO_PRIMARY,
     ERR_SOURCE_MULTIPLE_PRIMARY,

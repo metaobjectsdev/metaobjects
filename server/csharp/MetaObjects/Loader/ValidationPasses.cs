@@ -2090,6 +2090,58 @@ public static partial class ValidationPasses
         }
     }
 
+    // ---------------------------------------------------------------------------
+    // field.enum @maxLength — the column length of a string-stored enum:
+    //   1. every member of @values fits in it (ERR_ENUM_VALUE_EXCEEDS_MAX_LENGTH), the
+    //      longest offender named;
+    //   2. it is refused beside @intValueMap (ERR_ENUM_MAX_LENGTH_WITH_INT_VALUE_MAP): an
+    //      int-stored enum's column is an integer, so a length would change nothing.
+    // Read RESOLVING (ADR-0039), reported on the node that DECLARES one of the three, so an
+    // enum that only inherits them is not reported twice. Every field.enum in the tree is
+    // checked, root-level abstract enums included. Mirrors TS validateEnumMaxLength.
+    // ---------------------------------------------------------------------------
+    public static IReadOnlyList<MetaError> ValidateEnumMaxLength(MetaData root)
+    {
+        var errors = new List<MetaError>();
+        void Visit(MetaData node)
+        {
+            foreach (var child in node.OwnChildren())
+            {
+                if (child.Type == TYPE_FIELD && child.SubType == FIELD_SUBTYPE_ENUM && child is MetaField f) CheckEnum(f);
+                if (child.Type != TYPE_FIELD) Visit(child);
+            }
+        }
+        void CheckEnum(MetaField field)
+        {
+            var declares = new[] { FIELD_ATTR_MAX_LENGTH, FIELD_ATTR_VALUES, FIELD_ATTR_INT_VALUE_MAP }
+                .Any(a => field.OwnAttr(a) is not null);
+            if (!declares || field.MaxLength is not { } maxLength) return;
+            var owner = field.Parent;
+            var label = owner is not null && owner.Type == TYPE_OBJECT ? $"{owner.Name}.{field.Name}" : field.Name;
+            if (field.Attr(FIELD_ATTR_INT_VALUE_MAP) is not null)
+            {
+                errors.Add(new MetaError(
+                    $"field.enum \"{label}\" sets @maxLength {maxLength} and @intValueMap; an @intValueMap enum is stored as an integer, so a column length does not apply. Remove @maxLength.",
+                    ErrorCode.ERR_ENUM_MAX_LENGTH_WITH_INT_VALUE_MAP,
+                    Envelope: field.Source));
+                return;
+            }
+            var tooLong = (field.EffectiveEnumValues ?? [])
+                .Where(v => v.Length > maxLength)
+                .OrderByDescending(v => v.Length)
+                .FirstOrDefault();
+            if (tooLong is not null)
+            {
+                errors.Add(new MetaError(
+                    $"field.enum \"{label}\" @maxLength {maxLength} is shorter than its member \"{tooLong}\" ({tooLong.Length} characters). Raise @maxLength to at least {tooLong.Length}, or shorten the member.",
+                    ErrorCode.ERR_ENUM_VALUE_EXCEEDS_MAX_LENGTH,
+                    Envelope: field.Source));
+            }
+        }
+        Visit(root);
+        return errors;
+    }
+
     // -------------------------------------------------------------------------
     // Attr-type check helper — mirrors valueMatchesType() in attr-schema-validate.ts
     //

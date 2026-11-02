@@ -2460,7 +2460,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             ?: error("enumTypeName returned null for EnumField '${field.name}' on ${entity.name}")
         val simple = enumCn.simpleName
         val intMap = readIntValueMap(field)
-            ?: return "enumerationByName($colExpr, ${KotlinTypeMapper.ENUM_VARCHAR_LEN}, $simple::class)"
+            ?: return "enumerationByName($colExpr, ${KotlinTypeMapper.enumVarcharLength(field)}, $simple::class)"
 
         // `; ` separates the branches: this is a one-line `when`, and space-separated
         // branches do not parse (`Foo.DRAFT 5 -> ...`).

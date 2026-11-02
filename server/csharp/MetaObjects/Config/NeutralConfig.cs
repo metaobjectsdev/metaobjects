@@ -87,6 +87,10 @@ public sealed class NeutralConfig
     /// absent key at its native default. Never null.
     public WireFormat Wire { get; }
 
+    /// The project's enum storage defaults (`enums` in config.json). Never null: an absent
+    /// block is no default, same as an empty `enums: {}`.
+    public EnumDefaults Enums { get; private init; } = EnumDefaults.Default;
+
     /// The C# port's generated-code directory (`csharp.outDir` in config.json), resolved
     /// against the directory holding `.metaobjects/` so it reads the same from any working
     /// directory. Null when the key is absent. `--out` on the command line wins over it.
@@ -272,7 +276,7 @@ public sealed class NeutralConfig
             // lists read above, are IGNORED by design — see the file header.
             return new NeutralConfig(specs, libraries, new PhysicalNaming(columns, tables), ReadWire(root, path),
                 ReadCSharp(root, path, configDir), dependencies, scopeInclude, migrateScope,
-                Path.GetFullPath(configDir));
+                Path.GetFullPath(configDir)) { Enums = ReadEnums(root, path) };
         }
     }
 
@@ -333,6 +337,35 @@ public sealed class NeutralConfig
                 ns = p.Value.GetString()!;
         }
         return (outDir, ns);
+    }
+
+    /// The `enums` block: `maxLength`, a positive integer, is the column length of a string-stored
+    /// enum with no @maxLength. An unknown key, a wrong-typed value, or a non-object block is
+    /// refused, the same rule as `naming`.
+    private static EnumDefaults ReadEnums(JsonElement root, string path)
+    {
+        if (!root.TryGetProperty("enums", out var enums)) return EnumDefaults.Default;
+        if (enums.ValueKind != JsonValueKind.Object)
+            throw new MetaModelException($"{path}: \"enums\" must be an object", ErrorCode.ERR_BAD_ATTR_VALUE);
+        long? maxLength = null;
+        foreach (var p in enums.EnumerateObject())
+        {
+            switch (p.Name)
+            {
+                case "maxLength":
+                    if (p.Value.ValueKind != JsonValueKind.Number || !p.Value.TryGetInt64(out var n) || n <= 0)
+                        throw new MetaModelException(
+                            $"{path}: \"enums.maxLength\" must be a positive integer",
+                            ErrorCode.ERR_BAD_ATTR_VALUE);
+                    maxLength = n;
+                    break;
+                default:
+                    throw new MetaModelException(
+                        $"{path}: \"enums\" has an unknown key \"{p.Name}\" (expected \"maxLength\")",
+                        ErrorCode.ERR_BAD_ATTR_VALUE);
+            }
+        }
+        return maxLength is null ? EnumDefaults.Default : new EnumDefaults(maxLength);
     }
 
     /// The `wire` block (ADR-0019 Amendment 2): an unknown key, an unknown value, or a

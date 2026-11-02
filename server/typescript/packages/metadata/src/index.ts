@@ -379,6 +379,8 @@ export {
   stripPackage, packageOfResolutionKey,
 } from "./naming.js";
 export type { EntityNameMap, ColumnNamingStrategy, PhysicalNaming, TableNamingRule } from "./naming.js";
+export { resolveEnumMaxLength, enumDefaultsOf, DEFAULT_ENUM_DEFAULTS, ENUMS_KEY_MAX_LENGTH } from "./enum-length.js";
+export type { EnumDefaults } from "./enum-length.js";
 
 // Wire format (ADR-0019 Amendment 2): the `wire` block of .metaobjects/config.json.
 export {

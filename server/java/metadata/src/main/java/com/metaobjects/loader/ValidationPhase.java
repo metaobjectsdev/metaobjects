@@ -262,6 +262,7 @@ public final class ValidationPhase {
         // FR-024 B6 — derived-field providability (entity origin fields need a read source).
         pass(collected, () -> validateDerivedFieldProvidability(root));
         pass(collected, () -> validateObjectFieldStorage(root));
+        pass(collected, () -> validateEnumMaxLength(root));
         pass(collected, () -> validateFieldMap(root));
         pass(collected, () -> validateIdentityFieldsAndGeneration(root));
         // FR-024 B3/B4a — subtype rules (identity-name, value purity, projection licensing).
@@ -2368,6 +2369,70 @@ public final class ValidationPhase {
     // Only field.object nodes are inspected; @storage on other field subtypes is
     // already rejected by the constraint phase.
     // =========================================================================
+
+    // =========================================================================
+    // field.enum @maxLength — the column length of a string-stored enum:
+    //   1. every member of @values fits in it (ERR_ENUM_VALUE_EXCEEDS_MAX_LENGTH), the
+    //      longest offender named;
+    //   2. it is refused beside @intValueMap (ERR_ENUM_MAX_LENGTH_WITH_INT_VALUE_MAP).
+    // Read RESOLVING (ADR-0039), reported on the node that DECLARES one of the three, so an
+    // enum that only inherits them is not reported twice. Every field.enum in the tree is
+    // checked, root-level abstract enums included. Mirrors TS validateEnumMaxLength.
+    // =========================================================================
+
+    static void validateEnumMaxLength(MetaRoot root) {
+        walkEnumMaxLength(root);
+    }
+
+    private static void walkEnumMaxLength(MetaData node) {
+        for (MetaData child : node.getChildren(MetaData.class, false)) {
+            if (child instanceof EnumField) {
+                validateEnumMaxLengthNode((EnumField) child);
+            } else if (!(child instanceof com.metaobjects.field.MetaField)) {
+                walkEnumMaxLength(child);
+            }
+        }
+    }
+
+    private static void validateEnumMaxLengthNode(EnumField field) {
+        boolean declares = field.hasMetaAttr(EnumField.ATTR_MAX_LENGTH, false)
+            || field.hasMetaAttr(EnumField.ATTR_VALUES, false)
+            || field.hasMetaAttr(EnumField.ATTR_INT_VALUE_MAP, false);
+        if (!declares || !field.hasMetaAttr(EnumField.ATTR_MAX_LENGTH)) return;
+        Object rawLength = field.getMetaAttr(EnumField.ATTR_MAX_LENGTH).getValue();
+        if (!(rawLength instanceof Number)) return;
+        long maxLength = ((Number) rawLength).longValue();
+        MetaData owner = field.getParent();
+        String label = owner instanceof MetaObject
+            ? ((MetaObject) owner).getShortName() + "." + field.getShortName()
+            : field.getShortName();
+        if (field.hasMetaAttr(EnumField.ATTR_INT_VALUE_MAP)) {
+            throw new MetaDataException(
+                ErrorMessageConstants.ERR_ENUM_MAX_LENGTH_WITH_INT_VALUE_MAP
+                    + ": field.enum \"" + label + "\" sets @maxLength " + maxLength
+                    + " and @intValueMap; an @intValueMap enum is stored as an integer, so a column"
+                    + " length does not apply. Remove @maxLength.",
+                ErrorCode.ERR_ENUM_MAX_LENGTH_WITH_INT_VALUE_MAP, field.getSource());
+        }
+        String tooLong = null;
+        Object raw = field.hasMetaAttr(EnumField.ATTR_VALUES)
+            ? field.getMetaAttr(EnumField.ATTR_VALUES).getValue() : null;
+        if (raw instanceof List) {
+            for (Object o : (List<?>) raw) {
+                String v = String.valueOf(o);
+                if (v.length() > maxLength && (tooLong == null || v.length() > tooLong.length())) tooLong = v;
+            }
+        }
+        if (tooLong != null) {
+            throw new MetaDataException(
+                ErrorMessageConstants.ERR_ENUM_VALUE_EXCEEDS_MAX_LENGTH
+                    + ": field.enum \"" + label + "\" @maxLength " + maxLength
+                    + " is shorter than its member \"" + tooLong + "\" (" + tooLong.length()
+                    + " characters). Raise @maxLength to at least " + tooLong.length()
+                    + ", or shorten the member.",
+                ErrorCode.ERR_ENUM_VALUE_EXCEEDS_MAX_LENGTH, field.getSource());
+        }
+    }
 
     static void validateObjectFieldStorage(MetaRoot root) {
         walkObjectFieldStorage(root);

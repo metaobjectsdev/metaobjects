@@ -52,6 +52,14 @@ object KotlinTypeMapper {
     const val ENUM_VARCHAR_LEN = 64
 
     /**
+     * The VARCHAR width of a string-backed `field.enum`'s column: core's
+     * [com.metaobjects.database.EnumLength.resolveMaxLength] (its `@maxLength`, else the
+     * project's `enums.maxLength`, refusing a member that does not fit), else [ENUM_VARCHAR_LEN].
+     */
+    fun enumVarcharLength(field: EnumField): Long =
+        com.metaobjects.database.EnumLength.resolveMaxLength(field) ?: ENUM_VARCHAR_LEN.toLong()
+
+    /**
      * Threshold beyond which a [StringField]'s `@maxLength` is treated as unbounded text and
      * emitted as Exposed `text(name)` rather than `varchar(name, N)`. Chosen at 4000 — the
      * customary Postgres inline-VARCHAR cutoff (TOAST boundary); larger values are better
@@ -548,7 +556,7 @@ object KotlinTypeMapper {
         // Enum stored as VARCHAR for v1. Proper enum-column handling needs the generated
         // enum class (Exposed's `customEnumeration` / `enumerationByName` takes a KClass<E>)
         // and is intentionally deferred.
-        is EnumField      -> "varchar($colExpr, $ENUM_VARCHAR_LEN)"
+        is EnumField      -> "varchar($colExpr, ${enumVarcharLength(field)})"
         // field.uuid → Exposed's first-class `uuid(name)` under 0.x (native Postgres uuid
         // column, java.util.UUID) or `javaUUID(name)` under 1.x (issue #390 — 1.x's `uuid()`
         // binds `kotlin.uuid.Uuid` instead; `javaUUID` is the replacement that keeps

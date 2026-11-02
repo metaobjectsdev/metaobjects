@@ -8,6 +8,8 @@ import {
   DEFAULT_PHYSICAL_NAMING,
   TABLE_NAMING_RULES,
   DEFAULT_WIRE_FORMAT,
+  DEFAULT_ENUM_DEFAULTS,
+  type EnumDefaults,
   WIRE_DECIMALS,
   WIRE_NULL_MEMBERS,
   WIRE_KEY_DECIMALS,
@@ -234,6 +236,17 @@ export const ConfigSchema = z.object({
     })
     .optional(),
   /**
+   * How a string-stored `field.enum` is stored. `maxLength` is the column length (VARCHAR(n))
+   * of an enum that declares no `@maxLength` of its own; every member must fit. Absent means
+   * no default: such an enum is an unbounded text column, as before. An `@intValueMap` enum is
+   * an integer column and takes no length. Read by every port's config reader.
+   */
+  enums: z
+    .strictObject({
+      maxLength: z.number().int().positive().optional(),
+    })
+    .optional(),
+  /**
    * C#-scoped settings. `outDir` is where `dotnet meta gen` writes and a bare `dotnet meta
    * verify` diffs, relative to the directory holding `.metaobjects/`; `namespace` is the C#
    * namespace generated types that no package binding places land in. Only the C# port reads
@@ -253,6 +266,11 @@ export function physicalNamingFromConfig(cfg: Pick<Config, "naming">): PhysicalN
     columns: cfg.naming?.columns ?? DEFAULT_PHYSICAL_NAMING.columns,
     tables: cfg.naming?.tables ?? DEFAULT_PHYSICAL_NAMING.tables,
   };
+}
+
+/** The enum storage defaults a config declares (`enums`); none when absent. */
+export function enumDefaultsFromConfig(cfg: Pick<Config, "enums">): EnumDefaults {
+  return cfg.enums?.maxLength === undefined ? DEFAULT_ENUM_DEFAULTS : { maxLength: cfg.enums.maxLength };
 }
 
 /** The wire format a config declares, each absent key at its default (ADR-0019 Amendment 2). */

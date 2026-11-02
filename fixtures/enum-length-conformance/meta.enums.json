@@ -1,0 +1,29 @@
+{
+  "metadata.root": {
+    "package": "acme::enums",
+    "children": [
+      {
+        "field.enum": {
+          "name": "Priority",
+          "abstract": true,
+          "@values": ["LOW", "HIGH"],
+          "@maxLength": 8
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Ticket",
+          "children": [
+            { "source.rdb": {} },
+            { "field.long": { "name": "id" } },
+            { "field.enum": { "name": "status", "@values": ["OPEN", "IN_PROGRESS", "CLOSED"] } },
+            { "field.enum": { "name": "channel", "@values": ["EMAIL", "PHONE"], "@maxLength": 20 } },
+            { "field.enum": { "name": "priority", "extends": "acme::enums::Priority" } },
+            { "field.enum": { "name": "rank", "@values": ["A", "B"], "@intValueMap": { "A": 1, "B": 2 } } },
+            { "identity.primary": { "name": "pk", "@fields": "id" } }
+          ]
+        }
+      }
+    ]
+  }
+}

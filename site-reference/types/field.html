@@ -1114,6 +1114,15 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td>Optional per-member int values ({member: int}) switching this enum field&#39;s DB persistence from string+CHECK to integer+CHECK. Keys must exactly match @values; values must be unique integers. The generated native type and wire format are unchanged in every language.</td>
 </tr>
 <tr>
+<td><code>@maxLength</code></td>
+<td>int</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Column length of a string-stored enum (drives VARCHAR(n)); every member must fit. Overrides the project&#39;s enums.maxLength. Refused with @intValueMap, whose column is an integer.</td>
+</tr>
+<tr>
 <td><code>@mutability</code></td>
 <td>string</td>
 <td>no</td>

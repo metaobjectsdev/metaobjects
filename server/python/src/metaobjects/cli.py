@@ -62,6 +62,7 @@ import tempfile
 from pathlib import Path
 from typing import Any, Callable
 
+from metaobjects.enum_length import EnumDefaults
 from metaobjects import MetaDataLoader
 from metaobjects.errors import ErrorCode, MetaError, ParseError
 from metaobjects.config.dependencies import (
@@ -508,6 +509,7 @@ def _load_root(
     # invocation) read the same values `gen`/`verify --codegen` would.
     result.root.naming = neutral.naming if neutral is not None else NamingRules()
     result.root.wire = neutral.wire if neutral is not None else WireFormat()
+    result.root.enum_defaults = neutral.enums if neutral is not None else EnumDefaults()
     return result.root, []
 
 
@@ -571,6 +573,7 @@ def _load_collection_result(
         # it to the loaded root so codegen, the runtime and `verify` agree.
         result.root.naming = collection.naming
         result.root.wire = collection.wire
+        result.root.enum_defaults = collection.enums
     return result
 
 

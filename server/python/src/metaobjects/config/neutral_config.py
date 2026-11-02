@@ -5,6 +5,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from metaobjects.enum_length import EnumDefaults
 from metaobjects.errors import ErrorCode, ParseError
 from metaobjects.naming import COLUMN_NAMING_STRATEGIES, TABLE_NAMING_RULES, NamingRules
 from metaobjects.wire import WIRE_DECIMALS, WIRE_NULL_MEMBERS, WireFormat
@@ -81,6 +82,11 @@ class NeutralConfig:
     #: Attached to the loaded root (`MetaRoot.wire`) beside `naming`; validated HERE
     #: for the same reason `naming` is.
     wire: WireFormat = WireFormat()
+
+    #: The `enums` block: `maxLength`, the column length of a string-stored enum with no
+    #: @maxLength. Absent or `{}` ⇒ no default. Attached to the loaded root
+    #: (`MetaRoot.enum_defaults`) beside `naming`; validated HERE for the same reason.
+    enums: EnumDefaults = EnumDefaults()
 
 
 def find_project_dir(start: Path) -> Path | None:
@@ -175,6 +181,7 @@ def read_neutral_config(config_dir: Path) -> NeutralConfig | None:
     libraries = _read_libraries(raw, path)
     naming = _read_naming(raw, path)
     wire = _read_wire(raw, path)
+    enums = _read_enums(raw, path)
 
     # Unknown top-level keys are IGNORED by design — see the module docstring.
     return NeutralConfig(
@@ -185,6 +192,7 @@ def read_neutral_config(config_dir: Path) -> NeutralConfig | None:
         libraries=libraries,
         naming=naming,
         wire=wire,
+        enums=enums,
     )
 
 
@@ -303,6 +311,37 @@ def _read_naming(raw: dict[str, object], path: Path) -> NamingRules:
             code=ErrorCode.ERR_COLLECTION_NOT_FOUND,
         )
     return NamingRules(columns=columns, tables=tables)
+
+
+#: Every key the `enums` block accepts, and the ONLY ones it accepts (refused, not ignored, like `naming`).
+_ENUMS_KEYS = ("maxLength",)
+
+
+def _read_enums(raw: dict[str, object], path: Path) -> EnumDefaults:
+    """The `enums` block: `maxLength`, a positive integer, is the column length of a
+    string-stored enum with no @maxLength. Absent or `{}` ⇒ no default. Refuses a non-object
+    block, an unknown key, or a value that is not a positive integer, the same rule as
+    `naming`."""
+    if "enums" not in raw:
+        return EnumDefaults()
+    enums = raw["enums"]
+    if not isinstance(enums, dict):
+        raise ParseError(f"{path}: 'enums' must be an object", code=ErrorCode.ERR_BAD_ATTR_VALUE)
+    unknown = sorted(set(enums) - set(_ENUMS_KEYS))
+    if unknown:
+        raise ParseError(
+            f"{path}: 'enums' has unknown key(s) {unknown}; accepted: {list(_ENUMS_KEYS)}",
+            code=ErrorCode.ERR_BAD_ATTR_VALUE,
+        )
+    if "maxLength" not in enums:
+        return EnumDefaults()
+    value = enums["maxLength"]
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ParseError(
+            f"{path}: 'enums.maxLength' must be a positive integer, got {value!r}",
+            code=ErrorCode.ERR_BAD_ATTR_VALUE,
+        )
+    return EnumDefaults(max_length=value)
 
 
 #: Every key the `wire` block accepts, and the ONLY ones it accepts (refused, not ignored, like `naming`).

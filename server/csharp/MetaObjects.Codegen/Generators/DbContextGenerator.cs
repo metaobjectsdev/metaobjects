@@ -926,7 +926,13 @@ public class DbContextGenerator : IGenerator
     private static string EnumConversionCall(string owner, MetaObject entity, MetaField f, GenConfig config)
     {
         var intMap = IntValueMapOf(f);
-        if (intMap is null) return "HasConversion<string>()";
+        // A string-backed enum's column length (EnumLength.ResolveMaxLength: its @maxLength, else
+        // the project's enums.maxLength) is the VARCHAR(n) `meta migrate` creates. An array enum
+        // is a text[] column, whose elements carry no length.
+        if (intMap is null)
+            return !f.ResolvedIsArray() && EnumLength.ResolveMaxLength(f) is { } length
+                ? $"HasConversion<string>().HasMaxLength({length})"
+                : "HasConversion<string>()";
 
         var members = f.EffectiveEnumValues ?? new List<string>();
         if (members.Count == 0) return "HasConversion<string>()";

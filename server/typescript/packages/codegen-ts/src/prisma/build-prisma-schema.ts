@@ -338,6 +338,9 @@ function mysqlColumnType(t: SqlType, field: MetaField, needsLength: boolean): Co
       return { scalar: "Float", list: false, native: "@db.Float" };
     case FIELD_SUBTYPE_ENUM: {
       if (t.kind === "integer") return { scalar: "Int", list: false };
+      // A length the expected schema carries (resolveEnumMaxLength: @maxLength, else the
+      // project's enums.maxLength) is the column; with none, the longest member sizes it.
+      if (t.kind === "text" && t.maxLength !== undefined) return varchar(t.maxLength);
       // ADR-0039: resolving — @values may be inherited.
       const raw = field.attr(FIELD_ATTR_VALUES);
       const values = Array.isArray(raw) ? raw.map(String) : [];

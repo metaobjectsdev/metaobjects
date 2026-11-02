@@ -61,6 +61,7 @@ import {
   DOC_ATTR_DESCRIPTION,
   applyColumnNamingStrategy, physicalNamingOf,
   resolveTableName, resolveColumnName, resolveFlattenedColumnPrefix, resolveTableSchema, resolveIndexName,
+  resolveEnumMaxLength,
 } from "@metaobjectsdev/metadata";
 import type { SqlType } from "./sql-type.js";
 import type {
@@ -1436,7 +1437,14 @@ function subtypeToSqlType(field: MetaData): SqlType {
     // A string-backed field.enum is a text column with a membership CHECK; an
     // INT-BACKED one (@intValueMap, design D5) stores the mapped integer instead.
     // The TS/wire type is the member string either way — only the column differs.
-    case FIELD_SUBTYPE_ENUM:      return isIntBackedEnum(field) ? { kind: "integer", bits: 32 } : { kind: "text" };
+    // A string-backed one with a length (its @maxLength, else the project's
+    // enums.maxLength — core's resolveEnumMaxLength, which refuses a member that does not
+    // fit) is VARCHAR(n); with none it stays unbounded text.
+    case FIELD_SUBTYPE_ENUM: {
+      if (isIntBackedEnum(field)) return { kind: "integer", bits: 32 };
+      const length = resolveEnumMaxLength(field);
+      return length === undefined ? { kind: "text" } : { kind: "text", maxLength: length };
+    }
     default:                      return { kind: "text" }; // unknown → text fallback
   }
 }

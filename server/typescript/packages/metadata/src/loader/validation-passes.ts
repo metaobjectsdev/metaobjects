@@ -77,6 +77,9 @@ import {
   FIELD_SUBTYPE_DECIMAL,
   FIELD_SUBTYPE_BOOLEAN,
   FIELD_SUBTYPE_ENUM,
+  FIELD_ATTR_INT_VALUE_MAP,
+  FIELD_ATTR_MAX_LENGTH,
+  FIELD_ATTR_VALUES,
   FIELD_SUBTYPE_OBJECT,
   FIELD_SUBTYPE_MAP,
   FIELD_ATTR_REQUIRED,
@@ -1673,6 +1676,57 @@ export function validateDerivedFieldProvidability(root: MetaData): ParseError[] 
       );
     }
   }
+  return errors;
+}
+
+// ---------------------------------------------------------------------------
+// field.enum @maxLength — the column length of a string-stored enum:
+//   1. every member of @values fits in it (ERR_ENUM_VALUE_EXCEEDS_MAX_LENGTH), the
+//      longest offender named;
+//   2. it is refused beside @intValueMap (ERR_ENUM_MAX_LENGTH_WITH_INT_VALUE_MAP): an
+//      int-stored enum's column is an integer, so a length would change nothing.
+// Read RESOLVING (ADR-0039: all three may be inherited through extends), and reported on
+// the node that DECLARES one of them, so an enum that only inherits them is not
+// reported a second time. Every field.enum in the tree is checked, root-level abstract
+// enums included. The project default (enums.maxLength) is not this pass's: the loader
+// does not see the project config; resolveEnumMaxLength refuses an overflow of it.
+// ---------------------------------------------------------------------------
+
+export function validateEnumMaxLength(root: MetaData): ParseError[] {
+  const errors: ParseError[] = [];
+  const visit = (node: MetaData): void => {
+    // ADR-0039: own children — every node is visited once, where it is declared.
+    for (const child of node.ownChildren()) {
+      if (child.type === TYPE_FIELD && child.subType === FIELD_SUBTYPE_ENUM) checkEnum(child);
+      if (child.type !== TYPE_FIELD) visit(child);
+    }
+  };
+  const checkEnum = (field: MetaData): void => {
+    const declares = [FIELD_ATTR_MAX_LENGTH, FIELD_ATTR_VALUES, FIELD_ATTR_INT_VALUE_MAP]
+      .some((a) => field.ownAttr(a) !== undefined);
+    const maxLength = field.attr(FIELD_ATTR_MAX_LENGTH);
+    if (!declares || typeof maxLength !== "number") return;
+    const owner = field.parent;
+    const label = owner !== undefined && owner.type === TYPE_OBJECT ? `${owner.name}.${field.name}` : field.name;
+    if (field.attr(FIELD_ATTR_INT_VALUE_MAP) !== undefined) {
+      errors.push(new ParseError(
+        `field.enum "${label}" sets @maxLength ${maxLength} and @intValueMap; an @intValueMap enum is stored as an integer, so a column length does not apply. Remove @maxLength.`,
+        { code: "ERR_ENUM_MAX_LENGTH_WITH_INT_VALUE_MAP", source: field.source },
+      ));
+      return;
+    }
+    const values = field.attr(FIELD_ATTR_VALUES);
+    const tooLong = (Array.isArray(values) ? values : [])
+      .filter((v): v is string => typeof v === "string" && v.length > maxLength)
+      .sort((a, b) => b.length - a.length);
+    if (tooLong.length > 0) {
+      errors.push(new ParseError(
+        `field.enum "${label}" @maxLength ${maxLength} is shorter than its member "${tooLong[0]}" (${tooLong[0]!.length} characters). Raise @maxLength to at least ${tooLong[0]!.length}, or shorten the member.`,
+        { code: "ERR_ENUM_VALUE_EXCEEDS_MAX_LENGTH", source: field.source },
+      ));
+    }
+  };
+  visit(root);
   return errors;
 }
 

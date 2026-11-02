@@ -16,6 +16,7 @@ from typing import Any, Callable, Sequence
 
 from metaobjects.errors import ErrorCode, ParseError
 from metaobjects.meta.meta_data import MetaData
+from metaobjects.enum_length import EnumDefaults
 from metaobjects.naming import NamingRules, package_of_resolution_key
 from metaobjects.wire import WireFormat
 from metaobjects.registry_manifest import METAMODEL_VERSION
@@ -663,6 +664,9 @@ class Collection:
     #: ADR-0019 Amendment 2 — this project's `wire` setting, read at the same rung;
     #: attached to the loaded root beside `naming`.
     wire: WireFormat = WireFormat()
+
+    #: The project's `enums` block, read at the same rung; attached beside `naming`.
+    enums: EnumDefaults = EnumDefaults()
 
     def imported(self, fqn: str) -> bool:
         """Is `fqn` in a package one of this project's dependencies owns?"""

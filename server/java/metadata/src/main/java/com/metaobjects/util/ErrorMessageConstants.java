@@ -178,6 +178,20 @@ public final class ErrorMessageConstants {
         "ERR_FLATTENED_COLUMN_PREFIX_WITHOUT_FLATTENED_STORAGE";
 
     /**
+     * A string-stored {@code field.enum}'s {@code @maxLength} (its column length) is shorter
+     * than one of its {@code @values} members, or the project's {@code enums.maxLength} is.
+     * Cross-language contract: {@code ERR_ENUM_VALUE_EXCEEDS_MAX_LENGTH}.
+     */
+    public static final String ERR_ENUM_VALUE_EXCEEDS_MAX_LENGTH = "ERR_ENUM_VALUE_EXCEEDS_MAX_LENGTH";
+
+    /**
+     * A {@code field.enum} sets both {@code @maxLength} and {@code @intValueMap}: an int-stored
+     * enum's column is an integer, so a length would change nothing.
+     * Cross-language contract: {@code ERR_ENUM_MAX_LENGTH_WITH_INT_VALUE_MAP}.
+     */
+    public static final String ERR_ENUM_MAX_LENGTH_WITH_INT_VALUE_MAP = "ERR_ENUM_MAX_LENGTH_WITH_INT_VALUE_MAP";
+
+    /**
      * Error code emitted when {@code field.object @storage} is set on a field that
      * has no {@code @objectRef} — storage shape only applies to referenced objects.
      * Cross-language contract: {@code ERR_STORAGE_WITHOUT_OBJECT_REF}.

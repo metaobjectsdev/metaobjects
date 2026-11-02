@@ -295,6 +295,8 @@ public enum ErrorCode {
 
     /** @flattenedColumnPrefix on a field.object whose @storage is not "flattened" (absent is jsonb). */
     ERR_FLATTENED_COLUMN_PREFIX_WITHOUT_FLATTENED_STORAGE,
+    ERR_ENUM_VALUE_EXCEEDS_MAX_LENGTH,
+    ERR_ENUM_MAX_LENGTH_WITH_INT_VALUE_MAP,
 
     /** @storage was set on a field that has no @objectRef. */
     ERR_STORAGE_WITHOUT_OBJECT_REF,

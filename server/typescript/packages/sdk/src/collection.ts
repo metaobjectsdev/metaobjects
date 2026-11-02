@@ -22,8 +22,10 @@ import {
   type PhysicalNaming,
   type WireFormat,
   DEFAULT_WIRE_FORMAT,
+  type EnumDefaults,
+  DEFAULT_ENUM_DEFAULTS,
 } from "@metaobjectsdev/metadata";
-import { CONFIG_FILE, loadConfig, physicalNamingFromConfig, wireFormatFromConfig, type Config } from "./config.js";
+import { CONFIG_FILE, enumDefaultsFromConfig, loadConfig, physicalNamingFromConfig, wireFormatFromConfig, type Config } from "./config.js";
 import { discoverCollectionRoot, exists, isDir } from "./discovery.js";
 import { compileScope, matchesScope, type Scope } from "./scope.js";
 import { DEFAULT_METADATA_DIR, DEFAULT_METAOBJECTS_DIR, isMetadataFile } from "./metadata-files.js";
@@ -85,6 +87,8 @@ export interface Collection {
   readonly physicalNaming: PhysicalNaming;
   /** The `wire` block of the project config (ADR-0019 Amendment 2), default when absent. */
   readonly wireFormat: WireFormat;
+  /** The `enums` block of the project config (string-stored enum defaults), none when absent. */
+  readonly enumDefaults: EnumDefaults;
   /** `migrate.conventions` of the project config — a schema-conventions preset name — when set. */
   readonly schemaConventions: string | undefined;
   /** FR-023 — the `FileSource` id each file loads under, for the dependency
@@ -274,6 +278,7 @@ export async function resolveCollection(
   let libraries: readonly string[] = [];
   let physicalNaming: PhysicalNaming = DEFAULT_PHYSICAL_NAMING;
   let wireFormat: WireFormat = DEFAULT_WIRE_FORMAT;
+  let enumDefaults: EnumDefaults = DEFAULT_ENUM_DEFAULTS;
   let schemaConventions: string | undefined;
 
   if (hasConfig) {
@@ -291,6 +296,7 @@ export async function resolveCollection(
     libraries = cfg.libraries;
     physicalNaming = physicalNamingFromConfig(cfg);
     wireFormat = wireFormatFromConfig(cfg);
+    enumDefaults = enumDefaultsFromConfig(cfg);
     schemaConventions = cfg.migrate?.conventions;
     // An unknown token is a hard config error naming the valid ones, while
     // `librarySources` keeps skipping one silently for a programmatic caller. The two
@@ -406,6 +412,7 @@ export async function resolveCollection(
     libraries,
     physicalNaming,
     wireFormat,
+    enumDefaults,
     schemaConventions,
     fileIds: new Map(dependencies.map((d) => [d.artifactPath, d.sourceId])),
     importedPackages: [...importedPackages].sort(),

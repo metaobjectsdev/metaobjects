@@ -125,6 +125,18 @@ describe("prisma-schema — what the schema says", () => {
     expect(spec.checks.map((c) => c.name)).toContain("customers_tier_chk");
   });
 
+  test("a string-stored enum with a length is a VarChar of it, on Postgres and MySQL", async () => {
+    const root = await loadJson(model([entity("Ticket", [
+      { "source.rdb": { "@table": "tickets" } }, longId,
+      { "field.enum": { name: "status", "@values": ["OPEN", "CLOSED"], "@maxLength": 16 } }, pk,
+    ])]));
+    for (const provider of ["postgresql", "mysql"] as const) {
+      const status = buildPrismaSchema(root, { provider }).models.find((m) => m.name === "Ticket")!
+        .fields.find((f) => f.name === "status")!;
+      expect(status.attributes).toContain("@db.VarChar(16)");
+    }
+  });
+
   test("a self relation is named, so its two ends pair", async () => {
     const spec = buildPrismaSchema(await loadShop(), { provider: "postgresql" });
     const employee = spec.models.find((m) => m.name === "Employee")!;

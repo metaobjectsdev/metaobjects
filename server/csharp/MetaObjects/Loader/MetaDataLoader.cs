@@ -171,6 +171,7 @@ public class MetaDataLoader
         {
             result.Root.PhysicalNaming = cfg.Naming;
             result.Root.WireFormat = cfg.Wire;
+            result.Root.EnumDefaults = cfg.Enums;
         }
         return result;
     }
@@ -535,6 +536,7 @@ public class MetaDataLoader
             // Pass 8b: field.map — exactly one of @valueType (scalar) or @objectRef (VO),
             // and @valueType (when set) must name a known scalar subtype.
             errors.AddRange(ValidationPasses.ValidateFieldMap(root));
+            errors.AddRange(ValidationPasses.ValidateEnumMaxLength(root));
 
             // Pass 9: template @payloadRef / @requiredSlots resolution
             errors.AddRange(ValidationPasses.ValidateTemplatePayloadRefs(root));

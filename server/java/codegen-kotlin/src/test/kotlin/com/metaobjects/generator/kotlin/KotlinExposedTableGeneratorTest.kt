@@ -322,6 +322,41 @@ class KotlinExposedTableGeneratorTest {
         }
     }
 
+    private fun enumTable(statusDecl: String, maxLength: Long? = null): String {
+        val outDir = Files.createTempDirectory("ktbl-enum-len-")
+        try {
+            val model = """{
+              "metadata.root": { "package": "acme::demo", "children": [
+                { "object.entity": { "name": "Ticket", "children": [
+                    { "field.long": { "name": "id" } },
+                    { "field.enum": { "name": "status", $statusDecl } },
+                    { "source.rdb": { "@table": "tickets" } },
+                    { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } }
+                ] } }
+              ] }
+            }""".trimIndent()
+            val loader = loadString("enum-len", model)
+            if (maxLength != null) loader.root.enumDefaults = com.metaobjects.config.EnumDefaults(maxLength)
+            val gen = KotlinExposedTableGenerator()
+            gen.setArgs(mapOf("outputDir" to outDir.toString()))
+            gen.execute(loader)
+            return Files.readString(outDir.resolve("acme/demo/TicketTable.kt"))
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
+
+    @Test fun anEnumColumnTakesItsLengthFromMaxLengthThenTheProjectDefault() {
+        val values = "\"@values\": [\"OPEN\", \"CLOSED\"]"
+        val own = enumTable("$values, \"@maxLength\": 16")
+        assertTrue("enumerationByName(\"status\", 16, " in own, own)
+        val byDefault = enumTable(values, maxLength = 24)
+        assertTrue("enumerationByName(\"status\", 24, " in byDefault, byDefault)
+        // No length anywhere: the width it always had.
+        val none = enumTable(values)
+        assertTrue("enumerationByName(\"status\", ${KotlinTypeMapper.ENUM_VARCHAR_LEN}, " in none, none)
+    }
+
     @Test fun storageJsonbEmitsJsonbColumn() {
         val outDir = Files.createTempDirectory("ktbl-jsonb-")
         try {

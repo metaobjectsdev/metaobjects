@@ -705,6 +705,10 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
         loader.getRoot().setWireFormat(resolveProjectConfig(srcDir)
                 .map(com.metaobjects.config.NeutralConfig::getWireFormat)
                 .orElse(com.metaobjects.config.WireFormat.DEFAULT));
+        // The enum storage defaults (`enums`), from the same file, read by the table generators.
+        loader.getRoot().setEnumDefaults(resolveProjectConfig(srcDir)
+                .map(com.metaobjects.config.NeutralConfig::getEnumDefaults)
+                .orElse(com.metaobjects.config.EnumDefaults.DEFAULT));
 
         getLog().info("MetaData Mojo > Create Loader: " + loader.toString());
 

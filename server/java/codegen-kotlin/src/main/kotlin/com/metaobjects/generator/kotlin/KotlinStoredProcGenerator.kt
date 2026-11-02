@@ -402,7 +402,7 @@ open class KotlinStoredProcGenerator : MultiFileDirectGeneratorBase<MetaObject>(
         is DateField      -> "${ExposedImports.javatime(exposedApi, "JavaLocalDateColumnType")}()"
         is TimestampField -> "${ExposedImports.javatime(exposedApi, "JavaInstantColumnType")}()"
         is CurrencyField  -> "${ExposedImports.core(exposedApi, "LongColumnType")}()"
-        is EnumField      -> "${ExposedImports.core(exposedApi, "VarCharColumnType")}(${KotlinTypeMapper.ENUM_VARCHAR_LEN})"
+        is EnumField      -> "${ExposedImports.core(exposedApi, "VarCharColumnType")}(${KotlinTypeMapper.enumVarcharLength(field)})"
         // issue #390: java.util.UUID columns MUST use the core.java UUIDColumnType under 1.x —
         // bare core.UUIDColumnType (if it even existed there) would be the kotlin.uuid.Uuid
         // binding the 0.x name no longer provides; see KotlinTypeMapper's [UuidField] branches.
