@@ -645,7 +645,7 @@ function buildTable(
     columns,
     indexes: buildSecondaryIndexes(entity, tableName, strategy),
     foreignKeys: buildForeignKeys(entity, tableName, resolveTargetTable, root, strategy, fkCtx, onConflict),
-    checks: buildChecks(entity, tableName, strategy, dialect),
+    checks: buildChecks(entity, tableName, strategy, dialect, fkCtx.conventions.skipRedundantChecks === true),
     primaryKey,
   };
   const entityDesc = readDescription(entity);
@@ -793,7 +793,13 @@ function buildSecondaryIndexes(
  * column name verbatim (matching the enum-check convention).
  */
 function validatorCheck(
-  v: MetaValidator, qcol: string, tableName: string, col: string, dialect: Dialect | undefined,
+  v: MetaValidator,
+  qcol: string,
+  tableName: string,
+  col: string,
+  dialect: Dialect | undefined,
+  skipRedundant = false,
+  enforcedMax?: number,
 ): CheckDescriptor | null {
   switch (v.subType) {
     case VALIDATOR_SUBTYPE_NUMERIC: {
@@ -805,8 +811,10 @@ function validatorCheck(
     }
     case VALIDATOR_SUBTYPE_LENGTH: {
       const parts: string[] = [];
-      if (v.min !== undefined) parts.push(`length(${qcol}) >= ${v.min}`);
-      if (v.max !== undefined) parts.push(`length(${qcol}) <= ${v.max}`);
+      // Under skipRedundant, a minimum of 0 is always true and a maximum the column's
+      // VARCHAR(n) already enforces (n <= max) adds nothing.
+      if (v.min !== undefined && !(skipRedundant && v.min <= 0)) parts.push(`length(${qcol}) >= ${v.min}`);
+      if (v.max !== undefined && !(enforcedMax !== undefined && enforcedMax <= v.max)) parts.push(`length(${qcol}) <= ${v.max}`);
       if (parts.length === 0) return null;
       return { name: `${tableName}_${col}_length_chk`, expression: parts.join(" AND ") };
     }
@@ -840,7 +848,11 @@ function quoteCheckCol(col: string): string {
 }
 
 function buildChecks(
-  entity: MetaObject, tableName: string, strategy: ColumnNamingStrategy, dialect: Dialect | undefined,
+  entity: MetaObject,
+  tableName: string,
+  strategy: ColumnNamingStrategy,
+  dialect: Dialect | undefined,
+  skipRedundant: boolean,
 ): CheckDescriptor[] {
   const checks: CheckDescriptor[] = [];
   for (const field of entity.fields()) {
@@ -887,8 +899,11 @@ function buildChecks(
       }
     }
     // Validator-derived checks.
+    // The VARCHAR(n) the column already is, when the conventions skip what it enforces.
+    const columnType = subtypeToSqlType(field);
+    const enforcedMax = skipRedundant && columnType.kind === "text" ? columnType.maxLength : undefined;
     for (const v of field.validators()) {
-      const check = validatorCheck(v, qcol, tableName, col, dialect);
+      const check = validatorCheck(v, qcol, tableName, col, dialect, skipRedundant, enforcedMax);
       if (check) checks.push(check);
     }
   }

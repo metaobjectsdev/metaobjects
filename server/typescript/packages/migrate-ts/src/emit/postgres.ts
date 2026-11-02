@@ -292,7 +292,12 @@ function renderUp(c: Change, recreated: ReadonlySet<string> = new Set()): string
     // folds into a table recreate that rebuilds from the EXPECTED descriptor and never
     // references the dropped constraint. SQLite is already replay-safe by construction;
     // guarding Postgres makes the two dialects agree.
-    case "add-check":              return `ALTER TABLE ${quoteQualified(c.table, c.schema)} ADD CONSTRAINT ${quote(c.check.name)} CHECK (${c.check.expression});`;
+    // On a table that already holds rows: NOT VALID adds the CHECK for new writes under a light
+    // lock, and VALIDATE then checks the existing rows — the same end state as a plain ADD, with
+    // a violating row failing at a step that names the constraint.
+    case "add-check":
+      return `ALTER TABLE ${quoteQualified(c.table, c.schema)} ADD CONSTRAINT ${quote(c.check.name)} CHECK (${c.check.expression}) NOT VALID;\n`
+        + `ALTER TABLE ${quoteQualified(c.table, c.schema)} VALIDATE CONSTRAINT ${quote(c.check.name)};`;
     // Same `ALTER TABLE IF EXISTS` gap as `drop-fk` above.
     case "drop-check":             return `ALTER TABLE IF EXISTS ${quoteQualified(c.table, c.schema)} DROP CONSTRAINT IF EXISTS ${quote(c.check)};`;
     case "create-view": {

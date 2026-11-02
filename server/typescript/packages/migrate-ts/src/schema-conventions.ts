@@ -51,6 +51,12 @@ export interface SchemaConventions {
   foreignKeyIndexes(table: TableKeys): { name: string; columns: string[] }[];
   /** How a unique key (`identity.secondary`) is created. A partial or expression key is always an index. */
   uniqueKeyKind(key: KeyContext & { referencedByForeignKey: boolean }): "index" | "constraint";
+  /**
+   * Leave out a CHECK the schema already guarantees: a `validator.length` maximum the column's
+   * VARCHAR(n) enforces, and a minimum of 0. Optional, so a conventions object written before it
+   * keeps emitting every CHECK, as the default conventions do.
+   */
+  readonly skipRedundantChecks?: boolean;
 }
 
 /** Postgres's identifier limit (NAMEDATALEN - 1). */
@@ -98,6 +104,8 @@ export const efcoreConventions: SchemaConventions = {
   },
   // An alternate key (one an FK references) is a UNIQUE constraint; any other unique key is an index.
   uniqueKeyKind: ({ referencedByForeignKey }) => (referencedByForeignKey ? "constraint" : "index"),
+  // An EF Core database carries none of the CHECKs its column types already enforce.
+  skipRedundantChecks: true,
 };
 
 const PRESETS: Readonly<Record<string, SchemaConventions>> = {

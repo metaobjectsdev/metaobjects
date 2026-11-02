@@ -425,6 +425,7 @@ come from the project's **schema conventions**, selected in `.metaobjects/config
 | Foreign-key constraint name | `<table>_<first column>_fk` | `FK_<table>_<principal>_<columns>` |
 | Index on a foreign key | none | `IX_<table>_<columns>`, unless the primary key or another index (a partial one included) already starts with the FK's columns; an FK index another FK index covers is dropped, so FK order does not matter |
 | Unique key (`identity.secondary`, a `@unique` field) | a unique index | a UNIQUE constraint when a foreign key references it, else a unique index |
+| A CHECK the column type already guarantees (`skipRedundantChecks`) | emitted | left out: a `validator.length` maximum the column's `VARCHAR(n)` enforces, and a minimum of 0 |
 
 `efcore` follows EF Core's own conventions on PostgreSQL (Npgsql), including its truncation of a
 name longer than 63 characters to 62 characters and `~`. A database first built by EF Core
@@ -460,6 +461,15 @@ definition is unchanged and whose name differs is renamed in place (`RENAME CONS
 `ALTER INDEX … RENAME`), never dropped and re-created; new FK indexes are created. The PK name
 and whether a unique key is a constraint or an index are not compared by the diff, so they only
 shape what migrate creates. SQLite cannot rename a constraint and rebuilds the table instead.
+
+## Adding a CHECK to a table that already holds rows
+
+On Postgres a CHECK added to an existing table (a new validator, a new enum member list) is
+written as two statements: `ALTER TABLE … ADD CONSTRAINT … CHECK (…) NOT VALID`, which checks
+new writes at once under a light lock, then `ALTER TABLE … VALIDATE CONSTRAINT …`, which checks
+the rows already there. The end state is the same as a plain `ADD CONSTRAINT`; a row that
+violates the check fails the migration at the `VALIDATE` step, which names the constraint, so
+fix that row and apply again. A CHECK on a new table stays inside its `CREATE TABLE`.
 
 ## How CHECK constraints and expression indexes are compared
 

@@ -97,6 +97,15 @@ here.**
 
 ### Changed
 
+- **`meta migrate` adds a CHECK to an existing Postgres table as `NOT VALID`, then `VALIDATE
+  CONSTRAINT`.** The same end state as the plain `ADD CONSTRAINT` it wrote before, under a lighter
+  lock while adding, and a row that violates the check fails at the validation step that names
+  the constraint. A CHECK in a `CREATE TABLE` is unchanged.
+- **The `efcore` schema conventions leave out CHECKs the column type already guarantees**
+  (`skipRedundantChecks`): a `validator.length` maximum the column's `VARCHAR(n)` enforces, and a
+  minimum of 0. An EF Core database has none of them. The default conventions, and a conventions
+  object that does not set it, emit them as before.
+
 - **Added vocabulary no longer moves `metamodelVersion`.** The metamodel spec version now moves
   only when metadata that loaded may stop loading or change meaning. A new type, subtype,
   optional attribute or enum member leaves it unchanged, and its CHANGELOG entry names it; the
