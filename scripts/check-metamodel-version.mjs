@@ -117,7 +117,11 @@ const isPre1 = (v) => v.major === 0;
  */
 export function requiredBump(severity, base, { correction = false } = {}) {
   if (severity === "none") return "none";
-  if (severity === "additive") return "minor";
+  // ADDITIVE moves no metamodel number. Every document that loaded still loads, and means
+  // the same, so nothing an adopter relies on changed: the package's patch release carries
+  // the new vocabulary and its CHANGELOG entry names it. The number moves only when
+  // existing metadata may stop loading or change meaning.
+  if (severity === "additive") return "none";
   if (correction) return "minor"; // breaking, but a correction — never a metamodel major
   return isPre1(base) ? "minor" : "major"; // breaking
 }
@@ -139,7 +143,7 @@ export function satisfies(bump, base, cur) {
 // Classification.
 //
 // BREAKING  — metadata that used to load may now fail, or mean something else.
-// ADDITIVE  — every previously-valid document still loads, identically.
+// ADDITIVE  — every previously-valid document still loads, identically. Requires no bump.
 // PROSE     — human-readable only; the classifier declines to guess (see the header).
 // ---------------------------------------------------------------------------
 
