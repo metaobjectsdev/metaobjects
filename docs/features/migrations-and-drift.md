@@ -650,7 +650,9 @@ are not rewritten, so you edit them yourself:
 
 A rollback of a dropped column re-adds it on every engine, with its type, but the data is
 not restored. On SQLite a column that was `NOT NULL` with no default comes back nullable,
-because SQLite cannot add it any other way.
+because SQLite cannot add it any other way. SQLite also cannot add a column with an
+expression default (or a `uuid` identity default) to a populated table, so the rollback
+omits that default and says so in a `NOTE`.
 
 ## Verified by
 
