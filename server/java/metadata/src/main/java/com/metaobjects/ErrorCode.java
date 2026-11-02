@@ -298,6 +298,7 @@ public enum ErrorCode {
     ERR_ENUM_VALUE_EXCEEDS_MAX_LENGTH,
     ERR_ENUM_MAX_LENGTH_WITH_INT_VALUE_MAP,
     ERR_SEQUENCE_WITHOUT_INCREMENT,
+    ERR_SEQUENCE_START_OUT_OF_RANGE,
 
     /** @storage was set on a field that has no @objectRef. */
     ERR_STORAGE_WITHOUT_OBJECT_REF,

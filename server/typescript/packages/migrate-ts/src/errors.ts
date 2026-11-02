@@ -287,6 +287,13 @@ export class DuplicateSqlNameError extends Error {
           "(e.g. `ownersByEmail`).",
       );
     }
+    if (collisions.some((c) => c.owners.some((o) => o.includes("@sequenceName")))) {
+      fixes.push(
+        "A declared sequence name (identity.primary @sequenceName) is a relation in the same namespace: give each " +
+          "table's sequence its own name. An @sequenceName on an abstract base's identity is inherited by every " +
+          "entity that extends it, so declare it on each concrete entity instead.",
+      );
+    }
     if (anyOther) {
       fixes.push("Rename one of the tables/views (entity source `@table`, projection `@kind view @view`).");
     }

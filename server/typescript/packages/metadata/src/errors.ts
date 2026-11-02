@@ -156,6 +156,8 @@ export const ERROR_CODES = [
   "ERR_ENUM_MAX_LENGTH_WITH_INT_VALUE_MAP",
   // identity.primary @sequenceStart / @sequenceName without @generation "increment".
   "ERR_SEQUENCE_WITHOUT_INCREMENT",
+  // identity.primary @sequenceStart below 1, or past what its key field can hold.
+  "ERR_SEQUENCE_START_OUT_OF_RANGE",
   "ERR_STORAGE_WITHOUT_OBJECT_REF",
   // ADR-0013 — a field.object REQUIRES @objectRef (open/untyped JSON uses
   // the physical @dbColumnType: jsonb escape hatch on field.string instead).

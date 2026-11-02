@@ -786,6 +786,16 @@ function sqlTypeEqualsForDialect(a: SqlType, b: SqlType, dialect: Dialect | unde
   return sqlTypeEquals(canonTypeForDialect(a, dialect), canonTypeForDialect(b, dialect));
 }
 
+/**
+ * The name Postgres gives an identity or serial column's sequence when none is declared:
+ * `<table>_<column>_seq`. Undefined past the 63-byte identifier limit, where Postgres
+ * truncates by its own rule; such a name is then never compared offline.
+ */
+function defaultSequenceName(table: string, column: string): string | undefined {
+  const name = `${table}_${column}_seq`;
+  return Buffer.byteLength(name, "utf8") <= 63 ? name : undefined;
+}
+
 function diffTableColumns(
   expected: TableDescriptor,
   actual: TableDescriptor,
@@ -868,17 +878,22 @@ function diffTableColumns(
       };
       changes.push(change);
     }
-    // The declared start and name of an increment key's sequence, against the live sequence
-    // (Postgres only: SQLite has none, and its introspection reports no `sequence`). Only what
-    // the model declares is compared, so an undeclared one never produces a change.
-    if (ec.identity === "increment" && ec.sequence !== undefined && ac.sequence?.name !== undefined) {
-      const startDiffers = ec.sequence.start !== undefined && ac.sequence.start !== undefined
-        && ec.sequence.start !== ac.sequence.start;
-      const nameDiffers = ec.sequence.name !== undefined && ec.sequence.name !== ac.sequence.name;
-      if (startDiffers || nameDiffers) {
+    // The declared start and name of an increment key's sequence (Postgres only; SQLite has
+    // none). Only what the model DECLARES is compared, so an undeclared one never produces a
+    // change. The other side is the live sequence when introspected (`liveSequence`), else —
+    // a committed snapshot — what the previous model declared, with Postgres's defaults (start
+    // 1, `<table>_<column>_seq`) for what it left undeclared.
+    if (dialect === "postgres" && ec.identity === "increment" && ac.identity === "increment" && ec.sequence !== undefined) {
+      const live = ac.liveSequence;
+      const actualName = live?.name ?? ac.sequence?.name ?? defaultSequenceName(table, name);
+      const actualStart = live?.start ?? ac.sequence?.start ?? 1;
+      const startDiffers = ec.sequence.start !== undefined && ec.sequence.start !== actualStart;
+      const nameDiffers = ec.sequence.name !== undefined && actualName !== undefined && ec.sequence.name !== actualName;
+      if ((startDiffers || nameDiffers) && actualName !== undefined) {
         changes.push({
-          kind: "alter-sequence", table, ...sx, column: name, sequence: ac.sequence.name, status: ALLOWED,
-          ...(startDiffers ? { fromStart: ac.sequence.start!, toStart: ec.sequence.start! } : {}),
+          kind: "alter-sequence", table, ...sx, column: name, sequence: actualName, status: ALLOWED,
+          ...(live?.schema !== undefined ? { sequenceSchema: live.schema } : {}),
+          ...(startDiffers ? { fromStart: actualStart, toStart: ec.sequence.start! } : {}),
           ...(nameDiffers ? { toName: ec.sequence.name! } : {}),
         });
       }
@@ -892,6 +907,7 @@ function diffTableColumns(
         changes.push({
           kind: "change-column-identity", table, ...sx, column: name, status: ALLOWED,
           ...(from !== undefined ? { from } : {}), ...(to !== undefined ? { to } : {}),
+          ...(to !== undefined && ec.sequence !== undefined ? { sequence: ec.sequence } : {}),
         });
       }
       if (ec.description !== ac.description) {

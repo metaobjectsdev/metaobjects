@@ -199,6 +199,12 @@ public final class ErrorMessageConstants {
     public static final String ERR_SEQUENCE_WITHOUT_INCREMENT = "ERR_SEQUENCE_WITHOUT_INCREMENT";
 
     /**
+     * An {@code identity.primary} {@code @sequenceStart} is below 1, or past the largest value its
+     * key field can hold. Cross-language contract: {@code ERR_SEQUENCE_START_OUT_OF_RANGE}.
+     */
+    public static final String ERR_SEQUENCE_START_OUT_OF_RANGE = "ERR_SEQUENCE_START_OUT_OF_RANGE";
+
+    /**
      * Error code emitted when {@code field.object @storage} is set on a field that
      * has no {@code @objectRef} — storage shape only applies to referenced objects.
      * Cross-language contract: {@code ERR_STORAGE_WITHOUT_OBJECT_REF}.

@@ -429,6 +429,16 @@ export function buildExpectedSchemaWithProvenance(
       addOwner(t.schema, idx.name, label);
     }
   }
+  // A declared sequence name is a relation too (Postgres `pg_class`, per schema): two tables
+  // declaring one, or one naming a table, view or index, would fail at apply time — an
+  // identity.primary @sequenceName on an abstract base is inherited by every entity extending it.
+  for (const t of tables) {
+    for (const col of t.columns) {
+      if (col.sequence?.name !== undefined) {
+        addOwner(t.schema, col.sequence.name, `identity.primary @sequenceName "${col.sequence.name}" on table "${t.name}"`);
+      }
+    }
+  }
   const collisions = [...sqlNameOwners.entries()]
     .filter(([, owners]) => owners.length > 1)
     .map(([key, owners]) => ({

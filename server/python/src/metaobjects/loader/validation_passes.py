@@ -3726,6 +3726,10 @@ def _validate_sortable_has_supported_subtype(
 # "increment" key draws from; on any other generation there is none, so either one is refused
 # (ERR_SEQUENCE_WITHOUT_INCREMENT). Read RESOLVING (ADR-0039), reported on the identity that
 # declares one of them. Mirrors TS validateIdentitySequence.
+#: The largest value a field.int key (a 32-bit integer column) can hold.
+_SEQUENCE_INT_MAX = 2147483647
+
+
 def _validate_identity_sequence(root: MetaData, errors: list[MetaError]) -> None:
     from ..meta.core.identity.identity_constants import (
         GENERATION_INCREMENT,
@@ -3749,7 +3753,28 @@ def _validate_identity_sequence(root: MetaData, errors: list[MetaError]) -> None
                 if ident.attr(a) is not None
             ]
             generation = ident.get_meta_attr(IDENTITY_ATTR_GENERATION)
-            if not declared or generation == GENERATION_INCREMENT:
+            if not declared:
+                continue
+            if generation == GENERATION_INCREMENT:
+                # The key field's own range bounds the start (Postgres refuses the sequence
+                # otherwise, at apply time): 1 to the largest value of a field.int / field.long.
+                start = ident.get_meta_attr(IDENTITY_PRIMARY_ATTR_SEQUENCE_START)
+                if isinstance(start, int) and not isinstance(start, bool):
+                    fields = ident.get_meta_attr(IDENTITY_ATTR_FIELDS)
+                    key_name = fields[0] if isinstance(fields, list) and fields else fields
+                    key = next((f for f in obj.fields() if f.name == key_name), None)
+                    maximum = _SEQUENCE_INT_MAX if key is not None and key.sub_type == FIELD_SUBTYPE_INT else None
+                    if start < 1 or (maximum is not None and start > maximum):
+                        kind = f" (field.{key.sub_type})" if key is not None else ""
+                        upper = f" and at most {maximum}" if maximum is not None else ""
+                        errors.append(MetaError(
+                            code=ErrorCode.ERR_SEQUENCE_START_OUT_OF_RANGE,
+                            message=(
+                                f'identity.primary "{obj.name}.{ident.name}" @sequenceStart {start} is out '
+                                f'of range for its key "{key_name}"{kind}: it must be at least 1{upper}.'
+                            ),
+                            envelope=ident.source,
+                        ))
                 continue
             shown = f'"{generation}"' if isinstance(generation, str) else "not set"
             names = " and ".join(declared)

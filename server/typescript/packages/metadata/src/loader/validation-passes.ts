@@ -1686,13 +1686,35 @@ export function validateDerivedFieldProvidability(root: MetaData): ParseError[] 
 // (ADR-0039), reported on the identity that declares one of them.
 // ---------------------------------------------------------------------------
 
+/** The largest value a field.int key (a 32-bit integer column) can hold. */
+const SEQUENCE_INT_MAX = 2147483647;
+
 export function validateIdentitySequence(root: MetaData): ParseError[] {
   const errors: ParseError[] = [];
   for (const obj of root.children().filter((c) => c.type === TYPE_OBJECT)) {
     for (const id of obj.ownChildren()) {
       if (id.type !== TYPE_IDENTITY || id.subType !== IDENTITY_SUBTYPE_PRIMARY) continue;
       const declared = [IDENTITY_ATTR_SEQUENCE_START, IDENTITY_ATTR_SEQUENCE_NAME].filter((a) => id.ownAttr(a) !== undefined);
-      if (declared.length === 0 || id.attr(IDENTITY_ATTR_GENERATION) === GENERATION_INCREMENT) continue;
+      if (declared.length === 0) continue;
+      if (id.attr(IDENTITY_ATTR_GENERATION) === GENERATION_INCREMENT) {
+        const start = id.attr(IDENTITY_ATTR_SEQUENCE_START);
+        if (typeof start === "number") {
+          // The key field's own range bounds the start (Postgres refuses the sequence
+          // otherwise, at apply time): 1 to the largest value of a field.int / field.long.
+          const keyName = [id.attr(IDENTITY_ATTR_FIELDS)].flat()[0];
+          const key = (obj as MetaObject).fields().find((f) => f.name === keyName);
+          const max = key?.subType === FIELD_SUBTYPE_INT ? SEQUENCE_INT_MAX : undefined;
+          if (start < 1 || (max !== undefined && start > max)) {
+            errors.push(new ParseError(
+              `identity.primary "${obj.name}.${id.name}" @sequenceStart ${start} is out of range for its key ` +
+              `"${String(keyName)}"${key !== undefined ? ` (field.${key.subType})` : ""}: it must be at least 1` +
+              `${max !== undefined ? ` and at most ${max}` : ""}.`,
+              { code: "ERR_SEQUENCE_START_OUT_OF_RANGE", source: id.source },
+            ));
+          }
+        }
+        continue;
+      }
       const generation = id.attr(IDENTITY_ATTR_GENERATION);
       const shown = typeof generation === "string" ? `"${generation}"` : "not set";
       errors.push(new ParseError(

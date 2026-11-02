@@ -83,10 +83,27 @@ function stableStringify(value: unknown): string {
   );
 }
 
+/**
+ * A snapshot records what the model declares, never what introspection read: a live
+ * sequence's name and start (`liveSequence`) is dropped, so a `baseline --from-db` writes the
+ * same bytes it wrote before sequences were read. The format version does not move: the
+ * declared `sequence` is written only when a model declares one, and a reader that does not
+ * know it finds it absent, which it treats as undeclared.
+ */
+function withoutLiveSequences(snapshot: SchemaSnapshot): SchemaSnapshot {
+  return {
+    ...snapshot,
+    tables: snapshot.tables.map((t) => ({
+      ...t,
+      columns: t.columns.map(({ liveSequence: _live, ...c }) => c),
+    })),
+  };
+}
+
 export function serializeSnapshot(snapshot: SchemaSnapshot): string {
   const file: SnapshotFile = {
     formatVersion: SNAPSHOT_FORMAT_VERSION,
-    snapshot: canonicalize(snapshot),
+    snapshot: canonicalize(withoutLiveSequences(snapshot)),
   };
   return stableStringify(file) + "\n";
 }

@@ -2399,8 +2399,34 @@ public final class ValidationPhase {
                 }
                 String generation = id.hasMetaAttr(com.metaobjects.identity.MetaIdentity.ATTR_GENERATION)
                     ? id.getMetaAttr(com.metaobjects.identity.MetaIdentity.ATTR_GENERATION).getValueAsString() : null;
-                if (declared.isEmpty()
-                        || com.metaobjects.identity.MetaIdentity.GENERATION_INCREMENT.equals(generation)) continue;
+                if (declared.isEmpty()) continue;
+                if (com.metaobjects.identity.MetaIdentity.GENERATION_INCREMENT.equals(generation)) {
+                    // The key field's own range bounds the start (Postgres refuses the sequence
+                    // otherwise, at apply time): 1 to the largest value of a field.int / field.long.
+                    if (id.hasMetaAttr(com.metaobjects.identity.PrimaryIdentity.ATTR_SEQUENCE_START)) {
+                        Object raw = id.getMetaAttr(com.metaobjects.identity.PrimaryIdentity.ATTR_SEQUENCE_START).getValue();
+                        if (raw instanceof Number n) {
+                            long start = n.longValue();
+                            List<String> keys = id.getFields();
+                            String keyName = keys.isEmpty() ? null : keys.get(0);
+                            com.metaobjects.field.MetaField<?> key = null;
+                            for (com.metaobjects.field.MetaField<?> f : obj.getMetaFields()) {
+                                if (f.getShortName().equals(keyName)) { key = f; break; }
+                            }
+                            Long max = key instanceof com.metaobjects.field.IntegerField ? (long) Integer.MAX_VALUE : null;
+                            if (start < 1 || (max != null && start > max)) {
+                                out.add(new MetaDataException(
+                                    ErrorMessageConstants.ERR_SEQUENCE_START_OUT_OF_RANGE
+                                        + ": identity.primary \"" + obj.getShortName() + "." + id.getShortName()
+                                        + "\" @sequenceStart " + start + " is out of range for its key \"" + keyName + "\""
+                                        + (key != null ? " (field." + key.getSubType() + ")" : "")
+                                        + ": it must be at least 1" + (max != null ? " and at most " + max : "") + ".",
+                                    ErrorCode.ERR_SEQUENCE_START_OUT_OF_RANGE, id.getSource()));
+                            }
+                        }
+                    }
+                    continue;
+                }
                 String shown = generation == null ? "not set" : "\"" + generation + "\"";
                 String names = String.join(" and ", declared);
                 out.add(new MetaDataException(

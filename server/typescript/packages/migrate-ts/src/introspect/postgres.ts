@@ -536,8 +536,8 @@ async function readPgCatalogColumnFacts(
 /**
  * The sequence behind each auto-increment column — a GENERATED identity's or a legacy
  * serial's — found through `pg_depend` (the column OWNS it), with its name and start value
- * from `pg_sequence`. Sets `sequence` on `columns` in place. Compared only against what the
- * model declares (identity.primary @sequenceStart / @sequenceName).
+ * from `pg_sequence`. Sets `liveSequence` on `columns` in place (never `sequence`, which is
+ * the model's declaration). Compared only against what the model declares.
  */
 async function readPgColumnSequences(
   k: RawKysely, schema: string, tableName: string, columns: ColumnDescriptor[],
@@ -545,8 +545,8 @@ async function readPgColumnSequences(
   // pg-mem gap: pg_depend / pg_sequence are not supported — the query throws and the
   // columns carry no sequence, so nothing about one is compared.
   try {
-    const rows = await sql<{ column_name: string; sequence_name: string; seqstart: string | number }>`
-      SELECT a.attname AS column_name, seq.relname AS sequence_name, ps.seqstart
+    const rows = await sql<{ column_name: string; sequence_schema: string; sequence_name: string; seqstart: string | number }>`
+      SELECT a.attname AS column_name, sn.nspname AS sequence_schema, seq.relname AS sequence_name, ps.seqstart
       FROM pg_class c
       JOIN pg_namespace n ON n.oid = c.relnamespace
       JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped
@@ -554,6 +554,7 @@ async function readPgColumnSequences(
         AND d.classid = 'pg_class'::regclass AND d.refclassid = 'pg_class'::regclass
         AND d.deptype IN ('a', 'i')
       JOIN pg_class seq ON seq.oid = d.objid AND seq.relkind = 'S'
+      JOIN pg_namespace sn ON sn.oid = seq.relnamespace
       JOIN pg_sequence ps ON ps.seqrelid = seq.oid
       WHERE n.nspname = ${schema}
         AND c.relname = ${tableName}
@@ -562,7 +563,11 @@ async function readPgColumnSequences(
     for (const r of rows.rows) {
       const col = byName.get(r.column_name);
       if (col === undefined) continue;
-      col.sequence = { name: r.sequence_name, start: Number(r.seqstart) };
+      col.liveSequence = {
+        ...(r.sequence_schema !== schema ? { schema: r.sequence_schema } : {}),
+        name: r.sequence_name,
+        start: Number(r.seqstart),
+      };
     }
   } catch {
     // see above

@@ -312,6 +312,8 @@ public enum ErrorCode
     ERR_ENUM_MAX_LENGTH_WITH_INT_VALUE_MAP,
     // identity.primary @sequenceStart / @sequenceName without @generation "increment".
     ERR_SEQUENCE_WITHOUT_INCREMENT,
+    // identity.primary @sequenceStart below 1, or past what its key field can hold.
+    ERR_SEQUENCE_START_OUT_OF_RANGE,
 }
 
 /// <summary>

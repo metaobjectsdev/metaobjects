@@ -2116,7 +2116,34 @@ public static partial class ValidationPasses
                 var declared = new[] { MetaObjects.Persistence.Db.DbConstants.IDENTITY_ATTR_SEQUENCE_START, MetaObjects.Persistence.Db.DbConstants.IDENTITY_ATTR_SEQUENCE_NAME }
                     .Where(a => id.OwnAttr(a) is not null).ToList();
                 var generation = id.Attr(IDENTITY_ATTR_GENERATION) as string;
-                if (declared.Count == 0 || generation == GENERATION_INCREMENT) continue;
+                if (declared.Count == 0) continue;
+                if (generation == GENERATION_INCREMENT)
+                {
+                    // The key field's own range bounds the start (Postgres refuses the sequence
+                    // otherwise, at apply time): 1 to the largest value of a field.int / field.long.
+                    if (id.Attr(MetaObjects.Persistence.Db.DbConstants.IDENTITY_ATTR_SEQUENCE_START) is long start)
+                    {
+                        var keyName = id.Attr(IDENTITY_ATTR_FIELDS) switch
+                        {
+                            string s => s,
+                            IReadOnlyList<string> ss => ss.FirstOrDefault(),
+                            IReadOnlyList<object?> os => os.FirstOrDefault() as string,
+                            _ => null,
+                        };
+                        var key = (obj as MetaObject)?.Fields().FirstOrDefault(f => f.Name == keyName);
+                        long? max = key?.SubType == FIELD_SUBTYPE_INT ? int.MaxValue : null;
+                        if (start < 1 || (max is { } m && start > m))
+                        {
+                            errors.Add(new MetaError(
+                                $"identity.primary \"{obj.Name}.{id.Name}\" @sequenceStart {start} is out of range for its key " +
+                                $"\"{keyName}\"{(key is not null ? $" (field.{key.SubType})" : "")}: it must be at least 1" +
+                                $"{(max is { } mx ? $" and at most {mx}" : "")}.",
+                                ErrorCode.ERR_SEQUENCE_START_OUT_OF_RANGE,
+                                Envelope: id.Source));
+                        }
+                    }
+                    continue;
+                }
                 var shown = generation is null ? "not set" : $"\"{generation}\"";
                 var names = string.Join(" and ", declared.Select(a => "@" + a));
                 errors.Add(new MetaError(
