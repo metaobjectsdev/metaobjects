@@ -430,6 +430,24 @@ export function renderCreateView(v: ViewDescriptor): string {
   return `CREATE VIEW ${quote(v.name)} AS\n${v.sql};`;
 }
 
+/**
+ * Re-add a dropped column from the descriptor the diff kept (`restore`). The data is not
+ * restored. SQLite refuses `ADD COLUMN … NOT NULL` with no default, so such a column comes
+ * back nullable rather than leaving the rollback unable to run.
+ */
+function renderDropColumnDown(c: Extract<Change, { kind: "drop-column" }>): string {
+  if (c.restore === undefined) {
+    return `-- WARNING: down migration cannot restore data\n-- TODO: re-add dropped column "${c.column}" manually with original type/nullable/default`;
+  }
+  const needsDefault = !c.restore.nullable && c.restore.default === undefined && c.restore.identity !== "uuid";
+  const column = needsDefault ? { ...c.restore, nullable: true } : c.restore;
+  return [
+    `ALTER TABLE ${quote(c.table)} ADD COLUMN ${renderColumnInline(column)};`,
+    "-- NOTE: column data is not restored by this down migration.",
+    ...(needsDefault ? [`-- NOTE: ${quote(c.column)} was NOT NULL with no default; SQLite cannot add it that way, so it returns nullable.`] : []),
+  ].join("\n");
+}
+
 function renderDownNative(c: Change): string {
   switch (c.kind) {
     case "create-table":   return `DROP TABLE ${quote(c.table.name)};`;
@@ -439,7 +457,7 @@ function renderDownNative(c: Change): string {
       return `ALTER TABLE ${quote(c.to)} RENAME TO ${quote(c.from)};`;
     }
     case "add-column":     return `ALTER TABLE ${quote(c.table)} DROP COLUMN ${quote(c.column.name)};`;
-    case "drop-column":    return `-- WARNING: down migration cannot restore data\n-- TODO: re-add dropped column "${c.column}" manually`;
+    case "drop-column": return renderDropColumnDown(c);
     case "rename-column": {
       assertNoCarriedRenames(c);
       return `ALTER TABLE ${quote(c.table)} RENAME COLUMN ${quote(c.to)} TO ${quote(c.from)};`;

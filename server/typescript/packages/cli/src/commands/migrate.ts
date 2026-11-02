@@ -120,7 +120,7 @@ MIGRATE FLAGS:
   --slug <name>        Required to WRITE a migration (not for --dry-run) (e.g., --slug add-user-shipping)
   --allow <csv>        Comma-separated destructive-change permissions:
                        drop-column,drop-table,type-change,drop-index,drop-fk,
-                       drop-check,drop-view,drop-view-cascade,
+                       drop-check,drop-view,drop-view-cascade,drop-column-read-by-view,
                        adopt-view,nullable-to-not-null,drop-identity-default,
                        drop-unmanaged,drop-comment
                        drop-column DELETES the column and every value in it. If

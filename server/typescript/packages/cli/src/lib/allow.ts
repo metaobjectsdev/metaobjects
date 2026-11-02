@@ -27,6 +27,8 @@ export const ALLOW_TOKEN_MAP: Record<string, keyof AllowOptions> = {
   "drop-view": "dropView",
   // Gates DROP VIEW ... CASCADE. Additional to drop-view, never implied by it.
   "drop-view-cascade": "dropViewCascade",
+  // Gates dropping a column a view this tool does not own still reads.
+  "drop-column-read-by-view": "dropColumnReadByView",
   // Gates overwriting an unfingerprinted (hand-written or pre-fingerprint) view.
   "adopt-view": "adoptView",
   "nullable-to-not-null": "nullableToNotNull",

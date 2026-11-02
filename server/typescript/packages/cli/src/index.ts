@@ -176,7 +176,7 @@ MIGRATE FLAGS:
   --slug <name>         Required when changes are present (e.g., add-user-shipping)
   --allow <csv>         Comma-separated destructive-change permissions:
                         drop-column,drop-table,type-change,drop-index,drop-fk,
-                        drop-check,drop-view,drop-view-cascade,
+                        drop-check,drop-view,drop-view-cascade,drop-column-read-by-view,
                         adopt-view,nullable-to-not-null,drop-identity-default,
                         drop-comment,drop-unmanaged
                         drop-column DELETES the column's data; for a renamed

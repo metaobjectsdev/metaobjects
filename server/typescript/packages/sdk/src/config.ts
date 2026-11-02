@@ -45,6 +45,7 @@ export const AllowTokenEnum = z.enum([
   "drop-check",
   "drop-view",
   "drop-view-cascade",
+  "drop-column-read-by-view",
   "adopt-view",
   "nullable-to-not-null",
   "drop-identity-default",

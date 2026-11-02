@@ -252,7 +252,15 @@ export type Change =
       status: ChangeStatus;
     }
   | { kind: "add-column"; table: string; schema?: string; column: ColumnDescriptor; status: ChangeStatus }
-  | { kind: "drop-column"; table: string; schema?: string; column: string; restore?: ColumnDescriptor; status: ChangeStatus }
+  | {
+      kind: "drop-column"; table: string; schema?: string; column: string; restore?: ColumnDescriptor; status: ChangeStatus;
+      /**
+       * Live views this tool does not own (declared `@unmanaged`, or outside the scoped
+       * schemas) whose recorded body names the dropped column. The drop fails at apply
+       * while they stand, so it is blocked pending `allow.dropColumnReadByView`.
+       */
+      readBy?: readonly string[];
+    }
   | {
       kind: "rename-column"; table: string; schema?: string; from: string; to: string;
       /**
@@ -471,6 +479,14 @@ export interface AllowOptions {
    * dependents snapshot rather than silently cascading.
    */
   dropViewCascade?: boolean;
+  /**
+   * Gates dropping a column that a live view this tool does NOT own still reads (a view
+   * declared `@unmanaged`, or one outside the scoped schemas). The tool never rewrites
+   * such a view, so the drop fails at apply on Postgres (`cannot drop column … other
+   * objects depend on it`) and on SQLite (`error in view … after drop column`). Granting
+   * this lets the plan through, for when the view is dealt with first or in the same release.
+   */
+  dropColumnReadByView?: boolean;
   /**
    * Gates overwriting an existing view that carries NO MetaObjects fingerprint —
    * i.e. taking ownership of it. It is either hand-written or predates

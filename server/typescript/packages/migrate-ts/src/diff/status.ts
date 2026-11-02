@@ -55,8 +55,18 @@ function blockFor(
   recreatedViews: ReadonlySet<string>,
 ): Block | null {
   switch (c.kind) {
-    case "drop-column":
-      return gate(allow, "dropColumn", "destructive: drop-column not allowed (pass allow.dropColumn)");
+    case "drop-column": {
+      const blocked = gate(allow, "dropColumn", "destructive: drop-column not allowed (pass allow.dropColumn)");
+      if (blocked !== null) return blocked;
+      const readBy = c.readBy ?? [];
+      if (readBy.length > 0) {
+        return gate(allow, "dropColumnReadByView",
+          `drop-column ${c.table}.${c.column} is still read by ${readBy.length} view(s) MetaObjects does not own `
+          + `(${readBy.join(", ")}). It never rewrites them, so the drop fails at apply. `
+          + `Change the view(s) first, or pass allow.dropColumnReadByView`);
+      }
+      return null;
+    }
     case "drop-table":
       return gate(allow, "dropTable", "destructive: drop-table not allowed (pass allow.dropTable)");
     case "drop-index":

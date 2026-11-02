@@ -314,6 +314,10 @@ export const ALLOW_TOKENS = [
   // views and materialized views owned by OTHER applications, which this tool
   // neither manages nor can restore. `--allow drop-view` alone never cascades.
   "drop-view-cascade",
+  // drop-column-read-by-view permits dropping a column that a live view this tool
+  // does not own (`@unmanaged`, or outside the scoped schemas) still reads. The tool
+  // never rewrites such a view, so without this `migrate` refuses at plan time.
+  "drop-column-read-by-view",
   // adopt-view permits overwriting an existing view that carries no MetaObjects
   // fingerprint — i.e. taking ownership of a hand-written view, or of one created
   // before fingerprinting existed. Every environment upgrading from an older

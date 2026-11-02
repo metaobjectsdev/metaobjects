@@ -317,6 +317,10 @@ export async function diff(
   // that is exactly the object a cascade must not destroy silently.
   annotateViewDropDependents(args.actual.views, changes);
 
+  // A live view this tool does not own is never rewritten, so it blocks a column drop at
+  // apply. Only views that Pass 2b/2c did not see qualify: the rest are recreated or dropped.
+  annotateUnownedColumnReaders(args.actual.views, new Set(actualViewsInScope.map(viewIdentity)), changes);
+
   // Pass 3: column renames (table renames were resolved in Pass 1c).
   await detectColumnRenames(changes, args.onAmbiguous, args.renames);
   // Pass 3b: a renamed column carries the constraints and indexes named after it.
@@ -1246,6 +1250,32 @@ function annotateViewDropDependents(actual: readonly ViewDescriptor[], changes: 
       }
     }
     if (external.length > 0) c.dependents = external;
+  }
+}
+
+/**
+ * Mark each `drop-column` that a live view outside the tool's ownership still reads.
+ *
+ * `seen` holds the views the view passes handle (in scope and not declared `@unmanaged`);
+ * a view in it is dropped or recreated around the change, so it is not a reader that
+ * strands the drop. What is left is a declared-`@unmanaged` view or one in a schema the
+ * model does not scope. A view with no recorded body cannot be matched, so it is not blocked on.
+ */
+function annotateUnownedColumnReaders(
+  actual: readonly ViewDescriptor[],
+  seen: ReadonlySet<string>,
+  changes: Change[],
+): void {
+  const unowned = actual.filter((v) => v.sql !== undefined && !seen.has(viewIdentity(v)));
+  if (unowned.length === 0) return;
+  const liveName = liveTableNames(changes);
+  for (const c of changes) {
+    if (c.kind !== "drop-column") continue;
+    const table = liveName(c.table);
+    const readBy = unowned
+      .filter((v) => sqlNamesIdentifier(v.sql!, table) && sqlNamesIdentifier(v.sql!, c.column))
+      .map((v) => (v.schema !== undefined ? `${v.schema}.${v.name}` : v.name));
+    if (readBy.length > 0) c.readBy = readBy;
   }
 }
 
