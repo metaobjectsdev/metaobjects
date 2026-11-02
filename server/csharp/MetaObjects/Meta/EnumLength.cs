@@ -24,7 +24,8 @@ public static class EnumLength
     /// <summary>
     /// The column length of <paramref name="field"/>, a string-stored <c>field.enum</c>: its
     /// @maxLength (ADR-0039 — resolving), else the project default, else null. Null for an
-    /// @intValueMap enum, whose column is an integer, and for any other field.
+    /// @intValueMap enum, whose column is an integer, for an array enum (a text[] column whose
+    /// elements carry no length), and for any other field.
     /// <para>The loader refuses an @maxLength a member does not fit; it does not see the
     /// project config, so a member longer than the project DEFAULT is refused here
     /// (ERR_ENUM_VALUE_EXCEEDS_MAX_LENGTH), by every consumer that sizes the column.</para>
@@ -32,6 +33,8 @@ public static class EnumLength
     public static long? ResolveMaxLength(MetaField field)
     {
         if (field.SubType != FIELD_SUBTYPE_ENUM || field.Attr(FIELD_ATTR_INT_VALUE_MAP) is not null) return null;
+        // An array enum is a text[] column, whose elements carry no length.
+        if (field.ResolvedIsArray()) return null;
         if (field.MaxLength is { } own) return own;
         if (EnumDefaults.Of(field).MaxLength is not { } fallback) return null;
         var longest = (field.EffectiveEnumValues ?? [])

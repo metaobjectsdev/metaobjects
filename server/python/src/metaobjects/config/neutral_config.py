@@ -336,6 +336,10 @@ def _read_enums(raw: dict[str, object], path: Path) -> EnumDefaults:
     if "maxLength" not in enums:
         return EnumDefaults()
     value = enums["maxLength"]
+    # A whole number however JSON spells it (32, 32.0, 1e2): a reader that parses numbers as
+    # doubles (TypeScript's) cannot tell those apart, so every port accepts all three.
+    if isinstance(value, float) and value.is_integer():
+        value = int(value)
     if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
         raise ParseError(
             f"{path}: 'enums.maxLength' must be a positive integer, got {value!r}",

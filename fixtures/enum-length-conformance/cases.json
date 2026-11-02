@@ -1,20 +1,30 @@
 {
-  "_comment": "The column length of a string-stored field.enum, per port. Each case is the `enums` block of a project's .metaobjects/config.json (null: no block). Each port reads it with its own config reader, puts it on the loaded meta.enums.json root, and resolves every Ticket enum's length through its core resolver (resolveEnumMaxLength and its per-port equivalents). null in `lengths` means no length: an unbounded text column. `overflow` cases must be refused when the named field's length is resolved, with ERR_ENUM_VALUE_EXCEEDS_MAX_LENGTH. Each `invalid` block must be refused when the config is read.",
+  "_comment": "The column length of a string-stored field.enum, per port. Each case is the `enums` block of a project's .metaobjects/config.json (null: no block). Each port reads it with its own config reader, puts it on the loaded meta.enums.json root, and resolves every Ticket enum's length through its core resolver (resolveEnumMaxLength and its per-port equivalents). null in `lengths` means no length: an unbounded text column, or for an array enum a text[] column, whose elements carry no length (so an array enum's members are never checked against the default). `overflow` cases must be refused when the named field's length is resolved, with ERR_ENUM_VALUE_EXCEEDS_MAX_LENGTH. Each `invalid` block must be refused when the config is read.",
   "cases": [
     {
       "name": "no enums block: only an explicit @maxLength sizes a column",
       "enums": null,
-      "lengths": { "status": null, "channel": 20, "priority": 8, "rank": null }
+      "lengths": { "status": null, "channel": 20, "priority": 8, "rank": null, "tags": null }
     },
     {
       "name": "an empty block is the same as none",
       "enums": {},
-      "lengths": { "status": null, "channel": 20, "priority": 8, "rank": null }
+      "lengths": { "status": null, "channel": 20, "priority": 8, "rank": null, "tags": null }
     },
     {
       "name": "the project default sizes every enum without its own @maxLength",
       "enums": { "maxLength": 32 },
-      "lengths": { "status": 32, "channel": 20, "priority": 8, "rank": null }
+      "lengths": { "status": 32, "channel": 20, "priority": 8, "rank": null, "tags": null }
+    },
+    {
+      "name": "an integer written with a decimal point is that integer",
+      "enums": { "maxLength": 32.0 },
+      "lengths": { "status": 32, "channel": 20, "priority": 8, "rank": null, "tags": null }
+    },
+    {
+      "name": "an integer written with an exponent is that integer",
+      "enums": { "maxLength": 1e2 },
+      "lengths": { "status": 100, "channel": 20, "priority": 8, "rank": null, "tags": null }
     }
   ],
   "overflow": [

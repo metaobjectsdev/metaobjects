@@ -172,6 +172,13 @@ function attrAsStringArray(attr: unknown): string[] {
   return [];
 }
 
+/** An enum member longer than the project's enums.maxLength: a metadata defect, reported by name. */
+function refuseEnumLength(err: Error): number {
+  log.error(`verify: ${err.message}`);
+  log.error(`verify: ${ENUM_LENGTH_HINT}`);
+  return 1;
+}
+
 export async function verifyCommand(
   args: string[],
   cwd: string,
@@ -714,11 +721,16 @@ export async function verifyCommand(
     // passes no `governed` and gets the comparison exactly as it was.
     let governed: GovernedScope | undefined;
     if (schemaScope !== undefined) {
-      const built = buildExpectedSchemaWithProvenance(root, {
-        dialect,
-        views: buildProjectionViews(root, { dialect }),
-      });
-      governed = scopeExpectedSchema(built, schemaScope, importedOption(collection));
+      try {
+        const built = buildExpectedSchemaWithProvenance(root, {
+          dialect,
+          views: buildProjectionViews(root, { dialect }),
+        });
+        governed = scopeExpectedSchema(built, schemaScope, importedOption(collection));
+      } catch (err) {
+        if (isEnumLengthRefusal(err)) return refuseEnumLength(err);
+        throw err;
+      }
     }
 
     // `verifyReplay` calls `applyPending` itself. That is NOT a second replay: the
@@ -1309,13 +1321,21 @@ export async function verifyCommand(
     // work at the top of `verifyCommand`, because `migrate.scope` governs only the
     // schema gate: a stale pattern must not fail a `--templates` run that never
     // consults it.
-    const scopeMismatch = migrateScopeMismatch(collection, () => {
-      const dialect: Dialect = usingD1 ? "d1" : (flags.dialect ?? inferDialect(flags.db as string));
-      return buildExpectedSchemaWithProvenance(root, {
-        dialect,
-        views: buildProjectionViews(root, { dialect }),
-      }).provenance;
-    });
+    let scopeMismatch: string | undefined;
+    try {
+      scopeMismatch = migrateScopeMismatch(collection, () => {
+        const dialect: Dialect = usingD1 ? "d1" : (flags.dialect ?? inferDialect(flags.db as string));
+        return buildExpectedSchemaWithProvenance(root, {
+          dialect,
+          views: buildProjectionViews(root, { dialect }),
+        }).provenance;
+      });
+    } catch (err) {
+      // Building the expected schema to check the scope raises the same metadata refusals
+      // the comparison below would; report them by name, not as an uncaught error.
+      if (isEnumLengthRefusal(err)) return refuseEnumLength(err);
+      throw err;
+    }
     if (scopeMismatch !== undefined) {
       log.error(`verify: ${scopeMismatch}`);
       return 2;
@@ -1409,11 +1429,7 @@ export async function verifyCommand(
           log.error("verify: declare an identity.secondary on the target entity with exactly the referenced fields, or reference its primary key");
           return 1;
         }
-        if (isEnumLengthRefusal(err)) {
-          log.error(`verify: ${err.message}`);
-          log.error(`verify: ${ENUM_LENGTH_HINT}`);
-          return 1;
-        }
+        if (isEnumLengthRefusal(err)) return refuseEnumLength(err);
         if (isUnknownSchemaConventionsError(err)) {
           log.error(`verify: ${err.message}`);
           return 2;

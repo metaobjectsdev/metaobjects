@@ -787,8 +787,9 @@ export function mapColumnType(
               fnName = enumIntCustomType?.fnConstName ?? "integer";
             } else {
               // A length (core's resolveEnumMaxLength) is the VARCHAR(n) `meta migrate`
-              // creates; with none the column is unbounded text, as before.
-              const sized = resolveEnumMaxLength(field);
+              // creates; with none the column is unbounded text, as before. An array enum is
+              // a text[] column, whose elements carry no length (migrate's arrayElementSqlType).
+              const sized = isArray ? undefined : resolveEnumMaxLength(field);
               if (sized !== undefined) {
                 fnName = "varchar";
                 fnOptions = { length: sized };

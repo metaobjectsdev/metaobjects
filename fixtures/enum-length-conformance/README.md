@@ -10,7 +10,9 @@ the column refuses the same model.
 
 [`cases.json`](./cases.json) holds the `enums` blocks every port must accept, with the length
 each enum in [`meta.enums.json`](./meta.enums.json) resolves to under them, the overflow every
-port must refuse, and the blocks every port must refuse when it reads the file. Each port runs
+port must refuse, and the blocks every port must refuse when it reads the file. A whole
+number is accepted however JSON spells it (`32`, `32.0`, `1e2`), because a JSON reader that
+parses numbers as doubles cannot tell those apart. Each port runs
 it through its own config reader and core resolver:
 
 | Port | Test |

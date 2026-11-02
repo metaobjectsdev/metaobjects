@@ -269,7 +269,7 @@ public static class CodegenCli
             // A bad template ref / wrong --template-root surfaces as a clean error, not a stack trace.
             return new GenOutcome([$"{RenderFailedPrefix}{ex.Message}"], null);
         }
-        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or MetaModelException)
         {
             // An output-pattern error or a duplicate output-path collision surfaces lazily
             // during the walk — a clean error, not a stack trace.

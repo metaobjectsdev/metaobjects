@@ -48,6 +48,9 @@ def resolve_enum_max_length(field: "MetaData") -> int | None:
     """
     if field.sub_type != FIELD_SUBTYPE_ENUM or field.get_meta_attr(FIELD_ATTR_INT_VALUE_MAP) is not None:
         return None
+    # An array enum is a text[] column, whose elements carry no length (ADR-0039: resolving).
+    if field.resolved_is_array():
+        return None
     own = field.get_meta_attr(FIELD_ATTR_MAX_LENGTH)
     if isinstance(own, int) and not isinstance(own, bool):
         return own

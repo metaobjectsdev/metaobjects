@@ -39,6 +39,7 @@ import {
   VIEW_SUBTYPE_HIDDEN,
   VIEW_SUBTYPE_DROPDOWN,
   VIEW_SUBTYPE_RADIO,
+  FIELD_SUBTYPE_ENUM,
   FIELD_SUBTYPE_TIME,
   FIELD_SUBTYPE_TIMESTAMP,
   VALIDATOR_SUBTYPE_REQUIRED,
@@ -268,9 +269,10 @@ function buildFieldRules(field: MetaField): UiRule[] {
     rules.push({ kind: "required", message: `${humanize(field.name)} is required` });
   }
 
-  // Field-level @maxLength attr (if not already covered).
+  // Field-level @maxLength attr (if not already covered). On a field.enum it is the column
+  // length, not an input rule: the member list is the rule, and every member fits.
   const maxLenAttr = field.attr(FIELD_ATTR_MAX_LENGTH);
-  if (!hasMaxLength && typeof maxLenAttr === "number") {
+  if (!hasMaxLength && typeof maxLenAttr === "number" && field.subType !== FIELD_SUBTYPE_ENUM) {
     rules.push({
       kind: "maxLength",
       value: maxLenAttr,

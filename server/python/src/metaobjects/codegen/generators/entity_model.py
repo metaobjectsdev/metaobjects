@@ -160,7 +160,9 @@ def _validator_constraints(field: MetaField, *, wire: bool) -> dict[str, object]
     min_len = _first_attr(field, vc.VALIDATOR_SUBTYPE_LENGTH, vc.VALIDATOR_ATTR_MIN)
     max_len = _first_attr(field, vc.VALIDATOR_SUBTYPE_LENGTH, vc.VALIDATOR_ATTR_MAX)
     field_max = field.attrs().get(fc.FIELD_ATTR_MAX_LENGTH)
-    if _is_int(field_max):
+    # On a field.enum @maxLength is the column length, not an input rule: the Literal of its
+    # members is the rule, and every member fits.
+    if _is_int(field_max) and field.sub_type != fc.FIELD_SUBTYPE_ENUM:
         # FR-036 A3 — strictest-wins: when BOTH a validator.length @max and a field
         # @maxLength cap a string, the smaller bound governs (never the field attr
         # unconditionally, which could loosen a tighter validator).

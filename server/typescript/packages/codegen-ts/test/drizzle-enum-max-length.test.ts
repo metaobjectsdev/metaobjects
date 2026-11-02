@@ -46,4 +46,12 @@ describe("Drizzle: a string-stored enum's column length", () => {
   test("MySQL: @maxLength beats the longest member", async () => {
     expect(await emit({ "@values": VALUES, "@maxLength": 16 }, "mysql")).toContain('varchar("status", { length: 16, enum:');
   });
+
+  test("Postgres: an array enum stays text[] — migrate's column — whatever the length", async () => {
+    const own = await emit({ "@values": VALUES, "@maxLength": 16, isArray: true }, "postgres");
+    expect(own).not.toContain("varchar(");
+    // A member longer than the project default does not refuse an array enum: it has no length.
+    const long = await emit({ "@values": ["A_VERY_LONG_MEMBER"], isArray: true }, "postgres", 4);
+    expect(long).not.toContain("varchar(");
+  });
 });

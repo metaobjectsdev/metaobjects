@@ -12,6 +12,7 @@
 // `ERR_DEPENDENCY_PACKAGE_NOT_OWNED` refusal, so a node declared into a
 // dependency's package is silently excluded from that command's output instead
 // of being refused by name.
+import { DEFAULT_ENUM_DEFAULTS } from "@metaobjectsdev/metadata";
 import type { Collection, LoadMemoryOptions } from "@metaobjectsdev/sdk";
 
 /**
@@ -40,7 +41,7 @@ export function collectionLoadOptions(
     libraries: collection.libraries,
     physicalNaming: collection.physicalNaming,
     wireFormat: collection.wireFormat,
-    enumDefaults: collection.enumDefaults,
+    enumDefaults: collection.enumDefaults ?? DEFAULT_ENUM_DEFAULTS,
     ...(collection.schemaConventions !== undefined ? { schemaConventions: collection.schemaConventions } : {}),
   };
 }

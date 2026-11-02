@@ -20,6 +20,7 @@
             { "field.enum": { "name": "channel", "@values": ["EMAIL", "PHONE"], "@maxLength": 20 } },
             { "field.enum": { "name": "priority", "extends": "acme::enums::Priority" } },
             { "field.enum": { "name": "rank", "@values": ["A", "B"], "@intValueMap": { "A": 1, "B": 2 } } },
+            { "field.enum": { "name": "tags", "isArray": true, "@values": ["URGENT", "FOLLOW_UP_NEEDED"] } },
             { "identity.primary": { "name": "pk", "@fields": "id" } }
           ]
         }

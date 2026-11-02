@@ -33,7 +33,8 @@ export function enumDefaultsOf(node: MetaData): EnumDefaults {
 /**
  * The column length of `field`, a string-stored `field.enum`: its @maxLength (ADR-0039 —
  * resolving, it may be inherited), else the project default, else undefined. Undefined for
- * an @intValueMap enum, whose column is an integer, and for any other field.
+ * an @intValueMap enum, whose column is an integer, for an array enum, a text[] column whose
+ * elements carry no length, and for any other field.
  *
  * The loader refuses an @maxLength a member does not fit; it does not see the project
  * config, so a member longer than the project DEFAULT is refused here, by every consumer
@@ -41,6 +42,8 @@ export function enumDefaultsOf(node: MetaData): EnumDefaults {
  */
 export function resolveEnumMaxLength(field: MetaData): number | undefined {
   if (field.subType !== FIELD_SUBTYPE_ENUM || field.attr(FIELD_ATTR_INT_VALUE_MAP) !== undefined) return undefined;
+  // An array enum is a text[] column, whose elements carry no length (ADR-0039: resolving).
+  if ((field as { resolvedIsArray?: () => boolean }).resolvedIsArray?.() === true) return undefined;
   const own = field.attr(FIELD_ATTR_MAX_LENGTH);
   if (typeof own === "number") return own;
   const fallback = enumDefaultsOf(field).maxLength;

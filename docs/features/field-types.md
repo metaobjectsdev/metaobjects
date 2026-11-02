@@ -206,7 +206,7 @@ when the column is sized, both as `ERR_ENUM_VALUE_EXCEEDS_MAX_LENGTH`, with the 
 int-backed enum's column is an integer. An array of enums stays a `text[]` column. Kotlin's
 Exposed binding keeps its 64-character width when the enum has no length.
 
-**Int-backed storage:** `@intValueMap` switches the DB column from string to integer while**Int-backed storage:** `@intValueMap` switches the DB column from string to integer while
+**Int-backed storage:** `@intValueMap` switches the DB column from string to integer while
 preserving the string wire format and generated enum type. Keys must match `@values` exactly;
 values must be unique integers. Display labels and native Postgres `ENUM` types remain
 deferred (see [enum-datatype-design.md](../superpowers/specs/2026-05-23-enum-datatype-design.md)).

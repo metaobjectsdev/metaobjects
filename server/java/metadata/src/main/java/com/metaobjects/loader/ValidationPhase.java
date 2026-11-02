@@ -262,7 +262,7 @@ public final class ValidationPhase {
         // FR-024 B6 — derived-field providability (entity origin fields need a read source).
         pass(collected, () -> validateDerivedFieldProvidability(root));
         pass(collected, () -> validateObjectFieldStorage(root));
-        pass(collected, () -> validateEnumMaxLength(root));
+        validateEnumMaxLength(root, collected);
         pass(collected, () -> validateFieldMap(root));
         pass(collected, () -> validateIdentityFieldsAndGeneration(root));
         // FR-024 B3/B4a — subtype rules (identity-name, value purity, projection licensing).
@@ -2380,16 +2380,17 @@ public final class ValidationPhase {
     // checked, root-level abstract enums included. Mirrors TS validateEnumMaxLength.
     // =========================================================================
 
-    static void validateEnumMaxLength(MetaRoot root) {
-        walkEnumMaxLength(root);
-    }
-
-    private static void walkEnumMaxLength(MetaData node) {
+    /** Every offending enum is reported, as the other ports do, not only the first. */
+    static void validateEnumMaxLength(MetaData node, List<MetaDataException> out) {
         for (MetaData child : node.getChildren(MetaData.class, false)) {
             if (child instanceof EnumField) {
-                validateEnumMaxLengthNode((EnumField) child);
+                try {
+                    validateEnumMaxLengthNode((EnumField) child);
+                } catch (MetaDataException e) {
+                    out.add(e);
+                }
             } else if (!(child instanceof com.metaobjects.field.MetaField)) {
-                walkEnumMaxLength(child);
+                validateEnumMaxLength(child, out);
             }
         }
     }

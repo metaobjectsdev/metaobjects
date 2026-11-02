@@ -32,6 +32,8 @@ public final class EnumLength {
      */
     public static Long resolveMaxLength(MetaField<?> field) {
         if (!(field instanceof EnumField) || field.hasMetaAttr(EnumField.ATTR_INT_VALUE_MAP)) return null;
+        // An array enum is a text[] column, whose elements carry no length.
+        if (field.isArrayType()) return null;
         if (field.hasMetaAttr(EnumField.ATTR_MAX_LENGTH)) {
             Object own = field.getMetaAttr(EnumField.ATTR_MAX_LENGTH).getValue();
             if (own instanceof Number n) return n.longValue();

@@ -140,10 +140,6 @@ public enum ErrorCode
     // physical @dbColumnType: jsonb escape hatch on field.string).
     ERR_OBJECT_FIELD_WITHOUT_OBJECT_REF,
     ERR_STORAGE_FLATTENED_ARRAY,
-    // @flattenedColumnPrefix on a field.object whose @storage is not "flattened" (absent is jsonb).
-    ERR_FLATTENED_COLUMN_PREFIX_WITHOUT_FLATTENED_STORAGE,
-    ERR_ENUM_VALUE_EXCEEDS_MAX_LENGTH,
-    ERR_ENUM_MAX_LENGTH_WITH_INT_VALUE_MAP,
     ERR_INVALID_TEMPLATE,
     ERR_SOURCE_NO_PRIMARY,
     ERR_SOURCE_MULTIPLE_PRIMARY,
@@ -307,6 +303,13 @@ public enum ErrorCode
     // default @normalize: strip; rename a member or set collapse / none.
     ERR_ENUM_NORMALIZE_COLLISION,
     ERR_UNKNOWN,
+    // Appended, never inserted: a member's integer value is its position, so adding one
+    // mid-enum would renumber every member after it in a patch release.
+    // @flattenedColumnPrefix on a field.object whose @storage is not "flattened" (absent is jsonb).
+    ERR_FLATTENED_COLUMN_PREFIX_WITHOUT_FLATTENED_STORAGE,
+    // field.enum @maxLength: a member longer than the column, or a length on an int-stored enum.
+    ERR_ENUM_VALUE_EXCEEDS_MAX_LENGTH,
+    ERR_ENUM_MAX_LENGTH_WITH_INT_VALUE_MAP,
 }
 
 /// <summary>

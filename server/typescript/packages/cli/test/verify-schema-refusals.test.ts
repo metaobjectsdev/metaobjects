@@ -98,5 +98,12 @@ describe("meta verify — schema refusals", () => {
     expect(code).toBe(1);
     expect(out).toContain('field.enum "Ticket.status" has the member "IN_PROGRESS"');
     expect(out).not.toContain("failed to introspect");
+
+    // The same refusal under migrate.scope, whose scope check builds the expected schema first.
+    await writeFile(join(root, ".metaobjects", "config.json"),
+      JSON.stringify({ schema_version: 1, enums: { maxLength: 10 }, migrate: { scope: ["acme::*"] } }), "utf8");
+    const scoped = await capture(() => verifyCommand(["--db", `file:${join(root, "t.db")}`], root));
+    expect(scoped.code).toBe(1);
+    expect(scoped.out).toContain('field.enum "Ticket.status" has the member "IN_PROGRESS"');
   });
 });

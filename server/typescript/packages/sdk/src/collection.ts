@@ -87,8 +87,9 @@ export interface Collection {
   readonly physicalNaming: PhysicalNaming;
   /** The `wire` block of the project config (ADR-0019 Amendment 2), default when absent. */
   readonly wireFormat: WireFormat;
-  /** The `enums` block of the project config (string-stored enum defaults), none when absent. */
-  readonly enumDefaults: EnumDefaults;
+  /** The `enums` block of the project config (string-stored enum defaults), none when absent.
+   *  Optional so a hand-built Collection from before the block existed still type-checks. */
+  readonly enumDefaults?: EnumDefaults | undefined;
   /** `migrate.conventions` of the project config — a schema-conventions preset name — when set. */
   readonly schemaConventions: string | undefined;
   /** FR-023 — the `FileSource` id each file loads under, for the dependency

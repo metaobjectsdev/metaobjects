@@ -353,11 +353,14 @@ public sealed class NeutralConfig
             switch (p.Name)
             {
                 case "maxLength":
-                    if (p.Value.ValueKind != JsonValueKind.Number || !p.Value.TryGetInt64(out var n) || n <= 0)
+                    // A whole number however JSON spells it (32, 32.0, 1e2): a reader that parses
+                    // numbers as doubles (TypeScript's) cannot tell those apart.
+                    if (p.Value.ValueKind != JsonValueKind.Number || !p.Value.TryGetDouble(out var d)
+                        || d <= 0 || d != Math.Floor(d) || d > long.MaxValue)
                         throw new MetaModelException(
                             $"{path}: \"enums.maxLength\" must be a positive integer",
                             ErrorCode.ERR_BAD_ATTR_VALUE);
-                    maxLength = n;
+                    maxLength = (long)d;
                     break;
                 default:
                     throw new MetaModelException(
