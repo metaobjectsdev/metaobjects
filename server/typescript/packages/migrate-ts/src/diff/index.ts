@@ -317,9 +317,11 @@ export async function diff(
   // that is exactly the object a cascade must not destroy silently.
   annotateViewDropDependents(args.actual.views, changes);
 
-  // A live view this tool does not own is never rewritten, so it blocks a column drop at
-  // apply. Only views that Pass 2b/2c did not see qualify: the rest are recreated or dropped.
-  annotateUnownedColumnReaders(args.actual.views, new Set(actualViewsInScope.map(viewIdentity)), changes);
+  // A live view this tool neither rewrites nor drops stays in place and blocks a column drop
+  // at apply. Whether a planned drop-view/replace-view is itself blocked is decided by the
+  // statuses, so assign them first; applyStatus below assigns them again over the final list.
+  applyStatus(changes, args.allow ?? {});
+  annotateUnownedColumnReaders(args.actual.views, changes);
 
   // Pass 3: column renames (table renames were resolved in Pass 1c).
   await detectColumnRenames(changes, args.onAmbiguous, args.renames);
@@ -1254,19 +1256,25 @@ function annotateViewDropDependents(actual: readonly ViewDescriptor[], changes: 
 }
 
 /**
- * Mark each `drop-column` that a live view outside the tool's ownership still reads.
+ * Mark each `drop-column` that a live view this migration leaves in place still reads.
  *
- * `seen` holds the views the view passes handle (in scope and not declared `@unmanaged`);
- * a view in it is dropped or recreated around the change, so it is not a reader that
- * strands the drop. What is left is a declared-`@unmanaged` view or one in a schema the
- * model does not scope. A view with no recorded body cannot be matched, so it is not blocked on.
+ * A view with a drop-view or replace-view in `changes` that is not blocked is dropped or
+ * rewritten around the change, so it does not strand the drop. Every other live view
+ * does: a declared-`@unmanaged` one, one in a schema the model does not scope, a hand-made
+ * one whose drop-view is blocked. A view with no recorded body cannot be matched, so it is
+ * not blocked on.
  */
 function annotateUnownedColumnReaders(
   actual: readonly ViewDescriptor[],
-  seen: ReadonlySet<string>,
   changes: Change[],
 ): void {
-  const unowned = actual.filter((v) => v.sql !== undefined && !seen.has(viewIdentity(v)));
+  const handled = new Set<string>();
+  for (const c of changes) {
+    if (c.status.state === "blocked") continue;
+    if (c.kind === "drop-view") handled.add(viewIdentity({ name: c.view, ...schemaSpread(c.schema) }));
+    else if (c.kind === "replace-view") handled.add(viewIdentity({ name: c.view.name, ...schemaSpread(c.schema) }));
+  }
+  const unowned = actual.filter((v) => v.sql !== undefined && !handled.has(viewIdentity(v)));
   if (unowned.length === 0) return;
   const liveName = liveTableNames(changes);
   for (const c of changes) {

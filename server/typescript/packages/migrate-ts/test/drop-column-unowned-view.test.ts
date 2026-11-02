@@ -64,6 +64,18 @@ for (const dialect of ["postgres", "sqlite"] as const) {
       expect(r.blocked).toEqual([]);
     });
 
+    test("a hand-made view (declared by no metadata) that reads the column blocks the drop while its drop-view is blocked", async () => {
+      const r = await plan([view("SELECT id, nickname FROM accounts")], []);
+      const dropColumn = r.changes.find((c) => c.kind === "drop-column")!;
+      expect(dropColumn.status).toMatchObject({ state: "blocked", blockedBy: "dropColumnReadByView" });
+      expect((dropColumn.status as { blockedReason: string }).blockedReason).toContain("v_hand");
+    });
+
+    test("a hand-made view whose drop-view is allowed is dropped around the change, so it does not block the drop", async () => {
+      const r = await plan([view("SELECT id, nickname FROM accounts")], [], { dropView: true });
+      expect(r.blocked).toEqual([]);
+    });
+
     test("a view with no recorded body does not block", async () => {
       const r = await plan([view(undefined)], [id]);
       expect(r.blocked).toEqual([]);

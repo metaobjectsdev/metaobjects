@@ -68,7 +68,10 @@ export function describeChange(c: Change): string {
     case "drop-table": return c.table;
     case "rename-table": return `${c.from} → ${c.to}`;
     case "add-column": return `${c.table}.${c.column.name}`;
-    case "drop-column": return `${c.table}.${c.column}`;
+    case "drop-column":
+      return c.readBy === undefined || c.readBy.length === 0
+        ? `${c.table}.${c.column}`
+        : `${c.table}.${c.column} (read by view ${c.readBy.join(", ")})`;
     case "rename-column": return `${c.table}.${c.from} → ${c.table}.${c.to}`;
     case "change-column-type": {
       // A type change carries its column's default change, so the default is reported here.
