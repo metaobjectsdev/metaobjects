@@ -217,15 +217,17 @@ public object KotlinGenUtil {
     /**
      * §A2/§A3 — physical name + logical field name for one field.
      *
-     * A `@storage: "flattened"` value object has NO column of its own: [column] is null and
-     * [members] names one column per member of the value object, keyed by the member's field
-     * name, through core naming ([ColumnNaming.resolveFlattened], the rule `meta migrate`
-     * names them by). The field's own resolved column (`ship_to`) does not exist in the
-     * database, so nothing here names it.
+     * [members] is set only on a `@storage: "flattened"` value object, and there it is the
+     * real column information: such a field has no column of its own, and each member of the
+     * value object is a column of the owning table, named by core naming
+     * ([ColumnNaming.resolveFlattened], the rule `meta migrate` names them by), keyed by the
+     * member's field name. [column] is kept as it always was, so an owned copy of the names
+     * generator keeps compiling and emitting what it did; on a flattened field it names no
+     * column of the table.
      */
     data class KotlinFieldNames(
         val name: String,
-        val column: String?,
+        val column: String,
         val members: Map<String, KotlinFieldNames>? = null,
     )
 
@@ -469,11 +471,12 @@ public object KotlinGenUtil {
     private fun fieldNamesOf(f: MetaField<*>, strategy: String): KotlinFieldNames {
         val flattened = f is ObjectField && f.hasMetaAttr(ObjectField.ATTR_STORAGE, true) &&
             ObjectField.STORAGE_FLATTENED == f.getMetaAttr(ObjectField.ATTR_STORAGE, true).valueAsString
-        if (!flattened) return KotlinFieldNames(f.name, resolveColumnName(f, strategy))
+        val column = resolveColumnName(f, strategy)
+        if (!flattened) return KotlinFieldNames(f.name, column)
         val target = (f as ObjectField).objectRef
         val members = target?.metaFields.orEmpty()
             .associate { m -> m.name to KotlinFieldNames(m.name, ColumnNaming.resolveFlattened(f, m, strategy)) }
-        return KotlinFieldNames(f.name, null, members)
+        return KotlinFieldNames(f.name, column, members)
     }
 
     /**

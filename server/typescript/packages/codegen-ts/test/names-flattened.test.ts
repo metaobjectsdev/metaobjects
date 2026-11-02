@@ -1,8 +1,8 @@
 // A flattened value object has no column of its own: each member is a column of the owning
 // table, named by core naming (`resolveFlattenedColumnName`). The names artifact carries
-// those columns under the field, and no `column` for the field itself, so code that needs a
-// flattened column reads a constant instead of spelling it, and a lookup of the phantom
-// `ship_to` column is a compile error rather than a query against a column that is not there.
+// those columns under the field's `members`, so code that needs a flattened column reads a
+// constant instead of spelling it. The field's own entry is unchanged (its `column` is kept
+// for code that already reads it), so the addition breaks nothing.
 //
 // The corpus is the cross-port naming fixture: every `<Object>.<field>.<member>` key in it is
 // a flattened column, and the artifact must name each one exactly as `meta migrate` does,
@@ -50,8 +50,8 @@ function artifactColumn(root: MetaRoot, key: string): string | undefined {
   const names = resolveObjectNames(root.findObject(objectName) as MetaObject);
   const entry: FieldNames | undefined = names?.fields[fieldName];
   if (entry === undefined) return undefined;
-  if (memberName === undefined) return "column" in entry ? entry.column : undefined;
-  return "members" in entry ? entry.members[memberName]?.column : undefined;
+  if (memberName === undefined) return entry.column;
+  return entry.members?.[memberName]?.column;
 }
 
 describe("names artifact — flattened columns (cross-port naming corpus)", () => {
@@ -64,14 +64,12 @@ describe("names artifact — flattened columns (cross-port naming corpus)", () =
     });
   }
 
-  test("a flattened field names no column of its own", async () => {
+  test("a flattened field keeps its own entry, unchanged, and gains members", async () => {
     const root = await loadCorpusModel(corpus.cases[0]!);
     const names = resolveObjectNames(root.findObject("Shipment") as MetaObject);
-    for (const field of ["shipTo", "billTo", "returnTo", "giftTo", "homeTo"]) {
-      const entry = names?.fields[field];
-      expect(entry).toBeDefined();
-      expect("column" in entry!).toBe(false);
-    }
+    expect(names?.fields.shipTo?.column).toBe("ship_to");
+    expect(Object.keys(names?.fields.shipTo?.members ?? {}).sort()).toEqual(["country", "postalCode", "street"]);
+    expect(names?.fields.id?.members).toBeUndefined();
   });
 });
 
@@ -95,16 +93,15 @@ describe("names artifact — rendered flattened members", () => {
     },
   };
 
-  test("members under the field, each with its column; a jsonb object keeps its one column", async () => {
+  test("members beside the field's own entry, each with its column; a jsonb object is unchanged", async () => {
     const { root, errors } = await new MetaDataLoader().load([new InMemoryStringSource(JSON.stringify(DOC))]);
     expect(errors).toEqual([]);
     const out = renderNamesDecl(root.findObject("Shipment") as MetaObject, { strategy: "snake_case" });
 
     expect(out).toContain(
-      'shipTo: { name: "shipTo", members: { postalCode: { name: "postalCode", column: "ship_to_ZIP" }, ' +
+      'shipTo: { name: "shipTo", column: "ship_to", members: { postalCode: { name: "postalCode", column: "ship_to_ZIP" }, ' +
         'street: { name: "street", column: "ship_to_street" } } }',
     );
     expect(out).toContain('payload: { name: "payload", column: "payload" }');
-    expect(out).not.toContain('column: "ship_to"');
   });
 });

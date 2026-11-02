@@ -291,7 +291,7 @@ class KotlinExposedTableGeneratorTest {
         }
     }
 
-    @Test fun flattenedColumnsReferenceTheNamesConstants() {
+    @Test fun flattenedColumnsKeepTheirLiteralWithTheNamesArtifactInTheRun() {
         val outDir = Files.createTempDirectory("ktbl-flat-names-")
         try {
             val model = """{
@@ -312,9 +312,11 @@ class KotlinExposedTableGeneratorTest {
             gen.execute(loadString("flat-names", model))
 
             val src = Files.readString(outDir.resolve("acme/demo/UserTable.kt"))
-            assertTrue("val workStreet = text(UserNames.WORK_STREET_COLUMN)" in src,
-                "expected the flattened column through its names constant; saw:\n$src")
-            assertFalse("\"office_street\"" in src, "the literal must not be spelled; saw:\n$src")
+            // An owned (ejected) names generator from before member constants does not emit
+            // UserNames.WORK_STREET_COLUMN, so the table must not reference it.
+            assertTrue("val workStreet = text(\"office_street\")" in src,
+                "expected the flattened column's literal; saw:\n$src")
+            assertFalse("WORK_STREET_COLUMN" in src, "saw:\n$src")
         } finally {
             outDir.toFile().deleteRecursively()
         }

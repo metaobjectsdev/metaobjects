@@ -20,14 +20,16 @@ namespace MetaObjects.Codegen;
 
 /// <summary>
 /// Physical name + logical field name for one field (§A2/§A3 names artifact).
-/// <para>A <c>@storage: "flattened"</c> value object has NO column of its own: <paramref
-/// name="Column"/> is null and <paramref name="Members"/> names one column per member of the
-/// value object, keyed by the member's field name, through core naming
+/// <para><paramref name="Members"/> is set only on a <c>@storage: "flattened"</c> value object,
+/// and there it is the real column information: such a field has no column of its own, and
+/// each member of the value object is a column of the owning table, named by core naming
 /// (<see cref="PhysicalNaming.ResolveFlattenedColumnName(MetaField, MetaField, ColumnNamingStrategy)"/>,
-/// the function <c>meta migrate</c> names them with). The field's own resolved column
-/// (<c>ship_to</c>) does not exist in the database, so nothing here names it.</para>
+/// the function <c>meta migrate</c> names them with), keyed by the member's field name.
+/// <paramref name="Column"/> is kept unchanged from before <paramref name="Members"/> existed,
+/// so an owned copy of the names generator keeps compiling and emitting what it did; on a
+/// flattened field it names no column of the table.</para>
 /// </summary>
-public sealed record FieldNames(string Name, string? Column, IReadOnlyDictionary<string, FieldNames>? Members = null);
+public sealed record FieldNames(string Name, string Column, IReadOnlyDictionary<string, FieldNames>? Members = null);
 
 /// <summary>
 /// One <c>source.rdb</c> child, under the ROLE it plays.
@@ -819,8 +821,10 @@ public static class CSharpNaming
     public static string KeyMemberName(string type, string keyName, string member) =>
         Pascal(type) + PascalToken(keyName) + PascalToken(member);
 
-    /// <summary>One field member: <c>EmailField</c> / <c>EmailColumn</c>. See <see cref="PascalToken"/>
-    /// for why this stays on <see cref="Pascal"/>.</summary>
+    /// <summary>The constant member naming a flattened member's column: <c>ShipToStreetColumn</c>.</summary>
+    public static string FlattenedColumnMemberName(string fieldName, string memberName) =>
+        FieldMemberName(fieldName + Pascal(memberName), MEMBER_COLUMN);
+
     /// <summary>
     /// One field's names. The flattened test is migrate's own: a <c>field.object</c> whose
     /// resolved <c>@storage</c> is <c>flattened</c>. A flattened field whose <c>@objectRef</c>
@@ -828,21 +832,20 @@ public static class CSharpNaming
     /// </summary>
     public static FieldNames FieldNamesOf(MetaField f, ColumnNamingStrategy strategy)
     {
+        var column = Column(f, strategy);
         if (f.SubType != FIELD_SUBTYPE_OBJECT || f.Storage != STORAGE_FLATTENED)
-            return new FieldNames(f.Name, Column(f, strategy));
+            return new FieldNames(f.Name, column);
         var members = new Dictionary<string, FieldNames>(StringComparer.Ordinal);
         if (NamingRefs.RefTarget(f, FIELD_ATTR_OBJECT_REF) is MetaObject vo)
         {
             foreach (var m in vo.Fields())
                 members[m.Name] = new FieldNames(m.Name, PhysicalNaming.ResolveFlattenedColumnName(f, m, strategy));
         }
-        return new FieldNames(f.Name, null, members);
+        return new FieldNames(f.Name, column, members);
     }
 
-    /// <summary>The constant member naming a flattened member's column: <c>ShipToStreetColumn</c>.</summary>
-    public static string FlattenedColumnMemberName(string fieldName, string memberName) =>
-        FieldMemberName(fieldName + Pascal(memberName), MEMBER_COLUMN);
-
+    /// <summary>One field member: <c>EmailField</c> / <c>EmailColumn</c>. See <see cref="PascalToken"/>
+    /// for why this stays on <see cref="Pascal"/>.</summary>
     public static string FieldMemberName(string fieldName, string member) =>
         Pascal(fieldName) + Pascal(member);
 
@@ -886,30 +889,9 @@ public static class CSharpNaming
     public static string ColumnRef(MetaObject owner, MetaField field, ColumnNamingStrategy strategy, bool includeNames)
     {
         var names = includeNames ? ResolveObjectNames(owner, strategy) : null;
-        // A flattened field names no column (FieldNames.Column is null): the literal stands.
-        return names is not null && names.Fields.TryGetValue(field.Name, out var entry) && entry.Column is not null
+        return names is not null && names.Fields.ContainsKey(field.Name)
             ? $"{NamesClassName(owner)}.{FieldMemberName(field.Name, MEMBER_COLUMN)}"
             : $"\"{Column(field, strategy)}\"";
-    }
-
-    /// <summary>
-    /// §A6 for a flattened value object's member: the <c>&lt;Owner&gt;Names.&lt;Field&gt;&lt;Member&gt;Column</c>
-    /// constant when the <c>names</c> generator is in this run and the owner's artifact names
-    /// that member, the core-naming literal (quoted) otherwise — the same presence rule as
-    /// <see cref="ColumnRef"/>.
-    /// </summary>
-    public static string FlattenedColumnRef(
-        MetaObject owner,
-        MetaField field,
-        MetaField member,
-        ColumnNamingStrategy strategy,
-        bool includeNames)
-    {
-        var names = includeNames ? ResolveObjectNames(owner, strategy) : null;
-        return names is not null && names.Fields.TryGetValue(field.Name, out var entry)
-               && entry.Members is { } members && members.ContainsKey(member.Name)
-            ? $"{NamesClassName(owner)}.{FlattenedColumnMemberName(field.Name, member.Name)}"
-            : $"\"{PhysicalNaming.ResolveFlattenedColumnName(field, member, strategy)}\"";
     }
 
     /// <summary>

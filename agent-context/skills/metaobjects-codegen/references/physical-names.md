@@ -93,7 +93,8 @@ artifact exists *for your code*, which is the only place a physical name appears
 `@storage: flattened` field has no column of its own: each member of the value object is a
 column of the owner's table, named by core naming (the field's `@flattenedColumnPrefix`,
 else `<field column>_`, then the member's column). The artifact carries one constant per
-member and none for the field, because the field's own resolved column does not exist:
+member. The field's own column constant is still emitted, unchanged, but on a flattened
+field it names no column of the table; read the member constants:
 
 | Port | Reads as |
 |---|---|
@@ -103,8 +104,12 @@ member and none for the field, because the field's own resolved column does not 
 | Python | `SHIPMENT_SHIP_TO_STREET_COLUMN` |
 
 The column-by-field maps (`ColumnsByField`, `COLUMNS_BY_FIELD`) key these `shipTo.street`.
-Without the artifact, compute the name with core naming's `resolveFlattenedColumnName` (or
-its port equivalent), never by concatenating.
+A member constant that would share its name with another constant (a field `shipToStreet`
+beside a flattened `shipTo.street` with a custom prefix) is left out with a warning; rename
+one to get it. The generated EF Core and Exposed bindings still spell these columns as
+literals, because an owned copy of an older names generator does not emit the member
+constants. Without the artifact, compute the name with core naming's
+`resolveFlattenedColumnName` (or its port equivalent), never by concatenating.
 
 **But prefer a typed handle where one exists — this rule has a real limit.** If the ORM
 gives you a type-checked object for the same thing, use that. Replacing a Drizzle column

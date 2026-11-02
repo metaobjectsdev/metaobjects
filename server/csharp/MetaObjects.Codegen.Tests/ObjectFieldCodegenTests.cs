@@ -171,21 +171,22 @@ public class ObjectFieldCodegenTests
         var ctx = Ctx(Load());
         var dbContext = new DbContextGenerator().Generate(ctx).Single().Content;
 
-        // Flattened: each member's column, named by core naming (prefix + member column), is a
-        // constant of the OWNING entity's names artifact — never of Address, which as an
-        // object.value has no source and no artifact.
+        // Flattened: per-property column names prefixed by the parent column. §A6 —
+        // NOT converted: Address (object.value) has no primary source and so no
+        // AddressNames artifact, and the prefixed name is a composite no single
+        // constant could hold anyway (a genuine lookup miss).
         Assert.Contains("modelBuilder.Entity<Customer>().OwnsOne(x => x.HomeAddress, b =>", dbContext);
-        Assert.Contains("b.Property(p => p.Street).HasColumnName(CustomerNames.HomeAddressStreetColumn);", dbContext);
-        Assert.Contains("b.Property(p => p.City).HasColumnName(CustomerNames.HomeAddressCityColumn);", dbContext);
+        Assert.Contains("b.Property(p => p.Street).HasColumnName(\"homeAddress_street\");", dbContext);
+        Assert.Contains("b.Property(p => p.City).HasColumnName(\"homeAddress_city\");", dbContext);
         // The value object's ENUM members are flattened the same way — migrate-ts's
         // flattenObjectField prefixes EVERY nested member, and TS owns the schema — and carry
         // the same conversion an entity-level enum gets: string-backed → the member symbol in a
         // text column; @intValueMap → the declared integers. Before this, an enum member fell
         // through to EF's own defaults (`HomeAddress_Kind`, integer) and bound a column the
         // migration never created — measured against a real Postgres, not inferred.
-        Assert.Contains("b.Property(p => p.Kind).HasColumnName(CustomerNames.HomeAddressKindColumn).HasConversion<string>();", dbContext);
+        Assert.Contains("b.Property(p => p.Kind).HasColumnName(\"homeAddress_kind\").HasConversion<string>();", dbContext);
         Assert.Contains(
-            "b.Property(p => p.Grade).HasColumnName(CustomerNames.HomeAddressGradeColumn).HasConversion(v => v == Address.AddressGrade.LO ? 1 : 2, " +
+            "b.Property(p => p.Grade).HasColumnName(\"homeAddress_grade\").HasConversion(v => v == Address.AddressGrade.LO ? 1 : 2, " +
             "v => v == 1 ? Address.AddressGrade.LO : v == 2 ? Address.AddressGrade.HI : UnmappedEnumValue<Address.AddressGrade>(v, \"grade\"));",
             dbContext);
         // ...and the fail-fast helper that converter names is declared, even though the ONLY
@@ -269,13 +270,13 @@ public class ObjectFieldCodegenTests
 
         // A plain scalar member: the pre-existing rule, pinned here so the ordering of the
         // richer members below is anchored to something already known-correct.
-        Assert.Contains("b.Property(p => p.Handle).HasColumnName(CustomerNames.ProfileHandleColumn);", dbContext);
+        Assert.Contains("b.Property(p => p.Handle).HasColumnName(\"profile_handle\");", dbContext);
 
         // An ARRAY enum member. Native array column on the migrate side (text[] derived from
         // isArray), EF Core 8 primitive collection here, with the per-element conversion —
         // else the members persist as int ordinals inside the array.
         Assert.Contains(
-            "b.PrimitiveCollection(p => p.Roles).HasColumnName(CustomerNames.ProfileRolesColumn).ElementType().HasConversion<string>();",
+            "b.PrimitiveCollection(p => p.Roles).HasColumnName(\"profile_roles\").ElementType().HasConversion<string>();",
             dbContext);
 
         // A NESTED value object member: ONE json column at `<prefix>_<col>` (migrate's
@@ -286,7 +287,7 @@ public class ObjectFieldCodegenTests
             """
                         b.OwnsOne(p => p.Badge, nb =>
                         {
-                            nb.ToJson(CustomerNames.ProfileBadgeColumn);
+                            nb.ToJson("profile_badge");
                             nb.Property(p => p.Tier).HasConversion<string>();
                         });
             """,
@@ -317,7 +318,7 @@ public class ObjectFieldCodegenTests
         // the shared helper. The VO value type is FULLY QUALIFIED — the DbContext's usings
         // cover entity namespaces only, and a value object is not an entity.
         Assert.Contains(
-            "b.Property(p => p.Prefs).HasColumnName(CustomerNames.ProfilePrefsColumn).HasColumnType(\"jsonb\")"
+            "b.Property(p => p.Prefs).HasColumnName(\"profile_prefs\").HasColumnType(\"jsonb\")"
                 + ".HasConversion(MapJsonb.Converter<Acme.Generated.Badge>()"
                 + ", MapJsonb.Comparer<Acme.Generated.Badge>());",
             dbContext);

@@ -148,8 +148,7 @@ public class NamingConformanceTests
     /// <summary>
     /// The names artifact names every column in the corpus the way the resolvers above do: a
     /// scalar field's <c>Column</c>, and each member of a flattened value object under its
-    /// field's <c>Members</c>. A flattened field itself has no column (<c>Column</c> is null),
-    /// because none exists in the database.
+    /// field's <c>Members</c>.
     /// </summary>
     [Theory]
     [MemberData(nameof(ValidCaseNames))]
@@ -170,7 +169,6 @@ public class NamingConformanceTests
                 Assert.Equal(expectedColumn, field.Column);
                 continue;
             }
-            Assert.Null(field.Column);
             Assert.NotNull(field.Members);
             Assert.Equal(expectedColumn, field.Members![parts[2]].Column);
         }

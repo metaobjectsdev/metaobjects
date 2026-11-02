@@ -158,7 +158,7 @@ export function renderProjectionDecl(
     // normal, not a divergence — fall back to the literal, same as every other §A6 site.
     const namesEntry = names?.resolved.fields[f.name];
     const dbColExpr: Code =
-      names !== undefined && namesEntry !== undefined && "column" in namesEntry
+      names !== undefined && namesEntry !== undefined
         ? code`${names.symbol}.fields.${f.name}.column`
         : code`${JSON.stringify(dbCol)}`;
     // #356 — a projection's descriptor is the same shape the entity descriptor emits,

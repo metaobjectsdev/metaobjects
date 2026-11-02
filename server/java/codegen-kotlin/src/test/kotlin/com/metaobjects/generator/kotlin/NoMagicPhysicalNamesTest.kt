@@ -37,10 +37,12 @@ import kotlin.test.assertTrue
  * gate is only ever as wide as its fixture, so treat the model below as the load-bearing
  * part of this file and add to it whenever a generator grows a new path.
  *
- * This port has ZERO ESCAPE and ZERO KNOWN_LITERAL rows. Every row that left — the replica
- * view, the two index names, and last the FLATTENED `object.value`'s member column — left
- * because `<Entity>Names` grew the member it was pinned as lacking, which is what a
- * self-extinguishing ledger row is for.
+ * As of 0.25.0 this port has ZERO ESCAPE and ZERO KNOWN_LITERAL rows but one, and the one
+ * that remains is genuinely structural rather than undone: a FLATTENED `object.value`'s
+ * nested column is a composite the artifact has no single member for. The three rows that
+ * left — the replica view and the two index names — left because `<Entity>Names` grew the
+ * members they were pinned as lacking, which is what a self-extinguishing ledger row is
+ * for.
  *
  * Every token carries its REACH — see [Reach]. Every non-[Reach.CONSTANT] value is PINNED,
  * not exempted: the gate asserts the condition it names is still true, so the day a
@@ -172,12 +174,11 @@ class NoMagicPhysicalNamesTest {
         Token(colFk, "OrderNames.CUSTOMER_ID_COLUMN"),
         Token(jsonbCol, "CustomerNames.PROFILE_COLUMN"),
         Token(
-            flatCol, "CustomerNames.ADDRESS_ROAD_COLUMN", Reach.CONSTANT,
-            "Promoted from KNOWN_LITERAL. A flattened object.value's member column is a COMPOSITE " +
-                "(core naming: the field's prefix + the member's column), and the old reason it had " +
-                "no constant was true: the value object has no source and so no <Vo>Names, and the " +
-                "owner's artifact carried one constant per FIELD. It now carries one per flattened " +
-                "MEMBER (<FIELD>_<MEMBER>_COLUMN), and the Exposed table references it.",
+            flatCol, "(no constant exists)", Reach.KNOWN_LITERAL,
+            "A flattened object.value's nested column is a COMPOSITE (owner field column + \"_\" + " +
+                "member column). The value object has no source (FR-024 value purity) and so no " +
+                "<Vo>Names, and the owner's artifact carries one constant per FIELD, not per " +
+                "flattened member — there is no single constant to reference.",
         ),
         Token(view, "CustomerSummaryNames.SOURCE_PRIMARY_VIEW"),
         // The write-through entity's TWO physical names, each under the member for the role

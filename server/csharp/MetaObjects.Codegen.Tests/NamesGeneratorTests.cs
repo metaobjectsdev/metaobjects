@@ -567,12 +567,15 @@ public class NamesGeneratorTests
     }
 
     [Fact]
-    public void Flattened_value_object_member_columns_are_the_owners_constants()
+    public void Flattened_value_object_nested_columns_keep_the_literal_a_genuine_lookup_miss()
     {
         // Address (object.value) has NO primary source (FR-024 value purity forbids
-        // one) and therefore NO <Address>Names artifact at all. The flattened column is a
-        // column of the OWNER's table, so the owner's artifact carries it
-        // (CustomerNames.HomeAddressStreetColumn), and the DbContext references that.
+        // one) and therefore NO <Address>Names artifact at all — CSharpNaming.ColumnRef
+        // misses unconditionally here, and the value it would need ("homeAddress_street",
+        // a PREFIXED composite) isn't even a bare physical name a names constant holds.
+        // This is the "a lookup miss is normal and keeps the literal" case, distinct from
+        // the divergence case below — ResolveObjectNames(Address) is never called (there
+        // is no primary source to resolve), so there is nothing to disagree with.
         const string model = """
         { "metadata.root": { "package": "acme", "children": [
           { "object.value": { "name": "Address", "children": [
@@ -589,9 +592,8 @@ public class NamesGeneratorTests
         var ctx = Ctx(Load(model), ColumnNamingStrategy.Literal);
         var dbContext = new DbContextGenerator().Generate(ctx).Single().Content;
 
-        Assert.Contains("HasColumnName(CustomerNames.HomeAddressStreetColumn);", dbContext);
-        Assert.DoesNotContain("HasColumnName(\"homeAddress_street\")", dbContext);
-        Assert.DoesNotContain(" AddressNames", dbContext);
+        Assert.Contains("HasColumnName(\"homeAddress_street\");", dbContext);
+        Assert.DoesNotContain("AddressNames", dbContext);
     }
 
     [Fact]
@@ -902,40 +904,78 @@ public class NamesGeneratorTests
     """;
 
     [Fact]
-    public void A_flattened_member_gets_a_column_constant_and_its_field_gets_none()
+    public void A_flattened_member_gets_a_column_constant_beside_its_field_constants()
     {
         var content = new NamesGenerator().Generate(Ctx(Load(FlattenedModel))).Single(f => f.Path == "ShipmentNames.g.cs").Content;
 
-        Assert.Contains("public const string ShipToField = \"shipTo\";", content);
         Assert.Contains("public const string ShipToStreetColumn = \"ship_to_street\";", content);
         Assert.Contains("public const string ShipToPostalCodeColumn = \"ship_to_ZIP\";", content);
-        // The field's own resolved column, `ship_to`, is not a column of the table.
-        Assert.DoesNotContain("ShipToColumn", content);
-        Assert.DoesNotContain("\"ship_to\"", content);
-        // A jsonb object is one column, as before.
+        // The field's own constants are kept as they were, so nothing that reads them changes.
+        Assert.Contains("public const string ShipToField = \"shipTo\";", content);
+        Assert.Contains("public const string ShipToColumn = \"ship_to\";", content);
         Assert.Contains("public const string PayloadColumn = \"payload\";", content);
+        Assert.Contains("[\"shipTo\"] = ShipToColumn,", content);
         Assert.Contains("[\"shipTo.street\"] = ShipToStreetColumn,", content);
         Assert.Contains("[\"shipTo.postalCode\"] = ShipToPostalCodeColumn,", content);
-        Assert.DoesNotContain("[\"shipTo\"]", content);
     }
 
     [Fact]
-    public void A_flattened_member_constant_that_collides_with_a_field_constant_is_refused()
+    public void A_flattened_member_constant_that_collides_with_a_field_constant_is_left_out_with_a_warning()
     {
         var model = FlattenedModel.Replace(
             "\"@storage\": \"flattened\" }",
             "\"@storage\": \"flattened\", \"@flattenedColumnPrefix\": \"st_\" } },\n        { \"field.string\": { \"name\": \"shipToStreet\" }");
-        var ex = Assert.Throws<InvalidOperationException>(() => new NamesGenerator().Generate(Ctx(Load(model))).ToList());
-        Assert.Contains("ShipToStreetColumn", ex.Message);
+        var warnings = new List<string>();
+        var root = Load(model);
+        var ctx = new GenContext
+        {
+            Entities = root.Objects(), Root = root, Warn = warnings.Add,
+            Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated", ColumnNamingStrategy = ColumnNamingStrategy.SnakeCase, IncludeNames = true },
+        };
+        var content = new NamesGenerator().Generate(ctx).Single(f => f.Path == "ShipmentNames.g.cs").Content;
+
+        // The field's constant wins; the model generates, as it did before member constants.
+        Assert.Contains("public const string ShipToStreetColumn = \"ship_to_street\";", content);
+        Assert.DoesNotContain("\"st_street\"", content);
+        Assert.Contains("public const string ShipToPostalCodeColumn = \"st_ZIP\";", content);
+        Assert.Contains(warnings, w => w.Contains("ShipToStreetColumn"));
     }
 
     [Fact]
-    public void DbContext_names_flattened_columns_through_the_constants()
+    public void DbContext_keeps_the_literal_flattened_columns()
     {
-        var root = Load(FlattenedModel);
-        var dbContext = new DbContextGenerator().Generate(Ctx(root)).Single().Content;
+        // An owned (ejected) names generator from before member constants does not emit them,
+        // so the EF mapping must not reference them.
+        var dbContext = new DbContextGenerator().Generate(Ctx(Load(FlattenedModel))).Single().Content;
 
-        Assert.Contains("b.Property(p => p.Street).HasColumnName(ShipmentNames.ShipToStreetColumn);", dbContext);
-        Assert.Contains("b.Property(p => p.PostalCode).HasColumnName(ShipmentNames.ShipToPostalCodeColumn);", dbContext);
+        Assert.Contains("b.Property(p => p.Street).HasColumnName(\"ship_to_street\");", dbContext);
+        Assert.DoesNotContain("ShipToStreetColumn", dbContext);
+    }
+
+    [Fact]
+    public void A_child_that_redeclares_a_flattened_field_as_jsonb_does_not_inherit_its_member_constants()
+    {
+        const string model = """
+        { "metadata.root": { "package": "acme", "children": [
+          { "object.value": { "name": "Address", "children": [ { "field.string": { "name": "street" } } ]}},
+          { "object.entity": { "name": "Base", "abstract": true, "children": [
+            { "field.object": { "name": "shipTo", "@objectRef": "Address", "@storage": "flattened" } }
+          ]}},
+          { "object.entity": { "name": "Order", "extends": "Base", "children": [
+            { "source.rdb": { "@table": "orders" } },
+            { "field.long":   { "name": "id" } },
+            { "field.object": { "name": "shipTo", "@objectRef": "Address", "@storage": "jsonb" } },
+            { "identity.primary": { "@fields": "id" } }
+          ]}}
+        ]}}
+        """;
+        var files = new NamesGenerator().Generate(Ctx(Load(model))).ToList();
+        var order = files.Single(f => f.Path == "OrderNames.g.cs").Content;
+
+        // Extending BaseNames would make BaseNames.ShipToStreetColumn a member of OrderNames,
+        // naming a column `orders` does not have; the artifact is emitted complete instead.
+        Assert.Contains("public abstract class OrderNames\n", order.Replace("\r\n", "\n"));
+        Assert.DoesNotContain("ShipToStreetColumn", order);
+        Assert.Contains("public const string ShipToColumn = \"ship_to\";", order);
     }
 }

@@ -113,6 +113,8 @@ import java.util.Set;
 public class SpringNamesGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         implements EmitsPhysicalNameConstants {
 
+    private static final org.slf4j.Logger LOG = org.slf4j.LoggerFactory.getLogger(SpringNamesGenerator.class);
+
     @Override
     protected Class<MetaObject> getFilterClass() {
         return MetaObject.class;
@@ -166,12 +168,13 @@ public class SpringNamesGenerator extends MultiFileDirectGeneratorBase<MetaObjec
 
     /** Physical name + logical field name for one field. */
     /**
-     * One field's names. A {@code @storage: "flattened"} value object has NO column of its own:
-     * {@code column} is null and {@code members} names one column per member of the value
-     * object, keyed by the member's field name, through core naming
-     * ({@link ColumnNaming#resolveFlattened(MetaField, MetaField, String)}, the rule
-     * {@code meta migrate} names them by). The field's own resolved column ({@code ship_to})
-     * does not exist in the database, so nothing here names it.
+     * One field's names. {@code members} is set only on a {@code @storage: "flattened"} value
+     * object, and there it is the real column information: such a field has no column of its
+     * own, and each member of the value object is a column of the owning table, named by core
+     * naming ({@link ColumnNaming#resolveFlattened(MetaField, MetaField, String)}, the rule
+     * {@code meta migrate} names them by), keyed by the member's field name. {@code column} is
+     * kept as it always was, so the {@code _COLUMN} constant code already reads is unchanged;
+     * on a flattened field it names no column of the table.
      */
     private record FieldNames(String name, String column, Map<String, FieldNames> members) {
         FieldNames(String name, String column) { this(name, column, null); }
@@ -366,6 +369,7 @@ public class SpringNamesGenerator extends MultiFileDirectGeneratorBase<MetaObjec
                     field.getMetaAttr(ObjectField.ATTR_STORAGE, true).getValueAsString())) {
             return new FieldNames(field.getName(), ColumnNaming.resolve(field, strategy));
         }
+        String column = ColumnNaming.resolve(field, strategy);
         Map<String, FieldNames> members = new LinkedHashMap<>();
         MetaObject target = ((ObjectField) field).getObjectRef();
         if (target != null) {
@@ -374,7 +378,7 @@ public class SpringNamesGenerator extends MultiFileDirectGeneratorBase<MetaObjec
                     ColumnNaming.resolveFlattened(field, member, strategy)));
             }
         }
-        return new FieldNames(field.getName(), null, members);
+        return new FieldNames(field.getName(), column, members);
     }
 
     /** The constant naming a flattened member's column: {@code SHIP_TO_STREET_COLUMN}. */
@@ -480,10 +484,32 @@ public class SpringNamesGenerator extends MultiFileDirectGeneratorBase<MetaObjec
      * one blank line between the object's own identity, its sources, its fields, its
      * identities and its indexes. It is never read as data.</p>
      */
-    private record Member(String member, String literal, String path, String section) {}
+    private record Member(String member, String literal, String path, String section, boolean flattened) {}
 
     private static Member str(String member, String value, String path, String section) {
-        return new Member(member, "\"" + value + "\"", path, section);
+        return new Member(member, "\"" + value + "\"", path, section, false);
+    }
+
+    /** A flattened value object's member column: left out, not refused, when it collides. */
+    private static Member flattenedStr(String member, String value, String path) {
+        return new Member(member, "\"" + value + "\"", path, "fields", true);
+    }
+
+    /**
+     * The flattened-member constants of {@code names} that would share a name with another
+     * constant of the same class — a field {@code shipToStreet} beside the member
+     * {@code street} of a flattened {@code shipTo}. They are left out, with a warning, rather
+     * than refused: such a model generated before member constants existed, and every other
+     * constant it had is still emitted. Computed over the WHOLE resolved set, so a class and
+     * its base agree about what is skipped.
+     */
+    private static Set<String> collidingFlattenedMembers(ObjectNames names) {
+        Set<String> taken = new HashSet<>();
+        Set<String> skipped = new java.util.TreeSet<>();
+        List<Member> all = rawMembersOf(names, true);
+        for (Member m : all) if (!m.flattened()) taken.add(m.member());
+        for (Member m : all) if (m.flattened() && !taken.add(m.member())) skipped.add(m.member());
+        return skipped;
     }
 
     /** @return true when a file was written. */
@@ -501,6 +527,29 @@ public class SpringNamesGenerator extends MultiFileDirectGeneratorBase<MetaObjec
         String superClass = names.superObject() == null
             ? null
             : SpringNaming.namesName(SpringNaming.splitFqn(names.superObject().getName())[1]);
+
+        for (String skipped : collidingFlattenedMembers(names)) {
+            LOG.warn("names: {}: the flattened column constant {} would share its name with another "
+                + "constant of the class, so it is not emitted. Rename the field or the value-object "
+                + "member to get it.", entity.getName(), skipped);
+        }
+
+        // Java static inheritance makes every base constant reachable through this class too.
+        // When this object resolves a field differently from its base (a flattened field
+        // redeclared as jsonb, say), a base constant can name a column this table does not
+        // have; then the class is emitted complete, with no base, rather than inheriting it.
+        if (superClass != null) {
+            MetaObject sup = names.superObject();
+            ObjectNames supNames = resolveObjectNames(sup, strategy);
+            if (supNames == null) supNames = resolveSuperFragmentNames(sup, strategy);
+            if (supNames != null) {
+                Set<String> own = new HashSet<>();
+                for (Member m : membersOf(names, true)) own.add(m.member());
+                for (Member m : membersOf(supNames, true)) {
+                    if (!own.contains(m.member())) { superClass = null; break; }
+                }
+            }
+        }
 
         // Two nodes whose SCREAMING_SNAKE member forms collide would emit duplicate
         // constants. javac would refuse to compile the file, but the error would name a
@@ -569,13 +618,17 @@ public class SpringNamesGenerator extends MultiFileDirectGeneratorBase<MetaObjec
         // artifact removes. It repeats no LITERAL: an inherited entry's value is the base's
         // own constant, reached through Java's static-member inheritance. Hiding the base's
         // field of the same name is what makes <Sub>Names.COLUMNS_BY_FIELD the complete one.
+        Set<String> skippedMembers = collidingFlattenedMembers(names);
         List<String[]> allRows = new ArrayList<>();
         for (FieldNames f : names.fields().values()) {
-            if (f.column() != null) allRows.add(new String[] { namesMember(f.name()) + "_COLUMN", f.name() });
+            allRows.add(new String[] { namesMember(f.name()) + "_COLUMN", f.name() });
             // A flattened member is keyed `<field>.<member>`, the path the naming corpus uses.
             if (f.members() != null) {
                 for (FieldNames m : f.members().values()) {
-                    allRows.add(new String[] { flattenedColumnMember(f.name(), m.name()), f.name() + "." + m.name() });
+                    String constant = flattenedColumnMember(f.name(), m.name());
+                    if (!skippedMembers.contains(constant)) {
+                        allRows.add(new String[] { constant, f.name() + "." + m.name() });
+                    }
                 }
             }
         }
@@ -620,6 +673,15 @@ public class SpringNamesGenerator extends MultiFileDirectGeneratorBase<MetaObjec
      * are what a consumer reaches.</p>
      */
     private static List<Member> membersOf(ObjectNames names, boolean all) {
+        Set<String> skipped = collidingFlattenedMembers(names);
+        List<Member> out = new ArrayList<>();
+        for (Member m : rawMembersOf(names, all)) {
+            if (!(m.flattened() && skipped.contains(m.member()))) out.add(m);
+        }
+        return out;
+    }
+
+    private static List<Member> rawMembersOf(ObjectNames names, boolean all) {
         List<Member> out = new ArrayList<>();
         String self = names.name();
         out.add(str("TYPE", names.type(), self, "self"));
@@ -650,13 +712,13 @@ public class SpringNamesGenerator extends MultiFileDirectGeneratorBase<MetaObjec
             String member = namesMember(f.name());
             String path = self + ".fields." + f.name();
             out.add(str(member + "_FIELD", f.name(), path, "fields"));
-            if (f.column() != null) out.add(str(member + "_COLUMN", f.column(), path, "fields"));
-            // A flattened value object: one constant per member's column, none for the field.
+            out.add(str(member + "_COLUMN", f.column(), path, "fields"));
+            // A flattened value object: one constant per member's column, beside the field's own.
             if (f.members() != null) {
                 for (String m : sorted(f.members())) {
                     FieldNames mn = f.members().get(m);
-                    out.add(str(flattenedColumnMember(f.name(), mn.name()), mn.column(),
-                        path + "." + mn.name(), "fields"));
+                    out.add(flattenedStr(flattenedColumnMember(f.name(), mn.name()), mn.column(),
+                        path + "." + mn.name()));
                 }
             }
         }

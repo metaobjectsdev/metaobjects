@@ -737,34 +737,60 @@ public class SpringNamesGeneratorTest extends SharedRegistryTestBase {
         }""";
 
     @Test
-    public void aFlattenedMemberGetsAColumnConstantAndItsFieldGetsNone() throws IOException {
+    public void aFlattenedMemberGetsAColumnConstantBesideItsFieldConstants() throws IOException {
         String src = emit(FLATTENED_FIXTURE, "acme/ship/ShipmentNames.java", Map.of());
 
-        assertTrue(src, src.contains("public static final String SHIP_TO_FIELD = \"shipTo\";"));
         assertTrue(src, src.contains("public static final String SHIP_TO_STREET_COLUMN = \"ship_to_street\";"));
         assertTrue(src, src.contains("public static final String SHIP_TO_POSTAL_CODE_COLUMN = \"ship_to_ZIP\";"));
-        // The field's own resolved column, `ship_to`, is not a column of the table.
-        assertFalse(src, src.contains("SHIP_TO_COLUMN"));
-        assertFalse(src, src.contains("\"ship_to\""));
-        // A jsonb object is one column, as before.
+        // The field's own constants are kept as they were, so nothing that reads them changes.
+        assertTrue(src, src.contains("public static final String SHIP_TO_FIELD = \"shipTo\";"));
+        assertTrue(src, src.contains("public static final String SHIP_TO_COLUMN = \"ship_to\";"));
         assertTrue(src, src.contains("public static final String PAYLOAD_COLUMN = \"payload\";"));
+        assertTrue(src, src.contains("Map.entry(\"shipTo\", SHIP_TO_COLUMN)"));
         assertTrue(src, src.contains("Map.entry(\"shipTo.street\", SHIP_TO_STREET_COLUMN)"));
         assertTrue(src, src.contains("Map.entry(\"shipTo.postalCode\", SHIP_TO_POSTAL_CODE_COLUMN)"));
-        assertFalse(src, src.contains("Map.entry(\"shipTo\","));
     }
 
     @Test
-    public void aFlattenedMemberConstantCollidingWithAFieldConstantIsRefused() {
+    public void aFlattenedMemberConstantCollidingWithAFieldConstantIsLeftOut() throws IOException {
         String model = FLATTENED_FIXTURE.replace(
             "\"@storage\": \"flattened\" }",
             "\"@storage\": \"flattened\", \"@flattenedColumnPrefix\": \"st_\" } },\n"
                 + "                { \"field.string\": { \"name\": \"shipToStreet\" }");
-        try {
-            emit(model, "acme/ship/ShipmentNames.java", Map.of());
-            fail("expected the SHIP_TO_STREET_COLUMN collision to be refused");
-        } catch (GeneratorException | IOException e) {
-            assertTrue(e.getMessage(), e.getMessage().contains("SHIP_TO_STREET_COLUMN"));
-        }
+        String src = emit(model, "acme/ship/ShipmentNames.java", Map.of());
+
+        // The field's constant wins; the model generates, as it did before member constants.
+        assertTrue(src, src.contains("public static final String SHIP_TO_STREET_COLUMN = \"ship_to_street\";"));
+        assertFalse(src, src.contains("\"st_street\""));
+        assertTrue(src, src.contains("public static final String SHIP_TO_POSTAL_CODE_COLUMN = \"st_ZIP\";"));
+    }
+
+    @Test
+    public void aChildThatRedeclaresAFlattenedFieldAsJsonbDoesNotInheritItsMemberConstants() throws IOException {
+        String model = """
+            {
+              "metadata.root": { "package": "acme::ship", "children": [
+                { "object.value": { "name": "Address", "children": [
+                    { "field.string": { "name": "street" } }
+                ] } },
+                { "object.entity": { "name": "Base", "abstract": true, "children": [
+                    { "field.object": { "name": "shipTo", "@objectRef": "Address", "@storage": "flattened" } }
+                ] } },
+                { "object.entity": { "name": "Order", "extends": "acme::ship::Base", "children": [
+                    { "source.rdb":   { "@table": "orders" } },
+                    { "field.long":   { "name": "id" } },
+                    { "field.object": { "name": "shipTo", "@objectRef": "Address", "@storage": "jsonb" } },
+                    { "identity.primary": { "@fields": ["id"], "@generation": "increment" } }
+                ] } }
+              ] }
+            }""";
+        String src = emit(model, "acme/ship/OrderNames.java", Map.of());
+
+        // Extending BaseNames would make BaseNames.SHIP_TO_STREET_COLUMN reachable as
+        // OrderNames.SHIP_TO_STREET_COLUMN, naming a column `orders` does not have.
+        assertTrue(src, src.contains("public abstract class OrderNames {"));
+        assertFalse(src, src.contains("SHIP_TO_STREET_COLUMN"));
+        assertTrue(src, src.contains("public static final String SHIP_TO_COLUMN = \"ship_to\";"));
     }
 
     /**

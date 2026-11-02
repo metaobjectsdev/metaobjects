@@ -29,6 +29,19 @@ here.**
   `meta migrate`, the Prisma schema, the C# EF mapping and the Kotlin Exposed tables all use it. Set
   on any other storage, it is refused at load (`ERR_FLATTENED_COLUMN_PREFIX_WITHOUT_FLATTENED_STORAGE`).
   See `docs/features/field-types.md`, "Embedded value objects".
+- **Names artifacts carry a flattened value object's member columns.** Each member of a
+  `@storage: "flattened"` value object is a column of the owning table, and the owner's names
+  artifact now has a constant for each, named by core naming: `fields.shipTo.members.street.column`
+  in TypeScript, `ShipToStreetColumn` in C#, `SHIP_TO_STREET_COLUMN` in Java and Kotlin,
+  `SHIPMENT_SHIP_TO_STREET_COLUMN` in Python, keyed `shipTo.street` in the column-by-field maps.
+  Additive: the field's own constants are unchanged (its column constant names no column of the
+  table, as before), the engine types gain only an optional member collection, and an owned
+  copy of an older names generator keeps compiling and emitting what it did. For that reason the
+  generated EF Core and Exposed bindings still spell these columns as literals. A member constant
+  that would share its name with another constant is left out with a warning, so every model
+  that generated before still generates. In C# and Java, a names class no longer extends its
+  base's when that would make a base constant that is not a column of its own table reachable
+  through it (a flattened field redeclared as jsonb, say); it is emitted complete instead.
 - **A `PascalCase` column rule.** `"naming": { "columns": "PascalCase" }` in
   `.metaobjects/config.json` upper-cases a field name's first letter and changes nothing else
   (`createdAt` → `CreatedAt`, `requestURL` → `RequestURL`), in every port: the column names EF Core
@@ -59,17 +72,6 @@ here.**
   the `metaobjects-authoring` skill.
 
 ### Changed
-
-- **Names artifacts carry a flattened value object's columns, and no column for the field.**
-  Each member of a `@storage: "flattened"` value object is a column of the owning table, and the
-  owner's names artifact now has a constant for each: `fields.shipTo.members.street.column` in
-  TypeScript, `ShipToStreetColumn` in C#, `SHIP_TO_STREET_COLUMN` in Java and Kotlin,
-  `SHIPMENT_SHIP_TO_STREET_COLUMN` in Python, keyed `shipTo.street` in the column-by-field maps.
-  The C# EF mapping and the Kotlin Exposed tables reference them instead of spelling the column.
-  The field's own column constant is gone (`ShipToColumn`, `SHIP_TO_COLUMN`, `fields.shipTo.column`):
-  it named a column that does not exist, so code that read it now fails to compile instead of
-  querying a missing column. In TypeScript `FieldNames` is now a union, so code that reads
-  `.column` from an untyped entry narrows it first (`"column" in entry`).
 
 - **Added vocabulary no longer moves `metamodelVersion`.** The metamodel spec version now moves
   only when metadata that loaded may stop loading or change meaning. A new type, subtype,

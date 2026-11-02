@@ -35,41 +35,42 @@ import { crossEntitySpecifier } from "./import-path.js";
 import type { RenderContext } from "./render-context.js";
 import { effectivePackage } from "./docs-paths.js";
 
-/** A field stored in one column. */
-export interface ColumnFieldNames { readonly name: string; readonly column: string; }
-
 /**
- * A `@storage: "flattened"` value object: it has NO column of its own. Each member of the
- * value object is a column of the owning table, named by core naming
+ * One field's names. `column` is the field's resolved column.
+ *
+ * `members` is present only on a `@storage: "flattened"` value object, and there it is the
+ * only real column information: such a field has no column of its own, and each member of
+ * the value object is a column of the owning table, named by core naming
  * (`resolveFlattenedColumnName`, the function `meta migrate` names it with), keyed by the
- * member's field name. There is deliberately no `column` here: the field's own resolved
- * column (`ship_to`) does not exist in the database, so reading one is a compile error.
+ * member's field name. Its `column` is kept, unchanged from before `members` existed, so
+ * code that already reads it — an owned copy of this artifact's renderer included — keeps
+ * compiling; on a flattened field it names no column of the table, so read `members`.
  */
-export interface FlattenedFieldNames {
+export interface FieldNames {
   readonly name: string;
-  readonly members: Readonly<Record<string, ColumnFieldNames>>;
+  readonly column: string;
+  readonly members?: Readonly<Record<string, FieldNames>> | undefined;
 }
 
-export type FieldNames = ColumnFieldNames | FlattenedFieldNames;
-
 /**
- * One field's names. The flattened test is migrate's own (`expected-schema.ts`): a
- * `field.object` whose RESOLVED `@storage` is `flattened` (ADR-0039 — it may be inherited).
- * A flattened field whose `@objectRef` does not resolve has no members; the loader refuses
- * that model before codegen runs.
+ * The flattened test is migrate's own (`expected-schema.ts`): a `field.object` whose
+ * RESOLVED `@storage` is `flattened` (ADR-0039 — it may be inherited). A flattened field
+ * whose `@objectRef` does not resolve has no members; the loader refuses that model before
+ * codegen runs.
  */
 function fieldNamesOf(f: MetaField, strategy: ColumnNamingStrategy | undefined): FieldNames {
-  if (f.subType === FIELD_SUBTYPE_OBJECT && f.attr(FIELD_ATTR_STORAGE) === STORAGE_FLATTENED) {
-    const target = refTarget(f, FIELD_ATTR_OBJECT_REF);
-    const members: Record<string, ColumnFieldNames> = {};
-    if (target !== undefined && isMetaObject(target)) {
-      for (const m of target.fields()) {
-        members[m.name] = { name: m.name, column: resolveFlattenedColumnName(f, m, strategy) };
-      }
-    }
-    return { name: f.name, members };
+  const column = resolveColumnName(f, strategy);
+  if (f.subType !== FIELD_SUBTYPE_OBJECT || f.attr(FIELD_ATTR_STORAGE) !== STORAGE_FLATTENED) {
+    return { name: f.name, column };
   }
-  return { name: f.name, column: resolveColumnName(f, strategy) };
+  const target = refTarget(f, FIELD_ATTR_OBJECT_REF);
+  const members: Record<string, FieldNames> = {};
+  if (target !== undefined && isMetaObject(target)) {
+    for (const m of target.fields()) {
+      members[m.name] = { name: m.name, column: resolveFlattenedColumnName(f, m, strategy) };
+    }
+  }
+  return { name: f.name, column, members };
 }
 
 /**
@@ -666,9 +667,7 @@ export function columnExpr(
   literal: string,
 ): Code {
   const entry = names?.resolved.fields[fieldName];
-  // A flattened field carries members, not a column (see FlattenedFieldNames): there is no
-  // constant to reference, so the caller's literal stands.
-  return names !== undefined && entry !== undefined && "column" in entry
+  return names !== undefined && entry !== undefined
     ? code`${names.symbol}.fields.${fieldName}.column`
     : code`${JSON.stringify(literal)}`;
 }

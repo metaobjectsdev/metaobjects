@@ -546,29 +546,31 @@ class KotlinNamesGeneratorTest {
       ] }
     }""".trimIndent()
 
-    @Test fun `a flattened member gets a column constant and its field gets none`() {
+    @Test fun `a flattened member gets a column constant beside its field constants`() {
         val src = emit(flattenedModel).getValue("acme/ship/ShipmentNames.kt")
 
-        assertTrue("const val SHIP_TO_FIELD: String = \"shipTo\"" in src, src)
         assertTrue("const val SHIP_TO_STREET_COLUMN: String = \"ship_to_street\"" in src, src)
         assertTrue("const val SHIP_TO_POSTAL_CODE_COLUMN: String = \"ship_to_ZIP\"" in src, src)
-        // The field's own resolved column, `ship_to`, is not a column of the table.
-        assertFalse("SHIP_TO_COLUMN" in src, src)
-        assertFalse("\"ship_to\"" in src, src)
-        // A jsonb object is one column, as before.
+        // The field's own constants are kept as they were, so nothing that reads them changes.
+        assertTrue("const val SHIP_TO_FIELD: String = \"shipTo\"" in src, src)
+        assertTrue("const val SHIP_TO_COLUMN: String = \"ship_to\"" in src, src)
         assertTrue("const val PAYLOAD_COLUMN: String = \"payload\"" in src, src)
+        assertTrue("\"shipTo\" to SHIP_TO_COLUMN" in src, src)
         assertTrue("\"shipTo.street\" to SHIP_TO_STREET_COLUMN" in src, src)
         assertTrue("\"shipTo.postalCode\" to SHIP_TO_POSTAL_CODE_COLUMN" in src, src)
-        assertFalse("\"shipTo\" to" in src, src)
     }
 
-    @Test fun `a flattened member constant colliding with a field constant is refused`() {
+    @Test fun `a flattened member constant colliding with a field constant is left out`() {
         val model = flattenedModel.replace(
             "\"@storage\": \"flattened\" }",
             "\"@storage\": \"flattened\", \"@flattenedColumnPrefix\": \"st_\" } },\n" +
                 "            { \"field.string\": { \"name\": \"shipToStreet\" }")
-        val ex = assertFailsWith<GeneratorException> { emit(model) }
-        assertTrue("SHIP_TO_STREET_COLUMN" in ex.message.orEmpty(), ex.message)
+        val src = emit(model).getValue("acme/ship/ShipmentNames.kt")
+
+        // The field's constant wins; the model generates, as it did before member constants.
+        assertTrue("const val SHIP_TO_STREET_COLUMN: String = \"ship_to_street\"" in src, src)
+        assertFalse("\"st_street\"" in src, src)
+        assertTrue("const val SHIP_TO_POSTAL_CODE_COLUMN: String = \"st_ZIP\"" in src, src)
     }
 
     /** The cross-port naming corpus: every `<Object>.<field>.<member>` key is a constant, under every rule. */

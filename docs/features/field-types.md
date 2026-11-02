@@ -295,7 +295,8 @@ columns through the same core function (`resolveFlattenedColumnName` and its per
 equivalents), so `meta migrate`, the Prisma schema, the C# EF mapping and the Kotlin Exposed
 tables agree, and the owning object's names artifact carries each one as a constant
 (`ShipmentNames.ShipToStreetColumn` in C#; see the codegen skill's physical-names reference
-for every port). The field itself gets no column constant, because it has no column. On a
+for every port). The field's own column constant is still emitted but names no column of the
+table, so use the member constants. On a
 field whose `@storage` is not `flattened` the attribute is refused at load
 (`ERR_FLATTENED_COLUMN_PREFIX_WITHOUT_FLATTENED_STORAGE`): no other storage gives the members
 columns of their own.

@@ -1,7 +1,7 @@
 """A flattened value object has no column of its own: each member is a column of the
 owning table, named by core naming (``resolve_flattened_column_name``). The names module
-carries one ``<ENTITY>_<FIELD>_<MEMBER>_COLUMN`` constant per member and no ``_COLUMN`` for
-the field itself, whose resolved column (``ship_to``) is not a column of the table.
+carries one ``<ENTITY>_<FIELD>_<MEMBER>_COLUMN`` constant per member, beside the field's own
+``_FIELD``/``_COLUMN`` pair, which is kept as it was so nothing that imports it changes.
 
 Mirrors the C# ``NamesGenerator``, the Java/Kotlin names generators and the TypeScript
 ``names.ts``; the corpus test runs the shared cross-port naming fixture.
@@ -54,29 +54,33 @@ def _load(model: dict[str, object]) -> MetaObject:
     return result.root
 
 
-def test_a_flattened_member_gets_a_column_constant_and_its_field_gets_none() -> None:
+def test_a_flattened_member_gets_a_column_constant_beside_its_field_constants() -> None:
     src = render_names(_object(_load(_MODEL), "Shipment"), "snake_case")
 
-    assert 'SHIPMENT_SHIP_TO_FIELD: Final[str] = "shipTo"' in src
     assert 'SHIPMENT_SHIP_TO_STREET_COLUMN: Final[str] = "ship_to_street"' in src
     assert 'SHIPMENT_SHIP_TO_POSTAL_CODE_COLUMN: Final[str] = "ship_to_ZIP"' in src
-    # The field's own resolved column, `ship_to`, is not a column of the table.
-    assert "SHIPMENT_SHIP_TO_COLUMN" not in src
-    assert '"ship_to"' not in src
-    # A jsonb object is one column, as before.
+    # The field's own constants are kept as they were, so nothing that imports them changes.
+    assert 'SHIPMENT_SHIP_TO_FIELD: Final[str] = "shipTo"' in src
+    assert 'SHIPMENT_SHIP_TO_COLUMN: Final[str] = "ship_to"' in src
     assert 'SHIPMENT_PAYLOAD_COLUMN: Final[str] = "payload"' in src
+    assert '"shipTo": SHIPMENT_SHIP_TO_COLUMN,' in src
     assert '"shipTo.street": SHIPMENT_SHIP_TO_STREET_COLUMN,' in src
     assert '"shipTo.postalCode": SHIPMENT_SHIP_TO_POSTAL_CODE_COLUMN,' in src
-    assert '"shipTo":' not in src
 
 
-def test_a_flattened_member_constant_colliding_with_a_field_constant_is_refused() -> None:
+def test_a_flattened_member_constant_colliding_with_a_field_constant_is_left_out_with_a_warning() -> None:
     model = json.loads(json.dumps(_MODEL))
     shipment = model["metadata.root"]["children"][1]["object.entity"]["children"]
     shipment[2]["field.object"]["@flattenedColumnPrefix"] = "st_"
     shipment.insert(3, {"field.string": {"name": "shipToStreet"}})
-    with pytest.raises(ValueError, match="SHIPMENT_SHIP_TO_STREET_COLUMN"):
-        render_names(_object(_load(model), "Shipment"), "snake_case")
+    warnings: list[str] = []
+    src = render_names(_object(_load(model), "Shipment"), "snake_case", warn=warnings.append)
+
+    # The field's constant wins; the model generates, as it did before member constants.
+    assert 'SHIPMENT_SHIP_TO_STREET_COLUMN: Final[str] = "ship_to_street"' in src
+    assert '"st_street"' not in src
+    assert 'SHIPMENT_SHIP_TO_POSTAL_CODE_COLUMN: Final[str] = "st_ZIP"' in src
+    assert any("SHIPMENT_SHIP_TO_STREET_COLUMN" in w for w in warnings)
 
 
 @pytest.mark.parametrize("case", _CASES, ids=lambda c: c["name"])
