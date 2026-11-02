@@ -61,6 +61,17 @@ public static class DbSchema
             "(`timestamptz`). ADR-0036 Wave 2 — replaces the retired @dbColumnType: timestamp_with_tz " +
             "escape hatch.");
 
+    /// <summary>
+    /// <c>@flattenedColumnPrefix</c> — the text before each member's column of a <c>field.object @storage
+    /// "flattened"</c> (string, <c>""</c> allowed). Registered ONLY on field.object by
+    /// <see cref="DbMetaDataProvider"/>.
+    /// </summary>
+    public static readonly AttrSchema FlattenedColumnPrefixSchema = new AttrSchema(
+        Name: DbConstants.FIELD_ATTR_FLATTENED_COLUMN_PREFIX,
+        ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
+        Required: false,
+        Description: "On a field.object with @storage \"flattened\": the text put before each member's column, verbatim (\"\" allowed, so the members keep their own column names). Absent: this field's resolved column name and \"_\" (with @column \"bill\", the members are bill_<member column>). A fact about the owning table, so it lives on the embedding field, never on the value object. Refused on any other storage (ERR_FLATTENED_COLUMN_PREFIX_WITHOUT_FLATTENED_STORAGE).");
+
     // --- Physical RDB index/constraint attrs the db provider adds to identity.* ---
 
     /// <summary><c>@orders</c> — per-key index sort direction (asc|desc), positional to @fields; on identity.secondary.</summary>

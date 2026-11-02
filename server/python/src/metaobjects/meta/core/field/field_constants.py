@@ -132,6 +132,10 @@ FIELD_ATTR_STORAGE = "storage"
 STORAGE_VALUES = ("flattened", "jsonb", "subdocument")
 # Physical column name override (cross-port; renamed from @dbColumn).
 FIELD_ATTR_COLUMN = "column"
+# @flattenedColumnPrefix on a field.object @storage "flattened": the text before each member's column,
+# verbatim ("" allowed). Absent: the field's resolved column and "_"
+# (metaobjects.naming.resolve_flattened_column_prefix).
+FIELD_ATTR_FLATTENED_COLUMN_PREFIX = "flattenedColumnPrefix"
 
 # ADR-0036/0037 Wave 3 — @stringFormat: a closed validation format for a plain
 # field.string that has NO native type or behavior of its own (email | hostname).

@@ -109,6 +109,7 @@ const ENUM_CORE_EXTRA: Record<string, AttrExp> = {
 /** Scoped concern attrs (db / prompt). */
 const STORAGE_EXTRA: Record<string, AttrExp> = {
   storage: { valueType: "string", required: false },
+  flattenedColumnPrefix: { valueType: "string", required: false },
 };
 const AUTO_SET_EXTRA: Record<string, AttrExp> = {
   autoSet: { valueType: "string", required: false },

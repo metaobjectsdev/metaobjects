@@ -31,6 +31,7 @@ from ..meta.core.field.field_constants import (
     FIELD_ATTR_OBJECT_REF,
     FIELD_ATTR_REQUIRED,
     FIELD_ATTR_SORTABLE,
+    FIELD_ATTR_FLATTENED_COLUMN_PREFIX,
     FIELD_ATTR_STORAGE,
     FIELD_ATTR_VALUE_TYPE,
     FIELD_ATTR_VALUES,
@@ -3710,6 +3711,9 @@ def _validate_sortable_has_supported_subtype(
 #      skipped when @objectRef is absent).
 #   2. @storage="flattened" + isArray → ERR_STORAGE_FLATTENED_ARRAY (flattened
 #      materialises one-column-per-field; arrays require @storage="jsonb").
+#   3. @flattenedColumnPrefix without @storage="flattened" →
+#      ERR_FLATTENED_COLUMN_PREFIX_WITHOUT_FLATTENED_STORAGE (no other storage gives the
+#      members columns of their own to prefix).
 
 
 def _validate_field_object_storage(root: MetaData, errors: list[MetaError]) -> None:
@@ -3736,6 +3740,24 @@ def _validate_field_object_storage(root: MetaData, errors: list[MetaError]) -> N
             ))
             continue
         storage = node.get_meta_attr(FIELD_ATTR_STORAGE)  # ADR-0039 resolving
+        # @flattenedColumnPrefix names the columns a flattened value object adds to the
+        # owning table; under any other storage it would change nothing, so it is refused
+        # rather than silently ignored.
+        if (
+            node.get_meta_attr(FIELD_ATTR_FLATTENED_COLUMN_PREFIX) is not None
+            and storage != "flattened"
+        ):
+            storage_text = "not set (jsonb)" if storage is None else f'"{storage}"'
+            errors.append(MetaError(
+                code=ErrorCode.ERR_FLATTENED_COLUMN_PREFIX_WITHOUT_FLATTENED_STORAGE,
+                message=(
+                    f"field.object '{node.name}' sets @flattenedColumnPrefix, but its @storage "
+                    f"is {storage_text}; only a @storage \"flattened\" value object puts its "
+                    f"members' columns in the owning table. Set @storage \"flattened\", or "
+                    f"remove @flattenedColumnPrefix."
+                ),
+                envelope=node.source,
+            ))
         if storage is None:
             continue
         if storage == "flattened" and node.resolved_is_array():  # ADR-0039 resolving isArray

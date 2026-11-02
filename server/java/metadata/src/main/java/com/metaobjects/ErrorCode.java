@@ -293,6 +293,9 @@ public enum ErrorCode {
     /** @storage "flattened" cannot be combined with isArray=true. */
     ERR_STORAGE_FLATTENED_ARRAY,
 
+    /** @flattenedColumnPrefix on a field.object whose @storage is not "flattened" (absent is jsonb). */
+    ERR_FLATTENED_COLUMN_PREFIX_WITHOUT_FLATTENED_STORAGE,
+
     /** @storage was set on a field that has no @objectRef. */
     ERR_STORAGE_WITHOUT_OBJECT_REF,
 

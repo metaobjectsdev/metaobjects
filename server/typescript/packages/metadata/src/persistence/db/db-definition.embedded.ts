@@ -64,6 +64,14 @@ export const DB_DEFINITION: ProviderDefinition = {
         {
           "type": "attr",
           "subType": "string",
+          "name": "flattenedColumnPrefix",
+          "min": 0,
+          "max": 1,
+          "description": "On a field.object with @storage \"flattened\": the text put before each member's column, verbatim (\"\" allowed, so the members keep their own column names). Absent: this field's resolved column name and \"_\" (with @column \"bill\", the members are bill_<member column>). A fact about the owning table, so it lives on the embedding field, never on the value object. Refused on any other storage (ERR_FLATTENED_COLUMN_PREFIX_WITHOUT_FLATTENED_STORAGE)."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
           "name": "storage",
           "min": 0,
           "max": 1,

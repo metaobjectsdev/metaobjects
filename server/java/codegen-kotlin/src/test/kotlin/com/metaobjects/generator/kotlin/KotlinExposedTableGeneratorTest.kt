@@ -256,6 +256,40 @@ class KotlinExposedTableGeneratorTest {
         }
     }
 
+    // @flattenedColumnPrefix replaces the default `<parent column>_` prefix, verbatim — "" keeps the
+    // members' own columns — through core naming (ColumnNaming.resolveFlattened), the names
+    // `meta migrate` creates for the same model.
+    @Test fun flattenedColumnPrefixNamesTheFlattenedColumns() {
+        val outDir = Files.createTempDirectory("ktbl-flat-prefix-")
+        try {
+            val model = """{
+              "metadata.root": { "package": "acme::demo", "children": [
+                { "object.value": { "name": "Address", "children": [
+                    { "field.string": { "name": "street", "@required": true } }
+                ] } },
+                { "object.entity": { "name": "User", "children": [
+                    { "field.long":   { "name": "id" } },
+                    { "field.object": { "name": "home", "@objectRef": "Address", "@storage": "flattened", "@flattenedColumnPrefix": "" } },
+                    { "field.object": { "name": "work", "@objectRef": "Address", "@storage": "flattened", "@flattenedColumnPrefix": "office_" } },
+                    { "source.rdb":   { "@table": "users" } },
+                    { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } }
+                ] } }
+              ] }
+            }""".trimIndent()
+            val gen = KotlinExposedTableGenerator()
+            gen.setArgs(mapOf("outputDir" to outDir.toString()))
+            gen.execute(loadString("flat-prefix", model))
+
+            val src = Files.readString(outDir.resolve("acme/demo/UserTable.kt"))
+            assertTrue("val homeStreet = text(\"street\")" in src,
+                "expected the \"\" prefix to keep the member's own column; saw:\n$src")
+            assertTrue("val workStreet = text(\"office_street\")" in src,
+                "expected the office_ prefix; saw:\n$src")
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
+
     @Test fun storageJsonbEmitsJsonbColumn() {
         val outDir = Files.createTempDirectory("ktbl-jsonb-")
         try {

@@ -2924,6 +2924,8 @@ public static partial class ValidationPasses
     //       now a clear load-time error.)
     //     - @storage "flattened" requires isArray=false (cannot flatten a
     //       variable-length array) → ERR_STORAGE_FLATTENED_ARRAY
+    //     - @flattenedColumnPrefix requires @storage "flattened" (no other storage gives the
+    //       members columns of their own to prefix) → ERR_FLATTENED_COLUMN_PREFIX_WITHOUT_FLATTENED_STORAGE
     //
     // Ported from validateFieldObjectStorage in
     // typescript/packages/metadata/src/loader/validation-passes.ts.
@@ -2959,6 +2961,20 @@ public static partial class ValidationPasses
 
                 // ADR-0039: resolving — @storage and array-ness may be inherited via extends.
                 var storage = field.Attr(FIELD_ATTR_STORAGE);
+                // @flattenedColumnPrefix names the columns a flattened value object adds to the owning
+                // table; under any other storage it would change nothing, so it is refused
+                // rather than silently ignored.
+                if (field.Attr(MetaObjects.Persistence.Db.DbConstants.FIELD_ATTR_FLATTENED_COLUMN_PREFIX) is not null
+                    && !(storage is string sp && sp == STORAGE_FLATTENED))
+                {
+                    var storageText = storage is null ? "not set (jsonb)" : $"\"{storage}\"";
+                    errors.Add(new MetaError(
+                        $"field.object \"{obj.Name}.{field.Name}\" sets @flattenedColumnPrefix, but its @storage is {storageText}; " +
+                        "only a @storage \"flattened\" value object puts its members' columns in the owning table. " +
+                        "Set @storage \"flattened\", or remove @flattenedColumnPrefix.",
+                        ErrorCode.ERR_FLATTENED_COLUMN_PREFIX_WITHOUT_FLATTENED_STORAGE,
+                        Envelope: field.Source));
+                }
                 if (storage is null) continue;
 
                 if (storage is string st && st == STORAGE_FLATTENED && field.ResolvedIsArray())

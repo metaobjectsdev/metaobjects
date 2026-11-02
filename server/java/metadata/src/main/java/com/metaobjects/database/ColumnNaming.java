@@ -133,6 +133,42 @@ public final class ColumnNaming {
     }
 
     /**
+     * The text before each member's column when {@code field} (a {@code field.object
+     * @storage "flattened"}) expands its value object into the owning table: its
+     * {@code @flattenedColumnPrefix} verbatim ({@code ""} allowed), else its own resolved column
+     * and {@code _}. Core naming, not one generator's: the migration creates these columns and
+     * the ORM mapping and runtime address them, so every one of them spells them here.
+     *
+     * <p>ADR-0039: read RESOLVING — the prefix and {@code @column} may be inherited through
+     * {@code extends}.</p>
+     */
+    public static String resolveFlattenedPrefix(MetaField<?> field, String strategy) {
+        if (field.hasMetaAttr(CoreDBMetaDataProvider.FLATTENED_COLUMN_PREFIX, true)) {
+            Object prefix = field.getMetaAttr(CoreDBMetaDataProvider.FLATTENED_COLUMN_PREFIX, true).getValue();
+            if (prefix instanceof String) return (String) prefix;
+        }
+        return resolve(field, strategy) + "_";
+    }
+
+    /** {@link #resolveFlattenedPrefix(MetaField, String)} under the project's rule. */
+    public static String resolveFlattenedPrefix(MetaField<?> field) {
+        return resolveFlattenedPrefix(field, PhysicalNaming.of(field).columns());
+    }
+
+    /**
+     * The column a member of a flattened value object gets in the owning table: the embedding
+     * field's {@link #resolveFlattenedPrefix prefix} followed by the member's own resolved column.
+     */
+    public static String resolveFlattened(MetaField<?> field, MetaField<?> member, String strategy) {
+        return resolveFlattenedPrefix(field, strategy) + resolve(member, strategy);
+    }
+
+    /** {@link #resolveFlattened(MetaField, MetaField, String)} under the project's rule. */
+    public static String resolveFlattened(MetaField<?> field, MetaField<?> member) {
+        return resolveFlattened(field, member, PhysicalNaming.of(field).columns());
+    }
+
+    /**
      * {@code displayName} to {@code display_name}, {@code URLPath} to {@code url_path}.
      *
      * <p>Byte-for-byte the algorithm the other ports use: insert {@code _} before an

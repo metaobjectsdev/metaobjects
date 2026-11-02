@@ -1,0 +1,57 @@
+{
+  "metadata.root": {
+    "package": "test",
+    "children": [
+      {
+        "object.value": {
+          "name": "Address",
+          "children": [
+            {
+              "field.string": {
+                "name": "street"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Order",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "orders"
+              }
+            },
+            {
+              "field.object": {
+                "name": "billTo",
+                "@objectRef": "test::Address",
+                "@flattenedColumnPrefix": ""
+              }
+            },
+            {
+              "field.object": {
+                "name": "returnTo",
+                "@objectRef": "test::Address",
+                "@storage": "flattened",
+                "@flattenedColumnPrefix": "ret_"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

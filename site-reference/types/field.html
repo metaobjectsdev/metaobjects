@@ -2051,6 +2051,15 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td>When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer).</td>
 </tr>
 <tr>
+<td><code>@flattenedColumnPrefix</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-db</td>
+<td>On a field.object with @storage &quot;flattened&quot;: the text put before each member&#39;s column, verbatim (&quot;&quot; allowed, so the members keep their own column names). Absent: this field&#39;s resolved column name and &quot;<em>&quot; (with @column &quot;bill&quot;, the members are bill</em><member column>). A fact about the owning table, so it lives on the embedding field, never on the value object. Refused on any other storage (ERR_FLATTENED_COLUMN_PREFIX_WITHOUT_FLATTENED_STORAGE).</td>
+</tr>
+<tr>
 <td><code>@formExclude</code></td>
 <td>boolean</td>
 <td>no</td>

@@ -1331,13 +1331,12 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                 val target = KotlinGenUtil.lookupCanonicalObject(loader, ref) ?: continue
                 for (subField in target.metaFields) {
                     val propertyName = parentName + subField.name.replaceFirstChar { it.uppercase() }
-                    // Physical column name: the parent's resolved column + "_" + the
-                    // sub-field's. Both halves go through resolveColumnName, so an explicit
-                    // `@column` on either wins — the same rule as the TS reference's
-                    // flattenObjectField (`resolveColumnName(field, strategy) + "_" + inner.name`).
+                    // Physical column name: core naming's flattened rule
+                    // (ColumnNaming.resolveFlattened) — the parent's @flattenedColumnPrefix
+                    // verbatim, else its resolved column + "_", then the sub-field's resolved
+                    // column — the same function migrate-ts names these columns with.
                     // E.g. parent "homeAddress" + sub "streetLine1" → "home_address_street_line1".
-                    val colName = KotlinGenUtil.resolveColumnName(field) + "_" +
-                        KotlinGenUtil.resolveColumnName(subField)
+                    val colName = ColumnNaming.resolveFlattened(field, subField)
                     // Task 6 — out of scope: this composite name belongs to neither a
                     // single field of `entity` nor of `target` — <Entity>Names has no
                     // constant for it. Always literal; useNames() does not reach here.

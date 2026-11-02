@@ -68,10 +68,15 @@ public sealed record PhysicalNaming(ColumnNamingStrategy Columns, TableNamingRul
     /// <summary>A field's physical column name: its explicit <c>@column</c> (resolving, so an
     /// inherited override counts), else the field name through the project's column strategy.
     /// The loader's collision check compares THESE resolved names, not the raw field names.</summary>
-    public static string ResolveColumnName(MetaField field)
+    public static string ResolveColumnName(MetaField field) =>
+        ResolveColumnName(field, PhysicalNaming.Of(field).Columns);
+
+    /// <summary><see cref="ResolveColumnName(MetaField)"/> under an explicit column rule — for
+    /// <c>verify --codegen</c>'s probe of an alternate rule, never a second configured source.</summary>
+    public static string ResolveColumnName(MetaField field, ColumnNamingStrategy strategy)
     {
         if (field.DbColumn is { Length: > 0 } explicitColumn) return explicitColumn;
-        return PhysicalNaming.Of(field).Columns switch
+        return strategy switch
         {
             ColumnNamingStrategy.SnakeCase => SourceNaming.ToSnakeCase(field.Name),
             ColumnNamingStrategy.KebabCase => SourceNaming.ToSnakeCase(field.Name).Replace('_', '-'),
@@ -79,6 +84,31 @@ public sealed record PhysicalNaming(ColumnNamingStrategy Columns, TableNamingRul
             _ => field.Name,
         };
     }
+
+    /// <summary>
+    /// The text before each member's column when <paramref name="field"/> (a <c>field.object
+    /// @storage "flattened"</c>) expands its value object into the owning table: its
+    /// <c>@flattenedColumnPrefix</c> verbatim (<c>""</c> allowed), else its own resolved column and
+    /// <c>_</c>. Core naming, not one generator's: the migration creates these columns and the
+    /// ORM mapping and runtime address them, so every one of them spells them here.
+    /// ADR-0039: resolving — <c>@flattenedColumnPrefix</c> and <c>@column</c> may be inherited.
+    /// </summary>
+    public static string ResolveFlattenedColumnPrefix(MetaField field) =>
+        ResolveFlattenedColumnPrefix(field, PhysicalNaming.Of(field).Columns);
+
+    /// <summary><see cref="ResolveFlattenedColumnPrefix(MetaField)"/> under an explicit column rule.</summary>
+    public static string ResolveFlattenedColumnPrefix(MetaField field, ColumnNamingStrategy strategy) =>
+        field.FlattenedColumnPrefix ?? ResolveColumnName(field, strategy) + "_";
+
+    /// <summary>The column a member of a flattened value object gets in the owning table: the
+    /// embedding field's prefix (<see cref="ResolveFlattenedColumnPrefix(MetaField)"/>) followed
+    /// by the member's own resolved column.</summary>
+    public static string ResolveFlattenedColumnName(MetaField field, MetaField member) =>
+        ResolveFlattenedColumnName(field, member, PhysicalNaming.Of(field).Columns);
+
+    /// <summary><see cref="ResolveFlattenedColumnName(MetaField, MetaField)"/> under an explicit column rule.</summary>
+    public static string ResolveFlattenedColumnName(MetaField field, MetaField member, ColumnNamingStrategy strategy) =>
+        ResolveFlattenedColumnPrefix(field, strategy) + ResolveColumnName(member, strategy);
 
     /// <summary>The <c>PascalCase</c> column rule: the first letter upper-cased, the rest
     /// verbatim. Not a word split — an acronym keeps the case it was written in.</summary>

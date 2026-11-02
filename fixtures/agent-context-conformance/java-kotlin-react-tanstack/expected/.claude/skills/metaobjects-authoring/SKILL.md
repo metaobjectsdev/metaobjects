@@ -286,7 +286,9 @@ Reuse a constraint set across entities with an abstract `field.enum` + `extends`
 `@storage` controls persistence:
 
 - `flattened` — one DB column per sub-field (`address_street`, `address_city`, …).
-  Illegal on array fields.
+  Illegal on array fields. The prefix is the field's column and `_`;
+  `@flattenedColumnPrefix` on the field replaces it verbatim (`""` keeps the members'
+  own columns). Refused on any other storage.
 - `jsonb` — one `jsonb` column.
 - `subdocument` (default, back-compat) — single jsonb column.
 

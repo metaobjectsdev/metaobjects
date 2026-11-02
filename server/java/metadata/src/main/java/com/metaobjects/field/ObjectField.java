@@ -39,6 +39,8 @@ public class ObjectField extends MetaField<Object>
     public final static String ATTR_OBJECTREF = MetaObject.ATTR_OBJECT_REF;
     /** Persistence-side storage shape for owned-object data. Cross-port values: flattened / jsonb / subdocument. */
     public final static String ATTR_STORAGE = "storage";
+    /** {@code @flattenedColumnPrefix} — see {@link com.metaobjects.database.CoreDBMetaDataProvider#FLATTENED_COLUMN_PREFIX}. */
+    public final static String ATTR_FLATTENED_COLUMN_PREFIX = com.metaobjects.database.CoreDBMetaDataProvider.FLATTENED_COLUMN_PREFIX;
 
     /**
      * Register ObjectField type using the standardized registerTypes() pattern.
@@ -58,6 +60,11 @@ public class ObjectField extends MetaField<Object>
                    // them), so ObjectField inherits both via the snapshot rather
                    // than re-declaring them here.
                    .inheritsFrom(TYPE_FIELD, SUBTYPE_BASE)
+                   // @flattenedColumnPrefix (string, "" allowed) — the flattened-member column
+                   // prefix. Scoped to field.object; description enriched from spec db.json.
+                   .optionalAttributeWithConstraints(ATTR_FLATTENED_COLUMN_PREFIX)
+                       .ofType(com.metaobjects.attr.StringAttribute.SUBTYPE_STRING)
+                       .asSingle()
                    // ADR-0042 — @objectRef is a cross-reference to a real object (the
                    // nested value's shape); the loader's registry-derived validation
                    // resolves it package-locally (dangling target = load error). Fires

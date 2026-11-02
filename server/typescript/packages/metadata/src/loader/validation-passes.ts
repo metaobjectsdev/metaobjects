@@ -87,7 +87,7 @@ import {
   FIELD_SUBTYPE_TIMESTAMP,
   FIELD_SUBTYPE_UUID,
 } from "../core/field/field-constants.js";
-import { FIELD_ATTR_DB_INDEXED, IDENTITY_ATTR_EXPR } from "../persistence/db/db-constants.js";
+import { FIELD_ATTR_FLATTENED_COLUMN_PREFIX, FIELD_ATTR_DB_INDEXED, IDENTITY_ATTR_EXPR } from "../persistence/db/db-constants.js";
 import {
   IDENTITY_ATTR_FIELDS,
   IDENTITY_SUBTYPE_REFERENCE,
@@ -1695,6 +1695,8 @@ export function validateDerivedFieldProvidability(root: MetaData): ParseError[] 
 //      node: when @objectRef is absent we skip the flattened/array check below.)
 //   2. @storage "flattened" requires isArray to be absent or false (cannot
 //      flatten a variable-length array into a fixed column set).
+//   3. @flattenedColumnPrefix requires @storage "flattened" (ERR_FLATTENED_COLUMN_PREFIX_WITHOUT_FLATTENED_STORAGE):
+//      no other storage gives the members columns of their own to prefix.
 // ---------------------------------------------------------------------------
 
 export function validateFieldObjectStorage(root: MetaData): ParseError[] {
@@ -1723,6 +1725,17 @@ export function validateFieldObjectStorage(root: MetaData): ParseError[] {
 
       // ADR-0039: resolving — @storage and array-ness may be inherited via extends.
       const storage = field.attr(FIELD_ATTR_STORAGE);
+      // @flattenedColumnPrefix names the columns a flattened value object adds to the owning table.
+      // Under any other storage (absent is jsonb) there are no such columns, so the prefix
+      // would change nothing: refuse it rather than ignore it silently.
+      if (field.attr(FIELD_ATTR_FLATTENED_COLUMN_PREFIX) !== undefined && storage !== STORAGE_FLATTENED) {
+        errors.push(
+          new ParseError(
+            `field.object "${obj.name}.${field.name}" sets @flattenedColumnPrefix, but its @storage is ${storage === undefined || storage === null ? "not set (jsonb)" : `"${String(storage)}"`}; only a @storage "flattened" value object puts its members' columns in the owning table. Set @storage "flattened", or remove @flattenedColumnPrefix.`,
+            { code: "ERR_FLATTENED_COLUMN_PREFIX_WITHOUT_FLATTENED_STORAGE", source: field.source },
+          ),
+        );
+      }
       if (storage === undefined || storage === null) continue;
       if (storage === STORAGE_FLATTENED && field.resolvedIsArray()) {
         errors.push(

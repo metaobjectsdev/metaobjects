@@ -1099,7 +1099,7 @@ public class DbContextGenerator : IGenerator
     }
 
     // Owned-type config for an object-typed entity field. @storage flattened maps each
-    // nested scalar to "{parentCol}_{nestedCol}"; every other storage collapses to one
+    // nested scalar to "{prefix}{nestedCol}" (core naming's flattened prefix); every other storage collapses to one
     // json column (.ToJson) — matching the TS-owned schema DDL. null (with a warning)
     // when @objectRef can't be resolved. <paramref name="owner"/> is the emitted CLR class
     // name (the write entity, or a write-through entity's <Entity>View read model — #214).
@@ -1118,7 +1118,6 @@ public class DbContextGenerator : IGenerator
         }
         var strategy = ctx.Config.ColumnNamingStrategy;
         var nav = CSharpNaming.Pascal(field.Name);
-        var parentCol = CSharpNaming.Column(field, strategy);
         // A6 -- the field itself belongs to `entity` (the JSON column's own physical
         // name, not the nested value object's), so it hits entity's own names artifact
         // unconditionally in practice — a lookup, not an assumption, per ColumnRef.
@@ -1164,14 +1163,14 @@ public class DbContextGenerator : IGenerator
                 ? $"        modelBuilder.Entity<{owner}>().OwnsOne(x => x.{nav}, b => b.ToJson({parentColRef}));"
                 : OwnedJsonBlock("OwnsOne", owner, nav, parentColRef, jsonEnums);
 
-        // Flattened-column prefix for each nested member: `<parent field's column>_`. This is
-        // migrate-ts's rule (expected-schema.ts flattenObjectField), and TS owns the schema
-        // (ADR-0015) — so it is the convention, NOT EF's, whose own owned-type default is
-        // `<Nav>_<Prop>` (`Address_Mood`) and binds a column no migration creates. A former
-        // `@embeddedColumnPrefix` override is gone from here: it was registered in no
-        // provider (unloadable under the strict registry, ADR-0023) and migrate never read
-        // it, so honouring it could only ever bind a column the migration does not create.
-        var prefix = $"{parentCol}_";
+        // Flattened-column prefix for each nested member: core naming's rule
+        // (PhysicalNaming.ResolveFlattenedColumnPrefix) — the field's @flattenedColumnPrefix verbatim,
+        // else `<parent field's column>_` — the same function migrate-ts names these columns
+        // with, and TS owns the schema (ADR-0015). It is NOT EF's own owned-type default,
+        // `<Nav>_<Prop>`, which binds a column no migration creates (under the PascalCase
+        // column rule the two coincide). Under this generator's column rule, so verify's
+        // probe of an alternate rule names these columns the way it names every other.
+        var prefix = PhysicalNaming.ResolveFlattenedColumnPrefix(field, strategy);
 
         var sb = new StringBuilder();
         sb.AppendLine($"        modelBuilder.Entity<{owner}>().OwnsOne(x => x.{nav}, b =>");
@@ -1184,7 +1183,7 @@ public class DbContextGenerator : IGenerator
         //
         // Every member the migration flattens must be named here, in the value object's
         // declaration order. migrate's `flattenObjectField` (expected-schema.ts) iterates
-        // `targetObject.fields()` UNCONDITIONALLY and emits one `<prefix>_<member col>` per
+        // `targetObject.fields()` UNCONDITIONALLY and emits one `<prefix><member col>` per
         // member, so any member this loop skips gets EF's `<Nav>_<Prop>` default instead —
         // a column the migration never creates, failing at the engine with 42703.
         //
@@ -1219,7 +1218,7 @@ public class DbContextGenerator : IGenerator
                 continue;
             }
 
-            // A NESTED value object: migrate gives it ONE json column at `<prefix>_<col>`
+            // A NESTED value object: migrate gives it ONE json column at `<prefix><col>`
             // (subtypeToSqlType returns { kind: "json" } for field.object — a nested VO does
             // not flatten recursively). EF models it as a nested owned type, so it needs its
             // own ToJson pinned to that column, plus the enum conversions its own members
@@ -1241,7 +1240,7 @@ public class DbContextGenerator : IGenerator
             }
 
             // A `field.map` member: the migration flattens it to a jsonb column at
-            // `<prefix>_<col>`, so it takes the SAME converter/comparer pair a top-level map
+            // `<prefix><col>`, so it takes the SAME converter/comparer pair a top-level map
             // takes, pinned to that name. Previously this fell to a warning whose stated
             // reason was that the port configured a top-level map nowhere either — that is
             // no longer true, and an unmapped dictionary here binds EF's `<Nav>_<Prop>`

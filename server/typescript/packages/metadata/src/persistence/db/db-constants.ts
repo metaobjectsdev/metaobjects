@@ -6,6 +6,12 @@ import {
 
 /** Column name override on a field (maps to @column in metadata). */
 export const FIELD_ATTR_COLUMN = "column";
+/**
+ * `@flattenedColumnPrefix` on a `field.object @storage "flattened"`: the text before each member's
+ * column, verbatim (`""` allowed). Absent → the field's resolved column and `_`
+ * ({@link resolveFlattenedColumnPrefix} in naming.ts).
+ */
+export const FIELD_ATTR_FLATTENED_COLUMN_PREFIX = "flattenedColumnPrefix";
 /** When true, suppress the @filterable-without-index Loader warning (Project D drift check). */
 export const FIELD_ATTR_DB_INDEXED = "db.indexed";
 

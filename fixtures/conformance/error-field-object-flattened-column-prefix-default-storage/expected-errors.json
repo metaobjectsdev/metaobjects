@@ -1,0 +1,15 @@
+{
+  "errors": [
+    {
+      "code": "ERR_FLATTENED_COLUMN_PREFIX_WITHOUT_FLATTENED_STORAGE",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.storage.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[1]['object.entity'].children[1]['field.object']"
+      }
+    }
+  ],
+  "warnings": []
+}

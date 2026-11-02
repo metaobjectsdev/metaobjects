@@ -74,6 +74,15 @@ _LOCAL_TIME_SCHEMA = AttrSchema(
     required=False,
 )
 
+# @flattenedColumnPrefix — the flattened-member column prefix (string, "" allowed).
+# Registered on field.object only; the description is sourced from the embedded
+# spec/metamodel/db.json by apply_spec_descriptions (single-source).
+_FLATTENED_COLUMN_PREFIX_SCHEMA = AttrSchema(
+    name=fc.FIELD_ATTR_FLATTENED_COLUMN_PREFIX,
+    value_type=ATTR_SUBTYPE_STRING,
+    required=False,
+)
+
 # DB-domain physical attrs EXTENDING identity subtypes — RDB index / FK-constraint
 # concerns, NOT core identity. Mirrors spec/metamodel/db.json's identity extends and
 # the TS/Java/C# db providers. Descriptions are byte-identical to the canonical.
@@ -175,6 +184,12 @@ def _register(registry: TypeRegistry) -> None:
         TYPE_FIELD,
         fc.FIELD_SUBTYPE_TIMESTAMP,
         attributes=[_LOCAL_TIME_SCHEMA],
+    )
+    # @flattenedColumnPrefix is field.object-only (mirrors db.json's field.object extends).
+    registry.extend(
+        TYPE_FIELD,
+        fc.FIELD_SUBTYPE_OBJECT,
+        attributes=[_FLATTENED_COLUMN_PREFIX_SCHEMA],
     )
     registry.extend(
         TYPE_IDENTITY,

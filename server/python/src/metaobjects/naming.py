@@ -181,6 +181,33 @@ def resolve_column_name(field: MetaField, strategy: str | None = None) -> str:
     return apply_column_naming_strategy(field.name, effective)
 
 
+def resolve_flattened_column_prefix(field: MetaField, strategy: str | None = None) -> str:
+    """The text before each member's column when *field* (a ``field.object @storage
+    "flattened"``) expands its value object into the owning table: its
+    ``@flattenedColumnPrefix`` verbatim (``""`` allowed), else its own resolved column and
+    ``_``. Core naming, not one generator's: the migration creates these columns and the ORM
+    mapping and runtime address them, so every one of them spells them here.
+
+    ADR-0039: read RESOLVING — the prefix and ``@column`` may be inherited through
+    ``extends``. ``strategy`` as for :func:`resolve_column_name`.
+    """
+    prefix = field.get_meta_attr(fc.FIELD_ATTR_FLATTENED_COLUMN_PREFIX)
+    if isinstance(prefix, str):
+        return prefix
+    return resolve_column_name(field, strategy) + "_"
+
+
+def resolve_flattened_column_name(
+    field: MetaField, member: MetaField, strategy: str | None = None
+) -> str:
+    """The column a member of a flattened value object gets in the owning table: the
+    embedding field's :func:`resolve_flattened_column_prefix` followed by the member's own
+    resolved column. The member's rule is the embedding field's, so one project setting
+    names both halves."""
+    effective = strategy if strategy is not None else naming_rules_of(field).columns
+    return resolve_flattened_column_prefix(field, effective) + resolve_column_name(member, effective)
+
+
 def strip_package(name: str) -> str:
     """The bare, package-less segment of a metadata name — ``acme::demo::by_name``
     → ``by_name``.

@@ -259,7 +259,7 @@ declaration. The `@storage` attr controls how the embedded shape persists.
 
 | `@storage` | Persistence shape | Use case |
 |---|---|---|
-| `flattened` | One DB column per sub-field: `<parent>_<sub>` | EF Core `OwnsOne` / DDD value-objects |
+| `flattened` | One DB column per sub-field: `<prefix><sub>`, the prefix `<parent>_` by default | EF Core `OwnsOne` / DDD value-objects |
 | `jsonb` | One `jsonb` column | Structured-but-evolvable user-defined shapes |
 | `subdocument` (default — back-compat) | Single jsonb column | Pre-`@storage` projects |
 
@@ -275,6 +275,26 @@ Example: an `Author` with an embedded `Address` flattened to per-sub-field colum
 
 For `flattened`, the generated table gets `address_street`, `address_city`,
 `address_postal_code` columns instead of one `address` jsonb.
+
+Each member's column is a **prefix** followed by the member's own column (its `@column`, else
+its name under the project's column rule). The prefix defaults to the embedding field's column
+and `_` (`address_`; with `@column: "bill"`, `bill_`; under the `PascalCase` rule, `Address_`,
+EF Core's own default). **`@flattenedColumnPrefix`** on the embedding field replaces it,
+verbatim:
+
+```json
+{ "field.object": { "name": "homeAddress", "@objectRef": "Address", "@storage": "flattened",
+    "@flattenedColumnPrefix": "" } }
+```
+
+gives `street`, `city`, `postal_code`; `"@flattenedColumnPrefix": "home_"` gives `home_street`, and
+so on. The prefix belongs to the embedding field, not the value object, because it is a fact
+about the owning table: one `Address` embedded twice needs two prefixes. Every port names these
+columns through the same core function (`resolveFlattenedColumnName` and its per-port
+equivalents), so codegen, the runtime and `meta migrate` agree. On a field whose `@storage` is
+not `flattened` the attribute is refused at load
+(`ERR_FLATTENED_COLUMN_PREFIX_WITHOUT_FLATTENED_STORAGE`): no other storage gives the members
+columns of their own.
 
 ## What each port generates
 
@@ -448,6 +468,8 @@ The following conformance fixtures gate this feature's behavior across ports:
 - [`fixtures/conformance/field-object-storage-jsonb-single/`](../../fixtures/conformance/field-object-storage-jsonb-single/) — `@storage=jsonb` single-record column
 - [`fixtures/conformance/field-object-storage-jsonb-array/`](../../fixtures/conformance/field-object-storage-jsonb-array/) — `@storage=jsonb` on array field
 - [`fixtures/conformance/error-field-object-storage-flattened-array/`](../../fixtures/conformance/error-field-object-storage-flattened-array/) — `@storage=flattened` on array field is illegal
+- [`fixtures/conformance/error-field-object-flattened-column-prefix-without-flattened-storage/`](../../fixtures/conformance/error-field-object-flattened-column-prefix-without-flattened-storage/) and [`…-default-storage/`](../../fixtures/conformance/error-field-object-flattened-column-prefix-default-storage/) — `@flattenedColumnPrefix` without `@storage=flattened` is illegal
+- [`fixtures/naming-conformance/physical-names/`](../../fixtures/naming-conformance/physical-names/) — flattened member columns under every column rule, with and without `@flattenedColumnPrefix`
 - [`fixtures/conformance/error-field-object-storage-no-object-ref/`](../../fixtures/conformance/error-field-object-storage-no-object-ref/) — `field.object` without `@objectRef` rejected
 
 Cross-port runner coverage: TS / Java / Kotlin / C# / Python all execute these

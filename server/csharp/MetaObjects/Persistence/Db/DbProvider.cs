@@ -52,6 +52,13 @@ public sealed class DbMetaDataProvider : IMetaDataTypeProvider
             FieldConstants.FIELD_SUBTYPE_TIMESTAMP,
             attributes: [DbSchema.LocalTimeSchema]);
 
+        // @flattenedColumnPrefix is field.object-ONLY (the flattened-member column prefix), mirroring
+        // db.json's field.object extends block.
+        registry.Extend(
+            MetaObjects.Shared.BaseTypes.TYPE_FIELD,
+            FieldConstants.FIELD_SUBTYPE_OBJECT,
+            attributes: [DbSchema.FlattenedColumnPrefixSchema]);
+
         // Physical RDB index/constraint attrs on identity subtypes — DB-domain
         // concerns (index ordering / partial predicate / FK constraint naming),
         // NOT core identity. Mirror the TS db.json identity extends.

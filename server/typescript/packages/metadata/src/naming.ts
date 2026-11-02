@@ -2,7 +2,7 @@ import { docsBlobUrl } from "./docs-ref.js";
 import type { MetaData } from "./shared/meta-data.js";
 import { TYPE_FIELD } from "./shared/base-types.js";
 import { PACKAGE_SEPARATOR } from "./shared/structural.js";
-import { FIELD_ATTR_COLUMN } from "./persistence/db/db-constants.js";
+import { FIELD_ATTR_COLUMN, FIELD_ATTR_FLATTENED_COLUMN_PREFIX } from "./persistence/db/db-constants.js";
 import {
   SOURCE_ATTR_SCHEMA,
   SOURCE_ROLE_PRIMARY,
@@ -325,6 +325,39 @@ export function resolveColumnName(
   const col = field.attr(FIELD_ATTR_COLUMN);
   if (typeof col === "string" && col) return col;
   return applyColumnNamingStrategy(field.name, strategy);
+}
+
+/**
+ * The text before each member's column when `field` (a `field.object @storage "flattened"`)
+ * expands its value object into the owning table: its `@flattenedColumnPrefix` verbatim (`""` allowed),
+ * else its own resolved column and `_`. With `@column: "bill"` the members are
+ * `bill_<member column>`; under the `PascalCase` rule an `address` field gives `Address_`,
+ * which is EF Core's owned-type default.
+ *
+ * Core naming, not migrate's: the ORM mapping, the runtime and dynamic SQL address these
+ * columns too, and must spell them exactly as the migration creates them.
+ * ADR-0039: resolving — `@flattenedColumnPrefix` and `@column` may be inherited through `extends`.
+ */
+export function resolveFlattenedColumnPrefix(
+  field: MetaData,
+  strategy: ColumnNamingStrategy = physicalNamingOf(field).columns,
+): string {
+  const prefix = field.attr(FIELD_ATTR_FLATTENED_COLUMN_PREFIX);
+  if (typeof prefix === "string") return prefix;
+  return resolveColumnName(field, strategy) + "_";
+}
+
+/**
+ * The column a member of a flattened value object gets in the owning table: the embedding
+ * field's {@link resolveFlattenedColumnPrefix} followed by the member's own resolved column
+ * (its `@column`, else its name under the rule).
+ */
+export function resolveFlattenedColumnName(
+  field: MetaData,
+  member: MetaData,
+  strategy: ColumnNamingStrategy = physicalNamingOf(field).columns,
+): string {
+  return resolveFlattenedColumnPrefix(field, strategy) + resolveColumnName(member, strategy);
 }
 
 /**

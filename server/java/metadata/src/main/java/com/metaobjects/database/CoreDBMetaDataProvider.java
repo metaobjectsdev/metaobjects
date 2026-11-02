@@ -47,6 +47,13 @@ public class CoreDBMetaDataProvider implements MetaDataTypeProvider {
     public static final String COLUMN = "column";
 
     /**
+     * {@code @flattenedColumnPrefix} on a {@code field.object @storage "flattened"}: the text before each
+     * member's column, verbatim ({@code ""} allowed). Absent: the field's resolved column and
+     * {@code _} ({@link ColumnNaming#resolveFlattenedPrefix(com.metaobjects.field.MetaField)}).
+     */
+    public static final String FLATTENED_COLUMN_PREFIX = "flattenedColumnPrefix";
+
+    /**
      * Physical column-type attribute (R6 Plan 2b, ADR-0013). Selects the DB column type
      * while leaving the logical field type and its idiomatic native binding untouched —
      * the canonical <em>physical</em> escape hatch for DB-specific column types.

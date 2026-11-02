@@ -140,6 +140,8 @@ public enum ErrorCode
     // physical @dbColumnType: jsonb escape hatch on field.string).
     ERR_OBJECT_FIELD_WITHOUT_OBJECT_REF,
     ERR_STORAGE_FLATTENED_ARRAY,
+    // @flattenedColumnPrefix on a field.object whose @storage is not "flattened" (absent is jsonb).
+    ERR_FLATTENED_COLUMN_PREFIX_WITHOUT_FLATTENED_STORAGE,
     ERR_INVALID_TEMPLATE,
     ERR_SOURCE_NO_PRIMARY,
     ERR_SOURCE_MULTIPLE_PRIMARY,

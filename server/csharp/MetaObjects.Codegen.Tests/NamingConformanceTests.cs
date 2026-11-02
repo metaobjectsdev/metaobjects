@@ -10,7 +10,9 @@
 // and CSharpNaming.Column — never a reimplementation. Each `invalid` block must be refused
 // when the config is read.
 using System.Text.Json;
+using MetaObjects;
 using MetaObjects.Config;
+using MetaObjects.Core.Field;
 using MetaObjects.Loader;
 using MetaObjects.Meta;
 using Xunit;
@@ -121,14 +123,25 @@ public class NamingConformanceTests
 
         foreach (var (key, expectedColumn) in c.Columns)
         {
-            var parts = key.Split('.', 2);
+            var parts = key.Split('.', 3);
             var obj = root.FindObject(parts[0]);
             Assert.NotNull(obj);
             // ADR-0039: Fields() is the resolving accessor (an inherited field must resolve).
             var field = obj!.Fields().FirstOrDefault(f => f.Name == parts[1]);
             Assert.NotNull(field);
-            // CSharpNaming.Column is the exact door the entity/names generators call.
-            Assert.Equal(expectedColumn, CSharpNaming.Column(field!, naming.Columns));
+            if (parts.Length == 2)
+            {
+                // CSharpNaming.Column is the exact door the entity/names generators call.
+                Assert.Equal(expectedColumn, CSharpNaming.Column(field!, naming.Columns));
+                continue;
+            }
+            // `<Object>.<field>.<member>`: a member of the flattened value object the field
+            // embeds, named by core naming, the door the DbContext generator calls.
+            var target = NamingRefs.RefTarget(field!, FieldConstants.FIELD_ATTR_OBJECT_REF) as MetaObject;
+            Assert.NotNull(target);
+            var member = target!.Fields().FirstOrDefault(f => f.Name == parts[2]);
+            Assert.NotNull(member);
+            Assert.Equal(expectedColumn, PhysicalNaming.ResolveFlattenedColumnName(field!, member!, naming.Columns));
         }
     }
 

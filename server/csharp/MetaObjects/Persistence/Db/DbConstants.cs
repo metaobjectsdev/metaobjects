@@ -17,6 +17,10 @@ public static class DbConstants
 {
     /// <summary>Custom DB column name override on a field (source-v2 attr <c>@column</c>).</summary>
     public const string FIELD_ATTR_COLUMN     = "column";
+    /// <summary><c>@flattenedColumnPrefix</c> on a <c>field.object @storage "flattened"</c>: the text before
+    /// each member's column, verbatim (<c>""</c> allowed). Absent: the field's resolved column and
+    /// <c>_</c> (<see cref="MetaObjects.Meta.PhysicalNaming.ResolveFlattenedColumnPrefix(MetaObjects.Core.Field.MetaField)"/>).</summary>
+    public const string FIELD_ATTR_FLATTENED_COLUMN_PREFIX = "flattenedColumnPrefix";
     /// <summary>When true, suppress the @filterable-without-index Loader warning (Project D drift check).</summary>
     public const string FIELD_ATTR_DB_INDEXED = "db.indexed";
 

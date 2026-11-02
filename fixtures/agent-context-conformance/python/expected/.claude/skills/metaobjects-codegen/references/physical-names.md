@@ -92,9 +92,11 @@ artifact exists *for your code*, which is the only place a physical name appears
 Two categories stay literal, deliberately, and the gate pins them as such rather than
 exempting them:
 
-- a **flattened value-object column** (`@storage: flattened`) is a composite —
-  `<owner field column>_<member column>` — belonging to no single field of either object,
-  so there is no one constant to reference;
+- a **flattened value-object column** (`@storage: flattened`) is a composite — the
+  embedding field's prefix (its `@flattenedColumnPrefix`, else `<owner field column>_`)
+  followed by the member's column — belonging to no single field of either object, so there
+  is no one constant to reference. Compute it with core naming's
+  `resolveFlattenedColumnName` (or its port equivalent), never by concatenating;
 - a **write-through entity's replica view name**: the artifact holds the object's PRIMARY
   source's name (its table), and a write-through entity has two physical names.
 

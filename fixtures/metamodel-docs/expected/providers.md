@@ -71,7 +71,7 @@ DB-domain attributes — @column / @db.indexed / @dbColumnType on every field, @
 - `field.int`: `@column`, `@db.indexed`, `@dbColumnType`
 - `field.long`: `@column`, `@db.indexed`, `@dbColumnType`
 - `field.map`: `@column`, `@db.indexed`, `@dbColumnType`
-- `field.object`: `@column`, `@db.indexed`, `@dbColumnType`, `@storage`
+- `field.object`: `@column`, `@db.indexed`, `@dbColumnType`, `@flattenedColumnPrefix`, `@storage`
 - `field.string`: `@column`, `@db.indexed`, `@dbColumnType`
 - `field.time`: `@autoSet`, `@column`, `@db.indexed`, `@dbColumnType`
 - `field.timestamp`: `@autoSet`, `@column`, `@db.indexed`, `@dbColumnType`, `@localTime`

@@ -150,6 +150,7 @@ export const ERROR_CODES = [
   "ERR_TEMPLATE_ENGINE_UNSUPPORTED",
   "ERR_BAD_ATTR_FILTER",
   "ERR_STORAGE_FLATTENED_ARRAY",
+  "ERR_FLATTENED_COLUMN_PREFIX_WITHOUT_FLATTENED_STORAGE",
   "ERR_STORAGE_WITHOUT_OBJECT_REF",
   // ADR-0013 — a field.object REQUIRES @objectRef (open/untyped JSON uses
   // the physical @dbColumnType: jsonb escape hatch on field.string instead).

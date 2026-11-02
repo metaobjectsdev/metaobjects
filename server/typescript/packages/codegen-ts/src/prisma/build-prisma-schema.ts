@@ -37,6 +37,7 @@ import {
   pluralize,
   refTarget,
   resolveColumnName,
+  resolveFlattenedColumnName,
   resolveTableSchema,
   type MetaField,
   type MetaObject,
@@ -229,8 +230,7 @@ function fieldsByColumn(obj: MetaObject, all: Iterable<MetaObject>, strategy: Re
       if (field.subType === FIELD_SUBTYPE_OBJECT && field.attr(FIELD_ATTR_STORAGE) === STORAGE_FLATTENED) {
         const value = refTarget(field, FIELD_ATTR_OBJECT_REF);
         if (value === undefined || !isMetaObject(value)) continue;
-        const prefix = `${resolveColumnName(field, strategy)}_`;
-        for (const nested of value.fields()) add(prefix + resolveColumnName(nested, strategy), nested, field.name + upperFirst(nested.name));
+        for (const nested of value.fields()) add(resolveFlattenedColumnName(field, nested, strategy), nested, field.name + upperFirst(nested.name));
         continue;
       }
       add(resolveColumnName(field, strategy), field, field.name);

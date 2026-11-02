@@ -39,6 +39,31 @@ describe("buildExpectedSchema — field.object @storage", () => {
     expect(cols).not.toContain("shipping_address");
   });
 
+  test("@flattenedColumnPrefix replaces the default prefix, verbatim — \"\" keeps the members' own columns", async () => {
+    const root = await loadDoc({
+      "metadata.root": {
+        package: "test",
+        children: [
+          { "object.value": { name: "Address", children: [
+            { "field.string": { name: "street" } },
+            { "field.string": { name: "postalCode", "@column": "ZIP" } },
+          ]}},
+          { "object.entity": { name: "Customer", children: [
+            { "source.rdb": { "@table": "customers" } },
+            { "field.long":   { name: "id" } },
+            { "field.object": { name: "home", "@objectRef": "Address", "@storage": "flattened", "@flattenedColumnPrefix": "" } },
+            { "field.object": { name: "work", "@objectRef": "Address", "@storage": "flattened", "@flattenedColumnPrefix": "Office" } },
+            { "field.object": { name: "billing", "@objectRef": "Address", "@storage": "flattened", "@column": "bill" } },
+            { "identity.primary": { "name": "id", "@fields": "id" } },
+          ]}},
+        ],
+      },
+    });
+    const snap = buildExpectedSchema(root, { dialect: "postgres" });
+    const cols = snap.tables.find((t) => t.name === "customers")!.columns.map((c) => c.name);
+    expect(cols).toEqual(["id", "street", "ZIP", "Officestreet", "OfficeZIP", "bill_street", "bill_ZIP"]);
+  });
+
   test("@storage \"flattened\" preserves nested @required per column", async () => {
     const root = await loadDoc({
       "metadata.root": {

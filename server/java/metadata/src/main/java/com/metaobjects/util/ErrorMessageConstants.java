@@ -169,6 +169,15 @@ public final class ErrorMessageConstants {
     public static final String ERR_STORAGE_FLATTENED_ARRAY = "ERR_STORAGE_FLATTENED_ARRAY";
 
     /**
+     * Error code emitted when {@code @flattenedColumnPrefix} is set on a {@code field.object}
+     * whose {@code @storage} is not {@code "flattened"} (absent is jsonb): no other storage
+     * gives the members columns of their own to prefix.
+     * Cross-language contract: {@code ERR_FLATTENED_COLUMN_PREFIX_WITHOUT_FLATTENED_STORAGE}.
+     */
+    public static final String ERR_FLATTENED_COLUMN_PREFIX_WITHOUT_FLATTENED_STORAGE =
+        "ERR_FLATTENED_COLUMN_PREFIX_WITHOUT_FLATTENED_STORAGE";
+
+    /**
      * Error code emitted when {@code field.object @storage} is set on a field that
      * has no {@code @objectRef} — storage shape only applies to referenced objects.
      * Cross-language contract: {@code ERR_STORAGE_WITHOUT_OBJECT_REF}.

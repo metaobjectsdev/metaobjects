@@ -20,6 +20,15 @@ here.**
   and the `wire` setting, and a project on any port runs them through the Node `meta` CLI. They are
   reference helpers: opt-in, listed by `meta gen --list`, ejectable and gated by `verify --codegen`
   (ADR-0034 Amendment 10). Protobuf is not built. See `docs/features/contract-emitters.md`.
+- **`@flattenedColumnPrefix`: name a flattened value object's columns.** On a `field.object` with
+  `@storage: "flattened"`, it replaces the default prefix (the field's column and `_`) verbatim;
+  `""` keeps the members' own column names. It sits on the embedding field because one value
+  object embedded twice needs two prefixes. Flattened column names now come from core naming in
+  every port (`resolveFlattenedColumnName` in TypeScript, `PhysicalNaming.ResolveFlattenedColumnName`
+  in C#, `ColumnNaming.resolveFlattened` on the JVM, `resolve_flattened_column_name` in Python), and
+  `meta migrate`, the Prisma schema, the C# EF mapping and the Kotlin Exposed tables all use it. Set
+  on any other storage, it is refused at load (`ERR_FLATTENED_COLUMN_PREFIX_WITHOUT_FLATTENED_STORAGE`).
+  See `docs/features/field-types.md`, "Embedded value objects".
 - **A `PascalCase` column rule.** `"naming": { "columns": "PascalCase" }` in
   `.metaobjects/config.json` upper-cases a field name's first letter and changes nothing else
   (`createdAt` → `CreatedAt`, `requestURL` → `RequestURL`), in every port: the column names EF Core

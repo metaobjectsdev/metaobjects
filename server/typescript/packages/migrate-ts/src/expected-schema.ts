@@ -60,7 +60,7 @@ import {
   STORAGE_FLATTENED,
   DOC_ATTR_DESCRIPTION,
   applyColumnNamingStrategy, physicalNamingOf,
-  resolveTableName, resolveColumnName, resolveTableSchema, resolveIndexName,
+  resolveTableName, resolveColumnName, resolveFlattenedColumnPrefix, resolveTableSchema, resolveIndexName,
 } from "@metaobjectsdev/metadata";
 import type { SqlType } from "./sql-type.js";
 import type {
@@ -1200,11 +1200,12 @@ function applySchemaConventions(tables: TableDescriptor[], conventions: SchemaCo
 
 /**
  * Expand a `field.object @storage "flattened"` into one ColumnDescriptor per
- * nested field of the referenced value-object, prefixed by the parent field's
- * resolved column name + underscore.
+ * nested field of the referenced value-object, each named by core naming's
+ * `resolveFlattenedColumnPrefix` (the field's `@flattenedColumnPrefix`, else its resolved
+ * column and `_`) and the member's own column, so every port spells these
+ * columns the way this migration creates them.
  *
- * EF OwnsOne pattern: no JSON column for the parent itself; each nested field
- * becomes `<parent_col>_<nested_col>` in the owning entity's table.
+ * EF OwnsOne pattern: no JSON column for the parent itself.
  */
 function flattenObjectField(
   field: MetaData, strategy: ColumnNamingStrategy,
@@ -1212,7 +1213,7 @@ function flattenObjectField(
   // ADR-0039: resolving — @objectRef may be inherited via extends.
   const targetObject = refTarget(field, FIELD_ATTR_OBJECT_REF);
   if (targetObject === undefined || !isMetaObject(targetObject)) return [];
-  const prefix = resolveColumnName(field, strategy) + "_";
+  const prefix = resolveFlattenedColumnPrefix(field, strategy);
   const cols: ColumnDescriptor[] = [];
   for (const nested of targetObject.fields()) {
     const inner = buildColumn(nested, /* isPk */ false, /* pkGeneration */ undefined, strategy);

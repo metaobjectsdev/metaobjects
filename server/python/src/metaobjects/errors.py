@@ -205,6 +205,9 @@ class ErrorCode(str, Enum):
     # folds `userId` and `userID` together, or two fields share an @column).
     ERR_COLUMN_NAME_COLLISION = "ERR_COLUMN_NAME_COLLISION"
     ERR_STORAGE_FLATTENED_ARRAY = "ERR_STORAGE_FLATTENED_ARRAY"
+    ERR_FLATTENED_COLUMN_PREFIX_WITHOUT_FLATTENED_STORAGE = (
+        "ERR_FLATTENED_COLUMN_PREFIX_WITHOUT_FLATTENED_STORAGE"
+    )
     ERR_STORAGE_WITHOUT_OBJECT_REF = "ERR_STORAGE_WITHOUT_OBJECT_REF"
     # ADR-0013: a field.object REQUIRES @objectRef (open/untyped JSON uses the
     # physical @dbColumnType: jsonb escape hatch on field.string).

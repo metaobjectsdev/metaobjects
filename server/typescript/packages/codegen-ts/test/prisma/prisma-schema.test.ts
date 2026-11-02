@@ -201,6 +201,23 @@ describe("prisma-schema — what the schema says", () => {
     expect(pgPostal.attributes).toContain("@db.VarChar(10)");
   });
 
+  test("a flattened field.object's @flattenedColumnPrefix names its columns, as meta migrate creates them", async () => {
+    const root = await loadJson(model([
+      { "object.value": { name: "Address", children: [{ "field.string": { name: "street" } }] } },
+      entity("Customer", [
+        { "source.rdb": {} },
+        longId,
+        { "field.object": { name: "homeAddress", "@objectRef": "Address", "@storage": "flattened", "@flattenedColumnPrefix": "" } },
+        { "field.object": { name: "workAddress", "@objectRef": "Address", "@storage": "flattened", "@flattenedColumnPrefix": "office_" } },
+        pk,
+      ]),
+    ]));
+    const fields = buildPrismaSchema(root, { provider: "postgresql" }).models.find((m) => m.name === "Customer")!.fields;
+    expect(fields.map((f) => f.name)).toEqual(["id", "homeAddressStreet", "workAddressStreet"]);
+    expect(fields[1]!.attributes).not.toContain('@map("home_address_street")');
+    expect(fields[2]!.attributes).toContain('@map("office_street")');
+  });
+
   test("a stored procedure is not a model, and not refused: meta migrate does not create it either", async () => {
     const root = await loadJson(model([
       entity("Fresh", [{ "source.rdb": {} }, longId, pk]),
