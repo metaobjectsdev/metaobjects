@@ -266,7 +266,7 @@ what they render is generator output and does not.)
 | Codegen **ENGINE** public surface **additive** (new `render*` primitive, new `GenContext` field, optional param) | new `render*` primitive | PATCH (MINOR if it headlines a feature release) | MINOR |
 | Codegen **ENGINE** public surface **breaking**, or changed **CLI semantics** | `relativeModuleSpecifier` +required param | **MINOR** | MAJOR |
 | A **runtime library**'s public surface (`runtime-ts`, `render`, OMDB, ObjectManager, web client) — additive / breaking | a new mount option / a removed export | PATCH / **MINOR** | MINOR / MAJOR |
-| New **attribute** on an existing type/subtype | `@intValueMap`, `@lenient`, `@maxTokens` | **PATCH** | MINOR |
+| New **attribute** on an existing type/subtype | `@intValueMap`, `@lenient`, `@maxTokens` | **PATCH** | **PATCH** |
 | New **subtype** of an existing type | `field.uri`, `index.lookup`, `attr.intMap` | **PATCH** when inert (see the vocabulary rule below); **MINOR** when it changes existing metadata's meaning/output, narrows something previously permitted, or headlines a feature | MINOR |
 | New top-level metadata **type** | `requirement.*`, `index.*`, `api.*` | **MINOR** | MINOR |
 | **Breaking** metamodel-vocabulary change (retire an attr/subtype/type; narrow what is permitted) | FR-037 `@readOnly`, FR-038 `@verifiedBy`, ADR-0052 `@promptStyle` re-homing | **MINOR** (pre-1.0 MINOR *is* the breaking slot) | **`metamodelVersion` MAJOR**, package MINOR (ADR-0035 Am. 2) |

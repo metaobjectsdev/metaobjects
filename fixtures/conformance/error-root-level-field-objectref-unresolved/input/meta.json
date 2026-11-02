@@ -1,0 +1,14 @@
+{
+  "metadata.root": {
+    "package": "acme::shop",
+    "children": [
+      {
+        "field.object": {
+          "name": "AddrTemplate",
+          "abstract": true,
+          "@objectRef": "Missing"
+        }
+      }
+    ]
+  }
+}

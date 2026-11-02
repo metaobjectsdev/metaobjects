@@ -56,6 +56,14 @@ here.**
   It now generates `tags: list[str] = []`, from the same four spellings TypeScript accepts, or
   from a native YAML list such as `default: [a, b]`. A default Python cannot spell as a list is
   left to the database.
+- **Java: a bare `@objectRef` on a field declared directly under `metadata.root` now resolves.**
+  A root-level `field.object` (the reusable template other fields `extends`) with
+  `@objectRef: "Address"` failed to load in Java even when `Address` sat in the same package,
+  while TypeScript loaded it. A root-level node now resolves a bare reference in its own
+  package, as ADR-0042 specifies, and a real miss still fails with `ERR_UNRESOLVED_OBJECT_REF`.
+  The error no longer names the loader as the owner of a root-level node. Two new conformance
+  fixtures (`root-level-field-object-bare-ref`, `error-root-level-field-objectref-unresolved`)
+  hold every port to it; C#, Python and TypeScript already passed.
 
 ## [1.2.0] — 2026-10-30
 
