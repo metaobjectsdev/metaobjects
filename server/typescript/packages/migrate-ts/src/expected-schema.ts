@@ -899,9 +899,11 @@ function buildChecks(
       }
     }
     // Validator-derived checks.
-    // The VARCHAR(n) the column already is, when the conventions skip what it enforces.
+    // The VARCHAR(n) the column already is, when the conventions skip what it enforces. Not on
+    // SQLite / D1: they accept a declared length and store longer values anyway.
     const columnType = subtypeToSqlType(field);
-    const enforcedMax = skipRedundant && columnType.kind === "text" ? columnType.maxLength : undefined;
+    const enforcesLength = dialect !== "sqlite" && dialect !== "d1";
+    const enforcedMax = skipRedundant && enforcesLength && columnType.kind === "text" ? columnType.maxLength : undefined;
     for (const v of field.validators()) {
       const check = validatorCheck(v, qcol, tableName, col, dialect, skipRedundant, enforcedMax);
       if (check) checks.push(check);

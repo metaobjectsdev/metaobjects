@@ -78,7 +78,10 @@ here.**
   is a constraint or an index. `default` is what migrate has always emitted, so nothing changes
   unless you set it. `efcore` reproduces EF Core's conventions (`PK_`, `FK_`, `IX_`, its
   63-character `~` truncation, alternate keys as constraints), so a database built by EF Core
-  migrations and one built by `meta migrate` match. A project can supply its own conventions
+  migrations and one built by `meta migrate` match. It also leaves out the CHECKs a column type
+  already guarantees (`skipRedundantChecks`): a `validator.length` maximum the column's
+  `VARCHAR(n)` enforces (not on SQLite or D1, which do not enforce one), and a minimum of 0 or
+  less; an EF Core database has none of them. A project can supply its own conventions
   object from `metaobjects.config.ts`; an unknown preset name, or an object missing a member, is
   refused by name. The PK name is now introspected too, so a `baseline --from-db` snapshot of a
   database whose primary keys are not named `<table>_pkey` records their names (not compared;
@@ -96,15 +99,6 @@ here.**
   the `metaobjects-authoring` skill.
 
 ### Changed
-
-- **`meta migrate` adds a CHECK to an existing Postgres table as `NOT VALID`, then `VALIDATE
-  CONSTRAINT`.** The same end state as the plain `ADD CONSTRAINT` it wrote before, under a lighter
-  lock while adding, and a row that violates the check fails at the validation step that names
-  the constraint. A CHECK in a `CREATE TABLE` is unchanged.
-- **The `efcore` schema conventions leave out CHECKs the column type already guarantees**
-  (`skipRedundantChecks`): a `validator.length` maximum the column's `VARCHAR(n)` enforces, and a
-  minimum of 0. An EF Core database has none of them. The default conventions, and a conventions
-  object that does not set it, emit them as before.
 
 - **Added vocabulary no longer moves `metamodelVersion`.** The metamodel spec version now moves
   only when metadata that loaded may stop loading or change meaning. A new type, subtype,

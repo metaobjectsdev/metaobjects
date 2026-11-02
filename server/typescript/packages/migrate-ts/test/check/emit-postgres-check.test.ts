@@ -15,10 +15,9 @@ describe("emit postgres — checks", () => {
     const r = emit([{ kind: "create-table", table, status: ALLOWED } as unknown as Change], { dialect: "postgres" });
     expect(r.up).toContain(`CONSTRAINT "orders_status_chk" CHECK (status IN ('OPEN','CLOSED'))`);
   });
-  test("add-check → ALTER TABLE ADD CONSTRAINT … NOT VALID, then VALIDATE; down drops it", () => {
+  test("add-check → ALTER TABLE ADD CONSTRAINT; down drops it", () => {
     const r = emit([{ kind: "add-check", table: "orders", check: CHK, status: ALLOWED } as unknown as Change], { dialect: "postgres" });
-    expect(r.up).toContain(`ALTER TABLE "orders" ADD CONSTRAINT "orders_status_chk" CHECK (status IN ('OPEN','CLOSED')) NOT VALID;`);
-    expect(r.up).toContain(`ALTER TABLE "orders" VALIDATE CONSTRAINT "orders_status_chk";`);
+    expect(r.up).toContain(`ALTER TABLE "orders" ADD CONSTRAINT "orders_status_chk" CHECK (status IN ('OPEN','CLOSED'));`);
     expect(r.down).toContain(`ALTER TABLE "orders" DROP CONSTRAINT "orders_status_chk";`);
   });
   test("drop-check → ALTER TABLE DROP CONSTRAINT", () => {

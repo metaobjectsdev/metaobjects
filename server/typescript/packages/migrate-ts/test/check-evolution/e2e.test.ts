@@ -11,11 +11,10 @@ function tbl(checks: CheckDescriptor[]): TableDescriptor {
 const snap = (checks: CheckDescriptor[]): SchemaSnapshot => ({ tables: [tbl(checks)], views: [] });
 
 describe("e2e: existing-table CHECK evolution (postgres)", () => {
-  test("adding a check on an existing table emits ALTER TABLE ADD CONSTRAINT … NOT VALID, then VALIDATE", async () => {
+  test("adding a check on an existing table emits ALTER TABLE ADD CONSTRAINT", async () => {
     const r = await diff({ expected: snap([CHK("orders_qty_chk", "qty >= 1")]), actual: snap([]), dialect: "postgres" });
     const { up } = emit(r.changes, { dialect: "postgres" });
-    expect(up).toContain(`ALTER TABLE "orders" ADD CONSTRAINT "orders_qty_chk" CHECK (qty >= 1) NOT VALID;`);
-    expect(up).toContain(`ALTER TABLE "orders" VALIDATE CONSTRAINT "orders_qty_chk";`);
+    expect(up).toContain(`ALTER TABLE "orders" ADD CONSTRAINT "orders_qty_chk" CHECK (qty >= 1);`);
   });
   test("create-table on empty actual inlines the check (no separate ADD CONSTRAINT)", async () => {
     // a brand-new table carries its checks inline in CREATE TABLE; diffTableChecks
