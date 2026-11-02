@@ -395,7 +395,11 @@ if (wants("java")) {
     "examples/showcase/jvm/pom.xml",
   ];
   touch(...poms);
-  await run(`sed -i 's/${javaReleased.replace(/\./g, "\\.")}/${V.maven}/g' ${poms.map((f) => `'${f}'`).join(" ")}`);
+  // In JS rather than `sed -i`, whose in-place flag GNU and BSD (macOS) sed spell differently.
+  for (const f of poms) {
+    const path = join(ROOT, f);
+    writeFileSync(path, readFileSync(path, "utf8").replaceAll(javaReleased, V.maven));
+  }
   await run("scripts/check-pom-versions.sh");
   ok(`java poms → ${V.maven}`);
   const settings = join(scratch("m2"), "settings.xml");
