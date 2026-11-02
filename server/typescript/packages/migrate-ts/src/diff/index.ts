@@ -317,6 +317,12 @@ export async function diff(
   // that is exactly the object a cascade must not destroy silently.
   annotateViewDropDependents(args.actual.views, changes);
 
+  // A live view this tool neither rewrites nor drops stays in place and blocks a column drop
+  // at apply. Whether a planned drop-view/replace-view is itself blocked is decided by the
+  // statuses, so assign them first; applyStatus below assigns them again over the final list.
+  applyStatus(changes, args.allow ?? {});
+  annotateUnownedColumnReaders(args.actual.views, changes);
+
   // Pass 3: column renames (table renames were resolved in Pass 1c).
   await detectColumnRenames(changes, args.onAmbiguous, args.renames);
   // Pass 3b: a renamed column carries the constraints and indexes named after it.
@@ -1246,6 +1252,38 @@ function annotateViewDropDependents(actual: readonly ViewDescriptor[], changes: 
       }
     }
     if (external.length > 0) c.dependents = external;
+  }
+}
+
+/**
+ * Mark each `drop-column` that a live view this migration leaves in place still reads.
+ *
+ * A view with a drop-view or replace-view in `changes` that is not blocked is dropped or
+ * rewritten around the change, so it does not strand the drop. Every other live view
+ * does: a declared-`@unmanaged` one, one in a schema the model does not scope, a hand-made
+ * one whose drop-view is blocked. A view with no recorded body cannot be matched, so it is
+ * not blocked on.
+ */
+function annotateUnownedColumnReaders(
+  actual: readonly ViewDescriptor[],
+  changes: Change[],
+): void {
+  const handled = new Set<string>();
+  for (const c of changes) {
+    if (c.status.state === "blocked") continue;
+    if (c.kind === "drop-view") handled.add(viewIdentity({ name: c.view, ...schemaSpread(c.schema) }));
+    else if (c.kind === "replace-view") handled.add(viewIdentity({ name: c.view.name, ...schemaSpread(c.schema) }));
+  }
+  const unowned = actual.filter((v) => v.sql !== undefined && !handled.has(viewIdentity(v)));
+  if (unowned.length === 0) return;
+  const liveName = liveTableNames(changes);
+  for (const c of changes) {
+    if (c.kind !== "drop-column") continue;
+    const table = liveName(c.table);
+    const readBy = unowned
+      .filter((v) => sqlNamesIdentifier(v.sql!, table) && sqlNamesIdentifier(v.sql!, c.column))
+      .map((v) => (v.schema !== undefined ? `${v.schema}.${v.name}` : v.name));
+    if (readBy.length > 0) c.readBy = readBy;
   }
 }
 

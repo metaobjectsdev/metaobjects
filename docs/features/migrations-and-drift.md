@@ -632,6 +632,28 @@ migrate` never creates, drops, or drift-checks it, and `meta verify --db` report
 *external (declared)*. The two are mutually exclusive. See
 [ADR-0043](../../spec/decisions/ADR-0043-ddl-ownership-escape-valves.md).
 
+**Removing a column a view reads.** For a view the tool derives, `meta migrate` finds the
+views that read the column and drops and recreates them around the change. Two kinds of view
+are not rewritten, so you edit them yourself:
+
+- **An `@sql` body.** The tool never parses it, so it cannot know the body still names a
+  column you removed. **Edit the body in the same change that removes the column.** Left
+  alone, the migration is still written. On Postgres it then fails at apply with `column
+  "…" does not exist`. On SQLite it applies and leaves a view that errors when queried.
+- **An `@unmanaged` view, or a hand-made one.** With `--from-db`, `meta migrate` reads the
+  live view bodies. If one it does not own names the column the plan drops, the drop is
+  blocked at plan time and the message names the view and the column; otherwise Postgres
+  fails at apply (`cannot drop column … because other objects depend on it`) and SQLite
+  fails with `error in view … after drop column`. Change the view first, or pass `--allow
+  drop-column-read-by-view` to proceed anyway. A view with no recorded body cannot be
+  matched, and an offline run (no database) cannot see live views, so neither is checked.
+
+A rollback of a dropped column re-adds it on every engine, with its type, but the data is
+not restored. On SQLite a column that was `NOT NULL` with no default comes back nullable,
+because SQLite cannot add it any other way. SQLite also cannot add a column with an
+expression default (or a `uuid` identity default) to a populated table, so the rollback
+omits that default and says so in a `NOTE`.
+
 ## Verified by
 
 The following conformance fixtures gate this feature's behavior across ports:

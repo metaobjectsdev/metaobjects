@@ -27,6 +27,8 @@ export const ALLOW_TOKEN_MAP: Record<string, keyof AllowOptions> = {
   "drop-view": "dropView",
   // Gates DROP VIEW ... CASCADE. Additional to drop-view, never implied by it.
   "drop-view-cascade": "dropViewCascade",
+  // Gates dropping a column a view this tool does not own still reads.
+  "drop-column-read-by-view": "dropColumnReadByView",
   // Gates overwriting an unfingerprinted (hand-written or pre-fingerprint) view.
   "adopt-view": "adoptView",
   "nullable-to-not-null": "nullableToNotNull",
@@ -66,7 +68,10 @@ export function describeChange(c: Change): string {
     case "drop-table": return c.table;
     case "rename-table": return `${c.from} → ${c.to}`;
     case "add-column": return `${c.table}.${c.column.name}`;
-    case "drop-column": return `${c.table}.${c.column}`;
+    case "drop-column":
+      return c.readBy === undefined || c.readBy.length === 0
+        ? `${c.table}.${c.column}`
+        : `${c.table}.${c.column} (read by view ${c.readBy.join(", ")})`;
     case "rename-column": return `${c.table}.${c.from} → ${c.table}.${c.to}`;
     case "change-column-type": {
       // A type change carries its column's default change, so the default is reported here.

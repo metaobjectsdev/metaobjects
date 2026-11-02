@@ -10,6 +10,22 @@ here.**
 
 ## [Unreleased]
 
+### Fixed
+
+- **`meta migrate` refuses, at plan time, to drop a column a view it does not own still reads.**
+  With `--from-db`, a declared-`@unmanaged` view or one outside the scoped schemas whose live body
+  names the dropped column now blocks the `drop-column`, and the message names the view and the
+  column. Before, the migration was written and failed at apply on both Postgres (`cannot drop
+  column … other objects depend on it`) and SQLite (`error in view … after drop column`). A view with
+  no recorded body is not matched, and an offline run cannot see live views. Pass
+  `--allow drop-column-read-by-view` (config token `drop-column-read-by-view`) to proceed.
+- **The SQLite and D1 down migration for `drop-column` re-adds the column.** It wrote a TODO comment
+  and still recreated the view with the old SQL, so the view failed with `no such column` after a
+  rollback. It now runs `ADD COLUMN` from the recorded column, as Postgres does; the data is not
+  restored, and a `NOT NULL` column with no default comes back nullable, which is all SQLite allows.
+- **Docs: edit an `@sql` body when you remove a column it reads.** The tool never parses the body;
+  Postgres fails at apply and SQLite applies and leaves a broken view.
+
 ### Added
 
 - **Contract emitters: JSON Schema and OpenAPI generators (FR-022).** `jsonSchemaFile()`
