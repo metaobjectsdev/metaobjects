@@ -118,9 +118,9 @@ const isPre1 = (v) => v.major === 0;
 export function requiredBump(severity, base, { correction = false } = {}) {
   if (severity === "none") return "none";
   // ADDITIVE moves no metamodel number. Every document that loaded still loads, and means
-  // the same, so nothing an adopter relies on changed: the package's patch release carries
-  // the new vocabulary and its CHANGELOG entry names it. The number moves only when
-  // existing metadata may stop loading or change meaning.
+  // the same, so nothing an adopter's metadata relies on changed: the CHANGELOG entry names
+  // the new vocabulary, and the package version follows docs/RELEASING.md. The number moves
+  // only when existing metadata may stop loading or change meaning.
   if (severity === "additive") return "none";
   if (correction) return "minor"; // breaking, but a correction — never a metamodel major
   return isPre1(base) ? "minor" : "major"; // breaking

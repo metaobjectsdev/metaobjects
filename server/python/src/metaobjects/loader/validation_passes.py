@@ -32,6 +32,7 @@ from ..meta.core.field.field_constants import (
     FIELD_ATTR_REQUIRED,
     FIELD_ATTR_SORTABLE,
     FIELD_ATTR_FLATTENED_COLUMN_PREFIX,
+    STORAGE_FLATTENED,
     FIELD_ATTR_STORAGE,
     FIELD_ATTR_VALUE_TYPE,
     FIELD_ATTR_VALUES,
@@ -3743,15 +3744,21 @@ def _validate_field_object_storage(root: MetaData, errors: list[MetaError]) -> N
         # @flattenedColumnPrefix names the columns a flattened value object adds to the
         # owning table; under any other storage it would change nothing, so it is refused
         # rather than silently ignored.
+        # Only a field an object owns is checked (as TS and C# do): a root-level abstract
+        # field.object is a template, and the concrete field that extends it — resolving
+        # both the prefix and @storage — is the one checked.
+        owner = node.parent
         if (
-            node.get_meta_attr(FIELD_ATTR_FLATTENED_COLUMN_PREFIX) is not None
-            and storage != "flattened"
+            owner is not None
+            and owner.type == TYPE_OBJECT
+            and node.get_meta_attr(FIELD_ATTR_FLATTENED_COLUMN_PREFIX) is not None
+            and storage != STORAGE_FLATTENED
         ):
             storage_text = "not set (jsonb)" if storage is None else f'"{storage}"'
             errors.append(MetaError(
                 code=ErrorCode.ERR_FLATTENED_COLUMN_PREFIX_WITHOUT_FLATTENED_STORAGE,
                 message=(
-                    f"field.object '{node.name}' sets @flattenedColumnPrefix, but its @storage "
+                    f'field.object "{owner.name}.{node.name}" sets @flattenedColumnPrefix, but its @storage '
                     f"is {storage_text}; only a @storage \"flattened\" value object puts its "
                     f"members' columns in the owning table. Set @storage \"flattened\", or "
                     f"remove @flattenedColumnPrefix."
@@ -3760,7 +3767,7 @@ def _validate_field_object_storage(root: MetaData, errors: list[MetaError]) -> N
             ))
         if storage is None:
             continue
-        if storage == "flattened" and node.resolved_is_array():  # ADR-0039 resolving isArray
+        if storage == STORAGE_FLATTENED and node.resolved_is_array():  # ADR-0039 resolving isArray
             errors.append(MetaError(
                 code=ErrorCode.ERR_STORAGE_FLATTENED_ARRAY,
                 message=(

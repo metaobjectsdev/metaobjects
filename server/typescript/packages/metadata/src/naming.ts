@@ -60,7 +60,12 @@ export function toKebabCase(s: string): string {
  * property, so a camelCase model maps onto an EF-built schema with no `@column`.
  */
 export function toPascalCaseColumn(s: string): string {
-  return s.charAt(0).toUpperCase() + s.slice(1);
+  // One UTF-16 unit in, one out — as C#'s char.ToUpperInvariant and Java's
+  // Character.toUpperCase do — so `ß` (whose JavaScript upper case is "SS") stays `ß` in
+  // every port.
+  const first = s.charAt(0);
+  const upper = first.toUpperCase();
+  return (upper.length === 1 ? upper : first) + s.slice(1);
 }
 
 /**
@@ -334,8 +339,9 @@ export function resolveColumnName(
  * `bill_<member column>`; under the `PascalCase` rule an `address` field gives `Address_`,
  * which is EF Core's owned-type default.
  *
- * Core naming, not migrate's: the ORM mapping, the runtime and dynamic SQL address these
- * columns too, and must spell them exactly as the migration creates them.
+ * Core naming, not migrate's: generated ORM mappings (the Prisma schema, the C# EF mapping,
+ * the Kotlin Exposed tables) address these columns too, and must spell them exactly as the
+ * migration creates them.
  * ADR-0039: resolving — `@flattenedColumnPrefix` and `@column` may be inherited through `extends`.
  */
 export function resolveFlattenedColumnPrefix(

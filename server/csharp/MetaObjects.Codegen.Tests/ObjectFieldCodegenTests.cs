@@ -132,6 +132,39 @@ public class ObjectFieldCodegenTests
         Assert.Contains($"b.Property(p => p.Street).HasColumnName(\"{byDefault}\");", dbContext);
     }
 
+    // Each flattened member's column is core naming's, whole: the generator does not build the
+    // member half itself. A member whose @column is "" is the case that told them apart: core
+    // treats an empty @column as absent, so the column is `bill_street`, not `bill_`.
+    [Fact]
+    public void DbContext_flattened_member_columns_are_core_namings()
+    {
+        const string model = """
+        { "metadata.root": { "package": "acme", "children": [
+          { "object.value": { "name": "Address", "children": [ { "field.string": { "name": "street", "@column": "" } } ]}},
+          { "object.entity": { "name": "Customer", "children": [
+            { "source.rdb": { "@table": "customers" } },
+            { "field.long":   { "name": "id" } },
+            { "field.object": { "name": "billing", "@objectRef": "Address", "@storage": "flattened", "@column": "bill" } },
+            { "identity.primary": { "@fields": "id" } }
+          ]}}
+        ]}}
+        """;
+        var r = new MetaDataLoader().Load([new InMemoryStringSource(model, id: "member.json")]);
+        Assert.Empty(r.Errors);
+        var ctx = new GenContext
+        {
+            Entities = r.Root.Objects(), Root = r.Root,
+            Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated", ColumnNamingStrategy = ColumnNamingStrategy.SnakeCase },
+        };
+        var dbContext = new DbContextGenerator().Generate(ctx).Single().Content;
+
+        var billing = r.Root.FindObject("Customer")!.Fields().Single(f => f.Name == "billing");
+        var street = r.Root.FindObject("Address")!.Fields().Single(f => f.Name == "street");
+        var expected = PhysicalNaming.ResolveFlattenedColumnName(billing, street, ColumnNamingStrategy.SnakeCase);
+        Assert.Equal("bill_street", expected);
+        Assert.Contains($"b.Property(p => p.Street).HasColumnName(\"{expected}\");", dbContext);
+    }
+
     [Fact]
     public void DbContext_configures_owned_types_flattened_and_json()
     {

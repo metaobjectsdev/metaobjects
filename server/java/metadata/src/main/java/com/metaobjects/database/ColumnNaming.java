@@ -137,7 +137,8 @@ public final class ColumnNaming {
      * @storage "flattened"}) expands its value object into the owning table: its
      * {@code @flattenedColumnPrefix} verbatim ({@code ""} allowed), else its own resolved column
      * and {@code _}. Core naming, not one generator's: the migration creates these columns and
-     * the ORM mapping and runtime address them, so every one of them spells them here.
+     * the generated ORM mappings (the Kotlin Exposed tables) address them, so every one of them
+     * spells them here.
      *
      * <p>ADR-0039: read RESOLVING — the prefix and {@code @column} may be inherited through
      * {@code extends}.</p>

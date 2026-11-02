@@ -90,7 +90,7 @@ public sealed record PhysicalNaming(ColumnNamingStrategy Columns, TableNamingRul
     /// @storage "flattened"</c>) expands its value object into the owning table: its
     /// <c>@flattenedColumnPrefix</c> verbatim (<c>""</c> allowed), else its own resolved column and
     /// <c>_</c>. Core naming, not one generator's: the migration creates these columns and the
-    /// ORM mapping and runtime address them, so every one of them spells them here.
+    /// generated ORM mappings address them, so every one of them spells them here.
     /// ADR-0039: resolving — <c>@flattenedColumnPrefix</c> and <c>@column</c> may be inherited.
     /// </summary>
     public static string ResolveFlattenedColumnPrefix(MetaField field) =>

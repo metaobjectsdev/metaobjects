@@ -39,6 +39,8 @@ public class ObjectField extends MetaField<Object>
     public final static String ATTR_OBJECTREF = MetaObject.ATTR_OBJECT_REF;
     /** Persistence-side storage shape for owned-object data. Cross-port values: flattened / jsonb / subdocument. */
     public final static String ATTR_STORAGE = "storage";
+    /** {@code @storage "flattened"}: the nested object's columns expand into the parent table. */
+    public final static String STORAGE_FLATTENED = "flattened";
     /** {@code @flattenedColumnPrefix} — see {@link com.metaobjects.database.CoreDBMetaDataProvider#FLATTENED_COLUMN_PREFIX}. */
     public final static String ATTR_FLATTENED_COLUMN_PREFIX = com.metaobjects.database.CoreDBMetaDataProvider.FLATTENED_COLUMN_PREFIX;
 

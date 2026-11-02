@@ -138,8 +138,18 @@ def to_snake_case(name: str) -> str:
 
 
 def to_pascal_case_column(name: str) -> str:
-    """The ``PascalCase`` column rule: the first letter upper-cased, the rest verbatim."""
-    return name[:1].upper() + name[1:]
+    """The ``PascalCase`` column rule: the first letter upper-cased, the rest verbatim.
+
+    One UTF-16 unit in, one out, as C#'s ``char.ToUpperInvariant`` and Java's
+    ``Character.toUpperCase`` do: a first character whose upper case is not one character
+    (``ß`` → ``SS``), or that is outside the Basic Multilingual Plane, is kept as written, so
+    every port names it alike.
+    """
+    first = name[:1]
+    upper = first.upper()
+    if len(upper) != 1 or ord(first) > 0xFFFF:
+        upper = first
+    return upper + name[1:]
 
 
 def apply_column_naming_strategy(name: str, strategy: str = DEFAULT_COLUMN_NAMING) -> str:
@@ -185,8 +195,8 @@ def resolve_flattened_column_prefix(field: MetaField, strategy: str | None = Non
     """The text before each member's column when *field* (a ``field.object @storage
     "flattened"``) expands its value object into the owning table: its
     ``@flattenedColumnPrefix`` verbatim (``""`` allowed), else its own resolved column and
-    ``_``. Core naming, not one generator's: the migration creates these columns and the ORM
-    mapping and runtime address them, so every one of them spells them here.
+    ``_``. Core naming, not one generator's: the migration creates these columns and the
+    generated ORM mappings address them, so every port spells them the same way.
 
     ADR-0039: read RESOLVING — the prefix and ``@column`` may be inherited through
     ``extends``. ``strategy`` as for :func:`resolve_column_name`.

@@ -60,6 +60,7 @@
           ]
         }
       },
+      { "field.object": { "name": "AddrCols", "abstract": true, "@objectRef": "acme::naming::Address", "@flattenedColumnPrefix": "addr_" } },
       {
         "object.value": {
           "name": "Address",
@@ -80,6 +81,7 @@
             { "field.object": { "name": "billTo", "@objectRef": "Address", "@storage": "flattened", "@column": "bill" } },
             { "field.object": { "name": "returnTo", "@objectRef": "Address", "@storage": "flattened", "@flattenedColumnPrefix": "" } },
             { "field.object": { "name": "giftTo", "@objectRef": "Address", "@storage": "flattened", "@flattenedColumnPrefix": "g_" } },
+            { "field.object": { "name": "homeTo", "extends": "acme::naming::AddrCols", "@storage": "flattened" } },
             { "identity.primary": { "name": "id", "@fields": "id" } }
           ]
         }

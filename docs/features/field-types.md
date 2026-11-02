@@ -261,7 +261,8 @@ declaration. The `@storage` attr controls how the embedded shape persists.
 |---|---|---|
 | `flattened` | One DB column per sub-field: `<prefix><sub>`, the prefix `<parent>_` by default | EF Core `OwnsOne` / DDD value-objects |
 | `jsonb` | One `jsonb` column | Structured-but-evolvable user-defined shapes |
-| `subdocument` (default — back-compat) | Single jsonb column | Pre-`@storage` projects |
+| `subdocument` | Single jsonb column | A hint for document-store targets |
+| not set (the default) | One `jsonb` column, as `jsonb` | Pre-`@storage` projects |
 
 Example: an `Author` with an embedded `Address` flattened to per-sub-field columns:
 
@@ -291,10 +292,16 @@ gives `street`, `city`, `postal_code`; `"@flattenedColumnPrefix": "home_"` gives
 so on. The prefix belongs to the embedding field, not the value object, because it is a fact
 about the owning table: one `Address` embedded twice needs two prefixes. Every port names these
 columns through the same core function (`resolveFlattenedColumnName` and its per-port
-equivalents), so codegen, the runtime and `meta migrate` agree. On a field whose `@storage` is
+equivalents), so `meta migrate`, the Prisma schema, the C# EF mapping and the Kotlin Exposed
+tables agree. On a field whose `@storage` is
 not `flattened` the attribute is refused at load
 (`ERR_FLATTENED_COLUMN_PREFIX_WITHOUT_FLATTENED_STORAGE`): no other storage gives the members
 columns of their own.
+
+Declare a field's prefix in one file. When two files both declare the same field (a merge, not
+an `overlay`), the loader reports `ERR_MERGE_CONFLICT` for two different non-empty values, but
+it treats `""` as unset when it compares them: one file's `"home_"` and another's `""` merge
+without an error, and the last one loaded wins.
 
 ## What each port generates
 

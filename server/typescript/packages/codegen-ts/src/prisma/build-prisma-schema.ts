@@ -214,8 +214,9 @@ function refuseSchema(obj: MetaObject, schema: string, provider: PrismaProvider)
 
 /**
  * The fields whose column lands in the table: the declaring object's, then each TPH subtype's. A
- * `field.object @storage: flattened` holds one column per field of its value object,
- * `<parent_col>_<nested_col>`, which is Prisma field `<parent><Nested>`.
+ * `field.object @storage: flattened` holds one column per field of its value object, named by
+ * core naming's `resolveFlattenedColumnName` (the field's `@flattenedColumnPrefix`, else its column
+ * and `_`, then the member's column), which is Prisma field `<parent><Nested>`.
  */
 function fieldsByColumn(obj: MetaObject, all: Iterable<MetaObject>, strategy: ReturnType<typeof physicalNamingOf>["columns"]): Map<string, ColumnField> {
   const members = [obj, ...[...all].filter((o) => o !== obj && tphStorageObject(o) === obj)];

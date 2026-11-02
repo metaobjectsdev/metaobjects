@@ -62,8 +62,10 @@ here.**
 
 - **Added vocabulary no longer moves `metamodelVersion`.** The metamodel spec version now moves
   only when metadata that loaded may stop loading or change meaning. A new type, subtype,
-  optional attribute or enum member ships in the package's patch release, and its CHANGELOG
-  entry names it. `scripts/check-metamodel-version.mjs` and `docs/RELEASING.md` say so.
+  optional attribute or enum member leaves it unchanged, and its CHANGELOG entry names it; the
+  package version follows the versioning table in `docs/RELEASING.md`, as before. Matching
+  `metamodelVersion`s therefore no longer prove two ports know the same vocabulary; compare
+  their releases.
 
 - **`meta migrate` refuses a foreign key that references columns the target does not hold unique.**
   Behaviour change: an `identity.reference` whose dotted `@references` names target fields that are

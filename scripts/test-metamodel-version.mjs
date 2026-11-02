@@ -276,7 +276,7 @@ const bump = (sev, base) => requiredBump(sev, v(base));
 if (bump("none", "1.0") !== "none") bad("no change requires no bump");
 else ok("no change requires no bump");
 // Additive vocabulary moves no metamodel number: every document that loaded still loads,
-// identically, so the package's patch release carries it and the CHANGELOG names it.
+// identically, so the CHANGELOG names it and the package version follows docs/RELEASING.md.
 if (bump("additive", "1.0") !== "none") bad("additive requires no bump");
 else ok("additive requires no bump");
 if (bump("breaking", "1.0") !== "major") bad("post-1.0 breaking requires a major");

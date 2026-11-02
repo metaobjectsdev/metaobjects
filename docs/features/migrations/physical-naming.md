@@ -30,7 +30,7 @@ every runtime `ObjectManager` and `verify` read it, so they always produce the s
 
 An unknown key or value fails when the file is read. Index and constraint names are unchanged.
 
-`PascalCase` (added in 1.2.1) upper-cases the field name's first letter and changes nothing
+`PascalCase` upper-cases the field name's first letter and changes nothing
 else: `createdAt` becomes `CreatedAt` and `requestURL` becomes `RequestURL`. It is the column
 EF Core creates for a property, so a camelCase model over an EF-built schema needs `@column`
 only where the database spells a name differently (an acronym the field writes in lower case,

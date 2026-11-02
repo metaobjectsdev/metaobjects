@@ -129,7 +129,9 @@ NORMALIZE_DEFAULT = NORMALIZE_STRIP
 NORMALIZE_MODES = (NORMALIZE_NONE, NORMALIZE_COLLAPSE, NORMALIZE_STRIP)
 # Persistence-side storage shape for owned field.object data. Cross-port values.
 FIELD_ATTR_STORAGE = "storage"
-STORAGE_VALUES = ("flattened", "jsonb", "subdocument")
+#: @storage "flattened": the nested object's columns expand into the parent table.
+STORAGE_FLATTENED = "flattened"
+STORAGE_VALUES = (STORAGE_FLATTENED, "jsonb", "subdocument")
 # Physical column name override (cross-port; renamed from @dbColumn).
 FIELD_ATTR_COLUMN = "column"
 # @flattenedColumnPrefix on a field.object @storage "flattened": the text before each member's column,

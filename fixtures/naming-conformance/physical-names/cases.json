@@ -1,5 +1,5 @@
 {
-  "_comment": "Cross-port physical naming (ADR-0058). Each case is the `naming` block of a project's .metaobjects/config.json. A port parses it with the reader it uses for that file, loads meta.naming.json, and resolves every table and column below through the resolver its codegen, migrate (TypeScript), runtime and verify use. `tables` keys are object names; `columns` keys are `<Object>.<field>`. Overrides (@table, a source's structural name, @column) win under every rule; the entity-name fallback keeps the frozen legacy pluralizer under every rule. `invalid` blocks must be refused when the config is read. `PascalCase` upper-cases the field name's first letter and changes nothing else (`requestURL` → `RequestURL`): the names EF Core and most C# schemas use. A key `<Object>.<field>.<member>` names a member of a `@storage: flattened` value object: its column is the flattened prefix (`@flattenedColumnPrefix` on the embedding field, verbatim, `\"\"` allowed; else that field's resolved column and `_`) followed by the member's resolved column.",
+  "_comment": "Cross-port physical naming (ADR-0058). Each case is the `naming` block of a project's .metaobjects/config.json. A port parses it with the reader it uses for that file, loads meta.naming.json, and resolves every table and column below through the resolver its codegen, migrate (TypeScript), runtime and verify use. `tables` keys are object names; `columns` keys are `<Object>.<field>`. Overrides (@table, a source's structural name, @column) win under every rule; the entity-name fallback keeps the frozen legacy pluralizer under every rule. `invalid` blocks must be refused when the config is read. `PascalCase` upper-cases the field name's first letter and changes nothing else (`requestURL` → `RequestURL`): the names EF Core and most C# schemas use. A key `<Object>.<field>.<member>` names a member of a `@storage: flattened` value object: its column is the flattened prefix (`@flattenedColumnPrefix` on the embedding field, verbatim, `\"\"` allowed; else that field's resolved column and `_`) followed by the member's resolved column; a prefix inherited through `extends` counts.",
   "cases": [
     {
       "name": "default",
@@ -11,7 +11,7 @@
         "AuditEntry.eventType": "event_type",
         "Category.displayName": "display_name",
         "HTTPRequest.requestURL": "request_url",
-        "Shipment.id": "id", "Shipment.shipTo.street": "ship_to_street", "Shipment.shipTo.postalCode": "ship_to_postal_code", "Shipment.shipTo.country": "ship_to_CTRY", "Shipment.billTo.postalCode": "bill_postal_code", "Shipment.returnTo.postalCode": "postal_code", "Shipment.giftTo.postalCode": "g_postal_code", "Shipment.giftTo.country": "g_CTRY"
+        "Shipment.id": "id", "Shipment.shipTo.street": "ship_to_street", "Shipment.shipTo.postalCode": "ship_to_postal_code", "Shipment.shipTo.country": "ship_to_CTRY", "Shipment.billTo.postalCode": "bill_postal_code", "Shipment.returnTo.postalCode": "postal_code", "Shipment.giftTo.postalCode": "g_postal_code", "Shipment.giftTo.country": "g_CTRY", "Shipment.homeTo.postalCode": "addr_postal_code"
       }
     },
     {
@@ -24,7 +24,7 @@
         "AuditEntry.eventType": "event_type",
         "Category.displayName": "display_name",
         "HTTPRequest.requestURL": "request_url",
-        "Shipment.id": "id", "Shipment.shipTo.street": "ship_to_street", "Shipment.shipTo.postalCode": "ship_to_postal_code", "Shipment.shipTo.country": "ship_to_CTRY", "Shipment.billTo.postalCode": "bill_postal_code", "Shipment.returnTo.postalCode": "postal_code", "Shipment.giftTo.postalCode": "g_postal_code", "Shipment.giftTo.country": "g_CTRY"
+        "Shipment.id": "id", "Shipment.shipTo.street": "ship_to_street", "Shipment.shipTo.postalCode": "ship_to_postal_code", "Shipment.shipTo.country": "ship_to_CTRY", "Shipment.billTo.postalCode": "bill_postal_code", "Shipment.returnTo.postalCode": "postal_code", "Shipment.giftTo.postalCode": "g_postal_code", "Shipment.giftTo.country": "g_CTRY", "Shipment.homeTo.postalCode": "addr_postal_code"
       }
     },
     {
@@ -37,7 +37,7 @@
         "AuditEntry.eventType": "eventType",
         "Category.displayName": "displayName",
         "HTTPRequest.requestURL": "requestURL",
-        "Shipment.id": "id", "Shipment.shipTo.street": "shipTo_street", "Shipment.shipTo.postalCode": "shipTo_postalCode", "Shipment.shipTo.country": "shipTo_CTRY", "Shipment.billTo.postalCode": "bill_postalCode", "Shipment.returnTo.postalCode": "postalCode", "Shipment.giftTo.postalCode": "g_postalCode", "Shipment.giftTo.country": "g_CTRY"
+        "Shipment.id": "id", "Shipment.shipTo.street": "shipTo_street", "Shipment.shipTo.postalCode": "shipTo_postalCode", "Shipment.shipTo.country": "shipTo_CTRY", "Shipment.billTo.postalCode": "bill_postalCode", "Shipment.returnTo.postalCode": "postalCode", "Shipment.giftTo.postalCode": "g_postalCode", "Shipment.giftTo.country": "g_CTRY", "Shipment.homeTo.postalCode": "addr_postalCode"
       }
     },
     {
@@ -50,7 +50,7 @@
         "AuditEntry.eventType": "event_type",
         "Category.displayName": "display_name",
         "HTTPRequest.requestURL": "request_url",
-        "Shipment.id": "id", "Shipment.shipTo.street": "ship_to_street", "Shipment.shipTo.postalCode": "ship_to_postal_code", "Shipment.shipTo.country": "ship_to_CTRY", "Shipment.billTo.postalCode": "bill_postal_code", "Shipment.returnTo.postalCode": "postal_code", "Shipment.giftTo.postalCode": "g_postal_code", "Shipment.giftTo.country": "g_CTRY"
+        "Shipment.id": "id", "Shipment.shipTo.street": "ship_to_street", "Shipment.shipTo.postalCode": "ship_to_postal_code", "Shipment.shipTo.country": "ship_to_CTRY", "Shipment.billTo.postalCode": "bill_postal_code", "Shipment.returnTo.postalCode": "postal_code", "Shipment.giftTo.postalCode": "g_postal_code", "Shipment.giftTo.country": "g_CTRY", "Shipment.homeTo.postalCode": "addr_postal_code"
       }
     },
     {
@@ -63,7 +63,7 @@
         "AuditEntry.eventType": "event-type",
         "Category.displayName": "display-name",
         "HTTPRequest.requestURL": "request-url",
-        "Shipment.id": "id", "Shipment.shipTo.street": "ship-to_street", "Shipment.shipTo.postalCode": "ship-to_postal-code", "Shipment.shipTo.country": "ship-to_CTRY", "Shipment.billTo.postalCode": "bill_postal-code", "Shipment.returnTo.postalCode": "postal-code", "Shipment.giftTo.postalCode": "g_postal-code", "Shipment.giftTo.country": "g_CTRY"
+        "Shipment.id": "id", "Shipment.shipTo.street": "ship-to_street", "Shipment.shipTo.postalCode": "ship-to_postal-code", "Shipment.shipTo.country": "ship-to_CTRY", "Shipment.billTo.postalCode": "bill_postal-code", "Shipment.returnTo.postalCode": "postal-code", "Shipment.giftTo.postalCode": "g_postal-code", "Shipment.giftTo.country": "g_CTRY", "Shipment.homeTo.postalCode": "addr_postal-code"
       }
     },
     {
@@ -76,7 +76,7 @@
         "AuditEntry.eventType": "EventType",
         "Category.displayName": "DisplayName",
         "HTTPRequest.requestURL": "RequestURL",
-        "Shipment.id": "Id", "Shipment.shipTo.street": "ShipTo_Street", "Shipment.shipTo.postalCode": "ShipTo_PostalCode", "Shipment.shipTo.country": "ShipTo_CTRY", "Shipment.billTo.postalCode": "bill_PostalCode", "Shipment.returnTo.postalCode": "PostalCode", "Shipment.giftTo.postalCode": "g_PostalCode", "Shipment.giftTo.country": "g_CTRY"
+        "Shipment.id": "Id", "Shipment.shipTo.street": "ShipTo_Street", "Shipment.shipTo.postalCode": "ShipTo_PostalCode", "Shipment.shipTo.country": "ShipTo_CTRY", "Shipment.billTo.postalCode": "bill_PostalCode", "Shipment.returnTo.postalCode": "PostalCode", "Shipment.giftTo.postalCode": "g_PostalCode", "Shipment.giftTo.country": "g_CTRY", "Shipment.homeTo.postalCode": "addr_PostalCode"
       }
     }
   ],

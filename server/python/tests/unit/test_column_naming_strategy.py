@@ -122,3 +122,12 @@ def test_object_manager_column_naming_argument_is_refused() -> None:
         "ObjectManager(column_naming=...). See "
         "https://github.com/metaobjectsdev/metaobjects/blob/v1.1.0/docs/features/migrations/physical-naming.md"
     )
+
+
+def test_pascal_case_keeps_a_first_character_whose_upper_case_is_not_one_character() -> None:
+    # C# and Java map one UTF-16 unit to one; Python's str.upper gives "SS" for "ß".
+    from metaobjects.naming import to_pascal_case_column
+
+    assert to_pascal_case_column("requestURL") == "RequestURL"
+    assert to_pascal_case_column("ßeta") == "ßeta"
+    assert to_pascal_case_column("") == ""

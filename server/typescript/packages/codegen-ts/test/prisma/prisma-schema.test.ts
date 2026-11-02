@@ -214,7 +214,7 @@ describe("prisma-schema — what the schema says", () => {
     ]));
     const fields = buildPrismaSchema(root, { provider: "postgresql" }).models.find((m) => m.name === "Customer")!.fields;
     expect(fields.map((f) => f.name)).toEqual(["id", "homeAddressStreet", "workAddressStreet"]);
-    expect(fields[1]!.attributes).not.toContain('@map("home_address_street")');
+    expect(fields[1]!.attributes).toContain('@map("street")');
     expect(fields[2]!.attributes).toContain('@map("office_street")');
   });
 

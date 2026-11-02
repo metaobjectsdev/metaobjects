@@ -2410,20 +2410,25 @@ public final class ValidationPhase {
         // @flattenedColumnPrefix names the columns a flattened value object adds to the owning
         // table; under any other storage it would change nothing, so it is refused rather
         // than silently ignored.
-        if (node.hasMetaAttr(ObjectField.ATTR_FLATTENED_COLUMN_PREFIX)
-                && !"flattened".equals(storageVal == null ? null : String.valueOf(storageVal))) {
+        // Only a field an object owns is checked (as TS and C# do): a root-level abstract
+        // field.object is a template, and the concrete field that extends it — resolving both
+        // the prefix and @storage — is the one checked.
+        MetaData owner = node.getParent();
+        if (owner instanceof MetaObject
+                && node.hasMetaAttr(ObjectField.ATTR_FLATTENED_COLUMN_PREFIX)
+                && !ObjectField.STORAGE_FLATTENED.equals(storageVal == null ? null : String.valueOf(storageVal))) {
             String storageText = storageVal == null ? "not set (jsonb)" : "\"" + storageVal + "\"";
             throw new MetaDataException(
                 ErrorMessageConstants.ERR_FLATTENED_COLUMN_PREFIX_WITHOUT_FLATTENED_STORAGE
-                    + ": field.object '" + field.getName()
-                    + "' sets @flattenedColumnPrefix, but its @storage is " + storageText
+                    + ": field.object \"" + ((MetaObject) owner).getShortName() + "." + field.getName()
+                    + "\" sets @flattenedColumnPrefix, but its @storage is " + storageText
                     + "; only a @storage \"flattened\" value object puts its members' columns in"
                     + " the owning table. Set @storage \"flattened\", or remove @flattenedColumnPrefix.",
                 ErrorCode.ERR_FLATTENED_COLUMN_PREFIX_WITHOUT_FLATTENED_STORAGE, field.getSource());
         }
 
         if (storageVal == null) return;
-        if ("flattened".equals(String.valueOf(storageVal)) && field.isArrayType()) {
+        if (ObjectField.STORAGE_FLATTENED.equals(String.valueOf(storageVal)) && field.isArrayType()) {
             throw new MetaDataException(
                 ErrorMessageConstants.ERR_STORAGE_FLATTENED_ARRAY
                     + ": field.object '" + field.getName()

@@ -290,7 +290,8 @@ Reuse a constraint set across entities with an abstract `field.enum` + `extends`
   `@flattenedColumnPrefix` on the field replaces it verbatim (`""` keeps the members'
   own columns). Refused on any other storage.
 - `jsonb` — one `jsonb` column.
-- `subdocument` (default, back-compat) — single jsonb column.
+- `subdocument` — single jsonb column (a hint for document-store targets).
+- not set (the default) — one `jsonb` column, as `jsonb`.
 
 ```json
 { "field.object": { "name": "address", "@objectRef": "Address", "@storage": "flattened" } }

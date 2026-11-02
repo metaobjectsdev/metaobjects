@@ -1099,7 +1099,7 @@ public class DbContextGenerator : IGenerator
     }
 
     // Owned-type config for an object-typed entity field. @storage flattened maps each
-    // nested scalar to "{prefix}{nestedCol}" (core naming's flattened prefix); every other storage collapses to one
+    // nested scalar to its core-naming flattened column (PhysicalNaming.ResolveFlattenedColumnName); every other storage collapses to one
     // json column (.ToJson) — matching the TS-owned schema DDL. null (with a warning)
     // when @objectRef can't be resolved. <paramref name="owner"/> is the emitted CLR class
     // name (the write entity, or a write-through entity's <Entity>View read model — #214).
@@ -1163,14 +1163,14 @@ public class DbContextGenerator : IGenerator
                 ? $"        modelBuilder.Entity<{owner}>().OwnsOne(x => x.{nav}, b => b.ToJson({parentColRef}));"
                 : OwnedJsonBlock("OwnsOne", owner, nav, parentColRef, jsonEnums);
 
-        // Flattened-column prefix for each nested member: core naming's rule
-        // (PhysicalNaming.ResolveFlattenedColumnPrefix) — the field's @flattenedColumnPrefix verbatim,
-        // else `<parent field's column>_` — the same function migrate-ts names these columns
-        // with, and TS owns the schema (ADR-0015). It is NOT EF's own owned-type default,
-        // `<Nav>_<Prop>`, which binds a column no migration creates (under the PascalCase
-        // column rule the two coincide). Under this generator's column rule, so verify's
-        // probe of an alternate rule names these columns the way it names every other.
-        var prefix = PhysicalNaming.ResolveFlattenedColumnPrefix(field, strategy);
+        // Each nested member's column is core naming's, whole
+        // (PhysicalNaming.ResolveFlattenedColumnName): the field's @flattenedColumnPrefix verbatim,
+        // else `<parent field's column>_`, then the member's own column — the same function
+        // migrate-ts names these columns with, and TS owns the schema (ADR-0015). It is NOT EF's
+        // own owned-type default, `<Nav>_<Prop>`, which binds a column no migration creates
+        // (under the PascalCase column rule the two coincide). Under this generator's column
+        // rule, so verify's probe of an alternate rule names these columns the way it names
+        // every other.
 
         var sb = new StringBuilder();
         sb.AppendLine($"        modelBuilder.Entity<{owner}>().OwnsOne(x => x.{nav}, b =>");
@@ -1204,7 +1204,7 @@ public class DbContextGenerator : IGenerator
         // (see the map loop in EmitFieldTypeConfig), pinned to its flattened column name.
         foreach (var nf in vo.Fields())
         {
-            var nestedColAny = $"{prefix}{CSharpNaming.Column(nf, strategy)}";
+            var nestedColAny = PhysicalNaming.ResolveFlattenedColumnName(field, nf, strategy);
 
             // An ARRAY enum: migrate gives it a native array column (subtypeToSqlType derives
             // text[] from isArray), and EF Core 8 maps it as a primitive collection. Same
