@@ -439,12 +439,21 @@ function renderDropColumnDown(c: Extract<Change, { kind: "drop-column" }>): stri
   if (c.restore === undefined) {
     return `-- WARNING: down migration cannot restore data\n-- TODO: re-add dropped column "${c.column}" manually with original type/nullable/default`;
   }
-  const needsDefault = !c.restore.nullable && c.restore.default === undefined && c.restore.identity !== "uuid";
-  const column = needsDefault ? { ...c.restore, nullable: true } : c.restore;
+  const { default: dflt, identity, ...rest } = c.restore;
+  const nonConstant = dflt?.kind === "expr" || (dflt === undefined && identity === "uuid");
+  const literal = dflt?.kind === "literal" ? dflt : undefined;
+  const loosen = !c.restore.nullable && literal === undefined;
+  const column: ColumnDescriptor = {
+    ...rest,
+    nullable: c.restore.nullable || loosen,
+    ...(literal !== undefined ? { default: literal } : {}),
+    ...(identity === "increment" ? { identity } : {}),
+  };
   return [
     `ALTER TABLE ${quote(c.table)} ADD COLUMN ${renderColumnInline(column)};`,
     "-- NOTE: column data is not restored by this down migration.",
-    ...(needsDefault ? [`-- NOTE: ${quote(c.column)} was NOT NULL with no default; SQLite cannot add it that way, so it returns nullable.`] : []),
+    ...(nonConstant ? [`-- NOTE: ${quote(c.column)} had a non-constant default; SQLite cannot add a column with one to a populated table, so the default is omitted.`] : []),
+    ...(loosen ? [`-- NOTE: ${quote(c.column)} was NOT NULL with no default; SQLite cannot add it that way, so it returns nullable.`] : []),
   ].join("\n");
 }
 

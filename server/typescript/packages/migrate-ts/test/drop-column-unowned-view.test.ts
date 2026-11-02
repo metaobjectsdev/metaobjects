@@ -4,6 +4,7 @@
  * recorded body, must not block. The SQLite down must re-add the dropped column.
  */
 import { describe, test, expect } from "bun:test";
+import { Database } from "bun:sqlite";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import type { MetaData } from "@metaobjectsdev/metadata";
 import { buildExpectedSchema } from "../src/expected-schema.js";
@@ -98,5 +99,28 @@ describe("sqlite down of drop-column", () => {
     expect(down).toMatch(/ADD COLUMN "nickname" \w+(\(\d+\))?;/);
     expect(down).not.toContain("NOT NULL;");
     expect(down).toMatch(/NOT NULL with no default/);
+  });
+  test("rollback applies to a populated table when the dropped column had an expression or uuid default", async () => {
+    // Oracle: SQLite itself refuses ADD COLUMN with a non-constant default on a table holding rows.
+    const prior = buildExpectedSchema(await load(
+      '[{"field.timestamp":{"name":"createdAt","@required":true}},{"field.uuid":{"name":"token","@required":true}}]',
+    ), { dialect: "sqlite" });
+    const createdAt = prior.tables[0]!.columns.find((c) => c.name === "created_at")!;
+    createdAt.default = { kind: "expr", value: "now()" };
+    const token = prior.tables[0]!.columns.find((c) => c.name === "token")!;
+    token.identity = "uuid";
+    delete token.default;
+    const next = buildExpectedSchema(await load("[]"), { dialect: "sqlite" });
+    const r = await diff({ expected: next, actual: prior, dialect: "sqlite", allow: { dropColumn: true } });
+    const { down } = emit(r.changes, { dialect: "sqlite" });
+
+    const db = new Database(":memory:");
+    db.run('CREATE TABLE "accounts" ("id" INTEGER PRIMARY KEY, "name" TEXT)');
+    db.run(`INSERT INTO "accounts" ("name") VALUES ('a')`);
+    expect(() => db.exec(down)).not.toThrow();
+    const cols = (db.query('PRAGMA table_info("accounts")').all() as { name: string }[]).map((c) => c.name);
+    expect(cols).toContain("created_at");
+    expect(cols).toContain("token");
+    expect(down).toMatch(/non-constant default/);
   });
 });
