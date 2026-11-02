@@ -40,7 +40,10 @@ public final class RegisteredValidation {
         // BARE refs against it. Nested nodes carry no package of their own, so they inherit the
         // enclosing object's. Mirrors TS validation-registry.ts.
         String pkg = referrerPkg;
-        if (node instanceof MetaObject) {
+        // A root-level node of any type (e.g. an abstract field.object template that other
+        // fields extend) is a top-level declaration too: it carries its own package and its
+        // bare refs resolve in it, not against the empty context.
+        if (node instanceof MetaObject || node.getParent() instanceof MetaRoot) {
             String p = node.getPackage();
             pkg = (p != null && !p.isEmpty()) ? p : referrerPkg;
         }
@@ -64,7 +67,10 @@ public final class RegisteredValidation {
                     MetaObject target = ctx.symbols().resolveObject(entityRef, pkg);
                     // Qualify the node name with its owning entity (e.g. "Order.items") so the
                     // error is locatable from the message alone, not just the source envelope.
-                    String qname = (node.getParent() != null && node.getParent().getShortName() != null
+                    // A root-level node has no owning entity: the parent is the loader/root, whose
+                    // name must not be printed as an owner.
+                    String qname = (node.getParent() != null && !(node.getParent() instanceof MetaRoot)
+                            && node.getParent().getShortName() != null
                             && !node.getParent().getShortName().isEmpty())
                         ? node.getParent().getShortName() + "." + node.getShortName()
                         : node.getShortName();
