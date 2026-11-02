@@ -2100,6 +2100,35 @@ public static partial class ValidationPasses
     // enum that only inherits them is not reported twice. Every field.enum in the tree is
     // checked, root-level abstract enums included. Mirrors TS validateEnumMaxLength.
     // ---------------------------------------------------------------------------
+    // ---------------------------------------------------------------------------
+    // identity.primary @sequenceStart / @sequenceName describe the sequence an @generation
+    // "increment" key draws from; on any other generation there is none, so either one is
+    // refused (ERR_SEQUENCE_WITHOUT_INCREMENT). Read RESOLVING (ADR-0039), reported on the
+    // identity that declares one of them. Mirrors TS validateIdentitySequence.
+    // ---------------------------------------------------------------------------
+    public static IReadOnlyList<MetaError> ValidateIdentitySequence(MetaData root)
+    {
+        var errors = new List<MetaError>();
+        foreach (var obj in root.Children().Where(c => c.Type == TYPE_OBJECT))
+        {
+            foreach (var id in obj.OwnChildren().Where(c => c.Type == TYPE_IDENTITY && c.SubType == IDENTITY_SUBTYPE_PRIMARY))
+            {
+                var declared = new[] { MetaObjects.Persistence.Db.DbConstants.IDENTITY_ATTR_SEQUENCE_START, MetaObjects.Persistence.Db.DbConstants.IDENTITY_ATTR_SEQUENCE_NAME }
+                    .Where(a => id.OwnAttr(a) is not null).ToList();
+                var generation = id.Attr(IDENTITY_ATTR_GENERATION) as string;
+                if (declared.Count == 0 || generation == GENERATION_INCREMENT) continue;
+                var shown = generation is null ? "not set" : $"\"{generation}\"";
+                var names = string.Join(" and ", declared.Select(a => "@" + a));
+                errors.Add(new MetaError(
+                    $"identity.primary \"{obj.Name}.{id.Name}\" sets {names}, but its @generation is {shown}; " +
+                    $"only an @generation \"increment\" key draws from a sequence. Set @generation \"increment\", or remove {names}.",
+                    ErrorCode.ERR_SEQUENCE_WITHOUT_INCREMENT,
+                    Envelope: id.Source));
+            }
+        }
+        return errors;
+    }
+
     public static IReadOnlyList<MetaError> ValidateEnumMaxLength(MetaData root)
     {
         var errors = new List<MetaError>();

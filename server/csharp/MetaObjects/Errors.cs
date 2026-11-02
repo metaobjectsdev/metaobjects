@@ -310,6 +310,8 @@ public enum ErrorCode
     // field.enum @maxLength: a member longer than the column, or a length on an int-stored enum.
     ERR_ENUM_VALUE_EXCEEDS_MAX_LENGTH,
     ERR_ENUM_MAX_LENGTH_WITH_INT_VALUE_MAP,
+    // identity.primary @sequenceStart / @sequenceName without @generation "increment".
+    ERR_SEQUENCE_WITHOUT_INCREMENT,
 }
 
 /// <summary>

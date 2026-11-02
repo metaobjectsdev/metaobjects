@@ -116,6 +116,7 @@ function changeLocator(c: Change): string {
     case "change-column-nullable":
     case "change-column-default":
     case "change-column-identity":
+    case "alter-sequence":
       return `${c.table}.${"column" in c ? c.column : c.from}`;
     case "change-comment":
       return c.column !== undefined ? `${c.table}.${c.column}` : c.table;

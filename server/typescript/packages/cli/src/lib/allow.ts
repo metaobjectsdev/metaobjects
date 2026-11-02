@@ -81,6 +81,11 @@ export function describeChange(c: Change): string {
     case "change-column-default": return `${c.table}.${c.column}`;
     case "change-column-identity": return `${c.table}.${c.column} (identity ${c.from ?? "none"} → ${c.to ?? "none"})`;
     case "change-comment": return `${c.column !== undefined ? `${c.table}.${c.column}` : c.table} (comment)`;
+    case "alter-sequence": return `${c.table}.${c.column} (sequence ${c.sequence}: `
+      + [
+        ...(c.toStart !== undefined ? [`start ${c.fromStart} → ${c.toStart}`] : []),
+        ...(c.toName !== undefined ? [`rename → ${c.toName}`] : []),
+      ].join(", ") + ")";
     case "add-index": return `${c.table} idx ${c.index.name}`;
     case "drop-index": return `${c.table} idx ${c.index}`;
     case "add-fk": return `${c.table} fk ${c.fk.name}`;

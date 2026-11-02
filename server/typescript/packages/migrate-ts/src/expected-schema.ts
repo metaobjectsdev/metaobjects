@@ -62,6 +62,8 @@ import {
   applyColumnNamingStrategy, physicalNamingOf,
   resolveTableName, resolveColumnName, resolveFlattenedColumnPrefix, resolveTableSchema, resolveIndexName,
   resolveEnumMaxLength,
+  IDENTITY_ATTR_SEQUENCE_NAME,
+  IDENTITY_ATTR_SEQUENCE_START,
 } from "@metaobjectsdev/metadata";
 import type { SqlType } from "./sql-type.js";
 import type {
@@ -582,7 +584,9 @@ function buildTable(
       // The parent field.object itself does NOT produce its own column.
       columns.push(...flattenObjectField(field, strategy));
     } else {
-      columns.push(buildColumn(field, isPk, isPk ? pkGeneration : undefined, strategy));
+      const col = buildColumn(field, isPk, isPk ? pkGeneration : undefined, strategy);
+      if (isPk && pkGeneration === "increment" && pkIdentity !== undefined) applyDeclaredSequence(col, pkIdentity);
+      columns.push(col);
     }
   }
 
@@ -1238,6 +1242,21 @@ const EXPR_DEFAULT_PATTERNS = [
   /\(\)/,                             // anything function-like
 ];
 
+/**
+ * The declared start and name of an increment key's sequence (identity.primary
+ * @sequenceStart / @sequenceName; ADR-0039: resolving). Only what is declared is set, so only
+ * that is compared against a live sequence.
+ */
+function applyDeclaredSequence(col: ColumnDescriptor, pkIdentity: MetaData): void {
+  const start = pkIdentity.attr(IDENTITY_ATTR_SEQUENCE_START);
+  const name = pkIdentity.attr(IDENTITY_ATTR_SEQUENCE_NAME);
+  if (typeof start !== "number" && typeof name !== "string") return;
+  col.sequence = {
+    ...(typeof name === "string" ? { name } : {}),
+    ...(typeof start === "number" ? { start } : {}),
+  };
+}
+
 function buildColumn(
   field: MetaData,
   isPk: boolean,
@@ -1303,7 +1322,6 @@ function buildColumn(
   if (isPk && (pkGeneration === "increment" || pkGeneration === "uuid")) {
     col.identity = pkGeneration;
   }
-
   const fieldDesc = readDescription(field);
   if (fieldDesc !== undefined) col.description = fieldDesc;
 

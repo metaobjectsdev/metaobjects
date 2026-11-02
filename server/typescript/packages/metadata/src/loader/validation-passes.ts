@@ -33,7 +33,7 @@ import {
   INDEX_SUBTYPE_LOOKUP,
   INDEX_ATTR_FIELDS,
 } from "../core/index/index-constants.js";
-import { IDENTITY_SUBTYPE_SECONDARY } from "../core/identity/identity-constants.js";
+import { IDENTITY_SUBTYPE_SECONDARY, IDENTITY_SUBTYPE_PRIMARY, IDENTITY_ATTR_GENERATION, GENERATION_INCREMENT } from "../core/identity/identity-constants.js";
 import type { MetaIdentity } from "../core/identity/meta-identity.js";
 import { MetaIndex } from "../core/index/meta-index.js";
 import {
@@ -90,7 +90,7 @@ import {
   FIELD_SUBTYPE_TIMESTAMP,
   FIELD_SUBTYPE_UUID,
 } from "../core/field/field-constants.js";
-import { FIELD_ATTR_FLATTENED_COLUMN_PREFIX, FIELD_ATTR_DB_INDEXED, IDENTITY_ATTR_EXPR } from "../persistence/db/db-constants.js";
+import { FIELD_ATTR_FLATTENED_COLUMN_PREFIX, FIELD_ATTR_DB_INDEXED, IDENTITY_ATTR_EXPR, IDENTITY_ATTR_SEQUENCE_NAME, IDENTITY_ATTR_SEQUENCE_START } from "../persistence/db/db-constants.js";
 import {
   IDENTITY_ATTR_FIELDS,
   IDENTITY_SUBTYPE_REFERENCE,
@@ -1674,6 +1674,32 @@ export function validateDerivedFieldProvidability(root: MetaData): ParseError[] 
           { code: "ERR_DERIVED_FIELD_NO_READ_SOURCE", source: field.source },
         ),
       );
+    }
+  }
+  return errors;
+}
+
+// ---------------------------------------------------------------------------
+// identity.primary @sequenceStart / @sequenceName describe the sequence an @generation
+// "increment" key draws from. On any other generation there is no sequence, so either one
+// is refused (ERR_SEQUENCE_WITHOUT_INCREMENT) rather than silently ignored. Read RESOLVING
+// (ADR-0039), reported on the identity that declares one of them.
+// ---------------------------------------------------------------------------
+
+export function validateIdentitySequence(root: MetaData): ParseError[] {
+  const errors: ParseError[] = [];
+  for (const obj of root.children().filter((c) => c.type === TYPE_OBJECT)) {
+    for (const id of obj.ownChildren()) {
+      if (id.type !== TYPE_IDENTITY || id.subType !== IDENTITY_SUBTYPE_PRIMARY) continue;
+      const declared = [IDENTITY_ATTR_SEQUENCE_START, IDENTITY_ATTR_SEQUENCE_NAME].filter((a) => id.ownAttr(a) !== undefined);
+      if (declared.length === 0 || id.attr(IDENTITY_ATTR_GENERATION) === GENERATION_INCREMENT) continue;
+      const generation = id.attr(IDENTITY_ATTR_GENERATION);
+      const shown = typeof generation === "string" ? `"${generation}"` : "not set";
+      errors.push(new ParseError(
+        `identity.primary "${obj.name}.${id.name}" sets ${declared.map((a) => `@${a}`).join(" and ")}, but its @generation is ${shown}; ` +
+        `only an @generation "increment" key draws from a sequence. Set @generation "increment", or remove ${declared.map((a) => `@${a}`).join(" and ")}.`,
+        { code: "ERR_SEQUENCE_WITHOUT_INCREMENT", source: id.source },
+      ));
     }
   }
   return errors;

@@ -83,6 +83,10 @@ YAML is desugared to canonical JSON at load time. See
 > an `ERR_TOO_MANY_OCCURRENCES` load error. `identity.secondary` / `identity.reference`
 > are not singletons and DO require an explicit `name`.
 
+An `@generation: increment` key's sequence can be given a start value (`@sequenceStart`) and
+a physical name (`@sequenceName`); see
+[migrations-and-drift.md](migrations-and-drift.md#an-increment-keys-sequence-sequencestart-and-sequencename).
+
 ## `extends:` for shared abstract bases
 
 Common base fields (`id`, `createdAt`, `updatedAt`) live on an abstract entity that

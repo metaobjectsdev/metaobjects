@@ -263,6 +263,7 @@ public final class ValidationPhase {
         pass(collected, () -> validateDerivedFieldProvidability(root));
         pass(collected, () -> validateObjectFieldStorage(root));
         validateEnumMaxLength(root, collected);
+        validateIdentitySequence(root, collected);
         pass(collected, () -> validateFieldMap(root));
         pass(collected, () -> validateIdentityFieldsAndGeneration(root));
         // FR-024 B3/B4a — subtype rules (identity-name, value purity, projection licensing).
@@ -2379,6 +2380,38 @@ public final class ValidationPhase {
     // enum that only inherits them is not reported twice. Every field.enum in the tree is
     // checked, root-level abstract enums included. Mirrors TS validateEnumMaxLength.
     // =========================================================================
+
+    // =========================================================================
+    // identity.primary @sequenceStart / @sequenceName describe the sequence an @generation
+    // "increment" key draws from; on any other generation there is none, so either one is
+    // refused (ERR_SEQUENCE_WITHOUT_INCREMENT). Read RESOLVING (ADR-0039), reported on the
+    // identity that declares one of them, every offender collected. Mirrors TS.
+    // =========================================================================
+
+    static void validateIdentitySequence(MetaRoot root, List<MetaDataException> out) {
+        for (MetaObject obj : root.getChildren(MetaObject.class, false)) {
+            for (com.metaobjects.identity.PrimaryIdentity id
+                    : obj.getChildren(com.metaobjects.identity.PrimaryIdentity.class, false)) {
+                List<String> declared = new java.util.ArrayList<>();
+                for (String a : List.of(com.metaobjects.identity.PrimaryIdentity.ATTR_SEQUENCE_START,
+                                        com.metaobjects.identity.PrimaryIdentity.ATTR_SEQUENCE_NAME)) {
+                    if (id.hasMetaAttr(a, false)) declared.add("@" + a);
+                }
+                String generation = id.hasMetaAttr(com.metaobjects.identity.MetaIdentity.ATTR_GENERATION)
+                    ? id.getMetaAttr(com.metaobjects.identity.MetaIdentity.ATTR_GENERATION).getValueAsString() : null;
+                if (declared.isEmpty()
+                        || com.metaobjects.identity.MetaIdentity.GENERATION_INCREMENT.equals(generation)) continue;
+                String shown = generation == null ? "not set" : "\"" + generation + "\"";
+                String names = String.join(" and ", declared);
+                out.add(new MetaDataException(
+                    ErrorMessageConstants.ERR_SEQUENCE_WITHOUT_INCREMENT
+                        + ": identity.primary \"" + obj.getShortName() + "." + id.getShortName() + "\" sets "
+                        + names + ", but its @generation is " + shown + "; only an @generation \"increment\""
+                        + " key draws from a sequence. Set @generation \"increment\", or remove " + names + ".",
+                    ErrorCode.ERR_SEQUENCE_WITHOUT_INCREMENT, id.getSource()));
+            }
+        }
+    }
 
     /** Every offending enum is reported, as the other ports do, not only the first. */
     static void validateEnumMaxLength(MetaData node, List<MetaDataException> out) {

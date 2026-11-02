@@ -26,7 +26,7 @@ import type { LoaderWarning } from "../source.js";
 import { codeSource, resolvedSource } from "../source.js";
 import { parseJson } from "../parser-json.js";
 import { validateDataGridSortFields, validateFilterableHasIndex, validateFilterableHasSupportedOps, validateSortableHasSupportedSubtype, validateOriginPaths, validateDerivedFieldProvidability, validateDataGridFilterValues, validateFieldObjectStorage, validateFieldMap,
-  validateEnumMaxLength, validateTemplatePayloadRefs, validateFieldDefaults, validateRelationships, validateOneSideReferenceResolution, validateM2MJunctionPairing, validateIndexLookupFields, validateProjectionFilter, validateRetiredRequirementLinks, validateColumnNameCollisions } from "./validation-passes.js";
+  validateEnumMaxLength, validateIdentitySequence, validateTemplatePayloadRefs, validateFieldDefaults, validateRelationships, validateOneSideReferenceResolution, validateM2MJunctionPairing, validateIndexLookupFields, validateProjectionFilter, validateRetiredRequirementLinks, validateColumnNameCollisions } from "./validation-passes.js";
 import { validateReporting } from "./reporting-validation.js";
 import { runRegisteredValidation } from "./validation-registry.js";
 import { validateSourceRoles } from "../persistence/source/validate-source-roles.js";
@@ -727,6 +727,9 @@ export class MetaDataLoader {
 
       // field.enum @maxLength — every member fits; refused with @intValueMap.
       errors.push(...validateEnumMaxLength(root));
+
+      // identity.primary @sequenceStart / @sequenceName need @generation "increment".
+      errors.push(...validateIdentitySequence(root));
 
       // Tenth pass: one-primary multi-source rule — if an object has ≥1 source,
       // exactly one must carry role "primary" (ERR_SOURCE_NO_PRIMARY /

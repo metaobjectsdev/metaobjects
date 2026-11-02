@@ -77,6 +77,7 @@ DB-domain attributes — @column / @db.indexed / @dbColumnType on every field, @
 - `field.timestamp`: `@autoSet`, `@column`, `@db.indexed`, `@dbColumnType`, `@localTime`
 - `field.uri`: `@column`, `@db.indexed`, `@dbColumnType`
 - `field.uuid`: `@column`, `@db.indexed`, `@dbColumnType`
+- `identity.primary`: `@sequenceName`, `@sequenceStart`
 - `identity.reference`: `@constraintName`, `@onDelete`, `@onUpdate`
 - `identity.secondary`: `@expr`, `@orders`, `@using`, `@where`
 - `index.lookup`: `@expr`, `@orders`, `@using`, `@where`

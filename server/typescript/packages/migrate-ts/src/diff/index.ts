@@ -868,6 +868,21 @@ function diffTableColumns(
       };
       changes.push(change);
     }
+    // The declared start and name of an increment key's sequence, against the live sequence
+    // (Postgres only: SQLite has none, and its introspection reports no `sequence`). Only what
+    // the model declares is compared, so an undeclared one never produces a change.
+    if (ec.identity === "increment" && ec.sequence !== undefined && ac.sequence?.name !== undefined) {
+      const startDiffers = ec.sequence.start !== undefined && ac.sequence.start !== undefined
+        && ec.sequence.start !== ac.sequence.start;
+      const nameDiffers = ec.sequence.name !== undefined && ec.sequence.name !== ac.sequence.name;
+      if (startDiffers || nameDiffers) {
+        changes.push({
+          kind: "alter-sequence", table, ...sx, column: name, sequence: ac.sequence.name, status: ALLOWED,
+          ...(startDiffers ? { fromStart: ac.sequence.start!, toStart: ec.sequence.start! } : {}),
+          ...(nameDiffers ? { toName: ec.sequence.name! } : {}),
+        });
+      }
+    }
     if (canon.catalog === true) {
       // Both sides read `increment` off a GENERATED identity (attidentity) or a legacy serial's
       // nextval default; a serial losing its sequence is the default change above, not this.

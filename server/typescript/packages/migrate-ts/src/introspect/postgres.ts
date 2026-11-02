@@ -52,6 +52,7 @@ export async function introspectPostgres(db: Kysely<Record<string, unknown>>): P
     const columns = await readColumns(k, schema, name);
     const { columns: primaryKey, name: primaryKeyName } = await readPrimaryKey(k, schema, name);
     const description = await readPgCatalogColumnFacts(k, schema, name, columns);
+    await readPgColumnSequences(k, schema, name, columns);
     tables.push({
       name,
       schema,
@@ -529,6 +530,42 @@ async function readPgCatalogColumnFacts(
     return rows.rows[0]?.table_comment ?? undefined;
   } catch {
     return undefined;
+  }
+}
+
+/**
+ * The sequence behind each auto-increment column — a GENERATED identity's or a legacy
+ * serial's — found through `pg_depend` (the column OWNS it), with its name and start value
+ * from `pg_sequence`. Sets `sequence` on `columns` in place. Compared only against what the
+ * model declares (identity.primary @sequenceStart / @sequenceName).
+ */
+async function readPgColumnSequences(
+  k: RawKysely, schema: string, tableName: string, columns: ColumnDescriptor[],
+): Promise<void> {
+  // pg-mem gap: pg_depend / pg_sequence are not supported — the query throws and the
+  // columns carry no sequence, so nothing about one is compared.
+  try {
+    const rows = await sql<{ column_name: string; sequence_name: string; seqstart: string | number }>`
+      SELECT a.attname AS column_name, seq.relname AS sequence_name, ps.seqstart
+      FROM pg_class c
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+      JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped
+      JOIN pg_depend d ON d.refobjid = c.oid AND d.refobjsubid = a.attnum
+        AND d.classid = 'pg_class'::regclass AND d.refclassid = 'pg_class'::regclass
+        AND d.deptype IN ('a', 'i')
+      JOIN pg_class seq ON seq.oid = d.objid AND seq.relkind = 'S'
+      JOIN pg_sequence ps ON ps.seqrelid = seq.oid
+      WHERE n.nspname = ${schema}
+        AND c.relname = ${tableName}
+    `.execute(k);
+    const byName = new Map(columns.map((c) => [c.name, c] as const));
+    for (const r of rows.rows) {
+      const col = byName.get(r.column_name);
+      if (col === undefined) continue;
+      col.sequence = { name: r.sequence_name, start: Number(r.seqstart) };
+    }
+  } catch {
+    // see above
   }
 }
 

@@ -71,6 +71,10 @@ public sealed class DbMetaDataProvider : IMetaDataTypeProvider
             attributes: [DbSchema.OrdersSchema, DbSchema.WhereSchema, DbSchema.ExprSchema, DbSchema.UsingSchema]);
         registry.Extend(
             MetaObjects.Shared.BaseTypes.TYPE_IDENTITY,
+            IdentityConstants.IDENTITY_SUBTYPE_PRIMARY,
+            attributes: [DbSchema.SequenceStartSchema, DbSchema.SequenceNameSchema]);
+        registry.Extend(
+            MetaObjects.Shared.BaseTypes.TYPE_IDENTITY,
             IdentityConstants.IDENTITY_SUBTYPE_REFERENCE,
             attributes: [DbSchema.ConstraintNameSchema, DbSchema.ReferenceOnDeleteSchema, DbSchema.ReferenceOnUpdateSchema]);
 

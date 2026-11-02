@@ -1930,6 +1930,7 @@ const DRIFT_PRESENTATION: Record<Change["kind"], { glyph: string; noun: string }
   "change-column-default": { glyph: "~", noun: "column" },
   "change-column-identity": { glyph: "~", noun: "column" },
   "change-comment": { glyph: "~", noun: "comment" },
+  "alter-sequence": { glyph: "~", noun: "sequence" },
   "add-index": { glyph: "+", noun: "index" },
   "drop-index": { glyph: "-", noun: "index" },
   "add-fk": { glyph: "+", noun: "fk" },

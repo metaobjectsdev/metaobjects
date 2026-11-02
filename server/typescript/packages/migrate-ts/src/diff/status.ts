@@ -170,6 +170,10 @@ function blockFor(
         + `the column starts failing). Declare @generation: increment on the identity to keep it, or pass `
         + `--allow drop-identity-default if removing it is intentional`);
 
+    // Altering a sequence's start or name keeps every value it has handed out.
+    case "alter-sequence":
+      return null;
+
     case "change-comment":
       if (c.from === undefined || c.to !== undefined) return null;
       return gate(allow, "dropComment", `${c.column !== undefined ? `column "${c.table}"."${c.column}"` : `table "${c.table}"`} `

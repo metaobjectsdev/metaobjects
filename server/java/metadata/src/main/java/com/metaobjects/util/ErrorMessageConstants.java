@@ -192,6 +192,13 @@ public final class ErrorMessageConstants {
     public static final String ERR_ENUM_MAX_LENGTH_WITH_INT_VALUE_MAP = "ERR_ENUM_MAX_LENGTH_WITH_INT_VALUE_MAP";
 
     /**
+     * An {@code identity.primary} sets {@code @sequenceStart} or {@code @sequenceName} without
+     * {@code @generation "increment"}: only an increment key draws from a sequence.
+     * Cross-language contract: {@code ERR_SEQUENCE_WITHOUT_INCREMENT}.
+     */
+    public static final String ERR_SEQUENCE_WITHOUT_INCREMENT = "ERR_SEQUENCE_WITHOUT_INCREMENT";
+
+    /**
      * Error code emitted when {@code field.object @storage} is set on a field that
      * has no {@code @objectRef} — storage shape only applies to referenced objects.
      * Cross-language contract: {@code ERR_STORAGE_WITHOUT_OBJECT_REF}.

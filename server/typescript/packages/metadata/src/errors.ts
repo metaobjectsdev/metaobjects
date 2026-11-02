@@ -154,6 +154,8 @@ export const ERROR_CODES = [
   // field.enum @maxLength: a member longer than the column, or a length on an int-stored enum.
   "ERR_ENUM_VALUE_EXCEEDS_MAX_LENGTH",
   "ERR_ENUM_MAX_LENGTH_WITH_INT_VALUE_MAP",
+  // identity.primary @sequenceStart / @sequenceName without @generation "increment".
+  "ERR_SEQUENCE_WITHOUT_INCREMENT",
   "ERR_STORAGE_WITHOUT_OBJECT_REF",
   // ADR-0013 — a field.object REQUIRES @objectRef (open/untyped JSON uses
   // the physical @dbColumnType: jsonb escape hatch on field.string instead).

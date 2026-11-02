@@ -26,6 +26,7 @@
         "field.object",
         "field.time",
         "field.timestamp",
+        "identity.primary",
         "identity.reference",
         "identity.secondary",
         "index.lookup",

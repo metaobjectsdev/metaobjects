@@ -537,6 +537,7 @@ public class MetaDataLoader
             // and @valueType (when set) must name a known scalar subtype.
             errors.AddRange(ValidationPasses.ValidateFieldMap(root));
             errors.AddRange(ValidationPasses.ValidateEnumMaxLength(root));
+            errors.AddRange(ValidationPasses.ValidateIdentitySequence(root));
 
             // Pass 9: template @payloadRef / @requiredSlots resolution
             errors.AddRange(ValidationPasses.ValidateTemplatePayloadRefs(root));

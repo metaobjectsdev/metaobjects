@@ -49,6 +49,10 @@ public static class DbConstants
     public const string IDENTITY_ATTR_USING            = "using";
     /// <summary>identity.reference: physical FK constraint-name override. Absent =&gt; the auto-derived default.</summary>
     public const string IDENTITY_ATTR_CONSTRAINT_NAME  = "constraintName";
+    /// <summary>identity.primary (@generation "increment"): the sequence's first value. Absent → 1.</summary>
+    public const string IDENTITY_ATTR_SEQUENCE_START   = "sequenceStart";
+    /// <summary>identity.primary (@generation "increment"): the sequence's physical name. Absent → the database's default.</summary>
+    public const string IDENTITY_ATTR_SEQUENCE_NAME    = "sequenceName";
     /// <summary>identity.reference: referential action on parent delete — the explicit per-FK override (ADR-0047).</summary>
     public const string IDENTITY_ATTR_ON_DELETE        = "onDelete";
     /// <summary>identity.reference: referential action on key update — the explicit per-FK override (ADR-0047).</summary>

@@ -251,6 +251,8 @@ def run_validations(
     _validate_field_object_storage(root, errors)
     # field.enum @maxLength — every member fits; refused with @intValueMap.
     _validate_enum_max_length(root, errors)
+    # identity.primary @sequenceStart / @sequenceName need @generation "increment".
+    _validate_identity_sequence(root, errors)
     # field.map — exactly one of @valueType (scalar) or @objectRef (VO), and
     # @valueType (when set) must name a known scalar subtype.
     _validate_field_map(root, errors)
@@ -3718,6 +3720,48 @@ def _validate_sortable_has_supported_subtype(
 #   3. @flattenedColumnPrefix without @storage="flattened" →
 #      ERR_FLATTENED_COLUMN_PREFIX_WITHOUT_FLATTENED_STORAGE (no other storage gives the
 #      members columns of their own to prefix).
+
+
+# identity.primary @sequenceStart / @sequenceName describe the sequence an @generation
+# "increment" key draws from; on any other generation there is none, so either one is refused
+# (ERR_SEQUENCE_WITHOUT_INCREMENT). Read RESOLVING (ADR-0039), reported on the identity that
+# declares one of them. Mirrors TS validateIdentitySequence.
+def _validate_identity_sequence(root: MetaData, errors: list[MetaError]) -> None:
+    from ..meta.core.identity.identity_constants import (
+        GENERATION_INCREMENT,
+        IDENTITY_ATTR_GENERATION,
+        IDENTITY_SUBTYPE_PRIMARY,
+    )
+    from ..meta.persistence.db.db_constants import (
+        IDENTITY_PRIMARY_ATTR_SEQUENCE_NAME,
+        IDENTITY_PRIMARY_ATTR_SEQUENCE_START,
+    )
+
+    for obj in root.children():
+        if obj.type != TYPE_OBJECT:
+            continue
+        for ident in obj.own_children():
+            if ident.type != TYPE_IDENTITY or ident.sub_type != IDENTITY_SUBTYPE_PRIMARY:
+                continue
+            declared = [
+                f"@{a}"
+                for a in (IDENTITY_PRIMARY_ATTR_SEQUENCE_START, IDENTITY_PRIMARY_ATTR_SEQUENCE_NAME)
+                if ident.attr(a) is not None
+            ]
+            generation = ident.get_meta_attr(IDENTITY_ATTR_GENERATION)
+            if not declared or generation == GENERATION_INCREMENT:
+                continue
+            shown = f'"{generation}"' if isinstance(generation, str) else "not set"
+            names = " and ".join(declared)
+            errors.append(MetaError(
+                code=ErrorCode.ERR_SEQUENCE_WITHOUT_INCREMENT,
+                message=(
+                    f'identity.primary "{obj.name}.{ident.name}" sets {names}, but its @generation '
+                    f'is {shown}; only an @generation "increment" key draws from a sequence. Set '
+                    f'@generation "increment", or remove {names}.'
+                ),
+                envelope=ident.source,
+            ))
 
 
 # field.enum @maxLength — the column length of a string-stored enum:
