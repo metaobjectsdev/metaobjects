@@ -714,4 +714,87 @@ public class SpringNamesGeneratorTest extends SharedRegistryTestBase {
             fail(sb.toString());
         }
     }
+
+    // -------------------------------------------------------------------------
+    // Flattened value objects: one constant per member's column, none for the field
+    // -------------------------------------------------------------------------
+
+    private static final String FLATTENED_FIXTURE = """
+        {
+          "metadata.root": { "package": "acme::ship", "children": [
+            { "object.value": { "name": "Address", "children": [
+                { "field.string": { "name": "street" } },
+                { "field.string": { "name": "postalCode", "@column": "ZIP" } }
+            ] } },
+            { "object.entity": { "name": "Shipment", "children": [
+                { "source.rdb":   { "@table": "shipments" } },
+                { "field.long":   { "name": "id" } },
+                { "field.object": { "name": "shipTo", "@objectRef": "Address", "@storage": "flattened" } },
+                { "field.object": { "name": "payload", "@objectRef": "Address" } },
+                { "identity.primary": { "@fields": ["id"], "@generation": "increment" } }
+            ] } }
+          ] }
+        }""";
+
+    @Test
+    public void aFlattenedMemberGetsAColumnConstantAndItsFieldGetsNone() throws IOException {
+        String src = emit(FLATTENED_FIXTURE, "acme/ship/ShipmentNames.java", Map.of());
+
+        assertTrue(src, src.contains("public static final String SHIP_TO_FIELD = \"shipTo\";"));
+        assertTrue(src, src.contains("public static final String SHIP_TO_STREET_COLUMN = \"ship_to_street\";"));
+        assertTrue(src, src.contains("public static final String SHIP_TO_POSTAL_CODE_COLUMN = \"ship_to_ZIP\";"));
+        // The field's own resolved column, `ship_to`, is not a column of the table.
+        assertFalse(src, src.contains("SHIP_TO_COLUMN"));
+        assertFalse(src, src.contains("\"ship_to\""));
+        // A jsonb object is one column, as before.
+        assertTrue(src, src.contains("public static final String PAYLOAD_COLUMN = \"payload\";"));
+        assertTrue(src, src.contains("Map.entry(\"shipTo.street\", SHIP_TO_STREET_COLUMN)"));
+        assertTrue(src, src.contains("Map.entry(\"shipTo.postalCode\", SHIP_TO_POSTAL_CODE_COLUMN)"));
+        assertFalse(src, src.contains("Map.entry(\"shipTo\","));
+    }
+
+    @Test
+    public void aFlattenedMemberConstantCollidingWithAFieldConstantIsRefused() {
+        String model = FLATTENED_FIXTURE.replace(
+            "\"@storage\": \"flattened\" }",
+            "\"@storage\": \"flattened\", \"@flattenedColumnPrefix\": \"st_\" } },\n"
+                + "                { \"field.string\": { \"name\": \"shipToStreet\" }");
+        try {
+            emit(model, "acme/ship/ShipmentNames.java", Map.of());
+            fail("expected the SHIP_TO_STREET_COLUMN collision to be refused");
+        } catch (GeneratorException | IOException e) {
+            assertTrue(e.getMessage(), e.getMessage().contains("SHIP_TO_STREET_COLUMN"));
+        }
+    }
+
+    /**
+     * The cross-port naming corpus: every {@code <Object>.<field>.<member>} key is a flattened
+     * column, and the names artifact must carry each one as {@code <FIELD>_<MEMBER>_COLUMN}
+     * holding exactly the column {@code meta migrate} creates, under every naming rule.
+     */
+    @Test
+    public void everyFlattenedColumnInTheNamingCorpusIsAConstant() throws IOException {
+        Path dir = Path.of("").toAbsolutePath();
+        while (dir != null && !Files.isDirectory(dir.resolve("fixtures"))) dir = dir.getParent();
+        assertNotNull("could not locate the repository fixtures/ directory", dir);
+        Path corpus = dir.resolve("fixtures/naming-conformance/physical-names");
+        String model = Files.readString(corpus.resolve("meta.naming.json"));
+        com.fasterxml.jackson.databind.JsonNode cases = new com.fasterxml.jackson.databind.ObjectMapper()
+            .readTree(corpus.resolve("cases.json").toFile()).get("cases");
+        for (com.fasterxml.jackson.databind.JsonNode c : cases) {
+            com.fasterxml.jackson.databind.JsonNode naming = c.get("naming");
+            String columnsRule = naming != null && naming.has("columns") ? naming.get("columns").asText() : "snake_case";
+            String src = emit(model, "acme/naming/ShipmentNames.java", Map.of(), columnsRule);
+            var it = c.get("columns").fields();
+            while (it.hasNext()) {
+                var e = it.next();
+                String[] parts = e.getKey().split("\\.");
+                if (parts.length != 3 || !parts[0].equals("Shipment")) continue;
+                String member = SpringNamesGenerator.namesMember(parts[1]) + "_"
+                    + SpringNamesGenerator.namesMember(parts[2]) + "_COLUMN";
+                String decl = "public static final String " + member + " = \"" + e.getValue().asText() + "\";";
+                assertTrue(c.get("name").asText() + ": " + decl + "\n" + src, src.contains(decl));
+            }
+        }
+    }
 }

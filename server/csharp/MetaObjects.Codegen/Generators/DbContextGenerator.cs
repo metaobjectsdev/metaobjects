@@ -1175,11 +1175,11 @@ public class DbContextGenerator : IGenerator
         var sb = new StringBuilder();
         sb.AppendLine($"        modelBuilder.Entity<{owner}>().OwnsOne(x => x.{nav}, b =>");
         sb.AppendLine("        {");
-        // A6 -- NOT converted, on two independent grounds. `vo` (object.value) never
-        // carries a source (FR-024 value purity), so it has no <Vo>Names artifact at
-        // all — CSharpNaming.ColumnRef would miss on every nf, always. And even with
-        // one, nestedCol is a COMPOSITE string (prefix + column), not the bare physical
-        // name a names constant holds — there is no single constant this could reference.
+        // A6 -- each member's column is a constant of the OWNING entity's names artifact
+        // (`<Owner>Names.<Field><Member>Column`), never of the value object's: `vo` carries
+        // no source (FR-024 value purity), so it has no artifact, and the column belongs to
+        // the owner's table anyway. CSharpNaming.FlattenedColumnRef falls back to the
+        // core-naming literal when the names generator is not in the run.
         //
         // Every member the migration flattens must be named here, in the value object's
         // declaration order. migrate's `flattenObjectField` (expected-schema.ts) iterates
@@ -1205,6 +1205,7 @@ public class DbContextGenerator : IGenerator
         foreach (var nf in vo.Fields())
         {
             var nestedColAny = PhysicalNaming.ResolveFlattenedColumnName(field, nf, strategy);
+            var nestedColRef = CSharpNaming.FlattenedColumnRef(entity, field, nf, strategy, ctx.Config.IncludeNames);
 
             // An ARRAY enum: migrate gives it a native array column (subtypeToSqlType derives
             // text[] from isArray), and EF Core 8 maps it as a primitive collection. Same
@@ -1213,7 +1214,7 @@ public class DbContextGenerator : IGenerator
             if (nf.SubType == FIELD_SUBTYPE_ENUM && nf.ResolvedIsArray())
             {
                 sb.AppendLine($"            b.PrimitiveCollection(p => p.{CSharpNaming.Pascal(nf.Name)})"
-                    + $".HasColumnName(\"{nestedColAny}\").ElementType()"
+                    + $".HasColumnName({nestedColRef}).ElementType()"
                     + $".{EnumConversionCall(ValueObjectNames.TypeName(vo, ctx.Root), vo, nf, ctx.Config)};");
                 continue;
             }
@@ -1229,7 +1230,7 @@ public class DbContextGenerator : IGenerator
                 var ownsCall = nf.ResolvedIsArray() ? "OwnsMany" : "OwnsOne";
                 sb.AppendLine($"            b.{ownsCall}(p => p.{CSharpNaming.Pascal(nf.Name)}, nb =>");
                 sb.AppendLine("            {");
-                sb.AppendLine($"                nb.ToJson(\"{nestedColAny}\");");
+                sb.AppendLine($"                nb.ToJson({nestedColRef});");
                 // `nb`, not `b` — the nested builder shadows the outer one, and emitting `b.`
                 // here would compile-fail the GENERATED file (the outer builder is out of the
                 // nested lambda's intended scope and names the wrong entity type anyway).
@@ -1248,7 +1249,7 @@ public class DbContextGenerator : IGenerator
             if (nf.SubType == FIELD_SUBTYPE_MAP)
             {
                 sb.AppendLine($"            b.Property(p => p.{CSharpNaming.Pascal(nf.Name)})"
-                    + $".HasColumnName(\"{nestedColAny}\")" + MapJsonbSuffix(vo, nf, ctx) + ";");
+                    + $".HasColumnName({nestedColRef})" + MapJsonbSuffix(vo, nf, ctx) + ";");
                 continue;
             }
 
@@ -1263,11 +1264,10 @@ public class DbContextGenerator : IGenerator
                     + "mapping here, so EF will bind its own default name instead. See KNOWN_GAPS.md.");
                 continue;
             }
-            var nestedCol = nestedColAny;
             // The enum type nests in the value object's class (EntityGenerator's
             // EmitValueObjectPoco), so the VO is the `owner` the conversion qualifies it by.
             var conversion = isEnum ? $".{EnumConversionCall(ValueObjectNames.TypeName(vo, ctx.Root), vo, nf, ctx.Config)}" : "";
-            sb.AppendLine($"            b.Property(p => p.{CSharpNaming.Pascal(nf.Name)}).HasColumnName(\"{nestedCol}\"){conversion};");
+            sb.AppendLine($"            b.Property(p => p.{CSharpNaming.Pascal(nf.Name)}).HasColumnName({nestedColRef}){conversion};");
         }
         sb.Append("        });");
         return sb.ToString();

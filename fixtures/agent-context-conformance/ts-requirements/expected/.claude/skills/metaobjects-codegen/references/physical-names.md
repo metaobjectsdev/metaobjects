@@ -89,16 +89,22 @@ literally. **Java and Python generate no SQL at all**: their DTOs and models car
 names, and persistence is the repository interface/`Protocol` you implement. There the
 artifact exists *for your code*, which is the only place a physical name appears.
 
-Two categories stay literal, deliberately, and the gate pins them as such rather than
-exempting them:
+**A flattened value object's columns are constants of the OWNING object's artifact.** A
+`@storage: flattened` field has no column of its own: each member of the value object is a
+column of the owner's table, named by core naming (the field's `@flattenedColumnPrefix`,
+else `<field column>_`, then the member's column). The artifact carries one constant per
+member and none for the field, because the field's own resolved column does not exist:
 
-- a **flattened value-object column** (`@storage: flattened`) is a composite — the
-  embedding field's prefix (its `@flattenedColumnPrefix`, else `<owner field column>_`)
-  followed by the member's column — belonging to no single field of either object, so there
-  is no one constant to reference. Compute it with core naming's
-  `resolveFlattenedColumnName` (or its port equivalent), never by concatenating;
-- a **write-through entity's replica view name**: the artifact holds the object's PRIMARY
-  source's name (its table), and a write-through entity has two physical names.
+| Port | Reads as |
+|---|---|
+| TypeScript | `ShipmentNames.fields.shipTo.members.street.column` |
+| C# | `ShipmentNames.ShipToStreetColumn` |
+| Java / Kotlin | `ShipmentNames.SHIP_TO_STREET_COLUMN` |
+| Python | `SHIPMENT_SHIP_TO_STREET_COLUMN` |
+
+The column-by-field maps (`ColumnsByField`, `COLUMNS_BY_FIELD`) key these `shipTo.street`.
+Without the artifact, compute the name with core naming's `resolveFlattenedColumnName` (or
+its port equivalent), never by concatenating.
 
 **But prefer a typed handle where one exists — this rule has a real limit.** If the ORM
 gives you a type-checked object for the same thing, use that. Replacing a Drizzle column

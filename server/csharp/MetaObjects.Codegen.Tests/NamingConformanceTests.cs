@@ -145,6 +145,37 @@ public class NamingConformanceTests
         }
     }
 
+    /// <summary>
+    /// The names artifact names every column in the corpus the way the resolvers above do: a
+    /// scalar field's <c>Column</c>, and each member of a flattened value object under its
+    /// field's <c>Members</c>. A flattened field itself has no column (<c>Column</c> is null),
+    /// because none exists in the database.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(ValidCaseNames))]
+    public void Names_artifact_carries_every_column(string name)
+    {
+        var c = LoadValidCase(name);
+        var naming = ReadNaming(c.Naming);
+        var root = LoadModel(naming);
+
+        foreach (var (key, expectedColumn) in c.Columns)
+        {
+            var parts = key.Split('.', 3);
+            var names = CSharpNaming.ResolveObjectNames(root.FindObject(parts[0])!, naming.Columns);
+            Assert.NotNull(names);
+            var field = names!.Fields[parts[1]];
+            if (parts.Length == 2)
+            {
+                Assert.Equal(expectedColumn, field.Column);
+                continue;
+            }
+            Assert.Null(field.Column);
+            Assert.NotNull(field.Members);
+            Assert.Equal(expectedColumn, field.Members![parts[2]].Column);
+        }
+    }
+
     [Theory]
     [MemberData(nameof(InvalidCaseNames))]
     public void Refuses_invalid_naming_blocks(string name)

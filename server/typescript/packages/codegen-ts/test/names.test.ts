@@ -106,7 +106,7 @@ describe("resolveObjectNames", () => {
       },
     ]);
     const n = resolveObjectNames(obj(root, "Thing"), "snake_case");
-    expect(n?.fields.firstName?.column).toBe("given_name");
+    expect(n?.fields.firstName).toEqual({ name: "firstName", column: "given_name" });
   });
 
   // A single role==="primary" source that happens to be READ-ONLY, beside a non-primary

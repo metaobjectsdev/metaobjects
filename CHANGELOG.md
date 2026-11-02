@@ -60,6 +60,17 @@ here.**
 
 ### Changed
 
+- **Names artifacts carry a flattened value object's columns, and no column for the field.**
+  Each member of a `@storage: "flattened"` value object is a column of the owning table, and the
+  owner's names artifact now has a constant for each: `fields.shipTo.members.street.column` in
+  TypeScript, `ShipToStreetColumn` in C#, `SHIP_TO_STREET_COLUMN` in Java and Kotlin,
+  `SHIPMENT_SHIP_TO_STREET_COLUMN` in Python, keyed `shipTo.street` in the column-by-field maps.
+  The C# EF mapping and the Kotlin Exposed tables reference them instead of spelling the column.
+  The field's own column constant is gone (`ShipToColumn`, `SHIP_TO_COLUMN`, `fields.shipTo.column`):
+  it named a column that does not exist, so code that read it now fails to compile instead of
+  querying a missing column. In TypeScript `FieldNames` is now a union, so code that reads
+  `.column` from an untyped entry narrows it first (`"column" in entry`).
+
 - **Added vocabulary no longer moves `metamodelVersion`.** The metamodel spec version now moves
   only when metadata that loaded may stop loading or change meaning. A new type, subtype,
   optional attribute or enum member leaves it unchanged, and its CHANGELOG entry names it; the

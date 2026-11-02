@@ -3,6 +3,7 @@ package com.metaobjects.generator.kotlin
 import com.metaobjects.metadata.ktx.loadString
 import java.nio.file.Files
 import kotlin.test.Test
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class KotlinExposedTableGeneratorTest {
@@ -285,6 +286,35 @@ class KotlinExposedTableGeneratorTest {
                 "expected the \"\" prefix to keep the member's own column; saw:\n$src")
             assertTrue("val workStreet = text(\"office_street\")" in src,
                 "expected the office_ prefix; saw:\n$src")
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
+
+    @Test fun flattenedColumnsReferenceTheNamesConstants() {
+        val outDir = Files.createTempDirectory("ktbl-flat-names-")
+        try {
+            val model = """{
+              "metadata.root": { "package": "acme::demo", "children": [
+                { "object.value": { "name": "Address", "children": [
+                    { "field.string": { "name": "street", "@required": true } }
+                ] } },
+                { "object.entity": { "name": "User", "children": [
+                    { "field.long":   { "name": "id" } },
+                    { "field.object": { "name": "work", "@objectRef": "Address", "@storage": "flattened", "@flattenedColumnPrefix": "office_" } },
+                    { "source.rdb":   { "@table": "users" } },
+                    { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } }
+                ] } }
+              ] }
+            }""".trimIndent()
+            val gen = KotlinExposedTableGenerator()
+            gen.setArgs(mapOf("outputDir" to outDir.toString(), KotlinGenUtil.ARG_USE_NAMES to "true"))
+            gen.execute(loadString("flat-names", model))
+
+            val src = Files.readString(outDir.resolve("acme/demo/UserTable.kt"))
+            assertTrue("val workStreet = text(UserNames.WORK_STREET_COLUMN)" in src,
+                "expected the flattened column through its names constant; saw:\n$src")
+            assertFalse("\"office_street\"" in src, "the literal must not be spelled; saw:\n$src")
         } finally {
             outDir.toFile().deleteRecursively()
         }

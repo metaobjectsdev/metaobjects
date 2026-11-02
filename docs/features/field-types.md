@@ -293,8 +293,10 @@ so on. The prefix belongs to the embedding field, not the value object, because 
 about the owning table: one `Address` embedded twice needs two prefixes. Every port names these
 columns through the same core function (`resolveFlattenedColumnName` and its per-port
 equivalents), so `meta migrate`, the Prisma schema, the C# EF mapping and the Kotlin Exposed
-tables agree. On a field whose `@storage` is
-not `flattened` the attribute is refused at load
+tables agree, and the owning object's names artifact carries each one as a constant
+(`ShipmentNames.ShipToStreetColumn` in C#; see the codegen skill's physical-names reference
+for every port). The field itself gets no column constant, because it has no column. On a
+field whose `@storage` is not `flattened` the attribute is refused at load
 (`ERR_FLATTENED_COLUMN_PREFIX_WITHOUT_FLATTENED_STORAGE`): no other storage gives the members
 columns of their own.
 

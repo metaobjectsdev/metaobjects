@@ -1337,10 +1337,14 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                     // column — the same function migrate-ts names these columns with.
                     // E.g. parent "homeAddress" + sub "streetLine1" → "home_address_street_line1".
                     val colName = ColumnNaming.resolveFlattened(field, subField)
-                    // Task 6 — out of scope: this composite name belongs to neither a
-                    // single field of `entity` nor of `target` — <Entity>Names has no
-                    // constant for it. Always literal; useNames() does not reach here.
-                    val baseSpec = KotlinTypeMapper.exposedColumnSpec(subField, "\"$colName\"", api)
+                    // A column of `entity`'s table, so `<Entity>Names` carries it as
+                    // `<FIELD>_<MEMBER>_COLUMN` (KotlinNamesGenerator, from the same
+                    // ColumnNaming.resolveFlattened); the literal only without the names artifact.
+                    val colExpr = if (bindsThroughNames(entity)) {
+                        val (_, shortName) = PackageMapping.splitFqn(entity.name)
+                        "${KotlinNaming.namesObjectName(shortName)}.${KotlinNaming.flattenedColumnMember(parentName, subField.name)}"
+                    } else "\"$colName\""
+                    val baseSpec = KotlinTypeMapper.exposedColumnSpec(subField, colExpr, api)
                     // Sub-column is nullable iff the parent is nullable OR the sub-field itself is.
                     val nullable = parentNullable || !KotlinGenUtil.isRequiredField(subField)
                     val full = if (nullable) "$baseSpec.nullable()" else baseSpec

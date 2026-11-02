@@ -8,18 +8,25 @@
  */
 import {
   primaryRdbSource,
+  refTarget,
   resolveColumnName,
+  resolveFlattenedColumnName,
   resolveIndexName,
   resolveTableSchema,
   isMetaObject,
   isMetaSource,
+  FIELD_ATTR_OBJECT_REF,
+  FIELD_ATTR_STORAGE,
+  FIELD_SUBTYPE_OBJECT,
   PHYSICAL_NAME_ATTR_BY_KIND,
   SOURCE_ATTR_SCHEMA,
   SOURCE_ROLE_PRIMARY,
+  STORAGE_FLATTENED,
   TYPE_INDEX,
   TYPE_OBJECT,
   TYPE_SOURCE,
   type ColumnNamingStrategy,
+  type MetaField,
   type MetaObject,
   type MetaSource,
 } from "@metaobjectsdev/metadata";
@@ -28,7 +35,42 @@ import { crossEntitySpecifier } from "./import-path.js";
 import type { RenderContext } from "./render-context.js";
 import { effectivePackage } from "./docs-paths.js";
 
-export interface FieldNames { readonly name: string; readonly column: string; }
+/** A field stored in one column. */
+export interface ColumnFieldNames { readonly name: string; readonly column: string; }
+
+/**
+ * A `@storage: "flattened"` value object: it has NO column of its own. Each member of the
+ * value object is a column of the owning table, named by core naming
+ * (`resolveFlattenedColumnName`, the function `meta migrate` names it with), keyed by the
+ * member's field name. There is deliberately no `column` here: the field's own resolved
+ * column (`ship_to`) does not exist in the database, so reading one is a compile error.
+ */
+export interface FlattenedFieldNames {
+  readonly name: string;
+  readonly members: Readonly<Record<string, ColumnFieldNames>>;
+}
+
+export type FieldNames = ColumnFieldNames | FlattenedFieldNames;
+
+/**
+ * One field's names. The flattened test is migrate's own (`expected-schema.ts`): a
+ * `field.object` whose RESOLVED `@storage` is `flattened` (ADR-0039 — it may be inherited).
+ * A flattened field whose `@objectRef` does not resolve has no members; the loader refuses
+ * that model before codegen runs.
+ */
+function fieldNamesOf(f: MetaField, strategy: ColumnNamingStrategy | undefined): FieldNames {
+  if (f.subType === FIELD_SUBTYPE_OBJECT && f.attr(FIELD_ATTR_STORAGE) === STORAGE_FLATTENED) {
+    const target = refTarget(f, FIELD_ATTR_OBJECT_REF);
+    const members: Record<string, ColumnFieldNames> = {};
+    if (target !== undefined && isMetaObject(target)) {
+      for (const m of target.fields()) {
+        members[m.name] = { name: m.name, column: resolveFlattenedColumnName(f, m, strategy) };
+      }
+    }
+    return { name: f.name, members };
+  }
+  return { name: f.name, column: resolveColumnName(f, strategy) };
+}
 
 /**
  * One `source.rdb` child, under the ROLE it plays.
@@ -325,12 +367,12 @@ export function resolveObjectNames(
   // ADR-0039: fields() is the RESOLVING accessor — inherited fields must appear, and an
   // inherited @column must resolve, or the constant disagrees with the DDL.
   for (const f of obj.fields()) {
-    fields[f.name] = { name: f.name, column: resolveColumnName(f, strategy) };
+    fields[f.name] = fieldNamesOf(f, strategy);
   }
   // ADR-0039's sanctioned own-accessor use: what this artifact DECLARES. See ObjectNames.
   const ownFields: Record<string, FieldNames> = {};
   for (const f of ownFieldList) {
-    ownFields[f.name] = { name: f.name, column: resolveColumnName(f, strategy) };
+    ownFields[f.name] = fieldNamesOf(f, strategy);
   }
 
   const superObj = namesArtifactSuperOf(obj);
@@ -415,11 +457,11 @@ export function resolveSuperFragmentNames(
 
   const fields: Record<string, FieldNames> = {};
   for (const f of obj.fields()) {
-    fields[f.name] = { name: f.name, column: resolveColumnName(f, strategy) };
+    fields[f.name] = fieldNamesOf(f, strategy);
   }
   const ownFields: Record<string, FieldNames> = {};
   for (const f of ownFieldList) {
-    ownFields[f.name] = { name: f.name, column: resolveColumnName(f, strategy) };
+    ownFields[f.name] = fieldNamesOf(f, strategy);
   }
   const superObj = namesArtifactSuperOf(obj);
   return {
@@ -624,7 +666,9 @@ export function columnExpr(
   literal: string,
 ): Code {
   const entry = names?.resolved.fields[fieldName];
-  return names !== undefined && entry !== undefined
+  // A flattened field carries members, not a column (see FlattenedFieldNames): there is no
+  // constant to reference, so the caller's literal stands.
+  return names !== undefined && entry !== undefined && "column" in entry
     ? code`${names.symbol}.fields.${fieldName}.column`
     : code`${JSON.stringify(literal)}`;
 }

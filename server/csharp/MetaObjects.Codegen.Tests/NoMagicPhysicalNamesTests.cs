@@ -106,7 +106,7 @@ public class NoMagicPhysicalNamesTests
     // The two categories C# documents as literal-only, each reachable by this fixture.
     // FlatPrefix is deliberately NOT tracked on its own: under @storage: flattened the
     // field's "column" is not a column at all, only the prefix each member column is built
-    // from, so there is nothing for a generator to reference it AS.
+    // from, so the names artifact names no column for the field and nothing references it.
     private const string FlatPrefix = "zz_phys_col_pfx";
     private const string VoMemberCol = "zz_phys_col_road";        // a member of the value object
     private const string FlatCol = FlatPrefix + "_" + VoMemberCol; // what EF is actually told
@@ -178,11 +178,14 @@ public class NoMagicPhysicalNamesTests
         (WtTable,    "AccountNames.SourcePrimaryTable",        Reach.Constant, ""),
         (WtId,       "AccountNames.IdColumn",          Reach.Constant, ""),
 
-        (FlatCol,    "(no constant exists)", Reach.KnownLiteral,
-            "A flattened object.value's nested column is a COMPOSITE (owner field column + \"_\" + " +
-            "member column). The value object has no source and so no <Vo>Names, and the owner's " +
-            "artifact carries one constant per FIELD, not per flattened member — there is no single " +
-            "constant to reference. DbContextGenerator.OwnedTypeConfig."),
+        (FlatCol,    "CustomerNames.AddressRoadColumn", Reach.Constant,
+            "Promoted from KnownLiteral. A flattened object.value's member column is a COMPOSITE " +
+            "(core naming: the field's prefix + the member's column), and the old reason it had no " +
+            "constant was true: the value object has no source and so no <Vo>Names, and the owner's " +
+            "artifact carried one constant per FIELD. The owner's artifact now carries one constant " +
+            "per flattened MEMBER (<Field><Member>Column), and the field itself carries none, since " +
+            "its own resolved column is not a column of the table. DbContextGenerator.OwnedTypeConfig " +
+            "references it."),
         (WtView,     "AccountNames.SourceReplicaView", Reach.Constant,
             "Promoted from KnownLiteral by the 0.25.0 restructure, and the row is kept with its history " +
             "because the OLD reason was true and specific: a write-through entity has TWO physical " +
@@ -248,12 +251,8 @@ public class NoMagicPhysicalNamesTests
         // scalar arm — so the bare literal must appear nowhere, and the exhaustive test convicts
         // it if the attribute ever comes back. Under @storage: flattened its physical column is
         // the composite below.
-        (FlatEnumCol, "(no constant exists)", Reach.KnownLiteral,
-            "As FlatCol — the flattened value object's enum member, `<owner field column>_<member " +
-            "column>`, which DbContextGenerator.OwnedTypeConfig now names the way the scalar members " +
-            "are named (and migrate-ts's flattenObjectField names it), so the column EF binds is the " +
-            "one the migration creates. A composite of two names, one of which (the value object's " +
-            "member) has no constant anywhere — the same structural impossibility as FlatCol."),
+        (FlatEnumCol, "CustomerNames.AddressMoodColumn", Reach.Constant,
+            "As FlatCol — the flattened value object's enum member. Promoted with it."),
 
         // --- an @isArray value-object column: the routes tier's raw-SQL null clear ---------
         // Composed against TaggerNames inside a compile-time-constant string (the identifiers

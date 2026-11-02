@@ -158,7 +158,11 @@ public sealed class NamesGenerator : PerEntityGenerator
         {
             var path = $"field \"{f.Name}\"";
             fieldMembers.Add(Str(CSharpNaming.FieldMemberName(f.Name, CSharpNaming.MEMBER_FIELD), f.Name, path));
-            fieldMembers.Add(Str(CSharpNaming.FieldMemberName(f.Name, CSharpNaming.MEMBER_COLUMN), f.Column, path));
+            if (f.Column is not null)
+                fieldMembers.Add(Str(CSharpNaming.FieldMemberName(f.Name, CSharpNaming.MEMBER_COLUMN), f.Column, path));
+            // A flattened value object: one constant per member's column, none for the field.
+            foreach (var m in (f.Members ?? new Dictionary<string, FieldNames>()).Values.OrderBy(v => v.Name, StringComparer.Ordinal))
+                fieldMembers.Add(Str(CSharpNaming.FlattenedColumnMemberName(f.Name, m.Name), m.Column!, $"field \"{f.Name}.{m.Name}\""));
         }
         groups.Add(fieldMembers);
 
@@ -293,7 +297,13 @@ public sealed class NamesGenerator : PerEntityGenerator
         sb.AppendLine($"    public static {hides}readonly Dictionary<string, string> ColumnsByField = new(System.StringComparer.Ordinal)");
         sb.AppendLine("    {");
         foreach (var f in names.Fields.Values.OrderBy(v => v.Name, StringComparer.Ordinal))
-            sb.AppendLine($"        [\"{f.Name}\"] = {CSharpNaming.FieldMemberName(f.Name, CSharpNaming.MEMBER_COLUMN)},");
+        {
+            if (f.Column is not null)
+                sb.AppendLine($"        [\"{f.Name}\"] = {CSharpNaming.FieldMemberName(f.Name, CSharpNaming.MEMBER_COLUMN)},");
+            // A flattened member is keyed `<field>.<member>`, the path the naming corpus uses.
+            foreach (var m in (f.Members ?? new Dictionary<string, FieldNames>()).Values.OrderBy(v => v.Name, StringComparer.Ordinal))
+                sb.AppendLine($"        [\"{f.Name}.{m.Name}\"] = {CSharpNaming.FlattenedColumnMemberName(f.Name, m.Name)},");
+        }
         sb.AppendLine("    };");
         sb.AppendLine("}");
 

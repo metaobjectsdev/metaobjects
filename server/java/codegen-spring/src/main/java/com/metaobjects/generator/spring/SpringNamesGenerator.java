@@ -10,6 +10,7 @@ import com.metaobjects.MetaData;
 import com.metaobjects.database.ColumnNaming;
 import com.metaobjects.database.IndexNaming;
 import com.metaobjects.field.MetaField;
+import com.metaobjects.field.ObjectField;
 import com.metaobjects.generator.EmitsPhysicalNameConstants;
 import com.metaobjects.generator.GeneratorException;
 import com.metaobjects.generator.GeneratorIOWriter;
@@ -164,7 +165,17 @@ public class SpringNamesGenerator extends MultiFileDirectGeneratorBase<MetaObjec
     // -------------------------------------------------------------------------
 
     /** Physical name + logical field name for one field. */
-    private record FieldNames(String name, String column) {}
+    /**
+     * One field's names. A {@code @storage: "flattened"} value object has NO column of its own:
+     * {@code column} is null and {@code members} names one column per member of the value
+     * object, keyed by the member's field name, through core naming
+     * ({@link ColumnNaming#resolveFlattened(MetaField, MetaField, String)}, the rule
+     * {@code meta migrate} names them by). The field's own resolved column ({@code ship_to})
+     * does not exist in the database, so nothing here names it.
+     */
+    private record FieldNames(String name, String column, Map<String, FieldNames> members) {
+        FieldNames(String name, String column) { this(name, column, null); }
+    }
 
     /**
      * One {@code source.rdb} child, under the ROLE it plays.
@@ -344,10 +355,37 @@ public class SpringNamesGenerator extends MultiFileDirectGeneratorBase<MetaObjec
         return out;
     }
 
+    /**
+     * The flattened test is migrate's own: a {@code field.object} whose RESOLVED
+     * {@code @storage} is {@code flattened}. Members are the value object's resolving fields.
+     */
+    private static FieldNames fieldNamesOf(MetaField<?> field, String strategy) {
+        if (!(field instanceof ObjectField)
+                || !field.hasMetaAttr(ObjectField.ATTR_STORAGE, true)
+                || !ObjectField.STORAGE_FLATTENED.equals(
+                    field.getMetaAttr(ObjectField.ATTR_STORAGE, true).getValueAsString())) {
+            return new FieldNames(field.getName(), ColumnNaming.resolve(field, strategy));
+        }
+        Map<String, FieldNames> members = new LinkedHashMap<>();
+        MetaObject target = ((ObjectField) field).getObjectRef();
+        if (target != null) {
+            for (MetaField<?> member : target.getMetaFields()) {
+                members.put(member.getName(), new FieldNames(member.getName(),
+                    ColumnNaming.resolveFlattened(field, member, strategy)));
+            }
+        }
+        return new FieldNames(field.getName(), null, members);
+    }
+
+    /** The constant naming a flattened member's column: {@code SHIP_TO_STREET_COLUMN}. */
+    static String flattenedColumnMember(String fieldName, String memberName) {
+        return namesMember(fieldName) + "_" + namesMember(memberName) + "_COLUMN";
+    }
+
     private static Map<String, FieldNames> fieldMap(Collection<MetaField> src, String strategy) {
         Map<String, FieldNames> out = new LinkedHashMap<>();
         for (MetaField field : src) {
-            out.put(field.getName(), new FieldNames(field.getName(), ColumnNaming.resolve(field, strategy)));
+            out.put(field.getName(), fieldNamesOf(field, strategy));
         }
         return out;
     }
@@ -533,13 +571,19 @@ public class SpringNamesGenerator extends MultiFileDirectGeneratorBase<MetaObjec
         // field of the same name is what makes <Sub>Names.COLUMNS_BY_FIELD the complete one.
         List<String[]> allRows = new ArrayList<>();
         for (FieldNames f : names.fields().values()) {
-            allRows.add(new String[] { namesMember(f.name()), f.name() });
+            if (f.column() != null) allRows.add(new String[] { namesMember(f.name()) + "_COLUMN", f.name() });
+            // A flattened member is keyed `<field>.<member>`, the path the naming corpus uses.
+            if (f.members() != null) {
+                for (FieldNames m : f.members().values()) {
+                    allRows.add(new String[] { flattenedColumnMember(f.name(), m.name()), f.name() + "." + m.name() });
+                }
+            }
         }
         allRows.sort((a, b) -> a[1].compareTo(b[1]));
         src.append("\n    public static final Map<String, String> COLUMNS_BY_FIELD = Map.ofEntries(\n");
         for (int i = 0; i < allRows.size(); i++) {
             String[] row = allRows.get(i);
-            src.append("        Map.entry(\"").append(row[1]).append("\", ").append(row[0]).append("_COLUMN)");
+            src.append("        Map.entry(\"").append(row[1]).append("\", ").append(row[0]).append(")");
             src.append(i < allRows.size() - 1 ? ",\n" : "\n");
         }
         src.append("    );\n");
@@ -606,7 +650,15 @@ public class SpringNamesGenerator extends MultiFileDirectGeneratorBase<MetaObjec
             String member = namesMember(f.name());
             String path = self + ".fields." + f.name();
             out.add(str(member + "_FIELD", f.name(), path, "fields"));
-            out.add(str(member + "_COLUMN", f.column(), path, "fields"));
+            if (f.column() != null) out.add(str(member + "_COLUMN", f.column(), path, "fields"));
+            // A flattened value object: one constant per member's column, none for the field.
+            if (f.members() != null) {
+                for (String m : sorted(f.members())) {
+                    FieldNames mn = f.members().get(m);
+                    out.add(str(flattenedColumnMember(f.name(), mn.name()), mn.column(),
+                        path + "." + mn.name(), "fields"));
+                }
+            }
         }
 
         addKeys(out, self, "identities", all ? names.identities() : names.ownIdentities());

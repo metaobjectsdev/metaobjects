@@ -235,8 +235,13 @@ open class KotlinNamesGenerator :
             // lookup surface, and a miss on an inherited field is exactly the
             // fallback-to-literal this artifact removes.
             append("\n    val COLUMNS_BY_FIELD: Map<String, String> = mapOf(\n")
-            for (name in names.fields.keys.sorted()) {
-                append("        \"$name\" to ${KotlinNaming.namesMember(name)}_COLUMN,\n")
+            val rows = names.fields.values.flatMap { f ->
+                (if (f.column != null) listOf(f.name to "${KotlinNaming.namesMember(f.name)}_COLUMN") else emptyList()) +
+                    // A flattened member is keyed `<field>.<member>`, the path the naming corpus uses.
+                    f.members.orEmpty().values.map { m -> "${f.name}.${m.name}" to KotlinNaming.flattenedColumnMember(f.name, m.name) }
+            }.sortedBy { it.first }
+            for ((key, constant) in rows) {
+                append("        \"$key\" to $constant,\n")
             }
             append("    )\n")
             append("}\n")
@@ -295,7 +300,11 @@ open class KotlinNamesGenerator :
             val member = KotlinNaming.namesMember(f.name)
             val path = "$self.fields.${f.name}"
             out += NameConst("${member}_FIELD", f.name, path, "fields")
-            out += NameConst("${member}_COLUMN", f.column, path, "fields")
+            f.column?.let { out += NameConst("${member}_COLUMN", it, path, "fields") }
+            // A flattened value object: one constant per member's column, none for the field.
+            for (m in f.members.orEmpty().values.sortedBy { it.name }) {
+                out += NameConst(KotlinNaming.flattenedColumnMember(f.name, m.name), m.column!!, "$path.${m.name}", "fields")
+            }
         }
 
         addKeys(out, self, "identities", if (all) names.identities else names.ownIdentities)

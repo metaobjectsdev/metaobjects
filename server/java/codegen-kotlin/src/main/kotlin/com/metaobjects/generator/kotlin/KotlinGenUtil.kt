@@ -214,8 +214,20 @@ public object KotlinGenUtil {
             .firstOrNull { MetaSource.ROLE_PRIMARY == it.role }
     }
 
-    /** §A2/§A3 — physical name + logical field name for one field. */
-    data class KotlinFieldNames(val name: String, val column: String)
+    /**
+     * §A2/§A3 — physical name + logical field name for one field.
+     *
+     * A `@storage: "flattened"` value object has NO column of its own: [column] is null and
+     * [members] names one column per member of the value object, keyed by the member's field
+     * name, through core naming ([ColumnNaming.resolveFlattened], the rule `meta migrate`
+     * names them by). The field's own resolved column (`ship_to`) does not exist in the
+     * database, so nothing here names it.
+     */
+    data class KotlinFieldNames(
+        val name: String,
+        val column: String?,
+        val members: Map<String, KotlinFieldNames>? = null,
+    )
 
     /**
      * One `source.rdb` child, under the ROLE it plays.
@@ -448,7 +460,21 @@ public object KotlinGenUtil {
     }
 
     private fun fieldMap(fields: Collection<MetaField<*>>, strategy: String): Map<String, KotlinFieldNames> =
-        fields.associate { f -> f.name to KotlinFieldNames(f.name, resolveColumnName(f, strategy)) }
+        fields.associate { f -> f.name to fieldNamesOf(f, strategy) }
+
+    /**
+     * The flattened test is migrate's own: a `field.object` whose RESOLVED `@storage` is
+     * `flattened`. Members are the value object's resolving fields.
+     */
+    private fun fieldNamesOf(f: MetaField<*>, strategy: String): KotlinFieldNames {
+        val flattened = f is ObjectField && f.hasMetaAttr(ObjectField.ATTR_STORAGE, true) &&
+            ObjectField.STORAGE_FLATTENED == f.getMetaAttr(ObjectField.ATTR_STORAGE, true).valueAsString
+        if (!flattened) return KotlinFieldNames(f.name, resolveColumnName(f, strategy))
+        val target = (f as ObjectField).objectRef
+        val members = target?.metaFields.orEmpty()
+            .associate { m -> m.name to KotlinFieldNames(m.name, ColumnNaming.resolveFlattened(f, m, strategy)) }
+        return KotlinFieldNames(f.name, null, members)
+    }
 
     /**
      * The names FRAGMENT for an object that a sourced object extends but which declares no

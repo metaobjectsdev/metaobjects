@@ -109,7 +109,12 @@ export function renderNamesDecl(
   };
 
   const fieldsBlock = collection("fields", n.fields, n.ownFields,
-    (f: FieldNames) => `{ name: ${q(f.name)}, column: ${q(f.column)} }`);
+    (f: FieldNames) => "column" in f
+      ? `{ name: ${q(f.name)}, column: ${q(f.column)} }`
+      // A flattened value object: one column per member, and none of its own.
+      : `{ name: ${q(f.name)}, members: { ${Object.keys(f.members).sort()
+        .map((m) => `${key(m)}: { name: ${q(f.members[m]!.name)}, column: ${q(f.members[m]!.column)} }`)
+        .join(", ")} } }`);
 
   // `type` and `subType` on every entry, because the artifact mirrors the metadata tree
   // and because on these two collections the subType is the only thing that says whether

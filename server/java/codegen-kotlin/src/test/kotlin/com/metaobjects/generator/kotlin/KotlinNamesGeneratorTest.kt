@@ -525,4 +525,70 @@ class KotlinNamesGeneratorTest {
         assertTrue("CREATED_AT" in e.message!!, e.message!!)
     }
 
+
+    // -------------------------------------------------------------------------
+    // Flattened value objects: one constant per member's column, none for the field
+    // -------------------------------------------------------------------------
+
+    private val flattenedModel = """{
+      "metadata.root": { "package": "acme::ship", "children": [
+        { "object.value": { "name": "Address", "children": [
+            { "field.string": { "name": "street" } },
+            { "field.string": { "name": "postalCode", "@column": "ZIP" } }
+        ] } },
+        { "object.entity": { "name": "Shipment", "children": [
+            { "source.rdb":   { "@table": "shipments" } },
+            { "field.long":   { "name": "id" } },
+            { "field.object": { "name": "shipTo", "@objectRef": "Address", "@storage": "flattened" } },
+            { "field.object": { "name": "payload", "@objectRef": "Address" } },
+            { "identity.primary": { "@fields": ["id"], "@generation": "increment" } }
+        ] } }
+      ] }
+    }""".trimIndent()
+
+    @Test fun `a flattened member gets a column constant and its field gets none`() {
+        val src = emit(flattenedModel).getValue("acme/ship/ShipmentNames.kt")
+
+        assertTrue("const val SHIP_TO_FIELD: String = \"shipTo\"" in src, src)
+        assertTrue("const val SHIP_TO_STREET_COLUMN: String = \"ship_to_street\"" in src, src)
+        assertTrue("const val SHIP_TO_POSTAL_CODE_COLUMN: String = \"ship_to_ZIP\"" in src, src)
+        // The field's own resolved column, `ship_to`, is not a column of the table.
+        assertFalse("SHIP_TO_COLUMN" in src, src)
+        assertFalse("\"ship_to\"" in src, src)
+        // A jsonb object is one column, as before.
+        assertTrue("const val PAYLOAD_COLUMN: String = \"payload\"" in src, src)
+        assertTrue("\"shipTo.street\" to SHIP_TO_STREET_COLUMN" in src, src)
+        assertTrue("\"shipTo.postalCode\" to SHIP_TO_POSTAL_CODE_COLUMN" in src, src)
+        assertFalse("\"shipTo\" to" in src, src)
+    }
+
+    @Test fun `a flattened member constant colliding with a field constant is refused`() {
+        val model = flattenedModel.replace(
+            "\"@storage\": \"flattened\" }",
+            "\"@storage\": \"flattened\", \"@flattenedColumnPrefix\": \"st_\" } },\n" +
+                "            { \"field.string\": { \"name\": \"shipToStreet\" }")
+        val ex = assertFailsWith<GeneratorException> { emit(model) }
+        assertTrue("SHIP_TO_STREET_COLUMN" in ex.message.orEmpty(), ex.message)
+    }
+
+    /** The cross-port naming corpus: every `<Object>.<field>.<member>` key is a constant, under every rule. */
+    @Test fun `every flattened column in the naming corpus is a constant`() {
+        var dir: Path? = Path.of("").toAbsolutePath()
+        while (dir != null && !Files.isDirectory(dir.resolve("fixtures"))) dir = dir.parent
+        val corpus = requireNotNull(dir) { "could not locate fixtures/" }.resolve("fixtures/naming-conformance/physical-names")
+        val model = corpus.resolve("meta.naming.json").readText()
+        val cases = com.fasterxml.jackson.databind.ObjectMapper().readTree(corpus.resolve("cases.json").toFile()).get("cases")
+        for (c in cases) {
+            val naming = c.get("naming")
+            val rule = if (naming != null && naming.has("columns")) naming.get("columns").asText() else "snake_case"
+            val src = emit(model, columnsRule = rule).getValue("acme/naming/ShipmentNames.kt")
+            for ((key, value) in c.get("columns").fields()) {
+                val parts = key.split(".")
+                if (parts.size != 3 || parts[0] != "Shipment") continue
+                val member = "${KotlinNaming.namesMember(parts[1])}_${KotlinNaming.namesMember(parts[2])}_COLUMN"
+                val decl = "const val $member: String = \"${value.asText()}\""
+                assertTrue(decl in src, "${c.get("name").asText()}: $decl\n$src")
+            }
+        }
+    }
 }

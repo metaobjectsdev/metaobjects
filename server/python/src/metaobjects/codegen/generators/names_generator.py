@@ -90,13 +90,21 @@ from metaobjects.meta.persistence.source.meta_source import MetaSource
 from metaobjects.meta.persistence.source.source_constants import (
     PHYSICAL_NAME_ATTR_BY_KIND,
 )
+from metaobjects.meta.core.field.field_constants import (
+    FIELD_ATTR_OBJECT_REF,
+    FIELD_ATTR_STORAGE,
+    FIELD_SUBTYPE_OBJECT,
+    STORAGE_FLATTENED,
+)
 from metaobjects.naming import (
     resolve_column_name,
+    resolve_flattened_column_name,
     resolve_index_name,
     strip_package,
     to_snake_case,
 )
 from metaobjects.shared.base_types import TYPE_FIELD, TYPE_IDENTITY, TYPE_INDEX
+from metaobjects.naming_refs import ref_target
 from metaobjects.source_resolution import primary_rdb_source
 
 #: The nodes whose DATABASE index name this module carries.
@@ -236,6 +244,35 @@ def _field_consts(field: MetaData, column: str) -> list[_Const]:
         _Const(f"{member}_FIELD", _q(field.name), path),
         _Const(f"{member}_COLUMN", _q(column), path),
     ]
+
+
+def _flattened_members(field: MetaData, strategy: str) -> list[tuple[str, str]] | None:
+    """The ``(member name, column)`` pairs of a ``@storage: "flattened"`` value object, or
+    ``None`` for any other field.
+
+    The flattened test is migrate's own: a ``field.object`` whose RESOLVED ``@storage`` is
+    ``flattened`` (ADR-0039 — it may be inherited). Each member's column is core naming's
+    :func:`metaobjects.naming.resolve_flattened_column_name`, the rule ``meta migrate`` names
+    it by. A flattened field whose ``@objectRef`` does not resolve has no members; the loader
+    refuses that model before codegen runs.
+    """
+    if field.sub_type != FIELD_SUBTYPE_OBJECT or field.get_meta_attr(FIELD_ATTR_STORAGE) != STORAGE_FLATTENED:
+        return None
+    target = ref_target(field, FIELD_ATTR_OBJECT_REF)
+    if not isinstance(target, MetaObject):
+        return []
+    return [(m.name, resolve_flattened_column_name(field, m, strategy)) for m in target.fields()]
+
+
+def _flattened_consts(field: MetaData, members: list[tuple[str, str]]) -> list[_Const]:
+    """A flattened value object: the field's ``_FIELD`` name, one ``<FIELD>_<MEMBER>_COLUMN``
+    per member, and NO ``_COLUMN`` for the field — its own resolved column (``ship_to``) is
+    not a column of the table."""
+    member = _member(field.name)
+    out = [_Const(f"{member}_FIELD", _q(field.name), f"field {field.name!r}")]
+    for name, column in sorted(members):
+        out.append(_Const(f"{member}_{_member(name)}_COLUMN", _q(column), f"field {field.name}.{name!r}"))
+    return out
 
 
 #: The node types a names module carries. A frozenset of module-level constants rather
@@ -404,11 +441,19 @@ def render_names(entity: MetaObject, strategy: str, *, fragment: bool = False) -
 
     # ADR-0039: fields() RESOLVES — an inherited field and an inherited @column both
     # must appear here, or the constant disagrees with what the runtime actually binds.
+    # (COLUMNS_BY_FIELD key, constant member) — a flattened member is keyed
+    # `<field>.<member>`, the path the naming corpus uses.
     columns: list[tuple[str, str]] = []
     for field in sorted(entity.fields(), key=lambda f: f.name):
-        column = resolve_column_name(field, strategy)
-        columns.append((field.name, column))
-        groups.append(("fields", _field_consts(field, column), carried_by_super(field)))
+        members = _flattened_members(field, strategy)
+        if members is None:
+            column = resolve_column_name(field, strategy)
+            columns.append((field.name, f"{_member(field.name)}_COLUMN"))
+            groups.append(("fields", _field_consts(field, column), carried_by_super(field)))
+            continue
+        for name, _column in members:
+            columns.append((f"{field.name}.{name}", f"{_member(field.name)}_{_member(name)}_COLUMN"))
+        groups.append(("fields", _flattened_consts(field, members), carried_by_super(field)))
 
     for type_name in (TYPE_IDENTITY, TYPE_INDEX):
         keys = sorted(
@@ -488,11 +533,11 @@ def render_names(entity: MetaObject, strategy: str, *, fragment: bool = False) -
     # module's re-exported reference to the base's own constant. Always emitted, even
     # when empty, so a consumer can read it unconditionally.
     lines.append(f"{upper}_COLUMNS_BY_FIELD: Final[dict[str, str]] = {{")
-    for name, _column in columns:
+    for key, member in sorted(columns):
         # _q, not a bare f-string: the KEY is an author-supplied field name, and every
         # other literal in this module goes through the escaper. Spliced raw, a name
         # holding a quote emitted a module that does not parse.
-        lines.append(f"    {_q(name)}: {upper}_{_member(name)}_COLUMN,")
+        lines.append(f"    {_q(key)}: {upper}_{member},")
     lines.append("}")
     lines.append("")
     return "\n".join(lines)
