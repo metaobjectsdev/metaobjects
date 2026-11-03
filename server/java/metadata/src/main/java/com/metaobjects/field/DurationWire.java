@@ -62,34 +62,14 @@ public final class DurationWire {
 
     private static final Pattern POSTGRES_CALENDAR = Pattern.compile("\\b(years?|mons?)\\b");
 
-    /**
-     * The largest magnitude a duration may have: 256204778 hours (about 29,000 years), the largest
-     * whole hour a .NET {@code TimeSpan} holds, so every port can read what any port wrote. One
-     * microsecond more is refused, on parse and on read.
-     */
-    public static final long MAX_HOURS = 256_204_778L;
-
-    /** {@link #MAX_HOURS} as a {@link Duration}. */
-    public static final Duration MAX = Duration.ofHours(MAX_HOURS);
-
-    /**
-     * {@code d} when its magnitude is within {@link #MAX}.
-     *
-     * @throws IllegalArgumentException when it is not ({@code shown} names the input)
-     */
-    public static Duration checkBound(Duration d, String shown) {
-        if (d.abs().compareTo(MAX) > 0) {
-            throw new IllegalArgumentException("field.duration: out of range (at most " + MAX_HOURS
-                + " hours either way): " + quote(shown));
-        }
-        return d;
-    }
-
     /** What a refused value is told it should be. */
     public static final String EXPECTED =
         "an ISO-8601 duration such as PT1H30M (no years, months or weeks)";
 
-    /** True iff {@code s} is in the accepted ISO-8601 form and within {@link #MAX_HOURS} hours. */
+    /**
+     * True iff {@code s} is in the accepted ISO-8601 form and fits a {@link Duration} (its own range
+     * is the only limit; a value past it is refused, never wrapped).
+     */
     public static boolean isDuration(String s) {
         if (s == null || !ACCEPTED.matcher(s).matches()) return false;
         try {
@@ -117,7 +97,7 @@ public final class DurationWire {
                               Math.multiplyExact(num(m.group(3)), 3_600L)),
                 Math.addExact(Math.multiplyExact(num(m.group(4)), 60L), num(m.group(5))));
             Duration d = Duration.ofSeconds(seconds, micros(m.group(6)) * 1_000L);
-            return checkBound("-".equals(m.group(1)) ? d.negated() : d, s);
+            return "-".equals(m.group(1)) ? d.negated() : d;
         } catch (ArithmeticException e) {
             throw new IllegalArgumentException("field.duration: out of range: " + quote(s), e);
         }
@@ -131,7 +111,6 @@ public final class DurationWire {
     /** The canonical wire form of {@code d} (sub-microsecond precision truncated toward zero). */
     public static String format(Duration d) {
         if (d == null) throw new IllegalArgumentException("field.duration: null is not a duration");
-        checkBound(d, d.toString());
         boolean negative = d.isNegative();
         Duration mag = negative ? d.negated() : d;
         long total = mag.getSeconds();
@@ -154,7 +133,6 @@ public final class DurationWire {
     /** The Postgres interval input spelling of {@code d}: {@code [-]HH:MM:SS[.f]}, no day part. */
     public static String formatPostgres(Duration d) {
         if (d == null) throw new IllegalArgumentException("field.duration: null is not a duration");
-        checkBound(d, d.toString());
         boolean negative = d.isNegative();
         Duration mag = negative ? d.negated() : d;
         long total = mag.getSeconds();
@@ -189,11 +167,11 @@ public final class DurationWire {
         }
         try {
             Duration days = Duration.ofSeconds(Math.multiplyExact(m.group(1) == null ? 0L : Long.parseLong(m.group(1)), 86_400L));
-            if (m.group(3) == null) return checkBound(days, s);
+            if (m.group(3) == null) return days;
             long secs = Math.addExact(Math.multiplyExact(Long.parseLong(m.group(3)), 3_600L),
                 Long.parseLong(m.group(4)) * 60L + Long.parseLong(m.group(5)));
             Duration time = Duration.ofSeconds(secs, micros(m.group(6)) * 1_000L);
-            return checkBound(days.plus("-".equals(m.group(2)) ? time.negated() : time), s);
+            return days.plus("-".equals(m.group(2)) ? time.negated() : time);
         } catch (ArithmeticException | NumberFormatException e) {
             throw new IllegalArgumentException("field.duration: interval out of range: " + quote(s), e);
         }
@@ -210,6 +188,29 @@ public final class DurationWire {
     /** {@link #fromStored} then {@link #format}: the canonical wire string of a stored value. */
     public static String canonicalizeStored(String s) {
         return format(fromStored(s));
+    }
+
+    /**
+     * The 64-bit count of microseconds a SQLite / MySQL column stores (sub-microsecond precision
+     * truncated toward zero).
+     *
+     * @throws IllegalArgumentException past the 64-bit range, which is that column's limit
+     */
+    public static long toMicros(Duration d) {
+        try {
+            boolean negative = d.isNegative();
+            Duration mag = negative ? d.negated() : d;
+            long micros = Math.addExact(Math.multiplyExact(mag.getSeconds(), 1_000_000L), mag.getNano() / 1_000L);
+            return negative ? -micros : micros;
+        } catch (ArithmeticException tooLong) {
+            throw new IllegalArgumentException(
+                "field.duration: " + d + " is past a 64-bit count of microseconds", tooLong);
+        }
+    }
+
+    /** A stored count of microseconds as a duration. */
+    public static Duration fromMicros(long micros) {
+        return Duration.ofSeconds(Math.floorDiv(micros, 1_000_000L), Math.floorMod(micros, 1_000_000L) * 1_000L);
     }
 
     // ── helpers ──

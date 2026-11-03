@@ -63,17 +63,18 @@ const NUMBER_SUBTYPES: ReadonlySet<string> = new Set([
   FIELD_SUBTYPE_INT, FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_DOUBLE, FIELD_SUBTYPE_FLOAT, FIELD_SUBTYPE_DECIMAL,
   FIELD_SUBTYPE_CURRENCY,
 ]);
-// uri, inet and duration are strings on the wire, and Cube has no URI, network-address or interval
-// dimension type, so each is a string dimension over its column.
+// uri and inet are strings on the wire, and Cube has no URI or network-address dimension type, so
+// each is a string dimension over its column.
 const STRING_SUBTYPES: ReadonlySet<string> = new Set([
   FIELD_SUBTYPE_STRING, FIELD_SUBTYPE_ENUM, FIELD_SUBTYPE_UUID, FIELD_SUBTYPE_TIME, FIELD_SUBTYPE_URI,
-  FIELD_SUBTYPE_INET, FIELD_SUBTYPE_DURATION,
+  FIELD_SUBTYPE_INET,
 ]);
 
 // The subtypes `dimensionOfField` maps, in the order the refusal below lists them — derived from
 // the dispatch sets and checks, so the message cannot go stale when a mapping is added or removed.
 const MAPPED_DIMENSION_SUBTYPES: readonly string[] = [
-  ...STRING_SUBTYPES, ...NUMBER_SUBTYPES, FIELD_SUBTYPE_BOOLEAN, FIELD_SUBTYPE_DATE, FIELD_SUBTYPE_TIMESTAMP,
+  ...STRING_SUBTYPES, ...NUMBER_SUBTYPES, FIELD_SUBTYPE_DURATION, FIELD_SUBTYPE_BOOLEAN, FIELD_SUBTYPE_DATE,
+  FIELD_SUBTYPE_TIMESTAMP,
 ];
 
 /** `<owner resolution key>.<name>`: a member's address, as `@of` and `@via` spell it. */
@@ -131,6 +132,14 @@ export function dimensionColumn(
   }
   if (STRING_SUBTYPES.has(field.subType)) return { sql: col, type: "string" };
   if (NUMBER_SUBTYPES.has(field.subType)) return { sql: col, type: "number" };
+  if (field.subType === FIELD_SUBTYPE_DURATION) {
+    // Cube has no interval dimension type; a number of SECONDS sorts and filters by the span.
+    // Postgres: EXTRACT(EPOCH FROM interval) is an exact numeric. MySQL stores a BIGINT count of
+    // microseconds; its `/` keeps only the dividend's scale plus div_precision_increment (4 by
+    // default), so the dividend is widened to six fractional digits first to keep every microsecond.
+    const sql = d === "postgres" ? `EXTRACT(EPOCH FROM ${col})` : `CAST(${col} AS DECIMAL(65, 6)) / 1000000`;
+    return { sql, type: "number" };
+  }
   if (field.subType === FIELD_SUBTYPE_BOOLEAN) return { sql: col, type: "boolean" };
   if (field.subType === FIELD_SUBTYPE_TIMESTAMP) return { sql: col, type: "time" };
   if (field.subType === FIELD_SUBTYPE_DATE) {

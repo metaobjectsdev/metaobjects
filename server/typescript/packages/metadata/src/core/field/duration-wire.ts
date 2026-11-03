@@ -28,22 +28,9 @@ const MICROS_PER_MINUTE = 60n * MICROS_PER_SECOND;
 const MICROS_PER_HOUR = 60n * MICROS_PER_MINUTE;
 const MICROS_PER_DAY = 24n * MICROS_PER_HOUR;
 
-/** The largest magnitude a duration may have: 256204778 hours, the largest whole hour a .NET
- *  TimeSpan holds, so a span any port accepts every port can read back. One microsecond more is
- *  refused on input and on read. */
-export const DURATION_MAX_HOURS = 256204778n;
-const MAX_MICROS = DURATION_MAX_HOURS * MICROS_PER_HOUR;
-
-function withinBound(micros: bigint): boolean {
-  return micros <= MAX_MICROS && micros >= -MAX_MICROS;
-}
-
-function bounded(micros: bigint, what: string): bigint {
-  if (!withinBound(micros)) {
-    throw new Error(`${what} is longer than ${DURATION_MAX_HOURS} hours, the longest field.duration every port can hold`);
-  }
-  return micros;
-}
+/** A 64-bit integer column (SQLite, D1, MySQL `BIGINT`) stores a duration as microseconds; it holds
+ *  this many either way. A database's own limit, so it is checked only when binding to one. */
+const INT64_MAX = 9223372036854775807n;
 
 /** Up to nine fractional-second digits as microseconds, truncated toward zero. */
 function fractionMicros(digits: string | undefined): bigint {
@@ -63,7 +50,6 @@ export function parseDurationLiteral(text: string): bigint | undefined {
     BigInt(min ?? "0") * MICROS_PER_MINUTE +
     BigInt(s ?? "0") * MICROS_PER_SECOND +
     fractionMicros(f);
-  if (magnitude > MAX_MICROS) return undefined;
   return sign === "-" ? -magnitude : magnitude;
 }
 
@@ -137,7 +123,7 @@ export function parsePostgresInterval(text: string): bigint {
     time = BigInt(h) * MICROS_PER_HOUR + BigInt(min!) * MICROS_PER_MINUTE + BigInt(s!) * MICROS_PER_SECOND + fractionMicros(f);
     if (timeSign === "-") time = -time;
   }
-  return bounded(BigInt(days ?? "0") * MICROS_PER_DAY + time, `the interval ${JSON.stringify(text)}`);
+  return BigInt(days ?? "0") * MICROS_PER_DAY + time;
 }
 
 /** The fields node-postgres's default interval parser (`postgres-interval`) hands back. */
@@ -159,14 +145,33 @@ function intervalObjectMicros(v: PostgresIntervalLike): bigint {
   const whole = (n: number | undefined): bigint => BigInt(Math.trunc(n ?? 0));
   // postgres-interval carries microseconds as a fractional millisecond count.
   const micros = BigInt(Math.round((v.milliseconds ?? 0) * 1000));
-  return bounded(whole(v.days) * MICROS_PER_DAY + whole(v.hours) * MICROS_PER_HOUR
-    + whole(v.minutes) * MICROS_PER_MINUTE + whole(v.seconds) * MICROS_PER_SECOND + micros, `the interval ${JSON.stringify(v)}`);
+  return whole(v.days) * MICROS_PER_DAY + whole(v.hours) * MICROS_PER_HOUR
+    + whole(v.minutes) * MICROS_PER_MINUTE + whole(v.seconds) * MICROS_PER_SECOND + micros;
 }
 
-/** Read side: what a driver hands back for a duration column — an ISO string (a text column, or
- *  Postgres under `IntervalStyle = iso_8601`), the default Postgres interval text, or a
- *  node-postgres interval object — as the canonical wire string. Throws for anything else. */
+/**
+ * Write side, for a 64-bit integer column (SQLite, D1, MySQL): the span as the microsecond count the
+ * column stores — a number when it is a safe integer, else a bigint. Throws past the 64-bit range,
+ * which is that column's limit and no other database's.
+ */
+export function durationToStoredMicros(micros: bigint): number | bigint {
+  if (micros > INT64_MAX || micros < -INT64_MAX - 1n) {
+    throw new Error(`a span of ${formatDuration(micros)} does not fit the 64-bit microsecond column this database stores a field.duration in`);
+  }
+  const n = Number(micros);
+  return Number.isSafeInteger(n) ? n : micros;
+}
+
+/** Read side: what a driver hands back for a duration column — the microsecond integer of a SQLite,
+ *  D1 or MySQL column, an ISO string (Postgres under `IntervalStyle = iso_8601`), the default
+ *  Postgres interval text, or a node-postgres interval object — as the canonical wire string.
+ *  Throws for anything else. */
 export function durationToWire(value: unknown): string {
+  // A 64-bit integer column (SQLite, D1, MySQL) holds microseconds; a driver may return it as a
+  // number, a bigint or a digit string.
+  if (typeof value === "bigint") return formatDuration(value);
+  if (typeof value === "number" && Number.isInteger(value)) return formatDuration(BigInt(value));
+  if (typeof value === "string" && /^-?\d+$/.test(value)) return formatDuration(BigInt(value));
   if (typeof value === "string") {
     const iso = canonicalDuration(value);
     return iso ?? formatDuration(parsePostgresInterval(value));

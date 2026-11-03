@@ -61,10 +61,9 @@ export const OPS_BY_SUBTYPE: Readonly<Record<string, readonly FilterOp[]>> = {
   // inet: an IP address — identity-comparison ops only (no `like`; ordering
   // gt/lt is not exposed). Same op band as uuid.
   [FIELD_SUBTYPE_INET]: [FILTER_OP_EQ, FILTER_OP_NE, FILTER_OP_IN, FILTER_OP_IS_NULL],
-  // duration: identity-comparison ops only for now. Ordering is not exposed: a
-  // text column (SQLite, MySQL) cannot order ISO-8601 strings. Adding it later
-  // is additive.
-  [FIELD_SUBTYPE_DURATION]: [FILTER_OP_EQ, FILTER_OP_NE, FILTER_OP_IN, FILTER_OP_IS_NULL],
+  // duration: ordered on every database — a Postgres interval, and the 64-bit
+  // microsecond integer SQLite / D1 / MySQL store it as.
+  [FIELD_SUBTYPE_DURATION]: [FILTER_OP_EQ, FILTER_OP_NE, FILTER_OP_GT, FILTER_OP_GTE, FILTER_OP_LT, FILTER_OP_LTE, FILTER_OP_IN, FILTER_OP_IS_NULL],
 } as const;
 
 export function opsForSubType(subType: string): readonly FilterOp[] {

@@ -337,9 +337,9 @@ function mysqlColumnType(t: SqlType, field: MetaField, needsLength: boolean): Co
       return varchar(36);
     case FIELD_SUBTYPE_INET:
       return varchar(45);
-    // The canonical ISO-8601 string, in the column the Drizzle generator's MySQL arm writes.
+    // A BIGINT count of microseconds, the column the Drizzle generator's MySQL arm writes.
     case FIELD_SUBTYPE_DURATION:
-      return varchar(64);
+      return { scalar: "BigInt", list: false };
     case FIELD_SUBTYPE_TIMESTAMP:
       return { scalar: "DateTime", list: false, native: "@db.DateTime(3)" };
     case FIELD_SUBTYPE_TIME:

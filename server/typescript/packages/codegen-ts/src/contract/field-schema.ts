@@ -79,7 +79,6 @@ export type RefFor = (target: MetaObject, shape: ContractShape) => string;
  * alone, where `T` is followed by at least one of hours, minutes and seconds, in that order. Digits
  * are `[0-9]` and groups capture, which I-Regexp also requires; the anchors make JSON Schema's search
  * a full match. test/contract/duration-json-schema-pattern.test.ts holds the two to the same verdicts.
- * The 256204778-hour bound is the code's, not a pattern's.
  */
 export const DURATION_JSON_SCHEMA_PATTERN = (() => {
   const seconds = "[0-9]+(\\.[0-9]{1,9})?S";

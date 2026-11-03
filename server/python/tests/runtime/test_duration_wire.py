@@ -13,10 +13,13 @@ from metaobjects.codegen.runtime.duration_wire import (
     duration_from_driver,
     format_duration,
     format_postgres_interval,
+    from_stored_micros,
     is_duration_literal,
+    micros_of,
     parse_duration,
     parse_duration_input,
     parse_postgres_interval,
+    to_stored_micros,
 )
 
 _VECTORS = json.loads(
@@ -92,13 +95,40 @@ def test_an_out_of_range_duration_is_a_value_error() -> None:
         parse_duration("PT99999999999999999999H")
 
 
-def test_a_timedelta_past_the_bound_is_refused_on_input_and_on_read() -> None:
-    edge = dt.timedelta(hours=256_204_778)
-    assert duration_from_driver(edge) == edge
-    assert parse_duration_input(-edge) == -edge
-    over = edge + dt.timedelta(microseconds=1)
-    for value in (over, -over):
+@pytest.mark.parametrize("v", _VECTORS["storedMicros"], ids=lambda v: v["in"])
+def test_stored_micros(v: dict[str, str]) -> None:
+    td = parse_duration(v["in"])
+    assert to_stored_micros(td) == int(v["out"])
+    assert format_duration(from_stored_micros(int(v["out"]))) == v["in"]
+    assert format_duration(duration_from_driver(int(v["out"]))) == v["in"]
+
+
+# ── this port's own limits (not shared vectors) ──────────────────────────────
+
+
+def test_the_timedelta_range_is_the_only_limit_and_past_it_is_refused() -> None:
+    # Far past what another port's native type holds: Python takes it.
+    assert format_duration(parse_duration("PT256204779H")) == "PT256204779H"
+    edge = f"P{999_999_999}DT23H59M59.999999S"
+    assert parse_duration(edge) == dt.timedelta.max
+    assert parse_duration(f"-P{999_999_999}D") == dt.timedelta.min
+    for text in (f"P{1_000_000_000}D", f"P{999_999_999}DT24H", f"-P{999_999_999}DT0.000001S"):
+        assert not is_duration_literal(text)
+        assert canonical_duration(text) is None
         with pytest.raises(ValueError, match="out of range"):
-            duration_from_driver(value)
-        with pytest.raises(ValueError, match="out of range"):
-            parse_duration_input(value)
+            parse_duration(text)
+    with pytest.raises(ValueError, match="out of range"):
+        from_stored_micros(micros_of(dt.timedelta.max) + 1)
+
+
+def test_a_stored_micro_count_past_64_bits_is_refused() -> None:
+    assert to_stored_micros(dt.timedelta(microseconds=2**63 - 1)) == 2**63 - 1
+    assert to_stored_micros(dt.timedelta(microseconds=-(2**63))) == -(2**63)
+    for td in (dt.timedelta(microseconds=2**63), dt.timedelta(microseconds=-(2**63) - 1), dt.timedelta.max):
+        with pytest.raises(ValueError, match="64-bit"):
+            to_stored_micros(td)
+
+
+def test_a_bool_is_not_a_stored_micro_count() -> None:
+    with pytest.raises(ValueError):
+        duration_from_driver(True)

@@ -1103,12 +1103,15 @@ def ops_for_subtype(field_subtype: str) -> frozenset[str]:
         return _OPS_STRING
     # ADR-0036/0037 Wave 3 — field.uri is string-like (substring searchable):
     # eq/ne/in/like/isNull. field.inet is uuid-like (an identity value, no
-    # substring search, no ordering): eq/ne/in/isNull. field.duration takes the
-    # same band: ordering is deferred, since a text dialect cannot order ISO strings.
+    # substring search, no ordering): eq/ne/in/isNull.
     if field_subtype == FIELD_SUBTYPE_URI:
         return _OPS_STRING
-    if field_subtype in ("uuid", FIELD_SUBTYPE_INET, FIELD_SUBTYPE_DURATION):
+    if field_subtype in ("uuid", FIELD_SUBTYPE_INET):
         return _OPS_UUID
+    # field.duration is an orderable span: the numeric/temporal band. Every engine orders it
+    # (a Postgres interval; a microsecond integer on SQLite, D1 and MySQL).
+    if field_subtype == FIELD_SUBTYPE_DURATION:
+        return _OPS_NUMERIC_TEMPORAL
     if field_subtype == "boolean":
         return _OPS_BOOLEAN
     if field_subtype in _NUMERIC_TEMPORAL_SUBTYPES:

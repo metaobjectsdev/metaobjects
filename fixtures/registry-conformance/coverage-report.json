@@ -98,7 +98,6 @@
         "dbColumnType",
         "default",
         "example",
-        "filterable",
         "formExclude",
         "instruction",
         "mutability",

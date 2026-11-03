@@ -101,9 +101,9 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<AllTypes>().Property(x => x.InetVal).HasColumnType("inet");
         modelBuilder.Entity<AllTypes>().Property(x => x.Inet6Val).HasColumnType("inet");
         if (Database.ProviderName == "Npgsql.EntityFrameworkCore.PostgreSQL")
-            modelBuilder.Entity<AllTypes>().Property(x => x.DurationVal).HasColumnType("interval");
+            modelBuilder.Entity<AllTypes>().Property(x => x.DurationVal).HasColumnType("interval").Metadata.SetTypeMapping(DurationInterval.Mapping);
         else
-            modelBuilder.Entity<AllTypes>().Property(x => x.DurationVal).HasConversion(new Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<System.TimeSpan, string>(v => global::MetaObjects.IntegrationTests.Generated.DurationWire.Format(v), v => global::MetaObjects.IntegrationTests.Generated.DurationWire.Parse(v)));
+            modelBuilder.Entity<AllTypes>().Property(x => x.DurationVal).HasConversion(new Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<System.TimeSpan, long>(v => global::MetaObjects.IntegrationTests.Generated.DurationWire.ToMicros(v), v => global::MetaObjects.IntegrationTests.Generated.DurationWire.FromMicros(v)));
         modelBuilder.Entity<Asset>().Property(x => x.RecordedAt).HasColumnType("timestamp with time zone");
         modelBuilder.Entity<Asset>().Property(x => x.ObservedAt).HasColumnType("timestamp without time zone");
         modelBuilder.Entity<Asset>().Property(x => x.ExternalId).HasColumnType("uuid").HasConversion(v => System.Guid.Parse(v!), g => g.ToString("D"));
@@ -136,4 +136,118 @@ public class AppDbContext : DbContext
         throw new System.InvalidOperationException(
             $"field.enum '{field}' read stored value {stored} with no member in " +
             "@intValueMap — the database holds a value the model does not describe.");
-}
+
+    /// <summary>
+    /// field.duration on Npgsql: an <c>interval</c> column read through <c>NpgsqlInterval</c>, so a month
+    /// or year part, or a day count past what a TimeSpan holds, is refused rather than read wrong.
+    /// Npgsql is reached by reflection: a project on another provider needs no Npgsql reference.
+    /// </summary>
+    internal static class DurationInterval
+    {
+        // The Npgsql shape this mapping reads, resolved and checked when the model is built (the
+        // first touch is SetTypeMapping in OnModelCreating), so a missing or changed type fails
+        // there, naming what is missing, rather than on the first row read.
+        private static readonly System.Type IntervalType = Resolve();
+        private static readonly System.Reflection.PropertyInfo Months = IntervalType.GetProperty("Months")!;
+        private static readonly System.Reflection.PropertyInfo Days = IntervalType.GetProperty("Days")!;
+        private static readonly System.Reflection.PropertyInfo Time = IntervalType.GetProperty("Time")!;
+        private static readonly System.Reflection.MethodInfo GetFieldValue =
+            typeof(System.Data.Common.DbDataReader).GetMethod(nameof(System.Data.Common.DbDataReader.GetFieldValue))!;
+
+        internal static readonly Microsoft.EntityFrameworkCore.Storage.RelationalTypeMapping Mapping = new ScalarMapping();
+        internal static readonly Microsoft.EntityFrameworkCore.Storage.RelationalTypeMapping ArrayMapping = new ListMapping();
+
+        private static System.Type Resolve()
+        {
+            var type = System.Type.GetType(IntervalShape.TypeName, throwOnError: false);
+            if (IntervalShape.Problem(type) is { } problem) throw new System.InvalidOperationException(problem);
+            return type!;
+        }
+
+        /// <summary>The check of the NpgsqlInterval shape, kept apart from the state above so it can run against any type.</summary>
+        internal static class IntervalShape
+        {
+            internal const string TypeName = "NpgsqlTypes.NpgsqlInterval, Npgsql";
+
+            /// <summary>Null when <paramref name="type"/> has the shape the mapping reads, else a message naming what is missing.</summary>
+            internal static string? Problem(System.Type? type)
+            {
+                const string Lead = "field.duration on Npgsql: the generated DurationInterval mapping reads an interval column as " +
+                    "NpgsqlTypes.NpgsqlInterval (an Int32 Months, an Int32 Days and an Int64 Time in microseconds; " +
+                    "tested with Npgsql 8.0.5), but ";
+                if (type is null) return Lead + "no type NpgsqlTypes.NpgsqlInterval was found in the loaded Npgsql assembly.";
+                var missing = new System.Collections.Generic.List<string>();
+                foreach (var (name, want) in new[] { ("Months", typeof(int)), ("Days", typeof(int)), ("Time", typeof(long)) })
+                {
+                    var property = type.GetProperty(name);
+                    if (property is null || property.PropertyType != want)
+                        missing.Add(want.Name + " " + name);
+                }
+                return missing.Count == 0
+                    ? null
+                    : Lead + type.FullName + " has no " + string.Join(", no ", missing) + " property. Check the Npgsql version the project references.";
+            }
+        }
+
+        /// <summary>An NpgsqlInterval as a TimeSpan: refused when it has a month or year part, or a span a TimeSpan cannot hold.</summary>
+        public static System.TimeSpan FromInterval(object interval)
+        {
+            if ((int)Months.GetValue(interval)! != 0)
+                throw new System.InvalidCastException("field.duration: the interval has a month or year part, so it is not a fixed-length span");
+            var days = (int)Days.GetValue(interval)!;
+            var micros = (long)Time.GetValue(interval)!;
+            return System.TimeSpan.FromTicks(checked(days * System.TimeSpan.TicksPerDay + micros * 10));
+        }
+
+        /// <summary>An interval[] (an NpgsqlInterval array) as the list a duration array property holds.</summary>
+        public static System.Collections.Generic.IList<System.TimeSpan> FromIntervals(object intervals)
+        {
+            var list = new System.Collections.Generic.List<System.TimeSpan>();
+            foreach (var interval in (System.Array)intervals) list.Add(FromInterval(interval!));
+            return list;
+        }
+
+        // A span as Postgres interval input: [-]HH:MM:SS[.f], hours unbounded, no day part.
+        private static string Literal(System.TimeSpan value)
+        {
+            long micros = value.Ticks / 10;
+            bool negative = micros < 0;
+            long rest = negative ? -micros : micros;
+            long frac = rest % 1_000_000L, s = rest / 1_000_000L % 60, m = rest / 60_000_000L % 60, h = rest / 3_600_000_000L;
+            var text = h.ToString("00", System.Globalization.CultureInfo.InvariantCulture) + ":" + m.ToString("00", System.Globalization.CultureInfo.InvariantCulture)
+                + ":" + s.ToString("00", System.Globalization.CultureInfo.InvariantCulture);
+            if (frac > 0) text += "." + frac.ToString("D6", System.Globalization.CultureInfo.InvariantCulture).TrimEnd('0');
+            return "INTERVAL '" + (negative ? "-" : "") + text + "'";
+        }
+
+        private sealed class ScalarMapping : Microsoft.EntityFrameworkCore.Storage.RelationalTypeMapping
+        {
+            public ScalarMapping() : base("interval", typeof(System.TimeSpan)) { }
+            private ScalarMapping(RelationalTypeMappingParameters parameters) : base(parameters) { }
+            protected override Microsoft.EntityFrameworkCore.Storage.RelationalTypeMapping Clone(RelationalTypeMappingParameters parameters) => new ScalarMapping(parameters);
+            public override System.Reflection.MethodInfo GetDataReaderMethod() => GetFieldValue.MakeGenericMethod(IntervalType);
+            public override System.Linq.Expressions.Expression CustomizeDataReaderExpression(System.Linq.Expressions.Expression expression) =>
+                System.Linq.Expressions.Expression.Call(typeof(DurationInterval).GetMethod(nameof(FromInterval))!,
+                    System.Linq.Expressions.Expression.Convert(expression, typeof(object)));
+            protected override string GenerateNonNullSqlLiteral(object value) => Literal((System.TimeSpan)value);
+        }
+
+        private sealed class ListMapping : Microsoft.EntityFrameworkCore.Storage.RelationalTypeMapping
+        {
+            private static readonly Microsoft.EntityFrameworkCore.ChangeTracking.ValueComparer<System.Collections.Generic.IList<System.TimeSpan>> ListComparer = new(
+                (a, b) => a == null ? b == null : b != null && System.Linq.Enumerable.SequenceEqual(a, b),
+                v => System.Linq.Enumerable.Aggregate(v, 0, (h, e) => System.HashCode.Combine(h, e)),
+                v => System.Linq.Enumerable.ToList(v));
+
+            public ListMapping() : base(new RelationalTypeMappingParameters(
+                new CoreTypeMappingParameters(typeof(System.Collections.Generic.IList<System.TimeSpan>), comparer: ListComparer, keyComparer: ListComparer), "interval[]")) { }
+            private ListMapping(RelationalTypeMappingParameters parameters) : base(parameters) { }
+            protected override Microsoft.EntityFrameworkCore.Storage.RelationalTypeMapping Clone(RelationalTypeMappingParameters parameters) => new ListMapping(parameters);
+            public override System.Reflection.MethodInfo GetDataReaderMethod() => GetFieldValue.MakeGenericMethod(IntervalType.MakeArrayType());
+            public override System.Linq.Expressions.Expression CustomizeDataReaderExpression(System.Linq.Expressions.Expression expression) =>
+                System.Linq.Expressions.Expression.Call(typeof(DurationInterval).GetMethod(nameof(FromIntervals))!,
+                    System.Linq.Expressions.Expression.Convert(expression, typeof(object)));
+            protected override string GenerateNonNullSqlLiteral(object value) =>
+                "ARRAY[" + string.Join(",", System.Linq.Enumerable.Select((System.Collections.Generic.IEnumerable<System.TimeSpan>)value, Literal)) + "]::interval[]";
+        }
+    }}

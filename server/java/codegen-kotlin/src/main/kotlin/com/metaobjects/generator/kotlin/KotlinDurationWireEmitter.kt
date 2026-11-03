@@ -38,7 +38,6 @@ object KotlinDurationWireEmitter {
         |import com.fasterxml.jackson.core.JsonParser
         |import com.fasterxml.jackson.core.JsonToken
         |import com.fasterxml.jackson.databind.DeserializationContext
-        |import com.fasterxml.jackson.databind.JsonMappingException
         |import com.fasterxml.jackson.databind.JsonNode
         |import com.fasterxml.jackson.databind.SerializerProvider
         |import com.fasterxml.jackson.databind.deser.std.StdDeserializer
@@ -60,23 +59,10 @@ object KotlinDurationWireEmitter {
         |    private val PG_INTERVAL = Regex("^(-?\\d+) years (-?\\d+) mons (-?\\d+) days (-?\\d+) hours (-?\\d+) mins (-?)(\\d+)(?:\\.(\\d+))? secs$")
         |    private val CALENDAR = Regex("\\b(years?|mons?)\\b")
         |
-        |    /**
-        |     * The largest magnitude: 256204778 hours (about 29,000 years), the largest whole hour a .NET
-        |     * TimeSpan holds, so every port can read what any port wrote. One microsecond more is refused.
-        |     */
-        |    const val MAX_HOURS = 256_204_778L
-        |    private val MAX: Duration = Duration.ofHours(MAX_HOURS)
-        |
-        |    /** [value] when its magnitude is within [MAX_HOURS] hours; otherwise an IllegalArgumentException. */
-        |    fun checkBound(value: Duration, shown: String?): Duration {
-        |        require(value.abs() <= MAX) { "field.duration: out of range (at most " + MAX_HOURS + " hours either way): " + shown }
-        |        return value
-        |    }
-        |
         |    /** What a refused value should have been. */
         |    const val EXPECTED = "an ISO-8601 duration such as PT1H30M (no years, months or weeks)"
         |
-        |    /** True when [text] is in the accepted ISO-8601 form and within [MAX_HOURS] hours. */
+        |    /** True when [text] is in the accepted ISO-8601 form and fits a Duration (refused past it, never wrapped). */
         |    fun isDuration(text: String?): Boolean =
         |        text != null && ACCEPTED.matches(text) && runCatching { parse(text) }.isSuccess
         |
@@ -90,7 +76,7 @@ object KotlinDurationWireEmitter {
         |                Math.addExact(Math.multiplyExact(num(g[2]), 86_400L), Math.multiplyExact(num(g[3]), 3_600L)),
         |                Math.addExact(Math.multiplyExact(num(g[4]), 60L), num(g[5])))
         |            val d = Duration.ofSeconds(seconds, micros(g[6]) * 1_000L)
-        |            return checkBound(if (g[1] == "-") d.negated() else d, text)
+        |            return if (g[1] == "-") d.negated() else d
         |        } catch (e: ArithmeticException) {
         |            throw IllegalArgumentException("field.duration: out of range: " + text)
         |        } catch (e: NumberFormatException) {
@@ -100,7 +86,6 @@ object KotlinDurationWireEmitter {
         |
         |    /** The canonical wire form of [value] (sub-microsecond precision truncated toward zero). */
         |    fun format(value: Duration): String {
-        |        checkBound(value, value.toString())
         |        val negative = value.isNegative
         |        val mag = if (negative) value.negated() else value
         |        val total = mag.seconds
@@ -119,7 +104,6 @@ object KotlinDurationWireEmitter {
         |
         |    /** The Postgres interval input spelling `[-]HH:MM:SS[.f]`: Postgres refuses a signed ISO-8601 duration. */
         |    fun formatPostgres(value: Duration): String {
-        |        checkBound(value, value.toString())
         |        val mag = if (value.isNegative) value.negated() else value
         |        val total = mag.seconds
         |        val micros = mag.nano / 1_000L
@@ -149,8 +133,8 @@ object KotlinDurationWireEmitter {
         |                "field.duration: the interval " + text + " has a year or month part; a calendar span is not a duration"
         |            }
         |            val secs = Duration.ofSeconds(g[7].toLong(), micros(g[8]) * 1_000L)
-        |            return checkBound(Duration.ofDays(g[3].toLong()).plusHours(g[4].toLong()).plusMinutes(g[5].toLong())
-        |                .plus(if (g[6] == "-") secs.negated() else secs), text)
+        |            return Duration.ofDays(g[3].toLong()).plusHours(g[4].toLong()).plusMinutes(g[5].toLong())
+        |                .plus(if (g[6] == "-") secs.negated() else secs)
         |        }
         |        require(!CALENDAR.containsMatchIn(text)) {
         |            "field.duration: the interval " + text + " has a year or month part; a calendar span is not a duration"
@@ -161,10 +145,28 @@ object KotlinDurationWireEmitter {
         |        }
         |        val g = m!!.groupValues
         |        val days = Duration.ofDays(if (g[1].isEmpty()) 0L else g[1].toLong())
-        |        if (g[3].isEmpty()) return checkBound(days, text)
+        |        if (g[3].isEmpty()) return days
         |        val time = Duration.ofSeconds(g[3].toLong() * 3_600L + g[4].toLong() * 60L + g[5].toLong(), micros(g[6]) * 1_000L)
-        |        return checkBound(days.plus(if (g[2] == "-") time.negated() else time), text)
+        |        return days.plus(if (g[2] == "-") time.negated() else time)
         |    }
+        |
+        |    /**
+        |     * The 64-bit count of microseconds a SQLite / MySQL column stores (sub-microsecond precision
+        |     * truncated toward zero); past the 64-bit range (that column's limit) it is refused.
+        |     */
+        |    fun toMicros(value: Duration): Long {
+        |        try {
+        |            val mag = if (value.isNegative) value.negated() else value
+        |            val micros = Math.addExact(Math.multiplyExact(mag.seconds, 1_000_000L), mag.nano / 1_000L)
+        |            return if (value.isNegative) -micros else micros
+        |        } catch (e: ArithmeticException) {
+        |            throw IllegalArgumentException("field.duration: " + value + " is past a 64-bit count of microseconds")
+        |        }
+        |    }
+        |
+        |    /** A stored count of microseconds as a duration. */
+        |    fun fromMicros(micros: Long): Duration =
+        |        Duration.ofSeconds(Math.floorDiv(micros, 1_000_000L), Math.floorMod(micros, 1_000_000L) * 1_000L)
         |
         |    /** A duration from a JSON node: an accepted string, anything else is rejected. */
         |    fun fromNode(node: JsonNode): Duration {
@@ -185,11 +187,7 @@ object KotlinDurationWireEmitter {
         |    /** Writes a duration as its canonical ISO-8601 string, whatever the host ObjectMapper would do. */
         |    class Serializer : StdSerializer<Duration>(Duration::class.java) {
         |        override fun serialize(value: Duration, gen: JsonGenerator, provider: SerializerProvider) {
-        |            // Past the shared bound no port could read it back, so it is not written.
-        |            val text = try { format(value) } catch (e: IllegalArgumentException) {
-        |                throw JsonMappingException.from(gen, e.message, e)
-        |            }
-        |            gen.writeString(text)
+        |            gen.writeString(format(value))
         |        }
         |    }
         |

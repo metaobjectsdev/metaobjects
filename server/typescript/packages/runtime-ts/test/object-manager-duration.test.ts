@@ -1,7 +1,7 @@
-// field.duration through the ObjectManager: a value is written and read in the canonical ISO-8601
-// form (fixtures/duration-wire), a duration inside a jsonb value object is canonical too, and a
-// filter operand is spelled the way the column stores it — so `PT90M` finds a stored `PT1H30M`
-// on a text column. Postgres (which refuses a signed ISO-8601 duration as interval input) is
+// field.duration through the ObjectManager: a value is read in the canonical ISO-8601 form
+// (fixtures/duration-wire); on SQLite the column stores the microsecond integer, so sorting, range
+// filters and equality follow the span; a duration inside a jsonb value object is the canonical
+// string; and a filter operand is in the form the column stores. Postgres (which refuses a signed ISO-8601 duration as interval input) is
 // covered live by the persistence-conformance roundtrip-all-types scenario.
 import { test, expect } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -38,7 +38,7 @@ async function withSqlite(fn: (om: ObjectManager, db: Kysely<Record<string, Row>
   const dir = mkdtempSync(join(tmpdir(), "om-duration-"));
   const db = new Kysely<Record<string, Row>>({ dialect: new LibsqlDialect({ url: `file:${join(dir, "t.db")}` }) });
   try {
-    await sql.raw("CREATE TABLE jobs (id INTEGER PRIMARY KEY AUTOINCREMENT, wait TEXT, policy TEXT)").execute(db);
+    await sql.raw("CREATE TABLE jobs (id INTEGER PRIMARY KEY AUTOINCREMENT, wait INTEGER, policy TEXT)").execute(db);
     await fn(new ObjectManager({ metadata: await durationRoot(), driver: kyselyDriver({ db, dialect: "sqlite" }) }), db);
   } finally {
     await db.destroy();
@@ -46,24 +46,30 @@ async function withSqlite(fn: (om: ObjectManager, db: Kysely<Record<string, Row>
   }
 }
 
-test("SQLite: a duration and a duration inside a jsonb value object are stored and read canonical", async () => {
+test("SQLite: a duration is stored as microseconds; one inside a jsonb value object as the canonical string", async () => {
   await withSqlite(async (om, db) => {
     const created = await om.create("Job", { wait: "PT90M", policy: { timeout: "P1D", steps: ["PT60S", "-PT90S"] } });
     expect(created.wait).toBe("PT1H30M");
     expect(created.policy).toEqual({ timeout: "PT24H", steps: ["PT1M", "-PT1M30S"] });
     const stored = (await sql.raw("SELECT wait, policy FROM jobs").execute(db)).rows[0] as Record<string, string>;
-    expect(stored["wait"]).toBe("PT1H30M");
+    expect(Number(stored["wait"])).toBe(5_400_000_000);
     expect(JSON.parse(stored["policy"]!)).toEqual({ timeout: "PT24H", steps: ["PT1M", "-PT1M30S"] });
   });
 });
 
-test("SQLite: a filter operand is canonicalised, so equal spans match", async () => {
+test("SQLite: equality, range filters and sort follow the span", async () => {
   await withSqlite(async (om) => {
     await om.create("Job", { wait: "PT1H30M" });
     await om.create("Job", { wait: "-PT1M30S" });
     expect((await om.findMany("Job", { wait: "PT90M" })).map((r) => r.wait)).toEqual(["PT1H30M"]);
     expect((await om.findMany("Job", { wait: { $in: ["-PT90S", "PT5400S"] } })).length).toBe(2);
     expect(await om.count("Job", { wait: { $ne: "P0D" } })).toBe(2);
+    await om.create("Job", { wait: "PT9S" });
+    await om.create("Job", { wait: "PT10S" });
+    expect((await om.findMany("Job", { wait: { $gt: "PT9S" } }, { orderBy: ["wait", "asc"] })).map((r) => r.wait))
+      .toEqual(["PT10S", "PT1H30M"]);
+    expect((await om.findMany("Job", {}, { orderBy: ["wait", "asc"] })).map((r) => r.wait))
+      .toEqual(["-PT1M30S", "PT9S", "PT10S", "PT1H30M"]);
     await expect(om.findMany("Job", { wait: "P1M" })).rejects.toThrow(/not an ISO-8601 duration/);
   });
 });
@@ -72,4 +78,6 @@ test("a filter operand on Postgres is the interval spelling, never a signed ISO 
   const root = await durationRoot();
   const spec = buildSelectSpec(root.findObject("Job")!, { wait: "-PT90S" }, {}, undefined, undefined, "postgres");
   expect(spec.where).toEqual({ kind: "eq", column: "wait", value: "-00:01:30" });
+  const sqlite = buildSelectSpec(root.findObject("Job")!, { wait: "-PT90S" }, {}, undefined, undefined, "sqlite");
+  expect(sqlite.where).toEqual({ kind: "eq", column: "wait", value: -90_000_000 });
 });

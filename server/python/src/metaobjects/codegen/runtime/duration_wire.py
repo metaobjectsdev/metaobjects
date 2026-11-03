@@ -14,9 +14,11 @@ validator runner), the generated models and routers, and tested against the shar
   optional days (``D`` is exactly 24 hours), then an optional ``T`` with hours, minutes and
   seconds in that order; at least one component, up to nine fractional-second digits. Years,
   months and weeks are refused: a calendar span has no fixed length.
-* **Bounded** -- the magnitude is at most :data:`MAX_DURATION_HOURS` hours (the largest whole hour a
-  .NET ``TimeSpan`` holds, so every port reads what any port wrote). One microsecond past it is
-  refused, on parse and on read.
+* **Range** -- this port's own limit only: a ``timedelta`` spans at most 999999999 days either
+  way. A duration past it is refused, never wrapped.
+* **Stored micros** -- :func:`to_stored_micros` / :func:`from_stored_micros`: on SQLite, D1 and
+  MySQL a duration is a 64-bit integer count of microseconds (the column's limit: past it is
+  refused).
 * **Postgres** -- :func:`parse_postgres_interval` reads the default-style (``IntervalStyle =
   postgres``) text of an ``interval``; :func:`format_postgres_interval` writes the
   ``[-]HH:MM:SS[.f]`` spelling Postgres reads as interval input (it refuses a signed ISO-8601
@@ -52,18 +54,18 @@ _MICROS_PER_MINUTE = 60 * _MICROS_PER_SECOND
 _MICROS_PER_HOUR = 60 * _MICROS_PER_MINUTE
 _MICROS_PER_DAY = 24 * _MICROS_PER_HOUR
 
-#: The largest magnitude a duration may have, in whole hours (fixtures/duration-wire).
-MAX_DURATION_HOURS = 256_204_778
-_MAX_MICROS = MAX_DURATION_HOURS * _MICROS_PER_HOUR
+#: The range of a 64-bit integer column (SQLite INTEGER, MySQL BIGINT) holding microseconds.
+_INT64_MIN = -(2**63)
+_INT64_MAX = 2**63 - 1
 
 #: The message a value that is not a duration is refused with (the run-time validator's text).
 NOT_A_DURATION = "must be an ISO-8601 duration such as PT1H30M (no years, months or weeks)"
 
 
 def is_duration_literal(text: str) -> bool:
-    """True when *text* is an accepted ISO-8601 duration within the bound."""
+    """True when *text* is an accepted ISO-8601 duration a ``timedelta`` can hold."""
     micros = _micros_of_literal(text)
-    return micros is not None and abs(micros) <= _MAX_MICROS
+    return micros is not None and _in_range(micros)
 
 
 def _fraction_micros(digits: str | None) -> int:
@@ -95,21 +97,39 @@ def micros_of(value: _dt.timedelta) -> int:
     return (value.days * 86_400 + value.seconds) * _MICROS_PER_SECOND + value.microseconds
 
 
-def _out_of_range(shown: str) -> ValueError:
-    return ValueError(f"the duration {shown} is out of range: at most {MAX_DURATION_HOURS} hours either way")
+_MIN_MICROS = micros_of(_dt.timedelta.min)
+_MAX_MICROS = micros_of(_dt.timedelta.max)
 
 
-def _checked(value: _dt.timedelta) -> _dt.timedelta:
-    """*value*, or a ``ValueError`` when its magnitude is past the bound."""
-    if abs(micros_of(value)) > _MAX_MICROS:
-        raise _out_of_range(format_duration(value))
-    return value
+def _in_range(micros: int) -> bool:
+    return _MIN_MICROS <= micros <= _MAX_MICROS
 
 
 def _from_micros(micros: int) -> _dt.timedelta:
-    if abs(micros) > _MAX_MICROS:
-        raise _out_of_range(_format_micros(micros))
+    """A ``timedelta`` of *micros* microseconds; past a ``timedelta``'s range is a ``ValueError``
+    (refused, never wrapped)."""
+    if not _in_range(micros):
+        raise ValueError(
+            f"the duration {_format_micros(micros)} is out of range: a Python timedelta spans at most "
+            "999999999 days either way"
+        )
     return _dt.timedelta(microseconds=micros)
+
+
+def to_stored_micros(value: _dt.timedelta) -> int:
+    """*value* as the 64-bit microsecond count a SQLite / D1 / MySQL column stores. Past the
+    64-bit range (the column's limit) is a ``ValueError``."""
+    micros = micros_of(value)
+    if not _INT64_MIN <= micros <= _INT64_MAX:
+        raise ValueError(
+            f"the duration {_format_micros(micros)} is out of range for a 64-bit microsecond column"
+        )
+    return micros
+
+
+def from_stored_micros(micros: int) -> _dt.timedelta:
+    """The ``timedelta`` a stored microsecond count is."""
+    return _from_micros(micros)
 
 
 def parse_duration(text: str) -> _dt.timedelta:
@@ -154,9 +174,9 @@ def _format_micros(micros: int) -> str:
 
 def canonical_duration(text: str) -> str | None:
     """The canonical form of an accepted ISO-8601 duration, or ``None`` when *text* is not one
-    (a duration past the bound included)."""
+    (a duration past a ``timedelta``'s range included)."""
     micros = _micros_of_literal(text)
-    return None if micros is None or abs(micros) > _MAX_MICROS else _format_micros(micros)
+    return None if micros is None or not _in_range(micros) else _format_micros(micros)
 
 
 def format_postgres_interval(value: _dt.timedelta) -> str:
@@ -193,11 +213,14 @@ def parse_postgres_interval(text: str) -> _dt.timedelta:
 
 def duration_from_driver(value: Any) -> _dt.timedelta:
     """What a driver hands back for a duration column, as a ``timedelta``: a ``timedelta``
-    (pg8000 for an interval), the stored canonical string (a SQLite / MySQL text column), the
-    default-style text of an interval, or a pg8000 ``PGInterval`` (an interval pg8000 could not
-    make a ``timedelta`` of because it has a month part, which is refused)."""
+    (pg8000 for an interval), the microsecond count a SQLite / MySQL integer column holds, a
+    canonical ISO string (a duration inside a JSON value object), the default-style text of an
+    interval, or a pg8000 ``PGInterval`` (an interval pg8000 could not make a ``timedelta`` of
+    because it has a month part, which is refused)."""
     if isinstance(value, _dt.timedelta):
-        return _checked(value)
+        return value
+    if isinstance(value, int) and not isinstance(value, bool):
+        return from_stored_micros(value)
     if isinstance(value, str):
         micros = _micros_of_literal(value)
         return _from_micros(micros) if micros is not None else parse_postgres_interval(value)
@@ -209,7 +232,7 @@ def duration_from_driver(value: Any) -> _dt.timedelta:
             raise _not_fixed_length(str(value))
         result = to_timedelta()
         if isinstance(result, _dt.timedelta):
-            return _checked(result)
+            return result
     raise ValueError(f"not a field.duration value: {value!r}")
 
 
@@ -219,7 +242,7 @@ def parse_duration_input(value: Any) -> _dt.timedelta:
     is every string outside the accepted form, including the ones Pydantic's own ``timedelta``
     parser would take (``1:30:00``, ``P1Y``)."""
     if isinstance(value, _dt.timedelta):
-        return _checked(value)
+        return value
     if isinstance(value, str):
         return parse_duration(value)
     raise ValueError(f"{value!r} is not an ISO-8601 duration (such as PT1H30M; no years, months or weeks)")

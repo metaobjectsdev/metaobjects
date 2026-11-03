@@ -7,10 +7,11 @@
 // ticks below that are truncated toward zero), one leading `-` for a negative span. Every port
 // reads that form plus a leading day count (`nD`, exactly 24 hours), an optional `+`, and up to
 // nine fractional digits. Years, months and weeks are refused: a calendar span has no fixed
-// length. System.Text.Json's own TimeSpan form (`01:30:00`) is refused too. The magnitude is
-// bounded at 256204778 hours, the largest whole hour a TimeSpan holds, in every port: a longer span
-// is refused on parse and on write, never wrapped or rounded. The rule and its cross-port vectors
-// are in fixtures/duration-wire/.
+// length. System.Text.Json's own TimeSpan form (`01:30:00`) is refused too. A span longer than a
+// TimeSpan holds (about 10.7 million days) is refused, never wrapped: that is this port's own limit,
+// not a cross-port one. On a database without an interval type (SQLite, MySQL) a duration is stored
+// as a 64-bit count of microseconds (ToMicros / FromMicros). The rule and its cross-port vectors are
+// in fixtures/duration-wire/.
 //
 // ONE source, two homes. This file is the package's production helper (the filter dispatcher
 // parses its operands through it). The entity generator emits the SAME text, with only the
@@ -41,27 +42,9 @@ public static class DurationWire
     private const long MicrosPerDay = 24L * MicrosPerHour;
     private const long TicksPerMicro = TimeSpan.TicksPerMillisecond / 1000L;
 
-    /// <summary>The largest magnitude a duration may have, in hours (the largest whole hour a TimeSpan holds); every port shares the bound.</summary>
-    public const long MaxHours = 256_204_778L;
-
-    private const long MaxMicros = MaxHours * MicrosPerHour;
-
-    /// <summary>True when <paramref name="value"/> is within the shared bound (at most <see cref="MaxHours"/> hours either way, counted in whole microseconds).</summary>
-    public static bool InRange(TimeSpan value)
-    {
-        long micros = value.Ticks / TicksPerMicro;
-        return micros <= MaxMicros && micros >= -MaxMicros;
-    }
-
-    /// <summary>
-    /// The canonical string of <paramref name="value"/>: <c>[-]PT[nH][nM][n[.f]S]</c>, sub-microsecond ticks
-    /// truncated toward zero. Throws <see cref="OverflowException"/> for a span past the shared bound
-    /// (<see cref="MaxHours"/>), which no port can read.
-    /// </summary>
+    /// <summary>The canonical string of <paramref name="value"/>: <c>[-]PT[nH][nM][n[.f]S]</c>, sub-microsecond ticks truncated toward zero.</summary>
     public static string Format(TimeSpan value)
     {
-        if (!InRange(value))
-            throw new OverflowException("field.duration: a span longer than " + MaxHours.ToString(CultureInfo.InvariantCulture) + " hours is not a duration");
         long micros = value.Ticks / TicksPerMicro; // integer division truncates toward zero
         bool negative = micros < 0;
         long rest = negative ? -micros : micros;
@@ -86,8 +69,7 @@ public static class DurationWire
     /// <summary>
     /// Parse an ISO-8601 duration in the accepted form (<see cref="Pattern"/>). False for anything
     /// else: years, months or weeks, lowercase designators, fractional hours or minutes, a comma,
-    /// per-component signs, whitespace, out-of-order components, or a span longer than
-    /// <see cref="MaxHours"/> hours (one microsecond over is refused).
+    /// per-component signs, whitespace, out-of-order components, or a span a TimeSpan cannot hold.
     /// Fractional seconds past the sixth digit are truncated toward zero.
     /// </summary>
     public static bool TryParse(string? text, out TimeSpan value)
@@ -144,7 +126,6 @@ public static class DurationWire
                         i++;
                     }
                 }
-                if (micros > MaxMicros) return false;
                 value = TimeSpan.FromTicks((negative ? -micros : micros) * TicksPerMicro);
             }
         }
@@ -154,6 +135,12 @@ public static class DurationWire
         }
         return true;
     }
+
+    /// <summary>The stored form on a database without an interval type: whole microseconds, sub-microsecond ticks truncated toward zero.</summary>
+    public static long ToMicros(TimeSpan value) => value.Ticks / TicksPerMicro;
+
+    /// <summary>A stored microsecond count as a TimeSpan. Throws <see cref="OverflowException"/> for a count a TimeSpan cannot hold: refused, never wrapped.</summary>
+    public static TimeSpan FromMicros(long micros) => TimeSpan.FromTicks(checked(micros * TicksPerMicro));
 
     /// <summary>Parse the accepted form, or throw <see cref="FormatException"/>.</summary>
     public static TimeSpan Parse(string text) =>

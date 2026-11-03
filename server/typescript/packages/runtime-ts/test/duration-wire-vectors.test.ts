@@ -7,7 +7,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   canonicalDuration, durationToWire, formatDuration, formatPostgresInterval, parseDurationInput,
-  parseDurationLiteral, parsePostgresInterval, DURATION_RE,
+  parseDurationLiteral, parsePostgresInterval, durationToStoredMicros, DURATION_RE,
 } from "../src/duration-wire.js";
 
 interface Vectors {
@@ -16,6 +16,7 @@ interface Vectors {
   postgres: Array<{ in: string; out: string }>;
   postgresRefused: string[];
   postgresText: Array<{ in: string; out: string }>;
+  storedMicros: Array<{ in: string; out: string }>;
 }
 const vectors = JSON.parse(
   readFileSync(join(import.meta.dir, "..", "..", "..", "..", "..", "fixtures", "duration-wire", "vectors.json"), "utf8"),
@@ -61,6 +62,22 @@ describe("duration wire vectors (production helpers)", () => {
     });
   }
 
+  for (const v of vectors.storedMicros) {
+    test(`stored micros of ${v.in} -> ${v.out}`, () => {
+      expect(String(durationToStoredMicros(parseDurationLiteral(v.in)!))).toBe(v.out);
+      // a driver may return the integer as a number, a bigint or a digit string
+      expect(durationToWire(BigInt(v.out))).toBe(v.in);
+      expect(durationToWire(v.out)).toBe(v.in);
+      if (Number.isSafeInteger(Number(v.out))) expect(durationToWire(Number(v.out))).toBe(v.in);
+    });
+  }
+
+  test("past the 64-bit microsecond column, binding to it is refused (and only there)", () => {
+    const huge = parseDurationLiteral("PT2562047789H")!;
+    expect(() => durationToStoredMicros(huge)).toThrow(/64-bit microsecond column/);
+    expect(formatDuration(huge)).toBe("PT2562047789H");
+  });
+
   test("a node-postgres interval object reads as its canonical form", () => {
     expect(durationToWire({ hours: 1, minutes: 30 })).toBe("PT1H30M");
     expect(durationToWire({ days: 1, hours: 2, seconds: 1, milliseconds: 500.001 })).toBe("PT26H1.500001S");
@@ -68,8 +85,10 @@ describe("duration wire vectors (production helpers)", () => {
     expect(() => durationToWire({ months: 1 })).toThrow(/year or month/);
   });
 
-  test("a non-string, non-interval value is not a duration", () => {
+  test("a number is not a duration a caller can send; read back from an integer column it is microseconds", () => {
     expect(parseDurationInput(90)).toBeUndefined();
-    expect(() => durationToWire(90)).toThrow();
+    expect(durationToWire(90)).toBe("PT0.00009S");
+    expect(() => durationToWire(1.5)).toThrow();
+    expect(() => durationToWire(true)).toThrow();
   });
 });

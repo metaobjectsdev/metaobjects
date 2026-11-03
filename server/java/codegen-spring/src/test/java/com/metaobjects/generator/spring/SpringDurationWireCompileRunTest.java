@@ -38,7 +38,7 @@ import static org.junit.Assert.fail;
  * {@code field.duration}, end to end over GENERATED code: the DTO, the value-object record and the
  * Patch type a duration as {@code java.time.Duration}, write the canonical ISO-8601 string and read
  * the accepted form only — whatever the host ObjectMapper's JavaTimeModule would do — and the
- * allowlist gives a duration the identity-comparison band (eq/ne/in/isNull).
+ * allowlist gives a duration the ordering band (eq/ne/gt/gte/lt/lte/in/isNull).
  */
 public class SpringDurationWireCompileRunTest {
 
@@ -135,12 +135,11 @@ public class SpringDurationWireCompileRunTest {
                 }
             }
 
-            // The filter band: identity comparison only (a text column cannot order ISO strings).
+            // The filter band orders: a native interval on Postgres, a microsecond count elsewhere.
             Class<?> allow = cl.loadClass(PKG + ".JobFilterAllowlist");
             @SuppressWarnings("unchecked")
             Map<String, Set<String>> ops = (Map<String, Set<String>>) allow.getField("OPS_BY_FIELD").get(null);
-            assertEquals(Set.of("eq", "ne", "in", "isNull"), ops.get("holdFor"));
-            assertFalse(ops.get("holdFor").contains("gt"));
+            assertEquals(Set.of("eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull"), ops.get("holdFor"));
         }
     }
 

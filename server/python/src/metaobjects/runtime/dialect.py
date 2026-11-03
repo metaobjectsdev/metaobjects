@@ -28,7 +28,7 @@ import uuid as _uuid
 from typing import Any
 
 from ..codegen.runtime.decimal_wire import decimal_from_double15
-from ..codegen.runtime.duration_wire import format_duration
+from ..codegen.runtime.duration_wire import to_stored_micros
 from ..meta.core.field import field_constants as fc
 from ..meta.core.field.meta_field import MetaField
 from ..meta.persistence.db import db_constants as dbc
@@ -43,8 +43,9 @@ PG_OID_INT4 = 23
 class DurationParam(_dt.timedelta):
     """A ``field.duration``'s bound value: the ``timedelta`` the write codec makes of it.
 
-    The SQLite and MySQL dialects bind it as its canonical ISO-8601 string (a TEXT column),
-    and they key that on THIS type, not on ``timedelta``: only the duration write codec makes
+    The SQLite and MySQL dialects bind it as its 64-bit microsecond count (an INTEGER / BIGINT
+    column, so it orders and compares as a number), and they key that on THIS type, not on
+    ``timedelta``: only the duration write codec makes
     one, so a ``timedelta`` handed in for any other column binds exactly as it did before.
     pg8000 binds it as the ``timedelta`` it is (an interval)."""
 
@@ -278,9 +279,8 @@ class SqliteDialect(Dialect):
         if isinstance(value, _dt.time):
             return value.isoformat()
         if isinstance(value, DurationParam):
-            # field.duration: a TEXT column holding the canonical ISO-8601 string, so equal
-            # spans are equal strings.
-            return format_duration(value)
+            # field.duration: an INTEGER column holding the microsecond count.
+            return to_stored_micros(value)
         return value
 
     def decode_value(self, field: MetaField, value: Any) -> Any:
@@ -319,9 +319,9 @@ class MySqlDialect(Dialect):
         if isinstance(value, _dt.time):
             return value.isoformat()
         if isinstance(value, DurationParam):
-            # field.duration: a VARCHAR column holding the canonical ISO-8601 string. PyMySQL
-            # would otherwise bind a timedelta as a TIME literal.
-            return format_duration(value)
+            # field.duration: a BIGINT column holding the microsecond count. PyMySQL would
+            # otherwise bind a timedelta as a TIME literal.
+            return to_stored_micros(value)
         return value
 
     def decode_value(self, field: MetaField, value: Any) -> Any:

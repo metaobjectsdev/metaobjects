@@ -125,7 +125,7 @@ describe("generated field.duration columns", () => {
           expect(content).toContain(`durationColumn(`);
         }
         const hold = files.find((f) => f.path === "Hold.ts")!.content;
-        expect(hold).toContain(dialect === "postgres" ? 'dataType: () => "interval"' : dialect === "mysql" ? 'dataType: () => "varchar(64)"' : 'dataType: () => "text"');
+        expect(hold).toContain(dialect === "postgres" ? 'dataType: () => "interval"' : dialect === "mysql" ? 'dataType: () => "bigint"' : 'dataType: () => "integer"');
         // The write schemas carry the canonicalizing helper, once.
         expect(occurrences(hold, "function durationWrite(")).toBe(1);
         if (dialect === "postgres") expect(hold).toMatch(/laps: durationColumn\([^)]*\)\.array\(\)/);
@@ -138,7 +138,7 @@ describe("generated field.duration columns", () => {
     });
   }
 
-  test("sqlite: a duration round-trips through the generated table in its canonical form", async () => {
+  test("sqlite: a duration is stored as integer microseconds, reads back canonical, and orders as a span", async () => {
     const dir = mkdtempSync(join(import.meta.dir, "tmp-duration-sqlite-run-"));
     try {
       const files = await generate("sqlite", dir);
@@ -147,9 +147,9 @@ describe("generated field.duration columns", () => {
       // drizzle alone, which resolves from this package.
       const mod = (await import(pathToFileURL(join(dir, "Hold.ts")).href)) as Record<string, unknown>;
       const { drizzle } = await import("drizzle-orm/bun-sqlite");
-      const { eq } = await import("drizzle-orm");
+      const { asc, eq, gt, lt } = await import("drizzle-orm");
       const sqlite = new Database(":memory:");
-      sqlite.run("CREATE TABLE hold (id INTEGER PRIMARY KEY, hold_for TEXT NOT NULL, grace TEXT, laps TEXT)");
+      sqlite.run("CREATE TABLE hold (id INTEGER PRIMARY KEY, hold_for INTEGER NOT NULL, grace INTEGER, laps TEXT)");
       const db = drizzle(sqlite);
       // biome-ignore lint/suspicious/noExplicitAny: the generated table, imported dynamically
       const table = mod.holds as any;
@@ -157,10 +157,25 @@ describe("generated field.duration columns", () => {
         id: 1, holdFor: "P1DT0.5S", grace: "-PT90S", laps: ["PT90M"],
       });
       await db.insert(table).values(insert);
-      expect(sqlite.query("SELECT hold_for, grace FROM hold").get()).toEqual({ hold_for: "PT24H0.5S", grace: "-PT1M30S" });
+      expect(sqlite.query("SELECT hold_for, grace FROM hold").get()).toEqual({ hold_for: 86400500000, grace: -90000000 });
       // A filter value binds through the codec too: a spelling of the same span matches.
       const rows = await db.select().from(table).where(eq(table.holdFor, "P1DT0.5S"));
       expect(rows).toEqual([{ id: 1, holdFor: "PT24H0.5S", grace: "-PT1M30S", laps: ["PT1H30M"] }]);
+      // Ordering is the span's, not the text's: PT9S < PT10S < PT1H (as text, "PT10S" < "PT1H" < "PT9S").
+      const parse = (mod.HoldInsertSchema as { parse(v: unknown): Record<string, unknown> }).parse;
+      for (const [id, holdFor] of [[2, "PT10S"], [3, "PT9S"], [4, "PT1H"], [5, "-PT1M"]] as const) {
+        await db.insert(table).values(parse({ id, holdFor }));
+      }
+      const sorted = await db.select({ holdFor: table.holdFor }).from(table).orderBy(asc(table.holdFor));
+      expect(sorted.map((r: { holdFor: string }) => r.holdFor)).toEqual(["-PT1M", "PT9S", "PT10S", "PT1H", "PT24H0.5S"]);
+      const between = await db.select({ id: table.id }).from(table)
+        .where(gt(table.holdFor, "PT9S")).orderBy(asc(table.holdFor));
+      expect(between.map((r: { id: number }) => r.id)).toEqual([2, 4, 1]);
+      const under = await db.select({ id: table.id }).from(table).where(lt(table.holdFor, "PT10S")).orderBy(asc(table.id));
+      expect(under.map((r: { id: number }) => r.id)).toEqual([3, 5]);
+      // runtime-ts binds a SQLite operand as the microsecond integer; the codec passes it through.
+      const byMicros = await db.select({ id: table.id }).from(table).where(eq(table.holdFor, 10000000 as never));
+      expect(byMicros).toEqual([{ id: 2 }]);
       sqlite.close();
     } finally {
       rmSync(dir, { recursive: true, force: true });

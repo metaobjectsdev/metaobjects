@@ -90,13 +90,14 @@ def ops_for_subtype_ordered(sub_type: str | None) -> tuple[str, ...]:
         return _OPS_STRING
     # ADR-0036/0037 Wave 3 — field.uri is string-like (substring searchable);
     # field.inet is uuid-like (identity value, no substring search, no ordering).
-    # field.duration takes the inet band (ordering deferred: text dialects cannot
-    # order ISO-8601 strings).
     if sub_type == fc.FIELD_SUBTYPE_URI:
         return _OPS_STRING
-    if sub_type in (fc.FIELD_SUBTYPE_UUID, fc.FIELD_SUBTYPE_INET, fc.FIELD_SUBTYPE_DURATION):
+    if sub_type in (fc.FIELD_SUBTYPE_UUID, fc.FIELD_SUBTYPE_INET):
         return _OPS_UUID
+    # field.duration is an orderable span (a Postgres interval; a microsecond integer on
+    # SQLite, D1 and MySQL): the numeric band.
     if sub_type in (
+        fc.FIELD_SUBTYPE_DURATION,
         fc.FIELD_SUBTYPE_INT,
         fc.FIELD_SUBTYPE_LONG,
         fc.FIELD_SUBTYPE_FLOAT,

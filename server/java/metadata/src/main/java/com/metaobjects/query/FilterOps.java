@@ -119,9 +119,6 @@ public final class FilterOps {
         // inet is identity-comparison-only (uuid band — no like, no ordering).
         m.put(UriField.SUBTYPE_URI, OPS_STRING);
         m.put(InetField.SUBTYPE_INET, OPS_UUID);
-        // field.duration — identity-comparison ops only for now: a text column (SQLite, MySQL)
-        // cannot order ISO-8601 strings. Adding the ordering ops later is additive.
-        m.put(DurationField.SUBTYPE_DURATION, OPS_UUID);
         m.put(IntegerField.SUBTYPE_INT, OPS_NUMERIC);
         m.put(LongField.SUBTYPE_LONG, OPS_NUMERIC);
         m.put(DoubleField.SUBTYPE_DOUBLE, OPS_NUMERIC);
@@ -130,6 +127,8 @@ public final class FilterOps {
         m.put(CurrencyField.SUBTYPE_CURRENCY, OPS_NUMERIC);
         m.put(DateField.SUBTYPE_DATE, OPS_NUMERIC);
         m.put(TimeField.SUBTYPE_TIME, OPS_NUMERIC);
+        // field.duration orders on every DB: a native interval on Postgres, a microsecond count elsewhere.
+        m.put(DurationField.SUBTYPE_DURATION, OPS_NUMERIC);
         m.put(TimestampField.SUBTYPE_TIMESTAMP, OPS_NUMERIC);
         m.put(BooleanField.SUBTYPE_BOOLEAN, OPS_BOOLEAN);
         OPS_BY_SUBTYPE = Collections.unmodifiableMap(m);

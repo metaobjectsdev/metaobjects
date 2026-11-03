@@ -280,9 +280,17 @@ describe("Table C — dimension types", () => {
     ["time", { "field.time": { name: "x" } }],
     ["uri", { "field.uri": { name: "x" } }],
     ["inet", { "field.inet": { name: "x" } }],
-    ["duration", { "field.duration": { name: "x" } }],
   ])("%s → string, the column", async (_label, field) => {
     expect(await dimensionOf(field)).toEqual({ name: "d", sql: '{CUBE}."x"', type: "string" });
+  });
+
+  test("duration → number, its span in seconds (exact), so it sorts and filters by length", async () => {
+    const field = { "field.duration": { name: "x" } };
+    expect(await dimensionOf(field)).toEqual({ name: "d", sql: 'EXTRACT(EPOCH FROM {CUBE}."x")', type: "number" });
+    // MySQL holds a BIGINT of microseconds; widening the dividend keeps all six fractional digits.
+    expect(await dimensionOf(field, {}, "mysql")).toEqual({
+      name: "d", sql: "CAST({CUBE}.`x` AS DECIMAL(65, 6)) / 1000000", type: "number",
+    });
   });
 
   test("enum with @intValueMap → string, a CASE that carries the member symbol", async () => {

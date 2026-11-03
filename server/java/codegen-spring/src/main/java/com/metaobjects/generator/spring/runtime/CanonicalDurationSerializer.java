@@ -24,11 +24,6 @@ public final class CanonicalDurationSerializer extends StdSerializer<Duration> {
 
     @Override
     public void serialize(Duration value, JsonGenerator gen, SerializerProvider provider) throws IOException {
-        try {
-            gen.writeString(CanonicalDuration.format(value));
-        } catch (CanonicalDuration.InvalidDurationException e) {
-            // Past the shared bound: no port could read it back, so it is not written.
-            throw com.fasterxml.jackson.databind.JsonMappingException.from(gen, e.getMessage(), e);
-        }
+        gen.writeString(CanonicalDuration.format(value));
     }
 }

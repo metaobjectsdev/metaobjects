@@ -31,6 +31,23 @@ describe("renderFilterAllowlist", () => {
     expect(out).toMatch(/createdAt:\s*\{[^}]*"gte"/);
   });
 
+  test("a field.duration carries the ordered band and its wire format, and is sortable", async () => {
+    const { root, errors } = await new MetaDataLoader().load([new InMemoryStringSource(JSON.stringify({
+      "metadata.root": { package: "t", children: [{ "object.entity": { name: "Hold", children: [
+        { "source.rdb": { "@table": "hold" } },
+        { "field.long": { name: "id" } },
+        { "field.duration": { name: "holdFor", "@filterable": true } },
+        { "identity.primary": { name: "pk", "@fields": "id" } },
+      ] } }] },
+    }))]);
+    expect(errors).toEqual([]);
+    const hold = root.objects().find((c) => c.name === "Hold")!;
+    const out = renderFilterAllowlist(hold).toString();
+    expect(out).toMatch(/holdFor:\s*\{[^}]*ops: \["eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull"\]/);
+    expect(out).toMatch(/holdFor:\s*\{[^}]*format: "duration"/);
+    expect(renderSortAllowlist(hold).toString()).toContain("holdFor");
+  });
+
   test("only @filterable fields appear in allowlist", async () => {
     const entity = await loadEntity("Subscriber");
     const out = renderFilterAllowlist(entity).toString();

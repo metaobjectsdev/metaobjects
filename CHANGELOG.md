@@ -14,13 +14,14 @@ here.**
 
 - **`field.duration`: a fixed-length span of time, in every port.** `TimeSpan` in C#,
   `java.time.Duration` in Java and Kotlin, `timedelta` in Python, and a string in TypeScript;
-  a Postgres `interval` column, text on SQLite and MySQL. The wire form is an ISO-8601 duration
+  a Postgres `interval` column, and a 64-bit integer of microseconds on SQLite, D1 and MySQL, so
+  sorting and range filters follow the span on every database. The wire form is an ISO-8601 duration
   of days, hours, minutes and seconds, and every port writes the same canonical form (`PT1H30M`,
   `PT26H`, `-PT1M30S`, `PT0S`); years, months and weeks are refused. Postgres does not accept a
   signed ISO-8601 duration as input, so a value bound as text, and a declared `@default`, use
-  its own `HH:MM:SS` spelling, which it returns unchanged. Filters: `eq`, `ne`, `in`, `isNull`.
-  Shared vectors in `fixtures/duration-wire/`; see `docs/features/field-types.md`. A span is at
-  most 256204778 hours (the largest a .NET `TimeSpan` holds) in every port.
+  its own `HH:MM:SS` spelling, which it returns unchanged. Filters: every numeric operator.
+  Shared vectors in `fixtures/duration-wire/`; see `docs/features/field-types.md`. Each port is
+  limited only by its own duration type and each database by its own column.
   - An owned (ejected) generator copy from before this release does not know `field.duration`:
     re-eject it (`meta eject <name> --force`, or merge) before a model uses one. Models without a
     duration are unaffected.

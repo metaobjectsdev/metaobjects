@@ -1750,15 +1750,14 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
          * Shared support body for [DURATION_SUPPORT_FILE_NAME].kt — the `field.duration` columns:
          *
          *  - `MetaDurationColumnType` — a `Column<java.time.Duration>` over the Postgres-native
-         *    `INTERVAL`, and elsewhere a text column holding the canonical ISO-8601 string (so an
-         *    equality filter on the text matches one spelling per span). Postgres refuses a signed
+         *    `INTERVAL`, and elsewhere a BIGINT count of microseconds (so filters and sorts order it). Postgres refuses a signed
          *    ISO-8601 duration as interval input, so the value binds in the interval spelling
          *    `[-]HH:MM:SS[.f]`, as text under a `CAST(? AS INTERVAL)` parameter marker (a bare
          *    varchar parameter is refused where an interval goes). A read takes the
          *    driver's value — pgjdbc's `PGInterval`, or the stored text — through
          *    `MetaDurationWire.fromStored`, which refuses an interval with a year or month part.
          *  - `MetaDurationArrayColumnType` — an `isArray` duration: `INTERVAL[]` on Postgres, a JSON
-         *    text array of canonical strings on MySQL and SQLite.
+         *    text array of microsecond counts on MySQL and SQLite.
          *
          * The text differs by [ExposedApi] only in the array bind (and the imports).
          */
@@ -1778,18 +1777,27 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             |
             |private fun isMySql(): Boolean = currentDialect.name.let { it.equals("mysql", ignoreCase = true) || it.equals("mariadb", ignoreCase = true) }
             |
-            |/** The stored spelling of a duration: the interval spelling on Postgres, the canonical ISO-8601 string elsewhere. */
-            |private fun stored(value: Duration): String =
-            |    if (isPostgres()) MetaDurationWire.formatPostgres(value) else MetaDurationWire.format(value)
+            |/** The stored form of a duration: the interval spelling on Postgres, a 64-bit microsecond count elsewhere. */
+            |private fun stored(value: Duration): Any =
+            |    if (isPostgres()) MetaDurationWire.formatPostgres(value) else MetaDurationWire.toMicros(value)
             |
-            |/** GENERATED — do not hand-edit. A `java.time.Duration` column: native `INTERVAL` on Postgres, text elsewhere. */
+            |/** A stored value: a microsecond count (SQLite, MySQL), or interval / ISO text. */
+            |private fun durationOf(value: Any): Duration = when (value) {
+            |    is Duration -> value
+            |    is Number -> MetaDurationWire.fromMicros(value.toLong())
+            |    else -> MetaDurationWire.fromStored(value.toString())
+            |}
+            |
+            |/**
+            | * GENERATED — do not hand-edit. A `java.time.Duration` column: native `INTERVAL` on Postgres, and
+            | * elsewhere a BIGINT count of microseconds, so a range filter and a sort order it as a number.
+            | */
             |internal class MetaDurationColumnType : ColumnType<Duration>() {
-            |    override fun sqlType(): String =
-            |        if (isPostgres()) "INTERVAL" else if (isMySql()) "VARCHAR(64)" else currentDialect.dataTypeProvider.textType()
-            |    override fun valueFromDB(value: Any): Duration =
-            |        if (value is Duration) value else MetaDurationWire.fromStored(value.toString())
+            |    override fun sqlType(): String = if (isPostgres()) "INTERVAL" else "BIGINT"
+            |    override fun valueFromDB(value: Any): Duration = durationOf(value)
             |    override fun notNullValueToDB(value: Duration): Any = stored(value)
-            |    override fun nonNullValueToString(value: Duration): String = "'" + stored(value) + "'"
+            |    override fun nonNullValueToString(value: Duration): String =
+            |        if (isPostgres()) "'" + stored(value) + "'" else stored(value).toString()
             |    // The value binds as text; Postgres will not take a varchar where an interval goes, so the
             |    // marker casts it (an explicit cast from text to interval is always allowed).
             |    override fun parameterMarker(value: Duration?): String = if (isPostgres()) "CAST(? AS INTERVAL)" else "?"
@@ -1799,16 +1807,21 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             |internal fun Table.durationColumn(name: String): Column<Duration> =
             |    registerColumn(name, MetaDurationColumnType())
             |
-            |/** GENERATED — do not hand-edit. An `isArray` duration column: `INTERVAL[]` on Postgres, a JSON text array elsewhere. */
+            |/**
+            | * GENERATED — do not hand-edit. An `isArray` duration column: `INTERVAL[]` on Postgres, and elsewhere
+            | * a JSON text array of microsecond counts.
+            | */
             |internal class MetaDurationArrayColumnType : ColumnType<List<Duration>>() {
-            |    private fun element(value: Any): Duration = if (value is Duration) value else MetaDurationWire.fromStored(value.toString())
-            |    private fun json(value: List<Duration>): String = value.joinToString(",", "[", "]") { "\"" + MetaDurationWire.format(it) + "\"" }
+            |    private fun element(value: Any): Duration = durationOf(value)
+            |    private fun json(value: List<Duration>): String = value.joinToString(",", "[", "]") { MetaDurationWire.toMicros(it).toString() }
             |    override fun sqlType(): String = if (isPostgres()) "INTERVAL[]" else if (isMySql()) "JSON" else "TEXT"
             |    override fun valueFromDB(value: Any): List<Duration> = when (value) {
             |        is java.sql.Array -> (value.array as Array<*>).map { element(it!!) }
             |        is Array<*> -> value.map { element(it!!) }
             |        is List<*> -> value.map { element(it!!) }
-            |        else -> com.fasterxml.jackson.databind.ObjectMapper().readTree(value.toString()).map { MetaDurationWire.fromNode(it) }
+            |        else -> com.fasterxml.jackson.databind.ObjectMapper().readTree(value.toString()).map {
+            |            if (it.isIntegralNumber) MetaDurationWire.fromMicros(it.longValue()) else MetaDurationWire.fromNode(it)
+            |        }
             |    }
             |    override fun notNullValueToDB(value: List<Duration>): Any =
             |        if (isPostgres()) value.map { MetaDurationWire.formatPostgres(it) }.toTypedArray<Any?>() else json(value)

@@ -55,11 +55,12 @@ Five rows need a footnote:
   `[-]PT[nH][nM][n[.f]S]`: hours are never folded into days (`PT26H`), there are at most six
   fractional digits, and zero is `PT0S`. Every port reads that form and also a leading day
   count (`P1DT2H`). Years, months and weeks are refused, and so are lowercase designators and
-  fractional hours. The column is a Postgres `interval` and text elsewhere, where it holds the
-  canonical form, so equal spans are equal strings. Filters take `eq`, `ne`, `in` and
-  `isNull`; range filters are not offered yet, because a text column cannot order the
-  strings. For the same reason a `sort` on a duration orders by span on Postgres but by
-  text on SQLite and MySQL (`PT10S` before `PT9S`). The
+  fractional hours. The column is a Postgres `interval`; SQLite, D1 and MySQL store a 64-bit
+  integer count of microseconds, the way Django stores a `DurationField` outside Postgres. Both
+  order and compare as the span does, so every filter operator a number has (`eq`, `ne`, `gt`,
+  `gte`, `lt`, `lte`, `in`, `isNull`) and `sort` work on every database. There is no shared upper
+  bound: each port is limited only by its own type (a .NET `TimeSpan`, a Python `timedelta`) and
+  each database by its own column, and refuses what it cannot hold rather than wrapping it. The
   rule and its cross-port vectors are in
   [`fixtures/duration-wire/`](../../fixtures/duration-wire/).
 - **`field.map`** is the typed dict: string keys, and a value type set by exactly one of

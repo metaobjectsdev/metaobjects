@@ -41,7 +41,9 @@ import {
 } from "@metaobjectsdev/metadata";
 import type { Dialect, Row } from "./persistence-driver.js";
 import { decimalFits, decimalToWire, parseDecimalInput } from "./decimal-wire.js";
-import { durationToWire, formatDuration, formatPostgresInterval, parseDurationLiteral } from "./duration-wire.js";
+import {
+  durationToStoredMicros, durationToWire, formatDuration, formatPostgresInterval, parseDurationLiteral,
+} from "./duration-wire.js";
 
 export function coerceRowOnRead(entity: MetaData, row: Row, dialect: Dialect): Row {
   const hydrated = parseJsonTextArrays(entity, deserializeJsonbObjectFields(entity, row));
@@ -451,16 +453,19 @@ function canonicalizeDurations(entity: MetaData, row: Row): Row {
   return mapDurations(entity, row, (_field, v) => durationToWire(v));
 }
 
-/** Write side: a duration is bound as its canonical ISO-8601 string on a text column (SQLite,
- *  MySQL), so the column holds one spelling per span, and in the Postgres interval spelling on
- *  Postgres, which refuses a signed ISO-8601 duration. A value that is not a duration is refused
- *  here, not by the database. */
+/** Write side: a duration column is bound as the 64-bit microsecond integer SQLite, D1 and MySQL
+ *  store it as, and in the Postgres interval spelling on Postgres, which refuses a signed ISO-8601
+ *  duration. A duration inside a jsonb value object is JSON, so it is the canonical ISO string. A
+ *  value that is not a duration is refused here, not by the database. */
 function bindDurations(entity: MetaData, row: Row, dialect: Dialect): Row {
   return mapDurations(entity, row, (child, v, top) => {
     const micros = typeof v === "string" ? parseDurationLiteral(v) : undefined;
     if (micros === undefined) {
       throw new Error(`field.duration '${child.name}' cannot be written: ${JSON.stringify(v)} is not an ISO-8601 duration (such as PT1H30M; no years, months or weeks)`);
     }
-    return top && dialect === "postgres" ? formatPostgresInterval(micros) : formatDuration(micros);
+    if (!top) return formatDuration(micros);
+    if (dialect === "postgres") return formatPostgresInterval(micros);
+    if (dialect === "sqlite" || dialect === "mysql") return durationToStoredMicros(micros);
+    return formatDuration(micros);
   });
 }

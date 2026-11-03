@@ -96,7 +96,10 @@ class KotlinDurationWireTest {
         assertTrue("MetaDurationWire.parse" in controller, controller)
         assertTrue("MetaDurationWire.fromNode(body.get(\"holdFor\"))" in controller, controller)
         val allowlist = files.getValue("acme/ops/JobFilterAllowlist.kt")
-        assertFalse("\"gt\"" in allowlist.substringAfter("\"holdFor\"").substringBefore("\n"), allowlist)
+        // A duration orders on every DB (interval on Postgres, microsecond count elsewhere).
+        val holdForOps = allowlist.substringAfter("\"holdFor\" to setOf(").substringBefore(")")
+        for (op in listOf("eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull")) assertTrue("\"$op\"" in holdForOps, allowlist)
+        assertTrue("JobTable.holdFor greater (p.value as Duration)" in controller, controller)
         // Generated code names no MetaObjects package.
         for ((path, src) in files) {
             val code = src.lineSequence().filterNot { it.trimStart().let { l -> l.startsWith("*") || l.startsWith("/*") || l.startsWith("//") } }
@@ -147,8 +150,19 @@ class KotlinDurationWireTest {
         }
         assertFailsWith<IllegalArgumentException> { call("fromStored", "1 years 2 mons 3 days 4 hours 5 mins 6.0 secs") }
         assertEquals("-PT1.123456S", call("format", Duration.ofSeconds(-1, -123_456_789)))
-        // The shared bound holds on write too, and no default locale changes the digits.
-        assertFailsWith<IllegalArgumentException> { call("format", Duration.ofHours(256_204_778).plusNanos(1_000)) }
+        // The stored microsecond count (SQLite / MySQL).
+        for (c in v.get("storedMicros")) {
+            val d = call("parse", c.get("in").asText())
+            assertEquals(c.get("out").asText().toLong(), call("toMicros", d), "storedMicros ${c.get("in")}")
+            assertEquals(c.get("in").asText(), call("format", call("fromMicros", c.get("out").asText().toLong())))
+        }
+        assertEquals(-1_000_000L, call("toMicros", Duration.ofSeconds(-1, -500)))
+        assertFailsWith<IllegalArgumentException> { call("toMicros", Duration.ofSeconds(Long.MAX_VALUE / 1_000_000L + 1)) }
+        // Java's Duration range is the only limit, refused past it, never wrapped.
+        assertEquals("PT2562047788015215H", call("format", call("parse", "PT2562047788015215H")))
+        assertFailsWith<IllegalArgumentException> { call("parse", "PT9223372036854775808S") }
+        assertEquals(false, call("isDuration", "PT99999999999999999999H"))
+        // No default locale changes the digits.
         val saved = java.util.Locale.getDefault()
         try {
             java.util.Locale.setDefault(java.util.Locale.forLanguageTag("ar-EG-u-nu-arab"))

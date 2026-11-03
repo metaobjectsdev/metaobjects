@@ -38,7 +38,7 @@ export const FIELD_SUBTYPE_INET = "inet";
  *  native type + behavior → a subtype. TS binds to `string` (an ISO-8601
  *  duration; TS has no native duration type); other ports bind to native
  *  (TimeSpan / java.time.Duration / timedelta). DB column is Postgres-native
- *  `interval`, text elsewhere. Years, months and weeks are refused. */
+ *  `interval`, a 64-bit microsecond integer elsewhere. Years, months and weeks are refused. */
 export const FIELD_SUBTYPE_DURATION = "duration";
 
 export const FIELD_SUBTYPES = [

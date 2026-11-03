@@ -7,7 +7,7 @@ import {
   DEFAULT_COLUMN_NAMING_STRATEGY,
   FIELD_SUBTYPE_DURATION,
   resolveTableName, resolveColumnName,
-  formatDuration, formatPostgresInterval, parseDurationLiteral,
+  durationToStoredMicros, formatDuration, formatPostgresInterval, parseDurationLiteral,
 } from "@metaobjectsdev/metadata";
 import { MetadataError } from "./errors.js";
 import { intValueMapOf } from "./type-coercer.js";
@@ -171,15 +171,17 @@ function compileEntry(
  * pins `@intValueMap`'s key set to `@values`.
  */
 function encodeFilterValue<T>(field: MetaData, value: T, dialect?: Dialect): T {
-  // A duration is compared in the spelling its column stores: the canonical ISO string on a text
-  // column (so `PT90M` equals a stored `PT1H30M`), and the interval spelling on Postgres, which
-  // refuses a signed ISO-8601 duration. A value that is not a duration is refused, not bound.
+  // A duration is compared in the form its column stores: the microsecond integer on SQLite / D1 /
+  // MySQL, the interval spelling on Postgres (which refuses a signed ISO-8601 duration). A value
+  // that is not a duration is refused, not bound.
   if (field.subType === FIELD_SUBTYPE_DURATION && typeof value === "string") {
     const micros = parseDurationLiteral(value);
     if (micros === undefined) {
       throw new MetadataError(`filter on field.duration '${field.name}': ${JSON.stringify(value)} is not an ISO-8601 duration`);
     }
-    return (dialect === "postgres" ? formatPostgresInterval(micros) : formatDuration(micros)) as T;
+    if (dialect === "postgres") return formatPostgresInterval(micros) as T;
+    if (dialect === "sqlite" || dialect === "mysql") return durationToStoredMicros(micros) as T;
+    return formatDuration(micros) as T;
   }
   const intMap = intValueMapOf(field);
   if (intMap === undefined || typeof value !== "string") return value;

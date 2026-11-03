@@ -157,7 +157,7 @@ children and the cardinality of that subtype. Documentation attributes
 </tr>
 <tr>
 <td><code>field.duration</code></td>
-<td>A fixed-length span of time: days, hours, minutes and seconds (ADR-0036/0037 — a concept with a native type + behavior). Binds to TS string (TS has no native duration type); other ports bind to their native type (C# System.TimeSpan, Java and Kotlin java.time.Duration, Python datetime.timedelta). DB column is the Postgres-native interval type, text elsewhere. The wire form is an ISO-8601 duration: every port writes [-]PT[nH][nM][n[.f]S] (hours never folded into days, up to 6 fractional digits, zero is PT0S) and reads that form plus a leading day count (nD, exactly 24 hours). Years, months and weeks are refused: a calendar span is not a fixed length.</td>
+<td>A fixed-length span of time: days, hours, minutes and seconds (ADR-0036/0037 — a concept with a native type + behavior). Binds to TS string (TS has no native duration type); other ports bind to their native type (C# System.TimeSpan, Java and Kotlin java.time.Duration, Python datetime.timedelta). DB column is the Postgres-native interval type; SQLite, D1 and MySQL store a 64-bit integer count of microseconds, which orders and compares as the span does. The wire form is an ISO-8601 duration: every port writes [-]PT[nH][nM][n[.f]S] (hours never folded into days, up to 6 fractional digits, zero is PT0S) and reads that form plus a leading day count (nD, exactly 24 hours). Years, months and weeks are refused: a calendar span is not a fixed length.</td>
 <td><a href="types/field.html#fieldduration">types/field.md#fieldduration</a></td>
 </tr>
 <tr>

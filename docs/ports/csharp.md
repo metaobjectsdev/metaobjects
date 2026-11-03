@@ -369,16 +369,15 @@ attributes or delete `DecimalWire.g.cs` to change the output: they also check in
 and regenerate.
 
 A `field.duration` is a `TimeSpan` carrying `[DurationWire.Iso]`, which reads and writes the
-ISO-8601 form every port shares (`PT1H30M`) instead of System.Text.Json's `01:30:00`. Npgsql maps
-it to an `interval` column; on any other provider a value converter stores the canonical string.
+ISO-8601 form every port shares (`PT1H30M`) instead of System.Text.Json's `01:30:00`. On Npgsql it
+is an `interval` column. EF reads an interval through Npgsql's own `TimeSpan` conversion, which (as
+of Npgsql 8.0.5) silently drops a negative month or year part (`'-1 mons'` reads as `PT0S`) and
+wraps a day count past `TimeSpan`'s range, so the generated context maps each duration column
+through `NpgsqlInterval` instead and refuses either one on read. On any other provider a value
+converter stores the 64-bit microsecond count, so sorting and range filters follow the span.
+`TimeSpan`'s own range is the only limit: a longer span is refused, never wrapped.
 `DurationWire.g.cs` is emitted once per namespace that has a duration, and an owned `routes`
 generator also copies `DurationWire.cs`.
-
-One limit is Npgsql's, not the generated code's: EF reads an `interval` through Npgsql's own
-`TimeSpan` conversion, which (as of Npgsql 8.0.5) refuses a positive month part but silently drops
-a negative month or year part (`'-1 mons'` reads as `PT0S`) and wraps a day count past `TimeSpan`'s
-range. No MetaObjects writer stores either, so only a row written by hand can hold one; the other
-ports refuse it on read.
 
 ### `<Entity>Names` — the physical names, as constants
 

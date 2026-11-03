@@ -23,6 +23,7 @@ interface Vectors {
   postgres: Array<{ in: string; out: string }>;
   postgresRefused: string[];
   postgresText: Array<{ in: string; out: string }>;
+  storedMicros: Array<{ in: string; out: string }>;
 }
 const vectors = JSON.parse(
   readFileSync(join(import.meta.dir, "..", "..", "..", "..", "..", "fixtures", "duration-wire", "vectors.json"), "utf8"),
@@ -37,7 +38,7 @@ function writeSchema(): z.ZodType<string, z.ZodTypeDef, unknown> {
   return new Function("z", body)(z) as z.ZodType<string, z.ZodTypeDef, unknown>;
 }
 
-interface Codec { dataType(): string; toDriver(v: string): string; fromDriver(v: unknown): string }
+interface Codec { dataType(): string; toDriver(v: string): string | number | bigint; fromDriver(v: unknown): string }
 
 /** The column codec exactly as a generated module spells it; `customType` hands back its config. */
 function columnCodec(dialect: Dialect): Codec {
@@ -64,15 +65,12 @@ describe("generated duration write schema", () => {
       expect(schema.safeParse(v).success).toBe(false);
     });
   }
-  test("the 256204778-hour bound: exactly at it is kept, one microsecond over is refused, and no value is formatted in exponent notation", () => {
-    expect(schema.parse("PT256204778H")).toBe("PT256204778H");
-    expect(schema.parse("-PT922337200800S")).toBe("-PT256204778H");
-    expect(schema.parse("PT256204777H59M59.999999S")).toBe("PT256204777H59M59.999999S");
-    for (const over of ["PT256204778H0.000001S", "-PT256204778H0.000001S", "PT922337200801S", "P99999999999999999999999D", "PT1" + "0".repeat(400) + "S"]) {
-      const r = schema.safeParse(over);
-      expect(r.success, over).toBe(false);
-      expect(JSON.stringify(r.success ? "" : r.error.issues), over).toContain("256204778 hours");
-    }
+  test("no limit of its own: a span past every 64-bit or TimeSpan range is exact, never in exponent notation", () => {
+    expect(schema.parse("PT256204779H")).toBe("PT256204779H");
+    expect(schema.parse("P99999999999999999999999D")).toBe("PT2399999999999999999999976H");
+    expect(schema.parse("PT1" + "0".repeat(40) + ".000001S")).toBe(
+      "PT2777777777777777777777777777777777777H46M40.000001S",
+    );
   });
   test("a non-string is refused", () => {
     expect(schema.safeParse(90).success).toBe(false);
@@ -85,42 +83,54 @@ describe("generated duration column codec", () => {
   const sqlite = columnCodec("sqlite");
   const mysql = columnCodec("mysql");
 
-  test("the physical column type per dialect", () => {
+  test("the physical column type per dialect: interval; a 64-bit integer of microseconds elsewhere", () => {
     expect(pg.dataType()).toBe("interval");
-    expect(sqlite.dataType()).toBe("text");
-    expect(mysql.dataType()).toBe("varchar(64)");
+    expect(sqlite.dataType()).toBe("integer");
+    expect(mysql.dataType()).toBe("bigint");
   });
 
   for (const v of vectors.postgresText) {
-    test(`Postgres binds ${v.in} as ${v.out}`, () => {
+    test(`Postgres binds ${v.in} as ${v.out}, and reads it back`, () => {
       expect(pg.toDriver(v.in)).toBe(v.out);
+      expect(pg.fromDriver(v.out)).toBe(v.in);
+    });
+  }
+  for (const v of vectors.storedMicros) {
+    test(`SQLite / MySQL store ${v.in} as ${v.out} microseconds, and read it back`, () => {
+      for (const codec of [sqlite, mysql]) {
+        expect(String(codec.toDriver(v.in))).toBe(v.out);
+        // A driver hands the integer back as a number, a bigint or a digit string.
+        expect(codec.fromDriver(Number(v.out))).toBe(v.in);
+        expect(codec.fromDriver(BigInt(v.out))).toBe(v.in);
+        expect(codec.fromDriver(v.out)).toBe(v.in);
+      }
     });
   }
   for (const v of vectors.parse) {
-    test(`SQLite / MySQL bind ${v.in} as ${v.out}; Postgres reads its own spelling back`, () => {
-      expect(sqlite.toDriver(v.in)).toBe(v.out);
-      expect(mysql.toDriver(v.in)).toBe(v.out);
-      expect(pg.fromDriver(pg.toDriver(v.in))).toBe(v.out);
-      expect(sqlite.fromDriver(v.in)).toBe(v.out);
+    test(`${v.in} round-trips as ${v.out} on every dialect`, () => {
+      for (const codec of [pg, sqlite, mysql]) expect(codec.fromDriver(codec.toDriver(v.in))).toBe(v.out);
     });
   }
-  // The codec also takes the Postgres spelling, which runtime-ts binds a filter operand in; of the
-  // refused ISO inputs only `1:30:00` is that spelling (one hour thirty), so it alone binds.
-  for (const v of vectors.refused.filter((r) => r !== "1:30:00")) {
+  test("a safe microsecond count binds as a number; past 2^53 as a bigint; past the 64-bit range it is refused", () => {
+    expect(sqlite.toDriver("PT876000H")).toBe(3153600000000000);
+    expect(sqlite.toDriver("PT2562047788H")).toBe(BigInt("9223372036800000000"));
+    expect(sqlite.fromDriver(BigInt("9223372036800000000"))).toBe("PT2562047788H");
+    expect(() => sqlite.toDriver("PT2562047789H")).toThrow(/64-bit/);
+    expect(() => mysql.toDriver("-PT2562047789H")).toThrow(/64-bit/);
+    // Postgres has no such limit in the codec: its interval range is Postgres's to enforce.
+    expect(pg.toDriver("PT2562047789H")).toBe("2562047789:00:00");
+  });
+  test("runtime-ts's filter operands bind through the codec unchanged: the micros on SQLite / MySQL, the interval text on Postgres", () => {
+    expect(sqlite.toDriver(5400000000 as never)).toBe(5400000000);
+    expect(mysql.toDriver(BigInt("-90000000") as never)).toBe(-90000000);
+    expect(pg.toDriver("01:30:00")).toBe("01:30:00");
+  });
+  for (const v of vectors.refused) {
     test(`binding ${JSON.stringify(v)} throws`, () => {
-      expect(() => pg.toDriver(v)).toThrow();
-      expect(() => sqlite.toDriver(v)).toThrow();
-    });
-  }
-  for (const v of vectors.postgresText) {
-    test(`binding the Postgres spelling ${v.out} is the same span`, () => {
-      expect(pg.toDriver(v.out)).toBe(v.out);
-      expect(sqlite.toDriver(v.out)).toBe(v.in);
-    });
-  }
-  for (const v of vectors.postgresRefused) {
-    test(`binding ${v} throws (a year or month part, or not an interval)`, () => {
-      expect(() => pg.toDriver(v)).toThrow();
+      // The codec takes the Postgres spelling too (runtime-ts binds a Postgres operand in it), and
+      // `1:30:00` is that spelling — one hour thirty — so on Postgres it binds.
+      if (v !== "1:30:00") expect(() => pg.toDriver(v)).toThrow();
+      expect(() => sqlite.toDriver(v === "1:30:00" ? "1:30" : v)).toThrow();
     });
   }
   for (const v of vectors.postgres) {
@@ -129,28 +139,17 @@ describe("generated duration column codec", () => {
     });
   }
   for (const v of vectors.postgresRefused) {
-    test(`Postgres text ${v} is refused on read`, () => {
+    test(`Postgres text ${v} is refused on read and on bind`, () => {
       expect(() => pg.fromDriver(v)).toThrow();
+      expect(() => pg.toDriver(v)).toThrow();
     });
   }
-  test("the codec holds the same bound on bind and on read", () => {
-    expect(pg.toDriver("PT256204778H")).toBe("256204778:00:00");
-    expect(pg.toDriver("-PT256204778H")).toBe("-256204778:00:00");
-    expect(sqlite.toDriver("-P10675199DT2H")).toBe("-PT256204778H");
-    for (const over of ["PT256204778H0.000001S", "P99999999999999999999999D", "256204778:00:00.000001", "10675199 days 02:00:01"]) {
-      expect(() => pg.toDriver(over), over).toThrow(/256204778 hours/);
-      expect(() => sqlite.toDriver(over), over).toThrow(/256204778 hours/);
-      expect(() => pg.fromDriver(over), over).toThrow(/256204778 hours/);
-    }
-    expect(() => pg.fromDriver({ days: 10675200 })).toThrow(/256204778 hours/);
-    // Mixed signs that net back inside the bound read fine.
-    expect(pg.fromDriver("10675200 days -24:00:00")).toBe("PT256204776H");
-  });
   test("a node-postgres interval object reads as the canonical form; a month part is refused", () => {
     expect(pg.fromDriver({ days: 1, hours: 2 })).toBe("PT26H");
     expect(pg.fromDriver({ minutes: -1, seconds: -30 })).toBe("-PT1M30S");
     expect(pg.fromDriver({ seconds: 1, milliseconds: 500.25 })).toBe("PT1.50025S");
     expect(() => pg.fromDriver({ months: 1 })).toThrow(/year or month/);
-    expect(() => pg.fromDriver(42)).toThrow();
+    expect(() => pg.fromDriver(1.5)).toThrow();
+    expect(() => pg.fromDriver(true)).toThrow();
   });
 });

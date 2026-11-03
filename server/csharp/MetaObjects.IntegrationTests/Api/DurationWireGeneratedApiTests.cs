@@ -2,9 +2,9 @@
 // bytes, on a model of its own, and the Postgres half of the shared wire vectors
 // (fixtures/duration-wire/vectors.json) against a live interval column through Npgsql.
 //
-// SQLite needs no Docker: a duration there is the canonical ISO-8601 string in a TEXT column,
-// through the generated DbContext's value converter. Postgres is the native interval, bound and
-// read as a TimeSpan by Npgsql.
+// SQLite needs no Docker: a duration there is a 64-bit count of microseconds in an INTEGER column,
+// through the generated DbContext's value converter, so it orders as the span does. Postgres is the
+// native interval, bound as a TimeSpan and read through the generated NpgsqlInterval mapping.
 
 using System.Text;
 using System.Text.Json;
@@ -40,7 +40,7 @@ public sealed class DurationWireGeneratedApiTests
         ] } }
         """;
 
-    private const string SqliteSchema = """CREATE TABLE "timers" ("id" INTEGER PRIMARY KEY AUTOINCREMENT, "label" TEXT, "timeout" TEXT NOT NULL, "grace" TEXT, "backoff" TEXT NOT NULL, "window" TEXT, "limits_cap" TEXT)""";
+    private const string SqliteSchema = """CREATE TABLE "timers" ("id" INTEGER PRIMARY KEY AUTOINCREMENT, "label" TEXT, "timeout" INTEGER NOT NULL, "grace" INTEGER, "backoff" TEXT NOT NULL, "window" TEXT, "limits_cap" INTEGER)""";
     private const string PgSchema = """CREATE TABLE "timers" ("id" BIGSERIAL PRIMARY KEY, "label" TEXT, "timeout" INTERVAL NOT NULL, "grace" INTERVAL, "backoff" INTERVAL[] NOT NULL, "window" JSONB, "limits_cap" INTERVAL)""";
 
     private static async Task<GeneratedRoutesServer> Start(ScenarioEngine engine, string conn, bool createSchema = true)
@@ -126,10 +126,32 @@ public sealed class DurationWireGeneratedApiTests
             Assert.Contains("invalid_filter_value", bx);
             Assert.Contains("\"field\":\"timeout\"", bx);
         }
+
+        // A duration orders as the span: a gt / lt / gte filter and a sort compare lengths, not text.
+        var (s3, b3) = await Send(c, "POST", "/api/timers", """{"label":"c","timeout":"PT30M","grace":"PT1S","backoff":[]}""");
+        Assert.True(s3 == 201, $"POST: {s3} {b3}");
+        var (_, longer) = await Send(c, "GET", "/api/timers?filter%5Btimeout%5D%5Bgt%5D=PT1H");
+        Assert.Contains("\"label\":\"a\"", longer);
+        Assert.Contains("\"label\":\"b\"", longer);
+        Assert.DoesNotContain("\"label\":\"c\"", longer);
+        var (_, shorter) = await Send(c, "GET", "/api/timers?filter%5Btimeout%5D%5Blt%5D=P1D");
+        Assert.Contains("\"label\":\"c\"", shorter);
+        Assert.DoesNotContain("\"label\":\"a\"", shorter);
+        var (_, atLeast) = await Send(c, "GET", "/api/timers?filter%5Bgrace%5D%5Bgte%5D=-PT90S");
+        Assert.Contains("\"label\":\"a\"", atLeast);   // -PT1M30S: as long as the bound, not shorter
+        Assert.Contains("\"label\":\"c\"", atLeast);
+        var (_, below) = await Send(c, "GET", "/api/timers?filter%5Bgrace%5D%5Blt%5D=PT0S");
+        Assert.Contains("\"label\":\"a\"", below);     // a negative span is shorter than zero
+        Assert.DoesNotContain("\"label\":\"c\"", below);
+        var (ss, asc) = await Send(c, "GET", "/api/timers?sort=timeout:asc");
+        Assert.True(ss == 200, $"sort: {ss} {asc}");
+        Assert.True(asc.IndexOf("\"label\":\"c\"", StringComparison.Ordinal) < asc.IndexOf("\"label\":\"a\"", StringComparison.Ordinal), asc);
+        var (_, desc) = await Send(c, "GET", "/api/timers?sort=grace:desc&filter%5Bgrace%5D%5BisNull%5D=false");
+        Assert.True(desc.IndexOf("\"label\":\"c\"", StringComparison.Ordinal) < desc.IndexOf("\"label\":\"a\"", StringComparison.Ordinal), desc);
     }
 
     [Fact]
-    public async Task On_sqlite_a_duration_is_the_canonical_string_in_a_text_column()
+    public async Task On_sqlite_a_duration_is_a_microsecond_count_in_an_integer_column()
     {
         using var db = new SqliteTempDatabase("mo-duration-wire-");
         var conn = $"Data Source={db.FilePath}";
@@ -139,26 +161,26 @@ public sealed class DurationWireGeneratedApiTests
             await Exercise(c);
         }
 
-        // The column holds one spelling per span: the canonical one.
+        // The column holds the span's microsecond count (a JSON document keeps the canonical string).
         await using var sql = await ScenarioEngine.Sqlite.OpenConnectionAsync(conn);
         await using var cmd = sql.CreateCommand();
         cmd.CommandText = """SELECT "timeout", "grace", "backoff", "window", "limits_cap" FROM "timers" WHERE "id" = 1""";
         await using (var r = await cmd.ExecuteReaderAsync())
         {
             Assert.True(await r.ReadAsync());
-            Assert.Equal("PT26H", r.GetString(0));
-            Assert.Equal("-PT1M30S", r.GetString(1));
-            Assert.Equal("[\"PT1H30M\",\"PT0.5S\"]", r.GetString(2));
+            Assert.Equal(93_600_000_000L, r.GetInt64(0));
+            Assert.Equal(-90_000_000L, r.GetInt64(1));
+            Assert.Equal("[5400000000,500000]", r.GetString(2));
             Assert.Contains("\"PT1H30M\"", r.GetString(3));
-            Assert.Equal("PT2H", r.GetString(4)); // a flattened value object's member too
+            Assert.Equal(7_200_000_000L, r.GetInt64(4)); // a flattened value object's member too
         }
 
-        // A row another port wrote, in the accepted (not canonical) form, reads back canonical.
+        // A row another port wrote reads back canonical.
         await ScenarioEngine.Sqlite.ExecuteScriptAsync(conn,
-            """INSERT INTO "timers" ("label","timeout","backoff","window","limits_cap") VALUES ('other','P1D','["PT90M"]','{"Length":"PT90M","Slack":null}','PT5400S')""");
+            """INSERT INTO "timers" ("label","timeout","backoff","window","limits_cap") VALUES ('other',86400000000,'[5400000000]','{"Length":"PT90M","Slack":null}',5400000000)""");
         await using var again = await Start(ScenarioEngine.Sqlite, conn, createSchema: false);
         using var c2 = new HttpClient { BaseAddress = new Uri(again.BaseUrl) };
-        var (so, bo) = await Send(c2, "GET", "/api/timers/3");
+        var (so, bo) = await Send(c2, "GET", "/api/timers/4");
         Assert.True(so == 200, $"GET other: {so} {bo}");
         Assert.Equal("\"PT24H\"", Field(bo, "timeout"));
         Assert.Equal("[\"PT1H30M\"]", Field(bo, "backoff"));
@@ -166,7 +188,7 @@ public sealed class DurationWireGeneratedApiTests
     }
 
     [Fact]
-    public async Task On_postgres_a_duration_is_a_native_interval_and_a_month_part_is_refused()
+    public async Task On_postgres_a_duration_is_a_native_interval()
     {
         await using var pg = await PostgresContainer.StartAsync();
         await using var server = await Start(ScenarioEngine.Postgres, pg.ConnectionString);
@@ -184,25 +206,61 @@ public sealed class DurationWireGeneratedApiTests
             Assert.True(r.GetBoolean(1));
         }
 
-        // An interval with a month part is not a duration: reading one is an error, never a guess.
-        // ("-1 mons" / "-1 year" are not here: Npgsql misreads them; see NpgsqlMisreads below.)
-        foreach (var calendar in new[] { "1 mon", "2 years" })
-        {
-            await ScenarioEngine.Postgres.ExecuteScriptAsync(pg.ConnectionString,
-                "INSERT INTO \"timers\" (\"id\",\"label\",\"timeout\",\"backoff\") VALUES (900,'calendar', interval '" + calendar + "', '{}')");
-            var (sm, bm) = await Send(c, "GET", "/api/timers/900");
-            Assert.True(sm != 200, $"interval '{calendar}' read as {bm}");
-            await ScenarioEngine.Postgres.ExecuteScriptAsync(pg.ConnectionString, """DELETE FROM "timers" WHERE "id" = 900""");
-        }
     }
 
-    // Intervals Npgsql 8.0.5's native TimeSpan read gets WRONG instead of refusing: it guards the month
-    // part with `months > 0`, so a negative month or year part is silently dropped ('-1 mons' reads as
-    // PT0S), and it adds the day part without an overflow check, so '10675200 days' wraps to a negative
-    // span inside the bound. EF materializes the column through that read, so the generated code
-    // never sees the interval's parts. Closing it needs host-side Npgsql configuration (or a driver
-    // fix), not generated code.
-    private static readonly HashSet<string> NpgsqlMisreads = ["10675200 days", "-1 mons", "-1 year"];
+    // Npgsql's own TimeSpan read guards the month part with `months > 0` (a stored '-1 mons' reads
+    // as PT0S) and adds the day part unchecked (a day count past a TimeSpan wraps). The generated
+    // context reads the column through NpgsqlInterval instead: every Postgres vector reads back
+    // canonical, and a month or year part of either sign, or a day count a TimeSpan cannot hold, is
+    // refused — never read wrong. A C#/Npgsql limit, not a cross-port one.
+    [Fact]
+    public async Task On_postgres_the_generated_read_refuses_a_month_part_and_a_day_count_past_a_timespan()
+    {
+        var vectors = JsonDocument.Parse(await File.ReadAllTextAsync(Path.Combine(
+            CorpusPaths.Repo, "fixtures", "duration-wire", "vectors.json"))).RootElement;
+        await using var pg = await PostgresContainer.StartAsync();
+        await using var server = await Start(ScenarioEngine.Postgres, pg.ConnectionString);
+        using var c = new HttpClient { BaseAddress = new Uri(server.BaseUrl) };
+
+        async Task<(int Status, string Body)> ReadStored(string timeout, string backoff = "{}")
+        {
+            await using var sql = new NpgsqlConnection(pg.ConnectionString);
+            await sql.OpenAsync();
+            await using (var del = new NpgsqlCommand("""DELETE FROM "timers" WHERE "id" = 900""", sql)) await del.ExecuteNonQueryAsync();
+            await using (var ins = new NpgsqlCommand("""INSERT INTO "timers" ("id","label","timeout","backoff") VALUES (900, 'stored', @t::interval, @b::interval[])""", sql))
+            {
+                ins.Parameters.AddWithValue("t", timeout);
+                ins.Parameters.AddWithValue("b", backoff);
+                await ins.ExecuteNonQueryAsync();
+            }
+            return await Send(c, "GET", "/api/timers/900");
+        }
+
+        foreach (var v in vectors.GetProperty("postgres").EnumerateArray())
+        {
+            var (st, body) = await ReadStored(v.GetProperty("in").GetString()!);
+            Assert.True(st == 200, $"interval '{v.GetProperty("in").GetString()}': {st} {body}");
+            Assert.Equal($"\"{v.GetProperty("out").GetString()}\"", Field(body, "timeout"));
+        }
+        var refused = vectors.GetProperty("postgresRefused").EnumerateArray().Select(v => v.GetString()!)
+            .Where(t => t != "abc") // not an interval: Postgres itself refuses the INSERT
+            .Concat(["-1 mons", "-1 year", "-1 year 2 mons", "10675200 days", "-10675200 days"]);
+        foreach (var text in refused)
+        {
+            var (st, body) = await ReadStored(text);
+            Assert.True(st != 200, $"interval '{text}' read as {body}");
+        }
+
+        // An interval[] reads element by element through the same rule.
+        var (sa, ba) = await ReadStored("00:00:00", "{26:00:00,1 day,-00:01:30}");
+        Assert.True(sa == 200, $"interval[]: {sa} {ba}");
+        Assert.Equal("[\"PT26H\",\"PT24H\",\"-PT1M30S\"]", Field(ba, "backoff"));
+        foreach (var array in new[] { "{1 hour,-1 mons}", "{10675200 days}" })
+        {
+            var (st, body) = await ReadStored("00:00:00", array);
+            Assert.True(st != 200, $"interval[] '{array}' read as {body}");
+        }
+    }
 
     private static async Task<List<string>> Misread(NpgsqlConnection sql, IEnumerable<string> texts)
     {
@@ -217,16 +275,6 @@ public sealed class DurationWireGeneratedApiTests
             if (read is not null) misread.Add($"'{text}' read as {read}");
         }
         return misread;
-    }
-
-    [Fact(Skip = "Npgsql 8.0.5 misreads these intervals (see NpgsqlMisreads); unskip once the read is guarded.")]
-    public async Task A_negative_month_part_and_a_day_overflow_are_refused_on_read()
-    {
-        await using var pg = await PostgresContainer.StartAsync();
-        await using var sql = new NpgsqlConnection(pg.ConnectionString);
-        await sql.OpenAsync();
-        var misread = await Misread(sql, NpgsqlMisreads);
-        Assert.True(misread.Count == 0, string.Join("; ", misread));
     }
 
     // The `postgres`, `postgresRefused` and `postgresText` vectors, against Npgsql's native TimeSpan.
@@ -249,12 +297,9 @@ public sealed class DurationWireGeneratedApiTests
             Assert.Equal(v.GetProperty("out").GetString(), DurationWire.Format(span));
         }
 
-        // An interval with a year or month part, one past the shared magnitude bound, or text that is
-        // no interval is refused: by Npgsql's read, or by DurationWire on the way out. The inputs
-        // Npgsql itself misreads are pinned separately (NpgsqlMisreads).
-        var refused = vectors.GetProperty("postgresRefused").EnumerateArray().Select(v => v.GetString()!)
-            .Where(t => !NpgsqlMisreads.Contains(t));
-        Assert.Empty(await Misread(sql, refused));
+        // An interval with a (positive) year or month part, or text that is no interval, is refused by
+        // Npgsql's own read too. (A negative month part is not: the generated mapping covers it.)
+        Assert.Empty(await Misread(sql, vectors.GetProperty("postgresRefused").EnumerateArray().Select(v => v.GetString()!)));
 
         // A TimeSpan bound natively is the same span as the Postgres spelling of its canonical form.
         foreach (var v in vectors.GetProperty("postgresText").EnumerateArray())

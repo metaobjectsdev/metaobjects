@@ -886,6 +886,42 @@
             }
           },
           {
+            "name": "filter[holdFor][gt]",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "pattern": "^[-+]?P([0-9]+D(T([0-9]+H([0-9]+M)?([0-9]+(\\.[0-9]{1,9})?S)?|[0-9]+M([0-9]+(\\.[0-9]{1,9})?S)?|[0-9]+(\\.[0-9]{1,9})?S))?|T([0-9]+H([0-9]+M)?([0-9]+(\\.[0-9]{1,9})?S)?|[0-9]+M([0-9]+(\\.[0-9]{1,9})?S)?|[0-9]+(\\.[0-9]{1,9})?S))$",
+              "description": "An ISO-8601 duration: days, hours, minutes and seconds (no years, months or weeks)."
+            }
+          },
+          {
+            "name": "filter[holdFor][gte]",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "pattern": "^[-+]?P([0-9]+D(T([0-9]+H([0-9]+M)?([0-9]+(\\.[0-9]{1,9})?S)?|[0-9]+M([0-9]+(\\.[0-9]{1,9})?S)?|[0-9]+(\\.[0-9]{1,9})?S))?|T([0-9]+H([0-9]+M)?([0-9]+(\\.[0-9]{1,9})?S)?|[0-9]+M([0-9]+(\\.[0-9]{1,9})?S)?|[0-9]+(\\.[0-9]{1,9})?S))$",
+              "description": "An ISO-8601 duration: days, hours, minutes and seconds (no years, months or weeks)."
+            }
+          },
+          {
+            "name": "filter[holdFor][lt]",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "pattern": "^[-+]?P([0-9]+D(T([0-9]+H([0-9]+M)?([0-9]+(\\.[0-9]{1,9})?S)?|[0-9]+M([0-9]+(\\.[0-9]{1,9})?S)?|[0-9]+(\\.[0-9]{1,9})?S))?|T([0-9]+H([0-9]+M)?([0-9]+(\\.[0-9]{1,9})?S)?|[0-9]+M([0-9]+(\\.[0-9]{1,9})?S)?|[0-9]+(\\.[0-9]{1,9})?S))$",
+              "description": "An ISO-8601 duration: days, hours, minutes and seconds (no years, months or weeks)."
+            }
+          },
+          {
+            "name": "filter[holdFor][lte]",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "pattern": "^[-+]?P([0-9]+D(T([0-9]+H([0-9]+M)?([0-9]+(\\.[0-9]{1,9})?S)?|[0-9]+M([0-9]+(\\.[0-9]{1,9})?S)?|[0-9]+(\\.[0-9]{1,9})?S))?|T([0-9]+H([0-9]+M)?([0-9]+(\\.[0-9]{1,9})?S)?|[0-9]+M([0-9]+(\\.[0-9]{1,9})?S)?|[0-9]+(\\.[0-9]{1,9})?S))$",
+              "description": "An ISO-8601 duration: days, hours, minutes and seconds (no years, months or weeks)."
+            }
+          },
+          {
             "name": "filter[holdFor][in]",
             "in": "query",
             "schema": {

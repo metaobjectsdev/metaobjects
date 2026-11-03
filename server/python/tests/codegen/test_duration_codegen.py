@@ -4,7 +4,7 @@ The generated model takes only an accepted ISO-8601 duration (Pydantic's own ``t
 parser would also take a number, clock text and a calendar span) and writes the canonical form
 in JSON (Pydantic's own is ``PT5400S`` for 90 minutes). Its codec is the generated package's
 ``_duration_wire.py``, a copy of the production helper. A router writes a duration in a response
-through the same formatter, and filters it in the inet band (eq / ne / in / isNull).
+through the same formatter, filters it in the ordered band and sorts by it.
 """
 from __future__ import annotations
 
@@ -147,9 +147,14 @@ def test_the_model_refuses_what_pydantic_timedelta_would_take(generated: dict[st
         generated["hold"].HoldCreate(holdFor="PT1H", steps=[value])
 
 
-def test_duration_takes_the_inet_filter_band() -> None:
-    assert ops_for_subtype("duration") == frozenset({"eq", "ne", "in", "isNull"})
-    assert set(ops_for_field_ordered(_field("holdFor"))) == {"eq", "ne", "in", "isNull"}
+def test_duration_takes_the_ordered_filter_band() -> None:
+    band = ("eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull")
+    assert ops_for_subtype("duration") == frozenset(band)
+    assert ops_for_field_ordered(_field("holdFor")) == band
+
+
+def test_a_duration_is_a_sort_key(generated: dict[str, Any]) -> None:
+    assert {"holdFor", "grace"} <= generated["router"]._SORT_ALLOWLIST
 
 
 def test_a_router_writes_a_duration_through_the_codec(generated: dict[str, Any]) -> None:

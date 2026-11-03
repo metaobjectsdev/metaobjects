@@ -34,29 +34,7 @@ public final class CanonicalDuration {
         public InvalidDurationException(String message) { super(message); }
     }
 
-    /**
-     * The largest magnitude a duration may have: 256204778 hours (about 29,000 years), the largest
-     * whole hour a .NET {@code TimeSpan} holds, so every port can read what any port wrote. One
-     * microsecond more is refused, on read and on write.
-     */
-    public static final long MAX_HOURS = 256_204_778L;
-
-    private static final Duration MAX = Duration.ofHours(MAX_HOURS);
-
-    /**
-     * {@code d} when its magnitude is within {@link #MAX_HOURS} hours.
-     *
-     * @throws InvalidDurationException when it is not
-     */
-    public static Duration checkBound(Duration d, String shown) {
-        if (d.abs().compareTo(MAX) > 0) {
-            throw new InvalidDurationException("field.duration: out of range (at most " + MAX_HOURS
-                + " hours either way): \"" + shown + "\"");
-        }
-        return d;
-    }
-
-    /** True iff {@code s} is in the accepted form and within {@link #MAX_HOURS} hours. */
+    /** True iff {@code s} is in the accepted form and fits a {@link Duration} (refused past it, never wrapped). */
     public static boolean isDuration(String s) {
         if (s == null || !ACCEPTED.matcher(s).matches()) return false;
         try {
@@ -68,8 +46,8 @@ public final class CanonicalDuration {
     }
 
     /**
-     * Parse an accepted ISO-8601 duration (sub-microsecond digits truncated toward zero), at most
-     * {@link #MAX_HOURS} hours either way.
+     * Parse an accepted ISO-8601 duration (sub-microsecond digits truncated toward zero). A
+     * {@link Duration}'s own range is the only limit.
      *
      * @throws InvalidDurationException when {@code s} is not in the accepted form or overflows
      */
@@ -86,19 +64,14 @@ public final class CanonicalDuration {
             long micros = frac == null ? 0L
                 : Long.parseLong(frac.length() >= 6 ? frac.substring(0, 6) : (frac + "000000").substring(0, 6));
             Duration d = Duration.ofSeconds(seconds, micros * 1_000L);
-            return checkBound("-".equals(m.group(1)) ? d.negated() : d, s);
+            return "-".equals(m.group(1)) ? d.negated() : d;
         } catch (ArithmeticException | NumberFormatException e) {
             throw new InvalidDurationException("field.duration: out of range: \"" + s + "\"");
         }
     }
 
-    /**
-     * The canonical wire form of {@code d} (sub-microsecond precision truncated toward zero).
-     *
-     * @throws InvalidDurationException past {@link #MAX_HOURS} hours, which no port could read back
-     */
+    /** The canonical wire form of {@code d} (sub-microsecond precision truncated toward zero). */
     public static String format(Duration d) {
-        checkBound(d, d.toString());
         boolean negative = d.isNegative();
         Duration mag = negative ? d.negated() : d;
         long total = mag.getSeconds();

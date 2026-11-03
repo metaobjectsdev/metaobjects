@@ -276,6 +276,7 @@ public class DbContextGenerator : IGenerator
         // three emission sites, and had already been wrong twice: it undercounted them, and it
         // did not model jsonbObjectsOnly suppressing the flattened arm on a read model.
         if (modelLines.Any(l => l.Contains(MapJsonbHelperName))) EmitMapJsonbHelper(sb);
+        if (modelLines.Any(l => l.Contains(DurationIntervalHelperName + "."))) EmitDurationIntervalHelper(sb);
         sb.AppendLine("}");
         return [new EmittedFile("AppDbContext.g.cs", sb.ToString())];
     }
@@ -1109,29 +1110,181 @@ public class DbContextGenerator : IGenerator
         string className, MetaObject entity, IEnumerable<MetaField> fields, GenContext ctx, List<string> modelLines)
     {
         foreach (var f in fields.Where(f => f.SubType == FIELD_SUBTYPE_DURATION && f.DbColumnType is null))
-        {
-            var prop = CSharpNaming.Pascal(f.Name);
-            var converter = DurationConverter(entity, ctx);
-            var npgsql = f.ResolvedIsArray()
-                ? null
-                : $"            modelBuilder.Entity<{className}>().Property(x => x.{prop}).HasColumnType(\"interval\");";
-            var text = f.ResolvedIsArray()
-                ? $"            modelBuilder.Entity<{className}>().PrimitiveCollection(x => x.{prop}).ElementType().HasConversion({converter});"
-                : $"            modelBuilder.Entity<{className}>().Property(x => x.{prop}).HasConversion({converter});";
-            modelLines.Add(npgsql is null
-                ? $"        if (Database.ProviderName != \"{NpgsqlProviderName}\")\n{text}"
-                : $"        if (Database.ProviderName == \"{NpgsqlProviderName}\")\n{npgsql}\n        else\n{text}");
-        }
+            modelLines.Add(string.Join("\n",
+                DurationColumnLines($"modelBuilder.Entity<{className}>()", "x", CSharpNaming.Pascal(f.Name), f.ResolvedIsArray(), entity, ctx, "        ")));
     }
 
-    // A TimeSpan <-> canonical ISO-8601 string converter, through the DurationWire the entity
-    // generator emits into OWNER's namespace (owner has a duration field, so it has one).
+    // The provider-dependent mapping of one duration column (a top-level property, or a member of a
+    // flattened value object through its owned builder `target`):
+    //   - Npgsql: the native `interval` (`interval[]` for an array), read through the generated
+    //     DurationInterval type mapping, so a month or year part, or a day count past what a TimeSpan
+    //     holds, is refused instead of read wrong (Npgsql's own TimeSpan read drops a negative month
+    //     part and wraps such a day count).
+    //   - any other provider (SQLite, MySQL): a 64-bit count of microseconds in an integer column
+    //     (sub-microsecond ticks truncated toward zero; a count past a TimeSpan refused, not
+    //     wrapped), which orders and compares as the span does. An array holds the counts.
+    private static IEnumerable<string> DurationColumnLines(
+        string target, string v, string prop, bool isArray, MetaObject owner, GenContext ctx, string indent)
+    {
+        var micros = DurationMicrosConverter(owner, ctx);
+        yield return $"{indent}if (Database.ProviderName == \"{NpgsqlProviderName}\")";
+        yield return isArray
+            ? $"{indent}    {target}.PrimitiveCollection({v} => {v}.{prop}).Metadata.SetTypeMapping({DurationIntervalHelperName}.ArrayMapping);"
+            : $"{indent}    {target}.Property({v} => {v}.{prop}).HasColumnType(\"interval\").Metadata.SetTypeMapping({DurationIntervalHelperName}.Mapping);";
+        yield return $"{indent}else";
+        yield return isArray
+            ? $"{indent}    {target}.PrimitiveCollection({v} => {v}.{prop}).ElementType().HasConversion({micros});"
+            : $"{indent}    {target}.Property({v} => {v}.{prop}).HasConversion({micros});";
+    }
+
+    // The namespace OWNER's DurationWire is emitted into (owner has a duration field, so it has one).
+    private static string DurationWireRef(MetaObject owner, GenContext ctx) =>
+        "global::" + PackageBindingResolver.Resolve(ctx.Config, PackageBindingResolver.EffectivePackage(owner), owner.Name, fallbackContext: owner.Name)
+        + ".DurationWire";
+
+    // A TimeSpan <-> canonical ISO-8601 string converter: a duration inside a JSON document.
     private static string DurationConverter(MetaObject owner, GenContext ctx)
     {
-        var ns = PackageBindingResolver.Resolve(ctx.Config, PackageBindingResolver.EffectivePackage(owner), owner.Name, fallbackContext: owner.Name);
+        var dw = DurationWireRef(owner, ctx);
         return "new Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<System.TimeSpan, string>(" +
-            $"v => global::{ns}.DurationWire.Format(v), v => global::{ns}.DurationWire.Parse(v))";
+            $"v => {dw}.Format(v), v => {dw}.Parse(v))";
     }
+
+    // A TimeSpan <-> microsecond-count converter: a duration column on a database without an interval type.
+    private static string DurationMicrosConverter(MetaObject owner, GenContext ctx)
+    {
+        var dw = DurationWireRef(owner, ctx);
+        return "new Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<System.TimeSpan, long>(" +
+            $"v => {dw}.ToMicros(v), v => {dw}.FromMicros(v))";
+    }
+
+    private const string DurationIntervalHelperName = "DurationInterval";
+
+    // field.duration on Npgsql — the interval type mapping the duration columns are read through.
+    // Npgsql's own TimeSpan read guards the month part with `months > 0` (so '-1 mons' reads as zero)
+    // and adds the day part unchecked (so a day count past a TimeSpan wraps); this mapping reads the
+    // value as NpgsqlInterval instead and refuses both. Npgsql is reached by reflection only, so the
+    // generated context compiles, and runs, in a project with no Npgsql reference; the class is first
+    // touched in the Npgsql branch of OnModelCreating.
+    private static void EmitDurationIntervalHelper(StringBuilder sb) => sb.Append(DurationIntervalHelperSource);
+
+    private const string DurationIntervalHelperSource = """
+
+    /// <summary>
+    /// field.duration on Npgsql: an <c>interval</c> column read through <c>NpgsqlInterval</c>, so a month
+    /// or year part, or a day count past what a TimeSpan holds, is refused rather than read wrong.
+    /// Npgsql is reached by reflection: a project on another provider needs no Npgsql reference.
+    /// </summary>
+    internal static class DurationInterval
+    {
+        // The Npgsql shape this mapping reads, resolved and checked when the model is built (the
+        // first touch is SetTypeMapping in OnModelCreating), so a missing or changed type fails
+        // there, naming what is missing, rather than on the first row read.
+        private static readonly System.Type IntervalType = Resolve();
+        private static readonly System.Reflection.PropertyInfo Months = IntervalType.GetProperty("Months")!;
+        private static readonly System.Reflection.PropertyInfo Days = IntervalType.GetProperty("Days")!;
+        private static readonly System.Reflection.PropertyInfo Time = IntervalType.GetProperty("Time")!;
+        private static readonly System.Reflection.MethodInfo GetFieldValue =
+            typeof(System.Data.Common.DbDataReader).GetMethod(nameof(System.Data.Common.DbDataReader.GetFieldValue))!;
+
+        internal static readonly Microsoft.EntityFrameworkCore.Storage.RelationalTypeMapping Mapping = new ScalarMapping();
+        internal static readonly Microsoft.EntityFrameworkCore.Storage.RelationalTypeMapping ArrayMapping = new ListMapping();
+
+        private static System.Type Resolve()
+        {
+            var type = System.Type.GetType(IntervalShape.TypeName, throwOnError: false);
+            if (IntervalShape.Problem(type) is { } problem) throw new System.InvalidOperationException(problem);
+            return type!;
+        }
+
+        /// <summary>The check of the NpgsqlInterval shape, kept apart from the state above so it can run against any type.</summary>
+        internal static class IntervalShape
+        {
+            internal const string TypeName = "NpgsqlTypes.NpgsqlInterval, Npgsql";
+
+            /// <summary>Null when <paramref name="type"/> has the shape the mapping reads, else a message naming what is missing.</summary>
+            internal static string? Problem(System.Type? type)
+            {
+                const string Lead = "field.duration on Npgsql: the generated DurationInterval mapping reads an interval column as " +
+                    "NpgsqlTypes.NpgsqlInterval (an Int32 Months, an Int32 Days and an Int64 Time in microseconds; " +
+                    "tested with Npgsql 8.0.5), but ";
+                if (type is null) return Lead + "no type NpgsqlTypes.NpgsqlInterval was found in the loaded Npgsql assembly.";
+                var missing = new System.Collections.Generic.List<string>();
+                foreach (var (name, want) in new[] { ("Months", typeof(int)), ("Days", typeof(int)), ("Time", typeof(long)) })
+                {
+                    var property = type.GetProperty(name);
+                    if (property is null || property.PropertyType != want)
+                        missing.Add(want.Name + " " + name);
+                }
+                return missing.Count == 0
+                    ? null
+                    : Lead + type.FullName + " has no " + string.Join(", no ", missing) + " property. Check the Npgsql version the project references.";
+            }
+        }
+
+        /// <summary>An NpgsqlInterval as a TimeSpan: refused when it has a month or year part, or a span a TimeSpan cannot hold.</summary>
+        public static System.TimeSpan FromInterval(object interval)
+        {
+            if ((int)Months.GetValue(interval)! != 0)
+                throw new System.InvalidCastException("field.duration: the interval has a month or year part, so it is not a fixed-length span");
+            var days = (int)Days.GetValue(interval)!;
+            var micros = (long)Time.GetValue(interval)!;
+            return System.TimeSpan.FromTicks(checked(days * System.TimeSpan.TicksPerDay + micros * 10));
+        }
+
+        /// <summary>An interval[] (an NpgsqlInterval array) as the list a duration array property holds.</summary>
+        public static System.Collections.Generic.IList<System.TimeSpan> FromIntervals(object intervals)
+        {
+            var list = new System.Collections.Generic.List<System.TimeSpan>();
+            foreach (var interval in (System.Array)intervals) list.Add(FromInterval(interval!));
+            return list;
+        }
+
+        // A span as Postgres interval input: [-]HH:MM:SS[.f], hours unbounded, no day part.
+        private static string Literal(System.TimeSpan value)
+        {
+            long micros = value.Ticks / 10;
+            bool negative = micros < 0;
+            long rest = negative ? -micros : micros;
+            long frac = rest % 1_000_000L, s = rest / 1_000_000L % 60, m = rest / 60_000_000L % 60, h = rest / 3_600_000_000L;
+            var text = h.ToString("00", System.Globalization.CultureInfo.InvariantCulture) + ":" + m.ToString("00", System.Globalization.CultureInfo.InvariantCulture)
+                + ":" + s.ToString("00", System.Globalization.CultureInfo.InvariantCulture);
+            if (frac > 0) text += "." + frac.ToString("D6", System.Globalization.CultureInfo.InvariantCulture).TrimEnd('0');
+            return "INTERVAL '" + (negative ? "-" : "") + text + "'";
+        }
+
+        private sealed class ScalarMapping : Microsoft.EntityFrameworkCore.Storage.RelationalTypeMapping
+        {
+            public ScalarMapping() : base("interval", typeof(System.TimeSpan)) { }
+            private ScalarMapping(RelationalTypeMappingParameters parameters) : base(parameters) { }
+            protected override Microsoft.EntityFrameworkCore.Storage.RelationalTypeMapping Clone(RelationalTypeMappingParameters parameters) => new ScalarMapping(parameters);
+            public override System.Reflection.MethodInfo GetDataReaderMethod() => GetFieldValue.MakeGenericMethod(IntervalType);
+            public override System.Linq.Expressions.Expression CustomizeDataReaderExpression(System.Linq.Expressions.Expression expression) =>
+                System.Linq.Expressions.Expression.Call(typeof(DurationInterval).GetMethod(nameof(FromInterval))!,
+                    System.Linq.Expressions.Expression.Convert(expression, typeof(object)));
+            protected override string GenerateNonNullSqlLiteral(object value) => Literal((System.TimeSpan)value);
+        }
+
+        private sealed class ListMapping : Microsoft.EntityFrameworkCore.Storage.RelationalTypeMapping
+        {
+            private static readonly Microsoft.EntityFrameworkCore.ChangeTracking.ValueComparer<System.Collections.Generic.IList<System.TimeSpan>> ListComparer = new(
+                (a, b) => a == null ? b == null : b != null && System.Linq.Enumerable.SequenceEqual(a, b),
+                v => System.Linq.Enumerable.Aggregate(v, 0, (h, e) => System.HashCode.Combine(h, e)),
+                v => System.Linq.Enumerable.ToList(v));
+
+            public ListMapping() : base(new RelationalTypeMappingParameters(
+                new CoreTypeMappingParameters(typeof(System.Collections.Generic.IList<System.TimeSpan>), comparer: ListComparer, keyComparer: ListComparer), "interval[]")) { }
+            private ListMapping(RelationalTypeMappingParameters parameters) : base(parameters) { }
+            protected override Microsoft.EntityFrameworkCore.Storage.RelationalTypeMapping Clone(RelationalTypeMappingParameters parameters) => new ListMapping(parameters);
+            public override System.Reflection.MethodInfo GetDataReaderMethod() => GetFieldValue.MakeGenericMethod(IntervalType.MakeArrayType());
+            public override System.Linq.Expressions.Expression CustomizeDataReaderExpression(System.Linq.Expressions.Expression expression) =>
+                System.Linq.Expressions.Expression.Call(typeof(DurationInterval).GetMethod(nameof(FromIntervals))!,
+                    System.Linq.Expressions.Expression.Convert(expression, typeof(object)));
+            protected override string GenerateNonNullSqlLiteral(object value) =>
+                "ARRAY[" + string.Join(",", System.Linq.Enumerable.Select((System.Collections.Generic.IEnumerable<System.TimeSpan>)value, Literal)) + "]::interval[]";
+        }
+    }
+""";
 
     // The EF Core provider name Npgsql registers (DbContext.Database.ProviderName).
     private const string NpgsqlProviderName = "Npgsql.EntityFrameworkCore.PostgreSQL";
@@ -1304,26 +1457,17 @@ public class DbContextGenerator : IGenerator
             }
 
             // A `field.duration` member: the migration flattens it to an `interval` column on
-            // Postgres (Npgsql maps the TimeSpan natively) and a text column elsewhere, which holds
-            // the canonical ISO-8601 string — the same provider-dependent mapping a top-level
-            // duration takes (AddDurationConfig). Without the converter EF would write its own
-            // "01:30:00" there and fail to read another port's "PT1H30M".
+            // Postgres and an integer microsecond count elsewhere — the same provider-dependent
+            // mapping a top-level duration takes (DurationColumnLines). Without it EF would write
+            // its own "01:30:00" text there and fail to read another port's count.
             if (nf.SubType == FIELD_SUBTYPE_DURATION && CSharpNaming.DbColumnTypeClrOverride(nf) is null)
             {
                 var dprop = CSharpNaming.Pascal(nf.Name);
-                var converter = DurationConverter(vo, ctx);
-                if (nf.ResolvedIsArray())
-                {
-                    sb.AppendLine($"            b.PrimitiveCollection(p => p.{dprop}).HasColumnName(\"{nestedColAny}\");");
-                    sb.AppendLine($"            if (Database.ProviderName != \"{NpgsqlProviderName}\")");
-                    sb.AppendLine($"                b.PrimitiveCollection(p => p.{dprop}).ElementType().HasConversion({converter});");
-                }
-                else
-                {
-                    sb.AppendLine($"            b.Property(p => p.{dprop}).HasColumnName(\"{nestedColAny}\");");
-                    sb.AppendLine($"            if (Database.ProviderName != \"{NpgsqlProviderName}\")");
-                    sb.AppendLine($"                b.Property(p => p.{dprop}).HasConversion({converter});");
-                }
+                sb.AppendLine(nf.ResolvedIsArray()
+                    ? $"            b.PrimitiveCollection(p => p.{dprop}).HasColumnName(\"{nestedColAny}\");"
+                    : $"            b.Property(p => p.{dprop}).HasColumnName(\"{nestedColAny}\");");
+                foreach (var line in DurationColumnLines("b", "p", dprop, nf.ResolvedIsArray(), vo, ctx, "            "))
+                    sb.AppendLine(line);
                 continue;
             }
 

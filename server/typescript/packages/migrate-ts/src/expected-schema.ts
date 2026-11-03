@@ -51,7 +51,6 @@ import {
   FIELD_SUBTYPE_URI,
   FIELD_SUBTYPE_INET,
   FIELD_SUBTYPE_DURATION,
-  formatDuration,
   formatPostgresInterval,
   parseDurationLiteral,
   parsePostgresInterval,
@@ -332,10 +331,10 @@ export function buildExpectedSchemaWithProvenance(
           const normalized = normalizeBooleanLiteralForSqlite(col.default.value);
           if (normalized !== undefined) col.default = { kind: "literal", value: normalized };
         }
-        // A duration's default is built in the Postgres interval spelling; a TEXT column holds
-        // the canonical ISO-8601 form, which is what the runtime writes there.
+        // A duration's default is built in the Postgres interval spelling; the SQLite column holds
+        // the microsecond integer, which is what the runtime writes there.
         if (kindBefore === "interval" && col.default?.kind === "literal") {
-          col.default = { kind: "literal", value: formatDuration(parsePostgresInterval(col.default.value)) };
+          col.default = { kind: "literal", value: String(parsePostgresInterval(col.default.value)) };
         }
         // `now()` is Postgres-only; SQLite has no such function, so a
         // `DEFAULT now()` (the @autoSet insert-time default, and any authored
@@ -500,8 +499,10 @@ function normalizeForSqlite(sqlType: SqlType): SqlType {
     case "timestamp":
     case "date":
     case "time":
-    case "interval":
       return { kind: "text" };
+    case "interval":
+      // A duration is the 64-bit microsecond count: an integer orders and compares as the span.
+      return { kind: "integer", bits: 64 };
     case "integer":
       // SQLite stores every INTEGER as a 64-bit value and Drizzle's int() emits
       // plain "INTEGER" regardless of source bit-width. Collapse 32 → 64 so the

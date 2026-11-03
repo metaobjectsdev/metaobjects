@@ -121,7 +121,6 @@
     { "name": "duration-reject-clock", "payload": { "name": "Acme", "code": "ABC", "score": 50, "tags": ["x"], "note": "ok", "holdFor": "1:30:00" }, "expectValid": false },
     { "name": "duration-reject-fractional-hours", "payload": { "name": "Acme", "code": "ABC", "score": 50, "tags": ["x"], "note": "ok", "holdFor": "PT1.5H" }, "expectValid": false },
     { "name": "duration-reject-lowercase", "payload": { "name": "Acme", "code": "ABC", "score": 50, "tags": ["x"], "note": "ok", "holdFor": "pt1h" }, "expectValid": false },
-    { "name": "duration-reject-empty-time", "payload": { "name": "Acme", "code": "ABC", "score": 50, "tags": ["x"], "note": "ok", "holdFor": "PT" }, "expectValid": false },
-    { "name": "duration-reject-too-long", "payload": { "name": "Acme", "code": "ABC", "score": 50, "tags": ["x"], "note": "ok", "holdFor": "PT256204779H" }, "expectValid": false }
+    { "name": "duration-reject-empty-time", "payload": { "name": "Acme", "code": "ABC", "score": 50, "tags": ["x"], "note": "ok", "holdFor": "PT" }, "expectValid": false }
   ]
 }

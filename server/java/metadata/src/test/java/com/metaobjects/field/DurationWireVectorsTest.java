@@ -108,11 +108,36 @@ public class DurationWireVectorsTest {
     }
 
     @Test
-    public void aDurationValuePastTheSharedBoundIsNotWritten() {
-        assertEquals("PT256204778H", DurationWire.format(DurationWire.MAX));
+    public void storedMicrosVectors() throws Exception {
+        for (JsonElement e : vectors().getAsJsonArray("storedMicros")) {
+            String in = e.getAsJsonObject().get("in").getAsString();
+            long out = Long.parseLong(e.getAsJsonObject().get("out").getAsString());
+            assertEquals("micros " + in, out, DurationWire.toMicros(DurationWire.parse(in)));
+            assertEquals("from micros " + out, in, DurationWire.format(DurationWire.fromMicros(out)));
+        }
+        // Sub-microsecond precision truncates toward zero on both sides of zero.
+        assertEquals(-1_000_000L, DurationWire.toMicros(Duration.ofSeconds(-1, -500)));
+        assertEquals(1_000_000L, DurationWire.toMicros(Duration.ofSeconds(1, 500)));
+    }
+
+    @Test
+    public void javaDurationsOwnRangeIsTheOnlyLimitAndIsRefusedNeverWrapped() {
+        // Far past any other port's range: Java takes it.
+        assertEquals("PT2562047788015215H", DurationWire.canonicalize("PT2562047788015215H"));
+        // Past a long count of seconds: refused, never wrapped.
+        for (String tooLong : new String[]{"PT9223372036854775808S", "P106751991167301D", "PT99999999999999999999H"}) {
+            assertFalse(tooLong, DurationWire.isDuration(tooLong));
+            try {
+                DurationWire.parse(tooLong);
+                fail("must refuse " + tooLong);
+            } catch (IllegalArgumentException expected) {
+                // refused
+            }
+        }
+        // A BIGINT column holds about 292,000 years of microseconds: past it, the write is refused.
         try {
-            DurationWire.format(DurationWire.MAX.plusNanos(1_000));
-            fail("one microsecond past the bound must be refused");
+            DurationWire.toMicros(Duration.ofSeconds(Long.MAX_VALUE / 1_000_000L + 1));
+            fail("past a 64-bit microsecond count must be refused");
         } catch (IllegalArgumentException expected) {
             // refused
         }

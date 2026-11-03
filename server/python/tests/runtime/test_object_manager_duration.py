@@ -1,7 +1,8 @@
 """field.duration through the ObjectManager: the write codec (an accepted ISO-8601 string becomes a
 ``timedelta``; anything else is refused), the per-engine binding (pg8000 binds the ``timedelta``
-as an interval, SQLite and MySQL a TEXT column holding the canonical string) and the read codec
-(every engine reads back a ``timedelta``; an interval with a month part is refused).
+as an interval, SQLite and MySQL an integer column holding the microsecond count, so it orders)
+and the read codec (every engine reads back a ``timedelta``; an interval with a month part is
+refused). A duration inside a jsonb value object stays the canonical ISO string.
 
 The live Postgres lane is ``tests/integration/test_query_scenarios.py``
 (``roundtrip-all-types``, ``update-delete-all-types``).
@@ -54,7 +55,7 @@ def _field(name: str) -> Any:
 
 def _sqlite_om() -> tuple[ObjectManager, sqlite3.Connection]:
     conn = sqlite3.connect(":memory:")
-    conn.execute('CREATE TABLE "holds" ("id" INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, "holdFor" TEXT, "steps" TEXT)')
+    conn.execute('CREATE TABLE "holds" ("id" INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, "holdFor" INTEGER, "steps" TEXT)')
     return ObjectManager(_root(), SqliteDriver(conn)), conn
 
 
@@ -78,14 +79,17 @@ def test_postgres_binds_the_native_timedelta() -> None:
 
 
 @pytest.mark.parametrize("dialect", [SQLITE, MYSQL], ids=lambda d: d.name)
-def test_a_text_engine_binds_the_canonical_string(dialect: Any) -> None:
+def test_an_integer_engine_binds_the_microsecond_count(dialect: Any) -> None:
     f = _field("holdFor")
-    assert dialect.encode_param(_coerce_write_value(f, "P1DT0.5S")) == "PT24H0.5S"
-    assert dialect.encode_param(_coerce_write_value(f, dt.timedelta(seconds=-90))) == "-PT1M30S"
+    assert dialect.encode_param(_coerce_write_value(f, "P1DT0.5S")) == 86_400_500_000
+    assert dialect.encode_param(_coerce_write_value(f, dt.timedelta(seconds=-90))) == -90_000_000
+    # Past the 64-bit column is refused (the column's limit), never wrapped.
+    with pytest.raises(ValueError, match="64-bit"):
+        dialect.encode_param(_coerce_write_value(f, dt.timedelta.max))
 
 
 @pytest.mark.parametrize("dialect", [SQLITE, MYSQL], ids=lambda d: d.name)
-def test_the_text_binding_is_by_field_not_by_value(dialect: Any) -> None:
+def test_the_integer_binding_is_by_field_not_by_value(dialect: Any) -> None:
     # A timedelta the duration write codec did not make (a caller's value for some other
     # column, an operand on an undeclared one) binds exactly as it did before.
     td = dt.timedelta(minutes=5)
@@ -93,23 +97,20 @@ def test_the_text_binding_is_by_field_not_by_value(dialect: Any) -> None:
     assert isinstance(_coerce_write_value(_field("holdFor"), "PT5M"), DurationParam)
 
 
-def test_a_duration_past_the_shared_bound_is_refused_on_write_and_read() -> None:
+def test_only_the_timedelta_range_limits_a_duration() -> None:
     f = _field("holdFor")
-    assert _coerce_write_value(f, "PT256204778H") == dt.timedelta(hours=256_204_778)
+    assert _coerce_write_value(f, "PT256204779H") == dt.timedelta(hours=256_204_779)
+    assert _decode_read_value(f, "256204779:00:00") == dt.timedelta(hours=256_204_779)
+    with pytest.raises(ValueError, match="cannot be written.*out of range"):
+        _coerce_write_value(f, "P1000000000D")
     with pytest.raises(ValueError, match="out of range"):
-        _coerce_write_value(f, dt.timedelta(hours=256_204_778, microseconds=1))
-    with pytest.raises(ValueError, match="cannot be written"):
-        _coerce_write_value(f, "PT256204779H")
-    with pytest.raises(ValueError, match="out of range"):
-        _decode_read_value(f, dt.timedelta(hours=256_204_779))
-    with pytest.raises(ValueError, match="out of range"):
-        _decode_read_value(f, "256204779:00:00")
+        _decode_read_value(f, 10**20)
 
 
 def test_every_engine_reads_back_a_timedelta() -> None:
     f = _field("holdFor")
     assert _decode_read_value(f, dt.timedelta(hours=26)) == dt.timedelta(hours=26)  # pg8000
-    assert _decode_read_value(f, "-PT1M30S") == dt.timedelta(seconds=-90)  # a TEXT column
+    assert _decode_read_value(f, -90_000_000) == dt.timedelta(seconds=-90)  # an integer column
     assert _decode_read_value(f, "1 day 02:00:00") == dt.timedelta(hours=26)  # interval text
     assert _decode_read_value(_field("steps"), [dt.timedelta(minutes=1), None]) == [dt.timedelta(minutes=1), None]
 
@@ -122,15 +123,41 @@ def test_an_interval_with_a_month_part_is_refused_on_read() -> None:
         _decode_read_value(_field("holdFor"), "1 mon 00:00:01")
 
 
-def test_sqlite_round_trip_stores_the_canonical_string() -> None:
+def test_sqlite_round_trip_stores_the_microsecond_count() -> None:
     om, conn = _sqlite_om()
     created = om.create("Hold", {"holdFor": "P1DT0.5S"})
     assert created["holdFor"] == dt.timedelta(days=1, milliseconds=500)
-    assert conn.execute('SELECT "holdFor" FROM "holds"').fetchone() == ("PT24H0.5S",)
+    assert conn.execute('SELECT "holdFor" FROM "holds"').fetchone() == (86_400_500_000,)
     (row,) = om.find_many("Hold", {"holdFor": {"eq": "PT24H0.5S"}})
     assert row["holdFor"] == dt.timedelta(hours=24, milliseconds=500)
-    # Equal spans are equal strings, so a filter in another accepted spelling still matches.
+    # Equal spans are equal integers, so a filter in another accepted spelling still matches.
     assert len(om.find_many("Hold", {"holdFor": {"in": ["P1DT0.5S", "PT1H"]}})) == 1
+
+
+def test_sqlite_orders_and_range_filters_a_duration() -> None:
+    om, _ = _sqlite_om()
+    # Inserted out of order, and spelled so that text order would differ from span order.
+    for d in ["PT2H", "-PT1M30S", "PT90M", "PT45S", "P1D", "PT0S"]:
+        om.create("Hold", {"holdFor": d})
+    om.create("Hold", {})
+
+    def spans(rows: list[dict[str, Any]]) -> list[str | None]:
+        from metaobjects.codegen.runtime.duration_wire import format_duration
+
+        return [None if r["holdFor"] is None else format_duration(r["holdFor"]) for r in rows]
+
+    asc = om.find_many("Hold", sort=[("holdFor", "asc")])
+    assert spans(asc) == ["-PT1M30S", "PT0S", "PT45S", "PT1H30M", "PT2H", "PT24H", None]
+    desc = om.find_many("Hold", sort=[("holdFor", "desc")])
+    assert spans(desc) == [None, "PT24H", "PT2H", "PT1H30M", "PT45S", "PT0S", "-PT1M30S"]
+
+    ranged = om.find_many(
+        "Hold", {"holdFor": {"gt": "PT0S", "lte": "PT120M"}}, sort=[("holdFor", "asc")]
+    )
+    assert spans(ranged) == ["PT45S", "PT1H30M", "PT2H"]
+    assert spans(om.find_many("Hold", {"holdFor": {"gte": "PT2H"}}, sort=[("holdFor", "asc")])) == ["PT2H", "PT24H"]
+    assert spans(om.find_many("Hold", {"holdFor": {"lt": "PT0S"}})) == ["-PT1M30S"]
+    assert om.count("Hold", {"holdFor": {"ne": "PT90M"}}) == 5
 
 
 # ── a duration inside a jsonb value object ───────────────────────────────────
@@ -222,4 +249,4 @@ def test_a_value_object_member_that_is_not_a_duration_is_refused_on_write() -> N
     with pytest.raises(ValueError, match="field.duration 'timeout' cannot be written"):
         om.create("Plan", {"settings": {"timeout": "P1M"}})
     with pytest.raises(ValueError, match="field.duration 'wait' cannot be written"):
-        om.create("Plan", {"windows": [{"inner": {"wait": "PT256204779H"}}]})
+        om.create("Plan", {"windows": [{"inner": {"wait": "P1000000000D"}}]})

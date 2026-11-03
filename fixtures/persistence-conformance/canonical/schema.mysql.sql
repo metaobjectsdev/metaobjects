@@ -102,7 +102,7 @@ CREATE TABLE `all_types` (
   `uriVal` VARCHAR(255) NOT NULL,
   `inetVal` VARCHAR(45) NOT NULL,
   `inet6Val` VARCHAR(45) NOT NULL,
-  `durationVal` VARCHAR(64),
+  `durationVal` BIGINT,
   `settings` JSON,
   `labels` JSON
 );

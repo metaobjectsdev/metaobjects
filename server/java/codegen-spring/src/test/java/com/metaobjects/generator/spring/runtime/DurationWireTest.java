@@ -96,12 +96,16 @@ public class DurationWireTest {
     }
 
     @Test
-    public void aValuePastTheSharedBoundIsNotWritten() {
-        try {
-            MAPPER.writeValueAsString(new Holder(Duration.ofHours(CanonicalDuration.MAX_HOURS).plusNanos(1_000)));
-            fail("one microsecond past the bound must not be written");
-        } catch (com.fasterxml.jackson.core.JsonProcessingException expected) {
-            // refused
+    public void javaDurationsOwnRangeIsTheOnlyLimit() {
+        assertEquals("PT2562047788015215H", CanonicalDuration.format(CanonicalDuration.parse("PT2562047788015215H")));
+        for (String tooLong : new String[]{"PT9223372036854775808S", "PT99999999999999999999H"}) {
+            assertFalse(tooLong, CanonicalDuration.isDuration(tooLong));
+            try {
+                CanonicalDuration.parse(tooLong);
+                fail("must refuse, never wrap: " + tooLong);
+            } catch (CanonicalDuration.InvalidDurationException expected) {
+                // refused
+            }
         }
     }
 }

@@ -97,24 +97,39 @@ public class DurationWireTests
         Assert.Equal("-PT1M30S", DurationWire.Format(TimeSpan.FromSeconds(-90)));
     }
 
-    [Fact]
-    public void The_magnitude_is_bounded_at_256204778_hours_exactly_on_parse_and_on_write()
+    public static TheoryData<string, string> StoredMicrosVectors()
     {
-        var max = TimeSpan.FromHours(DurationWire.MaxHours);
-        Assert.Equal("PT256204778H", DurationWire.Format(max));
-        Assert.Equal("-PT256204778H", DurationWire.Format(-max));
-        // A tick below a microsecond over the bound truncates back onto it; one microsecond over is refused.
-        Assert.Equal("PT256204778H", DurationWire.Format(max + TimeSpan.FromTicks(9)));
-        Assert.Throws<OverflowException>(() => DurationWire.Format(max + TimeSpan.FromTicks(10)));
-        Assert.Throws<OverflowException>(() => DurationWire.Format(-max - TimeSpan.FromTicks(10)));
-        Assert.Throws<OverflowException>(() => DurationWire.Format(TimeSpan.MaxValue));
-        Assert.Throws<OverflowException>(() => DurationWire.Format(TimeSpan.MinValue));
-        Assert.False(DurationWire.InRange(TimeSpan.MaxValue));
-        Assert.True(DurationWire.InRange(-max));
-        Assert.True(DurationWire.TryParse("PT256204777H59M59.999999S", out _));
-        Assert.False(DurationWire.TryParse("PT256204778H0.000001S", out _));
-        // A value past the bound is refused by the property converter on the way out, too.
-        Assert.ThrowsAny<Exception>(() => JsonSerializer.Serialize(new Holder { Span = TimeSpan.MaxValue }));
+        var data = new TheoryData<string, string>();
+        foreach (var v in Vectors().GetProperty("storedMicros").EnumerateArray())
+            data.Add(v.GetProperty("in").GetString()!, v.GetProperty("out").GetString()!);
+        return data;
+    }
+
+    [Theory, MemberData(nameof(StoredMicrosVectors))]
+    public void On_a_database_without_an_interval_a_duration_is_its_microsecond_count(string canonical, string micros)
+    {
+        var count = long.Parse(micros, System.Globalization.CultureInfo.InvariantCulture);
+        Assert.Equal(count, DurationWire.ToMicros(DurationWire.Parse(canonical)));
+        Assert.Equal(canonical, DurationWire.Format(DurationWire.FromMicros(count)));
+    }
+
+    // C#'s own limit — a TimeSpan's range, about 10.7 million days — not a cross-port one: a span
+    // past it is refused, never wrapped, on parse and on a stored microsecond count.
+    [Fact]
+    public void A_span_past_a_timespan_is_refused_never_wrapped()
+    {
+        Assert.Equal("PT256204778H48M5.47758S", DurationWire.Format(TimeSpan.MaxValue));
+        Assert.Equal("-PT256204778H48M5.47758S", DurationWire.Format(TimeSpan.MinValue));
+        Assert.Equal("PT256204778H", DurationWire.Format(DurationWire.Parse("PT256204778H")));
+        Assert.Equal("-PT256204778H", DurationWire.Format(DurationWire.Parse("-P10675199DT2H")));
+        Assert.True(DurationWire.TryParse("PT256204778H48M5.47758S", out var top));
+        Assert.Equal(TimeSpan.MaxValue.Ticks / 10, top.Ticks / 10);
+        foreach (var past in new[] { "PT256204778H48M5.477581S", "PT256204779H", "P10675200D", "-PT256204779H", "PT99999999999999999999S" })
+            Assert.False(DurationWire.TryParse(past, out _), past);
+        Assert.Equal(TimeSpan.MaxValue.Ticks / 10, DurationWire.ToMicros(TimeSpan.MaxValue));
+        Assert.Throws<OverflowException>(() => DurationWire.FromMicros(long.MaxValue));
+        Assert.Throws<OverflowException>(() => DurationWire.FromMicros(long.MinValue));
+        Assert.Equal(-1, DurationWire.ToMicros(TimeSpan.FromTicks(-19))); // truncated toward zero
     }
 
     // ---- filter operands ----------------------------------------------------------------------
@@ -146,9 +161,9 @@ public class DurationWireTests
     }
 
     [Fact]
-    public void A_duration_filters_on_the_identity_band()
+    public void A_duration_filters_on_the_ordered_band()
     {
-        Assert.Equal(["eq", "ne", "in", "isNull"], QueryConstants.OpsForSubType(FIELD_SUBTYPE_DURATION));
+        Assert.Equal(["eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull"], QueryConstants.OpsForSubType(FIELD_SUBTYPE_DURATION));
     }
 
     // ---- generated code -------------------------------------------------------------------------
@@ -224,40 +239,68 @@ public class DurationWireTests
         Assert.Contains("[DurationWire.Iso]", window);
 
         var ctx = files.Single(f => f.Path == "AppDbContext.g.cs").Content.Replace("\r\n", "\n");
+        const string Npgsql = "if (Database.ProviderName == \"Npgsql.EntityFrameworkCore.PostgreSQL\")";
+        const string Micros = "new Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<System.TimeSpan, long>(" +
+            "v => global::Acme.Ops.DurationWire.ToMicros(v), v => global::Acme.Ops.DurationWire.FromMicros(v))";
+        // Npgsql: the native interval, read through the generated NpgsqlInterval mapping; anything
+        // else: an integer count of microseconds.
         Assert.Contains(
-            "        if (Database.ProviderName == \"Npgsql.EntityFrameworkCore.PostgreSQL\")\n" +
-            "            modelBuilder.Entity<Timer>().Property(x => x.Timeout).HasColumnType(\"interval\");\n" +
+            $"        {Npgsql}\n" +
+            "            modelBuilder.Entity<Timer>().Property(x => x.Timeout).HasColumnType(\"interval\").Metadata.SetTypeMapping(DurationInterval.Mapping);\n" +
             "        else\n" +
-            "            modelBuilder.Entity<Timer>().Property(x => x.Timeout).HasConversion(new Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<System.TimeSpan, string>(" +
-            "v => global::Acme.Ops.DurationWire.Format(v), v => global::Acme.Ops.DurationWire.Parse(v)));",
+            $"            modelBuilder.Entity<Timer>().Property(x => x.Timeout).HasConversion({Micros});",
             ctx);
         Assert.Contains(
-            "        if (Database.ProviderName != \"Npgsql.EntityFrameworkCore.PostgreSQL\")\n" +
-            "            modelBuilder.Entity<Timer>().PrimitiveCollection(x => x.Backoff).ElementType().HasConversion(",
+            $"        {Npgsql}\n" +
+            "            modelBuilder.Entity<Timer>().PrimitiveCollection(x => x.Backoff).Metadata.SetTypeMapping(DurationInterval.ArrayMapping);\n" +
+            "        else\n" +
+            $"            modelBuilder.Entity<Timer>().PrimitiveCollection(x => x.Backoff).ElementType().HasConversion({Micros});",
             ctx);
+        Assert.Contains("internal static class DurationInterval", ctx);
+        Assert.DoesNotContain("using Npgsql", ctx);
         // A duration member of a jsonb value object is stored as its canonical string on every provider.
         Assert.Contains("b.Property(p => p.Length).HasConversion(new Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<System.TimeSpan, string>(", ctx);
-        Assert.Contains("b.PrimitiveCollection(p => p.Steps).ElementType().HasConversion(", ctx);
-        // ...and a duration member of a FLATTENED value object takes the top-level column mapping:
-        // native on Postgres, the canonical-string converter elsewhere.
+        Assert.Contains("b.PrimitiveCollection(p => p.Steps).ElementType().HasConversion(new Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<System.TimeSpan, string>(", ctx);
+        // ...and a duration member of a FLATTENED value object takes the top-level column mapping.
         Assert.Contains(
             "            b.Property(p => p.Cap).HasColumnName(\"limits_cap\");\n" +
-            "            if (Database.ProviderName != \"Npgsql.EntityFrameworkCore.PostgreSQL\")\n" +
-            "                b.Property(p => p.Cap).HasConversion(new Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<System.TimeSpan, string>(" +
-            "v => global::Acme.Ops.DurationWire.Format(v), v => global::Acme.Ops.DurationWire.Parse(v)));",
+            $"            {Npgsql}\n" +
+            "                b.Property(p => p.Cap).HasColumnType(\"interval\").Metadata.SetTypeMapping(DurationInterval.Mapping);\n" +
+            "            else\n" +
+            $"                b.Property(p => p.Cap).HasConversion({Micros});",
             ctx);
-        Assert.Contains(
-            "            if (Database.ProviderName != \"Npgsql.EntityFrameworkCore.PostgreSQL\")\n" +
-            "                b.PrimitiveCollection(p => p.Marks).ElementType().HasConversion(",
-            ctx);
+        Assert.Contains($"                b.PrimitiveCollection(p => p.Marks).ElementType().HasConversion({Micros});", ctx);
 
         var allowlist = files.Single(f => f.Path == "TimerFilterAllowlist.g.cs").Content;
-        Assert.Contains("[\"grace\"] = new(System.StringComparer.Ordinal) { \"eq\", \"ne\", \"in\", \"isNull\" },", allowlist);
+        Assert.Contains("[\"grace\"] = new(System.StringComparer.Ordinal) { \"eq\", \"ne\", \"gt\", \"gte\", \"lt\", \"lte\", \"in\", \"isNull\" },", allowlist);
 
         // The PATCH merge reads a duration through the wire helper, not System.Text.Json's own form.
         var routes = files.Single(f => f.Path == "TimerRoutes.g.cs").Content;
         Assert.Contains("if (clr == typeof(System.TimeSpan))", routes);
         Assert.Contains("DurationWire.TryParseElement(prop.Value, out var __dur)", routes);
+    }
+
+    // Stand-ins for NpgsqlTypes.NpgsqlInterval: the shape the generated Npgsql mapping reads, and two
+    // that have drifted from it.
+    public readonly struct IntervalLike { public int Months { get; } public int Days { get; } public long Time { get; } }
+    public readonly struct IntervalWithoutMonths { public int Days { get; } public long Time { get; } }
+    public readonly struct IntervalWithIntTime { public int Months { get; } public int Days { get; } public int Time { get; } }
+
+    [Fact]
+    public void The_npgsql_mapping_names_what_is_missing_when_the_interval_shape_has_changed()
+    {
+        var asm = Compile(Emit());
+        var shape = asm.GetType("Acme.Ops.AppDbContext+DurationInterval+IntervalShape")!;
+        var problem = shape.GetMethod("Problem", BindingFlags.NonPublic | BindingFlags.Static)!;
+        string? Check(Type? t) => (string?)problem.Invoke(null, [t]);
+
+        Assert.Null(Check(typeof(IntervalLike)));
+        Assert.Contains("no type NpgsqlTypes.NpgsqlInterval was found", Check(null));
+        var noMonths = Check(typeof(IntervalWithoutMonths))!;
+        Assert.Contains("has no Int32 Months property", noMonths);
+        Assert.Contains("tested with Npgsql 8.0.5", noMonths);
+        Assert.Contains("has no Int64 Time property", Check(typeof(IntervalWithIntTime)));
+        Assert.Equal("NpgsqlTypes.NpgsqlInterval, Npgsql", shape.GetField("TypeName", BindingFlags.NonPublic | BindingFlags.Static)!.GetValue(null));
     }
 
     [Fact]

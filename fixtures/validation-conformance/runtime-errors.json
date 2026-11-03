@@ -270,15 +270,6 @@
         "expected": "duration",
         "received": "PT"
       }
-    ],
-    "duration-reject-too-long": [
-      {
-        "field": "holdFor",
-        "rule": "format",
-        "message": "'holdFor' must be an ISO-8601 duration such as PT1H30M (no years, months or weeks)",
-        "expected": "duration",
-        "received": "PT256204779H"
-      }
     ]
   }
 }

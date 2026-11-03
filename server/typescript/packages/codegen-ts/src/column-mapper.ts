@@ -247,10 +247,10 @@ export interface EnumIntCustomType {
 
 /**
  * A `field.duration` column: a generated Drizzle `customType` (the module-local const
- * {@link DURATION_COLUMN_FN}) whose `toDriver` binds the dialect's spelling — the Postgres
- * interval text `[-]HH:MM:SS[.f]` (Postgres refuses a signed ISO-8601 duration), the canonical
- * ISO-8601 string on SQLite / MySQL — and whose `fromDriver` reads any of them back as the
- * canonical ISO-8601 form. Drizzle's own pg-core `interval()` reads Postgres's text spelling
+ * {@link DURATION_COLUMN_FN}) whose `toDriver` binds what the column holds — the Postgres
+ * interval text `[-]HH:MM:SS[.f]` (Postgres refuses a signed ISO-8601 duration), a 64-bit integer
+ * count of microseconds on SQLite / D1 / MySQL (it orders and compares as the span) — and whose
+ * `fromDriver` reads either back as the canonical ISO-8601 form. Drizzle's own pg-core `interval()` reads Postgres's text spelling
  * (`01:30:00`), which is not the wire form. One declaration per module serves every duration
  * column in it (templates/duration-wire-helper.ts).
  */
@@ -479,8 +479,8 @@ export const PG_IDENTITY_CAPABLE_FNS: ReadonlySet<string> = new Set([
  *   indexed column (primary/secondary/reference identity, `index.lookup`, `@unique`) or one
  *   with a `@default` (a `TEXT` column cannot take a literal default). Those are
  *   `VARCHAR(255)`.
- * - `field.uuid` is `VARCHAR(36)`, `field.inet` `VARCHAR(45)` and `field.duration` `VARCHAR(64)`
- *   (through the local duration codec): MySQL has none of those types.
+ * - `field.uuid` is `VARCHAR(36)` and `field.inet` `VARCHAR(45)`: MySQL has neither type.
+ *   `field.duration` is a `BIGINT` count of microseconds, through the local duration codec.
  * - A string enum is `VARCHAR(n)`, `n` the longest member, typed as the member union.
  * - `field.timestamp` is `DATETIME(3)` in Drizzle's "date" mode (see normalizeTimestampMode).
  * - Arrays, `field.object`, `field.map` and `@dbColumnType: jsonb` are `JSON`.
@@ -529,8 +529,8 @@ function mapMysqlColumn(
     case FIELD_SUBTYPE_INET:
       return varchar(45);
     case FIELD_SUBTYPE_DURATION:
-      // VARCHAR(64) holding the canonical ISO-8601 string (MySQL has no interval type; a bounded
-      // column can be keyed). The column function is the local duration codec.
+      // A BIGINT count of microseconds (MySQL has no interval type; an integer orders as the span).
+      // The column function is the local duration codec.
       return { fnName: DURATION_COLUMN_FN };
     case FIELD_SUBTYPE_OBJECT:
     case FIELD_SUBTYPE_MAP:
@@ -679,7 +679,7 @@ export function mapColumnType(
           fnName = "text";
           break;
         case FIELD_SUBTYPE_DURATION:
-          // TEXT holding the canonical ISO-8601 string, through the local duration codec.
+          // A 64-bit INTEGER count of microseconds, through the local duration codec.
           fnName = DURATION_COLUMN_FN;
           break;
         default:

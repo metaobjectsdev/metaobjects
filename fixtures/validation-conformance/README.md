@@ -157,8 +157,7 @@ runners wrap the bind step so a native-parse failure maps to `valid=false`.
 `Account.holdFor` (`field.duration`, OPTIONAL) pins the duration accept/reject verdicts. ACCEPT an
 ISO-8601 duration of days, hours, minutes and seconds (`PT1H30M`, `P1DT2H`, `-PT30S`, `PT0.5S`,
 `PT0S`). REJECT a calendar span (`P1M`, `P1Y`, `P2W`), a clock form (`1:30:00`), a fractional hour
-(`PT1.5H`), lowercase designators, a `T` with no component (`PT`), and a span past the
-256204778-hour bound (`PT256204779H`). The full rule, with the
+(`PT1.5H`), lowercase designators, and a `T` with no component (`PT`). The full rule, with the
 canonical form every port writes, is in [`fixtures/duration-wire/`](../duration-wire/); a port
 that binds a native duration type (`TimeSpan`, `java.time.Duration`, `timedelta`) still refuses
 what that type's own parser would accept beyond this form.

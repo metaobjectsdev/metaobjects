@@ -1,0 +1,71 @@
+name: duration-ordering
+description: |
+  Port-local (Kotlin / Exposed runner; the SQLite seed spells timestamps the way Exposed's SQLite
+  dialect reads them): field.duration orders on every engine. Postgres keeps a
+  native interval; SQLite stores a 64-bit count of microseconds. A range filter (gt / lte), an
+  equality on a differently-spelled span, and a sort all compare spans, never text.
+engines: [postgres, sqlite]
+seed-data: |
+    INSERT INTO "all_types" ("id", "sVal", "iVal", "lVal", "dVal", "fVal", "decVal", "bVal", "dateVal", "timeVal", "tsVal", "tsTzVal", "moneyVal", "enumVal", "uuidVal", "uriVal", "inetVal", "inet6Val", "durationVal") VALUES
+      ('00000001-0000-4000-8000-000000000001', 'thirty', 1, 1, 0.5, 0.5, 1.5, true, '2026-01-01', '10:00:00', '2026-01-01T10:00:00', '2026-01-01T10:00:00Z', 100, 'LOW', '00000001-0000-4000-8000-000000000001', 'urn:example:thirty', '10.0.0.1', 'fe80::1', '00:30:00'),
+      ('00000002-0000-4000-8000-000000000002', 'ninety', 1, 1, 0.5, 0.5, 1.5, true, '2026-01-01', '10:00:00', '2026-01-01T10:00:00', '2026-01-01T10:00:00Z', 100, 'LOW', '00000002-0000-4000-8000-000000000002', 'urn:example:ninety', '10.0.0.2', 'fe80::2', '01:30:00'),
+      ('00000003-0000-4000-8000-000000000003', 'minus', 1, 1, 0.5, 0.5, 1.5, true, '2026-01-01', '10:00:00', '2026-01-01T10:00:00', '2026-01-01T10:00:00Z', 100, 'LOW', '00000003-0000-4000-8000-000000000003', 'urn:example:minus', '10.0.0.3', 'fe80::3', '-00:01:30'),
+      ('00000004-0000-4000-8000-000000000004', 'long', 1, 1, 0.5, 0.5, 1.5, true, '2026-01-01', '10:00:00', '2026-01-01T10:00:00', '2026-01-01T10:00:00Z', 100, 'LOW', '00000004-0000-4000-8000-000000000004', 'urn:example:long', '10.0.0.4', 'fe80::4', '26:00:00'),
+      ('00000005-0000-4000-8000-000000000005', 'none', 1, 1, 0.5, 0.5, 1.5, true, '2026-01-01', '10:00:00', '2026-01-01T10:00:00', '2026-01-01T10:00:00Z', 100, 'LOW', '00000005-0000-4000-8000-000000000005', 'urn:example:none', '10.0.0.5', 'fe80::5', NULL);
+seed-data-engine:
+  sqlite: |
+    INSERT INTO "all_types" ("id", "sVal", "iVal", "lVal", "dVal", "fVal", "decVal", "bVal", "dateVal", "timeVal", "tsVal", "tsTzVal", "moneyVal", "enumVal", "uuidVal", "uriVal", "inetVal", "inet6Val", "durationVal") VALUES
+      ('00000001-0000-4000-8000-000000000001', 'thirty', 1, 1, 0.5, 0.5, 1.5, 1, '2026-01-01', '10:00:00', '2026-01-01 10:00:00.000', '2026-01-01T10:00:00.000Z', 100, 'LOW', '00000001-0000-4000-8000-000000000001', 'urn:example:thirty', '10.0.0.1', 'fe80::1', 1800000000),
+      ('00000002-0000-4000-8000-000000000002', 'ninety', 1, 1, 0.5, 0.5, 1.5, 1, '2026-01-01', '10:00:00', '2026-01-01 10:00:00.000', '2026-01-01T10:00:00.000Z', 100, 'LOW', '00000002-0000-4000-8000-000000000002', 'urn:example:ninety', '10.0.0.2', 'fe80::2', 5400000000),
+      ('00000003-0000-4000-8000-000000000003', 'minus', 1, 1, 0.5, 0.5, 1.5, 1, '2026-01-01', '10:00:00', '2026-01-01 10:00:00.000', '2026-01-01T10:00:00.000Z', 100, 'LOW', '00000003-0000-4000-8000-000000000003', 'urn:example:minus', '10.0.0.3', 'fe80::3', -90000000),
+      ('00000004-0000-4000-8000-000000000004', 'long', 1, 1, 0.5, 0.5, 1.5, 1, '2026-01-01', '10:00:00', '2026-01-01 10:00:00.000', '2026-01-01T10:00:00.000Z', 100, 'LOW', '00000004-0000-4000-8000-000000000004', 'urn:example:long', '10.0.0.4', 'fe80::4', 93600000000),
+      ('00000005-0000-4000-8000-000000000005', 'none', 1, 1, 0.5, 0.5, 1.5, 1, '2026-01-01', '10:00:00', '2026-01-01 10:00:00.000', '2026-01-01T10:00:00.000Z', 100, 'LOW', '00000005-0000-4000-8000-000000000005', 'urn:example:none', '10.0.0.5', 'fe80::5', NULL);
+queries:
+  - name: longer-than-an-hour
+    op: count
+    entity: AllTypes
+    filter: { durationVal: { gt: "PT1H" } }
+    expect: 2
+
+  - name: at-most-thirty-minutes-includes-a-negative-span
+    op: count
+    entity: AllTypes
+    filter: { durationVal: { lte: "PT30M" } }
+    expect: 2
+
+  - name: equality-across-spellings
+    op: count
+    entity: AllTypes
+    filter: { durationVal: { eq: "PT5400S" } }
+    expect: 1
+
+  - name: longer-than-an-hour-longest-first
+    op: list
+    entity: AllTypes
+    filter: { durationVal: { gt: "PT1H" } }
+    sort: [{ field: durationVal, dir: desc }]
+    expect:
+      - { id: "00000004-0000-4000-8000-000000000004", sVal: "long", iVal: 1, lVal: "1", dVal: "0.5", fVal: "0.5", decVal: "1.5", bVal: true,
+          dateVal: "2026-01-01", timeVal: "10:00:00", tsVal: "2026-01-01T10:00:00", tsTzVal: "2026-01-01T10:00:00Z",
+          moneyVal: "100", enumVal: "LOW", intEnumVal: null, uuidVal: "00000004-0000-4000-8000-000000000004", uriVal: "urn:example:long",
+          inetVal: "10.0.0.4", inet6Val: "fe80::4", durationVal: "PT26H", settings: null, labels: null }
+      - { id: "00000002-0000-4000-8000-000000000002", sVal: "ninety", iVal: 1, lVal: "1", dVal: "0.5", fVal: "0.5", decVal: "1.5", bVal: true,
+          dateVal: "2026-01-01", timeVal: "10:00:00", tsVal: "2026-01-01T10:00:00", tsTzVal: "2026-01-01T10:00:00Z",
+          moneyVal: "100", enumVal: "LOW", intEnumVal: null, uuidVal: "00000002-0000-4000-8000-000000000002", uriVal: "urn:example:ninety",
+          inetVal: "10.0.0.2", inet6Val: "fe80::2", durationVal: "PT1H30M", settings: null, labels: null }
+
+  - name: shortest-two
+    op: list
+    entity: AllTypes
+    filter: { durationVal: { isNull: false } }
+    sort: [{ field: durationVal, dir: asc }]
+    limit: 2
+    expect:
+      - { id: "00000003-0000-4000-8000-000000000003", sVal: "minus", iVal: 1, lVal: "1", dVal: "0.5", fVal: "0.5", decVal: "1.5", bVal: true,
+          dateVal: "2026-01-01", timeVal: "10:00:00", tsVal: "2026-01-01T10:00:00", tsTzVal: "2026-01-01T10:00:00Z",
+          moneyVal: "100", enumVal: "LOW", intEnumVal: null, uuidVal: "00000003-0000-4000-8000-000000000003", uriVal: "urn:example:minus",
+          inetVal: "10.0.0.3", inet6Val: "fe80::3", durationVal: "-PT1M30S", settings: null, labels: null }
+      - { id: "00000001-0000-4000-8000-000000000001", sVal: "thirty", iVal: 1, lVal: "1", dVal: "0.5", fVal: "0.5", decVal: "1.5", bVal: true,
+          dateVal: "2026-01-01", timeVal: "10:00:00", tsVal: "2026-01-01T10:00:00", tsTzVal: "2026-01-01T10:00:00Z",
+          moneyVal: "100", enumVal: "LOW", intEnumVal: null, uuidVal: "00000001-0000-4000-8000-000000000001", uriVal: "urn:example:thirty",
+          inetVal: "10.0.0.1", inet6Val: "fe80::1", durationVal: "PT30M", settings: null, labels: null }

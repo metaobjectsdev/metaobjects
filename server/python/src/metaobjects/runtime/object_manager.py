@@ -1048,7 +1048,8 @@ def _coerce_write_value(field: MetaField, value: Any) -> Any:
 
     # field.duration: an accepted ISO-8601 duration (or a timedelta already in process) →
     # datetime.timedelta, which pg8000 binds as an interval; the SQLite and MySQL dialects
-    # bind its canonical string (Dialect.encode_param). Anything else — a calendar span, a
+    # bind its microsecond count (Dialect.encode_param), so a filter operand compares and
+    # orders as a number there. Anything else — a calendar span, a
     # clock string, a number — is refused here, not by the database.
     if sub == fc.FIELD_SUBTYPE_DURATION:
         if _field_is_array(field) and isinstance(value, list):
@@ -1222,7 +1223,7 @@ def _decode_read_value(field: MetaField, value: Any) -> Any:
         return None
     if field.sub_type == fc.FIELD_SUBTYPE_DURATION:
         # A duration reads back as a datetime.timedelta on every engine: pg8000 hands one back
-        # for an interval, a text column holds the canonical string. An interval with a month
+        # for an interval, a SQLite / MySQL integer column holds the microsecond count. An interval with a month
         # part (pg8000 returns a PGInterval for it) is not a fixed length: refused.
         if isinstance(value, list):
             return [None if v is None else duration_from_driver(v) for v in value]
