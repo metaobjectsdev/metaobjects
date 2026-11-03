@@ -4,6 +4,7 @@ import type {
   DependentRelation,
   Change, ChangeStatus, DiffResult, AllowOptions, AmbiguousCallback, Dialect,
   CheckDescriptor, ColumnDefault, NameChange, DeclaredRename, ExprCanonPath,
+  SchemaAdvisory,
 } from "../types.js";
 import type { SqlType } from "../sql-type.js";
 import { sqlTypeEquals } from "../sql-type.js";
@@ -374,6 +375,10 @@ export async function diff(
     changes,
     blocked: changes.filter((c) => c.status.state === "blocked"),
     hazards: changes.flatMap((c) => dataHazardOf(c) ?? []),
+    advisories: [
+      ...intervalAsStringAdvisories(expectedTables, (id) => actualTables.get(id) ?? predecessors.get(id)),
+      ...(args.dialect === "sqlite" || args.dialect === "d1" ? sequenceNotAppliedAdvisories(changes) : []),
+    ],
     ...(args.dialect === "postgres" ? { exprCanonPath } : {}),
     ...(shadowAnswer !== undefined && "unavailable" in shadowAnswer ? { shadowUnavailable: shadowAnswer.unavailable } : {}),
   };
@@ -784,21 +789,53 @@ function canonTypeForDialect(t: SqlType, dialect: Dialect | undefined): SqlType 
 
 /**
  * Before field.duration, introspection read a Postgres `interval` column as `text`, and a model
- * could only describe one as a string. So a live interval column whose expected type is not an
- * interval is read as text, exactly as it was: a model that does not use field.duration sees the
- * diff it always saw, and an existing interval column modelled as a string does not turn into
- * drift. Only an expected interval compares as one.
+ * could only describe one as a string. So a live interval column the model declares as text is
+ * read as text, exactly as it was, and does not turn into drift (an `interval-as-string`
+ * advisory says so). An expected interval compares as one, and any other expected type is a
+ * real type change from the interval.
  */
 function asPreDurationType(actual: SqlType, expected: SqlType): SqlType {
-  if (actual.kind === "interval" && expected.kind !== "interval") return { kind: "text" };
+  // Only where the model expects text (a field.string): a live interval modelled as anything
+  // else is a real type change, reported as interval → that type.
+  if (actual.kind === "interval" && expected.kind === "text") return { kind: "text" };
   if (actual.kind === "array" && expected.kind === "array") {
     const element = asPreDurationType(actual.element, expected.element);
     return element === actual.element ? actual : { kind: "array", element };
   }
-  if (actual.kind === "array" && actual.element.kind === "interval" && expected.kind !== "array") {
-    return { kind: "array", element: { kind: "text" } };
-  }
   return actual;
+}
+
+/** Every column a live `interval` (or array of them) the model does not declare as a duration:
+ *  `asPreDurationType` reads it as text so it is not drift, and this says so. */
+function intervalAsStringAdvisories(
+  expectedTables: ReadonlyMap<string, TableDescriptor>, liveOf: (id: string) => TableDescriptor | undefined,
+): SchemaAdvisory[] {
+  const out: SchemaAdvisory[] = [];
+  for (const [id, expected] of expectedTables) {
+    const live = liveOf(id);
+    if (live === undefined) continue;
+    const liveCols = new Map(live.columns.map((c) => [c.name, c]));
+    for (const ec of expected.columns) {
+      const lc = liveCols.get(ec.name);
+      if (lc === undefined || asPreDurationType(lc.sqlType, ec.sqlType) === lc.sqlType) continue;
+      out.push({ kind: "interval-as-string", table: expected.name, ...schemaSpread(expected.schema), column: ec.name });
+    }
+  }
+  return out;
+}
+
+/** A column this diff creates on SQLite or D1 with a declared sequence start or name, which
+ *  that database cannot hold (it has no sequence). */
+function sequenceNotAppliedAdvisories(changes: readonly Change[]): SchemaAdvisory[] {
+  const out: SchemaAdvisory[] = [];
+  const at = (table: string, schema: string | undefined, column: ColumnDescriptor): void => {
+    if (column.sequence !== undefined) out.push({ kind: "sequence-not-applied", table, ...schemaSpread(schema), column: column.name });
+  };
+  for (const c of changes) {
+    if (c.kind === "create-table") for (const col of c.table.columns) at(c.table.name, c.table.schema, col);
+    if (c.kind === "add-column") at(c.table, c.schema, c.column);
+  }
+  return out;
 }
 
 function sqlTypeEqualsForDialect(a: SqlType, b: SqlType, dialect: Dialect | undefined): boolean {

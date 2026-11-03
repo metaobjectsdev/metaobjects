@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 from ..naming import NamingRules
-from ..enum_length import EnumDefaults
 from ..wire import WireFormat
 from .meta_data import MetaData
 
@@ -22,6 +21,3 @@ class MetaRoot(MetaData):
         # REST surface), attached by the same project-aware loads as `naming`; read with
         # `wire_of()`. `native` for both keys until a load attaches the project's own.
         self.wire: WireFormat = WireFormat()
-        # The project `enums` block (string-stored enum column length), attached by the same
-        # project-aware loads as `naming`; read with `enum_defaults_of()`. None by default.
-        self.enum_defaults: EnumDefaults = EnumDefaults()

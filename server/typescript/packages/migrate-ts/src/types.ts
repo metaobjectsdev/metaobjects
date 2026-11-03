@@ -597,7 +597,23 @@ export interface DiffResult {
   exprCanonPath?: ExprCanonPath;
   /** Postgres: why no scratch (shadow) database was used, when one was asked for and could not be. */
   shadowUnavailable?: string;
+  /** Things that are not drift but deserve a word: see {@link SchemaAdvisory}. Empty when none. */
+  advisories: SchemaAdvisory[];
 }
+
+/**
+ * Not drift, but a better model exists.
+ *  - `interval-as-string`: a live Postgres `interval` column the model declares as something
+ *    other than a `field.duration` (a `field.string`, the only way to model one before
+ *    `field.duration` existed). It is compared as text, so it does not drift; modelling it as
+ *    `field.duration` gives the native type and span ordering.
+ *  - `sequence-not-applied`: a column created on SQLite or D1 whose primary key declares
+ *    `@sequenceStart` or `@sequenceName`. SQLite has no sequence, so neither is applied; the
+ *    key counts from 1. Reported when the column is created, not on every run.
+ */
+export type SchemaAdvisory =
+  | { kind: "interval-as-string"; table: string; schema?: string; column: string }
+  | { kind: "sequence-not-applied"; table: string; schema?: string; column: string };
 
 /**
  * Where Postgres's own spelling of an expected expression came from.

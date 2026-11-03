@@ -4,11 +4,11 @@
     "children": [
       {
         "object.entity": {
-          "name": "OfficeHours",
+          "name": "StoreHours",
           "children": [
             {
               "source.rdb": {
-                "@table": "OfficeHours"
+                "@table": "StoreHours"
               }
             },
             {
@@ -20,10 +20,10 @@
               "field.enum": {
                 "name": "kind",
                 "@values": [
-                  "Clinic",
+                  "InStore",
                   "Phone"
                 ],
-                "@constraintName": "CK_OfficeHours_Kind"
+                "@constraintName": "CK_StoreHours_Kind"
               }
             },
             {
@@ -35,7 +35,7 @@
                       "name": "weekday",
                       "@min": 0,
                       "@max": 6,
-                      "@constraintName": "CK_OfficeHours_StartDay"
+                      "@constraintName": "CK_StoreHours_StartDay"
                     }
                   }
                 ]
@@ -64,14 +64,14 @@
                     "validator.length": {
                       "name": "len",
                       "@max": 8,
-                      "@constraintName": "CK_OfficeHours_Code"
+                      "@constraintName": "CK_StoreHours_Code"
                     }
                   },
                   {
                     "validator.regex": {
                       "name": "shape",
                       "@pattern": "^[A-Z0-9]+$",
-                      "@constraintName": "CK_OfficeHours_CodeShape"
+                      "@constraintName": "CK_StoreHours_CodeShape"
                     }
                   }
                 ]
@@ -79,12 +79,12 @@
             },
             {
               "field.long": {
-                "name": "patientId"
+                "name": "storeId"
               }
             },
             {
               "field.long": {
-                "name": "caregiverId"
+                "name": "kioskId"
               }
             },
             {
@@ -100,7 +100,7 @@
                 "@left": "endTime",
                 "@op": "gt",
                 "@right": "startTime",
-                "@constraintName": "CK_OfficeHours_SameDayValidation",
+                "@constraintName": "CK_StoreHours_SameDayTimes",
                 "@condition": {
                   "op": "eq",
                   "left": {
@@ -116,11 +116,11 @@
               "validator.atLeastOne": {
                 "name": "oneSource",
                 "@fields": [
-                  "patientId",
-                  "caregiverId"
+                  "storeId",
+                  "kioskId"
                 ],
                 "@max": 1,
-                "@constraintName": "CK_OfficeHours_ExactlyOneSource"
+                "@constraintName": "CK_StoreHours_ExactlyOneLocation"
               }
             }
           ]

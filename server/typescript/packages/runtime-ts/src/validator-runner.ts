@@ -482,12 +482,12 @@ function scalarErrors(field: MetaData, value: unknown, required: boolean, label:
     }
   }
 
-  // field.duration — an ISO-8601 duration with no years, months or weeks (no @lenient: the
+  // field.duration — an ISO-8601 duration with no years or months (no @lenient: the
   // column is an interval on Postgres, so a value that is not a duration cannot be stored).
   if (typeof value === "string" && field.subType === FIELD_SUBTYPE_DURATION && parseDurationLiteral(value) === undefined) {
     errors.push({
       field: label, rule: "format",
-      message: `'${label}' must be an ISO-8601 duration such as PT1H30M (no years, months or weeks)`,
+      message: `'${label}' must be an ISO-8601 duration such as PT1H30M (no years or months)`,
       expected: "duration", received: value,
     });
   }

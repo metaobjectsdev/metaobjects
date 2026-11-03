@@ -454,18 +454,20 @@ function canonicalizeDurations(entity: MetaData, row: Row): Row {
 }
 
 /** Write side: a duration column is bound as the 64-bit microsecond integer SQLite, D1 and MySQL
- *  store it as, and in the Postgres interval spelling on Postgres, which refuses a signed ISO-8601
- *  duration. A duration inside a jsonb value object is JSON, so it is the canonical ISO string. A
+ *  store it as, in the Postgres interval spelling on Postgres, which refuses a signed ISO-8601
+ *  duration, and as a bigint microsecond count in the in-memory driver. A duration inside a jsonb value object is JSON, so it is the canonical ISO string. A
  *  value that is not a duration is refused here, not by the database. */
 function bindDurations(entity: MetaData, row: Row, dialect: Dialect): Row {
   return mapDurations(entity, row, (child, v, top) => {
     const micros = typeof v === "string" ? parseDurationLiteral(v) : undefined;
     if (micros === undefined) {
-      throw new Error(`field.duration '${child.name}' cannot be written: ${JSON.stringify(v)} is not an ISO-8601 duration (such as PT1H30M; no years, months or weeks)`);
+      throw new Error(`field.duration '${child.name}' cannot be written: ${JSON.stringify(v)} is not an ISO-8601 duration (such as PT1H30M; no years or months)`);
     }
     if (!top) return formatDuration(micros);
     if (dialect === "postgres") return formatPostgresInterval(micros);
     if (dialect === "sqlite" || dialect === "mysql") return durationToStoredMicros(micros);
-    return formatDuration(micros);
+    // The in-memory driver holds the exact microsecond count, so it compares and sorts as the
+    // span does; it has no column, so no 64-bit limit.
+    return micros;
   });
 }

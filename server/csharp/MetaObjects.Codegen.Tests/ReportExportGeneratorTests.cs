@@ -187,8 +187,8 @@ public class ReportExportGeneratorTests
     {
         Assert.Contains("case TimeSpan ts: return new(Duration(ts), false);", Writer(DurationModel));
         var h = Compile(new ReportExportGenerator(), model: DurationModel);
-        Assert.Equal("w\r\nPT26H\r\n-PT1M30S\r\nPT0.5S\r\nPT0S\r\n\r\n",
-            Csv(h, [[TimeSpan.FromHours(26)], [TimeSpan.FromSeconds(-90)], [TimeSpan.FromMilliseconds(500)], [TimeSpan.FromTicks(5)], [null]], "w"));
+        Assert.Equal("w\r\nPT26H\r\n-PT1M30S\r\nPT0.5S\r\nPT0.0000005S\r\nPT0S\r\n-PT256204778H48M5.4775808S\r\n\r\n",
+            Csv(h, [[TimeSpan.FromHours(26)], [TimeSpan.FromSeconds(-90)], [TimeSpan.FromMilliseconds(500)], [TimeSpan.FromTicks(5)], [TimeSpan.Zero], [TimeSpan.MinValue], [null]], "w"));
         Assert.Contains("<w>-PT1M30S</w>", Xml(h, [[TimeSpan.FromSeconds(-90)]], "w"));
     }
 

@@ -317,23 +317,23 @@ public class SpringReportExportGenerator extends MultiFileDirectGeneratorBase<Me
 
     /** The {@code field.duration} cell factory, emitted only for a model that has one. */
     private static final String DURATION_CELL = """
-    /** A field.duration in its canonical ISO-8601 wire form ([-]PT[nH][nM][n[.f]S], microseconds),
-     *  as the list route writes it; Duration.toString() differs for a negative span. */
+    /** A field.duration in its canonical ISO-8601 wire form ([-]PT[nH][nM][n[.f]S], to the
+     *  nanosecond), as the list route writes it; Duration.toString() differs for a negative span. */
     public static Cell duration(java.time.Duration value) {
         if (value == null) return NULL;
         boolean negative = value.isNegative();
         java.time.Duration mag = negative ? value.negated() : value;
         long total = mag.getSeconds();
-        long micros = mag.getNano() / 1_000L;
-        if (total == 0 && micros == 0) return new Cell("PT0S", false);
+        long nanos = mag.getNano();
+        if (total == 0 && nanos == 0) return new Cell("PT0S", false);
         StringBuilder b = new StringBuilder(negative ? "-PT" : "PT");
         if (total / 3600 > 0) b.append(total / 3600).append('H');
         if (total % 3600 / 60 > 0) b.append(total % 3600 / 60).append('M');
-        if (total % 60 > 0 || micros > 0) {
+        if (total % 60 > 0 || nanos > 0) {
             b.append(total % 60);
-            if (micros > 0) {
-                String digits = Long.toString(micros);
-                b.append('.').append(("000000".substring(digits.length()) + digits).replaceAll("0+$", ""));
+            if (nanos > 0) {
+                String digits = Long.toString(nanos);
+                b.append('.').append(("000000000".substring(digits.length()) + digits).replaceAll("0+$", ""));
             }
             b.append('S');
         }

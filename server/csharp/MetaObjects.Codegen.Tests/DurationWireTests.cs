@@ -1,9 +1,12 @@
 // field.duration — the C# half of the duration wire rule, gated against the shared vectors in
 // fixtures/duration-wire/vectors.json. No database: the production wire helper
 // (Runtime/DurationWire.cs, the SAME text the entity generator emits into every generated project)
-// runs every vector, and the emitted text is proven identical to it. The Postgres vectors (what an
-// interval column reads back as, through Npgsql's native TimeSpan) are gated against a live
-// database in MetaObjects.IntegrationTests/DurationPostgresTests.
+// runs every `wire` vector (the `precision` ones at seven digits: a TimeSpan tick is 100 ns), and
+// the emitted text is proven identical to it. Of the `codecs` groups C# has two in production:
+// `storedMicros` (the generated value converter on SQLite and MySQL, here) and the Postgres read
+// (`postgres` and `postgresRefused`, through the generated NpgsqlInterval mapping, gated against a
+// live database in MetaObjects.IntegrationTests/Api/DurationWireGeneratedApiTests). C# never spells
+// a duration as Postgres text (Npgsql binds a TimeSpan natively), so `postgresText` is not its codec.
 
 using System.Reflection;
 using System.Text.Json;
@@ -25,18 +28,31 @@ public class DurationWireTests
         JsonDocument.Parse(File.ReadAllText(Path.Combine(
             CorpusPaths.RepoRoot(), "fixtures", "duration-wire", "vectors.json"))).RootElement;
 
+    private static JsonElement Wire(string group) => Vectors().GetProperty("wire").GetProperty(group);
+
+    // The `precision` key for this port: the fractional digits a TimeSpan holds.
+    private const string PrecisionKey = "7";
+
     public static TheoryData<string, string> ParseVectors()
     {
         var data = new TheoryData<string, string>();
-        foreach (var v in Vectors().GetProperty("parse").EnumerateArray())
+        foreach (var v in Wire("parse").EnumerateArray())
             data.Add(v.GetProperty("in").GetString()!, v.GetProperty("out").GetString()!);
+        return data;
+    }
+
+    public static TheoryData<string, string> PrecisionVectors()
+    {
+        var data = new TheoryData<string, string>();
+        foreach (var v in Wire("precision").EnumerateArray())
+            data.Add(v.GetProperty("in").GetString()!, v.GetProperty("out").GetProperty(PrecisionKey).GetString()!);
         return data;
     }
 
     public static TheoryData<string> RefusedVectors()
     {
         var data = new TheoryData<string>();
-        foreach (var v in Vectors().GetProperty("refused").EnumerateArray()) data.Add(v.GetString()!);
+        foreach (var v in Wire("refused").EnumerateArray()) data.Add(v.GetString()!);
         return data;
     }
 
@@ -57,7 +73,15 @@ public class DurationWireTests
         Assert.Equal(canonical, DurationWire.Format(DurationWire.Parse(canonical)));
     }
 
-    [Theory, MemberData(nameof(ParseVectors))]
+    [Theory, MemberData(nameof(PrecisionVectors))]
+    public void A_fraction_keeps_whole_ticks_and_truncates_the_rest_toward_zero(string input, string canonical)
+    {
+        Assert.True(DurationWire.TryParse(input, out var span), $"'{input}' was refused");
+        Assert.Equal(canonical, DurationWire.Format(span));
+        Assert.Equal(canonical, DurationWire.Format(DurationWire.Parse(canonical)));
+    }
+
+    [Theory, MemberData(nameof(ParseVectors)), MemberData(nameof(PrecisionVectors))]
     public void A_property_reads_the_accepted_form_and_writes_the_canonical_one(string input, string canonical)
     {
         var h = JsonSerializer.Deserialize<Holder>($"{{\"Span\":\"{input}\",\"Maybe\":\"{input}\",\"Many\":[\"{input}\"]}}")!;
@@ -86,45 +110,53 @@ public class DurationWireTests
         Assert.ThrowsAny<JsonException>(() => JsonSerializer.Deserialize<Holder>($"{{\"Span\":{json}}}"));
 
     [Fact]
-    public void Null_crosses_as_null_and_a_tick_below_a_microsecond_truncates_toward_zero()
+    public void Null_crosses_as_null_and_every_tick_is_written()
     {
         Assert.Null(JsonSerializer.Deserialize<Holder>("{\"Maybe\":null}")!.Maybe);
         Assert.Contains("\"Maybe\":null", JsonSerializer.Serialize(new Holder()));
-        Assert.Equal("PT0S", DurationWire.Format(TimeSpan.FromTicks(9)));
-        Assert.Equal("PT0S", DurationWire.Format(TimeSpan.FromTicks(-9)));
-        Assert.Equal("PT0.000001S", DurationWire.Format(TimeSpan.FromTicks(19)));
-        Assert.Equal("-PT0.000001S", DurationWire.Format(TimeSpan.FromTicks(-19)));
+        Assert.Equal("PT0.0000009S", DurationWire.Format(TimeSpan.FromTicks(9)));
+        Assert.Equal("-PT0.0000009S", DurationWire.Format(TimeSpan.FromTicks(-9)));
+        Assert.Equal("PT0.0000019S", DurationWire.Format(TimeSpan.FromTicks(19)));
+        Assert.Equal("-PT0.0000019S", DurationWire.Format(TimeSpan.FromTicks(-19)));
         Assert.Equal("-PT1M30S", DurationWire.Format(TimeSpan.FromSeconds(-90)));
+        Assert.Equal(TimeSpan.FromTicks(-19), DurationWire.Parse("-PT0.00000199S")); // truncated toward zero
     }
 
     public static TheoryData<string, string> StoredMicrosVectors()
     {
         var data = new TheoryData<string, string>();
-        foreach (var v in Vectors().GetProperty("storedMicros").EnumerateArray())
+        foreach (var v in Vectors().GetProperty("codecs").GetProperty("storedMicros").EnumerateArray())
             data.Add(v.GetProperty("in").GetString()!, v.GetProperty("out").GetString()!);
         return data;
     }
 
     [Theory, MemberData(nameof(StoredMicrosVectors))]
-    public void On_a_database_without_an_interval_a_duration_is_its_microsecond_count(string canonical, string micros)
+    public void On_a_database_without_an_interval_a_duration_is_its_microsecond_count(string duration, string micros)
     {
         var count = long.Parse(micros, System.Globalization.CultureInfo.InvariantCulture);
-        Assert.Equal(count, DurationWire.ToMicros(DurationWire.Parse(canonical)));
-        Assert.Equal(canonical, DurationWire.Format(DurationWire.FromMicros(count)));
+        Assert.Equal(count, DurationWire.ToMicros(DurationWire.Parse(duration)));
+        // The column's precision is a microsecond: what reads back is the span to the microsecond.
+        Assert.Equal(TimeSpan.FromTicks(count * 10), DurationWire.FromMicros(count));
+        Assert.Equal(count, DurationWire.ToMicros(DurationWire.FromMicros(count)));
     }
 
     // C#'s own limit — a TimeSpan's range, about 10.7 million days — not a cross-port one: a span
-    // past it is refused, never wrapped, on parse and on a stored microsecond count.
+    // past it is refused, never wrapped, on parse and on a stored microsecond count. The whole
+    // range is reachable, to the tick, MinValue (one tick longer than MaxValue) included.
     [Fact]
     public void A_span_past_a_timespan_is_refused_never_wrapped()
     {
-        Assert.Equal("PT256204778H48M5.47758S", DurationWire.Format(TimeSpan.MaxValue));
-        Assert.Equal("-PT256204778H48M5.47758S", DurationWire.Format(TimeSpan.MinValue));
+        Assert.Equal("PT256204778H48M5.4775807S", DurationWire.Format(TimeSpan.MaxValue));
+        Assert.Equal("-PT256204778H48M5.4775808S", DurationWire.Format(TimeSpan.MinValue));
+        Assert.Equal(TimeSpan.MaxValue, DurationWire.Parse("PT256204778H48M5.4775807S"));
+        Assert.Equal(TimeSpan.MaxValue, DurationWire.Parse("PT256204778H48M5.47758079999S")); // truncated, not rounded past
+        Assert.Equal(TimeSpan.MinValue, DurationWire.Parse("-PT256204778H48M5.4775808S"));
         Assert.Equal("PT256204778H", DurationWire.Format(DurationWire.Parse("PT256204778H")));
         Assert.Equal("-PT256204778H", DurationWire.Format(DurationWire.Parse("-P10675199DT2H")));
-        Assert.True(DurationWire.TryParse("PT256204778H48M5.47758S", out var top));
-        Assert.Equal(TimeSpan.MaxValue.Ticks / 10, top.Ticks / 10);
-        foreach (var past in new[] { "PT256204778H48M5.477581S", "PT256204779H", "P10675200D", "-PT256204779H", "PT99999999999999999999S" })
+        Assert.Equal("PT256204704H", DurationWire.Format(DurationWire.Parse("P1525028W")));
+        foreach (var past in new[] {
+            "PT256204778H48M5.4775808S", "-PT256204778H48M5.4775809S", "PT256204779H", "P10675200D",
+            "P1525029W", "P1525028W4D", "-PT256204779H", "PT99999999999999999999S", "P99999999999999999999W" })
             Assert.False(DurationWire.TryParse(past, out _), past);
         Assert.Equal(TimeSpan.MaxValue.Ticks / 10, DurationWire.ToMicros(TimeSpan.MaxValue));
         Assert.Throws<OverflowException>(() => DurationWire.FromMicros(long.MaxValue));
@@ -156,7 +188,7 @@ public class DurationWireTests
     {
         Assert.Null(Check("wait", "eq", "PT90M").ErrorEnvelope);
         Assert.Null(Check("grace", "ne", "-P1DT0.5S").ErrorEnvelope);
-        Assert.Null(Check("wait", "in", new List<string> { "PT1H", "P2D" }).ErrorEnvelope);
+        Assert.Null(Check("wait", "in", new List<string> { "PT1H", "P2D", "P1W" }).ErrorEnvelope);
         Assert.Equal("invalid_filter_value", Check("wait", "in", new List<string> { "PT1H", "P1Y" }).ErrorEnvelope);
     }
 
@@ -290,7 +322,7 @@ public class DurationWireTests
     public void The_npgsql_mapping_names_what_is_missing_when_the_interval_shape_has_changed()
     {
         var asm = Compile(Emit());
-        var shape = asm.GetType("Acme.Ops.AppDbContext+DurationInterval+IntervalShape")!;
+        var shape = asm.GetType("Acme.Ops.DurationInterval+IntervalShape")!;
         var problem = shape.GetMethod("Problem", BindingFlags.NonPublic | BindingFlags.Static)!;
         string? Check(Type? t) => (string?)problem.Invoke(null, [t]);
 
@@ -326,6 +358,6 @@ public class DurationWireTests
 
         Assert.ThrowsAny<JsonException>(() => JsonSerializer.Deserialize("{\"Timeout\":\"01:30:00\"}", timer));
         Assert.ThrowsAny<JsonException>(() => JsonSerializer.Deserialize("{\"Grace\":\"P1M\"}", timer));
-        Assert.ThrowsAny<JsonException>(() => JsonSerializer.Deserialize("{\"Backoff\":[\"P1W\"]}", timer));
+        Assert.ThrowsAny<JsonException>(() => JsonSerializer.Deserialize("{\"Backoff\":[\"P1Y\"]}", timer));
     }
 }

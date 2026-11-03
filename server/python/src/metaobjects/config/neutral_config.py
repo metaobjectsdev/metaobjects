@@ -5,7 +5,6 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from metaobjects.enum_length import EnumDefaults
 from metaobjects.errors import ErrorCode, ParseError
 from metaobjects.naming import COLUMN_NAMING_STRATEGIES, TABLE_NAMING_RULES, NamingRules
 from metaobjects.wire import WIRE_DECIMALS, WIRE_NULL_MEMBERS, WireFormat
@@ -82,11 +81,6 @@ class NeutralConfig:
     #: Attached to the loaded root (`MetaRoot.wire`) beside `naming`; validated HERE
     #: for the same reason `naming` is.
     wire: WireFormat = WireFormat()
-
-    #: The `enums` block: `maxLength`, the column length of a string-stored enum with no
-    #: @maxLength. Absent or `{}` ⇒ no default. Attached to the loaded root
-    #: (`MetaRoot.enum_defaults`) beside `naming`; validated HERE for the same reason.
-    enums: EnumDefaults = EnumDefaults()
 
 
 def find_project_dir(start: Path) -> Path | None:
@@ -181,7 +175,7 @@ def read_neutral_config(config_dir: Path) -> NeutralConfig | None:
     libraries = _read_libraries(raw, path)
     naming = _read_naming(raw, path)
     wire = _read_wire(raw, path)
-    enums = _read_enums(raw, path)
+    _check_enums(raw, path)
 
     # Unknown top-level keys are IGNORED by design — see the module docstring.
     return NeutralConfig(
@@ -192,7 +186,6 @@ def read_neutral_config(config_dir: Path) -> NeutralConfig | None:
         libraries=libraries,
         naming=naming,
         wire=wire,
-        enums=enums,
     )
 
 
@@ -317,13 +310,15 @@ def _read_naming(raw: dict[str, object], path: Path) -> NamingRules:
 _ENUMS_KEYS = ("maxLength",)
 
 
-def _read_enums(raw: dict[str, object], path: Path) -> EnumDefaults:
-    """The `enums` block: `maxLength`, a positive integer, is the column length of a
-    string-stored enum with no @maxLength. Absent or `{}` ⇒ no default. Refuses a non-object
-    block, an unknown key, or a value that is not a positive integer, the same rule as
-    `naming`."""
+def _check_enums(raw: dict[str, object], path: Path) -> None:
+    """The `enums` block: `maxLength`, a positive integer, is the column length a port that
+    sizes a string-stored enum's column gives one with no @maxLength. This port sizes no
+    column (it emits no DDL and no column type), so it reads nothing from the block, but a
+    project shared with a port that does has one: the block is accepted, and its shape is
+    checked so a typo is refused here as it is there (a non-object block, an unknown key, or
+    a value that is not a positive integer)."""
     if "enums" not in raw:
-        return EnumDefaults()
+        return
     enums = raw["enums"]
     if not isinstance(enums, dict):
         raise ParseError(f"{path}: 'enums' must be an object", code=ErrorCode.ERR_BAD_ATTR_VALUE)
@@ -334,7 +329,7 @@ def _read_enums(raw: dict[str, object], path: Path) -> EnumDefaults:
             code=ErrorCode.ERR_BAD_ATTR_VALUE,
         )
     if "maxLength" not in enums:
-        return EnumDefaults()
+        return
     value = enums["maxLength"]
     # A whole number however JSON spells it (32, 32.0, 1e2): a reader that parses numbers as
     # doubles (TypeScript's) cannot tell those apart, so every port accepts all three.
@@ -345,7 +340,6 @@ def _read_enums(raw: dict[str, object], path: Path) -> EnumDefaults:
             f"{path}: 'enums.maxLength' must be a positive integer, got {value!r}",
             code=ErrorCode.ERR_BAD_ATTR_VALUE,
         )
-    return EnumDefaults(max_length=value)
 
 
 #: Every key the `wire` block accepts, and the ONLY ones it accepts (refused, not ignored, like `naming`).

@@ -558,6 +558,55 @@ class KotlinNamesGeneratorTest {
         assertTrue("\"shipTo\" to SHIP_TO_COLUMN" in src, src)
         assertTrue("\"shipTo.street\" to SHIP_TO_STREET_COLUMN" in src, src)
         assertTrue("\"shipTo.postalCode\" to SHIP_TO_POSTAL_CODE_COLUMN" in src, src)
+        // ...but the flattened field's own column constant names no column: it is deprecated.
+        assertTrue("    @Deprecated(\"A flattened field has no column of its own; use the member constants.\")\n" +
+            "    const val SHIP_TO_COLUMN: String = \"ship_to\"" in src, src)
+        assertFalse("@Deprecated(\"A flattened field has no column of its own; use the member constants.\")\n" +
+            "    const val PAYLOAD_COLUMN" in src, src)
+        assertTrue("    @Suppress(\"DEPRECATION\")\n    val COLUMNS_BY_FIELD" in src, src)
+    }
+
+    /**
+     * The deprecation costs a project that never uses the constant nothing: the generated names
+     * objects, a base and the child that re-exports the base's constant, compile with every
+     * warning an error. A use of the constant is what warns.
+     */
+    @Test fun `the deprecated flattened column warns only where it is used`() {
+        val model = """{
+          "metadata.root": { "package": "acme::ship", "children": [
+            { "object.value": { "name": "Address", "children": [
+                { "field.string": { "name": "street" } }
+            ] } },
+            { "object.entity": { "name": "Base", "abstract": true, "children": [
+                { "field.long":   { "name": "id" } },
+                { "field.object": { "name": "shipTo", "@objectRef": "Address", "@storage": "flattened" } }
+            ] } },
+            { "object.entity": { "name": "Order", "extends": "acme::ship::Base", "children": [
+                { "source.rdb":   { "@table": "orders" } },
+                { "field.string": { "name": "note" } },
+                { "identity.primary": { "@fields": ["id"], "@generation": "increment" } }
+            ] } }
+          ] }
+        }""".trimIndent()
+        val files = emit(model).filterKeys { it.endsWith(".kt") }
+        val order = files.getValue("acme/ship/OrderNames.kt")
+        assertTrue("const val SHIP_TO_COLUMN: String = acme.ship.BaseNames.SHIP_TO_COLUMN" in order ||
+            "const val SHIP_TO_COLUMN: String = BaseNames.SHIP_TO_COLUMN" in order, order)
+
+        fun compile(extra: List<SourceFile>) = KotlinCompilation().apply {
+            this.sources = files.map { (path, text) -> SourceFile.kotlin(path.substringAfterLast('/'), text) } + extra
+            inheritClassPath = true
+            allWarningsAsErrors = true
+            messageOutputStream = System.out
+        }.compile()
+
+        val clean = compile(emptyList())
+        assertEquals(KotlinCompilation.ExitCode.OK, clean.exitCode, "generated names objects warn:\n${clean.messages}")
+
+        val use = compile(listOf(SourceFile.kotlin("UsesIt.kt",
+            "package acme.ship\nobject UsesIt { val c: String = OrderNames.SHIP_TO_COLUMN }\n")))
+        assertEquals(KotlinCompilation.ExitCode.COMPILATION_ERROR, use.exitCode, use.messages)
+        assertTrue("deprecated" in use.messages.lowercase(), use.messages)
     }
 
     @Test fun `a flattened member constant colliding with a field constant is left out`() {

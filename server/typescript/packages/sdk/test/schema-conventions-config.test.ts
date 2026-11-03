@@ -1,14 +1,14 @@
-// `migrate.conventions` in .metaobjects/config.json: the schema conventions meta migrate
-// names database-only objects with. The project-aware load carries the selection on the root,
-// as it does `naming` and `wire`, so every expected-schema build of one loaded model — migrate,
-// verify --db, the advisories — uses the same conventions. A project's own conventions object
-// (from metaobjects.config.ts) arrives as a load option and wins over the preset name.
+// `migrate.conventions` and `migrate.checks` in .metaobjects/config.json: the schema
+// conventions meta migrate names database-only objects with, and which validator CHECKs it
+// emits. Both are migrate settings, so the resolved collection carries them and the loaded
+// model does not; the CLI resolves them once and hands them to every expected-schema build.
 
 import { describe, expect, test } from "bun:test";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ConfigSchema } from "../src/config.js";
+import { ConfigSchema, loadConfig } from "../src/config.js";
+import { resolveCollection } from "../src/collection.js";
 import { loadMemory } from "../src/memory.js";
 
 const MODEL = { "metadata.root": { package: "w", children: [
@@ -35,22 +35,46 @@ describe("migrate.conventions", () => {
     expect(ConfigSchema.safeParse({ schema_version: 1, migrate: { conventions: "" } }).success).toBe(false);
   });
 
-  test("the project-aware load carries it on the root", async () => {
+  test("the resolved collection carries it", async () => {
     await withProject({ migrate: { conventions: "efcore" } }, async (dir) => {
-      expect((await loadMemory(dir)).schemaConventions).toBe("efcore");
+      expect((await resolveCollection(dir)).schemaConventions).toBe("efcore");
     });
-  });
-
-  test("absent, the root carries nothing (migrate's own default applies)", async () => {
     await withProject({}, async (dir) => {
-      expect((await loadMemory(dir)).schemaConventions).toBeUndefined();
+      expect((await resolveCollection(dir)).schemaConventions).toBeUndefined();
     });
   });
 
-  test("a conventions object passed to the load wins over the preset name", async () => {
-    const own = { id: "acme" };
+  test("the loaded model does not: it is migrate's setting, not the model's", async () => {
     await withProject({ migrate: { conventions: "efcore" } }, async (dir) => {
-      expect((await loadMemory(dir, { schemaConventions: own })).schemaConventions).toBe(own);
+      expect("schemaConventions" in (await loadMemory(dir))).toBe(false);
     });
+  });
+});
+
+describe("migrate.checks", () => {
+  test("skipRedundant is carried by the collection, false when absent", async () => {
+    await withProject({ migrate: { checks: { skipRedundant: true } } }, async (dir) => {
+      expect((await resolveCollection(dir)).skipRedundantChecks).toBe(true);
+    });
+    await withProject({ migrate: { checks: {} } }, async (dir) => {
+      expect((await resolveCollection(dir)).skipRedundantChecks).toBe(false);
+    });
+    await withProject({}, async (dir) => {
+      expect((await resolveCollection(dir)).skipRedundantChecks).toBe(false);
+    });
+  });
+
+  test("a bad checks block is refused, naming the key", async () => {
+    const refusal = (checks: unknown) => withProject({ migrate: { checks } }, async (dir) => {
+      try {
+        await loadConfig(join(dir, ".metaobjects"));
+      } catch (err) {
+        return (err as Error).message;
+      }
+      return "accepted";
+    });
+    expect(await refusal(true)).toMatch(/migrate\.checks: .*expected object/);
+    expect(await refusal({ skipRedundnat: true })).toMatch(/migrate\.checks: .*skipRedundnat/);
+    expect(await refusal({ skipRedundant: "yes" })).toMatch(/migrate\.checks\.skipRedundant: .*expected boolean/);
   });
 });

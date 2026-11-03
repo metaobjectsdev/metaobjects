@@ -37,23 +37,23 @@ if TYPE_CHECKING:
 COLUMN_NAMING_SNAKE_CASE = "snake_case"
 COLUMN_NAMING_LITERAL = "literal"
 COLUMN_NAMING_KEBAB_CASE = "kebab-case"
-#: The first letter upper-cased, nothing else changed (``requestURL`` → ``RequestURL``):
-#: EF Core's column name for a property, so a camelCase model maps onto an EF-built schema
-#: with no ``@column``. Not a word split.
-COLUMN_NAMING_PASCAL_CASE = "PascalCase"
+#: The first letter upper-cased, nothing else changed (``requestURL`` → ``RequestURL``), so
+#: a camelCase model maps with no ``@column`` onto a schema whose columns are spelled that
+#: way. Not a word split.
+COLUMN_NAMING_UPPER_FIRST = "upperFirst"
 
 COLUMN_NAMING_STRATEGIES = (
     COLUMN_NAMING_SNAKE_CASE,
     COLUMN_NAMING_LITERAL,
     COLUMN_NAMING_KEBAB_CASE,
-    COLUMN_NAMING_PASCAL_CASE,
+    COLUMN_NAMING_UPPER_FIRST,
 )
 
 #: ADR-0058 — the project default, in every port: what ``meta migrate`` has always
 #: created. FLIPPED in 1.1.0 (was ``literal`` in this port only).
 DEFAULT_COLUMN_NAMING = COLUMN_NAMING_SNAKE_CASE
 
-#: ADR-0058 — ``tables`` accepts only these two: no ``kebab-case`` or ``PascalCase`` table rule.
+#: ADR-0058 — ``tables`` accepts only these two: no ``kebab-case`` or ``upperFirst`` table rule.
 TABLE_NAMING_SNAKE_CASE = "snake_case"
 TABLE_NAMING_LITERAL = "literal"
 
@@ -137,8 +137,8 @@ def to_snake_case(name: str) -> str:
     return "".join(out)
 
 
-def to_pascal_case_column(name: str) -> str:
-    """The ``PascalCase`` column rule: the first letter upper-cased, the rest verbatim.
+def to_upper_first_column(name: str) -> str:
+    """The ``upperFirst`` column rule: the first letter upper-cased, the rest verbatim.
 
     One UTF-16 unit in, one out, as C#'s ``char.ToUpperInvariant`` and Java's
     ``Character.toUpperCase`` do: a first character whose upper case is not one character
@@ -164,8 +164,8 @@ def apply_column_naming_strategy(name: str, strategy: str = DEFAULT_COLUMN_NAMIN
         return to_snake_case(name)
     if strategy == COLUMN_NAMING_KEBAB_CASE:
         return to_snake_case(name).replace("_", "-")
-    if strategy == COLUMN_NAMING_PASCAL_CASE:
-        return to_pascal_case_column(name)
+    if strategy == COLUMN_NAMING_UPPER_FIRST:
+        return to_upper_first_column(name)
     raise ValueError(
         f"unknown column-naming strategy {strategy!r}; "
         f"expected one of: {', '.join(COLUMN_NAMING_STRATEGIES)}"

@@ -1,5 +1,9 @@
 """The Python half of the field.duration wire rule against the shared vectors
-(``fixtures/duration-wire/vectors.json``), through the production helper."""
+(``fixtures/duration-wire/vectors.json``), through the production helper: every ``wire`` group,
+and the ``codecs`` groups this port has in production code -- ``postgres`` and
+``postgresRefused`` (the interval text a JSON value holds once Postgres has written it, and the
+pg8000 ``PGInterval`` path) and ``storedMicros`` (SQLite and MySQL). ``postgresText`` is not run:
+pg8000 binds a ``timedelta`` natively, so this port never spells an interval as text."""
 from __future__ import annotations
 
 import datetime as dt
@@ -12,7 +16,6 @@ from metaobjects.codegen.runtime.duration_wire import (
     canonical_duration,
     duration_from_driver,
     format_duration,
-    format_postgres_interval,
     from_stored_micros,
     is_duration_literal,
     micros_of,
@@ -25,9 +28,13 @@ from metaobjects.codegen.runtime.duration_wire import (
 _VECTORS = json.loads(
     (Path(__file__).resolve().parents[4] / "fixtures" / "duration-wire" / "vectors.json").read_text()
 )
+_WIRE = _VECTORS["wire"]
+_CODECS = _VECTORS["codecs"]
+#: The ``wire.precision`` entry this port checks: a ``timedelta`` holds microseconds.
+_PRECISION_KEY = "6"
 
 
-@pytest.mark.parametrize("v", _VECTORS["parse"], ids=lambda v: v["in"])
+@pytest.mark.parametrize("v", _WIRE["parse"], ids=lambda v: v["in"])
 def test_parse_answers_the_canonical_form(v: dict[str, str]) -> None:
     assert is_duration_literal(v["in"])
     assert canonical_duration(v["in"]) == v["out"]
@@ -37,7 +44,7 @@ def test_parse_answers_the_canonical_form(v: dict[str, str]) -> None:
     assert format_duration(duration_from_driver(v["out"])) == v["out"]
 
 
-@pytest.mark.parametrize("text", _VECTORS["refused"], ids=lambda t: repr(t))
+@pytest.mark.parametrize("text", _WIRE["refused"], ids=lambda t: repr(t))
 def test_refused_is_not_a_duration(text: str) -> None:
     assert not is_duration_literal(text)
     assert canonical_duration(text) is None
@@ -47,13 +54,13 @@ def test_refused_is_not_a_duration(text: str) -> None:
         parse_duration_input(text)
 
 
-@pytest.mark.parametrize("v", _VECTORS["postgres"], ids=lambda v: v["in"])
+@pytest.mark.parametrize("v", _CODECS["postgres"], ids=lambda v: v["in"])
 def test_postgres_interval_text_reads_as_canonical(v: dict[str, str]) -> None:
     assert format_duration(parse_postgres_interval(v["in"])) == v["out"]
     assert format_duration(duration_from_driver(v["in"])) == v["out"]
 
 
-@pytest.mark.parametrize("text", _VECTORS["postgresRefused"], ids=lambda t: t)
+@pytest.mark.parametrize("text", _CODECS["postgresRefused"], ids=lambda t: t)
 def test_postgres_interval_with_a_month_part_is_refused(text: str) -> None:
     with pytest.raises(ValueError):
         parse_postgres_interval(text)
@@ -61,11 +68,12 @@ def test_postgres_interval_with_a_month_part_is_refused(text: str) -> None:
         duration_from_driver(text)
 
 
-@pytest.mark.parametrize("v", _VECTORS["postgresText"], ids=lambda v: v["in"])
-def test_postgres_text_spelling(v: dict[str, str]) -> None:
-    assert format_postgres_interval(parse_duration(v["in"])) == v["out"]
-    # Postgres returns an interval written this way in exactly this spelling.
-    assert format_duration(parse_postgres_interval(v["out"])) == v["in"]
+@pytest.mark.parametrize("v", _WIRE["precision"], ids=lambda v: v["in"])
+def test_a_fraction_of_any_length_is_truncated_to_microseconds(v: dict[str, object]) -> None:
+    out = v["out"][_PRECISION_KEY]  # type: ignore[index]
+    assert is_duration_literal(v["in"])  # type: ignore[arg-type]
+    assert canonical_duration(v["in"]) == out  # type: ignore[arg-type]
+    assert format_duration(parse_duration(v["in"])) == out  # type: ignore[arg-type]
 
 
 def test_a_native_timedelta_is_formatted_canonically() -> None:
@@ -95,12 +103,14 @@ def test_an_out_of_range_duration_is_a_value_error() -> None:
         parse_duration("PT99999999999999999999H")
 
 
-@pytest.mark.parametrize("v", _VECTORS["storedMicros"], ids=lambda v: v["in"])
+@pytest.mark.parametrize("v", _CODECS["storedMicros"], ids=lambda v: v["in"])
 def test_stored_micros(v: dict[str, str]) -> None:
     td = parse_duration(v["in"])
     assert to_stored_micros(td) == int(v["out"])
-    assert format_duration(from_stored_micros(int(v["out"]))) == v["in"]
-    assert format_duration(duration_from_driver(int(v["out"]))) == v["in"]
+    # What the column holds reads back as the input, less the digits a microsecond count drops.
+    stored = format_duration(from_stored_micros(int(v["out"])))
+    assert stored == canonical_duration(v["in"])
+    assert format_duration(duration_from_driver(int(v["out"]))) == stored
 
 
 # ── this port's own limits (not shared vectors) ──────────────────────────────

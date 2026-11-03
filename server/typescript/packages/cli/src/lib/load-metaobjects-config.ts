@@ -235,13 +235,12 @@ export function configNotLoadedWarning(projectRoot: string, err: unknown, comman
  * than set to `undefined`, which is what lets `loadMemory` apply its own defaults.
  */
 export function loadMemoryOptionsFrom(
-  cfg: Pick<MetaobjectsGenConfig, "providers" | "schemaConventions"> | undefined,
-): { providers?: readonly MetaDataTypeProvider[]; schemaConventions?: unknown } {
+  cfg: Pick<MetaobjectsGenConfig, "providers"> | undefined,
+): { providers?: readonly MetaDataTypeProvider[] } {
+  // `schemaConventions` is not a load option: it reaches the expected-schema builds through
+  // `schemaBuildOptions` (schema-build-options.ts), never through the loaded model.
   return {
     ...(cfg?.providers !== undefined ? { providers: cfg.providers } : {}),
-    // A project's own conventions object; spread after the collection's options, it wins
-    // over a `migrate.conventions` preset name in .metaobjects/config.json.
-    ...(cfg?.schemaConventions !== undefined ? { schemaConventions: cfg.schemaConventions } : {}),
   };
 }
 

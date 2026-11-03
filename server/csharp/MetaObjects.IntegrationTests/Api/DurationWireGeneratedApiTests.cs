@@ -1,6 +1,8 @@
 // DurationWireGeneratedApiTests — field.duration through the C# generated routes over real HTTP
-// bytes, on a model of its own, and the Postgres half of the shared wire vectors
-// (fixtures/duration-wire/vectors.json) against a live interval column through Npgsql.
+// bytes, on a model of its own, and the Postgres codec groups C# has (`postgres` and
+// `postgresRefused` in fixtures/duration-wire/vectors.json) against a live interval column, read
+// through the generated NpgsqlInterval mapping. C# binds a TimeSpan to Npgsql natively and never
+// spells one as Postgres text, so `postgresText` is not its codec.
 //
 // SQLite needs no Docker: a duration there is a 64-bit count of microseconds in an INTEGER column,
 // through the generated DbContext's value converter, so it orders as the span does. Postgres is the
@@ -8,7 +10,6 @@
 
 using System.Text;
 using System.Text.Json;
-using MetaObjects.Codegen.Runtime;
 using MetaObjects.IntegrationTests.Runner;
 using Npgsql;
 using Xunit;
@@ -75,8 +76,11 @@ public sealed class DurationWireGeneratedApiTests
         Assert.Equal("[\"PT1H30M\",\"PT0.5S\"]", Field(b1, "backoff"));
         Assert.Contains("\"length\":\"PT1H30M\"", Field(b1, "window"));
         Assert.Contains("\"cap\":\"PT2H\"", Field(b1, "limits"));
-        var (s2, b2) = await Send(c, "POST", "/api/timers", """{"label":"b","timeout":"PT26H","backoff":[]}""");
+        var (s2, b2) = await Send(c, "POST", "/api/timers", """{"label":"b","timeout":"P1W","backoff":[]}""");
         Assert.True(s2 == 201, $"POST: {s2} {b2}");
+        Assert.Equal("\"PT168H\"", Field(b2, "timeout")); // a week is exactly 7 days
+        (s2, b2) = await Send(c, "PATCH", "/api/timers/2", """{"timeout":"PT26H"}""");
+        Assert.True(s2 == 200, $"PATCH: {s2} {b2}");
         Assert.Equal("null", Field(b2, "grace"));
 
         // A read goes back through the column.
@@ -88,7 +92,7 @@ public sealed class DurationWireGeneratedApiTests
         Assert.Contains("\"cap\":\"PT2H\"", Field(one, "limits"));
 
         // Not a duration: 400 validation, never a stored value or a 500.
-        foreach (var bad in new[] { "\"P1M\"", "\"P1Y\"", "\"P2W\"", "\"01:30:00\"", "\"PT1.5H\"", "\"pt1h\"", "\"PT\"", "90", "true" })
+        foreach (var bad in new[] { "\"P1M\"", "\"P1Y\"", "\"PT1W\"", "\"P1.5W\"", "\"01:30:00\"", "\"PT1.5H\"", "\"pt1h\"", "\"PT\"", "90", "true" })
         {
             var (st, body) = await Send(c, "POST", "/api/timers", $"{{\"label\":\"x\",\"timeout\":{bad},\"backoff\":[]}}");
             Assert.True(st == 400, $"POST timeout={bad}: expected 400, got {st} {body}");
@@ -217,7 +221,7 @@ public sealed class DurationWireGeneratedApiTests
     public async Task On_postgres_the_generated_read_refuses_a_month_part_and_a_day_count_past_a_timespan()
     {
         var vectors = JsonDocument.Parse(await File.ReadAllTextAsync(Path.Combine(
-            CorpusPaths.Repo, "fixtures", "duration-wire", "vectors.json"))).RootElement;
+            CorpusPaths.Repo, "fixtures", "duration-wire", "vectors.json"))).RootElement.GetProperty("codecs");
         await using var pg = await PostgresContainer.StartAsync();
         await using var server = await Start(ScenarioEngine.Postgres, pg.ConnectionString);
         using var c = new HttpClient { BaseAddress = new Uri(server.BaseUrl) };
@@ -259,60 +263,6 @@ public sealed class DurationWireGeneratedApiTests
         {
             var (st, body) = await ReadStored("00:00:00", array);
             Assert.True(st != 200, $"interval[] '{array}' read as {body}");
-        }
-    }
-
-    private static async Task<List<string>> Misread(NpgsqlConnection sql, IEnumerable<string> texts)
-    {
-        var misread = new List<string>();
-        foreach (var text in texts)
-        {
-            await using var cmd = new NpgsqlCommand("SELECT @p::interval", sql);
-            cmd.Parameters.AddWithValue("p", text);
-            string? read = null;
-            try { read = DurationWire.Format((TimeSpan)(await cmd.ExecuteScalarAsync())!); }
-            catch (Exception) { }
-            if (read is not null) misread.Add($"'{text}' read as {read}");
-        }
-        return misread;
-    }
-
-    // The `postgres`, `postgresRefused` and `postgresText` vectors, against Npgsql's native TimeSpan.
-    [Fact]
-    public async Task The_postgres_vectors_hold_through_npgsqls_native_timespan()
-    {
-        var vectors = JsonDocument.Parse(await File.ReadAllTextAsync(Path.Combine(
-            CorpusPaths.Repo, "fixtures", "duration-wire", "vectors.json"))).RootElement;
-        await using var pg = await PostgresContainer.StartAsync();
-        await using var sql = new NpgsqlConnection(pg.ConnectionString);
-        await sql.OpenAsync();
-
-        // What an interval column reads back as, under the default IntervalStyle, is its canonical form.
-        foreach (var v in vectors.GetProperty("postgres").EnumerateArray())
-        {
-            var text = v.GetProperty("in").GetString()!;
-            await using var cmd = new NpgsqlCommand("SELECT @p::interval", sql);
-            cmd.Parameters.AddWithValue("p", text);
-            var span = (TimeSpan)(await cmd.ExecuteScalarAsync())!;
-            Assert.Equal(v.GetProperty("out").GetString(), DurationWire.Format(span));
-        }
-
-        // An interval with a (positive) year or month part, or text that is no interval, is refused by
-        // Npgsql's own read too. (A negative month part is not: the generated mapping covers it.)
-        Assert.Empty(await Misread(sql, vectors.GetProperty("postgresRefused").EnumerateArray().Select(v => v.GetString()!)));
-
-        // A TimeSpan bound natively is the same span as the Postgres spelling of its canonical form.
-        foreach (var v in vectors.GetProperty("postgresText").EnumerateArray())
-        {
-            var span = DurationWire.Parse(v.GetProperty("in").GetString()!);
-            await using var cmd = new NpgsqlCommand("SELECT @p = @q::interval, @q::interval::text", sql);
-            cmd.Parameters.AddWithValue("p", span);
-            cmd.Parameters.AddWithValue("q", v.GetProperty("out").GetString()!);
-            await using var r = await cmd.ExecuteReaderAsync();
-            Assert.True(await r.ReadAsync());
-            Assert.True(r.GetBoolean(0), $"{v.GetProperty("in").GetString()} bound as a TimeSpan is not {v.GetProperty("out").GetString()}");
-            // ...and that spelling is what Postgres writes back for it.
-            Assert.Equal(v.GetProperty("out").GetString(), r.GetString(1));
         }
     }
 }

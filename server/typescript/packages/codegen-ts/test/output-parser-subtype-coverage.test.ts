@@ -96,7 +96,7 @@ describe("A5 — strict response parser subtype coverage", () => {
     // records for z.coerce.date().
     expect(src).toContain("ts: z.string()");
     // A duration is an ISO-8601 string in the accepted form — never a calendar span.
-    expect(src).toContain("wait: z.string().regex(/^[-+]?P(?!$)(\\d+D)?");
+    expect(src).toContain("wait: z.string().regex(/^[-+]?P(?!$)(\\d+W)?(\\d+D)?");
   });
 
   test("an enum inheriting its @values through extends still resolves (ADR-0039 resolving)", async () => {

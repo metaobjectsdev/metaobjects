@@ -124,10 +124,25 @@ export interface BuildExpectedSchemaOptions {
   /**
    * Names and physical choices for the objects no code addresses (PK and FK constraint
    * names, FK indexes, unique key kind). Absent = `defaultConventions`, what migrate has
-   * always emitted.
+   * always emitted. Resolved by the caller (the CLI reads `migrate.conventions` and
+   * `metaobjects.config.ts`); this build reads no project setting off the model.
    */
   conventions?: SchemaConventions | undefined;
+  /**
+   * Leave out a validator CHECK the column already guarantees: a `validator.length` maximum
+   * the column's VARCHAR(n) enforces (never on SQLite / D1, which do not enforce a declared
+   * length) and a length minimum of 0 or less. A validator with a declared `@constraintName`
+   * keeps its CHECK regardless. `migrate.checks.skipRedundant` in `.metaobjects/config.json`;
+   * absent = false, every CHECK emitted.
+   */
+  skipRedundantChecks?: boolean | undefined;
 }
+
+/**
+ * The project settings an expected-schema build takes, which every path that builds one
+ * (migrate, drift, the offline plan, a baseline) passes through unchanged so they agree.
+ */
+export type SchemaBuildSettings = Pick<BuildExpectedSchemaOptions, "conventions" | "skipRedundantChecks">;
 
 /**
  * A view as the caller (codegen-ts `buildProjectionViews`) produces it — structurally
@@ -286,16 +301,16 @@ export function buildExpectedSchemaWithProvenance(
   const provenance = new Map<string, string>();
 
   // Pass 2: build full descriptors with FK resolution.
-  // The caller's conventions, else the ones the project-aware load put on the root
-  // (`migrate.conventions`), else migrate's default.
-  const conventions = opts?.conventions
-    ?? resolveSchemaConventions((root.root() as { schemaConventions?: string | SchemaConventions }).schemaConventions);
-  const fkCtx: ForeignKeyBuildContext = { conventions, origins: new Map() };
+  // The caller's conventions (checked for every member), else migrate's default.
+  const conventions = resolveSchemaConventions(opts?.conventions);
+  const skipRedundantChecks = opts?.skipRedundantChecks === true;
+  const fkCtx: ForeignKeyBuildContext = { conventions, dialect, origins: new Map() };
   // Schema is resolved here (not stored in Pass 1) to avoid exactOptionalPropertyTypes
   // issues with `string | undefined` vs `schema?: string`.
   const tables: TableDescriptor[] = entities.map(({ entity, tableName }) => {
     const t = buildTable(
-      entity, tableName, resolveTargetTable, root as MetaRoot, strategy, dialect, fkCtx, opts?.onReferentialActionConflict,
+      entity, tableName, resolveTargetTable, root as MetaRoot, strategy, dialect, fkCtx, skipRedundantChecks,
+      opts?.onReferentialActionConflict,
     );
     const schema = resolveTableSchema(entity);
     if (schema !== undefined) t.schema = schema;
@@ -306,7 +321,7 @@ export function buildExpectedSchemaWithProvenance(
   // Checked against the BUILT tables, before the conventions add FK indexes: a key the model
   // declares but never emits (on a TPH subtype) is no key a database can reference.
   const fkTargetViolations = collectFkTargetViolations(tables, fkCtx.origins, provenance);
-  applySchemaConventions(tables, conventions);
+  applySchemaConventions(tables, conventions, dialect);
   checkDeclaredCheckNames(tables, dialect);
 
   // Pass 3: dialect-specific SqlType normalization.
@@ -579,6 +594,7 @@ function buildTable(
   strategy: ColumnNamingStrategy,
   dialect: Dialect | undefined,
   fkCtx: ForeignKeyBuildContext,
+  skipRedundantChecks: boolean,
   onConflict?: (conflict: ReferentialActionConflict) => void,
 ): TableDescriptor {
   // Use effective accessors so inherited fields/identities (from `extends:` /
@@ -665,7 +681,7 @@ function buildTable(
     columns,
     indexes: buildSecondaryIndexes(entity, tableName, strategy),
     foreignKeys: buildForeignKeys(entity, tableName, resolveTargetTable, root, strategy, fkCtx, onConflict),
-    checks: buildChecks(entity, tableName, strategy, dialect, fkCtx.conventions.skipRedundantChecks === true),
+    checks: buildChecks(entity, tableName, strategy, dialect, skipRedundantChecks),
     primaryKey,
   };
   const entityDesc = readDescription(entity);
@@ -920,14 +936,14 @@ function buildChecks(
       }
     }
     // Validator-derived checks.
-    // The VARCHAR(n) the column already is, when the conventions skip what it enforces. Not on
+    // The VARCHAR(n) the column already is, when the project skips what it enforces. Not on
     // SQLite / D1: they accept a declared length and store longer values anyway.
     const columnType = subtypeToSqlType(field);
     const enforcesLength = dialect !== "sqlite" && dialect !== "d1";
     const enforcedMax = skipRedundant && enforcesLength && columnType.kind === "text" ? columnType.maxLength : undefined;
     for (const v of field.validators()) {
       // A declared @constraintName asks for the CHECK by name, so it is kept even where the
-      // conventions would skip it as redundant.
+      // project's `migrate.checks.skipRedundant` would leave it out: a declaration beats a default.
       const keep = declaredCheckName(v) !== undefined;
       const check = keep
         ? validatorCheck(v, qcol, tableName, col, dialect)
@@ -975,13 +991,32 @@ function resolveRef(
 }
 
 /**
+ * A literal compared with a `field.duration` column, in the form the column stores: the
+ * interval spelling on Postgres (which refuses a signed ISO-8601 duration), the microsecond
+ * integer on SQLite and D1. A literal that is not a duration is refused here, where the CHECK is
+ * built, rather than by the database when it is applied.
+ */
+function durationLiteralSql(field: MetaData, raw: unknown, dialect: Dialect | undefined, where: string): string {
+  const micros = typeof raw === "string" ? parseDurationLiteral(raw) : undefined;
+  if (micros === undefined) {
+    throw new Error(
+      `${where} compares field.duration '${field.name}' with ${JSON.stringify(raw)}, which is not an ISO-8601 ` +
+        `duration (such as PT1H30M; no years or months) — cannot build the CHECK.`,
+    );
+  }
+  if (dialect === "sqlite" || dialect === "d1") return String(micros);
+  return `'${formatPostgresInterval(micros)}'`;
+}
+
+/**
  * Render an @equals gating value as a SQL literal, typed by the gating field's
  * subtype: boolean → TRUE/FALSE (1/0 on sqlite/d1), numeric → bare number,
- * everything else → quoted string.
+ * a duration → the form its column stores, everything else → quoted string.
  */
 function renderEquals(
   raw: unknown, whenField: ReturnType<MetaObject["fields"]>[number], dialect: Dialect | undefined,
 ): string {
+  if (whenField.subType === FIELD_SUBTYPE_DURATION) return durationLiteralSql(whenField, raw, dialect, "@equals");
   const s = String(raw);
   if (whenField.subType === FIELD_SUBTYPE_BOOLEAN) {
     const truthy = s === "true" || s === "1" || s === "TRUE";
@@ -1066,9 +1101,10 @@ function withCondition(
     return field === undefined ? undefined : quoteCheckCol(resolveColumnName(field, strategy));
   };
   // An int-backed enum (@intValueMap) stores a member as its integer, so a member compared
-  // with it is rendered as that integer.
+  // with it is rendered as that integer; a duration is rendered in the form its column stores.
   const stored = (name: string, value: unknown): string | undefined => {
     const field = entity.fields().find((f) => f.name === name);
+    if (field?.subType === FIELD_SUBTYPE_DURATION) return durationLiteralSql(field, value, dialect, "@condition");
     const intMap = field === undefined ? undefined : intValueMapOf(field);
     const n = intMap === undefined || typeof value !== "string" ? undefined : intMap[value];
     return typeof n === "number" ? String(n) : undefined;
@@ -1225,7 +1261,7 @@ function buildForeignKeys(
     const constraintName =
       typeof constraintNameOverride === "string" && constraintNameOverride.length > 0
         ? constraintNameOverride
-        : fkCtx.conventions.foreignKeyName({ table: tableName, columns: fkCols, refTable, refColumns });
+        : fkCtx.conventions.foreignKeyName({ table: tableName, columns: fkCols, refTable, refColumns, dialect: fkCtx.dialect });
 
     // Guard: ON DELETE SET NULL requires nullable FK columns.
     validateSetNullNullability(holder, refChild, onDelete, constraintName);
@@ -1252,6 +1288,7 @@ function buildForeignKeys(
 /** What building a table's foreign keys needs beyond the table: the conventions, and where refusals go. */
 interface ForeignKeyBuildContext {
   conventions: SchemaConventions;
+  dialect: Dialect | undefined;
   /** Where each built FK came from, for the target check that runs once every table is built. */
   origins: Map<FkDescriptor, FkOrigin>;
 }
@@ -1312,28 +1349,29 @@ function collectFkTargetViolations(
  * foreign key gets. FK names were decided while the FKs were built, where a declared
  * `@constraintName` is known. The default conventions change nothing here.
  */
-function applySchemaConventions(tables: TableDescriptor[], conventions: SchemaConventions): void {
+function applySchemaConventions(tables: TableDescriptor[], conventions: SchemaConventions, dialect: Dialect | undefined): void {
   // An FK references a table in its own schema (the emitter's assumption), so the key is schema-qualified.
   const keyOf = (schema: string | undefined, table: string, columns: readonly string[]) =>
     `${schema ?? ""}.${table}|${[...columns].sort().join(",")}`;
   const referenced = new Set(tables.flatMap((t) => t.foreignKeys.map((fk) => keyOf(t.schema, fk.refTable, fk.refColumns))));
   for (const t of tables) {
     if (t.primaryKey.length > 0) {
-      const pkName = conventions.primaryKeyName({ table: t.name, columns: t.primaryKey });
+      const pkName = conventions.primaryKeyName({ table: t.name, columns: t.primaryKey, dialect });
       if (pkName !== `${t.name}_pkey`) t.primaryKeyName = pkName;
     }
     for (const ix of t.indexes) {
       // Only a plain key can be a UNIQUE constraint: one with a predicate, an expression, a DESC
       // column or a non-btree method stays an index whatever the conventions prefer.
       if (!canBeUniqueConstraint(ix)) continue;
-      const kind = conventions.uniqueKeyKind({ table: t.name, columns: ix.columns, referencedByForeignKey: referenced.has(keyOf(t.schema, t.name, ix.columns)) });
+      const kind = conventions.uniqueKeyKind({ table: t.name, columns: ix.columns, dialect, referencedByForeignKey: referenced.has(keyOf(t.schema, t.name, ix.columns)) });
       if (kind === "constraint") ix.constraint = "unique";
     }
     const fkIndexes = conventions.foreignKeyIndexes({
       table: t.name,
+      dialect,
       primaryKey: t.primaryKey,
       indexes: t.indexes,
-      foreignKeys: t.foreignKeys.map((fk) => ({ table: t.name, columns: fk.columns, refTable: fk.refTable, refColumns: fk.refColumns })),
+      foreignKeys: t.foreignKeys.map((fk) => ({ table: t.name, columns: fk.columns, refTable: fk.refTable, refColumns: fk.refColumns, dialect })),
     });
     for (const index of fkIndexes) {
       if (t.indexes.some((ix) => ix.name === index.name)) {
@@ -1437,7 +1475,7 @@ function buildColumn(
       if (micros === undefined) {
         throw new Error(
           `field.duration '${field.name}' @default '${defaultRaw}' is not an ISO-8601 duration ` +
-            `(such as PT1H30M; no years, months or weeks) — cannot build the column default for '${col.name}'.`,
+            `(such as PT1H30M; no years or months) — cannot build the column default for '${col.name}'.`,
         );
       }
       col.default = { kind: "literal", value: formatPostgresInterval(micros) };

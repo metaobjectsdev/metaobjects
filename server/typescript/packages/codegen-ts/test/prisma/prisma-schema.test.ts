@@ -12,6 +12,7 @@ import { InMemoryStringSource, MetaDataLoader, type MetaRoot } from "@metaobject
 import { defineConfig, runGen, type Generator } from "../../src/index.js";
 import { prismaSchemaFile, type PrismaSchemaFileOptions } from "../../src/generators/prisma-schema-file.js";
 import { buildPrismaSchema } from "../../src/prisma/build-prisma-schema.js";
+import { efcoreConventions } from "@metaobjectsdev/migrate-ts";
 import {
   ERR_PRISMA_NAME_COLLISION,
   ERR_PRISMA_READ_ONLY_SOURCE,
@@ -160,6 +161,27 @@ describe("prisma-schema — what the schema says", () => {
     expect(manager.attributes[0]).toStartWith('@relation("employees_manager_id_fk", ');
     const back = employee.fields.find((f) => f.name === "employeesByManager")!;
     expect(back).toMatchObject({ type: "Employee", list: true, attributes: ['@relation("employees_manager_id_fk")'] });
+  });
+
+  test("the project's schema conventions name the keys, as they do for meta migrate", async () => {
+    const root = await loadShop();
+    const managerOf = (spec: ReturnType<typeof buildPrismaSchema>) =>
+      spec.models.find((m) => m.name === "Employee")!.fields.find((f) => f.name === "manager")!.attributes[0];
+    expect(managerOf(buildPrismaSchema(root, { provider: "postgresql" }))).toStartWith('@relation("employees_manager_id_fk", ');
+    expect(managerOf(buildPrismaSchema(root, { provider: "postgresql", schemaSettings: { conventions: efcoreConventions } })))
+      .toStartWith('@relation("FK_employees_employees_manager_id", ');
+  });
+
+  test("the generator reads the settings from the run (GenContext.schemaSettings)", async () => {
+    await runGen({
+      config: defineConfig({ outDir: tmp, dialect: "postgres", generators: [prismaSchemaFile({ provider: "postgresql" })] }),
+      metadata: await loadShop(),
+      projectRoot: tmp,
+      schemaSettings: { conventions: efcoreConventions },
+    });
+    const schema = readFileSync(join(tmp, "schema.prisma"), "utf8");
+    expect(schema).toContain('@relation("FK_employees_employees_manager_id"');
+    expect(schema).not.toContain("employees_manager_id_fk");
   });
 
   test("a one-to-one reference gets an optional singular back relation", async () => {

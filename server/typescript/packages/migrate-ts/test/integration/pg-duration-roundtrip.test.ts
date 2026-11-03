@@ -96,9 +96,13 @@ realDescribe("field.duration on Postgres", () => {
       ] } }] } });
       const { root } = await new MetaDataLoader().load([new InMemoryStringSource(doc)]);
       const expected = buildExpectedSchema(root, { dialect: "postgres" });
-      const changes = (await diff({ expected, actual: await introspectPostgres(k), dialect: "postgres" })).changes
-        .filter((c) => JSON.stringify(c).includes(legacy));
-      expect(changes).toEqual([]);
+      const result = await diff({ expected, actual: await introspectPostgres(k), dialect: "postgres" });
+      expect(result.changes.filter((c) => JSON.stringify(c).includes(legacy))).toEqual([]);
+      // Not drift, but said: each such column is an advisory pointing at field.duration.
+      expect(result.advisories.filter((a) => a.table === legacy)).toEqual([
+        { kind: "interval-as-string", table: legacy, column: "wait" },
+        { kind: "interval-as-string", table: legacy, column: "waits" },
+      ]);
     } finally {
       await sql.raw(`DROP TABLE IF EXISTS "${legacy}" CASCADE`).execute(k);
     }

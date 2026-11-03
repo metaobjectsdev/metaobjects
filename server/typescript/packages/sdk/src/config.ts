@@ -86,6 +86,10 @@ const MigrateBlock = z.object({
    *  (`default`, `efcore`); meta migrate refuses a name it does not know. A project's own
    *  conventions object is supplied from metaobjects.config.ts instead. */
   conventions: z.string().min(1),
+  /** Which validator CHECKs the expected schema carries. `skipRedundant` (default false) leaves
+   *  out a CHECK the column type already enforces, for a database whose CHECKs were written by
+   *  hand only where the type does not; a CHECK with a declared `@constraintName` is kept. */
+  checks: z.object({ skipRedundant: z.boolean() }).partial().strict(),
 // .strict() for the same reason as the top level and the source arms below, and
 // with sharper teeth here: `{ migrate: { scopee: [...], dialect: "postgres" } }`
 // used to parse to `{ dialect: "postgres" }`, so a typo'd `scope` key meant

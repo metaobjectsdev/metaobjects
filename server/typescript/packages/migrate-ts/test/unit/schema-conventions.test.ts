@@ -24,13 +24,26 @@ describe("efcore conventions", () => {
       .toEqual([{ name: "IX_OrderLines_OrderId", columns: ["OrderId"] }]);
   });
 
-  test("a name over 63 characters is cut to 62 and marked with ~, as EF Core does", () => {
-    const long = { table: "CaseSupportRequestedTypes", columns: ["SupportRequestedTypeId"], refTable: "SupportRequestedTypes", refColumns: ["Id"] };
+  test("on Postgres a name over 63 characters is cut to 62 and marked with ~, as EF Core does", () => {
+    const long = { table: "WarehouseShippingPreferences", columns: ["ShippingPreferenceId"], refTable: "ShippingPreferences", refColumns: ["Id"] };
     const name = efcoreConventions.foreignKeyName(long);
 
-    expect(name).toBe("FK_CaseSupportRequestedTypes_SupportRequestedTypes_SupportRequ~");
+    expect(name).toBe("FK_WarehouseShippingPreferences_ShippingPreferences_ShippingPr~");
     expect(name.length).toBe(63);
+    expect(efcoreConventions.foreignKeyName({ ...long, dialect: "postgres" })).toBe(name);
     expect(efcoreConventions.primaryKeyName({ table: "A".repeat(61), columns: ["Id"] })).toBe(`PK_${"A".repeat(59)}~`);
+  });
+
+  test("on SQLite and D1 nothing is truncated: EF Core's SQLite provider has no identifier limit", () => {
+    const long = { table: "WarehouseShippingPreferences", columns: ["ShippingPreferenceId"], refTable: "ShippingPreferences", refColumns: ["Id"] };
+    for (const dialect of ["sqlite", "d1"] as const) {
+      expect(efcoreConventions.foreignKeyName({ ...long, dialect }))
+        .toBe("FK_WarehouseShippingPreferences_ShippingPreferences_ShippingPreferenceId");
+      expect(efcoreConventions.primaryKeyName({ table: "A".repeat(61), columns: ["Id"], dialect })).toBe(`PK_${"A".repeat(61)}`);
+      expect(efcoreConventions.foreignKeyIndexes({ table: "A".repeat(61), dialect, primaryKey: ["Id"], indexes: [],
+        foreignKeys: [{ table: "A".repeat(61), columns: ["BId"], refTable: "B", refColumns: ["Id"], dialect }] })[0]!.name)
+        .toBe(`IX_${"A".repeat(61)}_BId`);
+    }
   });
 
   test("no FK index when the primary key or an existing index already starts with the FK's columns", () => {
@@ -92,5 +105,10 @@ describe("resolveSchemaConventions", () => {
     const partial = { id: "acme", primaryKeyName: () => "pk" } as unknown as Parameters<typeof resolveSchemaConventions>[0];
     expect(() => resolveSchemaConventions(partial))
       .toThrow(/schema conventions "acme" are missing foreignKeyName, foreignKeyIndexes, uniqueKeyKind/);
+  });
+
+  test("a conventions object that still sets skipRedundantChecks is refused, pointing at migrate.checks", () => {
+    expect(() => resolveSchemaConventions({ ...efcoreConventions, id: "acme", skipRedundantChecks: true } as never))
+      .toThrow(/skipRedundantChecks, which is no longer a convention .*"skipRedundant": true/);
   });
 });

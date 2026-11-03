@@ -16,12 +16,12 @@
             },
             {
               "field.long": {
-                "name": "patientId"
+                "name": "storeId"
               }
             },
             {
               "field.long": {
-                "name": "caregiverId"
+                "name": "kioskId"
               }
             },
             {
@@ -47,7 +47,7 @@
             {
               "validator.requiredWhen": {
                 "name": "rw",
-                "@field": "patientId",
+                "@field": "storeId",
                 "@when": "kind",
                 "@equals": "Owned",
                 "@condition": {
@@ -72,7 +72,7 @@
             {
               "validator.presentIff": {
                 "name": "pi",
-                "@field": "caregiverId",
+                "@field": "kioskId",
                 "@when": "kind",
                 "@equals": "Shared",
                 "@condition": {
@@ -86,9 +86,9 @@
             {
               "validator.comparison": {
                 "name": "cmp",
-                "@left": "patientId",
+                "@left": "storeId",
                 "@op": "lt",
-                "@right": "caregiverId",
+                "@right": "kioskId",
                 "@condition": {
                   "op": "isNotNull",
                   "arg": {

@@ -675,7 +675,7 @@ public class SpringOutputParserGenerator extends MultiFileDirectGeneratorBase<Me
         }
         if (used.contains("coerceDuration")) {
             src.append("\n");
-            src.append("    /** The accepted ISO-8601 form only (no years, months or weeks); anything else -> null. */\n");
+            src.append("    /** The accepted ISO-8601 form only (no years or months); anything else -> null. */\n");
             src.append("    private static java.time.Duration coerceDuration(Object v) {\n");
             src.append("        if (v instanceof java.time.Duration t) return t;\n");
             src.append("        if (v == null) return null;\n");

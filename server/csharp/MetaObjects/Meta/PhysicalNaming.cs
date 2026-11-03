@@ -23,10 +23,10 @@ public enum ColumnNamingStrategy
     SnakeCase,
     /// <summary>camelCase / PascalCase → kebab-case.</summary>
     KebabCase,
-    /// <summary>The first letter upper-cased, nothing else changed (<c>requestURL</c> →
-    /// <c>RequestURL</c>): EF Core's column name for a property, so a camelCase model maps
-    /// onto an EF-built schema with no <c>@column</c>.</summary>
-    PascalCase,
+    /// <summary><c>upperFirst</c>: the first letter upper-cased, nothing else changed
+    /// (<c>requestURL</c> → <c>RequestURL</c>), so a camelCase model maps onto a schema whose
+    /// columns are its field names with a capital first letter, with no <c>@column</c>.</summary>
+    UpperFirst,
 }
 
 /// <summary>
@@ -80,7 +80,7 @@ public sealed record PhysicalNaming(ColumnNamingStrategy Columns, TableNamingRul
         {
             ColumnNamingStrategy.SnakeCase => SourceNaming.ToSnakeCase(field.Name),
             ColumnNamingStrategy.KebabCase => SourceNaming.ToSnakeCase(field.Name).Replace('_', '-'),
-            ColumnNamingStrategy.PascalCase => ToPascalCaseColumn(field.Name),
+            ColumnNamingStrategy.UpperFirst => ToUpperFirstColumn(field.Name),
             _ => field.Name,
         };
     }
@@ -110,9 +110,10 @@ public sealed record PhysicalNaming(ColumnNamingStrategy Columns, TableNamingRul
     public static string ResolveFlattenedColumnName(MetaField field, MetaField member, ColumnNamingStrategy strategy) =>
         ResolveFlattenedColumnPrefix(field, strategy) + ResolveColumnName(member, strategy);
 
-    /// <summary>The <c>PascalCase</c> column rule: the first letter upper-cased, the rest
-    /// verbatim. Not a word split — an acronym keeps the case it was written in.</summary>
-    public static string ToPascalCaseColumn(string name) =>
+    /// <summary>The <c>upperFirst</c> column rule: the first letter upper-cased, the rest
+    /// verbatim (one UTF-16 unit in, one out). Not a word split — an acronym keeps the case it
+    /// was written in.</summary>
+    public static string ToUpperFirstColumn(string name) =>
         name.Length == 0 ? name : char.ToUpperInvariant(name[0]) + name[1..];
 
     /// <summary><paramref name="name"/> cased by the table rule — no pluralization (the

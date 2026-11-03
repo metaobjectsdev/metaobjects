@@ -14,7 +14,7 @@ export {
   describeReferentialActionConflict,
   type ReferentialActionConflict,
 } from "./referential-actions.js";
-export type { ExpectedSchemaWithProvenance, SchemaProvenance } from "./expected-schema.js";
+export type { ExpectedSchemaWithProvenance, SchemaProvenance, SchemaBuildSettings } from "./expected-schema.js";
 export { introspect, introspectPostgres, introspectSqlite } from "./introspect/index.js";
 export { diff } from "./diff/index.js";
 export {
@@ -88,7 +88,7 @@ export type {
   ViewDescriptor, ViewChangeReason, FkAction, NameChange,
   Change, ChangeKind, ChangeStatus,
   AllowOptions, AmbiguousChange, AmbiguousResolution, AmbiguousCallback,
-  DiffResult, DataHazard, DeclaredRename, EmitResult, Dialect, ExprCanonPath,
+  DiffResult, DataHazard, DeclaredRename, EmitResult, Dialect, ExprCanonPath, SchemaAdvisory,
 } from "./types.js";
 export type { DiffArgs } from "./diff/index.js";
 export type { EmitOptions } from "./emit/index.js";

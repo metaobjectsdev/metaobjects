@@ -117,7 +117,7 @@
     { "name": "duration-accept-zero", "payload": { "name": "Acme", "code": "ABC", "score": 50, "tags": ["x"], "note": "ok", "holdFor": "PT0S" }, "expectValid": true },
     { "name": "duration-reject-months", "payload": { "name": "Acme", "code": "ABC", "score": 50, "tags": ["x"], "note": "ok", "holdFor": "P1M" }, "expectValid": false },
     { "name": "duration-reject-years", "payload": { "name": "Acme", "code": "ABC", "score": 50, "tags": ["x"], "note": "ok", "holdFor": "P1Y" }, "expectValid": false },
-    { "name": "duration-reject-weeks", "payload": { "name": "Acme", "code": "ABC", "score": 50, "tags": ["x"], "note": "ok", "holdFor": "P2W" }, "expectValid": false },
+    { "name": "duration-accept-weeks", "payload": { "name": "Acme", "code": "ABC", "score": 50, "tags": ["x"], "note": "ok", "holdFor": "P2W" }, "expectValid": true },
     { "name": "duration-reject-clock", "payload": { "name": "Acme", "code": "ABC", "score": 50, "tags": ["x"], "note": "ok", "holdFor": "1:30:00" }, "expectValid": false },
     { "name": "duration-reject-fractional-hours", "payload": { "name": "Acme", "code": "ABC", "score": 50, "tags": ["x"], "note": "ok", "holdFor": "PT1.5H" }, "expectValid": false },
     { "name": "duration-reject-lowercase", "payload": { "name": "Acme", "code": "ABC", "score": 50, "tags": ["x"], "note": "ok", "holdFor": "pt1h" }, "expectValid": false },

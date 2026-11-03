@@ -482,7 +482,7 @@ public static class CodegenCli
     {
         ColumnNamingStrategy.SnakeCase => "snake_case",
         ColumnNamingStrategy.KebabCase => "kebab-case",
-        ColumnNamingStrategy.PascalCase => "PascalCase",
+        ColumnNamingStrategy.UpperFirst => "upperFirst",
         _ => "literal",
     };
 
@@ -810,12 +810,12 @@ public static class CodegenCli
     /// Every naming other than <paramref name="used"/>, in the order verify probes them (the
     /// Python port probes the same order): the used table rule first, so a different column
     /// rule alone is tried before a different table rule; within each, the used column rule
-    /// first, then snake_case, literal, kebab-case, PascalCase.
+    /// first, then snake_case, literal, kebab-case, upperFirst.
     /// </summary>
     private static IEnumerable<PhysicalNaming> NamingCandidates(PhysicalNaming used)
     {
         ColumnNamingStrategy[] columns =
-            [ColumnNamingStrategy.SnakeCase, ColumnNamingStrategy.Literal, ColumnNamingStrategy.KebabCase, ColumnNamingStrategy.PascalCase];
+            [ColumnNamingStrategy.SnakeCase, ColumnNamingStrategy.Literal, ColumnNamingStrategy.KebabCase, ColumnNamingStrategy.UpperFirst];
         TableNamingRule[] tables = [TableNamingRule.SnakeCase, TableNamingRule.Literal];
         foreach (var t in tables.OrderBy(t => t == used.Tables ? 0 : 1))
             foreach (var c in columns.OrderBy(c => c == used.Columns ? 0 : 1))

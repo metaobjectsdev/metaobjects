@@ -174,13 +174,13 @@ describe("types the JSON Schema formats do not state", () => {
     expect(valid({ ...sampleRow(), startsAt: "9am" })).toBe(false);
   });
 
-  test("a duration is an ISO-8601 duration of days, hours, minutes and seconds — never a calendar span", async () => {
+  test("a duration is an ISO-8601 duration of weeks, days, hours, minutes and seconds — never a calendar span", async () => {
     const valid = validatorOf(await contractTree(corpusCase("all-fields")), `${ALL_FIELDS}.schema.json`);
-    for (const ok of ["PT1H30M", "P1DT2H", "-PT1M30S", "PT0.5S", "PT0S"]) {
+    for (const ok of ["PT1H30M", "P1DT2H", "-PT1M30S", "PT0.5S", "PT0S", "P2W", "P1W1DT1H", "PT1.1234567890S"]) {
       expect(valid({ ...sampleRow(), holdFor: ok }), ok).toBe(true);
     }
-    // ajv-formats' `duration` alone takes years, months and weeks; the pattern refuses them.
-    for (const bad of ["P1M", "P1Y", "P2W", "1:30:00", "PT1.5H", "pt1h", "PT"]) {
+    // ajv-formats' `duration` alone takes years and months; the pattern refuses them.
+    for (const bad of ["P1M", "P1Y", "P1D1W", "1:30:00", "PT1.5H", "pt1h", "PT"]) {
       expect(valid({ ...sampleRow(), holdFor: bad }), bad).toBe(false);
     }
   });

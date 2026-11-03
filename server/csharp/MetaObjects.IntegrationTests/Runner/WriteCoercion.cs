@@ -91,7 +91,7 @@ public static class WriteCoercion
                 ? exact
                 : throw new FormatException($"not a decimal: {raw}");
         // field.duration → System.TimeSpan from the ISO-8601 authoring form (Npgsql binds a
-        // TimeSpan as interval natively; a text column stores DurationWire's canonical form).
+        // TimeSpan as interval natively; elsewhere the context's converter stores its microsecond count).
         if (underlying == typeof(TimeSpan))
             return MetaObjects.Codegen.Runtime.DurationWire.TryParse(raw, out var span)
                 ? span

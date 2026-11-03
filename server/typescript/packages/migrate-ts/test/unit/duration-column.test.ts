@@ -36,4 +36,24 @@ describe("field.duration column", () => {
     const { changes } = await diff({ expected: schema, actual: { tables: [], views: [] }, dialect: "sqlite" });
     expect(emit(changes, { dialect: "sqlite", expectedSchema: schema }).up).toContain('"grace" INTEGER DEFAULT -5400000000');
   });
+
+  test("a live interval modelled as text is read as text with an advisory; modelled as anything else, it is a type change", async () => {
+    const live = (expected: Awaited<ReturnType<typeof column>>["schema"]) => ({
+      ...expected,
+      tables: expected.tables.map((t) => ({ ...t, columns: t.columns.map((c) => c.name === "grace" ? { ...c, sqlType: { kind: "interval" as const } } : c) })),
+    });
+    const as = async (subType: string) => {
+      const doc = DOC.replace('"field.duration":{"name":"grace","@default":"-PT90M"}', `"field.${subType}":{"name":"grace"}`);
+      expect(doc).not.toBe(DOC);
+      const { root } = await new MetaDataLoader().load([new InMemoryStringSource(doc)]);
+      const expected = buildExpectedSchema(root, { dialect: "postgres" });
+      return diff({ expected, actual: live(expected), dialect: "postgres" });
+    };
+    const asString = await as("string");
+    expect(asString.changes.filter((c) => c.kind === "change-column-type")).toEqual([]);
+    expect(asString.advisories).toEqual([{ kind: "interval-as-string", table: "timers", column: "grace" }]);
+    const asInt = await as("int");
+    expect(asInt.changes.filter((c) => c.kind === "change-column-type").map((c) => (c as { from: unknown }).from)).toEqual([{ kind: "interval" }]);
+    expect(asInt.advisories).toEqual([]);
+  });
 });

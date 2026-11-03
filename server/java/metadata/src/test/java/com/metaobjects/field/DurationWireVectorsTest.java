@@ -8,6 +8,7 @@ import org.junit.Test;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.time.temporal.ChronoUnit;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -15,21 +16,36 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 /**
- * The shared {@code field.duration} wire vectors ({@code fixtures/duration-wire/vectors.json})
- * against the production helper, {@link DurationWire}.
+ * The shared {@code field.duration} vectors ({@code fixtures/duration-wire/vectors.json}) against
+ * the production helper, {@link DurationWire}: every {@code wire} group, at this port's precision
+ * ({@code "9"}: a {@link Duration} holds nanoseconds), and the {@code codecs} groups OMDB uses in
+ * production — {@code JdbcCodecs.DurationCodec} reads a Postgres interval as its text
+ * ({@code postgres}, {@code postgresRefused}), {@code PostgresDriver} binds the interval spelling
+ * ({@code postgresText}), and SQLite / MySQL store a microsecond count ({@code storedMicros}).
  */
 public class DurationWireVectorsTest {
 
-    private static JsonObject vectors() throws Exception {
+    /** This port's key in {@code wire.precision[].out}: java.time.Duration holds nine fractional digits. */
+    private static final String PRECISION = "9";
+
+    private static JsonObject file() throws Exception {
         Path dir = Path.of(System.getProperty("user.dir")).toAbsolutePath();
         while (dir != null && !Files.isDirectory(dir.resolve("fixtures/duration-wire"))) dir = dir.getParent();
         if (dir == null) throw new IllegalStateException("fixtures/duration-wire not found above " + System.getProperty("user.dir"));
         return JsonParser.parseString(Files.readString(dir.resolve("fixtures/duration-wire/vectors.json"))).getAsJsonObject();
     }
 
+    private static JsonObject wire() throws Exception {
+        return file().getAsJsonObject("wire");
+    }
+
+    private static JsonObject codecs() throws Exception {
+        return file().getAsJsonObject("codecs");
+    }
+
     @Test
     public void parseYieldsTheCanonicalForm() throws Exception {
-        for (JsonElement e : vectors().getAsJsonArray("parse")) {
+        for (JsonElement e : wire().getAsJsonArray("parse")) {
             String in = e.getAsJsonObject().get("in").getAsString();
             String out = e.getAsJsonObject().get("out").getAsString();
             assertTrue("accepted: " + in, DurationWire.isDuration(in));
@@ -40,8 +56,19 @@ public class DurationWireVectorsTest {
     }
 
     @Test
+    public void precisionKeepsNineDigitsAndTruncatesTheRestTowardZero() throws Exception {
+        for (JsonElement e : wire().getAsJsonArray("precision")) {
+            String in = e.getAsJsonObject().get("in").getAsString();
+            String out = e.getAsJsonObject().getAsJsonObject("out").get(PRECISION).getAsString();
+            assertTrue("accepted: " + in, DurationWire.isDuration(in));
+            assertEquals("precision " + in, out, DurationWire.canonicalize(in));
+            assertEquals("re-parse " + out, out, DurationWire.canonicalize(out));
+        }
+    }
+
+    @Test
     public void refusedInputIsRejected() throws Exception {
-        for (JsonElement e : vectors().getAsJsonArray("refused")) {
+        for (JsonElement e : wire().getAsJsonArray("refused")) {
             String in = e.getAsJsonPrimitive().getAsString();
             assertFalse("refused: '" + in + "'", DurationWire.isDuration(in));
             try {
@@ -55,7 +82,7 @@ public class DurationWireVectorsTest {
 
     @Test
     public void postgresTextReadsAsTheCanonicalForm() throws Exception {
-        for (JsonElement e : vectors().getAsJsonArray("postgres")) {
+        for (JsonElement e : codecs().getAsJsonArray("postgres")) {
             String in = e.getAsJsonObject().get("in").getAsString();
             String out = e.getAsJsonObject().get("out").getAsString();
             assertEquals("postgres " + in, out, DurationWire.format(DurationWire.parsePostgres(in)));
@@ -65,7 +92,7 @@ public class DurationWireVectorsTest {
 
     @Test
     public void postgresCalendarIntervalsAreRefused() throws Exception {
-        for (JsonElement e : vectors().getAsJsonArray("postgresRefused")) {
+        for (JsonElement e : codecs().getAsJsonArray("postgresRefused")) {
             String in = e.getAsJsonPrimitive().getAsString();
             try {
                 DurationWire.fromStored(in);
@@ -78,7 +105,7 @@ public class DurationWireVectorsTest {
 
     @Test
     public void postgresTextSpelling() throws Exception {
-        for (JsonElement e : vectors().getAsJsonArray("postgresText")) {
+        for (JsonElement e : codecs().getAsJsonArray("postgresText")) {
             String in = e.getAsJsonObject().get("in").getAsString();
             String out = e.getAsJsonObject().get("out").getAsString();
             assertEquals("postgresText " + in, out, DurationWire.formatPostgres(DurationWire.parse(in)));
@@ -88,11 +115,15 @@ public class DurationWireVectorsTest {
     }
 
     @Test
-    public void formatTruncatesNanosTowardZero() {
-        assertEquals("PT1.123456S", DurationWire.format(Duration.ofSeconds(1, 123_456_789)));
-        assertEquals("-PT1.123456S", DurationWire.format(Duration.ofSeconds(1, 123_456_789).negated()));
-        assertEquals("PT0S", DurationWire.format(Duration.ofNanos(-999)));
+    public void formatKeepsNanosAndTheStoredFormsTruncateToMicros() {
+        assertEquals("PT1.123456789S", DurationWire.format(Duration.ofSeconds(1, 123_456_789)));
+        assertEquals("-PT1.123456789S", DurationWire.format(Duration.ofSeconds(1, 123_456_789).negated()));
+        assertEquals("-PT0.000000999S", DurationWire.format(Duration.ofNanos(-999)));
         assertEquals("-PT1M30S", DurationWire.format(Duration.ofSeconds(-90)));
+        // A Postgres interval holds microseconds: the interval spelling truncates toward zero.
+        assertEquals("00:00:01.123456", DurationWire.formatPostgres(Duration.ofSeconds(1, 123_456_789)));
+        assertEquals("-00:00:01.123456", DurationWire.formatPostgres(Duration.ofSeconds(1, 123_456_789).negated()));
+        assertEquals("00:00:00", DurationWire.formatPostgres(Duration.ofNanos(-999)));
     }
 
     @Test
@@ -109,11 +140,14 @@ public class DurationWireVectorsTest {
 
     @Test
     public void storedMicrosVectors() throws Exception {
-        for (JsonElement e : vectors().getAsJsonArray("storedMicros")) {
+        for (JsonElement e : codecs().getAsJsonArray("storedMicros")) {
             String in = e.getAsJsonObject().get("in").getAsString();
             long out = Long.parseLong(e.getAsJsonObject().get("out").getAsString());
-            assertEquals("micros " + in, out, DurationWire.toMicros(DurationWire.parse(in)));
-            assertEquals("from micros " + out, in, DurationWire.format(DurationWire.fromMicros(out)));
+            Duration d = DurationWire.parse(in);
+            assertEquals("micros " + in, out, DurationWire.toMicros(d));
+            // The stored count reads back as the value truncated to microseconds, toward zero.
+            assertEquals("from micros " + out, DurationWire.format(d.truncatedTo(ChronoUnit.MICROS)),
+                DurationWire.format(DurationWire.fromMicros(out)));
         }
         // Sub-microsecond precision truncates toward zero on both sides of zero.
         assertEquals(-1_000_000L, DurationWire.toMicros(Duration.ofSeconds(-1, -500)));

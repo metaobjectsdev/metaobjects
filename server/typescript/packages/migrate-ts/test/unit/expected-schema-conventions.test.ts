@@ -7,8 +7,8 @@
 import { describe, test, expect } from "bun:test";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { buildExpectedSchema } from "../../src/expected-schema.js";
-import { efcoreConventions } from "../../src/schema-conventions.js";
-import { UnknownSchemaConventionsError } from "../../src/errors.js";
+import { efcoreConventions, type SchemaConventions } from "../../src/schema-conventions.js";
+import { InvalidSchemaConventionsError } from "../../src/errors.js";
 import { emit } from "../../src/emit/index.js";
 import { diff } from "../../src/diff/index.js";
 
@@ -111,22 +111,19 @@ describe("buildExpectedSchema with the default conventions", () => {
   });
 });
 
-describe("the conventions the project-aware load put on the root", () => {
-  test("are used when the caller passes none", async () => {
+describe("conventions come only from the caller", () => {
+  test("a model never supplies them: no option is the default conventions", async () => {
     const root = await load();
-    (root as { schemaConventions?: unknown }).schemaConventions = "efcore";
 
-    expect(table(buildExpectedSchema(root), "Orders").primaryKeyName).toBe("PK_Orders");
-    // `conventions: undefined` is "not given", so it does not mask the root
-    expect(table(buildExpectedSchema(root, { conventions: undefined }), "Orders").primaryKeyName).toBe("PK_Orders");
+    expect(table(buildExpectedSchema(root), "Orders").primaryKeyName).toBeUndefined();
+    expect(table(buildExpectedSchema(root, { conventions: efcoreConventions }), "Orders").primaryKeyName).toBe("PK_Orders");
   });
 
-  test("an unknown preset name is refused, naming the ones that exist", async () => {
+  test("a conventions object missing a member is refused by name", async () => {
     const root = await load();
-    (root as { schemaConventions?: unknown }).schemaConventions = "hibernate";
+    const partial = { id: "acme", primaryKeyName: () => "pk" } as unknown as SchemaConventions;
 
-    expect(() => buildExpectedSchema(root)).toThrow(UnknownSchemaConventionsError);
-    expect(() => buildExpectedSchema(root)).toThrow(/migrate\.conventions "hibernate".*default, efcore/);
+    expect(() => buildExpectedSchema(root, { conventions: partial })).toThrow(InvalidSchemaConventionsError);
   });
 });
 

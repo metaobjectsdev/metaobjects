@@ -385,7 +385,7 @@ def _scalar_errors(field: MetaData, value: object, required: bool, label: str) -
                 label, "format", f"'{label}' must be an IPv4 or IPv6 address", "inet", value,
             ))
 
-    # field.duration — an ISO-8601 duration with no years, months or weeks (no @lenient: the
+    # field.duration — an ISO-8601 duration with no years or months (no @lenient: the
     # column is an interval on Postgres, so a value that is not a duration cannot be stored).
     if isinstance(value, str) and field.sub_type == fc.FIELD_SUBTYPE_DURATION and not is_duration_literal(value):
         errors.append(ValidationFailure(label, "format", f"'{label}' {NOT_A_DURATION}", "duration", value))

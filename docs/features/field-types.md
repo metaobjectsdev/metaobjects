@@ -52,10 +52,12 @@ Five rows need a footnote:
 - **`field.duration`** is a fixed-length span: days, hours, minutes and seconds. A calendar
   span ("every 3 months") is not one, because a month has no fixed length: model it as an int
   and a unit. On the wire it is an ISO-8601 duration. Every port writes one canonical form,
-  `[-]PT[nH][nM][n[.f]S]`: hours are never folded into days (`PT26H`), there are at most six
-  fractional digits, and zero is `PT0S`. Every port reads that form and also a leading day
-  count (`P1DT2H`). Years, months and weeks are refused, and so are lowercase designators and
-  fractional hours. The column is a Postgres `interval`; SQLite, D1 and MySQL store a 64-bit
+  `[-]PT[nH][nM][n[.f]S]`: hours are never folded into days (`PT26H`), and zero is `PT0S`. A
+  port writes as many fractional digits as its own type holds (6 in TypeScript and Python, 7 in
+  C#, 9 in Java and Kotlin) and truncates a longer fraction toward zero; a Postgres `interval` and
+  the integer column below both hold microseconds. Every port reads that form and also leading
+  week and day counts (`P1W` is 7 days, `P1DT2H` is 26 hours). Years and months are refused, and
+  so are lowercase designators and fractional hours. The column is a Postgres `interval`; SQLite, D1 and MySQL store a 64-bit
   integer count of microseconds, the way Django stores a `DurationField` outside Postgres. Both
   order and compare as the span does, so every filter operator a number has (`eq`, `ne`, `gt`,
   `gte`, `lt`, `lte`, `in`, `isNull`) and `sort` work on every database. There is no shared upper
@@ -127,7 +129,7 @@ database calls it. `@column` sets the second. It never changes the first.
 
 With no `@column`, the physical name comes from the project's **column rule**:
 `snake_case` (the default), `literal` (the field name verbatim), `kebab-case` or
-`PascalCase` (the first letter upper-cased, the rest verbatim: EF Core's names). That
+`upperFirst` (the first letter upper-cased, the rest verbatim). That
 is CONFIG, not metadata, on purpose: the same model has to be able to drive a
 snake_case Postgres schema and a literal-column one. It is ONE setting for the whole
 project, `naming` in `.metaobjects/config.json` (ADR-0058):
@@ -310,7 +312,7 @@ For `flattened`, the generated table gets `address_street`, `address_city`,
 
 Each member's column is a **prefix** followed by the member's own column (its `@column`, else
 its name under the project's column rule). The prefix defaults to the embedding field's column
-and `_` (`address_`; with `@column: "bill"`, `bill_`; under the `PascalCase` rule, `Address_`,
+and `_` (`address_`; with `@column: "bill"`, `bill_`; under the `upperFirst` rule, `Address_`,
 EF Core's own default). **`@flattenedColumnPrefix`** on the embedding field replaces it,
 verbatim:
 

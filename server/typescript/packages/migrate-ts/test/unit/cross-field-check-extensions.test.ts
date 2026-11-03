@@ -19,33 +19,33 @@ const FIXTURE = join(import.meta.dir, "../../../../../../fixtures/conformance/va
 async function checks(dialect: "postgres" | "sqlite" = "postgres") {
   const { root, errors } = await new MetaDataLoader().load([new InMemoryStringSource(readFileSync(FIXTURE, "utf8"))]);
   expect(errors).toHaveLength(0);
-  const t = buildExpectedSchema(root, { dialect }).tables.find((x) => x.name === "OfficeHours")!;
+  const t = buildExpectedSchema(root, { dialect }).tables.find((x) => x.name === "StoreHours")!;
   return Object.fromEntries(t.checks.map((c) => [c.name, c.expression]));
 }
 
 describe("cross-field CHECK extensions", () => {
   test("@constraintName names the enum, field-validator (length, regex, numeric) and cross-field CHECKs", async () => {
     expect(Object.keys(await checks()).sort()).toEqual([
-      "CK_OfficeHours_Code",
-      "CK_OfficeHours_CodeShape",
-      "CK_OfficeHours_ExactlyOneSource",
-      "CK_OfficeHours_Kind",
-      "CK_OfficeHours_SameDayValidation",
-      "CK_OfficeHours_StartDay",
+      "CK_StoreHours_Code",
+      "CK_StoreHours_CodeShape",
+      "CK_StoreHours_ExactlyOneLocation",
+      "CK_StoreHours_Kind",
+      "CK_StoreHours_SameDayTimes",
+      "CK_StoreHours_StartDay",
     ]);
   });
 
   test("atLeastOne @max 1 is exactly one present (Postgres num_nonnulls)", async () => {
-    expect((await checks())["CK_OfficeHours_ExactlyOneSource"]).toBe('num_nonnulls("patient_id", "caregiver_id") = 1');
+    expect((await checks())["CK_StoreHours_ExactlyOneLocation"]).toBe('num_nonnulls("store_id", "kiosk_id") = 1');
   });
 
   test("atLeastOne @max 1 on SQLite counts the present fields", async () => {
-    expect((await checks("sqlite"))["CK_OfficeHours_ExactlyOneSource"])
-      .toBe('(("patient_id" IS NOT NULL) + ("caregiver_id" IS NOT NULL)) = 1');
+    expect((await checks("sqlite"))["CK_StoreHours_ExactlyOneLocation"])
+      .toBe('(("store_id" IS NOT NULL) + ("kiosk_id" IS NOT NULL)) = 1');
   });
 
   test("@condition: the negated condition, then the rule", async () => {
-    expect((await checks())["CK_OfficeHours_SameDayValidation"]).toBe('("start_day" <> "end_day") OR ("end_time" > "start_time")');
+    expect((await checks())["CK_StoreHours_SameDayTimes"]).toBe('("start_day" <> "end_day") OR ("end_time" > "start_time")');
   });
 
   test("atLeastOne @max above 1 is a range", async () => {
@@ -177,12 +177,51 @@ describe("declared CHECK names", () => {
     expect(buildExpectedSchema(root, { dialect: "sqlite" }).tables[0]!.checks.map((c) => c.name)).toEqual([long]);
   });
 
-  test("a declared name keeps a length CHECK the efcore conventions would skip as redundant", async () => {
-    const t = buildExpectedSchema(await load([len("CK_T_Code")]), { dialect: "postgres", conventions: efcoreConventions }).tables[0]!;
+  test("a declared name keeps a length CHECK skipRedundantChecks would leave out", async () => {
+    const opts = { dialect: "postgres", conventions: efcoreConventions, skipRedundantChecks: true } as const;
+    const t = buildExpectedSchema(await load([len("CK_T_Code")]), opts).tables[0]!;
     expect(t.checks).toEqual([{ name: "CK_T_Code", expression: 'length("code") <= 10' }]);
     const plain = buildExpectedSchema(await load([{ "field.string": { name: "code", "@maxLength": 10, children: [
       { "validator.length": { name: "len", "@max": 10 } },
-    ] } }]), { dialect: "postgres", conventions: efcoreConventions }).tables[0]!;
+    ] } }]), opts).tables[0]!;
     expect(plain.checks).toEqual([]);
+  });
+});
+
+describe("a duration literal in a CHECK", () => {
+  const model = [...AB, { "field.duration": { name: "wait" } }, { "field.string": { name: "label" } },
+    { "validator.comparison": { name: "cmp", "@left": "a", "@op": "lt", "@right": "b",
+      "@condition": { op: "gt", left: { field: "wait" }, right: { value: "-PT90S" } } } },
+    { "validator.requiredWhen": { name: "rw", "@field": "label", "@when": "wait", "@equals": "PT1H" } },
+  ];
+
+  test("is the interval spelling on Postgres and the microsecond integer on SQLite", async () => {
+    const root = await load(model);
+    const on = (dialect: "postgres" | "sqlite") => buildExpectedSchema(root, { dialect }).tables[0]!.checks.map((c) => c.expression);
+    expect(on("postgres")).toEqual([
+      `("wait" <= '-00:01:30') OR ("a" < "b")`,
+      `("wait" IS DISTINCT FROM '01:00:00') OR ("label" IS NOT NULL)`,
+    ]);
+    expect(on("sqlite")).toEqual([
+      `("wait" <= -90000000) OR ("a" < "b")`,
+      `("wait" IS NOT 3600000000) OR ("label" IS NOT NULL)`,
+    ]);
+  });
+
+  test("a literal compared with a coalesce of durations takes the column's form too", async () => {
+    const root = await load([...AB, { "field.duration": { name: "wait" } }, { "field.duration": { name: "hold" } },
+      { "validator.comparison": { name: "cmp", "@left": "a", "@op": "lt", "@right": "b",
+        "@condition": { op: "gt", left: { fn: "coalesce", args: [{ field: "wait" }, { field: "hold" }] }, right: { value: "-PT1M" } } } }]);
+    expect(buildExpectedSchema(root, { dialect: "sqlite" }).tables[0]!.checks.map((c) => c.expression))
+      .toEqual([`(COALESCE("wait", "hold") <= -60000000) OR ("a" < "b")`]);
+    expect(buildExpectedSchema(root, { dialect: "postgres" }).tables[0]!.checks.map((c) => c.expression))
+      .toEqual([`(COALESCE("wait", "hold") <= '-00:01:00') OR ("a" < "b")`]);
+  });
+
+  test("a literal that is not a duration is refused when the CHECK is built", async () => {
+    const root = await load([...AB, { "field.duration": { name: "wait" } },
+      { "validator.comparison": { name: "cmp", "@left": "a", "@op": "lt", "@right": "b",
+        "@condition": { op: "gt", left: { field: "wait" }, right: { value: "P1M" } } } }]);
+    expect(() => buildExpectedSchema(root, { dialect: "postgres" })).toThrow(/compares field.duration 'wait' with "P1M", which is not an ISO-8601 duration/);
   });
 });

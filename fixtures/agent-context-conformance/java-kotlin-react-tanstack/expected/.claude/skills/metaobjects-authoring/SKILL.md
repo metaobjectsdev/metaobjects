@@ -448,7 +448,7 @@ that becomes a CHECK takes an optional db-provider `@constraintName` naming it.
 { "validator.requiredWhen": { "name": "reasonIfRejected", "@field": "rejectReason", "@when": "status", "@equals": "rejected" } }
 { "validator.presentIff":   { "name": "usedAtWhenUsed", "@field": "usedAt", "@when": "isUsed", "@equals": "true" } }
 { "validator.atLeastOne":   { "name": "emailOrPhone", "@fields": ["email", "phone"] } }
-{ "validator.atLeastOne":   { "name": "oneOwner", "@fields": ["patientId", "caseId"], "@max": 1 } }
+{ "validator.atLeastOne":   { "name": "oneOwner", "@fields": ["customerId", "accountId"], "@max": 1 } }
 ```
 
 These are children of `object.entity`, alongside its fields and identities.

@@ -7,23 +7,23 @@ validator runner), the generated models and routers, and tested against the shar
 
 * **Canonical** (what this port writes) -- :func:`format_duration`:
   ``[-]PT[<h>H][<m>M][<s>[.<f>]S]``. Hours are never folded into days, zero components are left
-  out, zero is ``PT0S``, at most six fractional digits (a ``timedelta`` and a Postgres
-  ``interval`` both hold microseconds; more are truncated toward zero), and a negative span has
-  one leading ``-``.
+  out, zero is ``PT0S``, up to six fractional digits (a ``timedelta`` holds microseconds;
+  trailing zeros are dropped), and a negative span has one leading ``-``.
 * **Accepted** (what a caller may send) -- :func:`parse_duration`: an optional sign, ``P``,
-  optional days (``D`` is exactly 24 hours), then an optional ``T`` with hours, minutes and
-  seconds in that order; at least one component, up to nine fractional-second digits. Years,
-  months and weeks are refused: a calendar span has no fixed length.
+  optional weeks (``W`` is exactly 7 days), optional days (``D`` is exactly 24 hours), then an
+  optional ``T`` with hours, minutes and seconds in that order; at least one component. The
+  seconds fraction may have any number of digits: the first six are kept and the rest truncated
+  toward zero, never rounded. Years and months are refused: a calendar span has no fixed length.
 * **Range** -- this port's own limit only: a ``timedelta`` spans at most 999999999 days either
   way. A duration past it is refused, never wrapped.
 * **Stored micros** -- :func:`to_stored_micros` / :func:`from_stored_micros`: on SQLite, D1 and
   MySQL a duration is a 64-bit integer count of microseconds (the column's limit: past it is
   refused).
-* **Postgres** -- :func:`parse_postgres_interval` reads the default-style (``IntervalStyle =
-  postgres``) text of an ``interval``; :func:`format_postgres_interval` writes the
-  ``[-]HH:MM:SS[.f]`` spelling Postgres reads as interval input (it refuses a signed ISO-8601
-  duration). pg8000 binds a ``timedelta`` natively and hands one back, or a ``PGInterval`` when
-  the stored interval has a month part, which :func:`duration_from_driver` refuses.
+* **Postgres** -- pg8000 binds a ``timedelta`` natively as an ``interval`` and hands one back,
+  or a ``PGInterval`` when the stored interval has a year or month part (it never guesses a
+  month's length), which :func:`duration_from_driver` refuses. :func:`parse_postgres_interval`
+  reads the default-style (``IntervalStyle = postgres``) text of an ``interval``, the spelling an
+  interval has once Postgres has put it in a JSON value, under the same rule.
 """
 from __future__ import annotations
 
@@ -32,14 +32,14 @@ import re
 from typing import Any
 
 #: The accepted ISO-8601 duration form, byte-identical to the TS ``DURATION_PATTERN``.
-DURATION_PATTERN = r"^[-+]?P(?!$)(\d+D)?(T(?=\d)(\d+H)?(\d+M)?(\d+(\.\d{1,9})?S)?)?$"
+DURATION_PATTERN = r"^[-+]?P(?!$)(\d+W)?(\d+D)?(T(?=\d)(\d+H)?(\d+M)?(\d+(\.\d+)?S)?)?$"
 
 # ``re.ASCII`` keeps ``\d`` to the ASCII digits, as JavaScript's ``\d`` is; ``fullmatch`` is used
 # throughout because a Python ``$`` also matches before a trailing newline.
 DURATION_RE = re.compile(DURATION_PATTERN, re.ASCII)
 
 _PARTS_RE = re.compile(
-    r"([-+])?P(?:([0-9]+)D)?(?:T(?:([0-9]+)H)?(?:([0-9]+)M)?(?:([0-9]+)(?:\.([0-9]{1,9}))?S)?)?",
+    r"([-+])?P(?:([0-9]+)W)?(?:([0-9]+)D)?(?:T(?:([0-9]+)H)?(?:([0-9]+)M)?(?:([0-9]+)(?:\.([0-9]+))?S)?)?",
 )
 
 # The default-style text of an interval: signed year / mon / day parts, then an optionally
@@ -53,13 +53,14 @@ _MICROS_PER_SECOND = 1_000_000
 _MICROS_PER_MINUTE = 60 * _MICROS_PER_SECOND
 _MICROS_PER_HOUR = 60 * _MICROS_PER_MINUTE
 _MICROS_PER_DAY = 24 * _MICROS_PER_HOUR
+_MICROS_PER_WEEK = 7 * _MICROS_PER_DAY
 
 #: The range of a 64-bit integer column (SQLite INTEGER, MySQL BIGINT) holding microseconds.
 _INT64_MIN = -(2**63)
 _INT64_MAX = 2**63 - 1
 
 #: The message a value that is not a duration is refused with (the run-time validator's text).
-NOT_A_DURATION = "must be an ISO-8601 duration such as PT1H30M (no years, months or weeks)"
+NOT_A_DURATION = "must be an ISO-8601 duration such as PT1H30M (no years or months)"
 
 
 def is_duration_literal(text: str) -> bool:
@@ -69,7 +70,8 @@ def is_duration_literal(text: str) -> bool:
 
 
 def _fraction_micros(digits: str | None) -> int:
-    """Up to nine fractional-second digits as microseconds, truncated toward zero."""
+    """Fractional-second digits, any number of them, as microseconds: the first six are kept
+    and the rest truncated toward zero (the magnitude is truncated, so a negative span is too)."""
     if not digits:
         return 0
     return int(digits.ljust(6, "0")[:6])
@@ -81,9 +83,10 @@ def _micros_of_literal(text: str) -> int | None:
     m = _PARTS_RE.fullmatch(text)
     if m is None:
         return None
-    sign, d, h, mi, s, f = m.groups()
+    sign, w, d, h, mi, s, f = m.groups()
     magnitude = (
-        int(d or 0) * _MICROS_PER_DAY
+        int(w or 0) * _MICROS_PER_WEEK
+        + int(d or 0) * _MICROS_PER_DAY
         + int(h or 0) * _MICROS_PER_HOUR
         + int(mi or 0) * _MICROS_PER_MINUTE
         + int(s or 0) * _MICROS_PER_SECOND
@@ -136,7 +139,7 @@ def parse_duration(text: str) -> _dt.timedelta:
     """An accepted ISO-8601 duration as a ``timedelta``. Anything else is a ``ValueError``."""
     micros = _micros_of_literal(text)
     if micros is None:
-        raise ValueError(f"{text!r} is not an ISO-8601 duration (such as PT1H30M; no years, months or weeks)")
+        raise ValueError(f"{text!r} is not an ISO-8601 duration (such as PT1H30M; no years or months)")
     return _from_micros(micros)
 
 
@@ -177,14 +180,6 @@ def canonical_duration(text: str) -> str | None:
     (a duration past a ``timedelta``'s range included)."""
     micros = _micros_of_literal(text)
     return None if micros is None or not _in_range(micros) else _format_micros(micros)
-
-
-def format_postgres_interval(value: _dt.timedelta) -> str:
-    """*value* as the text Postgres reads as interval input and writes back for it:
-    ``[-]HH:MM:SS[.f]``, hours unbounded, no day part."""
-    negative, h, m, s, frac = _split(micros_of(value))
-    out = f"{h:02d}:{m:02d}:{s:02d}{_fraction_text(frac)}"
-    return "-" + out if negative else out
 
 
 def _not_fixed_length(shown: str) -> ValueError:
@@ -245,4 +240,4 @@ def parse_duration_input(value: Any) -> _dt.timedelta:
         return value
     if isinstance(value, str):
         return parse_duration(value)
-    raise ValueError(f"{value!r} is not an ISO-8601 duration (such as PT1H30M; no years, months or weeks)")
+    raise ValueError(f"{value!r} is not an ISO-8601 duration (such as PT1H30M; no years or months)")

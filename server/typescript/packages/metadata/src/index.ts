@@ -370,7 +370,7 @@ export {
 // Naming — hoisted from runtime-ts in v0.2.3 so multiple consumers (runtime-ts, migrate-ts, codegen-ts)
 // share identical name resolution. See spec §4.1.
 export {
-  toSnakeCase, toKebabCase, toPascalCaseColumn, pluralize, pluralizeTableNameLegacy,
+  toSnakeCase, toKebabCase, toUpperFirstColumn, pluralize, pluralizeTableNameLegacy,
   applyColumnNamingStrategy, DEFAULT_COLUMN_NAMING_STRATEGY, COLUMN_NAMING_STRATEGIES,
   TABLE_NAMING_RULES, DEFAULT_PHYSICAL_NAMING, physicalNamingOf, applyTableNamingRule,
   PHYSICAL_NAMING_MIGRATION_GUIDE, PHYSICAL_NAMING_MIGRATION_GUIDE_PATH, physicalNamingRemovedMessage,

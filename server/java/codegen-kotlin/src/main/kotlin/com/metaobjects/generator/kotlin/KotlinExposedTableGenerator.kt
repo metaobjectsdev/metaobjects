@@ -1754,8 +1754,8 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
          *    ISO-8601 duration as interval input, so the value binds in the interval spelling
          *    `[-]HH:MM:SS[.f]`, as text under a `CAST(? AS INTERVAL)` parameter marker (a bare
          *    varchar parameter is refused where an interval goes). A read takes the
-         *    driver's value — pgjdbc's `PGInterval`, or the stored text — through
-         *    `MetaDurationWire.fromStored`, which refuses an interval with a year or month part.
+         *    driver's value — pgjdbc's `PGInterval` on Postgres, the microsecond count elsewhere —
+         *    through `MetaDurationWire.fromStored`, which refuses an interval with a year or month part.
          *  - `MetaDurationArrayColumnType` — an `isArray` duration: `INTERVAL[]` on Postgres, a JSON
          *    text array of microsecond counts on MySQL and SQLite.
          *

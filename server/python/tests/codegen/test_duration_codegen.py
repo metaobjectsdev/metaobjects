@@ -137,9 +137,12 @@ def test_the_model_reads_an_iso_duration_and_writes_the_canonical_form(
     # In process the value stays the native timedelta.
     assert m.model_dump()["grace"] == dt.timedelta(seconds=-90)
     assert cls(holdFor=dt.timedelta(minutes=5)).holdFor == dt.timedelta(minutes=5)
+    # A week is exactly 7 days, and a fraction past microseconds is truncated, never rounded.
+    assert json.loads(cls(holdFor="P1W1DT1H", grace="PT0.99999999999S").model_dump_json())["holdFor"] == "PT193H"
+    assert json.loads(cls(holdFor="PT1H", grace="PT0.99999999999S").model_dump_json())["grace"] == "PT0.999999S"
 
 
-@pytest.mark.parametrize("value", ["1:30:00", "P1Y", "P1M", "P2W", "PT1.5H", "pt1h", "PT", 90, 1.5])
+@pytest.mark.parametrize("value", ["1:30:00", "P1Y", "P1M", "P1.5W", "PT1W", "PT1.5H", "pt1h", "PT", 90, 1.5])
 def test_the_model_refuses_what_pydantic_timedelta_would_take(generated: dict[str, Any], value: object) -> None:
     with pytest.raises(ValidationError):
         generated["hold"].HoldCreate(holdFor=value)

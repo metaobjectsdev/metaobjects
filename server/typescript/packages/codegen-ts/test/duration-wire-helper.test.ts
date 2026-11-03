@@ -1,13 +1,15 @@
 // The field.duration code a generated model module carries (templates/duration-wire-helper.ts):
 // the Zod write helper and the Drizzle column codec. The EMITTED TEXT is transpiled and evaluated
 // here against fixtures/duration-wire/vectors.json, so the vectors hold what an adopter runs, not
-// a re-implementation of it.
+// a re-implementation of it. The emitted code counts microseconds (precision "6") and has the
+// Postgres text codec (it binds and reads interval text) and the stored-micros codec (SQLite, D1,
+// MySQL), so it passes every `codecs` group too.
 
 import { describe, test, expect } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
-import { DURATION_PATTERN } from "@metaobjectsdev/metadata";
+import { DURATION_PATTERN, canonicalDuration } from "@metaobjectsdev/metadata";
 import { DURATION_COLUMN_FN } from "../src/column-mapper.js";
 import {
   DURATION_REGEX_LITERAL,
@@ -18,16 +20,25 @@ import {
 import type { Dialect } from "../src/metaobjects-config.js";
 
 interface Vectors {
-  parse: Array<{ in: string; out: string }>;
-  refused: string[];
-  postgres: Array<{ in: string; out: string }>;
-  postgresRefused: string[];
-  postgresText: Array<{ in: string; out: string }>;
-  storedMicros: Array<{ in: string; out: string }>;
+  wire: {
+    parse: Array<{ in: string; out: string }>;
+    precision: Array<{ in: string; out: Record<string, string> }>;
+    refused: string[];
+  };
+  codecs: {
+    postgres: Array<{ in: string; out: string }>;
+    postgresRefused: string[];
+    postgresText: Array<{ in: string; out: string }>;
+    storedMicros: Array<{ in: string; out: string }>;
+  };
 }
-const vectors = JSON.parse(
+const { wire, codecs } = JSON.parse(
   readFileSync(join(import.meta.dir, "..", "..", "..", "..", "..", "fixtures", "duration-wire", "vectors.json"), "utf8"),
 ) as Vectors;
+/** The emitted code holds a duration as microseconds. */
+const PRECISION = "6";
+/** The parse vectors, then the precision vectors at this precision. */
+const parsed = [...wire.parse, ...wire.precision.map((p) => ({ in: p.in, out: p.out[PRECISION]! }))];
 
 const transpiler = new Bun.Transpiler({ loader: "ts" });
 
@@ -55,12 +66,14 @@ describe("generated duration write schema", () => {
     expect(DURATION_REGEX_LITERAL).toBe(`/${DURATION_PATTERN}/`);
     expect(ZOD_DURATION_WRITE_EXPR).toBe(`z.string().regex(/${DURATION_PATTERN}/).transform(durationWrite)`);
   });
-  for (const v of vectors.parse) {
+  for (const v of parsed) {
     test(`parse ${v.in} -> ${v.out}`, () => {
       expect(schema.parse(v.in)).toBe(v.out);
+      // the canonical form is itself accepted, and is a fixed point
+      expect(schema.parse(v.out)).toBe(v.out);
     });
   }
-  for (const v of vectors.refused) {
+  for (const v of wire.refused) {
     test(`refused ${JSON.stringify(v)}`, () => {
       expect(schema.safeParse(v).success).toBe(false);
     });
@@ -89,24 +102,26 @@ describe("generated duration column codec", () => {
     expect(mysql.dataType()).toBe("bigint");
   });
 
-  for (const v of vectors.postgresText) {
+  for (const v of codecs.postgresText) {
     test(`Postgres binds ${v.in} as ${v.out}, and reads it back`, () => {
       expect(pg.toDriver(v.in)).toBe(v.out);
       expect(pg.fromDriver(v.out)).toBe(v.in);
     });
   }
-  for (const v of vectors.storedMicros) {
+  for (const v of codecs.storedMicros) {
     test(`SQLite / MySQL store ${v.in} as ${v.out} microseconds, and read it back`, () => {
+      // Read back, it is the canonical form (sub-microsecond digits already truncated).
+      const canonical = canonicalDuration(v.in)!;
       for (const codec of [sqlite, mysql]) {
         expect(String(codec.toDriver(v.in))).toBe(v.out);
         // A driver hands the integer back as a number, a bigint or a digit string.
-        expect(codec.fromDriver(Number(v.out))).toBe(v.in);
-        expect(codec.fromDriver(BigInt(v.out))).toBe(v.in);
-        expect(codec.fromDriver(v.out)).toBe(v.in);
+        expect(codec.fromDriver(Number(v.out))).toBe(canonical);
+        expect(codec.fromDriver(BigInt(v.out))).toBe(canonical);
+        expect(codec.fromDriver(v.out)).toBe(canonical);
       }
     });
   }
-  for (const v of vectors.parse) {
+  for (const v of parsed) {
     test(`${v.in} round-trips as ${v.out} on every dialect`, () => {
       for (const codec of [pg, sqlite, mysql]) expect(codec.fromDriver(codec.toDriver(v.in))).toBe(v.out);
     });
@@ -125,7 +140,7 @@ describe("generated duration column codec", () => {
     expect(mysql.toDriver(BigInt("-90000000") as never)).toBe(-90000000);
     expect(pg.toDriver("01:30:00")).toBe("01:30:00");
   });
-  for (const v of vectors.refused) {
+  for (const v of wire.refused) {
     test(`binding ${JSON.stringify(v)} throws`, () => {
       // The codec takes the Postgres spelling too (runtime-ts binds a Postgres operand in it), and
       // `1:30:00` is that spelling — one hour thirty — so on Postgres it binds.
@@ -133,12 +148,12 @@ describe("generated duration column codec", () => {
       expect(() => sqlite.toDriver(v === "1:30:00" ? "1:30" : v)).toThrow();
     });
   }
-  for (const v of vectors.postgres) {
+  for (const v of codecs.postgres) {
     test(`Postgres text ${v.in} reads as ${v.out}`, () => {
       expect(pg.fromDriver(v.in)).toBe(v.out);
     });
   }
-  for (const v of vectors.postgresRefused) {
+  for (const v of codecs.postgresRefused) {
     test(`Postgres text ${v} is refused on read and on bind`, () => {
       expect(() => pg.fromDriver(v)).toThrow();
       expect(() => pg.toDriver(v)).toThrow();

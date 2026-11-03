@@ -140,24 +140,25 @@ public class ReportExportGenerator : IGenerator
     private const string DurationCase = "            case TimeSpan ts: return new(Duration(ts), false);\n";
     private const string DurationMethod = """
     // A field.duration as the wire writes it: the canonical ISO-8601 duration [-]PT[nH][nM][n[.f]S],
-    // hours never folded into days, at most six fractional digits (sub-microsecond ticks truncated
-    // toward zero), zero as PT0S. The same rule as the generated DurationWire.Format.
+    // hours never folded into days, up to seven fractional digits (a TimeSpan tick is 100 ns),
+    // zero as PT0S. The same rule as the generated DurationWire.Format.
     private static string Duration(TimeSpan value)
     {
-        long micros = value.Ticks / 10;
-        bool negative = micros < 0;
-        long rest = negative ? -micros : micros;
-        long h = rest / 3_600_000_000L, m = rest / 60_000_000L % 60, s = rest / 1_000_000L % 60, f = rest % 1_000_000L;
+        long ticks = value.Ticks;
+        if (ticks == 0) return "PT0S";
+        bool negative = ticks < 0;
+        ulong rest = negative ? (ulong)(-(ticks + 1)) + 1UL : (ulong)ticks;
+        ulong h = rest / 36_000_000_000UL, m = rest / 600_000_000UL % 60, s = rest / 10_000_000UL % 60, f = rest % 10_000_000UL;
         var sb = new StringBuilder(negative ? "-PT" : "PT");
         if (h > 0) sb.Append(h.ToString(CultureInfo.InvariantCulture)).Append('H');
         if (m > 0) sb.Append(m.ToString(CultureInfo.InvariantCulture)).Append('M');
         if (s > 0 || f > 0)
         {
             sb.Append(s.ToString(CultureInfo.InvariantCulture));
-            if (f > 0) sb.Append('.').Append(f.ToString("D6", CultureInfo.InvariantCulture).TrimEnd('0'));
+            if (f > 0) sb.Append('.').Append(f.ToString("D7", CultureInfo.InvariantCulture).TrimEnd('0'));
             sb.Append('S');
         }
-        return micros == 0 ? "PT0S" : sb.ToString();
+        return sb.ToString();
     }
 
 

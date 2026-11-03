@@ -212,7 +212,7 @@
       {
         "field": "holdFor",
         "rule": "format",
-        "message": "'holdFor' must be an ISO-8601 duration such as PT1H30M (no years, months or weeks)",
+        "message": "'holdFor' must be an ISO-8601 duration such as PT1H30M (no years or months)",
         "expected": "duration",
         "received": "P1M"
       }
@@ -221,25 +221,16 @@
       {
         "field": "holdFor",
         "rule": "format",
-        "message": "'holdFor' must be an ISO-8601 duration such as PT1H30M (no years, months or weeks)",
+        "message": "'holdFor' must be an ISO-8601 duration such as PT1H30M (no years or months)",
         "expected": "duration",
         "received": "P1Y"
-      }
-    ],
-    "duration-reject-weeks": [
-      {
-        "field": "holdFor",
-        "rule": "format",
-        "message": "'holdFor' must be an ISO-8601 duration such as PT1H30M (no years, months or weeks)",
-        "expected": "duration",
-        "received": "P2W"
       }
     ],
     "duration-reject-clock": [
       {
         "field": "holdFor",
         "rule": "format",
-        "message": "'holdFor' must be an ISO-8601 duration such as PT1H30M (no years, months or weeks)",
+        "message": "'holdFor' must be an ISO-8601 duration such as PT1H30M (no years or months)",
         "expected": "duration",
         "received": "1:30:00"
       }
@@ -248,7 +239,7 @@
       {
         "field": "holdFor",
         "rule": "format",
-        "message": "'holdFor' must be an ISO-8601 duration such as PT1H30M (no years, months or weeks)",
+        "message": "'holdFor' must be an ISO-8601 duration such as PT1H30M (no years or months)",
         "expected": "duration",
         "received": "PT1.5H"
       }
@@ -257,7 +248,7 @@
       {
         "field": "holdFor",
         "rule": "format",
-        "message": "'holdFor' must be an ISO-8601 duration such as PT1H30M (no years, months or weeks)",
+        "message": "'holdFor' must be an ISO-8601 duration such as PT1H30M (no years or months)",
         "expected": "duration",
         "received": "pt1h"
       }
@@ -266,7 +257,7 @@
       {
         "field": "holdFor",
         "rule": "format",
-        "message": "'holdFor' must be an ISO-8601 duration such as PT1H30M (no years, months or weeks)",
+        "message": "'holdFor' must be an ISO-8601 duration such as PT1H30M (no years or months)",
         "expected": "duration",
         "received": "PT"
       }

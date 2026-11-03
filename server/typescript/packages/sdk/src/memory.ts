@@ -117,12 +117,6 @@ export interface LoadMemoryOptions {
   wireFormat?: WireFormat;
   /** The project's enum storage defaults; defaults to the collection's (`resolveCollection(...).enumDefaults`) when `files` is not passed. */
   enumDefaults?: EnumDefaults;
-  /**
-   * The schema conventions `meta migrate` names database-only objects with, set on the loaded
-   * root: a preset name, or a conventions object the project supplies. Defaults to the
-   * collection's `migrate.conventions` when `files` is not passed.
-   */
-  schemaConventions?: unknown;
 }
 
 /** Default provider bundle threaded by {@link loadMemory} when no options
@@ -178,7 +172,7 @@ export async function loadMemory(
   repoRoot: string,
   options?: LoadMemoryOptions,
 ): Promise<MetaRoot> {
-  const { result, importedPackages, importedNodes, libraries, physicalNaming, wireFormat, enumDefaults, schemaConventions } =
+  const { result, importedPackages, importedNodes, libraries, physicalNaming, wireFormat, enumDefaults } =
     await loadCollectionRaw(repoRoot, options, options?.strict === true);
 
   if (result.errors.length > 0) {
@@ -200,7 +194,6 @@ export async function loadMemory(
   if (physicalNaming !== undefined) result.root.physicalNaming = physicalNaming;
   if (wireFormat !== undefined) result.root.wireFormat = wireFormat;
   if (enumDefaults !== undefined) result.root.enumDefaults = enumDefaults;
-  if (schemaConventions !== undefined) result.root.schemaConventions = schemaConventions;
   return result.root;
 }
 
@@ -276,7 +269,6 @@ async function loadCollectionRaw(
   physicalNaming: PhysicalNaming | undefined;
   wireFormat: WireFormat | undefined;
   enumDefaults: EnumDefaults | undefined;
-  schemaConventions: unknown;
 }> {
   const extra = options?.providers ?? [];
   let providers: readonly MetaDataTypeProvider[];
@@ -306,7 +298,6 @@ async function loadCollectionRaw(
   let physicalNaming: PhysicalNaming | undefined = options?.physicalNaming;
   let wireFormat: WireFormat | undefined = options?.wireFormat;
   let enumDefaults: EnumDefaults | undefined = options?.enumDefaults;
-  let schemaConventions: unknown = options?.schemaConventions;
   if (options?.files !== undefined) {
     paths = [...options.files];
     fileIds = options.fileIds;
@@ -328,7 +319,6 @@ async function loadCollectionRaw(
     physicalNaming ??= collection.physicalNaming;
     wireFormat ??= collection.wireFormat;
     enumDefaults ??= collection.enumDefaults;
-    schemaConventions ??= collection.schemaConventions;
   }
 
   const loader = new MetaDataLoader({
@@ -354,7 +344,7 @@ async function loadCollectionRaw(
       return id === undefined ? new FileSource(p) : new FileSource(p, { id });
     }),
   ]);
-  return { result, registry, importedPackages, importedNodes, libraries, physicalNaming, wireFormat, enumDefaults, schemaConventions };
+  return { result, registry, importedPackages, importedNodes, libraries, physicalNaming, wireFormat, enumDefaults };
 }
 
 /** Every source file that contributed to a node, across the envelope variants that

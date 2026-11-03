@@ -4,8 +4,10 @@
 // fixtures/duration-wire/vectors.json (test/duration-wire-helper.test.ts evaluates the text
 // emitted here against them).
 //
-// Canonical: `[-]PT[<h>H][<m>M][<s>[.<f>]S]` — hours never folded into days, zero components left
-// out, zero is `PT0S`, at most six fractional digits (truncated toward zero), one leading `-`.
+// Accepted: optional weeks (exactly 7 days) and days, then hours, minutes and seconds; the seconds
+// fraction may have any number of digits. Canonical: `[-]PT[<h>H][<m>M][<s>[.<f>]S]` — hours never
+// folded into days, zero components left out, zero is `PT0S`, one leading `-`. A span is counted in
+// microseconds, so the fraction keeps six digits and the rest is truncated toward zero.
 //
 // The emitted code counts a span in microseconds as a `bigint`, so it has no limit of its own: a
 // span is as long as the stack it is stored in allows. The only limit here is a column's — the
@@ -30,9 +32,9 @@ export const DURATION_WRITE_HELPER = "durationWrite";
  *  so equal spans are equal strings on the wire and in a jsonb value object. */
 export const ZOD_DURATION_WRITE_EXPR = `${ZOD_DURATION_EXPR}.transform(${DURATION_WRITE_HELPER})`;
 
-/** The accepted form with its components captured: sign, days, hours, minutes, seconds, fraction.
- *  Equivalent to DURATION_PATTERN (the same lookaheads refuse `P`, `PT` and `P1DT`). */
-const ISO_PARTS_SOURCE = String.raw`/^([-+])?P(?!$)(?:(\d+)D)?(?:T(?=\d)(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)(?:\.(\d{1,9}))?S)?)?$/`;
+/** The accepted form with its components captured: sign, weeks, days, hours, minutes, seconds,
+ *  fraction. Equivalent to DURATION_PATTERN (the same lookaheads refuse `P`, `PT` and `P1DT`). */
+const ISO_PARTS_SOURCE = String.raw`/^([-+])?P(?!$)(?:(\d+)W)?(?:(\d+)D)?(?:T(?=\d)(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)(?:\.(\d+))?S)?)?$/`;
 
 /** The default (`IntervalStyle = postgres`) text of a Postgres interval: signed year / mon / day
  *  parts, then an optionally signed `H:MM:SS[.ffffff]`. */
@@ -51,6 +53,7 @@ const UNIT_LINES = [
   "const MINUTE = BigInt(60000000);",
   "const HOUR = BigInt(3600000000);",
   "const DAY = BigInt(86400000000);",
+  "const WEEK = BigInt(604800000000);",
 ].join("\n");
 
 /** `parseIso(text)`: the microseconds of an accepted ISO-8601 duration, or undefined. */
@@ -58,8 +61,8 @@ const PARSE_ISO_FN = [
   "const parseIso = (text: string): bigint | undefined => {",
   `  const p = ${ISO_PARTS_SOURCE}.exec(text);`,
   "  if (p === null) return undefined;",
-  "  const mag = BigInt(p[2] ?? 0) * DAY + BigInt(p[3] ?? 0) * HOUR + BigInt(p[4] ?? 0) * MINUTE",
-  '    + BigInt(p[5] ?? 0) * SECOND + BigInt((p[6] ?? "").padEnd(6, "0").slice(0, 6));',
+  "  const mag = BigInt(p[2] ?? 0) * WEEK + BigInt(p[3] ?? 0) * DAY + BigInt(p[4] ?? 0) * HOUR",
+  '    + BigInt(p[5] ?? 0) * MINUTE + BigInt(p[6] ?? 0) * SECOND + BigInt((p[7] ?? "").padEnd(6, "0").slice(0, 6));',
   '  return p[1] === "-" ? -mag : mag;',
   "};",
 ].join("\n");
@@ -85,10 +88,10 @@ const ISO_TEXT_FN = [
 ].join("\n");
 
 export const DURATION_WRITE_HELPER_DECL = [
-  "/** A field.duration on the wire: an ISO-8601 duration (days, hours, minutes, seconds) rewritten to its",
-  " *  canonical form — hours never folded into days, zero components left out, zero as PT0S, at most six",
-  " *  fractional digits (truncated), one leading \"-\" for a negative span. Counted in bigint",
-  " *  microseconds, so any length is exact. Generated. */",
+  "/** A field.duration on the wire: an ISO-8601 duration (weeks, days, hours, minutes, seconds) rewritten",
+  " *  to its canonical form — hours never folded into days, zero components left out, zero as PT0S, one",
+  " *  leading \"-\" for a negative span. Counted in bigint microseconds, so any length is exact and a",
+  " *  fraction past six digits is truncated toward zero. Generated. */",
   `function ${DURATION_WRITE_HELPER}(text: string): string {`,
   indent(UNIT_LINES, 2),
   indent(PARSE_ISO_FN, 2),

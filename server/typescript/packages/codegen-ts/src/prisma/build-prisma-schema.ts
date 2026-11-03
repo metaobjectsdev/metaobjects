@@ -46,6 +46,7 @@ import {
 } from "@metaobjectsdev/metadata";
 import {
   buildExpectedSchemaWithProvenance,
+  type SchemaBuildSettings,
   qualifiedDbName,
   type CheckDescriptor,
   type ColumnDescriptor,
@@ -115,6 +116,8 @@ export interface BuildPrismaSchemaOptions {
    * them out, which is the only way to take a model with checks to SQLite.
    */
   readonly checks?: "file" | "omit";
+  /** The project's schema conventions and CHECK settings (`GenContext.schemaSettings`). */
+  readonly schemaSettings?: SchemaBuildSettings;
 }
 
 /** Postgres' default schema: a table in it carries no `@@schema`. */
@@ -697,7 +700,10 @@ export function buildPrismaSchema(root: MetaRoot, options: BuildPrismaSchemaOpti
       if (schema !== undefined) throw refuseSchema(obj, schema, provider);
     }
   }
-  const { snapshot, provenance } = buildExpectedSchemaWithProvenance(root, dialect === undefined ? {} : { dialect });
+  const { snapshot, provenance } = buildExpectedSchemaWithProvenance(root, {
+    ...options.schemaSettings,
+    ...(dialect === undefined ? {} : { dialect }),
+  });
   const strategy = physicalNamingOf(root).columns;
 
   const entries: TableEntry[] = [];

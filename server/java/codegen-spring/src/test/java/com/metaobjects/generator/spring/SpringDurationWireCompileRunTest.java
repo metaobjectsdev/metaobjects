@@ -125,7 +125,10 @@ public class SpringDurationWireCompileRunTest {
             Object p = fromJson.invoke(null, mapper.readTree("{\"holdFor\":\"P1DT2H\",\"retries\":[\"PT1S\"]}"), mapper);
             assertEquals(Duration.ofHours(26), patch.getMethod("holdFor").invoke(p));
             assertEquals(List.of(Duration.ofSeconds(1)), patch.getMethod("retries").invoke(p));
-            for (String bad : new String[]{"{\"holdFor\":\"P1W\"}", "{\"holdFor\":90}", "{\"holdFor\":null}",
+            // A week is exactly 7 days; nanoseconds are kept.
+            Object w = fromJson.invoke(null, mapper.readTree("{\"holdFor\":\"P1WT0.123456789S\"}"), mapper);
+            assertEquals(Duration.ofDays(7).plusNanos(123_456_789), patch.getMethod("holdFor").invoke(w));
+            for (String bad : new String[]{"{\"holdFor\":\"P1M\"}", "{\"holdFor\":\"P1.5W\"}", "{\"holdFor\":90}", "{\"holdFor\":null}",
                     "{\"retries\":[\"P1Y\"]}", "{\"retries\":[null]}", "{\"retries\":\"PT1S\"}"}) {
                 try {
                     fromJson.invoke(null, mapper.readTree(bad), mapper);

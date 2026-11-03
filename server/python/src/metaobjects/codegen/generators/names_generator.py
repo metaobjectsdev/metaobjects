@@ -459,11 +459,16 @@ def render_names(
     # `<field>.<member>`, the path the naming corpus uses.
     columns: list[tuple[str, str]] = []
     flattened: list[tuple[MetaData, list[tuple[str, _Const]]]] = []
+    #: The ``_COLUMN`` member of each flattened field: kept, so owned copies and existing
+    #: code still import it, but marked deprecated, because it names no column of the table.
+    deprecated_columns: dict[str, str] = {}
     for field in sorted(entity.fields(), key=lambda f: f.name):
         column = resolve_column_name(field, strategy)
         columns.append((field.name, f"{_member(field.name)}_COLUMN"))
         groups.append(("fields", _field_consts(field, column), carried_by_super(field)))
         members = _flattened_members(field, strategy)
+        if members is not None:
+            deprecated_columns[f"{_member(field.name)}_COLUMN"] = f"{upper}_{_member(field.name)}_<MEMBER>_COLUMN"
         if members:
             flattened.append((field, _flattened_member_consts(field, members)))
 
@@ -542,6 +547,10 @@ def render_names(
         section = group_section
         for const in consts:
             name = f"{upper}_{const.member}"
+            if group_section == "fields" and const.member in deprecated_columns:
+                # A comment, not a runtime warning: reading a constant must stay silent.
+                body.append("#: Deprecated: a flattened field has no column of its own; use the member constants,")
+                body.append(f"#: {deprecated_columns[const.member]}.")
             if inherited:
                 assert super_upper is not None  # carried_by_super implies a super module
                 referenced = f"{super_upper}_{const.member}"

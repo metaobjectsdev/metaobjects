@@ -173,8 +173,9 @@ public class SpringNamesGenerator extends MultiFileDirectGeneratorBase<MetaObjec
      * own, and each member of the value object is a column of the owning table, named by core
      * naming ({@link ColumnNaming#resolveFlattened(MetaField, MetaField, String)}, the rule
      * {@code meta migrate} names them by), keyed by the member's field name. {@code column} is
-     * kept as it always was, so the {@code _COLUMN} constant code already reads is unchanged;
-     * on a flattened field it names no column of the table.
+     * kept as it always was, so the {@code _COLUMN} constant code already reads still compiles;
+     * on a flattened field it names no column of the table, so that constant is emitted
+     * {@code @Deprecated} ({@link #FLATTENED_OWN_COLUMN_DEPRECATION}).
      */
     private record FieldNames(String name, String column, Map<String, FieldNames> members) {
         FieldNames(String name, String column) { this(name, column, null); }
@@ -484,15 +485,28 @@ public class SpringNamesGenerator extends MultiFileDirectGeneratorBase<MetaObjec
      * one blank line between the object's own identity, its sources, its fields, its
      * identities and its indexes. It is never read as data.</p>
      */
-    private record Member(String member, String literal, String path, String section, boolean flattened) {}
+    private record Member(String member, String literal, String path, String section, boolean flattened,
+                          String deprecation) {}
+
+    /**
+     * The {@code @deprecated} text on a flattened field's own {@code _COLUMN} constant: the field
+     * has no column of its own. Kept (owned copies and existing code must compile), deprecated.
+     */
+    static final String FLATTENED_OWN_COLUMN_DEPRECATION =
+        "A flattened field has no column of its own; use the member constants.";
 
     private static Member str(String member, String value, String path, String section) {
-        return new Member(member, "\"" + value + "\"", path, section, false);
+        return new Member(member, "\"" + value + "\"", path, section, false, null);
+    }
+
+    /** A flattened field's own column constant: still emitted, {@code @Deprecated}. */
+    private static Member deprecatedStr(String member, String value, String path, String section) {
+        return new Member(member, "\"" + value + "\"", path, section, false, FLATTENED_OWN_COLUMN_DEPRECATION);
     }
 
     /** A flattened value object's member column: left out, not refused, when it collides. */
     private static Member flattenedStr(String member, String value, String path) {
-        return new Member(member, "\"" + value + "\"", path, "fields", true);
+        return new Member(member, "\"" + value + "\"", path, "fields", true, null);
     }
 
     /**
@@ -599,6 +613,10 @@ public class SpringNamesGenerator extends MultiFileDirectGeneratorBase<MetaObjec
         for (Member m : declared) {
             if (section != null && !section.equals(m.section())) src.append("\n");
             section = m.section();
+            if (m.deprecation() != null) {
+                src.append("    /** @deprecated ").append(m.deprecation()).append(" */\n");
+                src.append("    @Deprecated\n");
+            }
             src.append("    public static final String ").append(m.member())
                .append(" = ").append(m.literal()).append(";\n");
         }
@@ -633,7 +651,13 @@ public class SpringNamesGenerator extends MultiFileDirectGeneratorBase<MetaObjec
             }
         }
         allRows.sort((a, b) -> a[1].compareTo(b[1]));
-        src.append("\n    public static final Map<String, String> COLUMNS_BY_FIELD = Map.ofEntries(\n");
+        // The map is the lookup surface and keeps a flattened field's entry as it was. Its
+        // constant is @Deprecated; a subclass's map reaches the base's, a use javac reports
+        // (-Xlint:deprecation) where a same-class use is not, so the map suppresses it.
+        boolean mapsAFlattenedField = names.fields().values().stream().anyMatch(f -> f.members() != null);
+        src.append("\n");
+        if (mapsAFlattenedField) src.append("    @SuppressWarnings(\"deprecation\")\n");
+        src.append("    public static final Map<String, String> COLUMNS_BY_FIELD = Map.ofEntries(\n");
         for (int i = 0; i < allRows.size(); i++) {
             String[] row = allRows.get(i);
             src.append("        Map.entry(\"").append(row[1]).append("\", ").append(row[0]).append(")");
@@ -712,7 +736,10 @@ public class SpringNamesGenerator extends MultiFileDirectGeneratorBase<MetaObjec
             String member = namesMember(f.name());
             String path = self + ".fields." + f.name();
             out.add(str(member + "_FIELD", f.name(), path, "fields"));
-            out.add(str(member + "_COLUMN", f.column(), path, "fields"));
+            // A flattened field names no column of the table: its own constant is deprecated.
+            out.add(f.members() != null
+                ? deprecatedStr(member + "_COLUMN", f.column(), path, "fields")
+                : str(member + "_COLUMN", f.column(), path, "fields"));
             // A flattened value object: one constant per member's column, beside the field's own.
             if (f.members() != null) {
                 for (String m : sorted(f.members())) {

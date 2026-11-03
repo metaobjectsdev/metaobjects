@@ -113,51 +113,64 @@ class KotlinDurationWireTest {
 
     @Test
     fun `the generated MetaDurationWire passes every shared wire vector`() {
-        val cl = compile(emit(listOf(KotlinEntityGenerator())))
+        val cl = compile(emit(all()).filterKeys { !it.endsWith("Controller.kt") })
         val wire = cl.loadClass("acme.ops.MetaDurationWire")
         val instance = wire.getField("INSTANCE").get(null)
         fun call(name: String, vararg args: Any?): Any? {
             val m = wire.methods.first { it.name == name && it.parameterCount == args.size }
             return try { m.invoke(instance, *args) } catch (e: java.lang.reflect.InvocationTargetException) { throw e.targetException }
         }
+        // The generated Exposed column type: on Postgres, pgjdbc hands it a PGInterval.
+        val columnType = cl.loadClass("acme.ops.MetaDurationColumnType").getDeclaredConstructor().newInstance()
+        val valueFromDB = columnType.javaClass.methods.first { it.name == "valueFromDB" && it.parameterCount == 1 }
+        fun read(value: Any): Any? =
+            try { valueFromDB.invoke(columnType, value) } catch (e: java.lang.reflect.InvocationTargetException) { throw e.targetException }
+
         val v = vectors()
-        for (c in v.get("parse")) {
+        val wireVectors = v.get("wire")
+        for (c in wireVectors.get("parse")) {
             val out = call("format", call("parse", c.get("in").asText()))
             assertEquals(c.get("out").asText(), out, "parse ${c.get("in")}")
         }
-        for (c in v.get("refused")) {
+        // A java.time.Duration holds nanoseconds: this port's precision key is "9".
+        for (c in wireVectors.get("precision")) {
+            val out = call("format", call("parse", c.get("in").asText()))
+            assertEquals(c.get("out").get("9").asText(), out, "precision ${c.get("in")}")
+        }
+        for (c in wireVectors.get("refused")) {
             assertEquals(false, call("isDuration", c.asText()), "refused '${c.asText()}'")
             assertFailsWith<IllegalArgumentException>("refused '${c.asText()}'") { call("parse", c.asText()) }
         }
-        for (c in v.get("postgres")) {
-            assertEquals(c.get("out").asText(), call("format", call("fromStored", c.get("in").asText())), "postgres ${c.get("in")}")
+
+        val codecs = v.get("codecs")
+        // Postgres: the interval text the server returns, as the PGInterval pgjdbc builds from it.
+        for (c in codecs.get("postgres")) {
+            val pg = org.postgresql.util.PGInterval(c.get("in").asText())
+            assertEquals(c.get("out").asText(), call("format", read(pg)), "postgres ${c.get("in")} as $pg")
         }
-        for (c in v.get("postgresRefused")) {
-            assertFailsWith<IllegalArgumentException>("postgresRefused '${c.asText()}'") { call("fromStored", c.asText()) }
+        // A year or month part is refused on that native path, never converted to days. (pgjdbc
+        // keeps the months it read; text that is not an interval never comes back from a server.)
+        val calendar = codecs.get("postgresRefused").map { org.postgresql.util.PGInterval(it.asText()) }
+            .filter { it.years != 0 || it.months != 0 }
+        assertTrue(calendar.size >= 4, "postgresRefused calendar intervals: $calendar")
+        for (pg in calendar) {
+            assertFailsWith<IllegalArgumentException>("postgresRefused '$pg'") { read(pg) }
         }
-        for (c in v.get("postgresText")) {
+        // The interval spelling the column type binds (Postgres refuses a signed ISO-8601 duration).
+        for (c in codecs.get("postgresText")) {
             assertEquals(c.get("out").asText(), call("formatPostgres", call("parse", c.get("in").asText())), "postgresText ${c.get("in")}")
         }
-        // pgjdbc's PGInterval text — what a JDBC read of an interval column hands Exposed.
-        for ((pg, canonical) in listOf(
-            "0 years 0 mons 0 days 1 hours 30 mins 0.0 secs" to "PT1H30M",
-            "0 years 0 mons 0 days 0 hours -1 mins -30.0 secs" to "-PT1M30S",
-            "0 years 0 mons -1 days 2 hours 0 mins 0.0 secs" to "-PT22H",
-            "0 years 0 mons 0 days 0 hours 0 mins 0.000001 secs" to "PT0.000001S",
-            "0 years 0 mons 0 days 876000 hours 0 mins 0.0 secs" to "PT876000H",
-        )) {
-            assertEquals(canonical, call("format", call("fromStored", pg)), pg)
-        }
-        assertFailsWith<IllegalArgumentException> { call("fromStored", "1 years 2 mons 3 days 4 hours 5 mins 6.0 secs") }
-        assertEquals("-PT1.123456S", call("format", Duration.ofSeconds(-1, -123_456_789)))
-        // The stored microsecond count (SQLite / MySQL).
-        for (c in v.get("storedMicros")) {
-            val d = call("parse", c.get("in").asText())
-            assertEquals(c.get("out").asText().toLong(), call("toMicros", d), "storedMicros ${c.get("in")}")
-            assertEquals(c.get("in").asText(), call("format", call("fromMicros", c.get("out").asText().toLong())))
+        // The stored microsecond count (SQLite / MySQL), sub-microsecond digits truncated toward zero.
+        for (c in codecs.get("storedMicros")) {
+            val d = call("parse", c.get("in").asText()) as Duration
+            val micros = c.get("out").asText().toLong()
+            assertEquals(micros, call("toMicros", d), "storedMicros ${c.get("in")}")
+            assertEquals(call("format", d.truncatedTo(java.time.temporal.ChronoUnit.MICROS)), call("format", read(micros)))
         }
         assertEquals(-1_000_000L, call("toMicros", Duration.ofSeconds(-1, -500)))
         assertFailsWith<IllegalArgumentException> { call("toMicros", Duration.ofSeconds(Long.MAX_VALUE / 1_000_000L + 1)) }
+        assertEquals("-PT1.123456789S", call("format", Duration.ofSeconds(-1, -123_456_789)))
+        assertEquals("-00:00:01.123456", call("formatPostgres", Duration.ofSeconds(-1, -123_456_789)))
         // Java's Duration range is the only limit, refused past it, never wrapped.
         assertEquals("PT2562047788015215H", call("format", call("parse", "PT2562047788015215H")))
         assertFailsWith<IllegalArgumentException> { call("parse", "PT9223372036854775808S") }
@@ -188,7 +201,7 @@ class KotlinDurationWireTest {
             assertEquals("PT24H", out.get("retries").get(0).asText())
             assertEquals("PT0.5S", out.get("retries").get(1).asText())
             assertEquals("PT1H30M", out.get("window").get("span").asText())
-            for (bad in listOf("\"P1M\"", "\"1:30:00\"", "5400", "\"pt1h\"", "\"PT1.5H\"", "\"PT-1H\"")) {
+            for (bad in listOf("\"P1M\"", "\"1:30:00\"", "5400", "\"pt1h\"", "\"PT1.5H\"", "\"PT-1H\"", "\"P1.5W\"")) {
                 assertFailsWith<com.fasterxml.jackson.core.JacksonException>("must refuse $bad") {
                     mapper.readValue("""{"id":1,"holdFor":$bad}""", job)
                 }

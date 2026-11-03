@@ -47,17 +47,17 @@ public final class PhysicalNaming {
      *
      * @throws MetaDataException on a {@code columns} value outside
      *     {@link ColumnNaming#SNAKE_CASE}/{@link ColumnNaming#LITERAL}/{@link ColumnNaming#KEBAB_CASE}/
-     *     {@link ColumnNaming#PASCAL_CASE}, or a {@code tables} value outside
-     *     {@link #TABLE_SNAKE_CASE}/{@link #TABLE_LITERAL} (kebab-case and PascalCase are column
+     *     {@link ColumnNaming#UPPER_FIRST}, or a {@code tables} value outside
+     *     {@link #TABLE_SNAKE_CASE}/{@link #TABLE_LITERAL} (kebab-case and upperFirst are column
      *     rules only — not table rules).
      */
     public static PhysicalNaming of(String columns, String tables) {
         if (!ColumnNaming.SNAKE_CASE.equals(columns) && !ColumnNaming.LITERAL.equals(columns)
-                && !ColumnNaming.KEBAB_CASE.equals(columns) && !ColumnNaming.PASCAL_CASE.equals(columns)) {
+                && !ColumnNaming.KEBAB_CASE.equals(columns) && !ColumnNaming.UPPER_FIRST.equals(columns)) {
             throw new MetaDataException(
                 "unknown \"naming.columns\" rule \"" + columns + "\" in .metaobjects/config.json; "
                     + "expected one of: " + ColumnNaming.SNAKE_CASE + ", " + ColumnNaming.LITERAL
-                    + ", " + ColumnNaming.KEBAB_CASE + ", " + ColumnNaming.PASCAL_CASE,
+                    + ", " + ColumnNaming.KEBAB_CASE + ", " + ColumnNaming.UPPER_FIRST,
                 ErrorCode.ERR_BAD_ATTR_VALUE);
         }
         if (!TABLE_SNAKE_CASE.equals(tables) && !TABLE_LITERAL.equals(tables)) {
@@ -69,7 +69,7 @@ public final class PhysicalNaming {
         return new PhysicalNaming(columns, tables);
     }
 
-    /** The {@code naming.columns} rule — snake_case / literal / kebab-case / PascalCase. */
+    /** The {@code naming.columns} rule — snake_case / literal / kebab-case / upperFirst. */
     public String columns() {
         return columns;
     }

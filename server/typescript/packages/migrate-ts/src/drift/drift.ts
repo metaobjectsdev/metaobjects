@@ -15,7 +15,7 @@
 
 import type { Kysely } from "kysely";
 import type { MetaRoot } from "@metaobjectsdev/metadata";
-import { buildExpectedSchemaWithProvenance } from "../expected-schema.js";
+import { buildExpectedSchemaWithProvenance, type SchemaBuildSettings } from "../expected-schema.js";
 import { introspect } from "../introspect/index.js";
 import { diff } from "../diff/index.js";
 import { collectUnmanagedNames } from "../unmanaged.js";
@@ -28,7 +28,9 @@ import { postgresExprCanonProbe } from "../expr-canon-probe.js";
 import type { ExprCanonProbe } from "../expr-canon.js";
 import type { ShadowSchemaSource } from "../shadow-expected.js";
 
-export interface ComputeDriftOptions {
+/** `conventions` and `skipRedundantChecks` are the project's schema settings, passed to the
+ *  expected-schema build (see `BuildExpectedSchemaOptions`); absent = migrate's defaults. */
+export interface ComputeDriftOptions extends SchemaBuildSettings {
   /**
    * Destructive-change permissions. Mirrors `diff`'s `allow` — a drift that is
    * "allowed" still appears in `changes` (it's still drift), so the gate fails
@@ -136,6 +138,8 @@ export async function computeDriftFromActual(
     buildExpectedSchemaWithProvenance(metadata, {
       dialect,
       ...(opts?.views !== undefined ? { views: opts.views } : {}),
+      conventions: opts?.conventions,
+      skipRedundantChecks: opts?.skipRedundantChecks,
     }),
     opts?.inScope,
     opts?.imported !== undefined ? { imported: opts.imported } : undefined,

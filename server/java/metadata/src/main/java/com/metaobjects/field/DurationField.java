@@ -21,7 +21,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * A duration field — a fixed-length span of time (days, hours, minutes, seconds).
+ * A duration field — a fixed-length span of time (weeks, days, hours, minutes, seconds).
  *
  * <p>{@code field.duration} is a logical subtype (ADR-0036/0037): it fixes the value's
  * <em>meaning</em> and drives idiomatic native binding per language — {@code java.time.Duration}
@@ -30,8 +30,9 @@ import org.slf4j.LoggerFactory;
  *
  * <p><strong>Wire / storage contract.</strong> The value is carried as a {@code String}
  * ({@link DataTypes#STRING}): the canonical ISO-8601 duration {@link DurationWire} writes
- * ({@code [-]PT[nH][nM][n[.f]S]}). The DB column is the Postgres-native {@code interval}, text
- * elsewhere. Years, months and weeks are refused: a calendar span has no fixed length.</p>
+ * ({@code [-]PT[nH][nM][n[.f]S]}). The DB column is the Postgres-native {@code interval}, and
+ * elsewhere a 64-bit count of microseconds. A week is exactly 7 days and a day exactly 24 hours; years and months are refused: a
+ * calendar span has no fixed length.</p>
  *
  * @since 1.2.0
  */

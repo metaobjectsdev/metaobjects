@@ -86,7 +86,7 @@ const SCALAR_ZOD: Record<string, string> = {
   currency: "z.number().int()",
   uri: "z.string()",
   inet: "z.string()",
-  // An ISO-8601 duration string, in the accepted form (no years, months or weeks).
+  // An ISO-8601 duration string, in the accepted form (no years or months).
   duration: ZOD_DURATION_EXPR,
 };
 

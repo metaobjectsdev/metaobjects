@@ -264,9 +264,11 @@ describe("field.duration — the accepted ISO-8601 form, stored canonically", ()
     expect(schema.parse({ holdFor: "P1DT2H" }).holdFor).toBe("PT26H");
     expect(schema.parse({ holdFor: "-PT90S" }).holdFor).toBe("-PT1M30S");
     expect(schema.parse({ holdFor: "PT1.123456789S" }).holdFor).toBe("PT1.123456S");
+    // A week is exactly 7 days, before the days.
+    expect(schema.parse({ holdFor: "P1W1DT1H" }).holdFor).toBe("PT193H");
     // No cross-port bound: the helper counts in bigint, so a span past any 64-bit range is exact.
     expect(schema.parse({ holdFor: "PT256204779H" }).holdFor).toBe("PT256204779H");
-    for (const bad of ["P1M", "P1Y", "P2W", "1:30:00", "PT1.5H", "pt1h", "PT", ""]) {
+    for (const bad of ["P1M", "P1Y", "P1D1W", "1:30:00", "PT1.5H", "pt1h", "PT", ""]) {
       expect(accepts(schema, { holdFor: bad })).toBe(false);
     }
   });

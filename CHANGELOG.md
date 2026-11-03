@@ -22,7 +22,9 @@ loading. A port that reports `1.2` does not know that vocabulary; upgrade every 
   a Postgres `interval` column, and a 64-bit integer of microseconds on SQLite, D1 and MySQL, so
   sorting and range filters follow the span on every database. The wire form is an ISO-8601 duration
   of days, hours, minutes and seconds, and every port writes the same canonical form (`PT1H30M`,
-  `PT26H`, `-PT1M30S`, `PT0S`); years, months and weeks are refused. Postgres does not accept a
+  `PT26H`, `-PT1M30S`, `PT0S`), with as many fractional digits as its own duration type holds (6 in
+  TypeScript and Python, 7 in C#, 9 in Java and Kotlin). A week is 7 days and a day 24 hours; years
+  and months are refused. Postgres does not accept a
   signed ISO-8601 duration as input, so a value bound as text, and a declared `@default`, use
   its own `HH:MM:SS` spelling, which it returns unchanged. Filters: every numeric operator.
   Shared vectors in `fixtures/duration-wire/`; see `docs/features/field-types.md`. Each port is
@@ -92,19 +94,21 @@ loading. A port that reports `1.2` does not know that vocabulary; upgrade every 
 - **A string-stored enum's column length: `@maxLength` on `field.enum`, and `enums.maxLength`.**
   `@maxLength` on a `field.enum` makes its column `VARCHAR(n)`, and `"enums": { "maxLength": n }`
   in `.metaobjects/config.json` gives every enum without one a default; with neither, the column
-  stays unbounded text, as before. Every port reads the setting and resolves the length through
-  one core function (`resolveEnumMaxLength`, `EnumLength.ResolveMaxLength`,
-  `EnumLength.resolveMaxLength`, `resolve_enum_max_length`), and `meta migrate`, the Drizzle,
-  Prisma, EF Core and Exposed bindings use it. A member longer than the length is refused
+  stays unbounded text, as before. The ports that size a column resolve the length through one
+  core function (`resolveEnumMaxLength` in TypeScript, `EnumLength.ResolveMaxLength` in C#,
+  `EnumLength.resolveMaxLength` on the JVM), and `meta migrate`, the Drizzle, Prisma, EF Core and
+  Exposed bindings use it. Python emits no column types, so it accepts the `enums` block and
+  sizes nothing. A member longer than the length is refused
   (`ERR_ENUM_VALUE_EXCEEDS_MAX_LENGTH`): at load for `@maxLength`, when the column is sized for
   the project default, which `meta migrate` and `meta verify` report by name. `@maxLength` beside
   `@intValueMap` is refused at load (`ERR_ENUM_MAX_LENGTH_WITH_INT_VALUE_MAP`). A new shared
-  corpus, `fixtures/enum-length-conformance/`, pins the resolution in every port.
-- **A `PascalCase` column rule.** `"naming": { "columns": "PascalCase" }` in
+  corpus, `fixtures/enum-length-conformance/`, pins the resolution in those ports.
+- **An `upperFirst` column rule.** `"naming": { "columns": "upperFirst" }` in
   `.metaobjects/config.json` upper-cases a field name's first letter and changes nothing else
-  (`createdAt` → `CreatedAt`, `requestURL` → `RequestURL`), in every port: the column names EF Core
-  creates, so a camelCase model over an EF-built schema needs `@column` only where the database
-  spells a name differently. A column rule only; `literal` tables keep a PascalCase object name.
+  (`createdAt` → `CreatedAt`, `requestURL` → `RequestURL`, `address_line1` → `Address_line1`), in
+  every port. A schema whose columns are the field names with a capital first letter (EF Core's
+  default, for one) then needs `@column` only where the database spells a name differently. A
+  column rule only; `literal` tables keep an object name verbatim.
   See `docs/features/migrations/physical-naming.md`.
 - **Schema conventions for the database objects no code addresses.** `migrate.conventions` in
   `.metaobjects/config.json` picks how `meta migrate` names primary-key and foreign-key
@@ -112,14 +116,18 @@ loading. A port that reports `1.2` does not know that vocabulary; upgrade every 
   is a constraint or an index. `default` is what migrate has always emitted, so nothing changes
   unless you set it. `efcore` reproduces EF Core's conventions (`PK_`, `FK_`, `IX_`, its
   63-character `~` truncation, alternate keys as constraints), so a database built by EF Core
-  migrations and one built by `meta migrate` match. It also leaves out the CHECKs a column type
-  already guarantees (`skipRedundantChecks`): a `validator.length` maximum the column's
-  `VARCHAR(n)` enforces (not on SQLite or D1, which do not enforce one), and a minimum of 0 or
-  less; an EF Core database has none of them. A project can supply its own conventions
+  migrations and one built by `meta migrate` match. A project can supply its own conventions
   object from `metaobjects.config.ts`; an unknown preset name, or an object missing a member, is
   refused by name. The PK name is now introspected too, so a `baseline --from-db` snapshot of a
   database whose primary keys are not named `<table>_pkey` records their names (not compared;
   nothing churns). See `docs/features/migrations-and-drift.md`, "Schema conventions".
+- **`migrate.checks.skipRedundant`: leave out the CHECKs a column type already enforces.** Set in
+  `.metaobjects/config.json` (default `false`), `meta migrate` and `meta verify --db` leave out a
+  `validator.length` maximum the column's `VARCHAR(n)` enforces (not on SQLite or D1, which do not
+  enforce one) and a length minimum of 0 or less, for a database whose CHECKs were written by hand
+  only where the column type does not already enforce the rule. A validator with a declared
+  `@constraintName` keeps its CHECK. A malformed `checks` block is refused when the config loads.
+  See `docs/features/migrations-and-drift.md`, "CHECKs from validators".
 - **A recipe for checking an API change against the last release.** Emit the document at the last tag
   and at `HEAD`, then run oasdiff. See `docs/recipes/check-api-against-last-release.md`.
 - **A `pydantic` extra on the Python package.** `pip install "metaobjects[pydantic]"` installs

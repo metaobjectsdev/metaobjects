@@ -19,10 +19,11 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 /**
- * The shared {@code fixtures/duration-wire/vectors.json} {@code parse} and {@code refused} vectors
- * against the PRODUCTION helpers a generated record binds ({@link CanonicalDuration} through
- * {@link CanonicalDurationSerializer} / {@link CanonicalDurationDeserializer}). The Postgres
- * vectors belong to the persistence side ({@code com.metaobjects.field.DurationWire}).
+ * The shared {@code fixtures/duration-wire/vectors.json} {@code wire} vectors ({@code parse},
+ * {@code precision} at this port's key {@code "9"}, {@code refused}) against the PRODUCTION helpers
+ * a generated record binds ({@link CanonicalDuration} through {@link CanonicalDurationSerializer} /
+ * {@link CanonicalDurationDeserializer}). The {@code codecs} groups belong to the persistence side
+ * ({@code com.metaobjects.field.DurationWire}); this runtime has no storage codec.
  */
 public class DurationWireTest {
 
@@ -43,7 +44,7 @@ public class DurationWireTest {
 
     @Test
     public void parseVectorsRoundTripThroughTheRecordBinding() throws Exception {
-        for (JsonNode v : vectors().get("parse")) {
+        for (JsonNode v : vectors().get("wire").get("parse")) {
             String in = v.get("in").asText();
             String out = v.get("out").asText();
             assertEquals("format(parse(" + in + "))", out, CanonicalDuration.format(CanonicalDuration.parse(in)));
@@ -53,8 +54,19 @@ public class DurationWireTest {
     }
 
     @Test
+    public void precisionVectorsKeepNineDigits() throws Exception {
+        for (JsonNode v : vectors().get("wire").get("precision")) {
+            String in = v.get("in").asText();
+            String out = v.get("out").get("9").asText();
+            assertEquals("format(parse(" + in + "))", out, CanonicalDuration.format(CanonicalDuration.parse(in)));
+            Holder h = MAPPER.readValue("{\"v\":" + MAPPER.writeValueAsString(in) + "}", Holder.class);
+            assertEquals("wire " + in, "{\"v\":\"" + out + "\"}", MAPPER.writeValueAsString(h));
+        }
+    }
+
+    @Test
     public void refusedVectorsAreA400AtTheBindTier() throws Exception {
-        for (JsonNode v : vectors().get("refused")) {
+        for (JsonNode v : vectors().get("wire").get("refused")) {
             String in = v.asText();
             assertFalse("refused: '" + in + "'", CanonicalDuration.isDuration(in));
             try {
@@ -78,9 +90,9 @@ public class DurationWireTest {
     }
 
     @Test
-    public void nanosTruncateTowardZero() {
-        assertEquals("-PT1.123456S", CanonicalDuration.format(Duration.ofSeconds(-1, -123_456_789)));
-        assertEquals("PT0S", CanonicalDuration.format(Duration.ofNanos(999)));
+    public void formatKeepsNanos() {
+        assertEquals("-PT1.123456789S", CanonicalDuration.format(Duration.ofSeconds(-1, -123_456_789)));
+        assertEquals("PT0.000000999S", CanonicalDuration.format(Duration.ofNanos(999)));
     }
 
     @Test

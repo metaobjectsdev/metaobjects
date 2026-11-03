@@ -3,15 +3,16 @@
 //
 // On the wire a duration is an ISO-8601 duration STRING. Every port writes the canonical form
 // `[-]PT[<h>H][<m>M][<s>[.<f>]S]`: hours never folded into days, zero components left out, zero
-// as `PT0S`, at most six fractional digits (a Postgres interval's precision; a TimeSpan's 100 ns
-// ticks below that are truncated toward zero), one leading `-` for a negative span. Every port
-// reads that form plus a leading day count (`nD`, exactly 24 hours), an optional `+`, and up to
-// nine fractional digits. Years, months and weeks are refused: a calendar span has no fixed
-// length. System.Text.Json's own TimeSpan form (`01:30:00`) is refused too. A span longer than a
-// TimeSpan holds (about 10.7 million days) is refused, never wrapped: that is this port's own limit,
-// not a cross-port one. On a database without an interval type (SQLite, MySQL) a duration is stored
-// as a 64-bit count of microseconds (ToMicros / FromMicros). The rule and its cross-port vectors are
-// in fixtures/duration-wire/.
+// as `PT0S`, one leading `-` for a negative span, and as many fractional digits as the port's own
+// type holds, trailing zeros dropped: seven here (a TimeSpan tick is 100 ns). Every port reads that
+// form plus a leading week count (`nW`, exactly 7 days) and day count (`nD`, exactly 24 hours), an
+// optional `+`, and a fraction of any length; the digits past a tick are truncated toward zero,
+// never rounded. Years and months are refused: a calendar span has no fixed length.
+// System.Text.Json's own TimeSpan form (`01:30:00`) is refused too. A span longer than a TimeSpan
+// holds (about 10.7 million days) is refused, never wrapped: that is this port's own limit, not a
+// cross-port one. On a database without an interval type (SQLite, MySQL) a duration is stored as a
+// 64-bit count of microseconds (ToMicros / FromMicros), the column's own precision. The rule and its
+// cross-port vectors are in fixtures/duration-wire/.
 //
 // ONE source, two homes. This file is the package's production helper (the filter dispatcher
 // parses its operands through it). The entity generator emits the SAME text, with only the
@@ -34,43 +35,49 @@ namespace MetaObjects.Codegen.Runtime;
 public static class DurationWire
 {
     /// <summary>The accepted form, as a regular expression (the cross-port statement of the rule; this helper parses it by hand).</summary>
-    public const string Pattern = @"^[-+]?P(?!$)([0-9]+D)?(T(?=[0-9])([0-9]+H)?([0-9]+M)?([0-9]+(\.[0-9]{1,9})?S)?)?$";
+    public const string Pattern = @"^[-+]?P(?!$)([0-9]+W)?([0-9]+D)?(T(?=[0-9])([0-9]+H)?([0-9]+M)?([0-9]+(\.[0-9]+)?S)?)?$";
 
-    private const long MicrosPerSecond = 1_000_000L;
-    private const long MicrosPerMinute = 60L * MicrosPerSecond;
-    private const long MicrosPerHour = 60L * MicrosPerMinute;
-    private const long MicrosPerDay = 24L * MicrosPerHour;
+    /// <summary>The fractional-second digits the canonical form carries at most: a TimeSpan tick is 100 ns.</summary>
+    public const int FractionDigits = 7;
+
+    private const ulong TicksPerSecond = (ulong)TimeSpan.TicksPerSecond;
+    private const ulong TicksPerMinute = (ulong)TimeSpan.TicksPerMinute;
+    private const ulong TicksPerHour = (ulong)TimeSpan.TicksPerHour;
+    private const ulong TicksPerDay = (ulong)TimeSpan.TicksPerDay;
+    private const ulong TicksPerWeek = 7UL * TicksPerDay;
     private const long TicksPerMicro = TimeSpan.TicksPerMillisecond / 1000L;
 
-    /// <summary>The canonical string of <paramref name="value"/>: <c>[-]PT[nH][nM][n[.f]S]</c>, sub-microsecond ticks truncated toward zero.</summary>
+    /// <summary>The canonical string of <paramref name="value"/>: <c>[-]PT[nH][nM][n[.f]S]</c>, up to seven fractional digits.</summary>
     public static string Format(TimeSpan value)
     {
-        long micros = value.Ticks / TicksPerMicro; // integer division truncates toward zero
-        bool negative = micros < 0;
-        long rest = negative ? -micros : micros;
-        long h = rest / MicrosPerHour;
-        rest %= MicrosPerHour;
-        long m = rest / MicrosPerMinute;
-        rest %= MicrosPerMinute;
-        long s = rest / MicrosPerSecond;
-        long frac = rest % MicrosPerSecond;
+        long ticks = value.Ticks;
+        if (ticks == 0) return "PT0S";
+        bool negative = ticks < 0;
+        // The magnitude as unsigned, so TimeSpan.MinValue (whose negation a long cannot hold) formats too.
+        ulong rest = negative ? (ulong)(-(ticks + 1)) + 1UL : (ulong)ticks;
+        ulong h = rest / TicksPerHour;
+        rest %= TicksPerHour;
+        ulong m = rest / TicksPerMinute;
+        rest %= TicksPerMinute;
+        ulong s = rest / TicksPerSecond;
+        ulong frac = rest % TicksPerSecond;
         var sb = new StringBuilder(negative ? "-PT" : "PT");
         if (h > 0) sb.Append(h.ToString(CultureInfo.InvariantCulture)).Append('H');
         if (m > 0) sb.Append(m.ToString(CultureInfo.InvariantCulture)).Append('M');
         if (s > 0 || frac > 0)
         {
             sb.Append(s.ToString(CultureInfo.InvariantCulture));
-            if (frac > 0) sb.Append('.').Append(frac.ToString("D6", CultureInfo.InvariantCulture).TrimEnd('0'));
+            if (frac > 0) sb.Append('.').Append(frac.ToString("D7", CultureInfo.InvariantCulture).TrimEnd('0'));
             sb.Append('S');
         }
-        return micros == 0 ? "PT0S" : sb.ToString();
+        return sb.ToString();
     }
 
     /// <summary>
     /// Parse an ISO-8601 duration in the accepted form (<see cref="Pattern"/>). False for anything
-    /// else: years, months or weeks, lowercase designators, fractional hours or minutes, a comma,
+    /// else: years or months, lowercase designators, fractional hours, minutes or weeks, a comma,
     /// per-component signs, whitespace, out-of-order components, or a span a TimeSpan cannot hold.
-    /// Fractional seconds past the sixth digit are truncated toward zero.
+    /// Fractional seconds past the seventh digit (a tick) are truncated toward zero.
     /// </summary>
     public static bool TryParse(string? text, out TimeSpan value)
     {
@@ -82,18 +89,22 @@ public static class DurationWire
         if (i >= n || text[i] != 'P') return false;
         i++;
         if (i >= n) return false; // "P" alone has no component
-        long micros = 0;
+        ulong ticks = 0; // the magnitude
         try
         {
             checked
             {
-                // Optional day count.
-                if (IsDigit(text[i]))
+                // Optional week and day counts, in that order, each at most once.
+                int dateOrder = 0; // 1 = W, 2 = D
+                while (i < n && IsDigit(text[i]))
                 {
-                    long days = ReadDigits(text, ref i);
-                    if (i >= n || text[i] != 'D') return false;
+                    ulong count = ReadDigits(text, ref i);
+                    if (i >= n) return false;
+                    int at = text[i] switch { 'W' => 1, 'D' => 2, _ => 0 };
+                    if (at == 0 || at <= dateOrder) return false;
+                    dateOrder = at;
+                    ticks += count * (at == 1 ? TicksPerWeek : TicksPerDay);
                     i++;
-                    micros += days * MicrosPerDay;
                 }
                 if (i < n)
                 {
@@ -104,7 +115,7 @@ public static class DurationWire
                     while (i < n)
                     {
                         if (!IsDigit(text[i])) return false;
-                        long whole = ReadDigits(text, ref i);
+                        ulong whole = ReadDigits(text, ref i);
                         if (i >= n) return false;
                         if (text[i] == '.')
                         {
@@ -112,9 +123,10 @@ public static class DurationWire
                             int fracStart = i;
                             while (i < n && IsDigit(text[i])) i++;
                             int digits = i - fracStart;
-                            if (digits < 1 || digits > 9 || i >= n || text[i] != 'S' || order >= 3) return false;
-                            var six = text.Substring(fracStart, Math.Min(digits, 6)).PadRight(6, '0');
-                            micros += whole * MicrosPerSecond + long.Parse(six, NumberStyles.None, CultureInfo.InvariantCulture);
+                            if (digits < 1 || i >= n || text[i] != 'S' || order >= 3) return false;
+                            // The first seven digits are whole ticks; the rest are truncated toward zero.
+                            var seven = text.Substring(fracStart, Math.Min(digits, FractionDigits)).PadRight(FractionDigits, '0');
+                            ticks += whole * TicksPerSecond + ulong.Parse(seven, NumberStyles.None, CultureInfo.InvariantCulture);
                             order = 3;
                             i++;
                             continue;
@@ -122,17 +134,19 @@ public static class DurationWire
                         int at = text[i] switch { 'H' => 1, 'M' => 2, 'S' => 3, _ => 0 };
                         if (at == 0 || at <= order) return false;
                         order = at;
-                        micros += whole * (at == 1 ? MicrosPerHour : at == 2 ? MicrosPerMinute : MicrosPerSecond);
+                        ticks += whole * (at == 1 ? TicksPerHour : at == 2 ? TicksPerMinute : TicksPerSecond);
                         i++;
                     }
                 }
-                value = TimeSpan.FromTicks((negative ? -micros : micros) * TicksPerMicro);
             }
         }
         catch (OverflowException)
         {
             return false;
         }
+        // A TimeSpan holds one more tick below zero than above it.
+        if (negative ? ticks > (ulong)long.MaxValue + 1UL : ticks > (ulong)long.MaxValue) return false;
+        value = TimeSpan.FromTicks(!negative ? (long)ticks : ticks > (ulong)long.MaxValue ? long.MinValue : -(long)ticks);
         return true;
     }
 
@@ -146,7 +160,7 @@ public static class DurationWire
     public static TimeSpan Parse(string text) =>
         TryParse(text, out var value)
             ? value
-            : throw new FormatException("not an ISO-8601 duration (such as PT1H30M; no years, months or weeks): " + text);
+            : throw new FormatException("not an ISO-8601 duration (such as PT1H30M; no years or months): " + text);
 
     /// <summary>The canonical form of an accepted ISO-8601 duration, or null when <paramref name="text"/> is not one.</summary>
     public static string? Canonical(string? text) => TryParse(text, out var value) ? Format(value) : null;
@@ -161,12 +175,12 @@ public static class DurationWire
     private static bool IsDigit(char c) => c >= '0' && c <= '9';
 
     // A run of ASCII digits at i (at least one; the caller checked), advancing i past it.
-    private static long ReadDigits(string text, ref int i)
+    private static ulong ReadDigits(string text, ref int i)
     {
-        long v = 0;
+        ulong v = 0;
         while (i < text.Length && IsDigit(text[i]))
         {
-            v = checked(v * 10 + (text[i] - '0'));
+            v = checked(v * 10 + (ulong)(text[i] - '0'));
             i++;
         }
         return v;
@@ -175,7 +189,7 @@ public static class DurationWire
     private static TimeSpan ReadOne(ref Utf8JsonReader reader)
     {
         if (reader.TokenType != JsonTokenType.String || !TryParse(reader.GetString(), out var value))
-            throw new JsonException("field.duration: expected an ISO-8601 duration such as PT1H30M (no years, months or weeks)");
+            throw new JsonException("field.duration: expected an ISO-8601 duration such as PT1H30M (no years or months)");
         return value;
     }
 

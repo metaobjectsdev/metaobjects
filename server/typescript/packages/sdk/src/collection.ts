@@ -92,6 +92,9 @@ export interface Collection {
   readonly enumDefaults?: EnumDefaults | undefined;
   /** `migrate.conventions` of the project config — a schema-conventions preset name — when set. */
   readonly schemaConventions: string | undefined;
+  /** `migrate.checks.skipRedundant` of the project config: leave out the validator CHECKs a
+   *  column type already enforces. False when absent. */
+  readonly skipRedundantChecks: boolean;
   /** FR-023 — the `FileSource` id each file loads under, for the dependency
    *  ARTIFACTS only (`dep:<name>/<artifact>`); own files are absent and keep the
    *  default `basename(path)`. Threaded to `loadMemory` so every node an artifact
@@ -281,6 +284,7 @@ export async function resolveCollection(
   let wireFormat: WireFormat = DEFAULT_WIRE_FORMAT;
   let enumDefaults: EnumDefaults = DEFAULT_ENUM_DEFAULTS;
   let schemaConventions: string | undefined;
+  let skipRedundantChecks = false;
 
   if (hasConfig) {
     // No try/catch here: a config.json that EXISTS but fails to load
@@ -299,6 +303,7 @@ export async function resolveCollection(
     wireFormat = wireFormatFromConfig(cfg);
     enumDefaults = enumDefaultsFromConfig(cfg);
     schemaConventions = cfg.migrate?.conventions;
+    skipRedundantChecks = cfg.migrate?.checks?.skipRedundant === true;
     // An unknown token is a hard config error naming the valid ones, while
     // `librarySources` keeps skipping one silently for a programmatic caller. The two
     // are deliberately different: an API caller asking for a library this version does
@@ -415,6 +420,7 @@ export async function resolveCollection(
     wireFormat,
     enumDefaults,
     schemaConventions,
+    skipRedundantChecks,
     fileIds: new Map(dependencies.map((d) => [d.artifactPath, d.sourceId])),
     importedPackages: [...importedPackages].sort(),
     importedNodes,

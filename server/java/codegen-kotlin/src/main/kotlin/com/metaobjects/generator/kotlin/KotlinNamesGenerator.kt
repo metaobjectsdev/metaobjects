@@ -151,7 +151,10 @@ open class KotlinNamesGenerator :
         val section: String,
         /** A flattened value object's member column: left out, not refused, when it collides. */
         val flattened: Boolean = false,
+        /** The `@Deprecated` message, on a flattened field's own column constant only. */
+        val deprecation: String? = null,
     )
+
 
     /**
      * The flattened-member constants of [names] that would share a name with another
@@ -239,6 +242,7 @@ open class KotlinNamesGenerator :
             for (c in declared) {
                 if (section != null && section != c.section) append("\n")
                 section = c.section
+                c.deprecation?.let { append("    @Deprecated(\"$it\")\n") }
                 append("    const val ${c.member}: String = \"${c.value}\"\n")
             }
             // Inherited constants, re-exported by REFERENCE — the literal is spelled once,
@@ -248,6 +252,9 @@ open class KotlinNamesGenerator :
             // columns do: it declares no source of its own, so the own set has none.
             if (inherited.isNotEmpty()) append("\n")
             for (c in inherited) {
+                // A deprecated base constant is re-exported deprecated; the reference itself is
+                // not a use anyone wrote, so it is not reported.
+                c.deprecation?.let { append("    @Deprecated(\"$it\")\n    @Suppress(\"DEPRECATION\")\n") }
                 append("    const val ${c.member}: String = $superRef.${c.member}\n")
             }
             // The map's values reference the constants rather than repeating the
@@ -255,7 +262,11 @@ open class KotlinNamesGenerator :
             // It stays COMPLETE — every field, inherited included — because it is the
             // lookup surface, and a miss on an inherited field is exactly the
             // fallback-to-literal this artifact removes.
-            append("\n    val COLUMNS_BY_FIELD: Map<String, String> = mapOf(\n")
+            // The map keeps a flattened field's entry as it was; its constant is deprecated, and
+            // Kotlin reports a use even in the declaring object, so the map suppresses it.
+            append("\n")
+            if (names.fields.values.any { it.members != null }) append("    @Suppress(\"DEPRECATION\")\n")
+            append("    val COLUMNS_BY_FIELD: Map<String, String> = mapOf(\n")
             val skippedMembers = collidingFlattenedMembers(names)
             val rows = names.fields.values.flatMap { f ->
                 listOf(f.name to "${KotlinNaming.namesMember(f.name)}_COLUMN") +
@@ -329,7 +340,9 @@ open class KotlinNamesGenerator :
             val member = KotlinNaming.namesMember(f.name)
             val path = "$self.fields.${f.name}"
             out += NameConst("${member}_FIELD", f.name, path, "fields")
-            out += NameConst("${member}_COLUMN", f.column, path, "fields")
+            // A flattened field names no column of the table: its own constant is deprecated.
+            out += NameConst("${member}_COLUMN", f.column, path, "fields",
+                deprecation = if (f.members != null) FLATTENED_OWN_COLUMN_DEPRECATION else null)
             // A flattened value object: one constant per member's column, beside the field's own.
             for (m in f.members.orEmpty().values.sortedBy { it.name }) {
                 out += NameConst(KotlinNaming.flattenedColumnMember(f.name, m.name), m.column, "$path.${m.name}", "fields", flattened = true)
@@ -388,6 +401,13 @@ open class KotlinNamesGenerator :
         KotlinNaming.namesObjectName(PackageMapping.splitFqn(md.name).second) + ".kt"
 
     private companion object {
+        /**
+         * The `@Deprecated` message on a flattened field's own `_COLUMN` constant: the field has
+         * no column of its own. Kept (owned copies and existing code must compile), deprecated.
+         */
+        const val FLATTENED_OWN_COLUMN_DEPRECATION: String =
+            "A flattened field has no column of its own; use the member constants."
+
         val LOG = LoggerFactory.getLogger(KotlinNamesGenerator::class.java)
     }
 }

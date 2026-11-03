@@ -11,7 +11,7 @@ import { Kysely, sql } from "kysely";
 import { LibsqlDialect } from "@libsql/kysely-libsql";
 import { MetaDataLoader, InMemoryStringSource, type MetaRoot } from "@metaobjectsdev/metadata";
 import { ObjectManager, type Row } from "../src/index.js";
-import { kyselyDriver } from "../src/drivers/index.js";
+import { kyselyDriver, inMemoryDriver } from "../src/drivers/index.js";
 import { buildSelectSpec } from "../src/query-builder.js";
 
 const DURATION_MODEL = { "metadata.root": { package: "p", children: [
@@ -72,6 +72,29 @@ test("SQLite: equality, range filters and sort follow the span", async () => {
       .toEqual(["-PT1M30S", "PT9S", "PT10S", "PT1H30M"]);
     await expect(om.findMany("Job", { wait: "P1M" })).rejects.toThrow(/not an ISO-8601 duration/);
   });
+});
+
+test("in memory: durations compare and sort as spans, not as text", async () => {
+  const om = new ObjectManager({ metadata: await durationRoot(), driver: inMemoryDriver() });
+  for (const wait of ["PT10H", "PT9H", "-PT1M", "P1W"]) await om.create("Job", { wait });
+  expect((await om.findMany("Job", {}, { orderBy: ["wait", "asc"] })).map((r) => r.wait))
+    .toEqual(["-PT1M", "PT9H", "PT10H", "PT168H"]);
+  expect((await om.findMany("Job", { wait: { $gt: "PT9H" } }, { orderBy: ["wait", "asc"] })).map((r) => r.wait))
+    .toEqual(["PT10H", "PT168H"]);
+  expect((await om.findMany("Job", { wait: "PT600M" })).map((r) => r.wait)).toEqual(["PT10H"]);
+});
+
+test("in memory: a duration seeded in its wire form still filters and sorts against stored ones", async () => {
+  // The seed's stored form is the bigint microsecond count; a wire-form string is compared with it as a span.
+  const om = new ObjectManager({ metadata: await durationRoot(), driver: inMemoryDriver({
+    seed: { jobs: [{ id: 1, wait: "PT10H" }, { id: 2, wait: 32_400_000_000n }] },
+  }) });
+  await om.create("Job", { wait: "PT1H" });
+  expect((await om.findMany("Job", { wait: "PT600M" })).map((r) => r.id)).toEqual([1]);
+  expect((await om.findMany("Job", { wait: { $in: ["PT9H", "PT1H"] } })).length).toBe(2);
+  expect((await om.findMany("Job", { wait: { $gt: "PT2H" } }, { orderBy: ["wait", "asc"] })).map((r) => r.wait))
+    .toEqual(["PT9H", "PT10H"]);
+  expect((await om.findMany("Job", {}, { orderBy: ["wait", "asc"] })).map((r) => r.wait)).toEqual(["PT1H", "PT9H", "PT10H"]);
 });
 
 test("a filter operand on Postgres is the interval spelling, never a signed ISO literal", async () => {

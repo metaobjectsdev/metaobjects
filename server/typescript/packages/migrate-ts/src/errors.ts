@@ -383,9 +383,12 @@ export class UnknownSchemaConventionsError extends Error {
 /** A project-supplied schema-conventions object lacks members this version calls. */
 export class InvalidSchemaConventionsError extends Error {
   override readonly name = "InvalidSchemaConventionsError";
-  constructor(readonly id: string, readonly missing: readonly string[]) {
-    super(`the schema conventions "${id}" are missing ${missing.join(", ")} — start from a preset ` +
-      `({ ...efcoreConventions, id: "${id}", … }) so every member this version calls is present`);
+  constructor(readonly id: string, readonly missing: readonly string[], readonly removed: readonly string[] = []) {
+    super(missing.length > 0
+      ? `the schema conventions "${id}" are missing ${missing.join(", ")} — start from a preset ` +
+        `({ ...efcoreConventions, id: "${id}", … }) so every member this version calls is present`
+      : `the schema conventions "${id}" set skipRedundantChecks, which is no longer a convention — ` +
+        `remove it and set "migrate": { "checks": { "skipRedundant": true } } in .metaobjects/config.json`);
   }
 }
 

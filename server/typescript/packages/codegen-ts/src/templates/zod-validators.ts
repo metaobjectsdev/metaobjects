@@ -773,7 +773,7 @@ function zodFieldExpr(
       baseStr = field.attr(FIELD_ATTR_LENIENT) === true ? "z.string()" : ZOD_INET_EXPR;
       break;
     case FIELD_SUBTYPE_DURATION:
-      // An ISO-8601 duration (days, hours, minutes, seconds; no years, months or weeks). A WRITE
+      // An ISO-8601 duration (weeks, days, hours, minutes, seconds; no years or months). A WRITE
       // shape rewrites it to the canonical form (duration-wire-helper.ts), so equal spans are
       // equal strings on the wire and in a jsonb value object (the column codec binds the
       // column's own form); the TPH read shape parses rows the codec has already put in it.

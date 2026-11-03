@@ -210,6 +210,8 @@ export interface CatalogListingOpts {
     sourceRoots?: readonly string[];
     /** The physical schema `agent/schema.md` describes, as `meta gen` supplies it. */
     agentSchema?: RunGenOpts["agentSchema"];
+    /** The project's schema conventions and CHECK settings, as `meta gen` supplies them (Prisma). */
+    schemaSettings?: RunGenOpts["schemaSettings"];
   };
 }
 
@@ -226,7 +228,7 @@ async function probeOne(
   project: CatalogProject,
   probe: NonNullable<CatalogListingOpts["probe"]>,
 ): Promise<{ count: number; needsConfig?: string[] } | { error: string }> {
-  const { metadata, scope, sourceFiles, sourceRoots, agentSchema } = probe;
+  const { metadata, scope, sourceFiles, sourceRoots, agentSchema, schemaSettings } = probe;
   const count = async (config: MetaobjectsGenConfig): Promise<number> => {
     const result = await runGen({
       config: { ...config, generators: [entry.factory()] },
@@ -237,6 +239,7 @@ async function probeOne(
       ...(sourceFiles !== undefined ? { sourceFiles } : {}),
       ...(sourceRoots !== undefined ? { sourceRoots } : {}),
       ...(agentSchema !== undefined ? { agentSchema } : {}),
+      ...(schemaSettings !== undefined ? { schemaSettings } : {}),
     });
     return result.files.length;
   };

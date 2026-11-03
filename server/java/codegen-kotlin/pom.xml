@@ -94,6 +94,14 @@
       <version>1.6.0</version>
       <scope>test</scope>
     </dependency>
+    <!-- KotlinDurationWireTest: the codec vectors for a Postgres interval run through the generated
+         column type on the value pgjdbc actually hands it (a PGInterval). No database needed. -->
+    <dependency>
+      <groupId>org.postgresql</groupId>
+      <artifactId>postgresql</artifactId>
+      <version>42.7.4</version>
+      <scope>test</scope>
+    </dependency>
     <!-- validation-conformance runner (SP-C Unit 5): compile the generated entity data class
          and validate each corpus payload through a jakarta Validator. Hibernate Validator brings
          jakarta.validation-api transitively; expressly is the jakarta EL impl the constraint-message

@@ -420,13 +420,13 @@ attributes shape it, all database-only (no generated code reads them):
   membership CHECK. Absent, the name is derived (`<table>_<column>_<kind>_chk`,
   `<table>_<column>_chk` for an enum), as before. A declared name is refused (`ERR_CHECK_NAME`) when
   another constraint on the table already has it, or, on Postgres, when it is over 63 bytes
-  (Postgres would truncate it, and the CHECK would never match its declaration). Under the
-  `efcore` conventions, a `validator.length` with a declared name is kept even where the column's
-  length already enforces it.
+  (Postgres would truncate it, and the CHECK would never match its declaration). A CHECK with a
+  declared name is always emitted, even where `migrate.checks.skipRedundant` (below) would leave
+  it out.
 - **`@condition`** on a cross-field validator (`comparison`, `requiredWhen`, `presentIff`,
   `atLeastOne`) is an expression, in the grammar `origin.computed` uses, over the entity's fields.
   The rule holds only where the condition does: the CHECK is `(NOT condition) OR (rule)`, with
-  the negation folded in (`kind = 'Clinic'` becomes `kind <> 'Clinic'`). It is checked at load
+  the negation folded in (`kind = 'Owned'` becomes `kind <> 'Owned'`). It is checked at load
   (`ERR_BAD_ATTR_VALUE`): every field it names is a field of the entity, it is a boolean
   expression, a literal compared with a field is of that field's kind (and, for an enum, one of
   its `@values`), and no comparison has a `null` literal (`x = NULL` is never true: use `isNull`
@@ -441,20 +441,36 @@ attributes shape it, all database-only (no generated code reads them):
   { "source.rdb": { "@table": "Notes" } },
   { "field.long": { "name": "id" } },
   { "field.enum": { "name": "kind", "@values": ["Owned", "Shared"], "@constraintName": "CK_Notes_Kind" } },
-  { "field.long": { "name": "patientId" } },
-  { "field.long": { "name": "caseId" } },
+  { "field.long": { "name": "customerId" } },
+  { "field.long": { "name": "accountId" } },
   { "identity.primary": { "name": "pk", "@fields": "id", "@generation": "increment" } },
-  { "validator.atLeastOne": { "name": "oneOwner", "@fields": ["patientId", "caseId"], "@max": 1,
+  { "validator.atLeastOne": { "name": "oneOwner", "@fields": ["customerId", "accountId"], "@max": 1,
     "@constraintName": "CK_Notes_Owner",
     "@condition": { "op": "eq", "left": { "field": "kind" }, "right": { "value": "Owned" } } } }
 ] } }
 ```
 
-On Postgres the last one is `CK_Notes_Owner CHECK (("kind" <> 'Owned') OR (num_nonnulls("patient_id", "case_id") = 1))`.
+On Postgres the last one is `CK_Notes_Owner CHECK (("kind" <> 'Owned') OR (num_nonnulls("customer_id", "account_id") = 1))`.
 
 Renaming a CHECK this way is a drop and an add of the same rule on Postgres, under
 `--allow drop-check`. On SQLite and D1 a CHECK is matched by its expression when the name does not
 match, so a rename alone proposes nothing and the database keeps the old name.
+
+**Leaving out the CHECKs a column type already enforces.** By default every validator that has
+a SQL form becomes a CHECK, including one the column already guarantees. For a database whose
+CHECKs were written by hand only where the column type does not already enforce the rule, set:
+
+```json
+{ "schema_version": 1, "migrate": { "checks": { "skipRedundant": true } } }
+```
+
+`meta migrate` and `meta verify --db` then leave out a `validator.length` maximum the column's
+`VARCHAR(n)` enforces (n at most the maximum; not on SQLite or D1, which store a longer value in a
+`VARCHAR(n)` column anyway) and a length minimum of 0 or less; the rest of the validator's CHECK
+stands. A validator with a declared `@constraintName` keeps its CHECK whole: an explicit
+declaration beats a project default, as a declared name beats a convention. Default `false`. A
+`checks` that is not an object, a key other than `skipRedundant`, or a non-boolean value is
+refused when the config loads.
 
 ## Schema conventions: names for objects no code addresses
 
@@ -472,10 +488,10 @@ come from the project's **schema conventions**, selected in `.metaobjects/config
 | Foreign-key constraint name | `<table>_<first column>_fk` | `FK_<table>_<principal>_<columns>` |
 | Index on a foreign key | none | `IX_<table>_<columns>`, unless the primary key or another index (a partial one included) already starts with the FK's columns; an FK index another FK index covers is dropped, so FK order does not matter |
 | Unique key (`identity.secondary`, a `@unique` field) | a unique index | a UNIQUE constraint when a foreign key references it, else a unique index |
-| A CHECK the column type already guarantees (`skipRedundantChecks`) | emitted | left out: a `validator.length` maximum the column's `VARCHAR(n)` enforces (not on SQLite or D1, which do not enforce a declared length), and a minimum of 0 or less |
 
-`efcore` follows EF Core's own conventions on PostgreSQL (Npgsql), including its truncation of a
-name longer than 63 characters to 62 characters and `~`. A database first built by EF Core
+`efcore` follows EF Core's own conventions, including, on PostgreSQL (Npgsql), its truncation of a
+name longer than 63 characters to 62 characters and `~`. EF Core's SQLite provider truncates
+nothing, so on SQLite and D1 neither does `efcore`. A database first built by EF Core
 migrations and one built by `meta migrate` then agree on these objects. Where the EF Core model
 carried something its conventions do not (a hand-named key, an index dropped by raw SQL), declare
 it in metadata. A unique key keeps the name its metadata node declares (EF Core would call an
@@ -507,7 +523,10 @@ export default defineConfig({
 definition is unchanged and whose name differs is renamed in place (`RENAME CONSTRAINT` /
 `ALTER INDEX … RENAME`), never dropped and re-created; new FK indexes are created. The PK name
 and whether a unique key is a constraint or an index are not compared by the diff, so they only
-shape what migrate creates. SQLite cannot rename a constraint and rebuilds the table instead.
+shape what migrate creates: after a switch, an existing primary key keeps its old name, and
+neither `meta migrate` nor `meta verify` reports it. Rename one by hand if you want the new
+name (`ALTER TABLE "t" RENAME CONSTRAINT "t_pkey" TO "PK_t"` on Postgres). SQLite cannot rename
+a constraint and rebuilds the table instead.
 
 ## How CHECK constraints and expression indexes are compared
 

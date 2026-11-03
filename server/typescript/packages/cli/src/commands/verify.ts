@@ -34,10 +34,12 @@ import { FileProvider, templateReferenceLine } from "../lib/file-provider.js";
 import { derivePayloadFieldTree } from "../lib/payload-field-tree.js";
 import { loadMemoryOptionsFrom, loadMetaobjectsConfig, RemovedNamingConfigError, resolveGenCollection, resolveGenConfigDir } from "../lib/load-metaobjects-config.js";
 import { collectionLoadOptions } from "../lib/collection-load-options.js";
+import { schemaBuildOptions, type SchemaBuildOptions } from "../lib/schema-build-options.js";
 import { computeCodegenDrift } from "../lib/codegen-drift.js";
 import { hasLegacyDocsBlock, legacyDocsConfigMessage, REMOVED_VERIFY_DOCS } from "../lib/docs-removed.js";
 import { buildAgentSchemaInput } from "../lib/agent-schema.js";
 import { sourceRootsOf } from "./gen.js";
+import { schemaAdvisoryLines } from "../lib/schema-advisories.js";
 import {
   checkRequirements, summariseRequirements, scanRequirements, type Diagnostic,
 } from "../lib/requirement-check.js";
@@ -95,8 +97,6 @@ import {
   isFkTargetNotUniqueError,
   isInvalidCheckNameError,
   isUnknownSchemaConventionsError,
-  resolveSchemaConventions,
-  type SchemaConventions,
 } from "@metaobjectsdev/migrate-ts";
 import {
   DEFAULT_METAOBJECTS_DIR,
@@ -403,11 +403,13 @@ export async function verifyCommand(
     return 1;
   }
 
-  // A `migrate.conventions` preset this version does not ship is a config error on every
-  // verify run, not only one that builds the expected schema (a typo'd preset otherwise
-  // passes `meta verify` and changes nothing until `meta migrate`).
+  // The project's schema settings, resolved once for every expected-schema build and drift
+  // computation below. A `migrate.conventions` preset this version does not ship is a config
+  // error on every verify run, not only one that builds the expected schema (a typo'd preset
+  // otherwise passes `meta verify` and changes nothing until `meta migrate`).
+  let schema: SchemaBuildOptions;
   try {
-    resolveSchemaConventions((root as { schemaConventions?: string | SchemaConventions }).schemaConventions);
+    schema = schemaBuildOptions(collection, forgeConfig);
   } catch (err) {
     if (!isUnknownSchemaConventionsError(err)) throw err;
     log.error(`verify: ${err.message}`);
@@ -724,6 +726,7 @@ export async function verifyCommand(
     if (schemaScope !== undefined) {
       try {
         const built = buildExpectedSchemaWithProvenance(root, {
+          ...schema,
           dialect,
           views: buildProjectionViews(root, { dialect }),
         });
@@ -1087,6 +1090,7 @@ export async function verifyCommand(
         unindexedFks = scanForUnindexedForeignKeys(root, {
           dialect: scanDialect,
           skip: collection.imported,
+          schema,
         });
       }
     } catch {
@@ -1099,7 +1103,7 @@ export async function verifyCommand(
     // cascade) silently has no effect. Same discipline as its siblings.
     let actionConflicts: ReferentialActionConflictFinding[] = [];
     try {
-      actionConflicts = scanForReferentialActionConflicts(root, { skip: collection.imported });
+      actionConflicts = scanForReferentialActionConflicts(root, { skip: collection.imported, schema });
     } catch {
       // advisory only — a model the schema builder refuses is migrate's to report.
     }
@@ -1328,6 +1332,7 @@ export async function verifyCommand(
       scopeMismatch = migrateScopeMismatch(collection, () => {
         const dialect: Dialect = usingD1 ? "d1" : (flags.dialect ?? inferDialect(flags.db as string));
         return buildExpectedSchemaWithProvenance(root, {
+          ...schema,
           dialect,
           views: buildProjectionViews(root, { dialect }),
         }).provenance;
@@ -1413,6 +1418,7 @@ export async function verifyCommand(
           actual = withoutFlywayHistory(actual);
         }
         driftResult = await computeDriftFromActual(actual, kysely.dialect, root, {
+          ...schema,
           allow,
           views: expectedViews,
           // The same question `meta migrate` asks, so the report names the change it plans.
@@ -1437,10 +1443,6 @@ export async function verifyCommand(
           return 1;
         }
         if (isEnumLengthRefusal(err)) return refuseEnumLength(err);
-        if (isUnknownSchemaConventionsError(err)) {
-          log.error(`verify: ${err.message}`);
-          return 2;
-        }
         schemaRunError = `failed to introspect ${kysely.displayUrl}: ${describeError(err)}`;
         log.error(`verify: ${schemaRunError}`);
         return 1;
@@ -1533,6 +1535,7 @@ export async function verifyCommand(
     let driftResult;
     try {
       driftResult = await computeDriftFromActual(actual, "d1", root, {
+        ...schema,
         allow,
         views: expectedViews,
         ...(schemaScope !== undefined ? { inScope: schemaScope } : {}),
@@ -1670,6 +1673,8 @@ export async function verifyCommand(
       say(note);
     }
 
+    for (const line of schemaAdvisoryLines(driftResult.advisories)) log.warn(`verify: ${line}`);
+
     const changes = driftResult.changes;
     schemaDrift = { changes: changes.map(toSchemaDriftRow), findings: ledgerDrift };
     if (changes.length === 0 && ledgerDrift.length === 0) {
@@ -1743,15 +1748,27 @@ export async function verifyCommand(
       return 2;
     }
     const config = forgeConfig;
+    // The schema page describes the schema `meta gen` would, so it takes this package's settings.
+    // A conventions preset that does not resolve fails here as it does in `meta gen`.
+    let codegenSchema: SchemaBuildOptions;
+    try {
+      codegenSchema = schemaBuildOptions(genCollection, config);
+    } catch (err) {
+      if (!isUnknownSchemaConventionsError(err)) throw err;
+      log.error(`verify --codegen: ${err.message}`);
+      return 2;
+    }
     let result;
     try {
       result = await computeCodegenDrift(config, codegenRoot, genConfigDir, genCollection.inScope, genCollection.ownFiles, {
         sourceRoots: sourceRootsOf(genCollection),
-        agentSchema: () => buildAgentSchemaInput(
+        agentSchema: () => codegenSchema === undefined ? undefined : buildAgentSchemaInput(
           codegenRoot,
           config.dialect,
           (m) => log.warn(`verify --codegen: [agent-docs] ${m}`),
+          codegenSchema,
         ),
+        ...(codegenSchema !== undefined && { schemaSettings: codegenSchema }),
       });
     } catch (err) {
       log.error(`verify --codegen: regeneration failed: ${describeError(err)}`);
@@ -1773,7 +1790,10 @@ export async function verifyCommand(
           const probe = await computeCodegenDrift(config, codegenRoot, genConfigDir, genCollection.inScope,
             genCollection.ownFiles, {
               sourceRoots: sourceRootsOf(genCollection),
-              agentSchema: () => buildAgentSchemaInput(codegenRoot, config.dialect, () => {}),
+              agentSchema: () => codegenSchema === undefined
+                ? undefined
+                : buildAgentSchemaInput(codegenRoot, config.dialect, () => {}, codegenSchema),
+              ...(codegenSchema !== undefined && { schemaSettings: codegenSchema }),
             });
           return probe.error === undefined && probe.clean;
         } finally {

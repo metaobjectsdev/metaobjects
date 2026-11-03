@@ -915,8 +915,38 @@ public class NamesGeneratorTests
         Assert.Contains("public const string ShipToColumn = \"ship_to\";", content);
         Assert.Contains("public const string PayloadColumn = \"payload\";", content);
         Assert.Contains("[\"shipTo\"] = ShipToColumn,", content);
+        // ...but the flattened field's own column constant names no column of the table: deprecated.
+        Assert.Contains(
+            "    [System.Obsolete(\"A flattened field has no column of its own; use the member constants.\")]\n" +
+            "    public const string ShipToColumn = \"ship_to\";", content.Replace("\r\n", "\n"));
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(content, "Obsolete"));
         Assert.Contains("[\"shipTo.street\"] = ShipToStreetColumn,", content);
         Assert.Contains("[\"shipTo.postalCode\"] = ShipToPostalCodeColumn,", content);
+    }
+
+    // [Obsolete] on a declaration warns nothing; only a use does. A project that never reads the
+    // flattened field's own constant (TreatWarningsAsErrors, say) gets no new warning from the
+    // artifact itself, ColumnsByField included; one that reads it is told to use the members.
+    [Fact]
+    public void The_deprecated_flattened_column_constant_warns_only_where_it_is_used()
+    {
+        var content = new NamesGenerator().Generate(Ctx(Load(FlattenedModel))).Single(f => f.Path == "ShipmentNames.g.cs").Content;
+        IEnumerable<Microsoft.CodeAnalysis.Diagnostic> Warnings(string use)
+        {
+            var trees = new[] { content, "namespace Acme.Generated; public static class Use { public static string Read() => " + use + "; }" }
+                .Select(t => Microsoft.CodeAnalysis.CSharp.CSharpSyntaxTree.ParseText(t));
+            var comp = Microsoft.CodeAnalysis.CSharp.CSharpCompilation.Create("names_" + Guid.NewGuid().ToString("N"), trees,
+                DbContextCompileTests.BuildReferences(),
+                new Microsoft.CodeAnalysis.CSharp.CSharpCompilationOptions(Microsoft.CodeAnalysis.OutputKind.DynamicallyLinkedLibrary));
+            var diagnostics = comp.GetDiagnostics();
+            Assert.DoesNotContain(diagnostics, d => d.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Error);
+            return diagnostics.Where(d => d.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Warning);
+        }
+
+        Assert.Empty(Warnings("ShipmentNames.ShipToStreetColumn + ShipmentNames.ColumnsByField[\"shipTo\"] + ShipmentNames.PayloadColumn"));
+        var used = Assert.Single(Warnings("ShipmentNames.ShipToColumn"));
+        Assert.Equal("CS0618", used.Id);
+        Assert.Contains("use the member constants", used.GetMessage());
     }
 
     [Fact]

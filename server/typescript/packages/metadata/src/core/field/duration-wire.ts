@@ -5,17 +5,18 @@
 // copy, held to the same vectors.
 //
 // Canonical: `[-]PT[<h>H][<m>M][<s>[.<f>]S]` — hours never folded into days, zero components
-// left out, zero is `PT0S`, at most six fractional digits (a Postgres interval's precision;
-// more are truncated toward zero), one leading `-` for a negative span. A value is held as a
-// bigint count of microseconds so a span of any length is exact.
+// left out, zero is `PT0S`, one leading `-` for a negative span. TypeScript holds a value as a
+// bigint count of microseconds, so a span of any length is exact and a longer fraction is
+// truncated toward zero to six digits (the `precision` vectors' "6" entries).
 
-/** The accepted ISO-8601 duration form: an optional sign, `P`, optional days, then an optional
- *  `T` with hours, minutes and seconds in that order. At least one component; no years, months
- *  or weeks (a calendar span has no fixed length). */
-export const DURATION_PATTERN = "^[-+]?P(?!$)(\\d+D)?(T(?=\\d)(\\d+H)?(\\d+M)?(\\d+(\\.\\d{1,9})?S)?)?$";
+/** The accepted ISO-8601 duration form: an optional sign, `P`, optional weeks (7 days) and days,
+ *  then an optional `T` with hours, minutes and seconds in that order; the seconds may have a
+ *  fraction of any length. At least one component; no years or months (a calendar span has no
+ *  fixed length). */
+export const DURATION_PATTERN = "^[-+]?P(?!$)(\\d+W)?(\\d+D)?(T(?=\\d)(\\d+H)?(\\d+M)?(\\d+(\\.\\d+)?S)?)?$";
 export const DURATION_RE = new RegExp(DURATION_PATTERN);
 
-const DURATION_PARTS_RE = /^([-+])?P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)(?:\.(\d{1,9}))?S)?)?$/;
+const DURATION_PARTS_RE = /^([-+])?P(?:(\d+)W)?(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)(?:\.(\d+))?S)?)?$/;
 
 // The default (`IntervalStyle = postgres`) text of an interval: signed year / mon / day parts,
 // then an optionally signed `H:MM:SS[.ffffff]`. Years and months are matched so they can be
@@ -32,7 +33,7 @@ const MICROS_PER_DAY = 24n * MICROS_PER_HOUR;
  *  this many either way. A database's own limit, so it is checked only when binding to one. */
 const INT64_MAX = 9223372036854775807n;
 
-/** Up to nine fractional-second digits as microseconds, truncated toward zero. */
+/** Fractional-second digits as microseconds, truncated toward zero. */
 function fractionMicros(digits: string | undefined): bigint {
   if (digits === undefined || digits.length === 0) return 0n;
   return BigInt(digits.padEnd(6, "0").slice(0, 6));
@@ -43,8 +44,9 @@ export function parseDurationLiteral(text: string): bigint | undefined {
   if (!DURATION_RE.test(text)) return undefined;
   const m = DURATION_PARTS_RE.exec(text);
   if (m === null) return undefined;
-  const [, sign, d, h, min, s, f] = m;
+  const [, sign, w, d, h, min, s, f] = m;
   const magnitude =
+    BigInt(w ?? "0") * 7n * MICROS_PER_DAY +
     BigInt(d ?? "0") * MICROS_PER_DAY +
     BigInt(h ?? "0") * MICROS_PER_HOUR +
     BigInt(min ?? "0") * MICROS_PER_MINUTE +

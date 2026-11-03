@@ -101,7 +101,7 @@ public class ObjectFieldCodegenTests
     // `meta migrate` creates for the same model (core naming's ResolveFlattenedColumnPrefix).
     [Theory]
     [InlineData(ColumnNamingStrategy.Literal, "street", "Officestreet", "homeAddress_street")]
-    [InlineData(ColumnNamingStrategy.PascalCase, "Street", "OfficeStreet", "HomeAddress_Street")]
+    [InlineData(ColumnNamingStrategy.UpperFirst, "Street", "OfficeStreet", "HomeAddress_Street")]
     public void DbContext_flattened_columns_follow_column_prefix_and_the_column_rule(
         ColumnNamingStrategy strategy, string plain, string prefixed, string byDefault)
     {

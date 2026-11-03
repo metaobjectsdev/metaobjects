@@ -25,6 +25,10 @@ import {
   type FieldNames, type KeyNames, type ObjectNames, type SourceNames,
 } from "../names.js";
 
+/** The JSDoc on a flattened field's own `column`, which names no column of the table. */
+export const FLATTENED_COLUMN_DEPRECATION =
+  "/** @deprecated a flattened field has no column of its own; use members.<member>.column */";
+
 /** The physical-name alias keys, in the metamodel's own order. */
 const PHYSICAL_NAME_ALIASES = [...PHYSICAL_NAME_ATTR_BY_KIND.values()] as const;
 
@@ -111,10 +115,14 @@ export function renderNamesDecl(
   const fieldsBlock = collection("fields", n.fields, n.ownFields,
     (f: FieldNames) => f.members === undefined
       ? `{ name: ${q(f.name)}, column: ${q(f.column)} }`
-      // A flattened value object: each member's column, beside the field's own entry.
-      : `{ name: ${q(f.name)}, column: ${q(f.column)}, members: { ${Object.keys(f.members).sort()
-        .map((m) => `${key(m)}: { name: ${q(f.members![m]!.name)}, column: ${q(f.members![m]!.column)} }`)
-        .join(", ")} } }`);
+      // A flattened value object: each member's column, beside the field's own entry. The field's
+      // own `column` names no column of the table, so it is deprecated (a JSDoc tag: an editor and
+      // a deprecation lint flag a use, and nothing changes at runtime or in the type). On its own
+      // line, because TypeScript attaches a JSDoc comment only when a line break precedes it.
+      : `{\n      name: ${q(f.name)},\n      ${FLATTENED_COLUMN_DEPRECATION}\n      column: ${q(f.column)},\n` +
+        `      members: { ${Object.keys(f.members).sort()
+          .map((m) => `${key(m)}: { name: ${q(f.members![m]!.name)}, column: ${q(f.members![m]!.column)} }`)
+          .join(", ")} },\n    }`);
 
   // `type` and `subType` on every entry, because the artifact mirrors the metadata tree
   // and because on these two collections the subType is the only thing that says whether

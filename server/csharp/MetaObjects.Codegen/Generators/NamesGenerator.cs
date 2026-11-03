@@ -94,7 +94,14 @@ public sealed class NamesGenerator : PerEntityGenerator
 
     /// <summary>One emitted constant: its member name, its declaration body, and the metadata
     /// node it came from (named in the collision refusal, so a failure points at the model).</summary>
-    private readonly record struct Member(string Name, string Decl, string NodePath);
+    private readonly record struct Member(string Name, string Decl, string NodePath, string? Attribute = null);
+
+    // A @storage: flattened field's own column constant names no column of the table: its members
+    // are the columns. It is still emitted (owned copies and existing code that read it must keep
+    // compiling) but deprecated. [Obsolete] on a declaration warns nothing; only a use does, so a
+    // project that never reads it gets no new warning.
+    private const string FlattenedColumnObsolete =
+        "[System.Obsolete(\"A flattened field has no column of its own; use the member constants.\")]";
 
     /// <summary>
     /// One string constant. The VALUE is author-controlled — an object name, a key name, a
@@ -159,9 +166,10 @@ public sealed class NamesGenerator : PerEntityGenerator
         {
             var path = $"field \"{f.Name}\"";
             fieldMembers.Add(Str(CSharpNaming.FieldMemberName(f.Name, CSharpNaming.MEMBER_FIELD), f.Name, path));
-            fieldMembers.Add(Str(CSharpNaming.FieldMemberName(f.Name, CSharpNaming.MEMBER_COLUMN), f.Column, path));
+            var column = Str(CSharpNaming.FieldMemberName(f.Name, CSharpNaming.MEMBER_COLUMN), f.Column, path);
+            fieldMembers.Add(f.Members is null ? column : column with { Attribute = FlattenedColumnObsolete });
             // A flattened value object: one constant per member's column, beside the field's own
-            // (kept as it always was, so nothing that reads it changes). A member constant that
+            // (kept, deprecated, so nothing that reads it stops compiling). A member constant that
             // would collide with another constant is not emitted; see CollidingFlattenedMembers.
             foreach (var m in FlattenedMembers(f))
             {
@@ -354,7 +362,10 @@ public sealed class NamesGenerator : PerEntityGenerator
         foreach (var group in groups.Where(g => g.Count > 0))
         {
             foreach (var m in group)
+            {
+                if (m.Attribute is { } attribute) sb.AppendLine($"    {attribute}");
                 sb.AppendLine($"    public {(inherited.Contains(m.Name) ? "new " : "")}{m.Decl}");
+            }
             sb.AppendLine();
         }
         // ColumnsByField stays COMPLETE — every field, inherited included — because it is
@@ -369,7 +380,11 @@ public sealed class NamesGenerator : PerEntityGenerator
         var skippedMembers = CollidingFlattenedMembers(names);
         foreach (var f in names.Fields.Values.OrderBy(v => v.Name, StringComparer.Ordinal))
         {
+            // A flattened field's own entry reads its deprecated constant: the one use this
+            // artifact makes of it, so the warning is suppressed here and nowhere else.
+            if (f.Members is not null) sb.AppendLine("#pragma warning disable CS0618");
             sb.AppendLine($"        [\"{f.Name}\"] = {CSharpNaming.FieldMemberName(f.Name, CSharpNaming.MEMBER_COLUMN)},");
+            if (f.Members is not null) sb.AppendLine("#pragma warning restore CS0618");
             // A flattened member is keyed `<field>.<member>`, the path the naming corpus uses.
             foreach (var m in FlattenedMembers(f))
             {

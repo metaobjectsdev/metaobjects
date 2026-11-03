@@ -16,12 +16,12 @@
             },
             {
               "field.long": {
-                "name": "patientId"
+                "name": "storeId"
               }
             },
             {
               "field.long": {
-                "name": "caregiverId"
+                "name": "kioskId"
               }
             },
             {
@@ -48,11 +48,11 @@
               "validator.atLeastOne": {
                 "name": "notBoolean",
                 "@fields": [
-                  "patientId",
-                  "caregiverId"
+                  "storeId",
+                  "kioskId"
                 ],
                 "@condition": {
-                  "field": "patientId"
+                  "field": "storeId"
                 }
               }
             },
@@ -60,8 +60,8 @@
               "validator.atLeastOne": {
                 "name": "booleanAsString",
                 "@fields": [
-                  "patientId",
-                  "caregiverId"
+                  "storeId",
+                  "kioskId"
                 ],
                 "@condition": {
                   "op": "eq",
@@ -78,13 +78,13 @@
               "validator.atLeastOne": {
                 "name": "nullLiteral",
                 "@fields": [
-                  "patientId",
-                  "caregiverId"
+                  "storeId",
+                  "kioskId"
                 ],
                 "@condition": {
                   "op": "ne",
                   "left": {
-                    "field": "patientId"
+                    "field": "storeId"
                   },
                   "right": {
                     "value": null
@@ -96,8 +96,8 @@
               "validator.atLeastOne": {
                 "name": "notAMember",
                 "@fields": [
-                  "patientId",
-                  "caregiverId"
+                  "storeId",
+                  "kioskId"
                 ],
                 "@condition": {
                   "op": "eq",
@@ -114,8 +114,8 @@
               "validator.atLeastOne": {
                 "name": "numberAsString",
                 "@fields": [
-                  "patientId",
-                  "caregiverId"
+                  "storeId",
+                  "kioskId"
                 ],
                 "@condition": {
                   "op": "eq",
@@ -123,7 +123,7 @@
                     "value": "5"
                   },
                   "right": {
-                    "field": "patientId"
+                    "field": "storeId"
                   }
                 }
               }

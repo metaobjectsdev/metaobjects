@@ -16,12 +16,12 @@
             },
             {
               "field.long": {
-                "name": "patientId"
+                "name": "storeId"
               }
             },
             {
               "field.long": {
-                "name": "caregiverId"
+                "name": "kioskId"
               }
             },
             {
@@ -48,8 +48,8 @@
               "validator.atLeastOne": {
                 "name": "none",
                 "@fields": [
-                  "patientId",
-                  "caregiverId"
+                  "storeId",
+                  "kioskId"
                 ],
                 "@max": 0
               }

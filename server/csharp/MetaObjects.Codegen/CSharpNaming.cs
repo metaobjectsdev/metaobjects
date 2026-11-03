@@ -455,7 +455,7 @@ public static class CSharpNaming
         ColumnNamingStrategy.Literal    => name,
         ColumnNamingStrategy.SnakeCase  => ToSnakeCase(name),
         ColumnNamingStrategy.KebabCase  => ToSnakeCase(name).Replace('_', '-'),
-        ColumnNamingStrategy.PascalCase => PhysicalNaming.ToPascalCaseColumn(name),
+        ColumnNamingStrategy.UpperFirst => PhysicalNaming.ToUpperFirstColumn(name),
         _ => name,
     };
 

@@ -255,7 +255,7 @@ public sealed class NeutralConfig
                         case "columns":
                             if (p.Value.ValueKind != JsonValueKind.String || !TryParseColumnNaming(p.Value.GetString()!, out columns))
                                 throw new MetaModelException(
-                                    $"{path}: \"naming.columns\" must be one of \"snake_case\", \"literal\", \"kebab-case\", \"PascalCase\"",
+                                    $"{path}: \"naming.columns\" must be one of \"snake_case\", \"literal\", \"kebab-case\", \"upperFirst\"",
                                     ErrorCode.ERR_BAD_ATTR_VALUE);
                             break;
                         case "tables":
@@ -425,7 +425,7 @@ public sealed class NeutralConfig
             case "literal":     strategy = ColumnNamingStrategy.Literal;   return true;
             case "snake_case":  strategy = ColumnNamingStrategy.SnakeCase; return true;
             case "kebab-case":  strategy = ColumnNamingStrategy.KebabCase; return true;
-            case "PascalCase":  strategy = ColumnNamingStrategy.PascalCase; return true;
+            case "upperFirst":  strategy = ColumnNamingStrategy.UpperFirst; return true;
             default:            strategy = ColumnNamingStrategy.Literal;   return false;
         }
     }

@@ -15,15 +15,20 @@
  * `default` is what migrate has always emitted, so a project that sets nothing sees no
  * change; `efcore` reproduces EF Core's conventions, for a database first built by EF
  * Core migrations.
+ *
+ * Which CHECKs exist is not a convention: that is the project's `migrate.checks` setting,
+ * passed to the expected-schema build as `skipRedundantChecks`.
  */
 
 import { InvalidSchemaConventionsError, UnknownSchemaConventionsError } from "./errors.js";
-import type { IndexDescriptor } from "./types.js";
+import type { Dialect, IndexDescriptor } from "./types.js";
 
-/** A key on one table: the table's database name and the key's columns, in key order. */
+/** A key on one table: the table's database name and the key's columns, in key order, and the
+ *  database the schema is built for (undefined is Postgres, as elsewhere in migrate). */
 export interface KeyContext {
   table: string;
   columns: readonly string[];
+  dialect?: Dialect | undefined;
 }
 
 /** A foreign key: its own columns, and the table and columns it references. */
@@ -35,6 +40,7 @@ export interface ForeignKeyContext extends KeyContext {
 /** A table as the FK-index decision sees it: its keys, its declared indexes, its foreign keys. */
 export interface TableKeys {
   table: string;
+  dialect?: Dialect | undefined;
   primaryKey: readonly string[];
   /** The indexes the model declares (unique keys included); the conventions add to these. */
   indexes: readonly { columns: readonly string[]; where?: string; expr?: string }[];
@@ -51,20 +57,19 @@ export interface SchemaConventions {
   foreignKeyIndexes(table: TableKeys): { name: string; columns: string[] }[];
   /** How a unique key (`identity.secondary`) is created. A partial or expression key is always an index. */
   uniqueKeyKind(key: KeyContext & { referencedByForeignKey: boolean }): "index" | "constraint";
-  /**
-   * Leave out a CHECK the schema already guarantees: a `validator.length` maximum the column's
-   * VARCHAR(n) enforces, and a minimum of 0. Optional, so a conventions object written before it
-   * keeps emitting every CHECK, as the default conventions do.
-   */
-  readonly skipRedundantChecks?: boolean;
 }
 
-/** Postgres's identifier limit (NAMEDATALEN - 1). */
-const MAX_IDENTIFIER_LENGTH = 63;
+/** Postgres's identifier limit (NAMEDATALEN - 1), which Npgsql gives EF Core. */
+const PG_MAX_IDENTIFIER_LENGTH = 63;
 
-/** EF Core's truncation: a name over the limit keeps its first 62 characters and ends in `~`. */
-function efTruncate(name: string): string {
-  return name.length <= MAX_IDENTIFIER_LENGTH ? name : `${name.slice(0, MAX_IDENTIFIER_LENGTH - 1)}~`;
+/**
+ * EF Core's truncation: a name over the provider's identifier limit keeps one character fewer
+ * than the limit and ends in `~`. Only Postgres has a limit here; EF Core's SQLite provider
+ * truncates nothing, so neither does this on SQLite or D1.
+ */
+function efTruncate(name: string, dialect: Dialect | undefined): string {
+  if (dialect === "sqlite" || dialect === "d1") return name;
+  return name.length <= PG_MAX_IDENTIFIER_LENGTH ? name : `${name.slice(0, PG_MAX_IDENTIFIER_LENGTH - 1)}~`;
 }
 
 /** True when `columns` are the leading columns of `key`, in order. */
@@ -82,8 +87,8 @@ export const defaultConventions: SchemaConventions = {
 
 export const efcoreConventions: SchemaConventions = {
   id: "efcore",
-  primaryKeyName: ({ table }) => efTruncate(`PK_${table}`),
-  foreignKeyName: ({ table, columns, refTable }) => efTruncate(`FK_${table}_${refTable}_${columns.join("_")}`),
+  primaryKeyName: ({ table, dialect }) => efTruncate(`PK_${table}`, dialect),
+  foreignKeyName: ({ table, columns, refTable, dialect }) => efTruncate(`FK_${table}_${refTable}_${columns.join("_")}`, dialect),
   // EF Core's ForeignKeyIndexConvention: every foreign key gets an index unless a key or
   // another index already starts with its columns. Its AreIndexedBy compares property lists
   // only — a filter is a relational annotation the convention never sees, so a partial index
@@ -100,12 +105,10 @@ export const efcoreConventions: SchemaConventions = {
     }
     return candidates
       .filter((c) => !candidates.some((o) => o.length > c.length && startsWith(o, c)))
-      .map((columns) => ({ name: efTruncate(`IX_${t.table}_${columns.join("_")}`), columns }));
+      .map((columns) => ({ name: efTruncate(`IX_${t.table}_${columns.join("_")}`, t.dialect), columns }));
   },
   // An alternate key (one an FK references) is a UNIQUE constraint; any other unique key is an index.
   uniqueKeyKind: ({ referencedByForeignKey }) => (referencedByForeignKey ? "constraint" : "index"),
-  // An EF Core database carries none of the CHECKs its column types already enforce.
-  skipRedundantChecks: true,
 };
 
 const PRESETS: Readonly<Record<string, SchemaConventions>> = {
@@ -122,7 +125,11 @@ export function resolveSchemaConventions(selected: string | SchemaConventions | 
   if (typeof selected !== "string") {
     const members = ["primaryKeyName", "foreignKeyName", "foreignKeyIndexes", "uniqueKeyKind"] as const;
     const missing = members.filter((m) => typeof (selected as unknown as Record<string, unknown>)[m] !== "function");
-    if (missing.length > 0) throw new InvalidSchemaConventionsError(String((selected as { id?: unknown }).id ?? "(no id)"), missing);
+    const id = String((selected as { id?: unknown }).id ?? "(no id)");
+    if (missing.length > 0) throw new InvalidSchemaConventionsError(id, missing);
+    // Moved to `migrate.checks.skipRedundant`: a conventions object still setting it would
+    // otherwise be silently ignored and bring every redundant CHECK back as drift.
+    if ("skipRedundantChecks" in (selected as object)) throw new InvalidSchemaConventionsError(id, [], ["skipRedundantChecks"]);
     return selected;
   }
   const preset = PRESETS[selected];

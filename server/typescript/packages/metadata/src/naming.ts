@@ -54,12 +54,13 @@ export function toKebabCase(s: string): string {
 }
 
 /**
- * The `PascalCase` column rule: the first letter upper-cased, nothing else changed
- * (`createdAt` → `CreatedAt`, `requestURL` → `RequestURL`). Not a word split: an
- * acronym keeps the case it was written in, the way EF Core names a column after its
- * property, so a camelCase model maps onto an EF-built schema with no `@column`.
+ * The `upperFirst` column rule: the first letter upper-cased, nothing else changed
+ * (`createdAt` → `CreatedAt`, `requestURL` → `RequestURL`, `address_line1` →
+ * `Address_line1`). Not a word split: every other character keeps the case it was written
+ * in, so a model maps onto a schema whose columns are its field names with a capital first
+ * letter (EF Core's default, for one) with no `@column`.
  */
-export function toPascalCaseColumn(s: string): string {
+export function toUpperFirstColumn(s: string): string {
   // One UTF-16 unit in, one out — as C#'s char.ToUpperInvariant and Java's
   // Character.toUpperCase do — so `ß` (whose JavaScript upper case is "SS") stays `ß` in
   // every port.
@@ -75,10 +76,10 @@ export function toPascalCaseColumn(s: string): string {
  * and verify resolve the same name. Not a metadata attr: `@column` is the per-field
  * override, this is the rule for the rest.
  */
-export type ColumnNamingStrategy = "snake_case" | "literal" | "kebab-case" | "PascalCase";
+export type ColumnNamingStrategy = "snake_case" | "literal" | "kebab-case" | "upperFirst";
 
 /** Every column-naming rule, in the order the conformance corpus lists them. */
-export const COLUMN_NAMING_STRATEGIES: readonly ColumnNamingStrategy[] = ["snake_case", "literal", "kebab-case", "PascalCase"];
+export const COLUMN_NAMING_STRATEGIES: readonly ColumnNamingStrategy[] = ["snake_case", "literal", "kebab-case", "upperFirst"];
 
 /** The default in EVERY port: what `meta migrate` has always created. */
 export const DEFAULT_COLUMN_NAMING_STRATEGY: ColumnNamingStrategy = "snake_case";
@@ -149,7 +150,7 @@ export function applyColumnNamingStrategy(name: string, strategy: ColumnNamingSt
     case "literal":     return name;
     case "kebab-case":  return toKebabCase(name);
     case "snake_case":  return toSnakeCase(name);
-    case "PascalCase":  return toPascalCaseColumn(name);
+    case "upperFirst":  return toUpperFirstColumn(name);
   }
 }
 
@@ -336,7 +337,7 @@ export function resolveColumnName(
  * The text before each member's column when `field` (a `field.object @storage "flattened"`)
  * expands its value object into the owning table: its `@flattenedColumnPrefix` verbatim (`""` allowed),
  * else its own resolved column and `_`. With `@column: "bill"` the members are
- * `bill_<member column>`; under the `PascalCase` rule an `address` field gives `Address_`,
+ * `bill_<member column>`; under the `upperFirst` rule an `address` field gives `Address_`,
  * which is EF Core's owned-type default.
  *
  * Core naming, not migrate's: generated ORM mappings (the Prisma schema, the C# EF mapping,

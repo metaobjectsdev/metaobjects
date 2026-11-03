@@ -39,8 +39,9 @@ FIELD_SUBTYPE_INET = "inet"
 # concept WITH a native type + behavior → a subtype (the field.inet precedent).
 # String-backed on the wire: an ISO-8601 duration, written in the canonical form
 # ``[-]PT[nH][nM][n[.f]S]`` (fixtures/duration-wire). The native binding is
-# ``datetime.timedelta``; DB column is the Postgres-native interval, text elsewhere.
-# Calendar spans (years, months, weeks) are refused. Mirrors TS FIELD_SUBTYPE_DURATION.
+# ``datetime.timedelta``; DB column is the Postgres-native interval; SQLite and MySQL
+# store a 64-bit integer count of microseconds.
+# Calendar spans (years, months) are refused; a week is exactly 7 days. Mirrors TS FIELD_SUBTYPE_DURATION.
 FIELD_SUBTYPE_DURATION = "duration"
 
 FIELD_SUBTYPES = (

@@ -206,9 +206,9 @@ public static class EfCoreFilterDispatch
             return DecimalWire.TryParse(raw, out var exact)
                 ? exact
                 : throw new FormatException("not a decimal: " + raw);
-        // field.duration: an operand is an ISO-8601 duration in the accepted form (no years,
-        // months or weeks), compared as a span: `PT90M` equals a stored `PT1H30M`. EF binds it as
-        // an interval on Postgres and through the property's canonical-string converter elsewhere.
+        // field.duration: an operand is an ISO-8601 duration in the accepted form (no years or
+        // months), compared as a span: `PT90M` equals a stored `PT1H30M`. EF binds it as
+        // an interval on Postgres and through the property's microsecond-count converter elsewhere.
         if (underlying == typeof(TimeSpan))
             return DurationWire.TryParse(raw, out var span)
                 ? span

@@ -63,6 +63,15 @@ def test_a_flattened_member_gets_a_column_constant_beside_its_field_constants() 
     assert 'SHIPMENT_SHIP_TO_FIELD: Final[str] = "shipTo"' in src
     assert 'SHIPMENT_SHIP_TO_COLUMN: Final[str] = "ship_to"' in src
     assert 'SHIPMENT_PAYLOAD_COLUMN: Final[str] = "payload"' in src
+    # It names no column of the table, so it is marked deprecated: a comment, no runtime
+    # warning, and only on the flattened field.
+    deprecation = (
+        "#: Deprecated: a flattened field has no column of its own; use the member constants,\n"
+        "#: SHIPMENT_SHIP_TO_<MEMBER>_COLUMN.\n"
+        'SHIPMENT_SHIP_TO_COLUMN: Final[str] = "ship_to"\n'
+    )
+    assert deprecation in src
+    assert src.count("Deprecated") == 1
     assert '"shipTo": SHIPMENT_SHIP_TO_COLUMN,' in src
     assert '"shipTo.street": SHIPMENT_SHIP_TO_STREET_COLUMN,' in src
     assert '"shipTo.postalCode": SHIPMENT_SHIP_TO_POSTAL_CODE_COLUMN,' in src

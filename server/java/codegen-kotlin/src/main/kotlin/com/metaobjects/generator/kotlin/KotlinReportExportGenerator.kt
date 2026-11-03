@@ -224,20 +224,20 @@ open class KotlinReportExportGenerator : MultiFileDirectGeneratorBase<MetaObject
         const val DURATION_CELL_ANCHOR = "    /** A decimal as the wire setting writes it: under \"string\" canonical plain notation (no\n"
 
         /** The `field.duration` cell factory, emitted only for a model that has one (no Kotlin templates). */
-        const val DURATION_CELL: String = """    /** A field.duration in its canonical ISO-8601 wire form ([-]PT[nH][nM][n[.f]S], microseconds),
-     *  as the list route writes it; Duration.toString() differs for a negative span. */
+        const val DURATION_CELL: String = """    /** A field.duration in its canonical ISO-8601 wire form ([-]PT[nH][nM][n[.f]S], to the
+     *  nanosecond), as the list route writes it; Duration.toString() differs for a negative span. */
     fun duration(value: java.time.Duration?): Cell {
         if (value == null) return NULL
         val mag = if (value.isNegative) value.negated() else value
         val total = mag.seconds
-        val micros = mag.nano / 1_000L
-        if (total == 0L && micros == 0L) return Cell("PT0S", false)
+        val nanos = mag.nano.toLong()
+        if (total == 0L && nanos == 0L) return Cell("PT0S", false)
         val b = StringBuilder(if (value.isNegative) "-PT" else "PT")
         if (total / 3600 > 0) b.append(total / 3600).append('H')
         if (total % 3600 / 60 > 0) b.append(total % 3600 / 60).append('M')
-        if (total % 60 > 0 || micros > 0) {
+        if (total % 60 > 0 || nanos > 0) {
             b.append(total % 60)
-            if (micros > 0) b.append('.').append(micros.toString().padStart(6, '0').trimEnd('0'))
+            if (nanos > 0) b.append('.').append(nanos.toString().padStart(9, '0').trimEnd('0'))
             b.append('S')
         }
         return Cell(b.toString(), false)

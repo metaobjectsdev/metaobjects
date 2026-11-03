@@ -80,12 +80,17 @@ describe("identity.primary sequence start and name", () => {
     expect(changes.filter((c) => c.kind === "alter-sequence")).toEqual([]);
   });
 
-  test("SQLite has no sequence to name: no clause, no change", async () => {
+  test("SQLite has no sequence to name: no clause, no change, and an advisory when the key is created", async () => {
     const s = await schema({ "@sequenceStart": 1000000000, "@sequenceName": "Old_Id_seq" });
-    const { changes } = await diff(s, EMPTY, { dialect: "sqlite" });
+    const { changes, advisories } = await diff(s, EMPTY, { dialect: "sqlite" });
     const { up } = emit(changes, { dialect: "sqlite" });
     expect(up).not.toContain("SEQUENCE");
     expect(up).not.toContain("1000000000");
+    expect(advisories).toEqual([{ kind: "sequence-not-applied", table: "Ticket", column: "Id" }]);
+    // Once the table exists there is nothing to create, so nothing to say on every later run.
+    expect((await diff(s, s, { dialect: "sqlite" })).advisories).toEqual([]);
+    // Postgres applies both, so it says nothing.
+    expect((await diff(s, EMPTY, { dialect: "postgres" })).advisories).toEqual([]);
   });
 
   test("shadow path: a model that declares nothing gets no sequence clause and no change", async () => {

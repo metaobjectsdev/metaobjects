@@ -683,6 +683,12 @@ public class SpringNamesGeneratorTest extends SharedRegistryTestBase {
      * not succeed. Mirrors {@code SpringProjectionDtoCompileRunTest#compile}.
      */
     private void compileAll(Path root) throws Exception {
+        String failure = compile(root, List.of());
+        if (failure != null) fail(failure);
+    }
+
+    /** Compile every {@code .java} under {@code root}; the diagnostics when it fails, else null. */
+    private String compile(Path root, List<String> extraOpts) throws Exception {
         List<File> sources;
         try (Stream<Path> s = Files.walk(root)) {
             sources = s.filter(p -> p.toString().endsWith(".java"))
@@ -694,11 +700,12 @@ public class SpringNamesGeneratorTest extends SharedRegistryTestBase {
         JavaCompiler javac = ToolProvider.getSystemJavaCompiler();
         assertNotNull("JDK (not JRE) required -- getSystemJavaCompiler() returned null", javac);
 
-        Path classes = tempFolder.newFolder("classes-" + root.getFileName()).toPath();
+        Path classes = tempFolder.newFolder().toPath();
         String cp = System.getProperty("java.class.path");
         DiagnosticCollector<JavaFileObject> diags = new DiagnosticCollector<>();
         var fm = javac.getStandardFileManager(diags, null, null);
-        List<String> opts = List.of("-classpath", cp, "-d", classes.toString());
+        List<String> opts = new java.util.ArrayList<>(List.of("-classpath", cp, "-d", classes.toString()));
+        opts.addAll(extraOpts);
 
         boolean ok = javac.getTask(null, fm, diags, opts, null,
                 fm.getJavaFileObjectsFromFiles(sources)).call();
@@ -711,8 +718,9 @@ public class SpringNamesGeneratorTest extends SharedRegistryTestBase {
                       .append(':').append(d.getLineNumber()).append('\n');
                 }
             }
-            fail(sb.toString());
+            return sb.toString();
         }
+        return null;
     }
 
     // -------------------------------------------------------------------------
@@ -746,9 +754,58 @@ public class SpringNamesGeneratorTest extends SharedRegistryTestBase {
         assertTrue(src, src.contains("public static final String SHIP_TO_FIELD = \"shipTo\";"));
         assertTrue(src, src.contains("public static final String SHIP_TO_COLUMN = \"ship_to\";"));
         assertTrue(src, src.contains("public static final String PAYLOAD_COLUMN = \"payload\";"));
+        // ...but the flattened field's own column constant names no column: it is deprecated.
+        assertTrue(src, src.contains("    /** @deprecated A flattened field has no column of its own; use the member constants. */\n"
+            + "    @Deprecated\n    public static final String SHIP_TO_COLUMN = \"ship_to\";"));
+        assertFalse(src, src.contains("@Deprecated\n    public static final String PAYLOAD_COLUMN"));
+        assertFalse(src, src.contains("@Deprecated\n    public static final String SHIP_TO_FIELD"));
         assertTrue(src, src.contains("Map.entry(\"shipTo\", SHIP_TO_COLUMN)"));
         assertTrue(src, src.contains("Map.entry(\"shipTo.street\", SHIP_TO_STREET_COLUMN)"));
         assertTrue(src, src.contains("Map.entry(\"shipTo.postalCode\", SHIP_TO_POSTAL_CODE_COLUMN)"));
+    }
+
+    /**
+     * The deprecation costs a project that never uses the constant nothing: the generated names
+     * classes, a base and the subclass whose map reaches the base's constant, compile under
+     * {@code -Xlint:all -Werror}. A use of the constant is what warns.
+     */
+    @Test
+    public void theDeprecatedFlattenedColumnWarnsOnlyWhereItIsUsed() throws Exception {
+        String model = """
+            {
+              "metadata.root": { "package": "acme::ship", "children": [
+                { "object.value": { "name": "Address", "children": [
+                    { "field.string": { "name": "street" } }
+                ] } },
+                { "object.entity": { "name": "Base", "abstract": true, "children": [
+                    { "field.long":   { "name": "id" } },
+                    { "field.object": { "name": "shipTo", "@objectRef": "Address", "@storage": "flattened" } }
+                ] } },
+                { "object.entity": { "name": "Order", "extends": "acme::ship::Base", "children": [
+                    { "source.rdb":   { "@table": "orders" } },
+                    { "field.string": { "name": "note" } },
+                    { "identity.primary": { "@fields": ["id"], "@generation": "increment" } }
+                ] } }
+              ] }
+            }""";
+        Path outDir = tempFolder.newFolder().toPath();
+        Path workspace = tempFolder.newFolder().toPath();
+        SpringNamesGenerator gen = new SpringNamesGenerator();
+        gen.setArgs(Map.of("outputDir", outDir.toString()));
+        gen.execute(SpringTestFixtures.loadFixture(workspace, "names-deprecation", model));
+        String order = Files.readString(outDir.resolve("acme/ship/OrderNames.java"));
+        assertTrue(order, order.contains("public abstract class OrderNames extends BaseNames {"));
+        assertTrue(order, order.contains("Map.entry(\"shipTo\", SHIP_TO_COLUMN)"));
+
+        List<String> strict = List.of("-Xlint:all", "-Werror");
+        String failure = compile(outDir, strict);
+        assertTrue("the generated names compile with -Xlint:all -Werror:\n" + failure, failure == null);
+
+        Files.writeString(outDir.resolve("acme/ship/UsesIt.java"),
+            "package acme.ship;\nclass UsesIt { String c = OrderNames.SHIP_TO_COLUMN; }\n");
+        failure = compile(outDir, strict);
+        assertTrue("a use of the deprecated constant warns:\n" + failure,
+            failure != null && failure.contains("SHIP_TO_COLUMN") && failure.contains("deprecated"));
     }
 
     @Test

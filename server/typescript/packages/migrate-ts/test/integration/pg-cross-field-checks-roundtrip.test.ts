@@ -29,6 +29,7 @@ const META = JSON.stringify({ "metadata.root": { package: "acme", children: [{ "
   { "field.boolean": { name: "flag" } },
   { "field.string": { name: "label" } },
   { "field.enum": { name: "kind", "@values": ["Owned", "Shared"], "@intValueMap": { Owned: 1, Shared: 2 } } },
+  { "field.duration": { name: "wait" } },
   { "identity.primary": { name: "pk", "@fields": "id", "@generation": "increment" } },
   { "validator.atLeastOne": { name: "few", "@fields": ["a", "b", "c"], "@max": 2, "@constraintName": "CK_Note_Few" } },
   { "validator.atLeastOne": { name: "one", "@fields": ["a", "b"], "@max": 1, "@constraintName": "CK_Note_One",
@@ -41,6 +42,10 @@ const META = JSON.stringify({ "metadata.root": { package: "acme", children: [{ "
     ] } } },
   { "validator.requiredWhen": { name: "rw", "@field": "c", "@when": "label", "@equals": "x",
     "@condition": { op: "gte", left: { fn: "coalesce", args: [{ field: "a" }, { field: "b" }] }, right: { value: 10 } } } },
+  // A duration literal is rendered in the interval spelling: Postgres refuses a signed ISO-8601 one.
+  { "validator.comparison": { name: "waitCmp", "@left": "a", "@op": "lt", "@right": "b", "@constraintName": "CK_Note_Wait",
+    "@condition": { op: "gt", left: { field: "wait" }, right: { value: "-PT90S" } } } },
+  { "validator.requiredWhen": { name: "hourly", "@field": "label", "@when": "wait", "@equals": "PT1H", "@constraintName": "CK_Note_Hourly" } },
 ] } }] } });
 
 let k: Kysely<Record<string, unknown>>;
@@ -84,5 +89,15 @@ realDescribe("cross-field CHECK extensions — apply, then re-diff with no probe
     await sql.raw(`INSERT INTO "${TABLE}" ("a", "kind") VALUES (1, 1)`).execute(k);
     // @max 2: three present is refused.
     await expect(sql.raw(`INSERT INTO "${TABLE}" ("a", "b", "c", "kind") VALUES (1, 2, 3, 2)`).execute(k)).rejects.toThrow(/CK_Note_Few/);
+  });
+
+  test("a duration literal in a condition or @equals compares as the span", async () => {
+    await sql.raw(`DELETE FROM "${TABLE}"`).execute(k);
+    // wait <= -PT90S: the a < b rule does not apply.
+    await sql.raw(`INSERT INTO "${TABLE}" ("a", "b", "wait") VALUES (2, 1, '-00:05:00')`).execute(k);
+    await expect(sql.raw(`INSERT INTO "${TABLE}" ("a", "b", "wait") VALUES (2, 1, '00:00:10')`).execute(k)).rejects.toThrow(/CK_Note_Wait/);
+    // label is required when wait is exactly an hour, however it is spelled.
+    await expect(sql.raw(`INSERT INTO "${TABLE}" ("a", "wait") VALUES (1, '60 minutes')`).execute(k)).rejects.toThrow(/CK_Note_Hourly/);
+    await sql.raw(`INSERT INTO "${TABLE}" ("a", "wait", "label") VALUES (1, '01:00:00', 'set')`).execute(k);
   });
 });

@@ -181,6 +181,7 @@ function encodeFilterValue<T>(field: MetaData, value: T, dialect?: Dialect): T {
     }
     if (dialect === "postgres") return formatPostgresInterval(micros) as T;
     if (dialect === "sqlite" || dialect === "mysql") return durationToStoredMicros(micros) as T;
+    if (dialect === "memory") return micros as T;
     return formatDuration(micros) as T;
   }
   const intMap = intValueMapOf(field);

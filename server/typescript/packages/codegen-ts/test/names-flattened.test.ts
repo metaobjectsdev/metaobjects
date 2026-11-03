@@ -1,8 +1,9 @@
 // A flattened value object has no column of its own: each member is a column of the owning
 // table, named by core naming (`resolveFlattenedColumnName`). The names artifact carries
 // those columns under the field's `members`, so code that needs a flattened column reads a
-// constant instead of spelling it. The field's own entry is unchanged (its `column` is kept
-// for code that already reads it), so the addition breaks nothing.
+// constant instead of spelling it. The field's own entry keeps its `column` for code that
+// already reads it, so the addition breaks nothing; in the rendered artifact that `column` is
+// `@deprecated` (JSDoc only), since it names no column of the table.
 //
 // The corpus is the cross-port naming fixture: every `<Object>.<field>.<member>` key in it is
 // a flattened column, and the artifact must name each one exactly as `meta migrate` does,
@@ -11,6 +12,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import ts from "typescript";
 import { FileSource } from "@metaobjectsdev/metadata/core";
 import {
   MetaDataLoader,
@@ -98,10 +100,88 @@ describe("names artifact — rendered flattened members", () => {
     expect(errors).toEqual([]);
     const out = renderNamesDecl(root.findObject("Shipment") as MetaObject, { strategy: "snake_case" });
 
-    expect(out).toContain(
-      'shipTo: { name: "shipTo", column: "ship_to", members: { postalCode: { name: "postalCode", column: "ship_to_ZIP" }, ' +
-        'street: { name: "street", column: "ship_to_street" } } }',
-    );
+    expect(out).toContain([
+      "    shipTo: {",
+      '      name: "shipTo",',
+      // On its own line: TypeScript attaches a JSDoc comment only when a line break precedes it.
+      "      /** @deprecated a flattened field has no column of its own; use members.<member>.column */",
+      '      column: "ship_to",',
+      '      members: { postalCode: { name: "postalCode", column: "ship_to_ZIP" }, street: { name: "street", column: "ship_to_street" } },',
+      "    },",
+    ].join("\n"));
     expect(out).toContain('payload: { name: "payload", column: "payload" }');
+  });
+});
+
+describe("names artifact — the flattened field's own column is deprecated where it is used", () => {
+  /** Strict-mode errors and the deprecation suggestions (6385) for in-memory files. */
+  function diagnose(files: Record<string, string>): { errors: string[]; deprecated: string[] } {
+    const names = Object.keys(files);
+    const options: ts.CompilerOptions = { strict: true, noEmit: true, target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext, moduleResolution: ts.ModuleResolutionKind.Bundler };
+    const svc = ts.createLanguageService({
+      getScriptFileNames: () => names,
+      getScriptVersion: () => "1",
+      getScriptSnapshot: (f) => {
+        const text = files[f] ?? (ts.sys.fileExists(f) ? ts.sys.readFile(f) : undefined);
+        return text === undefined ? undefined : ts.ScriptSnapshot.fromString(text);
+      },
+      getCurrentDirectory: () => "/",
+      getCompilationSettings: () => options,
+      getDefaultLibFileName: ts.getDefaultLibFilePath,
+      fileExists: (f) => f in files || ts.sys.fileExists(f),
+      readFile: (f) => files[f] ?? ts.sys.readFile(f),
+    }, ts.createDocumentRegistry());
+    const errors: string[] = [];
+    const deprecated: string[] = [];
+    for (const f of names) {
+      for (const d of [...svc.getSyntacticDiagnostics(f), ...svc.getSemanticDiagnostics(f)]) {
+        errors.push(`${f}: ${ts.flattenDiagnosticMessageText(d.messageText, "\n")}`);
+      }
+      for (const d of svc.getSuggestionDiagnostics(f)) {
+        if (d.reportsDeprecated !== true) continue;
+        // the whole line the flagged name is on, so a test can tell which access it was
+        const text = files[f]!;
+        const lineStart = text.lastIndexOf("\n", d.start!) + 1;
+        const lineEnd = text.indexOf("\n", d.start!);
+        deprecated.push(`${f}: ${text.slice(lineStart, lineEnd === -1 ? undefined : lineEnd)}`);
+      }
+    }
+    return { errors, deprecated };
+  }
+
+  const DOC = {
+    "metadata.root": {
+      package: "test",
+      children: [
+        { "object.value": { name: "Address", children: [{ "field.string": { name: "street" } }] } },
+        { "object.entity": { name: "Shipment", children: [
+          { "source.rdb": { "@table": "shipments" } },
+          { "field.long": { name: "id" } },
+          { "field.object": { name: "shipTo", "@objectRef": "Address", "@storage": "flattened" } },
+          { "identity.primary": { name: "pk", "@fields": "id" } },
+        ] } },
+      ],
+    },
+  };
+
+  test("a use of fields.<field>.column is reported deprecated; a member column and an unused artifact are not", async () => {
+    const { root, errors } = await new MetaDataLoader().load([new InMemoryStringSource(JSON.stringify(DOC))]);
+    expect(errors).toEqual([]);
+    const artifact = renderNamesDecl(root.findObject("Shipment") as MetaObject, { strategy: "snake_case" });
+
+    // The artifact on its own: it compiles, and declaring the deprecated entry warns nothing.
+    expect(diagnose({ "/Shipment.names.ts": artifact })).toEqual({ errors: [], deprecated: [] });
+
+    const use = [
+      'import { ShipmentNames } from "./Shipment.names";',
+      "export const own = ShipmentNames.fields.shipTo.column;",
+      "export const member = ShipmentNames.fields.shipTo.members.street.column;",
+      "export const id = ShipmentNames.fields.id.column;",
+      "",
+    ].join("\n");
+    const result = diagnose({ "/Shipment.names.ts": artifact, "/use.ts": use });
+    expect(result.errors).toEqual([]);
+    // the field's own column, and not a member's or a plain field's
+    expect(result.deprecated).toEqual(["/use.ts: export const own = ShipmentNames.fields.shipTo.column;"]);
   });
 });

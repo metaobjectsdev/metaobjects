@@ -402,7 +402,8 @@ describe("renderZodValidators", () => {
     hold.addChild(primary);
 
     const out = renderZodValidators(hold).toString();
-    expect(out.replace(/\s+/g, "")).toContain(`holdFor:z.string().regex(/${DURATION_PATTERN}/).transform(durationWrite).optional()`);
+    // Whitespace and the formatter's trailing comma (`transform(durationWrite,)` on a wrapped line) aside.
+    expect(out.replace(/\s+/g, "").replace(/,\)/g, ")")).toContain(`holdFor:z.string().regex(/${DURATION_PATTERN}/).transform(durationWrite).optional()`);
     expect(out.split("function durationWrite(").length - 1).toBe(1);
   });
 

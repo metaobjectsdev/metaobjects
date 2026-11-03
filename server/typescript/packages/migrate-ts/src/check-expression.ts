@@ -57,7 +57,8 @@ export function negateExpression(node: ExprNode): ExprNode {
 
 /**
  * How a literal compared with a field is stored in that field's column, when that is not the
- * literal itself: an int-backed enum (`@intValueMap`) stores a member as its integer. Answers the
+ * literal itself: an int-backed enum (`@intValueMap`) stores a member as its integer, and a
+ * duration is an interval or a microsecond integer. Answers the
  * SQL for the stored value, or undefined to render the literal as written.
  */
 export type StoredLiteral = (field: string, value: unknown) => string | undefined;
@@ -87,9 +88,9 @@ export function renderExpressionSql(
   const op = n["op"];
   const sub = (x: unknown): string => renderExpressionSql(x as ExprNode, column, dialect, stored);
   const operand = (x: unknown, other: unknown): string => {
-    const o = (other ?? {}) as Node;
-    if (stored !== undefined && "value" in (x as Node) && typeof o["field"] === "string") {
-      const sql = stored(o["field"], (x as Node)["value"]);
+    const field = storedFieldOf(other);
+    if (stored !== undefined && "value" in (x as Node) && field !== undefined) {
+      const sql = stored(field, (x as Node)["value"]);
       if (sql !== undefined) return sql;
     }
     return isAtom(x) ? sub(x) : `(${sub(x)})`;
@@ -105,6 +106,22 @@ export function renderExpressionSql(
   }
   if (n["fn"] === EXPR_FN_COALESCE) return `COALESCE(${(n["args"] as unknown[]).map(sub).join(", ")})`;
   throw new Error(`@condition: an expression node migrate cannot render: ${JSON.stringify(node)}`);
+}
+
+/**
+ * The field whose column form a literal compared with `node` takes: the field itself, or for a
+ * `coalesce` the first field among its arguments (a coalesce of fields has their column type).
+ */
+function storedFieldOf(node: unknown): string | undefined {
+  const n = (node ?? {}) as Node;
+  if (typeof n["field"] === "string") return n["field"];
+  if (n["fn"] === EXPR_FN_COALESCE && Array.isArray(n["args"])) {
+    for (const a of n["args"] as unknown[]) {
+      const f = storedFieldOf(a);
+      if (f !== undefined) return f;
+    }
+  }
+  return undefined;
 }
 
 function renderLiteral(v: unknown, dialect: Dialect | undefined): string {

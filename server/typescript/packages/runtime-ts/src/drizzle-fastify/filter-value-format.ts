@@ -60,7 +60,7 @@ export const FORMAT_EXPECTED: Readonly<Record<FilterValueFormat, string>> = {
   [FIELD_SUBTYPE_TIMESTAMP]: "timestamp (YYYY-MM-DD[THH:MM[:SS[.fff]]][Z|±HH:MM])",
   [FIELD_SUBTYPE_UUID]: "uuid (8-4-4-4-12 hex)",
   [FIELD_SUBTYPE_DECIMAL]: "decimal number (digits, optional fraction, optional exponent)",
-  [FIELD_SUBTYPE_DURATION]: "duration (ISO 8601, e.g. PT1H30M; no years, months or weeks)",
+  [FIELD_SUBTYPE_DURATION]: "duration (ISO 8601, e.g. PT1H30M; no years or months)",
 };
 
 /** `expected` for a temporal rule that does not say WHICH temporal format it is. */
