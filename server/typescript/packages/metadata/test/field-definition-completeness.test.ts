@@ -108,6 +108,11 @@ const ENUM_CORE_EXTRA: Record<string, AttrExp> = {
   maxLength: { valueType: "int", required: false },
 };
 
+// db provider: the name of the CHECK an enum's member list generates.
+const ENUM_DB_EXTRA: Record<string, AttrExp> = {
+  constraintName: { valueType: "string", required: false },
+};
+
 /** Scoped concern attrs (db / prompt). */
 const STORAGE_EXTRA: Record<string, AttrExp> = {
   storage: { valueType: "string", required: false },
@@ -166,7 +171,7 @@ function expectedAttrsFor(subType: string): Record<string, AttrExp> {
   if (subType === FIELD_SUBTYPE_OBJECT) Object.assign(exp, OBJECT_CORE_EXTRA, STORAGE_EXTRA);
   if (subType === FIELD_SUBTYPE_MAP) Object.assign(exp, MAP_EXTRA);
   if (subType === FIELD_SUBTYPE_CURRENCY) Object.assign(exp, CURRENCY_EXTRA);
-  if (subType === FIELD_SUBTYPE_ENUM) Object.assign(exp, ENUM_CORE_EXTRA, ENUM_PROMPT_EXTRA);
+  if (subType === FIELD_SUBTYPE_ENUM) Object.assign(exp, ENUM_CORE_EXTRA, ENUM_PROMPT_EXTRA, ENUM_DB_EXTRA);
   if (TEMPORAL.has(subType)) Object.assign(exp, AUTO_SET_EXTRA);
   if (subType === FIELD_SUBTYPE_TIMESTAMP) Object.assign(exp, LOCAL_TIME_EXTRA);
   if (subType === "uri" || subType === "inet") Object.assign(exp, LENIENT_EXTRA);

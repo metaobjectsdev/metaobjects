@@ -41,19 +41,24 @@ const EXPECTED: Record<string, Record<string, { valueType: string; required: boo
     left: { valueType: "string", required: true },
     op: { valueType: "string", required: true },
     right: { valueType: "string", required: true },
+    condition: { valueType: "expression", required: false },
   },
   requiredWhen: {
     field: { valueType: "string", required: true },
     when: { valueType: "string", required: true },
     equals: { valueType: "string", required: true },
+    condition: { valueType: "expression", required: false },
   },
   presentIff: {
     field: { valueType: "string", required: true },
     when: { valueType: "string", required: true },
     equals: { valueType: "string", required: true },
+    condition: { valueType: "expression", required: false },
   },
   atLeastOne: {
     fields: { valueType: "string", required: true },
+    max: { valueType: "int", required: false },
+    condition: { valueType: "expression", required: false },
   },
 };
 

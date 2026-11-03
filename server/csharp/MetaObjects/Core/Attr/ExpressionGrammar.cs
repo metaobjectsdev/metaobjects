@@ -66,6 +66,23 @@ public static class ExpressionGrammar
     /// Structural well-formedness of an expression tree (known node kinds, ops,
     /// arity). Returns an empty list when valid. Mirrors TS <c>validateExprNode</c>.
     /// </summary>
+    /// <summary>The field names an expression tree references, in order of appearance.</summary>
+    public static List<string> FieldRefs(object? node)
+    {
+        var refs = new List<string>();
+        void Walk(object? x)
+        {
+            if (x is not IReadOnlyDictionary<string, object?> n) return;
+            if (Get(n, KEY_FIELD) is string f) refs.Add(f);
+            Walk(Get(n, KEY_LEFT));
+            Walk(Get(n, KEY_RIGHT));
+            Walk(Get(n, KEY_ARG));
+            if (Get(n, KEY_ARGS) is IEnumerable<object?> args) foreach (var a in args) Walk(a);
+        }
+        Walk(node);
+        return refs;
+    }
+
     public static List<string> ValidateExprNode(object? node)
     {
         if (node is not IReadOnlyDictionary<string, object?> n)

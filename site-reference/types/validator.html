@@ -107,6 +107,24 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 </tr>
 </thead>
 <tbody><tr>
+<td><code>@condition</code></td>
+<td>expression</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>The case this rule applies in: an expression over the owning entity&#39;s fields (the attr.expression grammar). Absent: always. The database CHECK is NOT (condition) OR (rule), so a row the condition does not hold for, or holds NULL for, is not checked. Enforced by the database only, like the rule itself.</td>
+</tr>
+<tr>
+<td><code>@constraintName</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-db</td>
+<td>The database name of the CHECK constraint this validator generates (numeric, length, regex and the cross-field validators; the others generate no CHECK). Absent: the derived <table><em><column></em><kind>_chk. Lets a model adopt a database whose CHECKs were named by hand. RDB-physical — contributed by the db provider.</td>
+</tr>
+<tr>
 <td><code>@fields</code></td>
 <td>string[]</td>
 <td>yes</td>
@@ -114,6 +132,15 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td></td>
 <td>metaobjects-core-types</td>
 <td>Names of the candidate fields; at least one must be present.</td>
+</tr>
+<tr>
+<td><code>@max</code></td>
+<td>int</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>The most of @fields that may be present. Absent: no upper bound; @max 1 makes it exactly one of them. Between 1 and the number of @fields (ERR_BAD_ATTR_VALUE).</td>
 </tr>
 </tbody></table>
 <p><strong>Allowed children</strong></p>
@@ -174,6 +201,24 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 </tr>
 </thead>
 <tbody><tr>
+<td><code>@condition</code></td>
+<td>expression</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>The case this rule applies in: an expression over the owning entity&#39;s fields (the attr.expression grammar). Absent: always. The database CHECK is NOT (condition) OR (rule), so a row the condition does not hold for, or holds NULL for, is not checked. Enforced by the database only, like the rule itself.</td>
+</tr>
+<tr>
+<td><code>@constraintName</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-db</td>
+<td>The database name of the CHECK constraint this validator generates (numeric, length, regex and the cross-field validators; the others generate no CHECK). Absent: the derived <table><em><column></em><kind>_chk. Lets a model adopt a database whose CHECKs were named by hand. RDB-physical — contributed by the db provider.</td>
+</tr>
+<tr>
 <td><code>@left</code></td>
 <td>string</td>
 <td>yes</td>
@@ -221,6 +266,15 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 </tr>
 </thead>
 <tbody><tr>
+<td><code>@constraintName</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-db</td>
+<td>The database name of the CHECK constraint this validator generates (numeric, length, regex and the cross-field validators; the others generate no CHECK). Absent: the derived <table><em><column></em><kind>_chk. Lets a model adopt a database whose CHECKs were named by hand. RDB-physical — contributed by the db provider.</td>
+</tr>
+<tr>
 <td><code>@max</code></td>
 <td>int</td>
 <td>no</td>
@@ -259,6 +313,15 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 </tr>
 </thead>
 <tbody><tr>
+<td><code>@constraintName</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-db</td>
+<td>The database name of the CHECK constraint this validator generates (numeric, length, regex and the cross-field validators; the others generate no CHECK). Absent: the derived <table><em><column></em><kind>_chk. Lets a model adopt a database whose CHECKs were named by hand. RDB-physical — contributed by the db provider.</td>
+</tr>
+<tr>
 <td><code>@max</code></td>
 <td>int</td>
 <td>no</td>
@@ -298,6 +361,24 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 </tr>
 </thead>
 <tbody><tr>
+<td><code>@condition</code></td>
+<td>expression</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>The case this rule applies in: an expression over the owning entity&#39;s fields (the attr.expression grammar). Absent: always. The database CHECK is NOT (condition) OR (rule), so a row the condition does not hold for, or holds NULL for, is not checked. Enforced by the database only, like the rule itself.</td>
+</tr>
+<tr>
+<td><code>@constraintName</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-db</td>
+<td>The database name of the CHECK constraint this validator generates (numeric, length, regex and the cross-field validators; the others generate no CHECK). Absent: the derived <table><em><column></em><kind>_chk. Lets a model adopt a database whose CHECKs were named by hand. RDB-physical — contributed by the db provider.</td>
+</tr>
+<tr>
 <td><code>@equals</code></td>
 <td>string</td>
 <td>yes</td>
@@ -345,6 +426,15 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 </tr>
 </thead>
 <tbody><tr>
+<td><code>@constraintName</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-db</td>
+<td>The database name of the CHECK constraint this validator generates (numeric, length, regex and the cross-field validators; the others generate no CHECK). Absent: the derived <table><em><column></em><kind>_chk. Lets a model adopt a database whose CHECKs were named by hand. RDB-physical — contributed by the db provider.</td>
+</tr>
+<tr>
 <td><code>@max</code></td>
 <td>int</td>
 <td>no</td>
@@ -401,6 +491,24 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 </tr>
 </thead>
 <tbody><tr>
+<td><code>@condition</code></td>
+<td>expression</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>The case this rule applies in: an expression over the owning entity&#39;s fields (the attr.expression grammar). Absent: always. The database CHECK is NOT (condition) OR (rule), so a row the condition does not hold for, or holds NULL for, is not checked. Enforced by the database only, like the rule itself.</td>
+</tr>
+<tr>
+<td><code>@constraintName</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-db</td>
+<td>The database name of the CHECK constraint this validator generates (numeric, length, regex and the cross-field validators; the others generate no CHECK). Absent: the derived <table><em><column></em><kind>_chk. Lets a model adopt a database whose CHECKs were named by hand. RDB-physical — contributed by the db provider.</td>
+</tr>
+<tr>
 <td><code>@equals</code></td>
 <td>string</td>
 <td>yes</td>

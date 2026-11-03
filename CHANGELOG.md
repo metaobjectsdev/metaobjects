@@ -12,6 +12,15 @@ here.**
 
 ### Added
 
+- **CHECK names, conditions and "exactly one" from validators.** `@constraintName` on any
+  `validator.*` node, and on a `field.enum` for its membership CHECK, names the CHECK `meta migrate`
+  generates, for a database whose CHECKs were named by hand. A cross-field validator
+  (`comparison`, `requiredWhen`, `presentIff`, `atLeastOne`) takes `@condition`, an expression over
+  the entity's fields, so the rule holds only where it does. `validator.atLeastOne` takes `@max`;
+  `@max: 1` is exactly one of its `@fields`. All three are database-only and optional; a model
+  without them generates what it did. A `@condition` naming a field the entity does not have, or a
+  `@max` outside 1 to the number of `@fields`, is refused at load (`ERR_BAD_ATTR_VALUE`) in every
+  port. See `docs/features/migrations-and-drift.md`, "CHECKs from validators".
 - **Contract emitters: JSON Schema and OpenAPI generators (FR-022).** `jsonSchemaFile()`
   (`contract-schema`) writes JSON Schema 2020-12 for each object's read, create and update shapes, and
   a strict structured-output subset with `profile: "strict"`. `openApiFile()` (`openapi`) writes one

@@ -180,6 +180,14 @@ export const VALIDATOR_DEFINITION: ProviderDefinition = {
           "min": 1,
           "max": 1,
           "description": "Name of the right-hand field of the owning entity."
+        },
+        {
+          "type": "attr",
+          "subType": "expression",
+          "name": "condition",
+          "min": 0,
+          "max": 1,
+          "description": "The case this rule applies in: an expression over the owning entity's fields (the attr.expression grammar). Absent: always. The database CHECK is NOT (condition) OR (rule), so a row the condition does not hold for, or holds NULL for, is not checked. Enforced by the database only, like the rule itself."
         }
       ]
     },
@@ -213,6 +221,14 @@ export const VALIDATOR_DEFINITION: ProviderDefinition = {
           "min": 1,
           "max": 1,
           "description": "The gating value; when @when equals this, @field must be present."
+        },
+        {
+          "type": "attr",
+          "subType": "expression",
+          "name": "condition",
+          "min": 0,
+          "max": 1,
+          "description": "The case this rule applies in: an expression over the owning entity's fields (the attr.expression grammar). Absent: always. The database CHECK is NOT (condition) OR (rule), so a row the condition does not hold for, or holds NULL for, is not checked. Enforced by the database only, like the rule itself."
         }
       ]
     },
@@ -246,6 +262,14 @@ export const VALIDATOR_DEFINITION: ProviderDefinition = {
           "min": 1,
           "max": 1,
           "description": "The gating value; @field is present exactly when @when equals this."
+        },
+        {
+          "type": "attr",
+          "subType": "expression",
+          "name": "condition",
+          "min": 0,
+          "max": 1,
+          "description": "The case this rule applies in: an expression over the owning entity's fields (the attr.expression grammar). Absent: always. The database CHECK is NOT (condition) OR (rule), so a row the condition does not hold for, or holds NULL for, is not checked. Enforced by the database only, like the rule itself."
         }
       ]
     },
@@ -264,6 +288,22 @@ export const VALIDATOR_DEFINITION: ProviderDefinition = {
           "min": 1,
           "max": 1,
           "description": "Names of the candidate fields; at least one must be present."
+        },
+        {
+          "type": "attr",
+          "subType": "expression",
+          "name": "condition",
+          "min": 0,
+          "max": 1,
+          "description": "The case this rule applies in: an expression over the owning entity's fields (the attr.expression grammar). Absent: always. The database CHECK is NOT (condition) OR (rule), so a row the condition does not hold for, or holds NULL for, is not checked. Enforced by the database only, like the rule itself."
+        },
+        {
+          "type": "attr",
+          "subType": "int",
+          "name": "max",
+          "min": 0,
+          "max": 1,
+          "description": "The most of @fields that may be present. Absent: no upper bound; @max 1 makes it exactly one of them. Between 1 and the number of @fields (ERR_BAD_ATTR_VALUE)."
         }
       ]
     }

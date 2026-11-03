@@ -24,9 +24,10 @@ from ...core.identity.identity_constants import (
     IDENTITY_SUBTYPE_SECONDARY,
 )
 from ...core.index.index_constants import INDEX_SUBTYPE_LOOKUP
+from ...core.validator import validator_constants as vc
 from ....provider import Provider
 from ....registry import AttrSchema, TypeRegistry
-from ....shared.base_types import TYPE_FIELD, TYPE_IDENTITY, TYPE_INDEX
+from ....shared.base_types import TYPE_FIELD, TYPE_IDENTITY, TYPE_INDEX, TYPE_VALIDATOR
 from .db_constants import (
     FIELD_ATTR_DB_COLUMN_TYPE,
     FIELD_ATTR_LOCAL_TIME,
@@ -186,6 +187,36 @@ _REFERENCE_ON_UPDATE_SCHEMA = AttrSchema(
 )
 
 
+_ENUM_CONSTRAINT_NAME_SCHEMA = AttrSchema(
+    name=vc.VALIDATOR_ATTR_CONSTRAINT_NAME,
+    value_type=ATTR_SUBTYPE_STRING,
+    required=False,
+    description=(
+        "The database name of the CHECK constraint this enum's member list generates. "
+        "Absent: <table>_<column>_chk. Lets a model adopt a database whose CHECKs were "
+        "named by hand. RDB-physical — contributed by the db provider."
+    ),
+)
+_VALIDATOR_CONSTRAINT_NAME_SCHEMA = AttrSchema(
+    name=vc.VALIDATOR_ATTR_CONSTRAINT_NAME,
+    value_type=ATTR_SUBTYPE_STRING,
+    required=False,
+    description=(
+        "The database name of the CHECK constraint this validator generates (numeric, length, "
+        "regex and the cross-field validators; the others generate no CHECK). Absent: the "
+        "derived <table>_<column>_<kind>_chk. Lets a model adopt a database whose CHECKs "
+        "were named by hand. RDB-physical — contributed by the db provider."
+    ),
+)
+# The validators meta migrate renders as a CHECK: required is NOT NULL; array and base have none.
+_VALIDATOR_SUBTYPES_FOR_CONSTRAINT_NAME = (
+    vc.VALIDATOR_SUBTYPE_NUMERIC,
+    vc.VALIDATOR_SUBTYPE_LENGTH,
+    vc.VALIDATOR_SUBTYPE_REGEX,
+    *vc.CROSS_FIELD_VALIDATOR_SUBTYPES,
+)
+
+
 def _register(registry: TypeRegistry) -> None:
     for sub_type in _DB_FIELD_SUBTYPES:
         registry.extend(
@@ -225,6 +256,10 @@ def _register(registry: TypeRegistry) -> None:
             _REFERENCE_ON_UPDATE_SCHEMA,
         ],
     )
+    # @constraintName names the CHECK a validator / a field.enum's membership generates.
+    registry.extend(TYPE_FIELD, fc.FIELD_SUBTYPE_ENUM, attributes=[_ENUM_CONSTRAINT_NAME_SCHEMA])
+    for sub_type in _VALIDATOR_SUBTYPES_FOR_CONSTRAINT_NAME:
+        registry.extend(TYPE_VALIDATOR, sub_type, attributes=[_VALIDATOR_CONSTRAINT_NAME_SCHEMA])
     # index.lookup: same RDB physical attrs as identity.secondary (@orders/@where/@expr/@using).
     registry.extend(
         TYPE_INDEX,

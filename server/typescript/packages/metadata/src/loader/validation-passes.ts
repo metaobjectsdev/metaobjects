@@ -10,6 +10,14 @@
 // Private:  _findObject, _findField, _findRelationship,
 //           _validateFromPath, _validateViaPath  (helpers, not exported).
 
+import { TYPE_VALIDATOR } from "../shared/base-types.js";
+import {
+  CROSS_FIELD_VALIDATOR_SUBTYPES,
+  VALIDATOR_ATTR_CONDITION,
+  VALIDATOR_ATTR_FIELDS,
+  VALIDATOR_ATTR_MAX,
+  VALIDATOR_SUBTYPE_AT_LEAST_ONE,
+} from "../core/validator/validator-constants.js";
 import type { MetaData } from "../shared/meta-data.js";
 import type { MetaObject } from "../core/object/meta-object.js";
 import type { MetaReferenceIdentity } from "../core/identity/meta-identity.js";
@@ -1674,6 +1682,59 @@ export function validateDerivedFieldProvidability(root: MetaData): ParseError[] 
           { code: "ERR_DERIVED_FIELD_NO_READ_SOURCE", source: field.source },
         ),
       );
+    }
+  }
+  return errors;
+}
+
+// ---------------------------------------------------------------------------
+// Cross-field validators (comparison / requiredWhen / presentIff / atLeastOne), which the
+// database enforces as CHECKs:
+//   - atLeastOne @max is between 1 and the number of its @fields (ERR_BAD_ATTR_VALUE);
+//   - every field a @condition expression names is a field of the owning entity
+//     (ERR_BAD_ATTR_VALUE), so the CHECK it renders to references a real column.
+// Read RESOLVING (ADR-0039): an entity's validators and fields include inherited ones.
+// ---------------------------------------------------------------------------
+
+/** The field names an attr.expression tree references. */
+function expressionFieldRefs(node: unknown, out: string[] = []): string[] {
+  if (typeof node !== "object" || node === null) return out;
+  const n = node as Record<string, unknown>;
+  if (typeof n["field"] === "string") out.push(n["field"]);
+  for (const key of ["left", "right", "arg"]) expressionFieldRefs(n[key], out);
+  for (const key of ["args"]) if (Array.isArray(n[key])) for (const a of n[key] as unknown[]) expressionFieldRefs(a, out);
+  return out;
+}
+
+export function validateCrossFieldValidators(root: MetaData): ParseError[] {
+  const errors: ParseError[] = [];
+  for (const obj of root.children().filter((c) => c.type === TYPE_OBJECT)) {
+    const fieldNames = new Set((obj as MetaObject).fields().map((f) => f.name));
+    // ADR-0039: own — each validator is checked where it is declared.
+    for (const v of obj.ownChildren()) {
+      if (v.type !== TYPE_VALIDATOR || !CROSS_FIELD_VALIDATOR_SUBTYPES.includes(v.subType)) continue;
+      if (v.subType === VALIDATOR_SUBTYPE_AT_LEAST_ONE) {
+        const max = v.attr(VALIDATOR_ATTR_MAX);
+        const fields = [v.attr(VALIDATOR_ATTR_FIELDS)].flat().filter((f) => typeof f === "string");
+        if (typeof max === "number" && (max < 1 || max > fields.length)) {
+          errors.push(new ParseError(
+            `validator.atLeastOne "${obj.name}.${v.name}" @max ${max} must be between 1 and the number of its @fields (${fields.length}).`,
+            { code: "ERR_BAD_ATTR_VALUE", source: v.source },
+          ));
+          continue;
+        }
+      }
+      const condition = v.attr(VALIDATOR_ATTR_CONDITION);
+      if (condition !== undefined) {
+        const unknown = [...new Set(expressionFieldRefs(condition))].filter((f) => !fieldNames.has(f)).sort();
+        if (unknown.length > 0) {
+          errors.push(new ParseError(
+            `validator.${v.subType} "${obj.name}.${v.name}" @condition names ${unknown.map((f) => `"${f}"`).join(", ")}, ` +
+            `which ${unknown.length === 1 ? "is not a field" : "are not fields"} of "${obj.name}".`,
+            { code: "ERR_BAD_ATTR_VALUE", source: v.source },
+          ));
+        }
+      }
     }
   }
   return errors;

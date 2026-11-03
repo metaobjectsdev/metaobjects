@@ -2106,6 +2106,62 @@ public static partial class ValidationPasses
     // refused (ERR_SEQUENCE_WITHOUT_INCREMENT). Read RESOLVING (ADR-0039), reported on the
     // identity that declares one of them. Mirrors TS validateIdentitySequence.
     // ---------------------------------------------------------------------------
+    // ---------------------------------------------------------------------------
+    // Cross-field validators (comparison / requiredWhen / presentIff / atLeastOne), which the
+    // database enforces as CHECKs: atLeastOne @max between 1 and the number of its @fields, and
+    // every field a @condition names a field of the owning entity (ERR_BAD_ATTR_VALUE). Read
+    // RESOLVING (ADR-0039). Mirrors TS validateCrossFieldValidators.
+    // ---------------------------------------------------------------------------
+    private static readonly HashSet<string> CrossFieldValidatorSubtypes = new(StringComparer.Ordinal)
+    {
+        VALIDATOR_SUBTYPE_COMPARISON, VALIDATOR_SUBTYPE_REQUIRED_WHEN,
+        VALIDATOR_SUBTYPE_PRESENT_IFF, VALIDATOR_SUBTYPE_AT_LEAST_ONE,
+    };
+
+    public static IReadOnlyList<MetaError> ValidateCrossFieldValidators(MetaData root)
+    {
+        var errors = new List<MetaError>();
+        foreach (var obj in root.Children().OfType<MetaObject>())
+        {
+            var fieldNames = obj.Fields().Select(f => f.Name).ToHashSet(StringComparer.Ordinal);
+            foreach (var v in obj.OwnChildren().Where(c => c.Type == TYPE_VALIDATOR && CrossFieldValidatorSubtypes.Contains(c.SubType)))
+            {
+                if (v.SubType == VALIDATOR_SUBTYPE_AT_LEAST_ONE && v.Attr(VALIDATOR_ATTR_MAX) is long max)
+                {
+                    var fields = v.Attr(VALIDATOR_ATTR_FIELDS) switch
+                    {
+                        string s => 1,
+                        IReadOnlyList<string> ss => ss.Count,
+                        IReadOnlyList<object?> os => os.Count,
+                        _ => 0,
+                    };
+                    if (max < 1 || max > fields)
+                    {
+                        errors.Add(new MetaError(
+                            $"validator.atLeastOne \"{obj.Name}.{v.Name}\" @max {max} must be between 1 and the number of its @fields ({fields}).",
+                            ErrorCode.ERR_BAD_ATTR_VALUE,
+                            Envelope: v.Source));
+                        continue;
+                    }
+                }
+                var condition = v.Attr(VALIDATOR_ATTR_CONDITION);
+                if (condition is null) continue;
+                var unknown = MetaObjects.Core.Attr.ExpressionGrammar.FieldRefs(condition)
+                    .Distinct(StringComparer.Ordinal).Where(f => !fieldNames.Contains(f))
+                    .OrderBy(f => f, StringComparer.Ordinal).ToList();
+                if (unknown.Count > 0)
+                {
+                    errors.Add(new MetaError(
+                        $"validator.{v.SubType} \"{obj.Name}.{v.Name}\" @condition names {string.Join(", ", unknown.Select(f => $"\"{f}\""))}, " +
+                        $"which {(unknown.Count == 1 ? "is not a field" : "are not fields")} of \"{obj.Name}\".",
+                        ErrorCode.ERR_BAD_ATTR_VALUE,
+                        Envelope: v.Source));
+                }
+            }
+        }
+        return errors;
+    }
+
     public static IReadOnlyList<MetaError> ValidateIdentitySequence(MetaData root)
     {
         var errors = new List<MetaError>();

@@ -255,6 +255,42 @@ export const DB_DEFINITION: ProviderDefinition = {
       ]
     },
     {
+      "type": "field",
+      "subType": "enum",
+      "children": [
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "constraintName",
+          "min": 0,
+          "max": 1,
+          "description": "The database name of the CHECK constraint this enum's member list generates. Absent: <table>_<column>_chk. Lets a model adopt a database whose CHECKs were named by hand. RDB-physical — contributed by the db provider."
+        }
+      ]
+    },
+    {
+      "type": "validator",
+      "subType": [
+        "numeric",
+        "length",
+        "regex",
+        "comparison",
+        "requiredWhen",
+        "presentIff",
+        "atLeastOne"
+      ],
+      "children": [
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "constraintName",
+          "min": 0,
+          "max": 1,
+          "description": "The database name of the CHECK constraint this validator generates (numeric, length, regex and the cross-field validators; the others generate no CHECK). Absent: the derived <table>_<column>_<kind>_chk. Lets a model adopt a database whose CHECKs were named by hand. RDB-physical — contributed by the db provider."
+        }
+      ]
+    },
+    {
       "type": "identity",
       "subType": "primary",
       "children": [

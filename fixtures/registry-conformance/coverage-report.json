@@ -1,6 +1,6 @@
 {
   "registeredSubTypeCount": 65,
-  "exercisedSubTypeCount": 53,
+  "exercisedSubTypeCount": 55,
   "untestedSubTypes": [
     "attr.boolean",
     "attr.class",
@@ -10,8 +10,6 @@
     "attr.int",
     "attr.intMap",
     "attr.long",
-    "validator.atLeastOne",
-    "validator.comparison",
     "validator.presentIff",
     "validator.requiredWhen"
   ],
@@ -73,7 +71,6 @@
         "formExclude",
         "instruction",
         "mutability",
-        "sortable",
         "sortableDefaultOrder",
         "unique",
         "xmlText"
@@ -121,7 +118,6 @@
         "formExclude",
         "instruction",
         "mutability",
-        "sortable",
         "sortableDefaultOrder",
         "unique",
         "xmlText"
@@ -148,7 +144,6 @@
     {
       "key": "field.int",
       "untestedAttrs": [
-        "column",
         "dbColumnType",
         "example",
         "formExclude",
@@ -188,7 +183,6 @@
         "sortable",
         "sortableDefaultOrder",
         "unique",
-        "valueType",
         "xmlText"
       ]
     },
@@ -211,7 +205,6 @@
     {
       "key": "field.string",
       "untestedAttrs": [
-        "formExclude",
         "sortableDefaultOrder",
         "xmlText"
       ]
@@ -322,12 +315,6 @@
       "untestedAttrs": [
         "sourceRefField",
         "symmetric"
-      ]
-    },
-    {
-      "key": "source.rdb",
-      "untestedAttrs": [
-        "materializedView"
       ]
     },
     {

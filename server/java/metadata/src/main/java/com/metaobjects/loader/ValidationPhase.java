@@ -264,6 +264,7 @@ public final class ValidationPhase {
         pass(collected, () -> validateObjectFieldStorage(root));
         validateEnumMaxLength(root, collected);
         validateIdentitySequence(root, collected);
+        validateCrossFieldValidators(root, collected);
         pass(collected, () -> validateFieldMap(root));
         pass(collected, () -> validateIdentityFieldsAndGeneration(root));
         // FR-024 B3/B4a — subtype rules (identity-name, value purity, projection licensing).
@@ -2387,6 +2388,63 @@ public final class ValidationPhase {
     // refused (ERR_SEQUENCE_WITHOUT_INCREMENT). Read RESOLVING (ADR-0039), reported on the
     // identity that declares one of them, every offender collected. Mirrors TS.
     // =========================================================================
+
+    // Cross-field validators (comparison / requiredWhen / presentIff / atLeastOne), which the
+    // database enforces as CHECKs: atLeastOne @max between 1 and the number of its @fields, and
+    // every field a @condition names a field of the owning entity (ERR_BAD_ATTR_VALUE). Every
+    // violation is collected. Mirrors TS validateCrossFieldValidators.
+    static void validateCrossFieldValidators(MetaRoot root, List<MetaDataException> out) {
+        java.util.Set<String> crossField = java.util.Set.of(
+            com.metaobjects.validator.ComparisonValidator.SUBTYPE_COMPARISON,
+            com.metaobjects.validator.RequiredWhenValidator.SUBTYPE_REQUIRED_WHEN,
+            com.metaobjects.validator.PresentIffValidator.SUBTYPE_PRESENT_IFF,
+            com.metaobjects.validator.AtLeastOneValidator.SUBTYPE_AT_LEAST_ONE);
+        for (MetaObject obj : root.getChildren(MetaObject.class, false)) {
+            java.util.Set<String> fieldNames = new java.util.HashSet<>();
+            for (com.metaobjects.field.MetaField<?> f : obj.getMetaFields()) fieldNames.add(f.getShortName());
+            for (com.metaobjects.validator.MetaValidator v
+                    : obj.getChildren(com.metaobjects.validator.MetaValidator.class, false)) {
+                if (!crossField.contains(v.getSubType())) continue;
+                String label = v.getSubType() + " \"" + obj.getShortName() + "." + v.getShortName() + "\"";
+                if (com.metaobjects.validator.AtLeastOneValidator.SUBTYPE_AT_LEAST_ONE.equals(v.getSubType())
+                        && v.hasMetaAttr(com.metaobjects.validator.MetaValidator.ATTR_MAX)
+                        && v.getMetaAttr(com.metaobjects.validator.MetaValidator.ATTR_MAX).getValue() instanceof Number n) {
+                    long max = n.longValue();
+                    Object raw = v.hasMetaAttr(com.metaobjects.validator.AtLeastOneValidator.ATTR_FIELDS)
+                        ? v.getMetaAttr(com.metaobjects.validator.AtLeastOneValidator.ATTR_FIELDS).getValue() : null;
+                    int count = raw instanceof java.util.Collection<?> c ? c.size() : raw == null ? 0 : 1;
+                    if (max < 1 || max > count) {
+                        out.add(new MetaDataException(
+                            ErrorMessageConstants.ERR_BAD_ATTR_VALUE + ": validator." + label + " @max " + max
+                                + " must be between 1 and the number of its @fields (" + count + ").",
+                            ErrorCode.ERR_BAD_ATTR_VALUE, v.getSource()));
+                        continue;
+                    }
+                }
+                if (!v.hasMetaAttr(com.metaobjects.validator.MetaValidator.ATTR_CONDITION)) continue;
+                java.util.TreeSet<String> unknown = new java.util.TreeSet<>();
+                collectExprFieldRefs(v.getMetaAttr(com.metaobjects.validator.MetaValidator.ATTR_CONDITION).getValue(), unknown);
+                unknown.removeAll(fieldNames);
+                if (unknown.isEmpty()) continue;
+                StringBuilder names = new StringBuilder();
+                for (String u : unknown) names.append(names.length() == 0 ? "" : ", ").append('"').append(u).append('"');
+                out.add(new MetaDataException(
+                    ErrorMessageConstants.ERR_BAD_ATTR_VALUE + ": validator." + label + " @condition names " + names
+                        + ", which " + (unknown.size() == 1 ? "is not a field" : "are not fields")
+                        + " of \"" + obj.getShortName() + "\".",
+                    ErrorCode.ERR_BAD_ATTR_VALUE, v.getSource()));
+            }
+        }
+    }
+
+    /** The field names an expression tree (ExpressionAttribute's Map form) references. */
+    private static void collectExprFieldRefs(Object node, java.util.Set<String> out) {
+        if (node instanceof java.util.Map<?, ?> m) {
+            if (m.get("field") instanceof String f) out.add(f);
+            for (String k : List.of("left", "right", "arg")) collectExprFieldRefs(m.get(k), out);
+            if (m.get("args") instanceof java.util.Collection<?> args) for (Object a : args) collectExprFieldRefs(a, out);
+        }
+    }
 
     static void validateIdentitySequence(MetaRoot root, List<MetaDataException> out) {
         for (MetaObject obj : root.getChildren(MetaObject.class, false)) {

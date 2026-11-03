@@ -409,6 +409,41 @@ opened by an older SQLite (Python 3.10's stdlib, Ubuntu 22.04's `sqlite3`). The 
 behind `--allow drop-check` and raises no data hazard, because the rule is the same — and
 the re-diff is empty afterwards. Postgres keeps `IS [NOT] DISTINCT FROM`.
 
+### CHECKs from validators: names, conditions, how many
+
+A `validator.*` node and a `field.enum`'s member list each become a CHECK constraint. Three
+attributes shape it, all database-only (no generated code reads them):
+
+- **`@constraintName`** names the CHECK, for a database whose CHECKs were named by hand. On any
+  `validator.*` node, and on a `field.enum` for its membership CHECK. Absent, the name is derived
+  (`<table>_<column>_<kind>_chk`, `<table>_<column>_chk` for an enum), as before.
+- **`@condition`** on a cross-field validator (`comparison`, `requiredWhen`, `presentIff`,
+  `atLeastOne`) is an expression, in the grammar `origin.computed` uses, over the entity's fields.
+  The rule holds only where the condition does: the CHECK is `(NOT condition) OR (rule)`, with
+  the negation folded in (`kind = 'Clinic'` becomes `kind <> 'Clinic'`). A field the condition
+  names that is not a field of the entity is refused at load (`ERR_BAD_ATTR_VALUE`).
+- **`@max`** on `validator.atLeastOne` caps how many of its `@fields` may be present. `@max: 1`
+  is "exactly one": `num_nonnulls(a, b) = 1` on Postgres, a sum of `IS NOT NULL` tests on SQLite.
+  It must be between 1 and the number of `@fields` (`ERR_BAD_ATTR_VALUE`).
+
+```json
+{ "object.entity": { "name": "Note", "children": [
+  { "source.rdb": { "@table": "Notes" } },
+  { "field.long": { "name": "id" } },
+  { "field.enum": { "name": "kind", "@values": ["Owned", "Shared"], "@constraintName": "CK_Notes_Kind" } },
+  { "field.long": { "name": "patientId" } },
+  { "field.long": { "name": "caseId" } },
+  { "identity.primary": { "name": "pk", "@fields": "id", "@generation": "increment" } },
+  { "validator.atLeastOne": { "name": "oneOwner", "@fields": ["patientId", "caseId"], "@max": 1,
+    "@constraintName": "CK_Notes_Owner",
+    "@condition": { "op": "eq", "left": { "field": "kind" }, "right": { "value": "Owned" } } } }
+] } }
+```
+
+On Postgres the last one is `CK_Notes_Owner CHECK (("kind" <> 'Owned') OR (num_nonnulls("patient_id", "case_id") = 1))`.
+
+Renaming a CHECK this way is a drop and an add of the same rule, under `--allow drop-check`.
+
 ## Schema conventions: names for objects no code addresses
 
 Some database objects have names that no program ever reads: a primary-key constraint, most

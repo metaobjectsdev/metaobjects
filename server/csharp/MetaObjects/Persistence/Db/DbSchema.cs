@@ -104,6 +104,20 @@ public static class DbSchema
         Required: false,
         Description: "Index access method (e.g. \"gin\", \"gist\", \"hash\"); default \"btree\" (not rendered). Pair with @expr for e.g. a GIN index over an array/jsonb expression. RDB-physical — contributed by the db provider.");
 
+    /// <summary><c>@constraintName</c> on a validator — the database name of the CHECK it generates.</summary>
+    public static readonly AttrSchema ValidatorConstraintNameSchema = new AttrSchema(
+        Name: Core.Validator.ValidatorConstants.VALIDATOR_ATTR_CONSTRAINT_NAME,
+        ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
+        Required: false,
+        Description: "The database name of the CHECK constraint this validator generates (numeric, length, regex and the cross-field validators; the others generate no CHECK). Absent: the derived <table>_<column>_<kind>_chk. Lets a model adopt a database whose CHECKs were named by hand. RDB-physical — contributed by the db provider.");
+
+    /// <summary><c>@constraintName</c> on a field.enum — the database name of its membership CHECK.</summary>
+    public static readonly AttrSchema EnumConstraintNameSchema = new AttrSchema(
+        Name: Core.Validator.ValidatorConstants.VALIDATOR_ATTR_CONSTRAINT_NAME,
+        ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
+        Required: false,
+        Description: "The database name of the CHECK constraint this enum's member list generates. Absent: <table>_<column>_chk. Lets a model adopt a database whose CHECKs were named by hand. RDB-physical — contributed by the db provider.");
+
     /// <summary><c>@sequenceStart</c> — the first value of an increment key's sequence; on identity.primary.</summary>
     public static readonly AttrSchema SequenceStartSchema = new AttrSchema(
         Name: DbConstants.IDENTITY_ATTR_SEQUENCE_START,

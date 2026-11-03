@@ -1,6 +1,7 @@
 package com.metaobjects.database;
 
 import com.metaobjects.attr.StringAttribute;
+import java.util.List;
 import com.metaobjects.index.Index;
 import com.metaobjects.identity.SecondaryIdentity;
 import com.metaobjects.registry.MetaDataRegistry;
@@ -116,7 +117,7 @@ public class CoreDBMetaDataProvider implements MetaDataTypeProvider {
     @Override
     public String[] getDependencies() {
         // Depends on field types, object types, identity types, and index types so it loads after them.
-        return new String[]{"field-types", "object-types", "identity-types", "index-types"};
+        return new String[]{"field-types", "object-types", "identity-types", "index-types", "validator-types"};
     }
 
     @Override
@@ -147,6 +148,23 @@ public class CoreDBMetaDataProvider implements MetaDataTypeProvider {
                 def.optionalAttributeWithConstraints(SecondaryIdentity.ATTR_USING)
                    .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
             });
+
+        // --- @constraintName: the CHECK name of a CHECK-generating validator, and of a ---
+        // field.enum's membership (db.json's validator and field.enum blocks; identity.reference
+        // declares its own). required is NOT NULL; array and base generate no CHECK.
+        for (Class<? extends com.metaobjects.MetaData> c : List.of(
+                com.metaobjects.validator.LengthValidator.class,
+                com.metaobjects.validator.RegexValidator.class,
+                com.metaobjects.validator.NumericValidator.class,
+                com.metaobjects.validator.ComparisonValidator.class,
+                com.metaobjects.validator.RequiredWhenValidator.class,
+                com.metaobjects.validator.PresentIffValidator.class,
+                com.metaobjects.validator.AtLeastOneValidator.class,
+                com.metaobjects.field.EnumField.class)) {
+            registry.extendType(c, def -> def
+                .optionalAttributeWithConstraints(com.metaobjects.validator.MetaValidator.ATTR_CONSTRAINT_NAME)
+                .ofType(StringAttribute.SUBTYPE_STRING).asSingle());
+        }
 
         // --- index.lookup RDB-physical attrs ---
         registry.extendType(com.metaobjects.index.LookupIndex.class,

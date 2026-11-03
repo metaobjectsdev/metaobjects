@@ -1,0 +1,131 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      {
+        "object.entity": {
+          "name": "OfficeHours",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "OfficeHours"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.enum": {
+                "name": "kind",
+                "@values": [
+                  "Clinic",
+                  "Phone"
+                ],
+                "@constraintName": "CK_OfficeHours_Kind"
+              }
+            },
+            {
+              "field.int": {
+                "name": "startDay",
+                "children": [
+                  {
+                    "validator.numeric": {
+                      "name": "weekday",
+                      "@min": 0,
+                      "@max": 6,
+                      "@constraintName": "CK_OfficeHours_StartDay"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field.int": {
+                "name": "endDay"
+              }
+            },
+            {
+              "field.time": {
+                "name": "startTime"
+              }
+            },
+            {
+              "field.time": {
+                "name": "endTime"
+              }
+            },
+            {
+              "field.string": {
+                "name": "code",
+                "children": [
+                  {
+                    "validator.length": {
+                      "name": "len",
+                      "@max": 8,
+                      "@constraintName": "CK_OfficeHours_Code"
+                    }
+                  },
+                  {
+                    "validator.regex": {
+                      "name": "shape",
+                      "@pattern": "^[A-Z0-9]+$",
+                      "@constraintName": "CK_OfficeHours_CodeShape"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field.long": {
+                "name": "patientId"
+              }
+            },
+            {
+              "field.long": {
+                "name": "caregiverId"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": "id",
+                "@generation": "increment"
+              }
+            },
+            {
+              "validator.comparison": {
+                "name": "sameDayTimes",
+                "@left": "endTime",
+                "@op": "gt",
+                "@right": "startTime",
+                "@constraintName": "CK_OfficeHours_SameDayValidation",
+                "@condition": {
+                  "op": "eq",
+                  "left": {
+                    "field": "startDay"
+                  },
+                  "right": {
+                    "field": "endDay"
+                  }
+                }
+              }
+            },
+            {
+              "validator.atLeastOne": {
+                "name": "oneSource",
+                "@fields": [
+                  "patientId",
+                  "caregiverId"
+                ],
+                "@max": 1,
+                "@constraintName": "CK_OfficeHours_ExactlyOneSource"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

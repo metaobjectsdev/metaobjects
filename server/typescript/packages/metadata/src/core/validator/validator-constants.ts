@@ -50,3 +50,15 @@ export const VALIDATOR_ATTR_FIELDS = "fields";
 // Comparison operators (@op allowed values) → relational operator.
 export const VALIDATOR_COMPARISON_OPS = ["gt", "gte", "lt", "lte", "ne", "eq"] as const;
 export type ComparisonOp = (typeof VALIDATOR_COMPARISON_OPS)[number];
+
+/** comparison / requiredWhen / presentIff / atLeastOne: the case the rule applies in (an attr.expression). */
+export const VALIDATOR_ATTR_CONDITION = "condition";
+/** Every validator (db provider): the database name of the CHECK it generates. */
+export const VALIDATOR_ATTR_CONSTRAINT_NAME = "constraintName";
+/** The cross-field validators: the database enforces them, nothing else evaluates them. */
+export const CROSS_FIELD_VALIDATOR_SUBTYPES: readonly string[] = [
+  VALIDATOR_SUBTYPE_COMPARISON,
+  VALIDATOR_SUBTYPE_REQUIRED_WHEN,
+  VALIDATOR_SUBTYPE_PRESENT_IFF,
+  VALIDATOR_SUBTYPE_AT_LEAST_ONE,
+];

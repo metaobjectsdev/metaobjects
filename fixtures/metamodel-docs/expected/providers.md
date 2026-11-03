@@ -44,14 +44,14 @@ Core metaobjects metamodel types and subtypes.
 - `template.prompt`: `@format`, `@maxChars`, `@maxTokens`, `@model`, `@owner`, `@payloadRef`, `@promptStyle`, `@requiredSlots`, `@requiredTags`, `@responseFormat`, `@responseRef`, `@since`, `@textRef`
 - `template.toolcall`: `@maxTokens`, `@owner`, `@payloadRef`, `@since`, `@toolName`
 - `validator.array`: `@max`, `@min`
-- `validator.atLeastOne`: `@fields`
+- `validator.atLeastOne`: `@condition`, `@fields`, `@max`
 - `validator.base`: `@max`, `@min`
-- `validator.comparison`: `@left`, `@op`, `@right`
+- `validator.comparison`: `@condition`, `@left`, `@op`, `@right`
 - `validator.length`: `@max`, `@min`
 - `validator.numeric`: `@max`, `@min`
-- `validator.presentIff`: `@equals`, `@field`, `@when`
+- `validator.presentIff`: `@condition`, `@equals`, `@field`, `@when`
 - `validator.regex`: `@max`, `@min`, `@pattern`
-- `validator.requiredWhen`: `@equals`, `@field`, `@when`
+- `validator.requiredWhen`: `@condition`, `@equals`, `@field`, `@when`
 
 ## metaobjects-db
 
@@ -65,7 +65,7 @@ DB-domain attributes — @column / @db.indexed / @dbColumnType on every field, @
 - `field.date`: `@autoSet`, `@column`, `@db.indexed`, `@dbColumnType`
 - `field.decimal`: `@column`, `@db.indexed`, `@dbColumnType`
 - `field.double`: `@column`, `@db.indexed`, `@dbColumnType`
-- `field.enum`: `@column`, `@db.indexed`, `@dbColumnType`
+- `field.enum`: `@column`, `@constraintName`, `@db.indexed`, `@dbColumnType`
 - `field.float`: `@column`, `@db.indexed`, `@dbColumnType`
 - `field.inet`: `@column`, `@db.indexed`, `@dbColumnType`
 - `field.int`: `@column`, `@db.indexed`, `@dbColumnType`
@@ -82,6 +82,13 @@ DB-domain attributes — @column / @db.indexed / @dbColumnType on every field, @
 - `identity.secondary`: `@expr`, `@orders`, `@using`, `@where`
 - `index.lookup`: `@expr`, `@orders`, `@using`, `@where`
 - `source.rdb`: `@function`, `@kind`, `@materializedView`, `@parameterRef`, `@proc`, `@role`, `@schema`, `@sql`, `@table`, `@unmanaged`, `@view`
+- `validator.atLeastOne`: `@constraintName`
+- `validator.comparison`: `@constraintName`
+- `validator.length`: `@constraintName`
+- `validator.numeric`: `@constraintName`
+- `validator.presentIff`: `@constraintName`
+- `validator.regex`: `@constraintName`
+- `validator.requiredWhen`: `@constraintName`
 
 ## metaobjects-documentation
 

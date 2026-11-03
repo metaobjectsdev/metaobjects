@@ -87,6 +87,7 @@ from ..shared.base_types import (
     TYPE_REQUIREMENT,
     TYPE_SOURCE,
     TYPE_TEMPLATE,
+    TYPE_VALIDATOR,
 )
 from ..meta.template import template_constants as tc
 from ..meta.presentation.layout.layout_constants import (
@@ -253,6 +254,8 @@ def run_validations(
     _validate_enum_max_length(root, errors)
     # identity.primary @sequenceStart / @sequenceName need @generation "increment".
     _validate_identity_sequence(root, errors)
+    # cross-field validators — atLeastOne @max in range; @condition names entity fields.
+    _validate_cross_field_validators(root, errors)
     # field.map — exactly one of @valueType (scalar) or @objectRef (VO), and
     # @valueType (when set) must name a known scalar subtype.
     _validate_field_map(root, errors)
@@ -3787,6 +3790,67 @@ def _validate_identity_sequence(root: MetaData, errors: list[MetaError]) -> None
                 ),
                 envelope=ident.source,
             ))
+
+
+# Cross-field validators (comparison / requiredWhen / presentIff / atLeastOne), which the
+# database enforces as CHECKs: atLeastOne @max between 1 and the number of its @fields, and
+# every field a @condition names a field of the owning entity (ERR_BAD_ATTR_VALUE). Read
+# RESOLVING (ADR-0039). Mirrors TS validateCrossFieldValidators.
+def _expr_field_refs(node: object, out: set[str]) -> None:
+    if not isinstance(node, dict):
+        return
+    if isinstance(node.get("field"), str):
+        out.add(node["field"])
+    for key in ("left", "right", "arg"):
+        _expr_field_refs(node.get(key), out)
+    args = node.get("args")
+    if isinstance(args, list):
+        for a in args:
+            _expr_field_refs(a, out)
+
+
+def _validate_cross_field_validators(root: MetaData, errors: list[MetaError]) -> None:
+    from ..meta.core.validator import validator_constants as vc
+
+    for obj in root.children():
+        if obj.type != TYPE_OBJECT:
+            continue
+        field_names = {f.name for f in obj.fields()}
+        for v in obj.own_children():
+            if v.type != TYPE_VALIDATOR or v.sub_type not in vc.CROSS_FIELD_VALIDATOR_SUBTYPES:
+                continue
+            if v.sub_type == vc.VALIDATOR_SUBTYPE_AT_LEAST_ONE:
+                maximum = v.get_meta_attr(vc.VALIDATOR_ATTR_MAX)
+                if isinstance(maximum, int) and not isinstance(maximum, bool):
+                    fields = v.get_meta_attr(vc.VALIDATOR_ATTR_FIELDS)
+                    count = len(fields) if isinstance(fields, list) else (0 if fields is None else 1)
+                    if maximum < 1 or maximum > count:
+                        errors.append(MetaError(
+                            code=ErrorCode.ERR_BAD_ATTR_VALUE,
+                            message=(
+                                f'validator.atLeastOne "{obj.name}.{v.name}" @max {maximum} must be '
+                                f"between 1 and the number of its @fields ({count})."
+                            ),
+                            envelope=v.source,
+                        ))
+                        continue
+            condition = v.get_meta_attr(vc.VALIDATOR_ATTR_CONDITION)
+            if condition is None:
+                continue
+            refs: set[str] = set()
+            _expr_field_refs(condition, refs)
+            unknown = sorted(refs - field_names)
+            if unknown:
+                names = ", ".join(f'"{u}"' for u in unknown)
+                verb = "is not a field" if len(unknown) == 1 else "are not fields"
+                errors.append(MetaError(
+                    code=ErrorCode.ERR_BAD_ATTR_VALUE,
+                    message=(
+                        f'validator.{v.sub_type} "{obj.name}.{v.name}" @condition names {names}, '
+                        f'which {verb} of "{obj.name}".'
+                    ),
+                    envelope=v.source,
+                ))
 
 
 # field.enum @maxLength — the column length of a string-stored enum:

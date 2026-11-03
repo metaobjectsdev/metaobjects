@@ -49,4 +49,17 @@ public static class ValidatorConstants
     public const string VALIDATOR_ATTR_WHEN   = "when";
     public const string VALIDATOR_ATTR_EQUALS = "equals";
     public const string VALIDATOR_ATTR_FIELDS = "fields";
+    /// <summary>comparison / requiredWhen / presentIff / atLeastOne: the case the rule applies in (an attr.expression).</summary>
+    public const string VALIDATOR_ATTR_CONDITION = "condition";
+    /// <summary>A CHECK-generating validator (db provider): the database name of that CHECK.</summary>
+    public const string VALIDATOR_ATTR_CONSTRAINT_NAME = "constraintName";
+
+    /// <summary>The validators <c>meta migrate</c> renders as a CHECK (and so may carry @constraintName):
+    /// numeric, length, regex and the cross-field ones. required is NOT NULL; array and base have none.</summary>
+    public static readonly string[] CHECK_VALIDATOR_SUBTYPES =
+    [
+        VALIDATOR_SUBTYPE_NUMERIC, VALIDATOR_SUBTYPE_LENGTH, VALIDATOR_SUBTYPE_REGEX,
+        VALIDATOR_SUBTYPE_COMPARISON, VALIDATOR_SUBTYPE_REQUIRED_WHEN, VALIDATOR_SUBTYPE_PRESENT_IFF,
+        VALIDATOR_SUBTYPE_AT_LEAST_ONE,
+    ];
 }

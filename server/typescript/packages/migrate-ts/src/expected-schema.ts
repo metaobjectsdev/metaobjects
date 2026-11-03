@@ -1,4 +1,5 @@
 import { DuplicateSqlNameError, FkTargetNotUniqueError, type FkTargetViolation } from "./errors.js";
+import { negateExpression, renderExpressionSql } from "./check-expression.js";
 import { canBeUniqueConstraint, resolveSchemaConventions, type SchemaConventions } from "./schema-conventions.js";
 import type {
   ColumnNamingStrategy, MetaData, MetaField, MetaObject, MetaReferenceIdentity, MetaRoot, MetaValidator,
@@ -64,6 +65,10 @@ import {
   resolveEnumMaxLength,
   IDENTITY_ATTR_SEQUENCE_NAME,
   IDENTITY_ATTR_SEQUENCE_START,
+  VALIDATOR_ATTR_CONDITION,
+  VALIDATOR_ATTR_MAX,
+  VALIDATOR_ATTR_CONSTRAINT_NAME,
+  type ExprNode,
 } from "@metaobjectsdev/metadata";
 import type { SqlType } from "./sql-type.js";
 import type {
@@ -895,7 +900,7 @@ function buildChecks(
         } else {
           expression = `${qcol} IN (${values.map((v) => `'${v.replace(/'/g, "''")}'`).join(", ")})`;
         }
-        checks.push({ name: `${tableName}_${col}_chk`, expression });
+        checks.push({ name: declaredCheckName(field) ?? `${tableName}_${col}_chk`, expression });
       }
     }
     // Validator-derived checks.
@@ -906,13 +911,13 @@ function buildChecks(
     const enforcedMax = skipRedundant && enforcesLength && columnType.kind === "text" ? columnType.maxLength : undefined;
     for (const v of field.validators()) {
       const check = validatorCheck(v, qcol, tableName, col, dialect, skipRedundant, enforcedMax);
-      if (check) checks.push(check);
+      if (check) checks.push(withDeclaredName(check, v));
     }
   }
   // Entity-scoped cross-field validators (comparison / requiredWhen / presentIff / atLeastOne).
   for (const v of entity.validators()) {
     const check = crossFieldCheck(v, entity, tableName, strategy, dialect);
-    if (check) checks.push(check);
+    if (check) checks.push(withDeclaredName(withCondition(check, v, entity, strategy, dialect), v));
   }
   return checks;
 }
@@ -974,6 +979,35 @@ function renderEquals(
  * resolved to its physical column by name; nothing raw is read from metadata.
  * Returns null (skips the check) if any referenced field is missing.
  */
+/** A validator's or field.enum's declared CHECK name (`@constraintName`; ADR-0039 resolving), if any. */
+function declaredCheckName(node: MetaData): string | undefined {
+  const name = node.attr(VALIDATOR_ATTR_CONSTRAINT_NAME);
+  return typeof name === "string" && name.length > 0 ? name : undefined;
+}
+
+function withDeclaredName(check: CheckDescriptor, node: MetaData): CheckDescriptor {
+  const name = declaredCheckName(node);
+  return name === undefined ? check : { ...check, name };
+}
+
+/**
+ * A cross-field validator's `@condition` (an attr.expression): the rule applies only when it
+ * holds, so the CHECK is the negated condition OR the rule. A row the condition is NULL for is
+ * not checked, as for any CHECK.
+ */
+function withCondition(
+  check: CheckDescriptor, v: MetaValidator, entity: MetaObject, strategy: ColumnNamingStrategy, dialect: Dialect | undefined,
+): CheckDescriptor {
+  const condition = v.attr(VALIDATOR_ATTR_CONDITION);
+  if (condition === undefined || condition === null || typeof condition !== "object") return check;
+  const column = (name: string): string | undefined => {
+    const field = entity.fields().find((f) => f.name === name);
+    return field === undefined ? undefined : quoteCheckCol(resolveColumnName(field, strategy));
+  };
+  const unless = renderExpressionSql(negateExpression(condition as ExprNode), column, dialect);
+  return { ...check, expression: `(${unless}) OR (${check.expression})` };
+}
+
 function crossFieldCheck(
   v: MetaValidator, entity: MetaObject, tableName: string,
   strategy: ColumnNamingStrategy, dialect: Dialect | undefined,
@@ -1019,6 +1053,18 @@ function crossFieldCheck(
       const refs = names.map((n) => resolveRef(entity, n, strategy));
       if (refs.length === 0 || refs.some((r) => r === null)) return null;
       const firstCol = resolveColumnName(refs[0]!.field, strategy);
+      // @max bounds how many may be present (@max 1: exactly one). Postgres counts them with
+      // num_nonnulls; SQLite adds the presence tests, which it evaluates as 0 / 1.
+      const max = v.attr(VALIDATOR_ATTR_MAX);
+      if (typeof max === "number") {
+        const count = dialect === "sqlite" || dialect === "d1"
+          ? `(${refs.map((r) => `(${r!.qcol} IS NOT NULL)`).join(" + ")})`
+          : `num_nonnulls(${refs.map((r) => r!.qcol).join(", ")})`;
+        return {
+          name: `${tableName}_${firstCol}_atleastone_chk`,
+          expression: max === 1 ? `${count} = 1` : `${count} BETWEEN 1 AND ${max}`,
+        };
+      }
       return {
         name: `${tableName}_${firstCol}_atleastone_chk`,
         expression: refs.map((r) => `${r!.qcol} IS NOT NULL`).join(" OR "),

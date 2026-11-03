@@ -42,6 +42,8 @@ public class AtLeastOneValidator extends MetaValidator {
                .inheritsFrom(TYPE_VALIDATOR, SUBTYPE_BASE);
 
             def.requiredAttributeWithConstraints(ATTR_FIELDS).ofType(StringAttribute.SUBTYPE_STRING).asArray();
+            def.optionalAttributeWithConstraints(ATTR_CONDITION)
+               .ofType(com.metaobjects.attr.ExpressionAttribute.SUBTYPE_EXPRESSION).asSingle();
         });
     }
 

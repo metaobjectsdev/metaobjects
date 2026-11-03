@@ -1046,6 +1046,13 @@
           "description": "Physical column name for this field on an rdb source. Defaults to the field name under the project's naming.columns rule (the \"naming\" setting in .metaobjects/config.json)."
         },
         {
+          "name": "constraintName",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "The database name of the CHECK constraint this enum's member list generates. Absent: <table>_<column>_chk. Lets a model adopt a database whose CHECKs were named by hand. RDB-physical — contributed by the db provider."
+        },
+        {
           "name": "db.indexed",
           "valueType": "boolean",
           "isArray": false,
@@ -4679,11 +4686,32 @@
       "whenToUse": "At least one of several fields must be present (email or phone). Declare it instead of hand-written OR-presence checks.",
       "attrs": [
         {
+          "name": "condition",
+          "valueType": "expression",
+          "isArray": false,
+          "required": false,
+          "description": "The case this rule applies in: an expression over the owning entity's fields (the attr.expression grammar). Absent: always. The database CHECK is NOT (condition) OR (rule), so a row the condition does not hold for, or holds NULL for, is not checked. Enforced by the database only, like the rule itself."
+        },
+        {
+          "name": "constraintName",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "The database name of the CHECK constraint this validator generates (numeric, length, regex and the cross-field validators; the others generate no CHECK). Absent: the derived <table>_<column>_<kind>_chk. Lets a model adopt a database whose CHECKs were named by hand. RDB-physical — contributed by the db provider."
+        },
+        {
           "name": "fields",
           "valueType": "string",
           "isArray": true,
           "required": true,
           "description": "Names of the candidate fields; at least one must be present."
+        },
+        {
+          "name": "max",
+          "valueType": "int",
+          "isArray": false,
+          "required": false,
+          "description": "The most of @fields that may be present. Absent: no upper bound; @max 1 makes it exactly one of them. Between 1 and the number of @fields (ERR_BAD_ATTR_VALUE)."
         }
       ],
       "children": []
@@ -4717,6 +4745,20 @@
       "rules": "@left and @right must name fields of the owning entity. @op is one of gt/gte/lt/lte/ne/eq. The comparison is null-tolerant where the backend's relational operator is (SQL: a NULL operand yields no violation).",
       "whenToUse": "Two sibling fields must stand in an order (start <= end, currentHp <= maxHp). Declare it instead of hand-writing the cross-field assertion.",
       "attrs": [
+        {
+          "name": "condition",
+          "valueType": "expression",
+          "isArray": false,
+          "required": false,
+          "description": "The case this rule applies in: an expression over the owning entity's fields (the attr.expression grammar). Absent: always. The database CHECK is NOT (condition) OR (rule), so a row the condition does not hold for, or holds NULL for, is not checked. Enforced by the database only, like the rule itself."
+        },
+        {
+          "name": "constraintName",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "The database name of the CHECK constraint this validator generates (numeric, length, regex and the cross-field validators; the others generate no CHECK). Absent: the derived <table>_<column>_<kind>_chk. Lets a model adopt a database whose CHECKs were named by hand. RDB-physical — contributed by the db provider."
+        },
         {
           "name": "left",
           "valueType": "string",
@@ -4756,6 +4798,13 @@
       "whenToUse": "Bound a string's length or a collection's size. Use @min/@max instead of hand-written guards.",
       "attrs": [
         {
+          "name": "constraintName",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "The database name of the CHECK constraint this validator generates (numeric, length, regex and the cross-field validators; the others generate no CHECK). Absent: the derived <table>_<column>_<kind>_chk. Lets a model adopt a database whose CHECKs were named by hand. RDB-physical — contributed by the db provider."
+        },
+        {
           "name": "max",
           "valueType": "int",
           "isArray": false,
@@ -4778,6 +4827,13 @@
       "description": "Bounds a numeric value's magnitude via @min/@max.",
       "whenToUse": "Bound a number's magnitude. Use @min/@max instead of hand-written range checks.",
       "attrs": [
+        {
+          "name": "constraintName",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "The database name of the CHECK constraint this validator generates (numeric, length, regex and the cross-field validators; the others generate no CHECK). Absent: the derived <table>_<column>_<kind>_chk. Lets a model adopt a database whose CHECKs were named by hand. RDB-physical — contributed by the db provider."
+        },
         {
           "name": "max",
           "valueType": "int",
@@ -4802,6 +4858,20 @@
       "rules": "@field and @when must name fields of the owning entity. @equals is rendered per @when's field subtype. Stricter than requiredWhen — also forbids @field when the condition is false.",
       "whenToUse": "A field must be present exactly when a condition holds, absent otherwise (biconditional). Declare it instead of hand-written presence logic.",
       "attrs": [
+        {
+          "name": "condition",
+          "valueType": "expression",
+          "isArray": false,
+          "required": false,
+          "description": "The case this rule applies in: an expression over the owning entity's fields (the attr.expression grammar). Absent: always. The database CHECK is NOT (condition) OR (rule), so a row the condition does not hold for, or holds NULL for, is not checked. Enforced by the database only, like the rule itself."
+        },
+        {
+          "name": "constraintName",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "The database name of the CHECK constraint this validator generates (numeric, length, regex and the cross-field validators; the others generate no CHECK). Absent: the derived <table>_<column>_<kind>_chk. Lets a model adopt a database whose CHECKs were named by hand. RDB-physical — contributed by the db provider."
+        },
         {
           "name": "equals",
           "valueType": "string",
@@ -4832,6 +4902,13 @@
       "description": "Requires the value match a regular expression (@pattern).",
       "whenToUse": "A string must match a pattern (email, slug, code). Set @pattern instead of hand-writing the regex test.",
       "attrs": [
+        {
+          "name": "constraintName",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "The database name of the CHECK constraint this validator generates (numeric, length, regex and the cross-field validators; the others generate no CHECK). Absent: the derived <table>_<column>_<kind>_chk. Lets a model adopt a database whose CHECKs were named by hand. RDB-physical — contributed by the db provider."
+        },
         {
           "name": "max",
           "valueType": "int",
@@ -4871,6 +4948,20 @@
       "rules": "@field and @when must name fields of the owning entity. @equals is the gating value, compared against @when's value (rendered per @when's field subtype — boolean true/false, enum/string literal, numeric literal).",
       "whenToUse": "A field becomes required only when another field has a given value. Declare it instead of conditional validation code.",
       "attrs": [
+        {
+          "name": "condition",
+          "valueType": "expression",
+          "isArray": false,
+          "required": false,
+          "description": "The case this rule applies in: an expression over the owning entity's fields (the attr.expression grammar). Absent: always. The database CHECK is NOT (condition) OR (rule), so a row the condition does not hold for, or holds NULL for, is not checked. Enforced by the database only, like the rule itself."
+        },
+        {
+          "name": "constraintName",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "The database name of the CHECK constraint this validator generates (numeric, length, regex and the cross-field validators; the others generate no CHECK). Absent: the derived <table>_<column>_<kind>_chk. Lets a model adopt a database whose CHECKs were named by hand. RDB-physical — contributed by the db provider."
+        },
         {
           "name": "equals",
           "valueType": "string",

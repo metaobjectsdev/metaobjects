@@ -94,6 +94,7 @@ export {
 } from "./core/requirement/resolve-claim.js";
 export * from "./core/relationship/relationship-constants.js";
 export * from "./core/query/query-constants.js";
+export { EXPR_OP_IS_NOT_NULL, EXPR_OP_NOT, EXPR_FN_COALESCE, type ExprNode } from "./core/attr/meta-attr-expression.js";
 export * from "./persistence/source/source-constants.js";
 export * from "./persistence/origin/origin-constants.js";
 export * from "./template/template-constants.js";
